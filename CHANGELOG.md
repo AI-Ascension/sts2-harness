@@ -15,7 +15,7 @@ claim a released harness version or runtime compatibility.
   replay, scoring, evaluation, and artifact lineage.
 - A target-owned Rust harness package with explicit routing, provider, record, replay, artifact, and
   shutdown ports plus deterministic fake-boundary tests.
-- A copied release-like `sts2-protocol/poc-v1` artifact, deterministic six-target fake runner, and
+- A copied release-like `sts2-protocol/poc-v1` artifact, deterministic five-boundary fake runner, and
   [`MINIMAL_POC_REPORT.md`](MINIMAL_POC_REPORT.md) with the canonical 15-event trace.
 
 ### Changed

@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 
 use super::contract::{
-    PocAction, PocCoreError, PocError, PocObservation, PocRequest, PocResponse, PocRoute, PocStatus,
+    PocAction, PocCoreError, PocError, PocObservation, PocRequest, PocRoute, PocStatus,
 };
+use super::response::PocResponse;
+use super::trace::TraceLedger;
 
 const INSTANCE_ID: &str = "instance-1";
+const SESSION_ID: &str = "session-1";
 const LEASE_ID: &str = "lease-1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -29,11 +32,11 @@ struct CoreDouble {
 }
 
 impl CoreDouble {
-    const fn new() -> Self {
+    const fn new(seed: u64, clock_tick: u64) -> Self {
         Self {
             state: PocCoreState {
                 generation: 0,
-                available_units: 3,
+                available_units: 2 + ((seed.wrapping_add(clock_tick) % 2) as u16),
                 settled_effects: 0,
             },
         }
@@ -71,18 +74,29 @@ struct GameModDouble {
 }
 
 impl GameModDouble {
-    const fn new() -> Self {
+    const fn new(seed: u64, clock_tick: u64) -> Self {
         Self {
-            core: CoreDouble::new(),
+            core: CoreDouble::new(seed, clock_tick),
         }
     }
 
-    fn forward(&mut self, request: PocRequest) -> Result<PocResponse, PocError> {
-        if !request.is_valid(INSTANCE_ID, LEASE_ID) {
+    fn forward(
+        &mut self,
+        request: PocRequest,
+        trace: &mut TraceLedger,
+    ) -> Result<PocResponse, PocError> {
+        if !request.is_valid(INSTANCE_ID, SESSION_ID, LEASE_ID) {
             return Err(PocError::InvalidRequest("mod metadata or shape is invalid"));
         }
+        request.wire_json()?;
+        let tool = match request.route() {
+            PocRoute::State => "get_state",
+            PocRoute::Action => "submit_action",
+        };
+        let mod_token = trace.enter("game-mod", tool, SESSION_ID, LEASE_ID)?;
+        let core_token = trace.enter("game-core", tool, SESSION_ID, LEASE_ID)?;
         let state = self.core.read();
-        match request.route() {
+        let response = match request.route() {
             PocRoute::State => Ok(PocResponse::state(
                 request.correlation_id(),
                 request.instance_id(),
@@ -90,7 +104,11 @@ impl GameModDouble {
                 state.observation(),
             )),
             PocRoute::Action => self.action(request, state),
-        }
+        }?;
+        response.wire_json()?;
+        trace.complete(core_token, &response)?;
+        trace.complete(mod_token, &response)?;
+        Ok(response)
     }
 
     fn action(
@@ -126,30 +144,79 @@ impl GameModDouble {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gateway_rejects_a_request_from_another_session() {
+        let mut mcp = McpDouble::new(7, 0);
+        let mut trace = TraceLedger::new();
+        assert_eq!(
+            trace.enter("harness", "get_state", SESSION_ID, LEASE_ID),
+            Ok(0)
+        );
+
+        assert_eq!(
+            mcp.get_state("session-other", INSTANCE_ID, "corr-0001", &mut trace),
+            Err(PocError::GatewayFence("wrong session"))
+        );
+    }
+
+    #[test]
+    fn seed_and_clock_select_the_bounded_initial_state() {
+        assert_eq!(CoreDouble::new(7, 0).read().available_units, 3);
+        assert_ne!(
+            CoreDouble::new(7, 0).read().available_units,
+            CoreDouble::new(6, 0).read().available_units
+        );
+        assert_ne!(
+            CoreDouble::new(7, 0).read().available_units,
+            CoreDouble::new(7, 1).read().available_units
+        );
+    }
+}
+
 #[derive(Debug)]
 struct GatewayDouble {
     instance_id: &'static str,
+    session_id: &'static str,
     lease_id: &'static str,
     game_mod: GameModDouble,
 }
 
 impl GatewayDouble {
-    const fn new() -> Self {
+    const fn new(seed: u64, clock_tick: u64) -> Self {
         Self {
             instance_id: INSTANCE_ID,
+            session_id: SESSION_ID,
             lease_id: LEASE_ID,
-            game_mod: GameModDouble::new(),
+            game_mod: GameModDouble::new(seed, clock_tick),
         }
     }
 
-    fn forward(&mut self, request: PocRequest) -> Result<PocResponse, PocError> {
+    fn forward(
+        &mut self,
+        request: PocRequest,
+        trace: &mut TraceLedger,
+    ) -> Result<PocResponse, PocError> {
         if request.instance_id() != self.instance_id {
             return Err(PocError::GatewayFence("wrong instance"));
+        }
+        if request.session_id() != self.session_id {
+            return Err(PocError::GatewayFence("wrong session"));
         }
         if request.lease_id() != self.lease_id {
             return Err(PocError::GatewayFence("stale lease"));
         }
-        self.game_mod.forward(request)
+        let tool = match request.route() {
+            PocRoute::State => "get_state",
+            PocRoute::Action => "submit_action",
+        };
+        let token = trace.enter("gateway", tool, SESSION_ID, LEASE_ID)?;
+        let response = self.game_mod.forward(request, trace)?;
+        trace.complete(token, &response)?;
+        Ok(response)
     }
 }
 
@@ -159,37 +226,38 @@ pub(super) struct McpDouble {
 }
 
 impl McpDouble {
-    pub(super) const fn new() -> Self {
+    pub(super) const fn new(seed: u64, clock_tick: u64) -> Self {
         Self {
-            gateway: GatewayDouble::new(),
+            gateway: GatewayDouble::new(seed, clock_tick),
         }
     }
 
     pub(super) fn get_state(
         &mut self,
-        _session_id: &str,
+        session_id: &str,
         instance_id: &str,
         correlation_id: &str,
+        trace: &mut TraceLedger,
     ) -> Result<PocResponse, PocError> {
-        self.gateway
-            .forward(PocRequest::state(correlation_id, instance_id, LEASE_ID))
+        let request = PocRequest::state(correlation_id, instance_id, session_id, LEASE_ID);
+        request.wire_json()?;
+        let token = trace.enter("mcp", "get_state", SESSION_ID, LEASE_ID)?;
+        let response = self.gateway.forward(request, trace)?;
+        response.wire_json()?;
+        trace.complete(token, &response)?;
+        Ok(response)
     }
 
     pub(super) fn submit_action(
         &mut self,
-        _session_id: &str,
-        instance_id: &str,
-        correlation_id: &str,
-        generation: u64,
-        action_id: &'static str,
-        units: u16,
+        request: PocRequest,
+        trace: &mut TraceLedger,
     ) -> Result<PocResponse, PocError> {
-        self.gateway.forward(PocRequest::action_request(
-            correlation_id,
-            instance_id,
-            generation,
-            PocAction::new(action_id, units),
-            LEASE_ID,
-        ))
+        request.wire_json()?;
+        let token = trace.enter("mcp", "submit_action", SESSION_ID, LEASE_ID)?;
+        let response = self.gateway.forward(request, trace)?;
+        response.wire_json()?;
+        trace.complete(token, &response)?;
+        Ok(response)
     }
 }
