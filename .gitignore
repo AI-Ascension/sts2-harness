@@ -1,0 +1,26 @@
+# Rust and managed build output
+target/
+**/bin/
+**/obj/
+**/*.rs.bk
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Test and analysis output
+.coverage
+coverage/
+/dist/
+/out/
+
+# Host SDKs and proprietary local references
+.tools/
+local-host/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
