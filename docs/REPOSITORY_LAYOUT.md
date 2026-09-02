@@ -59,3 +59,9 @@ See the decision records under `docs/decisions/`.
 Build output, editor state, credentials, host SDKs, private data, model artifacts, datasets, and
 temporary reports are ignored or kept outside the repository. Generated/snapshot material is admitted
 only with exact provenance, a license, a generator, and a policy exception where its size requires it.
+
+## Naming authority
+
+The aggregate NAMING_CONVENTIONS.md and naming-registry.yaml define shared
+casing and identity rules. Harness-owned run, episode, trajectory, model, artifact, record, and
+trace names must retain their separate semantic namespaces.

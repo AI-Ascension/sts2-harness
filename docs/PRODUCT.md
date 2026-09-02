@@ -66,4 +66,4 @@ host integration is not a harness exception because it belongs to another reposi
 The repository policy checker enforces required foundation files, Markdown links, workflow pins,
 language restrictions, MIT headers, and bounded files. Rust formatting, Clippy, and tests are required
 for Rust changes. Runtime/provider/game compatibility advances only with exact controlled evidence;
-the foundation phase remains runtime-unverified.
+the foundation phase remains unverified.
