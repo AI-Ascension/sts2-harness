@@ -84,10 +84,11 @@ correlation is explicit, and artifact lineage never grants authority to mutate a
 
 ## Evidence status
 
-The architecture is a proposed foundation contract. Deterministic fake tests exercise the local
-correlation, retry/idempotency, record/replay, artifact-lineage, and cleanup seams. No runtime graph,
-provider call, MCP exchange, gateway allocation, game action, score, or live artifact publication has
-been executed by this repository. Those claims require an authorized disposable runtime.
+The architecture remains a proposed foundation contract, with confirmed deterministic, component,
+and one bounded exact-host runtime lane. Deterministic fake tests exercise the local correlation,
+retry/idempotency, record/replay, artifact-lineage, and cleanup seams; the dated component and host
+records exercise real harness/MCP/gateway processes. No provider call, gameplay-rule mutation, score,
+or live artifact publication has been executed by this repository.
 
 The minimal POC adds a deterministic fake runner that consumes the copied `poc-v1` release-like
 artifact and records the exact boundary order `harness -> MCP -> gateway -> game-mod -> game-core`.
@@ -95,3 +96,17 @@ It exercises one state read, one accepted typed action, and one rejected typed a
 doubles only. The resulting trace and evidence labels are in
 [`../MINIMAL_POC_REPORT.md`](../MINIMAL_POC_REPORT.md); they are source/test-confirmed offline
 evidence, not runtime or compatibility evidence.
+
+## Runtime coordinator adapter
+
+ADR 0005 adds a standalone runtime binary under `crates/harness/src/bin/`. It is an explicit
+coordinator, not a second MCP or gateway implementation. The binary uses a bounded HTTP client for
+the gateway control call, launches the configured MCP process with stdin/stdout pipes, and keeps
+gateway session, MCP session, lease, epoch, request, and action identities distinct.
+
+The trace order is allocation, MCP initialize, catalog verification, state at generation N, action
+at N, stale action at N, fresh state at N+1, and release. The coordinator requires an accepted
+action's fresh `status_overlay_visible` witness and stable stale-generation error before emitting
+the sanitized trace. It never contacts a game process directly. Process launch, graceful shutdown,
+and the exact host effect are evidenced separately in the dated host integration record; gameplay
+mutation and broader compatibility remain outside that record.

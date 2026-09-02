@@ -1,13 +1,13 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/AI-Ascension/.github/main/profile/assets/banner-dark.svg">
-  <img alt="AI-Ascension — Inspect how AI requests to a game get fenced, one Rust contract at a time. Runtime: unverified. Deterministic tests: confirmed." src="https://raw.githubusercontent.com/AI-Ascension/.github/main/profile/assets/banner-light.svg" width="100%">
+  <img alt="AI-Ascension — Inspect how AI requests to a game get fenced, one Rust contract at a time. Bounded runtime host trace confirmed. Deterministic tests: confirmed." src="https://raw.githubusercontent.com/AI-Ascension/.github/main/profile/assets/banner-light.svg" width="100%">
 </picture>
 
 # sts2-harness
 
 > **AI-Ascension · flagship · tier 4: experiment coordinator** — Experiment coordinator for AI runs: episodes, a pluggable model-provider interface, replay of recorded records, and artifact lineage.
 >
-> **Status:** deterministic in-memory tests `confirmed` at the pinned commit · runtime, host, and game compatibility `unverified` · nothing is live.
+> **Status:** deterministic tests and one bounded `runtime-v1` host trace `confirmed` for STS2 v0.107.1 on Windows x86-64 · providers, gameplay mutation, and broader compatibility `unverified`.
 > **Proof:** [45-second browser replay](https://ai-ascension.github.io/proof.html) · [Evidence ledger](https://ai-ascension.github.io/evidence.html) · [This repository on the map](https://ai-ascension.github.io/repositories.html#sts2-harness)
 > **Start here:** the harness is the flagship entry point for the organization; the public proof currently lives in [sts2-gateway](https://github.com/AI-Ascension/sts2-gateway) because that is where the first fenced boundary is tested.
 > **Owner:** The harness maintainers own the experiment control plane and its records: coordination, provider ports, runs and episodes, trajectories, replay, and artifact lineage.
@@ -15,10 +15,11 @@
 >
 > AI-Ascension is an independent project. It is not affiliated with or endorsed by Mega Crit or Valve and grants no rights to game files, assets, or marks.
 
-Status: Wave 2 codebase initialization. The target-owned harness package contains pure coordinator
-ports and deterministic fake-boundary tests; live product behavior remains unverified. This
-target is distinct from any legacy or reference checkout and contains no game files, model weights,
-datasets, provider credentials, or generated product artifacts.
+Status: Wave 2 codebase initialization plus a bounded runtime coordinator. The target-owned harness
+package contains pure coordinator ports and deterministic fake-boundary tests; an authorized
+`runtime-v1` trace now confirms the coordinator-to-host path for one exact disposable STS2 profile.
+This target is distinct from any legacy or reference checkout and contains no game files, model
+weights, datasets, provider credentials, or generated product artifacts.
 
 ## Owner and consumers
 
@@ -96,10 +97,11 @@ semantic correctness, reproducibility, or runtime compatibility.
 ## Evidence and provenance
 
 Claims use `confirmed`, `source-derived`, `inferred`, `proposed`, `unverified`, or `unsupported`.
-This target has source/documentation evidence and deterministic offline fake-test evidence only.
-Gateway/MCP interaction, provider execution, game state/action behavior, replay fidelity against a
-game, scoring validity, training outcomes, and packaged runtime compatibility remain unverified until
-controlled tests exist.
+This target has source/documentation evidence, deterministic offline fake-test evidence, a dated
+component trace against a synthetic downstream, and a dated exact-host runtime trace. Provider
+execution, gameplay-rule mutation, replay fidelity against a game, scoring validity, training
+outcomes, and compatibility beyond the recorded host remain unverified. See
+[`docs/evidence/runtime-v1-host-integration-20260902.md`](docs/evidence/runtime-v1-host-integration-20260902.md).
 
 Imported or generated records must carry origin, license, generator, input identity, and digest. Do not
 copy or transliterate reference implementation source. Do not retain credentials, private prompts or
@@ -125,3 +127,15 @@ For Rust changes, also run `cargo fmt --all --check`,
 `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`, and
 `cargo test --workspace --all-targets --all-features --locked`. Missing runtime dependencies are
 reported as unverified rather than converted into a pass.
+
+## Runtime slice coordinator
+
+The standalone `sts2-harness-runtime` binary is the explicit coordinator for the first
+`runtime-v1` trace. It allocates one configured gateway lease, starts the MCP process, performs
+initialize/list/state/action/stale-action/fresh-state calls, checks the effect witness and stable
+rejection, closes MCP stdin, and releases the lease. It has no direct game or mod access.
+
+The process uses configured bearer tokens and separate instance, gateway session, MCP session, lease,
+and epoch identities. The synthetic component run and the authorized exact-host run are recorded
+separately. The latter confirms the managed host callback and bounded STS2 effect for the safe probe;
+gameplay mutation and broader compatibility remain `unverified`.

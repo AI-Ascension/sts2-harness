@@ -72,3 +72,16 @@ Host or provider evidence requires exact versions, platform, configuration, disp
 outputs, cleanup, artifact hashes, and evidence level. A build, handshake, model response, reachable
 process, acknowledgement, or trajectory is not proof of semantic correctness or completed game action.
 Unavailable runtime remains `unverified` with an executable safe probe.
+
+## Runtime coordinator checks
+
+The runtime binary builds and is covered by the workspace Rust gates. A controlled component test
+runs the real harness, MCP, and gateway binaries with a short-lived synthetic downstream. Its oracle
+requires allocation identity, the runtime MCP catalog, generation N state, an accepted
+`show_runtime_probe` response with a fresh visible witness, a stable stale-generation rejection,
+post-action state at N+1, and lease release.
+
+The synthetic result is component-network evidence only. A separate authorized host run exercised
+the same coordinator path against the packaged mod and recorded the live host effect. The exact host
+run and remaining unverified gates are recorded in
+[`docs/evidence/runtime-v1-host-integration-20260902.md`](evidence/runtime-v1-host-integration-20260902.md).

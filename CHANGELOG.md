@@ -9,6 +9,12 @@ claim a released harness version or runtime compatibility.
 
 ### Added
 
+- The bounded `sts2-harness-runtime` coordinator, `runtime-v1` artifact copy, real MCP/gateway
+  process path, stale-generation oracle, sanitized trace, and component evidence record.
+
+- A dated authorized-host integration record confirming the complete bounded coordinator-to-STS2
+  runtime probe, visible effect witness, stale-generation rejection, and reversible cleanup.
+
 - Repository governance, policy-as-code, workflow, licensing, security, and release foundations.
 - Harness-specific ownership, dependency, protocol-repository, compatibility, and provenance decisions.
 - Documentation for multi-instance coordination, model/provider ports, episodes, trajectories,
