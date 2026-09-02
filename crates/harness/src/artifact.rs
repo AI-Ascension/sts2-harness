@@ -190,15 +190,15 @@ impl ArtifactDraft {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArtifactReceipt {
     metadata: ArtifactMetadata,
-    published: bool,
+    was_published: bool,
 }
 
 impl ArtifactReceipt {
     #[must_use]
-    pub const fn new(metadata: ArtifactMetadata, published: bool) -> Self {
+    pub const fn new(metadata: ArtifactMetadata, was_published: bool) -> Self {
         Self {
             metadata,
-            published,
+            was_published,
         }
     }
 
@@ -208,8 +208,8 @@ impl ArtifactReceipt {
     }
 
     #[must_use]
-    pub const fn published(&self) -> bool {
-        self.published
+    pub const fn was_published(&self) -> bool {
+        self.was_published
     }
 }
 
