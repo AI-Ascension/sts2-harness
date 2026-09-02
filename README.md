@@ -1,4 +1,19 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/AI-Ascension/.github/main/profile/assets/banner-dark.svg">
+  <img alt="AI-Ascension — Inspect how AI requests to a game get fenced, one Rust contract at a time. Runtime: unverified. Deterministic tests: confirmed." src="https://raw.githubusercontent.com/AI-Ascension/.github/main/profile/assets/banner-light.svg" width="100%">
+</picture>
+
 # sts2-harness
+
+> **AI-Ascension · flagship · tier 4: experiment coordinator** — Experiment coordinator for AI runs: episodes, a pluggable model-provider interface, replay of recorded records, and artifact lineage.
+>
+> **Status:** deterministic in-memory tests `confirmed` at the pinned commit · runtime, host, and game compatibility `unverified` · nothing is live.
+> **Proof:** [45-second browser replay](https://ai-ascension.github.io/proof.html) · [Evidence ledger](https://ai-ascension.github.io/evidence.html) · [This repository on the map](https://ai-ascension.github.io/repositories.html#sts2-harness)
+> **Start here:** the harness is the flagship entry point for the organization; the public proof currently lives in [sts2-gateway](https://github.com/AI-Ascension/sts2-gateway) because that is where the first fenced boundary is tested.
+> **Owner:** The harness maintainers own the experiment control plane and its records: coordination, provider ports, runs and episodes, trajectories, replay, and artifact lineage.
+> **Contribute:** [Organization guide](https://github.com/AI-Ascension/.github/blob/main/CONTRIBUTING.md) · [First tasks](https://ai-ascension.github.io/contributing.html)
+>
+> AI-Ascension is an independent project. It is not affiliated with or endorsed by Mega Crit or Valve and grants no rights to game files, assets, or marks.
 
 Status: Wave 2 codebase initialization. The target-owned harness package contains pure coordinator
 ports and deterministic fake-boundary tests; live product behavior remains runtime-unverified. This
