@@ -66,8 +66,7 @@ Never copy, vendor, transliterate, or use reference implementation symbols as a 
 
 ## Aggregate naming authority
 
-Use the aggregate [`NAMING_CONVENTIONS.md`](../../planning/naming_conventions/NAMING_CONVENTIONS.md)
-and [`naming-registry.yaml`](../../planning/naming_conventions/naming-registry.yaml) for owner
+Use the aggregate NAMING_CONVENTIONS.md and naming-registry.yaml for owner
 prefixes, casing, identity namespaces, lifecycle vocabulary, evidence states, and protected
 external names. Harness lineage IDs remain distinct from gateway sessions, MCP requests, host
 requests, and domain identities.
