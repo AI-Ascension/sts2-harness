@@ -1,6 +1,8 @@
 # Rust and managed build output
 target/
 **/bin/
+!crates/harness/src/bin/
+!crates/harness/src/bin/**
 **/obj/
 **/*.rs.bk
 

@@ -17,15 +17,14 @@ The harness does not inherit source or behavioral compatibility from a reference
 
 ## Current evidence baseline
 
-This target contains a non-empty preparation package but no released artifact or live integration.
-No provider, MCP server, gateway, game, model, replay service, score, dataset, or package runtime has
-been executed by the target. Therefore all product/runtime combinations are `unverified`, not
-supported.
+This target contains a non-empty preparation package and one bounded authorized live-host integration trace.
+No provider, model, replay service, score, dataset, or released package has been executed or
+supported by the target. Compatibility claims remain limited to the exact runtime row recorded below.
 
 | Subject | Current state | Evidence |
 |---|---|---|
 | Harness foundation | Pure ports, coordinator seams, and deterministic fakes | Source-derived; offline tests pass |
-| MCP/gateway integration | Not executed | Unverified; use bounded fakes first |
+| MCP/gateway integration | Real component trace against synthetic downstream and exact host | Confirmed for the bounded runtime-v1 path; broader host compatibility unverified |
 | Provider/model execution | Not executed | Unverified; no credentials or provider calls |
 | Game state/action behavior | Not reachable by design | Unsupported in this repository boundary |
 | Replay/artifact lineage | Offline record/replay and metadata seams | Source-derived; deterministic fakes only |
@@ -58,3 +57,13 @@ Breaking changes require an ADR, migration path, release note, updated fixtures/
 coordinated consumer review. Additive fields must define old-reader behavior. Unknown fields/enums,
 null versus missing, ordering, numeric bounds, identifier namespaces, stale state, and partial effects
 must be tested before an additive label is used.
+
+## Runtime coordinator row
+
+| Coordinator | Downstream lane | Current evidence | Result |
+| --- | --- | --- | --- |
+| `sts2-harness-runtime` | `runtime-v1-mcp` -> attached gateway -> STS2 v0.107.1 host | Authorized disposable-host trace | Bounded client-to-host probe confirmed; gameplay mutation and broader compatibility unverified; [evidence](evidence/runtime-v1-host-integration-20260902.md) |
+
+The coordinator does not inherit compatibility from a successful trajectory. Promotion requires an
+exact mod/host version, artifact digest, disposable profile, request sequence, fresh observation,
+effect witness, and cleanup record.

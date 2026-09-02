@@ -27,8 +27,9 @@ The Wave 2 package implements the narrow identity, routing, provider, record, re
 shutdown seams with bounded values and deterministic fake tests. The minimal POC additionally consumes
 the copied `protocol-artifact/poc-v1` contract and emits a deterministic 15-event trace across
 `harness -> MCP -> gateway -> game-mod -> game-core`. Scoring, evaluation policy, dataset export,
-training, and external runtime adapters remain planned responsibilities rather than implemented product
-integrations.
+training, and provider/artifact-store integrations remain planned responsibilities rather than
+implemented product integrations. The bounded runtime coordinator is the exception for this sprint;
+it consumes named MCP/gateway processes and does not add host access.
 
 ## Non-goals
 
@@ -58,8 +59,9 @@ generic identifier.
 
 Product logic, contract handling, repository tools, generators, and tests are Rust. Core policy is
 free of transports, hosts, processes, and concrete providers. A future external adapter may translate
-to MCP, gateway, provider, or artifact-store behavior through an explicit port. Managed or proprietary
-host integration is not a harness exception because it belongs to another repository.
+to MCP, gateway, provider, or artifact-store behavior through an explicit port. The runtime slice
+uses a named MCP client process and gateway control adapter; it does not add game access. Managed or
+proprietary host integration is not a harness exception because it belongs to another repository.
 
 ## Quality gates
 
@@ -67,3 +69,16 @@ The repository policy checker enforces required foundation files, Markdown links
 language restrictions, MIT headers, and bounded files. Rust formatting, Clippy, and tests are required
 for Rust changes. Runtime/provider/game compatibility advances only with exact controlled evidence;
 the foundation phase remains unverified.
+
+## Runtime vertical slice
+
+The first executable coordinator is `sts2-harness-runtime`. It owns the orchestration sequence but
+not game authority: allocate one gateway identity, spawn the stdin/stdout MCP process, read state,
+submit `show_runtime_probe` using the observed generation, submit the same generation again to verify
+stable stale rejection, read fresh state, and release the gateway lease. The output is a sanitized
+trace containing no token or private host text.
+
+The synthetic lane proves coordinator/MCP/gateway interaction in isolation. The authorized host lane
+has now confirmed the managed mod, Godot main-thread behavior, bounded STS2 host effect, and
+disposable-profile cleanup for the safe probe. Game-rule mutation, provider execution, and broader
+host/platform compatibility remain `unverified`.
