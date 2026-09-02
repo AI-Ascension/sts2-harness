@@ -78,6 +78,14 @@ digest in compatibility and artifact lineage records. The accepted decision, inc
 requirements, is recorded in
 [`docs/decisions/0002-sixth-target-protocol-decision.md`](docs/decisions/0002-sixth-target-protocol-decision.md).
 
+The minimal deterministic POC consumes the copied release-like artifact at
+`protocol-artifact/poc-v1/`, whose manifest records `sts2-protocol/poc-v1`, the source schema,
+generator, and schema digest. Its fake vertical slice is exactly:
+`harness -> MCP -> gateway -> game-mod -> game-core`. The runner emits one canonical trace event
+per boundary for a state read, an accepted `use_budget` action, and a rejected zero-unit action.
+This is offline source/test evidence only; it does not establish live transport, process, host,
+game, provider, or compatibility behavior. See [`MINIMAL_POC_REPORT.md`](MINIMAL_POC_REPORT.md).
+
 Harness-owned contracts keep these namespaces distinct: `instance_id`, `session_id`, `run_id`,
 `episode_id`, `trajectory_id`, `request_id`, `action_id`, `trace_id`, `model_execution_id`, and
 `artifact_id`. Records bind only the independent versions that affect them, including harness,

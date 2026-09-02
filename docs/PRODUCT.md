@@ -24,9 +24,11 @@ The eventual product may own:
 - harness-owned schemas, manifests, compatibility records, and release evidence.
 
 The Wave 2 package implements the narrow identity, routing, provider, record, replay, artifact, and
-shutdown seams with bounded values and deterministic fake tests. Scoring, evaluation policy, dataset
-export, training, and external adapters remain planned responsibilities rather than implemented
-product integrations.
+shutdown seams with bounded values and deterministic fake tests. The minimal POC additionally consumes
+the copied `protocol-artifact/poc-v1` contract and emits a deterministic 15-event trace across
+`harness -> MCP -> gateway -> game-mod -> game-core`. Scoring, evaluation policy, dataset export,
+training, and external runtime adapters remain planned responsibilities rather than implemented product
+integrations.
 
 ## Non-goals
 
@@ -40,7 +42,8 @@ It will not infer correctness from a model response, accepted action, reachable 
 trajectory, successful serialization, or score. It will not export private prompts, model output,
 saves, paths, multiplayer data, or credentials by default. It will not add hidden network discovery,
 unbounded payloads, implicit trust, or a generic-common protocol implementation. The accepted
-`sts2-protocol` target owns its narrow shared contract artifacts; the harness does not duplicate them.
+`sts2-protocol` target owns its narrow shared contract artifacts; the harness consumes an explicit
+release-like copy for this POC and does not duplicate the protocol implementation.
 
 ## Contract development
 

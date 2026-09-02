@@ -27,6 +27,9 @@ jobs:
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt --no-self-update
 
+      - name: Verify copied POC artifact checksums
+        run: (cd protocol-artifact/poc-v1 && sha256sum -c SHA256SUMS)
+
       - name: Check formatting
         run: cargo fmt --all --check
 

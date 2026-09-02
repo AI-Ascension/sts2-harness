@@ -20,8 +20,11 @@ socket, or wall clock. Controlled runtime lanes are separate and cannot be infer
 
 The current target has policy-tool tests plus deterministic `crates/harness` tests. Those tests cover
 route-to-episode correlation, retry reuse of model identity and idempotency, append idempotency,
-trajectory replay, artifact metadata/lineage, and one-time unbind/close cleanup. They do not prove
-provider, MCP, gateway, game, or artifact-store runtime behavior.
+trajectory replay, artifact metadata/lineage, one-time unbind/close cleanup, and the minimal POC.
+The POC verifies the copied `poc-v1` artifact, runs a fixed-seed/fixed-clock fake slice through
+`harness -> MCP -> gateway -> game-mod -> game-core`, and emits 15 canonical boundary events: five
+for a state read, five for an accepted `use_budget` action, and five for a rejected zero-unit action.
+It does not prove provider, live MCP, gateway, game, or artifact-store runtime behavior.
 
 ## Baseline commands
 
@@ -34,6 +37,11 @@ cargo test --workspace --all-targets --all-features --locked
 
 These commands are the local/CI entrypoint for the current workspace. They do not launch a game,
 provider, gateway, MCP server, or external artifact store.
+
+The POC parses the copied source/package schema, five goldens, invalid fixture, and conformance case,
+checks their exact release checksums, and records the actual ordered fake-hop ledger. The report
+records the exact trace and labels each claim as `test-confirmed`, `source-derived`, `proposed`, or
+`unverified`: [`MINIMAL_POC_REPORT.md`](../MINIMAL_POC_REPORT.md).
 
 ## Coordinator and lifecycle tests
 
