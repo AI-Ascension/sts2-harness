@@ -88,3 +88,10 @@ The architecture is a proposed foundation contract. Deterministic fake tests exe
 correlation, retry/idempotency, record/replay, artifact-lineage, and cleanup seams. No runtime graph,
 provider call, MCP exchange, gateway allocation, game action, score, or live artifact publication has
 been executed by this repository. Those claims require an authorized disposable runtime.
+
+The minimal POC adds a deterministic fake runner that consumes the copied `poc-v1` release-like
+artifact and records the exact boundary order `harness -> MCP -> gateway -> game-mod -> game-core`.
+It exercises one state read, one accepted typed action, and one rejected typed action through local
+doubles only. The resulting trace and evidence labels are in
+[`../MINIMAL_POC_REPORT.md`](../MINIMAL_POC_REPORT.md); they are source/test-confirmed offline
+evidence, not runtime or compatibility evidence.

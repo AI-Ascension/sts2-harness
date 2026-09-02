@@ -3,18 +3,20 @@
 ## Current status
 
 This is the distinct `sts2-harness` target in the STS2 project workspace. Wave 2 retains the
-responsibility directories and adds one real target-owned harness package. It does not initialize
-Git or turn unrelated directories into implementation claims.
+responsibility directories and adds one real target-owned harness package plus its copied POC artifact
+and report. It does not turn unrelated directories into implementation claims.
 
 ```text
 .
 ├── crates/harness/       # target-owned coordinator ports, records, and deterministic tests
+├── protocol-artifact/     # copied, release-like poc-v1 contract consumed by the harness
 ├── experiments/          # future experiment definitions and controlled runs
 ├── schemas/              # future harness-owned record/artifact contracts
 ├── conformance/          # future implementation-neutral cases
 ├── docs/                 # architecture, policy, decisions, and testing guidance
 ├── tests/                # future deterministic component/integration tests
-└── tools/repo-policy/    # current Rust foundation checker
+├── tools/repo-policy/    # current Rust foundation checker
+└── MINIMAL_POC_REPORT.md # exact offline trace and evidence classification
 ```
 
 The `experiments` directory is preserved. If an interop experiment is added later, it remains an
