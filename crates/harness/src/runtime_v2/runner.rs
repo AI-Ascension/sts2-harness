@@ -77,9 +77,14 @@ impl RuntimeV2Runner {
 
         match fake.disconnect_after_write(&operation_id, &action_request) {
             Err(RuntimeV2Error::PostWriteDisconnect) => {}
-            Ok(()) => {
+            Ok(DispatchOutcome::Rejected(message)) => {
+                if message.status() != Some(RuntimeV2Status::Rejected) {
+                    return Err(RuntimeV2Error::Invalid(
+                        "fake dispatch returned a non-rejection outcome",
+                    ));
+                }
                 return Err(RuntimeV2Error::Invalid(
-                    "fake post-write disconnect unexpectedly returned a response",
+                    "fake dispatch unexpectedly rejected the valid action",
                 ));
             }
             Err(error) => return Err(error),

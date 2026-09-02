@@ -14,6 +14,11 @@ struct EngineResult {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+enum DispatchOutcome {
+    Rejected(RuntimeV2Message),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct OperationBinding {
     instance_id: String,
     session_id: String,

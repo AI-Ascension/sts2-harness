@@ -8,23 +8,33 @@ fn stored_binding(stored: &StoredOperation) -> &OperationBinding {
     }
 }
 
-fn replay_stored(stored: &StoredOperation, correlation_id: &str) -> EngineResult {
-    match stored {
+fn replay_stored(
+    stored: &StoredOperation,
+    request: &RuntimeV2Message,
+) -> Result<EngineResult, RuntimeV2Error> {
+    let binding = OperationBinding::from_message(request)?;
+    if stored_binding(stored) != &binding {
+        return Err(RuntimeV2Error::Invalid(
+            "stored operation context does not match replay request",
+        ));
+    }
+    let mut message = match stored {
         StoredOperation::Admission {
             accepted, settled, ..
-        } => EngineResult {
-            message: settled.clone().unwrap_or_else(|| {
-                let mut replay = accepted.clone();
-                replay.correlation_id = correlation_id.to_owned();
-                replay
-            }),
-            replayed: true,
-        },
-        StoredOperation::Terminal { result, .. } => EngineResult {
-            message: result.clone(),
-            replayed: true,
-        },
+        } => settled.clone().unwrap_or_else(|| accepted.clone()),
+        StoredOperation::Terminal { result, .. } => result.clone(),
+    };
+    if message.operation_id() != request.operation_id() {
+        return Err(RuntimeV2Error::Invalid(
+            "stored operation identity does not match replay request",
+        ));
     }
+    message.correlation_id = request.correlation_id().to_owned();
+    message.validate()?;
+    Ok(EngineResult {
+        message,
+        replayed: true,
+    })
 }
 
 fn no_retry_evidence(

@@ -10,6 +10,11 @@ impl FakeRuntimeV2 {
         }
     }
 
+    #[cfg(test)]
+    fn intervene_with_observation(&mut self, observation: RuntimeV2Observation) {
+        self.observation = observation;
+    }
+
     fn state_response(
         &self,
         request: &RuntimeV2Message,
@@ -45,7 +50,7 @@ impl FakeRuntimeV2 {
             if stored_binding(stored) != &binding {
                 return self.conflict_result(request, operation_id, binding);
             }
-            return Ok(replay_stored(stored, request.correlation_id()));
+            return replay_stored(stored, request);
         }
 
         if let Some(error_code) = self.fence_error(request) {
@@ -100,9 +105,15 @@ impl FakeRuntimeV2 {
         &mut self,
         operation_id: &RuntimeV2OperationId,
         request: &RuntimeV2Message,
-    ) -> Result<(), RuntimeV2Error> {
+    ) -> Result<DispatchOutcome, RuntimeV2Error> {
+        request.validate()?;
+        if request.kind() != RuntimeV2Kind::ActionRequest {
+            return Err(RuntimeV2Error::Invalid(
+                "post-write disconnect received a non-action request",
+            ));
+        }
         let binding = OperationBinding::from_message(request)?;
-        let Some(stored) = self.operations.get_mut(operation_id) else {
+        let Some(stored) = self.operations.get(operation_id).cloned() else {
             return Err(RuntimeV2Error::Invalid(
                 "post-write disconnect referenced an unknown operation",
             ));
@@ -111,16 +122,18 @@ impl FakeRuntimeV2 {
             StoredOperation::Admission {
                 binding: stored_binding,
                 operation_id: stored_operation_id,
+                accepted,
                 settled,
                 applied,
-                ..
             } => {
-                if stored_operation_id != operation_id || stored_binding != &binding {
+                if stored_operation_id.as_str() != operation_id.as_str()
+                    || stored_binding != binding
+                {
                     return Err(RuntimeV2Error::Invalid(
                         "post-write disconnect operation context conflicts",
                     ));
                 }
-                if *applied || settled.is_some() {
+                if applied || settled.is_some() {
                     return Err(RuntimeV2Error::Invalid(
                         "post-write disconnect attempted a second mutation",
                     ));
@@ -141,6 +154,26 @@ impl FakeRuntimeV2 {
                     true,
                     next_generation,
                 )?;
+
+                // Admission may be followed by an intervening lease/state change. Recheck the
+                // complete live fence immediately before the only mutation in this fake.
+                if let Some(error_code) = self.fence_error(request) {
+                    let result = self.rejected_result(
+                        request,
+                        operation_id.clone(),
+                        binding.action.clone(),
+                        error_code,
+                    )?;
+                    self.operations.insert(
+                        operation_id.clone(),
+                        StoredOperation::Terminal {
+                            binding,
+                            result: result.clone(),
+                        },
+                    );
+                    return Ok(DispatchOutcome::Rejected(result));
+                }
+
                 let action = stored_binding.action.clone();
                 let settled_message = RuntimeV2Message::action_response(
                     &self.context,
@@ -158,8 +191,16 @@ impl FakeRuntimeV2 {
                     .mutation_count
                     .checked_add(1)
                     .ok_or(RuntimeV2Error::Invalid("fake mutation count overflowed"))?;
-                *applied = true;
-                *settled = Some(settled_message);
+                self.operations.insert(
+                    operation_id.clone(),
+                    StoredOperation::Admission {
+                        binding: stored_binding,
+                        operation_id: stored_operation_id,
+                        accepted,
+                        settled: Some(settled_message),
+                        applied: true,
+                    },
+                );
                 Err(RuntimeV2Error::PostWriteDisconnect)
             }
             StoredOperation::Terminal { .. } => Err(RuntimeV2Error::Invalid(
