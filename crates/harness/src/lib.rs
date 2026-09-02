@@ -10,6 +10,8 @@ mod provider;
 mod records;
 mod replay;
 mod routing;
+mod runtime_v2;
+mod runtime_v2_artifact;
 
 pub use artifact::{
     ArtifactDraft, ArtifactKind, ArtifactLineage, ArtifactMetadata, ArtifactMetadataInput,
@@ -35,3 +37,18 @@ pub use provider::{
 pub use records::{AppendOutcome, Correlation, Record, RecordKind, RecordPayload, RecordPort};
 pub use replay::{DeterministicReplay, Divergence, ReplayPort, ReplayReport, ReplayRequest};
 pub use routing::{InstanceRouter, RouteBinding, RouteRequest, RouteToken};
+pub use runtime_v2::{
+    RuntimeV2Action, RuntimeV2ArtifactLineage, RuntimeV2ArtifactRecord, RuntimeV2CombatPhase,
+    RuntimeV2Context, RuntimeV2EffectWitness, RuntimeV2Error, RuntimeV2EventKind,
+    RuntimeV2Evidence, RuntimeV2Kind, RuntimeV2Message, RuntimeV2NoRetryEvidence,
+    RuntimeV2Observation, RuntimeV2OperationId, RuntimeV2Provenance, RuntimeV2Record,
+    RuntimeV2RecordKind, RuntimeV2Report, RuntimeV2Runner, RuntimeV2Status, RuntimeV2Trajectory,
+    run_runtime_v2_fake_trace,
+};
+pub use runtime_v2_artifact::{
+    RUNTIME_V2_ARTIFACT, RUNTIME_V2_GENERATOR, RUNTIME_V2_MAX_GENERATION,
+    RUNTIME_V2_MAX_IDENTITY_BYTES, RUNTIME_V2_MAX_LEASE_EPOCH, RUNTIME_V2_MAX_RECORDS,
+    RUNTIME_V2_MAX_TURN_INDEX, RUNTIME_V2_PROTOCOL_VERSION, RUNTIME_V2_SCHEMA_DIGEST,
+    RUNTIME_V2_SCHEMA_SOURCE, RuntimeV2ArtifactError, runtime_v2_manifest_bytes,
+    runtime_v2_schema_bytes, verify_runtime_v2_artifact,
+};

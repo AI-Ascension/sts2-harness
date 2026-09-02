@@ -139,3 +139,14 @@ The process uses configured bearer tokens and separate instance, gateway session
 and epoch identities. The synthetic component run and the authorized exact-host run are recorded
 separately. The latter confirms the managed host callback and bounded STS2 effect for the safe probe;
 gameplay mutation and broader compatibility remain `unverified`.
+
+## Runtime-v2 deterministic fake lane
+
+The separate `sts2-harness-runtime-v2-fake` binary consumes the copied `runtime-v2` release-like
+artifact, verifies its source/package bytes and checksums, and runs one in-memory instance through
+`requested -> accepted -> unknown -> reconciled -> settled`, a fresh generation `N+1` observation,
+duplicate replay without a second mutation, and stale-epoch rejection. It does not change the
+Runtime-v1 coordinator or contact a live host, game, provider, model, profile, save, or network.
+Live host settlement, gameplay mutation, provider/model execution, and Runtime-v2 compatibility
+remain `unverified`; see
+[`docs/evidence/runtime-v2-fake-20260902.md`](docs/evidence/runtime-v2-fake-20260902.md).

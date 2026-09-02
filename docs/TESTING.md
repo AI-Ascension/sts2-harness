@@ -85,3 +85,13 @@ The synthetic result is component-network evidence only. A separate authorized h
 the same coordinator path against the packaged mod and recorded the live host effect. The exact host
 run and remaining unverified gates are recorded in
 [`docs/evidence/runtime-v1-host-integration-20260902.md`](evidence/runtime-v1-host-integration-20260902.md).
+
+## Runtime-v2 fake lane
+
+The `sts2-harness-runtime-v2-fake` binary is an offline deterministic seam. It verifies the copied
+Runtime-v2 artifact and emits one trajectory/artifact document for a single in-memory instance. Its
+oracle requires a preallocated stable operation ID, admission-only acceptance, one post-write
+disconnect recorded as unknown, fixed reconciliation with the same operation ID, a fresh settled
+observation and witness at generation `N+1`, duplicate replay with one mutation, and stale-epoch
+rejection before mutation. Provider/model execution and live host/game settlement are untouched and
+remain `unverified`.
