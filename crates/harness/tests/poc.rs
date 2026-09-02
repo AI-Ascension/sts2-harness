@@ -2,10 +2,14 @@
 
 use std::error::Error;
 
+use sha2::{Digest, Sha256};
 use sts2_harness::{
     POC_CLOCK_TICK, POC_SCHEMA_DIGEST, POC_SEED, PocAction, PocRunner, PocStatus, run_poc,
     verify_poc_artifact,
 };
+
+const EXPECTED_TRACE_SHA256: &str =
+    "d8420f4432ba0eabe736c73df435f736aac40a262aadbe5659cda5daf5da43fc";
 
 #[test]
 fn deterministic_trace_covers_the_requested_path_and_outcomes() -> Result<(), Box<dyn Error>> {
@@ -22,6 +26,10 @@ fn deterministic_trace_covers_the_requested_path_and_outcomes() -> Result<(), Bo
     assert!(first.rejected_unchanged());
     assert!(first.trace_bytes().ends_with('\n'));
     assert!(first.trace_bytes().contains("sts2.game-core/zero_units"));
+    assert_eq!(
+        format!("{:x}", Sha256::digest(first.trace_bytes().as_bytes())),
+        EXPECTED_TRACE_SHA256
+    );
     assert!(
         first
             .artifact_lineage()
@@ -51,15 +59,15 @@ fn deterministic_trace_covers_the_requested_path_and_outcomes() -> Result<(), Bo
         assert_eq!(event.lease_id(), "lease-1");
         assert_eq!(event.sequence(), sequence);
     }
-    assert_eq!(
-        first
-            .trace()
-            .iter()
-            .take(5)
-            .map(|event| event.boundary())
-            .collect::<Vec<_>>(),
-        ["harness", "mcp", "gateway", "game-mod", "game-core"]
-    );
+    for operation in first.trace().chunks_exact(5) {
+        assert_eq!(
+            operation
+                .iter()
+                .map(|event| event.boundary())
+                .collect::<Vec<_>>(),
+            ["harness", "mcp", "gateway", "game-mod", "game-core"]
+        );
+    }
     assert!(
         first
             .trace()

@@ -53,6 +53,10 @@ The runner uses seed `7`, clock tick `0`, session `session-1`, instance `instanc
 
 The runner emits one canonical JSON line per actual fake-hop crossing: 15 lines total. Each line is finalized from the enter/complete token for the corresponding call, with its ordered boundary, sequence, session, and typed response metadata.
 
+The SHA-256 digest of the exact `trace_bytes()` output, including its final newline, is
+`d8420f4432ba0eabe736c73df435f736aac40a262aadbe5659cda5daf5da43fc`. The integration test pins
+this digest and independently checks the five-boundary order for all three operations.
+
 ```json
 {"boundary":"harness","tool":"get_state","kind":"state_response","sequence":0,"protocol_version":"poc-v1","schema_digest":"242b8f9233e915a55ea8d2e72ca476c1258169a67e62de72ee5aed848a6a0a19","provenance":{"artifact":"sts2-protocol/poc-v1","source":"schemas/poc-v1.schema.json","generator":"hand-authored"},"correlation_id":"corr-0001","instance_id":"instance-1","session_id":"session-1","lease_id":"lease-1","generation":0,"observation":{"available_units":3,"settled_effects":0},"action":null,"status":null,"error_code":null}
 {"boundary":"mcp","tool":"get_state","kind":"state_response","sequence":1,"protocol_version":"poc-v1","schema_digest":"242b8f9233e915a55ea8d2e72ca476c1258169a67e62de72ee5aed848a6a0a19","provenance":{"artifact":"sts2-protocol/poc-v1","source":"schemas/poc-v1.schema.json","generator":"hand-authored"},"correlation_id":"corr-0001","instance_id":"instance-1","session_id":"session-1","lease_id":"lease-1","generation":0,"observation":{"available_units":3,"settled_effects":0},"action":null,"status":null,"error_code":null}
@@ -101,4 +105,5 @@ cargo test --locked --offline --workspace --all-targets --all-features
 
 The expected successful results are: metadata exits `0`; policy reports zero warnings/errors; format,
 Clippy, and tests exit `0`; and all ten artifact checksum lines report `OK`. These commands are
-offline source/test checks and do not upgrade any `unverified` claim.
+offline source/test checks and do not upgrade any `unverified` claim. The POC test also expects the
+trace digest recorded above.
