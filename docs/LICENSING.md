@@ -20,7 +20,8 @@ may be used only in an explicitly authorized disposable validation lane and rema
 
 Cargo dependencies are declared in manifests, locked in `Cargo.lock`, and reviewed for source,
 license, advisories, feature footprint, platform impact, and redistribution terms. The current
-foundation uses the `toml` crate only for the target-local policy checker; it is not vendored.
+foundation uses `toml` for the target-local policy checker and `serde`, `serde_json`, and `sha2` for
+typed POC wire validation and copied-artifact checksums; none are vendored.
 Third-party information is summarized in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 
 ## Fixtures, schemas, and artifacts

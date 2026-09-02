@@ -1,17 +1,116 @@
 // SPDX-License-Identifier: MIT
 
-use super::contract::{PocAction, PocObservation, PocResponse, PocStatus};
+use super::contract::{PocAction, PocError, PocObservation, PocStatus};
+use super::response::PocResponse;
 use crate::protocol_artifact::{
     POC_ARTIFACT, POC_GENERATOR, POC_PROTOCOL_VERSION, POC_SCHEMA_DIGEST, POC_SCHEMA_SOURCE,
 };
+
+const BOUNDARIES: [&str; 5] = ["harness", "mcp", "gateway", "game-mod", "game-core"];
+const OPERATION_COUNT: usize = 3;
+
+#[derive(Debug)]
+struct TraceSlot {
+    boundary: &'static str,
+    tool: &'static str,
+    session_id: &'static str,
+    lease_id: &'static str,
+    sequence: usize,
+    response: Option<PocResponse>,
+}
+
+/// Records crossings when each fake boundary is actually entered and completed.
+#[derive(Debug, Default)]
+pub(super) struct TraceLedger {
+    slots: Vec<TraceSlot>,
+}
+
+impl TraceLedger {
+    pub(super) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(super) fn enter(
+        &mut self,
+        boundary: &'static str,
+        tool: &'static str,
+        session_id: &'static str,
+        lease_id: &'static str,
+    ) -> Result<usize, PocError> {
+        let expected_index = self.slots.len();
+        let expected_boundary =
+            BOUNDARIES
+                .get(expected_index % BOUNDARIES.len())
+                .ok_or(PocError::InvalidTrace(
+                    "fake trace exceeded its bounded hops",
+                ))?;
+        if boundary != *expected_boundary {
+            return Err(PocError::InvalidTrace(
+                "fake boundary crossings are missing or out of order",
+            ));
+        }
+        self.slots.push(TraceSlot {
+            boundary,
+            tool,
+            session_id,
+            lease_id,
+            sequence: expected_index,
+            response: None,
+        });
+        Ok(expected_index)
+    }
+
+    pub(super) fn complete(
+        &mut self,
+        token: usize,
+        response: &PocResponse,
+    ) -> Result<(), PocError> {
+        let slot = self.slots.get_mut(token).ok_or(PocError::InvalidTrace(
+            "fake trace completion token is invalid",
+        ))?;
+        if slot.response.replace(response.clone()).is_some() {
+            return Err(PocError::InvalidTrace(
+                "fake trace crossing was completed twice",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn finish(self) -> Result<Vec<TraceEvent>, PocError> {
+        if self.slots.len() != BOUNDARIES.len() * OPERATION_COUNT {
+            return Err(PocError::InvalidTrace(
+                "trace does not contain one ordered crossing per fake boundary",
+            ));
+        }
+        self.slots
+            .into_iter()
+            .map(|slot| {
+                let response = slot.response.ok_or(PocError::InvalidTrace(
+                    "fake trace crossing was not completed",
+                ))?;
+                Ok(TraceEvent::from_response(
+                    &response,
+                    slot.boundary,
+                    slot.tool,
+                    slot.session_id,
+                    slot.lease_id,
+                    slot.sequence,
+                ))
+            })
+            .collect()
+    }
+}
 
 /// A trace record emitted for one POC boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TraceEvent {
     boundary: &'static str,
     tool: &'static str,
+    kind: &'static str,
+    sequence: usize,
     correlation_id: String,
     instance_id: String,
+    session_id: String,
     lease_id: &'static str,
     generation: u64,
     observation: PocObservation,
@@ -25,13 +124,18 @@ impl TraceEvent {
         response: &PocResponse,
         boundary: &'static str,
         tool: &'static str,
+        session_id: &'static str,
         lease_id: &'static str,
+        sequence: usize,
     ) -> Self {
         Self {
             boundary,
             tool,
+            kind: response.kind(),
+            sequence,
             correlation_id: response.correlation_id().to_owned(),
             instance_id: response.instance_id().to_owned(),
+            session_id: session_id.to_owned(),
             lease_id,
             generation: response.generation(),
             observation: response.observation(),
@@ -53,6 +157,18 @@ impl TraceEvent {
         self.tool
     }
 
+    /// Returns the protocol response kind represented by this event.
+    #[must_use]
+    pub fn kind(&self) -> &str {
+        self.kind
+    }
+
+    /// Returns the zero-based canonical trace sequence.
+    #[must_use]
+    pub const fn sequence(&self) -> usize {
+        self.sequence
+    }
+
     /// Returns the correlation identifier.
     #[must_use]
     pub fn correlation_id(&self) -> &str {
@@ -63,6 +179,12 @@ impl TraceEvent {
     #[must_use]
     pub fn instance_id(&self) -> &str {
         &self.instance_id
+    }
+
+    /// Returns the MCP session identity carried by this event.
+    #[must_use]
+    pub fn session_id(&self) -> &str {
+        &self.session_id
     }
 
     /// Returns the fake gateway lease identity.
@@ -132,9 +254,11 @@ impl TraceEvent {
             .error_code
             .map_or_else(|| String::from("null"), json_string);
         format!(
-            "{{\"boundary\":{},\"tool\":{},\"protocol_version\":{},\"schema_digest\":{},\"provenance\":{{\"artifact\":{},\"source\":{},\"generator\":{}}},\"correlation_id\":{},\"instance_id\":{},\"lease_id\":{},\"generation\":{},\"observation\":{{\"available_units\":{},\"settled_effects\":{}}},\"action\":{},\"status\":{},\"error_code\":{}}}",
+            "{{\"boundary\":{},\"tool\":{},\"kind\":{},\"sequence\":{},\"protocol_version\":{},\"schema_digest\":{},\"provenance\":{{\"artifact\":{},\"source\":{},\"generator\":{}}},\"correlation_id\":{},\"instance_id\":{},\"session_id\":{},\"lease_id\":{},\"generation\":{},\"observation\":{{\"available_units\":{},\"settled_effects\":{}}},\"action\":{},\"status\":{},\"error_code\":{}}}",
             json_string(self.boundary),
             json_string(self.tool),
+            json_string(self.kind),
+            self.sequence,
             json_string(POC_PROTOCOL_VERSION),
             json_string(POC_SCHEMA_DIGEST),
             json_string(POC_ARTIFACT),
@@ -142,6 +266,7 @@ impl TraceEvent {
             json_string(POC_GENERATOR),
             json_string(&self.correlation_id),
             json_string(&self.instance_id),
+            json_string(&self.session_id),
             json_string(self.lease_id),
             self.generation,
             self.observation.available_units,

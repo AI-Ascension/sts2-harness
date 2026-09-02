@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-use super::trace::TraceEvent;
+use super::wire::{
+    PocWireAction, PocWireKind, PocWireMessage, PocWireProvenance, canonical_wire_json,
+};
 use crate::protocol_artifact::{
     ArtifactError, POC_ARTIFACT, POC_GENERATOR, POC_PROTOCOL_VERSION, POC_SCHEMA_DIGEST,
     POC_SCHEMA_SOURCE,
 };
+use serde::{Deserialize, Serialize};
 
 /// The typed action exposed by the fake POC.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -32,14 +35,16 @@ impl PocAction {
 }
 
 /// The bounded state projection carried by every fake response.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PocObservation {
     pub available_units: u16,
     pub settled_effects: u16,
 }
 
 /// The two result statuses in the fake POC.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PocStatus {
     Accepted,
     Rejected,
@@ -65,17 +70,24 @@ pub(super) struct PocRequest {
     route: PocRoute,
     correlation_id: String,
     instance_id: String,
+    session_id: String,
     generation: u64,
     action: Option<PocAction>,
     lease_id: String,
 }
 
 impl PocRequest {
-    pub(super) fn state(correlation_id: &str, instance_id: &str, lease_id: &str) -> Self {
+    pub(super) fn state(
+        correlation_id: &str,
+        instance_id: &str,
+        session_id: &str,
+        lease_id: &str,
+    ) -> Self {
         Self {
             route: PocRoute::State,
             correlation_id: correlation_id.to_owned(),
             instance_id: instance_id.to_owned(),
+            session_id: session_id.to_owned(),
             generation: 0,
             action: None,
             lease_id: lease_id.to_owned(),
@@ -85,6 +97,7 @@ impl PocRequest {
     pub(super) fn action_request(
         correlation_id: &str,
         instance_id: &str,
+        session_id: &str,
         generation: u64,
         action: PocAction,
         lease_id: &str,
@@ -93,19 +106,26 @@ impl PocRequest {
             route: PocRoute::Action,
             correlation_id: correlation_id.to_owned(),
             instance_id: instance_id.to_owned(),
+            session_id: session_id.to_owned(),
             generation,
             action: Some(action),
             lease_id: lease_id.to_owned(),
         }
     }
 
-    pub(super) fn is_valid(&self, expected_instance: &str, expected_lease: &str) -> bool {
+    pub(super) fn is_valid(
+        &self,
+        expected_instance: &str,
+        expected_session: &str,
+        expected_lease: &str,
+    ) -> bool {
         self.protocol_version() == POC_PROTOCOL_VERSION
             && self.schema_digest() == POC_SCHEMA_DIGEST
             && self.artifact() == POC_ARTIFACT
             && self.source() == POC_SCHEMA_SOURCE
             && self.generator() == POC_GENERATOR
             && self.instance_id == expected_instance
+            && self.session_id == expected_session
             && self.lease_id == expected_lease
             && !self.correlation_id.is_empty()
             && match self.route {
@@ -124,6 +144,10 @@ impl PocRequest {
 
     pub(super) fn instance_id(&self) -> &str {
         &self.instance_id
+    }
+
+    pub(super) fn session_id(&self) -> &str {
+        &self.session_id
     }
 
     pub(super) fn lease_id(&self) -> &str {
@@ -157,92 +181,29 @@ impl PocRequest {
     pub(super) const fn generator(&self) -> &'static str {
         POC_GENERATOR
     }
-}
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct PocResponse {
-    correlation_id: String,
-    instance_id: String,
-    generation: u64,
-    observation: PocObservation,
-    action: Option<PocAction>,
-    status: Option<PocStatus>,
-    error_code: Option<&'static str>,
-}
+    pub(super) fn wire_json(&self) -> Result<String, PocError> {
+        canonical_wire_json(&self.wire_message())
+            .map_err(|_| PocError::InvalidRequest("POC request does not match the wire contract"))
+    }
 
-impl PocResponse {
-    pub(super) fn state(
-        correlation_id: &str,
-        instance_id: &str,
-        generation: u64,
-        observation: PocObservation,
-    ) -> Self {
-        Self {
-            correlation_id: correlation_id.to_owned(),
-            instance_id: instance_id.to_owned(),
-            generation,
-            observation,
-            action: None,
+    fn wire_message(&self) -> PocWireMessage {
+        PocWireMessage {
+            protocol_version: POC_PROTOCOL_VERSION.to_owned(),
+            schema_digest: POC_SCHEMA_DIGEST.to_owned(),
+            provenance: PocWireProvenance::default(),
+            correlation_id: self.correlation_id.clone(),
+            instance_id: self.instance_id.clone(),
+            generation: self.generation,
+            kind: match self.route {
+                PocRoute::State => PocWireKind::StateRequest,
+                PocRoute::Action => PocWireKind::ActionRequest,
+            },
+            observation: None,
+            action: self.action.map(PocWireAction::from_action),
             status: None,
             error_code: None,
         }
-    }
-
-    pub(super) fn action_response(
-        correlation_id: &str,
-        instance_id: &str,
-        generation: u64,
-        observation: PocObservation,
-        action: PocAction,
-        status: PocStatus,
-        error_code: Option<&'static str>,
-    ) -> Self {
-        Self {
-            correlation_id: correlation_id.to_owned(),
-            instance_id: instance_id.to_owned(),
-            generation,
-            observation,
-            action: Some(action),
-            status: Some(status),
-            error_code,
-        }
-    }
-
-    pub(super) fn trace_event(
-        &self,
-        boundary: &'static str,
-        tool: &'static str,
-        lease_id: &'static str,
-    ) -> TraceEvent {
-        TraceEvent::from_response(self, boundary, tool, lease_id)
-    }
-
-    pub(super) const fn observation(&self) -> PocObservation {
-        self.observation
-    }
-
-    pub(super) const fn generation(&self) -> u64 {
-        self.generation
-    }
-
-    pub(super) fn correlation_id(&self) -> &str {
-        &self.correlation_id
-    }
-
-    pub(super) fn instance_id(&self) -> &str {
-        &self.instance_id
-    }
-
-    pub(super) const fn action(&self) -> Option<PocAction> {
-        self.action
-    }
-
-    pub(super) const fn status(&self) -> Option<PocStatus> {
-        self.status
-    }
-
-    pub(super) const fn error_code(&self) -> Option<&'static str> {
-        self.error_code
     }
 }
 
