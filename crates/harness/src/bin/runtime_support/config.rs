@@ -84,7 +84,7 @@ impl RuntimeConfig {
             lease_epoch: env_or_default("STS2_LEASE_EPOCH", "1")?
                 .parse::<u64>()
                 .map_err(|_| String::from("STS2_LEASE_EPOCH must be an integer"))?,
-            mcp_session_id: env_or_default("STS2_MCP_SESSION_ID", &session_id)?,
+            mcp_session_id: env_or_default("STS2_MCP_SESSION_ID", "mcp-session-1")?,
             run_id: env_or_default("STS2_RUN_ID", "run-runtime-0001")?,
             episode_id: env_or_default("STS2_EPISODE_ID", "episode-runtime-0001")?,
             trajectory_id: env_or_default("STS2_TRAJECTORY_ID", "trajectory-runtime-0001")?,
@@ -118,6 +118,11 @@ impl RuntimeConfig {
         {
             return Err(String::from(
                 "STS2_GATEWAY_TOKEN is empty, unsafe, or oversized",
+            ));
+        }
+        if config.session_id == config.mcp_session_id {
+            return Err(String::from(
+                "STS2_SESSION_ID and STS2_MCP_SESSION_ID must be distinct",
             ));
         }
         let lineage_ids = [
