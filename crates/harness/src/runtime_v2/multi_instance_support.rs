@@ -142,8 +142,14 @@ impl RuntimeV2Coordinator {
         if let Some(lane) = self.lanes.get_mut(&instance_id) {
             lane.active = false;
             lane.completed = lane.completed.saturating_add(1);
-            if matches!(status, RuntimeV2Status::Unknown) {
-                lane.unknown = lane.unknown.saturating_add(1);
+            match status {
+                RuntimeV2Status::Unknown => lane.unknown = lane.unknown.saturating_add(1),
+                RuntimeV2Status::Cancelled => {
+                    lane.cancelled = lane.cancelled.saturating_add(1)
+                }
+                RuntimeV2Status::Rejected => lane.rejected = lane.rejected.saturating_add(1),
+                RuntimeV2Status::Settled => {}
+                RuntimeV2Status::Accepted => {}
             }
             if let Some(service_time_millis) = service_time_millis {
                 lane.service_time_samples = lane.service_time_samples.saturating_add(1);
@@ -157,8 +163,12 @@ impl RuntimeV2Coordinator {
             }
         }
         self.completed = self.completed.saturating_add(1);
-        if matches!(status, RuntimeV2Status::Unknown) {
-            self.unknown = self.unknown.saturating_add(1);
+        match status {
+            RuntimeV2Status::Unknown => self.unknown = self.unknown.saturating_add(1),
+            RuntimeV2Status::Cancelled => self.cancelled = self.cancelled.saturating_add(1),
+            RuntimeV2Status::Rejected => self.rejected = self.rejected.saturating_add(1),
+            RuntimeV2Status::Settled => {}
+            RuntimeV2Status::Accepted => {}
         }
         if let Some(service_time_millis) = service_time_millis {
             self.service_time_samples = self.service_time_samples.saturating_add(1);

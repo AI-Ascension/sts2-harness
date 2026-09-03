@@ -22,7 +22,8 @@ The pure `RuntimeV2Coordinator` seam was added under `crates/harness/src/runtime
 - shutdown that cancels queued work but reports active operation IDs for downstream settlement or
   reconciliation; and
 - sanitized global/per-instance counters with a bounded 256-operation tombstone window;
-- explicit unknown-outcome counts; and
+- explicit unknown-outcome, rejection, and cancellation counts covering admission/queue and
+  terminal outcomes; and
 - optional dispatcher-supplied service-time sample, total-millisecond, and maximum-millisecond
   counters at global and per-instance scope.
 

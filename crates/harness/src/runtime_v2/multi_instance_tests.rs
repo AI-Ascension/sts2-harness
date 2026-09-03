@@ -204,9 +204,17 @@ mod multi_instance_tests {
             RuntimeV2Status::Unknown,
             23,
         )?;
+        coordinator.admit(item(&first, 3)?)?;
+        let rejected_work = take_next(&mut coordinator)?;
+        coordinator.complete(rejected_work.operation_id(), RuntimeV2Status::Rejected)?;
+        coordinator.admit(item(&second, 4)?)?;
+        let cancelled_work = take_next(&mut coordinator)?;
+        coordinator.complete(cancelled_work.operation_id(), RuntimeV2Status::Cancelled)?;
 
         let snapshot = coordinator.snapshot();
         assert_eq!(snapshot.unknown, 1);
+        assert_eq!(snapshot.rejected, 1);
+        assert_eq!(snapshot.cancelled, 1);
         assert_eq!(snapshot.service_time_samples, 2);
         assert_eq!(snapshot.service_time_total_millis, 40);
         assert_eq!(snapshot.service_time_max_millis, 23);
@@ -216,6 +224,8 @@ mod multi_instance_tests {
             .find(|instance| instance.instance_id == "instance-1")
             .ok_or("first instance snapshot missing")?;
         assert_eq!(first_snapshot.unknown, 0);
+        assert_eq!(first_snapshot.rejected, 1);
+        assert_eq!(first_snapshot.cancelled, 0);
         assert_eq!(first_snapshot.service_time_samples, 1);
         assert_eq!(first_snapshot.service_time_total_millis, 17);
         assert_eq!(first_snapshot.service_time_max_millis, 17);
@@ -225,6 +235,8 @@ mod multi_instance_tests {
             .find(|instance| instance.instance_id == "instance-2")
             .ok_or("second instance snapshot missing")?;
         assert_eq!(second_snapshot.unknown, 1);
+        assert_eq!(second_snapshot.rejected, 0);
+        assert_eq!(second_snapshot.cancelled, 1);
         assert_eq!(second_snapshot.service_time_samples, 1);
         assert_eq!(second_snapshot.service_time_total_millis, 23);
         assert_eq!(second_snapshot.service_time_max_millis, 23);
