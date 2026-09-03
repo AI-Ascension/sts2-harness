@@ -9,6 +9,10 @@ claim a released harness version or runtime compatibility.
 
 ### Added
 
+- A dated, evidence-labeled expert-state information-architecture research specification covering
+  fair-play observation, the proposed atomic-state/action inventory, recovery, evaluation, and
+  patch drift. It is explicitly not full-game or gameplay-proof evidence.
+
 - The bounded `sts2-harness-runtime` coordinator, `runtime-v1` artifact copy, real MCP/gateway
   process path, stale-generation oracle, sanitized trace, and component evidence record.
 
