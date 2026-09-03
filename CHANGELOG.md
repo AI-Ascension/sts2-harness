@@ -9,6 +9,13 @@ claim a released harness version or runtime compatibility.
 
 ### Added
 
+- A bounded Runtime-v2 multi-instance coordinator seam with four-lane registration, explicit
+  identity isolation, fair serial dispatch, global/per-instance backpressure, queued cancellation,
+  active-work reconciliation reporting, and sanitized snapshots. This is component evidence only.
+- Propagated the independently configured Runtime-v2 MCP session through gateway allocation,
+  spawned MCP configuration, request correlation, and lease release. The gateway session remains
+  the frozen protocol-envelope identity; defaults preserve the single-session configuration.
+
 - The bounded `sts2-harness-runtime` coordinator, `runtime-v1` artifact copy, real MCP/gateway
   process path, stale-generation oracle, sanitized trace, and component evidence record.
 

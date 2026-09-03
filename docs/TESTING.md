@@ -95,3 +95,15 @@ disconnect recorded as unknown, fixed reconciliation with the same operation ID,
 observation and witness at generation `N+1`, duplicate replay with one mutation, and stale-epoch
 rejection before mutation. Provider/model execution and live host/game settlement are untouched and
 remain `unverified`.
+
+## Runtime-v2 multi-instance coordinator seam
+
+The pure `RuntimeV2Coordinator` tests cover the four-instance limit, cross-instance lineage
+collisions, FIFO ordering within a lane, round-robin fairness across idle lanes, one serial active
+slot per instance, global and per-instance queue overload, duplicate in-flight operation rejection,
+queued cancellation, explicit active-operation shutdown reporting, retained operation identities,
+and sanitized counters. The runtime adapter also propagates its separate MCP-session configuration.
+These are
+offline component tests. They do not establish a production supervisor, real process/port/profile
+isolation, live gateway/MCP composition, host crash recovery, or gameplay settlement. The dated
+result is recorded in [`runtime-v2-coordinator-20260902.md`](evidence/runtime-v2-coordinator-20260902.md).
