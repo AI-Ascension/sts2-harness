@@ -72,8 +72,12 @@ pub struct RuntimeV2InstanceSnapshot {
     pub active: bool,
     pub admitted: u64,
     pub completed: u64,
+    pub unknown: u64,
     pub cancelled: u64,
     pub rejected: u64,
+    pub service_time_samples: u64,
+    pub service_time_total_millis: u64,
+    pub service_time_max_millis: u64,
 }
 
 /// A sanitized global and per-instance coordinator snapshot.
@@ -87,8 +91,83 @@ pub struct RuntimeV2CoordinatorSnapshot {
     pub active: usize,
     pub admitted: u64,
     pub completed: u64,
+    pub unknown: u64,
     pub cancelled: u64,
     pub rejected: u64,
+    pub service_time_samples: u64,
+    pub service_time_total_millis: u64,
+    pub service_time_max_millis: u64,
     pub retained: usize,
     pub instances: Vec<RuntimeV2InstanceSnapshot>,
+}
+
+impl RuntimeV2Coordinator {
+    /// Completes an active operation with an explicit terminal outcome.
+    pub fn complete(
+        &mut self,
+        operation_id: &RuntimeV2OperationId,
+        status: RuntimeV2Status,
+    ) -> Result<RuntimeV2WorkItem, RuntimeV2CoordinatorError> {
+        self.complete_internal(operation_id, status, None)
+    }
+
+    /// Completes an active operation and records its bounded service time in milliseconds.
+    ///
+    /// The dispatcher owns the clock and supplies the elapsed duration only after the
+    /// downstream outcome is known. A timeout or disconnect must therefore be completed
+    /// as `Unknown`, never retried implicitly by this coordinator.
+    pub fn complete_with_service_time(
+        &mut self,
+        operation_id: &RuntimeV2OperationId,
+        status: RuntimeV2Status,
+        service_time_millis: u64,
+    ) -> Result<RuntimeV2WorkItem, RuntimeV2CoordinatorError> {
+        self.complete_internal(operation_id, status, Some(service_time_millis))
+    }
+
+    fn complete_internal(
+        &mut self,
+        operation_id: &RuntimeV2OperationId,
+        status: RuntimeV2Status,
+        service_time_millis: Option<u64>,
+    ) -> Result<RuntimeV2WorkItem, RuntimeV2CoordinatorError> {
+        if matches!(status, RuntimeV2Status::Accepted) {
+            return Err(RuntimeV2CoordinatorError::InvalidCompletion);
+        }
+        let item = match self.active_operations.remove(operation_id) {
+            Some(item) => item,
+            None => return Err(RuntimeV2CoordinatorError::UnknownOperation),
+        };
+        let instance_id = item.binding().instance_id().to_owned();
+        if let Some(lane) = self.lanes.get_mut(&instance_id) {
+            lane.active = false;
+            lane.completed = lane.completed.saturating_add(1);
+            if matches!(status, RuntimeV2Status::Unknown) {
+                lane.unknown = lane.unknown.saturating_add(1);
+            }
+            if let Some(service_time_millis) = service_time_millis {
+                lane.service_time_samples = lane.service_time_samples.saturating_add(1);
+                lane.service_time_total_millis = lane
+                    .service_time_total_millis
+                    .saturating_add(service_time_millis);
+                lane.service_time_max_millis = lane.service_time_max_millis.max(service_time_millis);
+            }
+            if !lane.queue.is_empty() {
+                self.enqueue_ready(instance_id);
+            }
+        }
+        self.completed = self.completed.saturating_add(1);
+        if matches!(status, RuntimeV2Status::Unknown) {
+            self.unknown = self.unknown.saturating_add(1);
+        }
+        if let Some(service_time_millis) = service_time_millis {
+            self.service_time_samples = self.service_time_samples.saturating_add(1);
+            self.service_time_total_millis = self
+                .service_time_total_millis
+                .saturating_add(service_time_millis);
+            self.service_time_max_millis = self.service_time_max_millis.max(service_time_millis);
+        }
+        self.retain_operation(operation_id);
+        Ok(item)
+    }
 }

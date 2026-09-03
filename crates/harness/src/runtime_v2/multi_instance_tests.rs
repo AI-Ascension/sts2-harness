@@ -177,6 +177,57 @@ mod multi_instance_tests {
         coordinator.complete(dispatched.operation_id(), RuntimeV2Status::Unknown)?;
         assert_eq!(coordinator.snapshot().cancelled, 1);
         assert_eq!(coordinator.snapshot().completed, 1);
+        assert_eq!(coordinator.snapshot().unknown, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_and_service_time_metrics_are_bounded_per_instance() -> Result<(), Box<dyn std::error::Error>> {
+        let config = RuntimeV2CoordinatorConfig::new(2, 4, 4)?;
+        let mut coordinator = RuntimeV2Coordinator::new(config);
+        let first = binding(1)?;
+        let second = binding(2)?;
+        coordinator.register_instance(first.clone())?;
+        coordinator.register_instance(second.clone())?;
+        coordinator.admit(item(&first, 1)?)?;
+        coordinator.admit(item(&second, 2)?)?;
+
+        let first_work = take_next(&mut coordinator)?;
+        coordinator.complete_with_service_time(
+            first_work.operation_id(),
+            RuntimeV2Status::Settled,
+            17,
+        )?;
+        let second_work = take_next(&mut coordinator)?;
+        coordinator.complete_with_service_time(
+            second_work.operation_id(),
+            RuntimeV2Status::Unknown,
+            23,
+        )?;
+
+        let snapshot = coordinator.snapshot();
+        assert_eq!(snapshot.unknown, 1);
+        assert_eq!(snapshot.service_time_samples, 2);
+        assert_eq!(snapshot.service_time_total_millis, 40);
+        assert_eq!(snapshot.service_time_max_millis, 23);
+        let first_snapshot = snapshot
+            .instances
+            .iter()
+            .find(|instance| instance.instance_id == "instance-1")
+            .ok_or("first instance snapshot missing")?;
+        assert_eq!(first_snapshot.unknown, 0);
+        assert_eq!(first_snapshot.service_time_samples, 1);
+        assert_eq!(first_snapshot.service_time_total_millis, 17);
+        assert_eq!(first_snapshot.service_time_max_millis, 17);
+        let second_snapshot = snapshot
+            .instances
+            .iter()
+            .find(|instance| instance.instance_id == "instance-2")
+            .ok_or("second instance snapshot missing")?;
+        assert_eq!(second_snapshot.unknown, 1);
+        assert_eq!(second_snapshot.service_time_samples, 1);
+        assert_eq!(second_snapshot.service_time_total_millis, 23);
+        assert_eq!(second_snapshot.service_time_max_millis, 23);
         Ok(())
     }
 }

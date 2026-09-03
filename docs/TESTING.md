@@ -115,3 +115,6 @@ These are
 offline component tests. They do not establish a production supervisor, real process/port/profile
 isolation, live gateway/MCP composition, host crash recovery, or gameplay settlement. The dated
 result is recorded in [`runtime-v2-coordinator-20260902.md`](evidence/runtime-v2-coordinator-20260902.md).
+The coordinator snapshot also records explicit unknown outcomes and optional dispatcher-supplied
+service-time samples, totals, and maxima globally and per instance; it does not infer or retry an
+unknown operation.

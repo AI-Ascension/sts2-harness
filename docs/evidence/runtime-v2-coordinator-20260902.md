@@ -21,7 +21,10 @@ The pure `RuntimeV2Coordinator` seam was added under `crates/harness/src/runtime
 - queued cancellation before dispatch;
 - shutdown that cancels queued work but reports active operation IDs for downstream settlement or
   reconciliation; and
-- sanitized global/per-instance counters with a bounded 256-operation tombstone window.
+- sanitized global/per-instance counters with a bounded 256-operation tombstone window;
+- explicit unknown-outcome counts; and
+- optional dispatcher-supplied service-time sample, total-millisecond, and maximum-millisecond
+  counters at global and per-instance scope.
 
 ## Deterministic checks
 
@@ -39,7 +42,7 @@ git diff --check
 
 The focused tests cover four-lane registration and namespace reuse, fair serial dispatch, global and
 per-instance overload without forwarding, retained operation reuse rejection, queued cancellation,
-and active-work shutdown accounting.
+active-work shutdown accounting, and per-instance unknown/service-time metric accounting.
 
 ## Limits
 

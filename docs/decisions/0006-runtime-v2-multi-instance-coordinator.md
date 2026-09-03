@@ -26,6 +26,11 @@ own gateway leases, launch processes, contact MCP, or contact a game. Terminal o
 and replay remain downstream ledger responsibilities; the harness only keeps a bounded operation-ID
 tombstone window to reject immediate reuse across instances.
 
+Completion accepts an optional dispatcher-supplied service time in bounded milliseconds. The
+coordinator records global and per-instance sample count, total, and maximum service time, plus
+an explicit unknown-outcome count. These are sanitized bookkeeping fields only: the coordinator
+does not infer settlement, retry unknown work, or own a clock.
+
 The coordinator rejects reused gateway-session, MCP-session, lease, process-port, run, episode,
 trajectory, trace, or artifact identities across registered instances. Runtime-v2 operation IDs are
 unique while queued or active. Sanitized snapshots expose queue/lifecycle counters without tokens,

@@ -8,8 +8,12 @@ struct RuntimeV2Lane {
     active: bool,
     admitted: u64,
     completed: u64,
+    unknown: u64,
     cancelled: u64,
     rejected: u64,
+    service_time_samples: u64,
+    service_time_total_millis: u64,
+    service_time_max_millis: u64,
 }
 
 /// A bounded scheduler with one serial action slot per game instance.
@@ -23,8 +27,12 @@ pub struct RuntimeV2Coordinator {
     admission_open: bool,
     admitted: u64,
     completed: u64,
+    unknown: u64,
     cancelled: u64,
     rejected: u64,
+    service_time_samples: u64,
+    service_time_total_millis: u64,
+    service_time_max_millis: u64,
 }
 
 impl RuntimeV2Coordinator {
@@ -40,8 +48,12 @@ impl RuntimeV2Coordinator {
             admission_open: true,
             admitted: 0,
             completed: 0,
+            unknown: 0,
             cancelled: 0,
             rejected: 0,
+            service_time_samples: 0,
+            service_time_total_millis: 0,
+            service_time_max_millis: 0,
         }
     }
 
@@ -71,8 +83,12 @@ impl RuntimeV2Coordinator {
                 active: false,
                 admitted: 0,
                 completed: 0,
+                unknown: 0,
                 cancelled: 0,
                 rejected: 0,
+                service_time_samples: 0,
+                service_time_total_millis: 0,
+                service_time_max_millis: 0,
             },
         );
         Ok(())
@@ -157,32 +173,6 @@ impl RuntimeV2Coordinator {
             return Some(item);
         }
         None
-    }
-
-    /// Completes an active operation with an explicit terminal outcome.
-    pub fn complete(
-        &mut self,
-        operation_id: &RuntimeV2OperationId,
-        status: RuntimeV2Status,
-    ) -> Result<RuntimeV2WorkItem, RuntimeV2CoordinatorError> {
-        if matches!(status, RuntimeV2Status::Accepted) {
-            return Err(RuntimeV2CoordinatorError::InvalidCompletion);
-        }
-        let item = match self.active_operations.remove(operation_id) {
-            Some(item) => item,
-            None => return Err(RuntimeV2CoordinatorError::UnknownOperation),
-        };
-        let instance_id = item.binding().instance_id().to_owned();
-        if let Some(lane) = self.lanes.get_mut(&instance_id) {
-            lane.active = false;
-            lane.completed = lane.completed.saturating_add(1);
-            if !lane.queue.is_empty() {
-                self.enqueue_ready(instance_id);
-            }
-        }
-        self.completed = self.completed.saturating_add(1);
-        self.retain_operation(operation_id);
-        Ok(item)
     }
 
     /// Cancels a queued operation before it is dispatched. Active work is not silently cancelled.
@@ -282,8 +272,12 @@ impl RuntimeV2Coordinator {
             active: self.active_len(),
             admitted: self.admitted,
             completed: self.completed,
+            unknown: self.unknown,
             cancelled: self.cancelled,
             rejected: self.rejected,
+            service_time_samples: self.service_time_samples,
+            service_time_total_millis: self.service_time_total_millis,
+            service_time_max_millis: self.service_time_max_millis,
             retained: self.retained_operations.len(),
             instances: self
                 .lanes
@@ -295,8 +289,12 @@ impl RuntimeV2Coordinator {
                     active: lane.active,
                     admitted: lane.admitted,
                     completed: lane.completed,
+                    unknown: lane.unknown,
                     cancelled: lane.cancelled,
                     rejected: lane.rejected,
+                    service_time_samples: lane.service_time_samples,
+                    service_time_total_millis: lane.service_time_total_millis,
+                    service_time_max_millis: lane.service_time_max_millis,
                 })
                 .collect(),
         }
