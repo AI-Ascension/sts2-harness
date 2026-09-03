@@ -21,6 +21,8 @@ fn child_environment_preserves_distinct_gateway_and_mcp_sessions() {
         artifact_id: "artifact-1".into(),
         wait_for_combat_seconds: 0,
         settlement_timeout_seconds: 30,
+        runtime_v3_card_index: 0,
+        runtime_v3_target_id: None,
     };
     let command = McpProcess::configured_command(&config);
     let environment: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();

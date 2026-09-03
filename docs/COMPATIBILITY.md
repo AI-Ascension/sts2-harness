@@ -88,7 +88,8 @@ configuration plus `PATH`, `SystemRoot`, `TEMP`, and `TMP`; stderr is suppressed
 minimization, not an operating-system sandbox or authority to execute an untrusted binary.
 Descendant processes are not owned or forcibly killed, but cannot retain harness I/O workers.
 Runtime-v2 tool responses must satisfy the copied contract and exact session/lease/request/operation
-binding before evidence is used. The bounded `runtime-v3-gameplay` probe is not part of this branch.
+binding before evidence is used. Old Runtime-v3 gameplay support remains a separate unverified
+profile, not compatibility with the newer Exo Runtime-v3 catalog.
 
 Runtime-v1 consumes MCP's projected tool payload, not the full gateway envelope. The harness checks
 outer JSON-RPC identity and strict projected kind/generation/observation/action/status/witness shape;

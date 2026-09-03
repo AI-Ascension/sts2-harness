@@ -74,6 +74,15 @@ pub(super) fn validate_response(
             ));
         }
     }
+    for key in ["card_index", "target_id"] {
+        if let Some(expected) = arguments.get(key)
+            && value["action"].get(key) != Some(expected)
+        {
+            return Err(String::from(
+                "MCP tool response action payload did not match the request",
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -100,6 +109,8 @@ mod tests {
             artifact_id: "artifact-1".into(),
             wait_for_combat_seconds: 0,
             settlement_timeout_seconds: 0,
+            runtime_v3_card_index: 0,
+            runtime_v3_target_id: None,
         }
     }
 

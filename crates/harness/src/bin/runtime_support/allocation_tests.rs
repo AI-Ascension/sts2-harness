@@ -21,6 +21,8 @@ fn config() -> RuntimeConfig {
         artifact_id: "artifact-1".into(),
         wait_for_combat_seconds: 0,
         settlement_timeout_seconds: 30,
+        runtime_v3_card_index: 0,
+        runtime_v3_target_id: None,
     }
 }
 

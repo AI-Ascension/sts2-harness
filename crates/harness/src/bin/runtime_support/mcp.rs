@@ -16,11 +16,14 @@ use super::response_validation::validate_response;
 mod trace_runtime_v1;
 #[path = "trace_runtime_v2.rs"]
 mod trace_runtime_v2;
+#[path = "trace_runtime_v3.rs"]
+mod trace_runtime_v3;
 
 fn run_trace(mcp: &mut McpProcess, config: &RuntimeConfig) -> Result<(), String> {
     match config.runtime_profile.as_str() {
         "runtime-v1" => trace_runtime_v1::run(mcp, config),
         "runtime-v2" => trace_runtime_v2::run(mcp, config),
+        "runtime-v3-gameplay" => trace_runtime_v3::run(mcp, config),
         _ => Err(String::from("unsupported runtime profile")),
     }
 }
@@ -169,6 +172,23 @@ fn wait_for_operation_settlement(
     }
 }
 
+fn play_card_observation_changed(before: &Value, after: &Value) -> bool {
+    let mut changed = false;
+    for key in [
+        "hand_count",
+        "energy",
+        "draw_pile_count",
+        "discard_pile_count",
+        "exhaust_pile_count",
+    ] {
+        let (Some(before), Some(after)) = (before[key].as_u64(), after[key].as_u64()) else {
+            return false;
+        };
+        changed |= before != after;
+    }
+    changed
+}
+
 fn trace_lineage(config: &RuntimeConfig) -> Value {
     json!({
         "instance_id": config.instance_id,
@@ -203,6 +223,27 @@ fn require_kind(value: &Value, expected: &str) -> Result<(), String> {
     } else {
         Err(format!("Runtime-v2 response kind was not {expected}"))
     }
+}
+
+fn observation_counts(value: &Value) -> Value {
+    let fields = [
+        "generation",
+        "hand_count",
+        "energy",
+        "draw_pile_count",
+        "discard_pile_count",
+        "exhaust_pile_count",
+    ];
+    Value::Object(
+        fields
+            .into_iter()
+            .filter_map(|key| {
+                value[key]
+                    .as_u64()
+                    .map(|number| (key.to_owned(), Value::from(number)))
+            })
+            .collect(),
+    )
 }
 
 fn tool_call(

@@ -17,14 +17,19 @@ pub(crate) struct RuntimeConfig {
     pub(crate) artifact_id: String,
     pub(crate) wait_for_combat_seconds: u64,
     pub(crate) settlement_timeout_seconds: u64,
+    pub(crate) runtime_v3_card_index: u64,
+    pub(crate) runtime_v3_target_id: Option<String>,
 }
 
 impl RuntimeConfig {
     pub(crate) fn from_environment() -> Result<Self, String> {
         let runtime_profile = env_or_default("STS2_RUNTIME_PROFILE", "runtime-v1")?;
-        if !matches!(runtime_profile.as_str(), "runtime-v1" | "runtime-v2") {
+        if !matches!(
+            runtime_profile.as_str(),
+            "runtime-v1" | "runtime-v2" | "runtime-v3-gameplay"
+        ) {
             return Err(String::from(
-                "STS2_RUNTIME_PROFILE must be runtime-v1 or runtime-v2",
+                "STS2_RUNTIME_PROFILE must be runtime-v1, runtime-v2, or runtime-v3-gameplay",
             ));
         }
         let session_id = env_or_default("STS2_SESSION_ID", "session-1")?;
@@ -47,6 +52,26 @@ impl RuntimeConfig {
                 "STS2_RUNTIME_SETTLEMENT_TIMEOUT_SECONDS must be between 0 and 300",
             ));
         }
+        let runtime_v3_card_index = env_or_default("STS2_RUNTIME_V3_CARD_INDEX", "0")?
+            .parse::<u64>()
+            .map_err(|_| String::from("STS2_RUNTIME_V3_CARD_INDEX must be an integer"))?;
+        if runtime_v3_card_index > 64 {
+            return Err(String::from(
+                "STS2_RUNTIME_V3_CARD_INDEX must be between 0 and 64",
+            ));
+        }
+        let runtime_v3_target_id = match std::env::var("STS2_RUNTIME_V3_TARGET_ID") {
+            Ok(value) if !safe_identity(&value) => {
+                return Err(String::from(
+                    "STS2_RUNTIME_V3_TARGET_ID is empty, unsafe, or oversized",
+                ));
+            }
+            Ok(value) => Some(value),
+            Err(std::env::VarError::NotPresent) => None,
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(String::from("STS2_RUNTIME_V3_TARGET_ID is not valid UTF-8"));
+            }
+        };
         let config = Self {
             gateway_address: env_or_default("STS2_GATEWAY_ADDR", "127.0.0.1:15525")?,
             gateway_token: required("STS2_GATEWAY_TOKEN")?,
@@ -66,6 +91,8 @@ impl RuntimeConfig {
             artifact_id: env_or_default("STS2_ARTIFACT_ID", "artifact-runtime-0001")?,
             wait_for_combat_seconds,
             settlement_timeout_seconds,
+            runtime_v3_card_index,
+            runtime_v3_target_id,
         };
         for (name, value) in [
             ("STS2_INSTANCE_ID", &config.instance_id),

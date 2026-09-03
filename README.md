@@ -147,7 +147,7 @@ initialize/list/state/action/stale-action/fresh-state calls, checks the effect w
 rejection, closes MCP stdin, and releases the lease. It has no direct game or mod access.
 
 The process uses configured bearer tokens and separate instance, gateway session, MCP session, lease,
-and epoch identities. Runtime-v2 process records additionally emit a bounded
+and epoch identities. Runtime-v2 and Runtime-v3 process records additionally emit a bounded
 `lineage` object containing `run_id`, `episode_id`, `trajectory_id`, and `artifact_id`, plus the
 MCP request-ID sequence and downstream correlation IDs for each observed response. Callers may
 override the redacted record identities with `STS2_RUN_ID`, `STS2_EPISODE_ID`,

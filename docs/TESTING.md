@@ -84,7 +84,7 @@ requires allocation identity, the runtime MCP catalog, generation N state, an ac
 `show_runtime_probe` response with a fresh visible witness, a stable stale-generation rejection,
 post-action state at N+1, and lease release.
 
-The Runtime-v2 process records must also retain separate `instance_id`,
+The Runtime-v2 and Runtime-v3 process records must also retain separate `instance_id`,
 `gateway_session_id`, `mcp_session_id`, `lease_id`, `lease_epoch`, `run_id`, `episode_id`,
 `trajectory_id`, and `artifact_id` values. They emit the actual MCP request-ID sequence and
 downstream correlation IDs as bounded redacted fields. The record lineage defaults are suitable for

@@ -3,6 +3,20 @@
 use super::*;
 
 #[test]
+fn bounded_gameplay_projection_rejects_malformed_counts() {
+    let projected = observation_counts(
+        &json!({"energy":3,"hand_count":"secret-marker", "private":"secret-marker"}),
+    );
+    assert_eq!(projected, json!({"energy":3}));
+    let before = json!({"hand_count":1,"energy":3,"draw_pile_count":4,"discard_pile_count":0,"exhaust_pile_count":0});
+    let mut after = before.clone();
+    after["hand_count"] = json!("malformed");
+    assert!(!play_card_observation_changed(&before, &after));
+    after["hand_count"] = json!(0);
+    assert!(play_card_observation_changed(&before, &after));
+}
+
+#[test]
 fn lease_cleanup_requires_authoritative_release_confirmation() {
     assert!(confirm_release(Ok(json!({"status":"released"}))).is_ok());
     for response in [json!({}), json!({"status":"allocated"}), Value::Null] {
