@@ -81,6 +81,14 @@ requires allocation identity, the runtime MCP catalog, generation N state, an ac
 `show_runtime_probe` response with a fresh visible witness, a stable stale-generation rejection,
 post-action state at N+1, and lease release.
 
+The Runtime-v2 and Runtime-v3 process records must also retain separate `instance_id`,
+`gateway_session_id`, `mcp_session_id`, `lease_id`, `lease_epoch`, `run_id`, `episode_id`,
+`trajectory_id`, and `artifact_id` values. They emit the actual MCP request-ID sequence and
+downstream correlation IDs as bounded redacted fields. The record lineage defaults are suitable for
+one deterministic probe and can be replaced with safe caller-supplied values through
+`STS2_RUN_ID`, `STS2_EPISODE_ID`, `STS2_TRAJECTORY_ID`, and `STS2_ARTIFACT_ID`; duplicate lineage
+values are rejected before the run.
+
 The synthetic result is component-network evidence only. A separate authorized host run exercised
 the same coordinator path against the packaged mod and recorded the live host effect. The exact host
 run and remaining unverified gates are recorded in

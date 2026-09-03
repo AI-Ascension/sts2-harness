@@ -11,6 +11,10 @@ pub(crate) struct RuntimeConfig {
     pub(crate) lease_id: String,
     pub(crate) lease_epoch: u64,
     pub(crate) mcp_session_id: String,
+    pub(crate) run_id: String,
+    pub(crate) episode_id: String,
+    pub(crate) trajectory_id: String,
+    pub(crate) artifact_id: String,
     pub(crate) wait_for_combat_seconds: u64,
     pub(crate) settlement_timeout_seconds: u64,
     pub(crate) runtime_v3_card_index: u64,
@@ -81,6 +85,10 @@ impl RuntimeConfig {
                 .parse::<u64>()
                 .map_err(|_| String::from("STS2_LEASE_EPOCH must be an integer"))?,
             mcp_session_id: env_or_default("STS2_MCP_SESSION_ID", &session_id)?,
+            run_id: env_or_default("STS2_RUN_ID", "run-runtime-0001")?,
+            episode_id: env_or_default("STS2_EPISODE_ID", "episode-runtime-0001")?,
+            trajectory_id: env_or_default("STS2_TRAJECTORY_ID", "trajectory-runtime-0001")?,
+            artifact_id: env_or_default("STS2_ARTIFACT_ID", "artifact-runtime-0001")?,
             wait_for_combat_seconds,
             settlement_timeout_seconds,
             runtime_v3_card_index,
@@ -92,6 +100,10 @@ impl RuntimeConfig {
             ("STS2_SESSION_ID", &config.session_id),
             ("STS2_LEASE_ID", &config.lease_id),
             ("STS2_MCP_SESSION_ID", &config.mcp_session_id),
+            ("STS2_RUN_ID", &config.run_id),
+            ("STS2_EPISODE_ID", &config.episode_id),
+            ("STS2_TRAJECTORY_ID", &config.trajectory_id),
+            ("STS2_ARTIFACT_ID", &config.artifact_id),
         ] {
             if !safe_identity(value) {
                 return Err(format!("{name} is empty, unsafe, or oversized"));
@@ -107,6 +119,19 @@ impl RuntimeConfig {
             return Err(String::from(
                 "STS2_GATEWAY_TOKEN is empty, unsafe, or oversized",
             ));
+        }
+        let lineage_ids = [
+            &config.run_id,
+            &config.episode_id,
+            &config.trajectory_id,
+            &config.artifact_id,
+        ];
+        for (index, value) in lineage_ids.iter().enumerate() {
+            if lineage_ids[..index].contains(value) {
+                return Err(String::from(
+                    "STS2 run, episode, trajectory, and artifact identities must be distinct",
+                ));
+            }
         }
         Ok(config)
     }
