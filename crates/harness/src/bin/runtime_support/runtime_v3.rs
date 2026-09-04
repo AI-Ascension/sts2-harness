@@ -4,24 +4,24 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 use sts2_harness::{
-    ActionIdentity, BarrierError, BarrierPort, EpisodeLegalAction, EpisodeLegalActionSet,
-    EpisodeObservation, EpisodeRunner, EpisodeRuntimePort, ExoDecisionSource, ExoProcessTransport,
-    ExoProvider, ExoSession, RecoveryError, RecoveryPort, ShutdownError, ShutdownPort,
-    TransitionReceipt, WaitSample,
+    EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, ExoDecisionSource,
+    ExoProcessTransport, ExoProvider, ExoSession, ShutdownError, ShutdownPort,
 };
 
 use super::config::RuntimeConfig;
 use super::http::GatewayClient;
-use super::mcp::{McpProcess, identity_headers, validate_allocation};
+use super::mcp::{McpProcess, identity_headers};
 use super::runtime_v3_parse as parse;
 use super::runtime_v3_settings::RuntimeV3Settings;
 use super::runtime_v3_wire as wire;
 
+#[path = "runtime_v3_episode.rs"]
+mod episode;
 #[path = "runtime_v3_ledger.rs"]
 mod ledger;
+#[path = "runtime_v3_recovery.rs"]
+mod recovery;
 use ledger::OperationRecord;
-
-const MAX_OPERATIONS: usize = 1_024;
 
 pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let settings = RuntimeV3Settings::from_environment()?;
@@ -182,252 +182,6 @@ impl RuntimeV3Port {
         }
         self.mcp = Some(mcp);
         Ok(())
-    }
-}
-
-impl EpisodeRuntimePort for RuntimeV3Port {
-    fn launch(&mut self) -> Result<(), sts2_harness::PortError> {
-        if self.allocated {
-            return Err(wire::port_error(
-                "duplicate_launch",
-                "episode is already allocated",
-                false,
-            ));
-        }
-        let allocation = self
-            .gateway
-            .request(
-                "POST",
-                "/v1/sessions/allocate",
-                &json!({
-                    "instance_id": self.config.instance_id,
-                    "caller_id": self.config.caller_id,
-                    "session_id": self.config.session_id
-                }),
-                BTreeMap::new(),
-            )
-            .map_err(|error| wire::port_error("gateway_allocate_failed", error, false))?;
-        self.allocated = true;
-        if let Err(error) = validate_allocation(&allocation, &self.config) {
-            let release = self.release_lease_inner();
-            return Err(wire::port_error(
-                "gateway_allocate_invalid",
-                wire::combine_cleanup(error, Ok(()), release),
-                false,
-            ));
-        }
-        if let Err(error) = self.launch_mcp() {
-            return Err(wire::port_error("runtime_launch_failed", error, false));
-        }
-        Ok(())
-    }
-
-    fn observe(&mut self) -> Result<EpisodeObservation, sts2_harness::PortError> {
-        let arguments = self.context(self.generation);
-        let value = self
-            .call_tool("sts2.observe", arguments)
-            .map_err(|error| wire::port_error("observe_failed", error, false))?;
-        let parsed = parse::observation(&value, "state_response", &self.config)
-            .map_err(|error| wire::port_error("observe_invalid", error, false))?;
-        Ok(self.install(parsed))
-    }
-
-    fn legal_actions(
-        &mut self,
-        state_id: &str,
-        generation: u64,
-    ) -> Result<EpisodeLegalActionSet, sts2_harness::PortError> {
-        let mut arguments = self.context(generation);
-        if let Value::Object(object) = &mut arguments {
-            object.insert(String::from("state_id"), Value::String(state_id.to_owned()));
-        }
-        let value = self
-            .call_tool("sts2.legal_actions", arguments)
-            .map_err(|error| wire::port_error("legal_actions_failed", error, false))?;
-        let (actions, payloads) = parse::action_set(&value, "legal_actions_response", &self.config)
-            .map_err(|error| wire::port_error("legal_actions_invalid", error, false))?;
-        self.generation = actions.generation();
-        self.current_state = Some(actions.state_id().to_owned());
-        self.current_actions = Some(actions.clone());
-        self.payloads = payloads;
-        Ok(actions)
-    }
-
-    fn dispatch_action(
-        &mut self,
-        identity: &ActionIdentity,
-        action: &EpisodeLegalAction,
-    ) -> Result<TransitionReceipt, sts2_harness::PortError> {
-        if self.current_state.as_deref() != Some(identity.state_id.as_str())
-            || self.generation != identity.generation
-            || self
-                .current_actions
-                .as_ref()
-                .and_then(|set| set.find(action.action_id()))
-                != Some(action)
-        {
-            return Err(wire::port_error(
-                "action_not_current",
-                "dispatch action is not bound to the current host catalog",
-                false,
-            ));
-        }
-        let payload = self
-            .payloads
-            .get(action.action_id())
-            .cloned()
-            .ok_or_else(|| {
-                wire::port_error(
-                    "action_payload_missing",
-                    "current legal action payload is unavailable",
-                    false,
-                )
-            })?;
-        if payload.get("kind").and_then(Value::as_str)
-            != Some(wire::action_kind_name(action.kind()))
-        {
-            return Err(wire::port_error(
-                "action_payload_mismatch",
-                "legal action kind changed",
-                false,
-            ));
-        }
-        if let Some(existing) = self.operations.get(&identity.operation_id)
-            && (existing.action != *action
-                || existing.generation != identity.generation
-                || existing.state_id != identity.state_id)
-        {
-            return Err(wire::port_error(
-                "operation_conflict",
-                "operation identity conflicts",
-                false,
-            ));
-        }
-        if self.operations.len() >= MAX_OPERATIONS
-            && !self.operations.contains_key(&identity.operation_id)
-        {
-            return Err(wire::port_error(
-                "operation_capacity",
-                "operation ledger is full",
-                false,
-            ));
-        }
-        self.operations
-            .entry(identity.operation_id.clone())
-            .or_insert_with(|| OperationRecord::new(identity, action));
-        let value = self
-            .call_tool(
-                "sts2.dispatch_action",
-                json!({
-                    "instance_id": self.config.instance_id,
-                    "mcp_session_id": self.config.mcp_session_id,
-                    "lease_id": self.config.lease_id,
-                    "lease_epoch": self.config.lease_epoch,
-                    "generation": identity.generation,
-                    "state_id": identity.state_id,
-                    "operation_id": identity.operation_id,
-                    "action": payload
-                }),
-            )
-            .map_err(|error| wire::port_error("dispatch_failed", error, true))?;
-        let receipt = parse::receipt(
-            &value,
-            "dispatch_action_response",
-            &self.config,
-            &identity.operation_id,
-            identity.generation,
-            action.clone(),
-        )
-        .map_err(|error| wire::port_error("dispatch_invalid", error, false))?;
-        self.install_response(&value, "dispatch_action_response")
-            .map_err(|error| wire::port_error("dispatch_observation_invalid", error, false))?;
-        Ok(receipt)
-    }
-}
-
-impl BarrierPort for RuntimeV3Port {
-    fn wait_for_transition(
-        &mut self,
-        operation_id: &str,
-        wait_for_millis: u32,
-    ) -> Result<WaitSample, BarrierError> {
-        let value = self
-            .call_tool(
-                "sts2.wait_for_transition",
-                json!({
-                    "instance_id": self.config.instance_id,
-                    "mcp_session_id": self.config.mcp_session_id,
-                    "lease_id": self.config.lease_id,
-                    "lease_epoch": self.config.lease_epoch,
-                    "generation": self.generation,
-                    "operation_id": operation_id,
-                    "wait_for_millis": wait_for_millis
-                }),
-            )
-            .map_err(|_| BarrierError::PortFailure)?;
-        let expected_generation = self
-            .operations
-            .get(operation_id)
-            .map_or(self.generation, |record| record.generation);
-        let sample = parse::wait_sample(&value, &self.config, operation_id, expected_generation)
-            .map_err(|_| BarrierError::PortFailure)?;
-        self.install_response(&value, "wait_response")
-            .map_err(|_| BarrierError::PortFailure)?;
-        Ok(sample)
-    }
-}
-
-impl RecoveryPort for RuntimeV3Port {
-    fn reobserve(&mut self) -> Result<EpisodeObservation, RecoveryError> {
-        let value = self
-            .call_tool("sts2.reobserve", self.context(self.generation))
-            .map_err(|_| RecoveryError::PortFailure)?;
-        let parsed = parse::observation(&value, "reobserve_response", &self.config)
-            .map_err(|_| RecoveryError::PortFailure)?;
-        Ok(self.install(parsed))
-    }
-
-    fn reconcile(&mut self, operation_id: &str) -> Result<TransitionReceipt, RecoveryError> {
-        let record = self
-            .operations
-            .get(operation_id)
-            .cloned()
-            .ok_or(RecoveryError::InvalidOperation)?;
-        let value = self
-            .call_tool(
-                "sts2.recover",
-                json!({
-                    "instance_id": self.config.instance_id,
-                    "mcp_session_id": self.config.mcp_session_id,
-                    "lease_id": self.config.lease_id,
-                    "lease_epoch": self.config.lease_epoch,
-                    "generation": self.generation,
-                    "recovery_kind": "reconcile",
-                    "operation_id": operation_id
-                }),
-            )
-            .map_err(|_| RecoveryError::PortFailure)?;
-        let receipt = parse::receipt(
-            &value,
-            "recover_response",
-            &self.config,
-            operation_id,
-            record.generation,
-            record.action,
-        )
-        .map_err(|_| RecoveryError::PortFailure)?;
-        self.install_response(&value, "recover_response")
-            .map_err(|_| RecoveryError::PortFailure)?;
-        Ok(receipt)
-    }
-
-    fn release_lease(&mut self) -> Result<(), RecoveryError> {
-        self.release_lease_inner()
-            .map_err(|_| RecoveryError::PortFailure)
-    }
-
-    fn stop_episode(&mut self) -> Result<(), RecoveryError> {
-        RecoveryPort::release_lease(self)
     }
 }
 
