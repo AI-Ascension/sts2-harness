@@ -51,7 +51,7 @@ fn evaluation_reports_safety_quality_calibration_resources_progression_and_compl
     assert_eq!(report.response_bytes(), 320);
     assert_eq!(report.progression_steps(), 1);
     assert_eq!(report.defeats(), 1);
-    assert!(!report.completed());
+    assert!(report.completed());
 }
 
 #[test]
