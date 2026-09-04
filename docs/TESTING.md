@@ -149,3 +149,20 @@ Runtime-v1 reply tests cover projected generation/action/witness shape and typed
 outer RPC identity tests stay separate from downstream envelope validation owned by MCP.
 Runtime-v2 conformance parses all19goldens and rejects304 required-field omission variants. These
 are safe local checks, not a new host/provider run or broader interoperability evidence.
+
+## Runtime-v3, full-run, and co-op lanes
+
+The `full_run` integration test routes setup, map, combat, reward, shop, event, rest, and selection
+choices through a decision source, then records victory and defeat as separate terminal states. It
+is a deterministic routing test, not a claim about target-game rules. Runtime-v3 tests additionally
+cover sanitized Exo input, exact six-tool MCP exposure, stale/unknown results, bounded recovery,
+and host-generated action binding.
+
+Co-op tests cover two-peer identity, generation disagreement, disconnect, ally targeting, and
+mutation suspension. They do not establish multiplayer host compatibility. The patch-diff utility
+is source-only and compares bounded manifests; it cannot promote a build or replace package hashes.
+
+The required M10 release evidence is recorded in
+[`release-gate-preparation-20260904.md`](evidence/release-gate-preparation-20260904.md). Missing
+Rust toolchains, licensed game assemblies, and live Exo/provider services make those gates
+`unverified`, never passed by omission.

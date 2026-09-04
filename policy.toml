@@ -33,6 +33,7 @@ required_files = [
   "docs/decisions/0001-harness-ownership-and-dependency-boundary.md",
   "docs/decisions/0002-sixth-target-protocol-decision.md",
   "docs/decisions/0003-harness-initial-ports-and-deterministic-seams.md",
+  "docs/decisions/0006-exo-full-run-and-evidence-gates.md",
   "crates/harness/Cargo.toml",
   "crates/harness/src/artifact.rs",
   "crates/harness/src/coordinator.rs",
@@ -59,6 +60,32 @@ required_files = [
   ".github/workflows/policy.yml",
   ".github/dependabot.yml",
   ".github/pull_request_template.md",
+  "crates/harness/src/decision_records.rs",
+  "crates/harness/src/memory.rs",
+  "crates/harness/src/evaluation.rs",
+  "crates/harness/src/episode/coop.rs",
+  "crates/harness/src/episode/noncombat.rs",
+  "crates/harness/src/episode/state_machine.rs",
+  "crates/harness/src/exo/sandbox.rs",
+  "crates/harness/tests/coop.rs",
+  "crates/harness/tests/evaluation.rs",
+  "crates/harness/tests/exo_episode.rs",
+  "crates/harness/tests/provider.rs",
+  "crates/harness/tests/exo_adapter.rs",
+  "crates/harness/tests/fair_play_firewall.rs",
+  "crates/harness/tests/provider_redaction.rs",
+  "crates/harness/tests/full_run.rs",
+  "crates/harness/tests/replay.rs",
+  "patch-manifest.schema.json",
+  "docs/research/sts2-expert-state-package/data/build-manifest.json",
+  "docs/research/sts2-expert-state-package/data/observations.json",
+  "docs/research/sts2-expert-state-package/data/actions.json",
+  "docs/research/sts2-expert-state-package/data/information-importance.csv",
+  "docs/research/sts2-expert-state-package/data/claim-evidence-matrix.csv",
+  "tools/patch-diff/Cargo.toml",
+  "tools/patch-diff/src/main.rs",
+  "tools/patch-diff/README.md",
+  "docs/evidence/release-gate-preparation-20260904.md",
 ]
 ignored_directories = [
   ".git",
@@ -88,3 +115,4 @@ markdown_max = 700
 
 # Exact repository-relative paths only. Every exception needs a durable reason.
 [exemptions]
+"crates/harness/src/exo/protocol.rs" = "Handwritten Exo transport contract remains one reviewed adapter boundary; split with the next provider API revision."

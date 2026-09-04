@@ -1,0 +1,6 @@
+revision = "cv-watchdog-revision-2026-09-04"
+fixture_directory = "fixtures"
+max_fixture_bytes = 1048576
+disagreement_threshold_percent = 5
+retain_images = false
+authority = "independent_observation_only"

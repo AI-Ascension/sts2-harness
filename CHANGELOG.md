@@ -42,6 +42,14 @@ claim a released harness version or runtime compatibility.
   mismatched responses without printing downstream payloads or inheriting unrelated credentials.
 - Validate exact Runtime-v2 response contracts and retain only numeric legacy gameplay trace fields.
 
+
+- The bounded Runtime-v3 episode state machine, semantic action ledger, transition barrier and
+  recovery ports, and strict Exo fair-play decision adapter.
+- An offline Exo configuration example and explicit `unverified` live-connectivity status.
+- Full-run routing coverage for setup, map, combat, reward, shop, event, rest, selection, and
+  separate victory/defeat terminal observations.
+- Bounded typed decision records, memory, replay/evaluation metrics, cooperative synchronization
+  gates, and quarantined M10 build/patch manifest preparation.
 - The bounded `sts2-harness-runtime` coordinator, `runtime-v1` artifact copy, real MCP/gateway
   process path, stale-generation oracle, sanitized trace, and component evidence record.
 

@@ -1,0 +1,10 @@
+# Operator-owned values only. Keep credentials and the copied file outside this repository.
+revision = "REPLACE_WITH_REVIEWED_EXO_REVISION"
+endpoint = "REPLACE_WITH_OPERATOR_OWNED_EXO_ENDPOINT"
+request_timeout_millis = 120000
+max_request_bytes = 131072
+max_response_bytes = 8192
+
+# The adapter emits only semantic decisions. Coordinates, raw input, shell, reflection, and
+# privileged observation tools are intentionally not configurable here.
+decision_schema = "sts2.exo-decision-v1"

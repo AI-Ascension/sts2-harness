@@ -24,6 +24,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify quarantined M10 manifest and fair-play source
+        run: |
+          git diff --check
+          jq -e '.manifest_version == "sts2-patch-manifest-v1" and .quarantine.status == "quarantined" and (.diffs | has("build") and has("data") and has("ui") and has("actions") and has("schema"))' docs/research/sts2-expert-state-package/data/build-manifest.json >/dev/null
+          jq -e '.["$id"] == "sts2-patch-manifest-v1" and .additionalProperties == false' patch-manifest.schema.json >/dev/null
+          rg -q 'is_privileged_key' crates/harness/src/exo/sandbox.rs
+          if rg -n 'std::process|Command::|TcpStream' crates/harness/src/exo; then exit 1; fi
+
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt --no-self-update
 

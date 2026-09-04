@@ -2,12 +2,17 @@
 
 mod artifact;
 mod coordinator;
+mod decision_records;
+mod evaluation;
 mod error;
+mod episode;
+mod exo;
 mod identity;
 mod poc;
 mod protocol_artifact;
 mod provider;
 mod records;
+mod memory;
 mod replay;
 mod routing;
 mod runtime_v2;
@@ -19,6 +24,23 @@ pub use artifact::{
 };
 pub use coordinator::{EpisodeHandle, Harness, HarnessParts};
 pub use error::{CloseFailure, CloseReport, Component, HarnessError, PortError, ProviderError};
+pub use episode::{
+    ActionAdmission, ActionIdentity, ActionKind, ActionLedger, ActionSetError, BarrierError,
+    BarrierPort, CoopCoordinator, CoopError, CoopPeerRole, CoopSyncStatus, DecisionInput,
+    DecisionSource, DispatchStatus, EpisodeLegalAction,
+    EpisodeLegalActionSet, EpisodeMachine, EpisodeMachineError, EpisodeObservation, EpisodePhase,
+    EpisodeStage, ExoDecisionSource, IdempotencyError, NoncombatCoordinator, NoncombatStage,
+    ObservationError, PolicyChoice, PolicyError, PolicyRouter, PostconditionError,
+    RecoveryController, RecoveryError,
+    RecoveryOperation, RecoveryPort, RecoveryResult, StabilityBarrier, TransitionReceipt,
+    RunSetupCoordinator, SetupPort, EpisodeShutdown, ShutdownError, ShutdownPort,
+    VerifiedTransition, WaitOutcome, WaitSample, verify_settlement,
+};
+pub use exo::{
+    BoundDecision, Decision, DecisionError, ExoClient, ExoConfig, ExoDecisionRequest, ExoError,
+    ExoProvider, ExoSession, ExoTransport, ExoTransportError, SanitizedObservation, SandboxError,
+    parse_decision,
+};
 pub use identity::{
     ActionId, ArtifactId, Digest, EpisodeId, GatewaySessionId, IdempotencyKey, InstanceId,
     ModelExecutionId, RecordId, RequestId, RunId, SchemaVersion, TraceId, TrajectoryId,
@@ -35,7 +57,13 @@ pub use provider::{
     ModelOutput, ModelRequest, ModelResponse, ModelResult, Prompt, ProviderPort, RetryPolicy,
 };
 pub use records::{AppendOutcome, Correlation, Record, RecordKind, RecordPayload, RecordPort};
-pub use replay::{DeterministicReplay, Divergence, ReplayPort, ReplayReport, ReplayRequest};
+pub use decision_records::{DecisionPayload, DecisionRecord, DecisionRecordKind, EvidenceStatus};
+pub use evaluation::{EvaluationError, EvaluationReport, EvaluationSample, Evaluator, TerminalOutcome};
+pub use memory::{DecisionMemory, MemoryAppend, MemoryError};
+pub use replay::{
+    DecisionReplay, DecisionReplayDivergence, DecisionReplayReport, DecisionReplayRequest,
+    DeterministicReplay, Divergence, ReplayPort, ReplayReport, ReplayRequest,
+};
 pub use routing::{InstanceRouter, RouteBinding, RouteRequest, RouteToken};
 pub use runtime_v2::{
     RUNTIME_V2_MAX_INSTANCES, RUNTIME_V2_MAX_QUEUE_CAPACITY, RUNTIME_V2_MAX_RETAINED_OPERATIONS,

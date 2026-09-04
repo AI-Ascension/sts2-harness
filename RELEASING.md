@@ -51,6 +51,17 @@ publication. Exclude source-control metadata, build output, credentials, prompts
 approved for distribution, valued saves, proprietary host files, personal paths, and unrelated
 debug output. Do not rebuild different bytes during promotion.
 
+Before any promotion, validate `patch-manifest.schema.json` and review the quarantined build
+manifest at `docs/research/sts2-expert-state-package/data/build-manifest.json`. Run the bounded
+`tools/patch-diff` utility against the exact base and candidate manifests, then attach separate
+hashes and evidence for build, data, UI, action-catalog, and schema changes. A source diff or a
+successful compile is not a target-build or runtime-compatibility result.
+
+Promotion requires independent evidence for the host package, native package, gateway/MCP/harness
+configuration, Exo revision, fair-play leak tests, stale/recovery behavior, setup-to-terminal
+full-run traces, two-to-four-peer co-op traces, cleanup, clean-install replay, and rollback. Any
+missing item keeps the candidate quarantined.
+
 ## Post-release and failure
 
 Download and verify the published bytes in a clean location. Check manifests, licenses, record

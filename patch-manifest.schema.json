@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sts2-patch-manifest-v1",
+  "title": "STS2 patch and build quarantine manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifest_version", "evidence_status", "provenance", "base", "candidate", "diffs", "quarantine"],
+  "properties": {
+    "manifest_version": {"const": "sts2-patch-manifest-v1"},
+    "evidence_status": {"$ref": "#/$defs/evidence_status"},
+    "provenance": {"$ref": "#/$defs/provenance"},
+    "base": {"$ref": "#/$defs/build"},
+    "candidate": {"$ref": "#/$defs/build"},
+    "diffs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["build", "data", "ui", "actions", "schema"],
+      "properties": {
+        "build": {"$ref": "#/$defs/diff"},
+        "data": {"$ref": "#/$defs/diff"},
+        "ui": {"$ref": "#/$defs/diff"},
+        "actions": {"$ref": "#/$defs/diff"},
+        "schema": {"$ref": "#/$defs/diff"}
+      }
+    },
+    "quarantine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reason", "required_checks"],
+      "properties": {
+        "status": {"enum": ["quarantined", "eligible", "promoted", "rejected"]},
+        "reason": {"$ref": "#/$defs/text"},
+        "required_checks": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {"$ref": "#/$defs/text"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "evidence_status": {
+      "enum": ["confirmed", "source-derived", "inferred", "proposed", "unverified", "unsupported"]
+    },
+    "text": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "revision", "target_build", "game_build", "status"],
+      "properties": {
+        "repository": {"$ref": "#/$defs/text"},
+        "revision": {"$ref": "#/$defs/text"},
+        "target_build": {"$ref": "#/$defs/text"},
+        "game_build": {"$ref": "#/$defs/text"},
+        "status": {"$ref": "#/$defs/evidence_status"},
+        "artifact_digests": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/digest"}
+        }
+      }
+    },
+    "diff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "observed", "entries"],
+      "properties": {
+        "status": {"$ref": "#/$defs/evidence_status"},
+        "observed": {"type": "boolean"},
+        "entries": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "change", "status"],
+            "properties": {
+              "path": {"$ref": "#/$defs/text"},
+              "change": {"enum": ["added", "removed", "modified", "unchanged", "unknown"]},
+              "status": {"$ref": "#/$defs/evidence_status"},
+              "before_digest": {"$ref": "#/$defs/digest"},
+              "after_digest": {"$ref": "#/$defs/digest"},
+              "notes": {"$ref": "#/$defs/text"}
+            }
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generator", "created_on", "source_status", "licensed_runtime_available"],
+      "properties": {
+        "generator": {"const": "sts2-harness/patch-diff-preparation"},
+        "created_on": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "source_status": {"enum": ["hand-authored", "source-derived", "imported"]},
+        "licensed_runtime_available": {"type": "boolean"}
+      }
+    }
+  }
+}

@@ -127,3 +127,26 @@ returning the original error. Cleanup may use a validated returned lease and epo
 instance, caller, and gateway session match the allocation request. Otherwise it keeps the configured
 fence. This cleanup does not replace the configured fence used for trace admission, and an unconfirmed
 or failed release remains an explicit error. This behavior is source-derived; host cleanup is unverified.
+
+## Runtime-v3 gameplay and Exo boundary
+
+The runtime-v3 gameplay surface is split into two harness-owned layers. `episode/` requires a fresh,
+actionable observation and the matching host-generated legal-action set before it asks a provider for
+one choice. `exo/` sends only the sanitized fair-play projection, generation, objective, hard
+constraints, and action IDs through an operator-supplied transport with a pinned revision and bounded
+request/response/timeout settings. There is no heuristic action path when Exo is unavailable,
+malformed, stale, or closed.
+
+Accepted mutation is not settlement. `ActionLedger` records operation identity, the stability barrier
+waits for a semantic successor or same-state mutation, and `verify_settlement` requires a fresh
+observation plus an independent effect witness. Unknown outcomes enter explicit recovery/reconcile
+operations; they are never retried as a new strategic action. The `experiments/exo-agent` directory
+contains only an example configuration and boundary documentation. Exo connectivity, target-build
+compatibility, and live gameplay remain `unverified` until a separate runtime handoff.
+
+The full-run episode surface routes every playable stage through the provider port, while terminal
+and recovery states are handled by the episode state machine. The co-op coordinator is an additive
+gate: peer identity, generation, connection, and ally-target checks can suspend policy mutation but
+cannot authorize a host mutation. Decision records distinguish requested, accepted, settled,
+recovery, estimate, and unavailable evidence. M10 patch manifests keep build/data/UI/action/schema
+drift quarantined until exact runtime evidence exists.

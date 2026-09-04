@@ -1,0 +1,8 @@
+[package]
+name = "sts2-patch-diff"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace]

@@ -57,6 +57,19 @@ MCP/gateway integration, approved provider tests, disposable host smoke, focused
 conformance. Each level requires exact versions, platform, configuration, artifact hashes, and date.
 Missing credentials, services, game files, or disposable data remain visible as `unverified`.
 
+## Runtime-v3, co-op, and patch evidence
+
+The Runtime-v3 gameplay contract is source-derived from the neutral protocol profile and is mapped
+through the MCP and gateway seams. The Exo adapter accepts only the sanitized fair-play projection
+and current host action IDs. The co-op lane is additive and suspends mutation on peer disagreement,
+missing peers, or disconnect. These are source/test claims; target-build and live provider behavior
+remain `unverified`.
+
+M10 records build, data, UI, action, and schema dimensions independently in
+[`build-manifest.json`](research/sts2-expert-state-package/data/build-manifest.json). The manifest
+is deliberately `quarantined` until exact package hashes, licensed-host traces, independent leak
+checks, cleanup, replay, rollback, and all repository gates are available.
+
 ## Breaking changes
 
 Breaking changes require an ADR, migration path, release note, updated fixtures/conformance, and
