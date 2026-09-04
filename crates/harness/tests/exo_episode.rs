@@ -4,10 +4,10 @@ use std::collections::VecDeque;
 
 use serde_json::{Value, json};
 use sts2_harness::{
-    ActionKind, Decision, DecisionInput, EpisodeLegalAction,
-    EpisodeLegalActionSet, EpisodeObservation, EpisodeStage, ExoConfig, ExoDecisionSource,
-    ExoError, ExoProvider, ExoSession, ExoTransport, ExoTransportError, ModelExecutionId,
-    PolicyRouter, SanitizedObservation, parse_decision,
+    ActionKind, Decision, DecisionInput, EpisodeLegalAction, EpisodeLegalActionSet,
+    EpisodeObservation, EpisodeStage, ExoConfig, ExoDecisionSource, ExoError, ExoProvider,
+    ExoSession, ExoTransport, ExoTransportError, ModelExecutionId, PolicyRouter,
+    SanitizedObservation, parse_decision,
 };
 
 #[derive(Debug)]
@@ -47,9 +47,9 @@ impl ExoTransport for FakeExo {
     ) -> Result<Vec<u8>, ExoTransportError> {
         self.requests.push(request.to_vec());
         self.timeouts.push(timeout_millis);
-        self.responses
-            .pop_front()
-            .unwrap_or_else(|| Ok(br#"{"decision":"reobserve","rationale":"fresh state"}"#.to_vec()))
+        self.responses.pop_front().unwrap_or_else(|| {
+            Ok(br#"{"decision":"reobserve","rationale":"fresh state"}"#.to_vec())
+        })
     }
 
     fn close(&mut self) -> Result<(), ExoTransportError> {
@@ -97,8 +97,10 @@ fn legal_actions(generation: u64) -> EpisodeLegalActionSet {
     EpisodeLegalActionSet::new(
         "combat-1",
         generation,
-        vec![EpisodeLegalAction::new("combat.end-turn", ActionKind::EndTurn)
-            .expect("test action is valid")],
+        vec![
+            EpisodeLegalAction::new("combat.end-turn", ActionKind::EndTurn)
+                .expect("test action is valid"),
+        ],
     )
     .expect("test catalog is valid")
 }
@@ -185,11 +187,15 @@ fn exo_request_carries_pinned_revision_and_timeout() {
             Vec::new(),
         )
         .expect("transport response is valid");
-    assert_eq!(decision, Decision::Reobserve { rationale: "refresh".to_owned() });
+    assert_eq!(
+        decision,
+        Decision::Reobserve {
+            rationale: "refresh".to_owned()
+        }
+    );
 
     let transport = session.into_transport();
-    let request = serde_json::from_slice::<Value>(&transport.requests[0])
-        .expect("request is JSON");
+    let request = serde_json::from_slice::<Value>(&transport.requests[0]).expect("request is JSON");
     assert_eq!(request["provider_revision"], "exo-revision-2026-09-04");
     assert_eq!(transport.timeouts, vec![2_000]);
 }
@@ -199,12 +205,14 @@ fn strict_decision_parser_rejects_hidden_reasoning_fields_and_illegal_actions() 
     let hidden = parse_decision(
         br#"{"decision":"action","action_id":"combat.end-turn","rationale":"ok","thoughts":"private"}"#,
     );
-    assert!(matches!(hidden, Err(sts2_harness::DecisionError::UnknownField)));
+    assert!(matches!(
+        hidden,
+        Err(sts2_harness::DecisionError::UnknownField)
+    ));
 
-    let decision = parse_decision(
-        br#"{"decision":"action","action_id":"combat.other","rationale":"ok"}"#,
-    )
-    .expect("decision syntax is valid");
+    let decision =
+        parse_decision(br#"{"decision":"action","action_id":"combat.other","rationale":"ok"}"#)
+            .expect("decision syntax is valid");
     assert!(matches!(
         ExoSession::<FakeExo>::bind_action(decision, &["combat.end-turn".to_owned()]),
         Err(sts2_harness::DecisionError::IllegalAction)

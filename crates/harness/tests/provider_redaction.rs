@@ -64,7 +64,12 @@ fn exo_request_contains_only_sanitized_fair_play_fields() {
             vec!["Use only the current legal action set".to_owned()],
         )
         .expect("provider response is valid");
-    assert_eq!(decision, Decision::Reobserve { rationale: "refresh".to_owned() });
+    assert_eq!(
+        decision,
+        Decision::Reobserve {
+            rationale: "refresh".to_owned()
+        }
+    );
 
     let transport = session.into_transport();
     let request: Value = serde_json::from_slice(&transport.requests[0]).expect("request is JSON");

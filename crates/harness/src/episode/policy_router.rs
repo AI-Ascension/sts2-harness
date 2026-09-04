@@ -90,8 +90,12 @@ pub enum PolicyChoice {
         rationale: String,
         confidence: Option<u8>,
     },
-    Wait { rationale: String },
-    Reobserve { rationale: String },
+    Wait {
+        rationale: String,
+    },
+    Reobserve {
+        rationale: String,
+    },
     Recovery {
         operation: RecoveryOperation,
         rationale: String,

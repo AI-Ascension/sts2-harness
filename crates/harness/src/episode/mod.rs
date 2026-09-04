@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-mod idempotency;
 mod coop;
+mod idempotency;
 mod legal_actions;
 mod noncombat;
 mod observation;
@@ -14,8 +14,10 @@ mod stability_barrier;
 mod state_machine;
 mod transition;
 
-pub use idempotency::{ActionIdentity, ActionLedger, Admission as ActionAdmission, IdempotencyError};
 pub use coop::{CoopCoordinator, CoopError, CoopPeerRole, CoopSyncStatus};
+pub use idempotency::{
+    ActionIdentity, ActionLedger, Admission as ActionAdmission, IdempotencyError,
+};
 pub use legal_actions::{ActionKind, ActionSetError, EpisodeLegalAction, EpisodeLegalActionSet};
 pub use noncombat::{NoncombatCoordinator, NoncombatStage};
 pub use observation::{EpisodeObservation, EpisodeStage, ObservationError};
@@ -28,7 +30,7 @@ pub use recovery::{
 };
 pub use run_setup::{RunSetupCoordinator, SetupPort};
 pub use shutdown::{EpisodeShutdown, ShutdownError, ShutdownPort};
-pub use stability_barrier::{BarrierError, BarrierPort, StabilityBarrier, WaitSample, WaitOutcome};
+pub use stability_barrier::{BarrierError, BarrierPort, StabilityBarrier, WaitOutcome, WaitSample};
 pub use state_machine::{EpisodeMachine, EpisodeMachineError, EpisodePhase};
 pub use transition::{DispatchStatus, TransitionReceipt};
 

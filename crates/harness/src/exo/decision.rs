@@ -11,8 +11,12 @@ pub enum Decision {
         rationale: String,
         confidence: Option<u8>,
     },
-    Wait { rationale: String },
-    Reobserve { rationale: String },
+    Wait {
+        rationale: String,
+    },
+    Reobserve {
+        rationale: String,
+    },
     Recovery {
         kind: String,
         operation_id: Option<String>,
@@ -59,7 +63,8 @@ pub fn parse_decision(bytes: &[u8]) -> Result<Decision, DecisionError> {
     if bytes.len() > MAX_DECISION_BYTES {
         return Err(DecisionError::TooLarge);
     }
-    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| DecisionError::InvalidJson)?;
+    let value: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|_| DecisionError::InvalidJson)?;
     let object = value.as_object().ok_or(DecisionError::InvalidValue)?;
     let allowed = [
         "decision",
@@ -116,13 +121,23 @@ pub fn parse_decision(bytes: &[u8]) -> Result<Decision, DecisionError> {
             })
         }
         "wait" => {
-            if object.keys().any(|key| matches!(key.as_str(), "action_id" | "confidence" | "recovery_kind" | "operation_id")) {
+            if object.keys().any(|key| {
+                matches!(
+                    key.as_str(),
+                    "action_id" | "confidence" | "recovery_kind" | "operation_id"
+                )
+            }) {
                 return Err(DecisionError::UnknownField);
             }
             Ok(Decision::Wait { rationale })
         }
         "reobserve" => {
-            if object.keys().any(|key| matches!(key.as_str(), "action_id" | "confidence" | "recovery_kind" | "operation_id")) {
+            if object.keys().any(|key| {
+                matches!(
+                    key.as_str(),
+                    "action_id" | "confidence" | "recovery_kind" | "operation_id"
+                )
+            }) {
                 return Err(DecisionError::UnknownField);
             }
             Ok(Decision::Reobserve { rationale })
@@ -135,7 +150,10 @@ pub fn parse_decision(bytes: &[u8]) -> Result<Decision, DecisionError> {
                 .get("recovery_kind")
                 .and_then(serde_json::Value::as_str)
                 .ok_or(DecisionError::MissingField)?;
-            if !matches!(kind, "reobserve" | "reconcile" | "release_lease" | "stop_episode") {
+            if !matches!(
+                kind,
+                "reobserve" | "reconcile" | "release_lease" | "stop_episode"
+            ) {
                 return Err(DecisionError::InvalidValue);
             }
             let operation_id = object

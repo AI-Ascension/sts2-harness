@@ -111,31 +111,60 @@ impl Evaluator {
             }
         }
         self.samples = add(self.samples, 1)?;
-        if sample.legal { self.legal = add(self.legal, 1)?; } else { self.illegal = add(self.illegal, 1)?; }
-        if sample.stale { self.stale = add(self.stale, 1)?; }
-        if sample.verified { self.verified = add(self.verified, 1)?; } else { self.unverified = add(self.unverified, 1)?; }
+        if sample.legal {
+            self.legal = add(self.legal, 1)?;
+        } else {
+            self.illegal = add(self.illegal, 1)?;
+        }
+        if sample.stale {
+            self.stale = add(self.stale, 1)?;
+        }
+        if sample.verified {
+            self.verified = add(self.verified, 1)?;
+        } else {
+            self.unverified = add(self.unverified, 1)?;
+        }
         if sample.recovery_attempted {
             self.recovery_attempts = add(self.recovery_attempts, 1)?;
-            if sample.recovery_succeeded { self.recovery_successes = add(self.recovery_successes, 1)?; }
+            if sample.recovery_succeeded {
+                self.recovery_successes = add(self.recovery_successes, 1)?;
+            }
         }
         if let Some(regret) = sample.regret_millis {
             self.regret_samples = add(self.regret_samples, 1)?;
-            self.regret_sum_millis = self.regret_sum_millis.checked_add(regret).ok_or(EvaluationError::Overflow)?;
+            self.regret_sum_millis = self
+                .regret_sum_millis
+                .checked_add(regret)
+                .ok_or(EvaluationError::Overflow)?;
         }
-        if let (Some(confidence), Some(success)) = (sample.confidence_percent, sample.outcome_success) {
+        if let (Some(confidence), Some(success)) =
+            (sample.confidence_percent, sample.outcome_success)
+        {
             let expected = if success { 100_u8 } else { 0_u8 };
             self.calibration_samples = add(self.calibration_samples, 1)?;
-            self.calibration_error_sum_percent = self.calibration_error_sum_percent
+            self.calibration_error_sum_percent = self
+                .calibration_error_sum_percent
                 .checked_add(u64::from(confidence.abs_diff(expected)))
                 .ok_or(EvaluationError::Overflow)?;
         }
         if sample.request_bytes > 0 || sample.response_bytes > 0 || sample.latency_millis > 0 {
             self.resource_calls = add(self.resource_calls, 1)?;
         }
-        self.request_bytes = self.request_bytes.checked_add(u64::from(sample.request_bytes)).ok_or(EvaluationError::Overflow)?;
-        self.response_bytes = self.response_bytes.checked_add(u64::from(sample.response_bytes)).ok_or(EvaluationError::Overflow)?;
-        self.latency_millis = self.latency_millis.checked_add(u64::from(sample.latency_millis)).ok_or(EvaluationError::Overflow)?;
-        if sample.progressed { self.progression_steps = add(self.progression_steps, 1)?; }
+        self.request_bytes = self
+            .request_bytes
+            .checked_add(u64::from(sample.request_bytes))
+            .ok_or(EvaluationError::Overflow)?;
+        self.response_bytes = self
+            .response_bytes
+            .checked_add(u64::from(sample.response_bytes))
+            .ok_or(EvaluationError::Overflow)?;
+        self.latency_millis = self
+            .latency_millis
+            .checked_add(u64::from(sample.latency_millis))
+            .ok_or(EvaluationError::Overflow)?;
+        if sample.progressed {
+            self.progression_steps = add(self.progression_steps, 1)?;
+        }
         match sample.terminal {
             Some(TerminalOutcome::Victory) => self.victories = add(self.victories, 1)?,
             Some(TerminalOutcome::Defeat) => self.defeats = add(self.defeats, 1)?,
@@ -195,33 +224,93 @@ pub struct EvaluationReport {
 }
 
 impl EvaluationReport {
-    #[must_use] pub const fn samples(self) -> usize { self.samples }
-    #[must_use] pub const fn legal(self) -> usize { self.legal }
-    #[must_use] pub const fn illegal(self) -> usize { self.illegal }
-    #[must_use] pub const fn stale(self) -> usize { self.stale }
-    #[must_use] pub const fn verified(self) -> usize { self.verified }
-    #[must_use] pub const fn unverified(self) -> usize { self.unverified }
-    #[must_use] pub const fn recovery_attempts(self) -> usize { self.recovery_attempts }
-    #[must_use] pub const fn recovery_successes(self) -> usize { self.recovery_successes }
-    #[must_use] pub const fn regret_samples(self) -> usize { self.regret_samples }
-    #[must_use] pub const fn regret_sum_millis(self) -> u64 { self.regret_sum_millis }
-    #[must_use] pub const fn calibration_samples(self) -> usize { self.calibration_samples }
-    #[must_use] pub const fn resource_calls(self) -> usize { self.resource_calls }
-    #[must_use] pub const fn request_bytes(self) -> u64 { self.request_bytes }
-    #[must_use] pub const fn response_bytes(self) -> u64 { self.response_bytes }
-    #[must_use] pub const fn latency_millis(self) -> u64 { self.latency_millis }
-    #[must_use] pub const fn progression_steps(self) -> usize { self.progression_steps }
-    #[must_use] pub const fn victories(self) -> usize { self.victories }
-    #[must_use] pub const fn defeats(self) -> usize { self.defeats }
+    #[must_use]
+    pub const fn samples(self) -> usize {
+        self.samples
+    }
+    #[must_use]
+    pub const fn legal(self) -> usize {
+        self.legal
+    }
+    #[must_use]
+    pub const fn illegal(self) -> usize {
+        self.illegal
+    }
+    #[must_use]
+    pub const fn stale(self) -> usize {
+        self.stale
+    }
+    #[must_use]
+    pub const fn verified(self) -> usize {
+        self.verified
+    }
+    #[must_use]
+    pub const fn unverified(self) -> usize {
+        self.unverified
+    }
+    #[must_use]
+    pub const fn recovery_attempts(self) -> usize {
+        self.recovery_attempts
+    }
+    #[must_use]
+    pub const fn recovery_successes(self) -> usize {
+        self.recovery_successes
+    }
+    #[must_use]
+    pub const fn regret_samples(self) -> usize {
+        self.regret_samples
+    }
+    #[must_use]
+    pub const fn regret_sum_millis(self) -> u64 {
+        self.regret_sum_millis
+    }
+    #[must_use]
+    pub const fn calibration_samples(self) -> usize {
+        self.calibration_samples
+    }
+    #[must_use]
+    pub const fn resource_calls(self) -> usize {
+        self.resource_calls
+    }
+    #[must_use]
+    pub const fn request_bytes(self) -> u64 {
+        self.request_bytes
+    }
+    #[must_use]
+    pub const fn response_bytes(self) -> u64 {
+        self.response_bytes
+    }
+    #[must_use]
+    pub const fn latency_millis(self) -> u64 {
+        self.latency_millis
+    }
+    #[must_use]
+    pub const fn progression_steps(self) -> usize {
+        self.progression_steps
+    }
+    #[must_use]
+    pub const fn victories(self) -> usize {
+        self.victories
+    }
+    #[must_use]
+    pub const fn defeats(self) -> usize {
+        self.defeats
+    }
 
     #[must_use]
-    pub fn legality_rate_millis(self) -> u64 { rate(self.legal, self.samples) }
+    pub fn legality_rate_millis(self) -> u64 {
+        rate(self.legal, self.samples)
+    }
 
     #[must_use]
-    pub fn verification_rate_millis(self) -> u64 { rate(self.verified, self.samples) }
+    pub fn verification_rate_millis(self) -> u64 {
+        rate(self.verified, self.samples)
+    }
 
     #[must_use]
-    pub fn recovery_success_rate_millis(self) -> u64 { rate(self.recovery_successes, self.recovery_attempts) }
+    pub fn recovery_success_rate_millis(self) -> u64 {
+        rate(self.recovery_successes, self.recovery_attempts)
+    }
 
     #[must_use]
     pub fn mean_regret_millis(self) -> Option<u64> {
@@ -235,7 +324,9 @@ impl EvaluationReport {
     }
 
     #[must_use]
-    pub const fn completed(self) -> bool { self.victories + self.defeats == 1 }
+    pub const fn completed(self) -> bool {
+        self.victories + self.defeats == 1
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -260,9 +351,15 @@ impl std::fmt::Display for EvaluationError {
 impl std::error::Error for EvaluationError {}
 
 fn add(value: usize, increment: usize) -> Result<usize, EvaluationError> {
-    value.checked_add(increment).ok_or(EvaluationError::Overflow)
+    value
+        .checked_add(increment)
+        .ok_or(EvaluationError::Overflow)
 }
 
 fn rate(numerator: usize, denominator: usize) -> u64 {
-    if denominator == 0 { 0 } else { numerator as u64 * 1000 / denominator as u64 }
+    if denominator == 0 {
+        0
+    } else {
+        numerator as u64 * 1000 / denominator as u64
+    }
 }

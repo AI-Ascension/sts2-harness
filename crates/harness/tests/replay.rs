@@ -45,13 +45,48 @@ fn record(
 fn typed_replay_counts_each_evidence_class_without_merging_unknowns() {
     let trajectory = TrajectoryId::new(9).expect("nonzero trajectory");
     let records = vec![
-        record(trajectory, 0, DecisionRecordKind::Observation, json!({"state":"combat"})),
-        record(trajectory, 1, DecisionRecordKind::Request, json!({"kind":"dispatch"})),
-        record(trajectory, 2, DecisionRecordKind::Acceptance, json!({"status":"accepted"})),
-        record(trajectory, 3, DecisionRecordKind::Settlement, json!({"status":"settled"})),
-        record(trajectory, 4, DecisionRecordKind::Recovery, json!({"kind":"reobserve"})),
-        record(trajectory, 5, DecisionRecordKind::Estimate, json!({"source":"belief"})),
-        record(trajectory, 6, DecisionRecordKind::Unavailable, json!({"code":"timeout"})),
+        record(
+            trajectory,
+            0,
+            DecisionRecordKind::Observation,
+            json!({"state":"combat"}),
+        ),
+        record(
+            trajectory,
+            1,
+            DecisionRecordKind::Request,
+            json!({"kind":"dispatch"}),
+        ),
+        record(
+            trajectory,
+            2,
+            DecisionRecordKind::Acceptance,
+            json!({"status":"accepted"}),
+        ),
+        record(
+            trajectory,
+            3,
+            DecisionRecordKind::Settlement,
+            json!({"status":"settled"}),
+        ),
+        record(
+            trajectory,
+            4,
+            DecisionRecordKind::Recovery,
+            json!({"kind":"reobserve"}),
+        ),
+        record(
+            trajectory,
+            5,
+            DecisionRecordKind::Estimate,
+            json!({"source":"belief"}),
+        ),
+        record(
+            trajectory,
+            6,
+            DecisionRecordKind::Unavailable,
+            json!({"code":"timeout"}),
+        ),
     ];
     let report = DecisionReplay::evaluate(&DecisionReplayRequest::new(trajectory, records));
     assert_eq!(report.records_replayed(), 7);
@@ -69,11 +104,24 @@ fn typed_replay_counts_each_evidence_class_without_merging_unknowns() {
 fn typed_replay_stops_at_sequence_divergence_and_payload_firewall_rejects_privileged_data()
 -> Result<(), Box<dyn Error>> {
     let trajectory = TrajectoryId::new(10).expect("nonzero trajectory");
-    let mut records = vec![record(trajectory, 0, DecisionRecordKind::Observation, json!({"state":"map"}))];
-    records.push(record(trajectory, 2, DecisionRecordKind::Unavailable, json!({"code":"gap"})));
+    let mut records = vec![record(
+        trajectory,
+        0,
+        DecisionRecordKind::Observation,
+        json!({"state":"map"}),
+    )];
+    records.push(record(
+        trajectory,
+        2,
+        DecisionRecordKind::Unavailable,
+        json!({"code":"gap"}),
+    ));
     let report = DecisionReplay::evaluate(&DecisionReplayRequest::new(trajectory, records));
     assert_eq!(report.records_replayed(), 1);
-    assert_eq!(report.divergence().map(|value| value.actual_sequence()), Some(2));
+    assert_eq!(
+        report.divergence().map(|value| value.actual_sequence()),
+        Some(2)
+    );
     assert!(DecisionPayload::from_json(json!({"raw_memory":"blocked"})).is_err());
     Ok(())
 }

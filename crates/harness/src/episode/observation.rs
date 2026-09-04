@@ -30,7 +30,10 @@ impl EpisodeStage {
 
     #[must_use]
     pub const fn is_actionable(self) -> bool {
-        !matches!(self, Self::Victory | Self::Defeat | Self::Recovery | Self::Unknown)
+        !matches!(
+            self,
+            Self::Victory | Self::Defeat | Self::Recovery | Self::Unknown
+        )
     }
 }
 
@@ -156,7 +159,9 @@ impl std::fmt::Display for ObservationError {
             Self::InvalidGeneration => "observation generation is out of bounds",
             Self::UnknownState => "unknown/recovery observation cannot be actionable",
             Self::PrivilegedProjection => "observation failed the fair-play firewall",
-            Self::ProjectionMismatch => "observation projection identity does not match its envelope",
+            Self::ProjectionMismatch => {
+                "observation projection identity does not match its envelope"
+            }
         })
     }
 }

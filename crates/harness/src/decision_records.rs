@@ -127,10 +127,7 @@ impl DecisionRecord {
         model_execution_id: Option<ModelExecutionId>,
         payload: DecisionPayload,
     ) -> Result<Self, PortError> {
-        for value in [&state_id, &operation_id]
-            .into_iter()
-            .flatten()
-        {
+        for value in [&state_id, &operation_id].into_iter().flatten() {
             if !valid_identity(value) {
                 return Err(PortError::new(
                     "invalid_decision_identity",
@@ -169,31 +166,49 @@ impl DecisionRecord {
     }
 
     #[must_use]
-    pub const fn record_id(&self) -> RecordId { self.record_id }
+    pub const fn record_id(&self) -> RecordId {
+        self.record_id
+    }
 
     #[must_use]
-    pub const fn sequence(&self) -> u64 { self.sequence }
+    pub const fn sequence(&self) -> u64 {
+        self.sequence
+    }
 
     #[must_use]
-    pub const fn correlation(&self) -> &Correlation { &self.correlation }
+    pub const fn correlation(&self) -> &Correlation {
+        &self.correlation
+    }
 
     #[must_use]
-    pub const fn kind(&self) -> DecisionRecordKind { self.kind }
+    pub const fn kind(&self) -> DecisionRecordKind {
+        self.kind
+    }
 
     #[must_use]
-    pub const fn evidence(&self) -> EvidenceStatus { self.evidence }
+    pub const fn evidence(&self) -> EvidenceStatus {
+        self.evidence
+    }
 
     #[must_use]
-    pub const fn generation(&self) -> Option<u64> { self.generation }
+    pub const fn generation(&self) -> Option<u64> {
+        self.generation
+    }
 
     #[must_use]
-    pub fn state_id(&self) -> Option<&str> { self.state_id.as_deref() }
+    pub fn state_id(&self) -> Option<&str> {
+        self.state_id.as_deref()
+    }
 
     #[must_use]
-    pub fn operation_id(&self) -> Option<&str> { self.operation_id.as_deref() }
+    pub fn operation_id(&self) -> Option<&str> {
+        self.operation_id.as_deref()
+    }
 
     #[must_use]
-    pub const fn action_id(&self) -> Option<ActionId> { self.action_id }
+    pub const fn action_id(&self) -> Option<ActionId> {
+        self.action_id
+    }
 
     #[must_use]
     pub const fn model_execution_id(&self) -> Option<ModelExecutionId> {
@@ -201,7 +216,9 @@ impl DecisionRecord {
     }
 
     #[must_use]
-    pub const fn payload(&self) -> &DecisionPayload { &self.payload }
+    pub const fn payload(&self) -> &DecisionPayload {
+        &self.payload
+    }
 }
 
 fn valid_identity(value: &str) -> bool {
@@ -214,10 +231,23 @@ fn valid_identity(value: &str) -> bool {
 
 fn contains_forbidden_field(value: &Value) -> bool {
     const FORBIDDEN: [&str; 17] = [
-        "raw_memory", "host_object", "random_state", "future_rng", "unrevealed",
-        "credential", "password", "access_token", "private_prompt", "executable",
-        "process_command", "reflection", "screen_coordinate", "input_event", "save_file",
-        "pck", "dll",
+        "raw_memory",
+        "host_object",
+        "random_state",
+        "future_rng",
+        "unrevealed",
+        "credential",
+        "password",
+        "access_token",
+        "private_prompt",
+        "executable",
+        "process_command",
+        "reflection",
+        "screen_coordinate",
+        "input_event",
+        "save_file",
+        "pck",
+        "dll",
     ];
     match value {
         Value::Object(object) => object.iter().any(|(key, child)| {

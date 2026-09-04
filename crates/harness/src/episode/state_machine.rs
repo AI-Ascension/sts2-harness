@@ -7,8 +7,13 @@ use super::observation::{EpisodeObservation, EpisodeStage};
 pub enum EpisodePhase {
     AwaitingObservation,
     Ready(EpisodeObservation),
-    AwaitingTransition { operation_id: String, generation: u64 },
-    Recovering { operation_id: Option<String> },
+    AwaitingTransition {
+        operation_id: String,
+        generation: u64,
+    },
+    Recovering {
+        operation_id: Option<String>,
+    },
     Complete(EpisodeStage),
     Failed,
 }
@@ -137,7 +142,9 @@ impl std::fmt::Display for EpisodeMachineError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
             Self::UnknownState => "episode entered unknown state",
-            Self::StaleObservation => "episode observation is older than the last accepted generation",
+            Self::StaleObservation => {
+                "episode observation is older than the last accepted generation"
+            }
             Self::InvalidOperation => "operation identity is invalid",
             Self::NotReady => "episode is not ready for dispatch",
             Self::InputBlocked => "episode input is blocked",

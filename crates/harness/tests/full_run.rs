@@ -2,10 +2,10 @@
 
 use serde_json::{Value, json};
 use sts2_harness::{
-    ActionKind, Decision, DecisionInput, DecisionSource, EpisodeLegalAction,
-    EpisodeLegalActionSet, EpisodeMachine, EpisodeObservation, EpisodePhase, EpisodeStage,
-    ModelExecutionId, NoncombatCoordinator, NoncombatStage, PolicyChoice, PolicyError,
-    PolicyRouter, RunSetupCoordinator,
+    ActionKind, Decision, DecisionInput, DecisionSource, EpisodeLegalAction, EpisodeLegalActionSet,
+    EpisodeMachine, EpisodeObservation, EpisodePhase, EpisodeStage, ModelExecutionId,
+    NoncombatCoordinator, NoncombatStage, PolicyChoice, PolicyError, PolicyRouter,
+    RunSetupCoordinator,
 };
 
 #[derive(Default)]
@@ -20,7 +20,8 @@ impl DecisionSource for RecordingDecisionSource {
             .actions()
             .first()
             .ok_or(PolicyError::IllegalAction)?;
-        self.states.push(input.observation.stage().name().to_owned());
+        self.states
+            .push(input.observation.stage().name().to_owned());
         Ok(Decision::Action {
             action_id: action.action_id().to_owned(),
             rationale: String::from("provider selected a current host action"),
@@ -82,8 +83,10 @@ fn legal_actions(stage: EpisodeStage, generation: u64) -> EpisodeLegalActionSet 
     EpisodeLegalActionSet::new(
         format!("{}-{generation}", stage.name()),
         generation,
-        vec![EpisodeLegalAction::new(format!("{}-{suffix}", stage.name()), kind)
-            .expect("test action is valid")],
+        vec![
+            EpisodeLegalAction::new(format!("{}-{suffix}", stage.name()), kind)
+                .expect("test action is valid"),
+        ],
     )
     .expect("test catalog is valid")
 }
@@ -138,45 +141,66 @@ fn full_run_routes_every_playable_surface_to_the_provider_and_tracks_terminals()
         .expect("provider supplies a current action");
         assert!(matches!(choice, PolicyChoice::Action { .. }));
     }
-    assert_eq!(source.states, vec![
-        String::from("setup"),
-        String::from("map"),
-        String::from("combat"),
-        String::from("reward"),
-        String::from("shop"),
-        String::from("event"),
-        String::from("rest"),
-        String::from("selection"),
-    ]);
+    assert_eq!(
+        source.states,
+        vec![
+            String::from("setup"),
+            String::from("map"),
+            String::from("combat"),
+            String::from("reward"),
+            String::from("shop"),
+            String::from("event"),
+            String::from("rest"),
+            String::from("selection"),
+        ]
+    );
 
     let mut machine = EpisodeMachine::new();
-    machine.observe(observation(EpisodeStage::Setup, 0)).expect("setup is accepted");
-    machine.begin_dispatch("setup-start").expect("setup can dispatch");
-    machine.settle(observation(EpisodeStage::Map, 1)).expect("map transition is fresh");
+    machine
+        .observe(observation(EpisodeStage::Setup, 0))
+        .expect("setup is accepted");
+    machine
+        .begin_dispatch("setup-start")
+        .expect("setup can dispatch");
+    machine
+        .settle(observation(EpisodeStage::Map, 1))
+        .expect("map transition is fresh");
     assert!(matches!(machine.phase(), EpisodePhase::Ready(_)));
 
-    machine.observe(EpisodeObservation::new(
-        "victory-2",
-        2,
-        EpisodeStage::Victory,
-        false,
-        false,
-        false,
-        fair_play(EpisodeStage::Victory, 2),
-    ).expect("victory is a valid terminal observation"));
-    assert_eq!(machine.phase(), &EpisodePhase::Complete(EpisodeStage::Victory));
+    machine.observe(
+        EpisodeObservation::new(
+            "victory-2",
+            2,
+            EpisodeStage::Victory,
+            false,
+            false,
+            false,
+            fair_play(EpisodeStage::Victory, 2),
+        )
+        .expect("victory is a valid terminal observation"),
+    );
+    assert_eq!(
+        machine.phase(),
+        &EpisodePhase::Complete(EpisodeStage::Victory)
+    );
 
     let mut defeat = EpisodeMachine::new();
-    defeat.observe(EpisodeObservation::new(
-        "defeat-2",
-        2,
-        EpisodeStage::Defeat,
-        false,
-        false,
-        false,
-        fair_play(EpisodeStage::Defeat, 2),
-    ).expect("defeat is a valid terminal observation"));
-    assert_eq!(defeat.phase(), &EpisodePhase::Complete(EpisodeStage::Defeat));
+    defeat.observe(
+        EpisodeObservation::new(
+            "defeat-2",
+            2,
+            EpisodeStage::Defeat,
+            false,
+            false,
+            false,
+            fair_play(EpisodeStage::Defeat, 2),
+        )
+        .expect("defeat is a valid terminal observation"),
+    );
+    assert_eq!(
+        defeat.phase(),
+        &EpisodePhase::Complete(EpisodeStage::Defeat)
+    );
 }
 
 trait StageName {

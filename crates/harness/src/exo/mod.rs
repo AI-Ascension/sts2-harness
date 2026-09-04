@@ -11,5 +11,5 @@ pub use decision::{BoundDecision, Decision, DecisionError, parse_decision};
 pub use protocol::{
     ExoConfig, ExoDecisionRequest, ExoError, ExoProvider, ExoTransport, ExoTransportError,
 };
-pub use sandbox::{SanitizedObservation, SandboxError};
+pub use sandbox::{SandboxError, SanitizedObservation};
 pub use session::ExoSession;

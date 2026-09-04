@@ -56,18 +56,16 @@ impl RecoveryController {
         loop {
             attempts += 1;
             let result = match &operation {
-                RecoveryOperation::Reobserve => port
-                    .reobserve()
-                    .map(RecoveryResult::Observation),
-                RecoveryOperation::Reconcile { operation_id } => port
-                    .reconcile(operation_id)
-                    .map(RecoveryResult::Receipt),
-                RecoveryOperation::ReleaseLease => port
-                    .release_lease()
-                    .map(|()| RecoveryResult::Released),
-                RecoveryOperation::StopEpisode => port
-                    .stop_episode()
-                    .map(|()| RecoveryResult::Stopped),
+                RecoveryOperation::Reobserve => port.reobserve().map(RecoveryResult::Observation),
+                RecoveryOperation::Reconcile { operation_id } => {
+                    port.reconcile(operation_id).map(RecoveryResult::Receipt)
+                }
+                RecoveryOperation::ReleaseLease => {
+                    port.release_lease().map(|()| RecoveryResult::Released)
+                }
+                RecoveryOperation::StopEpisode => {
+                    port.stop_episode().map(|()| RecoveryResult::Stopped)
+                }
             };
             match result {
                 Ok(result) => return Ok(result),

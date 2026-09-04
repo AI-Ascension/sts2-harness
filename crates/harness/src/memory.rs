@@ -56,22 +56,33 @@ impl DecisionMemory {
     }
 
     #[must_use]
-    pub fn records(&self) -> &VecDeque<DecisionRecord> { &self.records }
+    pub fn records(&self) -> &VecDeque<DecisionRecord> {
+        &self.records
+    }
 
     #[must_use]
-    pub fn len(&self) -> usize { self.records.len() }
+    pub fn len(&self) -> usize {
+        self.records.len()
+    }
 
     #[must_use]
-    pub fn is_empty(&self) -> bool { self.records.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
 
     #[must_use]
     pub fn by_id(&self, record_id: RecordId) -> Option<&DecisionRecord> {
-        self.records.iter().find(|record| record.record_id() == record_id)
+        self.records
+            .iter()
+            .find(|record| record.record_id() == record_id)
     }
 
     #[must_use]
     pub fn count_kind(&self, kind: DecisionRecordKind) -> usize {
-        self.records.iter().filter(|record| record.kind() == kind).count()
+        self.records
+            .iter()
+            .filter(|record| record.kind() == kind)
+            .count()
     }
 }
 

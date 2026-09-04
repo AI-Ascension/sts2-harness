@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use crate::exo::decision::{Decision, DecisionError, parse_decision};
-use crate::exo::sandbox::{SanitizedObservation, SandboxError};
+use crate::exo::sandbox::{SandboxError, SanitizedObservation};
 use crate::identity::ModelExecutionId;
 use crate::provider::{ModelRequest, ModelResponse, ProviderPort};
 
@@ -27,8 +27,7 @@ pub trait ExoTransport {
         request: &[u8],
         max_response_bytes: usize,
         timeout_millis: u32,
-    )
-        -> Result<Vec<u8>, ExoTransportError>;
+    ) -> Result<Vec<u8>, ExoTransportError>;
 
     fn close(&mut self) -> Result<(), ExoTransportError>;
 }
@@ -226,10 +225,7 @@ impl<T> ExoProvider<T> {
         self.transport
     }
 
-    fn execute_request(
-        &mut self,
-        request: ExoDecisionRequest,
-    ) -> Result<Vec<u8>, ExoError>
+    fn execute_request(&mut self, request: ExoDecisionRequest) -> Result<Vec<u8>, ExoError>
     where
         T: ExoTransport,
     {
@@ -273,7 +269,10 @@ impl<T: ExoTransport> ExoProvider<T> {
 }
 
 impl<T: ExoTransport> ProviderPort for ExoProvider<T> {
-    fn execute(&mut self, request: &ModelRequest) -> Result<ModelResponse, crate::error::ProviderError> {
+    fn execute(
+        &mut self,
+        request: &ModelRequest,
+    ) -> Result<ModelResponse, crate::error::ProviderError> {
         let decision_request = request_from_prompt(
             request.execution_id(),
             self.config.revision.as_str(),
@@ -284,18 +283,27 @@ impl<T: ExoTransport> ProviderPort for ExoProvider<T> {
         let output = self
             .execute_request(decision_request)
             .map_err(|error| provider_error(error_code(error), is_retryable(error)))?;
-        parse_decision(&output).map_err(|error| provider_error(decision_error_code(error), false))?;
+        parse_decision(&output)
+            .map_err(|error| provider_error(decision_error_code(error), false))?;
         let output = String::from_utf8(output)
             .map_err(|_| provider_error("exo_malformed_response", false))?;
         let output = crate::provider::ModelOutput::new(output)
             .map_err(|_| provider_error("exo_oversized_response", false))?;
-        ModelResponse::new(request.execution_id(), request.correlation().clone(), output)
+        ModelResponse::new(
+            request.execution_id(),
+            request.correlation().clone(),
+            output,
+        )
     }
 
     fn close(&mut self) -> Result<(), crate::error::PortError> {
         if !self.closed {
             self.transport_close().map_err(|_| {
-                crate::error::PortError::new("exo_close_failed", "Exo transport close failed", false)
+                crate::error::PortError::new(
+                    "exo_close_failed",
+                    "Exo transport close failed",
+                    false,
+                )
             })?;
         }
         Ok(())
@@ -329,17 +337,13 @@ fn legal_action_ids_match(observation: &serde_json::Value, requested: &[String])
     };
     actions.len() == requested.len()
         && actions.iter().zip(requested).all(|(action, requested_id)| {
-            action
-                .get("action_id")
-                .and_then(serde_json::Value::as_str)
+            action.get("action_id").and_then(serde_json::Value::as_str)
                 == Some(requested_id.as_str())
         })
 }
 
 fn valid_text(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= MAX_CONSTRAINT_BYTES
-        && !value.chars().any(char::is_control)
+    !value.is_empty() && value.len() <= MAX_CONSTRAINT_BYTES && !value.chars().any(char::is_control)
 }
 
 fn validate_request(request: &ExoDecisionRequest) -> Result<(), ExoError> {
@@ -352,14 +356,17 @@ fn validate_request(request: &ExoDecisionRequest) -> Result<(), ExoError> {
         || !legal_action_ids_match(&request.observation, &request.legal_action_ids)
         || !valid_text(&request.objective)
         || request.hard_constraints.len() > MAX_CONSTRAINTS
-        || request.hard_constraints.iter().any(|value| !valid_text(value))
+        || request
+            .hard_constraints
+            .iter()
+            .any(|value| !valid_text(value))
         || request.max_response_bytes == 0
         || request.max_response_bytes > 8 * 1024
     {
         return Err(ExoError::InvalidRequest);
     }
-    let observation = SanitizedObservation::new(request.observation.clone())
-        .map_err(ExoError::Sandbox)?;
+    let observation =
+        SanitizedObservation::new(request.observation.clone()).map_err(ExoError::Sandbox)?;
     if observation.state_id() != Some(request.state_id.as_str())
         || observation.generation() != Some(request.generation)
     {
@@ -374,7 +381,8 @@ fn request_from_prompt(
     prompt: &str,
     max_response_bytes: usize,
 ) -> Result<ExoDecisionRequest, ExoError> {
-    let value: serde_json::Value = serde_json::from_str(prompt).map_err(|_| ExoError::MalformedResponse)?;
+    let value: serde_json::Value =
+        serde_json::from_str(prompt).map_err(|_| ExoError::MalformedResponse)?;
     let object = value.as_object().ok_or(ExoError::InvalidRequest)?;
     const ALLOWED: [&str; 6] = [
         "observation",
@@ -442,7 +450,11 @@ fn request_from_prompt(
 }
 
 fn provider_error(code: &'static str, retryable: bool) -> crate::error::ProviderError {
-    crate::error::ProviderError::new(code, "Exo adapter rejected or could not complete the request", retryable)
+    crate::error::ProviderError::new(
+        code,
+        "Exo adapter rejected or could not complete the request",
+        retryable,
+    )
 }
 
 fn error_code(error: ExoError) -> &'static str {

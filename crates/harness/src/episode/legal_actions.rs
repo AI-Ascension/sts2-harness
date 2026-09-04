@@ -107,14 +107,12 @@ impl EpisodeLegalActionSet {
 
     #[must_use]
     pub fn find(&self, action_id: &str) -> Option<&EpisodeLegalAction> {
-        self.actions.iter().find(|action| action.action_id == action_id)
+        self.actions
+            .iter()
+            .find(|action| action.action_id == action_id)
     }
 
-    pub fn assert_matches(
-        &self,
-        state_id: &str,
-        generation: u64,
-    ) -> Result<(), ActionSetError> {
+    pub fn assert_matches(&self, state_id: &str, generation: u64) -> Result<(), ActionSetError> {
         if self.state_id != state_id || self.generation != generation {
             return Err(ActionSetError::StaleObservation);
         }

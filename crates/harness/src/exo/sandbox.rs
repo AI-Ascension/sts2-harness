@@ -63,7 +63,9 @@ impl std::fmt::Display for SandboxError {
         formatter.write_str(match self {
             Self::MalformedJson => "fair-play observation could not be encoded",
             Self::TooLarge => "fair-play observation exceeds its byte bound",
-            Self::NotAnObservation => "fair-play observation must be an object with state and actions",
+            Self::NotAnObservation => {
+                "fair-play observation must be an object with state and actions"
+            }
             Self::UnknownField => "fair-play observation contains an unknown field",
             Self::PrivilegedField => "fair-play observation contains a privileged field",
             Self::InvalidText => "fair-play observation contains invalid text",
@@ -94,11 +96,7 @@ enum ValueKind {
     Boolean,
 }
 
-fn validate_value(
-    value: &Value,
-    kind: ValueKind,
-    root: bool,
-) -> Result<(), SandboxError> {
+fn validate_value(value: &Value, kind: ValueKind, root: bool) -> Result<(), SandboxError> {
     match value {
         Value::Object(object) => validate_object(object, kind, root),
         Value::Array(values) => {
@@ -117,16 +115,16 @@ fn validate_value(
                 .iter()
                 .try_for_each(|value| validate_value(value, kind, false))
         }
-        Value::String(text) => {
-            match kind {
-                ValueKind::Text if valid_text(text) => Ok(()),
-                ValueKind::Identity if valid_identity(text) => Ok(()),
-                _ => Err(SandboxError::InvalidText),
-            }
-        }
+        Value::String(text) => match kind {
+            ValueKind::Text if valid_text(text) => Ok(()),
+            ValueKind::Identity if valid_identity(text) => Ok(()),
+            _ => Err(SandboxError::InvalidText),
+        },
         Value::Number(number) => {
             if matches!(kind, ValueKind::Number)
-                && number.as_u64().is_some_and(|value| value <= MAX_SAFE_INTEGER)
+                && number
+                    .as_u64()
+                    .is_some_and(|value| value <= MAX_SAFE_INTEGER)
             {
                 Ok(())
             } else {
@@ -203,10 +201,7 @@ fn validate_number_bound(
     }
 }
 
-fn validate_semantics(
-    object: &Map<String, Value>,
-    kind: ValueKind,
-) -> Result<(), SandboxError> {
+fn validate_semantics(object: &Map<String, Value>, kind: ValueKind) -> Result<(), SandboxError> {
     match kind {
         ValueKind::Root => {
             let Some(actions) = object.get("legal_actions").and_then(Value::as_array) else {
@@ -252,7 +247,12 @@ fn allows_null(kind: ValueKind, key: &str) -> bool {
 fn is_allowed(kind: ValueKind, key: &str) -> bool {
     let keys: &[&str] = match kind {
         ValueKind::Root => &[
-            "state_id", "generation", "visible_seed", "player", "state", "legal_actions",
+            "state_id",
+            "generation",
+            "visible_seed",
+            "player",
+            "state",
+            "legal_actions",
         ],
         ValueKind::Player => &[
             "hp", "max_hp", "energy", "gold", "hand", "deck", "discard", "exhaust",
@@ -261,13 +261,27 @@ fn is_allowed(kind: ValueKind, key: &str) -> bool {
         ValueKind::Enemy => &["enemy_id", "name", "hp", "max_hp", "intent"],
         ValueKind::Intent => &["kind", "damage", "hits"],
         ValueKind::State => &[
-            "state", "characters", "node_id", "options", "turn_index", "enemies", "choices",
-            "items", "reason", "code",
+            "state",
+            "characters",
+            "node_id",
+            "options",
+            "turn_index",
+            "enemies",
+            "choices",
+            "items",
+            "reason",
+            "code",
         ],
         ValueKind::ShopItem => &["item_id", "name", "price"],
         ValueKind::LegalAction => &["action_id", "action"],
         ValueKind::Action => &[
-            "kind", "character_id", "node_id", "card_id", "target_id", "reward_id", "item_id",
+            "kind",
+            "character_id",
+            "node_id",
+            "card_id",
+            "target_id",
+            "reward_id",
+            "item_id",
             "choice_id",
         ],
         ValueKind::IdentifierArray | ValueKind::Identity | ValueKind::Text => &[],
@@ -300,9 +314,9 @@ fn child_kind(parent: ValueKind, key: &str) -> ValueKind {
         (ValueKind::Enemy, "hp") | (ValueKind::Enemy, "max_hp") => ValueKind::Number,
         (ValueKind::State, "enemies") => ValueKind::Enemy,
         (ValueKind::State, "items") => ValueKind::ShopItem,
-        (ValueKind::State, "state") | (ValueKind::State, "node_id") | (ValueKind::State, "code") => {
-            ValueKind::Identity
-        },
+        (ValueKind::State, "state")
+        | (ValueKind::State, "node_id")
+        | (ValueKind::State, "code") => ValueKind::Identity,
         (ValueKind::State, "characters")
         | (ValueKind::State, "options")
         | (ValueKind::State, "choices") => ValueKind::Identity,
@@ -332,7 +346,9 @@ fn validate_shape(
     match kind {
         ValueKind::Player => require_exact(
             object,
-            &["hp", "max_hp", "energy", "gold", "hand", "deck", "discard", "exhaust"],
+            &[
+                "hp", "max_hp", "energy", "gold", "hand", "deck", "discard", "exhaust",
+            ],
         ),
         ValueKind::Card => require_exact(object, &["card_id", "name", "cost", "upgraded"]),
         ValueKind::Enemy => require_exact(object, &["enemy_id", "name", "hp", "max_hp", "intent"]),
@@ -390,9 +406,25 @@ fn require_exact(object: &Map<String, Value>, fields: &[&str]) -> Result<(), San
 fn is_privileged_key(key: &str) -> bool {
     let key = key.to_ascii_lowercase();
     [
-        "rng", "random_state", "future", "unrevealed", "secret", "credential", "password",
-        "access_token", "raw_memory", "host_object", "executable", "pck", "dll", "save_file",
-        "process_command", "reflection", "screen_coordinate", "input_event", "private_prompt",
+        "rng",
+        "random_state",
+        "future",
+        "unrevealed",
+        "secret",
+        "credential",
+        "password",
+        "access_token",
+        "raw_memory",
+        "host_object",
+        "executable",
+        "pck",
+        "dll",
+        "save_file",
+        "process_command",
+        "reflection",
+        "screen_coordinate",
+        "input_event",
+        "private_prompt",
     ]
     .iter()
     .any(|forbidden| key == *forbidden || key.contains(forbidden))

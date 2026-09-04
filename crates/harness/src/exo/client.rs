@@ -24,16 +24,12 @@ impl<T> ExoClient<T> {
     where
         T: ExoTransport,
     {
-        self.provider
-            .close_for_client()
-            .map_err(ExoError::from)
+        self.provider.close_for_client().map_err(ExoError::from)
     }
 }
 
 impl<T: ExoTransport> ExoProvider<T> {
-    pub(super) fn close_for_client(
-        &mut self,
-    ) -> Result<(), super::protocol::ExoTransportError> {
+    pub(super) fn close_for_client(&mut self) -> Result<(), super::protocol::ExoTransportError> {
         self.transport_close()
     }
 }

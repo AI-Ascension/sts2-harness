@@ -2,7 +2,9 @@
 
 use super::legal_actions::EpisodeLegalActionSet;
 use super::observation::{EpisodeObservation, EpisodeStage};
-use super::policy_router::{DecisionInput, DecisionSource, PolicyChoice, PolicyError, PolicyRouter};
+use super::policy_router::{
+    DecisionInput, DecisionSource, PolicyChoice, PolicyError, PolicyRouter,
+};
 use crate::identity::ModelExecutionId;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -21,15 +21,13 @@ fn provider_request_is_bounded_and_identity_carrying() {
     let execution_id = ModelExecutionId::new(7).expect("execution ID is nonzero");
     let prompt = Prompt::new("choose one current action").expect("prompt is valid");
     let key = IdempotencyKey::new("model-request-7").expect("idempotency key is valid");
-    let request = ModelRequest::new(
-        execution_id,
-        correlation(execution_id),
-        prompt,
-        key,
-    );
+    let request = ModelRequest::new(execution_id, correlation(execution_id), prompt, key);
 
     assert_eq!(request.execution_id(), execution_id);
-    assert_eq!(request.correlation().model_execution_id(), Some(execution_id));
+    assert_eq!(
+        request.correlation().model_execution_id(),
+        Some(execution_id)
+    );
     assert_eq!(request.idempotency_key().as_str(), "model-request-7");
     assert!(Prompt::new(String::new()).is_err());
     assert!(Prompt::new("x".repeat(64 * 1024 + 1)).is_err());
@@ -38,7 +36,12 @@ fn provider_request_is_bounded_and_identity_carrying() {
 #[test]
 fn retry_policy_and_response_correlation_are_explicit() {
     assert!(RetryPolicy::new(0).is_err());
-    assert_eq!(RetryPolicy::new(2).expect("retry policy is valid").max_attempts(), 2);
+    assert_eq!(
+        RetryPolicy::new(2)
+            .expect("retry policy is valid")
+            .max_attempts(),
+        2
+    );
 
     let execution_id = ModelExecutionId::new(8).expect("execution ID is nonzero");
     let output = ModelOutput::new("structured response").expect("output is bounded");

@@ -84,12 +84,20 @@ fn transport_failures_are_typed_and_do_not_select_an_action() {
     let cases = [
         (ExoTransportError::Unavailable, "exo_unavailable"),
         (ExoTransportError::Timeout, "exo_timeout"),
-        (ExoTransportError::OversizedResponse, "exo_oversized_response"),
-        (ExoTransportError::MalformedResponse, "exo_malformed_response"),
+        (
+            ExoTransportError::OversizedResponse,
+            "exo_oversized_response",
+        ),
+        (
+            ExoTransportError::MalformedResponse,
+            "exo_malformed_response",
+        ),
     ];
     for (failure, code) in cases {
         let mut provider = provider(Err(failure));
-        let error = provider.execute(&request()).expect_err("transport failure must be returned");
+        let error = provider
+            .execute(&request())
+            .expect_err("transport failure must be returned");
         assert_eq!(error.code(), code);
     }
 }
@@ -98,21 +106,29 @@ fn transport_failures_are_typed_and_do_not_select_an_action() {
 fn malformed_and_oversized_decisions_fail_closed() {
     let mut malformed = provider(Ok(br#"{"decision":"action"}"#.to_vec()));
     assert_eq!(
-        malformed.execute(&request()).expect_err("missing fields must be rejected").code(),
+        malformed
+            .execute(&request())
+            .expect_err("missing fields must be rejected")
+            .code(),
         "exo_malformed_response"
     );
 
     let oversized = vec![b'{'; 1_025];
     let mut provider = provider(Ok(oversized));
     assert_eq!(
-        provider.execute(&request()).expect_err("oversized response must be rejected").code(),
+        provider
+            .execute(&request())
+            .expect_err("oversized response must be rejected")
+            .code(),
         "exo_oversized_response"
     );
 }
 
 #[test]
 fn close_is_explicit_and_repeatable() {
-    let mut provider = provider(Ok(br#"{"decision":"reobserve","rationale":"refresh"}"#.to_vec()));
+    let mut provider = provider(Ok(
+        br#"{"decision":"reobserve","rationale":"refresh"}"#.to_vec()
+    ));
     provider.close().expect("transport close is successful");
     provider.close().expect("repeated close is a no-op");
 }

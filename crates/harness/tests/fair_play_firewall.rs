@@ -16,7 +16,13 @@ fn observation() -> serde_json::Value {
 
 #[test]
 fn privileged_fields_are_rejected_before_provider_use() {
-    for key in ["raw_memory", "future_rng", "host_object", "private_prompt", "screen_coordinate"] {
+    for key in [
+        "raw_memory",
+        "future_rng",
+        "host_object",
+        "private_prompt",
+        "screen_coordinate",
+    ] {
         let mut value = observation();
         value[key] = json!("forbidden");
         assert_eq!(
@@ -31,7 +37,10 @@ fn privileged_fields_are_rejected_before_provider_use() {
 fn unknown_fields_and_non_integer_numbers_are_rejected() {
     let mut unknown = observation();
     unknown["debug_text"] = json!("not part of fair play");
-    assert_eq!(SanitizedObservation::new(unknown), Err(SandboxError::UnknownField));
+    assert_eq!(
+        SanitizedObservation::new(unknown),
+        Err(SandboxError::UnknownField)
+    );
 
     let mut non_integer = observation();
     non_integer["generation"] = json!(0.5);
@@ -62,7 +71,10 @@ fn collection_and_observation_bounds_are_enforced() {
 
     let mut numeric = observation();
     numeric["player"]["hp"] = json!(65_536);
-    assert_eq!(SanitizedObservation::new(numeric), Err(SandboxError::InvalidNumber));
+    assert_eq!(
+        SanitizedObservation::new(numeric),
+        Err(SandboxError::InvalidNumber)
+    );
 
     let mut duplicate = observation();
     duplicate["legal_actions"] = json!([

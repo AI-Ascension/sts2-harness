@@ -26,12 +26,12 @@ impl ActionIdentity {
         };
         if identity.generation > 9_007_199_254_740_991
             || [
-            &identity.operation_id,
-            &identity.state_id,
-            &identity.action_id,
-        ]
-        .iter()
-        .any(|value| !valid_identity(value))
+                &identity.operation_id,
+                &identity.state_id,
+                &identity.action_id,
+            ]
+            .iter()
+            .any(|value| !valid_identity(value))
         {
             return Err(IdempotencyError::InvalidIdentity);
         }
@@ -77,8 +77,7 @@ impl ActionLedger {
         if self.entries.len() >= self.capacity {
             return Err(IdempotencyError::Full);
         }
-        self.entries
-            .insert(identity.operation_id.clone(), identity);
+        self.entries.insert(identity.operation_id.clone(), identity);
         Ok(Admission::New)
     }
 

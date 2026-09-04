@@ -46,7 +46,9 @@ pub fn verify_settlement(
             Err(PostconditionError::ActionRejected)
         }
         DispatchStatus::Settled => {
-            let after = receipt.after().ok_or(PostconditionError::MissingObservation)?;
+            let after = receipt
+                .after()
+                .ok_or(PostconditionError::MissingObservation)?;
             let effect_kind = receipt
                 .effect_kind()
                 .ok_or(PostconditionError::MissingWitness)?;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use crate::error::PortError;
 use crate::decision_records::{DecisionRecord, DecisionRecordKind};
+use crate::error::PortError;
 use crate::identity::TrajectoryId;
 use crate::records::{Record, RecordKind};
 
@@ -182,14 +182,21 @@ pub struct DecisionReplayRequest {
 impl DecisionReplayRequest {
     #[must_use]
     pub fn new(trajectory_id: TrajectoryId, records: Vec<DecisionRecord>) -> Self {
-        Self { trajectory_id, records }
+        Self {
+            trajectory_id,
+            records,
+        }
     }
 
     #[must_use]
-    pub const fn trajectory_id(&self) -> TrajectoryId { self.trajectory_id }
+    pub const fn trajectory_id(&self) -> TrajectoryId {
+        self.trajectory_id
+    }
 
     #[must_use]
-    pub fn records(&self) -> &[DecisionRecord] { &self.records }
+    pub fn records(&self) -> &[DecisionRecord] {
+        &self.records
+    }
 }
 
 /// Typed replay divergence. The first mismatch stops replay and remains visible to evaluation.
@@ -203,16 +210,24 @@ pub struct DecisionReplayDivergence {
 
 impl DecisionReplayDivergence {
     #[must_use]
-    pub const fn index(&self) -> usize { self.index }
+    pub const fn index(&self) -> usize {
+        self.index
+    }
 
     #[must_use]
-    pub const fn expected_sequence(&self) -> u64 { self.expected_sequence }
+    pub const fn expected_sequence(&self) -> u64 {
+        self.expected_sequence
+    }
 
     #[must_use]
-    pub const fn actual_sequence(&self) -> u64 { self.actual_sequence }
+    pub const fn actual_sequence(&self) -> u64 {
+        self.actual_sequence
+    }
 
     #[must_use]
-    pub fn reason(&self) -> &str { &self.reason }
+    pub fn reason(&self) -> &str {
+        &self.reason
+    }
 }
 
 /// Replay counts preserve the difference between accepted, settled, recovery, and unavailable facts.
@@ -232,17 +247,50 @@ pub struct DecisionReplayReport {
 }
 
 impl DecisionReplayReport {
-    #[must_use] pub const fn trajectory_id(&self) -> TrajectoryId { self.trajectory_id }
-    #[must_use] pub const fn records_replayed(&self) -> usize { self.records_replayed }
-    #[must_use] pub const fn observations(&self) -> usize { self.observations }
-    #[must_use] pub const fn requests(&self) -> usize { self.requests }
-    #[must_use] pub const fn acceptances(&self) -> usize { self.acceptances }
-    #[must_use] pub const fn settlements(&self) -> usize { self.settlements }
-    #[must_use] pub const fn recoveries(&self) -> usize { self.recoveries }
-    #[must_use] pub const fn estimates(&self) -> usize { self.estimates }
-    #[must_use] pub const fn unavailable(&self) -> usize { self.unavailable }
-    #[must_use] pub const fn fingerprint(&self) -> u64 { self.fingerprint }
-    #[must_use] pub fn divergence(&self) -> Option<&DecisionReplayDivergence> { self.divergence.as_ref() }
+    #[must_use]
+    pub const fn trajectory_id(&self) -> TrajectoryId {
+        self.trajectory_id
+    }
+    #[must_use]
+    pub const fn records_replayed(&self) -> usize {
+        self.records_replayed
+    }
+    #[must_use]
+    pub const fn observations(&self) -> usize {
+        self.observations
+    }
+    #[must_use]
+    pub const fn requests(&self) -> usize {
+        self.requests
+    }
+    #[must_use]
+    pub const fn acceptances(&self) -> usize {
+        self.acceptances
+    }
+    #[must_use]
+    pub const fn settlements(&self) -> usize {
+        self.settlements
+    }
+    #[must_use]
+    pub const fn recoveries(&self) -> usize {
+        self.recoveries
+    }
+    #[must_use]
+    pub const fn estimates(&self) -> usize {
+        self.estimates
+    }
+    #[must_use]
+    pub const fn unavailable(&self) -> usize {
+        self.unavailable
+    }
+    #[must_use]
+    pub const fn fingerprint(&self) -> u64 {
+        self.fingerprint
+    }
+    #[must_use]
+    pub fn divergence(&self) -> Option<&DecisionReplayDivergence> {
+        self.divergence.as_ref()
+    }
 }
 
 /// Deterministic replay implementation for decision records.
@@ -284,7 +332,10 @@ impl DecisionReplay {
             }
             report.fingerprint = mix(report.fingerprint, record.record_id().get().to_le_bytes());
             report.fingerprint = mix(report.fingerprint, record.kind().as_str().bytes());
-            report.fingerprint = mix(report.fingerprint, record.payload().as_bytes().iter().copied());
+            report.fingerprint = mix(
+                report.fingerprint,
+                record.payload().as_bytes().iter().copied(),
+            );
             match record.kind() {
                 DecisionRecordKind::Observation => report.observations += 1,
                 DecisionRecordKind::Request => report.requests += 1,
