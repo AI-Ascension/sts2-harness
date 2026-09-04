@@ -168,9 +168,10 @@ exercises a child that fills stdout before reading stdin, proving concurrent pro
 in both directions. These are local subprocess checks, not provider evidence.
 
 The Linux-only `exo_cleanup` test runs in a separate executable, starts finite descendants that
-retain both pipes after their direct parent exits, and compares harness thread counts immediately
-after four timeouts. It fails with eight extra workers against the original blocking implementation.
-The async-pipe implementation must return with no extra harness workers, before descendant exit.
+retain both pipes after their direct parent exits, and compares harness thread counts after four
+timeouts, allowing at most 100 ms for Linux to retire joined task directories. It fails with eight
+extra workers against the original blocking implementation. The async-pipe implementation must
+have no extra harness workers within that bound, well before the two-second descendant exit.
 Another test calls the synchronous transport from an existing async runtime. Neither test claims
 that arbitrary bridge descendants are killed or that this process adapter provides OS isolation.
 

@@ -12,6 +12,20 @@ fn thread_count() -> usize {
         .count()
 }
 
+fn await_kernel_thread_retirement(expected: usize) -> usize {
+    // pthread_join establishes completion of the supervisor, but Linux may expose its
+    // retiring task directory briefly. Give task retirement its own strict deadline;
+    // a pipe worker blocked on the two-second descendant cannot pass this bound.
+    let deadline = Instant::now() + Duration::from_millis(100);
+    loop {
+        let count = thread_count();
+        if count == expected || Instant::now() >= deadline {
+            return count;
+        }
+        std::thread::yield_now();
+    }
+}
+
 // A separate integration-test executable isolates thread accounting from other process tests.
 #[test]
 fn inherited_pipes_cannot_leave_harness_workers_after_timeout() {
@@ -35,7 +49,7 @@ fn inherited_pipes_cannot_leave_harness_workers_after_timeout() {
         outcomes.push(transport.exchange(&vec![b'x'; 1024 * 1024], 512, 30));
     }
     let elapsed = started.elapsed();
-    let after = thread_count();
+    let after = await_kernel_thread_retirement(before);
     // Let the deliberately independent finite fixture descendants exit before assertions.
     // This is fixture cleanup, not a retry loop or the timeout oracle.
     std::thread::sleep(Duration::from_millis(2200));
