@@ -151,6 +151,13 @@ fn root<'a>(
             "Runtime-v3 MCP identity or kind does not match",
         ));
     }
+    number(object, "generation")?;
+    if !object
+        .get("state_id")
+        .is_some_and(|value| value.is_null() || value.as_str().is_some_and(safe_identity))
+    {
+        return Err(String::from("Runtime-v3 state identity is invalid"));
+    }
     Ok(object)
 }
 

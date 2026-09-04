@@ -6,6 +6,54 @@ use sts2_harness::{ActionKind, DispatchStatus, EpisodeLegalAction};
 use super::super::config::RuntimeConfig;
 use super::{action_set, observation, receipt, result_observation, wait_sample};
 
+#[test]
+fn unknown_results_still_validate_generation_and_nullable_state_identity() -> Result<(), String> {
+    let action = EpisodeLegalAction::new("combat.end-turn", ActionKind::EndTurn)
+        .map_err(|error| error.to_string())?;
+    for (field, invalid) in [
+        ("generation", json!("bad")),
+        ("generation", json!(9_007_199_254_740_992_u64)),
+        ("state_id", json!({})),
+        ("state_id", json!([])),
+        ("state_id", json!("")),
+    ] {
+        let mut value = response(
+            "dispatch_action_response",
+            0,
+            json!("op-1"),
+            json!("unknown"),
+        );
+        value["observation"] = Value::Null;
+        value["legal_actions"] = Value::Null;
+        value["error_code"] = json!("host_pending");
+        value["state_id"] = Value::Null;
+        receipt(
+            &value,
+            "dispatch_action_response",
+            &config(),
+            "op-1",
+            0,
+            action.clone(),
+        )?;
+        value[field] = invalid;
+        assert!(
+            receipt(
+                &value,
+                "dispatch_action_response",
+                &config(),
+                "op-1",
+                0,
+                action.clone()
+            )
+            .is_err()
+        );
+        value["kind"] = json!("wait_response");
+        value["wait_outcome"] = json!("timeout");
+        assert!(wait_sample(&value, &config(), "op-1", 0).is_err());
+    }
+    Ok(())
+}
+
 fn config() -> RuntimeConfig {
     RuntimeConfig {
         gateway_address: String::from("127.0.0.1:15525"),
