@@ -54,7 +54,9 @@ impl EpisodeMachine {
             return Err(EpisodeMachineError::StaleObservation);
         }
         self.last_generation = Some(observation.generation());
-        if observation.stage() == EpisodeStage::Unknown {
+        if observation.stage() == EpisodeStage::Unknown
+            || observation.stage() == EpisodeStage::Recovery
+        {
             self.phase = EpisodePhase::Recovering { operation_id: None };
             return Err(EpisodeMachineError::UnknownState);
         }

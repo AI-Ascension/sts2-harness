@@ -5,9 +5,9 @@
 use serde_json::{Value, json};
 use sts2_harness::{
     ActionKind, Decision, DecisionInput, DecisionSource, EpisodeLegalAction, EpisodeLegalActionSet,
-    EpisodeMachine, EpisodeObservation, EpisodePhase, EpisodeStage, ModelExecutionId,
-    NoncombatCoordinator, NoncombatStage, PolicyChoice, PolicyError, PolicyRouter,
-    RunSetupCoordinator,
+    EpisodeMachine, EpisodeMachineError, EpisodeObservation, EpisodePhase, EpisodeStage,
+    ModelExecutionId, NoncombatCoordinator, NoncombatStage, PolicyChoice, PolicyError,
+    PolicyRouter, RunSetupCoordinator,
 };
 
 #[derive(Default)]
@@ -207,6 +207,22 @@ fn full_run_routes_every_playable_surface_to_the_provider_and_tracks_terminals()
         defeat.phase(),
         &EpisodePhase::Complete(EpisodeStage::Defeat)
     );
+
+    let mut recovery = EpisodeMachine::new();
+    let result = recovery.observe(
+        EpisodeObservation::new(
+            "recovery-0",
+            0,
+            EpisodeStage::Recovery,
+            false,
+            true,
+            false,
+            fair_play(EpisodeStage::Recovery, 0),
+        )
+        .expect("recovery is a valid blocked observation"),
+    );
+    assert_eq!(result, Err(EpisodeMachineError::UnknownState));
+    assert!(matches!(recovery.phase(), EpisodePhase::Recovering { .. }));
 }
 
 trait StageName {
