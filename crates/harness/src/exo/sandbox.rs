@@ -141,19 +141,6 @@ fn validate_object(
     kind: ValueKind,
     root: bool,
 ) -> Result<(), SandboxError> {
-    if root {
-        require_exact(
-            object,
-            &[
-                "state_id",
-                "generation",
-                "visible_seed",
-                "player",
-                "state",
-                "legal_actions",
-            ],
-        )?;
-    }
     for (key, value) in object {
         if is_privileged_key(key) {
             return Err(SandboxError::PrivilegedField);
@@ -169,6 +156,19 @@ fn validate_object(
         }
         let child = child_kind(kind, key);
         validate_value(value, child, false)?;
+    }
+    if root {
+        require_exact(
+            object,
+            &[
+                "state_id",
+                "generation",
+                "visible_seed",
+                "player",
+                "state",
+                "legal_actions",
+            ],
+        )?;
     }
     validate_shape(object, kind, root)?;
     validate_semantics(object, kind)?;
