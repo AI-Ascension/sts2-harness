@@ -161,6 +161,12 @@ uncertain-dispatch reconciliation, and the bounded direct Exo process seam. The 
 local shell only as a test fixture; production configuration invokes the operator-selected bridge
 directly and never invokes a shell.
 
+`deadline_includes_a_request_larger_than_an_unread_stdin_pipe` exercises a child
+that never consumes a request larger than pipe capacity. The exchange must return
+`Timeout` before that child would exit naturally. `drains_stdout_while_writing_a_large_request`
+exercises a child that fills stdout before reading stdin, proving concurrent progress
+in both directions. These are local subprocess checks, not provider evidence.
+
 Co-op tests cover two-peer identity, generation disagreement, disconnect, ally targeting, and
 mutation suspension. They do not establish multiplayer host compatibility. The patch-diff utility
 is source-only and compares bounded manifests; it cannot promote a build or replace package hashes.

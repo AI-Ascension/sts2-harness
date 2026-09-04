@@ -103,3 +103,39 @@ fn process_transport_close_is_fail_closed() {
         Err(ExoTransportError::MalformedResponse)
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn deadline_includes_a_request_larger_than_an_unread_stdin_pipe() {
+    let config = ExoProcessConfig::new("/bin/sleep", vec![String::from("2")], None, Vec::new())
+        .expect("sleep fixture configuration");
+    let mut transport = ExoProcessTransport::new(config);
+    let started = std::time::Instant::now();
+    assert_eq!(
+        transport.exchange(&vec![b'x'; 1024 * 1024], 512, 20),
+        Err(ExoTransportError::Timeout)
+    );
+    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+}
+
+#[cfg(unix)]
+#[test]
+fn drains_stdout_while_writing_a_large_request() {
+    let config = ExoProcessConfig::new(
+        "/bin/sh",
+        vec![
+            String::from("-c"),
+            String::from("head -c 1048576 /dev/zero; cat >/dev/null"),
+        ],
+        None,
+        Vec::new(),
+    )
+    .expect("duplex fixture configuration");
+    let mut transport = ExoProcessTransport::new(config);
+    assert_eq!(
+        transport
+            .exchange(&vec![b'x'; 1024 * 1024], 1024 * 1024, 2_000)
+            .expect("both pipes make progress"),
+        vec![0; 1024 * 1024]
+    );
+}

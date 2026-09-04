@@ -125,6 +125,7 @@ impl ExoTransport for ExoProcessTransport {
         if self.closed || request.is_empty() || max_response_bytes == 0 || timeout_millis == 0 {
             return Err(ExoTransportError::MalformedResponse);
         }
+        let deadline = Instant::now() + Duration::from_millis(u64::from(timeout_millis));
         let mut command = Command::new(&self.config.executable);
         command
             .args(&self.config.arguments)
@@ -147,15 +148,19 @@ impl ExoTransport for ExoProcessTransport {
             terminate(&mut child);
             ExoTransportError::Unavailable
         })?;
-        if input.write_all(request).is_err() {
-            terminate(&mut child);
-            return Err(ExoTransportError::Unavailable);
-        }
-        drop(input);
         let output = child.stdout.take().ok_or_else(|| {
             terminate(&mut child);
             ExoTransportError::Unavailable
         })?;
+        let request = request.to_vec();
+        let (write_sender, write_receiver) = mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            let result = input
+                .write_all(&request)
+                .map_err(|_| ExoTransportError::Unavailable);
+            drop(input);
+            let _ = write_sender.send(result);
+        });
         let (sender, receiver) = mpsc::sync_channel(1);
         std::thread::spawn(move || {
             let result = read_bounded(output, max_response_bytes);
@@ -164,11 +169,28 @@ impl ExoTransport for ExoProcessTransport {
             }
         });
 
-        let timeout = Duration::from_millis(u64::from(timeout_millis));
-        let deadline = Instant::now() + timeout;
+        let mut written = false;
         let mut response = None;
         let mut status = None;
         loop {
+            if Instant::now() >= deadline {
+                terminate(&mut child);
+                return Err(ExoTransportError::Timeout);
+            }
+            if !written {
+                match write_receiver.try_recv() {
+                    Ok(Ok(())) => written = true,
+                    Ok(Err(error)) => {
+                        terminate(&mut child);
+                        return Err(error);
+                    }
+                    Err(TryRecvError::Disconnected) => {
+                        terminate(&mut child);
+                        return Err(ExoTransportError::Unavailable);
+                    }
+                    Err(TryRecvError::Empty) => {}
+                }
+            }
             if response.is_none() {
                 match receiver.try_recv() {
                     Ok(Ok(bytes)) => response = Some(Ok(bytes)),
@@ -196,15 +218,13 @@ impl ExoTransport for ExoProcessTransport {
                 if !status.success() {
                     return Err(ExoTransportError::Unavailable);
                 }
-                return match response {
-                    Ok(bytes) if bytes.is_empty() => Err(ExoTransportError::MalformedResponse),
-                    Ok(bytes) => Ok(bytes.clone()),
-                    Err(error) => Err(*error),
-                };
-            }
-            if Instant::now() >= deadline {
-                terminate(&mut child);
-                return Err(ExoTransportError::Timeout);
+                if written {
+                    return match response {
+                        Ok(bytes) if bytes.is_empty() => Err(ExoTransportError::MalformedResponse),
+                        Ok(bytes) => Ok(bytes.clone()),
+                        Err(error) => Err(*error),
+                    };
+                }
             }
             std::thread::sleep(Duration::from_millis(5));
         }
