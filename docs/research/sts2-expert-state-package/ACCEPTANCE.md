@@ -21,6 +21,21 @@ observed or that an autonomous harness is production-ready.
 | Fair-play production path | specified | no generic privileged field; denied values do not enter policy schemas |
 | Exact target-build hashes | unresolved | licensed local installation and legal hash record required |
 
+The committed Rust package tests now enforce inventory joins, every per-state renderer output,
+inventory and renderer digests, and all 655 synthetic envelope records. Negative mutations verify
+that dangling/cross-state references, generation drift, forged targets, admitted privileged fields,
+and upgraded evidence labels fail. JSON Schema validation is a separate lane; these envelope
+fixtures are not instances of the five namespaced schemas and do not exercise runtime safety.
+Separate full schema instances and 25 negative mutations now run under Draft 2020-12 validation
+in the ordinary Rust workspace tests. Schema and fixture bytes are also digest-bound in the build
+manifest. See [`fixtures/schema/README.md`](fixtures/schema/README.md) for the exact 30-case scope.
+
+The 655 records are five repeated safety templates indexed by state name. Their generation/input
+flags describe the synthetic scenario, not observed or state-specific gameplay. All actions are
+read-only controls (`reobserve`, `safe_halt`, or `reconcile_action`); there are no play-card,
+end-turn, purchase, co-op settlement, or state-specific mutation examples. Inventory and fixture
+counts must not be reported as behavioral coverage of 131 game states.
+
 ## Intentionally open gates
 
 The following remain `unverified` or `not performed`: inventory-materializer source reproduction;

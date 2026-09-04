@@ -3,12 +3,25 @@
 ## Generator
 
 The committed renderer is `tools/sts2-expert-state-package`. It is a Rust workspace tool using
-only the repository's locked `serde_json` dependency. Its source paths and digest are recorded in
+the repository's locked `serde_json` and `sha2` dependencies. Its source paths and digest are recorded in
 `data/build-manifest.json`; the digest is calculated from the ordered `sha256sum` records for the
-committed `Cargo.toml` and `src/main.rs`. The input of record is
+committed `Cargo.toml`, `src/main.rs`, `src/integrity.rs`, `src/digests.rs`, and `src/fixtures.rs`.
+The input of record is
 `docs/research/sts2-expert-state-package/data/states.json`; the output root is passed as its first
 argument. The generator reads the 131 state records and writes one report and one Mermaid source
 per state, plus two global Mermaid sources.
+
+Before writing, it checks inventory identities and joins, graph/action references, denied-field
+classification, declared inventory/renderer/schema/fixture digests, and every synthetic fixture's structural
+contract. Workspace tests also compare every committed report/diagram byte with the renderer and
+reject deliberately corrupted references, generation bindings, target domains, and evidence labels.
+These are structural checks, not executions of a projector, dispatcher, or game state machine.
+
+`supporting_artifact_sha256` binds all five schemas, the original fixture manifest/partitions,
+and the separate five-schema example corpus. After an intentional change, update the corresponding
+digest with `sha256sum` and rerun the tests. A digest binds reviewed bytes; it is not independent
+evidence that their game semantics or provenance claims are true. The five-schema example corpus
+is validated by pinned test-only `jsonschema` with remote/file resolution disabled.
 
 ```sh
 cargo run --locked --package sts2-expert-state-package -- docs/research/sts2-expert-state-package

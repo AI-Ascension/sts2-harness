@@ -1,6 +1,6 @@
 # STS2 expert-state research package
 
-This package is a generated, research-grade requirements baseline for the fair-play autonomous
+This package is a generated, proposed requirements baseline for the fair-play autonomous
 *Slay the Spire 2* harness described in the dated parent report. It is owned by `sts2-harness` as
 experiment, planning, replay, evaluation, and artifact-lineage material. It does not add a game
 adapter, host authority, MCP/gateway implementation, simulator runtime, or production support claim.
@@ -34,7 +34,16 @@ outcomes, unrevealed map content, private teammate information, and other non-pl
 values remain denied or offline-only.
 
 The 131-state package is intentionally distinct from the earlier 144-state architecture inventory
-in the parent report. They must be reconciled only by a pinned target-build discovery campaign.
+in the parent report: the report uses uppercase dotted IDs, while this package uses lower-snake
+candidate IDs from a separate supplied specification. Neither is a measured census. There is no
+accepted one-to-one mapping or evidence that the difference is exactly 13 missing game states.
+The 144/131 inventories must remain separate until an explicit ID/meaning mapping is reviewed;
+target-build discovery is then needed to validate that mapping against actual host behavior.
+
+The 33 observation templates are expanded over states (32 occur 131 times and one 123 times),
+not 4,315 independently discovered fields. The 655 fixture envelopes similarly repeat five safety
+scenarios and do not execute the 421 candidate actions or validate 1,059 host transitions. See
+[`ACCEPTANCE.md`](ACCEPTANCE.md) for the exact structural and behavioral evidence boundary.
 
 ## Reproducibility
 

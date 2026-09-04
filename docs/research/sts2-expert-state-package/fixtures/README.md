@@ -99,6 +99,19 @@ or safe-halt. They must not acquire a generic play, buy, confirm, or map-selecti
 
 ## Validation
 
+The committed Rust checker and negative regression tests run in the normal workspace CI:
+
+```sh
+cargo test --locked --package sts2-expert-state-package
+```
+
+The validator below is an optional equivalent diagnostic for the envelope contract, not a
+runtime execution test. Assertion strings are requirements declarations; their presence does
+not prove the named firewall or recovery behavior was exercised. These are five repeated
+nonmutating templates, not 131 independent state-specific behavior tests. Their flags describe
+synthetic scenarios and can intentionally differ from the proposed state's normal actionability.
+Schema-instance examples are separate from this envelope corpus.
+
 From the repository root, validate the corpus with:
 
 ~~~sh

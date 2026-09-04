@@ -16,16 +16,20 @@ repository protocol.
 | `patch-manifest.schema.json` | Build/profile drift, validation gates, and quarantine record. |
 
 All five schemas use JSON Schema Draft 2020-12 and have independent schema versions and `$id`
-values. A record binds the schema version and digest used to validate it; schema, harness, game,
-mod, protocol/profile, evaluator, and provider versions remain separate. Required-field, enum,
+values. All record roots bind their schema version; only `PatchManifest` carries `schema_digest`.
+An enclosing artifact manifest must bind the other records to their exact schema digest before
+reproducible evaluation. Schema, harness, game, mod, protocol/profile, evaluator, and provider
+versions remain separate. Required-field, enum,
 namespace, or closed-object changes are breaking unless an explicitly reviewed compatibility
 profile says otherwise.
 
 ## Boundaries and provenance
 
-Every object that carries an identity uses a namespace-qualified `{namespace, value}` pair. Run,
-episode, trajectory, instance, session, observation, action, operation, transition, trace, decision,
-build, profile, and model-execution identities are distinct. A successful parse is serialization
+Envelope identities use namespace-qualified `{namespace, value}` pairs. Local entity references
+and observation/action/decision/transition build/profile references remain bounded strings;
+`PatchManifest` uses namespaced build/profile identities. These encodings require explicit mapping,
+not interchangeability. Run, episode, trajectory, instance, session, observation, action, operation,
+transition, trace, decision, and model-execution identities remain distinct. A successful parse is serialization
 evidence only; it does not prove game behavior, target-build parity, or a settled effect.
 
 State identities use the package's lower-snake candidate IDs. The observation schema enumerates all
@@ -100,3 +104,17 @@ PY
 
 These checks validate schema syntax and declared closure only. Target-build discovery, fair-play
 exposure parity, simulator parity, and runtime settlement remain separate validation gates.
+
+## Representative schema instances
+
+[`../fixtures/schema/README.md`](../fixtures/schema/README.md) defines valid instances and negative
+mutations for all five schemas. These are separate from the 655 simplified requirements envelopes,
+which do not validate against these schemas. The representative observation exercises typed potions,
+relics, effects, shop items, and both standalone and array intent values. None are host captures.
+
+The inventory's aggregate field IDs (for example, `run.resources`) are not schema field IDs
+(`run.hp_current`, `run.gold`, and others). Its lowercase candidate action names likewise need an
+explicit mapping to schema action enums. No inventory-to-schema projection is implemented or
+validated by this package. Schema closure constrains allowed shapes; it does not enforce field-ID
+specific value types, cross-record generation equality, target membership, action settlement
+truth, or privileged-information provenance. Those require an independently tested interpreter.

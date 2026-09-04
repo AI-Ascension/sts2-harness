@@ -261,7 +261,8 @@
       "anyOf": [
         { "type": "null" }, { "type": "boolean" }, { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
         { "type": "number", "minimum": -1e15, "maximum": 1e15 }, { "type": "string", "maxLength": 4096 },
-        { "type": "array", "maxItems": 4096, "items": { "oneOf": [ { "type": "string", "maxLength": 4096 }, { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 }, { "$ref": "#/$defs/card_instance" }, { "$ref": "#/$defs/enemy" }, { "$ref": "#/$defs/choice" }, { "$ref": "#/$defs/map_node" }, { "$ref": "#/$defs/action_ref" }, { "$ref": "#/$defs/target_domain" }, { "$ref": "#/$defs/pile_movement" } ] } }
+        { "$ref": "#/$defs/intent" },
+        { "type": "array", "maxItems": 4096, "items": { "oneOf": [ { "type": "string", "maxLength": 4096 }, { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 }, { "$ref": "#/$defs/card_instance" }, { "$ref": "#/$defs/enemy" }, { "$ref": "#/$defs/choice" }, { "$ref": "#/$defs/map_node" }, { "$ref": "#/$defs/action_ref" }, { "$ref": "#/$defs/target_domain" }, { "$ref": "#/$defs/pile_movement" }, { "$ref": "#/$defs/potion" }, { "$ref": "#/$defs/relic" }, { "$ref": "#/$defs/effect" }, { "$ref": "#/$defs/shop_item" }, { "$ref": "#/$defs/intent" } ] } }
       ]
     },
     "calculation": {

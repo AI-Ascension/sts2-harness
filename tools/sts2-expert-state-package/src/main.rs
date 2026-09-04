@@ -9,6 +9,14 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
+mod digests;
+mod fixtures;
+mod integrity;
+#[cfg(test)]
+mod schema_tests;
+#[cfg(test)]
+mod tests;
+
 const EXPECTED_STATES: usize = 131;
 const EXPECTED_OBSERVATIONS: usize = 4_315;
 const EXPECTED_ACTIONS: usize = 421;
@@ -25,6 +33,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     validate_record_count(&root, "observations.json", EXPECTED_OBSERVATIONS)?;
     validate_record_count(&root, "actions.json", EXPECTED_ACTIONS)?;
     validate_record_count(&root, "transitions.json", EXPECTED_TRANSITIONS)?;
+    integrity::validate(&root, &records)?;
 
     let report_dir = root.join("report");
     let diagram_dir = root.join("diagrams").join("states");
@@ -99,6 +108,9 @@ fn validate_state_ids(records: &[Value]) -> Result<(), Box<dyn Error>> {
     let mut ids = HashSet::with_capacity(records.len());
     for record in records {
         let state_id = required_string(record, "state_id")?;
+        if safe_slug(state_id) != state_id {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "unsafe state ID").into());
+        }
         if !ids.insert(state_id) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,

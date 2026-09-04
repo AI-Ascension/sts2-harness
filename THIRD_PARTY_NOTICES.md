@@ -9,6 +9,14 @@ Their upstream licenses and transitive notices are resolved from the pinned Carg
 and must be rechecked by release tooling before distribution. Dependencies are not vendored into
 this repository.
 
+The research-package tool uses `jsonschema` exactly `0.52.1` as a test-only dependency (MIT;
+upstream `https://github.com/Stranger6667/jsonschema`). Default features are disabled, including
+HTTP and file reference retrieval. It validates synthetic research-schema instances, not game
+behavior. Its transitive dependency versions are pinned in `Cargo.lock`; their own declared
+licenses apply independently and must be included in any distribution review.
+The inspected Linux test dependency metadata also includes Apache-2.0, MIT-0, Zlib,
+Unicode-3.0, and dual-license choices; this notice does not relicense those packages as MIT.
+
 Future dependencies, imported fixtures, generated schemas, provider adapters, and model artifacts
 must record their source, exact version or digest, license, redistribution permission, and retention
 status before they become release inputs. Unknown or incompatible provenance is a release blocker.

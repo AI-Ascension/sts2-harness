@@ -1,0 +1,90 @@
+{
+  "schema_version": "sts2-patch-manifest/1",
+  "schema_digest": {
+    "algorithm": "sha256",
+    "value": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "manifest_id": {
+    "namespace": "sts2.patch_manifest",
+    "value": "synthetic-manifest-1"
+  },
+  "build": {
+    "build_id": {
+      "namespace": "sts2.build",
+      "value": "synthetic-build-1"
+    },
+    "semantic_version": null,
+    "channel": "offline",
+    "branch": "synthetic",
+    "platform": null,
+    "architecture": null,
+    "executable_hash": null,
+    "assembly_hashes": [],
+    "data_hashes": []
+  },
+  "profile": {
+    "profile_id": {
+      "namespace": "sts2.profile",
+      "value": "synthetic-profile-1"
+    },
+    "profile_digest": {
+      "algorithm": "sha256",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "locale": null,
+    "resolution": {
+      "width": null,
+      "height": null
+    },
+    "ui_scale": null,
+    "input_method": "semantic",
+    "active_mods": [],
+    "run_modifiers": []
+  },
+  "previous_build": null,
+  "changed_entities": [],
+  "changed_schemas": [],
+  "ui_signatures": [],
+  "affected_tests": [],
+  "validation_gates": [
+    {
+      "gate_id": "exact_hashes",
+      "status": "not_run",
+      "required": true,
+      "evidence_status": "unverified"
+    }
+  ],
+  "quarantine": {
+    "status": "quarantined",
+    "autonomous_mutation_allowed": false,
+    "reasons": [
+      "missing_hash"
+    ],
+    "entered_at": "2026-09-04T00:00:00Z",
+    "promotion_requirements": [
+      "exact_build_hash"
+    ]
+  },
+  "migration": {
+    "status": "planned",
+    "record_compatibility": "unknown",
+    "rollback_available": false
+  },
+  "lane_isolation": {
+    "live_and_beta_separate": true,
+    "offline_labels_separate": true,
+    "production_policy_excludes_privileged": true
+  },
+  "provenance": {
+    "source_kind": "synthetic",
+    "evidence_status": "proposed",
+    "epistemic_status": "hypothesized",
+    "source_ids": [
+      "schema-regression-20260904"
+    ],
+    "confidence": 0,
+    "independent_verification": false,
+    "policy_visible": true,
+    "created_at": "2026-09-04T00:00:00Z"
+  }
+}
