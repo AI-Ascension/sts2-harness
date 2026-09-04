@@ -22,6 +22,22 @@ licenses apply independently and must be included in any distribution review.
 The inspected Linux test dependency metadata also includes Apache-2.0, MIT-0, Zlib,
 Unicode-3.0, and dual-license choices; this notice does not relicense those packages as MIT.
 
+The Exo process adapter uses Tokio 1.53.1 (MIT, crates.io, upstream
+https://github.com/tokio-rs/tokio), with only `rt`, `process`, `io-util`, `time`, and `macros`
+features requested. Newly locked dependencies are bytes 1.12.1 (MIT), mio 1.2.3 (MIT),
+tokio-macros 2.7.2 (MIT), errno 0.3.14, signal-hook-registry 1.4.8, pin-project-lite 0.2.17,
+windows-link 0.2.1, and windows-sys 0.61.2 (each MIT or Apache-2.0), plus
+wasi 0.11.1+wasi-snapshot-preview1 (MIT or Apache-2.0, also offers LLVM-exception terms).
+Sources and exact integrity checksums are in Cargo.lock; these are dependencies, not imported
+fixtures or retained provider data. Cargo metadata verified these license declarations on
+2026-09-04. A release must still check current advisories and redistribution notices.
+
+Manual advisory review used RustSec database commit
+`5a0ebedfe8bdd2e295b171f4162f8c977bcad9a5`: five Tokio, two mio, and one bytes
+advisories matched newly added package names; the locked versions satisfy their patched ranges.
+No records matched the other newly added package names at that snapshot. This is a bounded
+dependency-change review, not a full-lockfile `cargo audit` result (that tool was unavailable).
+
 Future dependencies, imported fixtures, generated schemas, provider adapters, and model artifacts
 must record their source, exact version or digest, license, redistribution permission, and retention
 status before they become release inputs. Unknown or incompatible provenance is a release blocker.

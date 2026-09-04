@@ -139,3 +139,27 @@ fn drains_stdout_while_writing_a_large_request() {
         vec![0; 1024 * 1024]
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn synchronous_transport_can_be_called_inside_an_async_runtime() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .expect("outer runtime");
+    runtime.block_on(async {
+        let config = ExoProcessConfig::new(
+            "/bin/sh",
+            vec![
+                String::from("-c"),
+                String::from("cat >/dev/null; printf '{}'"),
+            ],
+            None,
+            Vec::new(),
+        )
+        .expect("fixture configuration");
+        assert_eq!(
+            ExoProcessTransport::new(config).exchange(b"request", 512, 2000),
+            Ok(b"{}".to_vec())
+        );
+    });
+}

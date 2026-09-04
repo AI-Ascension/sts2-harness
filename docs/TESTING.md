@@ -167,6 +167,13 @@ that never consumes a request larger than pipe capacity. The exchange must retur
 exercises a child that fills stdout before reading stdin, proving concurrent progress
 in both directions. These are local subprocess checks, not provider evidence.
 
+The Linux-only `exo_cleanup` test runs in a separate executable, starts finite descendants that
+retain both pipes after their direct parent exits, and compares harness thread counts immediately
+after four timeouts. It fails with eight extra workers against the original blocking implementation.
+The async-pipe implementation must return with no extra harness workers, before descendant exit.
+Another test calls the synchronous transport from an existing async runtime. Neither test claims
+that arbitrary bridge descendants are killed or that this process adapter provides OS isolation.
+
 Co-op tests cover two-peer identity, generation disagreement, disconnect, ally targeting, and
 mutation suspension. They do not establish multiplayer host compatibility. The patch-diff utility
 is source-only and compares bounded manifests; it cannot promote a build or replace package hashes.

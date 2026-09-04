@@ -36,6 +36,32 @@ bridge process and accepts one bounded JSON response. The process receives only 
 environment-name allowlist, and the harness never invokes a shell. This is an adapter seam, not a
 claim that Exo or a licensed STS2 build is connected.
 
+### Process cancellation correction
+
+The original blocking pipe workers could outlive an exchange when a descendant inherited stdin
+or stdout. Killing the direct child does not close the descendant's pipe handles. A local Linux
+probe reproduced eight stranded workers after four timeouts; the same regression now requires
+the harness thread count to return to baseline before the fixture descendants exit.
+
+Use pinned Tokio 1.53.1 only in the process adapter, with `rt`, `process`, `io-util`, `time`, and
+`macros` features. One scoped, joined supervisor owns a current-thread runtime and concurrently
+polls writes, bounded reads, and child exit. No detached pipe tasks or blocking I/O workers are
+created. A single exchange deadline cancels both pipe futures and closes their owned handles.
+An error terminates the direct child and gives reaping a separate 250-ms grace period; failed
+cleanup reports `Unavailable`. The scoped thread is joined before return. This remains a
+synchronous port and blocks its calling thread even when called from an async runtime.
+
+This dependency replaces uncancellable blocking I/O without adding local unsafe code or OS-specific
+FFI. It does not add a provider SDK, change wire contracts, or move process access into core policy.
+Tokio's [child lifecycle](https://docs.rs/tokio/1.53.1/tokio/process/struct.Child.html) supplies
+cancellable wait and explicit kill/reap operations; kill-on-drop is a fallback, not a proof of reaping.
+OS process creation and scheduling are not hard-real-time guarantees. Kernel-stalled termination
+may exceed successful-cleanup guarantees and must be reported as unavailable, not clean shutdown.
+
+Only the directly spawned bridge is terminated. Descendants remain the operator's containment
+responsibility; the transport is not an OS sandbox. Linux subprocess regressions are checked in
+CI; Windows/macOS process behavior and arbitrary descendant termination remain unverified.
+
 ## Evidence
 
 Deterministic routing, sandbox, record, replay, evaluation, and manifest checks are source-derived or

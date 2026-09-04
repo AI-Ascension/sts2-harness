@@ -159,3 +159,9 @@ operator-owned `ExoProcessTransport` lives at the harness adapter boundary, outs
 `exo/` core policy: it directly invokes a configured bridge with bounded stdin/stdout, timeout, and
 environment allowlisting. The existing core CI guard therefore continues to reject process or
 socket access inside the fair-play/provider policy module.
+
+The process adapter uses a joined supervisor and cancellable asynchronous pipes; no detached
+blocking readers or writers survive an exchange deadline. Direct-child kill/reap has a separate
+250-ms cleanup grace period. Descendant process termination and OS sandboxing are outside this
+adapter's guarantee; operator containment is still required. See ADR 0006 for the dependency and
+failure-handling rationale.

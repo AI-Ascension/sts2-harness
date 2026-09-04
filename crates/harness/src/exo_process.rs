@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::BTreeSet;
-use std::io::{Read, Write};
-use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::{self, TryRecvError};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
+
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::process::{Child, Command};
 
 use crate::exo::{ExoTransport, ExoTransportError};
 
@@ -126,108 +127,27 @@ impl ExoTransport for ExoProcessTransport {
             return Err(ExoTransportError::MalformedResponse);
         }
         let deadline = Instant::now() + Duration::from_millis(u64::from(timeout_millis));
-        let mut command = Command::new(&self.config.executable);
-        command
-            .args(&self.config.arguments)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .env_clear();
-        if let Some(directory) = &self.config.working_directory {
-            command.current_dir(directory);
-        }
-        for name in &self.config.inherited_environment {
-            if let Some(value) = std::env::var_os(name) {
-                command.env(name, value);
-            }
-        }
-        let mut child = command
-            .spawn()
-            .map_err(|_| ExoTransportError::Unavailable)?;
-        let mut input = child.stdin.take().ok_or_else(|| {
-            terminate(&mut child);
-            ExoTransportError::Unavailable
-        })?;
-        let output = child.stdout.take().ok_or_else(|| {
-            terminate(&mut child);
-            ExoTransportError::Unavailable
-        })?;
-        let request = request.to_vec();
-        let (write_sender, write_receiver) = mpsc::sync_channel(1);
-        std::thread::spawn(move || {
-            let result = input
-                .write_all(&request)
-                .map_err(|_| ExoTransportError::Unavailable);
-            drop(input);
-            let _ = write_sender.send(result);
-        });
-        let (sender, receiver) = mpsc::sync_channel(1);
-        std::thread::spawn(move || {
-            let result = read_bounded(output, max_response_bytes);
-            match sender.send(result) {
-                Ok(()) | Err(_) => {}
-            }
-        });
-
-        let mut written = false;
-        let mut response = None;
-        let mut status = None;
-        loop {
-            if Instant::now() >= deadline {
-                terminate(&mut child);
-                return Err(ExoTransportError::Timeout);
-            }
-            if !written {
-                match write_receiver.try_recv() {
-                    Ok(Ok(())) => written = true,
-                    Ok(Err(error)) => {
-                        terminate(&mut child);
-                        return Err(error);
-                    }
-                    Err(TryRecvError::Disconnected) => {
-                        terminate(&mut child);
-                        return Err(ExoTransportError::Unavailable);
-                    }
-                    Err(TryRecvError::Empty) => {}
-                }
-            }
-            if response.is_none() {
-                match receiver.try_recv() {
-                    Ok(Ok(bytes)) => response = Some(Ok(bytes)),
-                    Ok(Err(error)) => {
-                        terminate(&mut child);
-                        return Err(error);
-                    }
-                    Err(TryRecvError::Disconnected) => {
-                        terminate(&mut child);
-                        return Err(ExoTransportError::Unavailable);
-                    }
-                    Err(TryRecvError::Empty) => {}
-                }
-            }
-            if status.is_none() {
-                status = match child.try_wait() {
-                    Ok(status) => status,
-                    Err(_) => {
-                        terminate(&mut child);
-                        return Err(ExoTransportError::Unavailable);
-                    }
-                };
-            }
-            if let (Some(response), Some(status)) = (response.as_ref(), status.as_ref()) {
-                if !status.success() {
-                    return Err(ExoTransportError::Unavailable);
-                }
-                if written {
-                    return match response {
-                        Ok(bytes) if bytes.is_empty() => Err(ExoTransportError::MalformedResponse),
-                        Ok(bytes) => Ok(bytes.clone()),
-                        Err(error) => Err(*error),
-                    };
-                }
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        }
+        // A joined supervisor permits synchronous callers inside or outside an async runtime.
+        // Pipe I/O stays asynchronous: descendants cannot strand a blocking read/write worker.
+        std::thread::scope(|scope| {
+            let worker = std::thread::Builder::new()
+                .name(String::from("exo-exchange"))
+                .spawn_scoped(scope, || {
+                    let runtime = tokio::runtime::Builder::new_current_thread()
+                        .enable_io()
+                        .enable_time()
+                        .build()
+                        .map_err(|_| ExoTransportError::Unavailable)?;
+                    runtime.block_on(exchange_process(
+                        &self.config,
+                        request,
+                        max_response_bytes,
+                        deadline,
+                    ))
+                })
+                .map_err(|_| ExoTransportError::Unavailable)?;
+            worker.join().map_err(|_| ExoTransportError::Unavailable)?
+        })
     }
 
     fn close(&mut self) -> Result<(), ExoTransportError> {
@@ -236,12 +156,89 @@ impl ExoTransport for ExoProcessTransport {
     }
 }
 
-fn read_bounded(mut output: impl Read, maximum: usize) -> Result<Vec<u8>, ExoTransportError> {
+async fn exchange_process(
+    config: &ExoProcessConfig,
+    request: &[u8],
+    maximum: usize,
+    deadline: Instant,
+) -> Result<Vec<u8>, ExoTransportError> {
+    if Instant::now() >= deadline {
+        return Err(ExoTransportError::Timeout);
+    }
+    let mut command = Command::new(&config.executable);
+    command
+        .args(&config.arguments)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .env_clear()
+        .kill_on_drop(true);
+    if let Some(directory) = &config.working_directory {
+        command.current_dir(directory);
+    }
+    for name in &config.inherited_environment {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+    let mut child = command
+        .spawn()
+        .map_err(|_| ExoTransportError::Unavailable)?;
+    let result = tokio::time::timeout_at(
+        tokio::time::Instant::from_std(deadline),
+        exchange_pipes(&mut child, request, maximum),
+    )
+    .await
+    .unwrap_or(Err(ExoTransportError::Timeout));
+    if result.is_err() {
+        // The timeout has dropped both pipe futures and their handles before cleanup begins.
+        terminate(&mut child).await?;
+    }
+    result
+}
+
+async fn exchange_pipes(
+    child: &mut Child,
+    request: &[u8],
+    maximum: usize,
+) -> Result<Vec<u8>, ExoTransportError> {
+    let mut input = child.stdin.take().ok_or(ExoTransportError::Unavailable)?;
+    let output = child.stdout.take().ok_or(ExoTransportError::Unavailable)?;
+    let write = async move {
+        input
+            .write_all(request)
+            .await
+            .map_err(|_| ExoTransportError::Unavailable)
+    };
+    let wait = async {
+        let status = child
+            .wait()
+            .await
+            .map_err(|_| ExoTransportError::Unavailable)?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(ExoTransportError::Unavailable)
+        }
+    };
+    let (_, response, ()) = tokio::try_join!(write, read_bounded(output, maximum), wait)?;
+    if response.is_empty() {
+        Err(ExoTransportError::MalformedResponse)
+    } else {
+        Ok(response)
+    }
+}
+
+async fn read_bounded(
+    mut output: impl AsyncRead + Unpin,
+    maximum: usize,
+) -> Result<Vec<u8>, ExoTransportError> {
     let mut bytes = Vec::new();
     let mut chunk = [0_u8; 4_096];
     loop {
         let count = output
             .read(&mut chunk)
+            .await
             .map_err(|_| ExoTransportError::Unavailable)?;
         if count == 0 {
             return Ok(bytes);
@@ -253,13 +250,16 @@ fn read_bounded(mut output: impl Read, maximum: usize) -> Result<Vec<u8>, ExoTra
     }
 }
 
-fn terminate(child: &mut Child) {
-    match child.kill() {
-        Ok(()) | Err(_) => {}
-    }
-    match child.wait() {
-        Ok(_) | Err(_) => {}
-    }
+async fn terminate(child: &mut Child) -> Result<(), ExoTransportError> {
+    child
+        .start_kill()
+        .map_err(|_| ExoTransportError::Unavailable)?;
+    // Reaping has its own bounded grace period, not an unbounded synchronous wait.
+    tokio::time::timeout(Duration::from_millis(250), child.wait())
+        .await
+        .map_err(|_| ExoTransportError::Unavailable)?
+        .map_err(|_| ExoTransportError::Unavailable)?;
+    Ok(())
 }
 
 fn valid_path(value: &str, maximum: usize) -> bool {
