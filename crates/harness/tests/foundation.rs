@@ -330,9 +330,27 @@ fn records_are_idempotent_and_replayable() -> Result<(), Box<dyn Error>> {
     let duplicate = harness.record(
         &episode,
         RecordKind::Observation,
-        RecordPayload::new(b"different-payload-is-ignored".to_vec())?,
+        RecordPayload::new(b"observation".to_vec())?,
         IdempotencyKey::new("observation-1")?,
     )?;
+    for (kind, bytes) in [
+        (RecordKind::Observation, b"different".as_slice()),
+        (RecordKind::Marker, b"observation".as_slice()),
+    ] {
+        let error = harness
+            .record(
+                &episode,
+                kind,
+                RecordPayload::new(bytes.to_vec())?,
+                IdempotencyKey::new("observation-1")?,
+            )
+            .err()
+            .ok_or("conflicting record was accepted")?;
+        assert!(
+            matches!(error, sts2_harness::HarnessError::Storage(ref error)
+            if error.code() == "record_idempotency_conflict")
+        );
+    }
     let second = harness.record(
         &episode,
         RecordKind::Marker,
@@ -361,7 +379,8 @@ fn artifact_metadata_is_lineage_bound() -> Result<(), Box<dyn Error>> {
     let mut harness = harness(FakeProvider::with_failures(0));
     let (run_id, episode) = run_and_episode(&mut harness)?;
     let schema_version = SchemaVersion::new(1).ok_or("schema version cannot be zero")?;
-    let digest = sts2_harness::Digest::new("a".repeat(64))?;
+    use sha2::{Digest as _, Sha256};
+    let digest = sts2_harness::Digest::new(format!("{:x}", Sha256::digest(b"trajectory-bytes")))?;
     let lineage = ArtifactLineage::new(run_id, Some(episode.trajectory_id()), Vec::new())?;
     let request = ArtifactPublicationRequest::new(
         ArtifactKind::Trajectory,

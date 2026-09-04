@@ -29,7 +29,12 @@ ports:
 The coordinator allocates distinct nonzero identities for runs, episodes, trajectories, instances,
 gateway sessions, requests, model executions, traces, records, and artifacts. An episode keeps its
 route binding and base correlation together. A record retry with the same idempotency key returns the
-original record. A model retry reuses the same request, correlation, execution identity, and
+original record only when its kind and payload match; conflicting content returns the stable
+`record_idempotency_conflict` storage error without appending or advancing sequence. Artifact drafts
+verify the lowercase SHA-256 digest against their exact bytes before publication; a mismatch returns
+`artifact_digest_mismatch`. These are safety corrections to the unreleased preparation API, not a
+new persistent-store or cross-repository wire contract.
+A model retry reuses the same request, correlation, execution identity, and
 idempotency key. Shutdown unbinds every active episode, closes every port, reports each failure, and
 is idempotent.
 
