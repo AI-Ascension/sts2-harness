@@ -13,12 +13,28 @@ pub struct RuntimeV2Message {
     lease_epoch: u64,
     generation: u64,
     kind: RuntimeV2Kind,
+    #[serde(deserialize_with = "required_nullable")]
     operation_id: Option<RuntimeV2OperationId>,
+    #[serde(deserialize_with = "required_nullable")]
     observation: Option<RuntimeV2Observation>,
+    #[serde(deserialize_with = "required_nullable")]
     action: Option<RuntimeV2Action>,
+    #[serde(deserialize_with = "required_nullable")]
     status: Option<RuntimeV2Status>,
+    #[serde(deserialize_with = "required_nullable")]
     error_code: Option<String>,
+    #[serde(deserialize_with = "required_nullable")]
     effect_witness: Option<RuntimeV2EffectWitness>,
+}
+
+// The frozen schema requires these keys even when their values must be null. A custom
+// deserializer disables serde's implicit default for an absent Option field.
+fn required_nullable<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
 }
 
 impl RuntimeV2Message {

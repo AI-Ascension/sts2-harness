@@ -5,7 +5,7 @@ use std::error::Error;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sts2_harness::{
-    RUNTIME_V2_SCHEMA_DIGEST, RuntimeV2EventKind, RuntimeV2Kind, RuntimeV2Status,
+    RUNTIME_V2_SCHEMA_DIGEST, RuntimeV2EventKind, RuntimeV2Kind, RuntimeV2Message, RuntimeV2Status,
     run_runtime_v2_fake_trace, runtime_v2_schema_bytes, verify_runtime_v2_artifact,
 };
 
@@ -16,6 +16,34 @@ fn copied_runtime_v2_artifact_matches_the_protocol_handoff() -> Result<(), Box<d
         format!("{:x}", Sha256::digest(runtime_v2_schema_bytes())),
         RUNTIME_V2_SCHEMA_DIGEST
     );
+    Ok(())
+}
+
+#[test]
+fn all_goldens_decode_but_omitting_any_envelope_field_is_rejected() -> Result<(), Box<dyn Error>> {
+    let goldens = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../protocol-artifact/runtime-v2/golden");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(goldens)? {
+        let path = entry?.path();
+        let bytes = std::fs::read_to_string(&path)?;
+        let message = RuntimeV2Message::from_json(&bytes)?;
+        let value: Value = serde_json::from_str(&bytes)?;
+        assert_eq!(serde_json::from_str::<Value>(&message.to_json()?)?, value);
+        let object = value.as_object().ok_or("golden is not an object")?;
+        assert_eq!(object.len(), 16);
+        for field in object.keys() {
+            let mut missing = object.clone();
+            missing.remove(field);
+            assert!(
+                RuntimeV2Message::from_json(&serde_json::to_string(&missing)?).is_err(),
+                "{} accepted a missing required {field}",
+                path.display(),
+            );
+        }
+        checked += 1;
+    }
+    assert_eq!(checked, 19);
     Ok(())
 }
 

@@ -28,3 +28,23 @@ The coordinator can exercise real MCP/gateway TCP behavior against a disposable 
 That component trace is `confirmed` when its acceptance checks and release cleanup pass. It does not
 establish a managed host callback, Godot main-thread execution, STS2 effect, gameplay mutation,
 provider run, or disposable game-profile claim; those remain `unverified`.
+
+## Runtime adapter safety correction
+
+The existing Runtime-v1 coordinator uses pinned Tokio 1.53.1 only at its subprocess boundary for
+cancellable asynchronous pipes and a current-thread runtime driven by joined scoped supervisors.
+This replaces blocking pipe I/O that could outlive an exchange deadline. The enabled features are
+`rt`, `process`, `io-util`, `time`, and `macros`; no provider or game API is introduced. Request and
+response frames remain bounded to64KiB; a five-second budget covers both concurrent writes and reads.
+Direct-child kill/reap has a separate250ms grace period. Child cleanup errors are explicit, and
+descendant-owned pipes cannot strand harness workers; arbitrary descendant termination and OS
+sandboxing remain outside the adapter's guarantee.
+
+The MCP child receives only explicit STS2 connection configuration and PATH/SystemRoot/TEMP/TMP;
+its protocol profile is explicitly Runtime-v1 and stderr is suppressed. Gateway plaintext traffic
+is numeric-loopback-only, with a whole-exchange deadline and unambiguous HTTP framing. Outer RPC
+identity and strict projected tool shape are checked before emitting a sanitized trace. MCP owns
+full downstream envelope/version/fence validation; that metadata is intentionally absent from its
+Runtime-v1 projection. Only a validated typed action rejection may carry `isError: true` through to
+the stale-generation oracle; arbitrary tool errors still fail closed. Action trace stdout alone
+does not prove successful cleanup; exit success additionally requires MCP close and lease release.

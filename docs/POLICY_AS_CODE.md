@@ -43,6 +43,10 @@ architectural invariant. Those require tests, review, and controlled evidence.
 exemptions. An exemption must explain provenance or regeneration in at least twenty characters. Do not
 use wildcards, broad prefixes, or an exemption to preserve copied implementation source.
 
+Rust `src/bin` production source is traversed despite the generic generated-output `bin` ignore.
+The traversal regression proves file collection and size/language findings while preserving ignored
+generated managed `bin` output. No runtime-source size or license exemption is granted.
+
 ## CI and change control
 
 `policy.yml` runs the same checker on pull requests and pushes to `main` with read-only contents

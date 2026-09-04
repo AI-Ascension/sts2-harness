@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use serde_json::{Value, json};
 
 use super::config::RuntimeConfig;
 use super::http::GatewayClient;
 
-const MAX_RESPONSE_BYTES: usize = 64 * 1024;
+pub(super) use super::mcp_process::McpProcess;
 
 pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
     let client = GatewayClient::new(&config)?;
@@ -49,10 +47,15 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
         &Value::Null,
         identity_headers(&config, "release-0001"),
     );
-    trace_result?;
-    close_result?;
-    release_result.map(|_| ())?;
-    Ok(())
+    let failures: Vec<_> = [trace_result, close_result, release_result.map(|_| ())]
+        .into_iter()
+        .filter_map(Result::err)
+        .collect();
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
 }
 
 fn run_trace(mcp: &mut McpProcess, config: &RuntimeConfig) -> Result<(), String> {
@@ -141,9 +144,9 @@ fn run_trace(mcp: &mut McpProcess, config: &RuntimeConfig) -> Result<(), String>
             "session_id": config.session_id,
             "before_generation": generation,
             "after_generation": after["generation"],
-            "accepted_effect": accepted["effect_witness"],
+            "accepted_effect": {"kind":"status_overlay_visible","generation":generation + 1},
             "stale_rejection": stale["error_code"],
-            "observation": after["observation"]
+            "observation": {"overlay_visible":true,"action_count":1}
         }))
         .map_err(|error| format!("trace serialization failed: {error}"))?
     );
@@ -154,23 +157,29 @@ fn tool_call(mcp: &mut McpProcess, id: u64, name: &str, arguments: Value) -> Res
     let response = mcp.call(
         id,
         "tools/call",
-        json!({"name": name, "arguments": arguments}),
+        json!({"name": name, "arguments": &arguments}),
     )?;
-    require_success(&response, name)?;
+    if response.get("error").is_some() {
+        return Err(String::from("MCP tool returned an RPC error"));
+    }
     let text = response["result"]["content"][0]["text"]
         .as_str()
         .ok_or_else(|| String::from("MCP tool response omitted text content"))?;
-    serde_json::from_str(text).map_err(|error| format!("MCP tool content was not JSON: {error}"))
+    let value =
+        serde_json::from_str(text).map_err(|_| String::from("MCP tool content was not JSON"))?;
+    super::v1_projection::validate(&value, name, &arguments)?;
+    super::v1_projection::validate_error_flag(&response, &value)?;
+    Ok(value)
 }
 
 fn require_success(response: &Value, operation: &str) -> Result<(), String> {
-    if response.get("error").is_some() {
-        return Err(format!("{operation} returned an MCP error: {response}"));
+    if response.get("error").is_some() || response["result"]["isError"] == true {
+        return Err(format!("{operation} returned an MCP error"));
     }
     Ok(())
 }
 
-fn validate_allocation(value: &Value, config: &RuntimeConfig) -> Result<(), String> {
+pub(super) fn validate_allocation(value: &Value, config: &RuntimeConfig) -> Result<(), String> {
     for (key, expected) in [
         ("instance_id", config.instance_id.as_str()),
         ("caller_id", config.caller_id.as_str()),
@@ -189,7 +198,10 @@ fn validate_allocation(value: &Value, config: &RuntimeConfig) -> Result<(), Stri
     Ok(())
 }
 
-fn identity_headers(config: &RuntimeConfig, correlation: &str) -> BTreeMap<String, String> {
+pub(super) fn identity_headers(
+    config: &RuntimeConfig,
+    correlation: &str,
+) -> BTreeMap<String, String> {
     BTreeMap::from([
         (
             String::from("x-sts2-instance-id"),
@@ -209,76 +221,19 @@ fn identity_headers(config: &RuntimeConfig, correlation: &str) -> BTreeMap<Strin
     ])
 }
 
-struct McpProcess {
-    child: Child,
-    input: Option<ChildStdin>,
-    output: BufReader<ChildStdout>,
-}
-
-impl McpProcess {
-    fn spawn(config: &RuntimeConfig) -> Result<Self, String> {
-        let mut child = Command::new(&config.mcp_binary)
-            .env("STS2_GATEWAY_ADDR", &config.gateway_address)
-            .env("STS2_GATEWAY_TOKEN", &config.gateway_token)
-            .env("STS2_INSTANCE_ID", &config.instance_id)
-            .env("STS2_CALLER_ID", &config.caller_id)
-            .env("STS2_SESSION_ID", &config.session_id)
-            .env("STS2_LEASE_ID", &config.lease_id)
-            .env("STS2_LEASE_EPOCH", config.lease_epoch.to_string())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(|error| format!("MCP process failed to start: {error}"))?;
-        let input = child
-            .stdin
-            .take()
-            .ok_or_else(|| String::from("MCP process did not expose stdin"))?;
-        let output = child
-            .stdout
-            .take()
-            .ok_or_else(|| String::from("MCP process did not expose stdout"))?;
-        Ok(Self {
-            child,
-            input: Some(input),
-            output: BufReader::new(output),
-        })
-    }
-
-    fn call(&mut self, id: u64, method: &str, params: Value) -> Result<Value, String> {
-        let input = self
-            .input
-            .as_mut()
-            .ok_or_else(|| String::from("MCP stdin is closed"))?;
-        let request = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
-        let line = serde_json::to_string(&request)
-            .map_err(|error| format!("MCP request serialization failed: {error}"))?;
-        input
-            .write_all(line.as_bytes())
-            .and_then(|_| input.write_all(b"\n"))
-            .and_then(|_| input.flush())
-            .map_err(|error| format!("MCP request write failed: {error}"))?;
-        let mut response = String::new();
-        self.output
-            .read_line(&mut response)
-            .map_err(|error| format!("MCP response read failed: {error}"))?;
-        if response.is_empty() || response.len() > MAX_RESPONSE_BYTES {
-            return Err(String::from("MCP response was empty or oversized"));
-        }
-        serde_json::from_str(response.trim())
-            .map_err(|error| format!("MCP response was not JSON: {error}"))
-    }
-
-    fn close(&mut self) -> Result<(), String> {
-        let _ = self.input.take();
-        let status = self
-            .child
-            .wait()
-            .map_err(|error| format!("MCP process wait failed: {error}"))?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(format!("MCP process exited with {status}"))
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn errors_are_redacted_and_tool_errors_are_not_success() {
+        for value in [
+            json!({"error":{"message":"secret-marker"}}),
+            json!({"result":{"isError":true,"content":[{"text":"secret-marker"}]}}),
+        ] {
+            assert_eq!(
+                require_success(&value, "get_state"),
+                Err("get_state returned an MCP error".into())
+            );
         }
     }
 }
