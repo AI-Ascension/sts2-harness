@@ -320,16 +320,9 @@ fn valid_revision(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
-        && ![
-            "main",
-            "master",
-            "head",
-            "latest",
-            "trunk",
-            "default",
-        ]
-        .iter()
-        .any(|floating| value.eq_ignore_ascii_case(floating))
+        && !["main", "master", "head", "latest", "trunk", "default"]
+            .iter()
+            .any(|floating| value.eq_ignore_ascii_case(floating))
         && !value.starts_with("REPLACE_WITH_")
 }
 
