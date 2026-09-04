@@ -15,6 +15,9 @@ claim a released harness version or runtime compatibility.
 - Propagated the independently configured Runtime-v2 MCP session through gateway allocation,
   spawned MCP configuration, request correlation, and lease release. The gateway session remains
   the frozen protocol-envelope identity; defaults preserve the single-session configuration.
+- A dated, evidence-labeled expert-state information-architecture research specification covering
+  fair-play observation, the proposed atomic-state/action inventory, recovery, evaluation, and
+  patch drift. It is explicitly not full-game or gameplay-proof evidence.
 
 - The bounded `sts2-harness-runtime` coordinator, `runtime-v1` artifact copy, real MCP/gateway
   process path, stale-generation oracle, sanitized trace, and component evidence record.
