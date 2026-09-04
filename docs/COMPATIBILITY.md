@@ -137,3 +137,14 @@ names or remote plaintext bearer endpoints. It bounds complete HTTP/MCP exchange
 validates outer RPC correlation and the existing projected tool contract, and minimizes child
 environment/error output. MCP retains full downstream envelope/fence validation authority.
 Frozen Runtime-v2 decoder fields remain required even when their permitted value is null.
+The persistent MCP child uses cancellable asynchronous pipes and joined supervisors; direct-child
+shutdown/reaping is bounded and errors remain visible. Descendants are not forcibly killed, but
+inherited pipe handles cannot strand harness I/O workers. Only explicit STS2 connection variables
+plus PATH/SystemRoot/TEMP/TMP are inherited, and stderr is suppressed. This is credential
+minimization, not an OS sandbox. MCP and gateway sessions are separate namespaces; the configured
+MCP child receives both identities explicitly, and its adapter must bind them without equating them.
+The six-tool Runtime-v3 catalog is independent of the retained Runtime-v2 four-lane scheduler.
+
+Dispatch preserves the complete host legal-action reference (`action_id` plus typed `action` payload)
+across the MCP boundary. A bare payload is not a legal-action reference. Canonical schema regressions
+cover end-turn and card payloads, including explicit nullable card targets.
