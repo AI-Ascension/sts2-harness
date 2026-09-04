@@ -82,6 +82,23 @@ fn provider(response: Result<Vec<u8>, ExoTransportError>) -> ExoProvider<FakeTra
 }
 
 #[test]
+fn unconfigured_or_floating_revision_is_rejected() {
+    for revision in [
+        "",
+        "main",
+        "HEAD",
+        "latest",
+        "REPLACE_WITH_REVIEWED_EXO_REVISION",
+    ] {
+        assert!(
+            ExoConfig::new(revision, 64 * 1024, 1024, 1_000).is_err(),
+            "revision {revision:?} must not be accepted as pinned"
+        );
+    }
+    assert!(ExoConfig::new("reviewed-exo-20260904", 64 * 1024, 1024, 1_000).is_ok());
+}
+
+#[test]
 fn transport_failures_are_typed_and_do_not_select_an_action() {
     let cases = [
         (ExoTransportError::Unavailable, "exo_unavailable"),

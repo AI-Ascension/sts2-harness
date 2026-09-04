@@ -54,12 +54,7 @@ impl ExoConfig {
             max_response_bytes,
             timeout_millis,
         };
-        if config.revision.is_empty()
-            || config.revision.len() > 128
-            || !config
-                .revision
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
+        if !valid_revision(&config.revision)
             || config.max_request_bytes == 0
             || config.max_request_bytes > 128 * 1024
             || config.max_response_bytes == 0
@@ -317,6 +312,25 @@ fn valid_id(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
+}
+
+fn valid_revision(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
+        && ![
+            "main",
+            "master",
+            "head",
+            "latest",
+            "trunk",
+            "default",
+        ]
+        .iter()
+        .any(|floating| value.eq_ignore_ascii_case(floating))
+        && !value.starts_with("REPLACE_WITH_")
 }
 
 fn valid_action_ids(values: &[String]) -> bool {
