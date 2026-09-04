@@ -58,6 +58,7 @@ pub(super) fn observation(
     config: &RuntimeConfig,
 ) -> Result<ParsedObservation, String> {
     let root = root(value, expected_kind, config)?;
+    validate_observation_fields(root)?;
     observation_from_root(root)
 }
 
@@ -67,6 +68,7 @@ pub(super) fn action_set(
     config: &RuntimeConfig,
 ) -> Result<(EpisodeLegalActionSet, BTreeMap<String, Value>), String> {
     let root = root(value, expected_kind, config)?;
+    validate_observation_fields(root)?;
     let state_id = string(root, "state_id")?;
     let generation = number(root, "generation")?;
     parse_actions(root.get("legal_actions"), state_id, generation)
@@ -175,6 +177,22 @@ fn observation_from_root(root: &Map<String, Value>) -> Result<ParsedObservation,
         actions,
         payloads,
     })
+}
+
+fn validate_observation_fields(root: &Map<String, Value>) -> Result<(), String> {
+    for field in [
+        "operation_id",
+        "action",
+        "status",
+        "transition",
+        "error_code",
+        "wait_for_millis",
+        "wait_outcome",
+        "recovery",
+    ] {
+        require_null(root, field)?;
+    }
+    Ok(())
 }
 
 fn parse_actions(

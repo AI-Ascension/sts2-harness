@@ -23,6 +23,7 @@ pub(crate) fn receipt(
         ));
     }
     let status = dispatch_status(root)?;
+    validate_result_fields(root, status, false)?;
     let after = match status {
         DispatchStatus::Unknown => {
             super::require_null(root, "observation")?;
@@ -90,6 +91,7 @@ pub(crate) fn wait_sample(
         _ => return Err(String::from("Runtime-v3 wait outcome is invalid")),
     };
     let status = dispatch_status(root)?;
+    validate_result_fields(root, status, true)?;
     match (status, outcome) {
         (DispatchStatus::Settled, WaitOutcome::Successor | WaitOutcome::SameStateMutation) => {
             let after = super::observation_from_root(root)?;
@@ -139,7 +141,7 @@ fn transition(
     let state_id = super::string(object, "state_id")?;
     let effect_kind = super::string(object, "effect_kind")?;
     let after = after.ok_or_else(|| String::from("Runtime-v3 transition lacks observation"))?;
-    if from < expected_generation
+    if from != expected_generation
         || to <= from
         || to != after.generation()
         || state_id != after.state_id()
@@ -160,5 +162,27 @@ fn dispatch_status(root: &Map<String, Value>) -> Result<DispatchStatus, String> 
         Some("unknown") => Ok(DispatchStatus::Unknown),
         Some("cancelled") => Ok(DispatchStatus::Cancelled),
         _ => Err(String::from("Runtime-v3 response status is invalid")),
+    }
+}
+
+fn validate_result_fields(
+    root: &Map<String, Value>,
+    status: DispatchStatus,
+    is_wait: bool,
+) -> Result<(), String> {
+    for field in ["action", "wait_for_millis", "recovery"] {
+        super::require_null(root, field)?;
+    }
+    if !is_wait {
+        super::require_null(root, "wait_outcome")?;
+    }
+    match status {
+        DispatchStatus::Accepted | DispatchStatus::Settled => {
+            super::require_null(root, "error_code")
+        }
+        DispatchStatus::Rejected | DispatchStatus::Cancelled | DispatchStatus::Unknown => {
+            super::string(root, "error_code")?;
+            Ok(())
+        }
     }
 }

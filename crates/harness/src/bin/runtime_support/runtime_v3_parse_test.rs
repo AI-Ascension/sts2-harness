@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use sts2_harness::{ActionKind, DispatchStatus, EpisodeLegalAction};
 
 use super::super::config::RuntimeConfig;
-use super::{observation, receipt};
+use super::{observation, receipt, wait_sample};
 
 fn config() -> RuntimeConfig {
     RuntimeConfig {
@@ -109,5 +109,97 @@ fn settled_receipt_requires_and_preserves_a_fresh_witness() -> Result<(), String
     assert_eq!(receipt.status(), DispatchStatus::Settled);
     assert_eq!(receipt.after().map(|value| value.generation()), Some(1));
     assert_eq!(receipt.effect_kind(), Some("end_turn.settled"));
+    Ok(())
+}
+
+#[test]
+fn settlement_must_start_at_the_operations_original_generation() -> Result<(), String> {
+    let action = EpisodeLegalAction::new("combat.end-turn", ActionKind::EndTurn)
+        .map_err(|error| error.to_string())?;
+    let mut value = response(
+        "dispatch_action_response",
+        3,
+        json!("op-1"),
+        json!("settled"),
+    );
+    value["transition"]["to_generation"] = json!(3);
+    value["transition"]["from_generation"] = json!(2);
+    assert!(
+        receipt(
+            &value,
+            "dispatch_action_response",
+            &config(),
+            "op-1",
+            0,
+            action.clone()
+        )
+        .is_err()
+    );
+    value["transition"]["from_generation"] = json!(0);
+    assert!(
+        receipt(
+            &value,
+            "dispatch_action_response",
+            &config(),
+            "op-1",
+            0,
+            action
+        )
+        .is_ok()
+    );
+    value["kind"] = json!("wait_response");
+    value["wait_outcome"] = json!("successor");
+    // Even after observation advances, waits bind to the ledger's original operation generation.
+    assert!(wait_sample(&value, &config(), "op-1", 0).is_ok());
+    value["transition"]["from_generation"] = json!(2);
+    assert!(wait_sample(&value, &config(), "op-1", 0).is_err());
+    Ok(())
+}
+
+#[test]
+fn response_shapes_reject_request_payloads_and_contradictory_errors() -> Result<(), String> {
+    let action = EpisodeLegalAction::new("combat.end-turn", ActionKind::EndTurn)
+        .map_err(|error| error.to_string())?;
+    for (field, invalid) in [
+        ("action", json!({"kind": "save_quit"})),
+        ("wait_for_millis", json!(10)),
+        ("recovery", json!({"kind": "reobserve"})),
+        ("wait_outcome", json!("successor")),
+        ("error_code", json!("contradiction")),
+    ] {
+        let mut value = response(
+            "dispatch_action_response",
+            1,
+            json!("op-1"),
+            json!("settled"),
+        );
+        value[field] = invalid;
+        assert!(
+            receipt(
+                &value,
+                "dispatch_action_response",
+                &config(),
+                "op-1",
+                0,
+                action.clone()
+            )
+            .is_err(),
+            "{field}"
+        );
+    }
+    let mut value = response("wait_response", 0, json!("op-1"), json!("unknown"));
+    value["observation"] = Value::Null;
+    value["legal_actions"] = Value::Null;
+    value["wait_outcome"] = json!("timeout");
+    assert!(wait_sample(&value, &config(), "op-1", 0).is_err());
+    value["error_code"] = json!("host_pending");
+    assert!(wait_sample(&value, &config(), "op-1", 0).is_ok());
+    for invalid in [json!(""), json!(17), json!("private arbitrary text")] {
+        value["error_code"] = invalid;
+        assert!(wait_sample(&value, &config(), "op-1", 0).is_err());
+    }
+    let mut state = response("state_response", 0, Value::Null, Value::Null);
+    state["action"] = json!({"kind": "end_turn"});
+    assert!(observation(&state, "state_response", &config()).is_err());
     Ok(())
 }

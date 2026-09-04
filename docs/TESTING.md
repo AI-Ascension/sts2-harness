@@ -174,6 +174,11 @@ The async-pipe implementation must return with no extra harness workers, before 
 Another test calls the synchronous transport from an existing async runtime. Neither test claims
 that arbitrary bridge descendants are killed or that this process adapter provides OS isolation.
 
+The runtime parser's settlement tests bind `from_generation` to the operation ledger's original
+generation, including delayed waits after newer observations. They reject witnesses for a later,
+unrelated transition and enforce canonical response-only null fields and status/error consistency.
+These checks establish request-bound parsing, not the independence of an actual host witness.
+
 Co-op tests cover two-peer identity, generation disagreement, disconnect, ally targeting, and
 mutation suspension. They do not establish multiplayer host compatibility. The patch-diff utility
 is source-only and compares bounded manifests; it cannot promote a build or replace package hashes.
