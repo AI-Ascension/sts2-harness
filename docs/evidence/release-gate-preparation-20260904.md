@@ -5,8 +5,8 @@
 Evidence level: `source-derived` and `unverified`; candidate status: `quarantined`.
 
 This record covers source changes prepared across the six STS2 repositories. It is not a release,
-package, host-compatibility claim, or live Exo result. No repository was committed, pushed,
-installed, deployed, launched, or published by this preparation pass.
+package, host-compatibility claim, or live Exo result. The implementation was committed and
+pushed to six open PR branches; no package was installed, deployed, launched, or published.
 
 ## Recorded lineage
 
@@ -16,6 +16,10 @@ The working-tree baseline revisions and repository ownership are recorded in the
 is `2c34d013315fbf2e16de03dbe2bd4c43d4c13c744292548cc46ea960af5e1fa2`. The build manifest is
 [`build-manifest.json`](../research/sts2-expert-state-package/data/build-manifest.json), and its
 shape is checked by [`patch-manifest.schema.json`](../../patch-manifest.schema.json).
+
+The six PR heads and their GitHub CI/policy results are recorded in the aggregate manifest. Those
+remote checks validate the repository workflows; they do not substitute for the unavailable
+licensed target build, live Exo connection, or runtime traces below.
 
 ## Gate matrix
 

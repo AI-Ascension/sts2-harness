@@ -20,7 +20,7 @@
   },
   "candidate": {
     "repository": "sts2-project",
-    "revision": "working-tree source changes; no commit or package produced",
+    "revision": "six PR heads pushed on 2026-09-04: protocol=18a8bd8da3857c826799261054e4a6a9893d7aa9; core=0f6985a38bdd3b80581346b0c5e4b2ec43d385f5; game-mod=c7feb57a85b67d5c42229055dfe9e2d5cecd1b94; gateway=bdb1aac33fa2ed47d0773cc2deb9910b64e3a066; mcp=fb77a338cbdc75329e8b4f0ea21f37fa8a5788bf; harness=a1667c29dcc332ff2a6ada292349b655bea81a3a",
     "target_build": "unavailable",
     "game_build": "unavailable",
     "status": "unverified",
