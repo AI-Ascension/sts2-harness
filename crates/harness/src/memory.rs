@@ -14,7 +14,8 @@ pub enum MemoryAppend {
     Duplicate,
 }
 
-/// Bounded in-memory retention for sanitized decision evidence.
+/// Bounded in-memory retention for caller-sanitized decision evidence.
+/// Appending does not classify payload content or grant permission to retain/export it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DecisionMemory {
     capacity: usize,

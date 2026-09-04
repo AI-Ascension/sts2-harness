@@ -284,6 +284,8 @@ impl DecisionReplayReport {
         self.unavailable
     }
     #[must_use]
+    /// Non-cryptographic comparison fingerprint of the complete validated record projection.
+    /// This is not an artifact integrity digest or proof of the recorded evidence.
     pub const fn fingerprint(&self) -> u64 {
         self.fingerprint
     }
@@ -309,7 +311,13 @@ impl DecisionReplay {
             recoveries: 0,
             estimates: 0,
             unavailable: 0,
-            fingerprint: 14_695_981_039_346_656_037_u64,
+            fingerprint: mix(
+                mix(
+                    14_695_981_039_346_656_037_u64,
+                    b"decision-replay-v2".iter().copied(),
+                ),
+                request.trajectory_id.get().to_le_bytes(),
+            ),
             divergence: None,
         };
         for (index, record) in request.records.iter().enumerate() {
@@ -330,12 +338,7 @@ impl DecisionReplay {
                 });
                 break;
             }
-            report.fingerprint = mix(report.fingerprint, record.record_id().get().to_le_bytes());
-            report.fingerprint = mix(report.fingerprint, record.kind().as_str().bytes());
-            report.fingerprint = mix(
-                report.fingerprint,
-                record.payload().as_bytes().iter().copied(),
-            );
+            report.fingerprint = decision_fingerprint(report.fingerprint, record);
             match record.kind() {
                 DecisionRecordKind::Observation => report.observations += 1,
                 DecisionRecordKind::Request => report.requests += 1,
@@ -349,4 +352,46 @@ impl DecisionReplay {
         }
         report
     }
+}
+
+fn decision_fingerprint(mut fingerprint: u64, record: &DecisionRecord) -> u64 {
+    let correlation = record.correlation();
+    for number in [
+        record.record_id().get(),
+        record.sequence(),
+        correlation.run_id().get(),
+        correlation.episode_id().get(),
+        correlation.trajectory_id().get(),
+        correlation.instance_id().get(),
+        correlation.trace_id().get(),
+    ] {
+        fingerprint = mix(fingerprint, number.to_le_bytes());
+    }
+    for number in [
+        record.generation(),
+        record.action_id().map(|id| id.get()),
+        record.model_execution_id().map(|id| id.get()),
+        correlation.request_id().map(|id| id.get()),
+        correlation.action_id().map(|id| id.get()),
+        correlation.model_execution_id().map(|id| id.get()),
+    ] {
+        fingerprint = mix(fingerprint, [u8::from(number.is_some())]);
+        if let Some(number) = number {
+            fingerprint = mix(fingerprint, number.to_le_bytes());
+        }
+    }
+    for bytes in [
+        Some(record.kind().as_str().as_bytes()),
+        Some(record.evidence().as_str().as_bytes()),
+        record.state_id().map(str::as_bytes),
+        record.operation_id().map(str::as_bytes),
+        Some(record.payload().as_bytes()),
+    ] {
+        fingerprint = mix(fingerprint, [u8::from(bytes.is_some())]);
+        if let Some(bytes) = bytes {
+            fingerprint = mix(fingerprint, (bytes.len() as u64).to_le_bytes());
+            fingerprint = mix(fingerprint, bytes.iter().copied());
+        }
+    }
+    fingerprint
 }

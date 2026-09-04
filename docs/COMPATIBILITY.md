@@ -50,6 +50,14 @@ protocol, host, and runtime versions independent. A run or artifact manifest bin
 observations, actions, model output, score, replay result, dataset bytes, or package bytes. Digests
 bind exact inputs and outputs; wall-clock timestamps do not establish event order.
 
+Decision replay now uses the `decision-replay-v2` non-cryptographic comparison fingerprint,
+binding every current record field and correlation identity with explicit optional markers and
+length-delimited text/payload bytes. This safety correction intentionally changes earlier
+unreleased fingerprint values; regenerate comparisons from retained input records. It is not
+an integrity digest, evidence validation, or a substitute for independent version/artifact lineage.
+`DecisionPayload` and `DecisionMemory` require caller classification and redaction: their
+bounded JSON and forbidden-key checks do not detect private content or authorize storage/export.
+
 ## Promotion evidence
 
 Future support advances through deterministic offline tests, fake boundary/component tests, real

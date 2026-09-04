@@ -60,7 +60,10 @@ impl DecisionRecordKind {
     }
 }
 
-/// Structured, sanitized payload bytes. Verbatim provider responses are not an accepted input.
+/// Bounded caller-sanitized JSON metadata with a defense-in-depth forbidden-key check.
+/// The caller must classify and redact content before construction. This generic container
+/// cannot detect private text, credentials disguised under other keys, or verbatim responses;
+/// successful construction is not evidence of semantic sanitization or permission to export.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DecisionPayload(Vec<u8>);
 
@@ -96,7 +99,7 @@ impl DecisionPayload {
     }
 }
 
-/// One typed trajectory fact. It contains no raw model output or host object reference.
+/// One typed trajectory fact. Payload classification and redaction remain the caller's duty.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DecisionRecord {
     record_id: RecordId,
