@@ -105,10 +105,10 @@ impl Evaluator {
         if self.samples >= self.capacity {
             return Err(EvaluationError::Full);
         }
-        if let Some(confidence) = sample.confidence_percent {
-            if confidence > 100 {
-                return Err(EvaluationError::InvalidConfidence);
-            }
+        if let Some(confidence) = sample.confidence_percent
+            && confidence > 100
+        {
+            return Err(EvaluationError::InvalidConfidence);
         }
         self.samples = add(self.samples, 1)?;
         if sample.legal {

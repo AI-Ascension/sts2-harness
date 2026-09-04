@@ -26,6 +26,7 @@ impl<T> ExoSession<T> {
     }
 
     /// Sends only a sanitized observation and the complete current action ID set.
+    #[allow(clippy::too_many_arguments)]
     pub fn decide(
         &mut self,
         execution_id: ModelExecutionId,

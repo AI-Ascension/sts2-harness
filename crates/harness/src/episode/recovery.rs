@@ -47,10 +47,10 @@ impl RecoveryController {
         port: &mut P,
         operation: RecoveryOperation,
     ) -> Result<RecoveryResult, RecoveryError> {
-        if let RecoveryOperation::Reconcile { operation_id } = &operation {
-            if operation_id.is_empty() {
-                return Err(RecoveryError::InvalidOperation);
-            }
+        if let RecoveryOperation::Reconcile { operation_id } = &operation
+            && operation_id.is_empty()
+        {
+            return Err(RecoveryError::InvalidOperation);
         }
         let mut attempts = 0;
         loop {

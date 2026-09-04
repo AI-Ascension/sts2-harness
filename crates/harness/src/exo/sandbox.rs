@@ -89,7 +89,6 @@ enum ValueKind {
     ShopItem,
     LegalAction,
     Action,
-    IdentifierArray,
     Identity,
     Text,
     Number,
@@ -224,10 +223,10 @@ fn validate_semantics(object: &Map<String, Value>, kind: ValueKind) -> Result<()
                 return Err(SandboxError::InvalidNumber);
             }
         }
-        ValueKind::Intent if object.get("kind").and_then(Value::as_str) == Some("attack") => {
-            if object.get("hits").and_then(Value::as_u64) == Some(0) {
-                return Err(SandboxError::InvalidNumber);
-            }
+        ValueKind::Intent if object.get("kind").and_then(Value::as_str) == Some("attack")
+            && object.get("hits").and_then(Value::as_u64) == Some(0) =>
+        {
+            return Err(SandboxError::InvalidNumber);
         }
         _ => {}
     }
@@ -284,8 +283,7 @@ fn is_allowed(kind: ValueKind, key: &str) -> bool {
             "item_id",
             "choice_id",
         ],
-        ValueKind::IdentifierArray
-        | ValueKind::Identity
+        ValueKind::Identity
         | ValueKind::Text
         | ValueKind::Number
         | ValueKind::Boolean => &[],
@@ -391,7 +389,6 @@ fn validate_shape(
             _ => Err(SandboxError::UnknownField),
         },
         ValueKind::Root
-        | ValueKind::IdentifierArray
         | ValueKind::Identity
         | ValueKind::Text
         | ValueKind::Number

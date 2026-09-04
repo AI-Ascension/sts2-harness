@@ -90,6 +90,7 @@ pub struct ExoDecisionRequest {
 
 impl ExoDecisionRequest {
     /// Builds a request after validating projection, IDs, and bounded prompt constraints.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         execution_id: ModelExecutionId,
         provider_revision: impl Into<String>,

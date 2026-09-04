@@ -73,10 +73,8 @@ impl EpisodeObservation {
         if generation > 9_007_199_254_740_991 {
             return Err(ObservationError::InvalidGeneration);
         }
-        if stage == EpisodeStage::Unknown || stage == EpisodeStage::Recovery {
-            if actionable {
-                return Err(ObservationError::UnknownState);
-            }
+        if (stage == EpisodeStage::Unknown || stage == EpisodeStage::Recovery) && actionable {
+            return Err(ObservationError::UnknownState);
         }
         let fair_play = SanitizedObservation::new(fair_play)
             .map_err(|_| ObservationError::PrivilegedProjection)?;

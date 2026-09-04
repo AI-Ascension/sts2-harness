@@ -35,6 +35,7 @@ impl NoncombatStage {
 pub struct NoncombatCoordinator;
 
 impl NoncombatCoordinator {
+    #[allow(clippy::too_many_arguments)]
     pub fn choose<S: DecisionSource>(
         &self,
         source: &mut S,
