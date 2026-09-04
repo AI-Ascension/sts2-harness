@@ -64,6 +64,15 @@ CI; Windows/macOS process behavior and arbitrary descendant termination remain u
 
 ## Evidence
 
+The patch-diff preparation utility is a workspace member so the same format, lint, and test gates
+cover it. It uses the existing pinned Serde dependencies to parse bounded JSON and reads the declared
+quarantine status structurally; FNV fingerprints remain non-cryptographic line-diff aids. Its
+test-only `jsonschema` 0.52.1 dependency, with default URL/file resolution features disabled, validates
+the canonical manifest against the full Draft 2020-12 schema. Negative vectors exercise nested
+constraints, and a separate assertion keeps the checked-in preparation manifest quarantined.
+Neither parsing nor schema conformance establishes artifact integrity, runtime truth, or promotion
+authority. This dependency does not enter the provider or episode runtime path.
+
 Deterministic routing, sandbox, record, replay, evaluation, and manifest checks are source-derived or
 confirmed at their stated layer. Exo connectivity, licensed-host progression, co-op traces, and
 release promotion are unverified or quarantined.

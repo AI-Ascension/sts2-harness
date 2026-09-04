@@ -183,6 +183,12 @@ These checks establish request-bound parsing, not the independence of an actual 
 Co-op tests cover two-peer identity, generation disagreement, disconnect, ally targeting, and
 mutation suspension. They do not establish multiplayer host compatibility. The patch-diff utility
 is source-only and compares bounded manifests; it cannot promote a build or replace package hashes.
+Its workspace tests check bounded consumption even from an endless reader, exact-size admission,
+invalid and ambiguous JSON rejection, structural quarantine extraction, and byte-preserving output.
+`cargo test --locked --package sts2-patch-diff --test patch_manifest` validates the canonical M10
+manifest using the full Draft 2020-12 schema and an independent quarantine assertion. Nested negative
+cases exercise required fields, unknown fields, types, enums, lengths, array limits, and digest
+patterns; this is structural evidence, not verification of the manifest's runtime claims.
 
 The required M10 release evidence is recorded in
 [`release-gate-preparation-20260904.md`](evidence/release-gate-preparation-20260904.md). Missing

@@ -1,11 +1,27 @@
 // SPDX-License-Identifier: MIT
 
 use std::env;
-use std::fs;
+use std::fs::File;
+use std::io::Read;
 use std::process::ExitCode;
 
 const MAX_INPUT_BYTES: usize = 512 * 1024;
 const MAX_REPORTED_LINES: usize = 128;
+
+struct Manifest {
+    text: String,
+    quarantine_status: String,
+}
+
+#[derive(serde::Deserialize)]
+struct ManifestStatus {
+    quarantine: QuarantineStatus,
+}
+
+#[derive(serde::Deserialize)]
+struct QuarantineStatus {
+    status: String,
+}
 
 fn main() -> ExitCode {
     match run() {
@@ -26,8 +42,8 @@ fn run() -> Result<(), String> {
     }
     let before = read_manifest(&before_path)?;
     let after = read_manifest(&after_path)?;
-    let before_lines = before.lines().collect::<Vec<_>>();
-    let after_lines = after.lines().collect::<Vec<_>>();
+    let before_lines = before.text.lines().collect::<Vec<_>>();
+    let after_lines = after.text.lines().collect::<Vec<_>>();
     let line_count = before_lines.len().max(after_lines.len());
     let mut changed = Vec::new();
     let mut changed_count = 0;
@@ -42,11 +58,11 @@ fn run() -> Result<(), String> {
     let output = format!(
         "{{\"tool\":\"sts2-patch-diff\",\"version\":\"0.1.0\",\"before\":{{\"path\":{},\"fingerprint\":\"{}\",\"quarantine_status\":{}}},\"after\":{{\"path\":{},\"fingerprint\":\"{}\",\"quarantine_status\":{}}},\"changed_line_count\":{},\"reported_line_numbers\":{},\"truncated\":{}}}\n",
         json_string(&before_path),
-        fingerprint(&before),
-        extracted_status(&before),
+        fingerprint(&before.text),
+        json_string(&before.quarantine_status),
         json_string(&after_path),
-        fingerprint(&after),
-        extracted_status(&after),
+        fingerprint(&after.text),
+        json_string(&after.quarantine_status),
         changed_count,
         json_array(&changed),
         changed_count > MAX_REPORTED_LINES,
@@ -55,22 +71,34 @@ fn run() -> Result<(), String> {
     Ok(())
 }
 
-fn extracted_status(input: &str) -> String {
-    let section = input
-        .find("\"quarantine\"")
-        .map(|offset| &input[offset..]);
-    match section.and_then(|value| extract_string(value, "status")) {
-        Some(status) => json_string(status),
-        None => String::from("\"unknown\""),
-    }
+fn read_manifest(path: &str) -> Result<Manifest, String> {
+    let file = File::open(path).map_err(|error| format!("cannot open {path}: {error}"))?;
+    read_bounded(file).map_err(|error| format!("{path}: {error}"))
 }
 
-fn read_manifest(path: &str) -> Result<String, String> {
-    let bytes = fs::read(path).map_err(|error| format!("cannot read {path}: {error}"))?;
+fn read_bounded(reader: impl Read) -> Result<Manifest, String> {
+    let mut bytes = Vec::new();
+    reader
+        .take((MAX_INPUT_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("cannot read manifest: {error}"))?;
     if bytes.len() > MAX_INPUT_BYTES {
-        return Err(format!("{path} exceeds the {MAX_INPUT_BYTES}-byte input bound"));
+        return Err(format!("exceeds the {MAX_INPUT_BYTES}-byte input bound"));
     }
-    String::from_utf8(bytes).map_err(|_| format!("{path} is not UTF-8"))
+    let text = String::from_utf8(bytes).map_err(|_| String::from("manifest is not UTF-8"))?;
+    let value: ManifestStatus = serde_json::from_str(&text)
+        .map_err(|_| String::from("invalid JSON or missing/ambiguous quarantine.status"))?;
+    let quarantine_status = value.quarantine.status;
+    if !matches!(
+        quarantine_status.as_str(),
+        "quarantined" | "eligible" | "promoted" | "rejected"
+    ) {
+        return Err(String::from("manifest has no valid quarantine.status"));
+    }
+    Ok(Manifest {
+        text,
+        quarantine_status,
+    })
 }
 
 fn fingerprint(input: &str) -> String {
@@ -82,30 +110,8 @@ fn fingerprint(input: &str) -> String {
     format!("fnv1a64-{hash:016x}")
 }
 
-fn extract_string<'a>(input: &'a str, key: &str) -> Option<&'a str> {
-    let marker = format!("\"{key}\"");
-    let start = input.find(&marker)? + marker.len();
-    let value = input[start..].find(':').map(|offset| start + offset + 1)?;
-    let quoted = input[value..].find('"').map(|offset| value + offset + 1)?;
-    let end = input[quoted..].find('"').map(|offset| quoted + offset)?;
-    Some(&input[quoted..end])
-}
-
 fn json_string(value: &str) -> String {
-    let mut output = String::from("\"");
-    for character in value.chars() {
-        match character {
-            '"' => output.push_str("\\\""),
-            '\\' => output.push_str("\\\\"),
-            '\n' => output.push_str("\\n"),
-            '\r' => output.push_str("\\r"),
-            '\t' => output.push_str("\\t"),
-            character if character.is_control() => output.push('?'),
-            character => output.push(character),
-        }
-    }
-    output.push('"');
-    output
+    serde_json::Value::String(value.to_owned()).to_string()
 }
 
 fn json_array(values: &[usize]) -> String {
@@ -123,3 +129,7 @@ fn json_array(values: &[usize]) -> String {
 fn usage() -> String {
     String::from("usage: sts2-patch-diff <base-manifest.json> <candidate-manifest.json>")
 }
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;

@@ -41,3 +41,10 @@ dependency-change review, not a full-lockfile `cargo audit` result (that tool wa
 Future dependencies, imported fixtures, generated schemas, provider adapters, and model artifacts
 must record their source, exact version or digest, license, redistribution permission, and retention
 status before they become release inputs. Unknown or incompatible provenance is a release blocker.
+
+The patch-diff workspace tool uses the existing pinned `serde` and `serde_json` packages for
+structural JSON parsing. Its full-schema tests use `jsonschema` 0.52.1 (MIT, crates.io, upstream
+https://github.com/Stranger6667/jsonschema) with default features disabled. This test-only dependency
+does not enable external HTTP/file schema resolution and is not linked into the utility binary.
+Exact transitive versions and integrity checksums are recorded in Cargo.lock. The validator checks
+schema structure, not the truth of runtime evidence or permission to promote a quarantined build.
