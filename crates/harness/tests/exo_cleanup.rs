@@ -21,7 +21,12 @@ fn inherited_pipes_cannot_leave_harness_workers_after_timeout() {
     for _ in 0..4 {
         let config = ExoProcessConfig::new(
             "/bin/sh",
-            vec![String::from("-c"), String::from("sleep 2 <&0 & exit 0")],
+            vec![
+                String::from("-c"),
+                // Preserve stdin before starting an asynchronous shell list: dash otherwise
+                // redirects its fd 0 to /dev/null before applying the child's <&0 redirect.
+                String::from("exec 3<&0; sleep 2 <&3 & exit 0"),
+            ],
             None,
             Vec::new(),
         )
@@ -37,7 +42,8 @@ fn inherited_pipes_cannot_leave_harness_workers_after_timeout() {
     assert!(
         outcomes
             .iter()
-            .all(|result| *result == Err(ExoTransportError::Timeout))
+            .all(|result| *result == Err(ExoTransportError::Timeout)),
+        "all retained-pipe exchanges must time out: {outcomes:?}"
     );
     assert!(elapsed < Duration::from_secs(1));
     assert_eq!(
