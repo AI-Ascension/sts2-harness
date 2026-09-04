@@ -223,8 +223,9 @@ fn validate_semantics(object: &Map<String, Value>, kind: ValueKind) -> Result<()
                 return Err(SandboxError::InvalidNumber);
             }
         }
-        ValueKind::Intent if object.get("kind").and_then(Value::as_str) == Some("attack")
-            && object.get("hits").and_then(Value::as_u64) == Some(0) =>
+        ValueKind::Intent
+            if object.get("kind").and_then(Value::as_str) == Some("attack")
+                && object.get("hits").and_then(Value::as_u64) == Some(0) =>
         {
             return Err(SandboxError::InvalidNumber);
         }
@@ -283,10 +284,7 @@ fn is_allowed(kind: ValueKind, key: &str) -> bool {
             "item_id",
             "choice_id",
         ],
-        ValueKind::Identity
-        | ValueKind::Text
-        | ValueKind::Number
-        | ValueKind::Boolean => &[],
+        ValueKind::Identity | ValueKind::Text | ValueKind::Number | ValueKind::Boolean => &[],
     };
     keys.contains(&key)
 }
