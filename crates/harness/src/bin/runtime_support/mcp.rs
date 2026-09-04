@@ -3,8 +3,10 @@
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use super::config::RuntimeConfig;
 use super::http::GatewayClient;
@@ -21,7 +23,10 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
             "caller_id": config.caller_id,
             "session_id": config.session_id
         }),
-        BTreeMap::new(),
+        BTreeMap::from([(
+            String::from("x-mcp-session-id"),
+            config.mcp_session_id.clone(),
+        )]),
     )?;
     validate_allocation(&allocation, &config)?;
     let mut mcp = match McpProcess::spawn(&config) {
@@ -56,6 +61,12 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
 }
 
 fn run_trace(mcp: &mut McpProcess, config: &RuntimeConfig) -> Result<(), String> {
+    if config.runtime_profile == "runtime-v2" {
+        return run_trace_v2(mcp, config);
+    }
+    if config.runtime_profile == "runtime-v3-gameplay" {
+        return run_trace_v3_gameplay(mcp, config);
+    }
     require_success(
         &mcp.call(
             1,
@@ -150,6 +161,486 @@ fn run_trace(mcp: &mut McpProcess, config: &RuntimeConfig) -> Result<(), String>
     Ok(())
 }
 
+fn wait_for_v2_player_turn(
+    mcp: &mut McpProcess,
+    config: &RuntimeConfig,
+    request_id: &mut u64,
+    request_ids: &mut Vec<u64>,
+) -> Result<Value, String> {
+    let deadline = Instant::now() + Duration::from_secs(config.wait_for_combat_seconds);
+    loop {
+        request_ids.push(*request_id);
+        let observation = tool_call(
+            mcp,
+            *request_id,
+            "get_state",
+            json!({
+                "instance_id": config.instance_id,
+                "mcp_session_id": config.mcp_session_id,
+                "lease_id": config.lease_id,
+                "lease_epoch": config.lease_epoch,
+                "generation": 0
+            }),
+        )?;
+        *request_id += 1;
+        if observation["observation"]["combat_phase"] == "combat/player_turn" {
+            return Ok(observation);
+        }
+        if config.wait_for_combat_seconds == 0 || Instant::now() >= deadline {
+            return Err(format!(
+                "Runtime-v2 host did not reach combat/player_turn; observed phase {}",
+                observation["observation"]["combat_phase"]
+            ));
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+}
+
+fn wait_for_operation_settlement(
+    mcp: &mut McpProcess,
+    config: &RuntimeConfig,
+    request_id: &mut u64,
+    request_ids: &mut Vec<u64>,
+    operation_id: &str,
+    generation: u64,
+) -> Result<Value, String> {
+    let deadline = Instant::now() + Duration::from_secs(config.settlement_timeout_seconds);
+    loop {
+        request_ids.push(*request_id);
+        let reconciled = tool_call(
+            mcp,
+            *request_id,
+            "reconcile_action",
+            json!({
+                "instance_id": config.instance_id,
+                "mcp_session_id": config.mcp_session_id,
+                "lease_id": config.lease_id,
+                "lease_epoch": config.lease_epoch,
+                "generation": generation,
+                "operation_id": operation_id
+            }),
+        )?;
+        *request_id += 1;
+        require_kind(&reconciled, "reconcile_response")?;
+        if reconciled["status"] == "settled" {
+            return Ok(reconciled);
+        }
+        if config.settlement_timeout_seconds == 0 || Instant::now() >= deadline {
+            return Err(format!(
+                "Runtime operation did not settle before the bounded timeout: {reconciled}"
+            ));
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+}
+
+fn run_trace_v3_gameplay(mcp: &mut McpProcess, config: &RuntimeConfig) -> Result<(), String> {
+    let mut request_ids = vec![1_u64, 2_u64];
+    require_success(
+        &mcp.call(
+            1,
+            "initialize",
+            json!({
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "sts2-harness-runtime-v3-gameplay", "version": "0.0.0"}
+            }),
+        )?,
+        "initialize",
+    )?;
+    let catalog = mcp.call(2, "tools/list", json!({}))?;
+    require_success(&catalog, "tools/list")?;
+    if catalog["result"]["revision"] != "runtime-v3-gameplay-mcp"
+        || catalog["result"]["tools"]
+            .as_array()
+            .is_none_or(|tools| tools.len() != 3)
+    {
+        return Err(String::from(
+            "MCP catalog did not advertise the exact Runtime-v3 gameplay catalog",
+        ));
+    }
+    let context_session = config.mcp_session_id.as_str();
+    request_ids.push(3);
+    let before = tool_call(
+        mcp,
+        3,
+        "get_state",
+        json!({
+            "instance_id": config.instance_id,
+            "mcp_session_id": context_session,
+            "lease_id": config.lease_id,
+            "lease_epoch": config.lease_epoch,
+            "generation": 0
+        }),
+    )?;
+    require_kind(&before, "state_response")?;
+    let before_generation = before["generation"]
+        .as_u64()
+        .ok_or_else(|| String::from("Runtime-v3 gameplay initial state omitted generation"))?;
+    let before_observation = &before["observation"];
+    let operation_id = "op-harness-runtime-v3-gameplay";
+    let mut request_id = 4;
+    request_ids.push(request_id);
+    let submitted = tool_call(
+        mcp,
+        request_id,
+        "submit_action",
+        json!({
+            "instance_id": config.instance_id,
+            "mcp_session_id": context_session,
+            "lease_id": config.lease_id,
+            "lease_epoch": config.lease_epoch,
+            "generation": before_generation,
+            "operation_id": operation_id,
+            "action_id": "play_card",
+            "card_index": config.runtime_v3_card_index,
+            "target_id": config.runtime_v3_target_id
+        }),
+    )?;
+    request_id += 1;
+    require_kind(&submitted, "action_response")?;
+    let submitted_status = submitted["status"]
+        .as_str()
+        .ok_or_else(|| String::from("Runtime-v3 gameplay action omitted status"))?;
+    if !matches!(submitted_status, "accepted" | "settled" | "unknown") {
+        return Err(format!(
+            "Runtime-v3 gameplay action was not admitted: {submitted}"
+        ));
+    }
+    let final_result = if submitted_status == "settled" {
+        submitted.clone()
+    } else {
+        let reconcile_generation = submitted["generation"].as_u64().ok_or_else(|| {
+            String::from("Runtime-v3 gameplay action omitted reconcile generation")
+        })?;
+        wait_for_operation_settlement(
+            mcp,
+            config,
+            &mut request_id,
+            &mut request_ids,
+            operation_id,
+            reconcile_generation,
+        )?
+    };
+    if final_result["status"] != "settled"
+        || final_result["effect_witness"]["kind"] != "play_card_settled"
+        || final_result["observation"]["generation"] != final_result["generation"]
+    {
+        return Err(String::from(
+            "Runtime-v3 gameplay reconciliation did not produce a fresh play_card witness",
+        ));
+    }
+    let after_generation = final_result["generation"]
+        .as_u64()
+        .ok_or_else(|| String::from("Runtime-v3 gameplay settlement omitted generation"))?;
+    if after_generation <= before_generation {
+        return Err(String::from(
+            "Runtime-v3 gameplay settlement did not advance generation",
+        ));
+    }
+    request_ids.push(request_id);
+    let after = tool_call(
+        mcp,
+        request_id,
+        "get_state",
+        json!({
+            "instance_id": config.instance_id,
+            "mcp_session_id": context_session,
+            "lease_id": config.lease_id,
+            "lease_epoch": config.lease_epoch,
+            "generation": after_generation
+        }),
+    )?;
+    require_kind(&after, "state_response")?;
+    if after["generation"] != after_generation
+        || after["observation"]["generation"] != after_generation
+        || !play_card_observation_changed(before_observation, &after["observation"])
+    {
+        return Err(String::from(
+            "Runtime-v3 gameplay post-state did not retain a card-play collection or energy change",
+        ));
+    }
+    let correlation_ids = trace_correlations(&[
+        ("initial_state", &before),
+        ("submitted_action", &submitted),
+        ("settled_action", &final_result),
+        ("post_state", &after),
+    ])?;
+    println!(
+        "{}",
+        serde_json::to_string(&json!({
+            "protocol": "runtime-v3-gameplay",
+            "instance_id": config.instance_id,
+            "session_id": config.session_id,
+            "gateway_session_id": config.session_id,
+            "mcp_session_id": config.mcp_session_id,
+            "lineage": trace_lineage(config),
+            "operation_id": operation_id,
+            "request_ids": request_ids,
+            "correlation_ids": correlation_ids,
+            "before_generation": before_generation,
+            "submitted_status": submitted_status,
+            "after_generation": after_generation,
+            "settlement_witness": final_result["effect_witness"],
+            "before_observation": before_observation,
+            "after_observation": after["observation"]
+        }))
+        .map_err(|error| format!("Runtime-v3 gameplay trace serialization failed: {error}"))?
+    );
+    Ok(())
+}
+
+fn play_card_observation_changed(before: &Value, after: &Value) -> bool {
+    before["hand_count"] != after["hand_count"]
+        || before["energy"] != after["energy"]
+        || before["draw_pile_count"] != after["draw_pile_count"]
+        || before["discard_pile_count"] != after["discard_pile_count"]
+        || before["exhaust_pile_count"] != after["exhaust_pile_count"]
+}
+
+fn trace_lineage(config: &RuntimeConfig) -> Value {
+    json!({
+        "instance_id": config.instance_id,
+        "gateway_session_id": config.session_id,
+        "mcp_session_id": config.mcp_session_id,
+        "lease_id": config.lease_id,
+        "lease_epoch": config.lease_epoch,
+        "run_id": config.run_id,
+        "episode_id": config.episode_id,
+        "trajectory_id": config.trajectory_id,
+        "artifact_id": config.artifact_id,
+    })
+}
+
+fn trace_correlations(entries: &[(&str, &Value)]) -> Result<Value, String> {
+    let mut correlations = Map::new();
+    for (label, value) in entries {
+        let correlation_id = value["correlation_id"]
+            .as_str()
+            .ok_or_else(|| format!("trace response {label} omitted its correlation identity"))?;
+        correlations.insert(
+            String::from(*label),
+            Value::String(String::from(correlation_id)),
+        );
+    }
+    Ok(Value::Object(correlations))
+}
+
+fn run_trace_v2(mcp: &mut McpProcess, config: &RuntimeConfig) -> Result<(), String> {
+    let mut request_ids = vec![1_u64, 2_u64];
+    require_success(
+        &mcp.call(
+            1,
+            "initialize",
+            json!({
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "sts2-harness-runtime-v2", "version": "0.0.0"}
+            }),
+        )?,
+        "initialize",
+    )?;
+    let catalog = mcp.call(2, "tools/list", json!({}))?;
+    require_success(&catalog, "tools/list")?;
+    if catalog["result"]["revision"] != "runtime-v2-mcp"
+        || catalog["result"]["tools"]
+            .as_array()
+            .is_none_or(|tools| tools.len() != 3)
+    {
+        return Err(String::from(
+            "MCP catalog did not advertise the exact Runtime-v2 catalog",
+        ));
+    }
+
+    let context_session = config.mcp_session_id.as_str();
+    let mut request_id = 3;
+    let before = wait_for_v2_player_turn(mcp, config, &mut request_id, &mut request_ids)?;
+    require_kind(&before, "state_response")?;
+    let before_generation = before["generation"]
+        .as_u64()
+        .ok_or_else(|| String::from("Runtime-v2 initial state omitted generation"))?;
+    let operation_id = "op-harness-runtime-v2";
+    request_ids.push(request_id);
+    let submitted = tool_call(
+        mcp,
+        request_id,
+        "submit_action",
+        json!({
+            "instance_id": config.instance_id,
+            "mcp_session_id": context_session,
+            "lease_id": config.lease_id,
+            "lease_epoch": config.lease_epoch,
+            "generation": before_generation,
+            "operation_id": operation_id,
+            "action_id": "end_turn"
+        }),
+    )?;
+    request_id += 1;
+    require_kind(&submitted, "action_response")?;
+    let submitted_status = submitted["status"]
+        .as_str()
+        .ok_or_else(|| String::from("Runtime-v2 action omitted status"))?;
+    if !matches!(submitted_status, "accepted" | "settled" | "unknown") {
+        return Err(format!(
+            "Runtime-v2 action returned unsupported status {submitted_status}"
+        ));
+    }
+    let operation_generation = submitted["generation"]
+        .as_u64()
+        .ok_or_else(|| String::from("Runtime-v2 action omitted generation"))?;
+    let reconciled = wait_for_operation_settlement(
+        mcp,
+        config,
+        &mut request_id,
+        &mut request_ids,
+        operation_id,
+        operation_generation,
+    )?;
+    if reconciled["status"] != "settled"
+        || reconciled["effect_witness"]["kind"] != "turn_end_settled"
+        || reconciled["observation"]["generation"] != reconciled["generation"]
+        || reconciled["generation"].as_u64() != Some(before_generation + 1)
+    {
+        return Err(String::from(
+            "Runtime-v2 reconciliation did not produce a fresh settled witness",
+        ));
+    }
+    let after_generation = reconciled["generation"]
+        .as_u64()
+        .ok_or_else(|| String::from("Runtime-v2 reconciliation omitted generation"))?;
+
+    request_ids.push(request_id);
+    let stale = tool_call(
+        mcp,
+        request_id,
+        "submit_action",
+        json!({
+            "instance_id": config.instance_id,
+            "mcp_session_id": context_session,
+            "lease_id": config.lease_id,
+            "lease_epoch": config.lease_epoch,
+            "generation": before_generation,
+            "operation_id": "op-harness-runtime-v2-stale",
+            "action_id": "end_turn"
+        }),
+    )?;
+    request_id += 1;
+    if stale["status"] != "rejected" || stale["error_code"] != "sts2.game-core/stale_generation" {
+        return Err(String::from(
+            "Runtime-v2 stale generation was not rejected before a second mutation",
+        ));
+    }
+    request_ids.push(request_id);
+    let duplicate_replay = tool_call(
+        mcp,
+        request_id,
+        "submit_action",
+        json!({
+            "instance_id": config.instance_id,
+            "mcp_session_id": context_session,
+            "lease_id": config.lease_id,
+            "lease_epoch": config.lease_epoch,
+            "generation": before_generation,
+            "operation_id": operation_id,
+            "action_id": "end_turn"
+        }),
+    )?;
+    request_id += 1;
+    if duplicate_replay["status"] != "settled"
+        || duplicate_replay["effect_witness"]["kind"] != "turn_end_settled"
+        || duplicate_replay["generation"].as_u64() != Some(after_generation)
+    {
+        return Err(String::from(
+            "Runtime-v2 exact duplicate did not replay its settled result",
+        ));
+    }
+    request_ids.push(request_id);
+    let duplicate_conflict = tool_call(
+        mcp,
+        request_id,
+        "submit_action",
+        json!({
+            "instance_id": config.instance_id,
+            "mcp_session_id": context_session,
+            "lease_id": config.lease_id,
+            "lease_epoch": config.lease_epoch,
+            "generation": after_generation,
+            "operation_id": operation_id,
+            "action_id": "end_turn"
+        }),
+    )?;
+    request_id += 1;
+    if duplicate_conflict["status"] != "rejected"
+        || duplicate_conflict["error_code"] != "idempotency_conflict"
+    {
+        return Err(String::from(
+            "Runtime-v2 conflicting operation reuse was not rejected without re-dispatch",
+        ));
+    }
+    request_ids.push(request_id);
+    let after = tool_call(
+        mcp,
+        request_id,
+        "get_state",
+        json!({
+            "instance_id": config.instance_id,
+            "mcp_session_id": context_session,
+            "lease_id": config.lease_id,
+            "lease_epoch": config.lease_epoch,
+            "generation": after_generation
+        }),
+    )?;
+    require_kind(&after, "state_response")?;
+    if after["generation"].as_u64() != Some(after_generation)
+        || after["observation"]["generation"].as_u64() != Some(after_generation)
+    {
+        return Err(String::from(
+            "Runtime-v2 post-action state did not retain the settled generation",
+        ));
+    }
+    let correlation_ids = trace_correlations(&[
+        ("initial_state", &before),
+        ("submitted_action", &submitted),
+        ("settled_action", &reconciled),
+        ("stale_action", &stale),
+        ("duplicate_replay", &duplicate_replay),
+        ("duplicate_conflict", &duplicate_conflict),
+        ("post_state", &after),
+    ])?;
+    println!(
+        "{}",
+        serde_json::to_string(&json!({
+            "protocol": "runtime-v2",
+            "instance_id": config.instance_id,
+            "session_id": config.session_id,
+            "gateway_session_id": config.session_id,
+            "mcp_session_id": config.mcp_session_id,
+            "lineage": trace_lineage(config),
+            "operation_id": operation_id,
+            "request_ids": request_ids,
+            "correlation_ids": correlation_ids,
+            "before_generation": before_generation,
+            "submitted_status": submitted_status,
+            "reconciled_status": reconciled["status"],
+            "after_generation": after_generation,
+            "stale_rejection": stale["error_code"],
+            "duplicate_replay_status": duplicate_replay["status"],
+            "duplicate_conflict": duplicate_conflict["error_code"],
+            "settlement_witness": reconciled["effect_witness"]
+        }))
+        .map_err(|error| format!("Runtime-v2 trace serialization failed: {error}"))?
+    );
+    Ok(())
+}
+
+fn require_kind(value: &Value, expected: &str) -> Result<(), String> {
+    if value["kind"] == expected {
+        Ok(())
+    } else {
+        Err(format!("Runtime-v2 response kind was not {expected}"))
+    }
+}
+
 fn tool_call(mcp: &mut McpProcess, id: u64, name: &str, arguments: Value) -> Result<Value, String> {
     let response = mcp.call(
         id,
@@ -160,7 +651,12 @@ fn tool_call(mcp: &mut McpProcess, id: u64, name: &str, arguments: Value) -> Res
     let text = response["result"]["content"][0]["text"]
         .as_str()
         .ok_or_else(|| String::from("MCP tool response omitted text content"))?;
-    serde_json::from_str(text).map_err(|error| format!("MCP tool content was not JSON: {error}"))
+    serde_json::from_str(text).map_err(|error| {
+        format!(
+            "MCP tool {name} content was not JSON ({} bytes): {text:?}: {error}",
+            text.len(),
+        )
+    })
 }
 
 fn require_success(response: &Value, operation: &str) -> Result<(), String> {
@@ -197,6 +693,10 @@ fn identity_headers(config: &RuntimeConfig, correlation: &str) -> BTreeMap<Strin
         ),
         (String::from("x-sts2-caller-id"), config.caller_id.clone()),
         (String::from("x-sts2-session-id"), config.session_id.clone()),
+        (
+            String::from("x-mcp-session-id"),
+            config.mcp_session_id.clone(),
+        ),
         (String::from("x-sts2-lease-id"), config.lease_id.clone()),
         (
             String::from("x-sts2-lease-epoch"),
@@ -220,9 +720,11 @@ impl McpProcess {
         let mut child = Command::new(&config.mcp_binary)
             .env("STS2_GATEWAY_ADDR", &config.gateway_address)
             .env("STS2_GATEWAY_TOKEN", &config.gateway_token)
+            .env("STS2_RUNTIME_PROFILE", &config.runtime_profile)
             .env("STS2_INSTANCE_ID", &config.instance_id)
             .env("STS2_CALLER_ID", &config.caller_id)
             .env("STS2_SESSION_ID", &config.session_id)
+            .env("STS2_MCP_SESSION_ID", &config.mcp_session_id)
             .env("STS2_LEASE_ID", &config.lease_id)
             .env("STS2_LEASE_EPOCH", config.lease_epoch.to_string())
             .stdin(Stdio::piped())

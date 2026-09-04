@@ -29,6 +29,7 @@ supported by the target. Compatibility claims remain limited to the exact runtim
 | Game state/action behavior | Not reachable by design | Unsupported in this repository boundary |
 | Replay/artifact lineage | Offline record/replay and metadata seams | Source-derived; deterministic fakes only |
 | Scoring | No scoring policy implementation | Proposed contract only |
+| Runtime-v2 coordinator | Four-lane bounded pure scheduler with explicit lineage, fairness, overload, cancellation, and shutdown seams | Confirmed by offline component tests; live supervisor/profile/host isolation unverified |
 
 ## Compatibility classifications
 
@@ -66,4 +67,5 @@ must be tested before an additive label is used.
 
 The coordinator does not inherit compatibility from a successful trajectory. Promotion requires an
 exact mod/host version, artifact digest, disposable profile, request sequence, fresh observation,
-effect witness, and cleanup record.
+The runtime adapter binds `STS2_MCP_SESSION_ID` separately from `STS2_SESSION_ID`, defaulting to the
+gateway session; distinct values require matching gateway, MCP, and harness configuration.
