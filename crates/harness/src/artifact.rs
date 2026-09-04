@@ -2,6 +2,7 @@
 
 use crate::error::PortError;
 use crate::identity::{ArtifactId, Digest, RunId, SchemaVersion, TrajectoryId};
+use sha2::{Digest as _, Sha256};
 
 const MAX_PRODUCER_BYTES: usize = 128;
 const MAX_PARENT_ARTIFACTS: usize = 32;
@@ -170,6 +171,13 @@ impl ArtifactDraft {
             return Err(PortError::new(
                 "artifact_length_mismatch",
                 "artifact metadata length does not match content",
+                false,
+            ));
+        }
+        if metadata.content_digest().as_str() != format!("{:x}", Sha256::digest(&bytes)) {
+            return Err(PortError::new(
+                "artifact_digest_mismatch",
+                "artifact digest does not match content",
                 false,
             ));
         }

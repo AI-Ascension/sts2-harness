@@ -183,6 +183,13 @@ where
         let (trajectory_id, sequence, correlation) = {
             let active = self.active_episode(episode)?;
             if let Some(record) = active.records.get(&idempotency_key) {
+                if record.kind() != kind || record.payload() != &payload {
+                    return Err(HarnessError::Storage(crate::error::PortError::new(
+                        "record_idempotency_conflict",
+                        "record key already identifies different content",
+                        false,
+                    )));
+                }
                 return Ok(AppendOutcome::duplicate_record(record.clone()));
             }
             if active.next_sequence == u64::MAX {
