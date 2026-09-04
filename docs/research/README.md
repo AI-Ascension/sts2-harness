@@ -10,6 +10,9 @@ build.
 - [`STS2_EXPERT_STATE_INFORMATION_ARCHITECTURE_2026-09-03.md`](STS2_EXPERT_STATE_INFORMATION_ARCHITECTURE_2026-09-03.md)
   — build-pinned research update for a fair-play autonomous harness, including the proposed
   state/action inventory, typed memory, recovery, evaluation, and patch-drift plan.
+- [`sts2-expert-state-package/`](sts2-expert-state-package/)
+  — generated requirements package with the 131-state census, typed inventories, schemas,
+  synthetic fixtures, per-state prose, and Mermaid sources.
 
 The research uses the harness evidence vocabulary: `confirmed`, `source-derived`, `inferred`,
 `proposed`, `unverified`, and `unsupported`. The existing bounded host probe is linked only as

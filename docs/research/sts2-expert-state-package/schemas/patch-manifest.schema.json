@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sts2-harness/research/patch-manifest/1",
+  "title": "STS2 PatchManifest",
+  "description": "A build/profile compatibility manifest with explicit validation gates and fail-closed patch quarantine.",
+  "$comment": "Public/live, beta, and offline lanes are independent. A quarantined or blocked build cannot autonomously mutate a game.",
+  "x-sts2-offline-provenance": { "offline_label_status": "privileged_offline_label", "storage": "separate_artifact", "policy_visible": false },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "schema_digest", "manifest_id", "build", "profile", "previous_build", "changed_entities", "changed_schemas", "ui_signatures", "affected_tests", "validation_gates", "quarantine", "migration", "lane_isolation", "provenance"],
+  "properties": {
+    "schema_version": { "const": "sts2-patch-manifest/1" }, "schema_digest": { "$ref": "#/$defs/hash" }, "manifest_id": { "$ref": "#/$defs/manifest_id" }, "build": { "$ref": "#/$defs/build" }, "profile": { "$ref": "#/$defs/profile" }, "previous_build": { "anyOf": [ { "$ref": "#/$defs/build_ref" }, { "type": "null" } ] },
+    "changed_entities": { "type": "array", "maxItems": 4096, "items": { "$ref": "#/$defs/changed_entity" } }, "changed_schemas": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/changed_schema" } }, "ui_signatures": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/ui_signature" } }, "affected_tests": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/affected_test" } }, "validation_gates": { "type": "array", "minItems": 1, "maxItems": 128, "items": { "$ref": "#/$defs/validation_gate" } }, "quarantine": { "$ref": "#/$defs/quarantine" }, "migration": { "$ref": "#/$defs/migration" }, "lane_isolation": { "$ref": "#/$defs/lane_isolation" }, "provenance": { "$ref": "#/$defs/provenance" }
+  },
+  "allOf": [
+    { "if": { "properties": { "quarantine": { "properties": { "status": { "enum": ["quarantined", "blocked"] } } } } }, "then": { "properties": { "quarantine": { "properties": { "autonomous_mutation_allowed": { "const": false }, "reasons": { "minItems": 1 } } } } } },
+    { "if": { "properties": { "quarantine": { "properties": { "status": { "const": "validated" } } } } }, "then": { "properties": { "quarantine": { "properties": { "autonomous_mutation_allowed": { "const": true } } } } } }
+  ],
+  "$defs": {
+    "id_value": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$" }, "timestamp": { "type": "string", "format": "date-time" },
+    "hash": { "type": "object", "additionalProperties": false, "required": ["algorithm", "value"], "properties": { "algorithm": { "const": "sha256" }, "value": { "type": "string", "pattern": "^[0-9a-f]{64}$" } } },
+    "manifest_id": { "type": "object", "additionalProperties": false, "required": ["namespace", "value"], "properties": { "namespace": { "const": "sts2.patch_manifest" }, "value": { "$ref": "#/$defs/id_value" } } },
+    "build_id": { "type": "object", "additionalProperties": false, "required": ["namespace", "value"], "properties": { "namespace": { "const": "sts2.build" }, "value": { "$ref": "#/$defs/id_value" } } },
+    "profile_id": { "type": "object", "additionalProperties": false, "required": ["namespace", "value"], "properties": { "namespace": { "const": "sts2.profile" }, "value": { "$ref": "#/$defs/id_value" } } },
+    "entity_id": { "type": "object", "additionalProperties": false, "required": ["namespace", "value"], "properties": { "namespace": { "const": "sts2.entity" }, "value": { "$ref": "#/$defs/id_value" } } },
+    "state_entity_id": { "type": "object", "additionalProperties": false, "required": ["namespace", "value"], "properties": { "namespace": { "const": "sts2.state" }, "value": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$" } } },
+    "schema_id": { "type": "object", "additionalProperties": false, "required": ["namespace", "value"], "properties": { "namespace": { "const": "sts2.schema" }, "value": { "$ref": "#/$defs/id_value" } } },
+    "build_ref": { "type": "object", "additionalProperties": false, "required": ["build_id", "semantic_version", "channel"], "properties": { "build_id": { "$ref": "#/$defs/build_id" }, "semantic_version": { "type": ["string", "null"], "maxLength": 64 }, "channel": { "enum": ["public", "public-beta", "beta", "offline"] } } },
+    "build": {
+      "type": "object", "additionalProperties": false, "required": ["build_id", "semantic_version", "channel", "branch", "platform", "architecture", "executable_hash", "assembly_hashes", "data_hashes"],
+      "properties": {
+        "build_id": { "$ref": "#/$defs/build_id" }, "semantic_version": { "type": ["string", "null"], "maxLength": 64 }, "channel": { "enum": ["public", "public-beta", "beta", "offline"] }, "branch": { "type": "string", "maxLength": 128 }, "platform": { "type": ["string", "null"], "maxLength": 64 }, "architecture": { "type": ["string", "null"], "maxLength": 64 }, "executable_hash": { "anyOf": [ { "$ref": "#/$defs/hash" }, { "type": "null" } ] }, "assembly_hashes": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/named_hash" } }, "data_hashes": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/named_hash" } }
+      }
+    },
+    "named_hash": { "type": "object", "additionalProperties": false, "required": ["subject", "digest"], "properties": { "subject": { "enum": ["sts2.dll", "game_executable", "pck", "data", "mod", "other"] }, "digest": { "$ref": "#/$defs/hash" } } },
+    "profile": {
+      "type": "object", "additionalProperties": false, "required": ["profile_id", "profile_digest", "locale", "resolution", "ui_scale", "input_method", "active_mods", "run_modifiers"],
+      "properties": {
+        "profile_id": { "$ref": "#/$defs/profile_id" }, "profile_digest": { "$ref": "#/$defs/hash" }, "locale": { "type": ["string", "null"], "maxLength": 32 },
+        "resolution": { "type": "object", "additionalProperties": false, "required": ["width", "height"], "properties": { "width": { "type": ["integer", "null"], "minimum": 1, "maximum": 16384 }, "height": { "type": ["integer", "null"], "minimum": 1, "maximum": 16384 } } }, "ui_scale": { "type": ["number", "null"], "minimum": 0.1, "maximum": 8 }, "input_method": { "enum": ["mouse_keyboard", "controller", "semantic", "unknown"] },
+        "active_mods": { "type": "array", "maxItems": 128, "items": { "type": "object", "additionalProperties": false, "required": ["mod_id", "version", "content_hash"], "properties": { "mod_id": { "$ref": "#/$defs/id_value" }, "version": { "type": "string", "maxLength": 64 }, "content_hash": { "$ref": "#/$defs/hash" } } } }, "run_modifiers": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/id_value" } }
+      }
+    },
+    "changed_entity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["entity_id", "kind", "change_type", "old_digest", "new_digest", "requires_review"],
+      "properties": {
+        "entity_id": { "oneOf": [ { "$ref": "#/$defs/entity_id" }, { "$ref": "#/$defs/state_entity_id" } ] },
+        "kind": { "enum": ["card", "character", "enemy", "event", "relic", "potion", "state", "action", "ui", "other"] },
+        "change_type": { "enum": ["added", "removed", "modified", "unchanged"] },
+        "old_digest": { "anyOf": [ { "$ref": "#/$defs/hash" }, { "type": "null" } ] },
+        "new_digest": { "anyOf": [ { "$ref": "#/$defs/hash" }, { "type": "null" } ] },
+        "requires_review": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "state" } } },
+          "then": { "properties": { "entity_id": { "$ref": "#/$defs/state_entity_id" } } }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "enum": ["card", "character", "enemy", "event", "relic", "potion", "action", "ui", "other"] } } },
+          "then": { "properties": { "entity_id": { "$ref": "#/$defs/entity_id" } } }
+        }
+      ]
+    },
+    "changed_schema": { "type": "object", "additionalProperties": false, "required": ["schema_id", "old_digest", "new_digest", "compatibility"], "properties": { "schema_id": { "$ref": "#/$defs/schema_id" }, "old_digest": { "anyOf": [ { "$ref": "#/$defs/hash" }, { "type": "null" } ] }, "new_digest": { "$ref": "#/$defs/hash" }, "compatibility": { "enum": ["additive-compatible", "deprecated-compatible", "safety-correction", "breaking", "unverified"] } } },
+    "ui_signature": { "type": "object", "additionalProperties": false, "required": ["signature_id", "surface", "digest", "status"], "properties": { "signature_id": { "$ref": "#/$defs/id_value" }, "surface": { "enum": ["state_detection", "actionability", "modal", "target_selection", "resolution", "other"] }, "digest": { "$ref": "#/$defs/hash" }, "status": { "enum": ["unchanged", "added", "removed", "modified", "unverified"] } } },
+    "affected_test": { "type": "object", "additionalProperties": false, "required": ["test_id", "category", "required", "result", "evidence_status"], "properties": { "test_id": { "$ref": "#/$defs/id_value" }, "category": { "enum": ["observation", "fair_play", "legal_action", "transition", "simulator_parity", "ui", "cooperative", "replay", "other"] }, "required": { "type": "boolean" }, "result": { "enum": ["pass", "fail", "pending", "not_run", "unverified"] }, "evidence_status": { "enum": ["confirmed", "source-derived", "inferred", "proposed", "unverified", "unsupported"] } } },
+    "validation_gate": { "type": "object", "additionalProperties": false, "required": ["gate_id", "status", "required", "evidence_status"], "properties": { "gate_id": { "enum": ["exact_hashes", "entity_diff", "schema_diff", "observation_read", "fair_play_leak", "legal_actions", "ui_signatures", "effect_witness", "simulator_parity", "migration", "single_player_smoke", "cooperative_smoke"] }, "status": { "enum": ["pass", "fail", "pending", "not_run", "waived"] }, "required": { "type": "boolean" }, "evidence_status": { "enum": ["confirmed", "source-derived", "inferred", "proposed", "unverified", "unsupported"] }, "test_ids": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/id_value" } } } },
+    "quarantine": { "type": "object", "additionalProperties": false, "required": ["status", "autonomous_mutation_allowed", "reasons", "entered_at", "promotion_requirements"], "properties": { "status": { "enum": ["validated", "quarantined", "blocked"] }, "autonomous_mutation_allowed": { "type": "boolean" }, "reasons": { "type": "array", "maxItems": 32, "items": { "enum": ["unknown_build", "missing_hash", "semantic_diff", "schema_diff", "failed_gate", "missing_live_evidence", "fair_play_risk", "migration_incomplete", "other"] } }, "entered_at": { "$ref": "#/$defs/timestamp" }, "promotion_requirements": { "type": "array", "maxItems": 64, "items": { "enum": ["exact_build_hash", "state_detection", "observation_projection", "privilege_scan", "legal_action_conformance", "transition_verification", "simulator_parity", "expert_review", "migration", "other"] } } } },
+    "migration": { "type": "object", "additionalProperties": false, "required": ["status", "record_compatibility", "rollback_available"], "properties": { "status": { "enum": ["not_required", "planned", "validated", "blocked"] }, "record_compatibility": { "enum": ["compatible", "additive", "deprecated", "breaking", "unknown"] }, "rollback_available": { "type": "boolean" }, "migration_id": { "$ref": "#/$defs/id_value" } } },
+    "lane_isolation": { "type": "object", "additionalProperties": false, "required": ["live_and_beta_separate", "offline_labels_separate", "production_policy_excludes_privileged"], "properties": { "live_and_beta_separate": { "const": true }, "offline_labels_separate": { "const": true }, "production_policy_excludes_privileged": { "const": true } } },
+    "provenance": { "type": "object", "additionalProperties": false, "required": ["source_kind", "evidence_status", "epistemic_status", "source_ids", "created_at", "confidence", "independent_verification", "policy_visible"], "properties": { "source_kind": { "enum": ["controlled_live_capture", "replay_reduction", "synthetic", "expert_review", "structured_data", "official_documentation"] }, "evidence_status": { "enum": ["confirmed", "source-derived", "inferred", "proposed", "unverified", "unsupported"] }, "epistemic_status": { "enum": ["observed", "documented", "extracted", "calculated", "inferred", "hypothesized"] }, "source_ids": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/id_value" } }, "created_at": { "$ref": "#/$defs/timestamp" }, "confidence": { "type": "number", "minimum": 0, "maximum": 1 }, "independent_verification": { "type": "boolean" }, "policy_visible": { "const": true } } },
+    "offline_privileged_label": { "description": "Offline-only status, intentionally unreachable from the production manifest root.", "type": "object", "additionalProperties": false, "required": ["status", "artifact_id", "policy_visible"], "properties": { "status": { "const": "privileged_offline_label" }, "artifact_id": { "$ref": "#/$defs/id_value" }, "policy_visible": { "const": false } } }
+  }
+}

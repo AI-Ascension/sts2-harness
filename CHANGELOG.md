@@ -13,6 +13,10 @@ claim a released harness version or runtime compatibility.
   fair-play observation, the proposed atomic-state/action inventory, recovery, evaluation, and
   patch drift. It is explicitly not full-game or gameplay-proof evidence.
 
+- A generated expert-state requirements package with 131 candidate states, typed observation/action/
+  transition inventories, closed JSON schemas, synthetic fixture classes, per-state Markdown, and
+  Mermaid sources. The package remains target-build validation material, not runtime support.
+
 - The bounded `sts2-harness-runtime` coordinator, `runtime-v1` artifact copy, real MCP/gateway
   process path, stale-generation oracle, sanitized trace, and component evidence record.
 

@@ -27,6 +27,11 @@ It is a proposed harness-facing research specification: it separates fair-play o
 privileged data, records the initial 144-state inventory as requiring target-build validation, and
 does not turn the bounded host probe into full gameplay or state-discovery evidence.
 
+The companion [`generated expert-state package`](docs/research/sts2-expert-state-package/README.md)
+contains the 131-state requirements baseline, typed inventories, JSON schemas, synthetic fixtures,
+per-state Markdown requirements, and Mermaid source diagrams. It is generated research material,
+not a game adapter or target-build certification.
+
 ## Owner and consumers
 
 The target owner is the harness maintainers. The harness owns the experiment control plane and the
