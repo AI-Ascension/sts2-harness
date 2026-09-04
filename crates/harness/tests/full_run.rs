@@ -180,7 +180,8 @@ fn full_run_routes_every_playable_surface_to_the_provider_and_tracks_terminals()
             fair_play(EpisodeStage::Victory, 2),
         )
         .expect("victory is a valid terminal observation"),
-    );
+    )
+    .expect("victory observation is accepted");
     assert_eq!(
         machine.phase(),
         &EpisodePhase::Complete(EpisodeStage::Victory)
@@ -198,7 +199,8 @@ fn full_run_routes_every_playable_surface_to_the_provider_and_tracks_terminals()
             fair_play(EpisodeStage::Defeat, 2),
         )
         .expect("defeat is a valid terminal observation"),
-    );
+    )
+    .expect("defeat observation is accepted");
     assert_eq!(
         defeat.phase(),
         &EpisodePhase::Complete(EpisodeStage::Defeat)
