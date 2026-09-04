@@ -6,6 +6,9 @@ use sts2_harness::{ActionKind, DispatchStatus, EpisodeLegalAction};
 use super::super::config::RuntimeConfig;
 use super::{action_set, observation, receipt, result_observation, wait_sample};
 
+#[path = "runtime_v3_contract_test.rs"]
+mod contract;
+
 #[test]
 fn unknown_results_still_validate_generation_and_nullable_state_identity() -> Result<(), String> {
     let action = EpisodeLegalAction::new("combat.end-turn", ActionKind::EndTurn)
@@ -94,7 +97,7 @@ fn response(kind: &str, generation: u64, operation_id: Value, status: Value) -> 
     };
     json!({
         "protocol_version": "runtime-v3-gameplay",
-        "schema_digest": "fbfb18279b0c7ebb350ef0ce0d56547fa11e83985b13380cb2b0f1dba4cb56e9",
+        "schema_digest": "b37c80f583aeaf4f81ede2083bcfb4129196baf5eb092470e8738173c4b7226c",
         "provenance": {"artifact": "sts2-protocol/runtime-v3-gameplay", "source": "schemas/runtime-v3-gameplay.schema.json", "generator": "hand-authored"},
         "correlation_id": "7",
         "instance_id": "instance-1",

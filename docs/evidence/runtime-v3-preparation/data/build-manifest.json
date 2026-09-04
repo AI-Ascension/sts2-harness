@@ -20,12 +20,12 @@
   },
   "candidate": {
     "repository": "sts2-project",
-    "revision": "six PR heads pushed on 2026-09-04; exact repository heads are recorded in the aggregate ORCHESTRATION_MANIFEST.md, including the harness provenance follow-up",
+    "revision": "source-only consumer refresh to protocol 82507361890c1bdce6cffeaf7e616d93e53a7d99; aggregate consumer SHA compatibility remains unverified",
     "target_build": "unavailable",
     "game_build": "unavailable",
     "status": "unverified",
     "artifact_digests": {
-      "runtime-v3-gameplay-schema": "fbfb18279b0c7ebb350ef0ce0d56547fa11e83985b13380cb2b0f1dba4cb56e9",
+      "runtime-v3-gameplay-schema": "b37c80f583aeaf4f81ede2083bcfb4129196baf5eb092470e8738173c4b7226c",
       "coop-gameplay-v1-schema": "2c34d013315fbf2e16de03dbe2bd4c43d4c13c744292548cc46ea960af5e1fa2"
     }
   },
@@ -37,7 +37,7 @@
       {"path": "runtime-v3-gameplay LegalAction types", "change": "added", "status": "source-derived", "notes": "Neutral typed action profile is present; target-game legality remains unverified."}
     ]},
     "schema": {"status": "confirmed", "observed": true, "entries": [
-      {"path": "schemas/runtime-v3-gameplay.schema.json", "change": "added", "status": "confirmed", "after_digest": "fbfb18279b0c7ebb350ef0ce0d56547fa11e83985b13380cb2b0f1dba4cb56e9"},
+      {"path": "schemas/runtime-v3-gameplay.schema.json", "change": "modified", "status": "confirmed", "before_digest": "fbfb18279b0c7ebb350ef0ce0d56547fa11e83985b13380cb2b0f1dba4cb56e9", "after_digest": "b37c80f583aeaf4f81ede2083bcfb4129196baf5eb092470e8738173c4b7226c"},
       {"path": "schemas/coop-gameplay-v1.schema.json", "change": "added", "status": "confirmed", "after_digest": "2c34d013315fbf2e16de03dbe2bd4c43d4c13c744292548cc46ea960af5e1fa2"}
     ]}
   },

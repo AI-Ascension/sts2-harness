@@ -1,5 +1,10 @@
 # Third-Party Notices
 
+Runtime-v3 contract tests use `jsonschema` 0.52.1 (MIT), with default features disabled to avoid
+HTTP/file reference retrieval. It is a dev-only schema validator, not a second protocol owner.
+The copied Runtime-v3 schemas/goldens are MIT-licensed `sts2-protocol` artifacts with exact
+commit, checksum inventory, mapping, and sanitization provenance in their adjacent README.
+
 This foundation contains no game binaries, host assemblies, model weights, datasets, provider SDKs,
 or copied implementation source.
 

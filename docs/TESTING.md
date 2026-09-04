@@ -152,6 +152,12 @@ are safe local checks, not a new host/provider run or broader interoperability e
 
 ## Runtime-v3, full-run, and co-op lanes
 
+The copied [Runtime-v3 consumer contract](../protocol-artifact/runtime-v3-gameplay/README.md)
+has an immutable upstream checksum inventory and exact schema-pin drift test. Offline JSON Schema
+checks cover all four canonical goldens; actual observation and receipt parser tests consume the
+two response goldens and reject selected malformed mutations. This bounded test lane does not
+establish exhaustive conformance or cross-process/game/provider compatibility.
+
 The `full_run` integration test routes setup, map, combat, reward, shop, event, rest, and selection
 choices through a decision source, then records victory and defeat as separate terminal states. It
 is a deterministic routing test, not a claim about target-game rules. Runtime-v3 tests additionally
