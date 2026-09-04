@@ -169,38 +169,40 @@ fn full_run_routes_every_playable_surface_to_the_provider_and_tracks_terminals()
         .expect("map transition is fresh");
     assert!(matches!(machine.phase(), EpisodePhase::Ready(_)));
 
-    machine.observe(
-        EpisodeObservation::new(
-            "victory-2",
-            2,
-            EpisodeStage::Victory,
-            false,
-            false,
-            false,
-            fair_play(EpisodeStage::Victory, 2),
+    machine
+        .observe(
+            EpisodeObservation::new(
+                "victory-2",
+                2,
+                EpisodeStage::Victory,
+                false,
+                false,
+                false,
+                fair_play(EpisodeStage::Victory, 2),
+            )
+            .expect("victory is a valid terminal observation"),
         )
-        .expect("victory is a valid terminal observation"),
-    )
-    .expect("victory observation is accepted");
+        .expect("victory observation is accepted");
     assert_eq!(
         machine.phase(),
         &EpisodePhase::Complete(EpisodeStage::Victory)
     );
 
     let mut defeat = EpisodeMachine::new();
-    defeat.observe(
-        EpisodeObservation::new(
-            "defeat-2",
-            2,
-            EpisodeStage::Defeat,
-            false,
-            false,
-            false,
-            fair_play(EpisodeStage::Defeat, 2),
+    defeat
+        .observe(
+            EpisodeObservation::new(
+                "defeat-2",
+                2,
+                EpisodeStage::Defeat,
+                false,
+                false,
+                false,
+                fair_play(EpisodeStage::Defeat, 2),
+            )
+            .expect("defeat is a valid terminal observation"),
         )
-        .expect("defeat is a valid terminal observation"),
-    )
-    .expect("defeat observation is accepted");
+        .expect("defeat observation is accepted");
     assert_eq!(
         defeat.phase(),
         &EpisodePhase::Complete(EpisodeStage::Defeat)
