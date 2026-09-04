@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::expect_used)]
+
 use std::collections::VecDeque;
 
 use serde_json::{Value, json};

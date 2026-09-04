@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::expect_used)]
+
 use std::error::Error;
 
 use serde_json::json;

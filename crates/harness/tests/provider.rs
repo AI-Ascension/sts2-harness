@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::expect_used)]
+
 use sts2_harness::{
     Correlation, IdempotencyKey, ModelExecutionId, ModelOutput, ModelRequest, ModelResponse,
     Prompt, RetryPolicy,

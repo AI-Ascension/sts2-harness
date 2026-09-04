@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::expect_used)]
+
 use serde_json::{Value, json};
 use sts2_harness::{
     ActionKind, Decision, DecisionInput, DecisionSource, EpisodeLegalAction, EpisodeLegalActionSet,

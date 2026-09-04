@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::expect_used)]
+
 use serde_json::json;
 use sts2_harness::{
     Correlation, ExoConfig, ExoProvider, ExoTransport, ExoTransportError, IdempotencyKey,
