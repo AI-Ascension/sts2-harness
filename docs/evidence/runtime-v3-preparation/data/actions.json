@@ -1,0 +1,51 @@
+{
+  "package": "runtime-v3-preparation",
+  "purpose": "Research-only classification of action authority and decision inputs",
+  "authority": "not-runtime-authority",
+  "source_status": "unverified",
+  "source_note": "Action legality is not inferred from this file; only the host-generated current catalog may be dispatched.",
+  "fields": [
+    {
+      "path": "legal_actions[*].action_id",
+      "access_class": "host_generated_current",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "unverified",
+      "notes": "Opaque bounded ID selected from the current observation generation."
+    },
+    {
+      "path": "legal_actions[*].action",
+      "access_class": "host_generated_current",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "unverified",
+      "notes": "Typed semantic payload; host validates legality and performs mutation."
+    },
+    {
+      "path": "decision.action_id",
+      "access_class": "model_selected_from_host_catalog",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "unverified",
+      "notes": "Exo may select one existing ID, but cannot invent or mutate an action."
+    },
+    {
+      "path": "decision.rationale|confidence",
+      "access_class": "model_metadata",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "unverified",
+      "notes": "Bounded metadata only; private chain-of-thought is not retained."
+    },
+    {
+      "path": "decision.wait|reobserve|recovery",
+      "access_class": "safe_control_directive",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "unverified",
+      "notes": "Non-strategic directives remain bounded and cannot bypass recovery gates."
+    },
+    {
+      "path": "raw_input|coordinates|reflection|process_command",
+      "access_class": "privileged_forbidden",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "confirmed",
+      "notes": "No raw-input or process-control action is part of the semantic catalog."
+    }
+  ]
+}

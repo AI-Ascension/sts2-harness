@@ -14,7 +14,7 @@ The working-tree baseline revisions and repository ownership are recorded in the
 `ORCHESTRATION_MANIFEST.md`. Runtime-v3 gameplay schema digest is
 `fbfb18279b0c7ebb350ef0ce0d56547fa11e83985b13380cb2b0f1dba4cb56e9`; co-op gameplay schema digest
 is `2c34d013315fbf2e16de03dbe2bd4c43d4c13c744292548cc46ea960af5e1fa2`. The build manifest is
-[`build-manifest.json`](../research/sts2-expert-state-package/data/build-manifest.json), and its
+[`build-manifest.json`](runtime-v3-preparation/data/build-manifest.json), and its
 shape is checked by [`patch-manifest.schema.json`](../../patch-manifest.schema.json).
 
 The six PR heads and their GitHub CI/policy results are recorded in the aggregate manifest. Those

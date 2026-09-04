@@ -9,7 +9,7 @@ Build or run it only when the pinned Rust toolchain is available:
 
 ```text
 cargo run --manifest-path tools/patch-diff/Cargo.toml -- \
-  docs/research/sts2-expert-state-package/data/build-manifest.json \
+  docs/evidence/runtime-v3-preparation/data/build-manifest.json \
   candidate-build-manifest.json
 ```
 

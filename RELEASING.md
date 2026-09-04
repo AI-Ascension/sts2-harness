@@ -52,7 +52,7 @@ approved for distribution, valued saves, proprietary host files, personal paths,
 debug output. Do not rebuild different bytes during promotion.
 
 Before any promotion, validate `patch-manifest.schema.json` and review the quarantined build
-manifest at `docs/research/sts2-expert-state-package/data/build-manifest.json`. Run the bounded
+manifest at `docs/evidence/runtime-v3-preparation/data/build-manifest.json`. Run the bounded
 `tools/patch-diff` utility against the exact base and candidate manifests, then attach separate
 hashes and evidence for build, data, UI, action-catalog, and schema changes. A source diff or a
 successful compile is not a target-build or runtime-compatibility result.

@@ -66,7 +66,7 @@ missing peers, or disconnect. These are source/test claims; target-build and liv
 remain `unverified`.
 
 M10 records build, data, UI, action, and schema dimensions independently in
-[`build-manifest.json`](research/sts2-expert-state-package/data/build-manifest.json). The manifest
+[`build-manifest.json`](evidence/runtime-v3-preparation/data/build-manifest.json). The manifest
 is deliberately `quarantined` until exact package hashes, licensed-host traces, independent leak
 checks, cleanup, replay, rollback, and all repository gates are available.
 

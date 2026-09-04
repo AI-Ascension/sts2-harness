@@ -27,7 +27,7 @@ jobs:
       - name: Verify quarantined M10 manifest and fair-play source
         run: |
           git diff --check
-          jq -e '.manifest_version == "sts2-patch-manifest-v1" and .quarantine.status == "quarantined" and (.diffs | has("build") and has("data") and has("ui") and has("actions") and has("schema"))' docs/research/sts2-expert-state-package/data/build-manifest.json >/dev/null
+          jq -e '.manifest_version == "sts2-patch-manifest-v1" and .quarantine.status == "quarantined" and (.diffs | has("build") and has("data") and has("ui") and has("actions") and has("schema"))' docs/evidence/runtime-v3-preparation/data/build-manifest.json >/dev/null
           jq -e '.["$id"] == "sts2-patch-manifest-v1" and .additionalProperties == false' patch-manifest.schema.json >/dev/null
           grep -Fq 'is_privileged_key' crates/harness/src/exo/sandbox.rs
           if grep -REn 'std::process|Command::|TcpStream' crates/harness/src/exo; then exit 1; fi

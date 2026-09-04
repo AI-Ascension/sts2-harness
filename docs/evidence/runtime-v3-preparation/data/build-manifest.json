@@ -1,0 +1,55 @@
+{
+  "manifest_version": "sts2-patch-manifest-v1",
+  "evidence_status": "unverified",
+  "provenance": {
+    "generator": "sts2-harness/patch-diff-preparation",
+    "created_on": "2026-09-04",
+    "source_status": "hand-authored",
+    "licensed_runtime_available": false
+  },
+  "base": {
+    "repository": "sts2-project",
+    "revision": "six-repository source baseline recorded in ORCHESTRATION_MANIFEST.md",
+    "target_build": "unavailable",
+    "game_build": "unavailable",
+    "status": "source-derived",
+    "artifact_digests": {
+      "runtime-v3-gameplay-schema": "fbfb18279b0c7ebb350ef0ce0d56547fa11e83985b13380cb2b0f1dba4cb56e9",
+      "coop-gameplay-v1-schema": "2c34d013315fbf2e16de03dbe2bd4c43d4c13c744292548cc46ea960af5e1fa2"
+    }
+  },
+  "candidate": {
+    "repository": "sts2-project",
+    "revision": "six PR heads pushed on 2026-09-04; exact repository heads are recorded in the aggregate ORCHESTRATION_MANIFEST.md, including the harness provenance follow-up",
+    "target_build": "unavailable",
+    "game_build": "unavailable",
+    "status": "unverified",
+    "artifact_digests": {
+      "runtime-v3-gameplay-schema": "fbfb18279b0c7ebb350ef0ce0d56547fa11e83985b13380cb2b0f1dba4cb56e9",
+      "coop-gameplay-v1-schema": "2c34d013315fbf2e16de03dbe2bd4c43d4c13c744292548cc46ea960af5e1fa2"
+    }
+  },
+  "diffs": {
+    "build": {"status": "unverified", "observed": false, "entries": []},
+    "data": {"status": "unverified", "observed": false, "entries": []},
+    "ui": {"status": "unverified", "observed": false, "entries": []},
+    "actions": {"status": "source-derived", "observed": true, "entries": [
+      {"path": "runtime-v3-gameplay LegalAction types", "change": "added", "status": "source-derived", "notes": "Neutral typed action profile is present; target-game legality remains unverified."}
+    ]},
+    "schema": {"status": "confirmed", "observed": true, "entries": [
+      {"path": "schemas/runtime-v3-gameplay.schema.json", "change": "added", "status": "confirmed", "after_digest": "fbfb18279b0c7ebb350ef0ce0d56547fa11e83985b13380cb2b0f1dba4cb56e9"},
+      {"path": "schemas/coop-gameplay-v1.schema.json", "change": "added", "status": "confirmed", "after_digest": "2c34d013315fbf2e16de03dbe2bd4c43d4c13c744292548cc46ea960af5e1fa2"}
+    ]}
+  },
+  "quarantine": {
+    "status": "quarantined",
+    "reason": "No licensed target build, managed host assembly, live Exo connection, or reproducible package is available in this workspace.",
+    "required_checks": [
+      "capture exact game, mod, native, gateway, MCP, harness, and Exo revisions",
+      "hash managed and native packages plus all schema and action catalogs",
+      "run host/full-run/co-op traces with separate defeat and victory evidence",
+      "run leak, stale, recovery, cleanup, clean-install, replay, rollback, and policy gates",
+      "promote only after an independent reviewer signs the evidence bundle"
+    ]
+  }
+}
