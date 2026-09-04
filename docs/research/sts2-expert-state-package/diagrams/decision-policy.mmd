@@ -1,0 +1,16 @@
+%% Generated requirements diagram; rationale is auditable, not hidden chain-of-thought.
+flowchart TD
+    E["state entry"] --> B["stabilization barrier"]
+    B --> V{"fresh legitimate observation?"}
+    V -->|no| R["re-observe / recover"]
+    R --> B
+    V -->|yes| D["derived exact features"]
+    D --> U["labeled estimates"]
+    U --> L["authoritative legal-action catalog"]
+    L --> S["hard constraints + sequence value"]
+    S --> X["one semantic action"]
+    X --> W["settlement wait"]
+    W --> P{"postcondition verified?"}
+    P -->|yes| M["memory + replay"]
+    P -->|no| R
+    Z["PRIVILEGED data"] -."blocked".-> X
