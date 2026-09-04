@@ -21,6 +21,12 @@ package contains pure coordinator ports and deterministic fake-boundary tests; a
 This target is distinct from any legacy or reference checkout and contains no game files, model
 weights, datasets, provider credentials, or generated product artifacts.
 
+The current research baseline is the self-contained
+[`STS2 Expert-State Information Architecture`](docs/research/STS2_EXPERT_STATE_INFORMATION_ARCHITECTURE_2026-09-03.md).
+It is a proposed harness-facing research specification: it separates fair-play observation from
+privileged data, records the initial 144-state inventory as requiring target-build validation, and
+does not turn the bounded host probe into full gameplay or state-discovery evidence.
+
 ## Owner and consumers
 
 The target owner is the harness maintainers. The harness owns the experiment control plane and the
