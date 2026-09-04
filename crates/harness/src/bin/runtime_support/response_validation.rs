@@ -74,6 +74,15 @@ pub(super) fn validate_response(
             ));
         }
     }
+    for key in ["card_index", "target_id"] {
+        if let Some(expected) = arguments.get(key)
+            && value["action"].get(key) != Some(expected)
+        {
+            return Err(String::from(
+                "MCP tool response action payload did not match the request",
+            ));
+        }
+    }
     Ok(())
 }
 

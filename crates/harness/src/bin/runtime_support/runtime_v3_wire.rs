@@ -31,7 +31,8 @@ pub(super) fn rpc_call(
     method: &str,
     params: Value,
 ) -> Result<Value, String> {
-    let response = mcp.call(id, method, params)?;
+    let timeout = request_timeout(method, &params)?;
+    let response = mcp.call_with_timeout(id, method, params, timeout)?;
     if response.get("id").and_then(Value::as_u64) != Some(id) {
         return Err(format!(
             "MCP {method} response identity does not match request"
@@ -49,6 +50,18 @@ pub(super) fn rpc_call(
         return Err(format!("MCP {method} returned a tool error"));
     }
     Ok(response)
+}
+
+fn request_timeout(method: &str, params: &Value) -> Result<std::time::Duration, String> {
+    let wait = if method == "tools/call" && params["name"] == "sts2.wait_for_transition" {
+        params["arguments"]["wait_for_millis"]
+            .as_u64()
+            .filter(|value| *value <= 120_000)
+            .ok_or_else(|| String::from("MCP transition wait is outside its bound"))?
+    } else {
+        0
+    };
+    Ok(std::time::Duration::from_millis(wait + 5_000))
 }
 
 fn validate_catalog(response: &Value) -> Result<(), String> {
@@ -140,4 +153,21 @@ pub(super) fn port_error(
     retryable: bool,
 ) -> sts2_harness::PortError {
     sts2_harness::PortError::new(code, message, retryable)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn transition_wait_budget_includes_requested_semantic_wait() -> Result<(), String> {
+        let mut params =
+            json!({"name":"sts2.wait_for_transition","arguments":{"wait_for_millis":120_000}});
+        assert_eq!(request_timeout("tools/call", &params)?.as_millis(), 125_000);
+        assert_eq!(request_timeout("initialize", &params)?.as_millis(), 5_000);
+        params["arguments"]["wait_for_millis"] = json!(120_001);
+        assert!(request_timeout("tools/call", &params).is_err());
+        params["arguments"]["wait_for_millis"] = Value::Null;
+        assert!(request_timeout("tools/call", &params).is_err());
+        Ok(())
+    }
 }

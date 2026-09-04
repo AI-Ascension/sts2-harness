@@ -200,3 +200,16 @@ The required M10 release evidence is recorded in
 [`release-gate-preparation-20260904.md`](evidence/release-gate-preparation-20260904.md). Missing
 Rust toolchains, licensed game assemblies, and live Exo/provider services make those gates
 `unverified`, never passed by omission.
+
+## MCP and gateway adapter failure probes
+
+Synthetic process tests cover unread stdin, simultaneous full pipes, oversized unterminated output,
+slow trickles, inherited descendant handles, malformed/miscorrelated replies, bounded close/drop,
+and spawning inside an async caller including failure paths. Control-plane tests cover numeric
+loopback selection, header injection, strict response framing, header bounds, redaction and a total
+deadline despite trickled bytes. Transition-wait tests ensure the call budget includes the requested
+semantic wait rather than imposing an unconditional five-second ceiling.
+
+Runtime-v2 decoder conformance tests round-trip all 19 frozen goldens and reject all 304 single
+required-field omissions, preserving explicit null where legal. These are local synthetic and
+contract checks, not live host/provider evidence.

@@ -74,7 +74,7 @@ fn nonreading_child_write_is_in_deadline_and_process_is_reaped() -> Result<(), S
 #[test]
 #[cfg(unix)]
 fn oversized_undelimited_response_is_rejected_without_waiting_for_exit() -> Result<(), String> {
-    let mut process = shell("/usr/bin/head -c 70000 /dev/zero; exec /bin/sleep 3")?;
+    let mut process = shell("/usr/bin/head -c 300000 /dev/zero; exec /bin/sleep 3")?;
     process.timeout = Duration::from_secs(2);
     let start = Instant::now();
     assert_eq!(
