@@ -2,10 +2,12 @@
 
 ## Purpose and ownership
 
-The harness is the coordinator, experiment, and artifact owner. It coordinates bounded runs across
-up to four allocated game instances, mediates model/provider executions, records episodes and
-trajectories, supports replay and scoring, and preserves lineage for datasets and model artifacts.
-It does not become a game adapter, gateway, MCP implementation, or provider implementation.
+The harness is the coordinator, experiment, and artifact owner. Its intended scope includes up to
+four allocated instances, provider decisions, trajectories, replay/evaluation, and artifact lineage.
+The current Runtime-v3 executable coordinates one configured instance; record, memory, evaluation,
+replay, artifact and co-op library seams are not all assembled into that executable. Ownership of a
+responsibility is not evidence of a working multi-instance experiment. The harness does not become
+a game adapter, gateway, MCP implementation, or provider implementation.
 
 The target owner is the harness maintainers. The ownership/dependency decision is recorded in
 [`decisions/0001-harness-ownership-and-dependency-boundary.md`](decisions/0001-harness-ownership-and-dependency-boundary.md);
@@ -144,12 +146,24 @@ operations; they are never retried as a new strategic action. The `experiments/e
 contains only an example configuration and boundary documentation. Exo connectivity, target-build
 compatibility, and live gameplay remain `unverified` until a separate runtime handoff.
 
-The full-run episode surface routes every playable stage through the provider port, while terminal
-and recovery states are handled by the episode state machine. The co-op coordinator is an additive
-gate: peer identity, generation, connection, and ally-target checks can suspend policy mutation but
-cannot authorize a host mutation. Decision records distinguish requested, accepted, settled,
-recovery, estimate, and unavailable evidence. M10 patch manifests keep build/data/UI/action/schema
-drift quarantined until exact runtime evidence exists.
+The episode surface routes the declared playable stages through the provider port, while terminal
+and recovery states are handled by the episode state machine. Its full-run tests use scripted
+observations and successors; they do not establish coverage of every target-game state or a live run.
+
+The current [Runtime-v3 entry point](../crates/harness/src/bin/runtime_support/runtime_v3.rs)
+assembles `EpisodeRunner`, one gateway/MCP port and an Exo decision source. It retains an in-memory
+operation ledger and emits a terminal summary. It does not wire `DecisionRecord`, `DecisionMemory`,
+`Evaluator`, `DecisionReplay`, artifact publication, or `CoopCoordinator` into this run. Their
+separate library tests are not runtime trajectory, evaluation, persistence, or co-op evidence.
+
+`CoopCoordinator` is a library gate for a caller-supplied generation snapshot. It checks registered
+peers' reported generations, connection flags and ally targets but cannot perform a host mutation.
+It has no expected-roster/quorum contract or coordinator-generation advancement API: an absent,
+never-registered peer is not detected, and registering only the local peer can pass local admission.
+Continuous co-op coordination requires an explicit authoritative generation/roster contract and
+runtime wiring; it cannot be inferred from this gate. Decision records separately distinguish
+requested, accepted, settled, recovery, estimate, and unavailable evidence. M10 patch manifests keep
+build/data/UI/action/schema drift quarantined until exact runtime evidence exists.
 
 `EpisodeRunner` is the bounded complete-run coordinator over an explicit `EpisodeRuntimePort`. Its
 port is assembled by the gateway/MCP integration and exposes launch, observe, host-generated legal

@@ -32,8 +32,10 @@ A candidate is not release-ready until:
 - any claimed runtime or model/provider compatibility has exact evidence; and
 - known unverified boundaries do not make the release unsafe or misleading.
 
-The current target has no released product artifact, provider result, game launch, or live runtime
-claim.
+The target has no released product artifact or live provider/full-gameplay result. It does retain a
+[dated bounded runtime-v1 host trace](docs/evidence/runtime-v1-host-integration-20260902.md) for one
+disposable profile and the safe overlay probe. That record includes a host launch and cleanup; it
+does not establish current-head reproduction, autonomous gameplay, co-op, or release readiness.
 
 ## Prepare and verify
 

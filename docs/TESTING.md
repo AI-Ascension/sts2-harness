@@ -186,8 +186,12 @@ generation, including delayed waits after newer observations. They reject witnes
 unrelated transition and enforce canonical response-only null fields and status/error consistency.
 These checks establish request-bound parsing, not the independence of an actual host witness.
 
-Co-op tests cover two-peer identity, generation disagreement, disconnect, ally targeting, and
-mutation suspension. They do not establish multiplayer host compatibility. The patch-diff utility
+Co-op tests cover two registered peers at a fixed coordinator generation, reported disagreement,
+disconnect, ally targeting, and local-admission suspension. They do not test an expected roster,
+coordinator-generation advancement, or multiplayer host compatibility. Co-op, record/memory,
+evaluation and replay library tests run separately from `EpisodeRunner`; the Runtime-v3 executable
+does not currently wire those libraries into its one-instance run or produce their evidence.
+The patch-diff utility
 is source-only and compares bounded manifests; it cannot promote a build or replace package hashes.
 Its workspace tests check bounded consumption even from an endless reader, exact-size admission,
 invalid and ambiguous JSON rejection, structural quarantine extraction, and byte-preserving output.
@@ -197,9 +201,12 @@ cases exercise required fields, unknown fields, types, enums, lengths, array lim
 patterns; this is structural evidence, not verification of the manifest's runtime claims.
 
 The required M10 release evidence is recorded in
-[`release-gate-preparation-20260904.md`](evidence/release-gate-preparation-20260904.md). Missing
-Rust toolchains, licensed game assemblies, and live Exo/provider services make those gates
-`unverified`, never passed by omission.
+[`release-gate-preparation-20260904.md`](evidence/release-gate-preparation-20260904.md). Its gate
+matrix preserves the original preparation environment, including the then-missing Rust toolchain;
+it is not a current test-run report. The pinned Rust 1.97.1 toolchain is available for local review
+and CI checks. Record each result against its tested revision; tool availability or passing local
+tests does not supply licensed-host, live Exo/provider, full-run, or co-op evidence. Those gates stay
+`unverified` until their own evidence exists, never passed by omission.
 
 ## MCP and gateway adapter failure probes
 

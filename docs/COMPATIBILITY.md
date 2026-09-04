@@ -23,18 +23,19 @@ The harness does not inherit source or behavioral compatibility from a reference
 ## Current evidence baseline
 
 This target contains a non-empty preparation package and one bounded authorized live-host integration trace.
-No provider, model, replay service, score, dataset, or released package has been executed or
-supported by the target. Compatibility claims remain limited to the exact runtime row recorded below.
+No live provider/model execution, deployed replay service, experimental score/dataset result, or
+released package is established by this evidence. Offline replay/evaluation library tests are a
+separate layer. Runtime compatibility claims remain limited to the exact row recorded below.
 
 | Subject | Current state | Evidence |
 |---|---|---|
 | Harness foundation | Pure ports, coordinator seams, and deterministic fakes | Source-derived; offline tests pass |
 | MCP/gateway integration | Real component trace against synthetic downstream and exact host | Confirmed for the bounded runtime-v1 path; broader host compatibility unverified |
 | Provider/model execution | Not executed | Unverified; no credentials or provider calls |
-| Game state/action behavior | Not reachable by design | Unsupported in this repository boundary |
+| Direct game access | Outside the harness boundary; requests use MCP/gateway | No direct host authority; bounded indirect runtime-v1 probe only |
 | Replay/artifact lineage | Offline record/replay and metadata seams | Source-derived; deterministic fakes only |
-| Scoring | No scoring policy implementation | Proposed contract only |
 | Runtime-v2 coordinator | Four-lane bounded pure scheduler with explicit lineage, fairness, overload, cancellation, and shutdown seams | Confirmed by offline component tests; live supervisor/profile/host isolation unverified |
+| Evaluation | Library aggregation over supplied samples; not wired into the Runtime-v3 runner | Synthetic tests, not game parity or experimental performance evidence |
 
 ## Compatibility classifications
 
@@ -69,9 +70,16 @@ Missing credentials, services, game files, or disposable data remain visible as 
 
 The Runtime-v3 gameplay contract is source-derived from the neutral protocol profile and is mapped
 through the MCP and gateway seams. The Exo adapter accepts only the sanitized fair-play projection
-and current host action IDs. The co-op lane is additive and suspends mutation on peer disagreement,
-missing peers, or disconnect. These are source/test claims; target-build and live provider behavior
-remain `unverified`.
+and current host action IDs. The executable assembles one configured instance's episode/provider
+path, not the separate record, memory, evaluation, replay, artifact-publication or co-op library
+seams. Target-build and live provider behavior remain `unverified`.
+
+The co-op library gate suspends local admission when a registered peer is reported disconnected or
+disagrees with its fixed generation snapshot. It cannot detect missing members of an expected roster:
+no such roster is configured, and local-only registration can pass. It also has no API to advance
+the coordinator generation. Snapshot checks do not establish continuous two-to-four-peer operation,
+authoritative membership, or multiplayer host compatibility; these require a defined contract and
+runtime integration before any stronger guarantee.
 
 M10 records build, data, UI, action, and schema dimensions independently in
 [`build-manifest.json`](evidence/runtime-v3-preparation/data/build-manifest.json). The manifest
