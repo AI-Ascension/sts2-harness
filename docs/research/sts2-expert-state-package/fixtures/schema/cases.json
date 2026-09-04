@@ -1,0 +1,361 @@
+{
+  "format": "sts2-schema-regression-cases/1",
+  "provenance": "Hand-authored synthetic regression inputs, original repository-owned MIT material; no host, provider or personal data. Zero digests are test sentinels, not measured artifacts.",
+  "cases": [
+    {
+      "case_id": "game-observation-valid",
+      "schema": "game-observation.schema.json",
+      "fixture": "game-observation.json",
+      "expected_valid": true,
+      "changes": []
+    },
+    {
+      "case_id": "game-observation-unknown-root",
+      "schema": "game-observation.schema.json",
+      "fixture": "game-observation.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "case_id": "game-observation-privileged-root",
+      "schema": "game-observation.schema.json",
+      "fixture": "game-observation.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/privileged_fields",
+          "value": {
+            "hidden_future_rng": 7
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "game-observation-privileged-provenance",
+      "schema": "game-observation.schema.json",
+      "fixture": "game-observation.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/provenance/privileged_offline_label",
+          "value": {
+            "policy_visible": false
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "legal-action-valid",
+      "schema": "legal-action.schema.json",
+      "fixture": "legal-action.json",
+      "expected_valid": true,
+      "changes": []
+    },
+    {
+      "case_id": "legal-action-unknown-root",
+      "schema": "legal-action.schema.json",
+      "fixture": "legal-action.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "case_id": "legal-action-privileged-root",
+      "schema": "legal-action.schema.json",
+      "fixture": "legal-action.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/privileged_fields",
+          "value": {
+            "hidden_future_rng": 7
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "legal-action-privileged-provenance",
+      "schema": "legal-action.schema.json",
+      "fixture": "legal-action.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/provenance/privileged_offline_label",
+          "value": {
+            "policy_visible": false
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "decision-record-valid",
+      "schema": "decision-record.schema.json",
+      "fixture": "decision-record.json",
+      "expected_valid": true,
+      "changes": []
+    },
+    {
+      "case_id": "decision-record-unknown-root",
+      "schema": "decision-record.schema.json",
+      "fixture": "decision-record.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "case_id": "decision-record-privileged-root",
+      "schema": "decision-record.schema.json",
+      "fixture": "decision-record.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/privileged_fields",
+          "value": {
+            "hidden_future_rng": 7
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "decision-record-privileged-provenance",
+      "schema": "decision-record.schema.json",
+      "fixture": "decision-record.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/provenance/privileged_offline_label",
+          "value": {
+            "policy_visible": false
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "state-transition-valid",
+      "schema": "state-transition.schema.json",
+      "fixture": "state-transition.json",
+      "expected_valid": true,
+      "changes": []
+    },
+    {
+      "case_id": "state-transition-unknown-root",
+      "schema": "state-transition.schema.json",
+      "fixture": "state-transition.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "case_id": "state-transition-privileged-root",
+      "schema": "state-transition.schema.json",
+      "fixture": "state-transition.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/privileged_fields",
+          "value": {
+            "hidden_future_rng": 7
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "state-transition-privileged-provenance",
+      "schema": "state-transition.schema.json",
+      "fixture": "state-transition.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/provenance/privileged_offline_label",
+          "value": {
+            "policy_visible": false
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "patch-manifest-valid",
+      "schema": "patch-manifest.schema.json",
+      "fixture": "patch-manifest.json",
+      "expected_valid": true,
+      "changes": []
+    },
+    {
+      "case_id": "patch-manifest-unknown-root",
+      "schema": "patch-manifest.schema.json",
+      "fixture": "patch-manifest.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "case_id": "patch-manifest-privileged-root",
+      "schema": "patch-manifest.schema.json",
+      "fixture": "patch-manifest.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/privileged_fields",
+          "value": {
+            "hidden_future_rng": 7
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "patch-manifest-privileged-provenance",
+      "schema": "patch-manifest.schema.json",
+      "fixture": "patch-manifest.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/provenance/privileged_offline_label",
+          "value": {
+            "policy_visible": false
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "game-observation-member-0-unknown",
+      "schema": "game-observation.schema.json",
+      "fixture": "game-observation.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/fair_play_projection/visible/0/value/0/hidden_future_rng",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "case_id": "game-observation-member-1-unknown",
+      "schema": "game-observation.schema.json",
+      "fixture": "game-observation.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/fair_play_projection/visible/1/value/0/hidden_future_rng",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "case_id": "game-observation-member-2-unknown",
+      "schema": "game-observation.schema.json",
+      "fixture": "game-observation.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/fair_play_projection/visible/2/value/0/hidden_future_rng",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "case_id": "game-observation-member-3-unknown",
+      "schema": "game-observation.schema.json",
+      "fixture": "game-observation.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/fair_play_projection/visible/3/value/0/hidden_future_rng",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "case_id": "game-observation-member-4-unknown",
+      "schema": "game-observation.schema.json",
+      "fixture": "game-observation.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/fair_play_projection/visible/4/value/hidden_future_rng",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "case_id": "game-observation-member-5-unknown",
+      "schema": "game-observation.schema.json",
+      "fixture": "game-observation.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/fair_play_projection/visible/5/value/0/hidden_future_rng",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "case_id": "game-observation-denied-field",
+      "schema": "game-observation.schema.json",
+      "fixture": "game-observation.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/fair_play_projection/visible/0/field_id",
+          "value": "security.hidden_future_rng"
+        }
+      ]
+    },
+    {
+      "case_id": "legal-action-wrong-id-namespace",
+      "schema": "legal-action.schema.json",
+      "fixture": "legal-action.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/action_id/namespace",
+          "value": "sts2.operation"
+        }
+      ]
+    },
+    {
+      "case_id": "state-transition-unknown-without-reconciliation",
+      "schema": "state-transition.schema.json",
+      "fixture": "state-transition.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/recovery/mode",
+          "value": "retry_once"
+        }
+      ]
+    },
+    {
+      "case_id": "patch-manifest-quarantine-cannot-mutate",
+      "schema": "patch-manifest.schema.json",
+      "fixture": "patch-manifest.json",
+      "expected_valid": false,
+      "changes": [
+        {
+          "path": "/quarantine/autonomous_mutation_allowed",
+          "value": true
+        }
+      ]
+    }
+  ]
+}

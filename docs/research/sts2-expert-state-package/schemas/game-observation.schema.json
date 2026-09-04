@@ -1,0 +1,324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sts2-harness/research/game-observation/1",
+  "title": "STS2 fair-play GameObservation",
+  "description": "Closed production policy observation. Only player-legitimate projections are reachable from the root.",
+  "$comment": "The offline privileged-label definition is intentionally unreachable from the production root. A schema-valid observation is not evidence of target-build runtime compatibility.",
+  "x-sts2-provenance-boundary": {
+    "production_path": "fair_play_projection",
+    "offline_path": "separate_artifact:offline_privileged_label",
+    "policy_visible_offline_labels": false
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "observation_id", "identities", "build_profile", "state", "generation", "captured_at",
+    "freshness", "fair_play_projection", "uncertainty", "provenance"
+  ],
+  "properties": {
+    "schema_version": { "const": "sts2-game-observation/1" },
+    "observation_id": { "$ref": "#/$defs/observation_id" },
+    "identities": { "$ref": "#/$defs/identities" },
+    "build_profile": { "$ref": "#/$defs/build_profile" },
+    "state": { "$ref": "#/$defs/state" },
+    "generation": { "$ref": "#/$defs/generation" },
+    "captured_at": { "$ref": "#/$defs/timestamp" },
+    "freshness": { "$ref": "#/$defs/freshness" },
+    "fair_play_projection": { "$ref": "#/$defs/fair_play_projection" },
+    "uncertainty": { "$ref": "#/$defs/uncertainty" },
+    "provenance": { "$ref": "#/$defs/provenance" }
+  },
+  "$defs": {
+    "id_value": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "generation": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "observation_id": {
+      "type": "object", "additionalProperties": false, "required": ["namespace", "value"],
+      "properties": { "namespace": { "const": "sts2.observation" }, "value": { "$ref": "#/$defs/id_value" } }
+    },
+    "instance_id": {
+      "type": "object", "additionalProperties": false, "required": ["namespace", "value"],
+      "properties": { "namespace": { "const": "sts2.instance" }, "value": { "$ref": "#/$defs/id_value" } }
+    },
+    "session_id": {
+      "type": "object", "additionalProperties": false, "required": ["namespace", "value"],
+      "properties": { "namespace": { "const": "sts2.session" }, "value": { "$ref": "#/$defs/id_value" } }
+    },
+    "run_id": {
+      "type": "object", "additionalProperties": false, "required": ["namespace", "value"],
+      "properties": { "namespace": { "const": "sts2.run" }, "value": { "$ref": "#/$defs/id_value" } }
+    },
+    "episode_id": {
+      "type": "object", "additionalProperties": false, "required": ["namespace", "value"],
+      "properties": { "namespace": { "const": "sts2.episode" }, "value": { "$ref": "#/$defs/id_value" } }
+    },
+    "trajectory_id": {
+      "type": "object", "additionalProperties": false, "required": ["namespace", "value"],
+      "properties": { "namespace": { "const": "sts2.trajectory" }, "value": { "$ref": "#/$defs/id_value" } }
+    },
+    "trace_id": {
+      "type": "object", "additionalProperties": false, "required": ["namespace", "value"],
+      "properties": { "namespace": { "const": "sts2.trace" }, "value": { "$ref": "#/$defs/id_value" } }
+    },
+    "identities": {
+      "type": "object", "additionalProperties": false,
+      "required": ["instance_id", "session_id", "run_id", "episode_id", "trajectory_id", "trace_id"],
+      "properties": {
+        "instance_id": { "$ref": "#/$defs/instance_id" }, "session_id": { "$ref": "#/$defs/session_id" },
+        "run_id": { "$ref": "#/$defs/run_id" }, "episode_id": { "$ref": "#/$defs/episode_id" },
+        "trajectory_id": { "$ref": "#/$defs/trajectory_id" }, "trace_id": { "$ref": "#/$defs/trace_id" }
+      }
+    },
+    "state_id": {
+      "type": "object", "additionalProperties": false, "required": ["namespace", "value"],
+      "properties": {
+        "namespace": { "const": "sts2.state" },
+        "value": {
+          "type": "string",
+          "enum": [
+            "boot_loading", "title_screen", "profile_selection", "save_slot_selection",
+            "main_menu", "continue_run_detection", "new_run_setup", "mode_selection",
+            "character_selection", "difficulty_selection", "modifier_selection", "seed_entry",
+            "coop_lobby", "coop_player_character_selection", "coop_ready_state", "loading_transition",
+            "run_initialization", "starting_bonus_selection", "resumed_run", "pause_menu",
+            "save_and_quit", "abandon_run_confirmation", "run_victory", "run_defeat",
+            "results_statistics", "unlock_progression", "return_to_menu_transition", "map_first_displayed",
+            "route_inspection", "reachable_node_selection", "map_scrolling", "current_node_arrival",
+            "node_transition", "route_branch_decision", "act_transition", "boss_preview_endpoint_decision",
+            "unavailable_locked_path", "map_changed_by_effect", "map_after_room_return", "coop_route_coordination",
+            "combat_initialization", "pre_combat_effects", "player_turn_begins", "awaiting_player_action",
+            "card_selected_no_target", "card_selected_enemy_target", "card_selected_card_target", "card_selected_pile_target",
+            "choose_generated_card", "choose_cards_discard", "choose_cards_exhaust", "choose_cards_retain",
+            "choose_cards_transform_modify", "draw_pile_inspection", "discard_pile_inspection", "exhaust_pile_inspection",
+            "enemy_tooltip_inspection", "player_effect_inspection", "potion_selected", "potion_awaiting_target",
+            "potion_discarded", "end_turn_action", "end_turn_confirmation", "automatic_effect_resolution",
+            "enemy_turn_resolution", "between_enemy_transitions", "summon_reinforcement_arrival", "phase_transformation",
+            "combat_victory_detected", "post_victory_transition", "player_death", "combat_input_disabled_wait",
+            "coop_combat_coordination", "coop_target_resource_negotiation", "combat_reward_overview", "gold_reward",
+            "card_reward", "card_preview", "card_selection", "card_reward_skip",
+            "potion_reward", "potion_replacement", "potion_discard_for_room", "relic_reward",
+            "treasure_chest", "boss_reward", "boss_relic_selection", "shop_entry",
+            "shop_browsing", "card_purchase", "relic_purchase", "potion_purchase",
+            "card_removal", "service_purchase", "insufficient_gold", "sold_out_item",
+            "shop_exit", "coop_reward_differences", "event_entry", "event_text_inspection",
+            "event_option_selection", "event_followup_stage", "event_combat_transition", "event_reward_transition",
+            "event_exit", "rest_site_entry", "rest", "upgrade",
+            "remove", "transform", "recall_or_special_option", "character_specific_rest_option",
+            "choose_card_upgrade", "choose_card_remove", "choose_card_transform", "choose_relic_potion_other",
+            "confirmation_cancellation", "tutorial_first_time_modal", "settings_overlay", "controller_disconnected_modal",
+            "network_interruption", "coop_host_client_desync", "unexpected_confirmation_dialog", "tooltip_overlay_obscures_controls",
+            "resolution_ui_scale_mismatch", "stale_observation", "failed_click_or_action", "action_accepted_transition_delayed",
+            "state_detector_disagreement", "save_incompatibility_after_patch", "unknown_state"
+          ]
+        }
+      }
+    },
+    "state": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state_id", "input_enabled", "actionable", "stability", "modal_blocked"],
+      "properties": {
+        "state_id": { "$ref": "#/$defs/state_id" }, "input_enabled": { "type": "boolean" },
+        "actionable": { "type": "boolean" }, "stability": { "enum": ["STABLE", "TRANSIENT"] },
+        "modal_blocked": { "type": "boolean" }
+      }
+    },
+    "hash": {
+      "type": "object", "additionalProperties": false, "required": ["algorithm", "value"],
+      "properties": { "algorithm": { "const": "sha256" }, "value": { "type": "string", "pattern": "^[0-9a-f]{64}$" } }
+    },
+    "build_profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["build_id", "semantic_version", "channel", "platform", "architecture", "profile_id", "profile_digest", "locale", "resolution", "ui_scale", "input_method", "active_mods", "run_modifiers"],
+      "properties": {
+        "build_id": { "$ref": "#/$defs/id_value" }, "semantic_version": { "type": ["string", "null"], "maxLength": 64 },
+        "channel": { "enum": ["public", "public-beta", "beta", "offline"] }, "platform": { "type": ["string", "null"], "maxLength": 64 },
+        "architecture": { "type": ["string", "null"], "maxLength": 64 }, "profile_id": { "$ref": "#/$defs/id_value" },
+        "profile_digest": { "$ref": "#/$defs/hash" }, "locale": { "type": ["string", "null"], "maxLength": 32 },
+        "resolution": {
+          "type": "object", "additionalProperties": false, "required": ["width", "height"],
+          "properties": {
+            "width": { "type": ["integer", "null"], "minimum": 1, "maximum": 16384 },
+            "height": { "type": ["integer", "null"], "minimum": 1, "maximum": 16384 }
+          }
+        },
+        "ui_scale": { "type": ["number", "null"], "minimum": 0.1, "maximum": 8 },
+        "input_method": { "enum": ["mouse_keyboard", "controller", "semantic", "unknown"] },
+        "active_mods": {
+          "type": "array", "maxItems": 128,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["mod_id", "version", "content_hash"],
+            "properties": { "mod_id": { "$ref": "#/$defs/id_value" }, "version": { "type": "string", "maxLength": 64 }, "content_hash": { "$ref": "#/$defs/hash" } }
+          }
+        },
+        "run_modifiers": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/id_value" } }
+      }
+    },
+    "freshness": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "source_generation", "valid_for_generation", "stable_snapshot", "stale_field_ids"],
+      "properties": {
+        "status": { "enum": ["fresh", "stale", "unknown", "contradictory"] }, "source_generation": { "$ref": "#/$defs/generation" },
+        "valid_for_generation": { "$ref": "#/$defs/generation" }, "stable_snapshot": { "type": "boolean" },
+        "stale_field_ids": { "type": "array", "uniqueItems": true, "maxItems": 256, "items": { "$ref": "#/$defs/field_id" } }
+      }
+    },
+    "evidence_status": { "enum": ["confirmed", "source-derived", "inferred", "proposed", "unverified", "unsupported"] },
+    "epistemic_status": { "enum": ["observed", "documented", "extracted", "calculated", "inferred", "hypothesized"] },
+    "field_id": {
+      "type": "string", "enum": [
+        "run.character_id", "run.hp_current", "run.hp_max", "run.gold", "run.act", "run.floor", "run.seed.visible",
+        "combat.energy.available", "combat.block", "combat.turn", "combat.hand.instances", "combat.enemies", "combat.potions",
+        "combat.relics", "combat.enemy.visible_intent", "combat.player_effects", "ui.modal.active", "reward.choices", "shop.items",
+        "event.options", "rest.options", "deck.cards", "combat.draw_pile.cards", "combat.discard_pile.cards", "combat.exhaust_pile.cards",
+        "map.visible_graph", "card.tooltip", "relic.tooltip", "potion.tooltip", "enemy.tooltip", "event.text",
+        "combat.cards_played_this_turn", "combat.pile_movements", "combat.observed_enemy_moves", "run.route_history", "decision.previous_outcomes",
+        "combat.legal_actions", "combat.legal_target_domains", "combat.incoming_damage", "combat.guaranteed_lethal", "combat.survival_margin",
+        "map.reachable_nodes", "combat.affordability", "combat.draw_combinatorics", "combat.next_turn_function_probability",
+        "combat.future_enemy_behavior", "combat.expected_hp_loss", "route.survival_probability", "route.boss_ready_probability",
+        "strategy.potion_future_value"
+      ]
+    },
+    "card_instance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["card_instance_id", "card_id", "cost", "target_class", "upgraded", "temporary", "retained"],
+      "properties": {
+        "card_instance_id": { "$ref": "#/$defs/id_value" }, "card_id": { "$ref": "#/$defs/id_value" },
+        "cost": { "type": ["integer", "null"], "minimum": 0, "maximum": 99 },
+        "target_class": { "enum": ["none", "self", "enemy", "ally", "card", "pile", "choice", "unknown"] },
+        "upgraded": { "type": "boolean" }, "temporary": { "type": "boolean" }, "retained": { "type": "boolean" }
+      }
+    },
+    "intent": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "damage", "hits", "target"],
+      "properties": {
+        "kind": { "enum": ["attack", "block", "buff", "debuff", "summon", "escape", "unknown"] },
+        "damage": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "hits": { "type": "integer", "minimum": 0, "maximum": 1024 }, "target": { "enum": ["local_player", "ally", "all_players", "none", "unknown"] }
+      }
+    },
+    "enemy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["enemy_instance_id", "enemy_id", "hp", "max_hp", "block", "visible_intent"],
+      "properties": {
+        "enemy_instance_id": { "$ref": "#/$defs/id_value" }, "enemy_id": { "$ref": "#/$defs/id_value" },
+        "hp": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "max_hp": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "block": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }, "visible_intent": { "$ref": "#/$defs/intent" }
+      }
+    },
+    "effect": {
+      "type": "object", "additionalProperties": false, "required": ["effect_id", "stacks", "source"],
+      "properties": {
+        "effect_id": { "$ref": "#/$defs/id_value" }, "stacks": { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+        "source": { "enum": ["player", "enemy", "relic", "potion", "card", "unknown"] }
+      }
+    },
+    "potion": {
+      "type": "object", "additionalProperties": false, "required": ["potion_instance_id", "potion_id", "usable"],
+      "properties": { "potion_instance_id": { "$ref": "#/$defs/id_value" }, "potion_id": { "$ref": "#/$defs/id_value" }, "usable": { "type": "boolean" } }
+    },
+    "relic": {
+      "type": "object", "additionalProperties": false, "required": ["relic_instance_id", "relic_id", "counter"],
+      "properties": {
+        "relic_instance_id": { "$ref": "#/$defs/id_value" }, "relic_id": { "$ref": "#/$defs/id_value" },
+        "counter": { "type": ["integer", "null"], "minimum": -9007199254740991, "maximum": 9007199254740991 }
+      }
+    },
+    "choice": {
+      "type": "object", "additionalProperties": false, "required": ["choice_id", "label", "enabled"],
+      "properties": { "choice_id": { "$ref": "#/$defs/id_value" }, "label": { "type": "string", "maxLength": 4096 }, "enabled": { "type": "boolean" } }
+    },
+    "shop_item": {
+      "type": "object", "additionalProperties": false, "required": ["item_id", "kind", "price", "sold_out"],
+      "properties": { "item_id": { "$ref": "#/$defs/id_value" }, "kind": { "enum": ["card", "relic", "potion", "service", "unknown"] }, "price": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }, "sold_out": { "type": "boolean" } }
+    },
+    "map_node": {
+      "type": "object", "additionalProperties": false, "required": ["node_id", "node_type", "reachable", "visible", "next_node_ids"],
+      "properties": {
+        "node_id": { "$ref": "#/$defs/id_value" }, "node_type": { "enum": ["combat", "elite", "event", "shop", "rest", "treasure", "boss", "unknown"] },
+        "reachable": { "type": "boolean" }, "visible": { "type": "boolean" }, "next_node_ids": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/id_value" } }
+      }
+    },
+    "action_ref": {
+      "type": "object", "additionalProperties": false, "required": ["action_id", "action_type"],
+      "properties": { "action_id": { "$ref": "#/$defs/id_value" }, "action_type": { "$ref": "#/$defs/action_type" } }
+    },
+    "action_type": {
+      "enum": ["COMBAT.PLAY_CARD", "COMBAT.USE_POTION", "COMBAT.END_TURN", "COMBAT.SELECT_TARGET", "COMBAT.SELECT_CARDS", "COMBAT.CONFIRM_SELECTION", "MAP.SELECT_NODE", "COOP.VOTE_NODE", "REWARD.SELECT_CARD", "REWARD.SKIP_CARD", "REWARD.REPLACE_POTION", "SHOP.BUY", "SHOP.REMOVE_CARD", "EVENT.SELECT_OPTION", "REST.SELECT_OPTION", "SELECT.CHOOSE", "SELECT.CONFIRM", "UI.CANCEL", "SYS.WAIT", "SYS.REOBSERVE", "RECOVERY.RESYNC", "RUN.SAVE_QUIT"]
+    },
+    "target_domain": {
+      "type": "object", "additionalProperties": false, "required": ["type", "allowed_ids"],
+      "properties": {
+        "type": { "enum": ["none", "enemy", "ally", "card", "pile", "map_node", "choice", "potion", "object"] },
+        "allowed_ids": { "type": "array", "uniqueItems": true, "maxItems": 256, "items": { "$ref": "#/$defs/id_value" } }
+      }
+    },
+    "pile_movement": {
+      "type": "object", "additionalProperties": false, "required": ["card_instance_id", "from", "to"],
+      "properties": { "card_instance_id": { "$ref": "#/$defs/id_value" }, "from": { "enum": ["draw", "hand", "discard", "exhaust", "created", "unknown"] }, "to": { "enum": ["draw", "hand", "discard", "exhaust", "created", "unknown"] } }
+    },
+    "field_value": {
+      "anyOf": [
+        { "type": "null" }, { "type": "boolean" }, { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+        { "type": "number", "minimum": -1e15, "maximum": 1e15 }, { "type": "string", "maxLength": 4096 },
+        { "$ref": "#/$defs/intent" },
+        { "type": "array", "maxItems": 4096, "items": { "oneOf": [ { "type": "string", "maxLength": 4096 }, { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 }, { "$ref": "#/$defs/card_instance" }, { "$ref": "#/$defs/enemy" }, { "$ref": "#/$defs/choice" }, { "$ref": "#/$defs/map_node" }, { "$ref": "#/$defs/action_ref" }, { "$ref": "#/$defs/target_domain" }, { "$ref": "#/$defs/pile_movement" }, { "$ref": "#/$defs/potion" }, { "$ref": "#/$defs/relic" }, { "$ref": "#/$defs/effect" }, { "$ref": "#/$defs/shop_item" }, { "$ref": "#/$defs/intent" } ] } }
+      ]
+    },
+    "calculation": {
+      "type": "object", "additionalProperties": false, "required": ["method_id", "dependency_field_ids", "deterministic", "status"],
+      "properties": {
+        "method_id": { "enum": ["visible_damage", "legal_target_filter", "reachability", "affordability", "lethal_search", "draw_combinatorics", "other"] },
+        "dependency_field_ids": { "type": "array", "uniqueItems": true, "maxItems": 128, "items": { "$ref": "#/$defs/field_id" } }, "deterministic": { "const": true }, "status": { "const": "calculated" }
+      }
+    },
+    "uncertainty_item": {
+      "type": "object", "additionalProperties": false, "required": ["status", "confidence", "distribution", "source_field_ids"],
+      "properties": {
+        "status": { "enum": ["known", "low", "medium", "high", "unknown"] }, "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "distribution": { "enum": ["point", "interval", "categorical", "empirical", "unknown"] }, "lower": { "type": "number", "minimum": -1e15, "maximum": 1e15 }, "upper": { "type": "number", "minimum": -1e15, "maximum": 1e15 },
+        "source_field_ids": { "type": "array", "uniqueItems": true, "maxItems": 128, "items": { "$ref": "#/$defs/field_id" } }
+      }
+    },
+    "uncertainty": {
+      "type": "object", "additionalProperties": false, "required": ["overall_status", "items"],
+      "properties": { "overall_status": { "enum": ["known", "low", "medium", "high", "unknown"] }, "items": { "type": "array", "maxItems": 128, "items": { "$ref": "#/$defs/uncertainty_item" } } }
+    },
+    "field": {
+      "type": "object", "additionalProperties": false,
+      "required": ["field_id", "access_class", "value", "evidence_status", "epistemic_status", "source_ids", "captured_generation"],
+      "properties": {
+        "field_id": { "$ref": "#/$defs/field_id" }, "access_class": { "enum": ["VIS_DIRECT", "VIS_ON_DEMAND", "OBS_HISTORY", "DERIVED_EXACT", "ESTIMATED"] }, "value": { "$ref": "#/$defs/field_value" },
+        "evidence_status": { "$ref": "#/$defs/evidence_status" }, "epistemic_status": { "$ref": "#/$defs/epistemic_status" }, "source_ids": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/id_value" } }, "captured_generation": { "$ref": "#/$defs/generation" },
+        "calculation": { "$ref": "#/$defs/calculation" }, "uncertainty": { "$ref": "#/$defs/uncertainty_item" }
+      }
+    },
+    "fair_play_projection": {
+      "type": "object", "additionalProperties": false, "required": ["visible", "on_demand", "history", "derived_exact", "estimates"],
+      "properties": {
+        "visible": { "type": "array", "maxItems": 4096, "items": { "allOf": [ { "$ref": "#/$defs/field" }, { "type": "object", "properties": { "access_class": { "const": "VIS_DIRECT" }, "field_id": { "$ref": "#/$defs/visible_field_ids" } } } ], "unevaluatedProperties": false } },
+        "on_demand": { "type": "array", "maxItems": 4096, "items": { "allOf": [ { "$ref": "#/$defs/field" }, { "type": "object", "properties": { "access_class": { "const": "VIS_ON_DEMAND" }, "field_id": { "$ref": "#/$defs/on_demand_field_ids" } } } ], "unevaluatedProperties": false } },
+        "history": { "type": "array", "maxItems": 4096, "items": { "allOf": [ { "$ref": "#/$defs/field" }, { "type": "object", "properties": { "access_class": { "const": "OBS_HISTORY" }, "field_id": { "$ref": "#/$defs/history_field_ids" } } } ], "unevaluatedProperties": false } },
+        "derived_exact": { "type": "array", "maxItems": 4096, "items": { "allOf": [ { "$ref": "#/$defs/field" }, { "type": "object", "required": ["calculation"], "properties": { "access_class": { "const": "DERIVED_EXACT" }, "field_id": { "$ref": "#/$defs/derived_field_ids" } } } ], "unevaluatedProperties": false } },
+        "estimates": { "type": "array", "maxItems": 4096, "items": { "allOf": [ { "$ref": "#/$defs/field" }, { "type": "object", "required": ["uncertainty"], "properties": { "access_class": { "const": "ESTIMATED" }, "field_id": { "$ref": "#/$defs/estimate_field_ids" } } } ], "unevaluatedProperties": false } }
+      }
+    },
+    "visible_field_ids": { "enum": ["run.character_id", "run.hp_current", "run.hp_max", "run.gold", "run.act", "run.floor", "run.seed.visible", "combat.energy.available", "combat.block", "combat.turn", "combat.hand.instances", "combat.enemies", "combat.potions", "combat.relics", "combat.enemy.visible_intent", "combat.player_effects", "ui.modal.active", "reward.choices", "shop.items", "event.options", "rest.options"] },
+    "on_demand_field_ids": { "enum": ["deck.cards", "combat.draw_pile.cards", "combat.discard_pile.cards", "combat.exhaust_pile.cards", "map.visible_graph", "card.tooltip", "relic.tooltip", "potion.tooltip", "enemy.tooltip", "event.text"] },
+    "history_field_ids": { "enum": ["combat.cards_played_this_turn", "combat.pile_movements", "combat.observed_enemy_moves", "run.route_history", "decision.previous_outcomes"] },
+    "derived_field_ids": { "enum": ["combat.legal_actions", "combat.legal_target_domains", "combat.incoming_damage", "combat.guaranteed_lethal", "combat.survival_margin", "map.reachable_nodes", "combat.affordability", "combat.draw_combinatorics"] },
+    "estimate_field_ids": { "enum": ["combat.next_turn_function_probability", "combat.future_enemy_behavior", "combat.expected_hp_loss", "route.survival_probability", "route.boss_ready_probability", "strategy.potion_future_value"] },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_kind", "evidence_status", "epistemic_status", "source_ids", "captured_at", "confidence", "independent_verification", "fair_play_projection", "policy_visible"],
+      "properties": {
+        "source_kind": { "enum": ["controlled_live_capture", "replay_reduction", "synthetic", "expert_demonstration", "simulator_generated"] }, "evidence_status": { "$ref": "#/$defs/evidence_status" }, "epistemic_status": { "$ref": "#/$defs/epistemic_status" }, "source_ids": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/id_value" } }, "captured_at": { "$ref": "#/$defs/timestamp" }, "confidence": { "type": "number", "minimum": 0, "maximum": 1 }, "independent_verification": { "type": "boolean" }, "fair_play_projection": { "const": true }, "policy_visible": { "const": true }
+      }
+    },
+    "offline_privileged_label": {
+      "description": "Offline-only oracle label. This definition is not referenced by any production instance property.",
+      "type": "object", "additionalProperties": false, "required": ["status", "artifact_id", "join_key", "policy_visible"],
+      "properties": { "status": { "const": "privileged_offline_label" }, "artifact_id": { "$ref": "#/$defs/id_value" }, "join_key": { "$ref": "#/$defs/id_value" }, "policy_visible": { "const": false } }
+    }
+  }
+}

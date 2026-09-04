@@ -1,0 +1,17 @@
+[package]
+name = "sts2-expert-state-package"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+rust-version.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+jsonschema = { version = "=0.52.1", default-features = false }
+
+[lints]
+workspace = true

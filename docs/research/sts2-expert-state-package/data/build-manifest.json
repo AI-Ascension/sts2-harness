@@ -1,0 +1,207 @@
+{
+  "schema_version": "sts2-expert-state-package/data/1",
+  "artifact_kind": "build_manifest",
+  "record_kind": "build_manifest",
+  "record_id": "manifest:sts2-expert-state-package:2026-09-03",
+  "generated_baseline": true,
+  "build_id": "public-v0.107.1+steam-23811903",
+  "evidence_status": "proposed",
+  "epistemic_status": "hypothesized",
+  "validation_status": "required",
+  "target_build_observed": false,
+  "live_capture": false,
+  "provenance": {
+    "kind": "synthetic_requirements_baseline",
+    "generator": "sts2-expert-state-package-baseline-v1",
+    "source_id": "SRC-SPEC-ATTACHMENT",
+    "target_build_observed": false,
+    "live_capture": false
+  },
+  "research": {
+    "date": "2026-09-03",
+    "timezone": "America/New_York",
+    "package_role": "machine-readable requirements baseline",
+    "direct_target_build_observation": false,
+    "licensed_installation_available_to_generator": false
+  },
+  "build_targets": {
+    "public_live": {
+      "version": "v0.107.1",
+      "branch": "Steam public/live",
+      "steam_build_id": "23811903",
+      "evidence_status": "source-derived",
+      "target_build_observed": false,
+      "executable_sha256": null,
+      "data_sha256": null,
+      "assembly_sha256": null
+    },
+    "beta_documented_patch": {
+      "version": "v0.111.0",
+      "branch": "beta patch record",
+      "steam_build_id": "24489008",
+      "evidence_status": "source-derived",
+      "target_build_observed": false,
+      "mapping_note": "documented patch metadata; separate from public-beta branch pointer"
+    },
+    "beta_public_branch_pointer": {
+      "version": "UNMAPPED",
+      "branch": "Steam public-beta pointer",
+      "steam_build_id": "24724944",
+      "evidence_status": "source-derived",
+      "target_build_observed": false,
+      "mapping_note": "branch pointer recorded separately; version mapping is unresolved"
+    }
+  },
+  "environment": {
+    "platform": "UNSPECIFIED",
+    "architecture": "UNSPECIFIED",
+    "language": "en-US",
+    "resolution": "UNSPECIFIED",
+    "ui_scale": "UNSPECIFIED",
+    "input_method": "UNSPECIFIED",
+    "accessibility": "UNSPECIFIED",
+    "active_mods": "UNSPECIFIED",
+    "run_modifiers": "UNSPECIFIED"
+  },
+  "counts": {
+    "candidate_states": 131,
+    "normalized_observation_rows": 4315,
+    "state_action_rows": 421,
+    "transition_rows": 1059,
+    "information_importance_rows": 33,
+    "state_field_matrix_rows": 4315,
+    "expert_use_matrix_rows": 33,
+    "source_ledger_rows": 12,
+    "unresolved_question_rows": 15,
+    "claim_evidence_rows": 15
+  },
+  "artifact_members": [
+    "build-manifest.json",
+    "states.json",
+    "observations.json",
+    "actions.json",
+    "transitions.json",
+    "information-importance.csv",
+    "state-field-matrix.csv",
+    "expert-use-matrix.csv",
+    "source-ledger.csv",
+    "unresolved-questions.csv",
+    "claim-evidence-matrix.csv"
+  ],
+  "artifact_sha256": {
+    "states.json": "77339d5cf57d6b001713870811699b711470c95e58d97a5d9625aace997225e8",
+    "observations.json": "3a0974a1a6f09d62e4e14ff11b8f2206f1c6dd9a815a5790d49ce07da3b926c0",
+    "actions.json": "35f88503a2d88d09ed781e9cf65be49a7ceb2e4b1770913d77f595b6c8a0b97c",
+    "transitions.json": "338a1fcfd9c5e64d1dbb30e93f72bce2a1bacd37e9e2bc67568645ebeb37770e",
+    "information-importance.csv": "cb6c5f277588ff44a84e217e70138bcbb004a9de8c29afe2475c36d4ce8bc750",
+    "state-field-matrix.csv": "15215f1a131dba2812b048d3648e00e591285c534933538987832bf031645de6",
+    "expert-use-matrix.csv": "8b75dec98d8a2326dabcca1bc9f7ba02810e120728d2a59247eaae929d1185db",
+    "source-ledger.csv": "8eb99e9e8987528a12d83b9b0d4f1f24fb0117d1375b7879e6e470ac488a4f85",
+    "unresolved-questions.csv": "5fe9ff4950a3d29d317cc8957d35d542550c6804219918425ea0813752854b47",
+    "claim-evidence-matrix.csv": "e441cfab84bf0a2bea99a01771b40d38fd660740a97146a474014863a4081dc9"
+  },
+  "supporting_artifact_sha256": {
+  "schemas/decision-record.schema.json": "b9fd8926ebe2eb55ab720ec4455dd9dda5720e959b2ffaf25d0d314f30791405",
+  "schemas/game-observation.schema.json": "9a4933fe0151ba52868bfd3c75b8f38a58424b44f36a52f57a16126c5f940c3c",
+  "schemas/legal-action.schema.json": "da6663da80bb54c33cceb835ea083827fdaba7dc6ee15fbc0979c26f507de6fc",
+  "schemas/patch-manifest.schema.json": "912c077bb3fb587fcf7337258993903e34bed875f2b9d3a0e660e5a48325b0ad",
+  "schemas/state-transition.schema.json": "d6a9008884e8a294a7c62040d0e790bb504201a837c5d27a7b83724ea753a0a2",
+  "fixtures/manifest.json": "2da7b79b260079ba94d6579694b18b6cffa14d6d239760957096f15ffb8bc116",
+  "fixtures/adversarial.jsonl": "6a27fa7d30b5197d9c16a364a0ac2ea59b87ee34c30bc3afde72e9aa383cddef",
+  "fixtures/boundary.jsonl": "414f075a262c554d245c18bf59cb2f76685ea85c50ee72ea1e6d47905cb3444d",
+  "fixtures/normal.jsonl": "54274938bb92bbcfc297e369f7f396a4892f1571d46fd194f951f421a75f9635",
+  "fixtures/patch-regression.jsonl": "7c9a52a30a7b2c7f8595b571fb7ad2a0e9f865e8d40adc24363aa8009d9ac13c",
+  "fixtures/recovery.jsonl": "e03a74fc97f00cea07ff2e1b59aeaa1de293ccbd29ec1a500a46ee8840bd3192",
+  "fixtures/schema/cases.json": "086a8bb7b102dca0f9d186f99d11a88c80f192a5932e01138bd6a5b52040894a",
+  "fixtures/schema/decision-record.json": "2fc30a1015cf38e0147c4eb03e1f059e837ecd44e9a72f48924ba300fd399efd",
+  "fixtures/schema/game-observation.json": "09424e9bc9117965586c2eb82986542a04a1aa77ca4ce2135f705079c2dea34a",
+  "fixtures/schema/legal-action.json": "28cf22047687505aa67ce1876402beb326b913d2a71d50b614c74169adce030f",
+  "fixtures/schema/patch-manifest.json": "e609e33283d0179375876b9783be2ef424633f1efd7d72c7e6846569706088a3",
+  "fixtures/schema/state-transition.json": "739e0e0be2e7cf29adb60ee693e5c311d1b2b575284e09a3926c568db4bf91e7"
+},
+  "generation": {
+    "algorithm": "ordered state census x ordered field templates; ordered state catalog x action templates; ordered state catalog x transition templates plus explicit cross-family edges",
+    "inventory_generator_version": "sts2-expert-state-package-baseline-v1",
+    "input": "supplied specification pasted-text-1.txt",
+    "inventory_source_code_committed": false,
+    "inventory_source_code_digest": null,
+    "renderer": {
+      "tool": "tools/sts2-expert-state-package",
+      "version": "sts2-expert-state-package-generator/1",
+      "source_code_committed": true,
+      "source_code_paths": [
+        "tools/sts2-expert-state-package/Cargo.toml",
+        "tools/sts2-expert-state-package/src/main.rs",
+        "tools/sts2-expert-state-package/src/integrity.rs",
+        "tools/sts2-expert-state-package/src/digests.rs",
+        "tools/sts2-expert-state-package/src/fixtures.rs"
+      ],
+      "source_code_digest_algorithm": "sha256 of newline-delimited sha256sum records in path order",
+      "source_code_digest": "50853a4051523b55bae8e1177dadc05d688ca8e08e5103bfcb95447859b8856f"
+    },
+    "target_executable_input": false,
+    "canonical_order": "attachment state-family order, then template order, then explicit extras",
+    "digest_status": "inventory_artifacts_hashed; renderer_verified; inventory_source_not_committed"
+  },
+  "fair_play": {
+    "allowed_access_classes": [
+      "VIS_DIRECT",
+      "VIS_ON_DEMAND",
+      "OBS_HISTORY",
+      "DERIVED_EXACT",
+      "ESTIMATED"
+    ],
+    "denied_access_classes": [
+      "PRIVILEGED"
+    ],
+    "privileged_policy": "catalog-only denied/unavailable row; never serialize into production observations, estimates, memory, tensors, prompts, or legal actions",
+    "hidden_rng_policy": "seed text is allowed only when ordinarily visible; unrevealed RNG state and future outcomes are denied",
+    "leak_test_status": "required"
+  },
+  "evidence_policy": {
+    "permitted_evidence_statuses": [
+      "confirmed",
+      "source-derived",
+      "inferred",
+      "proposed",
+      "unverified",
+      "unsupported"
+    ],
+    "generated_records_status": "proposed",
+    "target_build_state_discovery_status": "unverified",
+    "expert_panel_status": "unverified",
+    "ablation_status": "unverified",
+    "screenshot_png_status": "unverified"
+  },
+  "ownership": {
+    "game_host_and_mod": "authoritative host state, legality, mutation, and bridge projection",
+    "game_core": "host-independent semantic/domain rules",
+    "harness": "policy, planning, memory, records, replay, and evaluation",
+    "mcp": "framing and mapping",
+    "gateway": "lifecycle, allocation, leases, routing, and fencing",
+    "protocol": "narrow neutral metadata only"
+  },
+  "source_ids": [
+    "SRC-SPEC-ATTACHMENT",
+    "SRC-OFFICIAL-STEAM",
+    "SRC-OFFICIAL-PATCH-107",
+    "SRC-STEAMDB-LIVE",
+    "SRC-STEAMDB-BETA-DOCUMENTED",
+    "SRC-STEAMDB-BETA-POINTER",
+    "SRC-GODOT-DOCS",
+    "SRC-SPIRE-CODEX",
+    "SRC-STS2-AGENT",
+    "SRC-STS2-RL",
+    "SRC-AGENTICSTS",
+    "SRC-LOCAL-HOST-TRACE"
+  ],
+  "denied_field_ids": [
+    "security.hidden_future_rng"
+  ],
+  "notes": [
+    "No generated record is a target-build observation.",
+    "Synthetic examples are placeholders and must not be consumed as live values.",
+    "The public/live and beta build lanes are intentionally separate.",
+    "The package is not a runtime integration, simulator, or fairness certification."
+  ]
+}

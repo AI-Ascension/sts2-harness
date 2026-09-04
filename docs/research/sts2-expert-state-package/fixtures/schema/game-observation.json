@@ -1,0 +1,201 @@
+{
+  "schema_version": "sts2-game-observation/1",
+  "observation_id": {
+    "namespace": "sts2.observation",
+    "value": "synthetic-observation-1"
+  },
+  "identities": {
+    "instance_id": {
+      "namespace": "sts2.instance",
+      "value": "synthetic-instance-1"
+    },
+    "session_id": {
+      "namespace": "sts2.session",
+      "value": "synthetic-session-1"
+    },
+    "run_id": {
+      "namespace": "sts2.run",
+      "value": "synthetic-run-1"
+    },
+    "episode_id": {
+      "namespace": "sts2.episode",
+      "value": "synthetic-episode-1"
+    },
+    "trajectory_id": {
+      "namespace": "sts2.trajectory",
+      "value": "synthetic-trajectory-1"
+    },
+    "trace_id": {
+      "namespace": "sts2.trace",
+      "value": "synthetic-trace-1"
+    }
+  },
+  "build_profile": {
+    "build_id": "synthetic-build-1",
+    "semantic_version": null,
+    "channel": "offline",
+    "platform": null,
+    "architecture": null,
+    "profile_id": "synthetic-profile-1",
+    "profile_digest": {
+      "algorithm": "sha256",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "locale": null,
+    "resolution": {
+      "width": null,
+      "height": null
+    },
+    "ui_scale": null,
+    "input_method": "semantic",
+    "active_mods": [],
+    "run_modifiers": []
+  },
+  "state": {
+    "state_id": {
+      "namespace": "sts2.state",
+      "value": "awaiting_player_action"
+    },
+    "input_enabled": true,
+    "actionable": true,
+    "stability": "STABLE",
+    "modal_blocked": false
+  },
+  "generation": 1,
+  "captured_at": "2026-09-04T00:00:00Z",
+  "freshness": {
+    "status": "fresh",
+    "source_generation": 1,
+    "stable_snapshot": true,
+    "stale_field_ids": [],
+    "valid_for_generation": 1
+  },
+  "fair_play_projection": {
+    "visible": [
+      {
+        "field_id": "combat.potions",
+        "access_class": "VIS_DIRECT",
+        "value": [
+          {
+            "potion_instance_id": "synthetic-potion-1",
+            "potion_id": "synthetic-potion",
+            "usable": true
+          }
+        ],
+        "evidence_status": "proposed",
+        "epistemic_status": "hypothesized",
+        "source_ids": [
+          "schema-regression-20260904"
+        ],
+        "captured_generation": 1
+      },
+      {
+        "field_id": "combat.relics",
+        "access_class": "VIS_DIRECT",
+        "value": [
+          {
+            "relic_instance_id": "synthetic-relic-1",
+            "relic_id": "synthetic-relic",
+            "counter": null
+          }
+        ],
+        "evidence_status": "proposed",
+        "epistemic_status": "hypothesized",
+        "source_ids": [
+          "schema-regression-20260904"
+        ],
+        "captured_generation": 1
+      },
+      {
+        "field_id": "combat.player_effects",
+        "access_class": "VIS_DIRECT",
+        "value": [
+          {
+            "effect_id": "synthetic-effect",
+            "stacks": 1,
+            "source": "player"
+          }
+        ],
+        "evidence_status": "proposed",
+        "epistemic_status": "hypothesized",
+        "source_ids": [
+          "schema-regression-20260904"
+        ],
+        "captured_generation": 1
+      },
+      {
+        "field_id": "shop.items",
+        "access_class": "VIS_DIRECT",
+        "value": [
+          {
+            "item_id": "synthetic-item",
+            "kind": "card",
+            "price": 10,
+            "sold_out": false
+          }
+        ],
+        "evidence_status": "proposed",
+        "epistemic_status": "hypothesized",
+        "source_ids": [
+          "schema-regression-20260904"
+        ],
+        "captured_generation": 1
+      },
+      {
+        "field_id": "combat.enemy.visible_intent",
+        "access_class": "VIS_DIRECT",
+        "value": {
+          "kind": "attack",
+          "damage": 5,
+          "hits": 1,
+          "target": "local_player"
+        },
+        "evidence_status": "proposed",
+        "epistemic_status": "hypothesized",
+        "source_ids": [
+          "schema-regression-20260904"
+        ],
+        "captured_generation": 1
+      },
+      {
+        "field_id": "combat.enemy.visible_intent",
+        "access_class": "VIS_DIRECT",
+        "value": [
+          {
+            "kind": "attack",
+            "damage": 5,
+            "hits": 1,
+            "target": "local_player"
+          }
+        ],
+        "evidence_status": "proposed",
+        "epistemic_status": "hypothesized",
+        "source_ids": [
+          "schema-regression-20260904"
+        ],
+        "captured_generation": 1
+      }
+    ],
+    "on_demand": [],
+    "history": [],
+    "derived_exact": [],
+    "estimates": []
+  },
+  "uncertainty": {
+    "overall_status": "unknown",
+    "items": []
+  },
+  "provenance": {
+    "source_kind": "synthetic",
+    "evidence_status": "proposed",
+    "epistemic_status": "hypothesized",
+    "source_ids": [
+      "schema-regression-20260904"
+    ],
+    "captured_at": "2026-09-04T00:00:00Z",
+    "confidence": 0,
+    "independent_verification": false,
+    "policy_visible": true,
+    "fair_play_projection": true
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "schema_version": "sts2-decision-record/1",
+  "decision_id": {
+    "namespace": "sts2.decision",
+    "value": "synthetic-decision-1"
+  },
+  "identities": {
+    "instance_id": {
+      "namespace": "sts2.instance",
+      "value": "synthetic-instance-1"
+    },
+    "session_id": {
+      "namespace": "sts2.session",
+      "value": "synthetic-session-1"
+    },
+    "run_id": {
+      "namespace": "sts2.run",
+      "value": "synthetic-run-1"
+    },
+    "episode_id": {
+      "namespace": "sts2.episode",
+      "value": "synthetic-episode-1"
+    },
+    "trajectory_id": {
+      "namespace": "sts2.trajectory",
+      "value": "synthetic-trajectory-1"
+    },
+    "trace_id": {
+      "namespace": "sts2.trace",
+      "value": "synthetic-trace-1"
+    }
+  },
+  "observation_id": {
+    "namespace": "sts2.observation",
+    "value": "synthetic-observation-1"
+  },
+  "observation_generation": 1,
+  "build_profile": {
+    "build_id": "synthetic-build-1",
+    "semantic_version": null,
+    "channel": "offline",
+    "platform": null,
+    "architecture": null,
+    "profile_id": "synthetic-profile-1",
+    "profile_digest": {
+      "algorithm": "sha256",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "locale": null,
+    "resolution": {
+      "width": null,
+      "height": null
+    },
+    "ui_scale": null,
+    "input_method": "semantic",
+    "active_mods": [],
+    "run_modifiers": []
+  },
+  "freshness": {
+    "status": "fresh",
+    "source_generation": 1,
+    "stable_snapshot": true,
+    "stale_field_ids": []
+  },
+  "objective": {
+    "primary": "resolve_recovery",
+    "hard_constraints": [
+      "no_illegal_action"
+    ]
+  },
+  "legal_candidates": [
+    {
+      "action_id": {
+        "namespace": "sts2.action",
+        "value": "synthetic-action-1"
+      },
+      "action_type": "SYS.REOBSERVE",
+      "target_domain": {
+        "type": "none",
+        "allowed_ids": [],
+        "selection": "none"
+      },
+      "consideration": "eligible"
+    }
+  ],
+  "hard_eliminations": [],
+  "calculations": [],
+  "estimates": [],
+  "candidate_scores": [],
+  "selected_action": {
+    "action_id": {
+      "namespace": "sts2.action",
+      "value": "synthetic-action-1"
+    },
+    "action_type": "SYS.REOBSERVE",
+    "target_domain": {
+      "type": "none",
+      "allowed_ids": [],
+      "selection": "none"
+    }
+  },
+  "rationale": {
+    "objective": "Read a fresh observation",
+    "fact_ids": [],
+    "text": "Synthetic schema example; no dispatch or host effect."
+  },
+  "settlement": {
+    "status": "proposed",
+    "dispatch_count": 0,
+    "reconciliation_required": false
+  },
+  "expected_transition": {
+    "source_state": {
+      "namespace": "sts2.state",
+      "value": "awaiting_player_action"
+    },
+    "expected_state_ids": [
+      {
+        "namespace": "sts2.state",
+        "value": "awaiting_player_action"
+      }
+    ],
+    "actual_state_id": null,
+    "observation_generation": 1,
+    "evidence": [
+      "none"
+    ]
+  },
+  "actual_transition": null,
+  "outcome": {
+    "status": "not_attempted",
+    "effect_observed": false,
+    "evaluation_status": "not_evaluated"
+  },
+  "policy_provenance": {
+    "policy_model_version": "synthetic-policy-1",
+    "model_execution_id": {
+      "namespace": "sts2.model_execution",
+      "value": "synthetic-execution-1"
+    },
+    "decision_timestamp": "2026-09-04T00:00:00Z"
+  },
+  "provenance": {
+    "source_kind": "synthetic",
+    "evidence_status": "proposed",
+    "epistemic_status": "hypothesized",
+    "source_ids": [
+      "schema-regression-20260904"
+    ],
+    "captured_at": "2026-09-04T00:00:00Z",
+    "confidence": 0,
+    "independent_verification": false,
+    "policy_visible": true
+  }
+}

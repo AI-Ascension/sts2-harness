@@ -1,0 +1,111 @@
+{
+  "schema_version": "sts2-legal-action/1",
+  "action_id": {
+    "namespace": "sts2.action",
+    "value": "synthetic-action-1"
+  },
+  "identities": {
+    "instance_id": {
+      "namespace": "sts2.instance",
+      "value": "synthetic-instance-1"
+    },
+    "session_id": {
+      "namespace": "sts2.session",
+      "value": "synthetic-session-1"
+    },
+    "run_id": {
+      "namespace": "sts2.run",
+      "value": "synthetic-run-1"
+    },
+    "episode_id": {
+      "namespace": "sts2.episode",
+      "value": "synthetic-episode-1"
+    },
+    "trajectory_id": {
+      "namespace": "sts2.trajectory",
+      "value": "synthetic-trajectory-1"
+    },
+    "trace_id": {
+      "namespace": "sts2.trace",
+      "value": "synthetic-trace-1"
+    }
+  },
+  "observation_id": {
+    "namespace": "sts2.observation",
+    "value": "synthetic-observation-1"
+  },
+  "state_id": {
+    "namespace": "sts2.state",
+    "value": "awaiting_player_action"
+  },
+  "observation_generation": 1,
+  "build_profile": {
+    "build_id": "synthetic-build-1",
+    "semantic_version": null,
+    "channel": "offline",
+    "platform": null,
+    "architecture": null,
+    "profile_id": "synthetic-profile-1",
+    "profile_digest": {
+      "algorithm": "sha256",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "locale": null,
+    "resolution": {
+      "width": null,
+      "height": null
+    },
+    "ui_scale": null,
+    "input_method": "semantic",
+    "active_mods": [],
+    "run_modifiers": []
+  },
+  "action_type": "SYS.REOBSERVE",
+  "parameters": {},
+  "target_domain": {
+    "type": "none",
+    "allowed_ids": [],
+    "selection": "none"
+  },
+  "preconditions": [
+    {
+      "code": "observation_current",
+      "satisfied": true,
+      "checked_generation": 1
+    }
+  ],
+  "mutability": {
+    "mutates_state": false,
+    "reversible": true,
+    "confirmation_required": false,
+    "at_most_once": true
+  },
+  "expected_successor_states": [
+    {
+      "namespace": "sts2.state",
+      "value": "awaiting_player_action"
+    }
+  ],
+  "settlement": {
+    "status": "proposed",
+    "attempt": 0,
+    "dispatch_count": 0,
+    "reconciliation_required": false
+  },
+  "uncertainty": {
+    "status": "unknown",
+    "items": []
+  },
+  "provenance": {
+    "source_kind": "synthetic",
+    "evidence_status": "proposed",
+    "epistemic_status": "hypothesized",
+    "source_ids": [
+      "schema-regression-20260904"
+    ],
+    "captured_at": "2026-09-04T00:00:00Z",
+    "confidence": 0,
+    "independent_verification": false,
+    "policy_visible": true
+  }
+}
