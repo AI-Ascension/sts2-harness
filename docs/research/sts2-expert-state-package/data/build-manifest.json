@@ -137,7 +137,7 @@
         "tools/sts2-expert-state-package/src/fixtures.rs"
       ],
       "source_code_digest_algorithm": "sha256 of newline-delimited sha256sum records in path order",
-      "source_code_digest": "89539b157936984f2c07fdc2f8c546db2fd3bcc56c278ab585a7a1755a0273f6"
+      "source_code_digest": "50853a4051523b55bae8e1177dadc05d688ca8e08e5103bfcb95447859b8856f"
     },
     "target_executable_input": false,
     "canonical_order": "attachment state-family order, then template order, then explicit extras",

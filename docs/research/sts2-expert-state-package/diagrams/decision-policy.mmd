@@ -1,16 +1,25 @@
 %% Generated requirements diagram; rationale is auditable, not hidden chain-of-thought.
 flowchart TD
-    E["state entry"] --> B["stabilization barrier"]
+    E["state entry; no unresolved prior operation"] --> I["initialize shared non-resetting monotonic deadline and attempt budget"]
+    I --> Q{"budget available and not cancelled?"}
+    Q -->|no| H["halt unresolved; retain evidence and operation identity"]
+    Q -->|yes| B["bounded stabilization barrier"]
     B --> V{"fresh legitimate observation?"}
-    V -->|no| R["re-observe / recover"]
-    R --> B
+    V -->|no| O["bounded read-only re-observation before dispatch"]
+    O --> Q
     V -->|yes| D["derived exact features"]
     D --> U["labeled estimates"]
     U --> L["authoritative legal-action catalog"]
     L --> S["hard constraints + sequence value"]
     S --> X["one semantic action"]
-    X --> W["settlement wait"]
-    W --> P{"postcondition verified?"}
-    P -->|yes| M["memory + replay"]
-    P -->|no| R
+    X --> W["bounded settlement wait"]
+    W --> P{"operation-bound postcondition verified?"}
+    P -->|yes| M["record verified or reconciled outcome"]
+    P -->|no| C{"remaining shared budget and not cancelled?"}
+    C -->|no| H
+    C -->|yes| R["bounded read-only reconciliation of original operation"]
+    R --> K{"operation-bound authoritative outcome known?"}
+    K -->|yes| M
+    K -->|uncertain| C
     Z["PRIVILEGED data"] -."blocked".-> X
+    %% Fresh observations alone never return post-dispatch recovery to action selection.

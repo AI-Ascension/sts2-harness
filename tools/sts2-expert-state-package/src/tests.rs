@@ -95,6 +95,33 @@ fn unsafe_or_colliding_output_names_are_rejected() -> Result<(), Box<dyn Error>>
 }
 
 #[test]
+fn recovery_diagrams_have_bounded_terminal_paths_without_redispatch() -> Result<(), Box<dyn Error>>
+{
+    let states = load_records(&root(), "states.json")?;
+    let first = states.first().ok_or("empty state inventory")?;
+    for diagram in [
+        render_state_diagram(first)?,
+        crate::decision_policy().to_owned(),
+    ] {
+        assert!(diagram.contains("shared non-resetting monotonic deadline and attempt budget"));
+        assert!(diagram.contains("C -->|no| H"));
+        assert!(diagram.contains("C -->|yes| R"));
+        assert!(diagram.contains("R --> K"));
+        assert!(diagram.contains("operation-bound authoritative outcome known?"));
+        assert!(diagram.contains("K -->|yes| M"));
+        assert!(diagram.contains("K -->|uncertain| C"));
+        for forbidden in ["H -->", "R --> B", "R --> Q", "K -->|yes| B", "M -->"] {
+            assert!(
+                !diagram.contains(forbidden),
+                "unexpected recovery edge {forbidden}"
+            );
+        }
+    }
+    assert!(crate::decision_policy().contains("O --> Q"));
+    Ok(())
+}
+
+#[test]
 fn forged_fixture_targets_generation_mutation_and_evidence_are_rejected()
 -> Result<(), Box<dyn Error>> {
     let text = fs::read_to_string(root().join("fixtures/normal.jsonl"))?;

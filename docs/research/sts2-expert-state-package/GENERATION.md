@@ -17,6 +17,11 @@ contract. Workspace tests also compare every committed report/diagram byte with 
 reject deliberately corrupted references, generation bindings, target domains, and evidence labels.
 These are structural checks, not executions of a projector, dispatcher, or game state machine.
 
+Recovery diagrams use a shared non-resetting monotonic deadline and attempt budget, with explicit
+cancellation/exhaustion halts. Pre-dispatch re-observation is separate from post-dispatch read-only
+reconciliation. A fresh observation cannot by itself resolve an uncertain mutation or authorize
+redispatch; only operation-bound authoritative outcome evidence exits reconciliation normally.
+
 `supporting_artifact_sha256` binds all five schemas, the original fixture manifest/partitions,
 and the separate five-schema example corpus. After an intentional change, update the corresponding
 digest with `sha256sum` and rerun the tests. A digest binds reviewed bytes; it is not independent
