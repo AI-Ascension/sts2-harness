@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::exo::decision::{Decision, DecisionError, parse_decision};
+use crate::exo::decision::{DecisionError, parse_decision};
 use crate::exo::sandbox::{SandboxError, SanitizedObservation};
 use crate::identity::ModelExecutionId;
 use crate::provider::{ModelRequest, ModelResponse, ProviderPort};

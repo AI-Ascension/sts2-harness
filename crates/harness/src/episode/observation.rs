@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::EpisodeError;
 use crate::exo::SanitizedObservation;
 use serde_json::Value;
 

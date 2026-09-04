@@ -284,7 +284,11 @@ fn is_allowed(kind: ValueKind, key: &str) -> bool {
             "item_id",
             "choice_id",
         ],
-        ValueKind::IdentifierArray | ValueKind::Identity | ValueKind::Text => &[],
+        ValueKind::IdentifierArray
+        | ValueKind::Identity
+        | ValueKind::Text
+        | ValueKind::Number
+        | ValueKind::Boolean => &[],
     };
     keys.contains(&key)
 }
@@ -428,4 +432,16 @@ fn is_privileged_key(key: &str) -> bool {
     ]
     .iter()
     .any(|forbidden| key == *forbidden || key.contains(forbidden))
+}
+
+fn valid_text(value: &str) -> bool {
+    !value.is_empty() && value.len() <= MAX_TEXT_BYTES && !value.chars().any(char::is_control)
+}
+
+fn valid_identity(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_TEXT_BYTES
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
 }
