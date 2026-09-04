@@ -12,6 +12,7 @@ use sts2_harness::{
 struct FakeTransport {
     response: Result<Vec<u8>, ExoTransportError>,
     closed: bool,
+    calls: usize,
 }
 
 impl FakeTransport {
@@ -19,6 +20,7 @@ impl FakeTransport {
         Self {
             response,
             closed: false,
+            calls: 0,
         }
     }
 }
@@ -30,6 +32,7 @@ impl ExoTransport for FakeTransport {
         _max_response_bytes: usize,
         _timeout_millis: u32,
     ) -> Result<Vec<u8>, ExoTransportError> {
+        self.calls += 1;
         self.response.clone()
     }
 
@@ -165,4 +168,52 @@ fn close_is_explicit_and_repeatable() {
     ));
     provider.close().expect("transport close is successful");
     provider.close().expect("repeated close is a no-op");
+}
+
+#[test]
+fn public_config_fields_cannot_bypass_transport_bounds() {
+    let valid = ExoConfig::new(
+        "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
+        64 * 1024,
+        1024,
+        1_000,
+    )
+    .expect("valid configuration");
+    for config in [
+        ExoConfig {
+            revision: "main".into(),
+            ..valid.clone()
+        },
+        ExoConfig {
+            max_request_bytes: 0,
+            ..valid.clone()
+        },
+        ExoConfig {
+            max_request_bytes: usize::MAX,
+            ..valid.clone()
+        },
+        ExoConfig {
+            max_response_bytes: 0,
+            ..valid.clone()
+        },
+        ExoConfig {
+            max_response_bytes: usize::MAX,
+            ..valid.clone()
+        },
+        ExoConfig {
+            timeout_millis: 0,
+            ..valid.clone()
+        },
+        ExoConfig {
+            timeout_millis: u32::MAX,
+            ..valid
+        },
+    ] {
+        let mut provider = ExoProvider::new(
+            FakeTransport::new(Ok(br#"{"decision":"wait","rationale":"ok"}"#.to_vec())),
+            config,
+        );
+        assert!(provider.execute(&request()).is_err());
+        assert_eq!(provider.into_transport().calls, 0);
+    }
 }

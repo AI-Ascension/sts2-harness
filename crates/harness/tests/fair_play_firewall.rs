@@ -86,3 +86,54 @@ fn collection_and_observation_bounds_are_enforced() {
         Err(SandboxError::DuplicateLegalAction)
     );
 }
+
+#[test]
+fn scalar_fields_cannot_be_empty_objects_or_collections() {
+    for path in [
+        "/state_id",
+        "/generation",
+        "/visible_seed",
+        "/player/hp",
+        "/player/energy",
+        "/state/turn_index",
+        "/legal_actions/0/action_id",
+    ] {
+        for malformed in [json!({}), json!([]), json!(["unexpected"])] {
+            let mut value = observation();
+            if let Some(field) = value.pointer_mut(path) {
+                *field = malformed;
+            }
+            assert!(
+                SanitizedObservation::new(value).is_err(),
+                "scalar field {path} must reject object/array values"
+            );
+        }
+    }
+    for field in ["card_id", "name", "cost", "upgraded"] {
+        let mut value = observation();
+        value["player"]["hand"] = json!([
+            {"card_id":"card-1", "name":"Card", "cost":1, "upgraded":false}
+        ]);
+        value["player"]["hand"][0][field] = json!({});
+        assert!(SanitizedObservation::new(value).is_err(), "card {field}");
+    }
+}
+
+#[test]
+fn collection_fields_require_flat_arrays_of_the_declared_item_type() {
+    let card = json!({"card_id":"card-1", "name":"Card", "cost":1, "upgraded":false});
+    for malformed in [card.clone(), json!([[card]]), json!([[]])] {
+        let mut value = observation();
+        value["player"]["hand"] = malformed;
+        assert!(SanitizedObservation::new(value).is_err());
+    }
+    for malformed in [json!("node-1"), json!({}), json!([["node-1"]]), json!([{}])] {
+        let mut value = observation();
+        value["state"] = json!({"state":"map", "node_id":null, "options":malformed});
+        assert!(SanitizedObservation::new(value).is_err());
+    }
+    let mut valid = observation();
+    valid["visible_seed"] = json!(null);
+    valid["state"] = json!({"state":"map", "node_id":null, "options":["node-1"]});
+    assert!(SanitizedObservation::new(valid).is_ok());
+}

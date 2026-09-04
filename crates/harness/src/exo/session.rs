@@ -43,6 +43,7 @@ impl<T> ExoSession<T> {
         if self.closed {
             return Err(ExoError::Closed);
         }
+        self.provider.config().validate()?;
         let request = ExoDecisionRequest::new(
             execution_id,
             self.provider.config().revision.clone(),

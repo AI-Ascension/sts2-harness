@@ -54,17 +54,22 @@ impl ExoConfig {
             max_response_bytes,
             timeout_millis,
         };
-        if !valid_revision(&config.revision)
-            || config.max_request_bytes == 0
-            || config.max_request_bytes > 128 * 1024
-            || config.max_response_bytes == 0
-            || config.max_response_bytes > 8 * 1024
-            || config.timeout_millis == 0
-            || config.timeout_millis > 120_000
+        config.validate()?;
+        Ok(config)
+    }
+
+    pub(super) fn validate(&self) -> Result<(), ExoError> {
+        if !valid_revision(&self.revision)
+            || self.max_request_bytes == 0
+            || self.max_request_bytes > 128 * 1024
+            || self.max_response_bytes == 0
+            || self.max_response_bytes > 8 * 1024
+            || self.timeout_millis == 0
+            || self.timeout_millis > 120_000
         {
             return Err(ExoError::InvalidConfig);
         }
-        Ok(config)
+        Ok(())
     }
 }
 
@@ -228,6 +233,7 @@ impl<T> ExoProvider<T> {
         if self.closed {
             return Err(ExoError::Closed);
         }
+        self.config.validate()?;
         let bytes = request.encode(self.config.max_request_bytes)?;
         self.transport_exchange(&bytes).map_err(ExoError::from)
     }
@@ -241,6 +247,9 @@ impl<T: ExoTransport> ExoProvider<T> {
         if self.closed {
             return Err(ExoTransportError::Unavailable);
         }
+        self.config
+            .validate()
+            .map_err(|_| ExoTransportError::MalformedResponse)?;
         let response = self.transport.exchange(
             request,
             self.config.max_response_bytes,

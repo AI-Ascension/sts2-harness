@@ -63,9 +63,7 @@ pub fn parse_decision(bytes: &[u8]) -> Result<Decision, DecisionError> {
     if bytes.len() > MAX_DECISION_BYTES {
         return Err(DecisionError::TooLarge);
     }
-    let value: serde_json::Value =
-        serde_json::from_slice(bytes).map_err(|_| DecisionError::InvalidJson)?;
-    let object = value.as_object().ok_or(DecisionError::InvalidValue)?;
+    let object = parse_object(bytes)?;
     let allowed = [
         "decision",
         "action_id",
@@ -177,6 +175,37 @@ pub fn parse_decision(bytes: &[u8]) -> Result<Decision, DecisionError> {
         }
         _ => Err(DecisionError::InvalidValue),
     }
+}
+
+fn parse_object(bytes: &[u8]) -> Result<serde_json::Map<String, serde_json::Value>, DecisionError> {
+    struct UniqueFields;
+
+    impl<'de> serde::de::Visitor<'de> for UniqueFields {
+        type Value = serde_json::Map<String, serde_json::Value>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a decision object with unique field names")
+        }
+
+        fn visit_map<M: serde::de::MapAccess<'de>>(
+            self,
+            mut map: M,
+        ) -> Result<Self::Value, M::Error> {
+            let mut object = serde_json::Map::new();
+            while let Some((key, value)) = map.next_entry::<String, serde_json::Value>()? {
+                if object.insert(key, value).is_some() {
+                    return Err(serde::de::Error::custom("duplicate decision field"));
+                }
+            }
+            Ok(object)
+        }
+    }
+
+    let mut decoder = serde_json::Deserializer::from_slice(bytes);
+    let object = serde::Deserializer::deserialize_map(&mut decoder, UniqueFields)
+        .map_err(|_| DecisionError::InvalidJson)?;
+    decoder.end().map_err(|_| DecisionError::InvalidJson)?;
+    Ok(object)
 }
 
 impl Decision {

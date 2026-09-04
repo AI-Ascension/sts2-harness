@@ -246,3 +246,42 @@ fn unavailable_exo_has_no_heuristic_fallback() {
     );
     assert_eq!(result, Err(ExoError::Unavailable));
 }
+
+#[test]
+fn strict_decision_parser_rejects_duplicate_and_escaped_duplicate_fields() {
+    for response in [
+        r#"{"decision":"wait","decision":"action","action_id":"combat.end-turn","rationale":"ok"}"#,
+        r#"{"decision":"action","action_id":"combat.other","action_id":"combat.end-turn","rationale":"ok"}"#,
+        r#"{"decision":"wait","rationale":"first","rationale":"second"}"#,
+        r#"{"decision":"wait","decis\u0069on":"reobserve","rationale":"ok"}"#,
+    ] {
+        assert_eq!(
+            parse_decision(response.as_bytes()),
+            Err(sts2_harness::DecisionError::InvalidJson)
+        );
+    }
+    assert!(parse_decision(br#"{"decision":"wait","rationale":"ok"} {}"#).is_err());
+}
+
+#[test]
+fn session_revalidates_mutated_timeout_before_transport() {
+    let mut config = config();
+    config.timeout_millis = u32::MAX;
+    let mut session = ExoSession::new(ExoProvider::new(
+        FakeExo::reply(r#"{"decision":"wait","rationale":"ok"}"#),
+        config,
+    ));
+    assert_eq!(
+        session.decide(
+            ModelExecutionId::new(9).expect("nonzero execution ID"),
+            "combat-1",
+            0,
+            SanitizedObservation::new(observation_value(0)).expect("valid projection"),
+            vec!["combat.end-turn".to_owned()],
+            "survive",
+            Vec::new(),
+        ),
+        Err(ExoError::InvalidConfig)
+    );
+    assert!(session.into_transport().requests.is_empty());
+}

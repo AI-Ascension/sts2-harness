@@ -97,23 +97,16 @@ enum ValueKind {
 
 fn validate_value(value: &Value, kind: ValueKind, root: bool) -> Result<(), SandboxError> {
     match value {
-        Value::Object(object) => validate_object(object, kind, root),
-        Value::Array(values) => {
-            let maximum = match kind {
-                ValueKind::Card => MAX_CARDS,
-                ValueKind::Enemy => MAX_ENEMIES,
-                ValueKind::LegalAction => MAX_LEGAL_ACTIONS,
-                ValueKind::ShopItem => MAX_SHOP_ITEMS,
-                ValueKind::Identity | ValueKind::Text => MAX_TEXT_ITEMS,
-                _ => 0,
-            };
-            if maximum == 0 || values.len() > maximum {
-                return Err(SandboxError::InvalidCollection);
-            }
-            values
-                .iter()
-                .try_for_each(|value| validate_value(value, kind, false))
+        Value::Object(object)
+            if !matches!(
+                kind,
+                ValueKind::Identity | ValueKind::Text | ValueKind::Number | ValueKind::Boolean
+            ) =>
+        {
+            validate_object(object, kind, root)
         }
+        Value::Object(_) => Err(SandboxError::NotAnObservation),
+        Value::Array(_) => Err(SandboxError::InvalidCollection),
         Value::String(text) => match kind {
             ValueKind::Text if valid_text(text) => Ok(()),
             ValueKind::Identity if valid_identity(text) => Ok(()),
@@ -155,7 +148,17 @@ fn validate_object(
             validate_number_bound(kind, key, number)?;
         }
         let child = child_kind(kind, key);
-        validate_value(value, child, false)?;
+        if let Some(maximum) = collection_bound(kind, key) {
+            let values = value.as_array().ok_or(SandboxError::InvalidCollection)?;
+            if values.len() > maximum {
+                return Err(SandboxError::InvalidCollection);
+            }
+            for item in values {
+                validate_value(item, child, false)?;
+            }
+        } else {
+            validate_value(value, child, false)?;
+        }
     }
     if root {
         require_exact(
@@ -173,6 +176,17 @@ fn validate_object(
     validate_shape(object, kind, root)?;
     validate_semantics(object, kind)?;
     Ok(())
+}
+
+fn collection_bound(kind: ValueKind, key: &str) -> Option<usize> {
+    match (kind, key) {
+        (ValueKind::Player, "hand" | "deck" | "discard" | "exhaust") => Some(MAX_CARDS),
+        (ValueKind::State, "enemies") => Some(MAX_ENEMIES),
+        (ValueKind::Root, "legal_actions") => Some(MAX_LEGAL_ACTIONS),
+        (ValueKind::State, "items") => Some(MAX_SHOP_ITEMS),
+        (ValueKind::State, "characters" | "options" | "choices") => Some(MAX_TEXT_ITEMS),
+        _ => None,
+    }
 }
 
 fn validate_number_bound(
