@@ -340,6 +340,7 @@ flowchart TD
   D --> V{Required observation valid?}
   V -- no --> O[Ordinary on-demand observation]
   O --> V
+  O -- exhausted or cancelled --> U[Stop dispatch and preserve unresolved evidence]
   V -- contradiction --> R[Bounded recovery and reobserve]
   R --> B
   V -- yes --> X[Derived exact calculations]
@@ -356,6 +357,10 @@ flowchart TD
   K -- yes --> M[Update bounded typed memory]
   M --> G[Write DecisionRecord and dispatch successor]
 ```
+
+Stabilization, on-demand observation, and recovery share a monotonic deadline and finite attempt
+budget for the current decision; re-entry must not reset either bound. Cancellation or exhaustion
+stops dispatch and preserves unresolved evidence instead of treating missing fields as valid.
 
 ### Combat
 
@@ -420,16 +425,25 @@ flowchart TD
   F[Verification failure] --> S[Stop dispatch and capture evidence]
   S --> C{Previous action committed?}
   C -- yes --> N[Accept actual state and replan]
-  C -- uncertain --> O[Reobserve until stable]
-  O --> C
-  C -- no --> R{Reversible or idempotent?}
+  C -- uncertain --> O[Bounded reobserve and receipt reconciliation]
+  O -- within budget --> C
+  O -- exhausted or cancelled --> U[UNKNOWN_STATE: preserve unresolved operation and stop dispatch]
+  C -- no --> R{Durable idempotency and reconciled ownership?}
   R -- yes --> T[Retry once with same idempotency key]
   R -- no --> X{Safe cancel exists?}
   X -- yes --> Y[Cancel then reobserve]
-  X -- no --> U[UNKNOWN_STATE: no irreversible action]
+  X -- no --> U
   T --> V[Verify again]
   V -- failure --> U
+  V -- success --> N
 ```
+
+Commit and non-commit conclusions require operation-bound authoritative evidence, not merely a
+stable observation or changed generation. Recovery uses the original operation identity and a
+shared monotonic deadline/finite attempt budget; exhausting it is not proof of non-commit. Preserve
+the unresolved operation and its evidence, suspend strategic dispatch, and require explicit
+reconciliation before resuming. Reversibility alone never grants retry: compensation or cancellation
+must be separately admitted by the host as safe and must not erase an uncertain original outcome.
 
 Dedicated recovery cases include stale observations, hidden modals, wrong target IDs, detector
 disagreement, delayed animation, double dispatch, network interruption, co-op desync, save/patch
