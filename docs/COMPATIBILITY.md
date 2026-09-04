@@ -77,4 +77,3 @@ environment/error output. MCP retains full downstream envelope/fence validation 
 Frozen Runtime-v2 decoder fields remain required even when their permitted value is null.
 This tightens existing safety contracts without changing schema/artifact identities or introducing
 the unmerged Runtime-v2 coordinator, legacy gameplay, or Exo Runtime-v3 proposals.
-effect witness, and cleanup record.
