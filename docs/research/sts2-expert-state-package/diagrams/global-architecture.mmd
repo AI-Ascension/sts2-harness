@@ -1,0 +1,13 @@
+%% Generated requirements diagram; no runtime/effect claim.
+flowchart LR
+    H["STS2 host/mod authority"] --> F["fair-play projection"]
+    F --> O["GameObservation"]
+    O --> C["exact calculators + estimates"]
+    C --> P["planner / policy"]
+    P --> A["host-generated LegalAction"]
+    A --> S["semantic adapter"]
+    S --> H
+    H --> Q["fresh state + postcondition"]
+    Q --> O
+    I["offline simulator / labels"] -."isolated".-> C
+    R["CV watchdog"] -."independent parity".-> O

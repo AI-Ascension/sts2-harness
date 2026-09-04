@@ -32,7 +32,7 @@ explicit boundary experiment and does not grant the harness game or host authori
 | Episodes/trajectories | harness-owned records | independent IDs, versions, event ordering, provenance |
 | Replay/scoring | separate cohesive modules | deterministic inputs and explicit divergence/evaluator versions |
 | Artifacts/datasets | artifact/lineage module | hashes, manifests, retention, license, and consumer identity |
-| Research specifications | `docs/research/` | self-contained, evidence-labeled architecture and evaluation research; not runtime proof |
+| Research specifications | `docs/research/` | self-contained, evidence-labeled architecture and evaluation research; generated package is a requirements baseline, not runtime proof |
 | Tests/conformance | `tests/` and `conformance/` | fakes and bounded fixtures; no proprietary host files |
 
 This table is not permission to create empty placeholder crates or duplicate another repository's
