@@ -9,6 +9,11 @@ Their upstream licenses and transitive notices are resolved from the pinned Carg
 and must be rechecked by release tooling before distribution. Dependencies are not vendored into
 this repository.
 
+The Runtime-v1 MCP process adapter uses MIT-licensed Tokio exactly1.53.1 with default features
+disabled and only rt/process/io-util/time/macros enabled. Its locked process/I/O dependencies are
+not provider SDKs or copied source; their declared licenses remain independent. The rationale and
+bounded lifecycle are documented in ADR0005; release-time advisory/license review remains required.
+
 The research-package tool uses `jsonschema` exactly `0.52.1` as a test-only dependency (MIT;
 upstream `https://github.com/Stranger6667/jsonschema`). Default features are disabled, including
 HTTP and file reference retrieval. It validates synthetic research-schema instances, not game

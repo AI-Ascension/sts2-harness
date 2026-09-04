@@ -214,12 +214,22 @@ fn is_test_path(path: &Path, name: &str, suffixes: &[&str]) -> bool {
 }
 
 fn ignored_directory(relative: &Path, policy: &Policy) -> bool {
-    relative
+    let rust_binary_sources = relative.file_name().is_some_and(|name| name == "bin")
+        && relative
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|name| name == "src");
+    let ignored_basename = relative
         .file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| policy.ignored_directories.contains(name))
-        || ignored_prefix(relative, policy)
+        .is_some_and(|name| policy.ignored_directories.contains(name));
+    // Cargo's src/bin contains production sources, unlike generated managed bin output.
+    (ignored_basename && !rust_binary_sources) || ignored_prefix(relative, policy)
 }
+
+#[cfg(test)]
+#[path = "traversal_tests.rs"]
+mod traversal_tests;
 
 fn ignored_prefix(relative: &Path, policy: &Policy) -> bool {
     let text = relative.to_string_lossy().replace('\\', "/");

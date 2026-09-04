@@ -95,3 +95,14 @@ disconnect recorded as unknown, fixed reconciliation with the same operation ID,
 observation and witness at generation `N+1`, duplicate replay with one mutation, and stale-epoch
 rejection before mutation. Provider/model execution and live host/game settlement are untouched and
 remain `unverified`.
+
+## Runtime adapter failure regressions
+
+Synthetic subprocess tests exercise unread stdin, full duplex pipes, oversized/no-newline stdout,
+slow trickles, inherited descendant handles, bounded close/drop, exact JSON-RPC identities and
+async-caller spawn failure. Local listener tests enforce numeric loopback endpoints, request/header
+validation, single Content-Length/no Transfer-Encoding, redacted errors and total deadlines.
+Runtime-v1 reply tests cover projected generation/action/witness shape and typed stale rejection;
+outer RPC identity tests stay separate from downstream envelope validation owned by MCP.
+Runtime-v2 conformance parses all19goldens and rejects304 required-field omission variants. These
+are safe local checks, not a new host/provider run or broader interoperability evidence.

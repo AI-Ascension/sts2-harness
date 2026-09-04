@@ -67,3 +67,14 @@ must be tested before an additive label is used.
 The coordinator does not inherit compatibility from a successful trajectory. Promotion requires an
 exact mod/host version, artifact digest, disposable profile, request sequence, fresh observation,
 effect witness, and cleanup record.
+
+## Runtime safety correction
+
+The existing Runtime-v1 executable accepts only numeric loopback gateway socket addresses, not DNS
+names or remote plaintext bearer endpoints. It bounds complete HTTP/MCP exchanges to five seconds,
+validates outer RPC correlation and the existing projected tool contract, and minimizes child
+environment/error output. MCP retains full downstream envelope/fence validation authority.
+Frozen Runtime-v2 decoder fields remain required even when their permitted value is null.
+This tightens existing safety contracts without changing schema/artifact identities or introducing
+the unmerged Runtime-v2 coordinator, legacy gameplay, or Exo Runtime-v3 proposals.
+effect witness, and cleanup record.
