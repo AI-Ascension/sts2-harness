@@ -150,3 +150,12 @@ gate: peer identity, generation, connection, and ally-target checks can suspend 
 cannot authorize a host mutation. Decision records distinguish requested, accepted, settled,
 recovery, estimate, and unavailable evidence. M10 patch manifests keep build/data/UI/action/schema
 drift quarantined until exact runtime evidence exists.
+
+`EpisodeRunner` is the bounded complete-run coordinator over an explicit `EpisodeRuntimePort`. Its
+port is assembled by the gateway/MCP integration and exposes launch, observe, host-generated legal
+actions, semantic dispatch, transition waiting, safe recovery, and ordered cleanup. The runner does
+not own a game handle, choose a fallback action, or infer settlement from an acknowledgement. The
+operator-owned `ExoProcessTransport` lives at the harness adapter boundary, outside `episode/` and
+`exo/` core policy: it directly invokes a configured bridge with bounded stdin/stdout, timeout, and
+environment allowlisting. The existing core CI guard therefore continues to reject process or
+socket access inside the fair-play/provider policy module.

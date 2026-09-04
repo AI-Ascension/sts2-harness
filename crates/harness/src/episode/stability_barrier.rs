@@ -15,6 +15,7 @@ pub enum WaitOutcome {
 pub struct WaitSample {
     outcome: WaitOutcome,
     observation: Option<EpisodeObservation>,
+    effect_kind: Option<String>,
 }
 
 impl WaitSample {
@@ -23,7 +24,14 @@ impl WaitSample {
         Self {
             outcome,
             observation,
+            effect_kind: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_effect_kind(mut self, effect_kind: impl Into<String>) -> Self {
+        self.effect_kind = Some(effect_kind.into());
+        self
     }
 
     #[must_use]
@@ -34,6 +42,11 @@ impl WaitSample {
     #[must_use]
     pub fn observation(&self) -> Option<&EpisodeObservation> {
         self.observation.as_ref()
+    }
+
+    #[must_use]
+    pub fn effect_kind(&self) -> Option<&str> {
+        self.effect_kind.as_deref()
     }
 }
 
@@ -70,6 +83,18 @@ impl StabilityBarrier {
         operation_id: &str,
         before: &EpisodeObservation,
     ) -> Result<EpisodeObservation, BarrierError> {
+        Ok(self
+            .await_transition_sample(port, operation_id, before)?
+            .observation
+            .ok_or(BarrierError::MissingObservation)?)
+    }
+
+    pub fn await_transition_sample<P: BarrierPort>(
+        &self,
+        port: &mut P,
+        operation_id: &str,
+        before: &EpisodeObservation,
+    ) -> Result<WaitSample, BarrierError> {
         if operation_id.is_empty() {
             return Err(BarrierError::InvalidOperation);
         }
@@ -81,7 +106,7 @@ impl StabilityBarrier {
                         .observation()
                         .ok_or(BarrierError::MissingObservation)?;
                     if observation.generation() > before.generation() {
-                        return Ok(observation.clone());
+                        return Ok(sample);
                     }
                     return Err(BarrierError::StaleObservation);
                 }

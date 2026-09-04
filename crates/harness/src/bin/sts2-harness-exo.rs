@@ -7,9 +7,11 @@
 
 use sts2_harness::ExoConfig;
 
+const REVIEWED_EXO_REVISION: &str = "7801005e6a1ab77008a05dbba80e0a2a7a56e35d";
+
 fn main() {
     let result = ExoConfig::new(
-        "REPLACE_WITH_REVIEWED_EXO_REVISION",
+        REVIEWED_EXO_REVISION,
         128 * 1024,
         8 * 1024,
         120_000,

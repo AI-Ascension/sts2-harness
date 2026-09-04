@@ -45,6 +45,10 @@ claim a released harness version or runtime compatibility.
 
 - The bounded Runtime-v3 episode state machine, semantic action ledger, transition barrier and
   recovery ports, and strict Exo fair-play decision adapter.
+- A bounded complete-run coordinator that routes every declared playable surface through the
+  current host legal-action catalog and independently verifies transition settlement.
+- An operator-owned direct Exo process transport with bounded stdin/stdout, timeout, environment
+  allowlisting, and fail-closed shutdown behavior.
 - An offline Exo configuration example and explicit `unverified` live-connectivity status.
 - Full-run routing coverage for setup, map, combat, reward, shop, event, rest, selection, and
   separate victory/defeat terminal observations.
@@ -76,6 +80,8 @@ claim a released harness version or runtime compatibility.
 
 - The package is preparation-only: live providers, game access, gateway lease ownership, MCP framing,
   game rules, scoring, dataset export, and training integration remain outside this wave.
+- Exo revisions are now required to be exact non-zero lowercase commit hashes; the checked-in
+  example uses the reviewed public audit revision and does not claim live connectivity.
 
 ### Deprecated
 

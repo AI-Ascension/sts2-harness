@@ -100,7 +100,7 @@ impl ExoDecisionRequest {
         let state_id = state_id.into();
         let provider_revision = provider_revision.into();
         let objective = objective.into();
-        if !valid_id(&provider_revision)
+        if !valid_revision(&provider_revision)
             || !valid_id(&state_id)
             || generation > 9_007_199_254_740_991
             || !valid_action_ids(&legal_action_ids)
@@ -315,15 +315,11 @@ fn valid_id(value: &str) -> bool {
 }
 
 fn valid_revision(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 128
+    (value.len() == 40 || value.len() == 64)
         && value
             .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
-        && !["main", "master", "head", "latest", "trunk", "default"]
-            .iter()
-            .any(|floating| value.eq_ignore_ascii_case(floating))
-        && !value.starts_with("REPLACE_WITH_")
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        && value.bytes().any(|byte| byte != b'0')
 }
 
 fn valid_action_ids(values: &[String]) -> bool {
@@ -356,7 +352,7 @@ fn valid_text(value: &str) -> bool {
 
 fn validate_request(request: &ExoDecisionRequest) -> Result<(), ExoError> {
     if request.schema != "sts2.exo-decision-v1"
-        || !valid_id(&request.provider_revision)
+        || !valid_revision(&request.provider_revision)
         || !valid_id(&request.model_execution_id)
         || !valid_id(&request.state_id)
         || request.generation > 9_007_199_254_740_991

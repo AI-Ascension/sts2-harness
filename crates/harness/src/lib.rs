@@ -7,6 +7,7 @@ mod episode;
 mod error;
 mod evaluation;
 mod exo;
+mod exo_process;
 mod identity;
 mod memory;
 mod poc;
@@ -28,7 +29,8 @@ pub use episode::{
     ActionAdmission, ActionIdentity, ActionKind, ActionLedger, ActionSetError, BarrierError,
     BarrierPort, CoopCoordinator, CoopError, CoopPeerRole, CoopSyncStatus, DecisionInput,
     DecisionSource, DispatchStatus, EpisodeLegalAction, EpisodeLegalActionSet, EpisodeMachine,
-    EpisodeMachineError, EpisodeObservation, EpisodePhase, EpisodeShutdown, EpisodeStage,
+    EpisodeMachineError, EpisodeObservation, EpisodePhase, EpisodeRunReport, EpisodeRunner,
+    EpisodeRunnerConfig, EpisodeRunnerError, EpisodeRuntimePort, EpisodeShutdown, EpisodeStage,
     ExoDecisionSource, IdempotencyError, NoncombatCoordinator, NoncombatStage, ObservationError,
     PolicyChoice, PolicyError, PolicyRouter, PostconditionError, RecoveryController, RecoveryError,
     RecoveryOperation, RecoveryPort, RecoveryResult, RunSetupCoordinator, SetupPort, ShutdownError,
@@ -41,9 +43,10 @@ pub use evaluation::{
 };
 pub use exo::{
     BoundDecision, Decision, DecisionError, ExoClient, ExoConfig, ExoDecisionRequest, ExoError,
-    ExoProvider, ExoSession, ExoTransport, ExoTransportError, SandboxError, SanitizedObservation,
-    parse_decision,
+    ExoProvider, ExoSession, ExoTransport, ExoTransportError, SandboxError,
+    SanitizedObservation, parse_decision,
 };
+pub use exo_process::{ExoProcessConfig, ExoProcessConfigError, ExoProcessTransport};
 pub use identity::{
     ActionId, ArtifactId, Digest, EpisodeId, GatewaySessionId, IdempotencyKey, InstanceId,
     ModelExecutionId, RecordId, RequestId, RunId, SchemaVersion, TraceId, TrajectoryId,

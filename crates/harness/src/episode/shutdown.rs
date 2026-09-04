@@ -12,9 +12,21 @@ pub struct EpisodeShutdown;
 
 impl EpisodeShutdown {
     pub fn close<P: ShutdownPort>(&self, port: &mut P) -> Result<(), ShutdownError> {
-        port.release_lease()?;
-        port.close_mcp()?;
-        port.close_gateway()
+        let mut first_error = None;
+        if let Err(error) = port.release_lease() {
+            first_error = Some(error);
+        }
+        if let Err(error) = port.close_mcp()
+            && first_error.is_none()
+        {
+            first_error = Some(error);
+        }
+        if let Err(error) = port.close_gateway()
+            && first_error.is_none()
+        {
+            first_error = Some(error);
+        }
+        first_error.map_or(Ok(()), Err)
     }
 }
 

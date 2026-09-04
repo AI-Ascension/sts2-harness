@@ -23,6 +23,19 @@ The research field package is classification metadata only. M10 manifests record
 action, and schema drift independently and remain quarantined until exact hashes, leak checks,
 clean-install/replay, rollback, cleanup, and live traces exist.
 
+The harness exposes a bounded `EpisodeRunner` over an explicit runtime port. The runtime port must
+provide launch, observation, the matching host-generated legal-action set, semantic dispatch,
+transition waiting, safe recovery, and ordered shutdown. Every model-selected action is rebound to
+the current catalog before dispatch; an accepted or unknown mutation is not retried strategically.
+The runner reconciles uncertain outcomes or stops fail-closed, and cleanup attempts lease release,
+MCP close, and gateway close independently.
+
+Because the public Exo API is low-level and deployment-specific, the harness also provides an
+operator-owned `ExoProcessTransport`. It sends one sanitized JSON request to a directly invoked
+bridge process and accepts one bounded JSON response. The process receives only an explicit
+environment-name allowlist, and the harness never invokes a shell. This is an adapter seam, not a
+claim that Exo or a licensed STS2 build is connected.
+
 ## Evidence
 
 Deterministic routing, sandbox, record, replay, evaluation, and manifest checks are source-derived or

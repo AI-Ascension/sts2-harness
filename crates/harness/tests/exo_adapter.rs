@@ -76,7 +76,12 @@ fn request() -> ModelRequest {
 fn provider(response: Result<Vec<u8>, ExoTransportError>) -> ExoProvider<FakeTransport> {
     ExoProvider::new(
         FakeTransport::new(response),
-        ExoConfig::new("exo-test-revision", 64 * 1024, 1024, 1_000)
+        ExoConfig::new(
+            "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
+            64 * 1024,
+            1024,
+            1_000,
+        )
             .expect("test Exo configuration is valid"),
     )
 }
@@ -89,13 +94,21 @@ fn unconfigured_or_floating_revision_is_rejected() {
         "HEAD",
         "latest",
         "REPLACE_WITH_REVIEWED_EXO_REVISION",
+        "0000000000000000000000000000000000000000",
+        "7801005E6A1AB77008A05DBBA80E0A2A7A56E35D",
     ] {
         assert!(
             ExoConfig::new(revision, 64 * 1024, 1024, 1_000).is_err(),
             "revision {revision:?} must not be accepted as pinned"
         );
     }
-    assert!(ExoConfig::new("reviewed-exo-20260904", 64 * 1024, 1024, 1_000).is_ok());
+    assert!(ExoConfig::new(
+        "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
+        64 * 1024,
+        1024,
+        1_000,
+    )
+    .is_ok());
 }
 
 #[test]

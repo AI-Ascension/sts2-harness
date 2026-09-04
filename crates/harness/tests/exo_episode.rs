@@ -108,7 +108,12 @@ fn legal_actions(generation: u64) -> EpisodeLegalActionSet {
 }
 
 fn config() -> ExoConfig {
-    ExoConfig::new("exo-revision-2026-09-04", 64 * 1024, 8 * 1024, 2_000)
+    ExoConfig::new(
+        "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
+        64 * 1024,
+        8 * 1024,
+        2_000,
+    )
         .expect("test Exo config is valid")
 }
 
@@ -198,7 +203,10 @@ fn exo_request_carries_pinned_revision_and_timeout() {
 
     let transport = session.into_transport();
     let request = serde_json::from_slice::<Value>(&transport.requests[0]).expect("request is JSON");
-    assert_eq!(request["provider_revision"], "exo-revision-2026-09-04");
+    assert_eq!(
+        request["provider_revision"],
+        "7801005e6a1ab77008a05dbba80e0a2a7a56e35d"
+    );
     assert_eq!(transport.timeouts, vec![2_000]);
 }
 

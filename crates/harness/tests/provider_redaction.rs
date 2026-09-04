@@ -52,7 +52,12 @@ fn exo_request_contains_only_sanitized_fair_play_fields() {
         requests: Vec::new(),
         responses: VecDeque::from([br#"{"decision":"reobserve","rationale":"refresh"}"#.to_vec()]),
     };
-    let config = ExoConfig::new("exo-pinned-revision", 64 * 1024, 8 * 1024, 1_000)
+    let config = ExoConfig::new(
+        "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
+        64 * 1024,
+        8 * 1024,
+        1_000,
+    )
         .expect("configuration is valid");
     let mut session = ExoSession::new(ExoProvider::new(transport, config));
     let decision = session
@@ -75,7 +80,10 @@ fn exo_request_contains_only_sanitized_fair_play_fields() {
 
     let transport = session.into_transport();
     let request: Value = serde_json::from_slice(&transport.requests[0]).expect("request is JSON");
-    assert_eq!(request["provider_revision"], "exo-pinned-revision");
+    assert_eq!(
+        request["provider_revision"],
+        "7801005e6a1ab77008a05dbba80e0a2a7a56e35d"
+    );
     assert_eq!(request["observation"]["visible_seed"], "seed-shown-by-host");
     assert_eq!(request["legal_action_ids"], json!(["map.select"]));
     let encoded = serde_json::to_string(&request).expect("request can be inspected");

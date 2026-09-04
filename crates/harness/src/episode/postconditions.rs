@@ -6,6 +6,8 @@ use super::transition::{DispatchStatus, TransitionReceipt};
 /// Independently verified effect facts required before the episode advances.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedTransition {
+    operation_id: String,
+    action_id: String,
     before_generation: u64,
     after_generation: u64,
     state_id: String,
@@ -13,6 +15,16 @@ pub struct VerifiedTransition {
 }
 
 impl VerifiedTransition {
+    #[must_use]
+    pub fn operation_id(&self) -> &str {
+        &self.operation_id
+    }
+
+    #[must_use]
+    pub fn action_id(&self) -> &str {
+        &self.action_id
+    }
+
     #[must_use]
     pub const fn before_generation(&self) -> u64 {
         self.before_generation
@@ -46,16 +58,29 @@ pub fn verify_settlement(
             Err(PostconditionError::ActionRejected)
         }
         DispatchStatus::Settled => {
+            if !valid_identity(receipt.operation_id()) {
+                return Err(PostconditionError::InvalidReceipt);
+            }
             let after = receipt
                 .after()
                 .ok_or(PostconditionError::MissingObservation)?;
             let effect_kind = receipt
                 .effect_kind()
+                .filter(|effect| valid_identity(effect))
                 .ok_or(PostconditionError::MissingWitness)?;
             if after.generation() <= before.generation() {
                 return Err(PostconditionError::StaleObservation);
             }
+            if matches!(
+                after.stage(),
+                super::observation::EpisodeStage::Unknown
+                    | super::observation::EpisodeStage::Recovery
+            ) {
+                return Err(PostconditionError::UnknownState);
+            }
             Ok(VerifiedTransition {
+                operation_id: receipt.operation_id().to_owned(),
+                action_id: receipt.action().action_id().to_owned(),
                 before_generation: before.generation(),
                 after_generation: after.generation(),
                 state_id: after.state_id().to_owned(),
@@ -73,6 +98,8 @@ pub enum PostconditionError {
     MissingObservation,
     MissingWitness,
     StaleObservation,
+    InvalidReceipt,
+    UnknownState,
 }
 
 impl std::fmt::Display for PostconditionError {
@@ -84,8 +111,18 @@ impl std::fmt::Display for PostconditionError {
             Self::MissingObservation => "settlement lacks a fresh observation",
             Self::MissingWitness => "settlement lacks an effect witness",
             Self::StaleObservation => "settlement lacks a fresh generation",
+            Self::InvalidReceipt => "settlement receipt has an invalid operation identity",
+            Self::UnknownState => "settlement observation is unknown or in recovery",
         })
     }
 }
 
 impl std::error::Error for PostconditionError {}
+
+fn valid_identity(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 512
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
+}

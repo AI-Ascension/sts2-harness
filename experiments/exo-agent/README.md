@@ -7,13 +7,18 @@ complete host-generated semantic action-ID set.
 
 ## Configuration
 
-Copy `config.example.toml` to an operator-owned location and fill in a reviewed Exo revision and
-endpoint outside the repository. Do not commit the copy. `revision` is mandatory; an empty or
-floating revision is rejected by `ExoConfig`.
+Copy `config.example.toml` to an operator-owned location and set an exact reviewed Exo revision and
+endpoint outside the repository. Do not commit the copy. The checked-in revision is the public
+audit revision reviewed on 2026-09-02; a deployment using another revision must replace it with a
+separately reviewed 40- or 64-character lowercase commit hash. Empty, floating, placeholder, and
+all-zero revisions are rejected by `ExoConfig`.
 
-The transport implementation supplied by the operator must enforce the requested timeout and
-response limit. The harness checks the returned byte count again, rejects malformed structured
-decisions, and treats unavailable or timed-out Exo calls as fail-closed provider outcomes.
+The harness supplies `ExoProcessTransport` for an operator-owned bridge when a direct process is
+appropriate. It passes configured arguments directly, clears the environment except for an
+explicit safe-name allowlist, writes one request to stdin, bounds stdout, enforces a timeout, and
+never invokes a shell. A custom `ExoTransport` remains possible for another reviewed boundary. The
+harness checks the returned byte count again, rejects malformed structured decisions, and treats
+unavailable or timed-out Exo calls as fail-closed provider outcomes.
 
 ## Data boundary
 

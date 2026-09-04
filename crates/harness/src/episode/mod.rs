@@ -9,6 +9,7 @@ mod policy_router;
 mod postconditions;
 mod recovery;
 mod run_setup;
+mod runner;
 mod shutdown;
 mod stability_barrier;
 mod state_machine;
@@ -29,6 +30,9 @@ pub use recovery::{
     RecoveryController, RecoveryError, RecoveryOperation, RecoveryPort, RecoveryResult,
 };
 pub use run_setup::{RunSetupCoordinator, SetupPort};
+pub use runner::{
+    EpisodeRunReport, EpisodeRunner, EpisodeRunnerConfig, EpisodeRunnerError, EpisodeRuntimePort,
+};
 pub use shutdown::{EpisodeShutdown, ShutdownError, ShutdownPort};
 pub use stability_barrier::{BarrierError, BarrierPort, StabilityBarrier, WaitOutcome, WaitSample};
 pub use state_machine::{EpisodeMachine, EpisodeMachineError, EpisodePhase};
