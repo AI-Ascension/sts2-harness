@@ -69,9 +69,30 @@ pub(super) fn action_set(
 ) -> Result<(EpisodeLegalActionSet, BTreeMap<String, Value>), String> {
     let root = root(value, expected_kind, config)?;
     validate_observation_fields(root)?;
+    require_null(root, "observation")?;
     let state_id = string(root, "state_id")?;
     let generation = number(root, "generation")?;
     parse_actions(root.get("legal_actions"), state_id, generation)
+}
+
+// Installation of an already validated receipt/wait uses its result shape, not the
+// all-null status/operation shape of a standalone observation response.
+pub(super) fn result_observation(
+    value: &Value,
+    expected_kind: &str,
+    config: &RuntimeConfig,
+) -> Result<ParsedObservation, String> {
+    if !matches!(
+        expected_kind,
+        "dispatch_action_response" | "wait_response" | "recover_response"
+    ) {
+        return Err(String::from(
+            "Runtime-v3 installation requires a result response",
+        ));
+    }
+    let root = root(value, expected_kind, config)?;
+    transition::validate_installation_fields(root, expected_kind == "wait_response")?;
+    observation_from_root(root)
 }
 
 fn root<'a>(

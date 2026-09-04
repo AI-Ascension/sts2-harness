@@ -186,3 +186,10 @@ fn validate_result_fields(
         }
     }
 }
+
+pub(super) fn validate_installation_fields(
+    root: &Map<String, Value>,
+    is_wait: bool,
+) -> Result<(), String> {
+    validate_result_fields(root, dispatch_status(root)?, is_wait)
+}

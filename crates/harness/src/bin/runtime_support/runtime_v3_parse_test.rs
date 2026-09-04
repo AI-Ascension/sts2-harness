@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use sts2_harness::{ActionKind, DispatchStatus, EpisodeLegalAction};
 
 use super::super::config::RuntimeConfig;
-use super::{observation, receipt, wait_sample};
+use super::{action_set, observation, receipt, result_observation, wait_sample};
 
 fn config() -> RuntimeConfig {
     RuntimeConfig {
@@ -201,5 +201,36 @@ fn response_shapes_reject_request_payloads_and_contradictory_errors() -> Result<
     let mut state = response("state_response", 0, Value::Null, Value::Null);
     state["action"] = json!({"kind": "end_turn"});
     assert!(observation(&state, "state_response", &config()).is_err());
+    Ok(())
+}
+
+#[test]
+fn validated_results_install_their_observation_without_using_state_response_shape()
+-> Result<(), String> {
+    let action = EpisodeLegalAction::new("combat.end-turn", ActionKind::EndTurn)
+        .map_err(|error| error.to_string())?;
+    for kind in [
+        "dispatch_action_response",
+        "recover_response",
+        "wait_response",
+    ] {
+        let mut value = response(kind, 1, json!("op-1"), json!("settled"));
+        if kind == "wait_response" {
+            value["wait_outcome"] = json!("successor");
+            wait_sample(&value, &config(), "op-1", 0)?;
+        } else {
+            receipt(&value, kind, &config(), "op-1", 0, action.clone())?;
+        }
+        let parsed = result_observation(&value, kind, &config())?;
+        assert_eq!(parsed.observation.generation(), 1);
+        assert!(parsed.actions.find("combat.end-turn").is_some());
+        assert_eq!(parsed.payloads["combat.end-turn"]["kind"], "end_turn");
+        value["action"] = json!({"kind": "end_turn"});
+        assert!(result_observation(&value, kind, &config()).is_err());
+    }
+    let mut legal = response("legal_actions_response", 0, Value::Null, Value::Null);
+    assert!(action_set(&legal, "legal_actions_response", &config()).is_err());
+    legal["observation"] = Value::Null;
+    assert!(action_set(&legal, "legal_actions_response", &config()).is_ok());
     Ok(())
 }

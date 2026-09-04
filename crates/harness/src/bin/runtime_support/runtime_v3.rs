@@ -142,7 +142,7 @@ impl RuntimeV3Port {
             .get("observation")
             .is_some_and(|observation| observation.is_object())
         {
-            let parsed = parse::observation(value, expected_kind, &self.config)?;
+            let parsed = parse::result_observation(value, expected_kind, &self.config)?;
             let _ = self.install(parsed);
         }
         Ok(())
