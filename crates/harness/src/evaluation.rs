@@ -102,6 +102,13 @@ impl Evaluator {
     }
 
     pub fn observe(&mut self, sample: EvaluationSample) -> Result<(), EvaluationError> {
+        let mut candidate = self.clone();
+        candidate.observe_checked(sample)?;
+        *self = candidate;
+        Ok(())
+    }
+
+    fn observe_checked(&mut self, sample: EvaluationSample) -> Result<(), EvaluationError> {
         if self.samples >= self.capacity {
             return Err(EvaluationError::Full);
         }

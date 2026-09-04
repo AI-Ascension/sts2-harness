@@ -2,7 +2,7 @@
 
 #![allow(clippy::expect_used)]
 
-use sts2_harness::{EvaluationSample, Evaluator, TerminalOutcome};
+use sts2_harness::{EvaluationError, EvaluationSample, Evaluator, TerminalOutcome};
 
 #[test]
 fn evaluation_reports_safety_quality_calibration_resources_progression_and_completion() {
@@ -68,4 +68,33 @@ fn evaluator_keeps_victory_and_defeat_separate_and_enforces_capacity() {
     assert_eq!(report.victories(), 1);
     assert_eq!(report.defeats(), 0);
     assert!(report.completed());
+}
+
+#[test]
+fn rejected_overflow_does_not_partially_record_a_sample_or_consume_capacity() {
+    let mut evaluator = Evaluator::new(2).expect("capacity is valid");
+    evaluator
+        .observe(EvaluationSample {
+            regret_millis: Some(u64::MAX),
+            ..EvaluationSample::default()
+        })
+        .expect("first regret fits");
+    let before = evaluator.report();
+    assert_eq!(
+        evaluator.observe(EvaluationSample {
+            legal: false,
+            stale: true,
+            verified: true,
+            recovery_attempted: true,
+            recovery_succeeded: true,
+            regret_millis: Some(1),
+            ..EvaluationSample::default()
+        }),
+        Err(EvaluationError::Overflow)
+    );
+    assert_eq!(evaluator.report(), before);
+    evaluator
+        .observe(EvaluationSample::default())
+        .expect("rejected sample did not consume remaining capacity");
+    assert_eq!(evaluator.report().samples(), 2);
 }
