@@ -22,9 +22,9 @@ pub(crate) struct RuntimeConfig {
 impl RuntimeConfig {
     pub(crate) fn from_environment() -> Result<Self, String> {
         let runtime_profile = env_or_default("STS2_RUNTIME_PROFILE", "runtime-v1")?;
-        if !matches!(runtime_profile.as_str(), "runtime-v1" | "runtime-v2") {
+        if !matches!(runtime_profile.as_str(), "runtime-v1" | "runtime-v2" | "runtime-v3-gameplay") {
             return Err(String::from(
-                "STS2_RUNTIME_PROFILE must be runtime-v1 or runtime-v2",
+                "STS2_RUNTIME_PROFILE must be runtime-v1, runtime-v2, or runtime-v3-gameplay",
             ));
         }
         let session_id = env_or_default("STS2_SESSION_ID", "session-1")?;

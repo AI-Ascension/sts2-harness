@@ -9,7 +9,7 @@ use serde_json::{Map, Value, json};
 use super::config::RuntimeConfig;
 use super::http::GatewayClient;
 
-use super::mcp_process::McpProcess;
+pub(super) use super::mcp_process::McpProcess;
 use super::response_validation::validate_response;
 
 #[path = "trace_runtime_v1.rs"]
@@ -263,7 +263,7 @@ pub(super) fn validate_allocation(value: &Value, config: &RuntimeConfig) -> Resu
     Ok(())
 }
 
-fn identity_headers(config: &RuntimeConfig, correlation: &str) -> BTreeMap<String, String> {
+pub(super) fn identity_headers(config: &RuntimeConfig, correlation: &str) -> BTreeMap<String, String> {
     BTreeMap::from([
         (
             String::from("x-sts2-instance-id"),

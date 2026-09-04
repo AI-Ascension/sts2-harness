@@ -156,6 +156,14 @@ colliding lineage values. The synthetic component run and the authorized exact-h
 recorded separately. The latter confirms the managed host callback and bounded STS2 effect for the
 safe probe; gameplay mutation and broader compatibility remain `unverified`.
 
+The same binary has an opt-in `runtime-v3-gameplay` profile. Set `STS2_RUNTIME_PROFILE` to that
+value and provide the exact reviewed `STS2_EXO_REVISION`, direct `STS2_EXO_BRIDGE_BINARY`, and
+`STS2_OBJECTIVE` inputs. The profile requires the six semantic MCP tools, keeps host payloads at the
+MCP boundary, and fails closed when the gateway, MCP process, Exo bridge, or target runtime is
+missing. For this profile `STS2_MCP_SESSION_ID` defaults to and must equal `STS2_SESSION_ID` so
+gateway and MCP protocol identity remain fenced to one session. Live Exo and target-game behavior
+remain `unverified` until a separate runtime handoff.
+
 ## Runtime-v2 deterministic fake lane
 
 The separate `sts2-harness-runtime-v2-fake` binary consumes the copied `runtime-v2` release-like
