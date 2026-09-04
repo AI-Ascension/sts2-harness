@@ -67,6 +67,12 @@ impl RuntimeConfig {
             wait_for_combat_seconds,
             settlement_timeout_seconds,
         };
+        config.validate()?;
+        Ok(config)
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        let config = self;
         for (name, value) in [
             ("STS2_INSTANCE_ID", &config.instance_id),
             ("STS2_CALLER_ID", &config.caller_id),
@@ -111,7 +117,7 @@ impl RuntimeConfig {
                 ));
             }
         }
-        Ok(config)
+        Ok(())
     }
 }
 
@@ -135,4 +141,31 @@ fn safe_identity(value: &str) -> bool {
         && value.bytes().all(|byte| {
             byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RuntimeConfig;
+
+    #[test]
+    fn runtime_sessions_are_validated_independently() {
+        let mut config = RuntimeConfig {
+            gateway_address: String::from("127.0.0.1:15525"),
+            gateway_token: String::from("synthetic-token"),
+            mcp_binary: String::from("mcp"),
+            runtime_profile: String::from("runtime-v3-gameplay"),
+            instance_id: String::from("instance-1"),
+            caller_id: String::from("harness"),
+            session_id: String::from("gateway-session-1"),
+            lease_id: String::from("lease-1"),
+            lease_epoch: 1,
+            mcp_session_id: String::from("mcp-session-independent"),
+        };
+        assert!(config.validate().is_ok());
+        config.mcp_session_id = String::from("unsafe session");
+        assert!(config.validate().is_err());
+        config.mcp_session_id = String::from("mcp-session-independent");
+        config.session_id.clear();
+        assert!(config.validate().is_err());
+    }
 }
