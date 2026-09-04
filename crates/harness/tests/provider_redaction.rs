@@ -58,7 +58,7 @@ fn exo_request_contains_only_sanitized_fair_play_fields() {
         8 * 1024,
         1_000,
     )
-        .expect("configuration is valid");
+    .expect("configuration is valid");
     let mut session = ExoSession::new(ExoProvider::new(transport, config));
     let decision = session
         .decide(

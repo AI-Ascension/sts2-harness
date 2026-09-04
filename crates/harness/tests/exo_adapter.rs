@@ -82,7 +82,7 @@ fn provider(response: Result<Vec<u8>, ExoTransportError>) -> ExoProvider<FakeTra
             1024,
             1_000,
         )
-            .expect("test Exo configuration is valid"),
+        .expect("test Exo configuration is valid"),
     )
 }
 
@@ -102,13 +102,15 @@ fn unconfigured_or_floating_revision_is_rejected() {
             "revision {revision:?} must not be accepted as pinned"
         );
     }
-    assert!(ExoConfig::new(
-        "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
-        64 * 1024,
-        1024,
-        1_000,
-    )
-    .is_ok());
+    assert!(
+        ExoConfig::new(
+            "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
+            64 * 1024,
+            1024,
+            1_000,
+        )
+        .is_ok()
+    );
 }
 
 #[test]

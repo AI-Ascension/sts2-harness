@@ -43,8 +43,8 @@ pub use evaluation::{
 };
 pub use exo::{
     BoundDecision, Decision, DecisionError, ExoClient, ExoConfig, ExoDecisionRequest, ExoError,
-    ExoProvider, ExoSession, ExoTransport, ExoTransportError, SandboxError,
-    SanitizedObservation, parse_decision,
+    ExoProvider, ExoSession, ExoTransport, ExoTransportError, SandboxError, SanitizedObservation,
+    parse_decision,
 };
 pub use exo_process::{ExoProcessConfig, ExoProcessConfigError, ExoProcessTransport};
 pub use identity::{

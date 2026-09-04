@@ -69,6 +69,7 @@ required_files = [
   "crates/harness/src/episode/runner.rs",
   "crates/harness/src/episode/runner_error.rs",
   "crates/harness/src/episode/runner_impl.rs",
+  "crates/harness/src/episode/runner_recovery.rs",
   "crates/harness/src/exo/sandbox.rs",
   "crates/harness/src/exo_process.rs",
   "crates/harness/tests/coop.rs",

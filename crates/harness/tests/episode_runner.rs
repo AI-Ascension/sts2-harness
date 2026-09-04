@@ -4,11 +4,11 @@
 
 use serde_json::{Value, json};
 use sts2_harness::{
-    ActionIdentity, ActionKind, Decision, DecisionInput, DecisionSource, DispatchStatus,
-    BarrierError, BarrierPort, EpisodeLegalAction, EpisodeLegalActionSet, EpisodeObservation,
-    EpisodeRunner, EpisodeRunnerConfig, EpisodeRunnerError, EpisodeRuntimePort, EpisodeStage,
-    PolicyError, PortError, RecoveryController, RecoveryError, RecoveryPort, RecoveryResult,
-    ShutdownError, ShutdownPort, StabilityBarrier, TransitionReceipt, WaitOutcome, WaitSample,
+    ActionIdentity, ActionKind, BarrierError, BarrierPort, Decision, DecisionInput, DecisionSource,
+    DispatchStatus, EpisodeLegalAction, EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner,
+    EpisodeRunnerConfig, EpisodeRunnerError, EpisodeRuntimePort, EpisodeStage, PolicyError,
+    PortError, RecoveryController, RecoveryError, RecoveryPort, ShutdownError, ShutdownPort,
+    StabilityBarrier, TransitionReceipt, WaitOutcome, WaitSample,
 };
 
 #[derive(Clone)]
@@ -79,8 +79,7 @@ impl EpisodeRuntimePort for FakeRuntime {
         generation: u64,
     ) -> Result<EpisodeLegalActionSet, PortError> {
         let state = self.current();
-        if state.observation.state_id() != state_id
-            || state.observation.generation() != generation
+        if state.observation.state_id() != state_id || state.observation.generation() != generation
         {
             return Err(PortError::new(
                 "stale_catalog",
@@ -263,7 +262,9 @@ fn projection(state_id: &str, generation: u64, stage: EpisodeStage) -> Value {
         EpisodeStage::Setup => json!({"state":"setup","characters":[]}),
         EpisodeStage::Map => json!({"state":"map","node_id":"node-1","options":[]}),
         EpisodeStage::Combat => json!({"state":"combat","turn_index":1,"enemies":[]}),
-        EpisodeStage::Reward | EpisodeStage::Rest => json!({"state":stage_name(stage),"options":[]}),
+        EpisodeStage::Reward | EpisodeStage::Rest => {
+            json!({"state":stage_name(stage),"options":[]})
+        }
         EpisodeStage::Shop => json!({"state":"shop","items":[]}),
         EpisodeStage::Event | EpisodeStage::Selection => {
             json!({"state":stage_name(stage),"choices":[]})
@@ -363,7 +364,10 @@ fn provider_failure_is_fail_closed_and_never_dispatches() {
     let error = runner()
         .run(&mut runtime, &mut model)
         .expect_err("provider failure must stop the run");
-    assert!(matches!(error, EpisodeRunnerError::Policy(PolicyError::ProviderUnavailable)));
+    assert!(matches!(
+        error,
+        EpisodeRunnerError::Policy(PolicyError::ProviderUnavailable)
+    ));
     assert_eq!(runtime.dispatches, 0);
     assert!(runtime.released);
     assert!(runtime.mcp_closed);

@@ -114,7 +114,7 @@ fn config() -> ExoConfig {
         8 * 1024,
         2_000,
     )
-        .expect("test Exo config is valid")
+    .expect("test Exo config is valid")
 }
 
 #[test]

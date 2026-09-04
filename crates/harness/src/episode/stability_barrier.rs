@@ -83,10 +83,9 @@ impl StabilityBarrier {
         operation_id: &str,
         before: &EpisodeObservation,
     ) -> Result<EpisodeObservation, BarrierError> {
-        Ok(self
-            .await_transition_sample(port, operation_id, before)?
+        self.await_transition_sample(port, operation_id, before)?
             .observation
-            .ok_or(BarrierError::MissingObservation)?)
+            .ok_or(BarrierError::MissingObservation)
     }
 
     pub fn await_transition_sample<P: BarrierPort>(

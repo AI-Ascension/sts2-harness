@@ -46,9 +46,10 @@ impl ExoProcessConfig {
                 .arguments
                 .iter()
                 .any(|argument| !valid_path(argument, MAX_ARGUMENT_BYTES))
-            || config.working_directory.as_ref().is_some_and(|path| {
-                !valid_path(path, MAX_EXECUTABLE_BYTES)
-            })
+            || config
+                .working_directory
+                .as_ref()
+                .is_some_and(|path| !valid_path(path, MAX_EXECUTABLE_BYTES))
             || config.inherited_environment.len() > MAX_ENVIRONMENT_NAMES
             || !valid_environment_names(&config.inherited_environment)
         {

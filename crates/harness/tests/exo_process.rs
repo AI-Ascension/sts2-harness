@@ -3,8 +3,7 @@
 #![allow(clippy::expect_used)]
 
 use sts2_harness::{
-    ExoProcessConfig, ExoProcessConfigError, ExoProcessTransport, ExoTransport,
-    ExoTransportError,
+    ExoProcessConfig, ExoProcessConfigError, ExoProcessTransport, ExoTransport, ExoTransportError,
 };
 
 #[test]
@@ -36,7 +35,9 @@ fn process_configuration_requires_direct_bounded_inputs() {
 #[cfg(unix)]
 #[test]
 fn process_transport_passes_one_request_on_stdin_and_bounds_response() {
-    let script = String::from("cat >/dev/null; printf '%s' '{\"decision\":\"reobserve\",\"rationale\":\"refresh\"}'");
+    let script = String::from(
+        "cat >/dev/null; printf '%s' '{\"decision\":\"reobserve\",\"rationale\":\"refresh\"}'",
+    );
     let config = ExoProcessConfig::new(
         "/bin/sh",
         vec![String::from("-c"), script],
@@ -93,13 +94,8 @@ fn process_transport_times_out_and_rejects_oversized_output() {
 #[cfg(unix)]
 #[test]
 fn process_transport_close_is_fail_closed() {
-    let config = ExoProcessConfig::new(
-        "/bin/printf",
-        vec![String::from("{}")],
-        None,
-        Vec::new(),
-    )
-    .expect("bridge configuration is valid");
+    let config = ExoProcessConfig::new("/bin/printf", vec![String::from("{}")], None, Vec::new())
+        .expect("bridge configuration is valid");
     let mut transport = ExoProcessTransport::new(config);
     transport.close().expect("close succeeds");
     assert_eq!(
