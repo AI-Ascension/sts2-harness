@@ -9,6 +9,9 @@ claim a released harness version or runtime compatibility.
 
 ### Added
 
+- Complete the frozen Runtime-v1 consumer checksum inventory and golden messages; check both
+  frozen runtime inventories in CI without changing existing wire schemas or manifests.
+
 - A dated, evidence-labeled expert-state information-architecture research specification covering
   fair-play observation, the proposed atomic-state/action inventory, recovery, evaluation, and
   patch drift. It is explicitly not full-game or gameplay-proof evidence.

@@ -1,5 +1,10 @@
 # Compatibility Policy and Matrix
 
+The Runtime-v1 copied checksum inventory and golden messages were completed from protocol
+`11e4252e39a77f0017b8e4f3720590e6162e8f53` during the 2026-09-05 review. Existing schema and
+manifest bytes are unchanged. CI checks the copied POC, Runtime-v1, and Runtime-v2 inventories;
+this confirms artifact integrity only, not host compatibility.
+
 ## Independent compatibility axes
 
 “Compatible” is not one claim. The harness records these independently:
