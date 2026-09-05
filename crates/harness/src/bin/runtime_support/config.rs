@@ -22,7 +22,10 @@ pub(crate) struct RuntimeConfig {
 impl RuntimeConfig {
     pub(crate) fn from_environment() -> Result<Self, String> {
         let runtime_profile = env_or_default("STS2_RUNTIME_PROFILE", "runtime-v1")?;
-        if !matches!(runtime_profile.as_str(), "runtime-v1" | "runtime-v2" | "runtime-v3-gameplay") {
+        if !matches!(
+            runtime_profile.as_str(),
+            "runtime-v1" | "runtime-v2" | "runtime-v3-gameplay"
+        ) {
             return Err(String::from(
                 "STS2_RUNTIME_PROFILE must be runtime-v1, runtime-v2, or runtime-v3-gameplay",
             ));
@@ -160,6 +163,12 @@ mod tests {
             lease_id: String::from("lease-1"),
             lease_epoch: 1,
             mcp_session_id: String::from("mcp-session-independent"),
+            run_id: String::from("run-1"),
+            episode_id: String::from("episode-1"),
+            trajectory_id: String::from("trajectory-1"),
+            artifact_id: String::from("artifact-1"),
+            wait_for_combat_seconds: 0,
+            settlement_timeout_seconds: 0,
         };
         assert!(config.validate().is_ok());
         config.mcp_session_id = String::from("unsafe session");

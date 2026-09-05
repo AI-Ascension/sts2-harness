@@ -5,11 +5,11 @@ mod http;
 mod mcp;
 mod mcp_process;
 mod response_validation;
-mod v1_projection;
 mod runtime_v3;
 mod runtime_v3_parse;
 mod runtime_v3_settings;
 mod runtime_v3_wire;
+mod v1_projection;
 
 pub(crate) use config::RuntimeConfig;
 
