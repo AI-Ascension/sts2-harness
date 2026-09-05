@@ -43,6 +43,10 @@ claim a released harness version or runtime compatibility.
 - Standardized historical POC and Runtime-v2 fake evidence labels to `confirmed`, retaining
   their deterministic-fake scope, original dates, trace bytes, digests, and unverified live lanes.
 
+- Attempt fenced allocation cleanup when the runtime coordinator cannot accept an allocation
+  response, preserving the configured trace fence and reporting release failures explicitly.
+  Deterministic fake-boundary coverage does not establish live cleanup behavior.
+
 - The package is preparation-only: live providers, game access, gateway lease ownership, MCP framing,
   game rules, scoring, dataset export, and training integration remain outside this wave.
 
