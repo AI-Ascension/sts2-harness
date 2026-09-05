@@ -34,6 +34,9 @@ claim a released harness version or runtime compatibility.
 
 ### Safety corrections
 
+- Require a `released` status after runtime lease cleanup; a successful HTTP exchange alone
+  no longer counts as confirmed release.
+
 - Retain unknown operations in their serial instance lane until explicit reconciliation.
 - Bound MCP and loopback gateway exchanges end to end, reap owned MCP children, and reject
   mismatched responses without printing downstream payloads or inheriting unrelated credentials.

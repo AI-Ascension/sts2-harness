@@ -37,7 +37,7 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
                 &Value::Null,
                 identity_headers(&config, "release-0001"),
             );
-            return match release {
+            return match confirm_release(release) {
                 Ok(_) => Err(error),
                 Err(release_error) => Err(format!(
                     "{error}; allocated lease release also failed: {release_error}"
@@ -53,7 +53,7 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
         &Value::Null,
         identity_headers(&config, "release-0001"),
     );
-    let failures: Vec<_> = [trace_result, close_result, release_result.map(|_| ())]
+    let failures: Vec<_> = [trace_result, close_result, confirm_release(release_result)]
         .into_iter()
         .filter_map(Result::err)
         .collect();
@@ -62,6 +62,13 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
     } else {
         Err(failures.join("; "))
     }
+}
+
+fn confirm_release(response: Result<Value, String>) -> Result<(), String> {
+    if response?["status"] != "released" {
+        return Err(String::from("gateway did not confirm lease release"));
+    }
+    Ok(())
 }
 
 fn allocate(client: &GatewayClient, config: &RuntimeConfig) -> Result<(), String> {
