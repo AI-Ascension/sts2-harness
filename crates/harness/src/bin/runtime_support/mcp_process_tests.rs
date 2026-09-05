@@ -4,36 +4,56 @@ use super::*;
 
 #[test]
 fn child_environment_preserves_distinct_gateway_and_mcp_sessions() {
-    let config = RuntimeConfig {
-        gateway_address: "127.0.0.1:15525".into(),
-        gateway_token: "synthetic-token".into(),
-        mcp_binary: "unused-test-binary".into(),
-        instance_id: "instance-1".into(),
-        caller_id: "harness".into(),
-        session_id: "gateway-session-1".into(),
-        mcp_session_id: "mcp-session-1".into(),
-        lease_id: "lease-1".into(),
-        lease_epoch: 1,
-        runtime_profile: "runtime-v1".into(),
-        run_id: "run-1".into(),
-        episode_id: "episode-1".into(),
-        trajectory_id: "trajectory-1".into(),
-        artifact_id: "artifact-1".into(),
-        wait_for_combat_seconds: 0,
-        settlement_timeout_seconds: 30,
-    };
+    let config = session_config();
     let command = McpProcess::configured_command(&config);
     let environment: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
     for (name, expected) in [
         ("STS2_SESSION_ID", "gateway-session-1"),
         ("STS2_MCP_SESSION_ID", "mcp-session-1"),
-        ("STS2_RUNTIME_PROFILE", "runtime-v1"),
+        ("STS2_RUNTIME_PROFILE", "runtime-v3-gameplay"),
     ] {
         assert_eq!(
             environment.get(std::ffi::OsStr::new(name)),
             Some(&Some(std::ffi::OsStr::new(expected)))
         );
     }
+}
+
+fn session_config() -> RuntimeConfig {
+    RuntimeConfig {
+        gateway_address: "127.0.0.1:15525".into(),
+        gateway_token: "synthetic-token".into(),
+        mcp_binary: "unused-test-binary".into(),
+        runtime_profile: "runtime-v3-gameplay".into(),
+        instance_id: "instance-1".into(),
+        caller_id: "harness".into(),
+        session_id: "gateway-session-1".into(),
+        mcp_session_id: "mcp-session-1".into(),
+        lease_id: "lease-1".into(),
+        lease_epoch: 1,
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn spawned_mcp_receives_explicit_independent_sessions_and_profile() -> Result<(), String> {
+    let mut config = session_config();
+    config.mcp_binary = "/bin/sh".into();
+    config.session_id = "gateway-session-explicit".into();
+    config.mcp_session_id = "mcp-session-explicit".into();
+    let mut command = McpProcess::configured_command(&config);
+    command.args(["-c", r#"read request; printf '{"jsonrpc":"2.0","id":1,"result":{"gateway_session":"%s","mcp_session":"%s","profile":"%s"}}\n' "$STS2_SESSION_ID" "$STS2_MCP_SESSION_ID" "$STS2_RUNTIME_PROFILE""#]);
+    let mut process = McpProcess::spawn_command(command, Duration::from_secs(2))?;
+    let response = process.call(1, "initialize", json!({}))?;
+    assert_eq!(
+        response["result"],
+        json!({
+            "gateway_session": "gateway-session-explicit",
+            "mcp_session": "mcp-session-explicit",
+            "profile": "runtime-v3-gameplay"
+        })
+    );
+    process.close()
 }
 
 #[test]

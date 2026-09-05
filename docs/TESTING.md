@@ -47,6 +47,9 @@ records the exact trace and labels each claim as `confirmed` (deterministic fake
 
 `foundation::router_cleanup` exercises rejected-binding cleanup and explicit unbind failure through
 deterministic router doubles. This is component evidence only.
+The fake MCP child environment regression spawns a local test process and confirms independently
+configured gateway/MCP session identities plus the selected Runtime-v3 profile reach the child.
+It provides component evidence for environment propagation, not cross-process gateway compatibility.
 
 Future tests must cover bounded capacity, FIFO or declared ordering, backpressure, overload,
 admission, four-instance identity, allocation/lease handoff, stale fencing, cancellation before and

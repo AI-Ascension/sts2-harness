@@ -165,6 +165,9 @@ plus PATH/SystemRoot/TEMP/TMP are inherited, and stderr is suppressed. This is c
 minimization, not an OS sandbox. MCP and gateway sessions are separate namespaces; the configured
 MCP child receives both identities explicitly, and its adapter must bind them without equating them.
 The six-tool Runtime-v3 catalog is independent of the retained Runtime-v2 four-lane scheduler.
+Configure the same explicit `STS2_MCP_SESSION_ID` in the independently launched gateway and harness.
+Harness, gateway, and MCP default to `mcp-session-1`; custom session names require coordinated
+configuration. The gateway session independently defaults to `session-1`.
 
 Dispatch preserves the complete host legal-action reference (`action_id` plus typed `action` payload)
 across the MCP boundary. A bare payload is not a legal-action reference. Canonical schema regressions

@@ -11,6 +11,8 @@ claim a released harness version or runtime compatibility.
   failures through the routing error boundary.
 - Split the independent Runtime-v2 coordinator and process trace from PR #7; the bounded
   Runtime-v3 card-play probe remains outside this change. Frozen artifact bytes are unchanged.
+- Document coordinated explicit gateway/MCP session configuration and verify independent session
+  identities and the selected runtime profile reach a spawned fake MCP process.
 
 ### Added
 

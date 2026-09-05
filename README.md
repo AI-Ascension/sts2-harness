@@ -160,9 +160,14 @@ The same binary has an opt-in `runtime-v3-gameplay` profile. Set `STS2_RUNTIME_P
 value and provide the exact reviewed `STS2_EXO_REVISION`, direct `STS2_EXO_BRIDGE_BINARY`, and
 `STS2_OBJECTIVE` inputs. The profile requires the six semantic MCP tools, keeps host payloads at the
 MCP boundary, and fails closed when the gateway, MCP process, Exo bridge, or target runtime is
-missing. For this profile `STS2_MCP_SESSION_ID` defaults to and must equal `STS2_SESSION_ID` so
-gateway and MCP protocol identity remain fenced to one session. Live Exo and target-game behavior
-remain `unverified` until a separate runtime handoff.
+missing. Configure `STS2_SESSION_ID=session-1` and `STS2_MCP_SESSION_ID=mcp-session-1` explicitly
+in both the gateway and harness environments; use the same `STS2_RUNTIME_PROFILE=runtime-v3-gameplay`
+for both processes. Gateway and MCP session identities remain separate namespaces. The harness
+passes both identities and the profile to its MCP child. Harness, gateway, and MCP default to the
+independent MCP session `mcp-session-1`; a shared explicit override also keeps custom session names
+consistent across processes.
+Live Exo and target-game behavior remain `unverified` until a
+separate runtime handoff.
 
 ## Runtime-v2 deterministic fake lane
 
