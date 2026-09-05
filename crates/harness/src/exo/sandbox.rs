@@ -2,7 +2,7 @@
 
 mod schema;
 
-use schema::{allows_null, child_kind, is_allowed, require_exact, validate_shape};
+use schema::{allows_null, child_kind, is_allowed, validate_shape};
 use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
@@ -44,6 +44,23 @@ impl SanitizedObservation {
     #[must_use]
     pub fn generation(&self) -> Option<u64> {
         self.0.get("generation").and_then(Value::as_u64)
+    }
+
+    /// Reports whether the host-visible seed text is still part of this projection.
+    #[must_use]
+    pub fn has_visible_seed(&self) -> bool {
+        self.0.get("visible_seed").is_some()
+    }
+
+    /// Drops `visible_seed` so it never reaches a provider unless a caller re-admits it
+    /// explicitly. Whether the host seed is the real PRNG seed is unverified; the projection
+    /// therefore fails closed and omits it by default.
+    #[must_use]
+    pub fn without_visible_seed(mut self) -> Self {
+        if let Value::Object(object) = &mut self.0 {
+            object.remove("visible_seed");
+        }
+        self
     }
 }
 
@@ -164,21 +181,23 @@ fn validate_object(
         }
     }
     if root {
-        require_exact(
-            object,
-            &[
-                "state_id",
-                "generation",
-                "visible_seed",
-                "player",
-                "state",
-                "legal_actions",
-            ],
-        )?;
+        require_root(object)?;
     }
     validate_shape(object, kind, root)?;
     validate_semantics(object, kind)?;
     Ok(())
+}
+
+/// The root carries exactly the five required fair-play fields; `visible_seed` is optional
+/// because the default provider projection removes it (see `without_visible_seed`).
+fn require_root(object: &Map<String, Value>) -> Result<(), SandboxError> {
+    const REQUIRED: [&str; 5] = ["state_id", "generation", "player", "state", "legal_actions"];
+    let expected = REQUIRED.len() + usize::from(object.contains_key("visible_seed"));
+    if object.len() == expected && REQUIRED.iter().all(|field| object.contains_key(*field)) {
+        Ok(())
+    } else {
+        Err(SandboxError::UnknownField)
+    }
 }
 
 fn collection_bound(kind: ValueKind, key: &str) -> Option<usize> {

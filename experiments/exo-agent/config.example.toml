@@ -5,6 +5,9 @@ endpoint = "REPLACE_WITH_OPERATOR_OWNED_EXO_ENDPOINT"
 request_timeout_millis = 120000
 max_request_bytes = 131072
 max_response_bytes = 8192
+# The host visible_seed is omitted from requests unless this is true (it may be the real PRNG
+# seed; that is unverified). Runtime override: STS2_EXO_FORWARD_VISIBLE_SEED=true.
+forward_visible_seed = false
 
 # When the operator uses the built-in process seam, configure its executable, direct arguments,
 # and environment-name allowlist in the host composition. The bridge receives one JSON request on

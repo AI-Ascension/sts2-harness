@@ -25,7 +25,8 @@ impl<T> ExoSession<T> {
         self.provider.into_transport()
     }
 
-    /// Sends only a sanitized observation and the complete current action ID set.
+    /// Sends only a sanitized observation and the complete current action ID set. The host
+    /// `visible_seed` is removed unless `ExoConfig::forward_visible_seed` is set.
     #[allow(clippy::too_many_arguments)]
     pub fn decide(
         &mut self,
@@ -44,6 +45,7 @@ impl<T> ExoSession<T> {
             return Err(ExoError::Closed);
         }
         self.provider.config().validate()?;
+        let observation = self.provider.config().project(observation);
         let request = ExoDecisionRequest::new(
             execution_id,
             self.provider.config().revision.clone(),

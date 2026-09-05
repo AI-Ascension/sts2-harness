@@ -6,7 +6,7 @@ pub use request::ExoDecisionRequest;
 use request::{request_from_prompt, valid_revision};
 
 use crate::exo::decision::{DecisionError, parse_decision};
-use crate::exo::sandbox::SandboxError;
+use crate::exo::sandbox::{SandboxError, SanitizedObservation};
 use crate::provider::{ModelRequest, ModelResponse, ProviderPort};
 
 /// External Exo transport failure; no gameplay fallback is attached to it.
@@ -31,12 +31,16 @@ pub trait ExoTransport {
 }
 
 /// Reviewed and bounded adapter configuration. `revision` is mandatory and never inferred.
+///
+/// `forward_visible_seed` defaults to `false`: the host `visible_seed` text is removed from every
+/// projection before it reaches a transport unless an operator re-admits it explicitly.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExoConfig {
     pub revision: String,
     pub max_request_bytes: usize,
     pub max_response_bytes: usize,
     pub timeout_millis: u32,
+    pub forward_visible_seed: bool,
 }
 
 impl ExoConfig {
@@ -51,9 +55,26 @@ impl ExoConfig {
             max_request_bytes,
             max_response_bytes,
             timeout_millis,
+            forward_visible_seed: false,
         };
         config.validate()?;
         Ok(config)
+    }
+
+    /// Explicit opt-in that re-admits the host `visible_seed` text into Exo requests.
+    #[must_use]
+    pub fn with_visible_seed_forwarding(mut self, enabled: bool) -> Self {
+        self.forward_visible_seed = enabled;
+        self
+    }
+
+    /// Applies the seed gate: the seed is forwarded only when the operator opted in.
+    pub(super) fn project(&self, observation: SanitizedObservation) -> SanitizedObservation {
+        if self.forward_visible_seed {
+            observation
+        } else {
+            observation.without_visible_seed()
+        }
     }
 
     pub(super) fn validate(&self) -> Result<(), ExoError> {
@@ -208,9 +229,8 @@ impl<T: ExoTransport> ProviderPort for ExoProvider<T> {
     ) -> Result<ModelResponse, crate::error::ProviderError> {
         let decision_request = request_from_prompt(
             request.execution_id(),
-            self.config.revision.as_str(),
+            &self.config,
             request.prompt().as_str(),
-            self.config.max_response_bytes,
         )
         .map_err(|error| provider_error(error_code(error), false))?;
         let output = self

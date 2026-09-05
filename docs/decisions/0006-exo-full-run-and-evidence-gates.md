@@ -76,3 +76,32 @@ authority. This dependency does not enter the provider or episode runtime path.
 Deterministic routing, sandbox, record, replay, evaluation, and manifest checks are source-derived or
 confirmed at their stated layer. Exo connectivity, licensed-host progression, co-op traces, and
 release promotion are unverified or quarantined.
+
+## Amendment 2026-09-05: `visible_seed` fails closed
+
+Review finding L2-P10-1 (Wave 1, 2026-09-04): `visible_seed` sat in the root allowlist of
+`exo/sandbox.rs` and was forwarded verbatim to Exo, while `experiments/exo-agent/README.md` states
+that Exo must not receive future RNG state. The only rationale was the `context-only` /
+"opaque visible text with no RNG expansion" row in
+`docs/evidence/runtime-v3-preparation/data/information-importance.csv`. Whether the host's
+`visible_seed` is the real PRNG seed, or can be expanded into unrevealed outcomes, depends on the
+MCP/host producer and is `unverified`.
+
+Decision (delegated by the owner to L0 on 2026-09-05): fail closed.
+
+- The default fair-play projection sent to Exo omits `visible_seed`. `ExoConfig` gains
+  `forward_visible_seed` (default `false`) and `with_visible_seed_forwarding(bool)`;
+  `SanitizedObservation::without_visible_seed` removes the key. The gate is applied in both
+  request paths, `ExoSession::decide` and the `ProviderPort` structured-prompt path, before any
+  transport is reached.
+- The runtime binary reads `STS2_EXO_FORWARD_VISIBLE_SEED`; only the exact strings `true` or
+  `false` are accepted, absence means `false`, and anything else is a configuration error.
+- At the projection root `visible_seed` is now optional; `state_id`, `generation`, `player`,
+  `state`, and `legal_actions` remain required and no other root key is admitted. The host-facing
+  `runtime-v3-gameplay` parser and schema still require the field from the host; no protocol
+  artifact, schema, golden, or checksum inventory changed.
+
+Labels: the gate (absent by default, present only when enabled, on both paths) is `confirmed` by
+`crates/harness/tests/provider_redaction.rs` and `fair_play_firewall.rs`; the seed-is-PRNG
+question stays `unverified`. An operator who enables forwarding accepts that fair-play risk and
+must record the rationale in the run's handoff.

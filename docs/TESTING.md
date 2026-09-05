@@ -165,7 +165,10 @@ The `full_run` integration test routes setup, map, combat, reward, shop, event, 
 choices through a decision source, then records victory and defeat as separate terminal states. It
 is a deterministic routing test, not a claim about target-game rules. Runtime-v3 tests additionally
 cover sanitized Exo input, exact six-tool MCP exposure, stale/unknown results, bounded recovery,
-and host-generated action binding. Focused tests also cover complete-run stage routing,
+and host-generated action binding. `provider_redaction` proves that the host `visible_seed` is
+absent from the Exo request by default on both the session and `ProviderPort` paths and present
+only when `ExoConfig::forward_visible_seed` is enabled; `fair_play_firewall` proves the projection
+root keeps its other five fields required. Focused tests also cover complete-run stage routing,
 uncertain-dispatch reconciliation, and the bounded direct Exo process seam. The process tests use a
 local shell only as a test fixture; production configuration invokes the operator-selected bridge
 directly and never invokes a shell.

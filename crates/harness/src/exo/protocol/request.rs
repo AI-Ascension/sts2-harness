@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use super::ExoError;
+use super::{ExoConfig, ExoError};
 use crate::exo::sandbox::SanitizedObservation;
 use crate::identity::ModelExecutionId;
 
@@ -155,9 +155,8 @@ fn validate_request(request: &ExoDecisionRequest) -> Result<(), ExoError> {
 
 pub(super) fn request_from_prompt(
     execution_id: ModelExecutionId,
-    provider_revision: &str,
+    config: &ExoConfig,
     prompt: &str,
-    max_response_bytes: usize,
 ) -> Result<ExoDecisionRequest, ExoError> {
     let value: serde_json::Value =
         serde_json::from_str(prompt).map_err(|_| ExoError::MalformedResponse)?;
@@ -177,7 +176,8 @@ pub(super) fn request_from_prompt(
         .get("observation")
         .cloned()
         .ok_or(ExoError::InvalidRequest)
-        .and_then(|value| SanitizedObservation::new(value).map_err(ExoError::Sandbox))?;
+        .and_then(|value| SanitizedObservation::new(value).map_err(ExoError::Sandbox))
+        .map(|observation| config.project(observation))?;
     let state_id = object
         .get("state_id")
         .and_then(serde_json::Value::as_str)
@@ -194,14 +194,14 @@ pub(super) fn request_from_prompt(
     let hard_constraints = request_text_list(object, "hard_constraints")?;
     ExoDecisionRequest::new(
         execution_id,
-        provider_revision,
+        config.revision.as_str(),
         state_id,
         generation,
         observation,
         legal_action_ids,
         objective,
         hard_constraints,
-        max_response_bytes,
+        config.max_response_bytes,
     )
 }
 
