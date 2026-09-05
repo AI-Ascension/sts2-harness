@@ -91,88 +91,97 @@ pub fn parse_decision(bytes: &[u8]) -> Result<Decision, DecisionError> {
         return Err(DecisionError::InvalidValue);
     }
     match decision {
-        "action" => {
-            if object.contains_key("recovery_kind") || object.contains_key("operation_id") {
-                return Err(DecisionError::UnknownField);
-            }
-            let action_id = object
-                .get("action_id")
-                .and_then(serde_json::Value::as_str)
-                .ok_or(DecisionError::MissingField)?;
-            if !valid_id(action_id) {
-                return Err(DecisionError::InvalidValue);
-            }
-            let confidence = match object.get("confidence") {
-                None => None,
-                Some(value) => Some(
-                    value
-                        .as_u64()
-                        .and_then(|value| u8::try_from(value).ok())
-                        .filter(|value| *value <= 100)
-                        .ok_or(DecisionError::InvalidValue)?,
-                ),
-            };
-            Ok(Decision::Action {
-                action_id: action_id.to_owned(),
-                rationale,
-                confidence,
-            })
-        }
-        "wait" => {
-            if object.keys().any(|key| {
-                matches!(
-                    key.as_str(),
-                    "action_id" | "confidence" | "recovery_kind" | "operation_id"
-                )
-            }) {
-                return Err(DecisionError::UnknownField);
-            }
-            Ok(Decision::Wait { rationale })
-        }
-        "reobserve" => {
-            if object.keys().any(|key| {
-                matches!(
-                    key.as_str(),
-                    "action_id" | "confidence" | "recovery_kind" | "operation_id"
-                )
-            }) {
-                return Err(DecisionError::UnknownField);
-            }
-            Ok(Decision::Reobserve { rationale })
-        }
-        "recovery" => {
-            if object.contains_key("action_id") || object.contains_key("confidence") {
-                return Err(DecisionError::UnknownField);
-            }
-            let kind = object
-                .get("recovery_kind")
-                .and_then(serde_json::Value::as_str)
-                .ok_or(DecisionError::MissingField)?;
-            if !matches!(
-                kind,
-                "reobserve" | "reconcile" | "release_lease" | "stop_episode"
-            ) {
-                return Err(DecisionError::InvalidValue);
-            }
-            let operation_id = object
-                .get("operation_id")
-                .map(|value| {
-                    value
-                        .as_str()
-                        .filter(|value| valid_id(value))
-                        .map(str::to_owned)
-                        .ok_or(DecisionError::InvalidValue)
-                })
-                .transpose()?;
-            if (kind == "reconcile") != operation_id.is_some() {
-                return Err(DecisionError::MissingField);
-            }
-            Ok(Decision::Recovery {
-                kind: kind.to_owned(),
-                operation_id,
-                rationale,
-            })
-        }
+        "action" => parse_action(&object, rationale),
+        "wait" | "reobserve" => parse_observation_directive(&object, decision, rationale),
+        "recovery" => parse_recovery(&object, rationale),
+        _ => Err(DecisionError::InvalidValue),
+    }
+}
+
+fn parse_action(
+    object: &serde_json::Map<String, serde_json::Value>,
+    rationale: String,
+) -> Result<Decision, DecisionError> {
+    if object.contains_key("recovery_kind") || object.contains_key("operation_id") {
+        return Err(DecisionError::UnknownField);
+    }
+    let action_id = object
+        .get("action_id")
+        .and_then(serde_json::Value::as_str)
+        .ok_or(DecisionError::MissingField)?;
+    if !valid_id(action_id) {
+        return Err(DecisionError::InvalidValue);
+    }
+    let confidence = match object.get("confidence") {
+        None => None,
+        Some(value) => Some(
+            value
+                .as_u64()
+                .and_then(|value| u8::try_from(value).ok())
+                .filter(|value| *value <= 100)
+                .ok_or(DecisionError::InvalidValue)?,
+        ),
+    };
+    Ok(Decision::Action {
+        action_id: action_id.to_owned(),
+        rationale,
+        confidence,
+    })
+}
+
+fn parse_recovery(
+    object: &serde_json::Map<String, serde_json::Value>,
+    rationale: String,
+) -> Result<Decision, DecisionError> {
+    if object.contains_key("action_id") || object.contains_key("confidence") {
+        return Err(DecisionError::UnknownField);
+    }
+    let kind = object
+        .get("recovery_kind")
+        .and_then(serde_json::Value::as_str)
+        .ok_or(DecisionError::MissingField)?;
+    if !matches!(
+        kind,
+        "reobserve" | "reconcile" | "release_lease" | "stop_episode"
+    ) {
+        return Err(DecisionError::InvalidValue);
+    }
+    let operation_id = object
+        .get("operation_id")
+        .map(|value| {
+            value
+                .as_str()
+                .filter(|value| valid_id(value))
+                .map(str::to_owned)
+                .ok_or(DecisionError::InvalidValue)
+        })
+        .transpose()?;
+    if (kind == "reconcile") != operation_id.is_some() {
+        return Err(DecisionError::MissingField);
+    }
+    Ok(Decision::Recovery {
+        kind: kind.to_owned(),
+        operation_id,
+        rationale,
+    })
+}
+
+fn parse_observation_directive(
+    object: &serde_json::Map<String, serde_json::Value>,
+    decision: &str,
+    rationale: String,
+) -> Result<Decision, DecisionError> {
+    if object.keys().any(|key| {
+        matches!(
+            key.as_str(),
+            "action_id" | "confidence" | "recovery_kind" | "operation_id"
+        )
+    }) {
+        return Err(DecisionError::UnknownField);
+    }
+    match decision {
+        "wait" => Ok(Decision::Wait { rationale }),
+        "reobserve" => Ok(Decision::Reobserve { rationale }),
         _ => Err(DecisionError::InvalidValue),
     }
 }

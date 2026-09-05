@@ -69,12 +69,12 @@ fn config() -> RuntimeConfig {
         lease_id: String::from("lease-1"),
         lease_epoch: 1,
         mcp_session_id: String::from("mcp-session-1"),
-        run_id: String::from("run-1"),
-        episode_id: String::from("episode-1"),
-        trajectory_id: String::from("trajectory-1"),
-        artifact_id: String::from("artifact-1"),
+        run_id: "run-1".into(),
+        episode_id: "episode-1".into(),
+        trajectory_id: "trajectory-1".into(),
+        artifact_id: "artifact-1".into(),
         wait_for_combat_seconds: 0,
-        settlement_timeout_seconds: 0,
+        settlement_timeout_seconds: 30,
     }
 }
 

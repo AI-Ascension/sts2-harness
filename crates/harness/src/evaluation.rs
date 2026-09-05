@@ -113,14 +113,29 @@ impl Evaluator {
     }
 
     fn observe_checked(&mut self, sample: EvaluationSample) -> Result<(), EvaluationError> {
+        self.validate_sample(sample)?;
+        self.record_outcomes(sample)?;
+        self.record_regret(sample)?;
+        self.record_calibration(sample)?;
+        self.record_resources(sample)?;
+        self.record_progress(sample)?;
+        Ok(())
+    }
+
+    fn validate_sample(&self, sample: EvaluationSample) -> Result<(), EvaluationError> {
         if self.samples >= self.capacity {
             return Err(EvaluationError::Full);
         }
-        if let Some(confidence) = sample.confidence_percent
-            && confidence > 100
+        if sample
+            .confidence_percent
+            .is_some_and(|confidence| confidence > 100)
         {
             return Err(EvaluationError::InvalidConfidence);
         }
+        Ok(())
+    }
+
+    fn record_outcomes(&mut self, sample: EvaluationSample) -> Result<(), EvaluationError> {
         self.samples = add(self.samples, 1)?;
         if sample.legal {
             self.legal = add(self.legal, 1)?;
@@ -141,6 +156,15 @@ impl Evaluator {
                 self.recovery_successes = add(self.recovery_successes, 1)?;
             }
         }
+        match sample.terminal {
+            Some(TerminalOutcome::Victory) => self.victories = add(self.victories, 1)?,
+            Some(TerminalOutcome::Defeat) => self.defeats = add(self.defeats, 1)?,
+            None => {}
+        }
+        Ok(())
+    }
+
+    fn record_regret(&mut self, sample: EvaluationSample) -> Result<(), EvaluationError> {
         if let Some(regret) = sample.regret_millis {
             self.regret_samples = add(self.regret_samples, 1)?;
             self.regret_sum_millis = self
@@ -148,6 +172,10 @@ impl Evaluator {
                 .checked_add(regret)
                 .ok_or(EvaluationError::Overflow)?;
         }
+        Ok(())
+    }
+
+    fn record_calibration(&mut self, sample: EvaluationSample) -> Result<(), EvaluationError> {
         if let (Some(confidence), Some(success)) =
             (sample.confidence_percent, sample.outcome_success)
         {
@@ -158,6 +186,10 @@ impl Evaluator {
                 .checked_add(u64::from(confidence.abs_diff(expected)))
                 .ok_or(EvaluationError::Overflow)?;
         }
+        Ok(())
+    }
+
+    fn record_resources(&mut self, sample: EvaluationSample) -> Result<(), EvaluationError> {
         if sample.request_bytes > 0 || sample.response_bytes > 0 || sample.latency_millis > 0 {
             self.resource_calls = add(self.resource_calls, 1)?;
         }
@@ -173,13 +205,12 @@ impl Evaluator {
             .latency_millis
             .checked_add(u64::from(sample.latency_millis))
             .ok_or(EvaluationError::Overflow)?;
+        Ok(())
+    }
+
+    fn record_progress(&mut self, sample: EvaluationSample) -> Result<(), EvaluationError> {
         if sample.progressed {
             self.progression_steps = add(self.progression_steps, 1)?;
-        }
-        match sample.terminal {
-            Some(TerminalOutcome::Victory) => self.victories = add(self.victories, 1)?,
-            Some(TerminalOutcome::Defeat) => self.defeats = add(self.defeats, 1)?,
-            None => {}
         }
         Ok(())
     }

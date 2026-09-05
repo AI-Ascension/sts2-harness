@@ -13,6 +13,18 @@ pub(super) fn validate_response(
     if config.runtime_profile == "runtime-v1" {
         return super::v1_projection::validate(value, name, arguments);
     }
+    validate_profile(value, config)?;
+    validate_identity(value, config, id)?;
+    let kind = response_kind(name)?;
+    if value["kind"] != kind {
+        return Err(String::from("MCP tool response kind was invalid"));
+    }
+    validate_runtime_v2(value, config)?;
+    validate_operation(value, config, arguments)?;
+    validate_action(value, arguments)
+}
+
+fn validate_profile(value: &Value, config: &RuntimeConfig) -> Result<(), String> {
     if value["protocol_version"] != config.runtime_profile {
         return Err(String::from(
             "MCP tool response protocol did not match the selected profile",
@@ -26,6 +38,10 @@ pub(super) fn validate_response(
             "MCP tool response violated the Runtime-v1 artifact identity",
         ));
     }
+    Ok(())
+}
+
+fn validate_identity(value: &Value, config: &RuntimeConfig, id: u64) -> Result<(), String> {
     for (key, expected) in [
         ("instance_id", config.instance_id.as_str()),
         ("session_id", config.session_id.as_str()),
@@ -45,19 +61,31 @@ pub(super) fn validate_response(
             "MCP tool response fence or correlation was invalid",
         ));
     }
-    let kind = match name {
-        "get_state" => "state_response",
-        "submit_action" => "action_response",
-        "reconcile_action" => "reconcile_response",
-        _ => return Err(String::from("unsupported runtime tool")),
-    };
-    if value["kind"] != kind {
-        return Err(String::from("MCP tool response kind was invalid"));
+    Ok(())
+}
+
+fn response_kind(name: &str) -> Result<&'static str, String> {
+    match name {
+        "get_state" => Ok("state_response"),
+        "submit_action" => Ok("action_response"),
+        "reconcile_action" => Ok("reconcile_response"),
+        _ => Err(String::from("unsupported runtime tool")),
     }
+}
+
+fn validate_runtime_v2(value: &Value, config: &RuntimeConfig) -> Result<(), String> {
     if config.runtime_profile == "runtime-v2" {
         sts2_harness::RuntimeV2Message::from_json(&value.to_string())
             .map_err(|_| String::from("MCP tool response violated the Runtime-v2 contract"))?;
     }
+    Ok(())
+}
+
+fn validate_operation(
+    value: &Value,
+    config: &RuntimeConfig,
+    arguments: &Value,
+) -> Result<(), String> {
     if config.runtime_profile != "runtime-v1"
         && let Some(operation) = arguments.get("operation_id")
         && value.get("operation_id") != Some(operation)
@@ -66,6 +94,10 @@ pub(super) fn validate_response(
             "MCP tool response operation did not match the request",
         ));
     }
+    Ok(())
+}
+
+fn validate_action(value: &Value, arguments: &Value) -> Result<(), String> {
     if let Some(action) = arguments.get("action_id") {
         let returned = &value["action"]["action_id"];
         if returned != action {
@@ -74,6 +106,19 @@ pub(super) fn validate_response(
             ));
         }
     }
+    for key in ["card_index", "target_id"] {
+        if let Some(expected) = arguments.get(key)
+            && value["action"].get(key) != Some(expected)
+        {
+            return Err(String::from(
+                "MCP tool response action payload did not match the request",
+            ));
+        }
+    }
+    validate_action_payload(value, arguments)
+}
+
+fn validate_action_payload(value: &Value, arguments: &Value) -> Result<(), String> {
     for key in ["card_index", "target_id"] {
         if let Some(expected) = arguments.get(key)
             && value["action"].get(key) != Some(expected)

@@ -25,7 +25,7 @@ fn config(address: String) -> RuntimeConfig {
         trajectory_id: "trajectory-1".into(),
         artifact_id: "artifact-1".into(),
         wait_for_combat_seconds: 0,
-        settlement_timeout_seconds: 0,
+        settlement_timeout_seconds: 30,
     }
 }
 
@@ -85,6 +85,7 @@ fn runtime_v3_lost_allocation_response_releases_the_configured_lease()
             let mut allocation = accept(&listener)?;
             let headers = request(&mut allocation).map_err(|error| error.to_string())?;
             assert!(headers.starts_with("POST /v1/sessions/allocate "));
+            assert!(headers.contains("x-mcp-session-id: mcp-session-1\r\n"));
             // Allocation has committed; its response is lost before the client reads it.
             drop(allocation);
             let mut release = accept(&listener)?;
@@ -111,6 +112,70 @@ fn runtime_v3_lost_allocation_response_releases_the_configured_lease()
         gateway.join().map_err(|_| "fake gateway panicked")??;
         Ok(())
     })
+}
+
+fn wrong_lease_gateway(listener: TcpListener, status: &str) -> Result<(), String> {
+    let mut allocation = accept(&listener)?;
+    let headers = request(&mut allocation).map_err(|error| error.to_string())?;
+    assert!(headers.contains("x-mcp-session-id: mcp-session-explicit\r\n"));
+    let body = json!({
+        "status":"allocated", "instance_id":"instance-1", "caller_id":"harness",
+        "session_id":"session-1", "lease_id":"returned-lease", "lease_epoch":9
+    })
+    .to_string();
+    write!(
+        allocation,
+        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    )
+    .map_err(|error| error.to_string())?;
+    drop(allocation);
+    let mut release = accept(&listener)?;
+    let headers = request(&mut release).map_err(|error| error.to_string())?;
+    assert!(headers.starts_with("POST /v1/instances/instance-1/release "));
+    assert!(headers.contains("x-sts2-lease-id: returned-lease\r\n"));
+    assert!(headers.contains("x-sts2-lease-epoch: 9\r\n"));
+    let body = json!({"status":status}).to_string();
+    write!(
+        release,
+        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn runtime_v3_wrong_lease_uses_returned_fence_and_requires_release_confirmation()
+-> Result<(), Box<dyn std::error::Error>> {
+    for status in ["released", "rejected"] {
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        listener.set_nonblocking(true)?;
+        let mut config = config(listener.local_addr()?.to_string());
+        config.mcp_session_id = "mcp-session-explicit".into();
+        let mut port = RuntimeV3Port::new(config)?;
+        std::thread::scope(|scope| -> Result<(), Box<dyn std::error::Error>> {
+            let gateway = scope.spawn(move || wrong_lease_gateway(listener, status));
+            let error = port
+                .launch()
+                .err()
+                .ok_or("wrong lease must reject launch")?;
+            assert_eq!(error.code(), "gateway_allocate_invalid");
+            assert!(port.allocated);
+            assert_eq!(port.released, status == "released");
+            assert!(port.mcp.is_none());
+            if status == "rejected" {
+                assert!(
+                    error
+                        .to_string()
+                        .contains("cleanup did not confirm release")
+                );
+            }
+            gateway.join().map_err(|_| "fake gateway panicked")??;
+            Ok(())
+        })?;
+    }
+    Ok(())
 }
 
 #[cfg(unix)]

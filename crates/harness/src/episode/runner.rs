@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: MIT
 
+#[path = "runner_actions.rs"]
+mod runner_actions;
 #[path = "runner_error.rs"]
 mod runner_error;
 #[path = "runner_impl.rs"]
 mod runner_impl;
 #[path = "runner_recovery.rs"]
 mod runner_recovery;
+#[path = "runner_steps.rs"]
+mod runner_steps;
 
 use super::idempotency::ActionIdentity;
 use super::legal_actions::{EpisodeLegalAction, EpisodeLegalActionSet};

@@ -24,23 +24,7 @@ pub(crate) fn receipt(
     }
     let status = dispatch_status(root)?;
     validate_result_fields(root, status, false)?;
-    let after = match status {
-        DispatchStatus::Unknown => {
-            super::require_null(root, "observation")?;
-            super::require_null(root, "legal_actions")?;
-            super::require_null(root, "transition")?;
-            if root.get("error_code").and_then(Value::as_str).is_none() {
-                return Err(String::from(
-                    "unknown Runtime-v3 receipt omitted error_code",
-                ));
-            }
-            None
-        }
-        DispatchStatus::Accepted
-        | DispatchStatus::Settled
-        | DispatchStatus::Rejected
-        | DispatchStatus::Cancelled => Some(super::observation_from_root(root)?),
-    };
+    let after = receipt_observation(root, status)?;
     let effect_kind = transition(
         root,
         after.as_ref().map(|parsed| &parsed.observation),
@@ -68,6 +52,29 @@ pub(crate) fn receipt(
         effect_kind,
         error_code,
     ))
+}
+
+fn receipt_observation(
+    root: &Map<String, Value>,
+    status: DispatchStatus,
+) -> Result<Option<super::ParsedObservation>, String> {
+    match status {
+        DispatchStatus::Unknown => {
+            super::require_null(root, "observation")?;
+            super::require_null(root, "legal_actions")?;
+            super::require_null(root, "transition")?;
+            if root.get("error_code").and_then(Value::as_str).is_none() {
+                return Err(String::from(
+                    "unknown Runtime-v3 receipt omitted error_code",
+                ));
+            }
+            Ok(None)
+        }
+        DispatchStatus::Accepted
+        | DispatchStatus::Settled
+        | DispatchStatus::Rejected
+        | DispatchStatus::Cancelled => Ok(Some(super::observation_from_root(root)?)),
+    }
 }
 
 pub(crate) fn wait_sample(

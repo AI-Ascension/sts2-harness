@@ -95,51 +95,24 @@ fn legal_actions(stage: EpisodeStage, generation: u64) -> EpisodeLegalActionSet 
 
 #[test]
 fn full_run_routes_every_playable_surface_to_the_provider_and_tracks_terminals() {
-    let stages = [
-        (EpisodeStage::Setup, None),
-        (EpisodeStage::Map, Some(NoncombatStage::Map)),
-        (EpisodeStage::Combat, None),
-        (EpisodeStage::Reward, Some(NoncombatStage::Reward)),
-        (EpisodeStage::Shop, Some(NoncombatStage::Shop)),
-        (EpisodeStage::Event, Some(NoncombatStage::Event)),
-        (EpisodeStage::Rest, Some(NoncombatStage::Rest)),
-        (EpisodeStage::Selection, Some(NoncombatStage::Selection)),
-    ];
+    assert_provider_routes_playable_stages();
+    assert_transition_state();
+    assert_terminal_states();
+    assert_recovery_state();
+}
+
+fn assert_provider_routes_playable_stages() {
     let mut source = RecordingDecisionSource::default();
-    for (index, (stage, noncombat)) in stages.iter().copied().enumerate() {
+    for (index, (stage, noncombat)) in playable_stages().iter().copied().enumerate() {
         let generation = index as u64;
-        let observation = observation(stage, generation);
-        let actions = legal_actions(stage, generation);
-        let execution = ModelExecutionId::new(generation + 1).expect("execution ID is valid");
-        let choice = match noncombat {
-            Some(stage) => NoncombatCoordinator.choose(
-                &mut source,
-                stage,
-                execution,
-                observation,
-                actions,
-                "finish the run",
-                Vec::new(),
-            ),
-            None if stage == EpisodeStage::Setup => RunSetupCoordinator.choose(
-                &mut source,
-                execution,
-                observation,
-                actions,
-                "finish the run",
-                Vec::new(),
-            ),
-            None => PolicyRouter::choose(
-                &mut source,
-                &DecisionInput::new(
-                    execution,
-                    observation,
-                    actions,
-                    "finish the run",
-                    Vec::new(),
-                ),
-            ),
-        }
+        let choice = choose_stage(
+            &mut source,
+            stage,
+            noncombat,
+            generation,
+            observation(stage, generation),
+            legal_actions(stage, generation),
+        )
         .expect("provider supplies a current action");
         assert!(matches!(choice, PolicyChoice::Action { .. }));
     }
@@ -156,7 +129,62 @@ fn full_run_routes_every_playable_surface_to_the_provider_and_tracks_terminals()
             String::from("selection"),
         ]
     );
+}
 
+fn playable_stages() -> [(EpisodeStage, Option<NoncombatStage>); 8] {
+    [
+        (EpisodeStage::Setup, None),
+        (EpisodeStage::Map, Some(NoncombatStage::Map)),
+        (EpisodeStage::Combat, None),
+        (EpisodeStage::Reward, Some(NoncombatStage::Reward)),
+        (EpisodeStage::Shop, Some(NoncombatStage::Shop)),
+        (EpisodeStage::Event, Some(NoncombatStage::Event)),
+        (EpisodeStage::Rest, Some(NoncombatStage::Rest)),
+        (EpisodeStage::Selection, Some(NoncombatStage::Selection)),
+    ]
+}
+
+fn choose_stage(
+    source: &mut RecordingDecisionSource,
+    stage: EpisodeStage,
+    noncombat: Option<NoncombatStage>,
+    generation: u64,
+    observation: EpisodeObservation,
+    actions: EpisodeLegalActionSet,
+) -> Result<PolicyChoice, PolicyError> {
+    let execution = ModelExecutionId::new(generation + 1).expect("execution ID is valid");
+    match noncombat {
+        Some(stage) => NoncombatCoordinator.choose(
+            source,
+            stage,
+            execution,
+            observation,
+            actions,
+            "finish the run",
+            Vec::new(),
+        ),
+        None if stage == EpisodeStage::Setup => RunSetupCoordinator.choose(
+            source,
+            execution,
+            observation,
+            actions,
+            "finish the run",
+            Vec::new(),
+        ),
+        None => PolicyRouter::choose(
+            source,
+            &DecisionInput::new(
+                execution,
+                observation,
+                actions,
+                "finish the run",
+                Vec::new(),
+            ),
+        ),
+    }
+}
+
+fn assert_transition_state() {
     let mut machine = EpisodeMachine::new();
     machine
         .observe(observation(EpisodeStage::Setup, 0))
@@ -168,46 +196,33 @@ fn full_run_routes_every_playable_surface_to_the_provider_and_tracks_terminals()
         .settle(observation(EpisodeStage::Map, 1))
         .expect("map transition is fresh");
     assert!(matches!(machine.phase(), EpisodePhase::Ready(_)));
+}
 
+fn assert_terminal_states() {
+    assert_terminal(EpisodeStage::Victory);
+    assert_terminal(EpisodeStage::Defeat);
+}
+
+fn assert_terminal(stage: EpisodeStage) {
+    let mut machine = EpisodeMachine::new();
     machine
         .observe(
             EpisodeObservation::new(
-                "victory-2",
+                format!("{}-2", stage.name()),
                 2,
-                EpisodeStage::Victory,
+                stage,
                 false,
                 false,
                 false,
-                fair_play(EpisodeStage::Victory, 2),
+                fair_play(stage, 2),
             )
-            .expect("victory is a valid terminal observation"),
+            .expect("terminal observation is valid"),
         )
-        .expect("victory observation is accepted");
-    assert_eq!(
-        machine.phase(),
-        &EpisodePhase::Complete(EpisodeStage::Victory)
-    );
+        .expect("terminal observation is accepted");
+    assert_eq!(machine.phase(), &EpisodePhase::Complete(stage));
+}
 
-    let mut defeat = EpisodeMachine::new();
-    defeat
-        .observe(
-            EpisodeObservation::new(
-                "defeat-2",
-                2,
-                EpisodeStage::Defeat,
-                false,
-                false,
-                false,
-                fair_play(EpisodeStage::Defeat, 2),
-            )
-            .expect("defeat is a valid terminal observation"),
-        )
-        .expect("defeat observation is accepted");
-    assert_eq!(
-        defeat.phase(),
-        &EpisodePhase::Complete(EpisodeStage::Defeat)
-    );
-
+fn assert_recovery_state() {
     let mut recovery = EpisodeMachine::new();
     let result = recovery.observe(
         EpisodeObservation::new(
