@@ -8,12 +8,19 @@ fn config() -> RuntimeConfig {
         gateway_address: "127.0.0.1:1".into(),
         gateway_token: "synthetic-token".into(),
         mcp_binary: "unused".into(),
+        runtime_profile: "runtime-v2".into(),
         instance_id: "instance-1".into(),
         caller_id: "harness".into(),
         session_id: "session-1".into(),
         lease_id: "lease-1".into(),
         lease_epoch: 1,
         mcp_session_id: "mcp-session-1".into(),
+        run_id: "run-1".into(),
+        episode_id: "episode-1".into(),
+        trajectory_id: "trajectory-1".into(),
+        artifact_id: "artifact-1".into(),
+        wait_for_combat_seconds: 0,
+        settlement_timeout_seconds: 30,
     }
 }
 

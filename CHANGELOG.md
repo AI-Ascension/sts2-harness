@@ -9,6 +9,8 @@ claim a released harness version or runtime compatibility.
 
 - Release router bindings rejected for mismatched run or episode identity and surface cleanup
   failures through the routing error boundary.
+- Split the independent Runtime-v2 coordinator and process trace from PR #7; the bounded
+  Runtime-v3 card-play probe remains outside this change. Frozen artifact bytes are unchanged.
 
 ### Added
 
@@ -22,6 +24,20 @@ claim a released harness version or runtime compatibility.
 - A generated expert-state requirements package with 131 candidate states, typed observation/action/
   transition inventories, closed JSON schemas, synthetic fixture classes, per-state Markdown, and
   Mermaid sources. The package remains target-build validation material, not runtime support.
+
+- A bounded Runtime-v2 multi-instance coordinator seam with four-lane registration, explicit
+  identity isolation, fair serial dispatch, global/per-instance backpressure, queued cancellation,
+  active-work reconciliation reporting, and sanitized snapshots. This is component evidence only.
+- Propagated the independently configured Runtime-v2 MCP session through gateway allocation,
+  spawned MCP configuration, request correlation, and lease release. The gateway session remains
+  the frozen protocol-envelope identity; gateway and MCP session values must be distinct.
+
+### Safety corrections
+
+- Retain unknown operations in their serial instance lane until explicit reconciliation.
+- Bound MCP and loopback gateway exchanges end to end, reap owned MCP children, and reject
+  mismatched responses without printing downstream payloads or inheriting unrelated credentials.
+- Validate exact Runtime-v2 response contracts and retain only numeric legacy gameplay trace fields.
 
 - The bounded `sts2-harness-runtime` coordinator, `runtime-v1` artifact copy, real MCP/gateway
   process path, stale-generation oracle, sanitized trace, and component evidence record.

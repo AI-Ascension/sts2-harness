@@ -39,7 +39,7 @@ impl McpProcess {
         command
             .env("STS2_GATEWAY_ADDR", &config.gateway_address)
             .env("STS2_GATEWAY_TOKEN", &config.gateway_token)
-            .env("STS2_RUNTIME_PROFILE", "runtime-v1")
+            .env("STS2_RUNTIME_PROFILE", &config.runtime_profile)
             .env("STS2_INSTANCE_ID", &config.instance_id)
             .env("STS2_CALLER_ID", &config.caller_id)
             .env("STS2_SESSION_ID", &config.session_id)

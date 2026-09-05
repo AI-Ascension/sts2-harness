@@ -34,6 +34,7 @@ supported by the target. Compatibility claims remain limited to the exact runtim
 | Game state/action behavior | Not reachable by design | Unsupported in this repository boundary |
 | Replay/artifact lineage | Offline record/replay and metadata seams | Source-derived; deterministic fakes only |
 | Scoring | No scoring policy implementation | Proposed contract only |
+| Runtime-v2 coordinator | Four-lane bounded pure scheduler with explicit lineage, fairness, overload, cancellation, and shutdown seams | Confirmed by offline component tests; live supervisor/profile/host isolation unverified |
 
 ## Compatibility classifications
 
@@ -71,9 +72,28 @@ must be tested before an additive label is used.
 
 The coordinator does not inherit compatibility from a successful trajectory. Promotion requires an
 exact mod/host version, artifact digest, disposable profile, request sequence, fresh observation,
-effect witness, and cleanup record.
+and successful cleanup. The runtime adapter binds `STS2_MCP_SESSION_ID` separately from
+`STS2_SESSION_ID`, defaulting to `mcp-session-1` and requiring the two values to differ.
+Distinct sessions require the corresponding session-binding updates in MCP #7 and gateway #6;
+the response envelope remains bound to the gateway session.
 
-## Runtime safety correction
+## Runtime adapter safety correction
+
+The gateway endpoint must now be a numeric loopback socket address (IPv4 or bracketed IPv6), not
+a DNS name or remote plaintext address. One five-second exchange budget covers connect and every
+partial HTTP read/write; ambiguous framing and raw response error payloads are rejected.
+MCP exchanges likewise have a whole-call five-second default budget, bounded concurrent pipes, and
+bounded direct-child cleanup. The configured MCP executable receives only explicit STS2 connection
+configuration plus `PATH`, `SystemRoot`, `TEMP`, and `TMP`; stderr is suppressed. This is credential
+minimization, not an operating-system sandbox or authority to execute an untrusted binary.
+Descendant processes are not owned or forcibly killed, but cannot retain harness I/O workers.
+Runtime-v2 tool responses must satisfy the copied contract and exact session/lease/request/operation
+binding before evidence is used. The bounded `runtime-v3-gameplay` probe is not part of this branch.
+
+Runtime-v1 consumes MCP's projected tool payload, not the full gateway envelope. The harness checks
+outer JSON-RPC identity and strict projected kind/generation/observation/action/status/witness shape;
+MCP owns gateway envelope and fence validation. A validated typed action rejection may carry
+`isError: true` so the stale-generation oracle can inspect it. Arbitrary tool errors remain failures.
 
 Foundation episode admission now releases mismatched router bindings and exposes cleanup failures.
 This safety correction changes no serialized contract or frozen artifact bytes.
@@ -88,5 +108,3 @@ names or remote plaintext bearer endpoints. It bounds complete HTTP/MCP exchange
 validates outer RPC correlation and the existing projected tool contract, and minimizes child
 environment/error output. MCP retains full downstream envelope/fence validation authority.
 Frozen Runtime-v2 decoder fields remain required even when their permitted value is null.
-This tightens existing safety contracts without changing schema/artifact identities or introducing
-the unmerged Runtime-v2 coordinator, legacy gameplay, or Exo Runtime-v3 proposals.

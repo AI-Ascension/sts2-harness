@@ -14,6 +14,13 @@ fn child_environment_preserves_distinct_gateway_and_mcp_sessions() {
         mcp_session_id: "mcp-session-1".into(),
         lease_id: "lease-1".into(),
         lease_epoch: 1,
+        runtime_profile: "runtime-v1".into(),
+        run_id: "run-1".into(),
+        episode_id: "episode-1".into(),
+        trajectory_id: "trajectory-1".into(),
+        artifact_id: "artifact-1".into(),
+        wait_for_combat_seconds: 0,
+        settlement_timeout_seconds: 30,
     };
     let command = McpProcess::configured_command(&config);
     let environment: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();

@@ -111,7 +111,16 @@ at N, stale action at N, fresh state at N+1, and release. The coordinator requir
 action's fresh `status_overlay_visible` witness and stable stale-generation error before emitting
 the sanitized trace. It never contacts a game process directly. Process launch, graceful shutdown,
 and the exact host effect are evidenced separately in the dated host integration record; gameplay
-mutation and broader compatibility remain outside that record.
+mutation and broader compatibility remain outside that record. The runtime-v2 profile propagates
+the independently configured MCP session through allocation metadata, the spawned MCP process, and
+lease release while retaining the gateway session as the protocol-envelope identity.
+
+The pure Runtime-v2 coordinator seam additionally owns bounded admission for up to four registered
+instance lineages. It keeps process-port, gateway-session, MCP-session, lease, run, episode,
+trajectory, request, operation, trace, and artifact identities explicit; dispatches one action at a
+time per instance; schedules ready instances round-robin; rejects global/per-instance overload; and
+reports queued cancellation separately from active work requiring downstream reconciliation. This is
+harness component policy, not a gateway supervisor or host lifecycle implementation.
 
 An allocation failure or rejected allocation response triggers one fenced release attempt before
 returning the original error. Cleanup may use a validated returned lease and epoch only when the
