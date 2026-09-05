@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: MIT
 
+#[path = "decision_replay.rs"]
+mod decision;
+pub use decision::{
+    DecisionReplay, DecisionReplayDivergence, DecisionReplayReport, DecisionReplayRequest,
+};
+
 use crate::error::PortError;
 use crate::identity::TrajectoryId;
 use crate::records::{Record, RecordKind};

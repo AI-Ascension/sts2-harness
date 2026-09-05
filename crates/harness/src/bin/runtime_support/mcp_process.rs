@@ -9,8 +9,8 @@ use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 
 use super::config::RuntimeConfig;
 
-const MAX_RESPONSE_BYTES: usize = 64 * 1024;
-const MAX_REQUEST_BYTES: usize = 64 * 1024;
+const MAX_RESPONSE_BYTES: usize = 256 * 1024;
+const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(5);
 const CLEANUP_TIMEOUT: Duration = Duration::from_millis(250);
 
@@ -24,6 +24,10 @@ pub(super) struct McpProcess {
 }
 
 impl McpProcess {
+    pub(super) const fn is_closed(&self) -> bool {
+        self.closed
+    }
+
     pub(super) fn spawn(config: &RuntimeConfig) -> Result<Self, String> {
         Self::spawn_command(Self::configured_command(config), EXCHANGE_TIMEOUT)
     }

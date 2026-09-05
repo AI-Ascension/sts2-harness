@@ -22,6 +22,9 @@ Cargo dependencies are declared in manifests, locked in `Cargo.lock`, and review
 license, advisories, feature footprint, platform impact, and redistribution terms. The current
 foundation uses `toml` for the target-local policy checker and `serde`, `serde_json`, and `sha2` for
 typed POC wire validation and copied-artifact checksums; none are vendored.
+The Exo process adapter additionally uses pinned MIT-licensed Tokio for cancellable process I/O.
+Its narrow features and lifecycle rationale are recorded in ADR 0006. The newly locked transitive
+packages were checked using Cargo metadata; a full automated advisory audit remains a release gate.
 Third-party information is summarized in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
 
 ## Fixtures, schemas, and artifacts

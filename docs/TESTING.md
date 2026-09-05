@@ -47,6 +47,9 @@ records the exact trace and labels each claim as `confirmed` (deterministic fake
 
 `foundation::router_cleanup` exercises rejected-binding cleanup and explicit unbind failure through
 deterministic router doubles. This is component evidence only.
+The fake MCP child environment regression spawns a local test process and confirms independently
+configured gateway/MCP session identities plus the selected Runtime-v3 profile reach the child.
+It provides component evidence for environment propagation, not cross-process gateway compatibility.
 
 Future tests must cover bounded capacity, FIFO or declared ordering, backpressure, overload,
 admission, four-instance identity, allocation/lease handoff, stale fencing, cancellation before and
@@ -149,3 +152,74 @@ Runtime-v1 reply tests cover projected generation/action/witness shape and typed
 outer RPC identity tests stay separate from downstream envelope validation owned by MCP.
 Runtime-v2 conformance parses all19goldens and rejects304 required-field omission variants. These
 are safe local checks, not a new host/provider run or broader interoperability evidence.
+
+## Runtime-v3, full-run, and co-op lanes
+
+The copied [Runtime-v3 consumer contract](../protocol-artifact/runtime-v3-gameplay/README.md)
+has an immutable upstream checksum inventory and exact schema-pin drift test. Offline JSON Schema
+checks cover all four canonical goldens; actual observation and receipt parser tests consume the
+two response goldens and reject selected malformed mutations. This bounded test lane does not
+establish exhaustive conformance or cross-process/game/provider compatibility.
+
+The `full_run` integration test routes setup, map, combat, reward, shop, event, rest, and selection
+choices through a decision source, then records victory and defeat as separate terminal states. It
+is a deterministic routing test, not a claim about target-game rules. Runtime-v3 tests additionally
+cover sanitized Exo input, exact six-tool MCP exposure, stale/unknown results, bounded recovery,
+and host-generated action binding. Focused tests also cover complete-run stage routing,
+uncertain-dispatch reconciliation, and the bounded direct Exo process seam. The process tests use a
+local shell only as a test fixture; production configuration invokes the operator-selected bridge
+directly and never invokes a shell.
+
+`deadline_includes_a_request_larger_than_an_unread_stdin_pipe` exercises a child
+that never consumes a request larger than pipe capacity. The exchange must return
+`Timeout` before that child would exit naturally. `drains_stdout_while_writing_a_large_request`
+exercises a child that fills stdout before reading stdin, proving concurrent progress
+in both directions. These are local subprocess checks, not provider evidence.
+
+The Linux-only `exo_cleanup` test runs in a separate executable, starts finite descendants that
+retain both pipes after their direct parent exits, and compares harness thread counts after four
+timeouts, allowing at most 100 ms for Linux to retire joined task directories. It fails with eight
+extra workers against the original blocking implementation. The async-pipe implementation must
+have no extra harness workers within that bound, well before the two-second descendant exit.
+Another test calls the synchronous transport from an existing async runtime. Neither test claims
+that arbitrary bridge descendants are killed or that this process adapter provides OS isolation.
+
+The runtime parser's settlement tests bind `from_generation` to the operation ledger's original
+generation, including delayed waits after newer observations. They reject witnesses for a later,
+unrelated transition and enforce canonical response-only null fields and status/error consistency.
+These checks establish request-bound parsing, not the independence of an actual host witness.
+
+Co-op tests cover two registered peers at a fixed coordinator generation, reported disagreement,
+disconnect, ally targeting, and local-admission suspension. They do not test an expected roster,
+coordinator-generation advancement, or multiplayer host compatibility. Co-op, record/memory,
+evaluation and replay library tests run separately from `EpisodeRunner`; the Runtime-v3 executable
+does not currently wire those libraries into its one-instance run or produce their evidence.
+The patch-diff utility
+is source-only and compares bounded manifests; it cannot promote a build or replace package hashes.
+Its workspace tests check bounded consumption even from an endless reader, exact-size admission,
+invalid and ambiguous JSON rejection, structural quarantine extraction, and byte-preserving output.
+`cargo test --locked --package sts2-patch-diff --test patch_manifest` validates the canonical M10
+manifest using the full Draft 2020-12 schema and an independent quarantine assertion. Nested negative
+cases exercise required fields, unknown fields, types, enums, lengths, array limits, and digest
+patterns; this is structural evidence, not verification of the manifest's runtime claims.
+
+The required M10 release evidence is recorded in
+[`release-gate-preparation-20260904.md`](evidence/release-gate-preparation-20260904.md). Its gate
+matrix preserves the original preparation environment, including the then-missing Rust toolchain;
+it is not a current test-run report. The pinned Rust 1.97.1 toolchain is available for local review
+and CI checks. Record each result against its tested revision; tool availability or passing local
+tests does not supply licensed-host, live Exo/provider, full-run, or co-op evidence. Those gates stay
+`unverified` until their own evidence exists, never passed by omission.
+
+## MCP and gateway adapter failure probes
+
+Synthetic process tests cover unread stdin, simultaneous full pipes, oversized unterminated output,
+slow trickles, inherited descendant handles, malformed/miscorrelated replies, bounded close/drop,
+and spawning inside an async caller including failure paths. Control-plane tests cover numeric
+loopback selection, header injection, strict response framing, header bounds, redaction and a total
+deadline despite trickled bytes. Transition-wait tests ensure the call budget includes the requested
+semantic wait rather than imposing an unconditional five-second ceiling.
+
+Runtime-v2 decoder conformance tests round-trip all 19 frozen goldens and reject all 304 single
+required-field omissions, preserving explicit null where legal. These are local synthetic and
+contract checks, not live host/provider evidence.

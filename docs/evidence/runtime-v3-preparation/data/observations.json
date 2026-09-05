@@ -1,0 +1,79 @@
+{
+  "package": "runtime-v3-preparation",
+  "purpose": "Research-only classification of the fair-play observation boundary",
+  "authority": "not-runtime-authority",
+  "source_status": "unverified",
+  "source_note": "No accepted expert-state source package or licensed target build was available during preparation.",
+  "fields": [
+    {
+      "path": "state_id",
+      "access_class": "visible_on_demand",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "unverified",
+      "notes": "Stable semantic state identity; host remains authoritative."
+    },
+    {
+      "path": "generation",
+      "access_class": "visible_on_demand",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "unverified",
+      "notes": "Freshness and fencing identity; never a prediction source."
+    },
+    {
+      "path": "visible_seed",
+      "access_class": "visible_historical",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "unverified",
+      "notes": "Opaque text only; it must not be expanded into future outcomes."
+    },
+    {
+      "path": "player.hp|max_hp|energy|gold",
+      "access_class": "visible_on_demand",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "unverified",
+      "notes": "Visible resource values; target semantics require host validation."
+    },
+    {
+      "path": "player.hand|deck|discard|exhaust",
+      "access_class": "visible_historical",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "unverified",
+      "notes": "Visible card collections only; no hidden draw order is admitted."
+    },
+    {
+      "path": "state.state|turn_index|node_id|options|choices|items|reason|code",
+      "access_class": "visible_on_demand",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "unverified",
+      "notes": "State-specific fair-play fields are bounded by the neutral contract."
+    },
+    {
+      "path": "state.enemies[*].intent",
+      "access_class": "visible_on_demand",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "unverified",
+      "notes": "Only host-exposed intent is admitted; unrevealed intent remains absent."
+    },
+    {
+      "path": "legal_actions[*]",
+      "access_class": "visible_on_demand",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "unverified",
+      "notes": "Complete current host-generated catalog, not a model-generated guess."
+    },
+    {
+      "path": "derived_exact.damage|lethal|incoming_damage|survival",
+      "access_class": "derived_exact",
+      "epistemic_status": "proposed",
+      "target_fact_status": "unverified",
+      "notes": "May be computed from admitted observations; calculators are not host authority."
+    },
+    {
+      "path": "raw_memory|host_object|future_rng|unrevealed_outcome|credential|save_file",
+      "access_class": "privileged_forbidden",
+      "epistemic_status": "source-derived",
+      "target_fact_status": "confirmed",
+      "notes": "Structural deny-list and sandbox tests keep these fields outside the Exo projection."
+    }
+  ]
+}

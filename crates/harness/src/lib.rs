@@ -2,8 +2,14 @@
 
 mod artifact;
 mod coordinator;
+mod decision_records;
+mod episode;
 mod error;
+mod evaluation;
+mod exo;
+mod exo_process;
 mod identity;
+mod memory;
 mod poc;
 mod protocol_artifact;
 mod provider;
@@ -18,11 +24,34 @@ pub use artifact::{
     ArtifactPort, ArtifactPublicationRequest, ArtifactReceipt,
 };
 pub use coordinator::{EpisodeHandle, Harness, HarnessParts};
+pub use decision_records::{DecisionPayload, DecisionRecord, DecisionRecordKind, EvidenceStatus};
+pub use episode::{
+    ActionAdmission, ActionIdentity, ActionKind, ActionLedger, ActionSetError, BarrierError,
+    BarrierPort, CoopCoordinator, CoopError, CoopPeerRole, CoopSyncStatus, DecisionInput,
+    DecisionSource, DispatchStatus, EpisodeLegalAction, EpisodeLegalActionSet, EpisodeMachine,
+    EpisodeMachineError, EpisodeObservation, EpisodePhase, EpisodeRunReport, EpisodeRunner,
+    EpisodeRunnerConfig, EpisodeRunnerError, EpisodeRuntimePort, EpisodeShutdown, EpisodeStage,
+    ExoDecisionSource, IdempotencyError, NoncombatCoordinator, NoncombatStage, ObservationError,
+    PolicyChoice, PolicyError, PolicyRouter, PostconditionError, RecoveryController, RecoveryError,
+    RecoveryOperation, RecoveryPort, RecoveryResult, RunSetupCoordinator, SetupPort, ShutdownError,
+    ShutdownPort, StabilityBarrier, TransitionReceipt, VerifiedTransition, WaitOutcome, WaitSample,
+    verify_settlement,
+};
 pub use error::{CloseFailure, CloseReport, Component, HarnessError, PortError, ProviderError};
+pub use evaluation::{
+    EvaluationError, EvaluationReport, EvaluationSample, Evaluator, TerminalOutcome,
+};
+pub use exo::{
+    BoundDecision, Decision, DecisionError, ExoClient, ExoConfig, ExoDecisionRequest, ExoError,
+    ExoProvider, ExoSession, ExoTransport, ExoTransportError, SandboxError, SanitizedObservation,
+    parse_decision,
+};
+pub use exo_process::{ExoProcessConfig, ExoProcessConfigError, ExoProcessTransport};
 pub use identity::{
     ActionId, ArtifactId, Digest, EpisodeId, GatewaySessionId, IdempotencyKey, InstanceId,
     ModelExecutionId, RecordId, RequestId, RunId, SchemaVersion, TraceId, TrajectoryId,
 };
+pub use memory::{DecisionMemory, MemoryAppend, MemoryError};
 pub use poc::{
     POC_CLOCK_TICK, POC_SEED, PocAction, PocCoreError, PocError, PocObservation, PocReport,
     PocRunner, PocStatus, TraceEvent, run_poc,
@@ -35,7 +64,10 @@ pub use provider::{
     ModelOutput, ModelRequest, ModelResponse, ModelResult, Prompt, ProviderPort, RetryPolicy,
 };
 pub use records::{AppendOutcome, Correlation, Record, RecordKind, RecordPayload, RecordPort};
-pub use replay::{DeterministicReplay, Divergence, ReplayPort, ReplayReport, ReplayRequest};
+pub use replay::{
+    DecisionReplay, DecisionReplayDivergence, DecisionReplayReport, DecisionReplayRequest,
+    DeterministicReplay, Divergence, ReplayPort, ReplayReport, ReplayRequest,
+};
 pub use routing::{InstanceRouter, RouteBinding, RouteRequest, RouteToken};
 pub use runtime_v2::{
     RUNTIME_V2_MAX_INSTANCES, RUNTIME_V2_MAX_QUEUE_CAPACITY, RUNTIME_V2_MAX_RETAINED_OPERATIONS,

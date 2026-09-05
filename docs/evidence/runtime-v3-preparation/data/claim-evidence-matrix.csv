@@ -1,0 +1,7 @@
+claim,owner,evidence_status,evidence_artifact,upgrade_required
+Observation field classes are bounded and research-only,harness,source-derived,data/observations.json,Independent expert source review and licensed-host trace
+Action field classes distinguish host legality from model selection,harness,source-derived,data/actions.json,Licensed-host action catalog trace
+Information importance does not establish target-game strategy,harness,confirmed,data/information-importance.csv,No upgrade; preserve quarantine label
+Privileged fields are absent from the Exo projection,harness,confirmed,crates/harness/tests/fair_play_firewall.rs,Runtime injection test on exact provider path
+Derived calculations are not host authority,core/harness,proposed,data/observations.json,Independent differential fixtures against target build
+Research package represents target expert knowledge,harness,unverified,data/*.json|data/*.csv,Accepted source package with provenance and review

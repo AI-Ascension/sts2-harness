@@ -1,11 +1,18 @@
 # Harness Architecture
 
+Runtime-v3 recovery retains its operation ledger across at most two initialized replacement MCP
+processes per episode. Replacement permits recovery reads only; it does not retry a mutation.
+An uncertain allocation triggers configured fenced lease cleanup and reports cleanup failure.
+Recovered receipts must match the full dispatched action identity and kind before settlement.
+
 ## Purpose and ownership
 
-The harness is the coordinator, experiment, and artifact owner. It coordinates bounded runs across
-up to four allocated game instances, mediates model/provider executions, records episodes and
-trajectories, supports replay and scoring, and preserves lineage for datasets and model artifacts.
-It does not become a game adapter, gateway, MCP implementation, or provider implementation.
+The harness is the coordinator, experiment, and artifact owner. Its intended scope includes up to
+four allocated instances, provider decisions, trajectories, replay/evaluation, and artifact lineage.
+The current Runtime-v3 executable coordinates one configured instance; record, memory, evaluation,
+replay, artifact and co-op library seams are not all assembled into that executable. Ownership of a
+responsibility is not evidence of a working multi-instance experiment. The harness does not become
+a game adapter, gateway, MCP implementation, or provider implementation.
 
 The target owner is the harness maintainers. The ownership/dependency decision is recorded in
 [`decisions/0001-harness-ownership-and-dependency-boundary.md`](decisions/0001-harness-ownership-and-dependency-boundary.md);
@@ -64,6 +71,10 @@ repository, not a runtime service or a generic-common implementation crate. See
 | Protocol | harness consumes `sts2-protocol` profiles and owns only harness-specific trajectory/artifact shapes and mappings | protocol implementation internals, duplicate common crate, MCP framing, HTTP or host types |
 
 ## Concurrency and lifecycle
+
+Typed decision replay lives in `decision_replay.rs`, separate from foundation record replay.
+Evaluation aggregation and its report projection live in `evaluation.rs` and
+`evaluation_report.rs`; the public replay and evaluation exports remain stable.
 
 Every accepted operation resolves to success, explicit failure, or explicit cancellation. A returned
 router binding with mismatched run or episode identity is unbound before admission fails; an unbind
@@ -127,3 +138,53 @@ returning the original error. Cleanup may use a validated returned lease and epo
 instance, caller, and gateway session match the allocation request. Otherwise it keeps the configured
 fence. This cleanup does not replace the configured fence used for trace admission, and an unconfirmed
 or failed release remains an explicit error. This behavior is source-derived; host cleanup is unverified.
+
+## Runtime-v3 gameplay and Exo boundary
+
+The runtime-v3 gameplay surface is split into two harness-owned layers. `episode/` requires a fresh,
+actionable observation and the matching host-generated legal-action set before it asks a provider for
+one choice. `exo/` sends only the sanitized fair-play projection, generation, objective, hard
+constraints, and action IDs through an operator-supplied transport with a pinned revision and bounded
+request/response/timeout settings. There is no heuristic action path when Exo is unavailable,
+malformed, stale, or closed.
+
+Accepted mutation is not settlement. `ActionLedger` records operation identity, the stability barrier
+waits for a semantic successor or same-state mutation, and `verify_settlement` requires a fresh
+observation plus an independent effect witness. Unknown outcomes enter explicit recovery/reconcile
+operations; they are never retried as a new strategic action. The `experiments/exo-agent` directory
+contains only an example configuration and boundary documentation. Exo connectivity, target-build
+compatibility, and live gameplay remain `unverified` until a separate runtime handoff.
+
+The episode surface routes the declared playable stages through the provider port, while terminal
+and recovery states are handled by the episode state machine. Its full-run tests use scripted
+observations and successors; they do not establish coverage of every target-game state or a live run.
+
+The current [Runtime-v3 entry point](../crates/harness/src/bin/runtime_support/runtime_v3.rs)
+assembles `EpisodeRunner`, one gateway/MCP port and an Exo decision source. It retains an in-memory
+operation ledger and emits a terminal summary. It does not wire `DecisionRecord`, `DecisionMemory`,
+`Evaluator`, `DecisionReplay`, artifact publication, or `CoopCoordinator` into this run. Their
+separate library tests are not runtime trajectory, evaluation, persistence, or co-op evidence.
+
+`CoopCoordinator` is a library gate for a caller-supplied generation snapshot. It checks registered
+peers' reported generations, connection flags and ally targets but cannot perform a host mutation.
+It has no expected-roster/quorum contract or coordinator-generation advancement API: an absent,
+never-registered peer is not detected, and registering only the local peer can pass local admission.
+Continuous co-op coordination requires an explicit authoritative generation/roster contract and
+runtime wiring; it cannot be inferred from this gate. Decision records separately distinguish
+requested, accepted, settled, recovery, estimate, and unavailable evidence. M10 patch manifests keep
+build/data/UI/action/schema drift quarantined until exact runtime evidence exists.
+
+`EpisodeRunner` is the bounded complete-run coordinator over an explicit `EpisodeRuntimePort`. Its
+port is assembled by the gateway/MCP integration and exposes launch, observe, host-generated legal
+actions, semantic dispatch, transition waiting, safe recovery, and ordered cleanup. The runner does
+not own a game handle, choose a fallback action, or infer settlement from an acknowledgement. The
+operator-owned `ExoProcessTransport` lives at the harness adapter boundary, outside `episode/` and
+`exo/` core policy: it directly invokes a configured bridge with bounded stdin/stdout, timeout, and
+environment allowlisting. The existing core CI guard therefore continues to reject process or
+socket access inside the fair-play/provider policy module.
+
+The process adapter uses a joined supervisor and cancellable asynchronous pipes; no detached
+blocking readers or writers survive an exchange deadline. Direct-child kill/reap has a separate
+250-ms cleanup grace period. Descendant process termination and OS sandboxing are outside this
+adapter's guarantee; operator containment is still required. See ADR 0006 for the dependency and
+failure-handling rationale.

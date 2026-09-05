@@ -1,0 +1,10 @@
+path,importance_class,access_class,epistemic_status,source_or_reason
+state_id,safety-critical,visible_on_demand,source-derived,Generation and routing identity
+generation,safety-critical,visible_on_demand,source-derived,Stale-observation and double-dispatch fencing
+visible_seed,context-only,visible_historical,source-derived,Opaque visible text with no RNG expansion
+player.hp|energy|gold,decision-relevant,visible_on_demand,source-derived,Admitted resource context
+player.hand|deck|discard|exhaust,decision-relevant,visible_historical,source-derived,Admitted visible card history
+state.enemies[*].intent,decision-relevant,visible_on_demand,source-derived,Host-exposed intent only
+legal_actions[*],safety-critical,host_generated_current,source-derived,Dispatch allowlist
+derived_exact.*,decision-support,derived_exact,proposed,Independent calculations from admitted fields
+raw_memory|future_rng|credentials,forbidden,privileged_forbidden,confirmed,Structural fair-play firewall

@@ -22,9 +22,12 @@ pub(crate) struct RuntimeConfig {
 impl RuntimeConfig {
     pub(crate) fn from_environment() -> Result<Self, String> {
         let runtime_profile = env_or_default("STS2_RUNTIME_PROFILE", "runtime-v1")?;
-        if !matches!(runtime_profile.as_str(), "runtime-v1" | "runtime-v2") {
+        if !matches!(
+            runtime_profile.as_str(),
+            "runtime-v1" | "runtime-v2" | "runtime-v3-gameplay"
+        ) {
             return Err(String::from(
-                "STS2_RUNTIME_PROFILE must be runtime-v1 or runtime-v2",
+                "STS2_RUNTIME_PROFILE must be runtime-v1, runtime-v2, or runtime-v3-gameplay",
             ));
         }
         let session_id = env_or_default("STS2_SESSION_ID", "session-1")?;
@@ -67,6 +70,12 @@ impl RuntimeConfig {
             wait_for_combat_seconds,
             settlement_timeout_seconds,
         };
+        config.validate()?;
+        Ok(config)
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        let config = self;
         for (name, value) in [
             ("STS2_INSTANCE_ID", &config.instance_id),
             ("STS2_CALLER_ID", &config.caller_id),
@@ -111,7 +120,7 @@ impl RuntimeConfig {
                 ));
             }
         }
-        Ok(config)
+        Ok(())
     }
 }
 
@@ -135,4 +144,37 @@ fn safe_identity(value: &str) -> bool {
         && value.bytes().all(|byte| {
             byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RuntimeConfig;
+
+    #[test]
+    fn runtime_sessions_are_validated_independently() {
+        let mut config = RuntimeConfig {
+            gateway_address: String::from("127.0.0.1:15525"),
+            gateway_token: String::from("synthetic-token"),
+            mcp_binary: String::from("mcp"),
+            runtime_profile: String::from("runtime-v3-gameplay"),
+            instance_id: String::from("instance-1"),
+            caller_id: String::from("harness"),
+            session_id: String::from("gateway-session-1"),
+            lease_id: String::from("lease-1"),
+            lease_epoch: 1,
+            mcp_session_id: String::from("mcp-session-independent"),
+            run_id: String::from("run-1"),
+            episode_id: String::from("episode-1"),
+            trajectory_id: String::from("trajectory-1"),
+            artifact_id: String::from("artifact-1"),
+            wait_for_combat_seconds: 0,
+            settlement_timeout_seconds: 0,
+        };
+        assert!(config.validate().is_ok());
+        config.mcp_session_id = String::from("unsafe session");
+        assert!(config.validate().is_err());
+        config.mcp_session_id = String::from("mcp-session-independent");
+        config.session_id.clear();
+        assert!(config.validate().is_err());
+    }
 }

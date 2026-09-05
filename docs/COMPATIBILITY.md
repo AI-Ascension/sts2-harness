@@ -23,18 +23,19 @@ The harness does not inherit source or behavioral compatibility from a reference
 ## Current evidence baseline
 
 This target contains a non-empty preparation package and one bounded authorized live-host integration trace.
-No provider, model, replay service, score, dataset, or released package has been executed or
-supported by the target. Compatibility claims remain limited to the exact runtime row recorded below.
+No live provider/model execution, deployed replay service, experimental score/dataset result, or
+released package is established by this evidence. Offline replay/evaluation library tests are a
+separate layer. Runtime compatibility claims remain limited to the exact row recorded below.
 
 | Subject | Current state | Evidence |
 |---|---|---|
 | Harness foundation | Pure ports, coordinator seams, and deterministic fakes | Source-derived; offline tests pass |
 | MCP/gateway integration | Real component trace against synthetic downstream and exact host | Confirmed for the bounded runtime-v1 path; broader host compatibility unverified |
 | Provider/model execution | Not executed | Unverified; no credentials or provider calls |
-| Game state/action behavior | Not reachable by design | Unsupported in this repository boundary |
+| Direct game access | Outside the harness boundary; requests use MCP/gateway | No direct host authority; bounded indirect runtime-v1 probe only |
 | Replay/artifact lineage | Offline record/replay and metadata seams | Source-derived; deterministic fakes only |
-| Scoring | No scoring policy implementation | Proposed contract only |
 | Runtime-v2 coordinator | Four-lane bounded pure scheduler with explicit lineage, fairness, overload, cancellation, and shutdown seams | Confirmed by offline component tests; live supervisor/profile/host isolation unverified |
+| Evaluation | Library aggregation over supplied samples; not wired into the Runtime-v3 runner | Synthetic tests, not game parity or experimental performance evidence |
 
 ## Compatibility classifications
 
@@ -50,6 +51,14 @@ protocol, host, and runtime versions independent. A run or artifact manifest bin
 observations, actions, model output, score, replay result, dataset bytes, or package bytes. Digests
 bind exact inputs and outputs; wall-clock timestamps do not establish event order.
 
+Decision replay now uses the `decision-replay-v2` non-cryptographic comparison fingerprint,
+binding every current record field and correlation identity with explicit optional markers and
+length-delimited text/payload bytes. This safety correction intentionally changes earlier
+unreleased fingerprint values; regenerate comparisons from retained input records. It is not
+an integrity digest, evidence validation, or a substitute for independent version/artifact lineage.
+`DecisionPayload` and `DecisionMemory` require caller classification and redaction: their
+bounded JSON and forbidden-key checks do not detect private content or authorize storage/export.
+
 ## Promotion evidence
 
 Future support advances through deterministic offline tests, fake boundary/component tests, real
@@ -57,7 +66,53 @@ MCP/gateway integration, approved provider tests, disposable host smoke, focused
 conformance. Each level requires exact versions, platform, configuration, artifact hashes, and date.
 Missing credentials, services, game files, or disposable data remain visible as `unverified`.
 
+## Runtime-v3, co-op, and patch evidence
+
+The Runtime-v3 gameplay contract is source-derived from the neutral protocol profile and is mapped
+through the MCP and gateway seams. The Exo adapter accepts only the sanitized fair-play projection
+and current host action IDs. The executable assembles one configured instance's episode/provider
+path, not the separate record, memory, evaluation, replay, artifact-publication or co-op library
+seams. Target-build and live provider behavior remain `unverified`.
+
+The co-op library gate suspends local admission when a registered peer is reported disconnected or
+disagrees with its fixed generation snapshot. It cannot detect missing members of an expected roster:
+no such roster is configured, and local-only registration can pass. It also has no API to advance
+the coordinator generation. Snapshot checks do not establish continuous two-to-four-peer operation,
+authoritative membership, or multiplayer host compatibility; these require a defined contract and
+runtime integration before any stronger guarantee.
+
+This target-local helper has no co-op wire schema, profile, digest, MCP tool or runtime transport.
+The protocol co-op contract is a blocked proposal outside the admitted Runtime-v3 gameplay bundle;
+exporting `CoopCoordinator` does not advertise protocol support. Co-op digests in dated preparation
+records describe that historical proposal, not the currently admitted consumer artifact inventory.
+
+M10 records build, data, UI, action, and schema dimensions independently in
+[`build-manifest.json`](evidence/runtime-v3-preparation/data/build-manifest.json). The manifest
+is deliberately `quarantined` until exact package hashes, licensed-host traces, independent leak
+checks, cleanup, replay, rollback, and all repository gates are available.
+
 ## Breaking changes
+
+### Runtime-v3 canonical artifact provenance
+
+The [Runtime-v3 bundle](../protocol-artifact/runtime-v3-gameplay/README.md) is copied byte-for-byte
+from `AI-Ascension/sts2-protocol` candidate `be0f3f230911f119dbe8e19c71e8249b22f53e59` (MIT).
+This candidate must be checked against merged protocol main before consumer merge. The canonical
+`SHA256SUMS`, README, manifest, schema and four goldens retain upstream bytes; the
+[source schema](../schemas/runtime-v3-gameplay.schema.json) and
+[conformance case](../conformance/cases/runtime-v3-gameplay.json) preserve the inventory's relative
+paths. Earlier relocated `UPSTREAM_SHA256SUMS` and `conformance.json` copies are removed.
+
+Schema SHA-256 remains `b37c80f583aeaf4f81ede2083bcfb4129196baf5eb092470e8738173c4b7226c`;
+the authoritative inventory SHA-256 remains
+`ec17dc526545c356462773f9e634ea7b25546c877c601cc1640eae3d7341cb81`.
+Regenerate only by copying the complete bundle and its source/conformance mirrors from a reviewed
+protocol revision, then reviewing both pins and provenance. Goldens are upstream hand-authored
+synthetic observations/actions; no host files, credentials, provider output or private data occur.
+Tests verify every checksum entry and validate four goldens against the schema, with response
+goldens also traversing the actual observation/receipt parsers. Request goldens receive schema
+validation only. This is bounded source/component evidence; broader transport, Exo, host settlement
+and live compatibility remain unverified. Frozen Runtime-v1/v2 bytes are unchanged.
 
 Breaking changes require an ADR, migration path, release note, updated fixtures/conformance, and
 coordinated consumer review. Additive fields must define old-reader behavior. Unknown fields/enums,
@@ -108,3 +163,17 @@ names or remote plaintext bearer endpoints. It bounds complete HTTP/MCP exchange
 validates outer RPC correlation and the existing projected tool contract, and minimizes child
 environment/error output. MCP retains full downstream envelope/fence validation authority.
 Frozen Runtime-v2 decoder fields remain required even when their permitted value is null.
+The persistent MCP child uses cancellable asynchronous pipes and joined supervisors; direct-child
+shutdown/reaping is bounded and errors remain visible. Descendants are not forcibly killed, but
+inherited pipe handles cannot strand harness I/O workers. Only explicit STS2 connection variables
+plus PATH/SystemRoot/TEMP/TMP are inherited, and stderr is suppressed. This is credential
+minimization, not an OS sandbox. MCP and gateway sessions are separate namespaces; the configured
+MCP child receives both identities explicitly, and its adapter must bind them without equating them.
+The six-tool Runtime-v3 catalog is independent of the retained Runtime-v2 four-lane scheduler.
+Configure the same explicit `STS2_MCP_SESSION_ID` in the independently launched gateway and harness.
+Harness, gateway, and MCP default to `mcp-session-1`; custom session names require coordinated
+configuration. The gateway session independently defaults to `session-1`.
+
+Dispatch preserves the complete host legal-action reference (`action_id` plus typed `action` payload)
+across the MCP boundary. A bare payload is not a legal-action reference. Canonical schema regressions
+cover end-turn and card payloads, including explicit nullable card targets.

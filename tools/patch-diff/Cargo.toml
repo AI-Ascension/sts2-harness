@@ -1,0 +1,16 @@
+[package]
+name = "sts2-patch-diff"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+jsonschema = { version = "=0.52.1", default-features = false }
+
+[lints]
+workspace = true

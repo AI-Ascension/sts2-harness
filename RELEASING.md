@@ -32,8 +32,10 @@ A candidate is not release-ready until:
 - any claimed runtime or model/provider compatibility has exact evidence; and
 - known unverified boundaries do not make the release unsafe or misleading.
 
-The current target has no released product artifact, provider result, game launch, or live runtime
-claim.
+The target has no released product artifact or live provider/full-gameplay result. It does retain a
+[dated bounded runtime-v1 host trace](docs/evidence/runtime-v1-host-integration-20260902.md) for one
+disposable profile and the safe overlay probe. That record includes a host launch and cleanup; it
+does not establish current-head reproduction, autonomous gameplay, co-op, or release readiness.
 
 ## Prepare and verify
 
@@ -50,6 +52,17 @@ Build from the exact approved source revision. Inspect packaged contents and ver
 publication. Exclude source-control metadata, build output, credentials, prompts/model data not
 approved for distribution, valued saves, proprietary host files, personal paths, and unrelated
 debug output. Do not rebuild different bytes during promotion.
+
+Before any promotion, validate `patch-manifest.schema.json` and review the quarantined build
+manifest at `docs/evidence/runtime-v3-preparation/data/build-manifest.json`. Run the bounded
+`tools/patch-diff` utility against the exact base and candidate manifests, then attach separate
+hashes and evidence for build, data, UI, action-catalog, and schema changes. A source diff or a
+successful compile is not a target-build or runtime-compatibility result.
+
+Promotion requires independent evidence for the host package, native package, gateway/MCP/harness
+configuration, Exo revision, fair-play leak tests, stale/recovery behavior, setup-to-terminal
+full-run traces, two-to-four-peer co-op traces, cleanup, clean-install replay, and rollback. Any
+missing item keeps the candidate quarantined.
 
 ## Post-release and failure
 

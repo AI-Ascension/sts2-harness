@@ -1,0 +1,7 @@
+revision = "ablation-plan-2026-09-04"
+factors = ["remove_visible_field", "mask_visible_field", "provider_delay", "stale_catalog", "corrupt_envelope", "confidence_degradation"]
+max_cells = 64
+max_episodes_per_cell = 32
+retain_raw_model_output = false
+retain_valued_saves = false
+evidence_status = "unverified_until_disposable_run"
