@@ -27,27 +27,7 @@ fn run_trace(mcp: &mut McpProcess, config: &RuntimeConfig) -> Result<(), String>
 
 pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
     let client = GatewayClient::new(&config)?;
-    let allocation = client.request(
-        "POST",
-        "/v1/sessions/allocate",
-        &json!({
-            "instance_id": config.instance_id,
-            "caller_id": config.caller_id,
-            "session_id": config.session_id
-        }),
-        BTreeMap::from([(
-            String::from("x-mcp-session-id"),
-            config.mcp_session_id.clone(),
-        )]),
-    );
-    validate_or_release_allocation(allocation, &config, |headers| {
-        client.request(
-            "POST",
-            &format!("/v1/instances/{}/release", config.instance_id),
-            &Value::Null,
-            headers,
-        )
-    })?;
+    allocate(&client, &config)?;
     let mut mcp = match McpProcess::spawn(&config) {
         Ok(process) => process,
         Err(error) => {
@@ -82,6 +62,30 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
     } else {
         Err(failures.join("; "))
     }
+}
+
+fn allocate(client: &GatewayClient, config: &RuntimeConfig) -> Result<(), String> {
+    let allocation = client.request(
+        "POST",
+        "/v1/sessions/allocate",
+        &json!({
+            "instance_id": config.instance_id,
+            "caller_id": config.caller_id,
+            "session_id": config.session_id
+        }),
+        BTreeMap::from([(
+            String::from("x-mcp-session-id"),
+            config.mcp_session_id.clone(),
+        )]),
+    );
+    validate_or_release_allocation(allocation, config, |headers| {
+        client.request(
+            "POST",
+            &format!("/v1/instances/{}/release", config.instance_id),
+            &Value::Null,
+            headers,
+        )
+    })
 }
 
 fn wait_for_v2_player_turn(
