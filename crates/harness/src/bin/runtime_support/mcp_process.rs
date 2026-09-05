@@ -55,8 +55,7 @@ impl McpProcess {
 
     fn spawn_supervised(command: &mut Command, timeout: Duration) -> Result<Self, &'static str> {
         let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_io()
-            .enable_time()
+            .enable_all()
             .build()
             .map_err(|_| "MCP supervisor unavailable")?;
         let mut child = {
