@@ -7,6 +7,10 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Rebase the remaining bounded Runtime-v3 card-play proposal onto the independently merged
+  Runtime-v2 coordinator and current safety fixes. Keep its observation projection in a dedicated
+  module; this proposal does not establish Exo semantic-catalog compatibility or live gameplay.
+
 - Release router bindings rejected for mismatched run or episode identity and surface cleanup
   failures through the routing error boundary.
 - Split the independent Runtime-v2 coordinator and process trace from PR #7; the bounded

@@ -12,6 +12,10 @@ use super::http::GatewayClient;
 use super::mcp_process::McpProcess;
 use super::response_validation::validate_response;
 
+#[path = "gameplay_observation.rs"]
+mod gameplay_observation;
+use gameplay_observation::{observation_counts, play_card_observation_changed};
+
 #[path = "trace_runtime_v1.rs"]
 mod trace_runtime_v1;
 #[path = "trace_runtime_v2.rs"]
@@ -172,23 +176,6 @@ fn wait_for_operation_settlement(
     }
 }
 
-fn play_card_observation_changed(before: &Value, after: &Value) -> bool {
-    let mut changed = false;
-    for key in [
-        "hand_count",
-        "energy",
-        "draw_pile_count",
-        "discard_pile_count",
-        "exhaust_pile_count",
-    ] {
-        let (Some(before), Some(after)) = (before[key].as_u64(), after[key].as_u64()) else {
-            return false;
-        };
-        changed |= before != after;
-    }
-    changed
-}
-
 fn trace_lineage(config: &RuntimeConfig) -> Value {
     json!({
         "instance_id": config.instance_id,
@@ -223,27 +210,6 @@ fn require_kind(value: &Value, expected: &str) -> Result<(), String> {
     } else {
         Err(format!("Runtime-v2 response kind was not {expected}"))
     }
-}
-
-fn observation_counts(value: &Value) -> Value {
-    let fields = [
-        "generation",
-        "hand_count",
-        "energy",
-        "draw_pile_count",
-        "discard_pile_count",
-        "exhaust_pile_count",
-    ];
-    Value::Object(
-        fields
-            .into_iter()
-            .filter_map(|key| {
-                value[key]
-                    .as_u64()
-                    .map(|number| (key.to_owned(), Value::from(number)))
-            })
-            .collect(),
-    )
 }
 
 fn tool_call(
