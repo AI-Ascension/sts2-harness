@@ -149,13 +149,11 @@ request/response/timeout settings. There is no heuristic action path when Exo is
 malformed, stale, or closed.
 
 The projection root admits `state_id`, `generation`, `player`, `state`, `legal_actions`, and an
-optional `visible_seed`. Because it is `unverified` whether the host's `visible_seed` is the real
-PRNG seed or can be expanded into unrevealed outcomes, the seed is removed from every Exo request by
-default (`ExoConfig::forward_visible_seed = false`, `SanitizedObservation::without_visible_seed`).
-Only the explicit opt-in, `with_visible_seed_forwarding(true)` or the runtime environment value
-`STS2_EXO_FORWARD_VISIBLE_SEED=true`, re-admits it; the gate applies to both the session and the
-`ProviderPort` prompt path and is `confirmed` by the `provider_redaction` tests. See ADR 0006,
-amendment 2026-09-05.
+optional `visible_seed`. The owner requires repeatable seeded invocation and replay, so
+`ExoConfig::forward_visible_seed` defaults to `true` on both the session and `ProviderPort` paths.
+An explicit `STS2_EXO_FORWARD_VISIBLE_SEED=false` selects a seed-blind experiment. The
+`provider_redaction` tests cover both paths; ADR 0006 records the owner's correction of the
+earlier default-off decision. Hidden RNG internals remain excluded.
 
 Accepted mutation is not settlement. `ActionLedger` records operation identity, the stability barrier
 waits for a semantic successor or same-state mutation, and `verify_settlement` requires a fresh

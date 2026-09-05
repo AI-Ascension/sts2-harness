@@ -105,3 +105,13 @@ Labels: the gate (absent by default, present only when enabled, on both paths) i
 `crates/harness/tests/provider_redaction.rs` and `fair_play_firewall.rs`; the seed-is-PRNG
 question stays `unverified`. An operator who enables forwarding accepts that fair-play risk and
 must record the rationale in the run's handoff.
+
+## Owner correction 2026-09-05: repeatable seed invocation and replay
+
+The owner clarified that runs must be callable repeatedly with the same seed and replayable;
+seed exposure must not be blocked by default. This supersedes the default-off decision above.
+`ExoConfig::new` and an absent `STS2_EXO_FORWARD_VISIBLE_SEED` now preserve the host-visible seed.
+An explicit `false` remains available for seed-blind experiments. Both request paths have
+regressions for default seed preservation and explicit omission. Hidden RNG internals remain
+outside the observation contract. Reproducibility requires recording the seed alongside host,
+mod, protocol, model, and action lineage; a seed alone does not prove identical model decisions.

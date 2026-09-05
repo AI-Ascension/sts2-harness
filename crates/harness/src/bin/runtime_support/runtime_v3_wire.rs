@@ -47,9 +47,20 @@ pub(super) fn rpc_call(
         .and_then(Value::as_bool)
         == Some(true)
     {
-        return Err(format!("MCP {method} returned a tool error"));
+        // MCP marks unknown/rejected gameplay receipts as tool errors. Preserve their
+        // envelope for the caller's full identity/schema validation and reconciliation.
+        if method != "tools/call" || !has_gameplay_envelope(&response) {
+            return Err(format!("MCP {method} returned a tool error"));
+        }
     }
     Ok(response)
+}
+
+fn has_gameplay_envelope(response: &Value) -> bool {
+    response["result"]["content"][0]["text"]
+        .as_str()
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .is_some_and(|value| value["protocol_version"] == "runtime-v3-gameplay")
 }
 
 fn request_timeout(method: &str, params: &Value) -> Result<std::time::Duration, String> {
@@ -158,6 +169,18 @@ pub(super) fn port_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn gameplay_unknown_remains_available_for_receipt_validation() {
+        let envelope = json!({"protocol_version":"runtime-v3-gameplay", "status":"unknown",
+            "error_code":"settlement_unproven"});
+        let mut response = json!({"result":{"isError":true,
+            "content":[{"text":envelope.to_string()}]}});
+        assert!(has_gameplay_envelope(&response));
+        response["result"]["content"][0]["text"] = json!("gateway error -32005: rejected");
+        assert!(!has_gameplay_envelope(&response));
+        response["result"]["content"][0]["text"] = json!("{}");
+        assert!(!has_gameplay_envelope(&response));
+    }
     #[test]
     fn transition_wait_budget_includes_requested_semantic_wait() -> Result<(), String> {
         let mut params =

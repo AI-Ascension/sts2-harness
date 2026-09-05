@@ -160,9 +160,9 @@ The same binary has an opt-in `runtime-v3-gameplay` profile. Set `STS2_RUNTIME_P
 value and provide the exact reviewed `STS2_EXO_REVISION`, direct `STS2_EXO_BRIDGE_BINARY`, and
 `STS2_OBJECTIVE` inputs. The profile requires the six semantic MCP tools, keeps host payloads at the
 MCP boundary, and fails closed when the gateway, MCP process, Exo bridge, or target runtime is
-missing. The host `visible_seed` is omitted from every Exo request unless
-`STS2_EXO_FORWARD_VISIBLE_SEED=true` is set explicitly (only `true`/`false` are accepted);
-whether that seed is the real PRNG seed is `unverified`, so the default fails closed. Configure
+missing. The host `visible_seed` is preserved by default for repeatable invocation and replay.
+Set `STS2_EXO_FORWARD_VISIBLE_SEED=false` for an explicitly seed-blind experiment
+(only `true`/`false` are accepted). Configure
 `STS2_SESSION_ID=session-1` and `STS2_MCP_SESSION_ID=mcp-session-1` explicitly in both the gateway
 and harness environments; use the same `STS2_RUNTIME_PROFILE=runtime-v3-gameplay`
 for both processes. Gateway and MCP session identities remain separate namespaces. The harness

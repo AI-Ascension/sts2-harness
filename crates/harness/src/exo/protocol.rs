@@ -32,8 +32,8 @@ pub trait ExoTransport {
 
 /// Reviewed and bounded adapter configuration. `revision` is mandatory and never inferred.
 ///
-/// `forward_visible_seed` defaults to `false`: the host `visible_seed` text is removed from every
-/// projection before it reaches a transport unless an operator re-admits it explicitly.
+/// `forward_visible_seed` defaults to `true` so repeatable seeded runs retain their visible seed.
+/// Callers can explicitly omit it for a seed-blind experiment.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExoConfig {
     pub revision: String,
@@ -55,20 +55,20 @@ impl ExoConfig {
             max_request_bytes,
             max_response_bytes,
             timeout_millis,
-            forward_visible_seed: false,
+            forward_visible_seed: true,
         };
         config.validate()?;
         Ok(config)
     }
 
-    /// Explicit opt-in that re-admits the host `visible_seed` text into Exo requests.
+    /// Selects whether an experiment includes the host-visible seed in model requests.
     #[must_use]
     pub fn with_visible_seed_forwarding(mut self, enabled: bool) -> Self {
         self.forward_visible_seed = enabled;
         self
     }
 
-    /// Applies the seed gate: the seed is forwarded only when the operator opted in.
+    /// Applies the experiment's seed-visibility setting.
     pub(super) fn project(&self, observation: SanitizedObservation) -> SanitizedObservation {
         if self.forward_visible_seed {
             observation

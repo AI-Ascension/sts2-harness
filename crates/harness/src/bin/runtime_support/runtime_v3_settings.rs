@@ -34,15 +34,45 @@ impl RuntimeV3Settings {
     }
 }
 
-fn exo_from_environment() -> Result<ExoConfig, String> {
-    let revision = required("STS2_EXO_REVISION")?;
-    // Fail closed: the host seed reaches Exo only when this is exactly `true`.
-    let forward_visible_seed = flag("STS2_EXO_FORWARD_VISIBLE_SEED")?;
-    if revision != REVIEWED_EXO_REVISION {
+fn verify_revision(revision: &str) -> Result<(), String> {
+    let local_bridge = optional("STS2_PROVIDER_KIND")?.as_deref() == Some("ollama");
+    if local_bridge
+        && (revision.len() != 64 || optional("STS2_COMBAT_DEMO")?.as_deref() != Some("true"))
+    {
+        return Err(String::from(
+            "Ollama demo requires the bridge SHA256 and explicit combat demo mode",
+        ));
+    }
+    if local_bridge {
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
+        let file = std::fs::File::open(required("STS2_EXO_BRIDGE_BINARY")?)
+            .map_err(|_| String::from("cannot open Ollama bridge for digest verification"))?;
+        let mut bytes = Vec::new();
+        file.take(128 * 1024 * 1024 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| String::from("cannot hash Ollama bridge"))?;
+        if bytes.len() > 128 * 1024 * 1024
+            || format!("{:x}", Sha256::digest(&bytes)) != revision
+            || !string_list("STS2_EXO_BRIDGE_ARGS_JSON")?.is_empty()
+        {
+            return Err(String::from(
+                "Ollama bridge digest or arguments do not match",
+            ));
+        }
+    }
+    if !local_bridge && revision != REVIEWED_EXO_REVISION {
         return Err(String::from(
             "STS2_EXO_REVISION is not the reviewed Exo revision",
         ));
     }
+    Ok(())
+}
+
+fn exo_from_environment() -> Result<ExoConfig, String> {
+    let revision = required("STS2_EXO_REVISION")?;
+    verify_revision(&revision)?;
+    let forward_visible_seed = flag("STS2_EXO_FORWARD_VISIBLE_SEED")?;
     ExoConfig::new(
         revision,
         number(
@@ -132,7 +162,7 @@ where
 fn flag(name: &str) -> Result<bool, String> {
     match std::env::var(name) {
         Ok(value) => parse_flag(name, &value),
-        Err(std::env::VarError::NotPresent) => Ok(false),
+        Err(std::env::VarError::NotPresent) => Ok(true),
         Err(std::env::VarError::NotUnicode(_)) => Err(format!("{name} is not valid UTF-8")),
     }
 }

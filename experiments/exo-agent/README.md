@@ -25,10 +25,9 @@ unavailable or timed-out Exo calls as fail-closed provider outcomes.
 Exo may receive ordinary player-visible state, explicitly labeled derived facts, the current
 generation, and the current host-generated action IDs. It must not receive raw host objects,
 executables, PCK/DLL bytes, saves, credentials, private prompts, screen coordinates, input events,
-future RNG state, or unrevealed random outcomes. Because it is `unverified` whether the host's
-`visible_seed` is the real PRNG seed, the harness removes it from every request by default; an
-operator re-admits it only with `ExoConfig::forward_visible_seed` or
-`STS2_EXO_FORWARD_VISIBLE_SEED=true` and accepts that fair-play risk. Model responses are parsed
+hidden RNG internals, or unrevealed random outcomes. The host's `visible_seed` is preserved by
+default for repeatable invocation and replay, as required by the owner. An explicitly seed-blind
+experiment can set `STS2_EXO_FORWARD_VISIBLE_SEED=false`. Model responses are parsed
 into a small decision enum; verbatim output is not a trajectory artifact.
 
 Live Exo connectivity, the selected revision, licensed STS2 build, and gameplay compatibility are

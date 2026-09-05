@@ -112,19 +112,22 @@ fn assert_seed_absent(request: &Value) {
 }
 
 #[test]
-fn exo_request_omits_visible_seed_by_default() {
+fn exo_request_preserves_visible_replay_seed_by_default() {
     let config = config();
-    assert!(!config.forward_visible_seed, "gate must default to off");
+    assert!(
+        config.forward_visible_seed,
+        "repeatable runs preserve the seed by default"
+    );
     let request = session_request(config);
     assert_eq!(request["provider_revision"], REVISION);
     assert_eq!(request["legal_action_ids"], json!(["map.select"]));
     assert_eq!(request["observation"]["state_id"], "map-1");
     assert_eq!(request["observation"]["generation"], 4);
-    assert_seed_absent(&request);
+    assert_eq!(request["observation"]["visible_seed"], HOST_SEED);
 }
 
 #[test]
-fn visible_seed_is_forwarded_only_with_the_explicit_gate() {
+fn seed_blind_experiments_can_explicitly_omit_the_visible_seed() {
     let request = session_request(config().with_visible_seed_forwarding(true));
     assert_eq!(request["observation"]["visible_seed"], HOST_SEED);
 
@@ -171,7 +174,13 @@ fn provider_request(config: ExoConfig) -> Value {
 
 #[test]
 fn provider_port_prompt_path_applies_the_same_seed_gate() {
-    assert_seed_absent(&provider_request(config()));
+    assert_seed_absent(&provider_request(
+        config().with_visible_seed_forwarding(false),
+    ));
+    assert_eq!(
+        provider_request(config())["observation"]["visible_seed"],
+        HOST_SEED
+    );
     let request = provider_request(config().with_visible_seed_forwarding(true));
     assert_eq!(request["observation"]["visible_seed"], HOST_SEED);
 }
