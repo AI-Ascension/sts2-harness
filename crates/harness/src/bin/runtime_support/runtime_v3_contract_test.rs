@@ -17,7 +17,7 @@ fn read_json(path: &str) -> Result<Value, Box<dyn std::error::Error>> {
 #[test]
 fn copied_contract_matches_authoritative_byte_inventory() -> Result<(), Box<dyn std::error::Error>>
 {
-    let sums = fs::read(artifact().join("UPSTREAM_SHA256SUMS"))?;
+    let sums = fs::read(artifact().join("SHA256SUMS"))?;
     assert_eq!(
         format!("{:x}", Sha256::digest(&sums)),
         "ec17dc526545c356462773f9e634ea7b25546c877c601cc1640eae3d7341cb81"
@@ -26,10 +26,10 @@ fn copied_contract_matches_authoritative_byte_inventory() -> Result<(), Box<dyn 
     assert_eq!(sums.lines().count(), 8);
     for line in sums.lines() {
         let (digest, upstream_path) = line.split_once("  ").ok_or("invalid checksum record")?;
-        // Only these two upstream-relative entries are relocated in the consumer copy.
+        // Preserve canonical relative references to the source and conformance mirrors.
         let local = match upstream_path {
-            "../../schemas/runtime-v3-gameplay.schema.json" => "schema.json",
-            "../../conformance/cases/runtime-v3-gameplay.json" => "conformance.json",
+            "../../schemas/runtime-v3-gameplay.schema.json"
+            | "../../conformance/cases/runtime-v3-gameplay.json" => upstream_path,
             path if !path.contains("..") => path,
             _ => return Err("unexpected upstream path".into()),
         };

@@ -88,6 +88,27 @@ checks, cleanup, replay, rollback, and all repository gates are available.
 
 ## Breaking changes
 
+### Runtime-v3 canonical artifact provenance
+
+The [Runtime-v3 bundle](../protocol-artifact/runtime-v3-gameplay/README.md) is copied byte-for-byte
+from `AI-Ascension/sts2-protocol` candidate `be0f3f230911f119dbe8e19c71e8249b22f53e59` (MIT).
+This candidate must be checked against merged protocol main before consumer merge. The canonical
+`SHA256SUMS`, README, manifest, schema and four goldens retain upstream bytes; the
+[source schema](../schemas/runtime-v3-gameplay.schema.json) and
+[conformance case](../conformance/cases/runtime-v3-gameplay.json) preserve the inventory's relative
+paths. Earlier relocated `UPSTREAM_SHA256SUMS` and `conformance.json` copies are removed.
+
+Schema SHA-256 remains `b37c80f583aeaf4f81ede2083bcfb4129196baf5eb092470e8738173c4b7226c`;
+the authoritative inventory SHA-256 remains
+`ec17dc526545c356462773f9e634ea7b25546c877c601cc1640eae3d7341cb81`.
+Regenerate only by copying the complete bundle and its source/conformance mirrors from a reviewed
+protocol revision, then reviewing both pins and provenance. Goldens are upstream hand-authored
+synthetic observations/actions; no host files, credentials, provider output or private data occur.
+Tests verify every checksum entry and validate four goldens against the schema, with response
+goldens also traversing the actual observation/receipt parsers. Request goldens receive schema
+validation only. This is bounded source/component evidence; broader transport, Exo, host settlement
+and live compatibility remain unverified. Frozen Runtime-v1/v2 bytes are unchanged.
+
 Breaking changes require an ADR, migration path, release note, updated fixtures/conformance, and
 coordinated consumer review. Additive fields must define old-reader behavior. Unknown fields/enums,
 null versus missing, ordering, numeric bounds, identifier namespaces, stale state, and partial effects
