@@ -5,6 +5,7 @@ use super::super::legal_actions::{EpisodeLegalAction, EpisodeLegalActionSet};
 use super::super::observation::EpisodeObservation;
 use super::super::policy_router::{DecisionInput, DecisionSource, PolicyChoice, PolicyRouter};
 use super::super::state_machine::{EpisodeMachine, EpisodeMachineError};
+use super::runner_actions::ActionRequest;
 use super::runner_recovery::report;
 use super::{EpisodeRunReport, EpisodeRunner, EpisodeRunnerError, EpisodeRuntimePort};
 use crate::identity::ModelExecutionId;
@@ -55,10 +56,12 @@ impl EpisodeRunner {
                 port,
                 machine,
                 ledger,
-                &observation,
-                &legal_actions,
-                &action_id,
-                step + 1,
+                ActionRequest {
+                    observation: &observation,
+                    legal_actions: &legal_actions,
+                    action_id: &action_id,
+                    step_number: step + 1,
+                },
                 counters,
             ),
             PolicyChoice::Wait { .. } => {

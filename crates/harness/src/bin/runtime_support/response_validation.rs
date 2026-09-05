@@ -69,7 +69,7 @@ fn response_kind(name: &str) -> Result<&'static str, String> {
         "get_state" => Ok("state_response"),
         "submit_action" => Ok("action_response"),
         "reconcile_action" => Ok("reconcile_response"),
-        _ => return Err(String::from("unsupported runtime tool")),
+        _ => Err(String::from("unsupported runtime tool")),
     }
 }
 

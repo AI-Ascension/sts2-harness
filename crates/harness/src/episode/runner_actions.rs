@@ -12,58 +12,61 @@ use super::runner_steps::{ActionExecution, RunCounters};
 use super::{EpisodeRunReport, EpisodeRunner, EpisodeRunnerError, EpisodeRuntimePort};
 use crate::episode::idempotency::ActionIdentity;
 
+pub(super) struct ActionRequest<'a> {
+    pub(super) observation: &'a EpisodeObservation,
+    pub(super) legal_actions: &'a EpisodeLegalActionSet,
+    pub(super) action_id: &'a str,
+    pub(super) step_number: u32,
+}
+
+struct ActionContext<'a> {
+    observation: &'a EpisodeObservation,
+    execution: &'a ActionExecution,
+    step_number: u32,
+}
+
 impl EpisodeRunner {
     pub(super) fn handle_action<P: EpisodeRuntimePort>(
         &self,
         port: &mut P,
         machine: &mut EpisodeMachine,
         ledger: &mut ActionLedger,
-        observation: &EpisodeObservation,
-        legal_actions: &EpisodeLegalActionSet,
-        action_id: &str,
-        step_number: u32,
+        request: ActionRequest<'_>,
         counters: &mut RunCounters,
     ) -> Result<Option<EpisodeRunReport>, EpisodeRunnerError> {
         let execution = prepare_action(
             machine,
             ledger,
-            observation,
-            legal_actions,
-            action_id,
-            step_number,
+            request.observation,
+            request.legal_actions,
+            request.action_id,
+            request.step_number,
         )?;
         let receipt = match port.dispatch_action(&execution.identity, &execution.action) {
             Ok(receipt) => receipt,
             Err(_error) => {
-                return self.recover_action(
-                    port,
-                    machine,
-                    observation,
-                    &execution,
-                    step_number,
-                    counters,
-                );
+                let context = ActionContext {
+                    observation: request.observation,
+                    execution: &execution,
+                    step_number: request.step_number,
+                };
+                return self.recover_action(port, machine, context, counters);
             }
         };
-        self.handle_receipt(
-            port,
-            machine,
-            observation,
-            &execution,
-            receipt,
-            step_number,
-            counters,
-        )
+        let context = ActionContext {
+            observation: request.observation,
+            execution: &execution,
+            step_number: request.step_number,
+        };
+        self.handle_receipt(port, machine, context, receipt, counters)
     }
 
     fn handle_receipt<P: EpisodeRuntimePort>(
         &self,
         port: &mut P,
         machine: &mut EpisodeMachine,
-        observation: &EpisodeObservation,
-        execution: &ActionExecution,
+        context: ActionContext<'_>,
         receipt: TransitionReceipt,
-        step_number: u32,
         counters: &mut RunCounters,
     ) -> Result<Option<EpisodeRunReport>, EpisodeRunnerError> {
         match receipt.status() {
@@ -71,27 +74,18 @@ impl EpisodeRunner {
                 match self.settle_dispatch(
                     port,
                     machine,
-                    observation,
-                    &execution.operation_id,
-                    &execution.action,
+                    context.observation,
+                    &context.execution.operation_id,
+                    &context.execution.action,
                     &receipt,
                 ) {
-                    Ok(after) => complete_transition(after, step_number, counters),
-                    Err(_) => self.recover_action(
-                        port,
-                        machine,
-                        observation,
-                        execution,
-                        step_number,
-                        counters,
-                    ),
+                    Ok(after) => complete_transition(after, context.step_number, counters),
+                    Err(_) => self.recover_action(port, machine, context, counters),
                 }
             }
-            DispatchStatus::Unknown => {
-                self.recover_action(port, machine, observation, execution, step_number, counters)
-            }
+            DispatchStatus::Unknown => self.recover_action(port, machine, context, counters),
             DispatchStatus::Rejected | DispatchStatus::Cancelled => {
-                machine.require_recovery(Some(execution.operation_id.clone()));
+                machine.require_recovery(Some(context.execution.operation_id.clone()));
                 self.reobserve(port, machine)?;
                 counters.recoveries += 1;
                 Ok(None)
@@ -103,18 +97,16 @@ impl EpisodeRunner {
         &self,
         port: &mut P,
         machine: &mut EpisodeMachine,
-        observation: &EpisodeObservation,
-        execution: &ActionExecution,
-        step_number: u32,
+        context: ActionContext<'_>,
         counters: &mut RunCounters,
     ) -> Result<Option<EpisodeRunReport>, EpisodeRunnerError> {
-        machine.require_recovery(Some(execution.operation_id.clone()));
+        machine.require_recovery(Some(context.execution.operation_id.clone()));
         let after = self.reconcile_uncertain(
             port,
             machine,
-            observation,
-            &execution.operation_id,
-            &execution.action,
+            context.observation,
+            &context.execution.operation_id,
+            &context.execution.action,
         )?;
         counters.recoveries += 1;
         Ok(after.and_then(|after| {
@@ -122,7 +114,7 @@ impl EpisodeRunner {
             after.stage().is_terminal().then(|| {
                 report(
                     after,
-                    step_number,
+                    context.step_number,
                     counters.transitions,
                     counters.recoveries,
                 )
