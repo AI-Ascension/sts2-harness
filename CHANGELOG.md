@@ -37,6 +37,9 @@ claim a released harness version or runtime compatibility.
 
 ### Changed
 
+- Standardized historical POC and Runtime-v2 fake evidence labels to `confirmed`, retaining
+  their deterministic-fake scope, original dates, trace bytes, digests, and unverified live lanes.
+
 - The package is preparation-only: live providers, game access, gateway lease ownership, MCP framing,
   game rules, scoring, dataset export, and training integration remain outside this wave.
 

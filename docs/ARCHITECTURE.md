@@ -94,8 +94,8 @@ The minimal POC adds a deterministic fake runner that consumes the copied `poc-v
 artifact and records the exact boundary order `harness -> MCP -> gateway -> game-mod -> game-core`.
 It exercises one state read, one accepted typed action, and one rejected typed action through local
 doubles only. The resulting trace and evidence labels are in
-[`../MINIMAL_POC_REPORT.md`](../MINIMAL_POC_REPORT.md); they are source/test-confirmed offline
-evidence, not runtime or compatibility evidence.
+[`../MINIMAL_POC_REPORT.md`](../MINIMAL_POC_REPORT.md); they are `confirmed` deterministic-fake
+and `source-derived` offline evidence, not runtime or compatibility evidence.
 
 ## Runtime coordinator adapter
 

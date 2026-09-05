@@ -1,7 +1,7 @@
 # Minimal POC report
 
 Date: 2026-09-02
-Status: `test-confirmed` fake/offline proof only.
+Status: `confirmed` fake/offline proof only.
 
 ## Scope and ownership
 
@@ -77,8 +77,8 @@ this digest and independently checks the five-boundary order for all three opera
 
 ## Evidence classification
 
-- `test-confirmed`: the copied artifact identity, typed wire shapes, fixture lineage, and exact
-  source/package/conformance checksums verify; two runner executions
+- `confirmed` (deterministic fake only): the copied artifact identity, typed wire shapes, fixture
+  lineage, and exact source/package/conformance checksums verify; two runner executions
   produce identical trace bytes; the accepted action changes units `3 -> 2`, generation `0 -> 1`,
   and effects `0 -> 1`; the rejected zero-unit action preserves state and reports the stable error;
   the actual ordered five-hop ledger and required metadata are present.
