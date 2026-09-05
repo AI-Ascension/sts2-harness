@@ -52,9 +52,7 @@ impl SanitizedObservation {
         self.0.get("visible_seed").is_some()
     }
 
-    /// Drops `visible_seed` so it never reaches a provider unless a caller re-admits it
-    /// explicitly. Whether the host seed is the real PRNG seed is unverified; the projection
-    /// therefore fails closed and omits it by default.
+    /// Drops `visible_seed` for an explicitly seed-blind experiment.
     #[must_use]
     pub fn without_visible_seed(mut self) -> Self {
         if let Value::Object(object) = &mut self.0 {
@@ -189,7 +187,7 @@ fn validate_object(
 }
 
 /// The root carries exactly the five required fair-play fields; `visible_seed` is optional
-/// because the default provider projection removes it (see `without_visible_seed`).
+/// so seed-blind experiments can explicitly omit it (see `without_visible_seed`).
 fn require_root(object: &Map<String, Value>) -> Result<(), SandboxError> {
     const REQUIRED: [&str; 5] = ["state_id", "generation", "player", "state", "legal_actions"];
     let expected = REQUIRED.len() + usize::from(object.contains_key("visible_seed"));

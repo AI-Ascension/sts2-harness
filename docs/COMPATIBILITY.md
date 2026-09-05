@@ -134,10 +134,10 @@ the response envelope remains bound to the gateway session.
 
 ## Exo projection safety correction
 
-The default Exo decision request no longer carries the host `visible_seed`. Whether that value is
-the real PRNG seed is `unverified`, so the projection fails closed: `ExoConfig::forward_visible_seed`
-defaults to `false`, and only `with_visible_seed_forwarding(true)` or the runtime environment value
-`STS2_EXO_FORWARD_VISIBLE_SEED=true` (exact `true`/`false`, anything else rejected) re-admits it.
+The default Exo decision request preserves the host `visible_seed`, following the owner's
+requirement for repeatable invocation and replay. `ExoConfig::forward_visible_seed` defaults
+to `true`; `with_visible_seed_forwarding(false)` or `STS2_EXO_FORWARD_VISIBLE_SEED=false`
+selects seed-blind behavior (exact `true`/`false`, anything else rejected).
 `ExoConfig` gained that public field; callers using struct-update syntax are unaffected. The
 `sts2.exo-decision-v1` request root now treats `visible_seed` as optional while the other five root
 fields stay required. This changes what an operator-owned bridge receives by default, not any

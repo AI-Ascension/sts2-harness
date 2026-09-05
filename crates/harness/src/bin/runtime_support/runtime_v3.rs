@@ -23,6 +23,9 @@ mod ledger;
 mod recovery;
 use ledger::OperationRecord;
 
+#[path = "runtime_v3_combat_demo.rs"]
+mod combat_demo;
+
 #[cfg(test)]
 #[path = "runtime_v3_lifecycle_test.rs"]
 mod lifecycle_tests;
@@ -33,6 +36,11 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let transport = ExoProcessTransport::new(settings.process);
     let provider = ExoProvider::new(transport, settings.exo);
     let mut source = ExoDecisionSource::new(ExoSession::new(provider));
+    if std::env::var("STS2_COMBAT_DEMO").as_deref() == Ok("true") {
+        let outcome = combat_demo::run(&mut port, &mut source, &settings.runner);
+        let close = source.close().map_err(|error| error.to_string());
+        return outcome.and(close);
+    }
     let result = EpisodeRunner::new(settings.runner).run(&mut port, &mut source);
     let source_close = source.close();
     let report = result.map_err(|error| format!("Runtime-v3 episode failed: {error}"))?;
