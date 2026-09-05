@@ -40,8 +40,8 @@ provider, gateway, MCP server, or external artifact store.
 
 The POC parses the copied source/package schema, five goldens, invalid fixture, and conformance case,
 checks their exact release checksums, and records the actual ordered fake-hop ledger. The report
-records the exact trace and labels each claim as `test-confirmed`, `source-derived`, `proposed`, or
-`unverified`: [`MINIMAL_POC_REPORT.md`](../MINIMAL_POC_REPORT.md).
+records the exact trace and labels each claim as `confirmed` (deterministic fake only),
+`source-derived`, `proposed`, or `unverified`: [`MINIMAL_POC_REPORT.md`](../MINIMAL_POC_REPORT.md).
 
 ## Coordinator and lifecycle tests
 

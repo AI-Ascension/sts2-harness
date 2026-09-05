@@ -1,7 +1,7 @@
 # Runtime-v2 deterministic fake evidence
 
 Date: 2026-09-02
-Evidence level: `test-confirmed` deterministic in-memory fake only
+Evidence level: `confirmed` deterministic in-memory fake only
 
 ## Scope
 

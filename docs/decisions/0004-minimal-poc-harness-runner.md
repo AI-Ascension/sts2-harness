@@ -24,8 +24,8 @@ The runner performs a state read, an accepted `use_budget` action of one unit, a
 `use_budget` action of zero units. It emits one canonical trace event at each of the five boundary
 labels for each operation. Every event carries protocol version, schema digest, artifact/source/
 generator provenance, correlation, instance, lease, generation, bounded observation, typed action,
-status, and error fields. The report labels evidence as test-confirmed, source-derived, proposed, or
-unverified.
+status, and error fields. The report labels evidence as `confirmed` (deterministic fake only),
+`source-derived`, `proposed`, or `unverified`.
 
 ## Consequences
 
