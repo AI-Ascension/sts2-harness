@@ -78,6 +78,11 @@ effect witness, and cleanup record.
 Foundation episode admission now releases mismatched router bindings and exposes cleanup failures.
 This safety correction changes no serialized contract or frozen artifact bytes.
 
+Allocation response rejection now attempts fenced cleanup without changing trace admission or any
+frozen artifact bytes. A different lease returned for the requested instance, caller, and session
+can be used only for cleanup after its identity and epoch are validated. Unattributable responses
+retain the original configured fence. Cleanup failures remain explicit; live behavior is unverified.
+
 The existing Runtime-v1 executable accepts only numeric loopback gateway socket addresses, not DNS
 names or remote plaintext bearer endpoints. It bounds complete HTTP/MCP exchanges to five seconds,
 validates outer RPC correlation and the existing projected tool contract, and minimizes child

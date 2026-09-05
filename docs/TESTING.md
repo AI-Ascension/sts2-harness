@@ -101,6 +101,11 @@ remain `unverified`.
 
 ## Runtime adapter failure regressions
 
+Allocation cleanup tests inject successful, mismatched, malformed, and unavailable gateway results.
+They check one release attempt using only an attributable validated response fence or the original
+configured fence, explicit cleanup failures, and no release during successful trace admission.
+These deterministic offline tests do not contact a gateway or prove live lease release.
+
 Synthetic subprocess tests exercise unread stdin, full duplex pipes, oversized/no-newline stdout,
 slow trickles, inherited descendant handles, bounded close/drop, exact JSON-RPC identities and
 async-caller spawn failure. Local listener tests enforce numeric loopback endpoints, request/header

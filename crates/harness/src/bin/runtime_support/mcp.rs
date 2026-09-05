@@ -20,8 +20,15 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
             "session_id": config.session_id
         }),
         BTreeMap::new(),
-    )?;
-    validate_allocation(&allocation, &config)?;
+    );
+    validate_or_release_allocation(allocation, &config, |headers| {
+        client.request(
+            "POST",
+            &format!("/v1/instances/{}/release", config.instance_id),
+            &Value::Null,
+            headers,
+        )
+    })?;
     let mut mcp = match McpProcess::spawn(&config) {
         Ok(process) => process,
         Err(error) => {
@@ -179,6 +186,60 @@ fn require_success(response: &Value, operation: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub(super) fn validate_or_release_allocation(
+    allocation: Result<Value, String>,
+    config: &RuntimeConfig,
+    release: impl FnOnce(BTreeMap<String, String>) -> Result<Value, String>,
+) -> Result<(), String> {
+    let validation = match &allocation {
+        Ok(value) => validate_allocation(value, config),
+        Err(error) => Err(error.clone()),
+    };
+    let Err(error) = validation else {
+        return Ok(());
+    };
+    let mut headers = identity_headers(config, "release-0001");
+    if let Ok(value) = allocation
+        && let Some((lease, epoch)) = attributable_lease(&value, config)
+    {
+        headers.insert(String::from("x-sts2-lease-id"), lease.to_owned());
+        headers.insert(String::from("x-sts2-lease-epoch"), epoch.to_string());
+    }
+    match release(headers) {
+        Ok(value) if value["status"] == "released" => Err(error),
+        Ok(_) => Err(format!(
+            "{error}; allocation cleanup did not confirm release"
+        )),
+        Err(cleanup) => Err(format!("{error}; allocation cleanup failed: {cleanup}")),
+    }
+}
+
+fn attributable_lease<'a>(value: &'a Value, config: &RuntimeConfig) -> Option<(&'a str, u64)> {
+    for (key, expected) in [
+        ("instance_id", config.instance_id.as_str()),
+        ("caller_id", config.caller_id.as_str()),
+        ("session_id", config.session_id.as_str()),
+    ] {
+        if value[key].as_str() != Some(expected) {
+            return None;
+        }
+    }
+    let lease = value["lease_id"].as_str()?;
+    let epoch = value["lease_epoch"].as_u64()?;
+    if lease.is_empty()
+        || lease.len() > 128
+        || lease.contains("..")
+        || !lease.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
+        })
+        || epoch == 0
+        || epoch > 9_007_199_254_740_991
+    {
+        return None;
+    }
+    Some((lease, epoch))
+}
+
 pub(super) fn validate_allocation(value: &Value, config: &RuntimeConfig) -> Result<(), String> {
     for (key, expected) in [
         ("instance_id", config.instance_id.as_str()),
@@ -220,6 +281,10 @@ pub(super) fn identity_headers(
         ),
     ])
 }
+
+#[cfg(test)]
+#[path = "allocation_tests.rs"]
+mod allocation_tests;
 
 #[cfg(test)]
 mod tests {

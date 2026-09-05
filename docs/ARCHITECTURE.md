@@ -112,3 +112,9 @@ action's fresh `status_overlay_visible` witness and stable stale-generation erro
 the sanitized trace. It never contacts a game process directly. Process launch, graceful shutdown,
 and the exact host effect are evidenced separately in the dated host integration record; gameplay
 mutation and broader compatibility remain outside that record.
+
+An allocation failure or rejected allocation response triggers one fenced release attempt before
+returning the original error. Cleanup may use a validated returned lease and epoch only when the
+instance, caller, and gateway session match the allocation request. Otherwise it keeps the configured
+fence. This cleanup does not replace the configured fence used for trace admission, and an unconfirmed
+or failed release remains an explicit error. This behavior is source-derived; host cleanup is unverified.
