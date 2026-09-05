@@ -30,6 +30,11 @@ jobs:
       - name: Verify copied POC artifact checksums
         run: (cd protocol-artifact/poc-v1 && sha256sum -c SHA256SUMS)
 
+      - name: Verify frozen runtime artifact checksums
+        run: |
+          (cd protocol-artifact/runtime-v1 && sha256sum -c SHA256SUMS)
+          (cd protocol-artifact/runtime-v2 && sha256sum -c SHA256SUMS)
+
       - name: Check formatting
         run: cargo fmt --all --check
 
