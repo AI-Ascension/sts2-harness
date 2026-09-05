@@ -37,6 +37,8 @@ new persistent-store or cross-repository wire contract.
 A model retry reuses the same request, correlation, execution identity, and
 idempotency key. Shutdown unbinds every active episode, closes every port, reports each failure, and
 is idempotent.
+Episode admission releases a binding returned for another run or episode before rejecting it;
+failed release remains an explicit routing error rather than disappearing behind validation.
 
 The package has no cross-repository path dependencies. Core code contains no transport, host,
 process, MCP framing, provider implementation, gateway lease authority, credential handling, or game

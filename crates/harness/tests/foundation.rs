@@ -3,6 +3,9 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 
+#[path = "support/router_cleanup.rs"]
+mod router_cleanup;
+
 use sts2_harness::{
     AppendOutcome, ArtifactKind, ArtifactLineage, ArtifactMetadata, ArtifactPort,
     ArtifactPublicationRequest, ArtifactReceipt, DeterministicReplay, EpisodeHandle,

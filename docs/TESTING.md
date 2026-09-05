@@ -45,6 +45,9 @@ records the exact trace and labels each claim as `confirmed` (deterministic fake
 
 ## Coordinator and lifecycle tests
 
+`foundation::router_cleanup` exercises rejected-binding cleanup and explicit unbind failure through
+deterministic router doubles. This is component evidence only.
+
 Future tests must cover bounded capacity, FIFO or declared ordering, backpressure, overload,
 admission, four-instance identity, allocation/lease handoff, stale fencing, cancellation before and
 after acceptance, timeout/disconnect semantics, duplicate events, partial failure, restart/resume,

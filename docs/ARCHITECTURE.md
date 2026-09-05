@@ -65,7 +65,9 @@ repository, not a runtime service or a generic-common implementation crate. See
 
 ## Concurrency and lifecycle
 
-Every accepted operation resolves to success, explicit failure, or explicit cancellation. Queues are
+Every accepted operation resolves to success, explicit failure, or explicit cancellation. A returned
+router binding with mismatched run or episode identity is unbound before admission fails; an unbind
+failure remains visible as a routing error. Queues are
 bounded and their overload behavior is part of the contract. Instance, gateway-session, MCP-session,
 run, episode, model-execution, request, action, trajectory, and artifact lifecycles remain distinct.
 Timeout or disconnect does not silently cancel work already accepted by a downstream boundary.
