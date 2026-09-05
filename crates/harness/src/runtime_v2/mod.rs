@@ -36,4 +36,8 @@ include!("fake_engine_one.rs");
 include!("fake_engine_two.rs");
 include!("support.rs");
 include!("error.rs");
+include!("multi_instance_types.rs");
+include!("multi_instance_coordinator.rs");
+include!("multi_instance_support.rs");
+include!("multi_instance_tests.rs");
 include!("tests.rs");

@@ -84,6 +84,14 @@ requires allocation identity, the runtime MCP catalog, generation N state, an ac
 `show_runtime_probe` response with a fresh visible witness, a stable stale-generation rejection,
 post-action state at N+1, and lease release.
 
+The Runtime-v2 process records must also retain separate `instance_id`,
+`gateway_session_id`, `mcp_session_id`, `lease_id`, `lease_epoch`, `run_id`, `episode_id`,
+`trajectory_id`, and `artifact_id` values. They emit the actual MCP request-ID sequence and
+downstream correlation IDs as bounded redacted fields. The record lineage defaults are suitable for
+one deterministic probe and can be replaced with safe caller-supplied values through
+`STS2_RUN_ID`, `STS2_EPISODE_ID`, `STS2_TRAJECTORY_ID`, and `STS2_ARTIFACT_ID`; duplicate lineage
+values are rejected before the run.
+
 The synthetic result is component-network evidence only. A separate authorized host run exercised
 the same coordinator path against the packaged mod and recorded the live host effect. The exact host
 run and remaining unverified gates are recorded in
@@ -98,6 +106,33 @@ disconnect recorded as unknown, fixed reconciliation with the same operation ID,
 observation and witness at generation `N+1`, duplicate replay with one mutation, and stale-epoch
 rejection before mutation. Provider/model execution and live host/game settlement are untouched and
 remain `unverified`.
+
+## Runtime-v2 multi-instance coordinator seam
+
+The pure `RuntimeV2Coordinator` tests cover the four-instance limit, cross-instance lineage
+collisions, FIFO ordering within a lane, round-robin fairness across idle lanes, one serial active
+slot per instance, global and per-instance queue overload, duplicate in-flight operation rejection,
+queued cancellation, explicit active-operation shutdown reporting, retained operation identities,
+and sanitized counters. The runtime adapter also propagates its separate MCP-session configuration.
+These are
+offline component tests. They do not establish a production supervisor, real process/port/profile
+isolation, live gateway/MCP composition, host crash recovery, or gameplay settlement. The dated
+result is recorded in [`runtime-v2-coordinator-20260902.md`](evidence/runtime-v2-coordinator-20260902.md).
+The coordinator snapshot also records explicit unknown, rejection, and cancellation outcomes plus
+optional dispatcher-supplied service-time samples, totals, and maxima globally and per instance;
+it does not infer or retry an unknown operation. The regression for unknown completion verifies that
+the same lane remains blocked until reconciliation while another instance continues to dispatch.
+
+## Runtime process and control-plane failure probes
+
+Workspace tests use synthetic children and loopback listeners for unread/full-duplex stdin,
+oversized unterminated stdout, slow trickles, inherited descendant pipe handles, bounded close/drop,
+wrong JSON-RPC IDs/versions, scoped Runtime-v2 response fences and malformed payload redaction.
+HTTP regressions reject non-loopback/DNS targets, header injection, duplicate Content-Length,
+Transfer-Encoding, oversized headers, and deadline extension by incremental response bytes.
+These are local adapter checks, not game/provider execution or proof of a full connected runtime.
+Trace stdout describes the checked action sequence; process exit success additionally requires
+MCP shutdown and lease-release success. Cleanup errors remain reported even when the trace fails.
 
 ## Runtime adapter failure regressions
 

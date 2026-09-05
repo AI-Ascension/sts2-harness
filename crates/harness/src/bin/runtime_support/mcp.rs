@@ -1,34 +1,33 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::BTreeMap;
+use std::thread;
+use std::time::{Duration, Instant};
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use super::config::RuntimeConfig;
 use super::http::GatewayClient;
 
-pub(super) use super::mcp_process::McpProcess;
+use super::mcp_process::McpProcess;
+use super::response_validation::validate_response;
+
+#[path = "trace_runtime_v1.rs"]
+mod trace_runtime_v1;
+#[path = "trace_runtime_v2.rs"]
+mod trace_runtime_v2;
+
+fn run_trace(mcp: &mut McpProcess, config: &RuntimeConfig) -> Result<(), String> {
+    match config.runtime_profile.as_str() {
+        "runtime-v1" => trace_runtime_v1::run(mcp, config),
+        "runtime-v2" => trace_runtime_v2::run(mcp, config),
+        _ => Err(String::from("unsupported runtime profile")),
+    }
+}
 
 pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
     let client = GatewayClient::new(&config)?;
-    let allocation = client.request(
-        "POST",
-        "/v1/sessions/allocate",
-        &json!({
-            "instance_id": config.instance_id,
-            "caller_id": config.caller_id,
-            "session_id": config.session_id
-        }),
-        BTreeMap::new(),
-    );
-    validate_or_release_allocation(allocation, &config, |headers| {
-        client.request(
-            "POST",
-            &format!("/v1/instances/{}/release", config.instance_id),
-            &Value::Null,
-            headers,
-        )
-    })?;
+    allocate(&client, &config)?;
     let mut mcp = match McpProcess::spawn(&config) {
         Ok(process) => process,
         Err(error) => {
@@ -38,7 +37,7 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
                 &Value::Null,
                 identity_headers(&config, "release-0001"),
             );
-            return match release {
+            return match confirm_release(release) {
                 Ok(_) => Err(error),
                 Err(release_error) => Err(format!(
                     "{error}; allocated lease release also failed: {release_error}"
@@ -54,7 +53,7 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
         &Value::Null,
         identity_headers(&config, "release-0001"),
     );
-    let failures: Vec<_> = [trace_result, close_result, release_result.map(|_| ())]
+    let failures: Vec<_> = [trace_result, close_result, confirm_release(release_result)]
         .into_iter()
         .filter_map(Result::err)
         .collect();
@@ -65,102 +64,154 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
     }
 }
 
-fn run_trace(mcp: &mut McpProcess, config: &RuntimeConfig) -> Result<(), String> {
-    require_success(
-        &mcp.call(
-            1,
-            "initialize",
-            json!({
-                "protocolVersion": "2025-06-18",
-                "capabilities": {},
-                "clientInfo": {"name": "sts2-harness-runtime", "version": "0.0.0"}
-            }),
-        )?,
-        "initialize",
-    )?;
-    let catalog = mcp.call(2, "tools/list", json!({}))?;
-    require_success(&catalog, "tools/list")?;
-    if catalog["result"]["revision"] != "runtime-v1-mcp" {
-        return Err(String::from("MCP catalog did not advertise runtime-v1"));
+fn confirm_release(response: Result<Value, String>) -> Result<(), String> {
+    if response?["status"] != "released" {
+        return Err(String::from("gateway did not confirm lease release"));
     }
-
-    let before = tool_call(
-        mcp,
-        3,
-        "get_state",
-        json!({"instance_id": config.instance_id, "mcp_session_id": config.mcp_session_id}),
-    )?;
-    let generation = before["generation"]
-        .as_u64()
-        .ok_or_else(|| String::from("initial state omitted generation"))?;
-    let accepted = tool_call(
-        mcp,
-        4,
-        "submit_action",
-        json!({
-            "instance_id": config.instance_id,
-            "mcp_session_id": config.mcp_session_id,
-            "generation": generation,
-            "action_id": "show_runtime_probe"
-        }),
-    )?;
-    if accepted["status"] != "accepted"
-        || accepted["effect_witness"]["kind"] != "status_overlay_visible"
-        || accepted["observation"]["overlay_visible"] != true
-        || accepted["generation"].as_u64() != Some(generation + 1)
-    {
-        return Err(String::from(
-            "accepted action did not produce a fresh visible witness",
-        ));
-    }
-    let stale = tool_call(
-        mcp,
-        5,
-        "submit_action",
-        json!({
-            "instance_id": config.instance_id,
-            "mcp_session_id": config.mcp_session_id,
-            "generation": generation,
-            "action_id": "show_runtime_probe"
-        }),
-    )?;
-    if stale["status"] != "rejected" || stale["error_code"] != "sts2.game-mod/stale_generation" {
-        return Err(String::from(
-            "stale generation was not rejected with a stable identity",
-        ));
-    }
-    let after = tool_call(
-        mcp,
-        6,
-        "get_state",
-        json!({"instance_id": config.instance_id, "mcp_session_id": config.mcp_session_id}),
-    )?;
-    if after["generation"].as_u64() != Some(generation + 1)
-        || after["observation"]["overlay_visible"] != true
-        || after["observation"]["action_count"].as_u64() != Some(1)
-    {
-        return Err(String::from(
-            "fresh post-action state did not retain the witnessed effect",
-        ));
-    }
-    println!(
-        "{}",
-        serde_json::to_string(&json!({
-            "protocol": "runtime-v1",
-            "instance_id": config.instance_id,
-            "session_id": config.session_id,
-            "before_generation": generation,
-            "after_generation": after["generation"],
-            "accepted_effect": {"kind":"status_overlay_visible","generation":generation + 1},
-            "stale_rejection": stale["error_code"],
-            "observation": {"overlay_visible":true,"action_count":1}
-        }))
-        .map_err(|error| format!("trace serialization failed: {error}"))?
-    );
     Ok(())
 }
 
-fn tool_call(mcp: &mut McpProcess, id: u64, name: &str, arguments: Value) -> Result<Value, String> {
+fn allocate(client: &GatewayClient, config: &RuntimeConfig) -> Result<(), String> {
+    let allocation = client.request(
+        "POST",
+        "/v1/sessions/allocate",
+        &json!({
+            "instance_id": config.instance_id,
+            "caller_id": config.caller_id,
+            "session_id": config.session_id
+        }),
+        BTreeMap::from([(
+            String::from("x-mcp-session-id"),
+            config.mcp_session_id.clone(),
+        )]),
+    );
+    validate_or_release_allocation(allocation, config, |headers| {
+        client.request(
+            "POST",
+            &format!("/v1/instances/{}/release", config.instance_id),
+            &Value::Null,
+            headers,
+        )
+    })
+}
+
+fn wait_for_v2_player_turn(
+    mcp: &mut McpProcess,
+    config: &RuntimeConfig,
+    request_id: &mut u64,
+    request_ids: &mut Vec<u64>,
+) -> Result<Value, String> {
+    let deadline = Instant::now() + Duration::from_secs(config.wait_for_combat_seconds);
+    loop {
+        request_ids.push(*request_id);
+        let observation = tool_call(
+            mcp,
+            config,
+            *request_id,
+            "get_state",
+            json!({
+                "instance_id": config.instance_id,
+                "mcp_session_id": config.mcp_session_id,
+                "lease_id": config.lease_id,
+                "lease_epoch": config.lease_epoch,
+                "generation": 0
+            }),
+        )?;
+        *request_id += 1;
+        if observation["observation"]["combat_phase"] == "combat/player_turn" {
+            return Ok(observation);
+        }
+        if config.wait_for_combat_seconds == 0 || Instant::now() >= deadline {
+            return Err(String::from(
+                "Runtime-v2 host did not reach combat/player_turn",
+            ));
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+}
+
+fn wait_for_operation_settlement(
+    mcp: &mut McpProcess,
+    config: &RuntimeConfig,
+    request_id: &mut u64,
+    request_ids: &mut Vec<u64>,
+    operation_id: &str,
+    generation: u64,
+) -> Result<Value, String> {
+    let deadline = Instant::now() + Duration::from_secs(config.settlement_timeout_seconds);
+    loop {
+        request_ids.push(*request_id);
+        let reconciled = tool_call(
+            mcp,
+            config,
+            *request_id,
+            "reconcile_action",
+            json!({
+                "instance_id": config.instance_id,
+                "mcp_session_id": config.mcp_session_id,
+                "lease_id": config.lease_id,
+                "lease_epoch": config.lease_epoch,
+                "generation": generation,
+                "operation_id": operation_id
+            }),
+        )?;
+        *request_id += 1;
+        require_kind(&reconciled, "reconcile_response")?;
+        if reconciled["status"] == "settled" {
+            return Ok(reconciled);
+        }
+        if config.settlement_timeout_seconds == 0 || Instant::now() >= deadline {
+            return Err(String::from(
+                "Runtime operation did not settle before the bounded timeout; outcome remains uncertain",
+            ));
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+}
+
+fn trace_lineage(config: &RuntimeConfig) -> Value {
+    json!({
+        "instance_id": config.instance_id,
+        "gateway_session_id": config.session_id,
+        "mcp_session_id": config.mcp_session_id,
+        "lease_id": config.lease_id,
+        "lease_epoch": config.lease_epoch,
+        "run_id": config.run_id,
+        "episode_id": config.episode_id,
+        "trajectory_id": config.trajectory_id,
+        "artifact_id": config.artifact_id,
+    })
+}
+
+fn trace_correlations(entries: &[(&str, &Value)]) -> Result<Value, String> {
+    let mut correlations = Map::new();
+    for (label, value) in entries {
+        let correlation_id = value["correlation_id"]
+            .as_str()
+            .ok_or_else(|| format!("trace response {label} omitted its correlation identity"))?;
+        correlations.insert(
+            String::from(*label),
+            Value::String(String::from(correlation_id)),
+        );
+    }
+    Ok(Value::Object(correlations))
+}
+
+fn require_kind(value: &Value, expected: &str) -> Result<(), String> {
+    if value["kind"] == expected {
+        Ok(())
+    } else {
+        Err(format!("Runtime-v2 response kind was not {expected}"))
+    }
+}
+
+fn tool_call(
+    mcp: &mut McpProcess,
+    config: &RuntimeConfig,
+    id: u64,
+    name: &str,
+    arguments: Value,
+) -> Result<Value, String> {
     let response = mcp.call(
         id,
         "tools/call",
@@ -173,8 +224,8 @@ fn tool_call(mcp: &mut McpProcess, id: u64, name: &str, arguments: Value) -> Res
         .as_str()
         .ok_or_else(|| String::from("MCP tool response omitted text content"))?;
     let value =
-        serde_json::from_str(text).map_err(|_| String::from("MCP tool content was not JSON"))?;
-    super::v1_projection::validate(&value, name, &arguments)?;
+        serde_json::from_str(text).map_err(|_| format!("MCP tool {name} content was not JSON"))?;
+    validate_response(&value, config, id, name, &arguments)?;
     super::v1_projection::validate_error_flag(&response, &value)?;
     Ok(value)
 }
@@ -183,62 +234,15 @@ fn require_success(response: &Value, operation: &str) -> Result<(), String> {
     if response.get("error").is_some() || response["result"]["isError"] == true {
         return Err(format!("{operation} returned an MCP error"));
     }
+    if !response["result"].is_object() {
+        return Err(format!("{operation} omitted its MCP result"));
+    }
     Ok(())
 }
 
-pub(super) fn validate_or_release_allocation(
-    allocation: Result<Value, String>,
-    config: &RuntimeConfig,
-    release: impl FnOnce(BTreeMap<String, String>) -> Result<Value, String>,
-) -> Result<(), String> {
-    let validation = match &allocation {
-        Ok(value) => validate_allocation(value, config),
-        Err(error) => Err(error.clone()),
-    };
-    let Err(error) = validation else {
-        return Ok(());
-    };
-    let mut headers = identity_headers(config, "release-0001");
-    if let Ok(value) = allocation
-        && let Some((lease, epoch)) = attributable_lease(&value, config)
-    {
-        headers.insert(String::from("x-sts2-lease-id"), lease.to_owned());
-        headers.insert(String::from("x-sts2-lease-epoch"), epoch.to_string());
-    }
-    match release(headers) {
-        Ok(value) if value["status"] == "released" => Err(error),
-        Ok(_) => Err(format!(
-            "{error}; allocation cleanup did not confirm release"
-        )),
-        Err(cleanup) => Err(format!("{error}; allocation cleanup failed: {cleanup}")),
-    }
-}
-
-fn attributable_lease<'a>(value: &'a Value, config: &RuntimeConfig) -> Option<(&'a str, u64)> {
-    for (key, expected) in [
-        ("instance_id", config.instance_id.as_str()),
-        ("caller_id", config.caller_id.as_str()),
-        ("session_id", config.session_id.as_str()),
-    ] {
-        if value[key].as_str() != Some(expected) {
-            return None;
-        }
-    }
-    let lease = value["lease_id"].as_str()?;
-    let epoch = value["lease_epoch"].as_u64()?;
-    if lease.is_empty()
-        || lease.len() > 128
-        || lease.contains("..")
-        || !lease.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
-        })
-        || epoch == 0
-        || epoch > 9_007_199_254_740_991
-    {
-        return None;
-    }
-    Some((lease, epoch))
-}
+#[path = "allocation_cleanup.rs"]
+mod allocation_cleanup;
+pub(super) use allocation_cleanup::validate_or_release_allocation;
 
 pub(super) fn validate_allocation(value: &Value, config: &RuntimeConfig) -> Result<(), String> {
     for (key, expected) in [
@@ -259,10 +263,7 @@ pub(super) fn validate_allocation(value: &Value, config: &RuntimeConfig) -> Resu
     Ok(())
 }
 
-pub(super) fn identity_headers(
-    config: &RuntimeConfig,
-    correlation: &str,
-) -> BTreeMap<String, String> {
+fn identity_headers(config: &RuntimeConfig, correlation: &str) -> BTreeMap<String, String> {
     BTreeMap::from([
         (
             String::from("x-sts2-instance-id"),
@@ -270,6 +271,10 @@ pub(super) fn identity_headers(
         ),
         (String::from("x-sts2-caller-id"), config.caller_id.clone()),
         (String::from("x-sts2-session-id"), config.session_id.clone()),
+        (
+            String::from("x-mcp-session-id"),
+            config.mcp_session_id.clone(),
+        ),
         (String::from("x-sts2-lease-id"), config.lease_id.clone()),
         (
             String::from("x-sts2-lease-epoch"),
@@ -287,7 +292,7 @@ pub(super) fn identity_headers(
 mod allocation_tests;
 
 #[cfg(test)]
-mod tests {
+mod legacy_tests {
     use super::*;
     #[test]
     fn errors_are_redacted_and_tool_errors_are_not_success() {
@@ -302,3 +307,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "mcp_tests.rs"]
+mod tests;

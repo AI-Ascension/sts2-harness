@@ -38,11 +38,14 @@ pub use records::{AppendOutcome, Correlation, Record, RecordKind, RecordPayload,
 pub use replay::{DeterministicReplay, Divergence, ReplayPort, ReplayReport, ReplayRequest};
 pub use routing::{InstanceRouter, RouteBinding, RouteRequest, RouteToken};
 pub use runtime_v2::{
+    RUNTIME_V2_MAX_INSTANCES, RUNTIME_V2_MAX_QUEUE_CAPACITY, RUNTIME_V2_MAX_RETAINED_OPERATIONS,
     RuntimeV2Action, RuntimeV2ArtifactLineage, RuntimeV2ArtifactRecord, RuntimeV2CombatPhase,
-    RuntimeV2Context, RuntimeV2EffectWitness, RuntimeV2Error, RuntimeV2EventKind,
-    RuntimeV2Evidence, RuntimeV2Kind, RuntimeV2Message, RuntimeV2NoRetryEvidence,
-    RuntimeV2Observation, RuntimeV2OperationId, RuntimeV2Provenance, RuntimeV2Record,
-    RuntimeV2RecordKind, RuntimeV2Report, RuntimeV2Runner, RuntimeV2Status, RuntimeV2Trajectory,
+    RuntimeV2Context, RuntimeV2Coordinator, RuntimeV2CoordinatorConfig, RuntimeV2CoordinatorError,
+    RuntimeV2CoordinatorSnapshot, RuntimeV2EffectWitness, RuntimeV2Error, RuntimeV2EventKind,
+    RuntimeV2Evidence, RuntimeV2InstanceBinding, RuntimeV2InstanceSnapshot, RuntimeV2Kind,
+    RuntimeV2Message, RuntimeV2NoRetryEvidence, RuntimeV2Observation, RuntimeV2OperationId,
+    RuntimeV2Provenance, RuntimeV2Record, RuntimeV2RecordKind, RuntimeV2Report, RuntimeV2Runner,
+    RuntimeV2ShutdownReport, RuntimeV2Status, RuntimeV2Trajectory, RuntimeV2WorkItem,
     run_runtime_v2_fake_trace,
 };
 pub use runtime_v2_artifact::{

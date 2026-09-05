@@ -147,9 +147,14 @@ initialize/list/state/action/stale-action/fresh-state calls, checks the effect w
 rejection, closes MCP stdin, and releases the lease. It has no direct game or mod access.
 
 The process uses configured bearer tokens and separate instance, gateway session, MCP session, lease,
-and epoch identities. The synthetic component run and the authorized exact-host run are recorded
-separately. The latter confirms the managed host callback and bounded STS2 effect for the safe probe;
-gameplay mutation and broader compatibility remain `unverified`.
+and epoch identities. Runtime-v2 process records additionally emit a bounded
+`lineage` object containing `run_id`, `episode_id`, `trajectory_id`, and `artifact_id`, plus the
+MCP request-ID sequence and downstream correlation IDs for each observed response. Callers may
+override the redacted record identities with `STS2_RUN_ID`, `STS2_EPISODE_ID`,
+`STS2_TRAJECTORY_ID`, and `STS2_ARTIFACT_ID`; the harness rejects empty, unsafe, oversized, or
+colliding lineage values. The synthetic component run and the authorized exact-host run are
+recorded separately. The latter confirms the managed host callback and bounded STS2 effect for the
+safe probe; gameplay mutation and broader compatibility remain `unverified`.
 
 ## Runtime-v2 deterministic fake lane
 
