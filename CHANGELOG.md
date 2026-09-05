@@ -7,6 +7,10 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Safety correction: the host `visible_seed` is removed from the default fair-play projection
+  sent to Exo on both request paths. `ExoConfig::forward_visible_seed` (default off) and the
+  runtime `STS2_EXO_FORWARD_VISIBLE_SEED=true` override re-admit it explicitly. The projection
+  root now treats `visible_seed` as optional; frozen artifacts, schemas, and checksums are unchanged.
 - Release router bindings rejected for mismatched run or episode identity and surface cleanup
   failures through the routing error boundary.
 - Split the independent Runtime-v2 coordinator and process trace from PR #7; the bounded

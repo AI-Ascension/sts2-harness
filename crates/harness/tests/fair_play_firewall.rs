@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::expect_used)]
+
 use serde_json::json;
 use sts2_harness::{SandboxError, SanitizedObservation};
 
@@ -136,4 +138,35 @@ fn collection_fields_require_flat_arrays_of_the_declared_item_type() {
     valid["visible_seed"] = json!(null);
     valid["state"] = json!({"state":"map", "node_id":null, "options":["node-1"]});
     assert!(SanitizedObservation::new(valid).is_ok());
+}
+
+#[test]
+fn visible_seed_is_the_only_optional_root_field() {
+    let mut without_seed = observation();
+    without_seed
+        .as_object_mut()
+        .expect("fixture is an object")
+        .remove("visible_seed");
+    let projection = SanitizedObservation::new(without_seed).expect("seed is optional at the root");
+    assert!(!projection.has_visible_seed());
+
+    let with_seed = SanitizedObservation::new(observation()).expect("seed is admitted as text");
+    assert!(with_seed.has_visible_seed());
+    let stripped = with_seed.without_visible_seed();
+    assert!(!stripped.has_visible_seed());
+    assert!(stripped.as_value().get("visible_seed").is_none());
+    assert_eq!(stripped, projection);
+
+    for required in ["state_id", "generation", "player", "state", "legal_actions"] {
+        let mut value = observation();
+        value
+            .as_object_mut()
+            .expect("fixture is an object")
+            .remove(required);
+        assert_eq!(
+            SanitizedObservation::new(value),
+            Err(SandboxError::UnknownField),
+            "root field {required} must stay required"
+        );
+    }
 }

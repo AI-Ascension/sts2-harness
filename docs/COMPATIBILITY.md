@@ -132,6 +132,18 @@ and successful cleanup. The runtime adapter binds `STS2_MCP_SESSION_ID` separate
 Distinct sessions require the corresponding session-binding updates in MCP #7 and gateway #6;
 the response envelope remains bound to the gateway session.
 
+## Exo projection safety correction
+
+The default Exo decision request no longer carries the host `visible_seed`. Whether that value is
+the real PRNG seed is `unverified`, so the projection fails closed: `ExoConfig::forward_visible_seed`
+defaults to `false`, and only `with_visible_seed_forwarding(true)` or the runtime environment value
+`STS2_EXO_FORWARD_VISIBLE_SEED=true` (exact `true`/`false`, anything else rejected) re-admits it.
+`ExoConfig` gained that public field; callers using struct-update syntax are unaffected. The
+`sts2.exo-decision-v1` request root now treats `visible_seed` as optional while the other five root
+fields stay required. This changes what an operator-owned bridge receives by default, not any
+frozen artifact, schema, golden, or checksum; the host-facing `runtime-v3-gameplay` contract still
+requires the field from the host. Behaviour is `confirmed` by the `provider_redaction` tests.
+
 ## Runtime adapter safety correction
 
 The gateway endpoint must now be a numeric loopback socket address (IPv4 or bracketed IPv6), not

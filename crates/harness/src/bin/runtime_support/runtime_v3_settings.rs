@@ -36,6 +36,8 @@ impl RuntimeV3Settings {
 
 fn exo_from_environment() -> Result<ExoConfig, String> {
     let revision = required("STS2_EXO_REVISION")?;
+    // Fail closed: the host seed reaches Exo only when this is exactly `true`.
+    let forward_visible_seed = flag("STS2_EXO_FORWARD_VISIBLE_SEED")?;
     if revision != REVIEWED_EXO_REVISION {
         return Err(String::from(
             "STS2_EXO_REVISION is not the reviewed Exo revision",
@@ -59,6 +61,7 @@ fn exo_from_environment() -> Result<ExoConfig, String> {
             .try_into()
             .map_err(|_| String::from("STS2_EXO_TIMEOUT_MILLIS is too large"))?,
     )
+    .map(|config| config.with_visible_seed_forwarding(forward_visible_seed))
     .map_err(|error| format!("Exo configuration is invalid: {error}"))
 }
 
@@ -126,6 +129,22 @@ where
     T::try_from(parsed).map_err(|_| format!("{name} is outside its numeric bound"))
 }
 
+fn flag(name: &str) -> Result<bool, String> {
+    match std::env::var(name) {
+        Ok(value) => parse_flag(name, &value),
+        Err(std::env::VarError::NotPresent) => Ok(false),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!("{name} is not valid UTF-8")),
+    }
+}
+
+fn parse_flag(name: &str, value: &str) -> Result<bool, String> {
+    match value {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(format!("{name} must be exactly true or false")),
+    }
+}
+
 fn string_list(name: &str) -> Result<Vec<String>, String> {
     let text = match std::env::var(name) {
         Ok(value) if !value.is_empty() => value,
@@ -136,4 +155,21 @@ fn string_list(name: &str) -> Result<Vec<String>, String> {
     };
     serde_json::from_str::<Vec<String>>(&text)
         .map_err(|_| format!("{name} must be a JSON array of strings"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_flag;
+
+    #[test]
+    fn seed_forwarding_flag_accepts_only_exact_booleans() {
+        assert_eq!(parse_flag("X", "true"), Ok(true));
+        assert_eq!(parse_flag("X", "false"), Ok(false));
+        for value in ["", "1", "0", "yes", "TRUE", "True", " true"] {
+            assert!(
+                parse_flag("X", value).is_err(),
+                "{value:?} must be rejected"
+            );
+        }
+    }
 }
