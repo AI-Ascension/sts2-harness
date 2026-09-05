@@ -29,6 +29,12 @@ records exact provenance and bounded test coverage. The gate matrix below is the
 preparation record, not current review test results. Refreshing this consumer pin alone does not
 establish an integrated six-repository candidate or advance runtime promotion.
 
+Review clarification: protocol co-op work is now a blocked proposal, excluded from the admitted
+Runtime-v3 bundle. Co-op schema digests and gateway seam descriptions in this dated matrix and its
+build manifest remain historical preparation evidence; they do not advertise current schema/tool
+support. The harness retains only an unwired target-local co-op helper. Current bundle provenance
+and exact inventory references are recorded in [Compatibility](../COMPATIBILITY.md).
+
 ## Gate matrix
 
 | Gate | Result | Evidence or blocker |

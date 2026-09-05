@@ -81,6 +81,11 @@ the coordinator generation. Snapshot checks do not establish continuous two-to-f
 authoritative membership, or multiplayer host compatibility; these require a defined contract and
 runtime integration before any stronger guarantee.
 
+This target-local helper has no co-op wire schema, profile, digest, MCP tool or runtime transport.
+The protocol co-op contract is a blocked proposal outside the admitted Runtime-v3 gameplay bundle;
+exporting `CoopCoordinator` does not advertise protocol support. Co-op digests in dated preparation
+records describe that historical proposal, not the currently admitted consumer artifact inventory.
+
 M10 records build, data, UI, action, and schema dimensions independently in
 [`build-manifest.json`](evidence/runtime-v3-preparation/data/build-manifest.json). The manifest
 is deliberately `quarantined` until exact package hashes, licensed-host traces, independent leak
