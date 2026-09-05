@@ -134,8 +134,7 @@ impl ExoTransport for ExoProcessTransport {
                 .name(String::from("exo-exchange"))
                 .spawn_scoped(scope, || {
                     let runtime = tokio::runtime::Builder::new_current_thread()
-                        .enable_io()
-                        .enable_time()
+                        .enable_all()
                         .build()
                         .map_err(|_| ExoTransportError::Unavailable)?;
                     runtime.block_on(exchange_process(

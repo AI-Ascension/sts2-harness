@@ -1,5 +1,10 @@
 # Harness Architecture
 
+Runtime-v3 recovery retains its operation ledger across at most two initialized replacement MCP
+processes per episode. Replacement permits recovery reads only; it does not retry a mutation.
+An uncertain allocation triggers configured fenced lease cleanup and reports cleanup failure.
+Recovered receipts must match the full dispatched action identity and kind before settlement.
+
 ## Purpose and ownership
 
 The harness is the coordinator, experiment, and artifact owner. Its intended scope includes up to
@@ -66,6 +71,10 @@ repository, not a runtime service or a generic-common implementation crate. See
 | Protocol | harness consumes `sts2-protocol` profiles and owns only harness-specific trajectory/artifact shapes and mappings | protocol implementation internals, duplicate common crate, MCP framing, HTTP or host types |
 
 ## Concurrency and lifecycle
+
+Typed decision replay lives in `decision_replay.rs`, separate from foundation record replay.
+Evaluation aggregation and its report projection live in `evaluation.rs` and
+`evaluation_report.rs`; the public replay and evaluation exports remain stable.
 
 Every accepted operation resolves to success, explicit failure, or explicit cancellation. A returned
 router binding with mismatched run or episode identity is unbound before admission fails; an unbind

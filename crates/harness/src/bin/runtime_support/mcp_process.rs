@@ -24,6 +24,10 @@ pub(super) struct McpProcess {
 }
 
 impl McpProcess {
+    pub(super) const fn is_closed(&self) -> bool {
+        self.closed
+    }
+
     pub(super) fn spawn(config: &RuntimeConfig) -> Result<Self, String> {
         Self::spawn_command(Self::configured_command(config), EXCHANGE_TIMEOUT)
     }

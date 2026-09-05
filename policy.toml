@@ -122,7 +122,3 @@ markdown_max = 700
 
 # Exact repository-relative paths only. Every exception needs a durable reason.
 [exemptions]
-"crates/harness/src/exo/protocol.rs" = "Handwritten Exo transport contract remains one reviewed adapter boundary; split with the next provider API revision."
-"crates/harness/src/exo/sandbox.rs" = "Handwritten fair-play sanitizer remains one reviewed security boundary; split with the next projection contract revision."
-"crates/harness/src/evaluation.rs" = "Handwritten evaluation aggregation remains one evidence unit; split with the next evaluation schema revision."
-"crates/harness/src/replay.rs" = "Handwritten replay projection remains one evidence unit; split with the next replay schema revision."

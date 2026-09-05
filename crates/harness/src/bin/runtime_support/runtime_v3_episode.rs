@@ -22,20 +22,29 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                 false,
             ));
         }
-        let allocation = self
-            .gateway
-            .request(
-                "POST",
-                "/v1/sessions/allocate",
-                &json!({
-                    "instance_id": self.config.instance_id,
-                    "caller_id": self.config.caller_id,
-                    "session_id": self.config.session_id
-                }),
-                BTreeMap::new(),
-            )
-            .map_err(|error| wire::port_error("gateway_allocate_failed", error, false))?;
+        // Allocation may commit even when its response is lost. Own cleanup before sending.
         self.allocated = true;
+        let allocation = self.gateway.request(
+            "POST",
+            "/v1/sessions/allocate",
+            &json!({
+                "instance_id": self.config.instance_id,
+                "caller_id": self.config.caller_id,
+                "session_id": self.config.session_id
+            }),
+            BTreeMap::new(),
+        );
+        let allocation = match allocation {
+            Ok(allocation) => allocation,
+            Err(error) => {
+                let release = self.release_lease_inner();
+                return Err(wire::port_error(
+                    "gateway_allocate_failed",
+                    wire::combine_cleanup(error, Ok(()), release),
+                    false,
+                ));
+            }
+        };
         if let Err(error) = validate_allocation(&allocation, &self.config) {
             let release = self.release_lease_inner();
             return Err(wire::port_error(

@@ -6,7 +6,32 @@ use sts2_harness::{
     WaitSample,
 };
 
-use super::{RuntimeV3Port, parse};
+use super::super::mcp::McpProcess;
+use super::{RuntimeV3Port, parse, wire};
+
+impl RuntimeV3Port {
+    // Reconnect only for recovery reads, never to repeat a dispatch. The episode ledger and
+    // configured lease/session survive replacement of a failed MCP transport.
+    fn reconnect_for_recovery(&mut self) -> Result<(), RecoveryError> {
+        if !self.allocated || self.released {
+            return Err(RecoveryError::PortFailure);
+        }
+        if self.mcp.as_ref().is_some_and(|mcp| !mcp.is_closed()) {
+            return Ok(());
+        }
+        if self.reconnect_attempts >= 2 {
+            return Err(RecoveryError::PortFailure);
+        }
+        self.reconnect_attempts += 1;
+        if let Some(mut previous) = self.mcp.take() {
+            previous.close().map_err(|_| RecoveryError::PortFailure)?;
+        }
+        let mut mcp = McpProcess::spawn(&self.config).map_err(|_| RecoveryError::PortFailure)?;
+        wire::initialize_mcp(&mut mcp).map_err(|_| RecoveryError::PortFailure)?;
+        self.mcp = Some(mcp);
+        Ok(())
+    }
+}
 
 impl BarrierPort for RuntimeV3Port {
     fn wait_for_transition(
@@ -42,6 +67,7 @@ impl BarrierPort for RuntimeV3Port {
 
 impl RecoveryPort for RuntimeV3Port {
     fn reobserve(&mut self) -> Result<EpisodeObservation, RecoveryError> {
+        self.reconnect_for_recovery()?;
         let value = self
             .call_tool("sts2.reobserve", self.context(self.generation))
             .map_err(|_| RecoveryError::PortFailure)?;
@@ -56,6 +82,7 @@ impl RecoveryPort for RuntimeV3Port {
             .get(operation_id)
             .cloned()
             .ok_or(RecoveryError::InvalidOperation)?;
+        self.reconnect_for_recovery()?;
         let value = self
             .call_tool(
                 "sts2.recover",

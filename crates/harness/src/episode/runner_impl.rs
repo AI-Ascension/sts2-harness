@@ -102,6 +102,7 @@ impl EpisodeRunner {
                                 &mut machine,
                                 &observation,
                                 &operation_id,
+                                &action,
                             )?;
                             recoveries += 1;
                             if let Some(after) = after {
@@ -131,6 +132,7 @@ impl EpisodeRunner {
                                         &mut machine,
                                         &observation,
                                         &operation_id,
+                                        &action,
                                     )?;
                                     recoveries += 1;
                                     if let Some(after) = after {
@@ -159,6 +161,7 @@ impl EpisodeRunner {
                                 &mut machine,
                                 &observation,
                                 &operation_id,
+                                &action,
                             )?;
                             recoveries += 1;
                             if let Some(after) = after {

@@ -23,6 +23,10 @@ mod ledger;
 mod recovery;
 use ledger::OperationRecord;
 
+#[cfg(test)]
+#[path = "runtime_v3_lifecycle_test.rs"]
+mod lifecycle_tests;
+
 pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let settings = RuntimeV3Settings::from_environment()?;
     let mut port = RuntimeV3Port::new(config)?;
@@ -62,6 +66,7 @@ pub(super) struct RuntimeV3Port {
     current_actions: Option<EpisodeLegalActionSet>,
     payloads: BTreeMap<String, Value>,
     operations: BTreeMap<String, OperationRecord>,
+    reconnect_attempts: u8,
 }
 
 impl RuntimeV3Port {
@@ -79,6 +84,7 @@ impl RuntimeV3Port {
             current_actions: None,
             payloads: BTreeMap::new(),
             operations: BTreeMap::new(),
+            reconnect_attempts: 0,
         })
     }
 

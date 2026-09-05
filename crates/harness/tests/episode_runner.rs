@@ -28,6 +28,7 @@ struct FakeRuntime {
     index: usize,
     pending: Option<PendingTransition>,
     fail_first_dispatch: bool,
+    receipt_action: Option<EpisodeLegalAction>,
     dispatches: usize,
     reconciles: usize,
     launched: bool,
@@ -43,6 +44,7 @@ impl FakeRuntime {
             index: 0,
             pending: None,
             fail_first_dispatch: false,
+            receipt_action: None,
             dispatches: 0,
             reconciles: 0,
             launched: false,
@@ -120,7 +122,9 @@ impl EpisodeRuntimePort for FakeRuntime {
         }
         Ok(TransitionReceipt::new(
             identity.operation_id.clone(),
-            action.clone(),
+            self.receipt_action
+                .clone()
+                .unwrap_or_else(|| action.clone()),
             DispatchStatus::Accepted,
             None,
             None,
@@ -163,7 +167,7 @@ impl RecoveryPort for FakeRuntime {
         self.reconciles += 1;
         Ok(TransitionReceipt::new(
             pending.operation_id,
-            pending.action,
+            self.receipt_action.clone().unwrap_or(pending.action),
             DispatchStatus::Settled,
             Some(pending.after),
             Some(String::from("host.semantic.reconciled")),
@@ -386,4 +390,41 @@ fn uncertain_dispatch_is_reconciled_without_a_strategic_retry() {
     assert_eq!(runtime.dispatches, 8);
     assert_eq!(runtime.reconciles, 1);
     assert_eq!(report.recoveries(), 1);
+}
+
+#[test]
+fn uncertain_dispatch_rejects_reconciliation_for_another_action() {
+    for (action_id, kind) in [
+        ("other-action", ActionKind::StartRun),
+        ("setup-action", ActionKind::EndTurn),
+    ] {
+        let mut runtime = FakeRuntime::new(complete_states());
+        runtime.fail_first_dispatch = true;
+        runtime.receipt_action =
+            Some(EpisodeLegalAction::new(action_id, kind).expect("valid fake action"));
+        assert_conflicting_action_stops(&mut runtime);
+    }
+}
+
+#[test]
+fn accepted_dispatch_rejects_same_id_with_another_action_kind() {
+    let mut runtime = FakeRuntime::new(complete_states());
+    runtime.receipt_action = Some(
+        EpisodeLegalAction::new("setup-action", ActionKind::EndTurn).expect("valid fake action"),
+    );
+    assert_conflicting_action_stops(&mut runtime);
+}
+
+fn assert_conflicting_action_stops(runtime: &mut FakeRuntime) {
+    let mut model = FakeModel::default();
+    let error = runner()
+        .run(runtime, &mut model)
+        .expect_err("a different action must not settle the admitted operation");
+    assert!(matches!(error, EpisodeRunnerError::ConflictingOperation));
+    assert_eq!(runtime.dispatches, 1);
+    assert_eq!(runtime.reconciles, 1);
+    assert_eq!(model.calls, 1);
+    assert!(runtime.released);
+    assert!(runtime.mcp_closed);
+    assert!(runtime.gateway_closed);
 }

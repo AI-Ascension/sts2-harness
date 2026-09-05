@@ -42,6 +42,11 @@ claim a released harness version or runtime compatibility.
   mismatched responses without printing downstream payloads or inheriting unrelated credentials.
 - Validate exact Runtime-v2 response contracts and retain only numeric legacy gameplay trace fields.
 
+- Require recovered transitions to match the complete dispatched action, and reconnect failed MCP
+  transports only for bounded recovery reads while retaining operation identity. Attempt fenced
+  lease cleanup when an allocation response is lost or invalid.
+- Split Exo request validation, fair-play schema rules, decision replay, and evaluation report
+  projection into cohesive modules within ordinary policy budgets; remove handwritten exemptions.
 
 - The bounded Runtime-v3 episode state machine, semantic action ledger, transition barrier and
   recovery ports, and strict Exo fair-play decision adapter.

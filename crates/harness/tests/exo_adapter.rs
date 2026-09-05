@@ -42,6 +42,33 @@ impl ExoTransport for FakeTransport {
     }
 }
 
+#[test]
+fn raw_prompt_hidden_fields_are_rejected_before_transport() {
+    for parent in ["/observation", "/observation/player", "/observation/state"] {
+        for key in [
+            "raw_memory",
+            "future_rng",
+            "unrevealed_reward",
+            "host_object",
+            "debug_text",
+        ] {
+            let original = request();
+            let mut prompt: serde_json::Value =
+                serde_json::from_str(original.prompt().as_str()).expect("valid fixture");
+            prompt.pointer_mut(parent).expect("fixture object")[key] = json!("forbidden");
+            let injected = ModelRequest::new(
+                original.execution_id(),
+                original.correlation().clone(),
+                Prompt::new(prompt.to_string()).expect("bounded fixture"),
+                original.idempotency_key().clone(),
+            );
+            let mut provider = provider(Ok(br#"{"decision":"wait","rationale":"ok"}"#.to_vec()));
+            assert!(provider.execute(&injected).is_err(), "{parent}/{key}");
+            assert_eq!(provider.into_transport().calls, 0, "{parent}/{key}");
+        }
+    }
+}
+
 fn request() -> ModelRequest {
     let execution_id = ModelExecutionId::new(11).expect("execution ID is nonzero");
     let correlation = Correlation::for_episode(

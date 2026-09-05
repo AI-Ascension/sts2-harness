@@ -32,6 +32,7 @@ impl EpisodeRunner {
         machine: &mut EpisodeMachine,
         before: &EpisodeObservation,
         operation_id: &str,
+        action: &EpisodeLegalAction,
     ) -> Result<Option<EpisodeObservation>, EpisodeRunnerError> {
         let result = self
             .config
@@ -46,7 +47,7 @@ impl EpisodeRunner {
         let RecoveryResult::Receipt(receipt) = result else {
             return Err(EpisodeRunnerError::UnexpectedRecoveryResult);
         };
-        if receipt.operation_id() != operation_id {
+        if receipt.operation_id() != operation_id || receipt.action() != action {
             return Err(EpisodeRunnerError::ConflictingOperation);
         }
         match receipt.status() {
@@ -78,9 +79,7 @@ impl EpisodeRunner {
         action: &EpisodeLegalAction,
         receipt: &TransitionReceipt,
     ) -> Result<EpisodeObservation, EpisodeRunnerError> {
-        if receipt.operation_id() != operation_id
-            || receipt.action().action_id() != action.action_id()
-        {
+        if receipt.operation_id() != operation_id || receipt.action() != action {
             return Err(EpisodeRunnerError::ConflictingOperation);
         }
         let sample = self
