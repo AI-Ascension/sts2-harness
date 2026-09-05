@@ -11,6 +11,13 @@ const LIMIT: usize = 128 * 1024;
 mod response;
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--describe") {
+        println!(
+            "{}",
+            json!({"kind":"ollama","provider":"ollama","model":"gemma4:31b-cloud"})
+        );
+        return;
+    }
     if run().is_err() {
         eprintln!("Ollama bridge failed validation or transport");
         std::process::exit(2);

@@ -35,29 +35,32 @@ impl RuntimeV3Settings {
 }
 
 fn verify_revision(revision: &str) -> Result<(), String> {
-    let local_bridge = optional("STS2_PROVIDER_KIND")?.as_deref() == Some("ollama");
+    let local_bridge = matches!(
+        optional("STS2_PROVIDER_KIND")?.as_deref(),
+        Some("ollama" | "openai-astra")
+    );
     if local_bridge
         && (revision.len() != 64 || optional("STS2_COMBAT_DEMO")?.as_deref() != Some("true"))
     {
         return Err(String::from(
-            "Ollama demo requires the bridge SHA256 and explicit combat demo mode",
+            "Local provider demo requires the bridge SHA256 and explicit combat demo mode",
         ));
     }
     if local_bridge {
         use sha2::{Digest, Sha256};
         use std::io::Read;
         let file = std::fs::File::open(required("STS2_EXO_BRIDGE_BINARY")?)
-            .map_err(|_| String::from("cannot open Ollama bridge for digest verification"))?;
+            .map_err(|_| String::from("cannot open provider bridge for digest verification"))?;
         let mut bytes = Vec::new();
         file.take(128 * 1024 * 1024 + 1)
             .read_to_end(&mut bytes)
-            .map_err(|_| String::from("cannot hash Ollama bridge"))?;
+            .map_err(|_| String::from("cannot hash provider bridge"))?;
         if bytes.len() > 128 * 1024 * 1024
             || format!("{:x}", Sha256::digest(&bytes)) != revision
             || !string_list("STS2_EXO_BRIDGE_ARGS_JSON")?.is_empty()
         {
             return Err(String::from(
-                "Ollama bridge digest or arguments do not match",
+                "Provider bridge digest or arguments do not match",
             ));
         }
     }
