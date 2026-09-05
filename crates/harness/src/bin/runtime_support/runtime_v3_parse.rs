@@ -111,25 +111,7 @@ fn root<'a>(
             "Runtime-v3 MCP content has an invalid root shape",
         ));
     }
-    if object.get("protocol_version").and_then(Value::as_str) != Some(PROTOCOL_VERSION)
-        || object.get("schema_digest").and_then(Value::as_str) != Some(SCHEMA_DIGEST)
-    {
-        return Err(String::from(
-            "Runtime-v3 MCP content has unsupported metadata",
-        ));
-    }
-    let Some(provenance) = object.get("provenance").and_then(Value::as_object) else {
-        return Err(String::from("Runtime-v3 MCP content omitted provenance"));
-    };
-    if provenance.len() != 3
-        || provenance.get("artifact").and_then(Value::as_str)
-            != Some("sts2-protocol/runtime-v3-gameplay")
-        || provenance.get("source").and_then(Value::as_str)
-            != Some("schemas/runtime-v3-gameplay.schema.json")
-        || provenance.get("generator").and_then(Value::as_str) != Some("hand-authored")
-    {
-        return Err(String::from("Runtime-v3 MCP provenance is unsupported"));
-    }
+    validate_metadata(object)?;
     for (field, expected) in [
         ("instance_id", config.instance_id.as_str()),
         ("session_id", config.session_id.as_str()),
@@ -160,6 +142,29 @@ fn root<'a>(
         return Err(String::from("Runtime-v3 state identity is invalid"));
     }
     Ok(object)
+}
+
+fn validate_metadata(object: &Map<String, Value>) -> Result<(), String> {
+    if object.get("protocol_version").and_then(Value::as_str) != Some(PROTOCOL_VERSION)
+        || object.get("schema_digest").and_then(Value::as_str) != Some(SCHEMA_DIGEST)
+    {
+        return Err(String::from(
+            "Runtime-v3 MCP content has unsupported metadata",
+        ));
+    }
+    let Some(provenance) = object.get("provenance").and_then(Value::as_object) else {
+        return Err(String::from("Runtime-v3 MCP content omitted provenance"));
+    };
+    if provenance.len() != 3
+        || provenance.get("artifact").and_then(Value::as_str)
+            != Some("sts2-protocol/runtime-v3-gameplay")
+        || provenance.get("source").and_then(Value::as_str)
+            != Some("schemas/runtime-v3-gameplay.schema.json")
+        || provenance.get("generator").and_then(Value::as_str) != Some("hand-authored")
+    {
+        return Err(String::from("Runtime-v3 MCP provenance is unsupported"));
+    }
+    Ok(())
 }
 
 fn observation_from_root(root: &Map<String, Value>) -> Result<ParsedObservation, String> {

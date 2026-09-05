@@ -27,6 +27,19 @@ fn schema_gate_rejects_nested_contract_violations() -> Result<(), Box<dyn std::e
     let schema: Value = serde_json::from_str(SCHEMA)?;
     let validator = jsonschema::draft202012::new(&schema)?;
     let canonical: Value = serde_json::from_str(MANIFEST)?;
+    let is_valid = |candidate: &Value| validator.is_valid(candidate);
+    assert_invalid_values(&canonical, &is_valid)?;
+    assert_rejects_extra_fields(&canonical, &is_valid)?;
+    assert_rejects_missing_fields(&canonical, &is_valid)
+}
+
+fn assert_invalid_values<F>(
+    canonical: &Value,
+    is_valid: &F,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    F: Fn(&Value) -> bool,
+{
     for (pointer, invalid) in [
         ("/manifest_version", json!("unknown")),
         ("/evidence_status", json!("passed")),
@@ -54,11 +67,18 @@ fn schema_gate_rejects_nested_contract_violations() -> Result<(), Box<dyn std::e
         *candidate
             .pointer_mut(pointer)
             .ok_or("invalid test pointer")? = invalid;
-        assert!(
-            !validator.is_valid(&candidate),
-            "accepted invalid {pointer}"
-        );
+        assert!(!is_valid(&candidate), "accepted invalid {pointer}");
     }
+    Ok(())
+}
+
+fn assert_rejects_extra_fields<F>(
+    canonical: &Value,
+    is_valid: &F,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    F: Fn(&Value) -> bool,
+{
     for pointer in [
         "",
         "/base",
@@ -75,11 +95,18 @@ fn schema_gate_rejects_nested_contract_violations() -> Result<(), Box<dyn std::e
             .and_then(Value::as_object_mut)
             .ok_or("invalid object pointer")?
             .insert("unexpected".to_owned(), json!(true));
-        assert!(
-            !validator.is_valid(&extra),
-            "accepted extra field at {pointer}"
-        );
+        assert!(!is_valid(&extra), "accepted extra field at {pointer}");
     }
+    Ok(())
+}
+
+fn assert_rejects_missing_fields<F>(
+    canonical: &Value,
+    is_valid: &F,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    F: Fn(&Value) -> bool,
+{
     for (pointer, field) in [
         ("", "base"),
         ("/base", "revision"),
@@ -93,10 +120,7 @@ fn schema_gate_rejects_nested_contract_violations() -> Result<(), Box<dyn std::e
             .and_then(Value::as_object_mut)
             .ok_or("invalid object pointer")?
             .remove(field);
-        assert!(
-            !validator.is_valid(&missing),
-            "accepted missing {pointer}/{field}"
-        );
+        assert!(!is_valid(&missing), "accepted missing {pointer}/{field}");
     }
     Ok(())
 }

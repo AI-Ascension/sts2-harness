@@ -8,7 +8,7 @@ use sts2_harness::{
     EpisodeRuntimePort, TransitionReceipt,
 };
 
-use super::super::mcp::validate_allocation;
+use super::super::mcp::validate_or_release_allocation;
 use super::{OperationRecord, RuntimeV3Port, parse, wire};
 
 const MAX_OPERATIONS: usize = 1_024;
@@ -32,27 +32,29 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                 "caller_id": self.config.caller_id,
                 "session_id": self.config.session_id
             }),
-            BTreeMap::new(),
+            BTreeMap::from([(
+                String::from("x-mcp-session-id"),
+                self.config.mcp_session_id.clone(),
+            )]),
         );
-        let allocation = match allocation {
-            Ok(allocation) => allocation,
-            Err(error) => {
-                let release = self.release_lease_inner();
-                return Err(wire::port_error(
-                    "gateway_allocate_failed",
-                    wire::combine_cleanup(error, Ok(()), release),
-                    false,
-                ));
-            }
+        let code = if allocation.is_err() {
+            "gateway_allocate_failed"
+        } else {
+            "gateway_allocate_invalid"
         };
-        if let Err(error) = validate_allocation(&allocation, &self.config) {
-            let release = self.release_lease_inner();
-            return Err(wire::port_error(
-                "gateway_allocate_invalid",
-                wire::combine_cleanup(error, Ok(()), release),
-                false,
-            ));
-        }
+        validate_or_release_allocation(allocation, &self.config, |headers| {
+            let response = self.gateway.request(
+                "POST",
+                &format!("/v1/instances/{}/release", self.config.instance_id),
+                &json!({}),
+                headers,
+            );
+            self.released = response
+                .as_ref()
+                .is_ok_and(|value| value["status"] == "released");
+            response
+        })
+        .map_err(|error| wire::port_error(code, error, false))?;
         if let Err(error) = self.launch_mcp() {
             return Err(wire::port_error("runtime_launch_failed", error, false));
         }
@@ -95,63 +97,9 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         identity: &ActionIdentity,
         action: &EpisodeLegalAction,
     ) -> Result<TransitionReceipt, sts2_harness::PortError> {
-        if self.current_state.as_deref() != Some(identity.state_id.as_str())
-            || self.generation != identity.generation
-            || self
-                .current_actions
-                .as_ref()
-                .and_then(|set| set.find(action.action_id()))
-                != Some(action)
-        {
-            return Err(wire::port_error(
-                "action_not_current",
-                "dispatch action is not bound to the current host catalog",
-                false,
-            ));
-        }
-        let payload = self
-            .payloads
-            .get(action.action_id())
-            .cloned()
-            .ok_or_else(|| {
-                wire::port_error(
-                    "action_payload_missing",
-                    "current legal action payload is unavailable",
-                    false,
-                )
-            })?;
-        if payload.get("kind").and_then(Value::as_str)
-            != Some(wire::action_kind_name(action.kind()))
-        {
-            return Err(wire::port_error(
-                "action_payload_mismatch",
-                "legal action kind changed",
-                false,
-            ));
-        }
-        if let Some(existing) = self.operations.get(&identity.operation_id)
-            && (existing.action != *action
-                || existing.generation != identity.generation
-                || existing.state_id != identity.state_id)
-        {
-            return Err(wire::port_error(
-                "operation_conflict",
-                "operation identity conflicts",
-                false,
-            ));
-        }
-        if self.operations.len() >= MAX_OPERATIONS
-            && !self.operations.contains_key(&identity.operation_id)
-        {
-            return Err(wire::port_error(
-                "operation_capacity",
-                "operation ledger is full",
-                false,
-            ));
-        }
-        self.operations
-            .entry(identity.operation_id.clone())
-            .or_insert_with(|| OperationRecord::new(identity, action));
+        self.validate_current_action(identity, action)?;
+        let payload = self.current_payload(action)?;
+        self.retain_operation(identity, action)?;
         let value = self
             .call_tool(
                 "sts2.dispatch_action",
@@ -179,6 +127,88 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         self.install_response(&value, "dispatch_action_response")
             .map_err(|error| wire::port_error("dispatch_observation_invalid", error, false))?;
         Ok(receipt)
+    }
+}
+
+impl RuntimeV3Port {
+    fn validate_current_action(
+        &self,
+        identity: &ActionIdentity,
+        action: &EpisodeLegalAction,
+    ) -> Result<(), sts2_harness::PortError> {
+        if self.current_state.as_deref() != Some(identity.state_id.as_str())
+            || self.generation != identity.generation
+            || self
+                .current_actions
+                .as_ref()
+                .and_then(|set| set.find(action.action_id()))
+                != Some(action)
+        {
+            return Err(wire::port_error(
+                "action_not_current",
+                "dispatch action is not bound to the current host catalog",
+                false,
+            ));
+        }
+        Ok(())
+    }
+
+    fn current_payload(
+        &self,
+        action: &EpisodeLegalAction,
+    ) -> Result<Value, sts2_harness::PortError> {
+        let payload = self
+            .payloads
+            .get(action.action_id())
+            .cloned()
+            .ok_or_else(|| {
+                wire::port_error(
+                    "action_payload_missing",
+                    "current legal action payload is unavailable",
+                    false,
+                )
+            })?;
+        if payload.get("kind").and_then(Value::as_str)
+            != Some(wire::action_kind_name(action.kind()))
+        {
+            return Err(wire::port_error(
+                "action_payload_mismatch",
+                "legal action kind changed",
+                false,
+            ));
+        }
+        Ok(payload)
+    }
+
+    fn retain_operation(
+        &mut self,
+        identity: &ActionIdentity,
+        action: &EpisodeLegalAction,
+    ) -> Result<(), sts2_harness::PortError> {
+        if let Some(existing) = self.operations.get(&identity.operation_id)
+            && (existing.action != *action
+                || existing.generation != identity.generation
+                || existing.state_id != identity.state_id)
+        {
+            return Err(wire::port_error(
+                "operation_conflict",
+                "operation identity conflicts",
+                false,
+            ));
+        }
+        if self.operations.len() >= MAX_OPERATIONS
+            && !self.operations.contains_key(&identity.operation_id)
+        {
+            return Err(wire::port_error(
+                "operation_capacity",
+                "operation ledger is full",
+                false,
+            ));
+        }
+        self.operations
+            .entry(identity.operation_id.clone())
+            .or_insert_with(|| OperationRecord::new(identity, action));
+        Ok(())
     }
 }
 

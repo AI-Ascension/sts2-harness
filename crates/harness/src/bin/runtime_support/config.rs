@@ -31,25 +31,9 @@ impl RuntimeConfig {
             ));
         }
         let session_id = env_or_default("STS2_SESSION_ID", "session-1")?;
-        let wait_for_combat_seconds = env_or_default("STS2_RUNTIME_WAIT_FOR_COMBAT_SECONDS", "0")?
-            .parse::<u64>()
-            .map_err(|_| String::from("STS2_RUNTIME_WAIT_FOR_COMBAT_SECONDS must be an integer"))?;
-        if wait_for_combat_seconds > 300 {
-            return Err(String::from(
-                "STS2_RUNTIME_WAIT_FOR_COMBAT_SECONDS must be between 0 and 300",
-            ));
-        }
+        let wait_for_combat_seconds = bounded_seconds("STS2_RUNTIME_WAIT_FOR_COMBAT_SECONDS", "0")?;
         let settlement_timeout_seconds =
-            env_or_default("STS2_RUNTIME_SETTLEMENT_TIMEOUT_SECONDS", "30")?
-                .parse::<u64>()
-                .map_err(|_| {
-                    String::from("STS2_RUNTIME_SETTLEMENT_TIMEOUT_SECONDS must be an integer")
-                })?;
-        if settlement_timeout_seconds > 300 {
-            return Err(String::from(
-                "STS2_RUNTIME_SETTLEMENT_TIMEOUT_SECONDS must be between 0 and 300",
-            ));
-        }
+            bounded_seconds("STS2_RUNTIME_SETTLEMENT_TIMEOUT_SECONDS", "30")?;
         let config = Self {
             gateway_address: env_or_default("STS2_GATEWAY_ADDR", "127.0.0.1:15525")?,
             gateway_token: required("STS2_GATEWAY_TOKEN")?,
@@ -128,6 +112,16 @@ fn required(name: &str) -> Result<String, String> {
     std::env::var(name).map_err(|_| format!("{name} is required"))
 }
 
+fn bounded_seconds(name: &str, default: &str) -> Result<u64, String> {
+    let seconds = env_or_default(name, default)?
+        .parse::<u64>()
+        .map_err(|_| format!("{name} must be an integer"))?;
+    if seconds > 300 {
+        return Err(format!("{name} must be between 0 and 300"));
+    }
+    Ok(seconds)
+}
+
 fn env_or_default(name: &str, default: &str) -> Result<String, String> {
     match std::env::var(name) {
         Ok(value) if !value.is_empty() => Ok(value),
@@ -163,12 +157,12 @@ mod tests {
             lease_id: String::from("lease-1"),
             lease_epoch: 1,
             mcp_session_id: String::from("mcp-session-independent"),
-            run_id: String::from("run-1"),
-            episode_id: String::from("episode-1"),
-            trajectory_id: String::from("trajectory-1"),
-            artifact_id: String::from("artifact-1"),
+            run_id: "run-1".into(),
+            episode_id: "episode-1".into(),
+            trajectory_id: "trajectory-1".into(),
+            artifact_id: "artifact-1".into(),
             wait_for_combat_seconds: 0,
-            settlement_timeout_seconds: 0,
+            settlement_timeout_seconds: 30,
         };
         assert!(config.validate().is_ok());
         config.mcp_session_id = String::from("unsafe session");
