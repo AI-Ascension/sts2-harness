@@ -1,5 +1,18 @@
 # Runtime-v3 live combat demonstration
 
+Start with `sts2-astra-bridge` for OpenAI `gpt-6-astra`. It uses an existing Codex ChatGPT
+login (`codex login status`), not Ollama. Requirements: Codex CLI with this model available,
+GNU `timeout`, and explicit `HOME`/`PATH` inheritance through the provider process boundary.
+Set `STS2_PROVIDER_KIND=openai-astra` and pin the bridge executable SHA-256 as below.
+The bridge uses ephemeral, read-only Codex calls with shell, apps, browser, and delegation
+disabled, a strict legal-action JSON schema, and a 90-second execution deadline plus a
+5-second termination grace. Temporary schema/output files are removed after each decision.
+No user Codex configuration or repository instructions are loaded into the game decision.
+
+Both bridges support `--describe` with provider/model identity. The mod-owned session launcher
+uses that identity for its manifest and environment instead of assuming Ollama. Gemini and
+Claude adapters are future work; adding them is outside the current Astra change.
+
 `STS2_COMBAT_DEMO=true` selects a bounded combat loop through the normal MCP/gateway port.
 The mod owner launches an isolated host and bootstraps the combat. The harness never accesses
 the host process or saves. Every selected action binds to the fresh host catalog; accepted or

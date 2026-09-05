@@ -7,6 +7,9 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Add OpenAI Astra combat decisions through authenticated, ephemeral Codex calls. Provider
+  bridges describe their identity so live-run manifests distinguish OpenAI and Ollama.
+
 - Preserve the host's visible seed by default for repeatable calls and replay. Explicit
   `STS2_EXO_FORWARD_VISIBLE_SEED=false` still supports seed-blind experiments.
 - Add an opt-in real combat demo with a bounded Ollama provider bridge and host settlement
