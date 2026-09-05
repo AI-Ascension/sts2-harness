@@ -143,6 +143,9 @@ where
         let request = RouteRequest::new(run_id, episode_id, preferred_instance);
         let binding = self.router.bind(&request).map_err(HarnessError::Routing)?;
         if binding.run_id() != run_id || binding.episode_id() != episode_id {
+            self.router
+                .unbind(&binding)
+                .map_err(HarnessError::Routing)?;
             return Err(HarnessError::Invalid(
                 "router returned a binding for another run or episode".to_owned(),
             ));

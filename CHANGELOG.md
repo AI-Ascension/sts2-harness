@@ -7,6 +7,9 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Release router bindings rejected for mismatched run or episode identity and surface cleanup
+  failures through the routing error boundary.
+
 ### Added
 
 - Complete the frozen Runtime-v1 consumer checksum inventory and golden messages; check both

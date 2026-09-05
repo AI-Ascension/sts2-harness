@@ -75,6 +75,9 @@ effect witness, and cleanup record.
 
 ## Runtime safety correction
 
+Foundation episode admission now releases mismatched router bindings and exposes cleanup failures.
+This safety correction changes no serialized contract or frozen artifact bytes.
+
 The existing Runtime-v1 executable accepts only numeric loopback gateway socket addresses, not DNS
 names or remote plaintext bearer endpoints. It bounds complete HTTP/MCP exchanges to five seconds,
 validates outer RPC correlation and the existing projected tool contract, and minimizes child
