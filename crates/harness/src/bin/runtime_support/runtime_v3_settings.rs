@@ -34,10 +34,7 @@ impl RuntimeV3Settings {
     }
 }
 
-fn exo_from_environment() -> Result<ExoConfig, String> {
-    let revision = required("STS2_EXO_REVISION")?;
-    // Preserve the visible replay seed unless a seed-blind experiment is explicitly requested.
-    let forward_visible_seed = flag("STS2_EXO_FORWARD_VISIBLE_SEED")?;
+fn verify_revision(revision: &str) -> Result<(), String> {
     let local_bridge = optional("STS2_PROVIDER_KIND")?.as_deref() == Some("ollama");
     if local_bridge
         && (revision.len() != 64 || optional("STS2_COMBAT_DEMO")?.as_deref() != Some("true"))
@@ -69,6 +66,13 @@ fn exo_from_environment() -> Result<ExoConfig, String> {
             "STS2_EXO_REVISION is not the reviewed Exo revision",
         ));
     }
+    Ok(())
+}
+
+fn exo_from_environment() -> Result<ExoConfig, String> {
+    let revision = required("STS2_EXO_REVISION")?;
+    verify_revision(&revision)?;
+    let forward_visible_seed = flag("STS2_EXO_FORWARD_VISIBLE_SEED")?;
     ExoConfig::new(
         revision,
         number(

@@ -22,18 +22,19 @@ The harness does not inherit source or behavioral compatibility from a reference
 
 ## Current evidence baseline
 
-This target contains a non-empty preparation package and one bounded authorized live-host integration trace.
-No live provider/model execution, deployed replay service, experimental score/dataset result, or
-released package is established by this evidence. Offline replay/evaluation library tests are a
-separate layer. Runtime compatibility claims remain limited to the exact row recorded below.
+This target includes bounded live-host integration and an opt-in runtime-v3 combat demo.
+On 2026-09-05 the Rust Ollama bridge completed a real combat through MCP/gateway with
+18 settled actions, followed by fresh-process action replay. This does not establish a
+deployed replay service, full campaign, experimental score/dataset result, or released package.
+See `experiments/live-combat/README.md` for the exact scope.
 
 | Subject | Current state | Evidence |
 |---|---|---|
 | Harness foundation | Pure ports, coordinator seams, and deterministic fakes | Source-derived; offline tests pass |
 | MCP/gateway integration | Real component trace against synthetic downstream and exact host | Confirmed for the bounded runtime-v1 path; broader host compatibility unverified |
-| Provider/model execution | Not executed | Unverified; no credentials or provider calls |
+| Provider/model execution | Ollama gemma4:31b-cloud via structured provider port | Confirmed for the isolated single-combat demo |
 | Direct game access | Outside the harness boundary; requests use MCP/gateway | No direct host authority; bounded indirect runtime-v1 probe only |
-| Replay/artifact lineage | Offline record/replay and metadata seams | Source-derived; deterministic fakes only |
+| Replay/artifact lineage | Offline seams and fresh-process combat action replay | Confirmed visible-state comparison for the demo; broader replay unverified |
 | Runtime-v2 coordinator | Four-lane bounded pure scheduler with explicit lineage, fairness, overload, cancellation, and shutdown seams | Confirmed by offline component tests; live supervisor/profile/host isolation unverified |
 | Evaluation | Library aggregation over supplied samples; not wired into the Runtime-v3 runner | Synthetic tests, not game parity or experimental performance evidence |
 

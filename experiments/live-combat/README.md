@@ -18,6 +18,13 @@ for an intentional seed-blind experiment. The bridge accepts one current legal a
 a short rationale; it has no heuristic fallback. Store trajectories only in an operator-owned
 external directory because they contain visible game data and model rationales.
 
-Confirmed live on 2026-09-05: the original local bridge experiment selected 14 real actions,
-all settled with host witnesses, and reached Reward. The checked-in Rust bridge and repeat/
-replay verification are in progress. A combat result does not prove a full seeded campaign.
+Set `STS2_REPLAY_TRAJECTORY` to an external completed model trajectory for action replay.
+This mode makes no provider calls, checks each visible pre-action observation including seed,
+resolves recorded semantic choices against the fresh host catalog, and verifies terminal state.
+Generation/state IDs are local to each process and are normalized for comparison. A changed
+seed or other visible divergence fails before dispatch. Replay events are labeled separately.
+
+Confirmed live on 2026-09-05: the Rust bridge selected 18 real actions, all settled with host
+witnesses, and reached Reward. Two fresh-process replays repeated those choices, including
+a fullscreen run that checked terminal state. A different seed failed before the first action.
+A combat result does not prove a full seeded campaign.

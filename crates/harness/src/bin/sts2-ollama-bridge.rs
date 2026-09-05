@@ -7,6 +7,9 @@ use std::time::{Duration, Instant};
 
 const LIMIT: usize = 128 * 1024;
 
+#[path = "runtime_support/ollama_response.rs"]
+mod response;
+
 fn main() {
     if run().is_err() {
         eprintln!("Ollama bridge failed validation or transport");
@@ -96,32 +99,7 @@ fn exchange(body: &[u8]) -> Result<Value, Box<dyn std::error::Error>> {
             return Err("provider response exceeds bound".into());
         }
     }
-    let split = response
-        .windows(4)
-        .position(|p| p == b"\r\n\r\n")
-        .ok_or("missing headers")?;
-    if split > 8192 {
-        return Err("oversized headers".into());
-    }
-    let headers = std::str::from_utf8(&response[..split])?;
-    if !headers.starts_with("HTTP/1.1 200 ") {
-        return Err("provider HTTP failure".into());
-    }
-    let length = headers
-        .lines()
-        .skip(1)
-        .find_map(|line| {
-            let (name, value) = line.split_once(':')?;
-            name.eq_ignore_ascii_case("content-length")
-                .then_some(value.trim())
-        })
-        .ok_or("content length required")?
-        .parse::<usize>()?;
-    let payload = &response[split + 4..];
-    if length > LIMIT || payload.len() != length {
-        return Err("invalid response length".into());
-    }
-    Ok(serde_json::from_slice(payload)?)
+    response::parse(&response)
 }
 
 #[cfg(test)]

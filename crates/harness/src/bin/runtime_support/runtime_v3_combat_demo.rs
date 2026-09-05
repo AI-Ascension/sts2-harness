@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::RuntimeV3Port;
+#[path = "runtime_v3_combat_replay.rs"]
+mod replay;
 use serde_json::json;
 use std::time::{Duration, Instant};
 use sts2_harness::{
@@ -30,10 +32,12 @@ fn run_inner<S: DecisionSource>(
     let deadline = Instant::now() + Duration::from_secs(900);
     let mut steps = 0_u32;
     let mut saw_combat = false;
+    let replay = replay::Replay::load()?;
     while Instant::now() < deadline && steps < config.max_steps() {
         let before = port.observe().map_err(|error| error.to_string())?;
         saw_combat |= before.stage() == EpisodeStage::Combat;
         if saw_combat && matches!(before.stage(), EpisodeStage::Reward | EpisodeStage::Defeat) {
+            replay.finish(steps, &before)?;
             println!(
                 "{}",
                 json!({"event":"combat_demo_complete", "steps":steps,
@@ -45,57 +49,73 @@ fn run_inner<S: DecisionSource>(
             std::thread::sleep(Duration::from_millis(250));
             continue;
         }
-        let actions = port
-            .legal_actions(before.state_id(), before.generation())
-            .map_err(|error| error.to_string())?;
-        let input = DecisionInput::new(
-            ModelExecutionId::new(u64::from(steps) + 1)
-                .ok_or_else(|| String::from("model execution identity exhausted"))?,
-            before.clone(),
-            actions.clone(),
-            config.objective(),
-            config.hard_constraints().to_vec(),
-        );
-        let decision = source.decide(&input).map_err(|error| error.to_string())?;
-        let current = port.observe().map_err(|error| error.to_string())?;
-        if current.generation() != before.generation() || current.state_id() != before.state_id() {
-            println!("{}", json!({"event":"decision_stale_before_dispatch"}));
-            continue;
+        if execute_step(port, source, config, &replay, steps, &before)? {
+            steps += 1;
         }
-        let Decision::Action {
-            action_id,
-            rationale,
-            ..
-        } = decision
-        else {
-            return Err(String::from(
-                "combat demo requires a model-selected legal action",
-            ));
-        };
-        let action = actions
-            .actions()
-            .iter()
-            .find(|a| a.action_id() == action_id)
-            .ok_or_else(|| String::from("model selected an action outside the host catalog"))?;
-        let identity = ActionIdentity::new(
-            format!("demo-op-{}", steps + 1),
-            before.state_id(),
-            before.generation(),
-            &action_id,
-        )
-        .map_err(|error| error.to_string())?;
-        println!(
-            "{}",
-            json!({"event":"model_decision", "operation_id":identity.operation_id,
-            "action_id":action_id, "rationale":rationale, "observation":before.fair_play().as_value()})
-        );
-        let receipt = port
-            .dispatch_action(&identity, action)
-            .map_err(|error| error.to_string())?;
-        settle(port, &before, receipt)?;
-        steps += 1;
     }
     Err(String::from("combat demo reached its time or action bound"))
+}
+
+fn execute_step<S: DecisionSource>(
+    port: &mut RuntimeV3Port,
+    source: &mut S,
+    config: &EpisodeRunnerConfig,
+    replay: &replay::Replay,
+    steps: u32,
+    before: &EpisodeObservation,
+) -> Result<bool, String> {
+    let actions = port
+        .legal_actions(before.state_id(), before.generation())
+        .map_err(|error| error.to_string())?;
+    let input = DecisionInput::new(
+        ModelExecutionId::new(u64::from(steps) + 1)
+            .ok_or_else(|| String::from("model execution identity exhausted"))?,
+        before.clone(),
+        actions.clone(),
+        config.objective(),
+        config.hard_constraints().to_vec(),
+    );
+    let decision = match replay.decide(steps, before, &actions)? {
+        Some(decision) => decision,
+        None => source.decide(&input).map_err(|error| error.to_string())?,
+    };
+    let current = port.observe().map_err(|error| error.to_string())?;
+    if current.generation() != before.generation() || current.state_id() != before.state_id() {
+        println!("{}", json!({"event":"decision_stale_before_dispatch"}));
+        return Ok(false);
+    }
+    let Decision::Action {
+        action_id,
+        rationale,
+        ..
+    } = decision
+    else {
+        return Err(String::from(
+            "combat demo requires a model-selected legal action",
+        ));
+    };
+    let action = actions
+        .actions()
+        .iter()
+        .find(|a| a.action_id() == action_id)
+        .ok_or_else(|| String::from("model selected an action outside the host catalog"))?;
+    let identity = ActionIdentity::new(
+        format!("demo-op-{}", steps + 1),
+        before.state_id(),
+        before.generation(),
+        &action_id,
+    )
+    .map_err(|error| error.to_string())?;
+    println!(
+        "{}",
+        json!({"event":replay.event(), "operation_id":identity.operation_id,
+            "action_id":action_id, "rationale":rationale, "observation":before.fair_play().as_value()})
+    );
+    let receipt = port
+        .dispatch_action(&identity, action)
+        .map_err(|error| error.to_string())?;
+    settle(port, before, receipt)?;
+    Ok(true)
 }
 
 fn settle(
