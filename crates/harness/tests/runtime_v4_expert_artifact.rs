@@ -89,3 +89,10 @@ fn expert_parser_rejects_nested_unknown_fields_and_digest_changes() {
     value["schema_digest"] = serde_json::Value::String("0".repeat(64));
     assert!(RuntimeV4ExpertObservation::from_value(value).is_err());
 }
+
+#[test]
+fn serialized_expert_parser_rejects_duplicate_object_keys() {
+    let duplicate =
+        br#"{"protocol_version":"runtime-v4-expert","protocol_version":"runtime-v4-expert"}"#;
+    assert!(RuntimeV4ExpertObservation::parse(duplicate).is_err());
+}
