@@ -197,6 +197,11 @@ disconnect, ally targeting, and local-admission suspension. They do not test an 
 coordinator-generation advancement, or multiplayer host compatibility. Co-op, record/memory,
 evaluation and replay library tests run separately from `EpisodeRunner`; the Runtime-v3 executable
 does not currently wire those libraries into its one-instance run or produce their evidence.
+The executable now has a separate seeded episode replay source wired directly through
+`EpisodeRunner`. Its `episode_replay` tests check source settlement and seed admission, exact action
+payload rebinding, content divergence, terminal comparison, and explicit nonterminal prefix stop.
+They do not establish game determinism or complete live campaign replay; those need fresh-host
+execution and matching recorded observations.
 The patch-diff utility
 is source-only and compares bounded manifests; it cannot promote a build or replace package hashes.
 Its workspace tests check bounded consumption even from an endless reader, exact-size admission,

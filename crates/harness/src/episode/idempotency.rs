@@ -57,7 +57,7 @@ pub struct ActionLedger {
 
 impl ActionLedger {
     pub fn new(capacity: usize) -> Result<Self, IdempotencyError> {
-        if capacity == 0 || capacity > 1024 {
+        if capacity == 0 || capacity > 4096 {
             return Err(IdempotencyError::InvalidCapacity);
         }
         Ok(Self {

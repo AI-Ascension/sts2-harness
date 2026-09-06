@@ -3,6 +3,33 @@
 use super::*;
 
 #[test]
+fn extended_campaign_budget_remains_bounded_and_cleans_up_after_long_episode() {
+    let config = |steps| {
+        EpisodeRunnerConfig::new(
+            steps,
+            StabilityBarrier::new(2, 1).expect("barrier"),
+            RecoveryController::new(1).expect("recovery"),
+            "complete the run",
+            vec![],
+        )
+    };
+    assert!(config(0).is_err());
+    assert!(config(4097).is_err());
+    let mut states: Vec<_> = (0..1100)
+        .map(|generation| state(EpisodeStage::Combat, generation))
+        .collect();
+    states.push(state(EpisodeStage::Defeat, 1100));
+    let mut runtime = FakeRuntime::new(states);
+    let mut model = FakeModel::default();
+    let report = EpisodeRunner::new(config(4096).expect("bounded campaign budget"))
+        .run(&mut runtime, &mut model)
+        .expect("long synthetic episode");
+    assert_eq!(report.transitions(), 1100);
+    assert_eq!(runtime.dispatches, 1100);
+    assert!(runtime.released && runtime.mcp_closed && runtime.gateway_closed);
+}
+
+#[test]
 fn runner_routes_every_playable_surface_and_verifies_terminal_transition() {
     let mut runtime = FakeRuntime::new(complete_states());
     let mut model = FakeModel::default();
