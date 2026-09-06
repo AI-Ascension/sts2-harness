@@ -1,6 +1,7 @@
 # Seeded episode replay
 
-Status: accepted implementation boundary; complete live campaign replay remains unverified.
+Status: accepted implementation boundary; fresh Windows setup-to-defeat replay verified.
+See [native campaign evidence](../evidence/seeded-astra-campaign-20260906.md) for scope and hashes.
 
 The runtime-v3 episode runner previously selected the Exo provider even when an operator supplied
 `STS2_REPLAY_TRAJECTORY`. Only the separate combat demonstration consumed that setting. The full

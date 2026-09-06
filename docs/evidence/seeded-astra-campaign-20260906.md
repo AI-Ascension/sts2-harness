@@ -32,5 +32,29 @@ A first fresh replay settled 306 actions before a native selection grid reordere
 otherwise identical card choice. Replay stopped before dispatching the next action.
 Selection catalog normalization now preserves identities and multiplicity while allowing
 that layout order to differ; player pile order remains significant. Its fresh full replay
-is still in progress. This document does not yet establish full replay fidelity, Linux
-setup-to-terminal completion, victory handling, or post-reboot GPU readiness.
+subsequently completed successfully, as recorded below.
+
+## Confirmed fresh complete replay
+
+The fresh Windows process replayed all 333 actions through the ordinary MCP/gateway/mod
+path in 399 episode steps and exited zero. Its `episode_replay_verified` record binds
+the complete source digest above, counts one skipped rejected admission, and reports
+zero provider calls. There are 333 replay decisions and no model-decision records.
+Every unknown operation was reconciled; no operation remained unresolved.
+
+An independent comparison of the two terminal observations excluded only `generation`
+and `state_id`. All remaining fields matched exactly, including the seed, Defeat state,
+full player content and ordered card piles, and empty legal-action catalog. The native
+capture separately confirms zero HP, floor 17, and the defeat screen. Decorative defeat
+wording differs between captures; this is gameplay replay evidence, not pixel equality.
+
+| Replay artifact | SHA-256 |
+| --- | --- |
+| Complete replay trajectory | `aaa36356d904c4ee578ce316f22c96349775048100ad76aa656b99782d37efc1` |
+| Native replay defeat capture | `903b04372ba895ba8924cd6ba7afa4f7c1fec4f4a7bd6ff70fe78063ef2e53f1` |
+| Replay harness binary | `98ea00fbcdc21e45eaa8d34201f1972cbb5f3e94b59597394a3487fdeddca856` |
+
+The replay used the same addon, MCP, and gateway binaries as the original campaign.
+No profile or save was restored to drive the replay. The recorded source and failed
+earlier replay were preserved. Linux setup-to-terminal completion, victory handling,
+other seeds and paths, and post-reboot GPU readiness remain separate unverified work.

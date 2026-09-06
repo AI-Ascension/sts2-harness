@@ -29,4 +29,5 @@ Private trajectory and composition artifacts remain outside the repository.
 This confirms prefix fidelity and cleanup, including passage through the earlier combat-to-reward
 boundary. It does not establish setup-to-victory/defeat replay, completion of Crystal Sphere, a
 full Astra campaign, or Windows full-campaign fidelity. Any provider continuation is a separate
-invocation with separate evidence. Complete campaign replay remains unverified.
+invocation with separate evidence. Complete campaign replay was unverified at this checkpoint.
+A later [Windows setup-to-defeat replay](seeded-astra-campaign-20260906.md) has separate native evidence.
