@@ -12,8 +12,9 @@ seed. Validation rejects incomplete, resumed, conflicting, unsupported, and over
 the episode runner allocates a lease. Operation identities cannot be reused between decisions.
 
 A first receipt reporting `Rejected` or `StaleState` may be omitted from replay dispatch only when
-it has no effect and its public observation matches the decision observation under the comparison
-rules below. The source digest and skipped-attempt count preserve this provenance. A rejection
+it has no effect and its observation retains the same seed. Public state can advance asynchronously
+after a previously settled action; the rejected admission does not dispatch a mutation. The source
+digest and skipped-attempt count preserve this provenance. A rejection
 after an `Unknown` receipt remains invalid; it cannot prove that the earlier mutation did not occur.
 
 Before every replay action, the current public observation must match recorded gameplay content.
@@ -21,6 +22,9 @@ Only generation, state identity, and the legal-action catalog are excluded from 
 the selected recorded action payload must separately identify exactly one current legal action.
 The runner dispatches that current identity through its existing MCP and gateway ports. Replay never
 restores a save, changes host state directly, or falls back to a provider on divergence.
+After a settled action, up to three bounded runner waits may await the next recorded public
+boundary. Every gameplay field must still match before dispatch, and a different seed fails
+immediately. Persistent divergence fails without dispatching the recorded action.
 
 The replay cursor advances only after settlement. Terminal verification requires every recorded
 action to settle and the terminal public observation to match. `replay_decision` records have no

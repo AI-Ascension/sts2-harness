@@ -106,6 +106,7 @@ struct ReplaySource {
     failure: Option<&'static str>,
     prefix_verified: bool,
     prefix_observation: Option<serde_json::Value>,
+    observation_waits: u8,
 }
 
 impl ReplaySource {
@@ -117,6 +118,7 @@ impl ReplaySource {
             failure: None,
             prefix_verified: false,
             prefix_observation: None,
+            observation_waits: 0,
         }
     }
 
@@ -163,8 +165,20 @@ impl DecisionSource for ReplaySource {
             return self.reject("replay sequence exhausted before terminal state");
         };
         if canonical(&record.observation) != canonical(input.observation.fair_play().as_value()) {
+            if self.cursor > 0
+                && self.observation_waits < 3
+                && record.observation["visible_seed"]
+                    == input.observation.fair_play().as_value()["visible_seed"]
+            {
+                self.observation_waits += 1;
+                return Ok(Decision::Wait {
+                    rationale: "Await recorded public boundary without dispatching an action"
+                        .into(),
+                });
+            }
             return self.reject("episode replay observation diverged before dispatch");
         }
+        self.observation_waits = 0;
         let matches: Vec<_> = input
             .legal_actions
             .actions()

@@ -79,10 +79,15 @@ impl ReplayTrace {
                         Some("Rejected" | "StaleState")
                             if first_receipt
                                 && row["effect"].is_null()
-                                && canonical(&record.observation)
-                                    == canonical(&row["observation"]) =>
+                                && row["observation"].is_object()
+                                && record.observation["visible_seed"]
+                                    .as_str()
+                                    .is_some_and(|seed| !seed.is_empty())
+                                && record.observation["visible_seed"]
+                                    == row["observation"]["visible_seed"] =>
                         {
-                            // Rejected admission did not mutate this unchanged public state.
+                            // A first rejected admission did not dispatch this action. Public
+                            // state can advance asynchronously after an earlier settled action.
                             // Preserve its count in replay provenance, but do not dispatch it.
                             records.pop();
                             rejected_attempts += 1;

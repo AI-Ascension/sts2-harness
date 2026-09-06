@@ -240,7 +240,7 @@ fn source_rejects_reused_operation_identity_and_conflicting_settlement() {
 }
 
 #[test]
-fn unchanged_rejected_admission_is_skipped_but_uncertain_or_changed_rejection_is_not() {
+fn rejected_admission_is_skipped_but_uncertain_or_cross_seed_rejection_is_not() {
     let mut values = rows();
     let rejected = json!({"event":"action_receipt","action_id":"start-1",
         "operation_id":"not-dispatched","status":"Rejected","effect":null,
@@ -251,11 +251,78 @@ fn unchanged_rejected_admission_is_skipped_but_uncertain_or_changed_rejection_is
     assert_eq!(parsed.records.len(), 1);
     assert_eq!(parsed.rejected_attempts, 1);
     values[1]["observation"]["player"]["hp"] = json!(79);
+    assert_eq!(
+        parse(&values)
+            .expect("asynchronous observation change")
+            .rejected_attempts,
+        1
+    );
+    values[1]["observation"]["visible_seed"] = json!("OTHER");
     assert!(parse(&values).is_err());
+    values[1]["observation"]["visible_seed"] = json!("REPLAY1");
+    values[1]["effect"] = json!("unexpected_effect");
+    assert!(parse(&values).is_err());
+    values[1]["effect"] = Value::Null;
     values[1]["observation"]["player"]["hp"] = json!(80);
     let mut unknown = values[1].clone();
     unknown["status"] = json!("Unknown");
     unknown["observation"] = Value::Null;
     values.insert(1, unknown);
     assert!(parse(&values).is_err());
+}
+
+#[test]
+fn asynchronous_boundary_waits_never_dispatch_divergent_actions_and_are_bounded() {
+    let make_source = || {
+        let mut source = ReplaySource::new(parse(&rows()).expect("fixture source"));
+        let mut next = observation("combat", 2, "next-source", "ironclad");
+        next["state"] = json!({"state":"combat","turn_index":1,"enemies":[]});
+        source.trace.records.push(trace::ReplayRecord {
+            action_id: "next-source".into(),
+            payload: next["legal_actions"][0]["action"].clone(),
+            observation: next,
+        });
+        let first = input(
+            observation("setup", 20, "first", "ironclad"),
+            EpisodeStage::Setup,
+        );
+        assert!(matches!(source.decide(&first), Ok(Decision::Action { .. })));
+        source.action_completed(true);
+        source
+    };
+    let mut source = make_source();
+    let transient = input(
+        observation("setup", 21, "transient", "ironclad"),
+        EpisodeStage::Setup,
+    );
+    assert!(matches!(
+        source.decide(&transient),
+        Ok(Decision::Wait { .. })
+    ));
+    assert!(!source.awaiting);
+    assert_eq!(source.cursor, 1);
+    let mut matched = observation("combat", 22, "current", "ironclad");
+    matched["state"] = json!({"state":"combat","turn_index":1,"enemies":[]});
+    let matched = input(matched, EpisodeStage::Combat);
+    assert!(
+        matches!(source.decide(&matched), Ok(Decision::Action { action_id, .. }) if action_id == "current")
+    );
+
+    let mut source = make_source();
+    for _ in 0..3 {
+        assert!(matches!(
+            source.decide(&transient),
+            Ok(Decision::Wait { .. })
+        ));
+        assert!(!source.awaiting);
+    }
+    assert!(source.decide(&transient).is_err());
+    let mut source = make_source();
+    let mut different_seed = observation("setup", 21, "transient", "ironclad");
+    different_seed["visible_seed"] = json!("OTHER");
+    assert!(
+        source
+            .decide(&input(different_seed, EpisodeStage::Setup))
+            .is_err()
+    );
 }
