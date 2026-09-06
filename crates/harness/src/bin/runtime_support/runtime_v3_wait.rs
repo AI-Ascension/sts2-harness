@@ -24,7 +24,13 @@ impl BarrierPort for RuntimeV3Port {
                 || operation_id.starts_with("episode-wait-")
             {
                 // Idle stability observes host state; it cannot manufacture an action witness.
-                let observation = self.observe().map_err(|_| BarrierError::PortFailure)?;
+                let observation = self.observe().map_err(|error| {
+                    if std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true") {
+                        // Codes are harness-owned constants. Do not log arbitrary port messages.
+                        eprintln!("idle transition observation failed: code={}", error.code());
+                    }
+                    BarrierError::PortFailure
+                })?;
                 let idle_sample = (
                     observation.generation(),
                     observation.assert_actionable().is_ok(),

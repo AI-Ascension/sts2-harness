@@ -39,6 +39,13 @@ pub(super) fn rpc_call(
         ));
     }
     if response.get("error").is_some() {
+        if std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true") {
+            // Preserve the numeric RPC category without the remote message or data payload.
+            eprintln!(
+                "MCP RPC failure: code={:?}",
+                response["error"]["code"].as_i64()
+            );
+        }
         return Err(format!("MCP {method} returned an RPC error"));
     }
     if response
