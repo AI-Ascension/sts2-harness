@@ -26,7 +26,7 @@ drove this campaign. A read-only native capture separately showed the defeat scr
 | Combined replay source | `9d9e0a09a0a22fbb0b8c1ee8c9d98d200b8995795ed659047c4f19fabb99254f` |
 | Native complete game log | `0dfec2ee78cda30e7a99ef670d0edf87019c07debb73b25ee7234f81f5a94f6e` |
 | Native defeat capture | `6e3de34153bcf75e533387b860c189b91308d74dafbbbfd3eb1cc3547876c418` |
-| Normal Linux addon | `e2a3d0d08237a65ce84e5c6be6f5f2632a3f437ebf82a32a25b6ec04c5d32441` |
+| Campaign source Linux addon | `e2a3d0d08237a65ce84e5c6be6f5f2632a3f437ebf82a32a25b6ec04c5d32441` |
 | Continuation harness | `cbd4c7536be9e25632ea54a301b09f784e9b6ce4b1a32633b996702edcae61e3` |
 | Continuation MCP | `1e157d2c421719cf9a73034724e465e68c231b03315113c73fa67a58294d447e` |
 | Gateway | `66c66172b0bfed303d5a44efb6fdadaeb49277e126c089ce28b2f4288bc02539` |
@@ -52,6 +52,38 @@ handles the established base plus one exact sanitized label; changed labels, unk
 and arbitrary prefixes are not normalized away. Focused selection-dispatch tests and all
 workspace checks pass.
 
-The next fresh host replay uses the repaired MCP above and harness SHA-256
-`31a730d18e7c56ab3c53dd3a54ac15cb55c5f3433d8d5f526e2ca48f28b4e9e5`.
-Complete native replay remains pending until its terminal record and capture are verified.
+## Confirmed fresh complete replay
+
+The next fresh native process completed all 431 recorded actions in 527 episode steps
+and exited zero. It began at Setup, had no continuation or prefix mode, and used no
+provider calls. The replay record retains both skipped rejected admissions from the
+original source. Every unknown operation settled; none remained unresolved.
+
+An independent audit compared all 431 pre-action public observations and required each
+translated payload to identify exactly one current legal action. It confirmed the six
+consistent card bindings `317→318`, `318→319`, `319→320`, `320→321`, `321→322`, and `322→317`
+in the `card:` namespace. Labeled selection identities retained their exact display
+suffixes. Other public fields and ordered piles matched. The source digest remained
+unchanged; no recorded observation or action was edited to produce this replay.
+
+The terminal observations match exactly after excluding only generation and state ID,
+including actual terminal card IDs, full player content, seed, Defeat, and empty legal
+catalog. The separately captured native screen showed zero HP on floor 24. Decorative
+defeat wording can differ; this verifies public gameplay content rather than pixel identity.
+
+| Complete replay artifact | SHA-256 |
+| --- | --- |
+| Replay trajectory | `5e3b7ad86d422e111c03e33d97e47e684139154195ab8b1c74fccd24d2fbdfe1` |
+| Independent replay audit | `f5bd455a8c221b0e57818006b0dc2c278924d90c862bc2ebd94870eb08cc61a9` |
+| Native game log | `55567fd33a211a28652562cbf255f50e874e12011ade4e6fa03944dda6be64e6` |
+| Native defeat capture | `6846b39e53068f4eda3d70f2136bfaf18a7a8eba8a630ba3802eeefdeab2bb33` |
+| Replay harness | `31a730d18e7c56ab3c53dd3a54ac15cb55c5f3433d8d5f526e2ca48f28b4e9e5` |
+| Normal replay Linux addon | `78420a13c278c99618340919396a667f22aa72b541365be32578b74480934f3e` |
+
+The replay used the MCP and gateway hashes above. Its normal addon includes the separately
+verified native Victory observer and excludes all forced-terminal fixture code. The game
+remained visible through a read-only video stream; no OS input or restored save drove it.
+After completion, the addon, ordinary launcher, logs, and isolated profile were preserved,
+and the normal native game remained running at Defeat. The harness, MCP, and gateway
+completed their owned invocation. A model-played win and GPU reboot readiness remain
+separate unverified claims.
