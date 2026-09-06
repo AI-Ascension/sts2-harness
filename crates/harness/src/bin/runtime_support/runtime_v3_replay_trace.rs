@@ -196,6 +196,15 @@ pub(super) fn canonical(value: &Value) -> Value {
         object.remove("state_id");
         object.remove("legal_actions");
     }
+    // Selection choices identify a catalog, not a pile order. Native grid layout can
+    // move a holder between otherwise identical observations. Preserve multiplicity
+    // and every choice identity; ordered player piles remain untouched.
+    if value["state"]["state"].as_str() == Some("selection")
+        && let Some(choices) = value["state"]["choices"].as_array_mut()
+        && choices.iter().all(Value::is_string)
+    {
+        choices.sort_by(|left, right| left.as_str().cmp(&right.as_str()));
+    }
     value
 }
 

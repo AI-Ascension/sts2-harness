@@ -20,6 +20,9 @@ after an `Unknown` receipt remains invalid; it cannot prove that the earlier mut
 Before every replay action, the current public observation must match recorded gameplay content.
 Only generation, state identity, and the legal-action catalog are excluded from that comparison;
 the selected recorded action payload must separately identify exactly one current legal action.
+Selection choice catalogs compare by sorted identity with multiplicity preserved: a native grid
+may rearrange holders without changing the choices. Player piles and other state arrays retain
+their order. Missing, additional, duplicate, or changed choice identities still diverge.
 The runner dispatches that current identity through its existing MCP and gateway ports. Replay never
 restores a save, changes host state directly, or falls back to a provider on divergence.
 After a settled action, up to three bounded runner waits may await the next recorded public

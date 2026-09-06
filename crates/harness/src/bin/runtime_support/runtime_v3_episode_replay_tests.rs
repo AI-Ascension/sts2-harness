@@ -106,6 +106,27 @@ fn content_and_seed_divergence_prevent_any_replay_action() {
 }
 
 #[test]
+fn selection_catalog_order_is_not_pile_order_or_choice_identity() {
+    let mut source = observation("selection", 1, "choose", "ironclad");
+    source["state"] = json!({"state":"selection", "choices":["card:a", "card:b"]});
+    source["player"]["hand"] = json!([{"card_id":"card:a"}, {"card_id":"card:b"}]);
+    let mut reordered = source.clone();
+    reordered["state"]["choices"] = json!(["card:b", "card:a"]);
+    assert_eq!(canonical(&source), canonical(&reordered));
+    for changed in [
+        json!(["card:a"]),
+        json!(["card:a", "card:c"]),
+        json!(["card:a", "card:b", "card:b"]),
+    ] {
+        reordered["state"]["choices"] = changed;
+        assert_ne!(canonical(&source), canonical(&reordered));
+    }
+    reordered = source.clone();
+    reordered["player"]["hand"] = json!([{"card_id":"card:b"}, {"card_id":"card:a"}]);
+    assert_ne!(canonical(&source), canonical(&reordered));
+}
+
+#[test]
 fn duplicate_semantic_actions_and_unsettled_replay_are_rejected() {
     let mut value = observation("setup", 20, "start-fresh", "ironclad");
     let mut duplicate = value["legal_actions"][0].clone();
