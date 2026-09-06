@@ -7,7 +7,7 @@
 
 > **AI-Ascension · flagship · tier 4: experiment coordinator** — Experiment coordinator for AI runs: episodes, a pluggable model-provider interface, replay of recorded records, and artifact lineage.
 >
-> **Status:** deterministic tests and one bounded `runtime-v1` host trace `confirmed` for STS2 v0.107.1 on Windows x86-64 · providers, gameplay mutation, and broader compatibility `unverified`.
+> **Status:** deterministic tests, the bounded `runtime-v1` host trace, and native runtime-v3 Windows/Linux campaign and fresh-replay evidence are `confirmed` for the recorded STS2 v0.107.1 fixtures · model-played Victory, complete campaign coverage, and broader compatibility `unverified`.
 > **Proof:** [45-second browser replay](https://ai-ascension.github.io/proof.html) · [Evidence ledger](https://ai-ascension.github.io/evidence.html) · [This repository on the map](https://ai-ascension.github.io/repositories.html#sts2-harness)
 > **Start here:** the harness is the flagship entry point for the organization; the public proof currently lives in [sts2-gateway](https://github.com/AI-Ascension/sts2-gateway) because that is where the first fenced boundary is tested.
 > **Owner:** The harness maintainers own the experiment control plane and its records: coordination, provider ports, runs and episodes, trajectories, replay, and artifact lineage.
@@ -17,15 +17,17 @@
 
 Status: Wave 2 codebase initialization plus a bounded runtime coordinator. The target-owned harness
 package contains pure coordinator ports and deterministic fake-boundary tests; an authorized
-`runtime-v1` trace now confirms the coordinator-to-host path for one exact disposable STS2 profile.
-This target is distinct from any legacy or reference checkout and contains no game files, model
-weights, datasets, provider credentials, or generated product artifacts.
+`runtime-v1` trace confirms the coordinator-to-host path for one exact disposable STS2 profile.
+Dated runtime-v3 evidence additionally confirms visible Astra-controlled Windows and Linux
+setup-to-Defeat campaigns and fresh-process replays through harness, MCP, gateway, and mod. This
+target is distinct from any legacy or reference checkout and contains no game files, model weights,
+datasets, provider credentials, or generated product artifacts.
 
 The current research baseline is the self-contained
 [`STS2 Expert-State Information Architecture`](docs/research/STS2_EXPERT_STATE_INFORMATION_ARCHITECTURE_2026-09-03.md).
 It is a proposed harness-facing research specification: it separates fair-play observation from
 privileged data, records the initial 144-state inventory as requiring target-build validation, and
-does not turn the bounded host probe into full gameplay or state-discovery evidence.
+does not turn the bounded campaign evidence into complete state-discovery or coverage evidence.
 
 The companion [`generated expert-state package`](docs/research/sts2-expert-state-package/README.md)
 contains the 131-state requirements baseline, typed inventories, JSON schemas, synthetic fixtures,
@@ -109,10 +111,12 @@ semantic correctness, reproducibility, or runtime compatibility.
 
 Claims use `confirmed`, `source-derived`, `inferred`, `proposed`, `unverified`, or `unsupported`.
 This target has source/documentation evidence, deterministic offline fake-test evidence, a dated
-component trace against a synthetic downstream, and a dated exact-host runtime trace. Provider
-execution, gameplay-rule mutation, replay fidelity against a game, scoring validity, training
-outcomes, and compatibility beyond the recorded host remain unverified. See
-[`docs/evidence/runtime-v1-host-integration-20260902.md`](docs/evidence/runtime-v1-host-integration-20260902.md).
+component trace against a synthetic downstream, a dated exact-host runtime trace, and native
+runtime-v3 campaign/replay evidence. Astra provider execution, gameplay-rule mutation, and replay
+fidelity are confirmed only for the recorded Windows/Linux v0.107.1 fixtures; model-played Victory,
+complete state/branch coverage, scoring validity, training outcomes, and compatibility beyond the
+recorded host remain unverified. See the [Windows campaign and replay](docs/evidence/seeded-astra-campaign-20260906.md)
+and [Linux campaign and replay](docs/evidence/linux-seeded-campaign-20260906.md) records.
 
 Imported or generated records must carry origin, license, generator, input identity, and digest. Do not
 copy or transliterate reference implementation source. Do not retain credentials, private prompts or
@@ -154,7 +158,8 @@ override the redacted record identities with `STS2_RUN_ID`, `STS2_EPISODE_ID`,
 `STS2_TRAJECTORY_ID`, and `STS2_ARTIFACT_ID`; the harness rejects empty, unsafe, oversized, or
 colliding lineage values. The synthetic component run and the authorized exact-host run are
 recorded separately. The latter confirms the managed host callback and bounded STS2 effect for the
-safe probe; gameplay mutation and broader compatibility remain `unverified`.
+safe probe. The separate runtime-v3 records confirm settled gameplay actions and fresh replay
+correspondence for the named fixtures; they do not establish broader compatibility.
 
 The same binary has an opt-in `runtime-v3-gameplay` profile. Set `STS2_RUNTIME_PROFILE` to that
 value and provide the exact reviewed `STS2_EXO_REVISION`, direct `STS2_EXO_BRIDGE_BINARY`, and
@@ -169,8 +174,11 @@ for both processes. Gateway and MCP session identities remain separate namespace
 passes both identities and the profile to its MCP child. Harness, gateway, and MCP default to the
 independent MCP session `mcp-session-1`; a shared explicit override also keeps custom session names
 consistent across processes.
-Live Exo and target-game behavior remain `unverified` until a
-separate runtime handoff.
+The current runtime-v3 handoff has been exercised on the named Windows and Linux v0.107.1 fixtures.
+The Windows campaign reached Defeat without a controller restart; the Linux campaign reached
+Defeat after one controller restart following a catalog-read failure. Both had fresh-process
+replays with zero provider calls and no unresolved operations. Model-played Victory, other seeds,
+all characters/branches, and native multiplayer remain unverified.
 
 For a fresh seeded campaign replay, set `STS2_REPLAY_TRAJECTORY` to the recorded JSONL file and
 leave `STS2_COMBAT_DEMO` false. The episode path validates a complete setup-to-victory/defeat
