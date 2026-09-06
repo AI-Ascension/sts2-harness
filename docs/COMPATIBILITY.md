@@ -1,5 +1,9 @@
 # Compatibility Policy and Matrix
 
+With `STS2_LIVE_EPISODE=true`, idle observation failures now log the harness-owned error code,
+and MCP RPC failures log only the numeric RPC code. Remote error messages and data remain
+suppressed. These diagnostics do not retry actions or change failure and cleanup behavior.
+
 ## Bounded model plans
 
 The unreleased Rust `Decision` enum gains `Plan`; exhaustive Rust consumers must add a match
