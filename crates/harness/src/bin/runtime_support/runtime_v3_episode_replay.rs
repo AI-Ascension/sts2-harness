@@ -15,7 +15,12 @@ use super::{RuntimeV3Port, recording, wire};
 
 #[path = "runtime_v3_replay_trace.rs"]
 mod trace;
-use trace::{ReplayTrace, action_payload, canonical};
+#[cfg(test)]
+use trace::canonical;
+use trace::{ReplayTrace, action_payload};
+#[path = "runtime_v3_replay_cards.rs"]
+mod cards;
+use cards::CardBindings;
 
 const MAX_BYTES: u64 = 32 * 1024 * 1024;
 
@@ -107,6 +112,7 @@ struct ReplaySource {
     prefix_verified: bool,
     prefix_observation: Option<serde_json::Value>,
     observation_waits: u8,
+    cards: CardBindings,
 }
 
 impl ReplaySource {
@@ -119,6 +125,7 @@ impl ReplaySource {
             prefix_verified: false,
             prefix_observation: None,
             observation_waits: 0,
+            cards: CardBindings::default(),
         }
     }
 
@@ -131,7 +138,11 @@ impl ReplaySource {
         if self.awaiting || self.failure.is_some() || self.cursor != self.trace.records.len() {
             return Err("episode ended before all replay actions settled".into());
         }
-        if canonical(&self.trace.terminal) != canonical(observation.fair_play().as_value()) {
+        if self
+            .cards
+            .reconcile(&self.trace.terminal, observation.fair_play().as_value())
+            .is_none()
+        {
             return Err("terminal episode replay observation diverged".into());
         }
         Ok(())
@@ -164,7 +175,11 @@ impl DecisionSource for ReplaySource {
             }
             return self.reject("replay sequence exhausted before terminal state");
         };
-        if canonical(&record.observation) != canonical(input.observation.fair_play().as_value()) {
+        let bindings = self.cards.reconcile(
+            &record.observation,
+            input.observation.fair_play().as_value(),
+        );
+        let Some(bindings) = bindings else {
             if self.cursor > 0
                 && self.observation_waits < 3
                 && record.observation["visible_seed"]
@@ -177,21 +192,23 @@ impl DecisionSource for ReplaySource {
                 });
             }
             return self.reject("episode replay observation diverged before dispatch");
-        }
+        };
         self.observation_waits = 0;
+        let payload = bindings.translate(&record.payload);
         let matches: Vec<_> = input
             .legal_actions
             .actions()
             .iter()
             .filter(|action| {
                 action_payload(input.observation.fair_play().as_value(), action.action_id())
-                    == Some(&record.payload)
+                    == Some(&payload)
             })
             .collect();
         if matches.len() != 1 {
             return self.reject("recorded action is not uniquely legal in the current catalog");
         }
         let action_id = matches[0].action_id().to_owned();
+        self.cards = bindings;
         self.awaiting = true;
         println!(
             "{}",

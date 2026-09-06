@@ -56,5 +56,6 @@ wording differs between captures; this is gameplay replay evidence, not pixel eq
 
 The replay used the same addon, MCP, and gateway binaries as the original campaign.
 No profile or save was restored to drive the replay. The recorded source and failed
-earlier replay were preserved. Linux setup-to-terminal completion, victory handling,
-other seeds and paths, and post-reboot GPU readiness remain separate unverified work.
+earlier replay were preserved. The later [Linux campaign and replay evidence](linux-seeded-campaign-20260906.md)
+records its separate controller-restart and card-rebinding scope. Other seeds and paths,
+a model-played campaign win, and post-reboot GPU readiness remain separate unverified work.

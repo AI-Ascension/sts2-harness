@@ -202,6 +202,10 @@ The executable now has a separate seeded episode replay source wired directly th
 payload rebinding, content divergence, terminal comparison, and explicit nonterminal prefix stop.
 They do not establish game determinism or complete live campaign replay; those need fresh-host
 execution and matching recorded observations.
+The dated [Windows](evidence/seeded-astra-campaign-20260906.md) and
+[Linux](evidence/linux-seeded-campaign-20260906.md) records provide separate fresh seeded
+Setup-to-Defeat replay evidence. Linux's original model campaign required one controller
+restart; its final replay ran from fresh Setup without a continuation.
 The patch-diff utility
 is source-only and compares bounded manifests; it cannot promote a build or replace package hashes.
 Its workspace tests check bounded consumption even from an endless reader, exact-size admission,
