@@ -69,7 +69,10 @@ pub(super) fn run(
     let report = result.map_err(|error| {
         format!(
             "episode replay failed: {}",
-            source.failure.unwrap_or_else(|| error_category(&error))
+            source
+                .failure
+                .map(str::to_owned)
+                .unwrap_or_else(|| error_category(&error))
         )
     })?;
     source.finish(report.final_observation())?;
@@ -85,11 +88,14 @@ pub(super) fn run(
     Ok(())
 }
 
-fn error_category(error: &sts2_harness::EpisodeRunnerError) -> &'static str {
+fn error_category(error: &sts2_harness::EpisodeRunnerError) -> String {
     match error {
-        sts2_harness::EpisodeRunnerError::UncertainMutation => "host mutation did not settle",
-        sts2_harness::EpisodeRunnerError::StepLimitExceeded => "step budget exhausted",
-        _ => "runtime coordination failed",
+        sts2_harness::EpisodeRunnerError::UncertainMutation => {
+            "host mutation did not settle".into()
+        }
+        sts2_harness::EpisodeRunnerError::StepLimitExceeded => "step budget exhausted".into(),
+        // Runner Display implementations expose typed categories, not provider content.
+        _ => error.to_string(),
     }
 }
 
