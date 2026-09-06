@@ -2,6 +2,7 @@
 
 mod implementation {
     include!("runtime_v3_telemetry_types_a.rs");
+    include!("runtime_v3_telemetry_types_extra.rs");
     include!("runtime_v3_telemetry_types_b.rs");
     include!("runtime_v3_telemetry_types_c.rs");
     include!("runtime_v3_telemetry_worker.rs");

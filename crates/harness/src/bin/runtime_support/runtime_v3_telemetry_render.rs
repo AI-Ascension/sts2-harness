@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 fn render_span(context: &TelemetryContext, event: &TelemetryEvent, sequence: u64) -> Value {
     let (kind, status_error, attrs) = event_attributes(context, event);
     let now = unix_nanos();
