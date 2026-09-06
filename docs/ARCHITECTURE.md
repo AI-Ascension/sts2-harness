@@ -148,6 +148,14 @@ constraints, and action IDs through an operator-supplied transport with a pinned
 request/response/timeout settings. There is no heuristic action path when Exo is unavailable,
 malformed, stale, or closed.
 
+The Astra bridge may now return one bounded plan of up to eight distinct current action IDs.
+`ExoDecisionSource` retains their complete host-provided payloads and originating model identity,
+then returns one freshly bound action per runner step. Explicit verified-settlement feedback is
+required before advancing the plan. Rejection and unresolved failure discard its tail; new cards,
+changed offers or intents, turn/stage changes, and unavailable next actions require another
+provider call. The game-facing operation remains serial and unchanged. See
+[ADR 0008](decisions/0008-bounded-model-action-plans.md) and its bounded live evidence.
+
 The projection root admits `state_id`, `generation`, `player`, `state`, `legal_actions`, and an
 optional `visible_seed`. The owner requires repeatable seeded invocation and replay, so
 `ExoConfig::forward_visible_seed` defaults to `true` on both the session and `ProviderPort` paths.

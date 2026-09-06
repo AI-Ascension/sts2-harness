@@ -247,9 +247,14 @@ impl ShutdownPort for FakeRuntime {
 struct FakeModel {
     calls: usize,
     unavailable: bool,
+    completions: Vec<bool>,
 }
 
 impl DecisionSource for FakeModel {
+    fn action_completed(&mut self, settled: bool) {
+        self.completions.push(settled);
+    }
+
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError> {
         self.calls += 1;
         if self.unavailable {

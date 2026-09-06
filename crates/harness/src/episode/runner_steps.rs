@@ -52,18 +52,24 @@ impl EpisodeRunner {
         };
         let (legal_actions, choice) = self.choose_policy(port, source, &observation, step)?;
         match choice {
-            PolicyChoice::Action { action_id, .. } => self.handle_action(
-                port,
-                machine,
-                ledger,
-                ActionRequest {
-                    observation: &observation,
-                    legal_actions: &legal_actions,
-                    action_id: &action_id,
-                    step_number: step + 1,
-                },
-                counters,
-            ),
+            PolicyChoice::Action { action_id, .. } => {
+                let transitions_before = counters.transitions;
+                let result = self.handle_action(
+                    port,
+                    machine,
+                    ledger,
+                    ActionRequest {
+                        observation: &observation,
+                        legal_actions: &legal_actions,
+                        action_id: &action_id,
+                        step_number: step + 1,
+                    },
+                    counters,
+                );
+                source
+                    .action_completed(result.is_ok() && counters.transitions > transitions_before);
+                result
+            }
             PolicyChoice::Wait { .. } => {
                 self.handle_wait(port, machine, &observation, step + 1, counters)?;
                 Ok(None)

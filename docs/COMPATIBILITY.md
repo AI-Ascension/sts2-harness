@@ -1,5 +1,22 @@
 # Compatibility Policy and Matrix
 
+## Bounded model plans
+
+The unreleased Rust `Decision` enum gains `Plan`; exhaustive Rust consumers must add a match
+arm. The Exo response parser accepts `decision: "plan"`, `action_ids` (one to eight distinct
+current IDs), and `rationale`. Older parsers reject this response, so the Astra bridge and
+harness must migrate together. Single-action responses remain accepted. Runtime-v3 host
+schemas and artifact bytes are unchanged. See [ADR 0008](decisions/0008-bounded-model-action-plans.md).
+
+`DecisionSource` gains default settlement and originating-model-identity callbacks. The runner
+and combat demo forward verified settlement; recording wrappers preserve the origin for cached
+steps. Live action records retain `model_decision` for existing replay readers and add
+`reused_model_execution`; multiple executed steps may share one `model_execution_id`.
+Count distinct execution IDs for provider calls, and verified operation IDs for settled actions.
+Unknown extra event fields are ignored by the existing combat replay reader.
+Deterministic tests cover combat/shop rebinding and invalidation; live speed and full-run
+compatibility remain unverified until separately recorded.
+
 The Runtime-v1 copied checksum inventory and golden messages were completed from protocol
 `11e4252e39a77f0017b8e4f3720590e6162e8f53` during the 2026-09-05 review. Existing schema and
 manifest bytes are unchanged. CI checks the copied POC, Runtime-v1, and Runtime-v2 inventories;
