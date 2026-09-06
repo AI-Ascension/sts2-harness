@@ -57,7 +57,9 @@ impl std::fmt::Display for EpisodeRunnerError {
             Self::Machine(_) => "episode state machine rejected a transition",
             Self::Observation(_) => "episode observation is invalid",
             Self::ActionSet(_) => "episode legal-action set is invalid",
-            Self::Policy(_) => "episode policy decision was rejected",
+            Self::Policy(error) => {
+                return write!(formatter, "episode policy decision was rejected: {error}");
+            }
             Self::Ledger(_) => "episode action ledger failed",
             Self::Postcondition(_) => "episode postcondition was not independently verified",
             Self::ActionNotCurrent => "provider action is not in the current host catalog",
