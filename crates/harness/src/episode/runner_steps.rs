@@ -14,6 +14,7 @@ use crate::identity::ModelExecutionId;
 pub(super) struct RunCounters {
     pub(super) transitions: u32,
     pub(super) recoveries: u32,
+    catalog_refreshes: u8,
 }
 
 pub(super) enum ObservationStep {
@@ -50,7 +51,20 @@ impl EpisodeRunner {
             }
             ObservationStep::Ready(observation) => observation,
         };
-        let (legal_actions, choice) = self.choose_policy(port, source, &observation, step)?;
+        let (legal_actions, choice) = match self.choose_policy(port, source, &observation, step) {
+            Err(EpisodeRunnerError::LegalActions(error))
+                if error.code() == "catalog_reobserve"
+                    && error.is_retryable()
+                    && counters.catalog_refreshes < 3 =>
+            {
+                counters.catalog_refreshes += 1;
+                self.reobserve(port, machine)?;
+                counters.recoveries += 1;
+                return Ok(None);
+            }
+            result => result?,
+        };
+        counters.catalog_refreshes = 0;
         match choice {
             PolicyChoice::Action { action_id, .. } => {
                 let transitions_before = counters.transitions;

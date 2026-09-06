@@ -32,6 +32,7 @@ pub(super) fn rpc_call(
     params: Value,
 ) -> Result<Value, String> {
     let timeout = request_timeout(method, &params)?;
+    let catalog_read = method == "tools/call" && params["name"] == "sts2.legal_actions";
     let response = mcp.call_with_timeout(id, method, params, timeout)?;
     if response.get("id").and_then(Value::as_u64) != Some(id) {
         return Err(format!(
@@ -56,11 +57,36 @@ pub(super) fn rpc_call(
     {
         // MCP marks unknown/rejected gameplay receipts as tool errors. Preserve their
         // envelope for the caller's full identity/schema validation and reconciliation.
-        if method != "tools/call" || !has_gameplay_envelope(&response) {
+        if method != "tools/call"
+            || !(has_gameplay_envelope(&response)
+                || (catalog_read && has_catalog_reobserve(&response, id)))
+        {
             return Err(format!("MCP {method} returned a tool error"));
         }
     }
     Ok(response)
+}
+
+fn has_catalog_reobserve(response: &Value, id: u64) -> bool {
+    let correlation = id.to_string();
+    response["result"]["content"][0]["text"]
+        .as_str()
+        .filter(|text| text.len() <= 1024)
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .is_some_and(|value| {
+            catalog_reobserve(&value)
+                && value["correlation_id"].as_str() == Some(correlation.as_str())
+        })
+}
+
+pub(super) fn catalog_reobserve(value: &Value) -> bool {
+    value.as_object().is_some_and(|fields| fields.len() == 3)
+        && value["correlation_id"].as_str().is_some()
+        && value["recovery"] == "reobserve"
+        && matches!(
+            value["error_code"].as_str(),
+            Some("stale_generation" | "host_not_configured" | "host_observation_unavailable")
+        )
 }
 
 fn has_gameplay_envelope(response: &Value) -> bool {
@@ -179,6 +205,27 @@ pub(super) fn port_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn catalog_recovery_requires_exact_shape_and_correlation() {
+        for code in [
+            "stale_generation",
+            "host_not_configured",
+            "host_observation_unavailable",
+        ] {
+            let mut body =
+                json!({"correlation_id":"42", "error_code":code, "recovery":"reobserve"});
+            let response = |body: &Value| json!({"result":{"isError":true,"content":[{"text":body.to_string()}]}});
+            assert!(has_catalog_reobserve(&response(&body), 42));
+            assert!(!has_catalog_reobserve(&response(&body), 43));
+            body["private"] = json!("extra");
+            assert!(!has_catalog_reobserve(&response(&body), 42));
+        }
+        for code in ["unauthorized", "timeout", "unknown"] {
+            assert!(!catalog_reobserve(
+                &json!({"correlation_id":"42","error_code":code,"recovery":"reobserve"})
+            ));
+        }
+    }
     #[test]
     fn gameplay_unknown_remains_available_for_receipt_validation() {
         let envelope = json!({"protocol_version":"runtime-v3-gameplay", "status":"unknown",
