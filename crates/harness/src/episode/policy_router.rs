@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::action_plan::ActionPlan;
 use super::legal_actions::EpisodeLegalActionSet;
 use super::observation::EpisodeObservation;
 use super::recovery::RecoveryOperation;
@@ -38,36 +39,90 @@ impl DecisionInput {
 
 pub trait DecisionSource {
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError>;
+
+    /// Reports whether the selected action passed settlement verification, including recovery.
+    /// False includes rejection, cancellation and unresolved failure; it never authorizes retry.
+    fn action_completed(&mut self, _settled: bool) {}
+
+    /// Originating provider execution for the most recently returned action, if retained.
+    fn model_execution_id(&self) -> Option<ModelExecutionId> {
+        None
+    }
 }
 
 /// Connects the episode policy port to the bounded Exo session.
 pub struct ExoDecisionSource<T> {
     session: ExoSession<T>,
+    plan: Option<ActionPlan>,
+    execution_id: Option<ModelExecutionId>,
 }
 
 impl<T> ExoDecisionSource<T> {
     #[must_use]
     pub fn new(session: ExoSession<T>) -> Self {
-        Self { session }
+        Self {
+            session,
+            plan: None,
+            execution_id: None,
+        }
     }
 
     pub fn close(&mut self) -> Result<(), ExoError>
     where
         T: crate::exo::ExoTransport,
     {
+        self.plan = None;
         self.session.close()
     }
 }
 
 impl<T: crate::exo::ExoTransport> DecisionSource for ExoDecisionSource<T> {
+    fn action_completed(&mut self, settled: bool) {
+        if !settled {
+            self.plan = None;
+            return;
+        }
+        if let Some(plan) = &mut self.plan {
+            plan.action_completed(settled);
+        }
+    }
+
+    fn model_execution_id(&self) -> Option<ModelExecutionId> {
+        self.execution_id
+    }
+
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError> {
+        input
+            .observation
+            .assert_actionable()
+            .map_err(|_| PolicyError::InputBlocked)?;
+        input
+            .legal_actions
+            .assert_matches(input.observation.state_id(), input.observation.generation())
+            .map_err(|_| PolicyError::StaleCatalog)?;
+        if self
+            .plan
+            .as_ref()
+            .is_some_and(ActionPlan::awaiting_settlement)
+        {
+            return Err(PolicyError::InputBlocked);
+        }
+        if let Some(plan) = &mut self.plan
+            && let Some(decision) = plan.next(input, false)
+        {
+            self.execution_id = Some(plan.execution_id);
+            return Ok(decision);
+        }
+        self.plan = None;
+        self.execution_id = Some(input.execution_id);
         let legal_action_ids = input
             .legal_actions
             .actions()
             .iter()
             .map(|action| action.action_id().to_owned())
             .collect();
-        self.session
+        let decision = self
+            .session
             .decide(
                 input.execution_id,
                 input.observation.state_id(),
@@ -77,7 +132,19 @@ impl<T: crate::exo::ExoTransport> DecisionSource for ExoDecisionSource<T> {
                 input.objective.clone(),
                 input.hard_constraints.clone(),
             )
-            .map_err(map_exo_error)
+            .map_err(map_exo_error)?;
+        if let Decision::Plan {
+            action_ids,
+            rationale,
+        } = decision
+        {
+            let mut plan = ActionPlan::new(input, &action_ids, rationale)?;
+            let action = plan.next(input, true).ok_or(PolicyError::IllegalAction)?;
+            self.plan = Some(plan);
+            Ok(action)
+        } else {
+            Ok(decision)
+        }
     }
 }
 
@@ -119,6 +186,7 @@ impl PolicyRouter {
             .map_err(|_| PolicyError::StaleCatalog)?;
         let decision = source.decide(input)?;
         match decision {
+            Decision::Plan { .. } => Err(PolicyError::MalformedDecision),
             Decision::Action {
                 action_id,
                 rationale,

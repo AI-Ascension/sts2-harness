@@ -83,11 +83,12 @@ impl Replay {
         let recorded = record["action_id"]
             .as_str()
             .ok_or("missing replay action")?;
-        let key = semantic_action(recorded)?;
+        let key = action_payload(&record["observation"], recorded)
+            .ok_or("recorded action payload is missing or ambiguous")?;
         let matching: Vec<_> = actions
             .actions()
             .iter()
-            .filter(|a| semantic_action(a.action_id()).ok().as_deref() == Some(key.as_str()))
+            .filter(|a| action_payload(before.fair_play().as_value(), a.action_id()) == Some(key))
             .collect();
         if matching.len() != 1 {
             return Err("replay action is not uniquely legal".into());
@@ -131,32 +132,85 @@ fn canonical(mut value: Value) -> Value {
     value
 }
 
-fn semantic_action(id: &str) -> Result<String, String> {
-    let parts: Vec<_> = id.splitn(3, ':').collect();
-    match parts.as_slice() {
-        ["end", generation] if generation.parse::<u64>().is_ok() => Ok("end".into()),
-        ["play", generation, rest] if generation.parse::<u64>().is_ok() => {
-            Ok(format!("play:{rest}"))
-        }
-        _ => Err("unsupported replay action identity".into()),
-    }
+fn action_payload<'a>(observation: &'a Value, id: &str) -> Option<&'a Value> {
+    let mut matches = observation["legal_actions"]
+        .as_array()?
+        .iter()
+        .filter(|entry| entry["action_id"].as_str() == Some(id));
+    let payload = matches.next()?.get("action")?;
+    (matches.next().is_none() && payload.is_object()).then_some(payload)
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use serde_json::json;
     #[test]
+    fn shared_model_execution_replays_each_step_with_its_fresh_semantic_payload() {
+        use sts2_harness::{ActionKind, EpisodeLegalAction, EpisodeStage};
+        let make = |generation: u64, card: &str, id: &str| {
+            json!({
+                "state_id":format!("combat-{generation}"),"generation":generation,"visible_seed":"seed",
+                "player":{"hp":50,"max_hp":50,"energy":3,"gold":0,"hand":[],"deck":[],"discard":[],"exhaust":[]},
+                "state":{"state":"combat","turn_index":1,"enemies":[]},
+                "legal_actions":[{"action_id":id,"action":{"kind":"play_card","card_id":card,"target_id":null}}]
+            })
+        };
+        let records = ["a", "b"].iter().enumerate().map(|(index, card)| {
+            let id = format!("recorded-{index}");
+            json!({"event":"model_decision","model_execution_id":7,
+                "reused_model_execution":index > 0,"action_id":id,"observation":make(index as u64,card,&id)})
+        }).collect();
+        let replay = Replay {
+            records: Some(records),
+            terminal: None,
+        };
+        for (index, card) in ["a", "b"].iter().enumerate() {
+            let generation = index as u64 + 20;
+            let id = format!("fresh-{index}");
+            let observation = EpisodeObservation::new(
+                format!("combat-{generation}"),
+                generation,
+                EpisodeStage::Combat,
+                true,
+                false,
+                true,
+                make(generation, card, &id),
+            )
+            .expect("fixture observation");
+            let actions = EpisodeLegalActionSet::new(
+                observation.state_id(),
+                generation,
+                vec![EpisodeLegalAction::new(&id, ActionKind::PlayCard).expect("fixture action")],
+            )
+            .expect("fixture catalog");
+            assert!(matches!(replay.decide(index as u32,&observation,&actions),
+                Ok(Some(Decision::Action {action_id,..})) if action_id == id));
+            let wrong = EpisodeObservation::new(
+                format!("combat-{generation}"),
+                generation,
+                EpisodeStage::Combat,
+                true,
+                false,
+                true,
+                make(generation, "wrong-target-card", &id),
+            )
+            .expect("fixture observation");
+            assert!(replay.decide(index as u32, &wrong, &actions).is_err());
+        }
+    }
+
+    #[test]
     fn replay_normalizes_only_observation_identity_and_catalog() {
+        let first = json!({"legal_actions":[{"action_id":"old-id", "action":{"kind":"end_turn"}}]});
+        let next =
+            json!({"legal_actions":[{"action_id":"fresh-id", "action":{"kind":"end_turn"}}]});
         assert_eq!(
-            semantic_action("play:3:card:1:enemy:2"),
-            semantic_action("play:8:card:1:enemy:2")
+            action_payload(&first, "old-id"),
+            action_payload(&next, "fresh-id")
         );
-        assert_ne!(
-            semantic_action("play:3:card:1:enemy:2"),
-            semantic_action("play:3:card:1:enemy:1")
-        );
-        assert!(semantic_action("play:x:card:1:none").is_err());
+        assert!(action_payload(&next, "old-id").is_none());
         assert_ne!(
             canonical(json!({"visible_seed":"A","generation":1})),
             canonical(json!({"visible_seed":"B","generation":2}))

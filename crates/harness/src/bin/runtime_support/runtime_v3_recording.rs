@@ -13,8 +13,16 @@ fn enabled() -> bool {
 pub(super) struct DecisionRecorder<'a, S>(pub(super) &'a mut S);
 
 impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
+    fn model_execution_id(&self) -> Option<sts2_harness::ModelExecutionId> {
+        self.0.model_execution_id()
+    }
+    fn action_completed(&mut self, settled: bool) {
+        self.0.action_completed(settled);
+    }
+
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError> {
         let decision = self.0.decide(input)?;
+        let execution_id = self.0.model_execution_id().unwrap_or(input.execution_id);
         if enabled()
             && let Decision::Action {
                 action_id,
@@ -25,7 +33,8 @@ impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
             println!(
                 "{}",
                 json!({"event":"model_decision",
-                    "model_execution_id":input.execution_id.get(), "action_id":action_id,
+                    "model_execution_id":execution_id.get(), "action_id":action_id,
+                    "reused_model_execution":execution_id != input.execution_id,
                     "rationale":rationale, "observation":input.observation.fair_play().as_value()})
             );
         }

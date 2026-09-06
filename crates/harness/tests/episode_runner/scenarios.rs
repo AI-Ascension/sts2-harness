@@ -14,6 +14,7 @@ fn runner_routes_every_playable_surface_and_verifies_terminal_transition() {
     assert_eq!(report.steps(), 8);
     assert_eq!(report.recoveries(), 0);
     assert_eq!(model.calls, 8);
+    assert_eq!(model.completions, vec![true; 8]);
     assert_eq!(runtime.dispatches, 8);
     assert!(runtime.launched);
     assert!(runtime.released);
@@ -27,6 +28,7 @@ fn provider_failure_is_fail_closed_and_never_dispatches() {
     let mut model = FakeModel {
         calls: 0,
         unavailable: true,
+        ..FakeModel::default()
     };
     let error = runner()
         .run(&mut runtime, &mut model)
@@ -36,6 +38,7 @@ fn provider_failure_is_fail_closed_and_never_dispatches() {
         EpisodeRunnerError::Policy(PolicyError::ProviderUnavailable)
     ));
     assert_eq!(runtime.dispatches, 0);
+    assert!(model.completions.is_empty());
     assert!(runtime.released);
     assert!(runtime.mcp_closed);
     assert!(runtime.gateway_closed);
@@ -53,6 +56,7 @@ fn uncertain_dispatch_is_reconciled_without_a_strategic_retry() {
     assert_eq!(runtime.dispatches, 8);
     assert_eq!(runtime.reconciles, 1);
     assert_eq!(report.recoveries(), 1);
+    assert_eq!(model.completions, vec![true; 8]);
 }
 
 #[test]
@@ -87,6 +91,7 @@ fn assert_conflicting_action_stops(runtime: &mut FakeRuntime) {
     assert_eq!(runtime.dispatches, 1);
     assert_eq!(runtime.reconciles, 1);
     assert_eq!(model.calls, 1);
+    assert_eq!(model.completions, vec![false]);
     assert!(runtime.released);
     assert!(runtime.mcp_closed);
     assert!(runtime.gateway_closed);
@@ -169,5 +174,6 @@ fn unresolved_operation_timeout_never_calls_policy_again() {
     assert_eq!(runtime.dispatches, 1);
     assert_eq!(model.calls, 1);
     assert!(runtime.pending.is_some());
+    assert_eq!(model.completions, vec![false]);
     assert!(runtime.released && runtime.mcp_closed && runtime.gateway_closed);
 }

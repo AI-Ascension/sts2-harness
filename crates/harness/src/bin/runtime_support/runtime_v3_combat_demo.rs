@@ -81,6 +81,7 @@ fn execute_step<S: DecisionSource>(
     };
     let current = port.observe().map_err(|error| error.to_string())?;
     if current.generation() != before.generation() || current.state_id() != before.state_id() {
+        source.action_completed(false);
         println!("{}", json!({"event":"decision_stale_before_dispatch"}));
         return Ok(false);
     }
@@ -109,12 +110,16 @@ fn execute_step<S: DecisionSource>(
     println!(
         "{}",
         json!({"event":replay.event(), "operation_id":identity.operation_id,
+            "model_execution_id":source.model_execution_id().unwrap_or(input.execution_id).get(),
+            "reused_model_execution":source.model_execution_id().is_some_and(|id| id != input.execution_id),
             "action_id":action_id, "rationale":rationale, "observation":before.fair_play().as_value()})
     );
-    let receipt = port
+    let result = port
         .dispatch_action(&identity, action)
-        .map_err(|error| error.to_string())?;
-    settle(port, before, receipt)?;
+        .map_err(|error| error.to_string())
+        .and_then(|receipt| settle(port, before, receipt));
+    source.action_completed(result.is_ok());
+    result?;
     Ok(true)
 }
 

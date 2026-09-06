@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod action_plan;
 mod coop;
 mod idempotency;
 mod legal_actions;

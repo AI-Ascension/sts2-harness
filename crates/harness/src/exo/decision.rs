@@ -6,6 +6,10 @@ const MAX_RATIONALE_BYTES: usize = 512;
 /// The only semantic choices a model may return.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Decision {
+    Plan {
+        action_ids: Vec<String>,
+        rationale: String,
+    },
     Action {
         action_id: String,
         rationale: String,
@@ -67,6 +71,7 @@ pub fn parse_decision(bytes: &[u8]) -> Result<Decision, DecisionError> {
     let allowed = [
         "decision",
         "action_id",
+        "action_ids",
         "rationale",
         "confidence",
         "recovery_kind",
@@ -92,6 +97,7 @@ pub fn parse_decision(bytes: &[u8]) -> Result<Decision, DecisionError> {
     }
     match decision {
         "action" => parse_action(&object, rationale),
+        "plan" => parse_plan(&object, rationale),
         "wait" | "reobserve" => parse_observation_directive(&object, decision, rationale),
         "recovery" => parse_recovery(&object, rationale),
         _ => Err(DecisionError::InvalidValue),
@@ -102,7 +108,10 @@ fn parse_action(
     object: &serde_json::Map<String, serde_json::Value>,
     rationale: String,
 ) -> Result<Decision, DecisionError> {
-    if object.contains_key("recovery_kind") || object.contains_key("operation_id") {
+    if object.contains_key("recovery_kind")
+        || object.contains_key("operation_id")
+        || object.contains_key("action_ids")
+    {
         return Err(DecisionError::UnknownField);
     }
     let action_id = object
@@ -133,7 +142,10 @@ fn parse_recovery(
     object: &serde_json::Map<String, serde_json::Value>,
     rationale: String,
 ) -> Result<Decision, DecisionError> {
-    if object.contains_key("action_id") || object.contains_key("confidence") {
+    if object.contains_key("action_id")
+        || object.contains_key("confidence")
+        || object.contains_key("action_ids")
+    {
         return Err(DecisionError::UnknownField);
     }
     let kind = object
@@ -174,7 +186,7 @@ fn parse_observation_directive(
     if object.keys().any(|key| {
         matches!(
             key.as_str(),
-            "action_id" | "confidence" | "recovery_kind" | "operation_id"
+            "action_id" | "action_ids" | "confidence" | "recovery_kind" | "operation_id"
         )
     }) {
         return Err(DecisionError::UnknownField);
@@ -248,4 +260,38 @@ fn valid_id(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
+}
+
+fn parse_plan(
+    object: &serde_json::Map<String, serde_json::Value>,
+    rationale: String,
+) -> Result<Decision, DecisionError> {
+    if object
+        .keys()
+        .any(|key| !matches!(key.as_str(), "decision" | "action_ids" | "rationale"))
+    {
+        return Err(DecisionError::UnknownField);
+    }
+    let values = object
+        .get("action_ids")
+        .and_then(serde_json::Value::as_array)
+        .ok_or(DecisionError::MissingField)?;
+    if values.is_empty() || values.len() > 8 {
+        return Err(DecisionError::InvalidValue);
+    }
+    let mut action_ids = Vec::with_capacity(values.len());
+    for value in values {
+        let id = value
+            .as_str()
+            .filter(|id| valid_id(id))
+            .ok_or(DecisionError::InvalidValue)?;
+        if action_ids.iter().any(|candidate| candidate == id) {
+            return Err(DecisionError::InvalidValue);
+        }
+        action_ids.push(id.to_owned());
+    }
+    Ok(Decision::Plan {
+        action_ids,
+        rationale,
+    })
 }
