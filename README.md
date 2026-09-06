@@ -172,6 +172,17 @@ consistent across processes.
 Live Exo and target-game behavior remain `unverified` until a
 separate runtime handoff.
 
+For a fresh seeded campaign replay, set `STS2_REPLAY_TRAJECTORY` to the recorded JSONL file and
+leave `STS2_COMBAT_DEMO` false. The episode path validates a complete setup-to-victory/defeat
+source, checks current observations and exact legal action payloads, and emits replay provenance
+without constructing a provider transport. Existing runtime configuration validation still applies.
+An initial rejected admission with no effect and unchanged public state is counted in provenance
+and omitted from dispatch; an unresolved mutation is never skipped.
+`STS2_REPLAY_PREFIX=true` explicitly permits a source ending at a settled actionable checkpoint;
+successful checkpoint verification releases the runner lease and does not report episode completion.
+The default remains complete replay. See [the replay decision](docs/decisions/0009-seeded-episode-replay.md)
+for comparison rules and evidence limits.
+
 ## Runtime-v2 deterministic fake lane
 
 The separate `sts2-harness-runtime-v2-fake` binary consumes the copied `runtime-v2` release-like

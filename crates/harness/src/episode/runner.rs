@@ -22,7 +22,7 @@ use crate::error::PortError;
 
 pub use runner_error::EpisodeRunnerError;
 
-const MAX_STEPS: u32 = 1_024;
+const MAX_STEPS: u32 = 4_096;
 const MAX_OBJECTIVE_BYTES: usize = 512;
 const MAX_CONSTRAINTS: usize = 32;
 

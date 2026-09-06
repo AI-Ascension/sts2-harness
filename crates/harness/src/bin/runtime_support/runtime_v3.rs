@@ -29,6 +29,8 @@ use ledger::OperationRecord;
 
 #[path = "runtime_v3_combat_demo.rs"]
 mod combat_demo;
+#[path = "runtime_v3_episode_replay.rs"]
+mod episode_replay;
 
 #[cfg(test)]
 #[path = "runtime_v3_lifecycle_test.rs"]
@@ -37,6 +39,12 @@ mod lifecycle_tests;
 pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let settings = RuntimeV3Settings::from_environment()?;
     let mut port = RuntimeV3Port::new(config)?;
+    if std::env::var("STS2_COMBAT_DEMO").as_deref() != Ok("true") {
+        let path = std::env::var("STS2_REPLAY_TRAJECTORY").unwrap_or_default();
+        if !path.is_empty() {
+            return episode_replay::run(&mut port, &settings.runner, &path);
+        }
+    }
     let transport = ExoProcessTransport::new(settings.process);
     let provider = ExoProvider::new(transport, settings.exo);
     let mut source = ExoDecisionSource::new(ExoSession::new(provider));
