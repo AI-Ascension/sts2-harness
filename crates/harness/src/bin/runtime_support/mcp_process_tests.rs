@@ -3,6 +3,35 @@
 use super::*;
 
 #[test]
+#[cfg(unix)]
+fn compact_catalog_error_survives_stdio_only_for_the_legal_read() -> Result<(), String> {
+    for (tool, accepted) in [
+        ("sts2.legal_actions", true),
+        ("sts2.dispatch_action", false),
+        ("sts2.reobserve", false),
+        ("sts2.recover", false),
+    ] {
+        let body =
+            json!({"correlation_id":"42","error_code":"stale_generation","recovery":"reobserve"});
+        let response = json!({"jsonrpc":"2.0","id":42,"result":{"isError":true,
+            "content":[{"type":"text","text":body.to_string()}]}});
+        let mut command = Command::new("/bin/sh");
+        command.args(["-c", "read request; printf '%s\\n' \"$FIXTURE_RESPONSE\""]);
+        command.env("FIXTURE_RESPONSE", response.to_string());
+        let mut process = McpProcess::spawn_command(command, Duration::from_secs(2))?;
+        let result = super::super::runtime_v3_wire::rpc_call(
+            &mut process,
+            42,
+            "tools/call",
+            json!({"name":tool,"arguments":{}}),
+        );
+        assert_eq!(result.is_ok(), accepted);
+        process.close()?;
+    }
+    Ok(())
+}
+
+#[test]
 fn child_environment_preserves_distinct_gateway_and_mcp_sessions() {
     let config = session_config();
     let command = McpProcess::configured_command(&config);

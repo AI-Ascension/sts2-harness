@@ -132,6 +132,15 @@ impl RuntimeV3Port {
             .ok_or_else(|| format!("MCP tool {name} omitted text content"))?;
         let value: Value = serde_json::from_str(text)
             .map_err(|error| format!("MCP tool {name} returned non-JSON content: {error}"))?;
+        if wire::catalog_reobserve(&value)
+            && (name != "sts2.legal_actions"
+                || text.len() > 1024
+                || response["result"]["isError"] != true)
+        {
+            return Err(String::from(
+                "MCP catalog recovery has an invalid tool envelope",
+            ));
+        }
         let expected_correlation = id.to_string();
         if value.get("correlation_id").and_then(Value::as_str)
             != Some(expected_correlation.as_str())

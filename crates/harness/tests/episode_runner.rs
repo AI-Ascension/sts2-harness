@@ -39,6 +39,9 @@ struct FakeRuntime {
     released: bool,
     mcp_closed: bool,
     gateway_closed: bool,
+    catalog_errors: Vec<PortError>,
+    catalog_calls: usize,
+    advance_catalog: bool,
 }
 
 impl FakeRuntime {
@@ -59,6 +62,9 @@ impl FakeRuntime {
             released: false,
             mcp_closed: false,
             gateway_closed: false,
+            catalog_errors: Vec::new(),
+            catalog_calls: 0,
+            advance_catalog: false,
         }
     }
 
@@ -88,6 +94,13 @@ impl EpisodeRuntimePort for FakeRuntime {
         state_id: &str,
         generation: u64,
     ) -> Result<EpisodeLegalActionSet, PortError> {
+        self.catalog_calls += 1;
+        if !self.catalog_errors.is_empty() {
+            if self.advance_catalog {
+                self.index += 1;
+            }
+            return Err(self.catalog_errors.remove(0));
+        }
         let state = self.current();
         if state.observation.state_id() != state_id || state.observation.generation() != generation
         {
@@ -387,3 +400,6 @@ fn complete_states() -> Vec<State> {
 
 #[path = "episode_runner/scenarios.rs"]
 mod scenarios;
+
+#[path = "episode_runner/catalog_reobserve.rs"]
+mod catalog_reobserve;

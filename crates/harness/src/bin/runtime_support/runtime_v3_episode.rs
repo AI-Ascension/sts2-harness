@@ -83,6 +83,13 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         let value = self
             .call_tool("sts2.legal_actions", arguments)
             .map_err(|error| wire::port_error("legal_actions_failed", error, false))?;
+        if wire::catalog_reobserve(&value) {
+            return Err(wire::port_error(
+                "catalog_reobserve",
+                "host requires a fresh observation before reading legal actions",
+                true,
+            ));
+        }
         let (actions, payloads) = parse::action_set(&value, "legal_actions_response", &self.config)
             .map_err(|error| wire::port_error("legal_actions_invalid", error, false))?;
         self.generation = actions.generation();
