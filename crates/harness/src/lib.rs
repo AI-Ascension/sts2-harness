@@ -18,6 +18,8 @@ mod replay;
 mod routing;
 mod runtime_v2;
 mod runtime_v2_artifact;
+mod runtime_v4_expert;
+mod runtime_v4_expert_artifact;
 
 pub use artifact::{
     ArtifactDraft, ArtifactKind, ArtifactLineage, ArtifactMetadata, ArtifactMetadataInput,
@@ -86,4 +88,10 @@ pub use runtime_v2_artifact::{
     RUNTIME_V2_MAX_TURN_INDEX, RUNTIME_V2_PROTOCOL_VERSION, RUNTIME_V2_SCHEMA_DIGEST,
     RUNTIME_V2_SCHEMA_SOURCE, RuntimeV2ArtifactError, runtime_v2_manifest_bytes,
     runtime_v2_schema_bytes, verify_runtime_v2_artifact,
+};
+pub use runtime_v4_expert::{RuntimeV4ExpertObservation, RuntimeV4ExpertParseError};
+pub use runtime_v4_expert_artifact::{
+    RUNTIME_V4_EXPERT_ARTIFACT, RUNTIME_V4_EXPERT_GENERATOR, RUNTIME_V4_EXPERT_PROTOCOL_VERSION,
+    RUNTIME_V4_EXPERT_SCHEMA_DIGEST, RUNTIME_V4_EXPERT_SCHEMA_SOURCE, RuntimeV4ExpertArtifactError,
+    verify_runtime_v4_expert_artifact,
 };

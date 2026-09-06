@@ -27,6 +27,13 @@ impl SanitizedObservation {
         if encoded.len() > MAX_OBSERVATION_BYTES {
             return Err(SandboxError::TooLarge);
         }
+        if value.get("protocol_version").and_then(Value::as_str)
+            == Some(crate::RUNTIME_V4_EXPERT_PROTOCOL_VERSION)
+        {
+            crate::RuntimeV4ExpertObservation::from_value(value.clone())
+                .map_err(|_| SandboxError::InvalidExpertObservation)?;
+            return Ok(Self(value));
+        }
         validate_value(&value, ValueKind::Root, true)?;
         Ok(Self(value))
     }
@@ -49,14 +56,22 @@ impl SanitizedObservation {
     /// Reports whether the host-visible seed text is still part of this projection.
     #[must_use]
     pub fn has_visible_seed(&self) -> bool {
-        self.0.get("visible_seed").is_some()
+        self.0
+            .get("visible_seed")
+            .is_some_and(|value| !value.is_null())
     }
 
     /// Drops `visible_seed` for an explicitly seed-blind experiment.
     #[must_use]
     pub fn without_visible_seed(mut self) -> Self {
         if let Value::Object(object) = &mut self.0 {
-            object.remove("visible_seed");
+            if object.get("protocol_version").and_then(Value::as_str)
+                == Some(crate::RUNTIME_V4_EXPERT_PROTOCOL_VERSION)
+            {
+                object.insert("visible_seed".to_owned(), Value::Null);
+            } else {
+                object.remove("visible_seed");
+            }
         }
         self
     }
@@ -74,6 +89,7 @@ pub enum SandboxError {
     InvalidNumber,
     InvalidCollection,
     DuplicateLegalAction,
+    InvalidExpertObservation,
 }
 
 impl std::fmt::Display for SandboxError {
@@ -90,6 +106,9 @@ impl std::fmt::Display for SandboxError {
             Self::InvalidNumber => "fair-play observation contains an invalid number",
             Self::InvalidCollection => "fair-play observation contains an oversized collection",
             Self::DuplicateLegalAction => "fair-play observation contains a duplicate legal action",
+            Self::InvalidExpertObservation => {
+                "fair-play observation contains an invalid Runtime-v4 expert state"
+            }
         })
     }
 }
