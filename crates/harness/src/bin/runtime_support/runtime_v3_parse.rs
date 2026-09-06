@@ -21,7 +21,7 @@ mod tests;
 pub(super) use transition::{receipt, wait_sample};
 
 const PROTOCOL_VERSION: &str = "runtime-v3-gameplay";
-const SCHEMA_DIGEST: &str = "b37c80f583aeaf4f81ede2083bcfb4129196baf5eb092470e8738173c4b7226c";
+const SCHEMA_DIGEST: &str = "8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63";
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const ROOT_FIELDS: [&str; 21] = [
     "protocol_version",

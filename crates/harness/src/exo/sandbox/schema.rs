@@ -154,6 +154,9 @@ pub(super) fn validate_shape(
             Some("end_turn" | "skip_reward" | "rest" | "confirm_victory" | "save_quit") => {
                 require_exact(object, &["kind"])
             }
+            Some("proceed" | "confirm_selection" | "cancel_selection") => {
+                require_exact(object, &["kind"])
+            }
             _ => Err(SandboxError::UnknownField),
         },
         ValueKind::Root

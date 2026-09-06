@@ -7,6 +7,9 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Consume the coordinated Runtime-v3 continuation schema with argument-free proceed,
+  confirm-selection and cancel-selection actions; reject mixed revisions and extra arguments.
+
 - Add OpenAI Astra combat decisions through authenticated, ephemeral Codex calls. Provider
   bridges describe their identity so live-run manifests distinguish OpenAI and Ollama.
 
