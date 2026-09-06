@@ -53,6 +53,7 @@ fn validate_payload(value: &Value, kind: &str) -> Result<(), String> {
         .ok_or_else(|| String::from("Runtime-v3 action payload is not an object"))?;
     let fields: &[&str] = match kind {
         "end_turn" | "skip_reward" | "rest" | "confirm_victory" | "save_quit" => &["kind"],
+        "proceed" | "confirm_selection" | "cancel_selection" => &["kind"],
         "start_run" => &["kind", "character_id"],
         "select_map_node" => &["kind", "node_id"],
         "choose_reward" => &["kind", "reward_id"],
@@ -96,6 +97,9 @@ fn action_kind(kind: &str) -> ActionKind {
         "end_turn" => ActionKind::EndTurn,
         "choose_reward" => ActionKind::ChooseReward,
         "skip_reward" => ActionKind::SkipReward,
+        "proceed" => ActionKind::Proceed,
+        "confirm_selection" => ActionKind::ConfirmSelection,
+        "cancel_selection" => ActionKind::CancelSelection,
         "shop_purchase" => ActionKind::ShopPurchase,
         "shop_remove" => ActionKind::ShopRemove,
         "rest" => ActionKind::Rest,

@@ -28,6 +28,10 @@ struct FakeRuntime {
     index: usize,
     pending: Option<PendingTransition>,
     fail_first_dispatch: bool,
+    unknown_first_receipt: bool,
+    unknown_first_reconcile: bool,
+    advance_idle: bool,
+    wait_times_out: bool,
     receipt_action: Option<EpisodeLegalAction>,
     dispatches: usize,
     reconciles: usize,
@@ -44,6 +48,10 @@ impl FakeRuntime {
             index: 0,
             pending: None,
             fail_first_dispatch: false,
+            unknown_first_receipt: false,
+            unknown_first_reconcile: false,
+            advance_idle: false,
+            wait_times_out: false,
             receipt_action: None,
             dispatches: 0,
             reconciles: 0,
@@ -125,7 +133,11 @@ impl EpisodeRuntimePort for FakeRuntime {
             self.receipt_action
                 .clone()
                 .unwrap_or_else(|| action.clone()),
-            DispatchStatus::Accepted,
+            if self.unknown_first_receipt && self.dispatches == 1 {
+                DispatchStatus::Unknown
+            } else {
+                DispatchStatus::Accepted
+            },
             None,
             None,
             None,
@@ -139,6 +151,17 @@ impl BarrierPort for FakeRuntime {
         operation_id: &str,
         _wait_for_millis: u32,
     ) -> Result<WaitSample, BarrierError> {
+        if self.wait_times_out {
+            return Ok(WaitSample::new(WaitOutcome::Timeout, None));
+        }
+        if self.advance_idle
+            && self.pending.is_none()
+            && operation_id.starts_with("episode-idle-")
+            && let Some(after) = self.next_observation()
+        {
+            self.index += 1;
+            return Ok(WaitSample::new(WaitOutcome::Successor, Some(after)));
+        }
         let Some(pending) = self.pending.take() else {
             return Ok(WaitSample::new(WaitOutcome::Timeout, None));
         };
@@ -157,6 +180,24 @@ impl RecoveryPort for FakeRuntime {
     }
 
     fn reconcile(&mut self, operation_id: &str) -> Result<TransitionReceipt, RecoveryError> {
+        if self.unknown_first_reconcile && self.reconciles == 0 {
+            self.reconciles += 1;
+            let pending = self
+                .pending
+                .as_ref()
+                .ok_or(RecoveryError::InvalidOperation)?;
+            if pending.operation_id != operation_id {
+                return Err(RecoveryError::InvalidOperation);
+            }
+            return Ok(TransitionReceipt::new(
+                operation_id,
+                pending.action.clone(),
+                DispatchStatus::Unknown,
+                None,
+                None,
+                Some("still_executing".into()),
+            ));
+        }
         let Some(pending) = self.pending.take() else {
             return Err(RecoveryError::PortFailure);
         };
@@ -339,92 +380,5 @@ fn complete_states() -> Vec<State> {
     .collect()
 }
 
-#[test]
-fn runner_routes_every_playable_surface_and_verifies_terminal_transition() {
-    let mut runtime = FakeRuntime::new(complete_states());
-    let mut model = FakeModel::default();
-    let report = runner()
-        .run(&mut runtime, &mut model)
-        .expect("fake run should complete");
-    assert_eq!(report.terminal_stage(), EpisodeStage::Victory);
-    assert_eq!(report.transitions(), 8);
-    assert_eq!(report.steps(), 8);
-    assert_eq!(report.recoveries(), 0);
-    assert_eq!(model.calls, 8);
-    assert_eq!(runtime.dispatches, 8);
-    assert!(runtime.launched);
-    assert!(runtime.released);
-    assert!(runtime.mcp_closed);
-    assert!(runtime.gateway_closed);
-}
-
-#[test]
-fn provider_failure_is_fail_closed_and_never_dispatches() {
-    let mut runtime = FakeRuntime::new(complete_states());
-    let mut model = FakeModel {
-        calls: 0,
-        unavailable: true,
-    };
-    let error = runner()
-        .run(&mut runtime, &mut model)
-        .expect_err("provider failure must stop the run");
-    assert!(matches!(
-        error,
-        EpisodeRunnerError::Policy(PolicyError::ProviderUnavailable)
-    ));
-    assert_eq!(runtime.dispatches, 0);
-    assert!(runtime.released);
-    assert!(runtime.mcp_closed);
-    assert!(runtime.gateway_closed);
-}
-
-#[test]
-fn uncertain_dispatch_is_reconciled_without_a_strategic_retry() {
-    let mut runtime = FakeRuntime::new(complete_states());
-    runtime.fail_first_dispatch = true;
-    let mut model = FakeModel::default();
-    let report = runner()
-        .run(&mut runtime, &mut model)
-        .expect("reconciliation should settle the admitted operation");
-    assert_eq!(report.terminal_stage(), EpisodeStage::Victory);
-    assert_eq!(runtime.dispatches, 8);
-    assert_eq!(runtime.reconciles, 1);
-    assert_eq!(report.recoveries(), 1);
-}
-
-#[test]
-fn uncertain_dispatch_rejects_reconciliation_for_another_action() {
-    for (action_id, kind) in [
-        ("other-action", ActionKind::StartRun),
-        ("setup-action", ActionKind::EndTurn),
-    ] {
-        let mut runtime = FakeRuntime::new(complete_states());
-        runtime.fail_first_dispatch = true;
-        runtime.receipt_action =
-            Some(EpisodeLegalAction::new(action_id, kind).expect("valid fake action"));
-        assert_conflicting_action_stops(&mut runtime);
-    }
-}
-
-#[test]
-fn accepted_dispatch_rejects_same_id_with_another_action_kind() {
-    let mut runtime = FakeRuntime::new(complete_states());
-    runtime.receipt_action = Some(
-        EpisodeLegalAction::new("setup-action", ActionKind::EndTurn).expect("valid fake action"),
-    );
-    assert_conflicting_action_stops(&mut runtime);
-}
-
-fn assert_conflicting_action_stops(runtime: &mut FakeRuntime) {
-    let mut model = FakeModel::default();
-    let error = runner()
-        .run(runtime, &mut model)
-        .expect_err("a different action must not settle the admitted operation");
-    assert!(matches!(error, EpisodeRunnerError::ConflictingOperation));
-    assert_eq!(runtime.dispatches, 1);
-    assert_eq!(runtime.reconciles, 1);
-    assert_eq!(model.calls, 1);
-    assert!(runtime.released);
-    assert!(runtime.mcp_closed);
-    assert!(runtime.gateway_closed);
-}
+#[path = "episode_runner/scenarios.rs"]
+mod scenarios;

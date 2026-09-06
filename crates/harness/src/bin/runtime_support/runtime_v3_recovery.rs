@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::json;
-use sts2_harness::{
-    BarrierError, BarrierPort, EpisodeObservation, RecoveryError, RecoveryPort, TransitionReceipt,
-    WaitSample,
-};
+use sts2_harness::{EpisodeObservation, RecoveryError, RecoveryPort, TransitionReceipt};
 
 use super::super::mcp::McpProcess;
 use super::{RuntimeV3Port, parse, wire};
@@ -30,38 +27,6 @@ impl RuntimeV3Port {
         wire::initialize_mcp(&mut mcp).map_err(|_| RecoveryError::PortFailure)?;
         self.mcp = Some(mcp);
         Ok(())
-    }
-}
-
-impl BarrierPort for RuntimeV3Port {
-    fn wait_for_transition(
-        &mut self,
-        operation_id: &str,
-        wait_for_millis: u32,
-    ) -> Result<WaitSample, BarrierError> {
-        let value = self
-            .call_tool(
-                "sts2.wait_for_transition",
-                json!({
-                    "instance_id": self.config.instance_id,
-                    "mcp_session_id": self.config.mcp_session_id,
-                    "lease_id": self.config.lease_id,
-                    "lease_epoch": self.config.lease_epoch,
-                    "generation": self.generation,
-                    "operation_id": operation_id,
-                    "wait_for_millis": wait_for_millis
-                }),
-            )
-            .map_err(|_| BarrierError::PortFailure)?;
-        let expected_generation = self
-            .operations
-            .get(operation_id)
-            .map_or(self.generation, |record| record.generation);
-        let sample = parse::wait_sample(&value, &self.config, operation_id, expected_generation)
-            .map_err(|_| BarrierError::PortFailure)?;
-        self.install_response(&value, "wait_response")
-            .map_err(|_| BarrierError::PortFailure)?;
-        Ok(sample)
     }
 }
 
@@ -108,6 +73,7 @@ impl RecoveryPort for RuntimeV3Port {
         .map_err(|_| RecoveryError::PortFailure)?;
         self.install_response(&value, "recover_response")
             .map_err(|_| RecoveryError::PortFailure)?;
+        super::recording::receipt(&receipt);
         Ok(receipt)
     }
 

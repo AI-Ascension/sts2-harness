@@ -97,22 +97,25 @@ checks, cleanup, replay, rollback, and all repository gates are available.
 ### Runtime-v3 canonical artifact provenance
 
 The [Runtime-v3 bundle](../protocol-artifact/runtime-v3-gameplay/README.md) is copied byte-for-byte
-from `AI-Ascension/sts2-protocol` candidate `be0f3f230911f119dbe8e19c71e8249b22f53e59` (MIT).
+from `AI-Ascension/sts2-protocol` candidate `a81ec64d7d14bdb3079b8c7dc3c75e5c88693dfd` (MIT).
 This candidate must be checked against merged protocol main before consumer merge. The canonical
-`SHA256SUMS`, README, manifest, schema and four goldens retain upstream bytes; the
+`SHA256SUMS`, README, manifest, schema and seven goldens retain upstream bytes; the
 [source schema](../schemas/runtime-v3-gameplay.schema.json) and
 [conformance case](../conformance/cases/runtime-v3-gameplay.json) preserve the inventory's relative
 paths. Earlier relocated `UPSTREAM_SHA256SUMS` and `conformance.json` copies are removed.
 
-Schema SHA-256 remains `b37c80f583aeaf4f81ede2083bcfb4129196baf5eb092470e8738173c4b7226c`;
-the authoritative inventory SHA-256 remains
-`ec17dc526545c356462773f9e634ea7b25546c877c601cc1640eae3d7341cb81`.
+Schema SHA-256 is `8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63`;
+the authoritative inventory SHA-256 is
+`ddc7c0a3697bcb474de8e7967041302dab072e11bc9990ffd5a508eb391cc1db`.
+This coordinated revision admits proceed, confirm-selection and cancel-selection in the typed
+policy and Exo action parser. Earlier digests fail closed; all consumers must migrate together.
 Regenerate only by copying the complete bundle and its source/conformance mirrors from a reviewed
 protocol revision, then reviewing both pins and provenance. Goldens are upstream hand-authored
 synthetic observations/actions; no host files, credentials, provider output or private data occur.
-Tests verify every checksum entry and validate four goldens against the schema, with response
+Tests verify every checksum entry and validate seven goldens against the schema, with response
 goldens also traversing the actual observation/receipt parsers. Request goldens receive schema
-validation only. This is bounded source/component evidence; broader transport, Exo, host settlement
+validation; continuation payloads additionally traverse the policy observation parser and reject
+extra arguments. This is bounded source/component evidence; broader transport, Exo, host settlement
 and live compatibility remain unverified. Frozen Runtime-v1/v2 bytes are unchanged.
 
 Breaking changes require an ADR, migration path, release note, updated fixtures/conformance, and

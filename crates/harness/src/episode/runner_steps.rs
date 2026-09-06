@@ -90,6 +90,18 @@ impl EpisodeRunner {
             Ok(()) if observation.stage().is_terminal() => {
                 Ok(ObservationStep::Complete(observation))
             }
+            Ok(()) if observation.assert_actionable().is_err() => {
+                let operation_id = format!("episode-idle-{}", observation.generation());
+                let after = self
+                    .config
+                    .barrier
+                    .await_transition(port, &operation_id, &observation)
+                    .map_err(EpisodeRunnerError::Barrier)?;
+                machine
+                    .observe(after)
+                    .map_err(EpisodeRunnerError::Machine)?;
+                Ok(ObservationStep::Retry)
+            }
             Ok(()) => Ok(ObservationStep::Ready(observation)),
             Err(EpisodeMachineError::UnknownState | EpisodeMachineError::StaleObservation) => {
                 let fresh = self.reobserve(port, machine)?;

@@ -103,7 +103,7 @@ fn response(kind: &str, generation: u64, operation_id: Value, status: Value) -> 
     };
     json!({
         "protocol_version": "runtime-v3-gameplay",
-        "schema_digest": "b37c80f583aeaf4f81ede2083bcfb4129196baf5eb092470e8738173c4b7226c",
+        "schema_digest": "8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63",
         "provenance": {"artifact": "sts2-protocol/runtime-v3-gameplay", "source": "schemas/runtime-v3-gameplay.schema.json", "generator": "hand-authored"},
         "correlation_id": "7",
         "instance_id": "instance-1",
