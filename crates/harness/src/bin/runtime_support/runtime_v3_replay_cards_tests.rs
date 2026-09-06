@@ -85,3 +85,34 @@ fn new_duplicate_card_rebinding_is_ambiguous_and_does_not_commit() {
     assert!(bindings.0.is_empty());
     assert!(bindings.reconcile(&source, &source).is_some());
 }
+
+#[test]
+fn labeled_selection_rebinds_only_established_base_and_preserves_exact_label() {
+    let source = observation();
+    let mut current = source.clone();
+    current["player"]["hand"][0]["card_id"] = json!("card:3");
+    let bindings = CardBindings::default()
+        .reconcile(&source, &current)
+        .expect("unique card");
+    let mut selection = source.clone();
+    selection["state"] = json!({"state":"selection","choices":["card:1:Defend"]});
+    let mut translated = current.clone();
+    translated["state"] = json!({"state":"selection","choices":["card:3:Defend"]});
+    assert!(bindings.reconcile(&selection, &translated).is_some());
+    assert_eq!(
+        bindings.translate(&json!({"kind":"select_card","card_id":"card:1:Defend"})),
+        json!({"kind":"select_card","card_id":"card:3:Defend"})
+    );
+    for unchanged in [
+        "card:10:Defend",
+        "card:1:Defend:extra",
+        "card:1:",
+        "card:1:Defend!",
+    ] {
+        assert_eq!(bindings.identity(&json!(unchanged)), json!(unchanged));
+    }
+    for mismatch in ["card:3:Defend-", "card:3:Strike", "card:4:Defend"] {
+        translated["state"]["choices"] = json!([mismatch]);
+        assert!(bindings.reconcile(&selection, &translated).is_none());
+    }
+}

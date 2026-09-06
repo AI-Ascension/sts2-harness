@@ -28,10 +28,14 @@ Card identities may be rebound across fresh host processes because the adapter a
 first observation. Rebinding compares every other card field at the same ordered pile position,
 requires a one-to-one mapping, and preserves established mappings throughout the episode. A new
 changed identity with indistinguishable duplicates in its pile is rejected as ambiguous. Only
-`card_id` fields and exact card identities in selection choices are translated; other identifiers
+`card_id` fields and card identities in selection choices are translated; other identifiers
 and action targets remain unchanged. Bindings commit only after full observation matching and a
 uniquely legal current action. Terminal comparison uses the same rules. This is equivalence of
 public observations, not a claim about hidden native object identities.
+Native selection identities may append one colon and an ASCII alphanumeric/hyphen display label
+to an established card identity. Rebinding preserves that entire label exactly and does not
+rewrite arbitrary prefixes, nested labels, unknown bases, or unrelated fields. This covers
+the native adapter's labeled card-choice contract without discarding visible choice content.
 The runner dispatches that current identity through its existing MCP and gateway ports. Replay never
 restores a save, changes host state directly, or falls back to a provider on divergence.
 After a settled action, up to three bounded runner waits may await the next recorded public

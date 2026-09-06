@@ -87,11 +87,24 @@ impl CardBindings {
     }
 
     fn identity(&self, value: &Value) -> Value {
-        value
-            .as_str()
-            .and_then(|id| self.0.get(id))
-            .map(|id| Value::String(id.clone()))
-            .unwrap_or_else(|| value.clone())
+        let Some(id) = value.as_str() else {
+            return value.clone();
+        };
+        if let Some(bound) = self.0.get(id) {
+            return Value::String(bound.clone());
+        }
+        // Native card choices append one sanitized display label to the card ID.
+        // Only an established base identity may move; preserve the complete label.
+        if let Some((base, label)) = id.rsplit_once(':')
+            && !label.is_empty()
+            && label
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            && let Some(bound) = self.0.get(base)
+        {
+            return Value::String(format!("{bound}:{label}"));
+        }
+        value.clone()
     }
 }
 

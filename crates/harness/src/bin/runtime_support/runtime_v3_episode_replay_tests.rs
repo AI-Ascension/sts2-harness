@@ -380,3 +380,28 @@ fn rebound_card_dispatch_requires_unique_current_payload_and_preserves_target() 
         }
     }
 }
+
+#[test]
+fn labeled_card_selection_dispatches_current_catalog_identity() {
+    let mut recorded = observation("selection", 1, "old", "ironclad");
+    recorded["player"]["hand"] = json!([
+        {"card_id":"card:1","name":"Defend","cost":1,"upgraded":false}]);
+    recorded["state"] = json!({"state":"selection","choices":["card:1:Defend"]});
+    recorded["legal_actions"] = json!([{"action_id":"old",
+        "action":{"kind":"select_card","card_id":"card:1:Defend"}}]);
+    let mut current = recorded.clone();
+    current["player"]["hand"][0]["card_id"] = json!("card:2");
+    current["state"]["choices"] = json!(["card:2:Defend"]);
+    current["legal_actions"] = json!([{"action_id":"fresh",
+        "action":{"kind":"select_card","card_id":"card:2:Defend"}}]);
+    let mut source = ReplaySource::new(parse(&rows()).expect("fixture trace"));
+    source.trace.records[0] = trace::ReplayRecord {
+        payload: recorded["legal_actions"][0]["action"].clone(),
+        observation: recorded,
+        action_id: "old".into(),
+    };
+    assert!(
+        matches!(source.decide(&input(current, EpisodeStage::Selection)),
+        Ok(Decision::Action { action_id, .. }) if action_id == "fresh")
+    );
+}
