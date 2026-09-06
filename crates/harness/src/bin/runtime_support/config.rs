@@ -14,6 +14,7 @@ pub(crate) struct RuntimeConfig {
     pub(crate) run_id: String,
     pub(crate) episode_id: String,
     pub(crate) trajectory_id: String,
+    pub(crate) trace_id: String,
     pub(crate) artifact_id: String,
     pub(crate) wait_for_combat_seconds: u64,
     pub(crate) settlement_timeout_seconds: u64,
@@ -50,6 +51,7 @@ impl RuntimeConfig {
             run_id: env_or_default("STS2_RUN_ID", "run-runtime-0001")?,
             episode_id: env_or_default("STS2_EPISODE_ID", "episode-runtime-0001")?,
             trajectory_id: env_or_default("STS2_TRAJECTORY_ID", "trajectory-runtime-0001")?,
+            trace_id: env_or_default("STS2_TRACE_ID", "trace-runtime-0001")?,
             artifact_id: env_or_default("STS2_ARTIFACT_ID", "artifact-runtime-0001")?,
             wait_for_combat_seconds,
             settlement_timeout_seconds,
@@ -69,6 +71,7 @@ impl RuntimeConfig {
             ("STS2_RUN_ID", &config.run_id),
             ("STS2_EPISODE_ID", &config.episode_id),
             ("STS2_TRAJECTORY_ID", &config.trajectory_id),
+            ("STS2_TRACE_ID", &config.trace_id),
             ("STS2_ARTIFACT_ID", &config.artifact_id),
         ] {
             if !safe_identity(value) {
@@ -95,12 +98,13 @@ impl RuntimeConfig {
             &config.run_id,
             &config.episode_id,
             &config.trajectory_id,
+            &config.trace_id,
             &config.artifact_id,
         ];
         for (index, value) in lineage_ids.iter().enumerate() {
             if lineage_ids[..index].contains(value) {
                 return Err(String::from(
-                    "STS2 run, episode, trajectory, and artifact identities must be distinct",
+                    "STS2 run, episode, trajectory, trace, and artifact identities must be distinct",
                 ));
             }
         }
@@ -160,6 +164,7 @@ mod tests {
             run_id: "run-1".into(),
             episode_id: "episode-1".into(),
             trajectory_id: "trajectory-1".into(),
+            trace_id: "trace-1".into(),
             artifact_id: "artifact-1".into(),
             wait_for_combat_seconds: 0,
             settlement_timeout_seconds: 30,

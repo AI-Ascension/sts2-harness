@@ -74,6 +74,11 @@ impl RuntimeV3Port {
             .get(operation_id)
             .ok_or(BarrierError::InvalidOperation)?
             .generation;
+        let action_id = self
+            .operations
+            .get(operation_id)
+            .map(|record| record.action.action_id().to_owned())
+            .ok_or(BarrierError::InvalidOperation)?;
         let value = self.call_tool("sts2.wait_for_transition", json!({
             "instance_id":self.config.instance_id, "mcp_session_id":self.config.mcp_session_id,
             "lease_id":self.config.lease_id, "lease_epoch":self.config.lease_epoch,
@@ -84,7 +89,13 @@ impl RuntimeV3Port {
             .map_err(|_| BarrierError::PortFailure)?;
         self.install_response(&value, "wait_response")
             .map_err(|_| BarrierError::PortFailure)?;
-        recording::wait(operation_id, &sample);
+        recording::wait(
+            operation_id,
+            &action_id,
+            generation,
+            &sample,
+            &self.telemetry,
+        );
         Ok(sample)
     }
 }

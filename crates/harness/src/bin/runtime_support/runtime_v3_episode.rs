@@ -9,6 +9,7 @@ use sts2_harness::{
 };
 
 use super::super::mcp::validate_or_release_allocation;
+use super::super::runtime_v3_telemetry::ObservationSource;
 use super::{OperationRecord, RuntimeV3Port, parse, wire};
 
 const MAX_OPERATIONS: usize = 1_024;
@@ -68,7 +69,11 @@ impl EpisodeRuntimePort for RuntimeV3Port {
             .map_err(|error| wire::port_error("observe_failed", error, false))?;
         let parsed = parse::observation(&value, "state_response", &self.config)
             .map_err(|error| wire::port_error("observe_invalid", error, false))?;
-        Ok(self.install(parsed))
+        let observation = self.install(parsed);
+        let _ = self
+            .telemetry
+            .observation(ObservationSource::Observe, &observation);
+        Ok(observation)
     }
 
     fn legal_actions(
@@ -133,7 +138,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         .map_err(|error| wire::port_error("dispatch_invalid", error, false))?;
         self.install_response(&value, "dispatch_action_response")
             .map_err(|error| wire::port_error("dispatch_observation_invalid", error, false))?;
-        super::recording::receipt(&receipt);
+        super::recording::receipt(&receipt, identity.generation, &self.telemetry);
         Ok(receipt)
     }
 }
