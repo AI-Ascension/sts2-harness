@@ -66,8 +66,7 @@ pub(super) fn run(
             "{}",
             json!({"event":"episode_replay_prefix_verified",
             "source_sha256":digest,"replayed_actions":source.cursor,"provider_calls":0,
-            "skipped_rejected_attempts":source.trace.rejected_attempts,
-            "observation":source.prefix_observation})
+            "skipped_rejected_attempts":source.trace.rejected_attempts})
         );
         return Ok(());
     }
@@ -81,14 +80,13 @@ pub(super) fn run(
         )
     })?;
     source.finish(report.final_observation())?;
-    recording::complete(&report);
+    recording::complete(&report, &port.telemetry);
     println!(
         "{}",
         json!({"event":"episode_replay_verified", "source_sha256":digest,
         "replayed_actions":source.cursor, "provider_calls":0,
         "skipped_rejected_attempts":source.trace.rejected_attempts,
-        "terminal_stage":wire::stage_name(report.terminal_stage()),
-        "observation":report.final_observation().fair_play().as_value()})
+        "terminal_stage":wire::stage_name(report.terminal_stage())})
     );
     Ok(())
 }

@@ -13,6 +13,10 @@ use super::http::GatewayClient;
 use super::mcp::{McpProcess, identity_headers};
 use super::runtime_v3_parse as parse;
 use super::runtime_v3_settings::RuntimeV3Settings;
+use super::runtime_v3_telemetry::{
+    CleanupStatus, GameOutcome, RuntimeV3Telemetry, TelemetryContext, TelemetryHandle,
+    TelemetryStage,
+};
 use super::runtime_v3_wire as wire;
 
 #[path = "runtime_v3_episode.rs"]
@@ -38,11 +42,53 @@ mod lifecycle_tests;
 
 pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let settings = RuntimeV3Settings::from_environment()?;
-    let mut port = RuntimeV3Port::new(config)?;
+    let telemetry_context = TelemetryContext::new(
+        &config.run_id,
+        &config.episode_id,
+        &config.trajectory_id,
+        &config.trace_id,
+        &config.instance_id,
+        &config.session_id,
+        &config.runtime_profile,
+        &settings.exo.revision,
+    )?;
+    let telemetry = RuntimeV3Telemetry::new(telemetry_context);
+    let telemetry_handle = telemetry.handle();
+    let _ = telemetry_handle.run_started();
+    let mut port = match RuntimeV3Port::new_with_telemetry(config, telemetry_handle.clone()) {
+        Ok(port) => port,
+        Err(error) => {
+            let _ = telemetry_handle.failure(
+                "runtime_init",
+                super::runtime_v3_telemetry::FailureCode::Configuration,
+                false,
+                None,
+            );
+            let _ = telemetry_handle.run_finished(
+                GameOutcome::Unavailable,
+                TelemetryStage::Unknown,
+                CleanupStatus::Failed,
+            );
+            finish_telemetry(telemetry);
+            return Err(error);
+        }
+    };
     if std::env::var("STS2_COMBAT_DEMO").as_deref() != Ok("true") {
         let path = std::env::var("STS2_REPLAY_TRAJECTORY").unwrap_or_default();
         if !path.is_empty() {
-            return episode_replay::run(&mut port, &settings.runner, &path);
+            let result = episode_replay::run(&mut port, &settings.runner, &path);
+            drop(port);
+            let _ = telemetry_handle.run_finished(
+                if result.is_ok() {
+                    GameOutcome::Success
+                } else {
+                    GameOutcome::Failure
+                },
+                TelemetryStage::Unknown,
+                CleanupStatus::Clean,
+            );
+            finish_telemetry(telemetry);
+            return result;
         }
     }
     let transport = ExoProcessTransport::new(settings.process);
@@ -51,14 +97,75 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     if std::env::var("STS2_COMBAT_DEMO").as_deref() == Ok("true") {
         let outcome = combat_demo::run(&mut port, &mut source, &settings.runner);
         let close = source.close().map_err(|error| error.to_string());
+        drop(port);
+        let game_outcome = if outcome.is_ok() && close.is_ok() {
+            GameOutcome::Success
+        } else {
+            GameOutcome::Failure
+        };
+        let _ = telemetry_handle.run_finished(
+            game_outcome,
+            TelemetryStage::Unknown,
+            if close.is_ok() {
+                CleanupStatus::Clean
+            } else {
+                CleanupStatus::Failed
+            },
+        );
+        finish_telemetry(telemetry);
         return outcome.and(close);
     }
-    let result = EpisodeRunner::new(settings.runner)
-        .run(&mut port, &mut recording::DecisionRecorder(&mut source));
+    let result = EpisodeRunner::new(settings.runner).run(
+        &mut port,
+        &mut recording::DecisionRecorder::new(&mut source, telemetry_handle.clone()),
+    );
     let source_close = source.close();
-    let report = result.map_err(|error| format!("Runtime-v3 episode failed: {error}"))?;
-    source_close.map_err(|error| format!("Exo session close failed: {error}"))?;
-    recording::complete(&report);
+    drop(port);
+    let report = match result {
+        Ok(report) => report,
+        Err(error) => {
+            let _ = telemetry_handle.failure(
+                "episode",
+                super::runtime_v3_telemetry::FailureCode::Other,
+                false,
+                None,
+            );
+            let _ = telemetry_handle.run_finished(
+                GameOutcome::Unavailable,
+                TelemetryStage::Unknown,
+                CleanupStatus::Failed,
+            );
+            finish_telemetry(telemetry);
+            return Err(format!("Runtime-v3 episode failed: {error}"));
+        }
+    };
+    if source_close.is_err() {
+        let _ = telemetry_handle.failure(
+            "provider_close",
+            super::runtime_v3_telemetry::FailureCode::Cleanup,
+            false,
+            None,
+        );
+        let _ = telemetry_handle.run_finished(
+            GameOutcome::Unavailable,
+            TelemetryStage::from(report.terminal_stage()),
+            CleanupStatus::Failed,
+        );
+        finish_telemetry(telemetry);
+        return Err(String::from("Exo session close failed"));
+    }
+    recording::complete(&report, &telemetry_handle);
+    let game_outcome = match report.terminal_stage() {
+        sts2_harness::EpisodeStage::Victory => GameOutcome::Success,
+        sts2_harness::EpisodeStage::Defeat => GameOutcome::Failure,
+        _ => GameOutcome::Unavailable,
+    };
+    let _ = telemetry_handle.run_finished(
+        game_outcome,
+        TelemetryStage::from(report.terminal_stage()),
+        CleanupStatus::Clean,
+    );
+    finish_telemetry(telemetry);
     println!(
         "{}",
         serde_json::to_string(&json!({
@@ -76,6 +183,22 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     Ok(())
 }
 
+fn finish_telemetry(telemetry: RuntimeV3Telemetry) {
+    let report = telemetry.finish(std::time::Duration::from_secs(2));
+    if report.export_status() != "delivered" {
+        eprintln!(
+            "runtime-v3 telemetry export status={} sent={} failed={} dropped={} timed_out={}",
+            report.export_status(),
+            report.sent,
+            report.failed,
+            report
+                .normal_dropped
+                .saturating_add(report.critical_dropped),
+            report.timed_out
+        );
+    }
+}
+
 pub(super) struct RuntimeV3Port {
     config: RuntimeConfig,
     gateway: GatewayClient,
@@ -89,10 +212,14 @@ pub(super) struct RuntimeV3Port {
     payloads: BTreeMap<String, Value>,
     operations: BTreeMap<String, OperationRecord>,
     reconnect_attempts: u8,
+    telemetry: TelemetryHandle,
 }
 
 impl RuntimeV3Port {
-    fn new(config: RuntimeConfig) -> Result<Self, String> {
+    fn new_with_telemetry(
+        config: RuntimeConfig,
+        telemetry: TelemetryHandle,
+    ) -> Result<Self, String> {
         let gateway = GatewayClient::new(&config)?;
         Ok(Self {
             config,
@@ -107,6 +234,7 @@ impl RuntimeV3Port {
             payloads: BTreeMap::new(),
             operations: BTreeMap::new(),
             reconnect_attempts: 0,
+            telemetry,
         })
     }
 

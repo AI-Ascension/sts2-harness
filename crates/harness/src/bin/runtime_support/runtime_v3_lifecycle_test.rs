@@ -23,6 +23,7 @@ fn config(address: String) -> RuntimeConfig {
         run_id: "run-1".into(),
         episode_id: "episode-1".into(),
         trajectory_id: "trajectory-1".into(),
+        trace_id: "trace-1".into(),
         artifact_id: "artifact-1".into(),
         wait_for_combat_seconds: 0,
         settlement_timeout_seconds: 30,
@@ -79,7 +80,10 @@ fn runtime_v3_lost_allocation_response_releases_the_configured_lease()
 -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     listener.set_nonblocking(true)?;
-    let mut port = RuntimeV3Port::new(config(listener.local_addr()?.to_string()))?;
+    let mut port = RuntimeV3Port::new_with_telemetry(
+        config(listener.local_addr()?.to_string()),
+        TelemetryHandle::disabled(),
+    )?;
     std::thread::scope(|scope| -> Result<(), Box<dyn std::error::Error>> {
         let gateway = scope.spawn(move || -> Result<(), String> {
             let mut allocation = accept(&listener)?;
@@ -153,7 +157,7 @@ fn runtime_v3_wrong_lease_uses_returned_fence_and_requires_release_confirmation(
         listener.set_nonblocking(true)?;
         let mut config = config(listener.local_addr()?.to_string());
         config.mcp_session_id = "mcp-session-explicit".into();
-        let mut port = RuntimeV3Port::new(config)?;
+        let mut port = RuntimeV3Port::new_with_telemetry(config, TelemetryHandle::disabled())?;
         std::thread::scope(|scope| -> Result<(), Box<dyn std::error::Error>> {
             let gateway = scope.spawn(move || wrong_lease_gateway(listener, status));
             let error = port
@@ -262,7 +266,7 @@ mod reconnect {
         let fixture = Fixture::new()?;
         let mut config = config("127.0.0.1:15525".into());
         config.mcp_binary = fixture.script("IFS= read -r line\nexit 0\n")?;
-        let mut port = RuntimeV3Port::new(config)?;
+        let mut port = RuntimeV3Port::new_with_telemetry(config, TelemetryHandle::disabled())?;
         port.allocated = true;
         port.mcp = Some(McpProcess::spawn(&port.config)?);
         let mut state: Value = serde_json::from_str(include_str!(
