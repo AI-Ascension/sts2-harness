@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! The runtime-v3 telemetry boundary.
-//!
-//! This module deliberately lives beside the executable adapter. It accepts only
-//! finite enums, bounded scalars, and digests of host/provider identities. The
-//! worker owns the loopback socket; gameplay calls only enqueue into bounded
-//! channels and never perform network I/O.
+// The runtime-v3 telemetry boundary.
+//
+// This module deliberately lives beside the executable adapter. It accepts only
+// finite enums, bounded scalars, and digests of host/provider identities. The
+// worker owns the loopback socket; gameplay calls only enqueue into bounded
+// channels and never perform network I/O.
 
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream};
@@ -30,20 +30,20 @@ const SOCKET_TIMEOUT: Duration = Duration::from_millis(500);
 const MAX_RESPONSE_BYTES: usize = 16 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct TelemetryContext {
-    pub(super) run_id: String,
-    pub(super) episode_id: String,
-    pub(super) trajectory_id: String,
-    pub(super) trace_id: String,
-    pub(super) instance_id: String,
-    pub(super) session_id: String,
-    pub(super) runtime_profile: String,
-    pub(super) schema_version: String,
-    pub(super) provider_revision_digest: String,
+pub struct TelemetryContext {
+    pub run_id: String,
+    pub episode_id: String,
+    pub trajectory_id: String,
+    pub trace_id: String,
+    pub instance_id: String,
+    pub session_id: String,
+    pub runtime_profile: String,
+    pub schema_version: String,
+    pub provider_revision_digest: String,
 }
 
 impl TelemetryContext {
-    pub(super) fn new(
+    pub fn new(
         run_id: &str,
         episode_id: &str,
         trajectory_id: &str,
@@ -94,7 +94,7 @@ impl TelemetryContext {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum DecisionKind {
+pub enum DecisionKind {
     Action,
     Plan,
     Wait,
@@ -103,7 +103,7 @@ pub(super) enum DecisionKind {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum TelemetryActionKind {
+pub enum TelemetryActionKind {
     StartRun,
     SelectMapNode,
     PlayCard,
@@ -172,7 +172,7 @@ impl From<ActionKind> for TelemetryActionKind {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum TelemetryStage {
+pub enum TelemetryStage {
     Setup,
     Map,
     Combat,
@@ -226,7 +226,7 @@ impl From<EpisodeStage> for TelemetryStage {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum FailureCode {
+pub enum FailureCode {
     InputBlocked,
     StaleCatalog,
     IllegalAction,
@@ -278,7 +278,7 @@ impl From<&PolicyError> for FailureCode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum RecoveryKind {
+pub enum RecoveryKind {
     Reconnect,
     Reobserve,
     Reconcile,
@@ -290,121 +290,6 @@ impl RecoveryKind {
             Self::Reconnect => "reconnect",
             Self::Reobserve => "reobserve",
             Self::Reconcile => "reconcile",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum GameOutcome {
-    Success,
-    Failure,
-    Unavailable,
-}
-
-impl GameOutcome {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Success => "success",
-            Self::Failure => "failure",
-            Self::Unavailable => "unavailable",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum CleanupStatus {
-    Clean,
-    Failed,
-}
-
-impl CleanupStatus {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Clean => "clean",
-            Self::Failed => "failed",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ObservationSource {
-    Observe,
-    Reobserve,
-    Transition,
-    Recovery,
-}
-
-impl ObservationSource {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Observe => "observe",
-            Self::Reobserve => "reobserve",
-            Self::Transition => "transition",
-            Self::Recovery => "recovery",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum DispatchTelemetryStatus {
-    Accepted,
-    Settled,
-    Rejected,
-    Unknown,
-    Cancelled,
-}
-
-impl DispatchTelemetryStatus {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Accepted => "accepted",
-            Self::Settled => "settled",
-            Self::Rejected => "rejected",
-            Self::Unknown => "unknown",
-            Self::Cancelled => "cancelled",
-        }
-    }
-}
-
-impl From<DispatchStatus> for DispatchTelemetryStatus {
-    fn from(status: DispatchStatus) -> Self {
-        match status {
-            DispatchStatus::Accepted => Self::Accepted,
-            DispatchStatus::Settled => Self::Settled,
-            DispatchStatus::Rejected => Self::Rejected,
-            DispatchStatus::Unknown => Self::Unknown,
-            DispatchStatus::Cancelled => Self::Cancelled,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum EventKind {
-    RunStarted,
-    ModelDecision,
-    ModelFailure,
-    Observation,
-    ActionDispatch,
-    SettlementObservation,
-    Recovery,
-    Failure,
-    TerminalObserved,
-    RunFinished,
-}
-
-impl EventKind {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::RunStarted => "run_started",
-            Self::ModelDecision => "model_decision",
-            Self::ModelFailure => "model_failure",
-            Self::Observation => "observation",
-            Self::ActionDispatch => "action_dispatch",
-            Self::SettlementObservation => "settlement_observation",
-            Self::Recovery => "recovery",
-            Self::Failure => "failure",
-            Self::TerminalObserved => "terminal_observed",
-            Self::RunFinished => "run_finished",
         }
     }
 }

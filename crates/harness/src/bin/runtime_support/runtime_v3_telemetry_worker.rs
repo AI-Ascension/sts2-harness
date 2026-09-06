@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 fn worker_loop(
     state: Arc<ExporterState>,
     normal_rx: Receiver<TelemetryEvent>,

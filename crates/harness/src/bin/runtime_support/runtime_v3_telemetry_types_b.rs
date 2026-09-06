@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 #[derive(Clone, Debug)]
 enum TelemetryEvent {
     RunStarted,
@@ -64,23 +66,23 @@ enum TelemetryEvent {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum EnqueueStatus {
+pub enum EnqueueStatus {
     Queued,
     Dropped,
     Closed,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(super) struct FlushReport {
-    pub(super) sent: u64,
-    pub(super) failed: u64,
-    pub(super) normal_dropped: u64,
-    pub(super) critical_dropped: u64,
-    pub(super) timed_out: bool,
+pub struct FlushReport {
+    pub sent: u64,
+    pub failed: u64,
+    pub normal_dropped: u64,
+    pub critical_dropped: u64,
+    pub timed_out: bool,
 }
 
 impl FlushReport {
-    pub(super) fn export_status(&self) -> &'static str {
+    pub fn export_status(&self) -> &'static str {
         if self.timed_out {
             "timeout"
         } else if self.failed > 0 || self.normal_dropped > 0 || self.critical_dropped > 0 {
@@ -102,11 +104,11 @@ struct ExporterState {
 }
 
 #[derive(Clone)]
-pub(super) struct TelemetryHandle {
+pub struct TelemetryHandle {
     state: Arc<ExporterState>,
 }
 
-pub(super) struct RuntimeV3Telemetry {
+pub struct RuntimeV3Telemetry {
     handle: TelemetryHandle,
     control_tx: SyncSender<ControlMessage>,
     worker: Option<JoinHandle<WorkerReport>>,

@@ -1,5 +1,7 @@
+// SPDX-License-Identifier: MIT
+
 impl RuntimeV3Telemetry {
-    pub(super) fn new(context: TelemetryContext) -> Self {
+    pub fn new(context: TelemetryContext) -> Self {
         let (normal_tx, normal_rx) = mpsc::sync_channel(NORMAL_QUEUE_CAPACITY);
         let (critical_tx, critical_rx) = mpsc::sync_channel(CRITICAL_QUEUE_CAPACITY);
         let (control_tx, control_rx) = mpsc::sync_channel(1);
@@ -24,11 +26,11 @@ impl RuntimeV3Telemetry {
         }
     }
 
-    pub(super) fn handle(&self) -> TelemetryHandle {
+    pub fn handle(&self) -> TelemetryHandle {
         self.handle.clone()
     }
 
-    pub(super) fn finish(mut self, deadline: Duration) -> FlushReport {
+    pub fn finish(mut self, deadline: Duration) -> FlushReport {
         let (reply_tx, reply_rx) = mpsc::sync_channel(1);
         let control_status = self.control_tx.try_send(ControlMessage::Flush(reply_tx));
         let mut report = match control_status {
@@ -77,7 +79,7 @@ impl RuntimeV3Telemetry {
 
 impl TelemetryHandle {
     #[cfg(test)]
-    pub(super) fn disabled() -> Self {
+    pub fn disabled() -> Self {
         let (normal_tx, _normal_rx) = mpsc::sync_channel(0);
         let (critical_tx, _critical_rx) = mpsc::sync_channel(0);
         let state = ExporterState {
@@ -104,11 +106,11 @@ impl TelemetryHandle {
         }
     }
 
-    pub(super) fn run_started(&self) -> EnqueueStatus {
+    pub fn run_started(&self) -> EnqueueStatus {
         self.enqueue(TelemetryEvent::RunStarted, true)
     }
 
-    pub(super) fn model_decision(
+    pub fn model_decision(
         &self,
         model_execution_id: u64,
         decision_kind: DecisionKind,
@@ -128,7 +130,7 @@ impl TelemetryHandle {
         )
     }
 
-    pub(super) fn model_failure(
+    pub fn model_failure(
         &self,
         model_execution_id: u64,
         failure_code: FailureCode,
@@ -142,7 +144,7 @@ impl TelemetryHandle {
         )
     }
 
-    pub(super) fn observation(
+    pub fn observation(
         &self,
         source: ObservationSource,
         observation: &EpisodeObservation,
@@ -158,7 +160,7 @@ impl TelemetryHandle {
         )
     }
 
-    pub(super) fn action_dispatch(
+    pub fn action_dispatch(
         &self,
         operation_id: &str,
         action_id: &str,
@@ -180,7 +182,7 @@ impl TelemetryHandle {
         )
     }
 
-    pub(super) fn settlement(
+    pub fn settlement(
         &self,
         operation_id: &str,
         action_id: &str,
@@ -204,7 +206,7 @@ impl TelemetryHandle {
         )
     }
 
-    pub(super) fn recovery(
+    pub fn recovery(
         &self,
         kind: RecoveryKind,
         operation_id: Option<&str>,
@@ -224,7 +226,7 @@ impl TelemetryHandle {
         )
     }
 
-    pub(super) fn failure(
+    pub fn failure(
         &self,
         boundary: &'static str,
         failure_code: FailureCode,
@@ -242,7 +244,7 @@ impl TelemetryHandle {
         )
     }
 
-    pub(super) fn terminal(
+    pub fn terminal(
         &self,
         observation: &EpisodeObservation,
         outcome: GameOutcome,
@@ -258,7 +260,7 @@ impl TelemetryHandle {
         )
     }
 
-    pub(super) fn run_finished(
+    pub fn run_finished(
         &self,
         outcome: GameOutcome,
         terminal_stage: TelemetryStage,
