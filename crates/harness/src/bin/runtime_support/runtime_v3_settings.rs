@@ -35,15 +35,20 @@ impl RuntimeV3Settings {
 }
 
 fn verify_revision(revision: &str) -> Result<(), String> {
-    let local_bridge = matches!(
-        optional("STS2_PROVIDER_KIND")?.as_deref(),
-        Some("ollama" | "openai-astra")
-    );
+    let provider = optional("STS2_PROVIDER_KIND")?;
+    let local_bridge = matches!(provider.as_deref(), Some("ollama" | "openai-astra"));
+    let live_episode = optional("STS2_LIVE_EPISODE")?.as_deref() == Some("true");
+    if live_episode && provider.as_deref() != Some("openai-astra") {
+        return Err(String::from(
+            "Live episode mode requires the OpenAI Astra provider",
+        ));
+    }
     if local_bridge
-        && (revision.len() != 64 || optional("STS2_COMBAT_DEMO")?.as_deref() != Some("true"))
+        && (revision.len() != 64
+            || !(optional("STS2_COMBAT_DEMO")?.as_deref() == Some("true") || live_episode))
     {
         return Err(String::from(
-            "Local provider demo requires the bridge SHA256 and explicit combat demo mode",
+            "Local provider requires the bridge SHA256 and explicit combat or live episode mode",
         ));
     }
     if local_bridge {

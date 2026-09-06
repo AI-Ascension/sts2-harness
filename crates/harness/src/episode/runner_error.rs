@@ -49,7 +49,9 @@ impl std::fmt::Display for EpisodeRunnerError {
             Self::Observe(_) => "episode observation failed",
             Self::LegalActions(_) => "episode legal-action request failed",
             Self::Dispatch(_) => "episode action dispatch failed",
-            Self::Barrier(_) => "episode transition barrier failed",
+            Self::Barrier(error) => {
+                return write!(formatter, "episode transition barrier failed: {error}");
+            }
             Self::Recovery(_) => "episode recovery failed",
             Self::Shutdown(_) => "episode cleanup failed",
             Self::Machine(_) => "episode state machine rejected a transition",

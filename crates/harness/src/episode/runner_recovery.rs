@@ -65,7 +65,32 @@ impl EpisodeRunner {
                 Ok(None)
             }
             DispatchStatus::Accepted | DispatchStatus::Unknown => {
-                Err(EpisodeRunnerError::UncertainMutation)
+                // Continue observing the same operation. Never ask policy for a replacement
+                // while the host may still be executing the admitted action.
+                let sample = self
+                    .config
+                    .barrier
+                    .await_transition_sample(port, operation_id, before)
+                    .map_err(|_| EpisodeRunnerError::UncertainMutation)?;
+                let after = sample
+                    .observation()
+                    .cloned()
+                    .ok_or(EpisodeRunnerError::MissingObservation)?;
+                let effect = sample
+                    .effect_kind()
+                    .map(str::to_owned)
+                    .ok_or(EpisodeRunnerError::MissingEffectWitness)?;
+                let settled = TransitionReceipt::new(
+                    operation_id,
+                    action.clone(),
+                    DispatchStatus::Settled,
+                    Some(after.clone()),
+                    Some(effect),
+                    None,
+                );
+                verify_settlement(before, &settled).map_err(EpisodeRunnerError::Postcondition)?;
+                accept_observation(machine, after.clone())?;
+                Ok(Some(after))
             }
         }
     }

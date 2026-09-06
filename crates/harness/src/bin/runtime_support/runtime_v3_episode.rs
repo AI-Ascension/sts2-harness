@@ -126,6 +126,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         .map_err(|error| wire::port_error("dispatch_invalid", error, false))?;
         self.install_response(&value, "dispatch_action_response")
             .map_err(|error| wire::port_error("dispatch_observation_invalid", error, false))?;
+        super::recording::receipt(&receipt);
         Ok(receipt)
     }
 }

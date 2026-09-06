@@ -19,8 +19,12 @@ use super::runtime_v3_wire as wire;
 mod episode;
 #[path = "runtime_v3_ledger.rs"]
 mod ledger;
+#[path = "runtime_v3_recording.rs"]
+mod recording;
 #[path = "runtime_v3_recovery.rs"]
 mod recovery;
+#[path = "runtime_v3_wait.rs"]
+mod wait;
 use ledger::OperationRecord;
 
 #[path = "runtime_v3_combat_demo.rs"]
@@ -41,10 +45,12 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         let close = source.close().map_err(|error| error.to_string());
         return outcome.and(close);
     }
-    let result = EpisodeRunner::new(settings.runner).run(&mut port, &mut source);
+    let result = EpisodeRunner::new(settings.runner)
+        .run(&mut port, &mut recording::DecisionRecorder(&mut source));
     let source_close = source.close();
     let report = result.map_err(|error| format!("Runtime-v3 episode failed: {error}"))?;
     source_close.map_err(|error| format!("Exo session close failed: {error}"))?;
+    recording::complete(&report);
     println!(
         "{}",
         serde_json::to_string(&json!({
