@@ -23,7 +23,7 @@ pub fn demo_snapshot() -> Vec<u8> {
                 "column": lane,
                 "id": format!("demo:{row}:{lane}"),
                 "row": row,
-                "visited": row < 2,
+                "visited": row <= 2,
             }));
         }
     }
@@ -70,7 +70,7 @@ pub fn demo_snapshot() -> Vec<u8> {
         "freshness": "current",
         "game_build": "demo-build",
         "generation": 42,
-        "history": ["demo:0:2", "demo:1:1", "demo:1:2"],
+        "history": ["demo:0:2", "demo:1:2", "demo:2:2"],
         "map_instance_id": "demo-map",
         "mod_version": "demo-map-mod",
         "nodes": nodes,

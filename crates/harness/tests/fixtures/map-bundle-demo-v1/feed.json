@@ -1,17 +1,1 @@
-{
-  "entries": [
-    {
-      "bundle_digest": "fc8a3b4e01d27f38002ae36498721853b0ebdc83be8fed0258b7289a8a7dceb3",
-      "episode_id": "demo-episode-001",
-      "generation": 42,
-      "observed_at_unix_ms": 1700000000000,
-      "run_id": "demo-run-001",
-      "sequence": 1,
-      "source_state_id": "demo-state-42",
-      "trajectory_id": "demo-trajectory-001"
-    }
-  ],
-  "feed_version": "sts2.map-feed-v1",
-  "head": "fc8a3b4e01d27f38002ae36498721853b0ebdc83be8fed0258b7289a8a7dceb3",
-  "sequence": 1
-}
+{"entries":[{"bundle_digest":"827b997e87178f8bcceafb9865928abe401d07237b58f940478ec6d26e248489","episode_id":"demo-episode-001","generation":42,"observed_at_unix_ms":1700000000000,"run_id":"demo-run-001","sequence":1,"source_state_id":"demo-state-42","trajectory_id":"demo-trajectory-001"}],"feed_version":"sts2.map-feed-v1","head":"827b997e87178f8bcceafb9865928abe401d07237b58f940478ec6d26e248489","sequence":1}
