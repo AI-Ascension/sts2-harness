@@ -3,6 +3,7 @@
 use super::RuntimeV3Port;
 #[path = "runtime_v3_combat_replay.rs"]
 mod replay;
+use super::super::runtime_v3_telemetry::CleanupStatus;
 use serde_json::json;
 use std::time::{Duration, Instant};
 use sts2_harness::{
@@ -11,24 +12,86 @@ use sts2_harness::{
     RecoveryPort, TransitionReceipt, verify_settlement,
 };
 
+pub(super) struct CombatDemoReport {
+    terminal_observation: EpisodeObservation,
+    steps: u32,
+}
+
+impl CombatDemoReport {
+    pub(super) fn terminal_observation(&self) -> &EpisodeObservation {
+        &self.terminal_observation
+    }
+
+    pub(super) const fn steps(&self) -> u32 {
+        self.steps
+    }
+
+    pub(super) fn terminal_observation_digest(&self) -> String {
+        replay::Replay::observation_digest(&self.terminal_observation)
+    }
+}
+
+pub(super) struct CombatDemoFailure {
+    message: String,
+    terminal_observation: Option<EpisodeObservation>,
+    cleanup_status: CleanupStatus,
+}
+
+impl CombatDemoFailure {
+    pub(super) fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub(super) fn terminal_observation(&self) -> Option<&EpisodeObservation> {
+        self.terminal_observation.as_ref()
+    }
+
+    pub(super) const fn cleanup_status(&self) -> CleanupStatus {
+        self.cleanup_status
+    }
+}
+
 pub(super) fn run<S: DecisionSource>(
     port: &mut RuntimeV3Port,
     source: &mut S,
     config: &EpisodeRunnerConfig,
-) -> Result<(), String> {
-    port.launch().map_err(|error| error.to_string())?;
+) -> Result<CombatDemoReport, CombatDemoFailure> {
+    if let Err(error) = port.launch() {
+        return Err(CombatDemoFailure {
+            message: error.to_string(),
+            terminal_observation: None,
+            cleanup_status: CleanupStatus::Failed,
+        });
+    }
     let result = run_inner(port, source, config);
     let cleanup = EpisodeShutdown
         .close(port)
         .map_err(|error| error.to_string());
-    result.and(cleanup)
+    match (result, cleanup) {
+        (Ok(report), Ok(())) => Ok(report),
+        (Ok(report), Err(error)) => Err(CombatDemoFailure {
+            message: format!("combat demo cleanup failed: {error}"),
+            terminal_observation: Some(report.terminal_observation),
+            cleanup_status: CleanupStatus::Failed,
+        }),
+        (Err(error), Ok(())) => Err(CombatDemoFailure {
+            message: error,
+            terminal_observation: None,
+            cleanup_status: CleanupStatus::Clean,
+        }),
+        (Err(error), Err(cleanup_error)) => Err(CombatDemoFailure {
+            message: format!("{error}; combat demo cleanup failed: {cleanup_error}"),
+            terminal_observation: None,
+            cleanup_status: CleanupStatus::Failed,
+        }),
+    }
 }
 
 fn run_inner<S: DecisionSource>(
     port: &mut RuntimeV3Port,
     source: &mut S,
     config: &EpisodeRunnerConfig,
-) -> Result<(), String> {
+) -> Result<CombatDemoReport, String> {
     let deadline = Instant::now() + Duration::from_secs(900);
     let mut steps = 0_u32;
     let mut saw_combat = false;
@@ -36,14 +99,17 @@ fn run_inner<S: DecisionSource>(
     while Instant::now() < deadline && steps < config.max_steps() {
         let before = port.observe().map_err(|error| error.to_string())?;
         saw_combat |= before.stage() == EpisodeStage::Combat;
-        if saw_combat && matches!(before.stage(), EpisodeStage::Reward | EpisodeStage::Defeat) {
+        if saw_combat
+            && matches!(
+                before.stage(),
+                EpisodeStage::Reward | EpisodeStage::Defeat | EpisodeStage::Victory
+            )
+        {
             replay.finish(steps, &before)?;
-            println!(
-                "{}",
-                json!({"event":"combat_demo_complete", "steps":steps,
-                "stage":format!("{:?}",before.stage()), "observation":before.fair_play().as_value()})
-            );
-            return Ok(());
+            return Ok(CombatDemoReport {
+                terminal_observation: before,
+                steps,
+            });
         }
         if before.stage() != EpisodeStage::Combat || !before.input_enabled() {
             std::thread::sleep(Duration::from_millis(250));
@@ -85,12 +151,7 @@ fn execute_step<S: DecisionSource>(
         println!("{}", json!({"event":"decision_stale_before_dispatch"}));
         return Ok(false);
     }
-    let Decision::Action {
-        action_id,
-        rationale,
-        ..
-    } = decision
-    else {
+    let Decision::Action { action_id, .. } = decision else {
         return Err(String::from(
             "combat demo requires a model-selected legal action",
         ));
@@ -107,12 +168,19 @@ fn execute_step<S: DecisionSource>(
         &action_id,
     )
     .map_err(|error| error.to_string())?;
+    let action_payload = port
+        .current_payload(action)
+        .map_err(|error| error.to_string())?;
+    // Keep process output bounded and free of provider reasoning, action IDs, and
+    // game observations. The corresponding sanitized telemetry spans carry
+    // domain-separated digests and the model execution identity.
     println!(
         "{}",
-        json!({"event":replay.event(), "operation_id":identity.operation_id,
+        json!({"event":replay.event(),
             "model_execution_id":source.model_execution_id().unwrap_or(input.execution_id).get(),
             "reused_model_execution":source.model_execution_id().is_some_and(|id| id != input.execution_id),
-            "action_id":action_id, "rationale":rationale, "observation":before.fair_play().as_value()})
+            "observation_digest":replay::Replay::observation_digest(before),
+            "action_digest":replay::Replay::action_digest(&action_payload)})
     );
     let result = port
         .dispatch_action(&identity, action)
@@ -142,10 +210,9 @@ fn settle(
     let verified = verify_settlement(before, &receipt).map_err(|error| error.to_string())?;
     println!(
         "{}",
-        json!({"event":"action_settled", "operation_id":verified.operation_id(),
-        "action_id":verified.action_id(), "from_generation":verified.before_generation(),
-        "to_generation":verified.after_generation(), "effect":verified.effect_kind(),
-        "observation":receipt.after().map(|value| value.fair_play().as_value())})
+        json!({"event":"action_settled",
+        "from_generation":verified.before_generation(),
+        "to_generation":verified.after_generation()})
     );
     Ok(())
 }

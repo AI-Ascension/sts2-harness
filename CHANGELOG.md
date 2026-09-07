@@ -7,6 +7,13 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Record visible Astra-controlled v0.107.1 campaigns and fresh process replays through the full
+  harness → MCP → gateway → mod path: Windows reached Defeat with 333 settled actions; Linux
+  reached Defeat with 431 after one controller restart following a catalog-read failure. These
+  are bounded fixture records; model-played Victory, all campaign branches, native multiplayer,
+  and broader compatibility remain unverified. See `docs/evidence/seeded-astra-campaign-20260906.md`
+  and `docs/evidence/linux-seeded-campaign-20260906.md`.
+
 - Consume the coordinated Runtime-v3 continuation schema with argument-free proceed,
   confirm-selection and cancel-selection actions; reject mixed revisions and extra arguments.
 
@@ -95,8 +102,9 @@ claim a released harness version or runtime compatibility.
   response, preserving the configured trace fence and reporting release failures explicitly.
   Deterministic fake-boundary coverage does not establish live cleanup behavior.
 
-- The package is preparation-only: live providers, game access, gateway lease ownership, MCP framing,
-  game rules, scoring, dataset export, and training integration remain outside this wave.
+- This package-preparation entry covered no live providers, game access, gateway lease ownership,
+  MCP framing, game rules, scoring, dataset export, or training integration; those concerns remain
+  outside that historical wave. Later dated campaign records are scoped separately.
 - Exo revisions are now required to be exact non-zero lowercase commit hashes; the checked-in
   example uses the reviewed public audit revision and does not claim live connectivity.
 

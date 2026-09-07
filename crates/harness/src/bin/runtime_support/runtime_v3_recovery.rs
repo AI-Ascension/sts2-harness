@@ -4,6 +4,7 @@ use serde_json::json;
 use sts2_harness::{EpisodeObservation, RecoveryError, RecoveryPort, TransitionReceipt};
 
 use super::super::mcp::McpProcess;
+use super::super::runtime_v3_telemetry::{ObservationSource, RecoveryKind};
 use super::{RuntimeV3Port, parse, wire};
 
 impl RuntimeV3Port {
@@ -26,6 +27,13 @@ impl RuntimeV3Port {
         let mut mcp = McpProcess::spawn(&self.config).map_err(|_| RecoveryError::PortFailure)?;
         wire::initialize_mcp(&mut mcp).map_err(|_| RecoveryError::PortFailure)?;
         self.mcp = Some(mcp);
+        let _ = self.telemetry.recovery(
+            RecoveryKind::Reconnect,
+            None,
+            self.reconnect_attempts,
+            "success",
+            None,
+        );
         Ok(())
     }
 }
@@ -38,7 +46,18 @@ impl RecoveryPort for RuntimeV3Port {
             .map_err(|_| RecoveryError::PortFailure)?;
         let parsed = parse::observation(&value, "reobserve_response", &self.config)
             .map_err(|_| RecoveryError::PortFailure)?;
-        Ok(self.install(parsed))
+        let observation = self.install(parsed);
+        let _ = self
+            .telemetry
+            .observation(ObservationSource::Reobserve, &observation);
+        let _ = self.telemetry.recovery(
+            RecoveryKind::Reobserve,
+            None,
+            self.reconnect_attempts,
+            "success",
+            None,
+        );
+        Ok(observation)
     }
 
     fn reconcile(&mut self, operation_id: &str) -> Result<TransitionReceipt, RecoveryError> {
@@ -73,7 +92,14 @@ impl RecoveryPort for RuntimeV3Port {
         .map_err(|_| RecoveryError::PortFailure)?;
         self.install_response(&value, "recover_response")
             .map_err(|_| RecoveryError::PortFailure)?;
-        super::recording::receipt(&receipt);
+        super::recording::receipt(&receipt, record.generation, &self.telemetry);
+        let _ = self.telemetry.recovery(
+            RecoveryKind::Reconcile,
+            Some(operation_id),
+            self.reconnect_attempts,
+            "success",
+            None,
+        );
         Ok(receipt)
     }
 

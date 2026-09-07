@@ -7,13 +7,6 @@ Set `STS2_PROVIDER_KIND=openai-astra` and pin the bridge executable SHA-256 as b
 The bridge uses ephemeral, read-only Codex calls with shell, apps, browser, and delegation
 disabled, a strict legal-action JSON schema, and a 90-second execution deadline plus a
 5-second termination grace. Temporary schema/output files are removed after each decision.
-It also requests Codex's JSONL event stream and retains only bounded provider metadata in memory.
-When `STS2_PROVIDER_ACCOUNTING_PATH` is supplied through the explicit Exo inherited-environment
-allowlist, one mode-0600 JSONL sidecar row is appended per bridge call. The row contains the
-Codex thread ID, harness model-execution ID, request/decision SHA-256 values, bounded event
-counters, and reported token fields. It never contains prompts, event text, rationale, or model
-output. If `turn.completed.usage` is absent, `usage_status` is `unavailable`; a malformed or
-truncated event stream is rejected and cannot be reported as usage.
 No user Codex configuration or repository instructions are loaded into the game decision.
 
 Both bridges support `--describe` with provider/model identity. The mod-owned session launcher
@@ -35,8 +28,11 @@ verifies the digest before starting. Normal Exo runs retain their reviewed revis
 
 Visible seeds are forwarded by default. Set `STS2_EXO_FORWARD_VISIBLE_SEED=false` only
 for an intentional seed-blind experiment. The bridge accepts one current legal action and
-a short rationale; it has no heuristic fallback. Store trajectories only in an operator-owned
-external directory because they contain visible game data and model rationales.
+a short rationale; it has no heuristic fallback. The launcher trajectory records only bounded
+model execution metadata, observation digests, action-payload digests, and generation changes;
+it does not write rationale, action identity, or full observations to stdout. Any legacy or
+operator-supplied trajectory containing visible game data remains an external operator-owned
+artifact.
 
 Set `STS2_REPLAY_TRAJECTORY` to an external completed model trajectory for action replay.
 This mode makes no provider calls, checks each visible pre-action observation including seed,
