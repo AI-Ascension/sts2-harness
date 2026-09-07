@@ -112,6 +112,19 @@ fn action_kind(kind: &str) -> ActionKind {
     }
 }
 
+pub(crate) fn action_from_payload(
+    action_id: &str,
+    payload: &Value,
+) -> Result<EpisodeLegalAction, String> {
+    let kind = payload
+        .get("kind")
+        .and_then(Value::as_str)
+        .ok_or_else(|| String::from("Runtime-v3 stored action omitted its kind"))?;
+    validate_payload(payload, kind)?;
+    EpisodeLegalAction::new(action_id, action_kind(kind))
+        .map_err(|error| format!("Runtime-v3 stored action identity is invalid: {error}"))
+}
+
 fn action_set_error(error: ActionSetError) -> String {
     error.to_string()
 }

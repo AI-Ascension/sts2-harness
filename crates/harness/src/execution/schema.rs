@@ -4,7 +4,7 @@ use rusqlite::{Connection, Transaction};
 
 use super::types::ExecutionStoreError;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 2;
+pub const CURRENT_SCHEMA_VERSION: i32 = 4;
 
 const MIGRATION_1: &str = r#"
 CREATE TABLE IF NOT EXISTS store_metadata (
@@ -192,6 +192,35 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), ExecutionStoreE
             .execute_batch("PRAGMA user_version = 2")
             .map_err(map_sqlite)?;
         transaction.commit().map_err(map_sqlite)?;
+        version = 2;
+    }
+    if version == 2 {
+        let transaction = connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(map_sqlite)?;
+        transaction
+            .execute("ALTER TABLE operations ADD COLUMN action_kind TEXT", [])
+            .map_err(map_sqlite)?;
+        transaction
+            .execute("ALTER TABLE operations ADD COLUMN action_payload BLOB", [])
+            .map_err(map_sqlite)?;
+        transaction
+            .execute_batch("PRAGMA user_version = 3")
+            .map_err(map_sqlite)?;
+        transaction.commit().map_err(map_sqlite)?;
+        version = 3;
+    }
+    if version == 3 {
+        let transaction = connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(map_sqlite)?;
+        transaction
+            .execute("ALTER TABLE operations ADD COLUMN catalog_digest TEXT", [])
+            .map_err(map_sqlite)?;
+        transaction
+            .execute_batch("PRAGMA user_version = 4")
+            .map_err(map_sqlite)?;
+        transaction.commit().map_err(map_sqlite)?;
     }
     Ok(())
 }
@@ -266,6 +295,7 @@ mod tests {
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );
+            CREATE TABLE operations (operation_id TEXT PRIMARY KEY NOT NULL);
             PRAGMA user_version = 1;",
         )?;
 
@@ -280,6 +310,24 @@ mod tests {
             |row| row.get::<_, i64>(0),
         )?;
         assert_eq!(payload_column, 1);
+        let action_kind_column = connection.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('operations') WHERE name = 'action_kind'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        assert_eq!(action_kind_column, 1);
+        let action_payload_column = connection.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('operations') WHERE name = 'action_payload'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        assert_eq!(action_payload_column, 1);
+        let catalog_digest_column = connection.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('operations') WHERE name = 'catalog_digest'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        assert_eq!(catalog_digest_column, 1);
         Ok(())
     }
 

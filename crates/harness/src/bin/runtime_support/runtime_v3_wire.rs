@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Value, json};
+use sha2::Digest;
 use sts2_harness::ActionKind;
 
 use super::mcp::McpProcess;
 
 const CATALOG_REVISION: &str = "runtime-v3-gameplay-mcp";
+pub(super) const RUNTIME_V3_SCHEMA_DIGEST: &str =
+    "8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63";
 
 pub(super) fn initialize_mcp(mcp: &mut McpProcess) -> Result<(), String> {
     let initialize = rpc_call(
@@ -23,6 +26,68 @@ pub(super) fn initialize_mcp(mcp: &mut McpProcess) -> Result<(), String> {
     }
     let catalog = rpc_call(mcp, 2, "tools/list", json!({}))?;
     validate_catalog(&catalog)
+}
+
+pub(super) fn initialize_recovery_mcp(mcp: &mut McpProcess) -> Result<(), String> {
+    let initialize = rpc_call(
+        mcp,
+        1,
+        "initialize",
+        json!({
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "sts2-harness-recovery", "version": "0.0.0"}
+        }),
+    )?;
+    if initialize.get("result").is_none() {
+        return Err(String::from("recovery MCP initialize omitted result"));
+    }
+    let catalog = rpc_call(mcp, 2, "tools/list", json!({}))?;
+    validate_recovery_catalog(&catalog)
+}
+
+pub(super) fn recovery_call(
+    mcp: &mut McpProcess,
+    id: u64,
+    mcp_session_id: &str,
+    name: &str,
+    expected_kind: &str,
+    payload: Value,
+) -> Result<Value, String> {
+    let response = rpc_call(
+        mcp,
+        id,
+        "tools/call",
+        json!({
+            "name": name,
+            "arguments": {"mcp_session_id": mcp_session_id, "payload": payload}
+        }),
+    )?;
+    let text = response
+        .get("result")
+        .and_then(|result| result.get("content"))
+        .and_then(Value::as_array)
+        .and_then(|content| content.first())
+        .and_then(|content| content.get("text"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("recovery MCP tool {name} omitted text content"))?;
+    let value: Value = serde_json::from_str(text)
+        .map_err(|error| format!("recovery MCP tool {name} returned non-JSON content: {error}"))?;
+    if value.get("contract").and_then(Value::as_str) != Some("watchdog-recovery-v1")
+        || value.get("schema_digest").and_then(Value::as_str)
+            != Some(sts2_harness::RECOVERY_SCHEMA_DIGEST)
+        || value
+            .get("correlation_id")
+            .and_then(Value::as_str)
+            .is_none()
+        || value.get("kind").and_then(Value::as_str) != Some(expected_kind)
+        || !value.get("payload").is_some_and(Value::is_object)
+    {
+        return Err(format!(
+            "recovery MCP tool {name} returned an invalid sideband envelope"
+        ));
+    }
+    Ok(value)
 }
 
 pub(super) fn rpc_call(
@@ -59,6 +124,7 @@ pub(super) fn rpc_call(
         // envelope for the caller's full identity/schema validation and reconciliation.
         if method != "tools/call"
             || !(has_gameplay_envelope(&response)
+                || has_recovery_envelope(&response)
                 || (catalog_read && has_catalog_reobserve(&response, id)))
         {
             return Err(format!("MCP {method} returned a tool error"));
@@ -94,6 +160,16 @@ fn has_gameplay_envelope(response: &Value) -> bool {
         .as_str()
         .and_then(|text| serde_json::from_str::<Value>(text).ok())
         .is_some_and(|value| value["protocol_version"] == "runtime-v3-gameplay")
+}
+
+fn has_recovery_envelope(response: &Value) -> bool {
+    response["result"]["content"][0]["text"]
+        .as_str()
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .is_some_and(|value| {
+            value["contract"] == "watchdog-recovery-v1"
+                && value["schema_digest"].as_str() == Some(sts2_harness::RECOVERY_SCHEMA_DIGEST)
+        })
 }
 
 fn request_timeout(method: &str, params: &Value) -> Result<std::time::Duration, String> {
@@ -140,6 +216,43 @@ fn validate_catalog(response: &Value) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_recovery_catalog(response: &Value) -> Result<(), String> {
+    let result = response
+        .get("result")
+        .ok_or_else(|| String::from("recovery MCP tools/list omitted result"))?;
+    if result.get("revision").and_then(Value::as_str) != Some("watchdog-recovery-v1-mcp") {
+        return Err(String::from(
+            "recovery MCP catalog is not watchdog-recovery-v1-mcp",
+        ));
+    }
+    let tools = result
+        .get("tools")
+        .and_then(Value::as_array)
+        .ok_or_else(|| String::from("recovery MCP catalog omitted tools"))?;
+    let expected = [
+        "watchdog.bootstrap",
+        "watchdog.host_fence",
+        "watchdog.lease_acquire",
+        "watchdog.lease_renew",
+        "watchdog.lease_revoke",
+        "watchdog.operation_intent",
+        "watchdog.operation_dispatch",
+        "watchdog.operation_lookup",
+        "watchdog.operation_reconcile",
+    ];
+    if tools.len() != expected.len()
+        || tools
+            .iter()
+            .zip(expected)
+            .any(|(tool, expected)| tool.get("name").and_then(Value::as_str) != Some(expected))
+    {
+        return Err(String::from(
+            "recovery MCP catalog does not expose the exact sideband tool surface",
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn combine_cleanup(
     error: String,
     close: Result<(), String>,
@@ -177,50 +290,17 @@ pub(super) const fn action_kind_name(kind: ActionKind) -> &'static str {
     }
 }
 
-/// Reconstructs the semantic kind for an operation loaded from the durable ledger.  The
-/// operation record intentionally stores the stable host action identity, not its payload.  Only
-/// identities with an unambiguous reviewed prefix may be resumed; an unfamiliar identity fails
-/// closed instead of guessing a mutation kind.
-pub(super) fn action_kind_for_id(action_id: &str) -> Option<ActionKind> {
-    let normalized = action_id.to_ascii_lowercase();
-    let has = |values: &[&str]| values.iter().any(|value| normalized.contains(value));
-    if has(&["start_run", "run.start"]) {
-        Some(ActionKind::StartRun)
-    } else if has(&["select_map_node", "map.select"]) {
-        Some(ActionKind::SelectMapNode)
-    } else if has(&["play_card", "play-card", "combat.play"]) {
-        Some(ActionKind::PlayCard)
-    } else if has(&["end_turn", "end-turn"]) {
-        Some(ActionKind::EndTurn)
-    } else if has(&["choose_reward", "reward.choose"]) {
-        Some(ActionKind::ChooseReward)
-    } else if has(&["skip_reward", "reward.skip"]) {
-        Some(ActionKind::SkipReward)
-    } else if has(&["confirm_victory", "victory.confirm"]) {
-        Some(ActionKind::ConfirmVictory)
-    } else if has(&["confirm_selection", "selection.confirm"]) {
-        Some(ActionKind::ConfirmSelection)
-    } else if has(&["cancel_selection", "selection.cancel"]) {
-        Some(ActionKind::CancelSelection)
-    } else if has(&["shop_purchase", "shop.purchase"]) {
-        Some(ActionKind::ShopPurchase)
-    } else if has(&["shop_remove", "shop.remove"]) {
-        Some(ActionKind::ShopRemove)
-    } else if has(&["event_choice", "event.choose"]) {
-        Some(ActionKind::EventChoice)
-    } else if has(&["select_card", "card.select"]) {
-        Some(ActionKind::SelectCard)
-    } else if has(&["save_quit", "save-quit"]) {
-        Some(ActionKind::SaveQuit)
-    } else if normalized == "proceed" || normalized.starts_with("proceed-") {
-        Some(ActionKind::Proceed)
-    } else if normalized == "rest" || normalized.starts_with("rest-") {
-        Some(ActionKind::Rest)
-    } else if normalized == "smith" || normalized.starts_with("smith-") {
-        Some(ActionKind::Smith)
-    } else {
-        None
-    }
+/// The canonical recovery action is the complete legal-action envelope, not merely the inner
+/// payload sent to the frozen gameplay tool. Its bytes are retained before dispatch and are the
+/// only bytes accepted for historical recovery.
+pub(super) fn canonical_action_bytes(action_id: &str, payload: &Value) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(&json!({"action": payload, "action_id": action_id}))
+        .map_err(|error| format!("cannot encode canonical runtime-v3 action: {error}"))
+}
+
+pub(super) fn canonical_action_digest(action_id: &str, payload: &Value) -> Result<String, String> {
+    let bytes = canonical_action_bytes(action_id, payload)?;
+    Ok(format!("{:x}", sha2::Sha256::digest(bytes)))
 }
 
 pub(super) const fn stage_name(stage: sts2_harness::EpisodeStage) -> &'static str {

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::Value;
-use sha2::Digest;
 use sts2_harness::{ActionIdentity, EpisodeLegalAction};
 
 use super::{MAX_OPERATIONS, OperationRecord, RuntimeV3Port, wire};
@@ -85,8 +84,7 @@ impl RuntimeV3Port {
             .entry(identity.operation_id.clone())
             .or_insert_with(|| OperationRecord::new(identity, action));
         let payload = self.current_payload(action)?;
-        serde_json::to_vec(&payload)
-            .map(|bytes| format!("{:x}", sha2::Sha256::digest(bytes)))
-            .map_err(|error| wire::port_error("operation_digest_failed", error.to_string(), false))
+        wire::canonical_action_digest(action.action_id(), &payload)
+            .map_err(|error| wire::port_error("operation_digest_failed", error, false))
     }
 }

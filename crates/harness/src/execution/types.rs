@@ -19,9 +19,9 @@ pub use enums::{
 };
 pub use error::ExecutionStoreError;
 pub use records::{
-    CompletionRecord, DecisionReference, JobClaim, JobClaimOutcome, OperationIntent,
-    ProviderReservation, ResumeState, StoredAttempt, StoredDecision, StoredEpisode, StoredJob,
-    StoredOperation,
+    CompletionRecord, DecisionReference, JobClaim, JobClaimOutcome, MAX_OPERATION_ACTION_BYTES,
+    OperationIntent, ProviderReservation, ResumeState, StoredAttempt, StoredDecision,
+    StoredEpisode, StoredJob, StoredOperation,
 };
 
 pub(crate) use core::{valid_digest, valid_id, valid_reference};

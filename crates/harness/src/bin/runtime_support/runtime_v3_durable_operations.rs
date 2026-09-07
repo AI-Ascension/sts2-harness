@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::Value;
+use sha2::Digest;
 use sts2_harness::{
     Decision, DecisionInput, DecisionReference, EpisodeLegalAction, OperationIntent,
     OperationState, ProviderFailureClass, ProviderReservation,
@@ -21,16 +22,24 @@ impl DurableHandle {
         payload: &Value,
         input: &Value,
     ) -> Result<String, String> {
-        let payload_digest = sha256_json(payload)?;
+        let action_payload = super::super::super::runtime_v3_wire::canonical_action_bytes(
+            action.action_id(),
+            payload,
+        )?;
+        let payload_digest = format!("{:x}", sha2::Sha256::digest(&action_payload));
         let input_digest = sha256_json(input)?;
-        let intent = OperationIntent::new(
+        let catalog_digest = input.get("legal_actions").map(sha256_json).transpose()?;
+        let intent = OperationIntent::new_with_action(
             self.lineage.clone(),
             operation_id,
             state_id,
             generation,
             action.action_id(),
+            super::super::super::runtime_v3_wire::action_kind_name(action.kind()),
+            action_payload,
             payload_digest.clone(),
             input_digest,
+            catalog_digest,
         )
         .map_err(|error| format!("runtime-v3 operation intent is invalid: {error}"))?;
         self.store

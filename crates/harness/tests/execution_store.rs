@@ -179,6 +179,113 @@ fn operation_intent_is_durable_idempotent_and_unknown_is_reconciled_without_redi
 }
 
 #[test]
+fn complete_action_identity_survives_file_store_reopen() {
+    let database = path("action-identity");
+    let canonical = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}"#;
+    let payload_digest = result_digest(canonical);
+    let catalog_digest =
+        result_digest(br#"[{"action_id":"combat.end-turn","action":{"kind":"end_turn"}}]"#);
+    let current = lineage("attempt-action", "trajectory-action");
+    let intent = OperationIntent::new_with_action(
+        current.clone(),
+        "operation-action",
+        "state-action",
+        1,
+        "combat.end-turn",
+        "end_turn",
+        canonical.to_vec(),
+        payload_digest.clone(),
+        "input-action",
+        Some(catalog_digest.clone()),
+    )
+    .expect("complete action intent is valid");
+    let mut store =
+        ExecutionStore::open(ExecutionStoreConfig::new(&database)).expect("store opens");
+    store
+        .start_episode(&current, &fingerprint())
+        .expect("episode starts");
+    let recorded = store
+        .record_operation_intent(&intent)
+        .expect("intent is persisted");
+    assert_eq!(recorded.intent.action_kind.as_deref(), Some("end_turn"));
+    assert_eq!(
+        recorded.intent.action_payload.as_deref(),
+        Some(canonical.as_slice())
+    );
+    assert_eq!(recorded.intent.payload_digest, payload_digest);
+    assert_eq!(
+        recorded.intent.catalog_digest.as_deref(),
+        Some(catalog_digest.as_str())
+    );
+    store.close().expect("store closes");
+    drop(store);
+
+    let reopened =
+        ExecutionStore::open(ExecutionStoreConfig::new(&database)).expect("state reopens");
+    assert_eq!(
+        reopened
+            .operation("operation-action")
+            .expect("operation remains")
+            .intent,
+        intent
+    );
+    drop(reopened);
+    remove_database(&database);
+}
+
+#[test]
+fn action_identity_rejects_digest_size_and_catalog_mismatches() {
+    let canonical = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}"#;
+    let digest = result_digest(canonical);
+    let current = lineage("attempt-action", "trajectory-action");
+    assert!(
+        OperationIntent::new_with_action(
+            current.clone(),
+            "operation-digest-mismatch",
+            "state-action",
+            1,
+            "combat.end-turn",
+            "end_turn",
+            canonical.to_vec(),
+            "0".repeat(64),
+            "input-action",
+            Some("a".repeat(64)),
+        )
+        .is_err()
+    );
+    assert!(
+        OperationIntent::new_with_action(
+            current.clone(),
+            "operation-catalog-mismatch",
+            "state-action",
+            1,
+            "combat.end-turn",
+            "end_turn",
+            canonical.to_vec(),
+            digest.clone(),
+            "input-action",
+            Some("A".repeat(64)),
+        )
+        .is_err()
+    );
+    assert!(
+        OperationIntent::new_with_action(
+            current,
+            "operation-too-large",
+            "state-action",
+            1,
+            "combat.end-turn",
+            "end_turn",
+            vec![b'x'; sts2_harness::MAX_OPERATION_ACTION_BYTES + 1],
+            digest,
+            "input-action",
+            Some("a".repeat(64)),
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn provider_reservation_is_conservative_and_completed_decisions_are_reusable() {
     let mut store = ExecutionStore::open_in_memory().expect("store opens");
     let current = lineage("attempt-1", "trajectory-1");

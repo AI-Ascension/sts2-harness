@@ -49,11 +49,15 @@ impl RuntimeV3Port {
             generation: 0,
             current_state: None,
             current_actions: None,
+            catalog: None,
             payloads: BTreeMap::new(),
             operations: BTreeMap::new(),
             reconnect_attempts: 0,
             telemetry,
             durable,
+            recovery: None,
+            recovery_context: None,
+            recovery_rpc_id: 1,
         })
     }
 
@@ -151,6 +155,7 @@ impl RuntimeV3Port {
         self.generation = parsed.observation.generation();
         self.current_state = Some(parsed.observation.state_id().to_owned());
         self.current_actions = Some(parsed.actions);
+        self.catalog = Some(parsed.catalog);
         self.payloads = parsed.payloads;
         if let Some(durable) = &self.durable {
             let payloads = Value::Object(self.payloads.clone().into_iter().collect());
@@ -214,9 +219,22 @@ impl ShutdownPort for RuntimeV3Port {
     }
 
     fn close_mcp(&mut self) -> Result<(), ShutdownError> {
-        self.mcp.as_mut().map_or(Ok(()), |mcp| {
-            mcp.close().map_err(|_| ShutdownError::McpCloseFailed)
-        })
+        let mut failed = false;
+        if let Some(mcp) = self.mcp.as_mut()
+            && mcp.close().is_err()
+        {
+            failed = true;
+        }
+        if let Some(mcp) = self.recovery.as_mut()
+            && mcp.close().is_err()
+        {
+            failed = true;
+        }
+        if failed {
+            Err(ShutdownError::McpCloseFailed)
+        } else {
+            Ok(())
+        }
     }
 
     fn close_gateway(&mut self) -> Result<(), ShutdownError> {

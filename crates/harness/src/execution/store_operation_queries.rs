@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use super::types::{OperationIntent, OperationState, StoredOperation, valid_reference};
+use super::types::{
+    MAX_OPERATION_ACTION_BYTES, OperationIntent, OperationState, StoredOperation, valid_reference,
+};
+use sha2::Digest;
 
 pub(super) fn read_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredOperation> {
     let lineage = super::types::ExecutionLineage::new(
@@ -12,20 +15,51 @@ pub(super) fn read_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Stored
     .map_err(|_| rusqlite::Error::InvalidQuery)?;
     let generation = row.get::<_, i64>(6)?;
     let generation = u64::try_from(generation).map_err(|_| rusqlite::Error::InvalidQuery)?;
-    let intent = OperationIntent::new(
-        lineage,
-        row.get::<_, String>(0)?,
-        row.get::<_, String>(5)?,
-        generation,
-        row.get::<_, String>(7)?,
-        row.get::<_, String>(8)?,
-        row.get::<_, String>(9)?,
-    )
+    let operation_id = row.get::<_, String>(0)?;
+    let state_id = row.get::<_, String>(5)?;
+    let action_id = row.get::<_, String>(7)?;
+    let action_kind = row.get::<_, Option<String>>(8)?;
+    let action_payload = row.get::<_, Option<Vec<u8>>>(9)?;
+    let payload_digest = row.get::<_, String>(10)?;
+    let input_digest = row.get::<_, String>(11)?;
+    let catalog_digest = row.get::<_, Option<String>>(12)?;
+    let intent = match (action_kind, action_payload) {
+        (None, None) => OperationIntent::new(
+            lineage,
+            operation_id,
+            state_id,
+            generation,
+            action_id,
+            payload_digest,
+            input_digest,
+        ),
+        (Some(action_kind), Some(action_payload))
+            if !action_payload.is_empty() && action_payload.len() <= MAX_OPERATION_ACTION_BYTES =>
+        {
+            let calculated = format!("{:x}", sha2::Sha256::digest(&action_payload));
+            if calculated != payload_digest {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+            OperationIntent::new_with_action(
+                lineage,
+                operation_id,
+                state_id,
+                generation,
+                action_id,
+                action_kind,
+                action_payload,
+                payload_digest,
+                input_digest,
+                catalog_digest,
+            )
+        }
+        _ => Err(super::types::ExecutionStoreError::InvalidOperation),
+    }
     .map_err(|_| rusqlite::Error::InvalidQuery)?;
-    let state = OperationState::from_str(&row.get::<_, String>(10)?)
+    let state = OperationState::from_str(&row.get::<_, String>(13)?)
         .ok_or(rusqlite::Error::InvalidQuery)?;
-    let result_ref = row.get::<_, Option<String>>(11)?;
-    let result_digest = row.get::<_, Option<String>>(12)?;
+    let result_ref = row.get::<_, Option<String>>(14)?;
+    let result_digest = row.get::<_, Option<String>>(15)?;
     if result_ref.is_some() != result_digest.is_some()
         || result_ref
             .as_deref()

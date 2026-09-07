@@ -94,6 +94,21 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     if let ResumeState::Completed(completion) = state {
         return completed_resume::finish(durable, completion, telemetry_handle, telemetry);
     }
+    if resume_requested && let Err(error) = durable.validate_pending_action_identity() {
+        let _ = telemetry_handle.failure(
+            "runtime_resume",
+            super::runtime_v3_telemetry::FailureCode::Configuration,
+            false,
+            None,
+        );
+        let _ = telemetry_handle.run_finished(
+            GameOutcome::Unavailable,
+            TelemetryStage::Unknown,
+            CleanupStatus::Failed,
+        );
+        finish_telemetry(telemetry);
+        return Err(error);
+    }
     let mut port = match RuntimeV3Port::new_with_store(config, telemetry_handle.clone(), durable) {
         Ok(port) => port,
         Err(error) => {
@@ -281,11 +296,15 @@ pub(super) struct RuntimeV3Port {
     generation: u64,
     current_state: Option<String>,
     current_actions: Option<EpisodeLegalActionSet>,
+    catalog: Option<Value>,
     payloads: BTreeMap<String, Value>,
     operations: BTreeMap<String, OperationRecord>,
     reconnect_attempts: u8,
     telemetry: TelemetryHandle,
     durable: Option<durable::DurableHandle>,
+    recovery: Option<McpProcess>,
+    recovery_context: Option<recovery::RecoveryContext>,
+    recovery_rpc_id: u64,
 }
 
 include!("runtime_v3_port.rs");

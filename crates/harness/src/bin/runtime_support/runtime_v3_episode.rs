@@ -117,11 +117,13 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                 true,
             ));
         }
-        let (actions, payloads) = parse::action_set(&value, "legal_actions_response", &self.config)
-            .map_err(|error| wire::port_error("legal_actions_invalid", error, false))?;
+        let (actions, payloads, catalog) =
+            parse::action_set_with_catalog(&value, "legal_actions_response", &self.config)
+                .map_err(|error| wire::port_error("legal_actions_invalid", error, false))?;
         self.generation = actions.generation();
         self.current_state = Some(actions.state_id().to_owned());
         self.current_actions = Some(actions.clone());
+        self.catalog = Some(catalog);
         self.payloads = payloads;
         Ok(actions)
     }
@@ -138,7 +140,13 @@ impl EpisodeRuntimePort for RuntimeV3Port {
             let input = json!({
                 "state_id": identity.state_id,
                 "generation": identity.generation,
-                "legal_actions": self.payloads.clone(),
+                "legal_actions": self.catalog.clone().ok_or_else(|| {
+                    wire::port_error(
+                        "catalog_missing",
+                        "operation intent has no exact legal-action catalog",
+                        false,
+                    )
+                })?,
             });
             durable
                 .operation_intent(

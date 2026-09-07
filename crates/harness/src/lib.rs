@@ -45,10 +45,11 @@ pub use evaluation::{
 pub use execution::{
     AttemptKind, AttemptState, Checkpoint, CompletionRecord, CompletionStatus, DecisionReference,
     ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig,
-    ExecutionStoreError, JobClaim, JobClaimOutcome, JobState, OperationIntent, OperationState,
-    ProviderFailureClass, ProviderReservation, ProviderReservationState, RECOVERY_CONTRACT_VERSION,
-    RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState, StorePragmas, StoredAttempt,
-    StoredDecision, StoredEpisode, StoredJob, StoredOperation,
+    ExecutionStoreError, JobClaim, JobClaimOutcome, JobState, MAX_OPERATION_ACTION_BYTES,
+    OperationIntent, OperationState, ProviderFailureClass, ProviderReservation,
+    ProviderReservationState, RECOVERY_CONTRACT_VERSION, RECOVERY_SCHEMA_DIGEST,
+    RecoveryDisposition, ResumeState, StorePragmas, StoredAttempt, StoredDecision, StoredEpisode,
+    StoredJob, StoredOperation,
 };
 pub use exo::{
     BoundDecision, Decision, DecisionError, ExoClient, ExoConfig, ExoDecisionRequest, ExoError,

@@ -9,6 +9,7 @@ use super::config::RuntimeConfig;
 
 #[path = "runtime_v3_parse_catalog.rs"]
 mod catalog;
+pub(crate) use catalog::action_from_payload;
 use catalog::parse_actions;
 
 #[path = "runtime_v3_parse_transition.rs"]
@@ -51,6 +52,10 @@ pub(super) struct ParsedObservation {
     pub(super) observation: EpisodeObservation,
     pub(super) actions: EpisodeLegalActionSet,
     pub(super) payloads: BTreeMap<String, Value>,
+    /// The exact legal_actions JSON value as received from the authoritative host. Recovery
+    /// binds an operation to this value's bytes; callers must not replace it with the parsed
+    /// payload map because that changes the catalog digest and loses wire shape.
+    pub(super) catalog: Value,
 }
 
 pub(super) fn observation(
@@ -63,17 +68,32 @@ pub(super) fn observation(
     observation_from_root(root)
 }
 
+#[allow(dead_code)]
 pub(super) fn action_set(
     value: &Value,
     expected_kind: &str,
     config: &RuntimeConfig,
 ) -> Result<(EpisodeLegalActionSet, BTreeMap<String, Value>), String> {
+    let (actions, payloads, _) = action_set_with_catalog(value, expected_kind, config)?;
+    Ok((actions, payloads))
+}
+
+pub(super) fn action_set_with_catalog(
+    value: &Value,
+    expected_kind: &str,
+    config: &RuntimeConfig,
+) -> Result<(EpisodeLegalActionSet, BTreeMap<String, Value>, Value), String> {
     let root = root(value, expected_kind, config)?;
     validate_observation_fields(root)?;
     require_null(root, "observation")?;
     let state_id = string(root, "state_id")?;
     let generation = number(root, "generation")?;
-    parse_actions(root.get("legal_actions"), state_id, generation)
+    let catalog = root
+        .get("legal_actions")
+        .cloned()
+        .ok_or_else(|| String::from("Runtime-v3 response omitted legal_actions"))?;
+    let (actions, payloads) = parse_actions(Some(&catalog), state_id, generation)?;
+    Ok((actions, payloads, catalog))
 }
 
 // Installation of an already validated receipt/wait uses its result shape, not the
@@ -210,6 +230,10 @@ fn observation_from_root(root: &Map<String, Value>) -> Result<ParsedObservation,
         observation: episode_observation,
         actions,
         payloads,
+        catalog: root
+            .get("legal_actions")
+            .cloned()
+            .ok_or_else(|| String::from("Runtime-v3 response omitted legal_actions"))?,
     })
 }
 

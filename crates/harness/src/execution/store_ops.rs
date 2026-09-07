@@ -23,7 +23,8 @@ impl ExecutionStore {
         let existing = tx
             .query_row(
                 "SELECT operation_id, run_id, episode_id, attempt_id, trajectory_id, state_id,
-                 generation, action_id, payload_digest, input_digest, state, result_ref, result_digest
+                 generation, action_id, action_kind, action_payload, payload_digest, input_digest,
+                 catalog_digest, state, result_ref, result_digest
                  FROM operations WHERE operation_id = ?1",
                 [intent.operation_id.as_str()],
                 read_operation,
@@ -48,9 +49,9 @@ impl ExecutionStore {
         }
         tx.execute(
             "INSERT INTO operations(operation_id, run_id, episode_id, attempt_id, trajectory_id,
-             state_id, generation, action_id, payload_digest, input_digest, state,
-             result_ref, result_digest, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, NULL, ?12, ?12)",
+             state_id, generation, action_id, action_kind, action_payload, payload_digest,
+             input_digest, catalog_digest, state, result_ref, result_digest, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, NULL, NULL, ?15, ?15)",
             params![
                 intent.operation_id,
                 intent.lineage.run_id,
@@ -61,8 +62,11 @@ impl ExecutionStore {
                 i64::try_from(intent.generation)
                     .map_err(|_| { super::types::ExecutionStoreError::InvalidOperation })?,
                 intent.action_id,
+                intent.action_kind,
+                intent.action_payload,
                 intent.payload_digest,
                 intent.input_digest,
+                intent.catalog_digest,
                 OperationState::IntentRecorded.as_str(),
                 now
             ],
@@ -163,7 +167,8 @@ impl ExecutionStore {
         self.connection
             .query_row(
                 "SELECT operation_id, run_id, episode_id, attempt_id, trajectory_id, state_id,
-                 generation, action_id, payload_digest, input_digest, state, result_ref, result_digest
+                 generation, action_id, action_kind, action_payload, payload_digest, input_digest,
+                 catalog_digest, state, result_ref, result_digest
                  FROM operations WHERE operation_id = ?1",
                 [operation_id],
                 read_operation,
@@ -183,7 +188,8 @@ impl ExecutionStore {
             .connection
             .prepare(
                 "SELECT operation_id, run_id, episode_id, attempt_id, trajectory_id, state_id,
-                 generation, action_id, payload_digest, input_digest, state, result_ref, result_digest
+                 generation, action_id, action_kind, action_payload, payload_digest, input_digest,
+                 catalog_digest, state, result_ref, result_digest
                  FROM operations WHERE episode_id = ?1 AND state IN
                  ('intent_recorded', 'may_have_been_dispatched', 'accepted', 'unknown')
                  ORDER BY created_at, operation_id",
@@ -214,7 +220,8 @@ impl ExecutionStore {
             .query_row(
                 "SELECT operation_id, run_id, episode_id, attempt_id, trajectory_id, state_id,
                  generation,
-                 action_id, payload_digest, input_digest, state, result_ref, result_digest
+                 action_id, action_kind, action_payload, payload_digest, input_digest,
+                 catalog_digest, state, result_ref, result_digest
                  FROM operations WHERE operation_id = ?1",
                 [operation_id],
                 read_operation,

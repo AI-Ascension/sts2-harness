@@ -18,9 +18,18 @@ pub(crate) struct RuntimeConfig {
     pub(crate) artifact_id: String,
     pub(crate) wait_for_combat_seconds: u64,
     pub(crate) settlement_timeout_seconds: u64,
+    /// Recovery credentials and identity are captured at startup so the sideband child can be
+    /// launched from a scrubbed environment without mutating process-global environment state.
+    pub(crate) recovery_environment: Vec<(String, String)>,
 }
 
 impl RuntimeConfig {
+    pub(crate) fn recovery_value(&self, name: &str) -> Option<&str> {
+        self.recovery_environment
+            .iter()
+            .find_map(|(key, value)| (key == name).then_some(value.as_str()))
+    }
+
     pub(crate) fn from_environment() -> Result<Self, String> {
         let runtime_profile = env_or_default("STS2_RUNTIME_PROFILE", "runtime-v1")?;
         if !matches!(
@@ -55,6 +64,27 @@ impl RuntimeConfig {
             artifact_id: env_or_default("STS2_ARTIFACT_ID", "artifact-runtime-0001")?,
             wait_for_combat_seconds,
             settlement_timeout_seconds,
+            recovery_environment: [
+                "STS2_RECOVERY_TOKEN",
+                "STS2_RECOVERY_PRINCIPAL_ID",
+                "STS2_RECOVERY_ROLE",
+                "STS2_RECOVERY_PROOF",
+                "STS2_RECOVERY_DEPLOYMENT_ID",
+                "STS2_RECOVERY_INSTANCE_ID",
+                "STS2_RECOVERY_INSTANCE_INCAR",
+                "STS2_RECOVERY_BOOT_ID",
+                "STS2_RECOVERY_LEASE_ID",
+                "STS2_RECOVERY_AUTHORITY_GENERATION",
+                "STS2_RECOVERY_LEASE_EPOCH",
+                "STS2_RECOVERY_CURRENT_FENCE_JSON",
+            ]
+            .into_iter()
+            .filter_map(|name| {
+                std::env::var(name)
+                    .ok()
+                    .map(|value| (name.to_owned(), value))
+            })
+            .collect(),
         };
         config.validate()?;
         Ok(config)
@@ -168,6 +198,7 @@ mod tests {
             artifact_id: "artifact-1".into(),
             wait_for_combat_seconds: 0,
             settlement_timeout_seconds: 30,
+            recovery_environment: Vec::new(),
         };
         assert!(config.validate().is_ok());
         config.mcp_session_id = String::from("unsafe session");
