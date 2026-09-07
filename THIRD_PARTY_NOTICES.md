@@ -1,5 +1,16 @@
 # Third-Party Notices
 
+Operation identity creation uses `uuid` exactly `1.23.5` (Apache-2.0 OR MIT;
+https://github.com/uuid-rs/uuid), with UUIDv4 generation backed by `getrandom`.
+The dependency change locks `getrandom` 0.4.3 (MIT OR Apache-2.0), `r-efi` 6.0.0
+(MIT OR Apache-2.0 OR LGPL-2.1-or-later), `futures-core`, `futures-task`, and
+`futures-util` 0.3.34 (MIT OR Apache-2.0), and `slab` 0.4.12 (MIT). Target-specific
+lock entries do not imply those packages execute on every supported platform.
+These declarations were checked with locked, offline Cargo metadata on 2026-09-07;
+exact sources and integrity checksums remain in Cargo.lock. No source was vendored.
+The local `cargo audit` command was unavailable, so this metadata check does not
+establish a current advisory audit. That remains a release gate.
+
 Runtime-v3 contract tests use `jsonschema` 0.52.1 (MIT), with default features disabled to avoid
 HTTP/file reference retrieval. It is a dev-only schema validator, not a second protocol owner.
 The copied Runtime-v3 schemas/goldens are MIT-licensed `sts2-protocol` artifacts with exact
