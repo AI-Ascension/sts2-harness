@@ -6,6 +6,7 @@ use super::analysis::{
 };
 use super::graph::{MapCompleteness, ValidatedMapGraph};
 use std::collections::BTreeMap;
+use std::fmt;
 
 pub(crate) fn terminal_counts(
     graph: &ValidatedMapGraph,
@@ -207,7 +208,6 @@ pub(crate) fn candidate_routes(
                 .get(destination.node_id.as_str())
                 .copied()
                 .unwrap_or(""),
-            distance_to_terminal,
             policy,
             &category_by_node,
         );
@@ -241,6 +241,7 @@ pub(crate) fn candidate_routes(
     (routes, bounded)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn enumerate_routes(
     node: &str,
     adjacency: &BTreeMap<String, Vec<String>>,
@@ -250,7 +251,6 @@ fn enumerate_routes(
     path: &mut Vec<String>,
     routes: &mut Vec<CandidateRoute>,
     first_action_id: &str,
-    distance_to_terminal: &BTreeMap<String, u32>,
     policy: &RoutePolicy,
     category_by_node: &BTreeMap<&str, &str>,
 ) {
@@ -275,11 +275,11 @@ fn enumerate_routes(
                     .len()
                     .checked_sub(1)
                     .and_then(|length| u32::try_from(length).ok()),
-                category_score: route_category_score(&path, category_by_node, policy),
-                rest_count: route_category_count(&path, category_by_node, Category::Rest),
-                shop_count: route_category_count(&path, category_by_node, Category::Shop),
-                elite_count: route_category_count(&path, category_by_node, Category::Elite),
-                elite_exposure_before_rest: elite_exposure_before_rest(&path, category_by_node),
+                category_score: route_category_score(path, category_by_node, policy),
+                rest_count: route_category_count(path, category_by_node, Category::Rest),
+                shop_count: route_category_count(path, category_by_node, Category::Shop),
+                elite_count: route_category_count(path, category_by_node, Category::Elite),
+                elite_exposure_before_rest: elite_exposure_before_rest(path, category_by_node),
                 retained_branching,
                 route_length: path.len() as u32,
             },
@@ -303,7 +303,6 @@ fn enumerate_routes(
             path,
             routes,
             first_action_id,
-            distance_to_terminal,
             policy,
             category_by_node,
         );
@@ -446,15 +445,19 @@ impl DecimalCount {
             self.overflow = true;
         }
     }
+}
 
-    fn to_string(&self) -> String {
+impl fmt::Display for DecimalCount {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.overflow {
-            return "overflow".to_owned();
+            return formatter.write_str("overflow");
         }
-        self.digits
+        let value: String = self
+            .digits
             .iter()
             .rev()
             .map(|digit| char::from(b'0' + *digit))
-            .collect()
+            .collect();
+        formatter.write_str(&value)
     }
 }

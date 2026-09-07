@@ -6,7 +6,7 @@ use super::observation::{EpisodeObservation, EpisodeStage};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EpisodePhase {
     AwaitingObservation,
-    Ready(EpisodeObservation),
+    Ready(Box<EpisodeObservation>),
     AwaitingTransition {
         operation_id: String,
         generation: u64,
@@ -75,7 +75,7 @@ impl EpisodeMachine {
         if observation.stage().is_terminal() {
             self.phase = EpisodePhase::Complete(observation.stage());
         } else {
-            self.phase = EpisodePhase::Ready(observation);
+            self.phase = EpisodePhase::Ready(Box::new(observation));
         }
         Ok(())
     }
@@ -131,7 +131,7 @@ impl EpisodeMachine {
         if observation.stage().is_terminal() {
             self.phase = EpisodePhase::Complete(observation.stage());
         } else {
-            self.phase = EpisodePhase::Ready(observation);
+            self.phase = EpisodePhase::Ready(Box::new(observation));
         }
         Ok(())
     }

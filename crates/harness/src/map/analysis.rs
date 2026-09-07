@@ -137,7 +137,7 @@ pub struct AnalysisConfig {
 /// Optional deterministic route preferences. Empty weights preserve the
 /// structural ordering used by [`MapAnalysis::analyze`]. A positive weight
 /// favors a category appearing on a route; a negative weight de-prioritizes it.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoutePolicy {
     pub category_weights: BTreeMap<String, i32>,
@@ -150,18 +150,6 @@ pub struct RoutePolicy {
     /// Additional weight applied for each elite encountered before the first
     /// rest or campfire room.
     pub elite_exposure_before_rest_weight: i32,
-}
-
-impl Default for RoutePolicy {
-    fn default() -> Self {
-        Self {
-            category_weights: BTreeMap::new(),
-            rest_weight: 0,
-            shop_weight: 0,
-            elite_weight: 0,
-            elite_exposure_before_rest_weight: 0,
-        }
-    }
 }
 
 impl RoutePolicy {

@@ -132,6 +132,11 @@ impl<K: Ord + Clone, V: Clone> BoundedCache<K, V> {
     }
 
     #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    #[must_use]
     pub const fn bytes(&self) -> usize {
         self.bytes
     }
