@@ -22,3 +22,14 @@ This does not close independent review: provider payload allocation bounds and
 completed-resume test isolation are under review. It does not establish live
 provider reuse, host settlement, service installation, reboot recovery, or soak
 completion. No game/provider/service was launched by this validation.
+
+## Payload bound and duplex test follow-up
+
+Root repeated workspace/all-target/all-feature tests and strict Clippy at
+`63a53a2`; both commands exited zero. This includes `a1833f3`, which checks the
+borrowed SQLite result length before copying to a Rust vector, and the duplex
+test's explicit second-exchange drain acknowledgment. Production timeouts were
+not changed. The runtime suite passed 81 tests and execution-store suite 10.
+The payload bound covers Rust copying, not SQLite's internal BLOB materialization.
+Child-supervisor changes through the separate completed-resume review candidate
+are not included in this tested revision.
