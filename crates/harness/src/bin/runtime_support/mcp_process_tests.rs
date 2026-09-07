@@ -113,6 +113,14 @@ fn shell(script: &str) -> Result<McpProcess, String> {
     McpProcess::spawn_command(command, Duration::from_millis(75))
 }
 
+#[cfg(unix)]
+const FULL_DUPLEX_BYTES: usize = 128 * 1024;
+
+#[cfg(unix)]
+fn full_duplex_script() -> &'static str {
+    "printf '%s' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"'; /usr/bin/head -c 131072 /dev/zero | /usr/bin/tr '\\000' x; printf '%s\\n' '\"}'; /usr/bin/cat >/dev/null"
+}
+
 #[test]
 #[cfg(unix)]
 fn nonreading_child_write_is_in_deadline_and_process_is_reaped() -> Result<(), String> {
@@ -201,13 +209,61 @@ fn separate_calls_preserve_session_and_buffered_frames() -> Result<(), String> {
 #[test]
 #[cfg(unix)]
 fn full_duplex_does_not_deadlock_on_pipe_capacity() -> Result<(), String> {
-    let mut process = shell(
-        "printf '%s' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"'; /usr/bin/head -c 60000 /dev/zero | /usr/bin/tr '\\000' x; printf '%s\\n' '\"}'; read first",
-    )?;
+    let mut process = shell(full_duplex_script())?;
     process.timeout = Duration::from_secs(2);
-    let result = process.call(1, "test", json!({"payload":"x".repeat(60000)}))?;
-    assert_eq!(result["result"].as_str().map(str::len), Some(60000));
+    let result = process.call(1, "test", json!({"payload":"x".repeat(FULL_DUPLEX_BYTES)}))?;
+    assert_eq!(
+        result["result"].as_str().map(str::len),
+        Some(FULL_DUPLEX_BYTES)
+    );
     process.close()
+}
+
+#[test]
+#[cfg(unix)]
+fn full_duplex_fixture_stalls_a_serialized_parent_writer() -> Result<(), String> {
+    let mut request = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "test",
+        "params": {"payload": "x".repeat(FULL_DUPLEX_BYTES)}
+    }))
+    .map_err(|_| String::from("serialized fixture request failed to encode"))?;
+    request.push(b'\n');
+    let mut command = std::process::Command::new("/bin/sh");
+    command
+        .args(["-c", full_duplex_script()])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+    let mut child = command
+        .spawn()
+        .map_err(|_| String::from("serialized fixture failed to start"))?;
+    let mut input = child
+        .stdin
+        .take()
+        .ok_or_else(|| String::from("serialized fixture stdin is unavailable"))?;
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let writer = std::thread::spawn(move || {
+        let result = std::io::Write::write_all(&mut input, &request);
+        let _send_result = sender.send(result);
+    });
+    let write_blocked = matches!(
+        receiver.recv_timeout(Duration::from_millis(250)),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+    );
+    child
+        .kill()
+        .map_err(|_| String::from("serialized fixture kill failed"))?;
+    drop(child.stdout.take());
+    child
+        .wait()
+        .map_err(|_| String::from("serialized fixture wait failed"))?;
+    writer
+        .join()
+        .map_err(|_| String::from("serialized fixture writer failed"))?;
+    assert!(write_blocked);
+    Ok(())
 }
 
 #[test]
