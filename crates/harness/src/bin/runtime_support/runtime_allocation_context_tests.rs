@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Value, json};
+use sha2::{Digest as _, Sha256};
 
 use super::super::super::config::RuntimeConfig;
 use super::{ALLOCATION_SCHEMA_DIGEST, validate};
@@ -168,6 +169,35 @@ fn exact_source_fixtures_cover_valid_and_context_mismatch_cases() -> Result<(), 
         error,
         "recovery allocation current fence does not match its context"
     );
+    Ok(())
+}
+
+#[test]
+fn imported_schema_manifest_and_fixture_digests_stay_consistent() -> Result<(), String> {
+    let manifest: Value = source_fixture(include_str!(
+        "../../../../../contract-artifact/runtime-allocation-v1/manifest.json"
+    ))?;
+    let manifest_digest = manifest["schema_digest"]
+        .as_str()
+        .ok_or_else(|| String::from("allocation manifest omitted schema_digest"))?;
+    let schema_digest = format!(
+        "{:x}",
+        Sha256::digest(include_bytes!(
+            "../../../../../contract-artifact/runtime-allocation-v1/frame.schema.json"
+        ))
+    );
+    assert_eq!(manifest_digest, schema_digest);
+    assert_eq!(manifest_digest, ALLOCATION_SCHEMA_DIGEST);
+    for value in [
+        source_fixture(include_str!(
+            "../../../../../contract-artifact/runtime-allocation-v1/fixtures/valid/recovery-authority.json"
+        ))?,
+        source_fixture(include_str!(
+            "../../../../../contract-artifact/runtime-allocation-v1/fixtures/semantic-invalid/fence-context-mismatch.json"
+        ))?,
+    ] {
+        assert_eq!(value["schema_digest"].as_str(), Some(manifest_digest));
+    }
     Ok(())
 }
 

@@ -189,26 +189,38 @@ fn response(stream: &mut TcpStream, body: &Value) -> Result<(), String> {
 fn gateway(listener: TcpListener, allocation: Value) -> Result<(), String> {
     let mut allocate = accept(&listener)?;
     let (headers, body) = request(&mut allocate)?;
-    if !headers.starts_with("POST /v1/sessions/allocate ") {
+    if !headers.starts_with("POST /v1/sessions/allocate ")
+        || !headers.contains("x-mcp-session-id: mcp-session-1\r\n")
+    {
         return Err(String::from("allocation request used the wrong route"));
     }
-    if serde_json::from_slice::<Value>(&body)
-        .ok()
-        .and_then(|value| value["instance_id"].as_str().map(String::from))
-        .as_deref()
-        != Some(INSTANCE_ID)
-    {
-        return Err(String::from("allocation request had the wrong instance"));
+    let allocation_request = serde_json::from_slice::<Value>(&body)
+        .map_err(|error| format!("allocation request was not JSON: {error}"))?;
+    for (key, expected) in [
+        ("instance_id", INSTANCE_ID),
+        ("caller_id", "harness"),
+        ("session_id", "session-1"),
+    ] {
+        if allocation_request[key].as_str() != Some(expected) {
+            return Err(format!("allocation request had the wrong {key}"));
+        }
     }
     response(&mut allocate, &allocation)?;
 
     let mut release = accept(&listener)?;
     let (headers, _) = request(&mut release)?;
     if !headers.starts_with("POST /v1/instances/00000000-0000-4000-8000-000000000002/release ")
+        || !headers.contains("x-sts2-instance-id: 00000000-0000-4000-8000-000000000002\r\n")
+        || !headers.contains("x-sts2-caller-id: harness\r\n")
+        || !headers.contains("x-sts2-session-id: session-1\r\n")
+        || !headers.contains("x-mcp-session-id: mcp-session-1\r\n")
         || !headers.contains("x-sts2-lease-id: 00000000-0000-4000-8000-000000000006\r\n")
         || !headers.contains("x-sts2-lease-epoch: 3\r\n")
+        || !headers.contains("x-sts2-correlation-id: release-0001\r\n")
     {
-        return Err(String::from("release did not use the acquired lease fence"));
+        return Err(String::from(
+            "release did not use the acquired identity and lease fence",
+        ));
     }
     response(&mut release, &json!({"status": "released"}))
 }
@@ -246,6 +258,45 @@ fn launch_forwards_acquired_lease_to_mcp_and_release() -> Result<(), String> {
             .map_err(|error| format!("MCP close failed: {error:?}"))?;
         port.release_lease()
             .map_err(|error| format!("lease release failed: {error:?}"))?;
+        gateway
+            .join()
+            .map_err(|_| String::from("fake gateway panicked"))??;
+        Ok(())
+    })
+}
+
+#[test]
+fn invalid_authority_is_rejected_without_installing_recovery_authority() -> Result<(), String> {
+    let fixture = Fixture::new()?;
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .map_err(|error| format!("cannot bind fake gateway: {error}"))?;
+    listener
+        .set_nonblocking(true)
+        .map_err(|error| format!("cannot configure fake gateway: {error}"))?;
+    let address = listener
+        .local_addr()
+        .map_err(|error| format!("cannot read fake gateway address: {error}"))?
+        .to_string();
+    let mut port =
+        RuntimeV3Port::new_with_telemetry(config(address, &fixture), TelemetryHandle::disabled())?;
+    let mut allocation = allocation()?;
+    allocation["recovery_authority"]["schema_digest"] = json!("0".repeat(64));
+    std::thread::scope(|scope| -> Result<(), String> {
+        let gateway = scope.spawn(move || gateway(listener, allocation));
+        let error = port
+            .launch()
+            .err()
+            .ok_or_else(|| String::from("invalid authority must reject launch"))?;
+        if error.code() != "gateway_allocate_invalid" {
+            return Err(format!(
+                "invalid authority used the wrong error code: {error}"
+            ));
+        }
+        if port.recovery_authority.is_some() || !port.released {
+            return Err(String::from(
+                "invalid authority was installed or not cleaned up",
+            ));
+        }
         gateway
             .join()
             .map_err(|_| String::from("fake gateway panicked"))??;
