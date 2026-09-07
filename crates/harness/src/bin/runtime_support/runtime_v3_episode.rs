@@ -8,9 +8,9 @@ use sts2_harness::{
     EpisodeRuntimePort, OperationState, ShutdownPort, TransitionReceipt,
 };
 
-use super::super::mcp::validate_or_release_allocation;
+use super::super::mcp::validate_or_release_allocation_with;
 use super::super::runtime_v3_telemetry::ObservationSource;
-use super::{OperationRecord, RuntimeV3Port, parse, wire};
+use super::{OperationRecord, RuntimeV3Port, allocation_context, parse, wire};
 
 const MAX_OPERATIONS: usize = 1_024;
 
@@ -49,19 +49,26 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         } else {
             "gateway_allocate_invalid"
         };
-        validate_or_release_allocation(allocation, &self.config, |headers| {
-            let response = self.gateway.request(
-                "POST",
-                &format!("/v1/instances/{}/release", self.config.instance_id),
-                &json!({}),
-                headers,
-            );
-            self.released = response
-                .as_ref()
-                .is_ok_and(|value| value["status"] == "released");
-            response
-        })
+        let allocation = validate_or_release_allocation_with(
+            allocation,
+            &self.config,
+            allocation_context::validate,
+            |headers| {
+                let response = self.gateway.request(
+                    "POST",
+                    &format!("/v1/instances/{}/release", self.config.instance_id),
+                    &json!({}),
+                    headers,
+                );
+                self.released = response
+                    .as_ref()
+                    .is_ok_and(|value| value["status"] == "released");
+                response
+            },
+        )
         .map_err(|error| wire::port_error(code, error, false))?;
+        allocation.apply_current_lease(&mut self.config);
+        self.recovery_authority = allocation.recovery_authority;
         if let Err(error) = self.launch_mcp() {
             return Err(wire::port_error("runtime_launch_failed", error, false));
         }

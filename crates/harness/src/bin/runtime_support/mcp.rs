@@ -242,7 +242,9 @@ fn require_success(response: &Value, operation: &str) -> Result<(), String> {
 
 #[path = "allocation_cleanup.rs"]
 mod allocation_cleanup;
-pub(super) use allocation_cleanup::validate_or_release_allocation;
+pub(super) use allocation_cleanup::{
+    validate_or_release_allocation, validate_or_release_allocation_with,
+};
 
 pub(super) fn validate_allocation(value: &Value, config: &RuntimeConfig) -> Result<(), String> {
     for (key, expected) in [

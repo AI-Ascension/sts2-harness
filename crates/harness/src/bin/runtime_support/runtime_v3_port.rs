@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: MIT
 
+enum DecisionAdmission {
+    Reused(Decision),
+    Fresh(durable::ProviderReservationToken),
+}
+
 fn finish_telemetry(telemetry: RuntimeV3Telemetry) {
     let report = telemetry.finish(std::time::Duration::from_secs(2));
     if report.export_status() != "delivered" {
@@ -55,6 +60,7 @@ impl RuntimeV3Port {
             reconnect_attempts: 0,
             telemetry,
             durable,
+            recovery_authority: None,
             recovery: None,
             recovery_context: None,
             recovery_rpc_id: 1,

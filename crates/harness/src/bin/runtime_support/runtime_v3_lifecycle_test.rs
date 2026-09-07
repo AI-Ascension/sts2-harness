@@ -184,6 +184,9 @@ fn runtime_v3_wrong_lease_uses_returned_fence_and_requires_release_confirmation(
 }
 
 #[cfg(unix)]
+#[path = "runtime_v3_allocation_launch_test.rs"]
+mod allocation_launch;
+#[cfg(unix)]
 #[path = "runtime_v3_lifecycle_reconnect_test.rs"]
 mod reconnect;
 #[cfg(unix)]

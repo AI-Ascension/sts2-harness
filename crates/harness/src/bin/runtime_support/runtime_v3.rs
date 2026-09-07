@@ -19,6 +19,8 @@ use super::runtime_v3_telemetry::{
 };
 use super::runtime_v3_wire as wire;
 
+#[path = "runtime_allocation_context.rs"]
+mod allocation_context;
 #[path = "runtime_v3_completed_resume.rs"]
 mod completed_resume;
 #[path = "runtime_v3_decision_replay.rs"]
@@ -41,11 +43,6 @@ use ledger::OperationRecord;
 mod combat_demo;
 #[path = "runtime_v3_episode_replay.rs"]
 mod episode_replay;
-
-enum DecisionAdmission {
-    Reused(Decision),
-    Fresh(durable::ProviderReservationToken),
-}
 
 #[cfg(test)]
 #[path = "runtime_v3_lifecycle_test.rs"]
@@ -302,6 +299,7 @@ pub(super) struct RuntimeV3Port {
     reconnect_attempts: u8,
     telemetry: TelemetryHandle,
     durable: Option<durable::DurableHandle>,
+    recovery_authority: Option<allocation_context::RecoveryAuthority>,
     recovery: Option<McpProcess>,
     recovery_context: Option<recovery::RecoveryContext>,
     recovery_rpc_id: u64,
