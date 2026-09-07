@@ -97,8 +97,17 @@ history: { source_state_id, generation, action_catalog_digest }
 The payload references or embeds the exact snapshot and analysis bytes and may
 carry deterministic SVG/PNG artifacts once a renderer attaches them. Atomic
 publication writes one manifest only after every referenced digest is
-verified. A loader rejects malformed JSON, digest mismatch, missing members,
-cross-generation bindings, truncated writes, and unknown required versions.
+verified. The filesystem store serializes the immutable-directory and feed
+transaction with a bounded OS-backed exclusive lock at the store root. The
+lock file is persistent and is never removed as stale state; the operating
+system releases the lock when a writer exits, including after process death.
+Each store retains at most 4096 immutable digest directories and rejects a new
+digest at that finite capacity rather than deleting historical bundles. Root
+directory scans are bounded, and publication/feed temporary paths use
+create-new semantics so a reused operation ID or symlink fails closed and is
+left available for diagnosis. A loader rejects malformed JSON, digest
+mismatch, missing members, cross-generation bindings, truncated writes, and
+unknown required versions.
 Historical action bindings are retained for replay inspection but have no
 dispatch capability.
 

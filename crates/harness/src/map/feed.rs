@@ -193,15 +193,8 @@ fn validate_entry_bundle(
 fn write_atomic(root: &Path, feed: &MapFeed, operation_id: &str) -> Result<(), MapBundleError> {
     let bytes = canonical_bytes(feed).map_err(MapBundleError::Canonical)?;
     let temporary = root.join(format!(".{MAP_FEED_FILE}.{operation_id}.tmp"));
-    if temporary.exists() {
-        fs::remove_file(&temporary).map_err(storage_error)?;
-    }
     write_file(&temporary, &bytes)?;
-    let result = fs::rename(&temporary, root.join(MAP_FEED_FILE)).map_err(storage_error);
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
+    fs::rename(&temporary, root.join(MAP_FEED_FILE)).map_err(storage_error)
 }
 
 pub(crate) fn read_bounded(path: &Path) -> Result<Vec<u8>, MapBundleError> {

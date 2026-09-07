@@ -4,10 +4,16 @@ use super::bundle::{MapBundleError, MapViewBundle};
 use super::bundle_validation::{is_digest, validate_file_reference};
 use super::feed;
 use super::feed::MapFeed;
-use std::fs;
+use std::fs::{self, File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::Duration;
 
 pub const MAP_MAX_FEED_ENTRIES: usize = 4096;
+const PUBLICATION_LOCK_FILE: &str = ".sts2-map-publication.lock";
+const PUBLICATION_LOCK_ATTEMPTS: usize = 32;
+const PUBLICATION_LOCK_RETRY: Duration = Duration::from_millis(5);
+const MAP_MAX_STORE_SCAN_ENTRIES: usize = MAP_MAX_FEED_ENTRIES * 2 + 16;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublicationReceipt {
@@ -102,6 +108,7 @@ impl BundleFileStore {
     ) -> Result<PublicationReceipt, MapBundleError> {
         bundle.validate()?;
         validate_operation_id(operation_id)?;
+        let _publication_lock = self.acquire_publication_lock()?;
         let digest = bundle.bundle_digest();
         let final_dir = self.bundle_dir(digest)?;
         let already_present = if directory_present(&final_dir)? {
@@ -111,14 +118,11 @@ impl BundleFileStore {
             }
             true
         } else {
+            ensure_store_capacity(&self.root)?;
             let temporary = self.root.join(format!(".{digest}.{operation_id}.tmp"));
             fs::create_dir(&temporary).map_err(storage_error)?;
-            let result = write_bundle_files(&temporary, bundle)
-                .and_then(|()| fs::rename(&temporary, &final_dir).map_err(storage_error));
-            if let Err(error) = result {
-                let _ = fs::remove_dir_all(&temporary);
-                return Err(error);
-            }
+            write_bundle_files(&temporary, bundle)?;
+            fs::rename(&temporary, &final_dir).map_err(storage_error)?;
             false
         };
         // The immutable directory is visible before the feed head/index is
@@ -130,6 +134,37 @@ impl BundleFileStore {
             operation_id: operation_id.to_owned(),
             already_present,
         })
+    }
+
+    fn acquire_publication_lock(&self) -> Result<PublicationLock, MapBundleError> {
+        let path = self.root.join(PUBLICATION_LOCK_FILE);
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                return Err(MapBundleError::Storage(
+                    "publication lock is not a regular file".to_owned(),
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(storage_error(error)),
+        }
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&path)
+            .map_err(storage_error)?;
+        for _ in 0..PUBLICATION_LOCK_ATTEMPTS {
+            match file.try_lock() {
+                Ok(()) => return Ok(PublicationLock { _file: file }),
+                Err(TryLockError::WouldBlock) => thread::sleep(PUBLICATION_LOCK_RETRY),
+                Err(TryLockError::Error(error)) => return Err(storage_error(error)),
+            }
+        }
+        Err(MapBundleError::Storage(
+            "bundle publication lock busy".to_owned(),
+        ))
     }
 }
 
@@ -188,23 +223,48 @@ impl MapBundleFeed for BundleFileStore {
                 .map(|entry| entry.bundle_digest)
                 .collect());
         }
-        let mut digests = Vec::new();
-        for entry in fs::read_dir(&self.root).map_err(storage_error)? {
-            let entry = entry.map_err(storage_error)?;
-            if entry.file_type().map_err(storage_error)?.is_dir() {
-                let name = entry.file_name();
-                let Some(name) = name.to_str() else { continue };
-                if is_digest(name) {
-                    digests.push(name.to_owned());
-                }
-            }
-            if digests.len() > MAP_MAX_FEED_ENTRIES {
-                return Err(MapBundleError::TooLarge("bundle feed"));
-            }
-        }
+        let mut digests = scan_bundle_directories(&self.root)?;
         digests.sort();
         Ok(digests)
     }
+}
+
+struct PublicationLock {
+    _file: File,
+}
+
+fn ensure_store_capacity(root: &Path) -> Result<(), MapBundleError> {
+    let digest_count = scan_bundle_directories(root)?.len();
+    if digest_count >= MAP_MAX_FEED_ENTRIES {
+        return Err(MapBundleError::TooLarge("bundle store capacity"));
+    }
+    Ok(())
+}
+
+fn scan_bundle_directories(root: &Path) -> Result<Vec<String>, MapBundleError> {
+    let mut digests = Vec::new();
+    for (index, entry) in fs::read_dir(root).map_err(storage_error)?.enumerate() {
+        if index >= MAP_MAX_STORE_SCAN_ENTRIES {
+            return Err(MapBundleError::TooLarge("bundle store scan"));
+        }
+        let entry = entry.map_err(storage_error)?;
+        let file_type = entry.file_type().map_err(storage_error)?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !is_digest(name) {
+            continue;
+        }
+        if file_type.is_symlink() || !file_type.is_dir() {
+            return Err(MapBundleError::Storage(
+                "bundle digest entry is not a regular directory".to_owned(),
+            ));
+        }
+        digests.push(name.to_owned());
+        if digests.len() > MAP_MAX_FEED_ENTRIES {
+            return Err(MapBundleError::TooLarge("bundle store capacity"));
+        }
+    }
+    Ok(digests)
 }
 
 fn write_bundle_files(directory: &Path, bundle: &MapViewBundle) -> Result<(), MapBundleError> {
