@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
 
+use super::analysis_counts::{legal_destination_counts, terminal_counts};
+pub use super::analysis_errors::MapAnalysisError;
 use super::analysis_graph::{
     adjacency, category_distances, collect_reachable, distances, terminal_distances,
     topological_order,
 };
 use super::analysis_routes::candidate_routes;
-use super::canonical::{CanonicalError, canonical_bytes, canonical_digest, reject_duplicate_keys};
-use super::graph::{MapCompleteness, MapGraphError, ValidatedMapGraph};
+use super::canonical::{canonical_bytes, canonical_digest, reject_duplicate_keys};
+use super::graph::{MapCompleteness, ValidatedMapGraph};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
 
 pub const MAP_ANALYSIS_VERSION: &str = "sts2.map-analysis-v1";
 pub const MAP_ANALYSIS_MAX_ASSUMPTIONS: usize = 32;
@@ -247,18 +248,9 @@ impl MapAnalysis {
                     .collect(),
             })
             .collect::<Vec<_>>();
-        let terminal_counts = super::analysis_routes::terminal_counts(
-            graph,
-            &forward,
-            &order,
-            config.max_count_digits,
-        );
-        let legal_destination_counts = super::analysis_routes::legal_destination_counts(
-            graph,
-            &forward,
-            &order,
-            config.max_count_digits,
-        );
+        let terminal_counts = terminal_counts(graph, &forward, &order, config.max_count_digits);
+        let legal_destination_counts =
+            legal_destination_counts(graph, &forward, &order, config.max_count_digits);
         let (candidate_routes, candidates_bounded) = candidate_routes(
             graph,
             &forward,
@@ -402,40 +394,5 @@ impl MapAnalysis {
             serde_json::from_slice(bytes).map_err(|_| MapAnalysisError::Serialization)?;
         analysis.verify_digest()?;
         Ok(analysis)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum MapAnalysisError {
-    InvalidConfig,
-    InvalidPolicy,
-    Unavailable,
-    Cycle(Vec<String>),
-    Serialization,
-    DigestMismatch,
-    Canonical(CanonicalError),
-    Graph(MapGraphError),
-}
-
-impl fmt::Display for MapAnalysisError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidConfig => formatter.write_str("invalid map analysis configuration"),
-            Self::InvalidPolicy => formatter.write_str("invalid map route policy"),
-            Self::Unavailable => formatter.write_str("map snapshot is unavailable"),
-            Self::Cycle(nodes) => write!(formatter, "map graph contains a cycle: {nodes:?}"),
-            Self::Serialization => formatter.write_str("map analysis serialization failed"),
-            Self::DigestMismatch => formatter.write_str("map analysis digest mismatch"),
-            Self::Canonical(error) => error.fmt(formatter),
-            Self::Graph(error) => error.fmt(formatter),
-        }
-    }
-}
-
-impl std::error::Error for MapAnalysisError {}
-
-impl From<MapGraphError> for MapAnalysisError {
-    fn from(value: MapGraphError) -> Self {
-        Self::Graph(value)
     }
 }

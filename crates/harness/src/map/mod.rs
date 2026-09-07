@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 mod analysis;
+mod analysis_counts;
+mod analysis_errors;
 mod analysis_graph;
 mod analysis_routes;
 mod bundle;
@@ -12,6 +14,7 @@ mod evaluation;
 mod evaluation_matrix;
 mod evaluation_oracle;
 mod evaluation_renderer;
+mod evaluation_routes;
 mod feed;
 mod graph;
 mod wire;
