@@ -28,13 +28,26 @@ All four imported artifact blobs match the producer revisions named by the
 artifact provenance README. The component launch test uses a synthetic gateway;
 its successful release response is not evidence of signed host revocation.
 
+## Operation identity integration
+
+The independently reviewed UUIDv4 candidate
+`727e4a8c2cb8fd3fc398b6d84aa54374a605d8d4` was applied as
+`d06284c` over the documented allocation/recovery integration. On that combined
+source, root reran format, Clippy with warnings denied, full workspace/all-target/
+all-feature tests, build, and strict policy: all exited 0. Policy reported
+431 sized files and zero warnings/errors. Operation IDs are now created with
+the pinned UUIDv4 generator before dispatch; this does not substitute them for
+authoritative state identities. The fresh-runner test uses separate instances
+in one process, not an OS restart.
+
 ## Remaining integration blockers
 
 The production release and invalid-allocation cleanup paths still use a non-UUID
-correlation that the signed host-lease control path rejects. Production operation
-identity creation and exact raw legal-actions catalog retention also require
-their separately owned repairs. Current allocation authority must be wired to
+correlation that the signed host-lease control path rejects. Exact raw legal-actions
+catalog retention still requires its separately owned repair. Current allocation authority must be wired to
 new durable operation contexts without overwriting historical identities.
+Historical receipt settlement also requires a verified fresh-observation handoff
+before the episode runner can continue; isolated parser tests do not prove it.
 
 These passing gates do not resolve those findings. No live provider/game run,
 service installation, native Windows execution, reboot, release activation,
