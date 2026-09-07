@@ -9,6 +9,10 @@ use sts2_harness::{Decision, DecisionInput, DecisionSource, PolicyError};
 
 use super::*;
 
+#[path = "runtime_v3_recovery_fixture.rs"]
+mod recovery_fixture;
+pub(super) use recovery_fixture::recovery_settled_script;
+
 pub(super) const PENDING_OPERATION_ID: &str = "11111111-1111-4111-8111-111111111111";
 pub(super) const PENDING_STATE_ID: &str = "22222222-2222-4222-8222-222222222222";
 const RECOVERY_DEPLOYMENT_ID: &str = "33333333-3333-4333-8333-333333333333";
@@ -17,6 +21,13 @@ const RECOVERY_INSTANCE_INCAR: &str = "55555555-5555-4555-8555-555555555555";
 const RECOVERY_BOOT_ID: &str = "66666666-6666-4666-8666-666666666666";
 const RECOVERY_LEASE_ID: &str = "77777777-7777-4777-8777-777777777777";
 const RECOVERY_FENCE_ID: &str = "88888888-8888-4888-8888-888888888888";
+const RECOVERY_PRINCIPAL_ID: &str = "99999999-9999-4999-8999-999999999999";
+const RECOVERY_TICKET_ID: &str = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const RECOVERY_WITNESS_ID: &str = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const RECOVERY_LOOKUP_MESSAGE_ID: &str = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const RECOVERY_RECONCILE_MESSAGE_ID: &str = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const RECOVERY_LOOKUP_CORRELATION_ID: &str = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const RECOVERY_RECONCILE_CORRELATION_ID: &str = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 
 pub(super) struct RecoveryEnvironment(pub(super) Vec<(String, String)>);
 
@@ -161,110 +172,6 @@ pub(super) fn dispatch_script(fixture: &Fixture) -> Result<String, Box<dyn std::
             "jsonrpc":"2.0",
             "id":1,
             "result":{"content":[{"text":settled.to_string()}]}
-        }))
-    );
-    fixture.script(&script)
-}
-
-pub(super) fn recovery_settled_script(
-    fixture: &Fixture,
-    operation_id: &str,
-    state_id: &str,
-    generation: u64,
-    payload_digest: &str,
-    catalog_digest: &str,
-    canonical_json_b64: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let mut observed: Value = serde_json::from_str(include_str!(
-        "../../../../../protocol-artifact/runtime-v3-gameplay/golden/state-response.json"
-    ))?;
-    observed["correlation_id"] = json!("1");
-    observed["generation"] = json!(1);
-    observed["observation"]["generation"] = json!(1);
-    observed["observation"]["state"]["turn_index"] = json!(2);
-    let gameplay_tools: Vec<_> = [
-        "sts2.observe",
-        "sts2.legal_actions",
-        "sts2.dispatch_action",
-        "sts2.wait_for_transition",
-        "sts2.reobserve",
-        "sts2.recover",
-    ]
-    .into_iter()
-    .map(|name| json!({"name":name}))
-    .collect();
-    let recovery_tools: Vec<_> = [
-        "watchdog.bootstrap",
-        "watchdog.host_fence",
-        "watchdog.lease_acquire",
-        "watchdog.lease_renew",
-        "watchdog.lease_revoke",
-        "watchdog.operation_intent",
-        "watchdog.operation_dispatch",
-        "watchdog.operation_lookup",
-        "watchdog.operation_reconcile",
-    ]
-    .into_iter()
-    .map(|name| json!({"name":name}))
-    .collect();
-    let operation = |state: &str| {
-        json!({
-            "operation_id": operation_id,
-            "payload_digest": payload_digest,
-            "expected_boundary": {
-                "state_id": state_id,
-                "generation": generation,
-                "catalog_digest": catalog_digest
-            },
-            "action": {
-                "schema_digest": wire::RUNTIME_V3_SCHEMA_DIGEST,
-                "canonical_json_b64": canonical_json_b64,
-                "payload_digest": payload_digest
-            },
-            "state": state
-        })
-    };
-    let lookup = json!({
-        "contract": "watchdog-recovery-v1",
-        "schema_digest": sts2_harness::RECOVERY_SCHEMA_DIGEST,
-        "correlation_id": "1",
-        "kind": "operation_lookup_response",
-        "payload": {
-            "operation": operation("SETTLED"),
-            "mutation_authorized": false,
-            "result": {"status": "SETTLED"}
-        }
-    });
-    let reconcile = json!({
-        "contract": "watchdog-recovery-v1",
-        "schema_digest": sts2_harness::RECOVERY_SCHEMA_DIGEST,
-        "correlation_id": "2",
-        "kind": "operation_reconcile_response",
-        "payload": {
-            "operation": operation("RECONCILED"),
-            "mutation_authorized": false,
-            "result": {"status": "RECONCILED"}
-        }
-    });
-    let script = format!(
-        "cd '{}' || exit 1\nif [ \"$STS2_RUNTIME_PROFILE\" = \"watchdog-recovery-v1\" ]; then\n{}{}{}{}else\n{}{}{}\nfi\n",
-        fixture.0.display(),
-        reply(json!({"jsonrpc":"2.0","id":1,"result":{}})),
-        reply(
-            json!({"jsonrpc":"2.0","id":2,"result":{"revision":"watchdog-recovery-v1-mcp","tools":recovery_tools}})
-        ),
-        reply(json!({"jsonrpc":"2.0","id":1,"result":{"content":[{"text":lookup.to_string()}]}})),
-        reply(
-            json!({"jsonrpc":"2.0","id":2,"result":{"content":[{"text":reconcile.to_string()}]}})
-        ),
-        reply(json!({"jsonrpc":"2.0","id":1,"result":{}})),
-        reply(
-            json!({"jsonrpc":"2.0","id":2,"result":{"revision":"runtime-v3-gameplay-mcp","tools":gameplay_tools}})
-        ),
-        reply(json!({
-            "jsonrpc":"2.0",
-            "id":1,
-            "result":{"content":[{"text":observed.to_string()}]}
         }))
     );
     fixture.script(&script)

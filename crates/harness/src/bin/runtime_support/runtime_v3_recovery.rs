@@ -2,8 +2,7 @@
 
 use serde_json::{Value, json};
 use sts2_harness::{
-    DispatchStatus, EpisodeObservation, OperationState, RecoveryError, RecoveryPort,
-    TransitionReceipt, WaitOutcome,
+    DispatchStatus, EpisodeObservation, RecoveryError, RecoveryPort, TransitionReceipt, WaitOutcome,
 };
 
 use super::super::runtime_v3_telemetry::{ObservationSource, RecoveryKind};
@@ -218,9 +217,8 @@ impl RecoveryPort for RuntimeV3Port {
         {
             return Err(RecoveryError::PortFailure);
         }
-        let resolved_state = match lookup_state.as_str() {
-            "SETTLED" => (OperationState::Settled, DispatchStatus::Settled),
-            "REJECTED" => (OperationState::Rejected, DispatchStatus::Rejected),
+        match lookup_state.as_str() {
+            "SETTLED" | "REJECTED" => {}
             "UNKNOWN" | "MAY_HAVE_BEEN_DISPATCHED" | "ACCEPTED" => {
                 return Ok(TransitionReceipt::new(
                     operation_id,
@@ -232,7 +230,7 @@ impl RecoveryPort for RuntimeV3Port {
                 ));
             }
             _ => return Err(RecoveryError::PortFailure),
-        };
+        }
         let reconcile = self
             .recovery_call_tool(
                 "watchdog.operation_reconcile",
@@ -251,7 +249,7 @@ impl RecoveryPort for RuntimeV3Port {
         {
             return Err(RecoveryError::PortFailure);
         }
-        record::operation_record(reconcile_payload, &operation)
+        let resolved_state = record::authoritative_reconcile_state(reconcile_payload, &operation)
             .map_err(|_| RecoveryError::PortFailure)?;
         if let Some(durable) = &self.durable {
             durable

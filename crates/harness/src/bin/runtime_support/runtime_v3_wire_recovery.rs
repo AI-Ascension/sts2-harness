@@ -4,6 +4,9 @@ use serde_json::{Value, json};
 
 use super::super::mcp::McpProcess;
 
+#[path = "runtime_v3_wire_recovery_validation.rs"]
+mod validation;
+
 pub(in super::super) fn initialize_recovery_mcp(mcp: &mut McpProcess) -> Result<(), String> {
     let initialize = super::rpc_call(
         mcp,
@@ -47,33 +50,15 @@ pub(in super::super) fn recovery_call(
         .and_then(|content| content.get("text"))
         .and_then(Value::as_str)
         .ok_or_else(|| format!("recovery MCP tool {name} omitted text content"))?;
-    let value: Value = serde_json::from_str(text)
-        .map_err(|error| format!("recovery MCP tool {name} returned non-JSON content: {error}"))?;
-    if value.get("contract").and_then(Value::as_str) != Some("watchdog-recovery-v1")
-        || value.get("schema_digest").and_then(Value::as_str)
-            != Some(sts2_harness::RECOVERY_SCHEMA_DIGEST)
-        || value
-            .get("correlation_id")
-            .and_then(Value::as_str)
-            .is_none()
-        || value.get("kind").and_then(Value::as_str) != Some(expected_kind)
-        || !value.get("payload").is_some_and(Value::is_object)
-    {
-        return Err(format!(
-            "recovery MCP tool {name} returned an invalid sideband envelope"
-        ));
-    }
-    Ok(value)
+    validation::decode_frame(text, Some(expected_kind), None).map_err(|error| {
+        format!("recovery MCP tool {name} returned an invalid sideband envelope: {error}")
+    })
 }
 
 pub(super) fn has_recovery_envelope(response: &Value) -> bool {
     response["result"]["content"][0]["text"]
         .as_str()
-        .and_then(|text| serde_json::from_str::<Value>(text).ok())
-        .is_some_and(|value| {
-            value["contract"] == "watchdog-recovery-v1"
-                && value["schema_digest"].as_str() == Some(sts2_harness::RECOVERY_SCHEMA_DIGEST)
-        })
+        .is_some_and(|text| validation::decode_frame(text, None, None).is_ok())
 }
 
 fn validate_catalog(response: &Value) -> Result<(), String> {
