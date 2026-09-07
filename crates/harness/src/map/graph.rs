@@ -7,6 +7,7 @@ use std::fmt;
 pub const MAP_MAX_NODES: usize = 256;
 pub const MAP_MAX_EDGES: usize = 1024;
 pub const MAP_MAX_IDENTIFIER_BYTES: usize = 128;
+pub const MAP_MAX_ACTION_ID_BYTES: usize = 512;
 pub const MAP_MAX_CATEGORY_BYTES: usize = 64;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -66,6 +67,7 @@ pub struct ValidatedMapGraph {
 }
 
 impl ValidatedMapGraph {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         snapshot_digest: impl Into<String>,
         map_instance: impl Into<String>,
@@ -187,7 +189,7 @@ impl ValidatedMapGraph {
         let mut destinations = BTreeSet::new();
         for destination in &self.legal_destinations {
             validate_identifier("legal destination node_id", &destination.node_id)?;
-            validate_identifier("action_id", &destination.action_id)?;
+            validate_action_id(&destination.action_id)?;
             if !node_ids.contains(&destination.node_id) {
                 return Err(MapGraphError::UnknownNode(destination.node_id.clone()));
             }
@@ -300,6 +302,13 @@ impl std::error::Error for MapGraphError {}
 pub(crate) fn validate_identifier(name: &'static str, value: &str) -> Result<(), MapGraphError> {
     if value.is_empty() || value.len() > MAP_MAX_IDENTIFIER_BYTES {
         return Err(MapGraphError::InvalidField(name));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_action_id(value: &str) -> Result<(), MapGraphError> {
+    if value.is_empty() || value.len() > MAP_MAX_ACTION_ID_BYTES {
+        return Err(MapGraphError::InvalidField("action_id"));
     }
     Ok(())
 }

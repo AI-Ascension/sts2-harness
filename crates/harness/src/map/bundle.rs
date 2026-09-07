@@ -9,6 +9,7 @@ use super::canonical::{canonical_bytes, canonical_digest, reject_duplicate_keys}
 use super::graph::ValidatedMapGraph;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
+use sts2_protocol::decode_map_snapshot;
 
 pub use super::bundle_validation::MapBundleError;
 
@@ -123,6 +124,8 @@ impl MapViewBundle {
             return Err(MapBundleError::TooLarge("snapshot"));
         }
         let snapshot_digest = crate::hex_bytes(Sha256::digest(&snapshot_bytes));
+        decode_map_snapshot(&snapshot_bytes)
+            .map_err(|error| MapBundleError::ProtocolSnapshot(error.to_string()))?;
         let graph = ValidatedMapGraph::from_visible_map_json(snapshot_digest, &snapshot_bytes)
             .map_err(MapBundleError::Graph)?;
         let analysis = MapAnalysis::analyze(&graph, AnalysisConfig::default())

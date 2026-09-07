@@ -6,6 +6,7 @@ use super::canonical::{CanonicalError, reject_duplicate_keys};
 use super::graph::MapGraphError;
 use sha2::{Digest as _, Sha256};
 use std::fmt;
+use sts2_protocol::decode_map_snapshot;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MapBundleError {
@@ -19,6 +20,7 @@ pub enum MapBundleError {
     Canonical(CanonicalError),
     Analysis(MapAnalysisError),
     Graph(MapGraphError),
+    ProtocolSnapshot(String),
     SnapshotSchema(&'static str),
     Storage(String),
 }
@@ -40,6 +42,9 @@ impl fmt::Display for MapBundleError {
             Self::Canonical(error) => error.fmt(formatter),
             Self::Analysis(error) => error.fmt(formatter),
             Self::Graph(error) => error.fmt(formatter),
+            Self::ProtocolSnapshot(error) => {
+                write!(formatter, "runtime-map-v1 snapshot is invalid: {error}")
+            }
             Self::SnapshotSchema(field) => {
                 write!(formatter, "snapshot schema field {field} is invalid")
             }
@@ -81,7 +86,7 @@ pub(crate) fn verify_optional_digest(
 pub(crate) fn verify_required_digest(
     name: &'static str,
     expected: &Option<String>,
-    reference: &String,
+    reference: &str,
     bytes: Option<&[u8]>,
 ) -> Result<(), MapBundleError> {
     let Some(digest) = expected else {
@@ -199,6 +204,8 @@ pub(crate) fn validate_snapshot_document(
         if !object.contains_key("act") && !object.contains_key("act_id") {
             return Err(MapBundleError::SnapshotSchema("act"));
         }
+        decode_map_snapshot(bytes)
+            .map_err(|error| MapBundleError::ProtocolSnapshot(error.to_string()))?;
     }
     Ok(())
 }

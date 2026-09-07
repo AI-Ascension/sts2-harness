@@ -1,7 +1,7 @@
 {
   "entries": [
     {
-      "bundle_digest": "fc8a3b4e01d27f38002ae36498721853b0ebdc83be8fed0258b7289a8a7dceb3",
+      "bundle_digest": "0d8deae6a4b14a0965b64c0dc18c31d0fa28b84b2081feb2d66378960a62b926",
       "episode_id": "demo-episode-001",
       "generation": 42,
       "observed_at_unix_ms": 1700000000000,
@@ -12,6 +12,6 @@
     }
   ],
   "feed_version": "sts2.map-feed-v1",
-  "head": "fc8a3b4e01d27f38002ae36498721853b0ebdc83be8fed0258b7289a8a7dceb3",
+  "head": "0d8deae6a4b14a0965b64c0dc18c31d0fa28b84b2081feb2d66378960a62b926",
   "sequence": 1
 }

@@ -10,20 +10,20 @@ fn fixture_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/map-bundle-demo-v1")
 }
 
-pub fn demo_snapshot() -> Vec<u8> {
+pub fn demo_snapshot() -> Result<Vec<u8>, String> {
     let categories = [
         "start", "event", "monster", "elite", "rest", "monster", "event", "shop", "elite", "rest",
         "event", "shop", "monster", "event", "boss",
     ];
     let mut nodes = Vec::new();
-    for row in 0..15 {
+    for (row, category) in categories.into_iter().enumerate() {
         for lane in 0_usize..5 {
             nodes.push(json!({
-                "category": categories[row],
+                "category": category,
                 "column": lane,
                 "id": format!("demo:{row}:{lane}"),
                 "row": row,
-                "visited": row < 2,
+                "visited": row <= 2,
             }));
         }
     }
@@ -70,7 +70,7 @@ pub fn demo_snapshot() -> Vec<u8> {
         "freshness": "current",
         "game_build": "demo-build",
         "generation": 42,
-        "history": ["demo:0:2", "demo:1:1", "demo:1:2"],
+        "history": ["demo:0:2", "demo:1:1", "demo:1:2", "demo:2:2"],
         "map_instance_id": "demo-map",
         "mod_version": "demo-map-mod",
         "nodes": nodes,
@@ -82,18 +82,23 @@ pub fn demo_snapshot() -> Vec<u8> {
         "state_id": "demo-state-42",
         "terminal_node_ids": terminals,
     }))
-    .expect("demo snapshot JSON")
+    .map_err(|error| error.to_string())
 }
 
 #[test]
-fn dense_demo_fixture_is_generated_by_the_harness_builder() {
+fn dense_demo_fixture_is_generated_by_the_harness_builder() -> Result<(), String> {
     let root = fixture_root();
-    let feed: Value = serde_json::from_slice(&fs::read(root.join("feed.json")).expect("demo feed"))
-        .expect("demo feed JSON");
-    let digest = feed["head"].as_str().expect("demo feed head");
+    let feed: Value = serde_json::from_slice(
+        &fs::read(root.join("feed.json")).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    let digest = feed["head"]
+        .as_str()
+        .ok_or_else(|| String::from("demo feed head is not a string"))?;
     let directory = root.join(digest);
-    let snapshot = fs::read(directory.join("visible-map.json")).expect("demo snapshot");
-    assert_eq!(snapshot, demo_snapshot());
+    let snapshot =
+        fs::read(directory.join("visible-map.json")).map_err(|error| error.to_string())?;
+    assert_eq!(snapshot, demo_snapshot()?);
     let bundle = MapViewBundle::from_runtime_snapshot(
         snapshot.clone(),
         RuntimeMapBundleIdentity {
@@ -104,7 +109,7 @@ fn dense_demo_fixture_is_generated_by_the_harness_builder() {
             action_catalog_digest: sts2_harness::hex_bytes(Sha256::digest(b"demo-action-catalog-v1")),
         },
     )
-    .expect("demo bundle");
+    .map_err(|error| error.to_string())?;
     assert_eq!(bundle.manifest.bundle_digest, digest);
     assert_eq!(bundle.manifest.renderer_version, "unrendered");
     assert_eq!(bundle.viewer.as_deref(), Some(b"{}".as_slice()));
@@ -120,13 +125,14 @@ fn dense_demo_fixture_is_generated_by_the_harness_builder() {
             && route.score.elite_exposure_before_rest > 0
     }));
     assert_eq!(
-        fs::read(directory.join("analysis.json")).expect("demo analysis"),
-        bundle.analysis_bytes().expect("demo analysis bytes")
+        fs::read(directory.join("analysis.json")).map_err(|error| error.to_string())?,
+        bundle.analysis_bytes().map_err(|error| error.to_string())?
     );
     assert_eq!(
-        fs::read(directory.join("manifest.json")).expect("demo manifest"),
+        fs::read(directory.join("manifest.json")).map_err(|error| error.to_string())?,
         bundle
             .canonical_manifest_bytes()
-            .expect("demo manifest bytes")
+            .map_err(|error| error.to_string())?
     );
+    Ok(())
 }
