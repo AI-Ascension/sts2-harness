@@ -141,11 +141,28 @@ pub(super) fn wait(
     }
 }
 
-pub(super) fn complete(report: &EpisodeRunReport, telemetry: &TelemetryHandle) {
-    let outcome = match report.terminal_stage() {
+pub(super) fn game_outcome(stage: sts2_harness::EpisodeStage) -> GameOutcome {
+    match stage {
         sts2_harness::EpisodeStage::Victory => GameOutcome::Success,
         sts2_harness::EpisodeStage::Defeat => GameOutcome::Failure,
         _ => GameOutcome::Unavailable,
-    };
+    }
+}
+
+pub(super) fn complete(report: &EpisodeRunReport, telemetry: &TelemetryHandle) {
+    let outcome = game_outcome(report.terminal_stage());
     let _ = telemetry.terminal(report.final_observation(), outcome);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GameOutcome, game_outcome};
+    use sts2_harness::EpisodeStage;
+
+    #[test]
+    fn terminal_stage_outcome_survives_independent_cleanup_status() {
+        assert_eq!(game_outcome(EpisodeStage::Victory), GameOutcome::Success);
+        assert_eq!(game_outcome(EpisodeStage::Defeat), GameOutcome::Failure);
+        assert_eq!(game_outcome(EpisodeStage::Combat), GameOutcome::Unavailable);
+    }
 }

@@ -8,7 +8,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use sts2_harness::{
     Decision, DecisionInput, DecisionSource, EpisodeObservation, EpisodeRunner,
-    EpisodeRunnerConfig, PolicyError,
+    EpisodeRunnerConfig, EpisodeStage, PolicyError,
 };
 
 use super::{RuntimeV3Port, recording, wire};
@@ -24,11 +24,17 @@ use cards::CardBindings;
 
 const MAX_BYTES: u64 = 32 * 1024 * 1024;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ReplayOutcome {
+    Terminal(EpisodeStage),
+    PrefixVerified,
+}
+
 pub(super) fn run(
     port: &mut RuntimeV3Port,
     config: &EpisodeRunnerConfig,
     path: &str,
-) -> Result<(), String> {
+) -> Result<ReplayOutcome, String> {
     // Validate the complete source before the runner allocates a host lease.
     let file = std::fs::File::open(path).map_err(|_| "cannot open episode replay")?;
     let mut bytes = Vec::new();
@@ -68,7 +74,7 @@ pub(super) fn run(
             "source_sha256":digest,"replayed_actions":source.cursor,"provider_calls":0,
             "skipped_rejected_attempts":source.trace.rejected_attempts})
         );
-        return Ok(());
+        return Ok(ReplayOutcome::PrefixVerified);
     }
     let report = result.map_err(|error| {
         format!(
@@ -88,7 +94,7 @@ pub(super) fn run(
         "skipped_rejected_attempts":source.trace.rejected_attempts,
         "terminal_stage":wire::stage_name(report.terminal_stage())})
     );
-    Ok(())
+    Ok(ReplayOutcome::Terminal(report.terminal_stage()))
 }
 
 fn error_category(error: &sts2_harness::EpisodeRunnerError) -> String {

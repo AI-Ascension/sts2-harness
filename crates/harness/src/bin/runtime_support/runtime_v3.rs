@@ -78,17 +78,20 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         if !path.is_empty() {
             let result = episode_replay::run(&mut port, &settings.runner, &path);
             drop(port);
-            let _ = telemetry_handle.run_finished(
-                if result.is_ok() {
-                    GameOutcome::Success
-                } else {
-                    GameOutcome::Failure
-                },
-                TelemetryStage::Unknown,
-                CleanupStatus::Clean,
-            );
+            let (game_outcome, terminal_stage) = match result.as_ref() {
+                Ok(episode_replay::ReplayOutcome::Terminal(stage)) => (
+                    recording::game_outcome(*stage),
+                    TelemetryStage::from(*stage),
+                ),
+                Ok(episode_replay::ReplayOutcome::PrefixVerified) => {
+                    (GameOutcome::Unavailable, TelemetryStage::Recovery)
+                }
+                Err(_) => (GameOutcome::Failure, TelemetryStage::Unknown),
+            };
+            let _ =
+                telemetry_handle.run_finished(game_outcome, terminal_stage, CleanupStatus::Clean);
             finish_telemetry(telemetry);
-            return result;
+            return result.map(|_| ());
         }
     }
     let transport = ExoProcessTransport::new(settings.process);
@@ -139,6 +142,8 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
             return Err(format!("Runtime-v3 episode failed: {error}"));
         }
     };
+    let game_outcome = recording::game_outcome(report.terminal_stage());
+    recording::complete(&report, &telemetry_handle);
     if source_close.is_err() {
         let _ = telemetry_handle.failure(
             "provider_close",
@@ -147,19 +152,13 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
             None,
         );
         let _ = telemetry_handle.run_finished(
-            GameOutcome::Unavailable,
+            game_outcome,
             TelemetryStage::from(report.terminal_stage()),
             CleanupStatus::Failed,
         );
         finish_telemetry(telemetry);
         return Err(String::from("Exo session close failed"));
     }
-    recording::complete(&report, &telemetry_handle);
-    let game_outcome = match report.terminal_stage() {
-        sts2_harness::EpisodeStage::Victory => GameOutcome::Success,
-        sts2_harness::EpisodeStage::Defeat => GameOutcome::Failure,
-        _ => GameOutcome::Unavailable,
-    };
     let _ = telemetry_handle.run_finished(
         game_outcome,
         TelemetryStage::from(report.terminal_stage()),
