@@ -2,7 +2,7 @@
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use sts2_harness::{Decision, DecisionInput, ExecutionFingerprint};
+use sts2_harness::{DecisionInput, ExecutionFingerprint};
 
 use super::super::super::config::RuntimeConfig;
 use super::super::super::runtime_v3_settings::RuntimeV3Settings;
@@ -95,31 +95,6 @@ pub(super) fn decision_input_digest(input: &DecisionInput) -> Result<String, Str
         "objective": input.objective,
         "hard_constraints": input.hard_constraints,
     }))
-}
-
-pub(super) fn decision_digest(decision: &Decision) -> String {
-    let summary = match decision {
-        Decision::Plan { action_ids, .. } => json!({"decision":"plan", "action_ids":action_ids}),
-        Decision::Action {
-            action_id,
-            confidence,
-            ..
-        } => {
-            json!({"decision":"action", "action_id":action_id, "confidence":confidence})
-        }
-        Decision::Wait { .. } => json!({"decision":"wait"}),
-        Decision::Reobserve { .. } => json!({"decision":"reobserve"}),
-        Decision::Recovery {
-            kind, operation_id, ..
-        } => {
-            json!({"decision":"recovery", "kind":kind, "operation_id":operation_id})
-        }
-    };
-    // This function only receives bounded, already validated semantic fields, so hashing cannot
-    // fail for serialization reasons.  Keep the fallback deterministic if the JSON API changes.
-    serde_json::to_vec(&summary)
-        .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
-        .unwrap_or_else(|_| digest_text("decision:serialization-failed"))
 }
 
 pub(super) fn response_evidence(

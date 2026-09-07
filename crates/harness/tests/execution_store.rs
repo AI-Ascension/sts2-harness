@@ -6,6 +6,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use sha2::{Digest, Sha256};
+
 use sts2_harness::{
     AttemptKind, AttemptState, Checkpoint, CompletionRecord, CompletionStatus, DecisionReference,
     ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig, JobClaimOutcome,
@@ -44,6 +46,10 @@ fn checkpoint(lineage: ExecutionLineage, sequence: u64, generation: u64) -> Chec
         "catalog-digest",
     )
     .expect("test checkpoint is valid")
+}
+
+fn result_digest(payload: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(payload))
 }
 
 #[test]
@@ -191,7 +197,7 @@ fn provider_reservation_is_conservative_and_completed_decisions_are_reusable() {
         .record_decision(&reference)
         .expect("decision is durable");
     let reservation = ProviderReservation::new(
-        current,
+        current.clone(),
         "reservation-1",
         "execution-1",
         "provider-execution-1",
@@ -205,14 +211,22 @@ fn provider_reservation_is_conservative_and_completed_decisions_are_reusable() {
             .state,
         ProviderReservationState::Reserved
     );
+    let result_payload = br#"{"decision":"wait","rationale":"resume"}"#;
     let completed = store
-        .complete_provider("reservation-1", "result-1", "result-digest", 7)
+        .complete_provider_with_result(
+            "reservation-1",
+            "result-1",
+            &result_digest(result_payload),
+            result_payload,
+            7,
+        )
         .expect("provider result is durable");
     assert!(completed.completed);
     assert!(!completed.unknown);
     let reusable = store
         .reuse_completed_decision(
-            "episode-1",
+            &current,
+            "execution-1",
             "input-fingerprint",
             "model-revision",
             "provider-config",
@@ -220,6 +234,10 @@ fn provider_reservation_is_conservative_and_completed_decisions_are_reusable() {
         .expect("reuse lookup succeeds")
         .expect("completed result is reusable");
     assert_eq!(reusable.reference.execution_id, "execution-1");
+    assert_eq!(
+        reusable.result_payload.as_deref(),
+        Some(result_payload.as_slice())
+    );
 
     let unknown_reference = DecisionReference::new(
         lineage("attempt-1", "trajectory-1"),
@@ -250,7 +268,8 @@ fn provider_reservation_is_conservative_and_completed_decisions_are_reusable() {
     assert!(
         store
             .reuse_completed_decision(
-                "episode-1",
+                &lineage("attempt-1", "trajectory-1"),
+                "execution-2",
                 "input-fingerprint-2",
                 "model-revision",
                 "provider-config",

@@ -7,13 +7,26 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::super::durable::DurableHandle;
 use sts2_harness::{
-    ActionIdentity, ActionKind, Decision, DecisionInput, EpisodeLegalAction, ExecutionFingerprint,
-    ExecutionLineage, ExecutionStore, ModelExecutionId, RecoveryPort,
+    ActionIdentity, ActionKind, Decision, DecisionInput, DecisionSource, EpisodeLegalAction,
+    ExecutionFingerprint, ExecutionLineage, ExecutionStore, ModelExecutionId, PolicyError,
+    RecoveryPort,
 };
 
 use super::*;
 
 struct Fixture(PathBuf);
+
+struct CountingSource {
+    calls: usize,
+    decision: Decision,
+}
+
+impl DecisionSource for CountingSource {
+    fn decide(&mut self, _input: &DecisionInput) -> Result<Decision, PolicyError> {
+        self.calls += 1;
+        Ok(self.decision.clone())
+    }
+}
 
 impl Fixture {
     fn new() -> Result<Self, std::io::Error> {
@@ -264,16 +277,36 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
         "synthetic lifecycle",
         Vec::new(),
     );
-    let reservation = durable
-        .decision_admission(&input)?
-        .ok_or("new decision must reserve provider usage")?;
+    let reservation = match durable.decision_admission_with_reuse(&input)? {
+        super::super::DecisionAdmission::Fresh(reservation) => reservation,
+        super::super::DecisionAdmission::Reused(_) => {
+            return Err("new decision unexpectedly reused a result".into());
+        }
+    };
     let decision = Decision::Action {
         action_id: action.action_id().to_owned(),
         rationale: String::from("synthetic provider decision"),
         confidence: Some(90),
     };
     durable.complete_decision(&reservation, &decision)?;
-    assert!(durable.decision_admission(&input)?.is_none());
+    let mut source = CountingSource {
+        calls: 0,
+        decision: Decision::Wait {
+            rationale: String::from("provider must not be called"),
+        },
+    };
+    let mut recorder = super::super::recording::DecisionRecorder::new(
+        &mut source,
+        TelemetryHandle::disabled(),
+        Some(durable.clone()),
+    );
+    assert_eq!(recorder.decide(&input)?, decision);
+    drop(recorder);
+    assert_eq!(source.calls, 0);
+    assert!(matches!(
+        durable.decision_admission_with_reuse(&input)?,
+        super::super::DecisionAdmission::Reused(_)
+    ));
 
     let pending_action = EpisodeLegalAction::new("combat.end-turn-pending", ActionKind::EndTurn)?;
     durable.operation_intent(
@@ -310,7 +343,7 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
     let terminal = synthetic_observation("victory-2", 2, "victory", json!([]))?;
     durable.checkpoint(&terminal, &json!({}))?;
     resumed.complete_durable_observation(&terminal)?;
-    assert!(durable.decision_admission(&input).is_err());
+    assert!(durable.decision_admission_with_reuse(&input).is_err());
     resumed.mcp.as_mut().ok_or("missing MCP")?.close()?;
     Ok(())
 }

@@ -236,7 +236,8 @@ impl ExecutionStore {
             .prepare(
                 "SELECT execution_id, run_id, episode_id, attempt_id, trajectory_id,
                  input_fingerprint, model_revision, config_digest, state, result_ref,
-                 result_digest, provider_reservation_id FROM decisions WHERE episode_id = ?1
+                 result_digest, provider_reservation_id, result_payload
+                 FROM decisions WHERE episode_id = ?1
                  AND state IN ('pending', 'unknown') ORDER BY created_at, execution_id",
             )
             .map_err(schema::map_sqlite)?;

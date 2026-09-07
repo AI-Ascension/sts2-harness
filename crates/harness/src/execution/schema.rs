@@ -4,7 +4,7 @@ use rusqlite::{Connection, Transaction};
 
 use super::types::ExecutionStoreError;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 1;
+pub const CURRENT_SCHEMA_VERSION: i32 = 2;
 
 const MIGRATION_1: &str = r#"
 CREATE TABLE IF NOT EXISTS store_metadata (
@@ -158,7 +158,7 @@ CREATE INDEX IF NOT EXISTS execution_events_entity
 "#;
 
 pub(crate) fn migrate(connection: &mut Connection) -> Result<(), ExecutionStoreError> {
-    let version = connection
+    let mut version = connection
         .query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
         .map_err(map_sqlite)?;
     if version > CURRENT_SCHEMA_VERSION {
@@ -177,6 +177,19 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), ExecutionStoreE
             .map_err(map_sqlite)?;
         transaction
             .execute_batch("PRAGMA user_version = 1")
+            .map_err(map_sqlite)?;
+        transaction.commit().map_err(map_sqlite)?;
+        version = 1;
+    }
+    if version == 1 {
+        let transaction = connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(map_sqlite)?;
+        transaction
+            .execute("ALTER TABLE decisions ADD COLUMN result_payload BLOB", [])
+            .map_err(map_sqlite)?;
+        transaction
+            .execute_batch("PRAGMA user_version = 2")
             .map_err(map_sqlite)?;
         transaction.commit().map_err(map_sqlite)?;
     }
@@ -227,4 +240,57 @@ pub(crate) fn transaction<'a>(
     connection
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(map_transaction)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schema_v1_migrates_decisions_to_result_aware_v2() -> Result<(), Box<dyn std::error::Error>> {
+        let mut connection = Connection::open_in_memory()?;
+        connection.execute_batch(
+            "CREATE TABLE decisions (
+                execution_id TEXT PRIMARY KEY NOT NULL,
+                run_id TEXT NOT NULL,
+                episode_id TEXT NOT NULL,
+                attempt_id TEXT NOT NULL,
+                trajectory_id TEXT NOT NULL,
+                input_fingerprint TEXT NOT NULL,
+                model_revision TEXT NOT NULL,
+                config_digest TEXT NOT NULL,
+                state TEXT NOT NULL,
+                result_ref TEXT,
+                result_digest TEXT,
+                provider_reservation_id TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            PRAGMA user_version = 1;",
+        )?;
+
+        migrate(&mut connection)?;
+
+        let version =
+            connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))?;
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
+        let payload_column = connection.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('decisions') WHERE name = 'result_payload'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        assert_eq!(payload_column, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn future_schema_is_rejected_before_any_migration() -> Result<(), Box<dyn std::error::Error>> {
+        let mut connection = Connection::open_in_memory()?;
+        connection.execute_batch("PRAGMA user_version = 99;")?;
+        assert_eq!(
+            migrate(&mut connection),
+            Err(ExecutionStoreError::Incompatible)
+        );
+        Ok(())
+    }
 }

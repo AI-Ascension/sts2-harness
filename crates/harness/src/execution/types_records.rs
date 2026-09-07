@@ -283,6 +283,10 @@ pub struct StoredDecision {
     pub completed: bool,
     pub unknown: bool,
     pub provider_reservation_id: Option<String>,
+    /// Exact validated provider result bytes, when this completion was recorded by a
+    /// result-aware writer. Historical metadata-only completions remain `None` and are not
+    /// eligible for replay.
+    pub result_payload: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

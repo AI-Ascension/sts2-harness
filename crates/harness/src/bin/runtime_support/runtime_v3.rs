@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 use sts2_harness::{
-    EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, ExoDecisionSource,
+    Decision, EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, ExoDecisionSource,
     ExoProcessTransport, ExoProvider, ExoSession, ShutdownError, ShutdownPort,
 };
 
@@ -19,6 +19,8 @@ use super::runtime_v3_telemetry::{
 };
 use super::runtime_v3_wire as wire;
 
+#[path = "runtime_v3_decision_replay.rs"]
+mod decision_replay;
 #[path = "runtime_v3_durable.rs"]
 mod durable;
 #[path = "runtime_v3_episode.rs"]
@@ -37,6 +39,11 @@ use ledger::OperationRecord;
 mod combat_demo;
 #[path = "runtime_v3_episode_replay.rs"]
 mod episode_replay;
+
+enum DecisionAdmission {
+    Reused(Decision),
+    Fresh(durable::ProviderReservationToken),
+}
 
 #[cfg(test)]
 #[path = "runtime_v3_lifecycle_test.rs"]

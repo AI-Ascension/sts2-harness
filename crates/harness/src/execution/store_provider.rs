@@ -12,10 +12,11 @@ use super::types::{
 };
 
 const MAX_DECISIONS: i64 = 4_096;
+pub(crate) const MAX_DECISION_RESULT_BYTES: usize = 8 * 1024;
 
 impl ExecutionStore {
-    /// Records the complete decision input fingerprint before provider I/O. Result bytes are kept
-    /// outside this store; only an approved protected reference and digest may be persisted.
+    /// Records the complete decision input fingerprint before provider I/O. A decision remains
+    /// pending until a provider reservation is completed with a validated result payload.
     pub fn record_decision(
         &mut self,
         reference: &DecisionReference,
@@ -28,7 +29,8 @@ impl ExecutionStore {
             .query_row(
                 "SELECT execution_id, run_id, episode_id, attempt_id, trajectory_id,
                  input_fingerprint, model_revision, config_digest, state, result_ref,
-                 result_digest, provider_reservation_id FROM decisions WHERE execution_id = ?1",
+                 result_digest, provider_reservation_id, result_payload
+                 FROM decisions WHERE execution_id = ?1",
                 [reference.execution_id.as_str()],
                 read_decision,
             )
@@ -53,8 +55,8 @@ impl ExecutionStore {
         tx.execute(
             "INSERT INTO decisions(execution_id, run_id, episode_id, attempt_id, trajectory_id,
              input_fingerprint, model_revision, config_digest, state, result_ref, result_digest,
-             provider_reservation_id, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'pending', NULL, NULL, NULL, ?9, ?9)",
+             provider_reservation_id, result_payload, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'pending', NULL, NULL, NULL, NULL, ?9, ?9)",
             params![
                 reference.execution_id,
                 reference.lineage.run_id,

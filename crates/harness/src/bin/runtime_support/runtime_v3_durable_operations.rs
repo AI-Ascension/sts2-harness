@@ -6,7 +6,9 @@ use sts2_harness::{
     OperationState, ProviderFailureClass, ProviderReservation,
 };
 
-use super::support::{decision_digest, decision_input_digest, response_evidence, sha256_json};
+use super::super::DecisionAdmission;
+use super::super::decision_replay;
+use super::support::{decision_input_digest, response_evidence, sha256_json};
 use super::{DurableHandle, PROVIDER_RESERVATION_UNITS, ProviderReservationToken};
 
 impl DurableHandle {
@@ -131,10 +133,10 @@ impl DurableHandle {
             .map_err(|error| format!("cannot reconcile runtime-v3 operation: {error}"))
     }
 
-    pub(in super::super) fn decision_admission(
+    pub(in super::super) fn decision_admission_with_reuse(
         &self,
         input: &DecisionInput,
-    ) -> Result<Option<ProviderReservationToken>, String> {
+    ) -> Result<DecisionAdmission, String> {
         self.store
             .try_borrow()
             .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
@@ -150,6 +152,21 @@ impl DurableHandle {
             self.config_digest.clone(),
         )
         .map_err(|error| format!("runtime-v3 decision reference is invalid: {error}"))?;
+        if let Some(stored) = self
+            .store
+            .try_borrow()
+            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+            .reuse_completed_decision(
+                &self.lineage,
+                &reference.execution_id,
+                &reference.input_fingerprint,
+                &reference.model_revision,
+                &reference.config_digest,
+            )
+            .map_err(|error| format!("cannot inspect reusable runtime-v3 decision: {error}"))?
+        {
+            return Ok(DecisionAdmission::Reused(replay_stored_decision(&stored)?));
+        }
         let stored = self
             .store
             .try_borrow_mut()
@@ -157,7 +174,7 @@ impl DurableHandle {
             .record_decision(&reference)
             .map_err(|error| format!("cannot persist runtime-v3 decision reference: {error}"))?;
         if stored.completed {
-            return Ok(None);
+            return Ok(DecisionAdmission::Reused(replay_stored_decision(&stored)?));
         }
         if stored.unknown {
             return Err(String::from(
@@ -179,7 +196,9 @@ impl DurableHandle {
             .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
             .reserve_provider(&reservation)
             .map_err(|error| format!("cannot reserve runtime-v3 provider usage: {error}"))?;
-        Ok(Some(ProviderReservationToken { reservation_id }))
+        Ok(DecisionAdmission::Fresh(ProviderReservationToken {
+            reservation_id,
+        }))
     }
 
     pub(in super::super) fn complete_decision(
@@ -187,15 +206,16 @@ impl DurableHandle {
         token: &ProviderReservationToken,
         decision: &Decision,
     ) -> Result<(), String> {
-        let result_digest = decision_digest(decision);
+        let (result_payload, result_digest) = decision_replay::encode(decision)?;
         let result_ref = format!("decision-result-{}", token.reservation_id);
         self.store
             .try_borrow_mut()
             .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
-            .complete_provider(
+            .complete_provider_with_result(
                 &token.reservation_id,
                 &result_ref,
                 &result_digest,
+                &result_payload,
                 PROVIDER_RESERVATION_UNITS,
             )
             .map(|_| ())
@@ -227,4 +247,17 @@ impl DurableHandle {
             .map(|_| ())
             .map_err(|error| format!("cannot persist unknown runtime-v3 provider result: {error}"))
     }
+}
+
+fn replay_stored_decision(stored: &sts2_harness::StoredDecision) -> Result<Decision, String> {
+    let payload = stored.result_payload.as_deref().ok_or_else(|| {
+        String::from(
+            "runtime-v3 completed provider result has no replayable payload; refusing provider call",
+        )
+    })?;
+    let digest =
+        stored.reference.result_digest.as_deref().ok_or_else(|| {
+            String::from("runtime-v3 completed provider result has no replay digest")
+        })?;
+    decision_replay::decode(payload, digest)
 }
