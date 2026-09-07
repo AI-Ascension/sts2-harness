@@ -4,17 +4,19 @@
 mod tests {
     use super::{
         DecisionKind, DispatchTelemetryStatus, EventKind, FailureCode, GameOutcome,
-        ObservationSource, TelemetryContext, TelemetryEvent, TelemetryStage, event_attributes,
-        post_otlp, render_span,
+        ObservationSource, TelemetryContext, TelemetryContextLineage, TelemetryEvent,
+        TelemetryStage, event_attributes, post_otlp, render_span,
     };
     use serde_json::{Value, json};
 
     fn context() -> Result<TelemetryContext, String> {
         TelemetryContext::new(
-            "run-test",
-            "episode-test",
-            "trajectory-test",
-            "trace-test",
+            TelemetryContextLineage {
+                run_id: "run-test",
+                episode_id: "episode-test",
+                trajectory_id: "trajectory-test",
+                trace_id: "trace-test",
+            },
             "instance-test",
             "session-test",
             "runtime-v3-gameplay",
@@ -25,10 +27,12 @@ mod tests {
     #[test]
     fn context_keeps_lineage_namespaces_distinct() {
         let duplicate = TelemetryContext::new(
-            "run",
-            "run",
-            "trajectory",
-            "trace",
+            TelemetryContextLineage {
+                run_id: "run",
+                episode_id: "run",
+                trajectory_id: "trajectory",
+                trace_id: "trace",
+            },
             "instance",
             "session",
             "profile",
@@ -36,10 +40,12 @@ mod tests {
         );
         assert!(duplicate.is_err());
         let invalid_revision = TelemetryContext::new(
-            "run",
-            "episode",
-            "trajectory",
-            "trace",
+            TelemetryContextLineage {
+                run_id: "run",
+                episode_id: "episode",
+                trajectory_id: "trajectory",
+                trace_id: "trace",
+            },
             "instance",
             "session",
             "profile",

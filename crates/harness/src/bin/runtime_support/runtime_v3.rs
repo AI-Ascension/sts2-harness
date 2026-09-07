@@ -14,8 +14,8 @@ use super::mcp::{McpProcess, identity_headers};
 use super::runtime_v3_parse as parse;
 use super::runtime_v3_settings::RuntimeV3Settings;
 use super::runtime_v3_telemetry::{
-    CleanupStatus, GameOutcome, RuntimeV3Telemetry, TelemetryContext, TelemetryHandle,
-    TelemetryStage,
+    CleanupStatus, GameOutcome, RuntimeV3Telemetry, TelemetryContext, TelemetryContextLineage,
+    TelemetryHandle, TelemetryStage,
 };
 use super::runtime_v3_wire as wire;
 
@@ -49,10 +49,12 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         .any(|argument| argument == "--resume")
         || std::env::var("STS2_RESUME").as_deref() == Ok("true");
     let telemetry_context = TelemetryContext::new(
-        &config.run_id,
-        &config.episode_id,
-        &config.trajectory_id,
-        &config.trace_id,
+        TelemetryContextLineage {
+            run_id: &config.run_id,
+            episode_id: &config.episode_id,
+            trajectory_id: &config.trajectory_id,
+            trace_id: &config.trace_id,
+        },
         &config.instance_id,
         &config.session_id,
         &config.runtime_profile,

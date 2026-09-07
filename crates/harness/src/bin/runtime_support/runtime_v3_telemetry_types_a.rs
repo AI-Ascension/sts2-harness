@@ -29,6 +29,15 @@ const MAX_BODY_BYTES: usize = 512 * 1024;
 const SOCKET_TIMEOUT: Duration = Duration::from_millis(500);
 const MAX_RESPONSE_BYTES: usize = 16 * 1024;
 
+/// The four independent lineage namespaces carried by every telemetry context.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TelemetryContextLineage<'a> {
+    pub run_id: &'a str,
+    pub episode_id: &'a str,
+    pub trajectory_id: &'a str,
+    pub trace_id: &'a str,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TelemetryContext {
     pub run_id: String,
@@ -44,15 +53,18 @@ pub struct TelemetryContext {
 
 impl TelemetryContext {
     pub fn new(
-        run_id: &str,
-        episode_id: &str,
-        trajectory_id: &str,
-        trace_id: &str,
+        lineage: TelemetryContextLineage<'_>,
         instance_id: &str,
         session_id: &str,
         runtime_profile: &str,
         provider_revision: &str,
     ) -> Result<Self, String> {
+        let TelemetryContextLineage {
+            run_id,
+            episode_id,
+            trajectory_id,
+            trace_id,
+        } = lineage;
         for (name, value) in [
             ("run_id", run_id),
             ("episode_id", episode_id),
