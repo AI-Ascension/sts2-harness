@@ -49,11 +49,22 @@ cargo run --locked --package repo-policy -- --strict
 Policy check: 391 sized files, 0 warning(s), 0 error(s)
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo test --workspace --all-targets --all-features --locked
+cargo test --locked --package sts2-harness --test completed_resume_process -- --nocapture
+6 passed; repeated three times with 6 passed each
 ```
 
-The workspace test command completed successfully, including the six completed-resume process
-tests.
+The full workspace command was also run twice on this candidate branch:
+
+```text
+cargo test --workspace --all-targets --all-features --locked
+77 runtime tests passed; 1 failed
+runtime_support::mcp_process::tests::full_duplex_does_not_deadlock_on_pipe_capacity
+failure: MCP shutdown timed out
+```
+
+The exact failing test was rerun separately and failed with the same `MCP shutdown timed out`
+result. Therefore the full workspace gate is recorded as failed/unverified for this branch; the
+focused completed-resume evidence remains 6/6 across three repeated runs.
 
 ## Limits
 
