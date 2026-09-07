@@ -2,8 +2,8 @@
 
 use super::evaluation::{
     ContextMode, MapEvaluationError, SYNTHETIC_MAX_LATENCY_MICROS, SYNTHETIC_MAX_REQUEST_BYTES,
-    SyntheticDecision, SyntheticEvaluationReport, SyntheticEvaluationRunner, SyntheticGraphTask,
-    bundle_for_task,
+    SYNTHETIC_MAX_ROUTE_NODES, SyntheticDecision, SyntheticEvaluationReport,
+    SyntheticEvaluationRunner, SyntheticGraphTask, bundle_for_task,
 };
 use super::evaluation_renderer::{ImageCapture, render_image};
 use serde_json::{Map, Value, json};
@@ -291,6 +291,7 @@ fn proposed_decision(context_bytes: &[u8]) -> Result<(String, Vec<String>), MapE
         })
         .collect::<Result<BTreeSet<_>, MapEvaluationError>>()?;
 
+    let mut route_memo = BTreeMap::new();
     let mut routes = candidates
         .iter()
         .filter(|candidate| {
@@ -305,6 +306,7 @@ fn proposed_decision(context_bytes: &[u8]) -> Result<(String, Vec<String>), MapE
                 &adjacency,
                 &terminals,
                 &mut visited,
+                &mut route_memo,
             )
             .map(|suffix| {
                 let mut route = Vec::with_capacity(suffix.len() + 1);
@@ -345,30 +347,39 @@ fn terminal_route(
     adjacency: &BTreeMap<String, Vec<String>>,
     terminals: &BTreeSet<String>,
     visited: &mut BTreeSet<String>,
+    memo: &mut BTreeMap<String, Option<Vec<String>>>,
 ) -> Option<Vec<String>> {
+    if let Some(route) = memo.get(node) {
+        return route.clone();
+    }
+    if visited.len() >= SYNTHETIC_MAX_ROUTE_NODES.saturating_sub(1) {
+        return None;
+    }
     if !visited.insert(node.to_owned()) {
         return None;
     }
-    if terminals.contains(node) {
-        visited.remove(node);
-        return Some(vec![node.to_owned()]);
-    }
-    let mut best = adjacency
-        .get(node)
-        .into_iter()
-        .flatten()
-        .filter_map(|child| {
-            terminal_route(child, adjacency, terminals, visited).map(|suffix| {
-                let mut route = Vec::with_capacity(suffix.len() + 1);
-                route.push(node.to_owned());
-                route.extend(suffix);
-                route
+    let route = if terminals.contains(node) {
+        Some(vec![node.to_owned()])
+    } else {
+        let mut best = adjacency
+            .get(node)
+            .into_iter()
+            .flatten()
+            .filter_map(|child| {
+                terminal_route(child, adjacency, terminals, visited, memo).map(|suffix| {
+                    let mut route = Vec::with_capacity(suffix.len() + 1);
+                    route.push(node.to_owned());
+                    route.extend(suffix);
+                    route
+                })
             })
-        })
-        .collect::<Vec<_>>();
+            .collect::<Vec<_>>();
+        best.sort_by(|left, right| left.len().cmp(&right.len()).then_with(|| left.cmp(right)));
+        best.into_iter().next()
+    };
     visited.remove(node);
-    best.sort_by(|left, right| left.len().cmp(&right.len()).then_with(|| left.cmp(right)));
-    best.into_iter().next()
+    memo.insert(node.to_owned(), route.clone());
+    route
 }
 
 fn elapsed_micros(started: Instant) -> u64 {
@@ -488,5 +499,45 @@ mod tests {
         assert_eq!(changed_action, "select-map-node:42:matrix:right");
         assert_eq!(changed_route, ["start", "right", "left", "boss"]);
         assert_ne!(changed_action, original_action);
+    }
+
+    #[test]
+    fn adapter_memoizes_dense_layered_routes_with_a_finite_bound() {
+        let layer_count = 80_usize;
+        let mut edges = vec![serde_json::json!({
+            "from": "start",
+            "to": "n0:left"
+        })];
+        edges.push(serde_json::json!({
+            "from": "start",
+            "to": "n0:right"
+        }));
+        for layer in 0..layer_count.saturating_sub(1) {
+            for side in ["left", "right"] {
+                for next_side in ["left", "right"] {
+                    edges.push(serde_json::json!({
+                        "from": format!("n{layer}:{side}"),
+                        "to": format!("n{}:{next_side}", layer + 1)
+                    }));
+                }
+            }
+        }
+        let context = serde_json::json!({
+            "graph": {
+                "position": {"node_id":"start"},
+                "edges": edges,
+                "terminal_node_ids": [
+                    format!("n{}:left", layer_count - 1),
+                    format!("n{}:right", layer_count - 1)
+                ],
+                "bindings": [{
+                    "graph_node_id":"n0:left",
+                    "host_action_id":"select-map-node:n0:left"
+                }]
+            }
+        });
+        let bytes = serde_json::to_vec(&context).expect("dense context");
+        let (_, route) = proposed_decision(&bytes).expect("dense route");
+        assert_eq!(route.len(), layer_count + 1);
     }
 }

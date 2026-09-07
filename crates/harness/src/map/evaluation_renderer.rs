@@ -95,10 +95,15 @@ fn verify_binary(path: &Path, expected: &str) -> Result<(), ()> {
     let mut file = fs::File::open(path).map_err(|_| ())?;
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
+    let mut total = 0_u64;
     loop {
         let count = file.read(&mut buffer).map_err(|_| ())?;
         if count == 0 {
             break;
+        }
+        total = total.checked_add(count as u64).ok_or(())?;
+        if total > MAX_RENDERER_BYTES {
+            return Err(());
         }
         hasher.update(&buffer[..count]);
     }
@@ -130,7 +135,7 @@ fn temporary_root() -> Option<TemporaryRoot> {
             "sts2-map-evaluation-{}-{suffix}",
             std::process::id()
         ));
-        match fs::create_dir(&path) {
+        match create_private_directory(&path) {
             Ok(()) => return Some(TemporaryRoot { path }),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(_) => return None,
@@ -139,8 +144,19 @@ fn temporary_root() -> Option<TemporaryRoot> {
     None
 }
 
+fn create_private_directory(path: &Path) -> std::io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+
+        builder.mode(0o700);
+    }
+    builder.create(path)
+}
+
 fn write_bundle_input(input: &Path, bundle: &MapViewBundle) -> Result<(), ()> {
-    fs::create_dir_all(input).map_err(|_| ())?;
+    create_private_directory(input).map_err(|_| ())?;
     fs::write(input.join("visible-map.json"), &bundle.snapshot_bytes).map_err(|_| ())?;
     fs::write(
         input.join("analysis.json"),
