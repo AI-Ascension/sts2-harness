@@ -8,8 +8,13 @@ The dependency change locks `getrandom` 0.4.3 (MIT OR Apache-2.0), `r-efi` 6.0.0
 lock entries do not imply those packages execute on every supported platform.
 These declarations were checked with locked, offline Cargo metadata on 2026-09-07;
 exact sources and integrity checksums remain in Cargo.lock. No source was vendored.
-The local `cargo audit` command was unavailable, so this metadata check does not
-establish a current advisory audit. That remains a release gate.
+The initially unavailable advisory tool was subsequently built in an isolated
+tooling directory. cargo-audit 0.22.2 checked the 126-dependency lockfile against
+RustSec revision `8a1eb4f933fb5821add5b4e98601ebd90b8b3538` with `--deny warnings`,
+no ignored advisories and no target filters: exit 0, zero vulnerabilities and
+empty warnings. Audited Cargo.lock SHA-256:
+`d19e690f50502932fe3872c629018127ec566e3b36eac9694d56853351d088e5`.
+This bounded snapshot check must be refreshed for changed dependencies or release.
 
 Runtime-v3 contract tests use `jsonschema` 0.52.1 (MIT), with default features disabled to avoid
 HTTP/file reference retrieval. It is a dev-only schema validator, not a second protocol owner.
