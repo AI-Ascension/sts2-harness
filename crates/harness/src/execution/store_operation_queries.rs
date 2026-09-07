@@ -5,6 +5,29 @@ use super::types::{
 };
 use sha2::Digest;
 
+/// Every operation query uses this projection. SQLite computes the source BLOB length and only
+/// returns the first `MAX_OPERATION_ACTION_BYTES + 1` bytes, so hostile rows cannot force an
+/// unbounded Rust allocation before the row is rejected.
+pub(super) fn operation_select(suffix: &str) -> String {
+    format!(
+        "SELECT operation_id, run_id, episode_id, attempt_id, trajectory_id, state_id,
+         generation, action_id,
+         CASE WHEN action_payload IS NULL THEN NULL
+              WHEN typeof(action_payload) = 'blob'
+              THEN substr(action_payload, 1, {limit_plus_one})
+              ELSE NULL END AS action_payload,
+         CASE WHEN action_payload IS NULL THEN 0
+              WHEN typeof(action_payload) <> 'blob' THEN 1
+              WHEN length(action_payload) > {limit} THEN 2
+              ELSE 0 END AS action_payload_invalid,
+         action_kind, payload_digest, input_digest, catalog_digest, state,
+         result_ref, result_digest
+         FROM operations {suffix}",
+        limit = MAX_OPERATION_ACTION_BYTES,
+        limit_plus_one = MAX_OPERATION_ACTION_BYTES + 1,
+    )
+}
+
 pub(super) fn read_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredOperation> {
     let lineage = super::types::ExecutionLineage::new(
         row.get::<_, String>(1)?,
@@ -18,11 +41,14 @@ pub(super) fn read_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Stored
     let operation_id = row.get::<_, String>(0)?;
     let state_id = row.get::<_, String>(5)?;
     let action_id = row.get::<_, String>(7)?;
-    let action_kind = row.get::<_, Option<String>>(8)?;
-    let action_payload = row.get::<_, Option<Vec<u8>>>(9)?;
-    let payload_digest = row.get::<_, String>(10)?;
-    let input_digest = row.get::<_, String>(11)?;
-    let catalog_digest = row.get::<_, Option<String>>(12)?;
+    let action_payload = row.get::<_, Option<Vec<u8>>>(8)?;
+    if row.get::<_, i64>(9)? != 0 {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    let action_kind = row.get::<_, Option<String>>(10)?;
+    let payload_digest = row.get::<_, String>(11)?;
+    let input_digest = row.get::<_, String>(12)?;
+    let catalog_digest = row.get::<_, Option<String>>(13)?;
     let intent = match (action_kind, action_payload) {
         (None, None) => OperationIntent::new(
             lineage,
@@ -56,10 +82,10 @@ pub(super) fn read_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Stored
         _ => Err(super::types::ExecutionStoreError::InvalidOperation),
     }
     .map_err(|_| rusqlite::Error::InvalidQuery)?;
-    let state = OperationState::from_str(&row.get::<_, String>(13)?)
+    let state = OperationState::from_str(&row.get::<_, String>(14)?)
         .ok_or(rusqlite::Error::InvalidQuery)?;
-    let result_ref = row.get::<_, Option<String>>(14)?;
-    let result_digest = row.get::<_, Option<String>>(15)?;
+    let result_ref = row.get::<_, Option<String>>(15)?;
+    let result_digest = row.get::<_, Option<String>>(16)?;
     if result_ref.is_some() != result_digest.is_some()
         || result_ref
             .as_deref()

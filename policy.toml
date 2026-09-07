@@ -122,10 +122,3 @@ markdown_max = 700
 
 # Exact repository-relative paths only. Every exception needs a durable reason.
 [exemptions]
-"crates/harness/src/bin/runtime_support/runtime_v3_durable.rs" = "Durable runtime orchestration keeps resume admission and lifecycle ownership together for one boundary."
-"crates/harness/src/bin/runtime_support/runtime_v3_lifecycle_reconnect_test.rs" = "Reconnect coverage keeps crash, provider reuse, and historical recovery assertions in one scenario."
-"crates/harness/src/bin/runtime_support/runtime_v3_recovery.rs" = "Recovery sideband validation keeps identity, receipt lookup, and settlement reconciliation together."
-"crates/harness/src/bin/runtime_support/runtime_v3_wire.rs" = "Wire validation keeps gameplay and recovery envelopes under one protocol boundary."
-"crates/harness/src/execution/schema.rs" = "Execution schema migrations stay together so version ordering and durable identity are reviewable."
-"crates/harness/src/execution/types_records.rs" = "Durable record types stay together to preserve the store and migration representation boundary."
-"crates/harness/tests/execution_store.rs" = "Execution-store tests keep reopen, migration, and exact identity invariants in one acceptance suite."

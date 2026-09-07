@@ -4,7 +4,7 @@ use rusqlite::{OptionalExtension, params};
 
 use super::schema;
 use super::store_core::{ExecutionStore, append_event, ensure_current_lineage};
-use super::store_operation_queries::{read_operation, valid_transition};
+use super::store_operation_queries::{operation_select, read_operation, valid_transition};
 use super::types::{OperationIntent, OperationState, StoredOperation, valid_reference};
 
 const MAX_OPERATIONS: i64 = 4_096;
@@ -22,10 +22,7 @@ impl ExecutionStore {
         let tx = schema::transaction(&mut self.connection)?;
         let existing = tx
             .query_row(
-                "SELECT operation_id, run_id, episode_id, attempt_id, trajectory_id, state_id,
-                 generation, action_id, action_kind, action_payload, payload_digest, input_digest,
-                 catalog_digest, state, result_ref, result_digest
-                 FROM operations WHERE operation_id = ?1",
+                &operation_select("WHERE operation_id = ?1"),
                 [intent.operation_id.as_str()],
                 read_operation,
             )
@@ -166,10 +163,7 @@ impl ExecutionStore {
         self.ensure_open()?;
         self.connection
             .query_row(
-                "SELECT operation_id, run_id, episode_id, attempt_id, trajectory_id, state_id,
-                 generation, action_id, action_kind, action_payload, payload_digest, input_digest,
-                 catalog_digest, state, result_ref, result_digest
-                 FROM operations WHERE operation_id = ?1",
+                &operation_select("WHERE operation_id = ?1"),
                 [operation_id],
                 read_operation,
             )
@@ -186,14 +180,11 @@ impl ExecutionStore {
         self.ensure_open()?;
         let mut statement = self
             .connection
-            .prepare(
-                "SELECT operation_id, run_id, episode_id, attempt_id, trajectory_id, state_id,
-                 generation, action_id, action_kind, action_payload, payload_digest, input_digest,
-                 catalog_digest, state, result_ref, result_digest
-                 FROM operations WHERE episode_id = ?1 AND state IN
+            .prepare(&operation_select(
+                "WHERE episode_id = ?1 AND state IN
                  ('intent_recorded', 'may_have_been_dispatched', 'accepted', 'unknown')
                  ORDER BY created_at, operation_id",
-            )
+            ))
             .map_err(schema::map_sqlite)?;
         let rows = statement
             .query_map([episode_id], read_operation)
@@ -218,11 +209,7 @@ impl ExecutionStore {
         let tx = schema::transaction(&mut self.connection)?;
         let current = tx
             .query_row(
-                "SELECT operation_id, run_id, episode_id, attempt_id, trajectory_id, state_id,
-                 generation,
-                 action_id, action_kind, action_payload, payload_digest, input_digest,
-                 catalog_digest, state, result_ref, result_digest
-                 FROM operations WHERE operation_id = ?1",
+                &operation_select("WHERE operation_id = ?1"),
                 [operation_id],
                 read_operation,
             )

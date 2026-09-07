@@ -186,3 +186,9 @@ fn runtime_v3_wrong_lease_uses_returned_fence_and_requires_release_confirmation(
 #[cfg(unix)]
 #[path = "runtime_v3_lifecycle_reconnect_test.rs"]
 mod reconnect;
+#[cfg(unix)]
+#[path = "runtime_v3_lifecycle_reconnect_durable_test.rs"]
+mod reconnect_durable;
+#[cfg(unix)]
+#[path = "runtime_v3_lifecycle_reconnect_support.rs"]
+mod reconnect_support;
