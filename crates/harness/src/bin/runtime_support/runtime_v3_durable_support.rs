@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MIT
 
+use std::fs::{self, File};
+use std::io::Read;
+use std::path::{Path, PathBuf};
+
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sts2_harness::{DecisionInput, ExecutionFingerprint};
@@ -10,25 +14,21 @@ use super::super::super::runtime_v3_settings::RuntimeV3Settings;
 const DEFAULT_SEED: &str = "seed:unavailable";
 const DEFAULT_BUILD: &str = "build:unavailable";
 const DEFAULT_STATE: &str = "state:unavailable";
+const MAX_MCP_EXECUTABLE_BYTES: u64 = 128 * 1024 * 1024;
 
 pub(super) fn fingerprint(
     config: &RuntimeConfig,
     settings: &RuntimeV3Settings,
+    resume_requested: bool,
 ) -> Result<ExecutionFingerprint, String> {
-    let seed = optional_env("STS2_SEED")?
-        .or(optional_env("STS2_VISIBLE_SEED")?)
-        .map_or_else(
-            || digest_text(DEFAULT_SEED),
-            |value| reference_or_digest(&value),
-        );
-    let build = optional_env("STS2_BUILD_DIGEST")?.map_or_else(
-        || digest_text(DEFAULT_BUILD),
-        |value| reference_or_digest(&value),
-    );
-    let state = optional_env("STS2_STATE_DIGEST")?.map_or_else(
-        || digest_text(DEFAULT_STATE),
-        |value| reference_or_digest(&value),
-    );
+    let seed = fingerprint_component(
+        "STS2_SEED",
+        Some("STS2_VISIBLE_SEED"),
+        DEFAULT_SEED,
+        resume_requested,
+    )?;
+    let build = fingerprint_component("STS2_BUILD_DIGEST", None, DEFAULT_BUILD, resume_requested)?;
+    let state = fingerprint_component("STS2_STATE_DIGEST", None, DEFAULT_STATE, resume_requested)?;
     let config_digest = config_digest(config, settings)?;
     let provider_digest = reference_or_digest(&settings.exo.revision);
     ExecutionFingerprint::new(seed, build, state, config_digest, provider_digest)
@@ -43,6 +43,7 @@ pub(super) fn config_digest(
         "runtime_profile": config.runtime_profile,
         "gateway_address": config.gateway_address,
         "mcp_binary": config.mcp_binary,
+        "mcp_executable": mcp_executable(config.mcp_binary.as_str())?,
         "instance_id": config.instance_id,
         "caller_id": config.caller_id,
         "session_id": config.session_id,
@@ -117,6 +118,118 @@ fn digest_text(value: &str) -> String {
     format!("{:x}", Sha256::digest(value.as_bytes()))
 }
 
+fn fingerprint_component(
+    primary: &str,
+    alias: Option<&str>,
+    fallback: &str,
+    resume_requested: bool,
+) -> Result<String, String> {
+    let value = optional_env(primary)?.or(match alias {
+        Some(alias) => optional_env(alias)?,
+        None => None,
+    });
+    match value {
+        Some(value) => Ok(reference_or_digest(&value)),
+        None if resume_requested => Err(match alias {
+            Some(alias) => {
+                format!("runtime-v3 resume requires {primary} or {alias} fingerprint evidence")
+            }
+            None => format!("runtime-v3 resume requires {primary} fingerprint evidence"),
+        }),
+        None => Ok(digest_text(fallback)),
+    }
+}
+
+fn mcp_executable(binary: &str) -> Result<Value, String> {
+    let path = resolve_mcp_executable(binary)?;
+    let metadata = fs::symlink_metadata(&path)
+        .map_err(|error| format!("cannot inspect MCP executable {}: {error}", path.display()))?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "MCP executable {} must not be a symbolic link",
+            path.display()
+        ));
+    }
+    if !metadata.file_type().is_file() {
+        return Err(format!(
+            "MCP executable {} is not a regular file",
+            path.display()
+        ));
+    }
+    if metadata.len() > MAX_MCP_EXECUTABLE_BYTES {
+        return Err(format!(
+            "MCP executable {} exceeds the {}-byte digest bound",
+            path.display(),
+            MAX_MCP_EXECUTABLE_BYTES
+        ));
+    }
+    let mut file = File::open(&path)
+        .map_err(|error| format!("cannot open MCP executable {}: {error}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut total = 0_u64;
+    let mut buffer = [0_u8; 32 * 1024];
+    loop {
+        let count = file
+            .read(&mut buffer)
+            .map_err(|error| format!("cannot read MCP executable {}: {error}", path.display()))?;
+        if count == 0 {
+            break;
+        }
+        total = total
+            .checked_add(
+                u64::try_from(count).map_err(|_| {
+                    format!("MCP executable {} byte count overflowed", path.display())
+                })?,
+            )
+            .ok_or_else(|| format!("MCP executable {} byte count overflowed", path.display()))?;
+        if total > MAX_MCP_EXECUTABLE_BYTES {
+            return Err(format!(
+                "MCP executable {} exceeds the {}-byte digest bound",
+                path.display(),
+                MAX_MCP_EXECUTABLE_BYTES
+            ));
+        }
+        hasher.update(&buffer[..count]);
+    }
+    Ok(json!({
+        "path": path.to_string_lossy(),
+        "sha256": format!("{:x}", hasher.finalize()),
+        "bytes": total,
+    }))
+}
+
+fn resolve_mcp_executable(binary: &str) -> Result<PathBuf, String> {
+    let supplied = Path::new(binary);
+    if supplied.is_absolute() || supplied.components().count() > 1 {
+        return Ok(supplied.to_path_buf());
+    }
+    let path = std::env::var_os("PATH")
+        .ok_or_else(|| format!("cannot resolve MCP executable {binary:?}: PATH is unavailable"))?;
+    for directory in std::env::split_paths(&path) {
+        let candidate = directory.join(supplied);
+        match fs::symlink_metadata(&candidate) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(format!(
+                    "MCP executable {} must not be a symbolic link",
+                    candidate.display()
+                ));
+            }
+            Ok(metadata) if metadata.file_type().is_file() => return Ok(candidate),
+            Ok(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                return Err(format!(
+                    "cannot inspect MCP executable {}: {error}",
+                    candidate.display()
+                ));
+            }
+        }
+    }
+    Err(format!(
+        "cannot resolve MCP executable {binary:?} through PATH"
+    ))
+}
+
 fn reference_or_digest(value: &str) -> String {
     if !value.is_empty() && value.len() <= 512 && !value.chars().any(char::is_control) {
         value.to_owned()
@@ -133,3 +246,7 @@ pub(super) fn optional_env(name: &str) -> Result<Option<String>, String> {
         Err(std::env::VarError::NotUnicode(_)) => Err(format!("{name} is not valid UTF-8")),
     }
 }
+
+#[cfg(test)]
+#[path = "runtime_v3_durable_support_tests.rs"]
+mod tests;

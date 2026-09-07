@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde_json::{Value, json};
 use sts2_harness::{
     Decision, EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, ExoDecisionSource,
-    ExoProcessTransport, ExoProvider, ExoSession, ShutdownError, ShutdownPort,
+    ExoProcessTransport, ExoProvider, ExoSession, ResumeState, ShutdownError, ShutdownPort,
 };
 
 use super::config::RuntimeConfig;
@@ -21,6 +21,8 @@ use super::runtime_v3_wire as wire;
 
 #[path = "runtime_v3_decision_replay.rs"]
 mod decision_replay;
+#[path = "runtime_v3_completed_resume.rs"]
+mod completed_resume;
 #[path = "runtime_v3_durable.rs"]
 mod durable;
 #[path = "runtime_v3_episode.rs"]
@@ -70,8 +72,9 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let telemetry = RuntimeV3Telemetry::new(telemetry_context);
     let telemetry_handle = telemetry.handle();
     let _ = telemetry_handle.run_started();
-    let durable = match durable::DurableHandle::open(&config, &settings, resume_requested) {
-        Ok((durable, _state)) => durable,
+    let (durable, state) = match durable::DurableHandle::open(&config, &settings, resume_requested)
+    {
+        Ok(result) => result,
         Err(error) => {
             let _ = telemetry_handle.failure(
                 "runtime_init",
@@ -88,6 +91,9 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
             return Err(error);
         }
     };
+    if let ResumeState::Completed(completion) = state {
+        return completed_resume::finish(durable, completion, telemetry_handle, telemetry);
+    }
     let mut port = match RuntimeV3Port::new_with_store(config, telemetry_handle.clone(), durable) {
         Ok(port) => port,
         Err(error) => {

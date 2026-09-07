@@ -56,7 +56,7 @@ impl DurableHandle {
             config.trajectory_id.clone(),
         )
         .map_err(|error| format!("runtime-v3 execution lineage is invalid: {error}"))?;
-        let fingerprint = fingerprint(config, settings)?;
+        let fingerprint = fingerprint(config, settings, resume_requested)?;
         let path = optional_env("STS2_EXECUTION_STORE_PATH")?
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(DEFAULT_STORE_PATH));
@@ -80,11 +80,7 @@ impl DurableHandle {
             .resume_or_start_episode(&lineage, &fingerprint)
             .map_err(|error| format!("cannot admit runtime-v3 episode: {error}"))?;
         match &state {
-            ResumeState::Completed(_) => {
-                return Err(String::from(
-                    "durable runtime-v3 episode is already complete; refusing to rerun it",
-                ));
-            }
+            ResumeState::Completed(_) => {}
             ResumeState::ReconstructionRequired { reason }
             | ResumeState::InterruptedUnknown { reason } => {
                 return Err(format!(
