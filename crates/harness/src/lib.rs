@@ -19,6 +19,8 @@ mod routing;
 mod runtime_v2;
 mod runtime_v2_artifact;
 mod runtime_v4_expert;
+mod runtime_v4_expert_action;
+mod runtime_v4_expert_action_artifact;
 mod runtime_v4_expert_artifact;
 
 pub use artifact::{
@@ -90,6 +92,16 @@ pub use runtime_v2_artifact::{
     runtime_v2_schema_bytes, verify_runtime_v2_artifact,
 };
 pub use runtime_v4_expert::{RuntimeV4ExpertObservation, RuntimeV4ExpertParseError};
+pub use runtime_v4_expert_action::{
+    RuntimeV4ExpertActionParseError, RuntimeV4ExpertActionRequest, RuntimeV4ExpertActionResult,
+    RuntimeV4ExpertActionStatus,
+};
+pub use runtime_v4_expert_action_artifact::{
+    RUNTIME_V4_EXPERT_ACTION_ARTIFACT, RUNTIME_V4_EXPERT_ACTION_GENERATOR,
+    RUNTIME_V4_EXPERT_ACTION_PROTOCOL_VERSION, RUNTIME_V4_EXPERT_ACTION_SCHEMA_DIGEST,
+    RUNTIME_V4_EXPERT_ACTION_SCHEMA_SOURCE, RuntimeV4ExpertActionArtifactError,
+    verify_runtime_v4_expert_action_artifact,
+};
 pub use runtime_v4_expert_artifact::{
     RUNTIME_V4_EXPERT_ARTIFACT, RUNTIME_V4_EXPERT_GENERATOR, RUNTIME_V4_EXPERT_PROTOCOL_VERSION,
     RUNTIME_V4_EXPERT_SCHEMA_DIGEST, RUNTIME_V4_EXPERT_SCHEMA_SOURCE, RuntimeV4ExpertArtifactError,

@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 pub const RUNTIME_V4_EXPERT_PROTOCOL_VERSION: &str = "runtime-v4-expert";
 /// Schema digest supplied by the protocol artifact.
 pub const RUNTIME_V4_EXPERT_SCHEMA_DIGEST: &str =
-    "f0786b039396043a441323447ac44f7cc4c218071bc477722f3ec992ab295a8a";
+    "0ee034d5da83f34e9fa0ba23038738d56ef8cfccb1c6e752af3ab63d212c8e42";
 /// Release-like artifact identity, not a Cargo path dependency.
 pub const RUNTIME_V4_EXPERT_ARTIFACT: &str = "sts2-protocol/runtime-v4-expert";
 /// Normative source recorded in artifact provenance.

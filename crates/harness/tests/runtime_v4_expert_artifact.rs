@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use serde_json::json;
 use sts2_harness::{
     ExoDecisionRequest, ModelExecutionId, RUNTIME_V4_EXPERT_ARTIFACT,
     RUNTIME_V4_EXPERT_PROTOCOL_VERSION, RUNTIME_V4_EXPERT_SCHEMA_DIGEST,
@@ -95,4 +96,19 @@ fn serialized_expert_parser_rejects_duplicate_object_keys() {
     let duplicate =
         br#"{"protocol_version":"runtime-v4-expert","protocol_version":"runtime-v4-expert"}"#;
     assert!(RuntimeV4ExpertObservation::parse(duplicate).is_err());
+}
+
+#[test]
+fn expert_parser_accepts_composite_multihit_and_non_attack_intents() {
+    let mut value = golden();
+    value["state"]["enemies"][0]["intent"] = json!({
+        "kind": "composite",
+        "intents": [
+            {"kind": "attack", "damage": 7, "hits": 2, "target_ids": ["player:local"]},
+            {"kind": "debuff", "target_ids": ["player:local"]}
+        ],
+        "target_ids": ["player:local"]
+    });
+    let observation = RuntimeV4ExpertObservation::from_value(value);
+    assert!(observation.is_ok());
 }

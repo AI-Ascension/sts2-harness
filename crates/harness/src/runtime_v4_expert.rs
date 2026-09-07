@@ -376,8 +376,32 @@ struct Enemy {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
-#[serde(tag = "kind")]
+#[serde(deny_unknown_fields, tag = "kind")]
 enum Intent {
+    #[serde(rename = "attack")]
+    Attack {
+        damage: u16,
+        hits: u8,
+        target_ids: Option<Vec<String>>,
+    },
+    #[serde(rename = "defend")]
+    Defend { target_ids: Option<Vec<String>> },
+    #[serde(rename = "buff")]
+    Buff { target_ids: Option<Vec<String>> },
+    #[serde(rename = "debuff")]
+    Debuff { target_ids: Option<Vec<String>> },
+    #[serde(rename = "unknown")]
+    Unknown { target_ids: Option<Vec<String>> },
+    #[serde(rename = "composite")]
+    Composite {
+        intents: Vec<IntentComponent>,
+        target_ids: Option<Vec<String>>,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields, tag = "kind")]
+enum IntentComponent {
     #[serde(rename = "attack")]
     Attack {
         damage: u16,
@@ -700,6 +724,29 @@ fn valid_intent(intent: &Intent) -> bool {
         | Intent::Buff { target_ids }
         | Intent::Debuff { target_ids }
         | Intent::Unknown { target_ids } => targets_valid(target_ids),
+        Intent::Composite {
+            intents,
+            target_ids,
+        } => {
+            intents.len() >= 2
+                && intents.len() <= MAX_TARGETS
+                && intents.iter().all(valid_intent_component)
+                && targets_valid(target_ids)
+        }
+    }
+}
+
+fn valid_intent_component(intent: &IntentComponent) -> bool {
+    let targets_valid =
+        |targets: &Option<Vec<String>>| targets.as_deref().is_none_or(valid_target_ids);
+    match intent {
+        IntentComponent::Attack {
+            hits, target_ids, ..
+        } => *hits != 0 && targets_valid(target_ids),
+        IntentComponent::Defend { target_ids }
+        | IntentComponent::Buff { target_ids }
+        | IntentComponent::Debuff { target_ids }
+        | IntentComponent::Unknown { target_ids } => targets_valid(target_ids),
     }
 }
 
@@ -1035,6 +1082,39 @@ fn shape_enemies(value: Option<&Value>) -> bool {
 
 fn shape_intent(value: Option<&Value>) -> bool {
     let Some(object) = value.and_then(Value::as_object) else {
+        return false;
+    };
+    let Some(kind) = object.get("kind").and_then(Value::as_str) else {
+        return false;
+    };
+    let fields = if kind == "attack" {
+        &["kind", "damage", "hits", "target_ids"][..]
+    } else if matches!(kind, "defend" | "buff" | "debuff" | "unknown") {
+        &["kind", "target_ids"][..]
+    } else if kind == "composite" {
+        &["kind", "intents", "target_ids"][..]
+    } else {
+        return false;
+    };
+    if object.len() != fields.len() || fields.iter().any(|field| !object.contains_key(*field)) {
+        return false;
+    }
+    if kind == "composite" {
+        object
+            .get("intents")
+            .and_then(Value::as_array)
+            .is_some_and(|intents| {
+                intents.len() >= 2
+                    && intents.len() <= MAX_TARGETS
+                    && intents.iter().all(shape_intent_component)
+            })
+    } else {
+        true
+    }
+}
+
+fn shape_intent_component(value: &Value) -> bool {
+    let Some(object) = value.as_object() else {
         return false;
     };
     let Some(kind) = object.get("kind").and_then(Value::as_str) else {
