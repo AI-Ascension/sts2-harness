@@ -25,7 +25,7 @@ tools/map-provider-capture/capture.sh \
   --bridge <built-sts2-astra-bridge> \
   --renderer <map-visualizer-at-pinned-sha> \
   --fixture crates/harness/tests/fixtures/map-bundle-demo-v1 \
-  --report <product-root>/.orchestration/provider-cli-capture.md
+  --report .orchestration/provider-cli-capture.md
 ```
 
 The report contains only sanitized hashes, synthetic execution identities, counts, and the

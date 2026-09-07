@@ -17,20 +17,19 @@ usage: capture.sh --bridge BUILT_STS2_ASTRA_BRIDGE --renderer PINNED_MAP_VISUALI
   --fixture FIXTURE_ROOT       defaults to the checked-in full demo fixture
   --provider-revision DIGEST   40/64 lowercase hex; defaults to harness HEAD
   --model-execution-id ID      defaults to capture-model-execution-001
-  --report PATH                defaults to product .orchestration/provider-cli-capture.md
+  --report PATH                defaults to harness .orchestration/provider-cli-capture.md
 EOF
   exit 2
 }
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 harness_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
-product_root=$(CDPATH= cd -- "$harness_root/../../../ascension-map-visualizer" && pwd)
 fixture="$harness_root/crates/harness/tests/fixtures/map-bundle-demo-v1"
 bridge=''
 renderer=''
 provider_revision=''
 model_execution_id='capture-model-execution-001'
-report="$product_root/.orchestration/provider-cli-capture.md"
+report="$harness_root/.orchestration/provider-cli-capture.md"
 
 while (($# > 0)); do
   case "$1" in
