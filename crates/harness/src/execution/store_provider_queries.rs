@@ -10,6 +10,33 @@ use super::types::{
     ProviderReservationState, StoredDecision, valid_reference,
 };
 
+const OVERSIZED_RESULT_SENTINEL: &str = "__sts2_result_payload_oversized__";
+
+/// Builds every decision read with the same bounded result projection.
+///
+/// The suffixes are private, static SQL fragments supplied only by this module and its sibling
+/// store modules. For a BLOB over the configured bound, SQLite evaluates the length/type guard and
+/// returns a small text sentinel instead of evaluating the BLOB result branch. The row reader
+/// rejects that sentinel (and every other non-NULL, non-BLOB payload) as corruption.
+pub(crate) fn decision_query(suffix: &str) -> String {
+    format!(
+        "SELECT execution_id, run_id, episode_id, attempt_id, trajectory_id,
+         input_fingerprint, model_revision, config_digest, state, result_ref,
+         result_digest, provider_reservation_id,
+         CASE
+             WHEN result_payload IS NULL THEN NULL
+             WHEN typeof(result_payload) <> 'blob' THEN '{}'
+             WHEN length(result_payload) <= {} THEN result_payload
+             ELSE '{}'
+         END AS result_payload
+         FROM decisions {}",
+        OVERSIZED_RESULT_SENTINEL,
+        super::store_provider::MAX_DECISION_RESULT_BYTES,
+        OVERSIZED_RESULT_SENTINEL,
+        suffix,
+    )
+}
+
 impl ExecutionStore {
     pub fn provider_reservation(
         &self,
@@ -59,15 +86,9 @@ impl ExecutionStore {
         execution_id: &str,
     ) -> Result<StoredDecision, super::types::ExecutionStoreError> {
         self.ensure_open()?;
+        let query = decision_query("WHERE execution_id = ?1");
         self.connection
-            .query_row(
-                "SELECT execution_id, run_id, episode_id, attempt_id, trajectory_id,
-                 input_fingerprint, model_revision, config_digest, state, result_ref,
-                 result_digest, provider_reservation_id, result_payload
-                 FROM decisions WHERE execution_id = ?1",
-                [execution_id],
-                read_decision,
-            )
+            .query_row(&query, [execution_id], read_decision)
             .map_err(|error| match error {
                 rusqlite::Error::QueryReturnedNoRows => super::types::ExecutionStoreError::Missing,
                 other => schema::map_sqlite(other),
@@ -99,16 +120,14 @@ impl ExecutionStore {
         {
             return Err(super::types::ExecutionStoreError::InvalidDecision);
         }
+        let query = decision_query(
+            "WHERE execution_id = ?1 AND run_id = ?2 AND episode_id = ?3
+             AND attempt_id = ?4 AND trajectory_id = ?5 AND input_fingerprint = ?6
+             AND model_revision = ?7 AND config_digest = ?8 AND state = 'completed'",
+        );
         let mut statement = self
             .connection
-            .prepare(
-                "SELECT execution_id, run_id, episode_id, attempt_id, trajectory_id,
-                 input_fingerprint, model_revision, config_digest, state, result_ref,
-                 result_digest, provider_reservation_id, result_payload
-                 FROM decisions WHERE execution_id = ?1 AND run_id = ?2 AND episode_id = ?3
-                 AND attempt_id = ?4 AND trajectory_id = ?5 AND input_fingerprint = ?6
-                 AND model_revision = ?7 AND config_digest = ?8 AND state = 'completed'",
-            )
+            .prepare(&query)
             .map_err(schema::map_sqlite)?;
         statement
             .query_row(
@@ -209,7 +228,9 @@ fn read_result_payload(row: &rusqlite::Row<'_>) -> rusqlite::Result<Option<Vec<u
             }
             Ok(Some(payload.to_vec()))
         }
-        _ => row.get(12),
+        ValueRef::Integer(_) | ValueRef::Real(_) | ValueRef::Text(_) => {
+            Err(rusqlite::Error::InvalidQuery)
+        }
     }
 }
 

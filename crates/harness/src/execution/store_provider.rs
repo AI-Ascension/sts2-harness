@@ -5,7 +5,7 @@ use rusqlite::{OptionalExtension, params};
 use super::schema;
 use super::store_core::{ExecutionStore, append_event, ensure_current_lineage};
 pub(crate) use super::store_provider_queries::{
-    read_decision, read_reservation, same_decision, same_reservation,
+    decision_query, read_decision, read_reservation, same_decision, same_reservation,
 };
 use super::types::{
     DecisionReference, ProviderReservation, ProviderReservationState, StoredDecision,
@@ -25,15 +25,9 @@ impl ExecutionStore {
         reference.lineage.validate()?;
         let now = ExecutionStore::now();
         let tx = schema::transaction(&mut self.connection)?;
+        let query = decision_query("WHERE execution_id = ?1");
         let existing = tx
-            .query_row(
-                "SELECT execution_id, run_id, episode_id, attempt_id, trajectory_id,
-                 input_fingerprint, model_revision, config_digest, state, result_ref,
-                 result_digest, provider_reservation_id, result_payload
-                 FROM decisions WHERE execution_id = ?1",
-                [reference.execution_id.as_str()],
-                read_decision,
-            )
+            .query_row(&query, [reference.execution_id.as_str()], read_decision)
             .optional()
             .map_err(schema::map_sqlite)?;
         if let Some(existing) = existing {

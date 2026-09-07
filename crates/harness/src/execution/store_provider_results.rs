@@ -5,7 +5,9 @@ use sha2::{Digest, Sha256};
 
 use super::schema;
 use super::store_core::{ExecutionStore, append_event};
-use super::store_provider::{MAX_DECISION_RESULT_BYTES, read_decision, read_reservation};
+use super::store_provider::{
+    MAX_DECISION_RESULT_BYTES, decision_query, read_decision, read_reservation,
+};
 use super::types::{
     ProviderFailureClass, ProviderReservationState, StoredDecision, valid_reference,
 };
@@ -125,15 +127,9 @@ impl ExecutionStore {
                 && current.actual_units == actual_units
                 && current.failure == failure
             {
+                let query = decision_query("WHERE execution_id = ?1");
                 let existing = tx
-                    .query_row(
-                        "SELECT execution_id, run_id, episode_id, attempt_id, trajectory_id,
-                         input_fingerprint, model_revision, config_digest, state, result_ref,
-                         result_digest, provider_reservation_id, result_payload
-                         FROM decisions WHERE execution_id = ?1",
-                        [current.execution_id.as_str()],
-                        read_decision,
-                    )
+                    .query_row(&query, [current.execution_id.as_str()], read_decision)
                     .map_err(schema::map_sqlite)?;
                 if existing.result_payload.as_deref() != result_payload {
                     return Err(super::types::ExecutionStoreError::Conflict);

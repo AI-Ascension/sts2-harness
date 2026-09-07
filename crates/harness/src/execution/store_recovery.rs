@@ -231,15 +231,13 @@ impl ExecutionStore {
         episode_id: &str,
     ) -> Result<Vec<StoredDecision>, super::types::ExecutionStoreError> {
         self.ensure_open()?;
+        let query = super::store_provider::decision_query(
+            "WHERE episode_id = ?1 AND state IN ('pending', 'unknown')
+             ORDER BY created_at, execution_id",
+        );
         let mut statement = self
             .connection
-            .prepare(
-                "SELECT execution_id, run_id, episode_id, attempt_id, trajectory_id,
-                 input_fingerprint, model_revision, config_digest, state, result_ref,
-                 result_digest, provider_reservation_id, result_payload
-                 FROM decisions WHERE episode_id = ?1
-                 AND state IN ('pending', 'unknown') ORDER BY created_at, execution_id",
-            )
+            .prepare(&query)
             .map_err(schema::map_sqlite)?;
         let rows = statement
             .query_map([episode_id], super::store_provider::read_decision)
