@@ -26,10 +26,13 @@ The Linux-only supervisor places each child in its own process group and signals
 through the safe `rustix` API while the leader remains waitable. `waitid(EXITED|NOHANG|NOWAIT)`
 observes leader exit without releasing the PID, and the direct child is killed and reaped after
 group signaling even when group cleanup reports an error. Both output pipes are nonblocking and
-drained by one bounded `poll`/read loop; no reader threads are detached. Focused regressions cover
-a parent that exits while a descendant retains a pipe, a direct-child timeout, and output overflow;
-each completes under a short wall-clock bound. Descendants that escape the owned process group are
-outside this containment claim, and other Unix targets do not claim native coverage.
+drained by one bounded `poll`/read loop; no reader threads are detached. Each drain call caps read
+attempts and bytes consumed, including repeated `Interrupted` results and streams that never reach
+EOF or `WouldBlock`, so the outer cleanup deadline always regains control. Focused regressions cover
+a parent that exits while a descendant retains a pipe, a direct-child timeout, output overflow, and
+adversarial continuous/interrupted readers; each completes under a short wall-clock bound.
+Descendants that escape the owned process group are outside this containment claim, and other Unix
+targets do not claim native coverage.
 
 `crates/harness/tests/completed_resume_process.rs` seeds a SQLite episode with a durable checkpoint
 and completion, then starts `sts2-harness-runtime --resume` under a bounded child supervisor with
@@ -53,7 +56,7 @@ Policy check: 391 sized files, 0 warning(s), 0 error(s)
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --offline --locked --package sts2-harness --test completed_resume_process -- --nocapture
-5 passed; repeated three times with 5 passed each
+7 passed; repeated three times with 7 passed each
 ```
 
 Before this supervisor replacement, the full workspace command was run twice on the preceding
@@ -69,7 +72,7 @@ failure: MCP shutdown timed out
 The exact failing test was rerun separately and failed with the same `MCP shutdown timed out`
 result. The full workspace gate was therefore failed on that preceding candidate and was not
 silently rewritten here; the H20 source-equivalent full workspace gate remains unverified pending
-the root-owned lockfile update. The focused completed-resume evidence is 5/5 across three repeated
+the root-owned lockfile update. The focused completed-resume evidence is 7/7 across three repeated
 runs.
 
 ## Limits

@@ -15,6 +15,8 @@ const CHILD_TIMEOUT: Duration = Duration::from_secs(5);
 const TERMINATION_TIMEOUT: Duration = Duration::from_secs(1);
 const POLL_SLICE: Duration = Duration::from_millis(20);
 const MAX_CAPTURE_BYTES: usize = 64 * 1024;
+const MAX_DRAIN_READS: usize = 32;
+const MAX_DRAIN_BYTES: usize = 64 * 1024;
 
 pub(super) fn run_child(command: Command) -> Result<Output, String> {
     run_child_with_timeout(command, CHILD_TIMEOUT)
@@ -208,13 +210,17 @@ where
     R: Read,
 {
     let mut buffer = [0_u8; 8 * 1024];
-    loop {
+    let mut reads = 0;
+    let mut bytes = 0;
+    while reads < MAX_DRAIN_READS && bytes < MAX_DRAIN_BYTES {
+        reads += 1;
         match stream.reader.read(&mut buffer) {
             Ok(0) => {
                 stream.open = false;
                 return Ok(());
             }
             Ok(count) => {
+                bytes += count;
                 if !stream.capture {
                     continue;
                 }
@@ -234,6 +240,7 @@ where
                 }
                 stream.bytes.extend_from_slice(&buffer[..count]);
             }
+            Err(error) if error.kind() == ErrorKind::Interrupted => continue,
             Err(error) if error.kind() == ErrorKind::WouldBlock => return Ok(()),
             Err(error) => {
                 stream.open = false;
@@ -244,6 +251,7 @@ where
             }
         }
     }
+    Ok(())
 }
 
 fn poll_timeout(deadline: Instant) -> Timespec {
@@ -373,5 +381,57 @@ fn kill_owned_process_group(pid: Pid, leader_exited: bool) -> Result<(), String>
         Err(error) => Err(format!(
             "owned process-group cleanup failed for {pid}: {error}"
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+
+    struct ForeverBytes {
+        calls: usize,
+    }
+
+    impl Read for ForeverBytes {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            self.calls += 1;
+            buffer[0] = b'x';
+            Ok(1)
+        }
+    }
+
+    struct ForeverInterrupted {
+        calls: usize,
+    }
+
+    impl Read for ForeverInterrupted {
+        fn read(&mut self, _buffer: &mut [u8]) -> io::Result<usize> {
+            self.calls += 1;
+            Err(io::Error::from(ErrorKind::Interrupted))
+        }
+    }
+
+    #[test]
+    fn drain_stream_bounds_a_continuous_reader_to_one_drain_call() -> Result<(), String> {
+        let mut stream = CaptureStream::new(ForeverBytes { calls: 0 }, "test");
+        stream.capture = false;
+
+        drain_stream(&mut stream)?;
+
+        assert!(stream.open);
+        assert_eq!(stream.reader.calls, MAX_DRAIN_READS);
+        Ok(())
+    }
+
+    #[test]
+    fn drain_stream_bounds_repeated_interrupted_reads() -> Result<(), String> {
+        let mut stream = CaptureStream::new(ForeverInterrupted { calls: 0 }, "test");
+
+        drain_stream(&mut stream)?;
+
+        assert!(stream.open);
+        assert_eq!(stream.reader.calls, MAX_DRAIN_READS);
+        Ok(())
     }
 }
