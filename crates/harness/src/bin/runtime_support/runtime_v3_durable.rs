@@ -39,6 +39,7 @@ pub(super) struct DurableHandle {
     model_revision: String,
     config_digest: String,
     next_checkpoint: Rc<RefCell<u64>>,
+    resume_boundary: Rc<RefCell<Option<Checkpoint>>>,
 }
 
 impl DurableHandle {
@@ -107,6 +108,10 @@ impl DurableHandle {
                     .checked_add(1)
                     .ok_or_else(|| String::from("runtime-v3 checkpoint sequence exhausted"))
             })?;
+        let resume_boundary = match &state {
+            ResumeState::Ready { checkpoint, .. } => checkpoint.clone(),
+            _ => None,
+        };
         let handle = Self {
             store: Rc::new(RefCell::new(store)),
             lineage,
@@ -114,6 +119,7 @@ impl DurableHandle {
             model_revision: settings.exo.revision.clone(),
             config_digest: config_digest(config, settings)?,
             next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
+            resume_boundary: Rc::new(RefCell::new(resume_boundary)),
         };
         Ok((handle, state))
     }
@@ -124,6 +130,53 @@ impl DurableHandle {
             .map_err(|_| String::from("runtime-v3 execution store is already mutably borrowed"))?
             .pending_operations(&self.lineage.episode_id)
             .map_err(|error| format!("cannot read pending runtime-v3 operations: {error}"))
+    }
+
+    /// Requires the first fresh host observation after an explicit resume to equal the last
+    /// durable public boundary. A mismatch cannot be turned into a new provider decision.
+    pub(super) fn verify_resume_boundary(
+        &self,
+        observation: &EpisodeObservation,
+    ) -> Result<(), String> {
+        let observation_bytes = serde_json::to_vec(observation.fair_play().as_value())
+            .map_err(|error| format!("cannot encode runtime-v3 resume observation: {error}"))?;
+        let mut boundary = self
+            .resume_boundary
+            .try_borrow_mut()
+            .map_err(|_| String::from("runtime-v3 resume boundary is already borrowed"))?;
+        let Some(expected) = boundary.as_ref() else {
+            return Ok(());
+        };
+        if expected.lineage != self.lineage
+            || expected.fingerprint != self.fingerprint
+            || expected.state_id != observation.state_id()
+            || expected.generation != observation.generation()
+            || expected.observation != observation_bytes
+        {
+            return Err(String::from(
+                "runtime-v3 fresh observation does not match the verified resume boundary",
+            ));
+        }
+        *boundary = None;
+        Ok(())
+    }
+
+    /// Makes the latest checkpoint the next resume boundary after recovery has produced an
+    /// authoritative observation. This is deliberately called only after all pending mutations
+    /// have been reconciled.
+    pub(super) fn refresh_resume_boundary(&self) -> Result<(), String> {
+        let checkpoint = self
+            .store
+            .try_borrow()
+            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+            .last_checkpoint(&self.lineage.episode_id)
+            .map_err(|error| format!("cannot refresh runtime-v3 resume boundary: {error}"))?;
+        *self
+            .resume_boundary
+            .try_borrow_mut()
+            .map_err(|_| String::from("runtime-v3 resume boundary is already borrowed"))? =
+            checkpoint;
+        Ok(())
     }
 
     pub(super) fn checkpoint(
@@ -384,12 +437,31 @@ impl DurableHandle {
                 "runtime-v3 completion requires a terminal observation",
             ));
         }
-        let checkpoint_sequence = self
+        let observation_bytes = serde_json::to_vec(observation.fair_play().as_value())
+            .map_err(|error| format!("cannot encode runtime-v3 terminal observation: {error}"))?;
+        let expected_next = self
             .next_checkpoint
             .try_borrow()
-            .map_err(|_| String::from("runtime-v3 checkpoint sequence is already borrowed"))?
-            .checked_sub(1)
+            .map_err(|_| String::from("runtime-v3 checkpoint sequence is already borrowed"))?;
+        let checkpoint = self
+            .store
+            .try_borrow()
+            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+            .last_checkpoint(&self.lineage.episode_id)
+            .map_err(|error| format!("cannot read runtime-v3 terminal checkpoint: {error}"))?
             .ok_or_else(|| String::from("runtime-v3 terminal observation was not checkpointed"))?;
+        if checkpoint.sequence.checked_add(1) != Some(*expected_next)
+            || checkpoint.lineage != self.lineage
+            || checkpoint.fingerprint != self.fingerprint
+            || checkpoint.state_id != observation.state_id()
+            || checkpoint.generation != observation.generation()
+            || checkpoint.observation != observation_bytes
+        {
+            return Err(String::from(
+                "runtime-v3 terminal observation does not match the latest checkpoint",
+            ));
+        }
+        let checkpoint_sequence = checkpoint.sequence;
         let terminal_ref = format!(
             "terminal-{}-{}",
             super::super::runtime_v3_wire::stage_name(observation.stage()),
@@ -424,6 +496,33 @@ impl DurableHandle {
             .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
             .close()
             .map_err(|error| format!("cannot close runtime-v3 execution store: {error}"))
+    }
+
+    #[cfg(test)]
+    pub(super) fn from_store_for_test(
+        store: ExecutionStore,
+        lineage: ExecutionLineage,
+        fingerprint: ExecutionFingerprint,
+    ) -> Result<Self, String> {
+        let next_checkpoint = store
+            .last_checkpoint(&lineage.episode_id)
+            .map_err(|error| format!("cannot read test checkpoint: {error}"))?
+            .map_or(Ok(0_u64), |checkpoint| {
+                checkpoint
+                    .sequence
+                    .checked_add(1)
+                    .ok_or_else(|| String::from("test checkpoint sequence exhausted"))
+            })?;
+        let config_digest = fingerprint.config_digest.clone();
+        Ok(Self {
+            store: Rc::new(RefCell::new(store)),
+            lineage,
+            fingerprint,
+            model_revision: String::from("synthetic-provider"),
+            config_digest,
+            next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
+            resume_boundary: Rc::new(RefCell::new(None)),
+        })
     }
 }
 

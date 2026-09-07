@@ -101,6 +101,9 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         let path = std::env::var("STS2_REPLAY_TRAJECTORY").unwrap_or_default();
         if !path.is_empty() {
             let result = episode_replay::run(&mut port, &settings.runner, &path);
+            if result.is_err() {
+                port.mark_interrupted_unknown("runtime-v3 episode replay failed");
+            }
             let store_close = port.close_durable();
             drop(port);
             let _ = telemetry_handle.run_finished(
@@ -128,6 +131,9 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         let mut recorder =
             recording::DecisionRecorder::new(&mut source, telemetry_handle.clone(), durable_handle);
         let outcome = combat_demo::run(&mut port, &mut recorder, &settings.runner);
+        if outcome.is_err() {
+            port.mark_interrupted_unknown("runtime-v3 combat demo failed");
+        }
         let close = source.close().map_err(|error| error.to_string());
         let store_close = port.close_durable();
         drop(port);

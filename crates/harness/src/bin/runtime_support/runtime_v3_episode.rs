@@ -79,6 +79,11 @@ impl EpisodeRuntimePort for RuntimeV3Port {
             .map_err(|error| wire::port_error("observe_failed", error, false))?;
         let parsed = parse::observation(&value, "state_response", &self.config)
             .map_err(|error| wire::port_error("observe_invalid", error, false))?;
+        if let Some(durable) = &self.durable {
+            durable
+                .verify_resume_boundary(&parsed.observation)
+                .map_err(|error| wire::port_error("resume_boundary_mismatch", error, false))?;
+        }
         let observation = self
             .install(parsed)
             .map_err(|error| wire::port_error("observe_durability_failed", error, false))?;

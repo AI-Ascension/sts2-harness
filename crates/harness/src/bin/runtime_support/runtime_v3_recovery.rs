@@ -43,7 +43,7 @@ impl RuntimeV3Port {
     /// Rehydrates the durable operation ledger after MCP startup and resolves each retained
     /// mutation before the runner can ask the provider for a new decision.
     pub(super) fn reconcile_pending_operations(&mut self) -> Result<(), String> {
-        let Some(durable) = &self.durable else {
+        let Some(durable) = self.durable.clone() else {
             return Ok(());
         };
         let pending = durable.pending_operations()?;
@@ -85,15 +85,14 @@ impl RuntimeV3Port {
                     }
                 }
             }
-            if let Some(durable) = &self.durable {
-                let state = durable.operation_state(operation_id)?;
-                if state.is_unresolved() {
-                    return Err(format!(
-                        "retained operation {operation_id} remains in durable state {state:?}"
-                    ));
-                }
+            let state = durable.operation_state(operation_id)?;
+            if state.is_unresolved() {
+                return Err(format!(
+                    "retained operation {operation_id} remains in durable state {state:?}"
+                ));
             }
         }
+        durable.refresh_resume_boundary()?;
         Ok(())
     }
 }

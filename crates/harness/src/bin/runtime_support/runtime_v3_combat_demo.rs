@@ -38,6 +38,7 @@ fn run_inner<S: DecisionSource>(
         saw_combat |= before.stage() == EpisodeStage::Combat;
         if saw_combat && matches!(before.stage(), EpisodeStage::Reward | EpisodeStage::Defeat) {
             replay.finish(steps, &before)?;
+            port.complete_durable_observation(&before)?;
             println!(
                 "{}",
                 json!({"event":"combat_demo_complete", "steps":steps,

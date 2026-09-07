@@ -80,6 +80,7 @@ pub(super) fn run(
         )
     })?;
     source.finish(report.final_observation())?;
+    port.complete_durable(&report)?;
     recording::complete(&report, &port.telemetry);
     println!(
         "{}",
