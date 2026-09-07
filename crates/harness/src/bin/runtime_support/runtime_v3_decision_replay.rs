@@ -97,7 +97,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn round_trip_preserves_every_decision_variant() {
+    fn round_trip_preserves_every_decision_variant() -> Result<(), String> {
         let decisions = [
             Decision::Plan {
                 action_ids: vec![String::from("combat.end-turn")],
@@ -121,20 +121,17 @@ mod tests {
             },
         ];
         for expected in decisions {
-            let (payload, digest) = encode(&expected).expect("decision encodes");
-            assert_eq!(
-                decode(&payload, &digest).expect("decision decodes"),
-                expected
-            );
+            let (payload, digest) = encode(&expected)?;
+            assert_eq!(decode(&payload, &digest)?, expected);
         }
+        Ok(())
     }
 
     #[test]
-    fn decode_rejects_tampering_and_unknown_fields() {
+    fn decode_rejects_tampering_and_unknown_fields() -> Result<(), String> {
         let (mut payload, digest) = encode(&Decision::Wait {
             rationale: String::from("wait"),
-        })
-        .expect("decision encodes");
+        })?;
         payload[2] ^= 1;
         assert!(decode(&payload, &digest).is_err());
         assert!(
@@ -147,18 +144,20 @@ mod tests {
             )
             .is_err()
         );
+        Ok(())
     }
 
     #[test]
-    fn encode_never_retains_json_values() {
+    fn encode_never_retains_json_values() -> Result<(), String> {
         let (payload, _) = encode(&Decision::Action {
             action_id: String::from("combat.end-turn"),
             rationale: String::from("act"),
             confidence: None,
-        })
-        .expect("decision encodes");
-        let value: serde_json::Value = serde_json::from_slice(&payload).expect("encoded JSON");
+        })?;
+        let value: serde_json::Value =
+            serde_json::from_slice(&payload).map_err(|error| error.to_string())?;
         assert_eq!(value["decision"], "action");
         assert_eq!(value["action_id"], "combat.end-turn");
+        Ok(())
     }
 }
