@@ -31,7 +31,11 @@ fn config(address: String) -> RuntimeConfig {
 }
 
 fn accept(listener: &TcpListener) -> Result<TcpStream, String> {
-    let deadline = Instant::now() + Duration::from_secs(3);
+    accept_until(listener, Duration::from_secs(3))
+}
+
+fn accept_until(listener: &TcpListener, timeout: Duration) -> Result<TcpStream, String> {
+    let deadline = Instant::now() + timeout;
     loop {
         match listener.accept() {
             Ok((stream, _)) => return Ok(stream),
@@ -221,6 +225,10 @@ mod reconnect {
         }
     }
 
+    mod runner {
+        include!("runtime_v3_lifecycle_runner_test.rs");
+    }
+
     fn reply(value: Value) -> String {
         format!(
             "IFS= read -r line || exit 1\nprintf '%s\\n' \"$line\" >> requests\nprintf '%s\\n' '{}'\n",
@@ -228,86 +236,7 @@ mod reconnect {
         )
     }
 
-    fn recovery_script(fixture: &Fixture) -> Result<(), Box<dyn std::error::Error>> {
-        let mut settled: Value = serde_json::from_str(include_str!(
-            "../../../../../protocol-artifact/runtime-v3-gameplay/golden/dispatch-action-settled.json"
-        ))?;
-        settled["kind"] = json!("recover_response");
-        settled["correlation_id"] = json!("2");
-        let tools: Vec<_> = [
-            "sts2.observe",
-            "sts2.legal_actions",
-            "sts2.dispatch_action",
-            "sts2.wait_for_transition",
-            "sts2.reobserve",
-            "sts2.recover",
-        ]
-        .into_iter()
-        .map(|name| json!({"name":name}))
-        .collect();
-        let script = format!(
-            "cd '{}' || exit 1\n{}{}{}",
-            fixture.0.display(),
-            reply(json!({"jsonrpc":"2.0","id":1,"result":{}})),
-            reply(
-                json!({"jsonrpc":"2.0","id":2,"result":{"revision":"runtime-v3-gameplay-mcp","tools":tools}})
-            ),
-            reply(
-                json!({"jsonrpc":"2.0","id":2,"result":{"content":[{"text":settled.to_string()}]}})
-            )
-        );
-        fixture.script(&script)?;
-        Ok(())
-    }
-
-    #[test]
-    fn runtime_v3_reconnect_reconciles_same_operation_without_redispatch()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let fixture = Fixture::new()?;
-        let mut config = config("127.0.0.1:15525".into());
-        config.mcp_binary = fixture.script("IFS= read -r line\nexit 0\n")?;
-        let mut port = RuntimeV3Port::new_with_telemetry(config, TelemetryHandle::disabled())?;
-        port.allocated = true;
-        port.mcp = Some(McpProcess::spawn(&port.config)?);
-        let mut state: Value = serde_json::from_str(include_str!(
-            "../../../../../protocol-artifact/runtime-v3-gameplay/golden/state-response.json"
-        ))?;
-        state["legal_actions"] = json!([
-            {"action_id":"combat.end-turn", "action":{"kind":"end_turn"}}
-        ]);
-        let parsed = parse::observation(&state, "state_response", &port.config)?;
-        let action = parsed.actions.actions()[0].clone();
-        let observation = port.install(parsed);
-        let identity = ActionIdentity::new(
-            "op-1",
-            observation.state_id(),
-            observation.generation(),
-            action.action_id(),
-        )?;
-        assert!(port.dispatch_action(&identity, &action).is_err());
-        assert!(port.mcp.as_ref().is_some_and(McpProcess::is_closed));
-        recovery_script(&fixture)?;
-        let receipt = port.reconcile("op-1")?;
-        assert_eq!(receipt.operation_id(), "op-1");
-        assert_eq!(receipt.status(), sts2_harness::DispatchStatus::Settled);
-        assert_eq!(port.operations.len(), 1);
-        assert_eq!(port.reconnect_attempts, 1);
-        let requests = fs::read_to_string(fixture.0.join("requests"))?;
-        let requests: Vec<Value> = requests
-            .lines()
-            .map(serde_json::from_str)
-            .collect::<Result<_, _>>()?;
-        assert_eq!(requests.len(), 3);
-        assert_eq!(requests[2]["params"]["name"], "sts2.recover");
-        assert_eq!(requests[2]["params"]["arguments"]["operation_id"], "op-1");
-        assert!(
-            !requests
-                .iter()
-                .any(|value| value["params"]["name"] == "sts2.dispatch_action")
-        );
-        port.mcp.as_mut().ok_or("missing MCP")?.close()?;
-        port.reconnect_attempts = 2;
-        assert!(port.reconcile("op-1").is_err());
-        Ok(())
+    mod recovery {
+        include!("runtime_v3_lifecycle_recovery_test.rs");
     }
 }

@@ -94,7 +94,9 @@ fn validate_response(
             let observation = value["observation"].clone();
             let observation = crate::RuntimeV4ExpertObservation::from_value(observation)
                 .map_err(|_| RuntimeV4ExpertActionParseError::InvalidValue)?;
-            if observation.generation() != value["generation"].as_u64().unwrap_or(0) {
+            if observation.state_id() != value["state_id"]
+                || observation.generation() != value["generation"].as_u64().unwrap_or(0)
+            {
                 return Err(RuntimeV4ExpertActionParseError::InvalidValue);
             }
             let Some(transition) = value["transition"].as_object() else {

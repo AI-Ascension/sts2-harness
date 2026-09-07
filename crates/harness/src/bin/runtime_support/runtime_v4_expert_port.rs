@@ -10,7 +10,7 @@ use sts2_harness::{
     WaitSample,
 };
 
-use super::{RuntimeV3Port, wire};
+use super::{RuntimeV3Port, RuntimeV3ToolError, wire};
 
 const PROFILE: &str = "runtime-v4-expert";
 const STATE_TOOL: &str = "sts2.expert_state";

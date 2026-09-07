@@ -72,3 +72,10 @@ fn action_parser_rejects_duplicate_keys_and_foreign_operations()
     assert!(result.matches_request(&request).is_err());
     Ok(())
 }
+
+#[test]
+fn settled_action_rejects_nested_observation_state_identity_mismatch() {
+    let mut settled = settled_value();
+    settled["observation"]["state_id"] = json!("foreign-state");
+    assert!(RuntimeV4ExpertActionResult::from_value(settled).is_err());
+}

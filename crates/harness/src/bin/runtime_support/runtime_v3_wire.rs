@@ -8,6 +8,8 @@ use super::mcp::McpProcess;
 const CATALOG_REVISION: &str = "runtime-v3-gameplay-mcp";
 const EXPERT_CATALOG_REVISION: &str = "runtime-v4-expert-mcp";
 
+include!("runtime_v3_wire_failure.rs");
+
 pub(super) fn initialize_mcp_profile(mcp: &mut McpProcess, profile: &str) -> Result<(), String> {
     let initialize = rpc_call(
         mcp,
@@ -18,11 +20,12 @@ pub(super) fn initialize_mcp_profile(mcp: &mut McpProcess, profile: &str) -> Res
             "capabilities": {},
             "clientInfo": {"name": "sts2-harness-runtime", "version": profile}
         }),
-    )?;
+    )
+    .map_err(|error| error.to_string())?;
     if initialize.get("result").is_none() {
         return Err(String::from("MCP initialize omitted result"));
     }
-    let catalog = rpc_call(mcp, 2, "tools/list", json!({}))?;
+    let catalog = rpc_call(mcp, 2, "tools/list", json!({})).map_err(|error| error.to_string())?;
     validate_catalog(&catalog, profile)
 }
 
@@ -31,14 +34,35 @@ pub(super) fn rpc_call(
     id: u64,
     method: &str,
     params: Value,
-) -> Result<Value, String> {
-    let timeout = request_timeout(method, &params)?;
+) -> Result<Value, RpcFailure> {
     let catalog_read = method == "tools/call" && params["name"] == "sts2.legal_actions";
-    let response = mcp.call_with_timeout(id, method, params, timeout)?;
+    rpc_call_with_catalog_read(mcp, id, method, params, catalog_read)
+}
+
+pub(super) fn rpc_call_catalog_read(
+    mcp: &mut McpProcess,
+    id: u64,
+    method: &str,
+    params: Value,
+) -> Result<Value, RpcFailure> {
+    rpc_call_with_catalog_read(mcp, id, method, params, true)
+}
+
+fn rpc_call_with_catalog_read(
+    mcp: &mut McpProcess,
+    id: u64,
+    method: &str,
+    params: Value,
+    catalog_read: bool,
+) -> Result<Value, RpcFailure> {
+    let timeout = request_timeout(method, &params).map_err(RpcFailure::terminal)?;
+    let response = mcp
+        .call_with_timeout(id, method, params, timeout)
+        .map_err(RpcFailure::from_mcp)?;
     if response.get("id").and_then(Value::as_u64) != Some(id) {
-        return Err(format!(
+        return Err(RpcFailure::terminal(format!(
             "MCP {method} response identity does not match request"
-        ));
+        )));
     }
     if response.get("error").is_some() {
         if std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true") {
@@ -48,7 +72,14 @@ pub(super) fn rpc_call(
                 response["error"]["code"].as_i64()
             );
         }
-        return Err(format!("MCP {method} returned an RPC error"));
+        if catalog_read && is_transient_catalog_rpc_error(&response) {
+            return Err(RpcFailure::transient(
+                "MCP legal-action catalog request was temporarily unavailable",
+            ));
+        }
+        return Err(RpcFailure::terminal(format!(
+            "MCP {method} returned an RPC error"
+        )));
     }
     if response
         .get("result")
@@ -63,10 +94,55 @@ pub(super) fn rpc_call(
                 || has_expert_action_envelope(&response)
                 || (catalog_read && has_catalog_reobserve(&response, id)))
         {
-            return Err(format!("MCP {method} returned a tool error"));
+            if catalog_read && is_transient_catalog_tool_error(&response) {
+                return Err(RpcFailure::transient(
+                    "MCP legal-action catalog request was temporarily unavailable",
+                ));
+            }
+            return Err(RpcFailure::terminal(format!(
+                "MCP {method} returned a tool error"
+            )));
         }
     }
     Ok(response)
+}
+
+fn is_transient_mcp_error(message: &str) -> bool {
+    [
+        "MCP exchange timed out",
+        "MCP request write failed",
+        "MCP request flush failed",
+        "MCP response read failed",
+        "MCP response ended before its delimiter",
+        "MCP process is closed",
+        "MCP stdin is closed",
+        "MCP stdout is closed",
+        "MCP supervisor is closed",
+    ]
+    .into_iter()
+    .any(|prefix| {
+        message == prefix
+            || message
+                .strip_prefix(prefix)
+                .is_some_and(|rest| rest.starts_with("; "))
+    })
+}
+
+fn is_transient_catalog_rpc_error(response: &Value) -> bool {
+    matches!(response["error"]["code"].as_i64(), Some(-32003 | -32008))
+}
+
+fn is_transient_catalog_tool_error(response: &Value) -> bool {
+    response["result"]["content"]
+        .as_array()
+        .is_some_and(|content| content.len() == 1)
+        && matches!(
+            response["result"]["content"][0]["text"].as_str(),
+            Some(
+                "gateway error -32003: gateway is unavailable"
+                    | "gateway error -32008: gateway request timed out"
+            )
+        )
 }
 
 fn has_catalog_reobserve(response: &Value, id: u64) -> bool {
@@ -203,22 +279,7 @@ pub(super) const fn action_kind_name(kind: ActionKind) -> &'static str {
     }
 }
 
-pub(super) const fn stage_name(stage: sts2_harness::EpisodeStage) -> &'static str {
-    match stage {
-        sts2_harness::EpisodeStage::Setup => "setup",
-        sts2_harness::EpisodeStage::Map => "map",
-        sts2_harness::EpisodeStage::Combat => "combat",
-        sts2_harness::EpisodeStage::Reward => "reward",
-        sts2_harness::EpisodeStage::Shop => "shop",
-        sts2_harness::EpisodeStage::Event => "event",
-        sts2_harness::EpisodeStage::Rest => "rest",
-        sts2_harness::EpisodeStage::Selection => "selection",
-        sts2_harness::EpisodeStage::Victory => "victory",
-        sts2_harness::EpisodeStage::Defeat => "defeat",
-        sts2_harness::EpisodeStage::Recovery => "recovery",
-        sts2_harness::EpisodeStage::Unknown => "unknown",
-    }
-}
+include!("runtime_v3_wire_stage.rs");
 
 pub(super) fn port_error(
     code: &'static str,
@@ -230,50 +291,5 @@ pub(super) fn port_error(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    #[test]
-    fn catalog_recovery_requires_exact_shape_and_correlation() {
-        for code in [
-            "stale_generation",
-            "host_not_configured",
-            "host_observation_unavailable",
-        ] {
-            let mut body =
-                json!({"correlation_id":"42", "error_code":code, "recovery":"reobserve"});
-            let response = |body: &Value| json!({"result":{"isError":true,"content":[{"text":body.to_string()}]}});
-            assert!(has_catalog_reobserve(&response(&body), 42));
-            assert!(!has_catalog_reobserve(&response(&body), 43));
-            body["private"] = json!("extra");
-            assert!(!has_catalog_reobserve(&response(&body), 42));
-        }
-        for code in ["unauthorized", "timeout", "unknown"] {
-            assert!(!catalog_reobserve(
-                &json!({"correlation_id":"42","error_code":code,"recovery":"reobserve"})
-            ));
-        }
-    }
-    #[test]
-    fn gameplay_unknown_remains_available_for_receipt_validation() {
-        let envelope = json!({"protocol_version":"runtime-v3-gameplay", "status":"unknown",
-            "error_code":"settlement_unproven"});
-        let mut response = json!({"result":{"isError":true,
-            "content":[{"text":envelope.to_string()}]}});
-        assert!(has_gameplay_envelope(&response));
-        response["result"]["content"][0]["text"] = json!("gateway error -32005: rejected");
-        assert!(!has_gameplay_envelope(&response));
-        response["result"]["content"][0]["text"] = json!("{}");
-        assert!(!has_gameplay_envelope(&response));
-    }
-    #[test]
-    fn transition_wait_budget_includes_requested_semantic_wait() -> Result<(), String> {
-        let mut params =
-            json!({"name":"sts2.wait_for_transition","arguments":{"wait_for_millis":120_000}});
-        assert_eq!(request_timeout("tools/call", &params)?.as_millis(), 125_000);
-        assert_eq!(request_timeout("initialize", &params)?.as_millis(), 5_000);
-        params["arguments"]["wait_for_millis"] = json!(120_001);
-        assert!(request_timeout("tools/call", &params).is_err());
-        params["arguments"]["wait_for_millis"] = Value::Null;
-        assert!(request_timeout("tools/call", &params).is_err());
-        Ok(())
-    }
+    include!("runtime_v3_wire_tests.rs");
 }

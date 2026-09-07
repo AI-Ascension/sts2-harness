@@ -1,5 +1,27 @@
 // SPDX-License-Identifier: MIT
 
+#[derive(Debug)]
+pub(super) enum RuntimeV3ToolError {
+    Transient(String),
+    Terminal(String),
+}
+
+impl RuntimeV3ToolError {
+    fn from_rpc(error: wire::RpcFailure) -> Self {
+        if error.is_transient() {
+            Self::Transient(error.to_string())
+        } else {
+            Self::Terminal(error.to_string())
+        }
+    }
+
+    pub(super) fn message(&self) -> &str {
+        match self {
+            Self::Transient(message) | Self::Terminal(message) => message,
+        }
+    }
+}
+
 fn finish_telemetry(telemetry: RuntimeV3Telemetry) {
     let report = telemetry.finish(std::time::Duration::from_secs(2));
     if report.export_status() != "delivered" {
@@ -42,17 +64,41 @@ impl RuntimeV3Port {
     }
 
     fn call_tool(&mut self, name: &str, arguments: Value) -> Result<Value, String> {
+        self.call_tool_classified(name, arguments)
+            .map_err(|error| error.message().to_owned())
+    }
+
+    pub(super) fn call_tool_classified(
+        &mut self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<Value, RuntimeV3ToolError> {
         let id = self.next_rpc_id;
         self.next_rpc_id = self
             .next_rpc_id
             .checked_add(1)
-            .ok_or_else(|| String::from("MCP request identity exhausted"))?;
-        let response = wire::rpc_call(
-            self.mcp_mut().map_err(|error| error.to_string())?,
-            id,
-            "tools/call",
-            json!({"name": name, "arguments": arguments}),
-        )?;
+            .ok_or_else(|| {
+                RuntimeV3ToolError::Terminal(String::from("MCP request identity exhausted"))
+            })?;
+        let request = json!({"name": name, "arguments": arguments});
+        let response = if name == "sts2.legal_actions" {
+            wire::rpc_call_catalog_read(
+                self.mcp_mut()
+                    .map_err(|error| RuntimeV3ToolError::Transient(error.to_string()))?,
+                id,
+                "tools/call",
+                request,
+            )
+        } else {
+            wire::rpc_call(
+                self.mcp_mut()
+                    .map_err(|error| RuntimeV3ToolError::Transient(error.to_string()))?,
+                id,
+                "tools/call",
+                request,
+            )
+        }
+        .map_err(RuntimeV3ToolError::from_rpc)?;
         let text = response
             .get("result")
             .and_then(|result| result.get("content"))
@@ -60,23 +106,31 @@ impl RuntimeV3Port {
             .and_then(|content| content.first())
             .and_then(|content| content.get("text"))
             .and_then(Value::as_str)
-            .ok_or_else(|| format!("MCP tool {name} omitted text content"))?;
+            .ok_or_else(|| {
+                RuntimeV3ToolError::Terminal(format!("MCP tool {name} omitted text content"))
+            })?;
         let value: Value = serde_json::from_str(text)
-            .map_err(|error| format!("MCP tool {name} returned non-JSON content: {error}"))?;
+            .map_err(|error| {
+                RuntimeV3ToolError::Terminal(format!(
+                    "MCP tool {name} returned non-JSON content: {error}"
+                ))
+            })?;
         if wire::catalog_reobserve(&value)
             && (name != "sts2.legal_actions"
                 || text.len() > 1024
                 || response["result"]["isError"] != true)
         {
-            return Err(String::from(
+            return Err(RuntimeV3ToolError::Terminal(String::from(
                 "MCP catalog recovery has an invalid tool envelope",
-            ));
+            )));
         }
         let expected_correlation = id.to_string();
         if value.get("correlation_id").and_then(Value::as_str)
             != Some(expected_correlation.as_str())
         {
-            return Err(format!("MCP tool {name} returned mismatched correlation"));
+            return Err(RuntimeV3ToolError::Terminal(format!(
+                "MCP tool {name} returned mismatched correlation"
+            )));
         }
         Ok(value)
     }
@@ -95,6 +149,32 @@ impl RuntimeV3Port {
             "lease_epoch": self.config.lease_epoch,
             "generation": generation
         })
+    }
+
+    fn expert_catalog(
+        &mut self,
+        state_id: &str,
+        generation: u64,
+    ) -> Result<EpisodeLegalActionSet, sts2_harness::PortError> {
+        match self.merge_current_expert_actions(state_id, generation) {
+            Ok(()) => self.current_actions.clone().ok_or_else(|| {
+                wire::port_error(
+                    "expert_legal_actions_invalid",
+                    "expert catalog was not installed",
+                    false,
+                )
+            }),
+            Err(RuntimeV3ToolError::Transient(error)) => Err(wire::port_error(
+                "catalog_reobserve",
+                format!("expert catalog transport failed: {error}"),
+                true,
+            )),
+            Err(RuntimeV3ToolError::Terminal(error)) => Err(wire::port_error(
+                "expert_legal_actions_invalid",
+                error,
+                false,
+            )),
+        }
     }
 
     fn install(&mut self, parsed: parse::ParsedObservation) -> EpisodeObservation {

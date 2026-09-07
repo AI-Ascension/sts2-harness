@@ -11,22 +11,56 @@ impl RuntimeV3Port {
             .ok_or_else(|| String::from("expert MCP process is not running"))
     }
 
-    pub(super) fn call_expert_tool(
+    fn call_expert_tool_classified(
         &mut self,
         name: &str,
         arguments: Value,
-    ) -> Result<(u64, Value), String> {
+    ) -> Result<(u64, Value), RuntimeV3ToolError> {
+        self.call_expert_tool_classified_mode(name, arguments, false)
+    }
+
+    fn call_expert_tool_classified_catalog(
+        &mut self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<(u64, Value), RuntimeV3ToolError> {
+        self.call_expert_tool_classified_mode(name, arguments, true)
+    }
+
+    fn call_expert_tool_classified_mode(
+        &mut self,
+        name: &str,
+        arguments: Value,
+        catalog_read: bool,
+    ) -> Result<(u64, Value), RuntimeV3ToolError> {
         let id = self.expert_next_rpc_id;
         self.expert_next_rpc_id = self
             .expert_next_rpc_id
             .checked_add(1)
-            .ok_or_else(|| String::from("expert MCP request identity exhausted"))?;
-        let response = wire::rpc_call(
-            self.expert_mcp_mut()?,
-            id,
-            "tools/call",
-            json!({"name": name, "arguments": arguments}),
-        )?;
+            .ok_or_else(|| {
+                RuntimeV3ToolError::Terminal(String::from(
+                    "expert MCP request identity exhausted",
+                ))
+            })?;
+        let request = json!({"name": name, "arguments": arguments});
+        let response = if catalog_read {
+            wire::rpc_call_catalog_read(
+                self.expert_mcp_mut()
+                    .map_err(|error| RuntimeV3ToolError::Transient(error.to_string()))?,
+                id,
+                "tools/call",
+                request,
+            )
+        } else {
+            wire::rpc_call(
+                self.expert_mcp_mut()
+                    .map_err(|error| RuntimeV3ToolError::Transient(error.to_string()))?,
+                id,
+                "tools/call",
+                request,
+            )
+        }
+        .map_err(RuntimeV3ToolError::from_rpc)?;
         let text = response
             .get("result")
             .and_then(|result| result.get("content"))
@@ -34,15 +68,32 @@ impl RuntimeV3Port {
             .and_then(|content| content.first())
             .and_then(|content| content.get("text"))
             .and_then(Value::as_str)
-            .ok_or_else(|| format!("MCP tool {name} omitted text content"))?;
+            .ok_or_else(|| {
+                RuntimeV3ToolError::Terminal(format!("MCP tool {name} omitted text content"))
+            })?;
         let value: Value = serde_json::from_str(text)
-            .map_err(|error| format!("MCP tool {name} returned non-JSON content: {error}"))?;
+            .map_err(|error| {
+                RuntimeV3ToolError::Terminal(format!(
+                    "MCP tool {name} returned non-JSON content: {error}"
+                ))
+            })?;
         if name != STATE_TOOL
             && value.get("correlation_id").and_then(Value::as_str) != Some(id.to_string().as_str())
         {
-            return Err(format!("MCP tool {name} returned mismatched correlation"));
+            return Err(RuntimeV3ToolError::Terminal(format!(
+                "MCP tool {name} returned mismatched correlation"
+            )));
         }
         Ok((id, value))
+    }
+
+    pub(super) fn call_expert_tool(
+        &mut self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<(u64, Value), String> {
+        self.call_expert_tool_classified(name, arguments)
+            .map_err(|error| error.message().to_owned())
     }
 
     fn expert_state(&mut self) -> Result<RuntimeV4ExpertObservation, String> {
@@ -72,60 +123,37 @@ impl RuntimeV3Port {
         Ok(composed.observation)
     }
 
-    /// Rebind a settled Runtime-v3 result to the expert observation before it reaches the
-    /// provider. The normal endpoint remains the mutation authority for ordinary actions, while
-    /// the expert endpoint supplies the richer postcondition view.
-    pub(super) fn compose_receipt_after(
-        &mut self,
-        receipt: TransitionReceipt,
-    ) -> Result<TransitionReceipt, String> {
-        let Some(after) = receipt.after().cloned() else {
-            return Ok(receipt);
-        };
-        let after = self.compose_current_observation(after)?;
-        Ok(TransitionReceipt::new(
-            receipt.operation_id().to_owned(),
-            receipt.action().clone(),
-            receipt.status(),
-            Some(after),
-            receipt.effect_kind().map(str::to_owned),
-            receipt.error_code().map(str::to_owned),
-        ))
-    }
-
-    /// Replace the ordinary wait observation with the matching expert observation while keeping
-    /// the barrier outcome and effect witness intact.
-    pub(super) fn compose_wait_sample(&mut self, sample: WaitSample) -> Result<WaitSample, String> {
-        let Some(after) = sample.observation().cloned() else {
-            return Ok(sample);
-        };
-        let after = self.compose_current_observation(after)?;
-        let outcome = sample.outcome();
-        let effect_kind = sample.effect_kind().map(str::to_owned);
-        let mut composed = WaitSample::new(outcome, Some(after));
-        if let Some(effect_kind) = effect_kind {
-            composed = composed.with_effect_kind(effect_kind);
-        }
-        Ok(composed)
-    }
-
     pub(super) fn merge_current_expert_actions(
         &mut self,
         state_id: &str,
         generation: u64,
-    ) -> Result<(), String> {
-        let expert = self.expert_state()?;
+    ) -> Result<(), RuntimeV3ToolError> {
+        let (_, value) = self.call_expert_tool_classified_catalog(
+            STATE_TOOL,
+            json!({
+                "instance_id": self.config.instance_id,
+                "mcp_session_id": self.config.mcp_session_id
+            }),
+        )?;
+        let expert = RuntimeV4ExpertObservation::from_value(value).map_err(|error| {
+            RuntimeV3ToolError::Terminal(format!("Runtime-v4 expert state is invalid: {error}"))
+        })?;
         if expert.state_id() != state_id || expert.generation() != generation {
-            return Err(String::from(
+            return Err(RuntimeV3ToolError::Terminal(String::from(
                 "Runtime-v4 expert catalog does not match the Runtime-v3 observation",
-            ));
+            )));
         }
         let normal_actions = self
             .current_actions
             .clone()
-            .ok_or_else(|| String::from("normal catalog is unavailable for expert merge"))?;
+            .ok_or_else(|| {
+                RuntimeV3ToolError::Terminal(String::from(
+                    "normal catalog is unavailable for expert merge",
+                ))
+            })?;
         let normal_payloads = self.payloads.clone();
-        let (actions, payloads) = merge_actions(&normal_actions, &normal_payloads, &expert)?;
+        let (actions, payloads) = merge_actions(&normal_actions, &normal_payloads, &expert)
+            .map_err(RuntimeV3ToolError::Terminal)?;
         self.current_actions = Some(actions);
         self.payloads = payloads;
         Ok(())
@@ -274,4 +302,4 @@ impl RuntimeV3Port {
     }
 }
 
-
+include!("runtime_v4_expert_port_transport_composition.rs");

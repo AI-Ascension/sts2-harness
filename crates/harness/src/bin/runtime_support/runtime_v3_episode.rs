@@ -10,7 +10,7 @@ use sts2_harness::{
 
 use super::super::mcp::validate_or_release_allocation;
 use super::super::runtime_v3_telemetry::ObservationSource;
-use super::{OperationRecord, RuntimeV3Port, parse, wire};
+use super::{OperationRecord, RuntimeV3Port, RuntimeV3ToolError, parse, wire};
 
 const MAX_OPERATIONS: usize = 1_024;
 
@@ -91,9 +91,19 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         if let Value::Object(object) = &mut arguments {
             object.insert(String::from("state_id"), Value::String(state_id.to_owned()));
         }
-        let value = self
-            .call_tool("sts2.legal_actions", arguments)
-            .map_err(|error| wire::port_error("legal_actions_failed", error, false))?;
+        let value = match self.call_tool_classified("sts2.legal_actions", arguments) {
+            Ok(value) => value,
+            Err(RuntimeV3ToolError::Transient(error)) => {
+                return Err(wire::port_error(
+                    "catalog_reobserve",
+                    format!("legal-action catalog transport failed: {error}"),
+                    true,
+                ));
+            }
+            Err(RuntimeV3ToolError::Terminal(error)) => {
+                return Err(wire::port_error("legal_actions_failed", error, false));
+            }
+        };
         if wire::catalog_reobserve(&value) {
             return Err(wire::port_error(
                 "catalog_reobserve",
@@ -108,15 +118,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         self.current_actions = Some(actions.clone());
         self.payloads = payloads;
         if self.is_expert_profile() {
-            self.merge_current_expert_actions(state_id, generation)
-                .map_err(|error| wire::port_error("expert_legal_actions_invalid", error, false))?;
-            return self.current_actions.clone().ok_or_else(|| {
-                wire::port_error(
-                    "expert_legal_actions_invalid",
-                    "expert catalog was not installed",
-                    false,
-                )
-            });
+            return self.expert_catalog(state_id, generation);
         }
         Ok(actions)
     }
