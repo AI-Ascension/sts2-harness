@@ -151,15 +151,22 @@ fn malformed_persisted_operation_fails_before_gateway_mcp_or_provider_calls() ->
 {
     let fixture = Fixture::new()?;
     seed_hostile_operation(&fixture)?;
-    let output = run_child(fixture.command())?;
-    assert_failure_contains(&output, "cannot inspect runtime-v3 execution state")?;
-    fixture.assert_no_gateway_connection()?;
-    if fixture.counter.exists() {
-        return Err(String::from(
-            "malformed startup state invoked an MCP or provider boundary",
-        ));
-    }
-    Ok(())
+    assert_hostile_startup_is_bounded(&fixture)
+}
+
+#[test]
+fn matching_digest_malformed_operation_fails_before_gateway_mcp_or_provider_calls()
+-> Result<(), String> {
+    let fixture = Fixture::new()?;
+    seed_matching_digest_malformed_operation(&fixture)?;
+    assert_hostile_startup_is_bounded(&fixture)
+}
+
+#[test]
+fn mismatched_action_digest_fails_before_gateway_mcp_or_provider_calls() -> Result<(), String> {
+    let fixture = Fixture::new()?;
+    seed_mismatched_action_digest_operation(&fixture)?;
+    assert_hostile_startup_is_bounded(&fixture)
 }
 
 fn write_probe(path: &Path, marker: &str, counter: &Path) -> Result<(), String> {
@@ -232,6 +239,27 @@ fn fingerprint(
 }
 
 fn seed_hostile_operation(fixture: &Fixture) -> Result<(), String> {
+    seed_valid_operation(fixture)?;
+    rewrite_operation_payload(
+        fixture,
+        &vec![b'x'; sts2_harness::MAX_OPERATION_ACTION_BYTES + 1],
+        "payload-digest",
+    )
+}
+
+fn seed_matching_digest_malformed_operation(fixture: &Fixture) -> Result<(), String> {
+    seed_valid_operation(fixture)?;
+    let malformed = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn""#;
+    rewrite_operation_payload(fixture, malformed, &digest_bytes(malformed))
+}
+
+fn seed_mismatched_action_digest_operation(fixture: &Fixture) -> Result<(), String> {
+    seed_valid_operation(fixture)?;
+    let canonical = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}"#;
+    rewrite_operation_payload(fixture, canonical, &"0".repeat(64))
+}
+
+fn seed_valid_operation(fixture: &Fixture) -> Result<(), String> {
     let mut store = ExecutionStore::open(ExecutionStoreConfig::new(&fixture.store))
         .map_err(|error| format!("cannot open fixture store: {error}"))?;
     store
@@ -260,18 +288,35 @@ fn seed_hostile_operation(fixture: &Fixture) -> Result<(), String> {
     store
         .close()
         .map_err(|error| format!("cannot close fixture store: {error}"))?;
+    Ok(())
+}
+
+fn rewrite_operation_payload(
+    fixture: &Fixture,
+    payload: &[u8],
+    digest: &str,
+) -> Result<(), String> {
     let connection = Connection::open(&fixture.store)
         .map_err(|error| format!("cannot reopen fixture store: {error}"))?;
     connection
         .execute(
-            "UPDATE operations SET action_payload = ?1 WHERE operation_id = 'operation-hostile'",
-            params![SqlValue::Blob(vec![
-                b'x';
-                sts2_harness::MAX_OPERATION_ACTION_BYTES
-                    + 1
-            ])],
+            "UPDATE operations SET action_payload = ?1, payload_digest = ?2
+             WHERE operation_id = 'operation-hostile'",
+            params![SqlValue::Blob(payload.to_vec()), digest],
         )
         .map_err(|error| format!("cannot poison operation: {error}"))?;
+    Ok(())
+}
+
+fn assert_hostile_startup_is_bounded(fixture: &Fixture) -> Result<(), String> {
+    let output = run_child(fixture.command())?;
+    assert_failure_contains(&output, "cannot inspect runtime-v3 execution state")?;
+    fixture.assert_no_gateway_connection()?;
+    if fixture.counter.exists() {
+        return Err(String::from(
+            "hostile startup state invoked an MCP or provider boundary",
+        ));
+    }
     Ok(())
 }
 

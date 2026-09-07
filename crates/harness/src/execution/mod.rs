@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod action_envelope;
 mod schema;
 mod store_checkpoint;
 mod store_completion;

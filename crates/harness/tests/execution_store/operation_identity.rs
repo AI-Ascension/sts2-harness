@@ -189,6 +189,36 @@ fn action_identity_rejects_digest_size_and_catalog_mismatches() {
     );
 }
 
+#[test]
+fn action_identity_requires_a_bounded_canonical_unique_envelope() {
+    let current = lineage("attempt-envelope", "trajectory-envelope");
+    let cases: &[&[u8]] = &[
+        br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn""#,
+        br#"{"action":{"kind":"end_turn","kind":"end_turn"},"action_id":"combat.end-turn"}"#,
+        br#"{"action":{"kind":"end_turn"},"action_id":"combat.other"}"#,
+        br#"{ "action": {"kind":"end_turn"}, "action_id":"combat.end-turn" }"#,
+    ];
+    for (index, payload) in cases.iter().enumerate() {
+        let digest = result_digest(payload);
+        assert!(
+            OperationIntent::new_with_action(
+                current.clone(),
+                format!("operation-envelope-{index}"),
+                "state-envelope",
+                1,
+                "combat.end-turn",
+                "end_turn",
+                payload.to_vec(),
+                digest,
+                "input-envelope",
+                None,
+            )
+            .is_err(),
+            "hostile action envelope case {index} must be rejected",
+        );
+    }
+}
+
 fn legacy_operation_database(name: &str) -> std::path::PathBuf {
     let database = path(name);
     let mut store =
@@ -221,6 +251,22 @@ fn poison_operation(database: &std::path::Path, kind: Option<&str>, payload: Sql
             "UPDATE operations SET action_kind = ?1, action_payload = ?2
              WHERE operation_id = 'operation-hostile'",
             params![kind, payload],
+        )
+        .expect("hostile operation row updates");
+}
+
+fn poison_operation_with_digest(
+    database: &std::path::Path,
+    kind: &str,
+    payload: &[u8],
+    digest: &str,
+) {
+    let connection = Connection::open(database).expect("database opens for hostile rewrite");
+    connection
+        .execute(
+            "UPDATE operations SET action_kind = ?1, action_payload = ?2, payload_digest = ?3
+             WHERE operation_id = 'operation-hostile'",
+            params![kind, SqlValue::Blob(payload.to_vec()), digest],
         )
         .expect("hostile operation row updates");
 }
@@ -277,4 +323,36 @@ fn operation_reads_reject_partial_legacy_action_identity_rows() {
         drop(store);
         remove_database(&database);
     }
+}
+
+#[test]
+fn operation_reads_reject_matching_digest_malformed_and_hash_mismatch_payloads() {
+    let malformed = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn""#;
+    let malformed_database = legacy_operation_database("matching-digest-malformed");
+    poison_operation_with_digest(
+        &malformed_database,
+        "end_turn",
+        malformed,
+        &result_digest(malformed),
+    );
+    let store =
+        ExecutionStore::open(ExecutionStoreConfig::new(&malformed_database)).expect("store opens");
+    assert!(matches!(
+        store.operation("operation-hostile"),
+        Err(sts2_harness::ExecutionStoreError::Corrupt)
+    ));
+    drop(store);
+    remove_database(&malformed_database);
+
+    let canonical = br#"{"action":{"kind":"end_turn"},"action_id":"end_turn"}"#;
+    let mismatch_database = legacy_operation_database("wrong-hash-action");
+    poison_operation_with_digest(&mismatch_database, "end_turn", canonical, &"0".repeat(64));
+    let store =
+        ExecutionStore::open(ExecutionStoreConfig::new(&mismatch_database)).expect("store opens");
+    assert!(matches!(
+        store.operation("operation-hostile"),
+        Err(sts2_harness::ExecutionStoreError::Corrupt)
+    ));
+    drop(store);
+    remove_database(&mismatch_database);
 }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::super::super::action_envelope::validate_canonical_action_envelope;
 use super::super::core::{ExecutionLineage, valid_id, valid_reference};
 use super::super::error::ExecutionStoreError;
 use sha2::Digest;
@@ -80,6 +81,7 @@ impl OperationIntent {
         input_digest: impl Into<String>,
         catalog_digest: Option<String>,
     ) -> Result<Self, ExecutionStoreError> {
+        let action_id = action_id.into();
         let action_kind = action_kind.into();
         let payload_digest = payload_digest.into();
         if action_payload.is_empty() || action_payload.len() > MAX_OPERATION_ACTION_BYTES {
@@ -87,6 +89,11 @@ impl OperationIntent {
         }
         let calculated = format!("{:x}", sha2::Sha256::digest(&action_payload));
         if calculated != payload_digest
+            || !validate_canonical_action_envelope(
+                &action_id,
+                &action_payload,
+                MAX_OPERATION_ACTION_BYTES,
+            )
             || !valid_reference(&action_kind)
             || catalog_digest
                 .as_deref()
@@ -99,7 +106,7 @@ impl OperationIntent {
             operation_id: operation_id.into(),
             state_id: state_id.into(),
             generation,
-            action_id: action_id.into(),
+            action_id,
             action_kind: Some(action_kind),
             action_payload: Some(action_payload),
             payload_digest,
