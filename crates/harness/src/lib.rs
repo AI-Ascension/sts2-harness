@@ -46,9 +46,10 @@ pub use evaluation::{
     EvaluationError, EvaluationReport, EvaluationSample, Evaluator, TerminalOutcome,
 };
 pub use exo::{
-    BoundDecision, Decision, DecisionError, ExoClient, ExoConfig, ExoDecisionRequest, ExoError,
+    BoundDecision, CodexEventAccounting, CodexEventError, CodexStreamStatus, CodexTokenUsage,
+    CodexUsageStatus, Decision, DecisionError, ExoClient, ExoConfig, ExoDecisionRequest, ExoError,
     ExoProvider, ExoSession, ExoTransport, ExoTransportError, SandboxError, SanitizedObservation,
-    parse_decision,
+    parse_codex_events, parse_decision,
 };
 pub use exo_process::{ExoProcessConfig, ExoProcessConfigError, ExoProcessTransport};
 pub use identity::{

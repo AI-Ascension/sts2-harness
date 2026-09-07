@@ -7,6 +7,13 @@ Set `STS2_PROVIDER_KIND=openai-astra` and pin the bridge executable SHA-256 as b
 The bridge uses ephemeral, read-only Codex calls with shell, apps, browser, and delegation
 disabled, a strict legal-action JSON schema, and a 90-second execution deadline plus a
 5-second termination grace. Temporary schema/output files are removed after each decision.
+It also requests Codex's JSONL event stream and retains only bounded provider metadata in memory.
+When `STS2_PROVIDER_ACCOUNTING_PATH` is supplied through the explicit Exo inherited-environment
+allowlist, one mode-0600 JSONL sidecar row is appended per bridge call. The row contains the
+Codex thread ID, harness model-execution ID, request/decision SHA-256 values, bounded event
+counters, and reported token fields. It never contains prompts, event text, rationale, or model
+output. If `turn.completed.usage` is absent, `usage_status` is `unavailable`; a malformed or
+truncated event stream is rejected and cannot be reported as usage.
 No user Codex configuration or repository instructions are loaded into the game decision.
 
 Both bridges support `--describe` with provider/model identity. The mod-owned session launcher

@@ -61,12 +61,14 @@ fn unknown_outcome_is_reconciled_without_a_second_action_shape()
 }
 
 #[test]
-fn action_parser_rejects_duplicate_keys_and_foreign_operations() {
+fn action_parser_rejects_duplicate_keys_and_foreign_operations()
+-> Result<(), Box<dyn std::error::Error>> {
     let duplicate = br#"{"protocol_version":"runtime-v4-expert-action","protocol_version":"runtime-v4-expert-action"}"#;
     assert!(RuntimeV4ExpertActionRequest::parse(duplicate).is_err());
     let mut foreign = settled_value();
     foreign["operation_id"] = json!("other-operation");
-    let request = RuntimeV4ExpertActionRequest::from_value(request_value()).unwrap();
-    let result = RuntimeV4ExpertActionResult::from_value(foreign).unwrap();
+    let request = RuntimeV4ExpertActionRequest::from_value(request_value())?;
+    let result = RuntimeV4ExpertActionResult::from_value(foreign)?;
     assert!(result.matches_request(&request).is_err());
+    Ok(())
 }
