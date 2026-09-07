@@ -177,6 +177,52 @@ pub(super) const fn action_kind_name(kind: ActionKind) -> &'static str {
     }
 }
 
+/// Reconstructs the semantic kind for an operation loaded from the durable ledger.  The
+/// operation record intentionally stores the stable host action identity, not its payload.  Only
+/// identities with an unambiguous reviewed prefix may be resumed; an unfamiliar identity fails
+/// closed instead of guessing a mutation kind.
+pub(super) fn action_kind_for_id(action_id: &str) -> Option<ActionKind> {
+    let normalized = action_id.to_ascii_lowercase();
+    let has = |values: &[&str]| values.iter().any(|value| normalized.contains(value));
+    if has(&["start_run", "run.start"]) {
+        Some(ActionKind::StartRun)
+    } else if has(&["select_map_node", "map.select"]) {
+        Some(ActionKind::SelectMapNode)
+    } else if has(&["play_card", "play-card", "combat.play"]) {
+        Some(ActionKind::PlayCard)
+    } else if has(&["end_turn", "end-turn"]) {
+        Some(ActionKind::EndTurn)
+    } else if has(&["choose_reward", "reward.choose"]) {
+        Some(ActionKind::ChooseReward)
+    } else if has(&["skip_reward", "reward.skip"]) {
+        Some(ActionKind::SkipReward)
+    } else if has(&["confirm_victory", "victory.confirm"]) {
+        Some(ActionKind::ConfirmVictory)
+    } else if has(&["confirm_selection", "selection.confirm"]) {
+        Some(ActionKind::ConfirmSelection)
+    } else if has(&["cancel_selection", "selection.cancel"]) {
+        Some(ActionKind::CancelSelection)
+    } else if has(&["shop_purchase", "shop.purchase"]) {
+        Some(ActionKind::ShopPurchase)
+    } else if has(&["shop_remove", "shop.remove"]) {
+        Some(ActionKind::ShopRemove)
+    } else if has(&["event_choice", "event.choose"]) {
+        Some(ActionKind::EventChoice)
+    } else if has(&["select_card", "card.select"]) {
+        Some(ActionKind::SelectCard)
+    } else if has(&["save_quit", "save-quit"]) {
+        Some(ActionKind::SaveQuit)
+    } else if normalized == "proceed" || normalized.starts_with("proceed-") {
+        Some(ActionKind::Proceed)
+    } else if normalized == "rest" || normalized.starts_with("rest-") {
+        Some(ActionKind::Rest)
+    } else if normalized == "smith" || normalized.starts_with("smith-") {
+        Some(ActionKind::Smith)
+    } else {
+        None
+    }
+}
+
 pub(super) const fn stage_name(stage: sts2_harness::EpisodeStage) -> &'static str {
     match stage {
         sts2_harness::EpisodeStage::Setup => "setup",

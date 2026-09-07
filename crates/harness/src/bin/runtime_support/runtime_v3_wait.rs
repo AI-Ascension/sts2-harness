@@ -3,7 +3,9 @@
 use super::{RuntimeV3Port, parse, recording};
 use serde_json::json;
 use std::time::{Duration, Instant};
-use sts2_harness::{BarrierError, BarrierPort, EpisodeRuntimePort, WaitOutcome, WaitSample};
+use sts2_harness::{
+    BarrierError, BarrierPort, EpisodeRuntimePort, OperationState, WaitOutcome, WaitSample,
+};
 
 impl BarrierPort for RuntimeV3Port {
     fn wait_for_transition(
@@ -64,7 +66,7 @@ impl BarrierPort for RuntimeV3Port {
 }
 
 impl RuntimeV3Port {
-    fn poll_operation(
+    pub(super) fn poll_operation(
         &mut self,
         operation_id: &str,
         wait_for_millis: u32,
@@ -89,6 +91,49 @@ impl RuntimeV3Port {
             .map_err(|_| BarrierError::PortFailure)?;
         self.install_response(&value, "wait_response")
             .map_err(|_| BarrierError::PortFailure)?;
+        if let Some(durable) = &self.durable {
+            let state = durable
+                .operation_state(operation_id)
+                .map_err(|_| BarrierError::PortFailure)?;
+            match sample.outcome() {
+                WaitOutcome::Successor | WaitOutcome::SameStateMutation => {
+                    if matches!(
+                        state,
+                        OperationState::Unknown | OperationState::IntentRecorded
+                    ) {
+                        durable
+                            .reconcile_response(operation_id, OperationState::Settled, &value)
+                            .map_err(|_| BarrierError::PortFailure)?;
+                    } else if state != OperationState::Reconciled {
+                        durable
+                            .operation_result(
+                                operation_id,
+                                &durable
+                                    .operation_payload_digest(operation_id)
+                                    .map_err(|_| BarrierError::InvalidOperation)?,
+                                OperationState::Settled,
+                                Some(&value),
+                            )
+                            .map_err(|_| BarrierError::PortFailure)?;
+                    }
+                }
+                WaitOutcome::RecoveryRequired => {
+                    if state == OperationState::Accepted {
+                        durable
+                            .operation_result(
+                                operation_id,
+                                &durable
+                                    .operation_payload_digest(operation_id)
+                                    .map_err(|_| BarrierError::InvalidOperation)?,
+                                OperationState::Unknown,
+                                None,
+                            )
+                            .map_err(|_| BarrierError::PortFailure)?;
+                    }
+                }
+                WaitOutcome::Timeout => {}
+            }
+        }
         recording::wait(
             operation_id,
             &action_id,
