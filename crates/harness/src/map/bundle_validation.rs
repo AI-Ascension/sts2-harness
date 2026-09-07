@@ -19,6 +19,7 @@ pub enum MapBundleError {
     Canonical(CanonicalError),
     Analysis(MapAnalysisError),
     Graph(MapGraphError),
+    ProtocolSnapshot(String),
     SnapshotSchema(&'static str),
     Storage(String),
 }
@@ -40,6 +41,9 @@ impl fmt::Display for MapBundleError {
             Self::Canonical(error) => error.fmt(formatter),
             Self::Analysis(error) => error.fmt(formatter),
             Self::Graph(error) => error.fmt(formatter),
+            Self::ProtocolSnapshot(error) => {
+                write!(formatter, "runtime-map-v1 snapshot is invalid: {error}")
+            }
             Self::SnapshotSchema(field) => {
                 write!(formatter, "snapshot schema field {field} is invalid")
             }

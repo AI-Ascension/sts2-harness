@@ -66,9 +66,13 @@ pub use map::{
     MapCompleteness, MapEdge, MapEvaluationError, MapFeed, MapFeedEntry, MapGraphError, MapNode,
     MapNodeStatus, MapViewBundle, NavigationCacheKey, NodeMetrics, PublicationReceipt,
     RUNTIME_MAP_SCHEMA_DIGEST, RUNTIME_MAP_UNRENDERED_DECISION, RenderCacheKey, RoutePolicy,
-    RouteScore, RuntimeMapBundleIdentity, SyntheticDecision, SyntheticEvaluationReport,
-    SyntheticEvaluationRow, SyntheticEvaluationRunner, SyntheticGraphTask, TerminalPathCount,
-    TopologyCacheKey, TopologySummary, ValidatedMapGraph, build_unrendered_runtime_map_bundle,
+    RouteScore, RuntimeMapBundleIdentity, SYNTHETIC_MAX_DECISIONS, SYNTHETIC_MAX_EDGES,
+    SYNTHETIC_MAX_IDENTIFIER_BYTES, SYNTHETIC_MAX_LATENCY_UNITS, SYNTHETIC_MAX_NODES,
+    SYNTHETIC_MAX_REQUEST_BYTES, SYNTHETIC_MAX_ROUTE_NODES, SYNTHETIC_MAX_ROUTES,
+    SYNTHETIC_MAX_TASKS, SyntheticDecision, SyntheticEvaluationReport, SyntheticEvaluationRow,
+    SyntheticEvaluationRunner, SyntheticGraphTask, TerminalPathCount, TopologyCacheKey,
+    TopologySummary, ValidatedMapGraph, build_unrendered_runtime_map_bundle,
+    run_bounded_synthetic_context_matrix, synthetic_action_id, synthetic_context_bytes,
 };
 pub use memory::{DecisionMemory, MemoryAppend, MemoryError};
 pub use poc::{

@@ -13,6 +13,7 @@ path = "src/lib.rs"
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+sts2-protocol.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]

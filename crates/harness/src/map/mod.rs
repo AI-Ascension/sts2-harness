@@ -9,6 +9,7 @@ mod bundle_validation;
 mod cache;
 mod canonical;
 mod evaluation;
+mod evaluation_matrix;
 mod feed;
 mod graph;
 mod wire;
@@ -36,9 +37,13 @@ pub use cache::{
     TopologyCacheKey,
 };
 pub use evaluation::{
-    ContextMode, MapEvaluationError, SyntheticDecision, SyntheticEvaluationReport,
-    SyntheticEvaluationRow, SyntheticEvaluationRunner, SyntheticGraphTask,
+    ContextMode, MapEvaluationError, SYNTHETIC_MAX_DECISIONS, SYNTHETIC_MAX_EDGES,
+    SYNTHETIC_MAX_IDENTIFIER_BYTES, SYNTHETIC_MAX_LATENCY_UNITS, SYNTHETIC_MAX_NODES,
+    SYNTHETIC_MAX_REQUEST_BYTES, SYNTHETIC_MAX_ROUTE_NODES, SYNTHETIC_MAX_ROUTES,
+    SYNTHETIC_MAX_TASKS, SyntheticDecision, SyntheticEvaluationReport, SyntheticEvaluationRow,
+    SyntheticEvaluationRunner, SyntheticGraphTask, synthetic_action_id,
 };
+pub use evaluation_matrix::{run_bounded_synthetic_context_matrix, synthetic_context_bytes};
 pub use feed::{MAP_FEED_FILE, MAP_FEED_VERSION, MapFeed, MapFeedEntry};
 pub use graph::{
     LegalDestination, MAP_MAX_CATEGORY_BYTES, MAP_MAX_EDGES, MAP_MAX_IDENTIFIER_BYTES,

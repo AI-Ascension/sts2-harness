@@ -712,6 +712,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "sts2-protocol",
  "tokio",
 ]
 
@@ -722,6 +723,16 @@ dependencies = [
  "jsonschema",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "sts2-protocol"
+version = "0.0.0"
+source = "git+https://github.com/AI-Ascension/sts2-protocol.git?rev=d9ffb190ad8990e15f43d7992581dcb2d60b1971#d9ffb190ad8990e15f43d7992581dcb2d60b1971"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
