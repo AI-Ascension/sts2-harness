@@ -14,7 +14,10 @@ impl RuntimeV3Port {
         if !self.allocated || self.released {
             return Err(RecoveryError::PortFailure);
         }
-        if self.mcp.as_ref().is_some_and(|mcp| !mcp.is_closed()) {
+        let normal_ready = self.mcp.as_ref().is_some_and(|mcp| !mcp.is_closed());
+        let expert_ready = !self.is_expert_profile()
+            || self.expert_mcp.as_ref().is_some_and(|mcp| !mcp.is_closed());
+        if normal_ready && expert_ready {
             return Ok(());
         }
         if self.reconnect_attempts >= 2 {
@@ -24,9 +27,26 @@ impl RuntimeV3Port {
         if let Some(mut previous) = self.mcp.take() {
             previous.close().map_err(|_| RecoveryError::PortFailure)?;
         }
-        let mut mcp = McpProcess::spawn(&self.config).map_err(|_| RecoveryError::PortFailure)?;
-        wire::initialize_mcp(&mut mcp).map_err(|_| RecoveryError::PortFailure)?;
+        if let Some(mut previous) = self.expert_mcp.take() {
+            previous.close().map_err(|_| RecoveryError::PortFailure)?;
+        }
+        let normal_profile = if self.is_expert_profile() {
+            "runtime-v3-gameplay"
+        } else {
+            self.config.runtime_profile.as_str()
+        };
+        let mut mcp = McpProcess::spawn_profile(&self.config, normal_profile)
+            .map_err(|_| RecoveryError::PortFailure)?;
+        wire::initialize_mcp_profile(&mut mcp, normal_profile)
+            .map_err(|_| RecoveryError::PortFailure)?;
         self.mcp = Some(mcp);
+        if self.is_expert_profile() {
+            let mut expert = McpProcess::spawn_profile(&self.config, "runtime-v4-expert")
+                .map_err(|_| RecoveryError::PortFailure)?;
+            wire::initialize_mcp_profile(&mut expert, "runtime-v4-expert")
+                .map_err(|_| RecoveryError::PortFailure)?;
+            self.expert_mcp = Some(expert);
+        }
         let _ = self.telemetry.recovery(
             RecoveryKind::Reconnect,
             None,
@@ -46,7 +66,13 @@ impl RecoveryPort for RuntimeV3Port {
             .map_err(|_| RecoveryError::PortFailure)?;
         let parsed = parse::observation(&value, "reobserve_response", &self.config)
             .map_err(|_| RecoveryError::PortFailure)?;
-        let observation = self.install(parsed);
+        let baseline = self.install(parsed);
+        let observation = if self.is_expert_profile() {
+            self.compose_current_observation(baseline)
+                .map_err(|_| RecoveryError::PortFailure)?
+        } else {
+            baseline
+        };
         let _ = self
             .telemetry
             .observation(ObservationSource::Reobserve, &observation);
@@ -67,6 +93,20 @@ impl RecoveryPort for RuntimeV3Port {
             .cloned()
             .ok_or(RecoveryError::InvalidOperation)?;
         self.reconnect_for_recovery()?;
+        if self.is_expert_profile() && record.action.kind() == sts2_harness::ActionKind::UsePotion {
+            let receipt = self
+                .reconcile_expert_operation(operation_id)
+                .map_err(|_| RecoveryError::PortFailure)?;
+            super::recording::receipt(&receipt, record.generation, &self.telemetry);
+            let _ = self.telemetry.recovery(
+                RecoveryKind::Reconcile,
+                Some(operation_id),
+                self.reconnect_attempts,
+                "success",
+                None,
+            );
+            return Ok(receipt);
+        }
         let value = self
             .call_tool(
                 "sts2.recover",
@@ -92,6 +132,12 @@ impl RecoveryPort for RuntimeV3Port {
         .map_err(|_| RecoveryError::PortFailure)?;
         self.install_response(&value, "recover_response")
             .map_err(|_| RecoveryError::PortFailure)?;
+        let receipt = if self.is_expert_profile() {
+            self.compose_receipt_after(receipt)
+                .map_err(|_| RecoveryError::PortFailure)?
+        } else {
+            receipt
+        };
         super::recording::receipt(&receipt, record.generation, &self.telemetry);
         let _ = self.telemetry.recovery(
             RecoveryKind::Reconcile,

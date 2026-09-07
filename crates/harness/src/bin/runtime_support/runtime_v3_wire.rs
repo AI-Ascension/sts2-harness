@@ -6,8 +6,9 @@ use sts2_harness::ActionKind;
 use super::mcp::McpProcess;
 
 const CATALOG_REVISION: &str = "runtime-v3-gameplay-mcp";
+const EXPERT_CATALOG_REVISION: &str = "runtime-v4-expert-mcp";
 
-pub(super) fn initialize_mcp(mcp: &mut McpProcess) -> Result<(), String> {
+pub(super) fn initialize_mcp_profile(mcp: &mut McpProcess, profile: &str) -> Result<(), String> {
     let initialize = rpc_call(
         mcp,
         1,
@@ -15,14 +16,14 @@ pub(super) fn initialize_mcp(mcp: &mut McpProcess) -> Result<(), String> {
         json!({
             "protocolVersion": "2025-06-18",
             "capabilities": {},
-            "clientInfo": {"name": "sts2-harness-runtime-v3", "version": "0.0.0"}
+            "clientInfo": {"name": "sts2-harness-runtime", "version": profile}
         }),
     )?;
     if initialize.get("result").is_none() {
         return Err(String::from("MCP initialize omitted result"));
     }
     let catalog = rpc_call(mcp, 2, "tools/list", json!({}))?;
-    validate_catalog(&catalog)
+    validate_catalog(&catalog, profile)
 }
 
 pub(super) fn rpc_call(
@@ -59,6 +60,7 @@ pub(super) fn rpc_call(
         // envelope for the caller's full identity/schema validation and reconciliation.
         if method != "tools/call"
             || !(has_gameplay_envelope(&response)
+                || has_expert_action_envelope(&response)
                 || (catalog_read && has_catalog_reobserve(&response, id)))
         {
             return Err(format!("MCP {method} returned a tool error"));
@@ -96,6 +98,13 @@ fn has_gameplay_envelope(response: &Value) -> bool {
         .is_some_and(|value| value["protocol_version"] == "runtime-v3-gameplay")
 }
 
+fn has_expert_action_envelope(response: &Value) -> bool {
+    response["result"]["content"][0]["text"]
+        .as_str()
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .is_some_and(|value| value["protocol_version"] == "runtime-v4-expert-action")
+}
+
 fn request_timeout(method: &str, params: &Value) -> Result<std::time::Duration, String> {
     let wait = if method == "tools/call" && params["name"] == "sts2.wait_for_transition" {
         params["arguments"]["wait_for_millis"]
@@ -108,25 +117,39 @@ fn request_timeout(method: &str, params: &Value) -> Result<std::time::Duration, 
     Ok(std::time::Duration::from_millis(wait + 5_000))
 }
 
-fn validate_catalog(response: &Value) -> Result<(), String> {
+fn validate_catalog(response: &Value, profile: &str) -> Result<(), String> {
     let result = response
         .get("result")
         .ok_or_else(|| String::from("MCP tools/list omitted result"))?;
-    if result.get("revision").and_then(Value::as_str) != Some(CATALOG_REVISION) {
+    let (revision, expected): (&str, &[&str]) = match profile {
+        "runtime-v3-gameplay" => (
+            CATALOG_REVISION,
+            &[
+                "sts2.observe",
+                "sts2.legal_actions",
+                "sts2.dispatch_action",
+                "sts2.wait_for_transition",
+                "sts2.reobserve",
+                "sts2.recover",
+            ],
+        ),
+        "runtime-v4-expert" => (
+            EXPERT_CATALOG_REVISION,
+            &[
+                "sts2.expert_state",
+                "sts2.expert_action",
+                "sts2.expert_reconcile",
+            ],
+        ),
+        _ => return Err(String::from("MCP profile is unsupported")),
+    };
+    if result.get("revision").and_then(Value::as_str) != Some(revision) {
         return Err(String::from("MCP catalog is not runtime-v3-gameplay-mcp"));
     }
     let tools = result
         .get("tools")
         .and_then(Value::as_array)
         .ok_or_else(|| String::from("MCP catalog omitted tools"))?;
-    let expected = [
-        "sts2.observe",
-        "sts2.legal_actions",
-        "sts2.dispatch_action",
-        "sts2.wait_for_transition",
-        "sts2.reobserve",
-        "sts2.recover",
-    ];
     if tools.len() != expected.len()
         || tools
             .iter()
@@ -158,8 +181,10 @@ pub(super) fn combine_cleanup(
 pub(super) const fn action_kind_name(kind: ActionKind) -> &'static str {
     match kind {
         ActionKind::StartRun => "start_run",
+        ActionKind::SelectCharacter => "select_character",
         ActionKind::SelectMapNode => "select_map_node",
         ActionKind::PlayCard => "play_card",
+        ActionKind::UsePotion => "use_potion",
         ActionKind::EndTurn => "end_turn",
         ActionKind::ChooseReward => "choose_reward",
         ActionKind::SkipReward => "skip_reward",
@@ -169,6 +194,7 @@ pub(super) const fn action_kind_name(kind: ActionKind) -> &'static str {
         ActionKind::ShopPurchase => "shop_purchase",
         ActionKind::ShopRemove => "shop_remove",
         ActionKind::Rest => "rest",
+        ActionKind::RestOption => "rest_option",
         ActionKind::Smith => "smith",
         ActionKind::EventChoice => "event_choice",
         ActionKind::SelectCard => "select_card",

@@ -15,7 +15,10 @@ mod v1_projection;
 pub(crate) use config::RuntimeConfig;
 
 pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
-    if config.runtime_profile == "runtime-v3-gameplay" {
+    if matches!(
+        config.runtime_profile.as_str(),
+        "runtime-v3-gameplay" | "runtime-v4-expert"
+    ) {
         runtime_v3::run(config)
     } else {
         mcp::run(config)

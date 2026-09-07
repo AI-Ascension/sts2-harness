@@ -21,6 +21,8 @@ use super::runtime_v3_wire as wire;
 
 #[path = "runtime_v3_episode.rs"]
 mod episode;
+#[path = "runtime_v4_expert_port.rs"]
+mod expert;
 #[path = "runtime_v3_ledger.rs"]
 mod ledger;
 #[path = "runtime_v3_recording.rs"]
@@ -41,6 +43,7 @@ mod episode_replay;
 mod lifecycle_tests;
 
 pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
+    let runtime_profile = config.runtime_profile.clone();
     let settings = RuntimeV3Settings::from_environment()?;
     let telemetry_context = TelemetryContext::new(TelemetryContextInput {
         run_id: &config.run_id,
@@ -220,7 +223,7 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     println!(
         "{}",
         serde_json::to_string(&json!({
-            "protocol": "runtime-v3-gameplay",
+            "protocol": runtime_profile,
             "status": "complete",
             "terminal_stage": wire::stage_name(report.terminal_stage()),
             "steps": report.steps(),
@@ -237,9 +240,11 @@ pub(super) struct RuntimeV3Port {
     config: RuntimeConfig,
     gateway: GatewayClient,
     mcp: Option<McpProcess>,
+    expert_mcp: Option<McpProcess>,
     allocated: bool,
     released: bool,
     next_rpc_id: u64,
+    expert_next_rpc_id: u64,
     generation: u64,
     current_state: Option<String>,
     current_actions: Option<EpisodeLegalActionSet>,

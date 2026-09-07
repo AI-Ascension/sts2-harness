@@ -32,7 +32,18 @@ impl McpProcess {
         Self::spawn_command(Self::configured_command(config), EXCHANGE_TIMEOUT)
     }
 
+    pub(super) fn spawn_profile(config: &RuntimeConfig, profile: &str) -> Result<Self, String> {
+        Self::spawn_command(
+            Self::configured_command_for_profile(config, profile),
+            EXCHANGE_TIMEOUT,
+        )
+    }
+
     fn configured_command(config: &RuntimeConfig) -> Command {
+        Self::configured_command_for_profile(config, &config.runtime_profile)
+    }
+
+    fn configured_command_for_profile(config: &RuntimeConfig, profile: &str) -> Command {
         let mut command = Command::new(&config.mcp_binary);
         command.env_clear();
         for name in ["PATH", "SystemRoot", "TEMP", "TMP"] {
@@ -43,7 +54,7 @@ impl McpProcess {
         command
             .env("STS2_GATEWAY_ADDR", &config.gateway_address)
             .env("STS2_GATEWAY_TOKEN", &config.gateway_token)
-            .env("STS2_RUNTIME_PROFILE", &config.runtime_profile)
+            .env("STS2_RUNTIME_PROFILE", profile)
             .env("STS2_INSTANCE_ID", &config.instance_id)
             .env("STS2_CALLER_ID", &config.caller_id)
             .env("STS2_SESSION_ID", &config.session_id)

@@ -19,7 +19,15 @@ impl BarrierPort for RuntimeV3Port {
         let mut last_idle_sample = None;
         loop {
             let sample = if self.operations.contains_key(operation_id) {
-                self.poll_operation(operation_id, wait_for_millis)?
+                if self.is_expert_profile()
+                    && self.operations.get(operation_id).is_some_and(|record| {
+                        record.action.kind() == sts2_harness::ActionKind::UsePotion
+                    })
+                {
+                    self.poll_expert_operation(operation_id)?
+                } else {
+                    self.poll_operation(operation_id, wait_for_millis)?
+                }
             } else if operation_id.starts_with("episode-idle-")
                 || operation_id.starts_with("episode-wait-")
             {
@@ -64,6 +72,25 @@ impl BarrierPort for RuntimeV3Port {
 }
 
 impl RuntimeV3Port {
+    fn poll_expert_operation(&mut self, operation_id: &str) -> Result<WaitSample, BarrierError> {
+        let record = self
+            .operations
+            .get(operation_id)
+            .cloned()
+            .ok_or(BarrierError::InvalidOperation)?;
+        let sample = self
+            .wait_expert_operation(operation_id)
+            .map_err(|_| BarrierError::PortFailure)?;
+        recording::wait(
+            operation_id,
+            record.action.action_id(),
+            record.generation,
+            &sample,
+            &self.telemetry,
+        );
+        Ok(sample)
+    }
+
     fn poll_operation(
         &mut self,
         operation_id: &str,
@@ -89,6 +116,12 @@ impl RuntimeV3Port {
             .map_err(|_| BarrierError::PortFailure)?;
         self.install_response(&value, "wait_response")
             .map_err(|_| BarrierError::PortFailure)?;
+        let sample = if self.is_expert_profile() {
+            self.compose_wait_sample(sample)
+                .map_err(|_| BarrierError::PortFailure)?
+        } else {
+            sample
+        };
         recording::wait(
             operation_id,
             &action_id,

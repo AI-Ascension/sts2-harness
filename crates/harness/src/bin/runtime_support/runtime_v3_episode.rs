@@ -69,7 +69,13 @@ impl EpisodeRuntimePort for RuntimeV3Port {
             .map_err(|error| wire::port_error("observe_failed", error, false))?;
         let parsed = parse::observation(&value, "state_response", &self.config)
             .map_err(|error| wire::port_error("observe_invalid", error, false))?;
-        let observation = self.install(parsed);
+        let baseline = self.install(parsed);
+        let observation = if self.is_expert_profile() {
+            self.compose_current_observation(baseline)
+                .map_err(|error| wire::port_error("expert_observe_invalid", error, false))?
+        } else {
+            baseline
+        };
         let _ = self
             .telemetry
             .observation(ObservationSource::Observe, &observation);
@@ -101,6 +107,17 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         self.current_state = Some(actions.state_id().to_owned());
         self.current_actions = Some(actions.clone());
         self.payloads = payloads;
+        if self.is_expert_profile() {
+            self.merge_current_expert_actions(state_id, generation)
+                .map_err(|error| wire::port_error("expert_legal_actions_invalid", error, false))?;
+            return self.current_actions.clone().ok_or_else(|| {
+                wire::port_error(
+                    "expert_legal_actions_invalid",
+                    "expert catalog was not installed",
+                    false,
+                )
+            });
+        }
         Ok(actions)
     }
 
@@ -111,7 +128,10 @@ impl EpisodeRuntimePort for RuntimeV3Port {
     ) -> Result<TransitionReceipt, sts2_harness::PortError> {
         self.validate_current_action(identity, action)?;
         let payload = self.current_payload(action)?;
-        self.retain_operation(identity, action)?;
+        self.retain_operation(identity, action, &payload)?;
+        if self.is_expert_profile() && action.kind() == sts2_harness::ActionKind::UsePotion {
+            return self.dispatch_expert_action(identity, action, payload);
+        }
         let value = self
             .call_tool(
                 "sts2.dispatch_action",
@@ -138,6 +158,13 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         .map_err(|error| wire::port_error("dispatch_invalid", error, false))?;
         self.install_response(&value, "dispatch_action_response")
             .map_err(|error| wire::port_error("dispatch_observation_invalid", error, false))?;
+        let receipt = if self.is_expert_profile() {
+            self.compose_receipt_after(receipt).map_err(|error| {
+                wire::port_error("expert_dispatch_observation_invalid", error, false)
+            })?
+        } else {
+            receipt
+        };
         super::recording::receipt(&receipt, identity.generation, &self.telemetry);
         Ok(receipt)
     }
@@ -197,11 +224,13 @@ impl RuntimeV3Port {
         &mut self,
         identity: &ActionIdentity,
         action: &EpisodeLegalAction,
+        payload: &Value,
     ) -> Result<(), sts2_harness::PortError> {
         if let Some(existing) = self.operations.get(&identity.operation_id)
             && (existing.action != *action
                 || existing.generation != identity.generation
-                || existing.state_id != identity.state_id)
+                || existing.state_id != identity.state_id
+                || existing.payload != *payload)
         {
             return Err(wire::port_error(
                 "operation_conflict",
@@ -220,7 +249,7 @@ impl RuntimeV3Port {
         }
         self.operations
             .entry(identity.operation_id.clone())
-            .or_insert_with(|| OperationRecord::new(identity, action));
+            .or_insert_with(|| OperationRecord::new(identity, action, payload.clone()));
         Ok(())
     }
 }

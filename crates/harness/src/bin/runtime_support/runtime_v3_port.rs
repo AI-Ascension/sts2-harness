@@ -26,9 +26,11 @@ impl RuntimeV3Port {
             config,
             gateway,
             mcp: None,
+            expert_mcp: None,
             allocated: false,
             released: false,
             next_rpc_id: 1,
+            expert_next_rpc_id: 1,
             generation: 0,
             current_state: None,
             current_actions: None,
@@ -134,19 +136,52 @@ impl RuntimeV3Port {
     }
 
     fn launch_mcp(&mut self) -> Result<(), String> {
-        let mut mcp = match McpProcess::spawn(&self.config) {
+        let normal_profile = if self.is_expert_profile() {
+            "runtime-v3-gameplay"
+        } else {
+            self.config.runtime_profile.as_str()
+        };
+        let mut mcp = match McpProcess::spawn_profile(&self.config, normal_profile) {
             Ok(mcp) => mcp,
             Err(error) => {
                 let release = self.release_lease_inner();
                 return Err(wire::combine_cleanup(error, Ok(()), release));
             }
         };
-        if let Err(error) = wire::initialize_mcp(&mut mcp) {
+        if let Err(error) = wire::initialize_mcp_profile(&mut mcp, normal_profile) {
             let close = mcp.close();
             let release = self.release_lease_inner();
             return Err(wire::combine_cleanup(error, close, release));
         }
         self.mcp = Some(mcp);
+        if self.is_expert_profile() {
+            let mut expert = match McpProcess::spawn_profile(&self.config, "runtime-v4-expert") {
+                Ok(expert) => expert,
+                Err(error) => {
+                    let close = self
+                        .mcp
+                        .as_mut()
+                        .map_or(Ok(()), McpProcess::close);
+                    let release = self.release_lease_inner();
+                    return Err(wire::combine_cleanup(error, close, release));
+                }
+            };
+            if let Err(error) = wire::initialize_mcp_profile(&mut expert, "runtime-v4-expert") {
+                let expert_close = expert.close();
+                let normal_close = self
+                    .mcp
+                    .as_mut()
+                    .map_or(Ok(()), McpProcess::close);
+                let close = match (expert_close, normal_close) {
+                    (Ok(()), Ok(())) => Ok(()),
+                    (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+                    (Err(first), Err(second)) => Err(format!("{first}; {second}")),
+                };
+                let release = self.release_lease_inner();
+                return Err(wire::combine_cleanup(error, close, release));
+            }
+            self.expert_mcp = Some(expert);
+        }
         Ok(())
     }
 }
@@ -158,9 +193,19 @@ impl ShutdownPort for RuntimeV3Port {
     }
 
     fn close_mcp(&mut self) -> Result<(), ShutdownError> {
-        self.mcp.as_mut().map_or(Ok(()), |mcp| {
-            mcp.close().map_err(|_| ShutdownError::McpCloseFailed)
-        })
+        let mut failure = None;
+        if let Some(mcp) = self.expert_mcp.as_mut()
+            && mcp.close().is_err()
+        {
+            failure = Some(ShutdownError::McpCloseFailed);
+        }
+        if let Some(mcp) = self.mcp.as_mut()
+            && mcp.close().is_err()
+            && failure.is_none()
+        {
+            failure = Some(ShutdownError::McpCloseFailed);
+        }
+        failure.map_or(Ok(()), Err)
     }
 
     fn close_gateway(&mut self) -> Result<(), ShutdownError> {
