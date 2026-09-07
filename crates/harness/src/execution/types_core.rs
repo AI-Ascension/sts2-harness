@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use super::records::ExecutionStoreError;
+use super::error::ExecutionStoreError;
 use std::time::Duration;
 
 pub const RECOVERY_CONTRACT_VERSION: &str = "watchdog-recovery-v1";

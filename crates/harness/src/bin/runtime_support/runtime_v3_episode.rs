@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
-use sha2::Digest;
 use sts2_harness::{
     ActionIdentity, EpisodeLegalAction, EpisodeLegalActionSet, EpisodeObservation,
     EpisodeRuntimePort, OperationState, ShutdownPort, TransitionReceipt,
@@ -14,6 +13,12 @@ use super::super::runtime_v3_telemetry::ObservationSource;
 use super::{OperationRecord, RuntimeV3Port, parse, wire};
 
 const MAX_OPERATIONS: usize = 1_024;
+
+#[path = "runtime_v3_episode_actions.rs"]
+mod actions;
+#[cfg(test)]
+#[path = "runtime_v3_episode_tests.rs"]
+mod tests;
 
 impl EpisodeRuntimePort for RuntimeV3Port {
     fn launch(&mut self) -> Result<(), sts2_harness::PortError> {
@@ -246,126 +251,6 @@ impl EpisodeRuntimePort for RuntimeV3Port {
     }
 }
 
-impl RuntimeV3Port {
-    fn validate_current_action(
-        &self,
-        identity: &ActionIdentity,
-        action: &EpisodeLegalAction,
-    ) -> Result<(), sts2_harness::PortError> {
-        if self.current_state.as_deref() != Some(identity.state_id.as_str())
-            || self.generation != identity.generation
-            || self
-                .current_actions
-                .as_ref()
-                .and_then(|set| set.find(action.action_id()))
-                != Some(action)
-        {
-            return Err(wire::port_error(
-                "action_not_current",
-                "dispatch action is not bound to the current host catalog",
-                false,
-            ));
-        }
-        Ok(())
-    }
-
-    fn current_payload(
-        &self,
-        action: &EpisodeLegalAction,
-    ) -> Result<Value, sts2_harness::PortError> {
-        let payload = self
-            .payloads
-            .get(action.action_id())
-            .cloned()
-            .ok_or_else(|| {
-                wire::port_error(
-                    "action_payload_missing",
-                    "current legal action payload is unavailable",
-                    false,
-                )
-            })?;
-        if payload.get("kind").and_then(Value::as_str)
-            != Some(wire::action_kind_name(action.kind()))
-        {
-            return Err(wire::port_error(
-                "action_payload_mismatch",
-                "legal action kind changed",
-                false,
-            ));
-        }
-        Ok(payload)
-    }
-
-    fn retain_operation(
-        &mut self,
-        identity: &ActionIdentity,
-        action: &EpisodeLegalAction,
-    ) -> Result<String, sts2_harness::PortError> {
-        if let Some(existing) = self.operations.get(&identity.operation_id)
-            && (existing.action != *action
-                || existing.generation != identity.generation
-                || existing.state_id != identity.state_id)
-        {
-            return Err(wire::port_error(
-                "operation_conflict",
-                "operation identity conflicts",
-                false,
-            ));
-        }
-        if self.operations.len() >= MAX_OPERATIONS
-            && !self.operations.contains_key(&identity.operation_id)
-        {
-            return Err(wire::port_error(
-                "operation_capacity",
-                "operation ledger is full",
-                false,
-            ));
-        }
-        self.operations
-            .entry(identity.operation_id.clone())
-            .or_insert_with(|| OperationRecord::new(identity, action));
-        let payload = self.current_payload(action)?;
-        serde_json::to_vec(&payload)
-            .map(|bytes| format!("{:x}", sha2::Sha256::digest(bytes)))
-            .map_err(|error| wire::port_error("operation_digest_failed", error.to_string(), false))
-    }
-}
-
 fn legal_action_argument(action_id: &str, payload: Value) -> Value {
     json!({"action_id": action_id, "action": payload})
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{json, legal_action_argument};
-    use serde_json::Value;
-
-    #[test]
-    fn dispatch_preserves_the_complete_host_legal_action_reference()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let mut request: Value = serde_json::from_str(include_str!(
-            "../../../../../protocol-artifact/runtime-v3-gameplay/golden/dispatch-action-request.json"
-        ))?;
-        let schema: Value = serde_json::from_str(include_str!(
-            "../../../../../protocol-artifact/runtime-v3-gameplay/schema.json"
-        ))?;
-        let validator = jsonschema::validator_for(&schema)?;
-        let original_action = request["action"].clone();
-        let action_id = original_action["action_id"].as_str().ok_or("action ID")?;
-        let payload = original_action["action"].clone();
-        request["action"] = legal_action_argument(action_id, payload.clone());
-        assert_eq!(request["action"], original_action);
-        assert!(validator.is_valid(&request));
-        request["action"] = payload;
-        assert!(
-            !validator.is_valid(&request),
-            "bare payload must be rejected"
-        );
-        let card = json!({"kind": "play_card", "card_id": "c1", "target_id": null});
-        request["action"] = legal_action_argument("host-card-ref", card.clone());
-        assert_eq!(request["action"]["action_id"], "host-card-ref");
-        assert_eq!(request["action"]["action"], card);
-        assert!(validator.is_valid(&request));
-        Ok(())
-    }
 }
