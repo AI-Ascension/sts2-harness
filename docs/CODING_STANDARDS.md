@@ -63,3 +63,11 @@ Public items document behavior, errors, evidence level, and compatibility. A pla
 labeled planned; an unverified behavior includes a safe validation procedure. Imported or generated
 material records source, version/digest, license, generator, inputs, and retention permission.
 Never copy, vendor, transliterate, or use reference implementation symbols as a product plan.
+
+## Aggregate naming authority
+
+Use the aggregate [`NAMING_CONVENTIONS.md`](../../planning/naming_conventions/NAMING_CONVENTIONS.md)
+and [`naming-registry.yaml`](../../planning/naming_conventions/naming-registry.yaml) for owner
+prefixes, casing, identity namespaces, lifecycle vocabulary, evidence states, and protected
+external names. Harness lineage IDs remain distinct from gateway sessions, MCP requests, host
+requests, and domain identities.

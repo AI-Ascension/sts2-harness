@@ -122,7 +122,7 @@ impl ProviderPort for FakeProvider {
         }
         let output =
             ModelOutput::new(format!("fake:{}", request.prompt().as_str())).map_err(|error| {
-                ProviderError::new(error.code(), error.message(), error.retryable())
+                ProviderError::new(error.code(), error.message(), error.is_retryable())
             })?;
         let response = ModelResponse::new(
             request.execution_id(),
@@ -340,8 +340,8 @@ fn records_are_idempotent_and_replayable() -> Result<(), Box<dyn Error>> {
         IdempotencyKey::new("marker-1")?,
     )?;
 
-    assert!(first.inserted());
-    assert!(!duplicate.inserted());
+    assert!(first.was_inserted());
+    assert!(!duplicate.was_inserted());
     assert_eq!(first.record(), duplicate.record());
     assert_eq!(second.record().sequence(), 1);
     let report = harness.replay_episode(&episode)?;
@@ -373,7 +373,7 @@ fn artifact_metadata_is_lineage_bound() -> Result<(), Box<dyn Error>> {
     );
     let receipt = harness.publish_artifact(run_id, request)?;
 
-    assert!(receipt.published());
+    assert!(receipt.was_published());
     assert_eq!(receipt.metadata().owner_run(), run_id);
     assert_eq!(receipt.metadata().lineage().source_run(), run_id);
     assert_eq!(

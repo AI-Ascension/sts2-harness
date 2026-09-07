@@ -1,7 +1,7 @@
 # sts2-harness
 
 Status: Wave 2 codebase initialization. The target-owned harness package contains pure coordinator
-ports and deterministic fake-boundary tests; live product behavior remains runtime-unverified. This
+ports and deterministic fake-boundary tests; live product behavior remains unverified. This
 target is distinct from any legacy or reference checkout and contains no game files, model weights,
 datasets, provider credentials, or generated product artifacts.
 

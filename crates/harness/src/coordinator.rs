@@ -208,7 +208,7 @@ where
         );
         let outcome = self.storage.append(record).map_err(HarnessError::Storage)?;
         let active = self.active_episode_mut(episode)?;
-        if outcome.inserted() {
+        if outcome.was_inserted() {
             active.next_sequence = sequence + 1;
         }
         active
@@ -241,7 +241,7 @@ where
                     validate_response(&request, &response)?;
                     return Ok(crate::provider::model_result(request, response, attempts));
                 }
-                Err(error) if error.retryable() && attempts < retry_policy.max_attempts() => {}
+                Err(error) if error.is_retryable() && attempts < retry_policy.max_attempts() => {}
                 Err(error) => return Err(HarnessError::Provider(error)),
             }
         }

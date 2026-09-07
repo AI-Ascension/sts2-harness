@@ -30,16 +30,16 @@ impl fmt::Display for Component {
 pub struct PortError {
     code: &'static str,
     message: String,
-    retryable: bool,
+    is_retryable: bool,
 }
 
 impl PortError {
     #[must_use]
-    pub fn new(code: &'static str, message: impl Into<String>, retryable: bool) -> Self {
+    pub fn new(code: &'static str, message: impl Into<String>, is_retryable: bool) -> Self {
         Self {
             code,
             message: message.into(),
-            retryable,
+            is_retryable,
         }
     }
 
@@ -54,8 +54,8 @@ impl PortError {
     }
 
     #[must_use]
-    pub const fn retryable(&self) -> bool {
-        self.retryable
+    pub const fn is_retryable(&self) -> bool {
+        self.is_retryable
     }
 }
 
@@ -71,16 +71,16 @@ impl std::error::Error for PortError {}
 pub struct ProviderError {
     code: &'static str,
     message: String,
-    retryable: bool,
+    is_retryable: bool,
 }
 
 impl ProviderError {
     #[must_use]
-    pub fn new(code: &'static str, message: impl Into<String>, retryable: bool) -> Self {
+    pub fn new(code: &'static str, message: impl Into<String>, is_retryable: bool) -> Self {
         Self {
             code,
             message: message.into(),
-            retryable,
+            is_retryable,
         }
     }
 
@@ -90,8 +90,8 @@ impl ProviderError {
     }
 
     #[must_use]
-    pub const fn retryable(&self) -> bool {
-        self.retryable
+    pub const fn is_retryable(&self) -> bool {
+        self.is_retryable
     }
 }
 

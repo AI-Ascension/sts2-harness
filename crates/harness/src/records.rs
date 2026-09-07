@@ -204,7 +204,7 @@ impl Record {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppendOutcome {
     record: Record,
-    inserted: bool,
+    was_inserted: bool,
 }
 
 impl AppendOutcome {
@@ -214,15 +214,15 @@ impl AppendOutcome {
     }
 
     #[must_use]
-    pub const fn inserted(&self) -> bool {
-        self.inserted
+    pub const fn was_inserted(&self) -> bool {
+        self.was_inserted
     }
 
     #[must_use]
     pub fn inserted_record(record: Record) -> Self {
         Self {
             record,
-            inserted: true,
+            was_inserted: true,
         }
     }
 
@@ -230,7 +230,7 @@ impl AppendOutcome {
     pub fn duplicate_record(record: Record) -> Self {
         Self {
             record,
-            inserted: false,
+            was_inserted: false,
         }
     }
 }
