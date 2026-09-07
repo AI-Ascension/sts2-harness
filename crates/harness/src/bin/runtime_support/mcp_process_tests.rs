@@ -202,11 +202,15 @@ fn separate_calls_preserve_session_and_buffered_frames() -> Result<(), String> {
 #[cfg(unix)]
 fn full_duplex_does_not_deadlock_on_pipe_capacity() -> Result<(), String> {
     let mut process = shell(
-        "printf '%s' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"'; /usr/bin/head -c 60000 /dev/zero | /usr/bin/tr '\\000' x; printf '%s\\n' '\"}'; read first",
+        "printf '%s' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"'; /usr/bin/head -c 60000 /dev/zero | /usr/bin/tr '\\000' x; printf '%s\\n' '\"}'; read first; read second; printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}'",
     )?;
     process.timeout = Duration::from_secs(2);
     let result = process.call(1, "test", json!({"payload":"x".repeat(60000)}))?;
     assert_eq!(result["result"].as_str().map(str::len), Some(60000));
+    // The first response intentionally precedes draining the large request.
+    // A second exchange confirms that drain before measuring shutdown; shell
+    // parsing time belongs to the exchange budget, not the cleanup budget.
+    process.call(2, "drain-confirmed", json!({}))?;
     process.close()
 }
 
