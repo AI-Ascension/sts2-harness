@@ -1,20 +1,19 @@
 // SPDX-License-Identifier: MIT
 
-use std::io::Read;
+use std::io::{ErrorKind, Read};
 use std::os::unix::process::CommandExt;
-use std::process::{Child, Command, ExitStatus, Output, Stdio};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
-use std::thread::{self, JoinHandle};
+use std::process::{Child, ChildStderr, ChildStdout, Command, Output, Stdio};
+use std::thread;
 use std::time::{Duration, Instant};
+
+use rustix::event::{PollFd, PollFlags, Timespec, poll};
+use rustix::fs::{OFlags, fcntl_getfl, fcntl_setfl};
+use rustix::io::Errno;
+use rustix::process::{Pid, Signal, WaitId, WaitIdOptions, kill_process_group, waitid};
 
 const CHILD_TIMEOUT: Duration = Duration::from_secs(5);
 const TERMINATION_TIMEOUT: Duration = Duration::from_secs(1);
-const READER_JOIN_TIMEOUT: Duration = Duration::from_millis(250);
-const PROCESS_GROUP_COMMAND_TIMEOUT: Duration = Duration::from_millis(250);
-const PROCESS_GROUP_COMMAND_REAP_TIMEOUT: Duration = Duration::from_millis(250);
+const POLL_SLICE: Duration = Duration::from_millis(20);
 const MAX_CAPTURE_BYTES: usize = 64 * 1024;
 
 pub(super) fn run_child(command: Command) -> Result<Output, String> {
@@ -33,293 +32,346 @@ pub(super) fn run_child_with_timeout(
     let mut child = command
         .spawn()
         .map_err(|error| format!("cannot spawn runtime child: {error}"))?;
+    let child_pid = Pid::from_child(&child);
     let stdout = match child.stdout.take() {
         Some(stdout) => stdout,
         None => {
-            let cleanup = terminate_child(&mut child);
-            return Err(match cleanup {
-                Ok(()) => String::from("runtime child did not expose stdout"),
-                Err(error) => {
-                    format!("runtime child did not expose stdout; child cleanup failed: {error}")
-                }
-            });
+            return Err(abort_child(
+                &mut child,
+                child_pid,
+                "runtime child did not expose stdout",
+            ));
         }
     };
     let stderr = match child.stderr.take() {
         Some(stderr) => stderr,
         None => {
-            let cleanup = terminate_child(&mut child);
-            return Err(match cleanup {
-                Ok(()) => String::from("runtime child did not expose stderr"),
-                Err(error) => {
-                    format!("runtime child did not expose stderr; child cleanup failed: {error}")
-                }
-            });
-        }
-    };
-    let overflow = Arc::new(AtomicBool::new(false));
-    let stdout_reader = spawn_reader(stdout, "stdout", Arc::clone(&overflow));
-    let stderr_reader = spawn_reader(stderr, "stderr", Arc::clone(&overflow));
-    let status = match monitor_child(&mut child, &overflow, timeout) {
-        Ok(status) => status,
-        Err(reason) => {
-            let termination = terminate_child(&mut child);
-            let stdout_result = join_reader_bounded(stdout_reader, "stdout");
-            let stderr_result = join_reader_bounded(stderr_reader, "stderr");
-            return match (termination, stdout_result, stderr_result) {
-                (Err(cleanup), _, _) => Err(format!("{reason}; child cleanup failed: {cleanup}")),
-                (_, Err(reader), _) | (_, _, Err(reader)) => Err(format!("{reason}; {reader}")),
-                (Ok(()), Ok(_), Ok(_)) => Err(reason),
-            };
-        }
-    };
-    if let Err(cleanup) = terminate_child(&mut child) {
-        let _ = join_reader_bounded(stdout_reader, "stdout");
-        let _ = join_reader_bounded(stderr_reader, "stderr");
-        return Err(format!("child cleanup failed: {cleanup}"));
-    }
-    let stdout = join_reader_bounded(stdout_reader, "stdout")?;
-    let stderr = join_reader_bounded(stderr_reader, "stderr")?;
-    Ok(Output {
-        status,
-        stdout,
-        stderr,
-    })
-}
-
-fn spawn_reader<R>(
-    mut reader: R,
-    label: &'static str,
-    overflow: Arc<AtomicBool>,
-) -> JoinHandle<Result<Vec<u8>, String>>
-where
-    R: Read + Send + 'static,
-{
-    thread::spawn(move || {
-        let mut output = Vec::new();
-        let mut buffer = [0_u8; 8 * 1024];
-        loop {
-            let count = reader
-                .read(&mut buffer)
-                .map_err(|error| format!("runtime child {label} read failed: {error}"))?;
-            if count == 0 {
-                return Ok(output);
-            }
-            let Some(new_length) = output.len().checked_add(count) else {
-                overflow.store(true, Ordering::Release);
-                return Err(format!(
-                    "runtime child {label} output exceeded the capture bound"
-                ));
-            };
-            if new_length > MAX_CAPTURE_BYTES {
-                overflow.store(true, Ordering::Release);
-                return Err(format!(
-                    "runtime child {label} output exceeded the capture bound"
-                ));
-            }
-            output.extend_from_slice(&buffer[..count]);
-        }
-    })
-}
-
-fn join_reader_bounded(
-    reader: JoinHandle<Result<Vec<u8>, String>>,
-    label: &'static str,
-) -> Result<Vec<u8>, String> {
-    let deadline = Instant::now() + READER_JOIN_TIMEOUT;
-    while !reader.is_finished() {
-        if Instant::now() >= deadline {
-            drop(reader);
-            return Err(format!(
-                "runtime child {label} output reader did not finish after containment"
+            return Err(abort_child(
+                &mut child,
+                child_pid,
+                "runtime child did not expose stderr",
             ));
         }
-        thread::sleep(Duration::from_millis(2));
+    };
+    if let Err(error) = set_nonblocking(&stdout, "stdout") {
+        return Err(abort_child(
+            &mut child,
+            child_pid,
+            &format!("{error}; runtime child stdout setup failed"),
+        ));
     }
-    match reader.join() {
-        Ok(result) => result,
-        Err(_) => Err(format!("runtime child {label} output reader panicked")),
+    if let Err(error) = set_nonblocking(&stderr, "stderr") {
+        return Err(abort_child(
+            &mut child,
+            child_pid,
+            &format!("{error}; runtime child stderr setup failed"),
+        ));
     }
-}
-
-fn monitor_child(
-    child: &mut Child,
-    overflow: &AtomicBool,
-    timeout: Duration,
-) -> Result<ExitStatus, String> {
+    let mut stdout = CaptureStream::new(stdout, "stdout");
+    let mut stderr = CaptureStream::new(stderr, "stderr");
     let deadline = Instant::now() + timeout;
-    loop {
-        if overflow.load(Ordering::Acquire) {
-            return Err(String::from(
-                "runtime child output exceeded the capture bound",
-            ));
-        }
-        match child.try_wait() {
-            Ok(Some(status)) => return Ok(status),
-            Ok(None) if Instant::now() >= deadline => {
-                return Err(String::from("runtime child exceeded its timeout"));
+    let mut reason = None;
+    let leader_exited = loop {
+        match leader_exited_without_reap(child_pid) {
+            Ok(true) => break true,
+            Ok(false) => {}
+            Err(error) => {
+                reason = Some(format!("cannot inspect runtime child: {error}"));
+                break false;
             }
-            Ok(None) => thread::sleep(Duration::from_millis(5)),
-            Err(error) => return Err(format!("cannot poll runtime child: {error}")),
+        }
+        if Instant::now() >= deadline {
+            reason = Some(String::from("runtime child exceeded its timeout"));
+            break false;
+        }
+        if let Err(error) = poll_and_drain(
+            &mut stdout,
+            &mut stderr,
+            deadline.min(Instant::now() + POLL_SLICE),
+        ) {
+            reason = Some(error);
+            break false;
+        }
+    };
+
+    cleanup_child(
+        &mut child,
+        child_pid,
+        leader_exited,
+        reason,
+        &mut stdout,
+        &mut stderr,
+    )
+}
+
+struct CaptureStream<R> {
+    reader: R,
+    bytes: Vec<u8>,
+    open: bool,
+    capture: bool,
+    label: &'static str,
+}
+
+impl<R> CaptureStream<R> {
+    fn new(reader: R, label: &'static str) -> Self {
+        Self {
+            reader,
+            bytes: Vec::new(),
+            open: true,
+            capture: true,
+            label,
         }
     }
 }
 
-fn terminate_child(child: &mut Child) -> Result<(), String> {
-    let child_id = child.id();
-    let child_reaped = child
-        .try_wait()
-        .map_err(|error| format!("cannot inspect runtime child before cleanup: {error}"))?
-        .is_some();
-    kill_owned_process_group(child, child_id, child_reaped)?;
-    let _ = child.kill();
+fn set_nonblocking<R>(reader: &R, label: &'static str) -> Result<(), String>
+where
+    R: std::os::fd::AsFd,
+{
+    let flags = fcntl_getfl(reader)
+        .map_err(|error| format!("cannot inspect runtime child {label} flags: {error}"))?;
+    fcntl_setfl(reader, flags | OFlags::NONBLOCK)
+        .map_err(|error| format!("cannot make runtime child {label} nonblocking: {error}"))
+}
+
+fn leader_exited_without_reap(pid: Pid) -> Result<bool, String> {
+    let options = WaitIdOptions::EXITED | WaitIdOptions::NOHANG | WaitIdOptions::NOWAIT;
+    waitid(WaitId::Pid(pid), options)
+        .map(|status| status.is_some())
+        .map_err(|error| format!("waitid failed: {error}"))
+}
+
+fn poll_and_drain(
+    stdout: &mut CaptureStream<ChildStdout>,
+    stderr: &mut CaptureStream<ChildStderr>,
+    deadline: Instant,
+) -> Result<(), String> {
+    drain_stream(stdout)?;
+    drain_stream(stderr)?;
+    if !stdout.open && !stderr.open {
+        thread::sleep(Duration::from_millis(2));
+        return Ok(());
+    }
+
+    let mut descriptors = Vec::with_capacity(2);
+    let stdout_index = if stdout.open {
+        let index = descriptors.len();
+        descriptors.push(PollFd::new(
+            &stdout.reader,
+            PollFlags::IN | PollFlags::HUP | PollFlags::ERR,
+        ));
+        Some(index)
+    } else {
+        None
+    };
+    let stderr_index = if stderr.open {
+        let index = descriptors.len();
+        descriptors.push(PollFd::new(
+            &stderr.reader,
+            PollFlags::IN | PollFlags::HUP | PollFlags::ERR,
+        ));
+        Some(index)
+    } else {
+        None
+    };
+    let timeout = poll_timeout(deadline);
+    let polled = match poll(&mut descriptors, Some(&timeout)) {
+        Ok(count) => count,
+        Err(error) if error == Errno::INTR => 0,
+        Err(error) => return Err(format!("runtime child output poll failed: {error}")),
+    };
+    let stdout_ready = stdout_index.is_some_and(|index| {
+        descriptors[index]
+            .revents()
+            .intersects(PollFlags::IN | PollFlags::HUP | PollFlags::ERR)
+    });
+    let stderr_ready = stderr_index.is_some_and(|index| {
+        descriptors[index]
+            .revents()
+            .intersects(PollFlags::IN | PollFlags::HUP | PollFlags::ERR)
+    });
+    drop(descriptors);
+    if polled == 0 {
+        return Ok(());
+    }
+    if stdout_ready {
+        drain_stream(stdout)?;
+    }
+    if stderr_ready {
+        drain_stream(stderr)?;
+    }
+    Ok(())
+}
+
+fn drain_stream<R>(stream: &mut CaptureStream<R>) -> Result<(), String>
+where
+    R: Read,
+{
+    let mut buffer = [0_u8; 8 * 1024];
+    loop {
+        match stream.reader.read(&mut buffer) {
+            Ok(0) => {
+                stream.open = false;
+                return Ok(());
+            }
+            Ok(count) => {
+                if !stream.capture {
+                    continue;
+                }
+                let Some(new_length) = stream.bytes.len().checked_add(count) else {
+                    stream.capture = false;
+                    return Err(format!(
+                        "runtime child {} output exceeded the capture bound",
+                        stream.label
+                    ));
+                };
+                if new_length > MAX_CAPTURE_BYTES {
+                    stream.capture = false;
+                    return Err(format!(
+                        "runtime child {} output exceeded the capture bound",
+                        stream.label
+                    ));
+                }
+                stream.bytes.extend_from_slice(&buffer[..count]);
+            }
+            Err(error) if error.kind() == ErrorKind::WouldBlock => return Ok(()),
+            Err(error) => {
+                stream.open = false;
+                return Err(format!(
+                    "runtime child {} read failed: {error}",
+                    stream.label
+                ));
+            }
+        }
+    }
+}
+
+fn poll_timeout(deadline: Instant) -> Timespec {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    Timespec {
+        tv_sec: remaining.as_secs().min(i64::MAX as u64) as i64,
+        tv_nsec: remaining.subsec_nanos() as _,
+    }
+}
+
+fn abort_child(child: &mut Child, child_pid: Pid, reason: &str) -> String {
+    let mut errors = Vec::new();
+    if let Err(error) = kill_owned_process_group(child_pid, false) {
+        errors.push(error);
+    }
+    if let Err(error) = child.kill() {
+        errors.push(format!("runtime child direct kill failed: {error}"));
+    }
     let deadline = Instant::now() + TERMINATION_TIMEOUT;
     loop {
         match child.try_wait() {
-            Ok(Some(_status)) => return Ok(()),
+            Ok(Some(_status)) => break,
             Ok(None) if Instant::now() >= deadline => {
-                return Err(String::from("runtime child did not exit after kill"));
+                errors.push(String::from(
+                    "runtime child did not reap after setup failure",
+                ));
+                break;
             }
-            Ok(None) => thread::sleep(Duration::from_millis(5)),
-            Err(error) => return Err(format!("cannot reap runtime child: {error}")),
+            Ok(None) => thread::sleep(Duration::from_millis(2)),
+            Err(error) => {
+                errors.push(format!("cannot reap runtime child: {error}"));
+                break;
+            }
         }
+    }
+    if errors.is_empty() {
+        reason.to_owned()
+    } else {
+        format!("{reason}; {}", errors.join("; "))
     }
 }
 
-fn kill_owned_process_group(
+fn cleanup_child(
     child: &mut Child,
-    child_id: u32,
-    mut child_reaped: bool,
-) -> Result<(), String> {
-    let group_id = format!("-{child_id}");
-    let group_probe =
-        run_process_group_command("-0", &group_id, "owned process-group identity probe")?;
-    if !group_probe.success() {
-        if !child_reaped {
-            child_reaped = child
-                .try_wait()
-                .map_err(|error| {
-                    format!("cannot inspect runtime child after group probe: {error}")
-                })?
-                .is_some();
+    child_pid: Pid,
+    leader_exited: bool,
+    reason: Option<String>,
+    stdout: &mut CaptureStream<ChildStdout>,
+    stderr: &mut CaptureStream<ChildStderr>,
+) -> Result<Output, String> {
+    let mut cleanup_error = kill_owned_process_group(child_pid, leader_exited).err();
+    if let Err(error) = child.kill() {
+        let expected_dead_child =
+            leader_exited && matches!(error.kind(), ErrorKind::InvalidInput | ErrorKind::NotFound);
+        if !expected_dead_child && cleanup_error.is_none() {
+            cleanup_error = Some(format!("runtime child direct kill failed: {error}"));
         }
-        if child_reaped {
-            return Ok(());
-        }
-        return Err(format!(
-            "owned process-group identity probe returned {group_probe:?} while the direct child remained"
-        ));
     }
 
-    let status = run_process_group_command("-KILL", &group_id, "owned process-group cleanup")?;
-    if status.success() {
-        return Ok(());
-    }
-
-    let probe = run_process_group_command("-0", &group_id, "owned process-group existence probe")?;
-    if !probe.success() && child_reaped {
-        // try_wait has already reaped the direct child. A nonzero KILL plus a
-        // nonzero zero-signal probe is the expected no-process-group case.
-        return Ok(());
-    }
-    if !probe.success() {
-        return Err(format!(
-            "owned process-group cleanup returned {status:?} and its group disappeared before the direct child was reaped"
-        ));
-    }
-    Err(format!(
-        "owned process-group cleanup returned {status:?} while its process group remained"
-    ))
-}
-
-fn run_process_group_command(
-    signal: &str,
-    group_id: &str,
-    label: &str,
-) -> Result<ExitStatus, String> {
-    let mut command = Command::new("/bin/kill");
-    command
-        .env_clear()
-        .arg(signal)
-        .arg("--")
-        .arg(group_id)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    let mut process = command
-        .spawn()
-        .map_err(|error| format!("cannot invoke {label}: {error}"))?;
-    wait_command_bounded(&mut process, PROCESS_GROUP_COMMAND_TIMEOUT, label)
-}
-
-fn wait_command_bounded(
-    process: &mut Child,
-    timeout: Duration,
-    label: &str,
-) -> Result<ExitStatus, String> {
-    let deadline = Instant::now() + timeout;
+    let deadline = Instant::now() + TERMINATION_TIMEOUT;
+    let mut status = None;
     loop {
-        match process.try_wait() {
-            Ok(Some(status)) => return Ok(status),
-            Ok(None) if Instant::now() >= deadline => {
-                let _ = process.kill();
-                let reap_deadline = Instant::now() + PROCESS_GROUP_COMMAND_REAP_TIMEOUT;
-                loop {
-                    match process.try_wait() {
-                        Ok(Some(_status)) => {
-                            return Err(format!("{label} exceeded its deadline"));
-                        }
-                        Ok(None) if Instant::now() >= reap_deadline => {
-                            return Err(format!(
-                                "{label} exceeded its deadline and could not be reaped"
-                            ));
-                        }
-                        Ok(None) => thread::sleep(Duration::from_millis(2)),
-                        Err(error) => {
-                            return Err(format!(
-                                "{label} exceeded its deadline; reaping failed: {error}"
-                            ));
-                        }
+        if stdout.open {
+            retain_first_error(&mut cleanup_error, drain_stream(stdout));
+        }
+        if stderr.open {
+            retain_first_error(&mut cleanup_error, drain_stream(stderr));
+        }
+        if status.is_none() {
+            match child.try_wait() {
+                Ok(Some(child_status)) => status = Some(child_status),
+                Ok(None) => {}
+                Err(error) => {
+                    if cleanup_error.is_none() {
+                        cleanup_error = Some(format!("cannot reap runtime child: {error}"));
                     }
                 }
             }
-            Ok(None) => thread::sleep(Duration::from_millis(2)),
-            Err(error) => return Err(format!("cannot poll {label}: {error}")),
         }
+        if status.is_some() && !stdout.open && !stderr.open {
+            break;
+        }
+        if Instant::now() >= deadline {
+            if cleanup_error.is_none() {
+                cleanup_error = Some(String::from(
+                    "runtime child cleanup did not finish before its deadline",
+                ));
+            }
+            break;
+        }
+        retain_first_error(
+            &mut cleanup_error,
+            poll_and_drain(stdout, stderr, deadline.min(Instant::now() + POLL_SLICE)),
+        );
+    }
+
+    let Some(status) = status else {
+        return Err(cleanup_error
+            .unwrap_or_else(|| String::from("runtime child was not reaped after cleanup")));
+    };
+    if let Some(error) = cleanup_error {
+        return Err(match reason {
+            Some(reason) => format!("{reason}; {error}"),
+            None => error,
+        });
+    }
+    if let Some(reason) = reason {
+        return Err(reason);
+    }
+    Ok(Output {
+        status,
+        stdout: std::mem::take(&mut stdout.bytes),
+        stderr: std::mem::take(&mut stderr.bytes),
+    })
+}
+
+fn retain_first_error(slot: &mut Option<String>, result: Result<(), String>) {
+    if slot.is_none() {
+        *slot = result.err();
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn cleanup_command_wait_is_bounded() -> Result<(), String> {
-        let mut command = Command::new("/bin/sh");
-        command
-            .env_clear()
-            .arg("-c")
-            .arg("sleep 30")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        let mut process = command
-            .spawn()
-            .map_err(|error| format!("cannot spawn cleanup command fixture: {error}"))?;
-        let started = Instant::now();
-        let result = wait_command_bounded(
-            &mut process,
-            Duration::from_millis(20),
-            "cleanup command fixture",
-        );
-        assert!(result.is_err());
-        assert!(started.elapsed() < Duration::from_secs(1));
-        assert!(
-            process
-                .try_wait()
-                .map_err(|error| format!("cannot reap cleanup command fixture: {error}"))?
-                .is_some()
-        );
-        Ok(())
+fn kill_owned_process_group(pid: Pid, leader_exited: bool) -> Result<(), String> {
+    match kill_process_group(pid, Signal::KILL) {
+        Ok(()) => Ok(()),
+        Err(error) if error == Errno::SRCH && leader_exited => Ok(()),
+        Err(error) => Err(format!(
+            "owned process-group cleanup failed for {pid}: {error}"
+        )),
     }
 }

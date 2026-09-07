@@ -22,12 +22,14 @@ reconstruction path exists.
 
 ## Process oracle
 
-The Unix-only supervisor places each child in its own process group and kills that exact group
-before bounded reader joins. The signal utility has its own bounded wait/reap; a nonzero signal
-status is accepted as an absent group only after a bounded zero-signal probe confirms that the
-group is gone. Focused regressions cover a parent that exits while a descendant retains a pipe, a
-short timeout, output overflow, and the cleanup-command deadline; each completes under a short
-wall-clock bound. Descendants that escape the owned process group are outside this containment claim.
+The Linux-only supervisor places each child in its own process group and signals that exact group
+through the safe `rustix` API while the leader remains waitable. `waitid(EXITED|NOHANG|NOWAIT)`
+observes leader exit without releasing the PID, and the direct child is killed and reaped after
+group signaling even when group cleanup reports an error. Both output pipes are nonblocking and
+drained by one bounded `poll`/read loop; no reader threads are detached. Focused regressions cover
+a parent that exits while a descendant retains a pipe, a direct-child timeout, and output overflow;
+each completes under a short wall-clock bound. Descendants that escape the owned process group are
+outside this containment claim, and other Unix targets do not claim native coverage.
 
 `crates/harness/tests/completed_resume_process.rs` seeds a SQLite episode with a durable checkpoint
 and completion, then starts `sts2-harness-runtime --resume` under a bounded child supervisor with
@@ -42,18 +44,20 @@ invocations. It verifies:
 
 ## Deterministic checks
 
-The isolated worktree passed:
+The source-equivalent Linux checkout passed the focused gates below after resolving the pending
+exact `rustix` dev-dependency lock entry (the root branch owns that lockfile update):
 
 ```text
 cargo run --locked --package repo-policy -- --strict
 Policy check: 391 sized files, 0 warning(s), 0 error(s)
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo test --locked --package sts2-harness --test completed_resume_process -- --nocapture
-6 passed; repeated three times with 6 passed each
+cargo test --offline --locked --package sts2-harness --test completed_resume_process -- --nocapture
+5 passed; repeated three times with 5 passed each
 ```
 
-The full workspace command was also run twice on this candidate branch:
+Before this supervisor replacement, the full workspace command was run twice on the preceding
+candidate branch:
 
 ```text
 cargo test --workspace --all-targets --all-features --locked
@@ -63,8 +67,10 @@ failure: MCP shutdown timed out
 ```
 
 The exact failing test was rerun separately and failed with the same `MCP shutdown timed out`
-result. Therefore the full workspace gate is recorded as failed/unverified for this branch; the
-focused completed-resume evidence remains 6/6 across three repeated runs.
+result. The full workspace gate was therefore failed on that preceding candidate and was not
+silently rewritten here; the H20 source-equivalent full workspace gate remains unverified pending
+the root-owned lockfile update. The focused completed-resume evidence is 5/5 across three repeated
+runs.
 
 ## Limits
 
