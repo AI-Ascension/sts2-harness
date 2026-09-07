@@ -88,3 +88,31 @@ fn strict_utc_timestamps_and_positive_wire_numbers_are_bounded() {
     assert!(positive_u53(&json!(1.0)).is_none());
     assert!(positive_u53(&json!(9_007_199_254_740_992_u64)).is_none());
 }
+
+#[test]
+fn raw_error_messages_do_not_reflect_untrusted_fields_or_values() {
+    let private = "untrusted-secret-marker";
+    for raw in [
+        format!(r#"{{"{private}":1,"{private}":2}}"#),
+        format!(r#"{{"proof":{private}}}"#),
+        format!("{} {private}", valid_frame("operation_lookup_response")),
+    ] {
+        let error = decode_frame(&raw, None, None);
+        assert!(error.is_err());
+        assert!(!error.err().unwrap_or_default().contains(private));
+    }
+    assert_eq!(
+        decode_frame(&" ".repeat(262_145), None, None),
+        Err(String::from("recovery frame exceeds the byte limit"))
+    );
+}
+
+#[test]
+fn recovery_response_actor_must_bind_the_gateway_auth_principal() {
+    let mut frame = valid_frame("operation_lookup_response");
+    frame["actor"]["role"] = json!("harness");
+    assert!(decode_frame(&frame.to_string(), None, None).is_err());
+    frame["actor"]["role"] = json!("gateway");
+    frame["auth"]["principal_id"] = json!("77777777-7777-4777-8777-777777777777");
+    assert!(decode_frame(&frame.to_string(), None, None).is_err());
+}

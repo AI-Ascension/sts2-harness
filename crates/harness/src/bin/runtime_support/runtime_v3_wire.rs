@@ -9,6 +9,9 @@ use super::mcp::McpProcess;
 #[path = "runtime_v3_wire_recovery.rs"]
 mod recovery;
 pub(super) use recovery::{initialize_recovery_mcp, recovery_call};
+#[path = "runtime_v3_recovery_base64.rs"]
+mod recovery_encoding;
+pub(super) use recovery_encoding::decode as decode_recovery_action;
 
 const CATALOG_REVISION: &str = "runtime-v3-gameplay-mcp";
 pub(super) const RUNTIME_V3_SCHEMA_DIGEST: &str =

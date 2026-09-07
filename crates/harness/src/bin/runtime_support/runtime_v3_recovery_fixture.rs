@@ -9,6 +9,10 @@ use super::{
     RECOVERY_RECONCILE_MESSAGE_ID, RECOVERY_TICKET_ID, RECOVERY_WITNESS_ID, reply, wire,
 };
 
+#[path = "runtime_v3_recovery_fixture_script.rs"]
+mod script;
+pub(in super::super) use script::response_script;
+
 pub(crate) fn recovery_settled_script(
     fixture: &Fixture,
     operation_id: &str,
@@ -18,38 +22,25 @@ pub(crate) fn recovery_settled_script(
     catalog_digest: &str,
     canonical_json_b64: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let mut observed: Value = serde_json::from_str(include_str!(
-        "../../../../../protocol-artifact/runtime-v3-gameplay/golden/state-response.json"
-    ))?;
-    observed["correlation_id"] = json!("1");
-    observed["generation"] = json!(1);
-    observed["observation"]["generation"] = json!(1);
-    observed["observation"]["state"]["turn_index"] = json!(2);
-    let gameplay_tools: Vec<_> = [
-        "sts2.observe",
-        "sts2.legal_actions",
-        "sts2.dispatch_action",
-        "sts2.wait_for_transition",
-        "sts2.reobserve",
-        "sts2.recover",
-    ]
-    .into_iter()
-    .map(|name| json!({"name":name}))
-    .collect();
-    let recovery_tools: Vec<_> = [
-        "watchdog.bootstrap",
-        "watchdog.host_fence",
-        "watchdog.lease_acquire",
-        "watchdog.lease_renew",
-        "watchdog.lease_revoke",
-        "watchdog.operation_intent",
-        "watchdog.operation_dispatch",
-        "watchdog.operation_lookup",
-        "watchdog.operation_reconcile",
-    ]
-    .into_iter()
-    .map(|name| json!({"name":name}))
-    .collect();
+    let (lookup, reconcile) = settled_frames(
+        operation_id,
+        state_id,
+        generation,
+        payload_digest,
+        catalog_digest,
+        canonical_json_b64,
+    );
+    response_script(fixture, &lookup, &reconcile)
+}
+
+pub(in super::super) fn settled_frames(
+    operation_id: &str,
+    state_id: &str,
+    generation: u64,
+    payload_digest: &str,
+    catalog_digest: &str,
+    canonical_json_b64: &str,
+) -> (Value, Value) {
     let witness = json!({
         "witness_id": RECOVERY_WITNESS_ID,
         "operation_id": operation_id,
@@ -140,26 +131,5 @@ pub(crate) fn recovery_settled_script(
             "result": {"status": "RECONCILED", "retryable": false, "retry_after_seconds": null}
         }
     });
-    let script = format!(
-        "cd '{}' || exit 1\nif [ \"$STS2_RUNTIME_PROFILE\" = \"watchdog-recovery-v1\" ]; then\n{}{}{}{}else\n{}{}{}\nfi\n",
-        fixture.0.display(),
-        reply(json!({"jsonrpc":"2.0","id":1,"result":{}})),
-        reply(
-            json!({"jsonrpc":"2.0","id":2,"result":{"revision":"watchdog-recovery-v1-mcp","tools":recovery_tools}})
-        ),
-        reply(json!({"jsonrpc":"2.0","id":1,"result":{"content":[{"text":lookup.to_string()}]}})),
-        reply(
-            json!({"jsonrpc":"2.0","id":2,"result":{"content":[{"text":reconcile.to_string()}]}})
-        ),
-        reply(json!({"jsonrpc":"2.0","id":1,"result":{}})),
-        reply(
-            json!({"jsonrpc":"2.0","id":2,"result":{"revision":"runtime-v3-gameplay-mcp","tools":gameplay_tools}})
-        ),
-        reply(json!({
-            "jsonrpc":"2.0",
-            "id":1,
-            "result":{"content":[{"text":observed.to_string()}]}
-        }))
-    );
-    fixture.script(&script)
+    (lookup, reconcile)
 }

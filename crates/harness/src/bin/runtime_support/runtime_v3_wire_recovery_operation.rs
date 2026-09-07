@@ -2,11 +2,9 @@
 
 use serde_json::Value;
 
+use super::super::super::decode_recovery_action;
 use super::values::{positive_u53, strict_timestamp, u53};
-use super::{
-    base64::canonical_base64, enum_value, exact, object, string, valid_digest, valid_uuid,
-    valid_uuid_v4,
-};
+use super::{enum_value, exact, object, string, valid_digest, valid_uuid, valid_uuid_v4};
 
 pub(super) fn validate_operation_or_null(value: Option<&Value>, label: &str) -> Result<(), String> {
     match value {
@@ -183,9 +181,9 @@ fn validate_action(value: &Value) -> Result<(), String> {
         return Err(String::from("recovery action digest is invalid"));
     }
     let encoded = string(object, "canonical_json_b64")?;
-    if !canonical_base64(encoded) {
+    if decode_recovery_action(encoded).is_none() {
         return Err(String::from(
-            "recovery canonical action encoding is not canonical base64",
+            "recovery canonical action encoding is invalid",
         ));
     }
     Ok(())

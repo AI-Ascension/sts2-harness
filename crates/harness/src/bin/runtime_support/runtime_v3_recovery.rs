@@ -2,14 +2,12 @@
 
 use serde_json::{Value, json};
 use sts2_harness::{
-    DispatchStatus, EpisodeObservation, RecoveryError, RecoveryPort, TransitionReceipt, WaitOutcome,
+    DispatchStatus, EpisodeObservation, RecoveryError, RecoveryPort, TransitionReceipt,
 };
 
 use super::super::runtime_v3_telemetry::{ObservationSource, RecoveryKind};
 use super::{RuntimeV3Port, parse, wire};
 
-#[path = "runtime_v3_recovery_base64.rs"]
-mod base64;
 #[path = "runtime_v3_recovery_context.rs"]
 mod context;
 #[path = "runtime_v3_recovery_reconnect.rs"]
@@ -130,17 +128,11 @@ impl RuntimeV3Port {
             match receipt.status() {
                 DispatchStatus::Settled | DispatchStatus::Rejected | DispatchStatus::Cancelled => {}
                 DispatchStatus::Accepted | DispatchStatus::Unknown => {
-                    let sample = self
-                        .poll_operation(operation_id, 1_000)
-                        .map_err(|_| format!("retained operation {operation_id} did not settle"))?;
-                    if !matches!(
-                        sample.outcome(),
-                        WaitOutcome::Successor | WaitOutcome::SameStateMutation
-                    ) {
-                        return Err(format!(
-                            "retained operation {operation_id} remains unresolved"
-                        ));
-                    }
+                    // Historical uncertainty cannot be resolved through the ordinary gameplay
+                    // poll path, whose lease and generation belong to the current controller.
+                    return Err(format!(
+                        "retained operation {operation_id} remains unresolved"
+                    ));
                 }
             }
             let state = durable.operation_state(operation_id)?;
@@ -207,29 +199,11 @@ impl RecoveryPort for RuntimeV3Port {
         if lookup_payload.get("mutation_authorized") != Some(&Value::Bool(false)) {
             return Err(RecoveryError::PortFailure);
         }
-        let lookup_state = record::operation_record(lookup_payload, &operation)
+        let original_context = &operation_ref["original_context"];
+        let lookup_state = record::response_state(lookup_payload, &operation, original_context)
             .map_err(|_| RecoveryError::PortFailure)?;
-        if lookup_payload
-            .get("result")
-            .and_then(|result| result.get("status"))
-            .and_then(Value::as_str)
-            != Some(lookup_state.as_str())
-        {
-            return Err(RecoveryError::PortFailure);
-        }
-        match lookup_state.as_str() {
-            "SETTLED" | "REJECTED" => {}
-            "UNKNOWN" | "MAY_HAVE_BEEN_DISPATCHED" | "ACCEPTED" => {
-                return Ok(TransitionReceipt::new(
-                    operation_id,
-                    record.action,
-                    DispatchStatus::Unknown,
-                    None,
-                    None,
-                    Some(String::from("recovery_required")),
-                ));
-            }
-            _ => return Err(RecoveryError::PortFailure),
+        if lookup_state.is_none() {
+            return Ok(unknown_receipt(operation_id, record.action));
         }
         let reconcile = self
             .recovery_call_tool(
@@ -241,16 +215,17 @@ impl RecoveryPort for RuntimeV3Port {
             )
             .map_err(|_| RecoveryError::PortFailure)?;
         let reconcile_payload = reconcile.get("payload").ok_or(RecoveryError::PortFailure)?;
-        if reconcile_payload
-            .get("result")
-            .and_then(|result| result.get("status"))
-            .and_then(Value::as_str)
-            != Some("RECONCILED")
-        {
-            return Err(RecoveryError::PortFailure);
-        }
-        let resolved_state = record::authoritative_reconcile_state(reconcile_payload, &operation)
+        let state = record::response_state(reconcile_payload, &operation, original_context)
             .map_err(|_| RecoveryError::PortFailure)?;
+        if !matches!(
+            state.as_deref(),
+            Some("SETTLED" | "REJECTED" | "RECONCILED")
+        ) {
+            return Ok(unknown_receipt(operation_id, record.action));
+        }
+        let resolved_state =
+            record::authoritative_reconcile_state(reconcile_payload, &operation, original_context)
+                .map_err(|_| RecoveryError::PortFailure)?;
         if let Some(durable) = &self.durable {
             durable
                 .reconcile_response(operation_id, resolved_state.0, &reconcile)
@@ -283,4 +258,18 @@ impl RecoveryPort for RuntimeV3Port {
     fn stop_episode(&mut self) -> Result<(), RecoveryError> {
         RecoveryPort::release_lease(self)
     }
+}
+
+fn unknown_receipt(
+    operation_id: &str,
+    action: sts2_harness::EpisodeLegalAction,
+) -> TransitionReceipt {
+    TransitionReceipt::new(
+        operation_id,
+        action,
+        DispatchStatus::Unknown,
+        None,
+        None,
+        Some(String::from("recovery_required")),
+    )
 }

@@ -7,8 +7,6 @@ use serde_json::{Map, Number, Value};
 
 const MAX_AUTH_PROOF_BYTES: usize = 512;
 
-#[path = "runtime_v3_wire_recovery_base64.rs"]
-mod base64;
 #[path = "runtime_v3_wire_recovery_operation.rs"]
 mod operation;
 #[path = "runtime_v3_wire_recovery_shape.rs"]
@@ -40,13 +38,16 @@ pub(super) fn decode_frame(
     expected_kind: Option<&str>,
     expected_correlation: Option<&str>,
 ) -> Result<Value, String> {
+    if text.len() > 262_144 {
+        return Err(String::from("recovery frame exceeds the byte limit"));
+    }
     let mut decoder = serde_json::Deserializer::from_slice(text.as_bytes());
     let value = StrictSeed
         .deserialize(&mut decoder)
-        .map_err(|error| format!("invalid recovery JSON: {error}"))?;
+        .map_err(|_| String::from("invalid recovery JSON"))?;
     decoder
         .end()
-        .map_err(|error| format!("trailing recovery JSON: {error}"))?;
+        .map_err(|_| String::from("trailing recovery JSON"))?;
     validate_frame(&value, expected_kind, expected_correlation)?;
     Ok(value)
 }
@@ -135,9 +136,7 @@ impl<'de> Visitor<'de> for StrictVisitor {
         let mut object = Map::new();
         while let Some(key) = map.next_key::<String>()? {
             if object.contains_key(&key) {
-                return Err(serde::de::Error::custom(format!(
-                    "duplicate JSON object member {key:?}"
-                )));
+                return Err(serde::de::Error::custom("duplicate JSON object member"));
             }
             let value = map.next_value_seed(StrictSeed)?;
             object.insert(key, value);
@@ -187,6 +186,13 @@ fn validate_frame(
         return Err(format!("recovery kind is not {expected}"));
     }
     validate_auth(object.get("auth").ok_or("recovery auth is missing")?, kind)?;
+    if value["actor"]["role"] != "gateway"
+        || value["actor"]["principal_id"] != value["auth"]["principal_id"]
+    {
+        return Err(String::from(
+            "recovery response actor is not the authenticated gateway",
+        ));
+    }
     validate_payload(
         object.get("payload").ok_or("recovery payload is missing")?,
         kind,

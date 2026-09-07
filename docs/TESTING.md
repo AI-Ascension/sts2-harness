@@ -225,6 +225,15 @@ tests does not supply licensed-host, live Exo/provider, full-run, or co-op evide
 
 ## MCP and gateway adapter failure probes
 
+Historical recovery tests invoke the real harness recovery adapter and its owned stdio subprocess
+against synthetic sideband replies. They exercise unresolved lookup followed by reconciliation,
+retained terminal states, gateway-style unpadded action bytes, missing records, mismatched witnesses
+and original authority. Recorded requests must contain only historical lookup/reconcile, preserve
+the same operation reference, and never invoke gameplay poll or dispatch. Unit tests cover exact
+ticket/witness bindings, malformed raw JSON, redacted parser errors and the frame byte limit.
+These are synthetic consumer/subprocess tests, not real gateway, host, service, reboot or provider
+evidence. Full cross-boot original-context handoff still requires its separate integration work.
+
 Synthetic process tests cover unread stdin, simultaneous full pipes, oversized unterminated output,
 slow trickles, inherited descendant handles, malformed/miscorrelated replies, bounded close/drop,
 and spawning inside an async caller including failure paths. Control-plane tests cover numeric

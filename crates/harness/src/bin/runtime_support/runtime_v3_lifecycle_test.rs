@@ -192,3 +192,5 @@ mod reconnect_durable;
 #[cfg(unix)]
 #[path = "runtime_v3_lifecycle_reconnect_support.rs"]
 mod reconnect_support;
+#[path = "runtime_v3_lifecycle_recovery_evidence_test.rs"]
+mod recovery_evidence;
