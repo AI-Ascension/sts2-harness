@@ -23,8 +23,11 @@ reconstruction path exists.
 ## Process oracle
 
 The Unix-only supervisor places each child in its own process group and kills that exact group
-before bounded reader joins. Focused regressions cover a parent that exits while a descendant retains
-a pipe, a short timeout, and output overflow; each completes under a short wall-clock bound.
+before bounded reader joins. The signal utility has its own bounded wait/reap; a nonzero signal
+status is accepted as an absent group only after a bounded zero-signal probe confirms that the
+group is gone. Focused regressions cover a parent that exits while a descendant retains a pipe, a
+short timeout, output overflow, and the cleanup-command deadline; each completes under a short
+wall-clock bound. Descendants that escape the owned process group are outside this containment claim.
 
 `crates/harness/tests/completed_resume_process.rs` seeds a SQLite episode with a durable checkpoint
 and completion, then starts `sts2-harness-runtime --resume` under a bounded child supervisor with
@@ -49,7 +52,7 @@ cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --all-targets --all-features --locked
 ```
 
-The workspace test command completed successfully, including the five completed-resume process
+The workspace test command completed successfully, including the six completed-resume process
 tests.
 
 ## Limits

@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 const CHILD_TIMEOUT: Duration = Duration::from_secs(5);
 const TERMINATION_TIMEOUT: Duration = Duration::from_secs(1);
 const READER_JOIN_TIMEOUT: Duration = Duration::from_millis(250);
+const PROCESS_GROUP_COMMAND_TIMEOUT: Duration = Duration::from_millis(250);
+const PROCESS_GROUP_COMMAND_REAP_TIMEOUT: Duration = Duration::from_millis(250);
 const MAX_CAPTURE_BYTES: usize = 64 * 1024;
 
 pub(super) fn run_child(command: Command) -> Result<Output, String> {
@@ -164,7 +166,12 @@ fn monitor_child(
 }
 
 fn terminate_child(child: &mut Child) -> Result<(), String> {
-    let _group_exists = kill_owned_process_group(child)?;
+    let child_id = child.id();
+    let child_reaped = child
+        .try_wait()
+        .map_err(|error| format!("cannot inspect runtime child before cleanup: {error}"))?
+        .is_some();
+    kill_owned_process_group(child, child_id, child_reaped)?;
     let _ = child.kill();
     let deadline = Instant::now() + TERMINATION_TIMEOUT;
     loop {
@@ -179,16 +186,140 @@ fn terminate_child(child: &mut Child) -> Result<(), String> {
     }
 }
 
-fn kill_owned_process_group(child: &Child) -> Result<bool, String> {
-    let group_id = format!("-{}", child.id());
-    let status = Command::new("/bin/kill")
-        .arg("-KILL")
+fn kill_owned_process_group(
+    child: &mut Child,
+    child_id: u32,
+    mut child_reaped: bool,
+) -> Result<(), String> {
+    let group_id = format!("-{child_id}");
+    let group_probe =
+        run_process_group_command("-0", &group_id, "owned process-group identity probe")?;
+    if !group_probe.success() {
+        if !child_reaped {
+            child_reaped = child
+                .try_wait()
+                .map_err(|error| {
+                    format!("cannot inspect runtime child after group probe: {error}")
+                })?
+                .is_some();
+        }
+        if child_reaped {
+            return Ok(());
+        }
+        return Err(format!(
+            "owned process-group identity probe returned {group_probe:?} while the direct child remained"
+        ));
+    }
+
+    let status = run_process_group_command("-KILL", &group_id, "owned process-group cleanup")?;
+    if status.success() {
+        return Ok(());
+    }
+
+    let probe = run_process_group_command("-0", &group_id, "owned process-group existence probe")?;
+    if !probe.success() && child_reaped {
+        // try_wait has already reaped the direct child. A nonzero KILL plus a
+        // nonzero zero-signal probe is the expected no-process-group case.
+        return Ok(());
+    }
+    if !probe.success() {
+        return Err(format!(
+            "owned process-group cleanup returned {status:?} and its group disappeared before the direct child was reaped"
+        ));
+    }
+    Err(format!(
+        "owned process-group cleanup returned {status:?} while its process group remained"
+    ))
+}
+
+fn run_process_group_command(
+    signal: &str,
+    group_id: &str,
+    label: &str,
+) -> Result<ExitStatus, String> {
+    let mut command = Command::new("/bin/kill");
+    command
+        .env_clear()
+        .arg(signal)
         .arg("--")
         .arg(group_id)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|error| format!("cannot invoke owned process-group cleanup: {error}"))?;
-    Ok(status.success())
+        .stderr(Stdio::null());
+    let mut process = command
+        .spawn()
+        .map_err(|error| format!("cannot invoke {label}: {error}"))?;
+    wait_command_bounded(&mut process, PROCESS_GROUP_COMMAND_TIMEOUT, label)
+}
+
+fn wait_command_bounded(
+    process: &mut Child,
+    timeout: Duration,
+    label: &str,
+) -> Result<ExitStatus, String> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match process.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = process.kill();
+                let reap_deadline = Instant::now() + PROCESS_GROUP_COMMAND_REAP_TIMEOUT;
+                loop {
+                    match process.try_wait() {
+                        Ok(Some(_status)) => {
+                            return Err(format!("{label} exceeded its deadline"));
+                        }
+                        Ok(None) if Instant::now() >= reap_deadline => {
+                            return Err(format!(
+                                "{label} exceeded its deadline and could not be reaped"
+                            ));
+                        }
+                        Ok(None) => thread::sleep(Duration::from_millis(2)),
+                        Err(error) => {
+                            return Err(format!(
+                                "{label} exceeded its deadline; reaping failed: {error}"
+                            ));
+                        }
+                    }
+                }
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(2)),
+            Err(error) => return Err(format!("cannot poll {label}: {error}")),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cleanup_command_wait_is_bounded() -> Result<(), String> {
+        let mut command = Command::new("/bin/sh");
+        command
+            .env_clear()
+            .arg("-c")
+            .arg("sleep 30")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let mut process = command
+            .spawn()
+            .map_err(|error| format!("cannot spawn cleanup command fixture: {error}"))?;
+        let started = Instant::now();
+        let result = wait_command_bounded(
+            &mut process,
+            Duration::from_millis(20),
+            "cleanup command fixture",
+        );
+        assert!(result.is_err());
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(
+            process
+                .try_wait()
+                .map_err(|error| format!("cannot reap cleanup command fixture: {error}"))?
+                .is_some()
+        );
+        Ok(())
+    }
 }
