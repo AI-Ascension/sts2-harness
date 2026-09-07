@@ -14,8 +14,8 @@ use super::mcp::{McpProcess, identity_headers};
 use super::runtime_v3_parse as parse;
 use super::runtime_v3_settings::RuntimeV3Settings;
 use super::runtime_v3_telemetry::{
-    CleanupStatus, GameOutcome, RuntimeV3Telemetry, TelemetryContext, TelemetryHandle,
-    TelemetryStage,
+    CleanupStatus, GameOutcome, RuntimeV3Telemetry, TelemetryContext, TelemetryContextInput,
+    TelemetryHandle, TelemetryStage,
 };
 use super::runtime_v3_wire as wire;
 
@@ -42,16 +42,16 @@ mod lifecycle_tests;
 
 pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let settings = RuntimeV3Settings::from_environment()?;
-    let telemetry_context = TelemetryContext::new(
-        &config.run_id,
-        &config.episode_id,
-        &config.trajectory_id,
-        &config.trace_id,
-        &config.instance_id,
-        &config.session_id,
-        &config.runtime_profile,
-        &settings.exo.revision,
-    )?;
+    let telemetry_context = TelemetryContext::new(TelemetryContextInput {
+        run_id: &config.run_id,
+        episode_id: &config.episode_id,
+        trajectory_id: &config.trajectory_id,
+        trace_id: &config.trace_id,
+        instance_id: &config.instance_id,
+        session_id: &config.session_id,
+        runtime_profile: &config.runtime_profile,
+        provider_revision: &settings.exo.revision,
+    })?;
     let telemetry = RuntimeV3Telemetry::new(telemetry_context);
     let telemetry_handle = telemetry.handle();
     let _ = telemetry_handle.run_started();

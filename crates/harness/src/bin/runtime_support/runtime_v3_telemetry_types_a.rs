@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError, TrySendError};
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -42,17 +42,29 @@ pub struct TelemetryContext {
     pub provider_revision_digest: String,
 }
 
+pub struct TelemetryContextInput<'a> {
+    pub run_id: &'a str,
+    pub episode_id: &'a str,
+    pub trajectory_id: &'a str,
+    pub trace_id: &'a str,
+    pub instance_id: &'a str,
+    pub session_id: &'a str,
+    pub runtime_profile: &'a str,
+    pub provider_revision: &'a str,
+}
+
 impl TelemetryContext {
-    pub fn new(
-        run_id: &str,
-        episode_id: &str,
-        trajectory_id: &str,
-        trace_id: &str,
-        instance_id: &str,
-        session_id: &str,
-        runtime_profile: &str,
-        provider_revision: &str,
-    ) -> Result<Self, String> {
+    pub fn new(input: TelemetryContextInput<'_>) -> Result<Self, String> {
+        let TelemetryContextInput {
+            run_id,
+            episode_id,
+            trajectory_id,
+            trace_id,
+            instance_id,
+            session_id,
+            runtime_profile,
+            provider_revision,
+        } = input;
         for (name, value) in [
             ("run_id", run_id),
             ("episode_id", episode_id),

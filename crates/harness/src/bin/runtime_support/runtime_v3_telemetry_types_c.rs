@@ -286,6 +286,11 @@ impl TelemetryHandle {
         if self.state.closed.load(Ordering::Acquire) {
             return EnqueueStatus::Closed;
         }
+        let event = QueuedTelemetryEvent {
+            event,
+            enqueued_at_unix_nanos: unix_nanos(),
+            sequence: self.state.sequence.fetch_add(1, Ordering::Relaxed),
+        };
         let result = if critical {
             self.state.critical_tx.try_send(event)
         } else {

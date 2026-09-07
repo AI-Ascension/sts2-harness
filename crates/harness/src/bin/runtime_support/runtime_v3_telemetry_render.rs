@@ -1,8 +1,24 @@
 // SPDX-License-Identifier: MIT
 
+// Runtime-v3 telemetry uses point-in-time event spans. The enqueue timestamp
+// and sequence are preserved through the bounded queues, so backend ordering
+// remains inspectable even when critical events overtake normal events. The
+// RunFinished event carries terminal outcome and export status; the root
+// RunStarted span is intentionally not a wall-clock duration span.
+
+#[cfg(test)]
 fn render_span(context: &TelemetryContext, event: &TelemetryEvent, sequence: u64) -> Value {
-    let (kind, status_error, attrs) = event_attributes(context, event);
-    let now = unix_nanos();
+    render_span_at(context, event, sequence, unix_nanos())
+}
+
+fn render_span_at(
+    context: &TelemetryContext,
+    event: &TelemetryEvent,
+    sequence: u64,
+    timestamp_unix_nanos: u128,
+) -> Value {
+    let (kind, status_error, mut attrs) = event_attributes(context, event);
+    add(&mut attrs, "sts2.event_sequence", sequence.to_string());
     let trace_id = digest("trace", &context.trace_id)[..32].to_owned();
     let root_span_id = digest("root-span", &context.trace_id)[..16].to_owned();
     let span_id = if kind == EventKind::RunStarted {
@@ -22,8 +38,8 @@ fn render_span(context: &TelemetryContext, event: &TelemetryEvent, sequence: u64
         "traceId": trace_id,
         "spanId": span_id,
         "name": format!("sts2.{}", kind.as_str()),
-        "startTimeUnixNano": now.to_string(),
-        "endTimeUnixNano": now.to_string(),
+        "startTimeUnixNano": timestamp_unix_nanos.to_string(),
+        "endTimeUnixNano": timestamp_unix_nanos.to_string(),
         "attributes": attributes,
         "status": {"code": if status_error {"STATUS_CODE_ERROR"} else {"STATUS_CODE_UNSET"}}
     });

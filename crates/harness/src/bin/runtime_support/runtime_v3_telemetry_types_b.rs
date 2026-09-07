@@ -95,12 +95,18 @@ impl FlushReport {
 
 struct ExporterState {
     context: TelemetryContext,
-    normal_tx: SyncSender<TelemetryEvent>,
-    critical_tx: SyncSender<TelemetryEvent>,
+    normal_tx: SyncSender<QueuedTelemetryEvent>,
+    critical_tx: SyncSender<QueuedTelemetryEvent>,
     closed: AtomicBool,
     sequence: AtomicU64,
     normal_dropped: AtomicU64,
     critical_dropped: AtomicU64,
+}
+
+struct QueuedTelemetryEvent {
+    event: TelemetryEvent,
+    enqueued_at_unix_nanos: u128,
+    sequence: u64,
 }
 
 #[derive(Clone)]
