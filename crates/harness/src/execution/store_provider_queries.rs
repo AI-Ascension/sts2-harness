@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{OptionalExtension, params, types::ValueRef};
 use sha2::{Digest, Sha256};
 
 use super::schema;
@@ -170,7 +170,7 @@ pub(crate) fn read_decision(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredD
     }
     let result_ref = row.get::<_, Option<String>>(9)?;
     let result_digest = row.get::<_, Option<String>>(10)?;
-    let result_payload = row.get::<_, Option<Vec<u8>>>(12)?;
+    let result_payload = read_result_payload(row)?;
     if result_ref.is_some() != result_digest.is_some()
         || result_ref
             .as_deref()
@@ -198,6 +198,19 @@ pub(crate) fn read_decision(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredD
         provider_reservation_id: row.get(11)?,
         result_payload,
     })
+}
+
+fn read_result_payload(row: &rusqlite::Row<'_>) -> rusqlite::Result<Option<Vec<u8>>> {
+    match row.get_ref(12)? {
+        ValueRef::Null => Ok(None),
+        ValueRef::Blob(payload) => {
+            if payload.len() > super::store_provider::MAX_DECISION_RESULT_BYTES {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+            Ok(Some(payload.to_vec()))
+        }
+        _ => row.get(12),
+    }
 }
 
 fn valid_result_payload(payload: &[u8], digest: Option<&str>) -> bool {

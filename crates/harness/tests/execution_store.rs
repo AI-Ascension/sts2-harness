@@ -392,6 +392,9 @@ fn completion_and_job_claim_are_durable_before_acknowledgement() {
 #[path = "execution_store/recovery.rs"]
 mod recovery;
 
+#[path = "execution_store/oversized_result.rs"]
+mod oversized_result;
+
 fn remove_database(database: &PathBuf) {
     let _ = fs::remove_file(database);
     let _ = fs::remove_file(database.with_extension("sqlite3-wal"));
