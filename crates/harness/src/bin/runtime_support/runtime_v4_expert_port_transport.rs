@@ -1,0 +1,277 @@
+// SPDX-License-Identifier: MIT
+
+impl RuntimeV3Port {
+    pub(super) fn is_expert_profile(&self) -> bool {
+        self.config.runtime_profile == PROFILE
+    }
+
+    fn expert_mcp_mut(&mut self) -> Result<&mut super::super::mcp::McpProcess, String> {
+        self.expert_mcp
+            .as_mut()
+            .ok_or_else(|| String::from("expert MCP process is not running"))
+    }
+
+    pub(super) fn call_expert_tool(
+        &mut self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<(u64, Value), String> {
+        let id = self.expert_next_rpc_id;
+        self.expert_next_rpc_id = self
+            .expert_next_rpc_id
+            .checked_add(1)
+            .ok_or_else(|| String::from("expert MCP request identity exhausted"))?;
+        let response = wire::rpc_call(
+            self.expert_mcp_mut()?,
+            id,
+            "tools/call",
+            json!({"name": name, "arguments": arguments}),
+        )?;
+        let text = response
+            .get("result")
+            .and_then(|result| result.get("content"))
+            .and_then(Value::as_array)
+            .and_then(|content| content.first())
+            .and_then(|content| content.get("text"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("MCP tool {name} omitted text content"))?;
+        let value: Value = serde_json::from_str(text)
+            .map_err(|error| format!("MCP tool {name} returned non-JSON content: {error}"))?;
+        if name != STATE_TOOL
+            && value.get("correlation_id").and_then(Value::as_str) != Some(id.to_string().as_str())
+        {
+            return Err(format!("MCP tool {name} returned mismatched correlation"));
+        }
+        Ok((id, value))
+    }
+
+    fn expert_state(&mut self) -> Result<RuntimeV4ExpertObservation, String> {
+        let (_, value) = self.call_expert_tool(
+            STATE_TOOL,
+            json!({
+                "instance_id": self.config.instance_id,
+                "mcp_session_id": self.config.mcp_session_id
+            }),
+        )?;
+        RuntimeV4ExpertObservation::from_value(value)
+            .map_err(|error| format!("Runtime-v4 expert state is invalid: {error}"))
+    }
+
+    pub(super) fn compose_current_observation(
+        &mut self,
+        baseline: EpisodeObservation,
+    ) -> Result<EpisodeObservation, String> {
+        let expert = self.expert_state()?;
+        let normal_actions = self
+            .current_actions
+            .clone()
+            .ok_or_else(|| String::from("normal catalog is unavailable for expert composition"))?;
+        let normal_payloads = self.payloads.clone();
+        let composed = compose_with_normal(&baseline, &normal_actions, &normal_payloads, &expert)?;
+        self.install_composed(&composed);
+        Ok(composed.observation)
+    }
+
+    /// Rebind a settled Runtime-v3 result to the expert observation before it reaches the
+    /// provider. The normal endpoint remains the mutation authority for ordinary actions, while
+    /// the expert endpoint supplies the richer postcondition view.
+    pub(super) fn compose_receipt_after(
+        &mut self,
+        receipt: TransitionReceipt,
+    ) -> Result<TransitionReceipt, String> {
+        let Some(after) = receipt.after().cloned() else {
+            return Ok(receipt);
+        };
+        let after = self.compose_current_observation(after)?;
+        Ok(TransitionReceipt::new(
+            receipt.operation_id().to_owned(),
+            receipt.action().clone(),
+            receipt.status(),
+            Some(after),
+            receipt.effect_kind().map(str::to_owned),
+            receipt.error_code().map(str::to_owned),
+        ))
+    }
+
+    /// Replace the ordinary wait observation with the matching expert observation while keeping
+    /// the barrier outcome and effect witness intact.
+    pub(super) fn compose_wait_sample(&mut self, sample: WaitSample) -> Result<WaitSample, String> {
+        let Some(after) = sample.observation().cloned() else {
+            return Ok(sample);
+        };
+        let after = self.compose_current_observation(after)?;
+        let outcome = sample.outcome();
+        let effect_kind = sample.effect_kind().map(str::to_owned);
+        let mut composed = WaitSample::new(outcome, Some(after));
+        if let Some(effect_kind) = effect_kind {
+            composed = composed.with_effect_kind(effect_kind);
+        }
+        Ok(composed)
+    }
+
+    pub(super) fn merge_current_expert_actions(
+        &mut self,
+        state_id: &str,
+        generation: u64,
+    ) -> Result<(), String> {
+        let expert = self.expert_state()?;
+        if expert.state_id() != state_id || expert.generation() != generation {
+            return Err(String::from(
+                "Runtime-v4 expert catalog does not match the Runtime-v3 observation",
+            ));
+        }
+        let normal_actions = self
+            .current_actions
+            .clone()
+            .ok_or_else(|| String::from("normal catalog is unavailable for expert merge"))?;
+        let normal_payloads = self.payloads.clone();
+        let (actions, payloads) = merge_actions(&normal_actions, &normal_payloads, &expert)?;
+        self.current_actions = Some(actions);
+        self.payloads = payloads;
+        Ok(())
+    }
+
+    pub(super) fn dispatch_expert_action(
+        &mut self,
+        identity: &ActionIdentity,
+        action: &EpisodeLegalAction,
+        payload: Value,
+    ) -> Result<TransitionReceipt, sts2_harness::PortError> {
+        let request_value = action_request(&self.config, identity, action, &payload, "request");
+        let request = RuntimeV4ExpertActionRequest::from_value(request_value).map_err(|error| {
+            wire::port_error("expert_request_invalid", error.to_string(), false)
+        })?;
+        let (_, value) = self
+            .call_expert_tool(
+                ACTION_TOOL,
+                json!({
+                    "instance_id": self.config.instance_id,
+                    "mcp_session_id": self.config.mcp_session_id,
+                    "lease_id": self.config.lease_id,
+                    "lease_epoch": self.config.lease_epoch,
+                    "generation": identity.generation,
+                    "state_id": identity.state_id,
+                    "operation_id": identity.operation_id,
+                    "action": {"action_id": action.action_id(), "action": payload}
+                }),
+            )
+            .map_err(|error| wire::port_error("expert_dispatch_failed", error, true))?;
+        let result = RuntimeV4ExpertActionResult::from_value(value).map_err(|error| {
+            wire::port_error("expert_dispatch_invalid", error.to_string(), false)
+        })?;
+        validate_expert_result(&result, &request, identity, action)
+            .map_err(|error| wire::port_error("expert_dispatch_invalid", error, false))?;
+        let receipt = self
+            .expert_result_receipt(result, &request, identity, action)
+            .map_err(|error| wire::port_error("expert_receipt_invalid", error, false))?;
+        super::recording::receipt(&receipt, identity.generation, &self.telemetry);
+        Ok(receipt)
+    }
+
+    pub(super) fn reconcile_expert_operation(
+        &mut self,
+        operation_id: &str,
+    ) -> Result<TransitionReceipt, String> {
+        let record = self
+            .operations
+            .get(operation_id)
+            .cloned()
+            .ok_or_else(|| String::from("expert operation is not in the ledger"))?;
+        if record.action.kind() != ActionKind::UsePotion {
+            return Err(String::from("operation is not a Runtime-v4 expert action"));
+        }
+        let identity = ActionIdentity::new(
+            operation_id.to_owned(),
+            record.state_id.clone(),
+            record.generation,
+            record.action.action_id().to_owned(),
+        )
+        .map_err(|error| error.to_string())?;
+        let request = RuntimeV4ExpertActionRequest::from_value(action_request(
+            &self.config,
+            &identity,
+            &record.action,
+            &record.payload,
+            "request",
+        ))
+        .map_err(|error| error.to_string())?;
+        let (_, value) = self.call_expert_tool(
+            RECONCILE_TOOL,
+            json!({
+                "instance_id": self.config.instance_id,
+                "mcp_session_id": self.config.mcp_session_id,
+                "lease_id": self.config.lease_id,
+                "lease_epoch": self.config.lease_epoch,
+                "operation_id": operation_id
+            }),
+        )?;
+        let result = RuntimeV4ExpertActionResult::from_value(value)
+            .map_err(|error| format!("Runtime-v4 expert reconcile response is invalid: {error}"))?;
+        validate_expert_result(&result, &request, &identity, &record.action)?;
+        self.expert_result_receipt(result, &request, &identity, &record.action)
+    }
+
+    pub(super) fn wait_expert_operation(
+        &mut self,
+        operation_id: &str,
+    ) -> Result<WaitSample, String> {
+        let receipt = self.reconcile_expert_operation(operation_id)?;
+        match receipt.status() {
+            DispatchStatus::Settled => {
+                Ok(
+                    WaitSample::new(WaitOutcome::SameStateMutation, receipt.after().cloned())
+                        .with_effect_kind(receipt.effect_kind().ok_or_else(|| {
+                            String::from("expert settlement omitted effect witness")
+                        })?),
+                )
+            }
+            DispatchStatus::Accepted | DispatchStatus::Unknown => {
+                Ok(WaitSample::new(WaitOutcome::Timeout, None))
+            }
+            DispatchStatus::Rejected | DispatchStatus::Cancelled => {
+                Ok(WaitSample::new(WaitOutcome::RecoveryRequired, None))
+            }
+        }
+    }
+
+    fn expert_result_receipt(
+        &mut self,
+        result: RuntimeV4ExpertActionResult,
+        _request: &RuntimeV4ExpertActionRequest,
+        identity: &ActionIdentity,
+        action: &EpisodeLegalAction,
+    ) -> Result<TransitionReceipt, String> {
+        let status = match result.status() {
+            RuntimeV4ExpertActionStatus::Accepted => DispatchStatus::Accepted,
+            RuntimeV4ExpertActionStatus::Settled => DispatchStatus::Settled,
+            RuntimeV4ExpertActionStatus::Rejected => DispatchStatus::Rejected,
+            RuntimeV4ExpertActionStatus::Unknown => DispatchStatus::Unknown,
+            RuntimeV4ExpertActionStatus::Cancelled => DispatchStatus::Cancelled,
+        };
+        let after = if status == DispatchStatus::Settled {
+            let expert =
+                RuntimeV4ExpertObservation::from_value(result.as_value()["observation"].clone())
+                    .map_err(|error| {
+                        format!("expert settlement observation is invalid: {error}")
+                    })?;
+            let composed = expert_only_observation(&expert)?;
+            self.install_composed(&composed);
+            Some(composed.observation)
+        } else {
+            None
+        };
+        let effect_kind =
+            (status == DispatchStatus::Settled).then(|| String::from("potion_use_settled"));
+        let error_code = result.as_value()["error_code"].as_str().map(str::to_owned);
+        Ok(TransitionReceipt::new(
+            identity.operation_id.clone(),
+            action.clone(),
+            status,
+            after,
+            effect_kind,
+            error_code,
+        ))
+    }
+}
+
+
