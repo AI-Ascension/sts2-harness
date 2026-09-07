@@ -1,21 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-use super::bundle::{MapBundleError, MapViewBundle, RuntimeMapBundleIdentity};
+use super::bundle::{MapViewBundle, RuntimeMapBundleIdentity};
+pub use super::evaluation_error::MapEvaluationError;
 use super::evaluation_oracle::{BestBinding, SnapshotGraph};
-use serde::{Deserialize, Serialize};
+pub use super::evaluation_types::{
+    ContextMode, SyntheticDecision, SyntheticEvaluationReport, SyntheticEvaluationRow,
+    SyntheticGraphTask,
+};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-use std::fmt;
-
-/// The public context variants used by the offline evaluation matrix.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ContextMode {
-    NextMoveOnly,
-    Graph,
-    GraphAnalysis,
-    GraphAnalysisImage,
-}
 
 pub const SYNTHETIC_MAX_TASKS: usize = 64;
 pub const SYNTHETIC_MAX_DECISIONS: usize = 256;
@@ -37,14 +30,6 @@ fn all_context_modes() -> [ContextMode; 4] {
     ]
 }
 
-/// One admitted public snapshot. The evaluator derives the graph and analysis from these bytes;
-/// it does not accept an expected route supplied by a fixture author.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SyntheticGraphTask {
-    pub task_id: String,
-    pub snapshot: Vec<u8>,
-}
-
 impl SyntheticGraphTask {
     pub fn new(task_id: impl Into<String>, snapshot: Vec<u8>) -> Result<Self, MapEvaluationError> {
         let task = Self {
@@ -55,52 +40,6 @@ impl SyntheticGraphTask {
             .then_some(task)
             .ok_or(MapEvaluationError::InvalidTasks)
     }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct SyntheticDecision {
-    pub task_id: String,
-    pub mode: ContextMode,
-    pub proposed_route: Vec<String>,
-    pub proposed_action_id: String,
-    pub request_bytes: u32,
-    pub graph_bytes: u32,
-    pub analysis_bytes: u32,
-    pub image_bytes: u32,
-    pub image_status: String,
-    pub latency_micros: u64,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct SyntheticEvaluationRow {
-    pub task_id: String,
-    pub mode: ContextMode,
-    pub topology_errors: u32,
-    pub missed_route_opportunities: u32,
-    pub invalid_proposals: u32,
-    pub request_bytes: u32,
-    pub graph_bytes: u32,
-    pub analysis_bytes: u32,
-    pub image_bytes: u32,
-    pub image_status: String,
-    pub latency_micros: u64,
-    pub node_count: u32,
-    pub edge_count: u32,
-    pub analysis_digest: String,
-    pub snapshot_digest: String,
-    pub decision_action_id: String,
-    pub independent_best_action_id: Option<String>,
-    pub independent_best_status: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct SyntheticEvaluationReport {
-    pub evaluator_version: String,
-    pub rows: Vec<SyntheticEvaluationRow>,
-    /// Whether the report passed the four-mode acceptance contract. The low-level `evaluate`
-    /// scorer deliberately leaves this false; use `evaluate_complete` for an acceptance result.
-    pub complete: bool,
-    pub incomplete_reasons: Vec<String>,
 }
 
 pub struct SyntheticEvaluationRunner {
@@ -349,46 +288,6 @@ fn valid_identifier(value: &str) -> bool {
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
 }
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum MapEvaluationError {
-    InvalidTasks,
-    InvalidDecision,
-    IncompleteMatrix(String),
-    TooManyDecisions,
-    TooLarge(&'static str),
-    Serialization,
-    UnknownTask(String),
-    Bundle(String),
-}
-
-impl From<MapBundleError> for MapEvaluationError {
-    fn from(error: MapBundleError) -> Self {
-        Self::Bundle(error.to_string())
-    }
-}
-
-impl fmt::Display for MapEvaluationError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidTasks => formatter.write_str("invalid synthetic map task"),
-            Self::InvalidDecision => formatter.write_str("invalid synthetic map decision"),
-            Self::IncompleteMatrix(reason) => {
-                write!(
-                    formatter,
-                    "incomplete synthetic map evaluation matrix: {reason}"
-                )
-            }
-            Self::TooManyDecisions => formatter.write_str("too many synthetic map decisions"),
-            Self::TooLarge(field) => write!(formatter, "synthetic map {field} exceeds its bound"),
-            Self::Serialization => formatter.write_str("synthetic map serialization failed"),
-            Self::UnknownTask(task) => write!(formatter, "unknown synthetic map task {task}"),
-            Self::Bundle(error) => write!(formatter, "synthetic map bundle rejected: {error}"),
-        }
-    }
-}
-
-impl std::error::Error for MapEvaluationError {}
 
 #[must_use]
 pub fn synthetic_action_id(destination: &str) -> String {

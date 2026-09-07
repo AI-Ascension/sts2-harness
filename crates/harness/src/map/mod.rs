@@ -8,17 +8,23 @@ mod analysis_routes;
 mod analysis_types;
 mod bundle;
 mod bundle_store;
+mod bundle_store_io;
+mod bundle_types;
 mod bundle_validation;
+mod bundle_validation_checks;
 mod cache;
 mod canonical;
 mod evaluation;
+mod evaluation_error;
 mod evaluation_fixture;
 mod evaluation_matrix;
 mod evaluation_oracle;
 mod evaluation_renderer;
 mod evaluation_routes;
+mod evaluation_types;
 mod feed;
 mod graph;
+mod graph_error;
 mod wire;
 
 pub use analysis::{
