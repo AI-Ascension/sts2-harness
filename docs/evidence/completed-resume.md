@@ -75,8 +75,6 @@ silently rewritten here; the H20 source-equivalent full workspace gate remains u
 the root-owned lockfile update. The focused completed-resume evidence is 7/7 across three repeated
 runs.
 
-## Limits
-
 ## Integrated root validation
 
 The root integrated the reviewed helper chain through `ab97c32`, retaining the
