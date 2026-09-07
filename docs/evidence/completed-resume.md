@@ -77,6 +77,37 @@ runs.
 
 ## Limits
 
+## Integrated root validation
+
+The root integrated the reviewed helper chain through `ab97c32`, retaining the
+existing completed-resume implementation and provider-decision replay changes.
+The pending lockfile was resolved without changing existing dependency versions:
+only `rustix 1.1.4` and `linux-raw-sys 0.12.1` were added. Adversarial reader
+tests were separated from process-supervisor support after strict policy detected
+its preferred size limit; the production timeout and supervision code did not change.
+
+On that integrated source plus these lock/test-layout changes, root reran:
+
+```text
+cargo test --locked --offline -p sts2-harness --test completed_resume_process -- --nocapture
+7 passed, 0 failed
+cargo test --workspace --all-targets --all-features --locked --quiet
+exit 0, including 81 runtime tests and 7 completed-resume process tests
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+exit 0
+cargo fmt --all --check
+exit 0
+cargo run --locked --package repo-policy -- --strict
+396 sized files, 0 warnings, 0 errors
+```
+
+The earlier failing MCP duplex shutdown test remains recorded above as historical
+evidence; its independently reviewed drain-handshake repair is retained in the
+integrated root branch. These results supersede only the pending integrated
+build/synthetic gates, not the live recovery limits below.
+
+## Remaining limits
+
 This evidence does not prove Ready episodes with pending operations can be resumed, canonical
 sideband recovery, host or game settlement, provider accounting across a crash, gateway lease
 ownership, or live gameplay. Those remain separate recovery work and require the corresponding
