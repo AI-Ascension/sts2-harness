@@ -25,7 +25,7 @@ const TRAJECTORY_ID: &str = "trajectory-completed-resume";
 
 #[path = "support/completed_resume_process_support.rs"]
 mod process_support;
-use process_support::run_child;
+use process_support::{run_child, run_child_with_timeout};
 
 struct Fixture {
     root: PathBuf,
@@ -37,6 +37,51 @@ struct Fixture {
     gateway_address: String,
     lineage: ExecutionLineage,
     fingerprint: ExecutionFingerprint,
+}
+
+#[test]
+fn bounded_child_contains_a_pipe_holding_descendant() -> Result<(), String> {
+    let started = Instant::now();
+    let output = run_child(shell_command("sleep 30 & exit 0"))?;
+    assert!(output.status.success());
+    assert!(started.elapsed() < Duration::from_secs(2));
+    Ok(())
+}
+
+#[test]
+fn bounded_child_timeout_reaps_the_owned_process_group() -> Result<(), String> {
+    let started = Instant::now();
+    let result = run_child_with_timeout(shell_command("sleep 30"), Duration::from_millis(100));
+    let error = match result {
+        Ok(_) => return Err(String::from("sleeping child unexpectedly completed")),
+        Err(error) => error,
+    };
+    assert!(error.contains("exceeded its timeout"));
+    assert!(started.elapsed() < Duration::from_secs(2));
+    Ok(())
+}
+
+#[test]
+fn bounded_child_output_limit_reaps_the_owned_process_group() -> Result<(), String> {
+    let started = Instant::now();
+    let result = run_child_with_timeout(shell_command("yes x"), Duration::from_secs(2));
+    let error = match result {
+        Ok(_) => return Err(String::from("unbounded child unexpectedly completed")),
+        Err(error) => error,
+    };
+    assert!(error.contains("capture bound"));
+    assert!(started.elapsed() < Duration::from_secs(2));
+    Ok(())
+}
+
+fn shell_command(script: &str) -> Command {
+    let mut command = Command::new("/bin/sh");
+    command
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .arg("-c")
+        .arg(script);
+    command
 }
 
 impl Drop for Fixture {

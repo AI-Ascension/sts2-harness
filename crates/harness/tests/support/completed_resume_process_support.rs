@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::io::Read;
+use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::{
     Arc,
@@ -11,9 +12,18 @@ use std::time::{Duration, Instant};
 
 const CHILD_TIMEOUT: Duration = Duration::from_secs(5);
 const TERMINATION_TIMEOUT: Duration = Duration::from_secs(1);
+const READER_JOIN_TIMEOUT: Duration = Duration::from_millis(250);
 const MAX_CAPTURE_BYTES: usize = 64 * 1024;
 
-pub(super) fn run_child(mut command: Command) -> Result<Output, String> {
+pub(super) fn run_child(command: Command) -> Result<Output, String> {
+    run_child_with_timeout(command, CHILD_TIMEOUT)
+}
+
+pub(super) fn run_child_with_timeout(
+    mut command: Command,
+    timeout: Duration,
+) -> Result<Output, String> {
+    command.process_group(0);
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -48,20 +58,26 @@ pub(super) fn run_child(mut command: Command) -> Result<Output, String> {
     let overflow = Arc::new(AtomicBool::new(false));
     let stdout_reader = spawn_reader(stdout, "stdout", Arc::clone(&overflow));
     let stderr_reader = spawn_reader(stderr, "stderr", Arc::clone(&overflow));
-    let status = match monitor_child(&mut child, &overflow) {
+    let status = match monitor_child(&mut child, &overflow, timeout) {
         Ok(status) => status,
         Err(reason) => {
             let termination = terminate_child(&mut child);
-            if let Err(cleanup) = termination {
-                return Err(format!("{reason}; child cleanup failed: {cleanup}"));
-            }
-            let _ = join_reader(stdout_reader);
-            let _ = join_reader(stderr_reader);
-            return Err(reason);
+            let stdout_result = join_reader_bounded(stdout_reader, "stdout");
+            let stderr_result = join_reader_bounded(stderr_reader, "stderr");
+            return match (termination, stdout_result, stderr_result) {
+                (Err(cleanup), _, _) => Err(format!("{reason}; child cleanup failed: {cleanup}")),
+                (_, Err(reader), _) | (_, _, Err(reader)) => Err(format!("{reason}; {reader}")),
+                (Ok(()), Ok(_), Ok(_)) => Err(reason),
+            };
         }
     };
-    let stdout = join_reader(stdout_reader)?;
-    let stderr = join_reader(stderr_reader)?;
+    if let Err(cleanup) = terminate_child(&mut child) {
+        let _ = join_reader_bounded(stdout_reader, "stdout");
+        let _ = join_reader_bounded(stderr_reader, "stderr");
+        return Err(format!("child cleanup failed: {cleanup}"));
+    }
+    let stdout = join_reader_bounded(stdout_reader, "stdout")?;
+    let stderr = join_reader_bounded(stderr_reader, "stderr")?;
     Ok(Output {
         status,
         stdout,
@@ -104,15 +120,32 @@ where
     })
 }
 
-fn join_reader(reader: JoinHandle<Result<Vec<u8>, String>>) -> Result<Vec<u8>, String> {
+fn join_reader_bounded(
+    reader: JoinHandle<Result<Vec<u8>, String>>,
+    label: &'static str,
+) -> Result<Vec<u8>, String> {
+    let deadline = Instant::now() + READER_JOIN_TIMEOUT;
+    while !reader.is_finished() {
+        if Instant::now() >= deadline {
+            drop(reader);
+            return Err(format!(
+                "runtime child {label} output reader did not finish after containment"
+            ));
+        }
+        thread::sleep(Duration::from_millis(2));
+    }
     match reader.join() {
         Ok(result) => result,
-        Err(_) => Err(String::from("runtime child output reader panicked")),
+        Err(_) => Err(format!("runtime child {label} output reader panicked")),
     }
 }
 
-fn monitor_child(child: &mut Child, overflow: &AtomicBool) -> Result<ExitStatus, String> {
-    let deadline = Instant::now() + CHILD_TIMEOUT;
+fn monitor_child(
+    child: &mut Child,
+    overflow: &AtomicBool,
+    timeout: Duration,
+) -> Result<ExitStatus, String> {
+    let deadline = Instant::now() + timeout;
     loop {
         if overflow.load(Ordering::Acquire) {
             return Err(String::from(
@@ -131,6 +164,7 @@ fn monitor_child(child: &mut Child, overflow: &AtomicBool) -> Result<ExitStatus,
 }
 
 fn terminate_child(child: &mut Child) -> Result<(), String> {
+    let _group_exists = kill_owned_process_group(child)?;
     let _ = child.kill();
     let deadline = Instant::now() + TERMINATION_TIMEOUT;
     loop {
@@ -143,4 +177,18 @@ fn terminate_child(child: &mut Child) -> Result<(), String> {
             Err(error) => return Err(format!("cannot reap runtime child: {error}")),
         }
     }
+}
+
+fn kill_owned_process_group(child: &Child) -> Result<bool, String> {
+    let group_id = format!("-{}", child.id());
+    let status = Command::new("/bin/kill")
+        .arg("-KILL")
+        .arg("--")
+        .arg(group_id)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|error| format!("cannot invoke owned process-group cleanup: {error}"))?;
+    Ok(status.success())
 }
