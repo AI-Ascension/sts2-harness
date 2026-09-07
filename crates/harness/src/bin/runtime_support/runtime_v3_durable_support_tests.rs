@@ -14,12 +14,15 @@ fn fixture_path(name: &str) -> PathBuf {
 
 #[test]
 fn resume_requires_every_fingerprint_component() -> Result<(), String> {
-    assert!(
-        fingerprint_component("STS2_SEED", Some("STS2_VISIBLE_SEED"), "fallback", true).is_err()
-    );
-    assert!(fingerprint_component("STS2_BUILD_DIGEST", None, "fallback", true).is_err());
-    assert!(fingerprint_component("STS2_STATE_DIGEST", None, "fallback", true).is_err());
-    let new_episode = fingerprint_component("STS2_BUILD_DIGEST", None, "fallback", false)?;
+    let prefix = format!("STS2_COMPLETED_RESUME_TEST_{}", std::process::id());
+    let seed = format!("{prefix}_SEED");
+    let visible_seed = format!("{prefix}_VISIBLE_SEED");
+    let build = format!("{prefix}_BUILD");
+    let state = format!("{prefix}_STATE");
+    assert!(fingerprint_component(&seed, Some(&visible_seed), "fallback", true).is_err());
+    assert!(fingerprint_component(&build, None, "fallback", true).is_err());
+    assert!(fingerprint_component(&state, None, "fallback", true).is_err());
+    let new_episode = fingerprint_component(&build, None, "fallback", false)?;
     assert_eq!(new_episode, super::digest_text("fallback"));
     Ok(())
 }

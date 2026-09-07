@@ -3,10 +3,12 @@
 #![cfg(unix)]
 
 use std::fs;
+use std::net::TcpListener;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -21,12 +23,18 @@ const EPISODE_ID: &str = "episode-completed-resume";
 const ATTEMPT_ID: &str = "attempt-completed-resume";
 const TRAJECTORY_ID: &str = "trajectory-completed-resume";
 
+#[path = "support/completed_resume_process_support.rs"]
+mod process_support;
+use process_support::run_child;
+
 struct Fixture {
     root: PathBuf,
     store: PathBuf,
     mcp: PathBuf,
     bridge: PathBuf,
     counter: PathBuf,
+    gateway: TcpListener,
+    gateway_address: String,
     lineage: ExecutionLineage,
     fingerprint: ExecutionFingerprint,
 }
@@ -41,9 +49,10 @@ impl Drop for Fixture {
 fn completed_resume_returns_the_stored_record_without_external_calls() -> Result<(), String> {
     let fixture = Fixture::new("completed")?;
     let completion = seed_completed(&fixture)?;
-    let output = fixture.command().output().map_err(command_error)?;
+    let output = run_child(fixture.command())?;
     assert_success(&output)?;
     assert_completion_output(&output, &completion)?;
+    fixture.assert_no_gateway_connection()?;
     assert!(
         !fixture.counter.exists(),
         "completed resume invoked a boundary"
@@ -53,8 +62,9 @@ fn completed_resume_returns_the_stored_record_without_external_calls() -> Result
     missing_seed
         .env_remove("STS2_SEED")
         .env_remove("STS2_VISIBLE_SEED");
-    let missing_output = missing_seed.output().map_err(command_error)?;
+    let missing_output = run_child(missing_seed)?;
     assert_failure_contains(&missing_output, "requires STS2_SEED or STS2_VISIBLE_SEED")?;
+    fixture.assert_no_gateway_connection()?;
     assert!(
         !fixture.counter.exists(),
         "fingerprint rejection invoked a boundary"
@@ -76,8 +86,9 @@ fn interrupted_unknown_resume_is_denied_before_external_calls() -> Result<(), St
         .close()
         .map_err(|error| format!("cannot close interrupted store: {error}"))?;
 
-    let output = fixture.command().output().map_err(command_error)?;
+    let output = run_child(fixture.command())?;
     assert_failure_contains(&output, "requires a separately approved reconstruction")?;
+    fixture.assert_no_gateway_connection()?;
     assert!(
         !fixture.counter.exists(),
         "interrupted resume invoked a boundary"
@@ -98,17 +109,28 @@ impl Fixture {
         let mcp = root.join("mcp-probe.sh");
         let bridge = root.join("provider-probe.sh");
         let counter = root.join("boundary-calls.log");
+        let gateway = TcpListener::bind(("127.0.0.1", 0))
+            .map_err(|error| format!("cannot bind gateway probe: {error}"))?;
+        gateway
+            .set_nonblocking(true)
+            .map_err(|error| format!("cannot configure gateway probe: {error}"))?;
+        let gateway_address = gateway
+            .local_addr()
+            .map_err(|error| format!("cannot read gateway probe address: {error}"))?
+            .to_string();
         write_probe(&mcp, "mcp", &counter)?;
         write_probe(&bridge, "provider", &counter)?;
         let lineage = ExecutionLineage::new(RUN_ID, EPISODE_ID, ATTEMPT_ID, TRAJECTORY_ID)
             .map_err(|error| format!("fixture lineage is invalid: {error}"))?;
-        let fingerprint = fingerprint(&mcp, &bridge)?;
+        let fingerprint = fingerprint(&mcp, &bridge, &gateway_address)?;
         Ok(Self {
             root,
             store,
             mcp,
             bridge,
             counter,
+            gateway,
+            gateway_address,
             lineage,
             fingerprint,
         })
@@ -117,9 +139,11 @@ impl Fixture {
     fn command(&self) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_sts2-harness-runtime"));
         command
+            .env_clear()
             .arg("--resume")
+            .env("PATH", "/usr/bin:/bin")
             .env("STS2_RUNTIME_PROFILE", "runtime-v3-gameplay")
-            .env("STS2_GATEWAY_ADDR", "127.0.0.1:1")
+            .env("STS2_GATEWAY_ADDR", &self.gateway_address)
             .env("STS2_GATEWAY_TOKEN", "test-token")
             .env("STS2_MCP_BINARY", &self.mcp)
             .env("STS2_INSTANCE_ID", "instance-completed-resume")
@@ -148,6 +172,29 @@ impl Fixture {
             .env_remove("STS2_REPLAY_TRAJECTORY");
         command
     }
+
+    fn assert_no_gateway_connection(&self) -> Result<(), String> {
+        let mut attempts = 0_u32;
+        let deadline = Instant::now() + Duration::from_millis(100);
+        loop {
+            match self.gateway.accept() {
+                Ok((_stream, _address)) => attempts = attempts.saturating_add(1),
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::WouldBlock
+                        && Instant::now() < deadline =>
+                {
+                    thread::sleep(Duration::from_millis(1));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(error) => return Err(format!("gateway probe failed: {error}")),
+            }
+        }
+        if attempts == 0 {
+            Ok(())
+        } else {
+            Err(format!("runtime made {attempts} gateway TCP connection(s)"))
+        }
+    }
 }
 
 fn write_probe(path: &Path, marker: &str, counter: &Path) -> Result<(), String> {
@@ -164,7 +211,11 @@ fn write_probe(path: &Path, marker: &str, counter: &Path) -> Result<(), String> 
         .map_err(|error| format!("cannot make probe executable: {error}"))
 }
 
-fn fingerprint(mcp: &Path, bridge: &Path) -> Result<ExecutionFingerprint, String> {
+fn fingerprint(
+    mcp: &Path,
+    bridge: &Path,
+    gateway_address: &str,
+) -> Result<ExecutionFingerprint, String> {
     let mcp_bytes = fs::read(mcp).map_err(|error| format!("cannot read MCP probe: {error}"))?;
     let mcp_value = json!({
         "path": mcp.display().to_string(),
@@ -173,7 +224,7 @@ fn fingerprint(mcp: &Path, bridge: &Path) -> Result<ExecutionFingerprint, String
     });
     let config = json!({
         "runtime_profile": "runtime-v3-gameplay",
-        "gateway_address": "127.0.0.1:1",
+        "gateway_address": gateway_address,
         "mcp_binary": mcp.display().to_string(),
         "mcp_executable": mcp_value,
         "instance_id": "instance-completed-resume",
@@ -307,10 +358,6 @@ fn assert_failure_contains(output: &Output, expected: &str) -> Result<(), String
             "runtime child error {stderr:?} omitted {expected:?}"
         ))
     }
-}
-
-fn command_error(error: std::io::Error) -> String {
-    format!("cannot spawn runtime child: {error}")
 }
 
 fn digest_bytes(bytes: &[u8]) -> String {

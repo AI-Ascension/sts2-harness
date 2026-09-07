@@ -15,13 +15,18 @@ observation, action, model decision, or report.
 
 Resume admission requires seed (or visible-seed), build, and state fingerprint evidence. Missing
 evidence fails closed. The MCP executable is included in the configuration fingerprint using a
-bounded digest of an absolute, regular, non-symlink file. `ReconstructionRequired` and
-`InterruptedUnknown` remain denied until a separately approved reconstruction path exists.
+bounded digest of a resolved regular, non-symlink file (absolute, relative, and PATH forms are
+resolved by the runtime). This digest is identity evidence, not a TOCTOU execution barrier.
+ReconstructionRequired and InterruptedUnknown remain denied until a separately approved
+reconstruction path exists.
 
 ## Process oracle
 
 `crates/harness/tests/completed_resume_process.rs` seeds a SQLite episode with a durable checkpoint
-and completion, then starts `sts2-harness-runtime --resume` as a child process. It verifies:
+and completion, then starts `sts2-harness-runtime --resume` under a bounded child supervisor with
+explicitly cleared environment and concurrently drained, capped stdout/stderr. A real loopback
+gateway listener counts connection attempts while executable probe files count MCP/provider
+invocations. It verifies:
 
 - the child returns the exact stored completion fields as one JSON line;
 - missing seed evidence is rejected before external construction;
@@ -34,7 +39,7 @@ The isolated worktree passed:
 
 ```text
 cargo run --locked --package repo-policy -- --strict
-Policy check: 390 sized files, 0 warning(s), 0 error(s)
+Policy check: 391 sized files, 0 warning(s), 0 error(s)
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --all-targets --all-features --locked
