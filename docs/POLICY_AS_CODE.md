@@ -2,8 +2,8 @@
 
 ## Purpose
 
-Written guidance is advisory until an enforceable check makes objective parts visible. This repository
-keeps its objective foundation rules in `policy.toml` and checks them with the Rust `repo-policy`
+Mandatory requirements remain mandatory whether checked automatically or through owner review.
+Only explicitly designated guidance is advisory. This repository keeps its objective foundation rules in `policy.toml` and checks them with the Rust `repo-policy`
 workspace tool. Review is still required for architecture, provenance, privacy, and evidence claims.
 
 ## Local entrypoint
@@ -12,8 +12,9 @@ workspace tool. Review is still required for architecture, provenance, privacy, 
 cargo run --locked --package repo-policy -- --strict
 ```
 
-The command is read-only. Strict mode turns preferred-size warnings into failures and returns nonzero
-when a mandatory rule or warning fails.
+The command is read-only. This target uses policy version 2: strict mode keeps preferred-size
+`SIZE001` guidance advisory and returns nonzero for mandatory findings or hard limits. Version 1 is
+still parsed for legacy callers and its strict mode turns every warning into a failure.
 
 ## Rule families
 
@@ -61,3 +62,21 @@ headers and bounded source/test files, as well as tooling and documentation. It 
 package's semantic invariants or runtime boundaries. Future integrations must add dependency-
 direction, contract/conformance, artifact, privacy, and release checks when enforceable structures
 exist; planned checks are not current evidence.
+
+## Compiler and minimum version
+
+The development compiler remains exactly 1.97.1 and the declared Rust MSRV remains
+1.97.1. This repository retains its existing requirement that those values match;
+`rust-version` is a minimum supported version in Cargo, not a generic exact compiler
+selector. Any deliberate separation of these values needs the owner policy change
+and its compatibility matrix, rather than deletion of the equality check.
+
+## Production lint scope
+
+The production Clippy lane selects workspace libraries and binaries and forbids
+unwrap, expect, panic, todo and unimplemented on the compiler command line.
+A source-level allowance cannot override that lane. The existing all-target lane
+still checks tests with their scoped allowances. `production_lints` runs real
+compiler fixtures for forbidden constructs, an attempted blanket allowance,
+and valid comments/test-only code. Missing Clippy or an unrelated compiler
+failure cannot satisfy a negative case: its diagnostic must identify the rule.

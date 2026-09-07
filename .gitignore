@@ -1,5 +1,6 @@
 # Rust and managed build output
 target/
+standards/tools/standards-sync/target/
 **/bin/
 !crates/harness/src/bin/
 !crates/harness/src/bin/**

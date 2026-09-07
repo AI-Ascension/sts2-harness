@@ -1,8 +1,9 @@
 [package]
 name = "sts2-patch-diff"
 version = "0.1.0"
-edition = "2024"
-license = "MIT"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 publish = false
 
 [dependencies]

@@ -1,5 +1,18 @@
 // SPDX-License-Identifier: MIT
 
+//! Deterministic orchestration, provider, and evidence boundaries for STS2 runs.
+//!
+//! The public POC runner exposes both accepted and rejected settlement evidence:
+//!
+//! ```
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let report = sts2_harness::run_poc().map_err(|_| "example POC failed")?;
+//! assert!(report.accepted_changed_once());
+//! assert!(report.rejected_unchanged());
+//! # Ok(())
+//! # }
+//! ```
+
 mod artifact;
 mod coordinator;
 mod decision_records;
