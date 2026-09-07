@@ -19,10 +19,10 @@ use super::runtime_v3_telemetry::{
 };
 use super::runtime_v3_wire as wire;
 
-#[path = "runtime_v3_decision_replay.rs"]
-mod decision_replay;
 #[path = "runtime_v3_completed_resume.rs"]
 mod completed_resume;
+#[path = "runtime_v3_decision_replay.rs"]
+mod decision_replay;
 #[path = "runtime_v3_durable.rs"]
 mod durable;
 #[path = "runtime_v3_episode.rs"]
