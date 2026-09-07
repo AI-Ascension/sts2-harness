@@ -66,7 +66,10 @@ mod tests {
         assert!(!body.contains("rationale"));
         assert!(!body.contains("model_output"));
         assert!(body.contains("sts2.model_execution_id"));
-        assert!(body.contains("sts2.action_id_digest"));
+        assert!(body.contains("sts2.action_id"));
+        assert!(body.contains("sts2.id_encoding"));
+        assert!(!body.contains("sts2.action_id_digest"));
+        assert!(!body.contains("sts2.operation_id_digest"));
         assert!(body.contains("sts2.instance_id"));
         assert!(body.contains("sts2.session_id"));
         Ok(())
@@ -96,6 +99,21 @@ mod tests {
             attrs
                 .iter()
                 .any(|(key, value)| *key == "sts2.to_generation" && value == "5")
+        );
+        assert!(
+            attrs
+                .iter()
+                .any(|(key, value)| *key == "sts2.operation_id" && value == "operation-digest")
+        );
+        assert!(
+            attrs
+                .iter()
+                .any(|(key, value)| *key == "sts2.action_id" && value == "action-digest")
+        );
+        assert!(
+            attrs
+                .iter()
+                .any(|(key, value)| *key == "sts2.effect_kind" && value == "card_play")
         );
         Ok(())
     }
@@ -138,6 +156,38 @@ mod tests {
     }
 
     #[test]
+    fn export_status_is_persisted_after_run_finished_without_queued_claim() -> Result<(), String> {
+        let run_finished = render_span(
+            &context()?,
+            &TelemetryEvent::RunFinished {
+                outcome: GameOutcome::Success,
+                terminal_stage: TelemetryStage::Victory,
+                cleanup_status: super::CleanupStatus::Clean,
+                dropped_events: 0,
+            },
+            3,
+        );
+        let export_status = render_span(
+            &context()?,
+            &TelemetryEvent::ExportStatus {
+                status: "delivered",
+                sent: 3,
+                failed: 0,
+                dropped_events: 0,
+            },
+            4,
+        );
+        let run_attributes = run_finished["attributes"].to_string();
+        assert!(!run_attributes.contains("sts2.export_status"));
+        assert!(!run_attributes.contains("queued"));
+        let export_attributes = export_status["attributes"].to_string();
+        assert!(export_attributes.contains("sts2.export_status"));
+        assert!(export_attributes.contains("delivered"));
+        assert!(export_attributes.contains("sts2.exported_spans"));
+        Ok(())
+    }
+
+    #[test]
     fn queued_timestamp_and_sequence_are_rendered() -> Result<(), String> {
         let rendered = render_span_at(&context()?, &TelemetryEvent::RunStarted, 9, 1234);
         assert_eq!(rendered.get("startTimeUnixNano"), Some(&json!("1234")));
@@ -168,12 +218,16 @@ mod tests {
         Ok(accepted)
     }
 
-    fn framed_response(body: &str) -> Vec<u8> {
+    fn framed_response_with_content_type(body: &str, content_type: &str) -> Vec<u8> {
         format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         )
         .into_bytes()
+    }
+
+    fn framed_response(body: &str) -> Vec<u8> {
+        framed_response_with_content_type(body, "application/json")
     }
 
     #[test]
@@ -188,6 +242,16 @@ mod tests {
             (
                 "valid_string_zero",
                 framed_response(r#"{"partialSuccess":{"rejectedSpans":"0"}}"#),
+                true,
+            ),
+            (
+                "valid_json_content_type_parameter",
+                framed_response_with_content_type("{}", "application/json; charset=utf-8"),
+                true,
+            ),
+            (
+                "valid_empty_error_message",
+                framed_response(r#"{"partialSuccess":{"errorMessage":""}}"#),
                 true,
             ),
             (
@@ -218,6 +282,26 @@ mod tests {
             (
                 "string_rejection",
                 framed_response(r#"{"partialSuccess":{"rejectedSpans":"1"}}"#),
+                false,
+            ),
+            (
+                "non_empty_error_message",
+                framed_response(r#"{"partialSuccess":{"errorMessage":"partial export"}}"#),
+                false,
+            ),
+            (
+                "missing_content_type",
+                b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}".to_vec(),
+                false,
+            ),
+            (
+                "wrong_content_type",
+                framed_response_with_content_type("{}", "application/protobuf"),
+                false,
+            ),
+            (
+                "malformed_content_type_parameter",
+                framed_response_with_content_type("{}", "application/json; charset"),
                 false,
             ),
             (

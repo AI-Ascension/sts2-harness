@@ -14,8 +14,8 @@ use super::mcp::{McpProcess, identity_headers};
 use super::runtime_v3_parse as parse;
 use super::runtime_v3_settings::RuntimeV3Settings;
 use super::runtime_v3_telemetry::{
-    CleanupStatus, GameOutcome, RuntimeV3Telemetry, TelemetryContext, TelemetryContextInput,
-    TelemetryHandle, TelemetryStage,
+    CleanupStatus, RuntimeV3Telemetry, TelemetryContext, TelemetryContextInput, TelemetryHandle,
+    TelemetryStage,
 };
 use super::runtime_v3_wire as wire;
 
@@ -64,11 +64,6 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
                 false,
                 None,
             );
-            let _ = telemetry_handle.run_finished(
-                GameOutcome::Unavailable,
-                TelemetryStage::Unknown,
-                CleanupStatus::Failed,
-            );
             finish_telemetry(telemetry);
             return Err(error);
         }
@@ -78,18 +73,20 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         if !path.is_empty() {
             let result = episode_replay::run(&mut port, &settings.runner, &path);
             drop(port);
-            let (game_outcome, terminal_stage) = match result.as_ref() {
-                Ok(episode_replay::ReplayOutcome::Terminal(stage)) => (
+            if let Ok(episode_replay::ReplayOutcome::Terminal(stage)) = result.as_ref() {
+                let _ = telemetry_handle.run_finished(
                     recording::game_outcome(*stage),
                     TelemetryStage::from(*stage),
-                ),
-                Ok(episode_replay::ReplayOutcome::PrefixVerified) => {
-                    (GameOutcome::Unavailable, TelemetryStage::Recovery)
-                }
-                Err(_) => (GameOutcome::Failure, TelemetryStage::Unknown),
-            };
-            let _ =
-                telemetry_handle.run_finished(game_outcome, terminal_stage, CleanupStatus::Clean);
+                    CleanupStatus::Clean,
+                );
+            } else if result.is_err() {
+                let _ = telemetry_handle.failure(
+                    "episode_replay",
+                    super::runtime_v3_telemetry::FailureCode::Other,
+                    false,
+                    None,
+                );
+            }
             finish_telemetry(telemetry);
             return result.map(|_| ());
         }
@@ -101,22 +98,74 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         let outcome = combat_demo::run(&mut port, &mut source, &settings.runner);
         let close = source.close().map_err(|error| error.to_string());
         drop(port);
-        let game_outcome = if outcome.is_ok() && close.is_ok() {
-            GameOutcome::Success
-        } else {
-            GameOutcome::Failure
+        let mut completion = None;
+        let result = match outcome {
+            Ok(report) => {
+                completion = Some((
+                    report.steps(),
+                    report.terminal_observation().stage(),
+                    report.terminal_observation_digest(),
+                ));
+                let game_outcome = recording::game_outcome(report.terminal_observation().stage());
+                recording::complete_observation(report.terminal_observation(), &telemetry_handle);
+                let cleanup_status = if close.is_ok() {
+                    CleanupStatus::Clean
+                } else {
+                    CleanupStatus::Failed
+                };
+                let _ = telemetry_handle.run_finished(
+                    game_outcome,
+                    TelemetryStage::from(report.terminal_observation().stage()),
+                    cleanup_status,
+                );
+                match close {
+                    Ok(()) => Ok(()),
+                    Err(error) => Err(error),
+                }
+            }
+            Err(failure) => {
+                let cleanup_status =
+                    if close.is_ok() && failure.cleanup_status() == CleanupStatus::Clean {
+                        CleanupStatus::Clean
+                    } else {
+                        CleanupStatus::Failed
+                    };
+                if let Some(observation) = failure.terminal_observation() {
+                    recording::complete_observation(observation, &telemetry_handle);
+                    let _ = telemetry_handle.run_finished(
+                        recording::game_outcome(observation.stage()),
+                        TelemetryStage::from(observation.stage()),
+                        cleanup_status,
+                    );
+                } else {
+                    let _ = telemetry_handle.failure(
+                        "combat_demo",
+                        if cleanup_status == CleanupStatus::Failed {
+                            super::runtime_v3_telemetry::FailureCode::Cleanup
+                        } else {
+                            super::runtime_v3_telemetry::FailureCode::Other
+                        },
+                        false,
+                        None,
+                    );
+                }
+                let mut message = failure.message().to_owned();
+                if let Err(error) = close {
+                    message.push_str(&format!("; provider cleanup failed: {error}"));
+                }
+                Err(message)
+            }
         };
-        let _ = telemetry_handle.run_finished(
-            game_outcome,
-            TelemetryStage::Unknown,
-            if close.is_ok() {
-                CleanupStatus::Clean
-            } else {
-                CleanupStatus::Failed
-            },
-        );
         finish_telemetry(telemetry);
-        return outcome.and(close);
+        if let Some((steps, stage, terminal_observation_digest)) = completion {
+            println!(
+                "{}",
+                json!({"event":"combat_demo_complete", "steps":steps,
+                "stage":wire::stage_name(stage),
+                "terminal_observation_digest":terminal_observation_digest})
+            );
+        }
+        return result;
     }
     let result = EpisodeRunner::new(settings.runner).run(
         &mut port,
@@ -133,11 +182,14 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
                 false,
                 None,
             );
-            let _ = telemetry_handle.run_finished(
-                GameOutcome::Unavailable,
-                TelemetryStage::Unknown,
-                CleanupStatus::Failed,
-            );
+            if source_close.is_err() {
+                let _ = telemetry_handle.failure(
+                    "provider_close",
+                    super::runtime_v3_telemetry::FailureCode::Cleanup,
+                    false,
+                    None,
+                );
+            }
             finish_telemetry(telemetry);
             return Err(format!("Runtime-v3 episode failed: {error}"));
         }
@@ -174,7 +226,6 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
             "steps": report.steps(),
             "transitions": report.transitions(),
             "recoveries": report.recoveries(),
-            "final_state_id": report.final_observation().state_id(),
             "final_generation": report.final_observation().generation()
         }))
         .map_err(|error| format!("Runtime-v3 report serialization failed: {error}"))?

@@ -166,7 +166,7 @@ impl RuntimeV3Port {
         Ok(())
     }
 
-    fn current_payload(
+    pub(super) fn current_payload(
         &self,
         action: &EpisodeLegalAction,
     ) -> Result<Value, sts2_harness::PortError> {

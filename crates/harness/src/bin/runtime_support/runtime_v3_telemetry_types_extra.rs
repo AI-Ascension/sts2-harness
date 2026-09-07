@@ -96,6 +96,7 @@ enum EventKind {
     Failure,
     TerminalObserved,
     RunFinished,
+    ExportStatus,
 }
 
 impl EventKind {
@@ -111,6 +112,7 @@ impl EventKind {
             Self::Failure => "failure",
             Self::TerminalObserved => "terminal_observed",
             Self::RunFinished => "run_finished",
+            Self::ExportStatus => "export_status",
         }
     }
 }

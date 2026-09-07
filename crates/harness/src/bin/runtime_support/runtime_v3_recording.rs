@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use sts2_harness::{
-    Decision, DecisionInput, DecisionSource, DispatchStatus, EpisodeRunReport, PolicyError,
-    TransitionReceipt, WaitOutcome, WaitSample,
+    Decision, DecisionInput, DecisionSource, DispatchStatus, EpisodeObservation, EpisodeRunReport,
+    PolicyError, TransitionReceipt, WaitOutcome, WaitSample,
 };
 
 use super::super::runtime_v3_telemetry::{
@@ -143,10 +143,17 @@ pub(super) fn wait(
 
 pub(super) fn game_outcome(stage: sts2_harness::EpisodeStage) -> GameOutcome {
     match stage {
-        sts2_harness::EpisodeStage::Victory => GameOutcome::Success,
+        sts2_harness::EpisodeStage::Victory | sts2_harness::EpisodeStage::Reward => {
+            GameOutcome::Success
+        }
         sts2_harness::EpisodeStage::Defeat => GameOutcome::Failure,
         _ => GameOutcome::Unavailable,
     }
+}
+
+pub(super) fn complete_observation(observation: &EpisodeObservation, telemetry: &TelemetryHandle) {
+    let outcome = game_outcome(observation.stage());
+    let _ = telemetry.terminal(observation, outcome);
 }
 
 pub(super) fn complete(report: &EpisodeRunReport, telemetry: &TelemetryHandle) {
@@ -162,6 +169,7 @@ mod tests {
     #[test]
     fn terminal_stage_outcome_survives_independent_cleanup_status() {
         assert_eq!(game_outcome(EpisodeStage::Victory), GameOutcome::Success);
+        assert_eq!(game_outcome(EpisodeStage::Reward), GameOutcome::Success);
         assert_eq!(game_outcome(EpisodeStage::Defeat), GameOutcome::Failure);
         assert_eq!(game_outcome(EpisodeStage::Combat), GameOutcome::Unavailable);
     }

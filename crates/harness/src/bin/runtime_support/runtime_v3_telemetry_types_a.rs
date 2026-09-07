@@ -4,12 +4,12 @@
 //
 // This module deliberately lives beside the executable adapter. It accepts only
 // finite enums, bounded scalars, and digests of host/provider identities. The
-// worker owns the loopback socket; gameplay calls only enqueue into bounded
-// channels and never perform network I/O.
+// worker owns the loopback socket; gameplay calls only enqueue into one bounded
+// FIFO channel and never perform network I/O.
 
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError, TrySendError};
 use std::thread::{self, JoinHandle};
@@ -22,6 +22,8 @@ use sts2_harness::{ActionKind, DispatchStatus, EpisodeObservation, EpisodeStage,
 const ENDPOINT: SocketAddr =
     SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 14318);
 const OTLP_PATH: &str = "/v1/traces";
+// The queue keeps the historical normal/critical budget as one FIFO total.
+// This preserves bounded admission while making sequence order authoritative.
 const NORMAL_QUEUE_CAPACITY: usize = 256;
 const CRITICAL_QUEUE_CAPACITY: usize = 8;
 const MAX_BATCH: usize = 64;
