@@ -155,8 +155,10 @@ fn finalized_protocol_fixture_loads_from_feed_and_replays_without_dispatch() {
     assert_eq!(replay.analysis_version(), bundle.manifest.analysis_version);
     assert_eq!(replay.source_manifest().run_id, bundle.manifest.run_id);
 
-    let mut bounded_config = AnalysisConfig::default();
-    bounded_config.max_candidates = 1;
+    let bounded_config = AnalysisConfig {
+        max_candidates: 1,
+        ..AnalysisConfig::default()
+    };
     let bounded_analysis = MapAnalysis::analyze(&graph, bounded_config).expect("bounded analysis");
     assert!(bounded_analysis.candidate_routes.len() < graph.legal_destinations().len());
     let mut bounded_manifest = bundle.manifest.clone();

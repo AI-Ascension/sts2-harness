@@ -92,7 +92,6 @@ impl HistoricalReplay {
     }
 
     /// Historical bindings are records for inspection and can never be dispatched.
-    #[must_use]
     pub fn dispatchable_bindings(&self) -> impl Iterator<Item = &HistoricalActionBinding> {
         let _ = self;
         std::iter::empty()
