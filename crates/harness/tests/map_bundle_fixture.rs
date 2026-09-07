@@ -124,7 +124,7 @@ fn finalized_protocol_fixture_loads_from_feed_and_replays_without_dispatch() {
         Err(MapBundleError::Canonical(_))
     ));
 
-    let replay = HistoricalReplay::from_bundle(&bundle);
+    let replay = HistoricalReplay::from_bundle(&bundle).expect("historical replay");
     assert_eq!(replay.bundle_digest, digest);
     assert!(replay.bindings.iter().all(|binding| !binding.dispatchable));
     assert!(
@@ -133,6 +133,84 @@ fn finalized_protocol_fixture_loads_from_feed_and_replays_without_dispatch() {
             .iter()
             .all(|binding| binding.generation == bundle.manifest.history.generation)
     );
+    assert!(replay.dispatchable_bindings().next().is_none());
+    let mut mutated_replay = replay.clone();
+    mutated_replay.bindings[0].dispatchable = true;
+    assert!(mutated_replay.dispatchable_bindings().next().is_none());
+    assert_eq!(
+        replay.source_snapshot_bytes(),
+        bundle.snapshot_bytes.as_slice()
+    );
+    let retained_snapshot: serde_json::Value =
+        serde_json::from_slice(replay.source_snapshot_bytes()).expect("retained snapshot JSON");
+    assert_eq!(retained_snapshot["availability"], "available");
+    assert_eq!(retained_snapshot["completeness"], "complete");
+    assert_eq!(retained_snapshot["freshness"], "current");
+    assert_eq!(retained_snapshot["scope_id"], "campaign-1");
+    assert_eq!(replay.source_state_id(), "map-state-42");
+    assert_eq!(
+        replay.action_catalog_digest(),
+        bundle.manifest.history.action_catalog_digest
+    );
+    assert_eq!(replay.analysis_version(), bundle.manifest.analysis_version);
+    assert_eq!(replay.source_manifest().run_id, bundle.manifest.run_id);
+
+    let mut bounded_config = AnalysisConfig::default();
+    bounded_config.max_candidates = 1;
+    let bounded_analysis = MapAnalysis::analyze(&graph, bounded_config).expect("bounded analysis");
+    assert!(bounded_analysis.candidate_routes.len() < graph.legal_destinations().len());
+    let mut bounded_manifest = bundle.manifest.clone();
+    bounded_manifest.analysis_digest = bounded_analysis.content_digest.clone();
+    let bounded_bundle = MapViewBundle::new(
+        bounded_manifest,
+        bundle.snapshot_bytes.clone(),
+        bounded_analysis,
+        bundle.svg.clone(),
+        bundle.png.clone(),
+        bundle.decision.clone(),
+        bundle.viewer.clone(),
+    )
+    .expect("bounded bundle");
+    let bounded_replay = HistoricalReplay::from_bundle(&bounded_bundle).expect("bounded replay");
+    let source_action_ids = graph
+        .legal_destinations()
+        .iter()
+        .map(|destination| destination.action_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let replay_action_ids = bounded_replay
+        .bindings
+        .iter()
+        .map(|binding| binding.action_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(replay_action_ids, source_action_ids);
+
+    let mut later_value: serde_json::Value =
+        serde_json::from_slice(&bundle.snapshot_bytes).expect("source snapshot JSON");
+    later_value["state_id"] = serde_json::Value::String("map-state-43".to_owned());
+    later_value["generation"] = serde_json::json!(43);
+    let later_snapshot = serde_json::to_vec(&later_value).expect("later snapshot");
+    let later_bundle = MapViewBundle::from_runtime_snapshot(
+        later_snapshot,
+        RuntimeMapBundleIdentity {
+            run_id: "later-run".to_owned(),
+            episode_id: "later-episode".to_owned(),
+            trajectory_id: "later-trajectory".to_owned(),
+            model_execution_id: None,
+            action_catalog_digest: bundle.manifest.history.action_catalog_digest.clone(),
+        },
+    )
+    .expect("later bundle");
+    assert_ne!(
+        replay.source_snapshot_bytes(),
+        later_bundle.snapshot_bytes.as_slice()
+    );
+    assert_eq!(replay.generation, 42);
+    assert_eq!(replay.source_state_id(), "map-state-42");
+    assert_eq!(replay.analysis.generation, 42);
+
+    let mut corrupt_bundle = bundle.clone();
+    corrupt_bundle.snapshot_bytes[0] = b'[';
+    assert!(HistoricalReplay::from_bundle(&corrupt_bundle).is_err());
 
     let temporary_root =
         std::env::temp_dir().join(format!("sts2-map-bundle-test-{}", process::id()));

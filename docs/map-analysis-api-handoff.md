@@ -122,9 +122,13 @@ host hash, artifact digest, or cache hit never grants lease or mutation
 authority. Cache entries have bounded count/bytes/retention and bounded
 in-flight work.
 
-Replay loads the source-time snapshot, analysis, and historical catalog from a
-bundle or artifact feed, verifies all digests, and performs no game/provider
-call. Replayed route intent remains historical and is never dispatched.
+Replay loads the exact validated source-time snapshot bytes, analysis,
+manifest lineage, and complete historical action catalog from a bundle or
+artifact feed, verifies the bundle before constructing the replay, and
+performs no game/provider call. The catalog is reconstructed from every
+source snapshot binding rather than bounded candidate routes. Replayed route
+intent remains historical and is never dispatched; the fallible replay
+constructor exposes corruption instead of creating a partial view.
 
 ## Evaluation seam
 

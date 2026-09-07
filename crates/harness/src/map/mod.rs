@@ -25,6 +25,7 @@ mod evaluation_types;
 mod feed;
 mod graph;
 mod graph_error;
+mod replay;
 mod wire;
 
 pub use analysis::{
@@ -40,10 +41,7 @@ pub use bundle::{
     RUNTIME_MAP_SCHEMA_DIGEST, RUNTIME_MAP_UNRENDERED_DECISION, RuntimeMapBundleIdentity,
     build_unrendered_runtime_map_bundle,
 };
-pub use bundle_store::{
-    BundleFileStore, HistoricalActionBinding, HistoricalReplay, MAP_MAX_FEED_ENTRIES,
-    MapBundleFeed, PublicationReceipt,
-};
+pub use bundle_store::{BundleFileStore, MAP_MAX_FEED_ENTRIES, MapBundleFeed, PublicationReceipt};
 pub use cache::{
     AnalysisCacheKey, BoundedCache, CacheError, InFlightGuard, MAP_CACHE_MAX_BYTES,
     MAP_CACHE_MAX_ENTRIES, MAP_CACHE_MAX_IN_FLIGHT, NavigationCacheKey, RenderCacheKey,
@@ -63,3 +61,4 @@ pub use graph::{
     MAP_MAX_IDENTIFIER_BYTES, MAP_MAX_NODES, MapCompleteness, MapEdge, MapGraphError, MapNode,
     MapNodeStatus, ValidatedMapGraph,
 };
+pub use replay::{HistoricalActionBinding, HistoricalReplay};
