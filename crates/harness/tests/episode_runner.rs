@@ -39,6 +39,9 @@ struct FakeRuntime {
     released: bool,
     mcp_closed: bool,
     gateway_closed: bool,
+    dispatched_operation_ids: Vec<String>,
+    reconciled_operation_ids: Vec<String>,
+    dispatched_state_ids: Vec<String>,
     catalog_errors: Vec<PortError>,
     catalog_calls: usize,
     advance_catalog: bool,
@@ -62,6 +65,9 @@ impl FakeRuntime {
             released: false,
             mcp_closed: false,
             gateway_closed: false,
+            dispatched_operation_ids: Vec::new(),
+            reconciled_operation_ids: Vec::new(),
+            dispatched_state_ids: Vec::new(),
             catalog_errors: Vec::new(),
             catalog_calls: 0,
             advance_catalog: false,
@@ -118,6 +124,15 @@ impl EpisodeRuntimePort for FakeRuntime {
         identity: &ActionIdentity,
         action: &EpisodeLegalAction,
     ) -> Result<TransitionReceipt, PortError> {
+        if identity.state_id != self.current().observation.state_id()
+            || identity.generation != self.current().observation.generation()
+        {
+            return Err(PortError::new(
+                "wrong_state_identity",
+                "fake runtime received a non-authoritative state identity",
+                false,
+            ));
+        }
         if self.pending.is_some() {
             return Err(PortError::new(
                 "pending_transition",
@@ -133,6 +148,9 @@ impl EpisodeRuntimePort for FakeRuntime {
             action: action.clone(),
             after,
         });
+        self.dispatched_operation_ids
+            .push(identity.operation_id.clone());
+        self.dispatched_state_ids.push(identity.state_id.clone());
         self.dispatches += 1;
         if self.fail_first_dispatch && self.dispatches == 1 {
             return Err(PortError::new(
@@ -193,6 +211,7 @@ impl RecoveryPort for FakeRuntime {
     }
 
     fn reconcile(&mut self, operation_id: &str) -> Result<TransitionReceipt, RecoveryError> {
+        self.reconciled_operation_ids.push(operation_id.to_owned());
         if self.unknown_first_reconcile && self.reconciles == 0 {
             self.reconciles += 1;
             let pending = self

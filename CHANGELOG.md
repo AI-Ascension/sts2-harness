@@ -53,6 +53,12 @@ claim a released harness version or runtime compatibility.
 
 ### Safety corrections
 
+- Generate UUIDv4 operation identities at production action creation and retain the same identity
+  through uncertain dispatch and recovery reconciliation. Preserve the authoritative host state ID
+  without substitution; the frozen Runtime-v3 gameplay artifact is unchanged. Focused source and
+  component tests cover recovery-boundary acceptance, restart uniqueness, and conflicting action
+  reuse. See [ADR 0012](docs/decisions/0012-operation-identity-at-creation.md).
+
 - Validate historical recovery against retained canonical action bytes, the requested original
   authority, terminal ticket and operation-specific witness. Reconcile unresolved lookups without
   gameplay polling; accept retained terminal gateway states and bounded padded/unpadded action

@@ -40,7 +40,7 @@ mod wait;
 use ledger::OperationRecord;
 
 #[path = "runtime_v3_combat_demo.rs"]
-mod combat_demo;
+pub(crate) mod combat_demo;
 #[path = "runtime_v3_episode_replay.rs"]
 mod episode_replay;
 

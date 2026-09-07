@@ -102,7 +102,7 @@ fn execute_step<S: DecisionSource>(
         .find(|a| a.action_id() == action_id)
         .ok_or_else(|| String::from("model selected an action outside the host catalog"))?;
     let identity = ActionIdentity::new(
-        format!("demo-op-{}", steps + 1),
+        new_operation_id(),
         before.state_id(),
         before.generation(),
         &action_id,
@@ -122,6 +122,10 @@ fn execute_step<S: DecisionSource>(
     source.action_completed(result.is_ok());
     result?;
     Ok(true)
+}
+
+pub(crate) fn new_operation_id() -> String {
+    uuid::Uuid::new_v4().to_string()
 }
 
 fn settle(

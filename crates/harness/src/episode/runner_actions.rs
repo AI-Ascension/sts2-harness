@@ -40,7 +40,6 @@ impl EpisodeRunner {
             request.observation,
             request.legal_actions,
             request.action_id,
-            request.step_number,
         )?;
         let receipt = match port.dispatch_action(&execution.identity, &execution.action) {
             Ok(receipt) => receipt,
@@ -222,17 +221,15 @@ fn prepare_action(
     observation: &EpisodeObservation,
     legal_actions: &EpisodeLegalActionSet,
     action_id: &str,
-    step_number: u32,
 ) -> Result<ActionExecution, EpisodeRunnerError> {
+    legal_actions
+        .assert_matches(observation.state_id(), observation.generation())
+        .map_err(EpisodeRunnerError::ActionSet)?;
     let action = legal_actions
         .find(action_id)
         .cloned()
         .ok_or(EpisodeRunnerError::ActionNotCurrent)?;
-    let operation_id = format!(
-        "episode-action-{}-{}",
-        observation.generation(),
-        step_number
-    );
+    let operation_id = new_operation_id();
     let identity = ActionIdentity::new(
         operation_id.clone(),
         observation.state_id().to_owned(),
@@ -256,4 +253,8 @@ fn prepare_action(
         identity,
         action,
     })
+}
+
+fn new_operation_id() -> String {
+    uuid::Uuid::new_v4().to_string()
 }

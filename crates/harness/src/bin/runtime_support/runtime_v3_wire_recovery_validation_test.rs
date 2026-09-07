@@ -2,6 +2,7 @@
 
 use super::values::{positive_u53, strict_timestamp};
 use super::*;
+use crate::runtime_support::runtime_v3::combat_demo;
 use serde_json::json;
 
 fn valid_frame(kind: &str) -> Value {
@@ -115,4 +116,40 @@ fn recovery_response_actor_must_bind_the_gateway_auth_principal() {
     frame["actor"]["role"] = json!("gateway");
     frame["auth"]["principal_id"] = json!("77777777-7777-4777-8777-777777777777");
     assert!(decode_frame(&frame.to_string(), None, None).is_err());
+}
+
+#[test]
+fn production_combat_operation_id_is_accepted_at_the_recovery_boundary() {
+    let operation_id = combat_demo::new_operation_id();
+    let mut frame = valid_frame("operation_lookup_response");
+    frame["payload"]["operation"] = json!({
+        "operation_id": operation_id,
+        "state": "SETTLED",
+        "payload_digest": "150dbfb8ac3331371ecd80224e78274a8aa1d221916d867b6125bfe07ac88107",
+        "original_context": {
+            "deployment_id": "33333333-3333-4333-8333-333333333333",
+            "instance_id": "44444444-4444-4444-8444-444444444444",
+            "instance_incarnation": "55555555-5555-4555-8555-555555555555",
+            "boot_id": "66666666-6666-4666-8666-666666666666",
+            "authority_generation": 1,
+            "lease_id": "77777777-7777-4777-8777-777777777777",
+            "lease_epoch": 1
+        },
+        "expected_boundary": {
+            "state_id": "22222222-2222-4222-8222-222222222222",
+            "generation": 0,
+            "catalog_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "action": {
+            "schema_digest": "8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63",
+            "canonical_json_b64": "eyJhY3Rpb24iOnsia2luZCI6ImVuZF90dXJuIn0sImFjdGlvbl9pZCI6ImNvbWJhdC5lbmQtdHVybiJ9",
+            "payload_digest": "150dbfb8ac3331371ecd80224e78274a8aa1d221916d867b6125bfe07ac88107"
+        },
+        "ticket": null,
+        "witness": null,
+        "uncertainty_reason": null,
+        "created_at": "2026-09-07T00:00:00Z",
+        "updated_at": "2026-09-07T00:00:01Z"
+    });
+    assert!(decode_frame(&frame.to_string(), Some("operation_lookup_response"), None).is_ok());
 }
