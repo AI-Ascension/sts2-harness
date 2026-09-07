@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-ascension.github.io/sts2-harness/schemas/sts2.map-analysis-v1.json",
+  "title": "Harness owned deterministic map analysis",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["snapshot_digest", "analysis_version", "evaluator_version", "map_instance", "act", "source_state_id", "generation", "assumptions", "completeness", "approximation", "topology", "node_metrics", "terminal_counts", "legal_destination_counts", "candidate_routes", "warnings", "content_digest"],
+  "properties": {
+    "snapshot_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "analysis_version": {"const": "sts2.map-analysis-v1"},
+    "evaluator_version": {"type": "string", "minLength": 1, "maxLength": 128},
+    "map_instance": {"type": "string", "minLength": 1, "maxLength": 128},
+    "act": {"type": "string", "minLength": 1, "maxLength": 128},
+    "source_state_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "generation": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "assumptions": {"type": "array", "maxItems": 32, "items": {"type": "string", "minLength": 1, "maxLength": 512}},
+    "completeness": {"enum": ["complete", "incomplete", "unavailable"]},
+    "approximation": {"enum": ["exact", "bounded_candidates", "incomplete_input"]},
+    "topology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_count", "edge_count", "current_node", "reachable_nodes", "branch_nodes", "merge_nodes", "cyclic"],
+      "properties": {
+        "node_count": {"type": "integer", "minimum": 0, "maximum": 256},
+        "edge_count": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "current_node": {"type": ["string", "null"], "minLength": 1, "maxLength": 128},
+        "reachable_nodes": {"type": "integer", "minimum": 0, "maximum": 256},
+        "branch_nodes": {"type": "array", "maxItems": 256, "items": {"type": "string", "maxLength": 128}},
+        "merge_nodes": {"type": "array", "maxItems": 256, "items": {"type": "string", "maxLength": 128}},
+        "cyclic": {"const": false}
+      }
+    },
+    "node_metrics": {
+      "type": "array", "maxItems": 256,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["node_id", "reachable", "distance_from_current", "distance_to_terminal", "category_distances", "ancestors", "descendants"],
+        "properties": {
+          "node_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "reachable": {"type": "boolean"},
+          "distance_from_current": {"type": ["integer", "null"], "minimum": 0},
+          "distance_to_terminal": {"type": ["integer", "null"], "minimum": 0},
+          "category_distances": {"type": "object", "propertyNames": {"minLength": 1, "maxLength": 64}, "maxProperties": 256, "additionalProperties": {"type": "integer", "minimum": 0}},
+          "ancestors": {"type": "array", "maxItems": 256, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
+          "descendants": {"type": "array", "maxItems": 256, "items": {"type": "string", "minLength": 1, "maxLength": 128}}
+        }
+      }
+    },
+    "terminal_counts": {
+      "type": "array", "maxItems": 256,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["terminal_id", "count_decimal", "status"],
+        "properties": {
+          "terminal_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "count_decimal": {"type": "string", "minLength": 1, "maxLength": 16384, "pattern": "^(overflow|[0-9]+)$"},
+          "status": {"enum": ["exact", "overflow", "incomplete"]}
+        }
+      }
+    },
+    "legal_destination_counts": {
+      "type": "array", "maxItems": 256,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["destination_node_id", "action_id", "count_decimal", "status"],
+        "properties": {
+          "destination_node_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "action_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "count_decimal": {"type": "string", "minLength": 1, "maxLength": 16384, "pattern": "^(overflow|[0-9]+)$"},
+          "status": {"enum": ["exact", "overflow", "incomplete"]}
+        }
+      }
+    },
+    "candidate_routes": {
+      "type": "array", "maxItems": 8,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["nodes", "first_action_id", "score", "tie_break_key", "selection", "assumptions"],
+        "properties": {
+          "nodes": {"type": "array", "minItems": 1, "maxItems": 256, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
+          "first_action_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "score": {
+            "type": "object", "additionalProperties": false,
+            "required": ["distance_to_terminal", "category_score", "rest_count", "shop_count", "elite_count", "elite_exposure_before_rest", "retained_branching", "route_length"],
+            "properties": {
+              "distance_to_terminal": {"type": ["integer", "null"], "minimum": 0},
+              "category_score": {"type": "integer", "minimum": -2147483648, "maximum": 2147483647},
+              "rest_count": {"type": "integer", "minimum": 0, "maximum": 256},
+              "shop_count": {"type": "integer", "minimum": 0, "maximum": 256},
+              "elite_count": {"type": "integer", "minimum": 0, "maximum": 256},
+              "elite_exposure_before_rest": {"type": "integer", "minimum": 0, "maximum": 256},
+              "retained_branching": {"type": "integer", "minimum": 0},
+              "route_length": {"type": "integer", "minimum": 1, "maximum": 256}
+            }
+          },
+          "tie_break_key": {"type": "string", "minLength": 1, "maxLength": 32768},
+          "selection": {"enum": ["exact", "bounded_candidates", "incomplete_input"]},
+          "assumptions": {"type": "array", "maxItems": 32, "items": {"type": "string", "minLength": 1, "maxLength": 512}}
+        }
+      }
+    },
+    "warnings": {"type": "array", "maxItems": 32, "items": {"type": "string", "maxLength": 512}},
+    "content_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 of canonical sorted-key analysis JSON with this field empty."}
+  }
+}
