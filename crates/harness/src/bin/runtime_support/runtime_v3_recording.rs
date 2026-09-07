@@ -8,15 +8,25 @@ use sts2_harness::{
 use super::super::runtime_v3_telemetry::{
     DecisionKind, FailureCode, GameOutcome, ObservationSource, TelemetryHandle,
 };
+use super::durable::DurableHandle;
 
 pub(super) struct DecisionRecorder<'a, S> {
     source: &'a mut S,
     telemetry: TelemetryHandle,
+    durable: Option<DurableHandle>,
 }
 
 impl<'a, S> DecisionRecorder<'a, S> {
-    pub(super) fn new(source: &'a mut S, telemetry: TelemetryHandle) -> Self {
-        Self { source, telemetry }
+    pub(super) fn new(
+        source: &'a mut S,
+        telemetry: TelemetryHandle,
+        durable: Option<DurableHandle>,
+    ) -> Self {
+        Self {
+            source,
+            telemetry,
+            durable,
+        }
     }
 }
 
@@ -30,9 +40,54 @@ impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
     }
 
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError> {
+        let reservation = if let Some(durable) = &self.durable {
+            match durable.decision_admission(input) {
+                Ok(reservation) => reservation,
+                Err(_) => {
+                    let _ = self
+                        .telemetry
+                        .model_failure(input.execution_id.get(), FailureCode::ProviderMalformed);
+                    return Err(PolicyError::ProviderMalformed);
+                }
+            }
+        } else {
+            None
+        };
         let decision = match self.source.decide(input) {
             Ok(decision) => decision,
             Err(error) => {
+                if let Some(reservation) = reservation {
+                    let failure = match error {
+                        PolicyError::ProviderUnavailable => {
+                            sts2_harness::ProviderFailureClass::Outage
+                        }
+                        PolicyError::ProviderClosed => {
+                            sts2_harness::ProviderFailureClass::Cancelled
+                        }
+                        PolicyError::ProviderMalformed | PolicyError::MalformedDecision => {
+                            sts2_harness::ProviderFailureClass::IncompatibleOutput
+                        }
+                        _ => sts2_harness::ProviderFailureClass::IncompatibleOutput,
+                    };
+                    let result = if matches!(
+                        error,
+                        PolicyError::ProviderUnavailable | PolicyError::ProviderClosed
+                    ) {
+                        self.durable
+                            .as_ref()
+                            .map(|durable| durable.unknown_decision(&reservation, failure))
+                    } else {
+                        self.durable
+                            .as_ref()
+                            .map(|durable| durable.fail_decision(&reservation, failure))
+                    };
+                    if result.is_some_and(|result| result.is_err()) {
+                        let _ = self.telemetry.model_failure(
+                            input.execution_id.get(),
+                            FailureCode::ProviderMalformed,
+                        );
+                    }
+                }
                 let execution_id = self
                     .source
                     .model_execution_id()
@@ -43,6 +98,15 @@ impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
                 return Err(error);
             }
         };
+        if let Some(reservation) = reservation
+            && let Some(durable) = &self.durable
+            && durable.complete_decision(&reservation, &decision).is_err()
+        {
+            let _ = self
+                .telemetry
+                .model_failure(input.execution_id.get(), FailureCode::ProviderMalformed);
+            return Err(PolicyError::ProviderMalformed);
+        }
         let execution_id = self
             .source
             .model_execution_id()

@@ -19,6 +19,8 @@ use super::runtime_v3_telemetry::{
 };
 use super::runtime_v3_wire as wire;
 
+#[path = "runtime_v3_durable.rs"]
+mod durable;
 #[path = "runtime_v3_episode.rs"]
 mod episode;
 #[path = "runtime_v3_ledger.rs"]
@@ -42,6 +44,10 @@ mod lifecycle_tests;
 
 pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let settings = RuntimeV3Settings::from_environment()?;
+    let resume_requested = std::env::args()
+        .skip(1)
+        .any(|argument| argument == "--resume")
+        || std::env::var("STS2_RESUME").as_deref() == Ok("true");
     let telemetry_context = TelemetryContext::new(
         &config.run_id,
         &config.episode_id,
@@ -55,7 +61,25 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let telemetry = RuntimeV3Telemetry::new(telemetry_context);
     let telemetry_handle = telemetry.handle();
     let _ = telemetry_handle.run_started();
-    let mut port = match RuntimeV3Port::new_with_telemetry(config, telemetry_handle.clone()) {
+    let durable = match durable::DurableHandle::open(&config, &settings, resume_requested) {
+        Ok((durable, _state)) => durable,
+        Err(error) => {
+            let _ = telemetry_handle.failure(
+                "runtime_init",
+                super::runtime_v3_telemetry::FailureCode::Configuration,
+                false,
+                None,
+            );
+            let _ = telemetry_handle.run_finished(
+                GameOutcome::Unavailable,
+                TelemetryStage::Unknown,
+                CleanupStatus::Failed,
+            );
+            finish_telemetry(telemetry);
+            return Err(error);
+        }
+    };
+    let mut port = match RuntimeV3Port::new_with_store(config, telemetry_handle.clone(), durable) {
         Ok(port) => port,
         Err(error) => {
             let _ = telemetry_handle.failure(
@@ -77,6 +101,7 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         let path = std::env::var("STS2_REPLAY_TRAJECTORY").unwrap_or_default();
         if !path.is_empty() {
             let result = episode_replay::run(&mut port, &settings.runner, &path);
+            let store_close = port.close_durable();
             drop(port);
             let _ = telemetry_handle.run_finished(
                 if result.is_ok() {
@@ -85,18 +110,26 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
                     GameOutcome::Failure
                 },
                 TelemetryStage::Unknown,
-                CleanupStatus::Clean,
+                if store_close.is_ok() {
+                    CleanupStatus::Clean
+                } else {
+                    CleanupStatus::Failed
+                },
             );
             finish_telemetry(telemetry);
-            return result;
+            return result.and(store_close);
         }
     }
     let transport = ExoProcessTransport::new(settings.process);
     let provider = ExoProvider::new(transport, settings.exo);
     let mut source = ExoDecisionSource::new(ExoSession::new(provider));
     if std::env::var("STS2_COMBAT_DEMO").as_deref() == Ok("true") {
-        let outcome = combat_demo::run(&mut port, &mut source, &settings.runner);
+        let durable_handle = port.durable_handle();
+        let mut recorder =
+            recording::DecisionRecorder::new(&mut source, telemetry_handle.clone(), durable_handle);
+        let outcome = combat_demo::run(&mut port, &mut recorder, &settings.runner);
         let close = source.close().map_err(|error| error.to_string());
+        let store_close = port.close_durable();
         drop(port);
         let game_outcome = if outcome.is_ok() && close.is_ok() {
             GameOutcome::Success
@@ -113,17 +146,23 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
             },
         );
         finish_telemetry(telemetry);
-        return outcome.and(close);
+        return outcome.and(close).and(store_close);
     }
-    let result = EpisodeRunner::new(settings.runner).run(
-        &mut port,
-        &mut recording::DecisionRecorder::new(&mut source, telemetry_handle.clone()),
-    );
+    let durable_handle = port.durable_handle();
+    let mut recorder =
+        recording::DecisionRecorder::new(&mut source, telemetry_handle.clone(), durable_handle);
+    let result = EpisodeRunner::new(settings.runner).run(&mut port, &mut recorder);
     let source_close = source.close();
-    drop(port);
     let report = match result {
         Ok(report) => report,
         Err(error) => {
+            if source_close.is_err() {
+                port.mark_interrupted_unknown("runtime-v3 episode and provider close failed");
+            } else {
+                port.mark_interrupted_unknown("runtime-v3 episode failed");
+            }
+            let _ = port.close_durable();
+            drop(port);
             let _ = telemetry_handle.failure(
                 "episode",
                 super::runtime_v3_telemetry::FailureCode::Other,
@@ -140,6 +179,9 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         }
     };
     if source_close.is_err() {
+        port.mark_interrupted_unknown("runtime-v3 provider close failed");
+        let _ = port.close_durable();
+        drop(port);
         let _ = telemetry_handle.failure(
             "provider_close",
             super::runtime_v3_telemetry::FailureCode::Cleanup,
@@ -154,6 +196,24 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         finish_telemetry(telemetry);
         return Err(String::from("Exo session close failed"));
     }
+    if let Err(error) = port.complete_durable(&report) {
+        port.mark_interrupted_unknown("runtime-v3 durable completion failed");
+        let _ = port.close_durable();
+        drop(port);
+        let _ = telemetry_handle.failure(
+            "durable_completion",
+            super::runtime_v3_telemetry::FailureCode::Other,
+            false,
+            None,
+        );
+        let _ = telemetry_handle.run_finished(
+            GameOutcome::Failure,
+            TelemetryStage::from(report.terminal_stage()),
+            CleanupStatus::Failed,
+        );
+        finish_telemetry(telemetry);
+        return Err(error);
+    }
     recording::complete(&report, &telemetry_handle);
     let game_outcome = match report.terminal_stage() {
         sts2_harness::EpisodeStage::Victory => GameOutcome::Success,
@@ -165,6 +225,13 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         TelemetryStage::from(report.terminal_stage()),
         CleanupStatus::Clean,
     );
+    let store_close = port.close_durable();
+    if let Err(error) = store_close {
+        drop(port);
+        finish_telemetry(telemetry);
+        return Err(error);
+    }
+    drop(port);
     finish_telemetry(telemetry);
     println!(
         "{}",
@@ -213,12 +280,30 @@ pub(super) struct RuntimeV3Port {
     operations: BTreeMap<String, OperationRecord>,
     reconnect_attempts: u8,
     telemetry: TelemetryHandle,
+    durable: Option<durable::DurableHandle>,
 }
 
 impl RuntimeV3Port {
+    #[cfg(test)]
     fn new_with_telemetry(
         config: RuntimeConfig,
         telemetry: TelemetryHandle,
+    ) -> Result<Self, String> {
+        Self::new(config, telemetry, None)
+    }
+
+    fn new_with_store(
+        config: RuntimeConfig,
+        telemetry: TelemetryHandle,
+        durable: durable::DurableHandle,
+    ) -> Result<Self, String> {
+        Self::new(config, telemetry, Some(durable))
+    }
+
+    fn new(
+        config: RuntimeConfig,
+        telemetry: TelemetryHandle,
+        durable: Option<durable::DurableHandle>,
     ) -> Result<Self, String> {
         let gateway = GatewayClient::new(&config)?;
         Ok(Self {
@@ -235,7 +320,42 @@ impl RuntimeV3Port {
             operations: BTreeMap::new(),
             reconnect_attempts: 0,
             telemetry,
+            durable,
         })
+    }
+
+    fn durable_handle(&self) -> Option<durable::DurableHandle> {
+        self.durable.clone()
+    }
+
+    pub(super) fn complete_durable(
+        &self,
+        report: &sts2_harness::EpisodeRunReport,
+    ) -> Result<(), String> {
+        self.durable
+            .as_ref()
+            .map_or(Ok(()), |durable| durable.complete_episode(report))
+    }
+
+    pub(super) fn complete_durable_observation(
+        &self,
+        observation: &EpisodeObservation,
+    ) -> Result<(), String> {
+        self.durable
+            .as_ref()
+            .map_or(Ok(()), |durable| durable.complete_observation(observation))
+    }
+
+    pub(super) fn close_durable(&self) -> Result<(), String> {
+        self.durable
+            .as_ref()
+            .map_or(Ok(()), durable::DurableHandle::close)
+    }
+
+    pub(super) fn mark_interrupted_unknown(&self, reason: &str) {
+        if let Some(durable) = &self.durable {
+            durable.mark_interrupted_unknown(reason);
+        }
     }
 
     fn call_tool(&mut self, name: &str, arguments: Value) -> Result<Value, String> {
@@ -294,12 +414,16 @@ impl RuntimeV3Port {
         })
     }
 
-    fn install(&mut self, parsed: parse::ParsedObservation) -> EpisodeObservation {
+    fn install(&mut self, parsed: parse::ParsedObservation) -> Result<EpisodeObservation, String> {
         self.generation = parsed.observation.generation();
         self.current_state = Some(parsed.observation.state_id().to_owned());
         self.current_actions = Some(parsed.actions);
         self.payloads = parsed.payloads;
-        parsed.observation
+        if let Some(durable) = &self.durable {
+            let payloads = Value::Object(self.payloads.clone().into_iter().collect());
+            durable.checkpoint(&parsed.observation, &payloads)?;
+        }
+        Ok(parsed.observation)
     }
 
     fn install_response(&mut self, value: &Value, expected_kind: &str) -> Result<(), String> {
@@ -308,7 +432,7 @@ impl RuntimeV3Port {
             .is_some_and(|observation| observation.is_object())
         {
             let parsed = parse::result_observation(value, expected_kind, &self.config)?;
-            let _ = self.install(parsed);
+            let _ = self.install(parsed)?;
         }
         Ok(())
     }

@@ -3,9 +3,10 @@
 use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
+use sha2::Digest;
 use sts2_harness::{
     ActionIdentity, EpisodeLegalAction, EpisodeLegalActionSet, EpisodeObservation,
-    EpisodeRuntimePort, TransitionReceipt,
+    EpisodeRuntimePort, OperationState, ShutdownPort, TransitionReceipt,
 };
 
 use super::super::mcp::validate_or_release_allocation;
@@ -59,6 +60,15 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         if let Err(error) = self.launch_mcp() {
             return Err(wire::port_error("runtime_launch_failed", error, false));
         }
+        if let Err(error) = self.reconcile_pending_operations() {
+            let close = self.close_mcp().map_err(|_| "MCP close failed".to_owned());
+            let release = self.release_lease_inner();
+            return Err(wire::port_error(
+                "runtime_resume_failed",
+                wire::combine_cleanup(error, close, release),
+                false,
+            ));
+        }
         Ok(())
     }
 
@@ -69,7 +79,9 @@ impl EpisodeRuntimePort for RuntimeV3Port {
             .map_err(|error| wire::port_error("observe_failed", error, false))?;
         let parsed = parse::observation(&value, "state_response", &self.config)
             .map_err(|error| wire::port_error("observe_invalid", error, false))?;
-        let observation = self.install(parsed);
+        let observation = self
+            .install(parsed)
+            .map_err(|error| wire::port_error("observe_durability_failed", error, false))?;
         let _ = self
             .telemetry
             .observation(ObservationSource::Observe, &observation);
@@ -111,33 +123,119 @@ impl EpisodeRuntimePort for RuntimeV3Port {
     ) -> Result<TransitionReceipt, sts2_harness::PortError> {
         self.validate_current_action(identity, action)?;
         let payload = self.current_payload(action)?;
-        self.retain_operation(identity, action)?;
-        let value = self
-            .call_tool(
-                "sts2.dispatch_action",
-                json!({
-                    "instance_id": self.config.instance_id,
-                    "mcp_session_id": self.config.mcp_session_id,
-                    "lease_id": self.config.lease_id,
-                    "lease_epoch": self.config.lease_epoch,
-                    "generation": identity.generation,
-                    "state_id": identity.state_id,
-                    "operation_id": identity.operation_id,
-                    "action": legal_action_argument(action.action_id(), payload)
-                }),
-            )
-            .map_err(|error| wire::port_error("dispatch_failed", error, true))?;
-        let receipt = parse::receipt(
+        let payload_digest = self.retain_operation(identity, action)?;
+        if let Some(durable) = &self.durable {
+            let input = json!({
+                "state_id": identity.state_id,
+                "generation": identity.generation,
+                "legal_actions": self.payloads.clone(),
+            });
+            durable
+                .operation_intent(
+                    &identity.operation_id,
+                    &identity.state_id,
+                    identity.generation,
+                    action,
+                    &payload,
+                    &input,
+                )
+                .map_err(|error| wire::port_error("operation_intent_failed", error, false))?;
+            durable
+                .operation_dispatched(&identity.operation_id, &payload_digest)
+                .map_err(|error| wire::port_error("dispatch_intent_failed", error, false))?;
+        }
+        let value = match self.call_tool(
+            "sts2.dispatch_action",
+            json!({
+                "instance_id": self.config.instance_id,
+                "mcp_session_id": self.config.mcp_session_id,
+                "lease_id": self.config.lease_id,
+                "lease_epoch": self.config.lease_epoch,
+                "generation": identity.generation,
+                "state_id": identity.state_id,
+                "operation_id": identity.operation_id,
+                "action": legal_action_argument(action.action_id(), payload)
+            }),
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                if let Some(durable) = &self.durable {
+                    durable
+                        .operation_result(
+                            &identity.operation_id,
+                            &payload_digest,
+                            OperationState::Unknown,
+                            None,
+                        )
+                        .map_err(|durability_error| {
+                            wire::port_error("dispatch_durability_failed", durability_error, false)
+                        })?;
+                }
+                return Err(wire::port_error("dispatch_failed", error, true));
+            }
+        };
+        let receipt = match parse::receipt(
             &value,
             "dispatch_action_response",
             &self.config,
             &identity.operation_id,
             identity.generation,
             action.clone(),
-        )
-        .map_err(|error| wire::port_error("dispatch_invalid", error, false))?;
-        self.install_response(&value, "dispatch_action_response")
-            .map_err(|error| wire::port_error("dispatch_observation_invalid", error, false))?;
+        ) {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                if let Some(durable) = &self.durable {
+                    durable
+                        .operation_result(
+                            &identity.operation_id,
+                            &payload_digest,
+                            OperationState::Unknown,
+                            None,
+                        )
+                        .map_err(|durability_error| {
+                            wire::port_error("dispatch_durability_failed", durability_error, false)
+                        })?;
+                }
+                return Err(wire::port_error("dispatch_invalid", error, false));
+            }
+        };
+        if let Err(error) = self.install_response(&value, "dispatch_action_response") {
+            if let Some(durable) = &self.durable {
+                durable
+                    .operation_result(
+                        &identity.operation_id,
+                        &payload_digest,
+                        OperationState::Unknown,
+                        None,
+                    )
+                    .map_err(|durability_error| {
+                        wire::port_error("dispatch_durability_failed", durability_error, false)
+                    })?;
+            }
+            return Err(wire::port_error(
+                "dispatch_observation_invalid",
+                error,
+                false,
+            ));
+        }
+        if let Some(durable) = &self.durable {
+            let state = match receipt.status() {
+                sts2_harness::DispatchStatus::Accepted => OperationState::Accepted,
+                sts2_harness::DispatchStatus::Settled => OperationState::Settled,
+                sts2_harness::DispatchStatus::Rejected
+                | sts2_harness::DispatchStatus::Cancelled => OperationState::Rejected,
+                sts2_harness::DispatchStatus::Unknown => OperationState::Unknown,
+            };
+            durable
+                .operation_result(
+                    &identity.operation_id,
+                    &payload_digest,
+                    state,
+                    (state == OperationState::Settled || state == OperationState::Rejected)
+                        .then_some(&value),
+                )
+                .map_err(|error| wire::port_error("dispatch_durability_failed", error, false))?;
+        }
         super::recording::receipt(&receipt, identity.generation, &self.telemetry);
         Ok(receipt)
     }
@@ -197,7 +295,7 @@ impl RuntimeV3Port {
         &mut self,
         identity: &ActionIdentity,
         action: &EpisodeLegalAction,
-    ) -> Result<(), sts2_harness::PortError> {
+    ) -> Result<String, sts2_harness::PortError> {
         if let Some(existing) = self.operations.get(&identity.operation_id)
             && (existing.action != *action
                 || existing.generation != identity.generation
@@ -221,7 +319,10 @@ impl RuntimeV3Port {
         self.operations
             .entry(identity.operation_id.clone())
             .or_insert_with(|| OperationRecord::new(identity, action));
-        Ok(())
+        let payload = self.current_payload(action)?;
+        serde_json::to_vec(&payload)
+            .map(|bytes| format!("{:x}", sha2::Sha256::digest(bytes)))
+            .map_err(|error| wire::port_error("operation_digest_failed", error.to_string(), false))
     }
 }
 
