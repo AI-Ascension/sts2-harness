@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-ascension.github.io/sts2-harness/schemas/sts2.map-feed-v1.json",
+  "title": "Harness map bundle operational feed",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["feed_version", "sequence", "head", "entries"],
+  "properties": {
+    "feed_version": {"const": "sts2.map-feed-v1"},
+    "sequence": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "head": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "entries": {
+      "type": "array", "maxItems": 4096,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["sequence", "bundle_digest", "source_state_id", "generation", "run_id", "episode_id", "trajectory_id", "observed_at_unix_ms"],
+        "properties": {
+          "sequence": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+          "bundle_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "source_state_id": {"type": "string", "minLength": 1, "maxLength": 512},
+          "generation": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+          "run_id": {"type": "string", "minLength": 1, "maxLength": 512},
+          "episode_id": {"type": "string", "minLength": 1, "maxLength": 512},
+          "trajectory_id": {"type": "string", "minLength": 1, "maxLength": 512},
+          "observed_at_unix_ms": {"type": "integer", "minimum": 0}
+        }
+      }
+    }
+  }
+}
