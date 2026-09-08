@@ -13,14 +13,16 @@ use sts2_harness::worker_handoff::{
     WorkerCommandError, WorkerExecutionReservation, WorkerReply,
 };
 use sts2_harness::{
-    ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig,
-    StoredWorkerHandoff, WorkerHandoffState, WorkerTuple,
+    ExecutionFingerprint, ExecutionStore, ExecutionStoreConfig, StoredWorkerHandoff,
+    WorkerHandoffState, WorkerTuple,
 };
 
 use super::super::config::RuntimeConfig;
-use super::super::runtime_v3_settings::RuntimeV3Settings;
 use super::super::worker_settings::WorkerSettings;
-use super::worker_store::{SharedExecutionStore, share_store, try_lock};
+use super::worker_store::{
+    SharedExecutionStore, begin_quarantine, finish_quarantine, share_store, try_lock,
+    try_lock_quarantine,
+};
 
 /// Production does not silently fall back to a fake or unauthenticated worker transport.
 pub(super) const MISSING_TRANSPORT_ERROR: &str =
@@ -108,8 +110,6 @@ impl ExecutionLane {
 pub struct WorkerRuntime {
     store: SharedExecutionStore,
     admission: WorkerCommandAdmission,
-    approved: sts2_harness::worker_handoff::ApprovedWorkerExecution,
-    lineage: ExecutionLineage,
     fingerprint: ExecutionFingerprint,
     worker_boot_id: String,
     lane: ExecutionLane,
@@ -130,19 +130,15 @@ impl WorkerRuntime {
         Self::from_shared_store(
             share_store(store),
             settings.command,
-            settings.approved,
-            settings.lineage,
             settings.fingerprint,
             settings.boot.worker_boot_id,
         )
     }
 
     /// Test and native-adapter constructor for an already-open worker-owned store.
-    pub fn from_shared_store(
+    pub(super) fn from_shared_store(
         store: SharedExecutionStore,
         command: WorkerCommandConfig,
-        approved: sts2_harness::worker_handoff::ApprovedWorkerExecution,
-        lineage: ExecutionLineage,
         fingerprint: ExecutionFingerprint,
         worker_boot_id: String,
     ) -> Result<Self, String> {
@@ -151,8 +147,6 @@ impl WorkerRuntime {
         Ok(Self {
             store,
             admission,
-            approved,
-            lineage,
             fingerprint,
             worker_boot_id,
             lane: ExecutionLane::default(),
@@ -206,7 +200,11 @@ impl WorkerRuntime {
         let mut store = try_lock(&self.store)?;
         let preparation = self
             .admission
-            .prepare_dispatch(&mut store, authenticated, self.approved.clone())
+            .prepare_dispatch_from_authenticated(
+                &mut store,
+                authenticated,
+                self.fingerprint.clone(),
+            )
             .map_err(command_error)?;
         let mut result = self
             .admission
@@ -245,147 +243,52 @@ impl WorkerRuntime {
         let handoff_id = reservation.tuple().handoff_id.clone();
         if response == ResponseWriteStatus::Failed {
             drop(reservation);
-            self.retain_unknown(&handoff_id)?;
-            return Ok(WorkerStartOutcome::Unknown { handoff_id });
+            return match self.retain_unknown(&handoff_id) {
+                Ok(()) => Ok(WorkerStartOutcome::Unknown { handoff_id }),
+                Err(error) => Err(format!(
+                    "worker response write failed; failed to retain unknown handoff: {error}"
+                )),
+            };
         }
         let mut store = try_lock(&self.store)?;
         match reservation.start(&mut store) {
             Ok(running) => {
                 if running.state != WorkerHandoffState::Running {
                     drop(store);
-                    self.retain_unknown(&handoff_id)?;
-                    return Err(String::from(
-                        "worker reservation did not reach the running state",
+                    return Err(combine_failure(
+                        String::from("worker reservation did not reach the running state"),
+                        self.retain_unknown(&handoff_id),
                     ));
                 }
                 Ok(WorkerStartOutcome::Started(Box::new(running)))
             }
             Err(error) => {
                 drop(store);
-                self.retain_unknown(&handoff_id)?;
-                Err(format!("worker reservation could not start: {error}"))
+                Err(combine_failure(
+                    format!("worker reservation could not start: {error}"),
+                    self.retain_unknown(&handoff_id),
+                ))
             }
         }
     }
 
     fn retain_unknown(&self, handoff_id: &str) -> Result<(), String> {
-        let mut store = try_lock(&self.store)?;
-        store
+        // Latch the admission fence before attempting the recovery write. Once a runtime has
+        // crossed an uncertainty boundary, no concurrent dispatch may reopen the lane while this
+        // handoff is being retained. The recovery lease deliberately bypasses that fence so an
+        // already-running quarantine can still account for the existing handoff.
+        let _already_quarantined = begin_quarantine(&self.store)?;
+        let mut store = try_lock_quarantine(&self.store).map_err(|error| {
+            format!("cannot acquire worker recovery lease for unknown handoff: {error}")
+        })?;
+        let result = store
             .mark_worker_handoff_unknown(handoff_id)
             .map(|_| ())
-            .map_err(|_| String::from("cannot retain uncertain worker handoff"))
-    }
-
-    /// Runs the already-started handoff through the existing admitted runtime path.  This method
-    /// is intentionally reachable to a future authenticated listener, but production `run`
-    /// below does not call it until a real protected native transport is present.
-    pub fn execute_started(
-        &mut self,
-        running: StoredWorkerHandoff,
-        config: RuntimeConfig,
-        settings: RuntimeV3Settings,
-    ) -> Result<(), String> {
-        let handoff_id = running.tuple.handoff_id.clone();
-        let result = self.execute_started_inner(running, config, settings);
-        if result.is_err() {
-            // The execution side may already have projected uncertainty. This idempotent fence
-            // also covers launch/configuration failures before it could enter that path.
-            let _ = self.retain_unknown(&handoff_id);
-        }
-        result
-    }
-
-    fn execute_started_inner(
-        &mut self,
-        running: StoredWorkerHandoff,
-        config: RuntimeConfig,
-        settings: RuntimeV3Settings,
-    ) -> Result<(), String> {
-        let Some(active) = self.lane.tuple() else {
-            return Err(String::from("worker execution lane has no active handoff"));
-        };
-        if running.tuple != *active || running.worker_boot_id != self.worker_boot_id {
-            return Err(String::from(
-                "started worker handoff does not match the active worker lane",
-            ));
-        }
-        let launch_options = super::launch_options::RuntimeV3LaunchOptions::from_environment()?;
-        let telemetry_context = super::super::runtime_v3_telemetry::TelemetryContext::new(
-            super::super::runtime_v3_telemetry::TelemetryContextLineage {
-                run_id: &config.run_id,
-                episode_id: &config.episode_id,
-                trajectory_id: &config.trajectory_id,
-                trace_id: &config.trace_id,
-            },
-            &config.instance_id,
-            &config.session_id,
-            &config.runtime_profile,
-            &settings.exo.revision,
-        )?;
-        let telemetry =
-            super::super::runtime_v3_telemetry::RuntimeV3Telemetry::new(telemetry_context);
-        let telemetry_handle = telemetry.handle();
-        let _ = telemetry_handle.run_started();
-        let (durable, state) = super::durable::DurableHandle::from_admitted_shared_store(
-            self.store.clone(),
-            &running,
-            &config,
-            &settings,
-            self.lineage.clone(),
-            self.fingerprint.clone(),
-        )?;
-        let result = super::execution::run(
-            config,
-            settings,
-            durable,
-            state,
-            launch_options,
-            telemetry_handle,
-            telemetry,
-        );
+            .map_err(|error| format!("cannot retain uncertain worker handoff: {error}"));
         if result.is_ok() {
-            self.release_completed(&running.tuple.handoff_id)?;
+            finish_quarantine(&self.store);
         }
         result
-    }
-
-    /// Releases the capacity-one lane only after the same durable handoff has a projected
-    /// terminal receipt. Unknown, admitted, and running rows remain lookup-only.
-    pub fn release_completed(&mut self, handoff_id: &str) -> Result<(), String> {
-        let tuple = self
-            .lane
-            .tuple()
-            .filter(|tuple| tuple.handoff_id == handoff_id)
-            .cloned()
-            .ok_or_else(|| String::from("worker completion does not match active lane"))?;
-        let mut store = try_lock(&self.store)?;
-        let handoff = match store
-            .lookup_worker_handoff(&tuple)
-            .map_err(|_| String::from("cannot reconcile worker completion"))?
-        {
-            sts2_harness::WorkerLookup::Known(handoff) => *handoff,
-            sts2_harness::WorkerLookup::Unknown { .. } => {
-                return Err(String::from("worker completion handoff is not retained"));
-            }
-        };
-        if handoff.terminal.is_none() {
-            return Err(String::from(
-                "worker execution cannot release its lane before durable completion",
-            ));
-        }
-        drop(store);
-        self.lane.release(handoff_id)
-    }
-
-    pub fn close(&self) -> Result<(), String> {
-        let mut store = try_lock(&self.store)?;
-        store
-            .close()
-            .map_err(|_| String::from("cannot close worker execution store"))
-    }
-
-    pub fn worker_boot_id(&self) -> &str {
-        &self.worker_boot_id
     }
 
     /// Returns the fixed startup failure until a protected platform transport is integrated. No
@@ -412,6 +315,16 @@ fn command_error(error: WorkerCommandError) -> String {
     format!("worker command failed: {error}")
 }
 
+fn combine_failure(original: String, quarantine: Result<(), String>) -> String {
+    match quarantine {
+        Ok(()) => original,
+        Err(error) => format!("{original}; failed to retain unknown worker handoff: {error}"),
+    }
+}
+
 #[cfg(test)]
 #[path = "runtime_v3_worker_runtime_tests.rs"]
 mod tests;
+
+#[path = "runtime_v3_worker_runtime_execution.rs"]
+mod execution;

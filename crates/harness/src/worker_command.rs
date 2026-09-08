@@ -13,7 +13,8 @@ mod operations;
 mod support;
 
 use crate::execution::{
-    AttemptState, ExecutionStore, WorkerAdmissionOutcome, WorkerControlMode, WorkerHandoffState,
+    AttemptState, ExecutionFingerprint, ExecutionLineage, ExecutionStore, WorkerAdmissionOutcome,
+    WorkerControlMode, WorkerHandoffState,
 };
 
 use super::{WorkerCommand, WorkerReply};
@@ -95,6 +96,39 @@ impl WorkerCommandAdmission {
             self.validate_existing_records(store, &tuple, &approved, true)?;
         }
         Ok(WorkerDispatchPreparation { tuple, context })
+    }
+
+    /// Maps the fresh identity tuple in an authenticated dispatch to the harness-owned execution
+    /// policy, then performs the ordinary approved preparation. Job, attempt and lineage IDs are
+    /// scheduling facts from the frozen request; fingerprint fields remain owner-pinned harness
+    /// state and are never accepted from the request.
+    pub fn prepare_dispatch_from_authenticated(
+        &self,
+        store: &mut ExecutionStore,
+        authenticated: &AuthenticatedWorkerRequest,
+        fingerprint: ExecutionFingerprint,
+    ) -> Result<WorkerDispatchPreparation, WorkerCommandError> {
+        self.validate_request(authenticated)?;
+        if authenticated.request.command() != WorkerCommand::Dispatch {
+            return Err(WorkerCommandError::InvalidRequest);
+        }
+        let tuple = tuple(&authenticated.request)?;
+        let context = context(&authenticated.request)?;
+        self.require_current_control(store, &tuple, &context)?;
+        let lineage = ExecutionLineage::new(
+            tuple.run_id.clone(),
+            tuple.episode_id.clone(),
+            tuple.attempt_id.clone(),
+            tuple.trajectory_id.clone(),
+        )
+        .map_err(|_| WorkerCommandError::InvalidBinding)?;
+        let approved = ApprovedWorkerExecution::new(
+            lineage,
+            fingerprint,
+            tuple.job_id.clone(),
+            tuple.attempt_number,
+        )?;
+        self.prepare_dispatch(store, authenticated, approved)
     }
 
     /// Revalidates a prepared request and atomically admits only a fresh execution winner.
@@ -241,3 +275,7 @@ impl WorkerCommandAdmission {
 #[cfg(test)]
 #[path = "worker_command_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "worker_command_mapping_tests.rs"]
+mod mapping_tests;

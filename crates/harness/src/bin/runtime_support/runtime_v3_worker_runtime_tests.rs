@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 
+use super::super::worker_store::try_lock_recovery;
 use super::*;
 use serde_json::{Map, json};
 use sts2_harness::worker_handoff::{SCHEMA_DIGEST, WorkerCapability, WorkerRequest};
 use sts2_harness::{
-    ExecutionFingerprint, WORKER_EMPTY_PARAMETERS_DIGEST, WorkerBoot, WorkerControlMode,
-    WorkerControlRequest, WorkerOwnerProof,
+    ExecutionFingerprint, ExecutionLineage, WORKER_EMPTY_PARAMETERS_DIGEST, WorkerBoot,
+    WorkerControlMode, WorkerControlRequest, WorkerOwnerProof,
 };
 
 const RUN_ID: &str = "11111111-1111-4111-8111-111111111111";
@@ -100,17 +101,9 @@ fn runtime() -> Result<WorkerRuntime, Box<dyn std::error::Error>> {
         WORKER_BOOT_ID,
         WATCHDOG_BOOT_ID,
     )?;
-    let approved = sts2_harness::worker_handoff::ApprovedWorkerExecution::new(
-        lineage()?,
-        fingerprint()?,
-        "job-1",
-        1,
-    )?;
     Ok(WorkerRuntime::from_shared_store(
         share_store(store),
         command,
-        approved,
-        lineage()?,
         fingerprint()?,
         String::from(WORKER_BOOT_ID),
     )?)
@@ -133,7 +126,7 @@ fn failed_response_retains_unknown_and_never_starts() -> Result<(), Box<dyn std:
     let exchange = runtime.handle_authenticated(&authenticated)?;
     let outcome = runtime.finish_exchange(exchange, ResponseWriteStatus::Failed)?;
     assert!(matches!(outcome, WorkerStartOutcome::Unknown { .. }));
-    let store = try_lock(&runtime.store)?;
+    let store = try_lock_recovery(&runtime.store)?;
     let handoff = store.worker_handoff(HANDOFF_ID)?.ok_or("missing handoff")?;
     assert_eq!(handoff.state, WorkerHandoffState::Unknown);
     Ok(())

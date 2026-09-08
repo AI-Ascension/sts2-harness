@@ -9,10 +9,8 @@
 
 use std::path::PathBuf;
 
-use sts2_harness::worker_handoff::{
-    ApprovedWorkerExecution, WorkerCommandConfig, WorkerCommandError,
-};
-use sts2_harness::{ExecutionFingerprint, ExecutionLineage, WorkerBoot};
+use sts2_harness::worker_handoff::{WorkerCommandConfig, WorkerCommandError};
+use sts2_harness::{ExecutionFingerprint, WorkerBoot};
 
 use super::config::RuntimeConfig;
 
@@ -45,8 +43,6 @@ fn parse_enabled(value: Option<&str>) -> Result<bool, String> {
 pub(super) struct WorkerSettings {
     pub(super) boot: WorkerBoot,
     pub(super) command: WorkerCommandConfig,
-    pub(super) approved: ApprovedWorkerExecution,
-    pub(super) lineage: ExecutionLineage,
     pub(super) fingerprint: ExecutionFingerprint,
     pub(super) store_path: PathBuf,
 }
@@ -68,7 +64,6 @@ impl WorkerSettings {
         let worker_profile_digest = required("STS2_WORKER_PROFILE_DIGEST")?;
         let release_digest = required("STS2_BUILD_DIGEST")?;
         let config_digest = required("STS2_RUNTIME_CONFIG_DIGEST")?;
-        let worker_boot_id = required("STS2_WORKER_BOOT_ID")?;
         let watchdog_boot_id = required("STS2_WATCHDOG_BOOT_ID")?;
         let worker_owner_id =
             optional("STS2_WORKER_OWNER_ID")?.unwrap_or_else(|| WORKER_OWNER_ID.to_owned());
@@ -78,23 +73,12 @@ impl WorkerSettings {
             ));
         }
 
-        let attempt_id = optional("STS2_ATTEMPT_ID")?
-            .unwrap_or_else(|| format!("attempt-{}", config.episode_id));
-        let job_id = required("STS2_JOB_ID")?;
-        let attempt_number = number("STS2_ATTEMPT_NUMBER")?;
         let seed = optional("STS2_SEED")?
             .or(optional("STS2_VISIBLE_SEED")?)
             .ok_or_else(|| String::from("STS2_SEED or STS2_VISIBLE_SEED is required"))?;
         let state_digest = required("STS2_STATE_DIGEST")?;
         let provider_digest = required("STS2_PROVIDER_DIGEST")?;
 
-        let lineage = ExecutionLineage::new(
-            config.run_id.clone(),
-            config.episode_id.clone(),
-            attempt_id,
-            config.trajectory_id.clone(),
-        )
-        .map_err(|error| format!("worker execution lineage is invalid: {error}"))?;
         let fingerprint = ExecutionFingerprint::new(
             seed,
             release_digest.clone(),
@@ -103,13 +87,10 @@ impl WorkerSettings {
             provider_digest,
         )
         .map_err(|error| format!("worker execution fingerprint is invalid: {error}"))?;
-        let approved = ApprovedWorkerExecution::new(
-            lineage.clone(),
-            fingerprint.clone(),
-            job_id,
-            attempt_number,
-        )
-        .map_err(command_error)?;
+        // The worker boot belongs to this harness process and must not be replayable from a
+        // launch environment. The watchdog boot remains owner-provided until the protected
+        // bootstrap/peer handoff is integrated.
+        let worker_boot_id = fresh_worker_boot_id();
         let command = WorkerCommandConfig::new(
             deployment_id.clone(),
             worker_owner_id.clone(),
@@ -137,8 +118,6 @@ impl WorkerSettings {
         Ok(Self {
             boot,
             command,
-            approved,
-            lineage,
             fingerprint,
             store_path,
         })
@@ -147,6 +126,10 @@ impl WorkerSettings {
 
 fn command_error(error: WorkerCommandError) -> String {
     format!("worker command binding is invalid: {error}")
+}
+
+fn fresh_worker_boot_id() -> String {
+    uuid::Uuid::new_v4().to_string()
 }
 
 fn required(name: &str) -> Result<String, String> {
@@ -167,15 +150,10 @@ fn optional(name: &str) -> Result<Option<String>, String> {
     }
 }
 
-fn number(name: &str) -> Result<u64, String> {
-    required(name)?
-        .parse::<u64>()
-        .map_err(|_| format!("{name} must be a nonnegative integer"))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::parse_enabled;
+    use super::{fresh_worker_boot_id, parse_enabled};
+    use uuid::Uuid;
 
     #[test]
     fn worker_mode_requires_an_exact_explicit_boolean() {
@@ -188,5 +166,20 @@ mod tests {
                 "{value:?} must be rejected"
             );
         }
+    }
+
+    #[test]
+    fn worker_boot_ids_are_fresh_harness_process_values() {
+        let first = fresh_worker_boot_id();
+        let second = fresh_worker_boot_id();
+        assert_ne!(first, second);
+        assert_eq!(
+            Uuid::parse_str(&first).map(|id| id.get_version_num()),
+            Ok(4)
+        );
+        assert_eq!(
+            Uuid::parse_str(&second).map(|id| id.get_version_num()),
+            Ok(4)
+        );
     }
 }
