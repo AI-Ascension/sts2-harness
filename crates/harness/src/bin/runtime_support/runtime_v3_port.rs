@@ -114,9 +114,11 @@ impl RuntimeV3Port {
             .map_or(Ok(()), durable::DurableHandle::close)
     }
 
-    pub(super) fn mark_interrupted_unknown(&self, reason: &str) {
+    pub(super) fn mark_interrupted_unknown(&self, reason: &str) -> Result<(), String> {
         if let Some(durable) = &self.durable {
-            durable.mark_interrupted_unknown(reason);
+            durable.mark_interrupted_unknown(reason)
+        } else {
+            Ok(())
         }
     }
 

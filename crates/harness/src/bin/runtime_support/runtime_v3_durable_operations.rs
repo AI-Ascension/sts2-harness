@@ -118,7 +118,7 @@ impl DurableHandle {
         let evidence = response
             .map(|value| response_evidence(operation_id, value))
             .transpose()?;
-        super::try_lock(&self.store)?
+        super::super::worker_store::try_lock_recovery(&self.store)?
             .record_operation_result(
                 operation_id,
                 payload_digest,
@@ -134,7 +134,7 @@ impl DurableHandle {
         &self,
         operation_id: &str,
     ) -> Result<OperationState, String> {
-        super::try_lock(&self.store)?
+        super::super::worker_store::try_lock_recovery(&self.store)?
             .operation(operation_id)
             .map(|operation| operation.state)
             .map_err(|error| format!("cannot read runtime-v3 operation state: {error}"))
@@ -144,7 +144,7 @@ impl DurableHandle {
         &self,
         operation_id: &str,
     ) -> Result<String, String> {
-        super::try_lock(&self.store)?
+        super::super::worker_store::try_lock_recovery(&self.store)?
             .operation(operation_id)
             .map(|operation| operation.intent.payload_digest)
             .map_err(|error| format!("cannot read runtime-v3 operation digest: {error}"))
@@ -158,13 +158,13 @@ impl DurableHandle {
         resolved_state: OperationState,
         response: &Value,
     ) -> Result<(), String> {
-        let operation = super::try_lock(&self.store)?
+        let operation = super::super::worker_store::try_lock_recovery(&self.store)?
             .operation(operation_id)
             .map_err(|error| {
                 format!("cannot read runtime-v3 operation for reconciliation: {error}")
             })?;
         let (result_ref, result_digest) = response_evidence(operation_id, response)?;
-        super::try_lock(&self.store)?
+        super::super::worker_store::try_lock_recovery(&self.store)?
             .reconcile_operation(
                 operation_id,
                 &operation.intent.payload_digest,

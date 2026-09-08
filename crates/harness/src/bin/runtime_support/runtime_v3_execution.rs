@@ -19,6 +19,15 @@ use super::launch_options::RuntimeV3LaunchOptions;
 use super::recording;
 use super::{RuntimeV3Port, finish_telemetry};
 
+fn combine_quarantine(error: String, quarantine: Result<(), String>) -> String {
+    match quarantine {
+        Ok(()) => error,
+        Err(quarantine_error) => {
+            format!("{error}; failed to persist interrupted-unknown quarantine: {quarantine_error}")
+        }
+    }
+}
+
 /// Runs one already-admitted runtime-v3 episode.
 ///
 /// All process-global launch selection is resolved by [`RuntimeV3LaunchOptions`] before this
@@ -68,9 +77,12 @@ pub(super) fn run(
         let result = options
             .episode_replay_prefix()
             .and_then(|prefix| episode_replay::run(&mut port, &settings.runner, path, prefix));
-        if result.is_err() {
-            port.mark_interrupted_unknown("runtime-v3 episode replay failed");
-        }
+        let quarantine = if result.is_err() {
+            port.mark_interrupted_unknown("runtime-v3 episode replay failed")
+        } else {
+            Ok(())
+        };
+        let result = result.map_err(|error| combine_quarantine(error, quarantine));
         let store_close = port.close_durable();
         drop(port);
         let _ = telemetry_handle.run_finished(
@@ -102,9 +114,12 @@ pub(super) fn run(
             &settings.runner,
             options.replay_path.as_deref(),
         );
-        if outcome.is_err() {
-            port.mark_interrupted_unknown("runtime-v3 combat demo failed");
-        }
+        let quarantine = if outcome.is_err() {
+            port.mark_interrupted_unknown("runtime-v3 combat demo failed")
+        } else {
+            Ok(())
+        };
+        let outcome = outcome.map_err(|error| combine_quarantine(error, quarantine));
         let close = source.close().map_err(|error| error.to_string());
         let store_close = port.close_durable();
         drop(port);
@@ -133,11 +148,13 @@ pub(super) fn run(
     let report = match result {
         Ok(report) => report,
         Err(error) => {
-            if source_close.is_err() {
-                port.mark_interrupted_unknown("runtime-v3 episode and provider close failed");
+            let quarantine = if source_close.is_err() {
+                port.mark_interrupted_unknown("runtime-v3 episode and provider close failed")
             } else {
-                port.mark_interrupted_unknown("runtime-v3 episode failed");
-            }
+                port.mark_interrupted_unknown("runtime-v3 episode failed")
+            };
+            let error =
+                combine_quarantine(format!("Runtime-v3 episode failed: {error}"), quarantine);
             let _ = port.close_durable();
             drop(port);
             let _ = telemetry_handle.failure("episode", FailureCode::Other, false, None);
@@ -147,11 +164,11 @@ pub(super) fn run(
                 CleanupStatus::Failed,
             );
             finish_telemetry(telemetry);
-            return Err(format!("Runtime-v3 episode failed: {error}"));
+            return Err(error);
         }
     };
     if source_close.is_err() {
-        port.mark_interrupted_unknown("runtime-v3 provider close failed");
+        let quarantine = port.mark_interrupted_unknown("runtime-v3 provider close failed");
         let _ = port.close_durable();
         drop(port);
         let _ = telemetry_handle.failure("provider_close", FailureCode::Cleanup, false, None);
@@ -161,10 +178,13 @@ pub(super) fn run(
             CleanupStatus::Failed,
         );
         finish_telemetry(telemetry);
-        return Err(String::from("Exo session close failed"));
+        return Err(combine_quarantine(
+            String::from("Exo session close failed"),
+            quarantine,
+        ));
     }
     if let Err(error) = port.complete_durable(&report) {
-        port.mark_interrupted_unknown("runtime-v3 durable completion failed");
+        let quarantine = port.mark_interrupted_unknown("runtime-v3 durable completion failed");
         let _ = port.close_durable();
         drop(port);
         let _ = telemetry_handle.failure("durable_completion", FailureCode::Other, false, None);
@@ -174,7 +194,7 @@ pub(super) fn run(
             CleanupStatus::Failed,
         );
         finish_telemetry(telemetry);
-        return Err(error);
+        return Err(combine_quarantine(error, quarantine));
     }
     recording::complete(&report, &telemetry_handle);
     let game_outcome = match report.terminal_stage() {

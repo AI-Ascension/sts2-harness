@@ -75,7 +75,7 @@ impl DurableHandle {
     ) -> Result<(), String> {
         let (result_payload, result_digest) = decision_replay::encode(decision)?;
         let result_ref = format!("decision-result-{}", token.reservation_id);
-        super::super::try_lock(&self.store)?
+        super::super::super::worker_store::try_lock_recovery(&self.store)?
             .complete_provider_with_result(
                 &token.reservation_id,
                 &result_ref,
@@ -92,7 +92,7 @@ impl DurableHandle {
         token: &ProviderReservationToken,
         failure: ProviderFailureClass,
     ) -> Result<(), String> {
-        super::super::try_lock(&self.store)?
+        super::super::super::worker_store::try_lock_recovery(&self.store)?
             .fail_provider(&token.reservation_id, failure, None)
             .map(|_| ())
             .map_err(|error| format!("cannot persist runtime-v3 provider failure: {error}"))
@@ -103,7 +103,7 @@ impl DurableHandle {
         token: &ProviderReservationToken,
         failure: ProviderFailureClass,
     ) -> Result<(), String> {
-        super::super::try_lock(&self.store)?
+        super::super::super::worker_store::try_lock_recovery(&self.store)?
             .mark_provider_unknown(&token.reservation_id, failure, None)
             .map(|_| ())
             .map_err(|error| format!("cannot persist unknown runtime-v3 provider result: {error}"))

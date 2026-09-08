@@ -77,7 +77,7 @@ impl DurableHandle {
     /// have been reconciled.
     pub(in super::super) fn refresh_resume_boundary(&self) -> Result<(), String> {
         let checkpoint = {
-            let store = super::try_lock(&self.store)?;
+            let store = super::super::worker_store::try_lock_recovery(&self.store)?;
             super::super::worker_store::snapshot(&store, &self.lineage, &self.fingerprint)?
                 .episode
                 .last_checkpoint

@@ -14,7 +14,10 @@ use sts2_harness::{
 
 use super::super::config::RuntimeConfig;
 use super::super::runtime_v3_settings::RuntimeV3Settings;
-use super::worker_store::{SharedExecutionStore, share_store, snapshot, try_lock};
+use super::worker_store::{
+    SharedExecutionStore, begin_quarantine, finish_quarantine, share_store, snapshot, try_lock,
+    try_lock_close, try_lock_quarantine,
+};
 
 const DEFAULT_STORE_PATH: &str = "harness-execution.sqlite3";
 const PROVIDER_RESERVATION_UNITS: u64 = 1;
@@ -156,7 +159,7 @@ impl DurableHandle {
     }
 
     pub(super) fn pending_operations(&self) -> Result<Vec<sts2_harness::StoredOperation>, String> {
-        try_lock(&self.store)?
+        super::worker_store::try_lock_recovery(&self.store)?
             .pending_operations(&self.lineage.episode_id)
             .map_err(|error| format!("cannot read pending runtime-v3 operations: {error}"))
     }
@@ -218,9 +221,30 @@ impl DurableHandle {
             .map_err(|error| format!("cannot persist runtime-v3 completion: {error}"))
     }
 
-    pub(super) fn mark_interrupted_unknown(&self, reason: &str) {
-        if let Ok(mut store) = try_lock(&self.store) {
-            let _ = store.mark_interrupted_unknown(&self.lineage.episode_id, reason);
+    pub(super) fn mark_interrupted_unknown(&self, reason: &str) -> Result<(), String> {
+        if begin_quarantine(&self.store)? {
+            return Ok(());
+        }
+        let mut store = try_lock_quarantine(&self.store).map_err(|error| {
+            format!(
+                "cannot acquire runtime-v3 execution store for interrupted-unknown quarantine: {error}"
+            )
+        })?;
+        store
+            .mark_interrupted_unknown(&self.lineage.episode_id, reason)
+            .map_err(|error| {
+                format!("cannot persist runtime-v3 interrupted-unknown quarantine: {error}")
+            })?;
+        finish_quarantine(&self.store);
+        Ok(())
+    }
+
+    pub(in super::super) fn quarantine_failure(&self, original: String, reason: &str) -> String {
+        match self.mark_interrupted_unknown(reason) {
+            Ok(()) => original,
+            Err(error) => {
+                format!("{original}; failed to persist interrupted-unknown quarantine: {error}")
+            }
         }
     }
 
@@ -228,7 +252,7 @@ impl DurableHandle {
         if !self.owns_store {
             return Ok(());
         }
-        try_lock(&self.store)?
+        try_lock_close(&self.store)?
             .close()
             .map_err(|error| format!("cannot close runtime-v3 execution store: {error}"))
     }

@@ -120,7 +120,7 @@ impl DurableHandle {
         fingerprint: ExecutionFingerprint,
     ) -> Result<Self, String> {
         let stored = {
-            let store_guard = try_lock(&store)?;
+            let store_guard = super::super::worker_store::try_lock_recovery(&store)?;
             snapshot(&store_guard, &lineage, &fingerprint)?
         };
         let next_checkpoint =

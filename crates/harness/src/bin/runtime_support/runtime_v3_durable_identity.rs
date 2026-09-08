@@ -14,52 +14,52 @@ impl DurableHandle {
             let bytes = match operation.intent.action_payload.as_deref() {
                 Some(bytes) => bytes,
                 None => {
-                    self.mark_interrupted_unknown(
+                    return Err(self.quarantine_failure(
+                        format!(
+                            "runtime-v3 operation {} has no canonical action payload",
+                            operation.intent.operation_id
+                        ),
                         "legacy operation has no canonical action payload; recovery is blocked",
-                    );
-                    return Err(format!(
-                        "runtime-v3 operation {} has no canonical action payload",
-                        operation.intent.operation_id
                     ));
                 }
             };
             let envelope: Value = serde_json::from_slice(bytes).map_err(|_| {
-                self.mark_interrupted_unknown(
+                self.quarantine_failure(
+                    format!(
+                        "runtime-v3 operation {} has malformed canonical action payload",
+                        operation.intent.operation_id
+                    ),
                     "durable operation canonical action payload is malformed",
-                );
-                format!(
-                    "runtime-v3 operation {} has malformed canonical action payload",
-                    operation.intent.operation_id
                 )
             })?;
             let object = envelope.as_object().ok_or_else(|| {
-                self.mark_interrupted_unknown(
+                self.quarantine_failure(
+                    format!(
+                        "runtime-v3 operation {} has a non-object canonical action payload",
+                        operation.intent.operation_id
+                    ),
                     "durable operation canonical action payload is not an object",
-                );
-                format!(
-                    "runtime-v3 operation {} has a non-object canonical action payload",
-                    operation.intent.operation_id
                 )
             })?;
             if object.len() != 2
                 || object.get("action_id").and_then(Value::as_str)
                     != Some(operation.intent.action_id.as_str())
             {
-                self.mark_interrupted_unknown(
+                return Err(self.quarantine_failure(
+                    format!(
+                        "runtime-v3 operation {} has inconsistent canonical action identity",
+                        operation.intent.operation_id
+                    ),
                     "durable operation canonical action identity is inconsistent",
-                );
-                return Err(format!(
-                    "runtime-v3 operation {} has inconsistent canonical action identity",
-                    operation.intent.operation_id
                 ));
             }
             let payload = object.get("action").ok_or_else(|| {
-                self.mark_interrupted_unknown(
+                self.quarantine_failure(
+                    format!(
+                        "runtime-v3 operation {} has incomplete canonical action payload",
+                        operation.intent.operation_id
+                    ),
                     "durable operation canonical action payload is incomplete",
-                );
-                format!(
-                    "runtime-v3 operation {} has incomplete canonical action payload",
-                    operation.intent.operation_id
                 )
             })?;
             let action = super::super::super::runtime_v3_parse::action_from_payload(
@@ -67,12 +67,12 @@ impl DurableHandle {
                 payload,
             )
             .map_err(|error| {
-                self.mark_interrupted_unknown(
+                self.quarantine_failure(
+                    format!(
+                        "runtime-v3 operation {} has invalid canonical action payload: {error}",
+                        operation.intent.operation_id
+                    ),
                     "durable operation canonical action payload failed validation",
-                );
-                format!(
-                    "runtime-v3 operation {} has invalid canonical action payload: {error}",
-                    operation.intent.operation_id
                 )
             })?;
             if operation.intent.action_kind.as_deref()
@@ -84,21 +84,21 @@ impl DurableHandle {
                     payload,
                 )
                 .map_err(|error| {
-                    self.mark_interrupted_unknown(
+                    self.quarantine_failure(
+                        format!(
+                            "runtime-v3 operation {} action digest failed: {error}",
+                            operation.intent.operation_id
+                        ),
                         "durable operation canonical action digest could not be calculated",
-                    );
-                    format!(
-                        "runtime-v3 operation {} action digest failed: {error}",
-                        operation.intent.operation_id
                     )
                 })? != operation.intent.payload_digest
             {
-                self.mark_interrupted_unknown(
+                return Err(self.quarantine_failure(
+                    format!(
+                        "runtime-v3 operation {} has mismatched canonical action identity",
+                        operation.intent.operation_id
+                    ),
                     "durable operation canonical action kind or digest does not match",
-                );
-                return Err(format!(
-                    "runtime-v3 operation {} has mismatched canonical action identity",
-                    operation.intent.operation_id
                 ));
             }
         }

@@ -2,22 +2,23 @@
 
 #![allow(clippy::expect_used, clippy::panic)]
 
-use std::sync::Arc;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::json;
 use sts2_harness::{
     Checkpoint, CompletionRecord, CompletionStatus, EpisodeObservation, EpisodeRunnerConfig,
-    EpisodeStage, ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExoConfig,
-    ExoProcessConfig, RecoveryController, StabilityBarrier, StoredWorkerHandoff,
-    WORKER_EMPTY_PARAMETERS_DIGEST, WorkerAdmissionContext, WorkerBoot, WorkerControlMode,
-    WorkerControlRequest, WorkerOwnerProof, WorkerTuple,
+    EpisodeStage, ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig,
+    ExoConfig, ExoProcessConfig, RecoveryController, ResumeState, StabilityBarrier,
+    StoredWorkerHandoff, WORKER_EMPTY_PARAMETERS_DIGEST, WorkerAdmissionContext, WorkerBoot,
+    WorkerControlMode, WorkerControlRequest, WorkerOwnerProof, WorkerTuple,
 };
 
 use super::super::runtime_v3_settings::RuntimeV3Settings;
 use super::durable::DurableHandle;
-use super::worker_store::{SharedExecutionStore, share_store, try_lock};
+use super::worker_store::{
+    SharedExecutionStore, share_store, try_lock, try_lock_close, try_lock_recovery,
+};
 
 const RUN_ID: &str = "11111111-1111-4111-8111-111111111111";
 const EPISODE_ID: &str = "22222222-2222-4222-8222-222222222222";
@@ -250,7 +251,7 @@ fn shared_store_is_send_sync_and_cross_thread_operations_use_one_connection() {
         .expect("fresh handoff has permit")
         .1;
     let shared = share_store(store);
-    let worker_store = Arc::clone(&shared);
+    let worker_store = shared.clone();
     let running = thread::spawn(move || {
         let mut store = try_lock(&worker_store).expect("worker obtains short store lease");
         store
@@ -375,7 +376,7 @@ fn shared_runtime_attachment_reports_store_contention_without_waiting() {
     let shared = share_store(store);
     let guard = try_lock(&shared).expect("test owns the store lease");
     let result =
-        DurableHandle::from_shared_store_for_test(Arc::clone(&shared), lineage(), fingerprint());
+        DurableHandle::from_shared_store_for_test(shared.clone(), lineage(), fingerprint());
     drop(guard);
     let error = match result {
         Ok(_) => panic!("contended shared-store attachment succeeded"),
@@ -385,12 +386,138 @@ fn shared_runtime_attachment_reports_store_contention_without_waiting() {
 }
 
 #[test]
+fn failed_quarantine_latches_clones_and_new_handles_but_keeps_diagnostics_and_close() {
+    let (store, _tuple, _context) = setup_store();
+    let shared = share_store(store);
+    let handle =
+        DurableHandle::from_shared_store_for_test(shared.clone(), lineage(), fingerprint())
+            .expect("runtime attachment");
+    let lease = try_lock_recovery(&shared).expect("test owns the recovery lease");
+    let error = handle
+        .mark_interrupted_unknown("contention quarantine")
+        .expect_err("contended quarantine must fail closed");
+    assert!(error.contains("store is busy"), "unexpected error: {error}");
+    drop(lease);
+
+    let cloned_handle = handle.clone();
+    let blocked = cloned_handle
+        .checkpoint(&checkpoint_observation("state-1", 1), &json!([]))
+        .expect_err("failed quarantine must block a cloned handle");
+    assert!(
+        blocked.contains("fail-closed"),
+        "unexpected error: {blocked}"
+    );
+    assert!(
+        try_lock(&shared).is_err(),
+        "admission lease bypassed the latch"
+    );
+
+    let new_handle =
+        DurableHandle::from_shared_store_for_test(shared.clone(), lineage(), fingerprint())
+            .expect("read-only attachment remains available");
+    assert!(new_handle.pending_operations().is_ok());
+    let blocked_new_handle = new_handle
+        .checkpoint(&checkpoint_observation("state-2", 2), &json!([]))
+        .expect_err("failed quarantine must block a new handle");
+    assert!(
+        blocked_new_handle.contains("fail-closed"),
+        "unexpected error: {blocked_new_handle}"
+    );
+
+    try_lock_close(&shared)
+        .expect("close bypasses the admission latch")
+        .close()
+        .expect("store closes after a failed quarantine");
+}
+
+#[test]
+fn underlying_quarantine_error_latches_without_reopening_admission() {
+    let (store, _tuple, _context) = setup_store();
+    let shared = share_store(store);
+    let handle =
+        DurableHandle::from_shared_store_for_test(shared.clone(), lineage(), fingerprint())
+            .expect("runtime attachment");
+    try_lock_recovery(&shared)
+        .expect("test owns the store lease")
+        .close()
+        .expect("underlying store closes");
+
+    let error = handle
+        .mark_interrupted_unknown("closed-store quarantine")
+        .expect_err("closed store quarantine must report its failure");
+    assert!(
+        error.contains("cannot persist runtime-v3 interrupted-unknown quarantine"),
+        "unexpected error: {error}"
+    );
+    let blocked = handle
+        .checkpoint(&checkpoint_observation("state-1", 1), &json!([]))
+        .expect_err("underlying quarantine failure must block admission");
+    assert!(
+        blocked.contains("fail-closed"),
+        "unexpected error: {blocked}"
+    );
+}
+
+#[test]
+fn successful_quarantine_persists_unknown_and_keeps_shared_admission_closed() {
+    let (store, _tuple, _context) = setup_store();
+    let shared = share_store(store);
+    let handle =
+        DurableHandle::from_shared_store_for_test(shared.clone(), lineage(), fingerprint())
+            .expect("runtime attachment");
+    handle
+        .mark_interrupted_unknown("successful quarantine")
+        .expect("quarantine persists");
+
+    let state = try_lock_recovery(&shared)
+        .expect("read-only diagnostics remain available")
+        .resume_episode(EPISODE_ID, &fingerprint())
+        .expect("resume state reads");
+    assert!(matches!(
+        state,
+        sts2_harness::ResumeState::InterruptedUnknown { .. }
+    ));
+    let new_handle = DurableHandle::from_shared_store_for_test(shared, lineage(), fingerprint())
+        .expect("read-only reattachment remains available");
+    let blocked = new_handle
+        .checkpoint(&checkpoint_observation("state-1", 1), &json!([]))
+        .expect_err("successful quarantine must keep admission closed");
+    assert!(
+        blocked.contains("fail-closed"),
+        "unexpected error: {blocked}"
+    );
+}
+
+#[test]
+fn successful_quarantine_survives_store_reopen() {
+    let path = executable_path("quarantine-reopen");
+    let mut store = ExecutionStore::open(ExecutionStoreConfig::new(&path)).expect("store opens");
+    store
+        .start_episode(&lineage(), &fingerprint())
+        .expect("episode starts");
+    let shared = share_store(store);
+    let handle = DurableHandle::from_shared_store_for_test(shared, lineage(), fingerprint())
+        .expect("runtime attachment");
+    handle
+        .mark_interrupted_unknown("persistent quarantine")
+        .expect("quarantine persists");
+    drop(handle);
+
+    let reopened = ExecutionStore::open(ExecutionStoreConfig::new(&path)).expect("store reopens");
+    let state = reopened
+        .resume_episode(EPISODE_ID, &fingerprint())
+        .expect("reopened resume state reads");
+    assert!(matches!(state, ResumeState::InterruptedUnknown { .. }));
+    drop(reopened);
+    std::fs::remove_file(path).expect("quarantine fixture is removed");
+}
+
+#[test]
 fn stale_shared_runtime_checkpoint_is_rejected_before_a_duplicate_sequence() {
     let (store, _tuple, _context) = setup_store();
     let shared = share_store(store);
-    let first =
-        DurableHandle::from_shared_store_for_test(Arc::clone(&shared), lineage(), fingerprint())
-            .expect("first runtime attachment");
+    let first = DurableHandle::from_shared_store_for_test(shared.clone(), lineage(), fingerprint())
+        .expect("first runtime attachment");
     let second = DurableHandle::from_shared_store_for_test(shared, lineage(), fingerprint())
         .expect("second runtime attachment");
     first
