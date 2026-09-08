@@ -41,7 +41,22 @@ fixtures, malformed numeric spellings, missing fields, duplicate escaped keys,
 namespace collisions, byte limits and exact frame bounds. Fixture comparison
 confirms all twenty imported JSON files match the owner snapshot byte-for-byte.
 
-Response encoding, terminal digest acknowledgment, the durable worker store and
-the actual server-to-runtime path are unfinished. No service, provider or game
-is launched by the decoder tests. Request conformance is not end-to-end worker
-compatibility, release completion or live recovery evidence.
+Response construction now binds the original request correlation, complete tuple
+and current worker boot. Typed terminal response variants require a matching
+closed receipt; nonterminal variants cannot carry one. Probe always reports
+non-admitting readiness. A mismatched response command or worker boot is rejected.
+
+Terminal acknowledgment uses lowercase SHA-256 of the complete WHJ-T1 terminal:
+tuple keys in manifest order, followed by status, checkpoint sequence, terminal
+reference and result digest. Compact UTF-8 JSON uses canonical unsigned integers,
+escapes quote/backslash, retains other permitted Unicode bytes without normalization
+and has no trailing newline. It excludes transport request/boot identifiers.
+The hash is not the harness's private result digest. Both consumers test the same
+frozen dispatch terminal against its independently calculated golden hash.
+
+Inventory/manifest/schema tests additionally pin all twenty copied JSON files,
+validate all positive fixtures and check the manifest's runtime limits. The
+response suite tests all status shapes, terminal field corruption and boot/tuple
+substitution. The durable worker store and actual server-to-runtime path remain
+unfinished. No service, provider or game is launched by these tests. Conformance
+is not end-to-end worker compatibility, release completion or live recovery.

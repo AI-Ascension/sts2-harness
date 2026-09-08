@@ -5,8 +5,12 @@
 
 mod json;
 mod request;
+mod response;
+mod terminal;
 
 pub use request::{WorkerCommand, WorkerRequest};
+pub use response::{AcknowledgmentStatus, DispatchReply, LookupReply, ProbeReply, WorkerReply};
+pub use terminal::{TerminalCompletion, TerminalRecord, TerminalStatus};
 
 /// Exact artifact identity; mixed schemas fail closed.
 pub const SCHEMA_DIGEST: &str = "bb13d15f6c0e4b8d0f58f7391fe4ba319ebc57a0a09effc06d73ea718bbff4cf";

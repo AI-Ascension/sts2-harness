@@ -15,7 +15,18 @@ The harness owns its independent bounded decoder. The schema and manifest jointl
 define validation: byte limits, canonical integer spelling and pairwise identity
 separation are additional to structural JSON Schema validation.
 
-Current consumer coverage: request decoding only, including all five commands.
-Response encoding, authenticated endpoint, durable admission and actual runtime
+The consumer-owned `SHA256SUMS` inventory pins all twenty copied JSON files.
+Tests verify every digest, the complete inventory, manifest limits and operation,
+and JSON Schema validity of all ten positive fixtures. The inventory itself is
+pinned in the conformance test; this file is consumer documentation, not copied
+upstream metadata.
+
+Current consumer coverage includes all five request decoders and response encoders.
+Terminal encoding uses the owner's WHJ-T1 ordered fifteen-field acknowledgment
+material. The existing dispatch terminal fixture hashes to
+`a0db0fc348623db806d2d053d7724198acb5c5c79f5b3422bf75faf3f653c260`, distinct from
+its result digest. This golden is checked by both owner-local implementations.
+
+The authenticated endpoint, durable acknowledgment transition and actual runtime
 execution remain separate integration work. Passing these tests does not prove
 an executable worker or end-to-end completion acknowledgment.

@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 
 use super::{HandoffError, PAYLOAD_DIGEST, SCHEMA_DIGEST, json};
 
-const HEADER: &[&str] = &[
+pub(super) const HEADER: &[&str] = &[
     "contract",
     "schema_digest",
     "direction",
@@ -14,7 +14,7 @@ const HEADER: &[&str] = &[
     "timeout_ms",
     "watchdog_boot_id",
 ];
-const TUPLE: &[&str] = &[
+pub(super) const TUPLE: &[&str] = &[
     "handoff_id",
     "deployment_id",
     "job_id",
@@ -27,7 +27,7 @@ const TUPLE: &[&str] = &[
     "trajectory_id",
     "payload_digest",
 ];
-const CONTROL: &[&str] = &[
+pub(super) const CONTROL: &[&str] = &[
     "deployment_id",
     "worker_owner_id",
     "worker_profile_digest",
@@ -151,7 +151,7 @@ fn validate_command(
     Ok(())
 }
 
-fn tuple(fields: &Map<String, Value>) -> Result<(), HandoffError> {
+pub(super) fn tuple(fields: &Map<String, Value>) -> Result<(), HandoffError> {
     let ids = ["handoff_id", "run_id", "episode_id", "trajectory_id"];
     for (index, name) in ids.iter().enumerate() {
         uuid(fields, name)?;
@@ -174,7 +174,10 @@ fn tuple(fields: &Map<String, Value>) -> Result<(), HandoffError> {
     constant(fields, "payload_digest", PAYLOAD_DIGEST)
 }
 
-fn string<'a>(fields: &'a Map<String, Value>, name: &str) -> Result<&'a str, HandoffError> {
+pub(super) fn string<'a>(
+    fields: &'a Map<String, Value>,
+    name: &str,
+) -> Result<&'a str, HandoffError> {
     fields.get(name).and_then(Value::as_str).ok_or(HandoffError)
 }
 
@@ -196,7 +199,7 @@ fn positive(fields: &Map<String, Value>, name: &str) -> Result<(), HandoffError>
     Ok(())
 }
 
-fn uuid(fields: &Map<String, Value>, name: &str) -> Result<(), HandoffError> {
+pub(super) fn uuid(fields: &Map<String, Value>, name: &str) -> Result<(), HandoffError> {
     let value = string(fields, name)?;
     let parsed = uuid::Uuid::parse_str(value).map_err(|_| HandoffError)?;
     if parsed.get_version_num() != 4
@@ -208,7 +211,7 @@ fn uuid(fields: &Map<String, Value>, name: &str) -> Result<(), HandoffError> {
     Ok(())
 }
 
-fn digest(fields: &Map<String, Value>, name: &str) -> Result<(), HandoffError> {
+pub(super) fn digest(fields: &Map<String, Value>, name: &str) -> Result<(), HandoffError> {
     let value = string(fields, name)?;
     if value.len() != 64
         || !value
@@ -220,7 +223,7 @@ fn digest(fields: &Map<String, Value>, name: &str) -> Result<(), HandoffError> {
     Ok(())
 }
 
-fn identity(fields: &Map<String, Value>, name: &str) -> Result<(), HandoffError> {
+pub(super) fn identity(fields: &Map<String, Value>, name: &str) -> Result<(), HandoffError> {
     let value = string(fields, name)?;
     if value.is_empty()
         || value.len() > 128
