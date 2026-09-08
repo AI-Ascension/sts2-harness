@@ -223,12 +223,17 @@ pub(super) fn run(
         sts2_harness::EpisodeStage::Defeat => GameOutcome::Failure,
         _ => GameOutcome::Unavailable,
     };
+    let store_close = port.close_durable();
+    let cleanup = if store_close.is_ok() {
+        CleanupStatus::Clean
+    } else {
+        CleanupStatus::Failed
+    };
     let _ = telemetry_handle.run_finished(
         game_outcome,
         TelemetryStage::from(report.terminal_stage()),
-        CleanupStatus::Clean,
+        cleanup,
     );
-    let store_close = port.close_durable();
     if let Err(error) = store_close {
         drop(port);
         finish_telemetry(telemetry);
