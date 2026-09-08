@@ -19,7 +19,7 @@ pub(in super::super) fn observation(
 ) -> Result<ParsedObservation, String> {
     let root = root(value, expected_kind, config)?;
     validate_observation_fields(root)?;
-    observation_from_root(root, None)
+    observation_from_root(root, &value.to_string())
 }
 
 pub(in super::super) fn observation_with_text(
@@ -30,7 +30,7 @@ pub(in super::super) fn observation_with_text(
 ) -> Result<ParsedObservation, String> {
     let root = root(value, expected_kind, config)?;
     validate_observation_fields(root)?;
-    observation_from_root(root, Some(response_text))
+    observation_from_root(root, response_text)
 }
 
 #[allow(dead_code)]
@@ -83,7 +83,7 @@ pub(in super::super) fn action_set_with_catalog_text(
         .get("legal_actions")
         .cloned()
         .ok_or_else(|| String::from("Runtime-v3 response omitted legal_actions"))?;
-    let catalog_raw = raw_catalog(Some(response_text), &catalog)?;
+    let catalog_raw = raw_catalog(response_text, &catalog)?;
     let (actions, payloads) = parse_actions(Some(&catalog), state_id, generation)?;
     Ok(ParsedActionCatalog {
         actions,
@@ -111,7 +111,7 @@ pub(in super::super) fn result_observation(
     }
     let root = root(value, expected_kind, config)?;
     transition::validate_installation_fields(root, expected_kind == "wait_response")?;
-    observation_from_root(root, None)
+    observation_from_root(root, &value.to_string())
 }
 
 pub(in super::super) fn result_observation_with_text(
@@ -130,12 +130,12 @@ pub(in super::super) fn result_observation_with_text(
     }
     let root = root(value, expected_kind, config)?;
     transition::validate_installation_fields(root, expected_kind == "wait_response")?;
-    observation_from_root(root, Some(response_text))
+    observation_from_root(root, response_text)
 }
 
 pub(in super::super) fn observation_from_root(
     root: &Map<String, Value>,
-    response_text: Option<&str>,
+    response_text: &str,
 ) -> Result<ParsedObservation, String> {
     let state_id = string(root, "state_id")?;
     let generation = number(root, "generation")?;

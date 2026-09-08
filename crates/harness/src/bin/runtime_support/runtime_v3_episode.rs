@@ -218,6 +218,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         };
         let receipt = match parse::receipt(
             &value,
+            &response_text,
             "dispatch_action_response",
             &self.config,
             &identity.operation_id,

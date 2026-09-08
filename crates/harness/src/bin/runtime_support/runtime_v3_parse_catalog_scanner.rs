@@ -172,13 +172,21 @@ impl<'a> Scanner<'a> {
                     let escaped = self.take().ok_or_else(|| {
                         String::from("Runtime-v3 JSON string has a truncated escape")
                     })?;
-                    if escaped == b'u' {
-                        for _ in 0..4 {
-                            if !self.take().is_some_and(|value| value.is_ascii_hexdigit()) {
-                                return Err(String::from(
-                                    "Runtime-v3 JSON string has an invalid unicode escape",
-                                ));
+                    match escaped {
+                        b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => {}
+                        b'u' => {
+                            for _ in 0..4 {
+                                if !self.take().is_some_and(|value| value.is_ascii_hexdigit()) {
+                                    return Err(String::from(
+                                        "Runtime-v3 JSON string has an invalid unicode escape",
+                                    ));
+                                }
                             }
+                        }
+                        _ => {
+                            return Err(String::from(
+                                "Runtime-v3 JSON string has an invalid escape",
+                            ));
                         }
                     }
                 }

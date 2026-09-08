@@ -15,22 +15,7 @@ mod scanner;
 /// Retains the exact array bytes while `Value` remains the semantic representation used by the
 /// episode policy.  The outer MCP response has already decoded this text from its JSON string;
 /// no serializer is involved in this extraction.
-pub(super) fn raw_catalog(
-    response_text: Option<&str>,
-    semantic: &Value,
-) -> Result<Vec<u8>, String> {
-    let Some(response_text) = response_text else {
-        #[cfg(not(test))]
-        {
-            let _ = semantic;
-            return Err(String::from(
-                "Runtime-v3 exact response text is required for catalog retention",
-            ));
-        }
-        #[cfg(test)]
-        return serde_json::to_vec(semantic)
-            .map_err(|error| format!("Runtime-v3 catalog encoding failed: {error}"));
-    };
+pub(super) fn raw_catalog(response_text: &str, semantic: &Value) -> Result<Vec<u8>, String> {
     if response_text.len() > MAX_RESPONSE_TEXT_BYTES {
         return Err(String::from("Runtime-v3 MCP text exceeds its size bound"));
     }
