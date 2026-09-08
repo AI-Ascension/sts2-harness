@@ -8,10 +8,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use rustix::fd::OwnedFd;
-use tokio::net::UnixStream;
 
 use super::LinuxTransportError;
 use super::worker_local_linux_image::HeldImage;
+use super::worker_local_linux_stream::CredentialStream;
 use crate::worker_frame_io::WorkerFrameIo;
 use crate::worker_handoff::MAX_FRAME_BYTES;
 
@@ -38,7 +38,7 @@ impl LinuxPeerWitness {
 /// dropping it closes both. It permits exactly one request followed by one
 /// response and cannot resume a failed or cancelled operation.
 pub struct AuthenticatedWorkerConnection {
-    io: WorkerFrameIo<UnixStream>,
+    io: WorkerFrameIo<CredentialStream>,
     witness: LinuxPeerWitness,
     _exchange: ExchangeGuard,
     request_read: bool,
@@ -47,7 +47,7 @@ pub struct AuthenticatedWorkerConnection {
 
 impl AuthenticatedWorkerConnection {
     pub(super) fn new(
-        io: WorkerFrameIo<UnixStream>,
+        io: WorkerFrameIo<CredentialStream>,
         witness: LinuxPeerWitness,
         exchange: ExchangeGuard,
     ) -> Self {

@@ -5,15 +5,15 @@
 #![cfg(target_os = "linux")]
 
 use tokio::io::{AsyncRead, AsyncReadExt};
-use tokio::net::UnixStream;
 use tokio::time::{Instant, timeout_at};
 use zeroize::Zeroizing;
 
 use super::worker_local_linux_process::ProtectedCredential;
+use super::worker_local_linux_stream::CredentialStream;
 use super::{AUTH_MAGIC, LinuxTransportError, MAX_AUTH_BODY_BYTES};
 
 pub(super) async fn authenticate_credential(
-    stream: &mut UnixStream,
+    stream: &mut CredentialStream,
     credential: &ProtectedCredential,
     deadline: Instant,
 ) -> Result<(), LinuxTransportError> {

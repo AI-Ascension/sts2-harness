@@ -31,6 +31,7 @@ use worker_local_linux::{AUTH_MAGIC, LinuxTransportError, LinuxWorkerConfig, MAX
 
 fn peer_variant(mutation: u8) -> TestResult<worker_local_linux::LinuxPeerIdentity> {
     let mut uid = rustix::process::getuid().as_raw();
+    let mut gid = rustix::process::getgid().as_raw();
     let mut pid = process::id();
     let mut start_token = read_start_token(pid)?;
     let executable = fs::read_link(format!("/proc/{pid}/exe"))?;
@@ -40,10 +41,12 @@ fn peer_variant(mutation: u8) -> TestResult<worker_local_linux::LinuxPeerIdentit
         1 => pid = pid.saturating_add(1),
         2 => start_token = start_token.saturating_add(1),
         3 => digest[0] ^= 1,
+        5 => gid = gid.saturating_add(1),
         _ => {}
     }
     Ok(worker_local_linux::LinuxPeerIdentity::new(
         uid,
+        gid,
         pid,
         start_token,
         executable,
@@ -114,6 +117,9 @@ async fn positive_process_peer_auth_and_one_frame_roundtrip() -> TestResult {
     Ok(())
 }
 
+#[path = "worker_local_linux_tests/inheritance.rs"]
+mod inheritance;
+
 #[tokio::test]
 async fn concurrent_accept_is_rejected_busy() -> TestResult {
     let fixture = Fixture::new(b"worker-control-secret")?;
@@ -136,8 +142,8 @@ async fn concurrent_accept_is_rejected_busy() -> TestResult {
 }
 
 #[tokio::test]
-async fn wrong_uid_pid_start_and_image_fail_before_credential_read() -> TestResult {
-    for mutation in 0_u8..4 {
+async fn wrong_uid_gid_pid_start_and_image_fail_before_credential_read() -> TestResult {
+    for mutation in [0_u8, 1, 2, 3, 5] {
         let fixture = Fixture::new(b"worker-control-secret")?;
         let peer = peer_variant(mutation)?;
         let config =
@@ -248,21 +254,34 @@ async fn cancellation_drops_auth_stream_and_keeps_listener_usable() -> TestResul
     let fixture = Fixture::new(b"worker-control-secret")?;
     let listener = fixture_config(&fixture)?.bind()?;
     let endpoint = fixture.endpoint.clone();
+    let release = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let released = std::sync::Arc::clone(&release);
     let client = tokio::spawn(async move {
         let mut stream = UnixStream::connect(endpoint).await?;
         stream.write_all(&[0, 0, 0, 26]).await?;
         stream.write_all(&[AUTH_MAGIC[0]]).await?;
-        sleep(Duration::from_millis(100)).await;
+        let deadline = tokio::time::Instant::now() + IDENTITY_DEADLINE;
+        while !released.load(std::sync::atomic::Ordering::Acquire)
+            && tokio::time::Instant::now() < deadline
+        {
+            sleep(Duration::from_millis(5)).await;
+        }
         Ok::<(), TestError>(())
     });
     let deadline = ConnectionDeadline::start(IDENTITY_DEADLINE)?;
     let mut pending = Box::pin(listener.accept_authenticated(deadline));
-    let cancelled = tokio::select! {
-        result = &mut pending => Some(result),
-        _ = sleep(Duration::from_millis(20)) => None,
-    };
-    assert!(cancelled.is_none());
+    let phase_deadline = tokio::time::Instant::now() + IDENTITY_DEADLINE;
+    loop {
+        tokio::select! {
+            _ = &mut pending => return Err("authentication completed before cancellation".into()),
+            _ = tokio::time::sleep_until(phase_deadline) => return Err("credential phase did not start".into()),
+            _ = sleep(Duration::from_millis(5)) => {
+                if listener.credential_read_started_for_test() { break; }
+            }
+        }
+    }
     drop(pending);
+    release.store(true, std::sync::atomic::Ordering::Release);
     client.await??;
 
     let mut stream = UnixStream::connect(&fixture.endpoint).await?;

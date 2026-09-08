@@ -112,6 +112,7 @@ pub(super) fn verify_peer_fd(
     let credentials = socket_peercred(stream).map_err(|_| LinuxTransportError::Peer)?;
     ensure_deadline(deadline)?;
     if credentials.uid.as_raw() != expected.uid
+        || credentials.gid.as_raw() != expected.gid
         || credentials.pid.as_raw_pid() <= 0
         || u32::try_from(credentials.pid.as_raw_pid()).ok() != Some(expected.pid)
     {
@@ -176,7 +177,7 @@ pub(super) fn peer_stream_is_closed(stream: BorrowedFd<'_>) -> Result<bool, Linu
     }
 }
 
-fn ensure_pidfd_live(pidfd: &OwnedFd) -> Result<(), LinuxTransportError> {
+pub(super) fn ensure_pidfd_live(pidfd: &OwnedFd) -> Result<(), LinuxTransportError> {
     let mut descriptor = PollFd::new(
         pidfd,
         PollFlags::IN | PollFlags::ERR | PollFlags::HUP | PollFlags::NVAL,

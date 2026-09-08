@@ -84,6 +84,7 @@ fn parse_peer_request(
             + NONCE_BYTES
             + 4
             + 4
+            + 4
             + 8
             + super::protocol::DIGEST_BYTES
             + 8
@@ -105,6 +106,7 @@ fn parse_peer_request(
     nonce.copy_from_slice(&bytes[offset..offset + NONCE_BYTES]);
     offset += NONCE_BYTES;
     let uid = read_u32(bytes, &mut offset)?;
+    let gid = read_u32(bytes, &mut offset)?;
     let pid = read_u32(bytes, &mut offset)?;
     let start_token = read_u64(bytes, &mut offset)?;
     let mut digest = [0_u8; super::protocol::DIGEST_BYTES];
@@ -155,7 +157,7 @@ fn parse_peer_request(
     .map_err(|_| LinuxTransportError::Io)?;
     Ok(VerifierRequest::Peer {
         nonce,
-        expected: LinuxPeerIdentity::new(uid, pid, start_token, executable_path, digest)
+        expected: LinuxPeerIdentity::new(uid, gid, pid, start_token, executable_path, digest)
             .map_err(|_| LinuxTransportError::Io)?,
         approved_identity: FileIdentity::from_parts(device, inode),
         endpoint_identity: FileIdentity::from_parts(endpoint_device, endpoint_inode),

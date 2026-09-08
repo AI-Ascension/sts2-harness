@@ -45,6 +45,7 @@ fn config(fixture: &Fixture) -> TestResult<LinuxWorkerConfig> {
         fixture.credential.clone(),
         LinuxPeerIdentity::new(
             rustix::process::getuid().as_raw(),
+            rustix::process::getgid().as_raw(),
             pid,
             start,
             executable,

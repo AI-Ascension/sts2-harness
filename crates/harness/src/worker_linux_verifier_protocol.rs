@@ -16,7 +16,7 @@ use super::super::{LinuxPeerIdentity, LinuxTransportError};
 
 /// Private control schema revision. This is independent from the frozen
 /// worker handoff/authentication wire.
-pub(super) const CONTROL_VERSION: u8 = 1;
+pub(super) const CONTROL_VERSION: u8 = 2;
 pub(super) const REQUEST_KIND: u8 = 1;
 pub(super) const RESPONSE_ACCEPTED: u8 = 1;
 pub(super) const RESPONSE_REJECTED: u8 = 2;
@@ -34,6 +34,7 @@ pub(super) const DIGEST_BYTES: usize = 32;
 pub(super) const MAX_PATH_BYTES: usize = 4_096;
 pub(super) const MAX_CONTROL_PACKET_BYTES: usize = CONTROL_HEADER_BYTES
     + NONCE_BYTES
+    + 4
     + 4
     + 4
     + 8
@@ -133,6 +134,7 @@ pub(super) fn encode_request(
     ]);
     packet.extend_from_slice(&nonce);
     packet.extend_from_slice(&expected.uid.to_be_bytes());
+    packet.extend_from_slice(&expected.gid.to_be_bytes());
     packet.extend_from_slice(&expected.pid.to_be_bytes());
     packet.extend_from_slice(&expected.start_token.to_be_bytes());
     packet.extend_from_slice(&expected.executable_sha256);

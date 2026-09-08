@@ -25,6 +25,8 @@ mod worker_local_linux_image;
 mod worker_local_linux_image_tests;
 #[path = "worker_local_linux_process.rs"]
 mod worker_local_linux_process;
+#[path = "worker_local_linux_stream.rs"]
+mod worker_local_linux_stream;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -102,6 +104,7 @@ impl From<FrameIoError> for LinuxTransportError {
 /// It is never populated from a client frame.
 pub struct LinuxPeerIdentity {
     uid: u32,
+    gid: u32,
     pid: u32,
     start_token: u64,
     executable: PathBuf,
@@ -114,6 +117,7 @@ impl LinuxPeerIdentity {
     /// components. The digest is the SHA-256 of the approved image.
     pub fn new(
         uid: u32,
+        gid: u32,
         pid: u32,
         start_token: u64,
         executable: PathBuf,
@@ -124,6 +128,7 @@ impl LinuxPeerIdentity {
         }
         Ok(Self {
             uid,
+            gid,
             pid,
             start_token,
             executable,
@@ -177,6 +182,8 @@ pub struct LinuxWorkerListener {
     peer: LinuxPeerIdentity,
     active: Arc<AtomicBool>,
     verifier: VerifierController,
+    #[cfg(test)]
+    credential_read_started: AtomicBool,
 }
 
 impl LinuxWorkerListener {
@@ -190,14 +197,19 @@ impl LinuxWorkerListener {
         )
         .map_err(|_| LinuxTransportError::Configuration)?;
         let mut endpoint = HeldEndpoint::bind(&config.endpoint, owner_uid)?;
+        let listener = endpoint.listener()?;
+        rustix::net::sockopt::set_socket_passcred(&listener, true)
+            .map_err(|_| LinuxTransportError::Configuration)?;
         Ok(Self {
-            listener: endpoint.listener()?,
+            listener,
             endpoint,
             credential,
             image,
             peer: config.peer,
             active: Arc::new(AtomicBool::new(false)),
             verifier: VerifierController::new().map_err(|_| LinuxTransportError::Io)?,
+            #[cfg(test)]
+            credential_read_started: AtomicBool::new(false),
         })
     }
 
@@ -212,6 +224,9 @@ impl LinuxWorkerListener {
         deadline: ConnectionDeadline,
     ) -> Result<AuthenticatedWorkerConnection, LinuxTransportError> {
         let exchange = ExchangeGuard::acquire(&self.active)?;
+        #[cfg(test)]
+        self.credential_read_started
+            .store(false, std::sync::atomic::Ordering::Release);
         let instant = deadline.instant();
         let endpoint = self.endpoint.duplicate_verifier_path()?;
         self.verifier
@@ -257,7 +272,11 @@ impl LinuxWorkerListener {
             VerifierOutcome::Rejected => return Err(LinuxTransportError::Peer),
             VerifierOutcome::Closed => return Err(LinuxTransportError::Closed),
         };
-        let mut stream = stream;
+        let mut stream =
+            worker_local_linux_stream::CredentialStream::new(stream, &self.peer, &witness)?;
+        #[cfg(test)]
+        self.credential_read_started
+            .store(true, std::sync::atomic::Ordering::Release);
         authenticate_credential(&mut stream, &self.credential, instant).await?;
         if Instant::now() >= instant {
             return Err(LinuxTransportError::Deadline);
@@ -267,5 +286,12 @@ impl LinuxWorkerListener {
             witness,
             exchange,
         ))
+    }
+
+    /// Test-only phase observation; this supplies no peer or admission proof.
+    #[cfg(test)]
+    pub fn credential_read_started_for_test(&self) -> bool {
+        self.credential_read_started
+            .load(std::sync::atomic::Ordering::Acquire)
     }
 }

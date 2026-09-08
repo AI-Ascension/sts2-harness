@@ -17,6 +17,20 @@ noncanonical integers, invalid platform paths, out-of-range creation/SID values,
 oversized input, truncated frames, and buffered trailing frames. Parsing only
 establishes expected policy: it does not authenticate a connected process.
 
+## Linux transport identity
+
+The native expected-peer configuration includes UID, GID, PID, process creation
+identity, and approved image identity. The transport checks the connected peer
+and then requires kernel-supplied credentials on each received chunk of the auth
+prelude and request. It rejects a different sender, missing/truncated ancillary
+data, unexpected descriptors, and a dead held pidfd. Merely passing the connected
+socket to a child does not transfer the configured process identity.
+
+This uses `SO_PASSCRED` and `SCM_CREDENTIALS`, whose kernel checks and privileged
+exceptions are documented in [unix(7)](https://man7.org/linux/man-pages/man7/unix.7.html).
+It is not a defense against privileged host compromise. The private verifier
+control packet is revision 2 to carry GID; the frozen handoff JSON is unchanged.
+
 The [copied owner artifacts](../protocol-artifact/worker-bootstrap-v1/README.md)
 pin the schema and both synthetic platform fixtures to an exact owner revision.
 Windows fixture decoding is supported, but the Windows native bootstrap reader
