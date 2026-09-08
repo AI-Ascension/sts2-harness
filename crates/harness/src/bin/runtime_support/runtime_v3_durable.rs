@@ -14,10 +14,7 @@ use sts2_harness::{
 
 use super::super::config::RuntimeConfig;
 use super::super::runtime_v3_settings::RuntimeV3Settings;
-use super::worker_store::{
-    SharedExecutionStore, begin_quarantine, finish_quarantine, share_store, snapshot, try_lock,
-    try_lock_close, try_lock_quarantine,
-};
+use super::worker_store::{SharedExecutionStore, share_store, snapshot, try_lock, try_lock_close};
 
 const DEFAULT_STORE_PATH: &str = "harness-execution.sqlite3";
 const PROVIDER_RESERVATION_UNITS: u64 = 1;
@@ -30,6 +27,8 @@ mod checkpoints;
 mod identity;
 #[path = "runtime_v3_durable_operations.rs"]
 mod operations;
+#[path = "runtime_v3_durable_quarantine.rs"]
+mod quarantine;
 #[path = "runtime_v3_durable_support.rs"]
 mod support;
 
@@ -219,33 +218,6 @@ impl DurableHandle {
             .record_completion(&completion)
             .map(|_| ())
             .map_err(|error| format!("cannot persist runtime-v3 completion: {error}"))
-    }
-
-    pub(super) fn mark_interrupted_unknown(&self, reason: &str) -> Result<(), String> {
-        if begin_quarantine(&self.store)? {
-            return Ok(());
-        }
-        let mut store = try_lock_quarantine(&self.store).map_err(|error| {
-            format!(
-                "cannot acquire runtime-v3 execution store for interrupted-unknown quarantine: {error}"
-            )
-        })?;
-        store
-            .mark_interrupted_unknown(&self.lineage.episode_id, reason)
-            .map_err(|error| {
-                format!("cannot persist runtime-v3 interrupted-unknown quarantine: {error}")
-            })?;
-        finish_quarantine(&self.store);
-        Ok(())
-    }
-
-    pub(in super::super) fn quarantine_failure(&self, original: String, reason: &str) -> String {
-        match self.mark_interrupted_unknown(reason) {
-            Ok(()) => original,
-            Err(error) => {
-                format!("{original}; failed to persist interrupted-unknown quarantine: {error}")
-            }
-        }
     }
 
     pub(super) fn close(&self) -> Result<(), String> {
