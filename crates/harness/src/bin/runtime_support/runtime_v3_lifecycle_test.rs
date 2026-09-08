@@ -239,4 +239,8 @@ mod reconnect {
     mod recovery {
         include!("runtime_v3_lifecycle_recovery_test.rs");
     }
+
+    mod fault_matrix {
+        include!("runtime_v3_lifecycle_fault_matrix_test.rs");
+    }
 }

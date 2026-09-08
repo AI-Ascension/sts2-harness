@@ -1,48 +1,54 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use super::super::mcp_process::McpProcessErrorKind;
 
 #[test]
 fn only_known_transport_failures_are_retryable_for_catalog_reads() {
-    for message in [
-        "MCP exchange timed out",
-        "MCP response ended before its delimiter; MCP termination failed",
-        "MCP process is closed",
+    for kind in [
+        McpProcessErrorKind::Deadline,
+        McpProcessErrorKind::RequestWrite,
+        McpProcessErrorKind::RequestFlush,
+        McpProcessErrorKind::ResponseRead,
+        McpProcessErrorKind::ResponseEof,
+        McpProcessErrorKind::ProcessClosed,
+        McpProcessErrorKind::StdinClosed,
+        McpProcessErrorKind::StdoutClosed,
+        McpProcessErrorKind::SupervisorClosed,
+        McpProcessErrorKind::SupervisorUnavailable,
+        McpProcessErrorKind::SupervisorFailed,
     ] {
-        assert!(RpcFailure::from_mcp(message.to_owned()).is_transient());
+        assert!(RpcFailure::from_mcp(McpProcessError::new(kind, "test")).is_transient());
     }
-    for message in [
-        "MCP response was not JSON",
-        "MCP response envelope was invalid",
-        "MCP tool returned non-JSON content",
-        "MCP tool returned mismatched correlation",
-    ] {
-        assert!(!RpcFailure::from_mcp(message.to_owned()).is_transient());
-    }
+    assert!(!RpcFailure::from_mcp(McpProcessError::new(
+        McpProcessErrorKind::Protocol,
+        "test",
+    ))
+    .is_transient());
 }
 
 #[test]
-fn catalog_server_errors_retry_only_timeout_or_unavailable() {
+fn gateway_server_errors_retry_only_timeout_or_unavailable() {
     for code in [-32003, -32008] {
-        assert!(is_transient_catalog_rpc_error(
+        assert!(is_transient_gateway_rpc_error(
             &json!({"error":{"code":code}})
         ));
     }
-    assert!(!is_transient_catalog_rpc_error(
+    assert!(!is_transient_gateway_rpc_error(
         &json!({"error":{"code":-32002}})
     ));
     for text in [
         "gateway error -32003: gateway is unavailable",
         "gateway error -32008: gateway request timed out",
     ] {
-        assert!(is_transient_catalog_tool_error(&json!({
+        assert!(is_transient_gateway_tool_error(&json!({
             "result":{"content":[{"text":text}]}
         })));
     }
-    assert!(!is_transient_catalog_tool_error(&json!({
+    assert!(!is_transient_gateway_tool_error(&json!({
         "result":{"content":[{"text":"gateway error -32002: gateway returned an invalid response"}]}
     })));
-    assert!(!is_transient_catalog_tool_error(&json!({
+    assert!(!is_transient_gateway_tool_error(&json!({
         "result":{"content":[{"text":"gateway error -32008: gateway request timed out"}, {"text":"extra"}]}
     })));
 }

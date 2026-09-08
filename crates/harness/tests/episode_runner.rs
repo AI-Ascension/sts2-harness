@@ -41,7 +41,12 @@ struct FakeRuntime {
     gateway_closed: bool,
     catalog_errors: Vec<PortError>,
     catalog_calls: usize,
+    catalog_requests: Vec<(String, u64)>,
     advance_catalog: bool,
+    idle_waits: usize,
+    reobserve_calls: usize,
+    reobserve_errors: Vec<RecoveryError>,
+    observe_after_reobserve: Option<Result<EpisodeObservation, PortError>>,
 }
 
 impl FakeRuntime {
@@ -64,7 +69,12 @@ impl FakeRuntime {
             gateway_closed: false,
             catalog_errors: Vec::new(),
             catalog_calls: 0,
+            catalog_requests: Vec::new(),
             advance_catalog: false,
+            idle_waits: 0,
+            reobserve_calls: 0,
+            reobserve_errors: Vec::new(),
+            observe_after_reobserve: None,
         }
     }
 
@@ -86,6 +96,11 @@ impl EpisodeRuntimePort for FakeRuntime {
     }
 
     fn observe(&mut self) -> Result<EpisodeObservation, PortError> {
+        if self.reobserve_calls > 0
+            && let Some(result) = self.observe_after_reobserve.take()
+        {
+            return result;
+        }
         Ok(self.current().observation.clone())
     }
 
@@ -95,6 +110,8 @@ impl EpisodeRuntimePort for FakeRuntime {
         generation: u64,
     ) -> Result<EpisodeLegalActionSet, PortError> {
         self.catalog_calls += 1;
+        self.catalog_requests
+            .push((state_id.to_owned(), generation));
         if !self.catalog_errors.is_empty() {
             if self.advance_catalog {
                 self.index += 1;
@@ -172,6 +189,7 @@ impl BarrierPort for FakeRuntime {
             && operation_id.starts_with("episode-idle-")
             && let Some(after) = self.next_observation()
         {
+            self.idle_waits += 1;
             self.index += 1;
             return Ok(WaitSample::new(WaitOutcome::Successor, Some(after)));
         }
@@ -189,6 +207,10 @@ impl BarrierPort for FakeRuntime {
 
 impl RecoveryPort for FakeRuntime {
     fn reobserve(&mut self) -> Result<EpisodeObservation, RecoveryError> {
+        self.reobserve_calls += 1;
+        if !self.reobserve_errors.is_empty() {
+            return Err(self.reobserve_errors.remove(0));
+        }
         Ok(self.current().observation.clone())
     }
 
@@ -261,6 +283,7 @@ struct FakeModel {
     calls: usize,
     unavailable: bool,
     completions: Vec<bool>,
+    input_generations: Vec<u64>,
 }
 
 impl DecisionSource for FakeModel {
@@ -270,6 +293,7 @@ impl DecisionSource for FakeModel {
 
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError> {
         self.calls += 1;
+        self.input_generations.push(input.observation.generation());
         if self.unavailable {
             return Err(PolicyError::ProviderUnavailable);
         }

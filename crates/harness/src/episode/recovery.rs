@@ -83,6 +83,7 @@ pub enum RecoveryError {
     InvalidOperation,
     Exhausted,
     PortFailure,
+    Terminal,
 }
 
 impl std::fmt::Display for RecoveryError {
@@ -92,6 +93,7 @@ impl std::fmt::Display for RecoveryError {
             Self::InvalidOperation => "recovery operation identity is invalid",
             Self::Exhausted => "recovery attempt budget is exhausted",
             Self::PortFailure => "recovery port failed",
+            Self::Terminal => "recovery boundary returned a terminal failure",
         })
     }
 }

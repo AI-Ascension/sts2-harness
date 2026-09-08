@@ -4,9 +4,10 @@ use super::super::idempotency::{ActionIdentity, ActionLedger};
 use super::super::legal_actions::{EpisodeLegalAction, EpisodeLegalActionSet};
 use super::super::observation::EpisodeObservation;
 use super::super::policy_router::{DecisionInput, DecisionSource, PolicyChoice, PolicyRouter};
+use super::super::recovery::RecoveryError;
 use super::super::state_machine::{EpisodeMachine, EpisodeMachineError};
 use super::runner_actions::ActionRequest;
-use super::runner_recovery::report;
+use super::runner_recovery::{accept_observation, report};
 use super::{EpisodeRunReport, EpisodeRunner, EpisodeRunnerError, EpisodeRuntimePort};
 use crate::identity::ModelExecutionId;
 
@@ -39,7 +40,7 @@ impl EpisodeRunner {
         step: u32,
         counters: &mut RunCounters,
     ) -> Result<Option<EpisodeRunReport>, EpisodeRunnerError> {
-        let observation = match self.prepare_observation(port, machine, counters)? {
+        let mut observation = match self.prepare_observation(port, machine, counters)? {
             ObservationStep::Retry => return Ok(None),
             ObservationStep::Complete(observation) => {
                 return Ok(Some(report(
@@ -51,18 +52,49 @@ impl EpisodeRunner {
             }
             ObservationStep::Ready(observation) => observation,
         };
-        let (legal_actions, choice) = match self.choose_policy(port, source, &observation, step) {
-            Err(EpisodeRunnerError::LegalActions(error))
-                if error.code() == "catalog_reobserve"
-                    && error.is_retryable()
-                    && counters.catalog_refreshes < 3 =>
-            {
-                counters.catalog_refreshes += 1;
-                self.reobserve(port, machine)?;
-                counters.recoveries += 1;
-                return Ok(None);
+        let (legal_actions, choice) = loop {
+            match self.choose_policy(port, source, &observation, step) {
+                Ok(result) => break result,
+                Err(EpisodeRunnerError::LegalActions(error))
+                    if error.code() == "catalog_reobserve" && error.is_retryable() =>
+                {
+                    if counters.catalog_refreshes >= 3 {
+                        return Err(EpisodeRunnerError::Recovery(RecoveryError::Exhausted));
+                    }
+                    counters.catalog_refreshes += 1;
+                    loop {
+                        match catalog_reobserve_once(port, machine) {
+                            Ok(fresh) => {
+                                counters.recoveries += 1;
+                                match self.route_observation(port, machine, fresh)? {
+                                    ObservationStep::Ready(next) => observation = next,
+                                    ObservationStep::Retry => return Ok(None),
+                                    ObservationStep::Complete(terminal) => {
+                                        return Ok(Some(report(
+                                            terminal,
+                                            step,
+                                            counters.transitions,
+                                            counters.recoveries,
+                                        )));
+                                    }
+                                }
+                                break;
+                            }
+                            Err(EpisodeRunnerError::Recovery(RecoveryError::PortFailure))
+                                if counters.catalog_refreshes < 3 =>
+                            {
+                                counters.catalog_refreshes += 1;
+                                counters.recoveries += 1;
+                            }
+                            Err(EpisodeRunnerError::Recovery(RecoveryError::PortFailure)) => {
+                                return Err(EpisodeRunnerError::Recovery(RecoveryError::Exhausted));
+                            }
+                            Err(error) => return Err(error),
+                        }
+                    }
+                }
+                Err(error) => return Err(error),
             }
-            result => result?,
         };
         counters.catalog_refreshes = 0;
         match choice {
@@ -107,33 +139,44 @@ impl EpisodeRunner {
     ) -> Result<ObservationStep, EpisodeRunnerError> {
         let observation = port.observe().map_err(EpisodeRunnerError::Observe)?;
         match machine.observe(observation.clone()) {
-            Ok(()) if observation.stage().is_terminal() => {
-                Ok(ObservationStep::Complete(observation))
-            }
-            Ok(()) if observation.assert_actionable().is_err() => {
-                let operation_id = format!("episode-idle-{}", observation.generation());
-                let after = self
-                    .config
-                    .barrier
-                    .await_transition(port, &operation_id, &observation)
-                    .map_err(EpisodeRunnerError::Barrier)?;
-                machine
-                    .observe(after)
-                    .map_err(EpisodeRunnerError::Machine)?;
-                Ok(ObservationStep::Retry)
-            }
-            Ok(()) => Ok(ObservationStep::Ready(observation)),
+            Ok(()) => self.route_observation(port, machine, observation),
             Err(EpisodeMachineError::UnknownState | EpisodeMachineError::StaleObservation) => {
                 let fresh = self.reobserve(port, machine)?;
                 counters.recoveries += 1;
-                if fresh.stage().is_terminal() {
-                    Ok(ObservationStep::Complete(fresh))
-                } else {
-                    Ok(ObservationStep::Retry)
-                }
+                self.route_observation(port, machine, fresh)
             }
             Err(error) => Err(EpisodeRunnerError::Machine(error)),
         }
+    }
+
+    fn route_observation<P: EpisodeRuntimePort>(
+        &self,
+        port: &mut P,
+        machine: &mut EpisodeMachine,
+        observation: EpisodeObservation,
+    ) -> Result<ObservationStep, EpisodeRunnerError> {
+        if observation.stage().is_terminal() {
+            return Ok(ObservationStep::Complete(observation));
+        }
+        if observation.assert_actionable().is_err() {
+            let operation_id = format!("episode-idle-{}", observation.generation());
+            let after = self
+                .config
+                .barrier
+                .await_transition(port, &operation_id, &observation)
+                .map_err(EpisodeRunnerError::Barrier)?;
+            machine
+                .observe(after.clone())
+                .map_err(EpisodeRunnerError::Machine)?;
+            if after.stage().is_terminal() {
+                return Ok(ObservationStep::Complete(after));
+            }
+            if after.assert_actionable().is_err() {
+                return Ok(ObservationStep::Retry);
+            }
+            return Ok(ObservationStep::Ready(after));
+        }
+        Ok(ObservationStep::Ready(observation))
     }
 
     fn choose_policy<P: EpisodeRuntimePort, S: DecisionSource>(
@@ -161,4 +204,13 @@ impl EpisodeRunner {
         let choice = PolicyRouter::choose(source, &input).map_err(EpisodeRunnerError::Policy)?;
         Ok((legal_actions, choice))
     }
+}
+
+fn catalog_reobserve_once<P: EpisodeRuntimePort>(
+    port: &mut P,
+    machine: &mut EpisodeMachine,
+) -> Result<EpisodeObservation, EpisodeRunnerError> {
+    let observation = port.reobserve().map_err(EpisodeRunnerError::Recovery)?;
+    accept_observation(machine, observation.clone())?;
+    Ok(observation)
 }

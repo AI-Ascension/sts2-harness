@@ -54,13 +54,19 @@ impl RuntimeV3Port {
         } else {
             wire::rpc_call(
                 self.expert_mcp_mut()
-                    .map_err(|error| RuntimeV3ToolError::Transient(error.to_string()))?,
+                    .map_err(|error| {
+                        if catalog_read {
+                            RuntimeV3ToolError::Transient(error.to_string())
+                        } else {
+                            RuntimeV3ToolError::Terminal(error.to_string())
+                        }
+                    })?,
                 id,
                 "tools/call",
                 request,
             )
         }
-        .map_err(RuntimeV3ToolError::from_rpc)?;
+        .map_err(|error| RuntimeV3ToolError::from_rpc_for(error, catalog_read))?;
         let text = response
             .get("result")
             .and_then(|result| result.get("content"))
@@ -96,29 +102,57 @@ impl RuntimeV3Port {
             .map_err(|error| error.message().to_owned())
     }
 
-    fn expert_state(&mut self) -> Result<RuntimeV4ExpertObservation, String> {
-        let (_, value) = self.call_expert_tool(
+    fn expert_state_classified(
+        &mut self,
+        catalog_read: bool,
+    ) -> Result<RuntimeV4ExpertObservation, RuntimeV3ToolError> {
+        let (_, value) = self.call_expert_tool_classified_mode(
             STATE_TOOL,
             json!({
                 "instance_id": self.config.instance_id,
                 "mcp_session_id": self.config.mcp_session_id
             }),
+            catalog_read,
         )?;
-        RuntimeV4ExpertObservation::from_value(value)
-            .map_err(|error| format!("Runtime-v4 expert state is invalid: {error}"))
+        RuntimeV4ExpertObservation::from_value(value).map_err(|error| {
+            RuntimeV3ToolError::Terminal(format!("Runtime-v4 expert state is invalid: {error}"))
+        })
     }
 
     pub(super) fn compose_current_observation(
         &mut self,
         baseline: EpisodeObservation,
     ) -> Result<EpisodeObservation, String> {
-        let expert = self.expert_state()?;
+        self.compose_current_observation_classified(baseline, false)
+            .map_err(|error| error.message().to_owned())
+    }
+
+    /// Compose a fresh ordinary reobserve with the expert projection. The expert state call is
+    /// a bounded recovery read here, while parsing and cross-projection identity remain terminal.
+    pub(super) fn compose_current_observation_recovery(
+        &mut self,
+        baseline: EpisodeObservation,
+    ) -> Result<EpisodeObservation, RuntimeV3ToolError> {
+        self.compose_current_observation_classified(baseline, true)
+    }
+
+    fn compose_current_observation_classified(
+        &mut self,
+        baseline: EpisodeObservation,
+        catalog_read: bool,
+    ) -> Result<EpisodeObservation, RuntimeV3ToolError> {
+        let expert = self.expert_state_classified(catalog_read)?;
         let normal_actions = self
             .current_actions
             .clone()
-            .ok_or_else(|| String::from("normal catalog is unavailable for expert composition"))?;
+            .ok_or_else(|| {
+                RuntimeV3ToolError::Terminal(String::from(
+                    "normal catalog is unavailable for expert composition",
+                ))
+            })?;
         let normal_payloads = self.payloads.clone();
-        let composed = compose_with_normal(&baseline, &normal_actions, &normal_payloads, &expert)?;
+        let composed = compose_with_normal(&baseline, &normal_actions, &normal_payloads, &expert)
+            .map_err(RuntimeV3ToolError::Terminal)?;
         self.install_composed(&composed);
         Ok(composed.observation)
     }
@@ -262,44 +296,7 @@ impl RuntimeV3Port {
         }
     }
 
-    fn expert_result_receipt(
-        &mut self,
-        result: RuntimeV4ExpertActionResult,
-        _request: &RuntimeV4ExpertActionRequest,
-        identity: &ActionIdentity,
-        action: &EpisodeLegalAction,
-    ) -> Result<TransitionReceipt, String> {
-        let status = match result.status() {
-            RuntimeV4ExpertActionStatus::Accepted => DispatchStatus::Accepted,
-            RuntimeV4ExpertActionStatus::Settled => DispatchStatus::Settled,
-            RuntimeV4ExpertActionStatus::Rejected => DispatchStatus::Rejected,
-            RuntimeV4ExpertActionStatus::Unknown => DispatchStatus::Unknown,
-            RuntimeV4ExpertActionStatus::Cancelled => DispatchStatus::Cancelled,
-        };
-        let after = if status == DispatchStatus::Settled {
-            let expert =
-                RuntimeV4ExpertObservation::from_value(result.as_value()["observation"].clone())
-                    .map_err(|error| {
-                        format!("expert settlement observation is invalid: {error}")
-                    })?;
-            let composed = expert_only_observation(&expert)?;
-            self.install_composed(&composed);
-            Some(composed.observation)
-        } else {
-            None
-        };
-        let effect_kind =
-            (status == DispatchStatus::Settled).then(|| String::from("potion_use_settled"));
-        let error_code = result.as_value()["error_code"].as_str().map(str::to_owned);
-        Ok(TransitionReceipt::new(
-            identity.operation_id.clone(),
-            action.clone(),
-            status,
-            after,
-            effect_kind,
-            error_code,
-        ))
-    }
 }
 
+include!("runtime_v4_expert_port_transport_receipt.rs");
 include!("runtime_v4_expert_port_transport_composition.rs");
