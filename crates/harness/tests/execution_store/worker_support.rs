@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-#![allow(clippy::expect_used, clippy::panic)]
+#![allow(clippy::expect_used, clippy::panic, dead_code)]
 
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use sts2_harness::{
-    Checkpoint, ExecutionFingerprint, ExecutionLineage, ExecutionStore,
+    Checkpoint, ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig,
     WORKER_EMPTY_PARAMETERS_DIGEST, WorkerAdmissionContext, WorkerBoot, WorkerCompletionStatus,
     WorkerControlMode, WorkerControlRequest, WorkerOwnerProof, WorkerTerminalReceipt, WorkerTuple,
 };
@@ -93,6 +93,45 @@ pub(super) fn start_worker(store: &mut ExecutionStore) -> WorkerAdmissionContext
 
 pub(super) fn admitted_store() -> (ExecutionStore, WorkerTuple, WorkerAdmissionContext) {
     let mut store = ExecutionStore::open_in_memory().expect("store opens");
+    let (tuple, context, permit) = prepare_admitted(&mut store);
+    drop(permit);
+    (store, tuple, context)
+}
+
+pub(super) fn admitted_store_with_permit() -> (
+    ExecutionStore,
+    WorkerTuple,
+    WorkerAdmissionContext,
+    sts2_harness::WorkerExecutionPermit,
+) {
+    let mut store = ExecutionStore::open_in_memory().expect("store opens");
+    let (tuple, context, permit) = prepare_admitted(&mut store);
+    (store, tuple, context, permit)
+}
+
+pub(super) fn admitted_file_store_with_permit(
+    name: &str,
+) -> (
+    ExecutionStore,
+    WorkerTuple,
+    WorkerAdmissionContext,
+    sts2_harness::WorkerExecutionPermit,
+    PathBuf,
+) {
+    let database = path(name);
+    let mut store =
+        ExecutionStore::open(ExecutionStoreConfig::new(&database)).expect("store opens");
+    let (tuple, context, permit) = prepare_admitted(&mut store);
+    (store, tuple, context, permit, database)
+}
+
+fn prepare_admitted(
+    store: &mut ExecutionStore,
+) -> (
+    WorkerTuple,
+    WorkerAdmissionContext,
+    sts2_harness::WorkerExecutionPermit,
+) {
     let lineage = ExecutionLineage::new(RUN_ID, EPISODE_ID, "attempt-1", TRAJECTORY_ID)
         .expect("lineage is valid");
     store
@@ -101,12 +140,15 @@ pub(super) fn admitted_store() -> (ExecutionStore, WorkerTuple, WorkerAdmissionC
     store
         .admit_job("job-1", EPISODE_ID, WORKER_EMPTY_PARAMETERS_DIGEST)
         .expect("job admits");
-    let context = start_worker(&mut store);
+    let context = start_worker(store);
     let tuple = tuple(HANDOFF_1, "job-1", "attempt-1");
-    store
+    let permit = store
         .admit_worker_handoff(&tuple, &context)
-        .expect("worker tuple admits");
-    (store, tuple, context)
+        .expect("worker tuple admits")
+        .into_acquired()
+        .expect("fresh admission grants a permit")
+        .1;
+    (tuple, context, permit)
 }
 
 pub(super) fn checkpoint(store: &mut ExecutionStore) {

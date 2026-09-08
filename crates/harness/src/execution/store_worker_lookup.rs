@@ -4,10 +4,8 @@ use rusqlite::{OptionalExtension, params};
 
 use super::schema;
 use super::store_core::{ExecutionStore, append_event};
-use super::store_worker_completion::project_completion;
-use super::store_worker_queries::{
-    read_existing_completion, read_handoff, read_handoff_by_id, worker_handoff_select,
-};
+use super::store_worker_completion::{project_completion, read_existing_completion};
+use super::store_worker_queries::{read_handoff, read_handoff_by_id, worker_handoff_select};
 use super::types::{
     WorkerHandoffState, WorkerLookup, WorkerTuple, valid_digest, valid_worker_uuid4,
 };

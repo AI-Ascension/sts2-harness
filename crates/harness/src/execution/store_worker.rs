@@ -7,7 +7,10 @@ use super::store_core::{ExecutionStore, append_event};
 use super::store_worker_queries::{
     ensure_dispatch_authority, read_handoff, read_handoff_by_id, read_job, worker_handoff_select,
 };
-use super::types::{JobState, WorkerAdmissionContext, WorkerHandoffState, WorkerTuple};
+use super::types::{
+    JobState, WorkerAdmissionContext, WorkerAdmissionOutcome, WorkerExecutionPermit,
+    WorkerHandoffState, WorkerTuple,
+};
 
 impl ExecutionStore {
     /// Admits one immutable worker tuple and reserves the existing durable job in the same
@@ -16,7 +19,7 @@ impl ExecutionStore {
         &mut self,
         tuple: &WorkerTuple,
         context: &WorkerAdmissionContext,
-    ) -> Result<super::types::StoredWorkerHandoff, super::types::ExecutionStoreError> {
+    ) -> Result<WorkerAdmissionOutcome, super::types::ExecutionStoreError> {
         self.ensure_open()?;
         tuple.validate()?;
         context.validate()?;
@@ -35,7 +38,7 @@ impl ExecutionStore {
                 return Err(super::types::ExecutionStoreError::Conflict);
             }
             tx.commit().map_err(schema::map_sqlite)?;
-            return Ok(existing);
+            return Ok(WorkerAdmissionOutcome::Duplicate(existing));
         }
         let conflict = tx
             .query_row(
@@ -126,23 +129,35 @@ impl ExecutionStore {
             now,
         )?;
         tx.commit().map_err(schema::map_sqlite)?;
-        self.worker_handoff(&tuple.handoff_id)?
-            .ok_or(super::types::ExecutionStoreError::Corrupt)
+        let handoff = self
+            .worker_handoff(&tuple.handoff_id)?
+            .ok_or(super::types::ExecutionStoreError::Corrupt)?;
+        Ok(WorkerAdmissionOutcome::Acquired {
+            handoff,
+            permit: super::types::issue_worker_execution_permit(
+                tuple.handoff_id.clone(),
+                self.incarnation(),
+            ),
+        })
     }
 
     /// Marks the durable reservation as running immediately before provider/episode execution.
     pub fn mark_worker_handoff_running(
         &mut self,
-        handoff_id: &str,
+        permit: WorkerExecutionPermit,
         context: &WorkerAdmissionContext,
     ) -> Result<super::types::StoredWorkerHandoff, super::types::ExecutionStoreError> {
         self.ensure_open()?;
-        if !super::types::valid_worker_uuid4(handoff_id) {
+        if !super::types::worker_execution_permit_belongs_to(&permit, self.incarnation()) {
+            return Err(super::types::ExecutionStoreError::Conflict);
+        }
+        let handoff_id = super::types::consume_worker_execution_permit(permit);
+        if !super::types::valid_worker_uuid4(&handoff_id) {
             return Err(super::types::ExecutionStoreError::InvalidJob);
         }
         context.validate()?;
         let tx = schema::transaction(&mut self.connection)?;
-        let current = read_handoff_by_id(&tx, handoff_id)?
+        let current = read_handoff_by_id(&tx, &handoff_id)?
             .ok_or(super::types::ExecutionStoreError::Missing)?;
         ensure_dispatch_authority(&tx, context, &current.tuple)?;
         if current.worker_boot_id != context.worker_boot_id
@@ -151,30 +166,30 @@ impl ExecutionStore {
         {
             return Err(super::types::ExecutionStoreError::Conflict);
         }
-        if current.state == WorkerHandoffState::Running {
-            tx.commit().map_err(schema::map_sqlite)?;
-            return Ok(current);
-        }
         if current.state != WorkerHandoffState::Admitted {
             return Err(super::types::ExecutionStoreError::Conflict);
         }
         let now = ExecutionStore::now();
-        tx.execute(
-            "UPDATE worker_handoffs SET state = 'running', updated_at = ?2
+        let updated = tx
+            .execute(
+                "UPDATE worker_handoffs SET state = 'running', updated_at = ?2
              WHERE handoff_id = ?1 AND state = 'admitted'",
-            params![handoff_id, now],
-        )
-        .map_err(schema::map_sqlite)?;
+                params![handoff_id, now],
+            )
+            .map_err(schema::map_sqlite)?;
+        if updated != 1 {
+            return Err(super::types::ExecutionStoreError::Conflict);
+        }
         append_event(
             &tx,
             "worker_handoff",
-            handoff_id,
+            &handoff_id,
             WorkerHandoffState::Running.as_str(),
             None,
             now,
         )?;
         tx.commit().map_err(schema::map_sqlite)?;
-        self.worker_handoff(handoff_id)?
+        self.worker_handoff(&handoff_id)?
             .ok_or(super::types::ExecutionStoreError::Corrupt)
     }
 

@@ -3,7 +3,6 @@
 use crate::worker_handoff::{TerminalCompletion, TerminalRecord, TerminalStatus, WorkerRequest};
 use serde_json::{Value, json};
 
-use super::super::core::valid_reference;
 use super::super::enums::CompletionStatus;
 use super::super::error::ExecutionStoreError;
 use super::super::records::CompletionRecord;
@@ -167,7 +166,7 @@ impl WorkerTerminalReceipt {
             .and_then(Value::as_str)
             .ok_or(ExecutionStoreError::InvalidCompletion)?
             .to_owned();
-        if !valid_reference(&terminal_ref) {
+        if !valid_terminal_reference(&terminal_ref) {
             return Err(ExecutionStoreError::InvalidCompletion);
         }
         Ok(Self {
@@ -182,7 +181,7 @@ impl WorkerTerminalReceipt {
 
     pub fn validate(&self) -> Result<(), ExecutionStoreError> {
         self.tuple.validate()?;
-        if !valid_reference(&self.terminal_ref) {
+        if !valid_terminal_reference(&self.terminal_ref) {
             return Err(ExecutionStoreError::InvalidCompletion);
         }
         let terminal = self.terminal_record()?;
@@ -217,6 +216,10 @@ impl WorkerTerminalReceipt {
     pub(crate) fn canonical_bytes(&self) -> &[u8] {
         &self.canonical
     }
+}
+
+fn valid_terminal_reference(value: &str) -> bool {
+    !value.is_empty() && value.len() <= 1024 && value.bytes().all(|byte| byte >= 32 && byte != 127)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

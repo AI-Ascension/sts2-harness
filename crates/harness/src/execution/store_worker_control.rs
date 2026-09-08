@@ -61,8 +61,8 @@ impl ExecutionStore {
             .map_err(schema::map_sqlite)?;
             tx.execute(
                 "UPDATE worker_control SET deployment_id = ?2, worker_owner_id = ?3,
-                 worker_profile_digest = ?4, worker_boot_id = ?5, watchdog_boot_id = NULL,
-                 mode = 'stopped', mode_sequence = 0, generation = ?6,
+                 worker_profile_digest = ?4, worker_boot_id = ?5,
+                 mode = 'stopped', generation = ?6,
                  authenticated = 0, admitting = 0, updated_at = ?7 WHERE control_id = 1",
                 params![
                     1_i64,

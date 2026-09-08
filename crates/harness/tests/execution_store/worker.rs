@@ -10,10 +10,7 @@ use sts2_harness::{
     WorkerHandoffState, WorkerLookup, WorkerOwnerProof, WorkerReservationState, WorkerTuple,
 };
 
-#[path = "worker_support.rs"]
-mod support;
-
-use support::*;
+use super::worker_support::*;
 
 #[test]
 fn worker_wire_identities_require_canonical_uuid4_and_bounded_component_ids() {
@@ -68,10 +65,10 @@ fn worker_admission_binds_control_to_tuple_deployment_owner_and_profile() {
         WORKER_EMPTY_PARAMETERS_DIGEST,
     )
     .expect("tuple is structurally valid");
-    assert_eq!(
+    assert!(matches!(
         store.admit_worker_handoff(&tuple, &context),
         Err(ExecutionStoreError::Conflict)
-    );
+    ));
 }
 
 #[test]
@@ -88,9 +85,12 @@ fn worker_tuple_survives_file_reopen_without_replacing_identity() {
         .expect("job admits");
     let context = start_worker(&mut store);
     let original = tuple(HANDOFF_1, "job-1", "attempt-1");
-    let admitted = store
+    let (admitted, permit) = store
         .admit_worker_handoff(&original, &context)
-        .expect("tuple admits");
+        .expect("tuple admits")
+        .into_acquired()
+        .expect("fresh admission grants a permit");
+    drop(permit);
     store.close().expect("closes");
     drop(store);
     let mut reopened = ExecutionStore::open(ExecutionStoreConfig::new(&database)).expect("reopens");
@@ -113,17 +113,18 @@ fn duplicate_tuple_is_idempotent_but_conflicting_or_rebound_identity_is_rejected
     let duplicate = store
         .admit_worker_handoff(&original, &context)
         .expect("duplicate is idempotent");
-    assert_eq!(duplicate.tuple, original);
+    assert_eq!(duplicate.handoff().tuple, original);
+    assert!(duplicate.into_acquired().is_none());
     let changed = tuple(HANDOFF_1, "job-1", "attempt-2");
-    assert_eq!(
+    assert!(matches!(
         store.admit_worker_handoff(&changed, &context),
         Err(ExecutionStoreError::Conflict)
-    );
+    ));
     let rebound = tuple(HANDOFF_2, "job-1", "attempt-1");
-    assert_eq!(
+    assert!(matches!(
         store.admit_worker_handoff(&rebound, &context),
         Err(ExecutionStoreError::Conflict)
-    );
+    ));
 }
 
 #[test]

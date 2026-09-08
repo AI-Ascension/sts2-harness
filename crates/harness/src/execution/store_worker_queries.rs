@@ -15,7 +15,16 @@ pub(crate) fn worker_handoff_select(suffix: &str) -> String {
          worker_owner_id, worker_profile_digest, run_id, episode_id, trajectory_id,
          payload_digest, worker_boot_id, watchdog_boot_id, mode_sequence, state,
          reservation_state, terminal_status, terminal_ref, checkpoint_sequence,
-         result_digest, terminal_record, acknowledged, ack_digest FROM worker_handoffs {suffix}"
+         result_digest,
+         CASE WHEN terminal_record IS NULL THEN NULL
+              WHEN typeof(terminal_record) = 'blob'
+                   AND length(terminal_record) <= 16384
+              THEN terminal_record ELSE X'00' END AS terminal_record_bounded,
+         CASE WHEN terminal_record IS NULL THEN NULL ELSE typeof(terminal_record) END
+             AS terminal_record_type,
+         CASE WHEN terminal_record IS NULL THEN NULL ELSE length(terminal_record) END
+             AS terminal_record_length,
+         acknowledged, ack_digest FROM worker_handoffs {suffix}"
     )
 }
 
@@ -49,7 +58,7 @@ pub(crate) fn read_control(row: &rusqlite::Row<'_>) -> rusqlite::Result<WorkerCo
     let admitting = read_bool(row.get::<_, i64>(10)?)?;
     if admitting != (authenticated && mode.admits())
         || mode_sequence == 0 && authenticated
-        || watchdog_boot_id.is_none() != !authenticated
+        || authenticated && watchdog_boot_id.is_none()
     {
         return Err(rusqlite::Error::InvalidQuery);
     }
@@ -100,13 +109,25 @@ pub(crate) fn read_handoff(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredWo
     {
         return Err(rusqlite::Error::InvalidQuery);
     }
+    let terminal_record = row.get::<_, Option<Vec<u8>>>(20)?;
+    let terminal_record_type = row.get::<_, Option<String>>(21)?;
+    let terminal_record_length = row.get::<_, Option<i64>>(22)?;
+    if terminal_record_type
+        .as_deref()
+        .is_some_and(|kind| kind != "blob")
+        || terminal_record_length.is_some_and(|length| !(0..=16_384).contains(&length))
+        || terminal_record_type.is_some() != terminal_record_length.is_some()
+        || terminal_record_type.is_some() != terminal_record.is_some()
+    {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
     let terminal = read_terminal(
         &tuple,
         row.get::<_, Option<String>>(16)?,
         row.get::<_, Option<String>>(17)?,
         row.get::<_, Option<i64>>(18)?,
         row.get::<_, Option<String>>(19)?,
-        row.get::<_, Option<Vec<u8>>>(20)?,
+        terminal_record,
     )?;
     if matches!(
         state,
@@ -119,8 +140,8 @@ pub(crate) fn read_handoff(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredWo
     {
         return Err(rusqlite::Error::InvalidQuery);
     }
-    let acknowledged = read_bool(row.get::<_, i64>(21)?)?;
-    let acknowledgment_digest = row.get::<_, Option<String>>(22)?;
+    let acknowledged = read_bool(row.get::<_, i64>(23)?)?;
+    let acknowledgment_digest = row.get::<_, Option<String>>(24)?;
     if acknowledged != matches!(state, WorkerHandoffState::Acknowledged)
         || acknowledged != acknowledgment_digest.is_some()
     {
@@ -276,18 +297,4 @@ pub(super) fn read_job(
         rusqlite::Error::QueryReturnedNoRows => super::types::ExecutionStoreError::Missing,
         other => super::schema::map_sqlite(other),
     })
-}
-
-pub(super) fn read_existing_completion(
-    tx: &rusqlite::Transaction<'_>,
-    episode_id: &str,
-) -> Result<Option<super::types::CompletionRecord>, super::types::ExecutionStoreError> {
-    tx.query_row(
-        "SELECT run_id, episode_id, attempt_id, trajectory_id, status, terminal_ref,
-         checkpoint_sequence, result_digest FROM completions WHERE episode_id = ?1",
-        [episode_id],
-        super::store_completion::read_completion,
-    )
-    .optional()
-    .map_err(super::schema::map_sqlite)
 }

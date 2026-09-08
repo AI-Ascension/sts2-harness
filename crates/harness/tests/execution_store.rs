@@ -327,6 +327,12 @@ mod operation_identity;
 #[path = "execution_store/worker.rs"]
 mod worker;
 
+#[path = "execution_store/worker_support.rs"]
+mod worker_support;
+
+#[path = "execution_store/worker_safety.rs"]
+mod worker_safety;
+
 #[path = "execution_store/oversized_result.rs"]
 mod oversized_result;
 

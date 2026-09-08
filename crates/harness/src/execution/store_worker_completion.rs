@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use super::schema;
 use super::store_core::{ExecutionStore, append_event};
 use super::store_worker_lookup::receipt_from_completion;
-use super::store_worker_queries::{read_existing_completion, read_handoff_by_id, read_job};
+use super::store_worker_queries::{read_handoff_by_id, read_job};
 use super::types::{
     CompletionRecord, CompletionStatus, JobState, WorkerCompletionStatus, WorkerHandoffState,
     WorkerTerminalReceipt, WorkerTuple,
@@ -122,12 +122,17 @@ pub(super) fn project_completion(
         ],
     )
     .map_err(schema::map_sqlite)?;
+    let job_state = match receipt.status {
+        WorkerCompletionStatus::Completed => "completed",
+        WorkerCompletionStatus::Failed => "failed",
+    };
     let updated = tx
         .execute(
-            "UPDATE jobs SET state = 'completed', result_ref = ?2, updated_at = ?3
-         WHERE job_id = ?1 AND claim_token = ?4",
+            "UPDATE jobs SET state = ?2, result_ref = ?3, updated_at = ?4
+         WHERE job_id = ?1 AND claim_token = ?5",
             params![
                 receipt.tuple.job_id,
+                job_state,
                 receipt.terminal_ref,
                 now,
                 receipt.tuple.handoff_id
@@ -279,4 +284,18 @@ fn unresolved_count(
 ) -> Result<i64, super::types::ExecutionStoreError> {
     tx.query_row(sql, [episode_id], |row| row.get::<_, i64>(0))
         .map_err(schema::map_sqlite)
+}
+
+pub(super) fn read_existing_completion(
+    tx: &rusqlite::Transaction<'_>,
+    episode_id: &str,
+) -> Result<Option<CompletionRecord>, super::types::ExecutionStoreError> {
+    tx.query_row(
+        "SELECT run_id, episode_id, attempt_id, trajectory_id, status, terminal_ref,
+         checkpoint_sequence, result_digest FROM completions WHERE episode_id = ?1",
+        [episode_id],
+        super::store_completion::read_completion,
+    )
+    .optional()
+    .map_err(schema::map_sqlite)
 }
