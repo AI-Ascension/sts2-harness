@@ -1,8 +1,8 @@
-# Linux worker transport preparation
+# Linux worker transport and executable candidate
 
 This document describes the Linux-only transport candidate in
-`crates/harness/src/worker_local_linux.rs`. It is a preparation artifact, not
-an enabled endpoint or a claim of native integration.
+`crates/harness/src/worker_local_linux.rs` and its opt-in executable command loop.
+This is an implementation candidate, not a released service or live recovery claim.
 
 ## Owned boundary
 
@@ -88,23 +88,43 @@ existing 4-byte-big-endian/65536-byte handoff request and one response under
 the same absolute `ConnectionDeadline`; partial I/O, cancellation and any
 failed phase close the connection and cannot be resumed.
 
-## Root integration contract
+## Executable integration
 
-Root must review and apply the following integration changes separately:
+With `STS2_WORKER_MODE=true`, Linux worker startup reads the bounded private-pipe
+bootstrap and persists a fresh stopped worker boot. In addition to the existing
+worker/runtime policy, the approved launch environment must provide:
 
-- add a Linux-only module/export and wire it to the parent safe worker server;
-- enable Tokio's `net` feature;
-- add normal target dependencies pinned to `rustix = 1.1.4` with `event`,
-  `fs`, `net`, and `process` features, `subtle = 2.6.1`, and
-  `zeroize = 1.9.0`; update `Cargo.lock` and license/source policy together;
-- pass a configured peer identity from the owner-approved launch record rather
-  than deriving it from a request; and
-- run the native Linux process fixture and fault matrix before enabling the
-  endpoint.
+| Setting | Meaning |
+| --- | --- |
+| `STS2_WORKER_ENDPOINT` | Protected absolute Unix socket path; an existing name is rejected |
+| `STS2_WORKER_CREDENTIAL_PATH` | Protected absolute credential file path, never credential bytes |
+| `STS2_WORKER_TIMEOUT_MS` | Canonical decimal integer from 1 through 5000; one full exchange budget |
 
-Root dependency commits `5f299ae` and `935c889` provide the target-specific
-manifest/lock and dependency-audit changes in this isolated candidate. Library
-exports, runtime wiring, storage and Windows adapters remain unchanged.
+The bootstrap component must be `harness`; the exact expected live watchdog
+process comes only from that bootstrap, not from command JSON or environment.
+Runtime/provider settings and workflow selection are captured before binding.
+The existing runtime configuration digest is checked against the actual MCP bytes
+and configured runtime policy before the endpoint is bound, and again at execution
+attachment. That digest includes the configured run/episode/trajectory lineage;
+the executable test explicitly approves its dispatched lineage. This change does
+not establish generic multi-job reuse with different approved configurations.
+Tokio's Linux-only `net` and `signal` features provide local transport and
+SIGTERM/SIGINT ownership; no new dependency package is introduced by signal support.
+
+The native exchange authenticates before decoding. The core persists admission,
+writes the correlated response, crosses the running fence, and then transfers the
+one-use execution task to one scoped thread. Failed authentication or client I/O
+does not start work or restart the worker. Stop/pause and historical commands stay
+on the control loop during execution. A completed thread is joined before its
+durable completion can release capacity. Execution errors keep the lane fenced.
+
+SIGTERM/SIGINT fence new admission and retain an active handoff as UNKNOWN before
+draining and closing. They do not modify the watchdog's deployment desired state;
+operator stop must first be persisted by the watchdog owner. An authenticated
+worker `stopped` control leaves the command endpoint available for diagnostics.
+See [ADR 0016](decisions/0016-owned-worker-execution.md) for the remaining hard
+shutdown/descendant-containment gaps. The companion watchdog's static launch mapping,
+cross-consumer executable tests and independent acceptance remain integration gates.
 
 Authentication is a point-in-time process-principal and artifact check, not
 continuous loaded-code attestation. A held pidfd does not prevent exec, fork or
@@ -112,9 +132,18 @@ descriptor inheritance by an already-authorized process. Such compromised-peer
 behavior remains inside the explicit trusted-peer boundary; durable capability
 checks and execution-time fencing are still required. Independent review must
 verify the kernel image-to-file binding and actual deadline behavior before
-this candidate can be enabled.
+this candidate can be promoted or deployed.
 
 ## Evidence boundary
+
+[`worker_server_entry`](../crates/harness/tests/worker_server_entry.rs) executes the
+actual copied runtime binary with protected synthetic credentials and an exact
+native parent identity. It checks invalid-policy refusal before bind, rejected
+credentials, stopped startup, authenticated running/stop control, persisted stop
+after SIGTERM, and stop/probe responsiveness while an owned execution thread waits
+on a synthetic gateway allocation. The interrupted handoff remains UNKNOWN after
+shutdown. These are executable synthetic checks, not real MCP/provider/gameplay
+or a proof of forced cleanup during a hung provider call.
 
 Source review and Linux synthetic transport tests can establish bounded safe
 behavior and expected rejection categories. They do not establish systemd,

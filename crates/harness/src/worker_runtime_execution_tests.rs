@@ -44,12 +44,18 @@ fn fabricated_or_changed_running_rows_cannot_claim_a_lane() -> TestResult {
 
 #[test]
 fn reported_success_without_durable_completion_is_not_completion() -> TestResult {
-    let mut core = runtime()?;
-    let running = started(&mut core)?;
-    let completion = core.take_execution(running)?.run(|_| Ok(()));
-    assert!(core.complete_execution(completion).is_err());
-    assert_eq!(handoff_state(&core)?, WorkerHandoffState::Unknown);
-    assert!(core.active_tuple().is_some());
+    for shutdown in [false, true] {
+        let mut core = runtime()?;
+        let running = started(&mut core)?;
+        let handoff_id = running.tuple.handoff_id.clone();
+        let completion = core.take_execution(running)?.run(|_| Ok(()));
+        if shutdown {
+            core.retain_unknown(&handoff_id)?;
+        }
+        assert!(core.complete_execution(completion).is_err());
+        assert_eq!(handoff_state(&core)?, WorkerHandoffState::Unknown);
+        assert!(core.active_tuple().is_some());
+    }
     Ok(())
 }
 
@@ -66,51 +72,62 @@ fn dropping_unconsumed_success_retains_unknown() -> TestResult {
 
 #[test]
 fn durable_completion_releases_only_after_its_owned_task_returns() -> TestResult {
-    let mut core = runtime()?;
-    let running = started(&mut core)?;
-    let handoff_id = running.tuple.handoff_id.clone();
-    let completion = core.take_execution(running)?.run(|task| {
-        let tuple = &task.running().tuple;
-        let lineage = ExecutionLineage::new(
-            &tuple.run_id,
-            &tuple.episode_id,
-            &tuple.attempt_id,
-            &tuple.trajectory_id,
-        )
-        .map_err(|error| error.to_string())?;
-        let mut store = try_lock(task.store())?;
-        store
-            .save_checkpoint(
-                &Checkpoint::new(
-                    lineage.clone(),
-                    0,
-                    "state-1",
-                    1,
-                    task.fingerprint().clone(),
-                    b"{}".to_vec(),
-                    "catalog-1",
-                )
-                .map_err(|error| error.to_string())?,
+    for shutdown in [false, true] {
+        let mut core = runtime()?;
+        let running = started(&mut core)?;
+        let handoff_id = running.tuple.handoff_id.clone();
+        let completion = core.take_execution(running)?.run(|task| {
+            let tuple = &task.running().tuple;
+            let lineage = ExecutionLineage::new(
+                &tuple.run_id,
+                &tuple.episode_id,
+                &tuple.attempt_id,
+                &tuple.trajectory_id,
             )
             .map_err(|error| error.to_string())?;
-        store
-            .record_completion(
-                &CompletionRecord::new(
-                    lineage,
-                    CompletionStatus::Completed,
-                    "terminal-1",
-                    0,
-                    "b".repeat(64),
+            let mut store = try_lock(task.store())?;
+            store
+                .save_checkpoint(
+                    &Checkpoint::new(
+                        lineage.clone(),
+                        0,
+                        "state-1",
+                        1,
+                        task.fingerprint().clone(),
+                        b"{}".to_vec(),
+                        "catalog-1",
+                    )
+                    .map_err(|error| error.to_string())?,
                 )
-                .map_err(|error| error.to_string())?,
-            )
-            .map_err(|error| error.to_string())?;
-        Ok(())
-    });
-    assert!(core.release_completed(&handoff_id).is_err());
-    core.complete_execution(completion)?;
-    assert!(core.active_tuple().is_none());
-    assert!(core.store().admission_open());
+                .map_err(|error| error.to_string())?;
+            store
+                .record_completion(
+                    &CompletionRecord::new(
+                        lineage,
+                        CompletionStatus::Completed,
+                        "terminal-1",
+                        0,
+                        "b".repeat(64),
+                    )
+                    .map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        });
+        assert!(core.release_completed(&handoff_id).is_err());
+        if shutdown {
+            // Shutdown can win after the durable receipt but before the command
+            // loop consumes the owned result. It must not manufacture a failure.
+            core.retain_unknown(&handoff_id)?;
+        }
+        core.complete_execution(completion)?;
+        assert!(core.active_tuple().is_none());
+        assert_eq!(core.store().admission_open(), !shutdown);
+        if shutdown {
+            assert!(admitted_reservation(&mut core).is_err());
+        }
+        core.close()?;
+    }
     Ok(())
 }
 

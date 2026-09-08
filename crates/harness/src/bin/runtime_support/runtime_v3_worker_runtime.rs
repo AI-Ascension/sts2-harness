@@ -8,9 +8,6 @@ use super::worker_store::share_store;
 use sts2_harness::worker_runtime::WorkerRuntime as WorkerCore;
 use sts2_harness::{ExecutionStore, ExecutionStoreConfig};
 
-pub(super) const MISSING_TRANSPORT_ERROR: &str =
-    "worker transport unavailable: authenticated native worker listener is not integrated";
-
 pub struct WorkerRuntime {
     core: WorkerCore,
 }
@@ -46,23 +43,28 @@ impl WorkerRuntime {
         )
         .map(|core| Self { core })
     }
-
-    fn transport_unavailable(&self) -> Result<(), String> {
-        Err(String::from(MISSING_TRANSPORT_ERROR))
-    }
 }
 
-/// Starts worker mode, persists its stopped boot, and fails closed until a native authenticated
-/// listener is supplied by the platform-specific transport integration.
+/// Starts worker mode with a stopped durable boot and a native authenticated command loop.
 pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
     let bootstrap = read_bootstrap()?;
     let settings = WorkerSettings::from_environment(&config, &bootstrap)?;
     let runtime = WorkerRuntime::open(settings)?;
-    let result = runtime.transport_unavailable();
+    #[cfg(target_os = "linux")]
+    let mut runtime = runtime;
+    #[cfg(target_os = "linux")]
+    let result = linux::run(&mut runtime, config, &bootstrap);
+    #[cfg(not(target_os = "linux"))]
+    let result: Result<(), String> = Err(String::from(
+        "native worker listener is not integrated on this platform",
+    ));
     let close = runtime.close();
     match close {
         Ok(()) => result,
-        Err(error) => Err(format!("{MISSING_TRANSPORT_ERROR}; {error}")),
+        Err(error) => match result {
+            Ok(()) => Err(error),
+            Err(original) => Err(format!("{original}; {error}")),
+        },
     }
 }
 
@@ -79,17 +81,10 @@ fn read_bootstrap() -> Result<sts2_harness::worker_bootstrap::WorkerBootstrap, S
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::MISSING_TRANSPORT_ERROR;
-    #[test]
-    fn missing_transport_is_a_fixed_production_failure() {
-        assert_eq!(
-            MISSING_TRANSPORT_ERROR,
-            "worker transport unavailable: authenticated native worker listener is not integrated"
-        );
-    }
-}
-
+#[cfg(target_os = "linux")]
 #[path = "runtime_v3_worker_runtime_execution.rs"]
 mod execution;
+
+#[cfg(target_os = "linux")]
+#[path = "runtime_v3_worker_linux.rs"]
+mod linux;

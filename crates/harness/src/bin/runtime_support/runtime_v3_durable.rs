@@ -36,6 +36,8 @@ mod worker_fence;
 
 pub(super) use operations::{OperationCatalogEvidence, OperationIntentEvidence};
 
+#[cfg(target_os = "linux")]
+pub(super) use admitted::validate_worker_configuration;
 use support::{config_digest, fingerprint, optional_env, sha256_bytes, sha256_json};
 
 /// A cloneable handle backed by the one worker-owned SQLite connection.

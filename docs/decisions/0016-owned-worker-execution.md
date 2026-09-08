@@ -2,9 +2,10 @@
 
 ## Status
 
-Implementation candidate under the watchdog assignment. Native server-loop wiring,
-bounded execution-thread shutdown and independent review remain required. This
-decision does not enable a listener, start a provider or claim live recovery.
+Implementation candidate under the watchdog assignment. The opt-in Linux runtime
+now connects its native server loop to owned execution. Bounded execution-thread
+shutdown, descendant containment and independent review remain required before
+release. This decision does not claim live recovery or service validation.
 
 ## Decision
 
@@ -40,6 +41,16 @@ claims, durable completion, rejected false success, cross-processor completion,
 drop/unwind, busy-store quarantine and authenticated stop/probe while an owned,
 joined execution thread waits at a bounded channel barrier.
 
-The task API spawns no thread. Production integration must own and bound thread,
-provider and MCP cleanup; it must not infer those guarantees from the synthetic
-barrier test or the compile-time `Send` check.
+The task API spawns no thread. The Linux executable owns one scoped execution
+thread, joins its completed handle before releasing the lane, and keeps native
+control requests separate from gameplay. SIGTERM/SIGINT close admission and retain
+an active handoff as UNKNOWN before waiting for execution and closing the store.
+An exit/unwind guard closes admission before the scope's fallback join. Completed
+receipts are not overwritten by this uncertainty accounting. Execution failures
+keep historical commands available and are retained for shutdown reporting.
+
+The scope prevents detachment, but does not impose a hard join deadline or cancel
+an in-flight provider call. Execution still depends on existing phase deadlines
+and execution-time fences. Forced descendant cleanup and active-execution shutdown
+bounds need additional implementation and fault evidence; neither the synthetic
+barrier test nor the compile-time `Send` check proves those guarantees.

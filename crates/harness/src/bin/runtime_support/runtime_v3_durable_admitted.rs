@@ -45,12 +45,7 @@ impl DurableHandle {
                 "runtime-v3 worker handoff lineage does not match the approved runtime",
             ));
         }
-        let expected_config_digest = config_digest(config, settings)?;
-        if expected_config_digest != fingerprint.config_digest {
-            return Err(String::from(
-                "runtime-v3 approved fingerprint does not match the runtime configuration",
-            ));
-        }
+        let expected_config_digest = validate_worker_configuration(config, settings, &fingerprint)?;
         let (current, stored) = {
             let store_guard = try_lock(&store)?;
             let current = store_guard
@@ -149,6 +144,22 @@ impl DurableHandle {
             worker_handoff: None,
         })
     }
+}
+
+pub(in super::super) fn validate_worker_configuration(
+    config: &RuntimeConfig,
+    settings: &RuntimeV3Settings,
+    fingerprint: &ExecutionFingerprint,
+) -> Result<String, String> {
+    validate_worker_config(config)?;
+    let digest = config_digest(config, settings)
+        .map_err(|_| String::from("cannot verify worker runtime configuration"))?;
+    if digest != fingerprint.config_digest {
+        return Err(String::from(
+            "runtime-v3 approved fingerprint does not match the runtime configuration",
+        ));
+    }
+    Ok(digest)
 }
 
 fn worker_lineage(tuple: &sts2_harness::WorkerTuple) -> Result<ExecutionLineage, String> {

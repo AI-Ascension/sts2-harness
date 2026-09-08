@@ -9,6 +9,7 @@ const DEFAULT_MAX_REQUEST_BYTES: usize = 128 * 1024;
 const DEFAULT_MAX_RESPONSE_BYTES: usize = 8 * 1024;
 const DEFAULT_TIMEOUT_MILLIS: u32 = 120_000;
 
+#[derive(Clone)]
 pub(super) struct RuntimeV3Settings {
     pub(super) runner: EpisodeRunnerConfig,
     pub(super) exo: ExoConfig,

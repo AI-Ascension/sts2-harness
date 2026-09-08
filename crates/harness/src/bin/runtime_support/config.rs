@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+#[derive(Clone)]
 pub(crate) struct RuntimeConfig {
     pub(crate) gateway_address: String,
     pub(crate) gateway_token: String,

@@ -91,7 +91,10 @@ impl WorkerRuntime {
             .filter(|tuple| tuple.handoff_id == handoff_id)
             .cloned()
             .ok_or_else(|| String::from("worker completion does not match active lane"))?;
-        let mut store = try_lock(&self.store)?;
+        // Inspect an already-durable terminal receipt even after shutdown has
+        // closed admission. Releasing local completed capacity never reopens
+        // that gate or authorizes a new mutation.
+        let mut store = try_lock_recovery(&self.store)?;
         let handoff = match store
             .lookup_worker_handoff(&tuple)
             .map_err(|_| String::from("cannot reconcile worker completion"))?
