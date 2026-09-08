@@ -2,10 +2,11 @@
 
 ## Status and approval gate
 
-Proposed for independent transport/security review under the authorized watchdog
-implementation assignment. This document does not approve FFI implementation by
-itself. Record reviewer acceptance and root integration approval before adding
-the boundary. The existing workspace-wide unsafe-code prohibition remains intact.
+Approved for isolated original authoring under the authorized watchdog assignment,
+following independent H40/H43 design acceptance and the root approval recorded in
+[ADR 0015](0015-worker-transport-authoring-contract.md). This is not integration
+approval: independent source review and native fault evidence remain mandatory.
+The existing workspace-wide unsafe-code prohibition remains intact.
 
 ## Need and ownership
 
@@ -59,11 +60,10 @@ connections, cancels outstanding I/O, and joins every owned task before returnin
 
 ## Review stages
 
-The independent H40 design review conditionally accepts this ownership scope but
-does not accept implementation readiness. Its required refinements are recorded
-above; approval remains pending. Before isolated implementation, record independent
-design acceptance, root approval, the safe public API, and the proposed Windows-only
-dependency/license/lockfile review. No workspace-wide lint relaxation is permitted.
+The independent H40 design review accepted this ownership scope, and H43 accepted
+the concrete authoring gate subject to precision clarifications now recorded in
+ADR 0015. Root approves only isolated original implementation against that API,
+dependency plan and invariant set. No workspace-wide lint relaxation is permitted.
 Source review and executable native fault tests necessarily follow implementation;
 both must pass before platform integration or a Windows security claim. Missing
 native evidence does not permit treating cross-compilation as acceptance.

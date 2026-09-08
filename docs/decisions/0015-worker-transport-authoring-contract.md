@@ -2,10 +2,11 @@
 
 ## Status and gate
 
-Proposed concrete authoring contract following H40's conditional design acceptance
-of [ADR 0014](0014-windows-worker-ipc-boundary.md). Root implementation approval
-is pending independent review of these details. This is not permission to integrate
-an unverified native adapter, enable an endpoint, or claim Windows security.
+Approved for isolated original authoring following independent H40/H43 design
+acceptance of this contract and [ADR 0014](0014-windows-worker-ipc-boundary.md).
+Root records authoring approval with the review's precision clarifications below.
+This is not permission to integrate an unverified native adapter, enable an
+endpoint, or claim Windows security.
 
 ## Safe API and lifecycle
 
@@ -39,12 +40,31 @@ is separately configured and checked against its own process token. The endpoint
 name contains a fixed product prefix and a canonical UUIDv4 launch nonce, is local
 only, and is not a path supplied by a remote request.
 
+`ExpectedPeer` is constructed only by safe owner-launch configuration loading,
+before listener creation, from the approved supervisor's launch record. Its
+immutable lifetime is one worker launch; replacement requires a new launch record
+and listener, not a client update. On Windows the creation identity is the exact
+unsigned 64-bit `GetProcessTimes` creation FILETIME (100-nanosecond units since
+1601-01-01 UTC), compared through the retained process handle opened for the
+kernel-reported pipe-client PID. It is not a wall-clock estimate or Linux token.
+
 The server creates and holds the first-instance pipe, rejecting stolen names.
 Its explicit non-inherited DACL admits only the two configured principals, deduped
 when identical; it has no broad group or remote access. Kernel-reported client PID,
 token SID, held process creation identity, liveness and approved image must match
 before credential admission. The client must independently authenticate the server
 before sending its credential. A process handle remains held through the exchange.
+The watchdog companion owns that client-side verification; this server package
+cannot supply it. Cross-consumer acceptance must test both obligations.
+
+Open the approved executable through protected non-reparse ancestors as a regular
+non-hardlinked file, with sharing that denies write and delete. Hash the held bytes
+before readiness and retain the image/ancestor handles through every exchange.
+Compare the peer's kernel-reported full image to the held file's volume serial and
+128-bit file ID, opening the reported image through the same protected-path rules.
+A matching path string alone is insufficient. Any sharing or identity conflict
+fails closed; neither a cached digest of replaceable bytes nor rehash-after-trust
+is accepted.
 
 The initial endpoint supports one active exchange and one listening instance,
 with no in-process waiting queue and bounded busy rejection. The transport must
@@ -61,6 +81,12 @@ handoff JSON and schema digest. Each fresh OS-authenticated connection carries:
    `ascension-worker-auth-v1` followed by NUL, then 1..4096 credential bytes.
 2. One separately framed handoff JSON request, limited to 65536 bytes and nesting 16.
 3. One separately framed handoff JSON response, with the same limits, then close.
+
+The auth length counts magic, its terminating NUL, and credential bytes: exactly
+26..4121 bytes. Reject the prefix outside this range before allocating/reading the
+body. JSON prefixes count only their UTF-8 body, 1..65536 bytes. Prefix/body error,
+timeout or partial cancellation poisons and closes the connection, following
+`worker_frame_io`; no later frame may resynchronize it.
 
 The magic length is validated against its actual encoded bytes during implementation;
 its SHA-256, including the terminating NUL, is
@@ -99,6 +125,8 @@ Open and hold protected ancestors and a stable regular-file descriptor/handle.
 Reject symlinks, reparse points, hardlinks, device/remote paths, ambiguous owners,
 inherited/broad write access and replacement windows. POSIX opens use nonblocking
 flags before type inspection so a FIFO substitution cannot hang before validation.
+That POSIX requirement belongs solely to the separate safe Linux adapter and does
+not expand this Windows package's native scope.
 Windows opens preserve immutable file identity through held sharing restrictions.
 The approved executable is similarly held against replacement when its digest is
 validated. Startup preparation is separately bounded and is not connection readiness.
@@ -140,10 +168,22 @@ handling packages need explicit root-owned lock updates and notices. No derive,
 network, provider or unrelated Windows features are requested. Cargo metadata,
 license/source checks and a full-lock advisory check must accompany those updates.
 
+The initial exact feature allowlist is `Win32_Foundation`, `Win32_Security`,
+`Win32_Security_Authorization`, `Win32_Storage_FileSystem`, `Win32_System_Pipes`,
+`Win32_System_IO`, and `Win32_System_Threading`. An additional feature needs a
+named API and review. `zeroize` disables default features and enables `alloc`;
+`subtle` disables default features. No derive or nightly dependency is enabled.
+
 The new package forbids unsafe in its safe entry/API modules and allows it only
 in a private reviewed native module. The existing workspace `unsafe_code = forbid`
 and harness/core/Linux policies remain unchanged. Any package-local lint exception
 must be exact and recorded under ADR 0014, never inherited by other packages.
+Its package-local Rust lint is `unsafe_code = "deny"` with
+`unused_must_use = "deny"`; only the private native module has a scoped allow.
+All safe API/policy modules separately use `#![forbid(unsafe_code)]`. Its Clippy
+policy retains warnings plus denied expect/panic/todo/unimplemented/unwrap. This
+package does not inherit and then weaken the workspace forbid; existing packages
+continue inheriting it unchanged. Package/source review must verify this layout.
 
 Independent source review and the native Windows fault matrix in ADR 0014 remain
 mandatory before integration. Root authoring approval is not root integration
