@@ -71,6 +71,7 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
                 false,
                 None,
             );
+            let _ = recording::flush_replay_stream();
             finish_telemetry(telemetry);
             return Err(error);
         }
@@ -94,6 +95,7 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
                     None,
                 );
             }
+            let _ = recording::flush_replay_stream();
             finish_telemetry(telemetry);
             return result.map(|_| ());
         }
@@ -163,6 +165,7 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
                 Err(message)
             }
         };
+        let _ = recording::flush_replay_stream();
         finish_telemetry(telemetry);
         if let Some((steps, stage, terminal_observation_digest)) = completion {
             println!(
@@ -183,12 +186,7 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let report = match result {
         Ok(report) => report,
         Err(error) => {
-            let _ = telemetry_handle.failure(
-                "episode",
-                super::runtime_v3_telemetry::FailureCode::Other,
-                false,
-                None,
-            );
+            recording::episode_failure(&error, &telemetry_handle);
             if source_close.is_err() {
                 let _ = telemetry_handle.failure(
                     "provider_close",
@@ -197,24 +195,24 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
                     None,
                 );
             }
+            // Preserve the runner's original, category-only error even if the private replay
+            // sink has a broken pipe or another flush failure.
+            let message = format!("Runtime-v3 episode failed: {error}");
+            let _ = recording::flush_replay_stream();
             finish_telemetry(telemetry);
-            return Err(format!("Runtime-v3 episode failed: {error}"));
+            return Err(message);
         }
     };
     let game_outcome = recording::game_outcome(report.terminal_stage());
     recording::complete(&report, &telemetry_handle);
     if source_close.is_err() {
-        let _ = telemetry_handle.failure(
-            "provider_close",
-            super::runtime_v3_telemetry::FailureCode::Cleanup,
-            false,
-            None,
-        );
+        recording::cleanup_failure(&telemetry_handle);
         let _ = telemetry_handle.run_finished(
             game_outcome,
             TelemetryStage::from(report.terminal_stage()),
             CleanupStatus::Failed,
         );
+        let _ = recording::flush_replay_stream();
         finish_telemetry(telemetry);
         return Err(String::from("Exo session close failed"));
     }
@@ -223,6 +221,7 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         TelemetryStage::from(report.terminal_stage()),
         CleanupStatus::Clean,
     );
+    let _ = recording::flush_replay_stream();
     finish_telemetry(telemetry);
     println!(
         "{}",
@@ -237,6 +236,7 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         }))
         .map_err(|error| format!("Runtime-v3 report serialization failed: {error}"))?
     );
+    let _ = recording::flush_replay_stream();
     Ok(())
 }
 

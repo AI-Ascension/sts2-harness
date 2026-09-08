@@ -228,6 +228,69 @@ fn prefix_requires_explicit_mode_and_stops_only_at_matching_settled_checkpoint()
 }
 
 #[test]
+fn fake_mcp_map_failure_keeps_the_first_settled_action_as_a_replay_prefix() {
+    let mut values = rows();
+    values.truncate(3);
+    values[2]["observation"] = observation("map", 3, "map-next", "ironclad");
+    values.push(json!({
+        "event":"episode_failed",
+        "error_code":"map_snapshot_invalid"
+    }));
+    let encode = |values: &[Value]| {
+        values
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let trace = ReplayTrace::parse_mode(encode(&values).as_bytes(), true)
+        .expect("a settled fake-MCP map failure is a replayable prefix");
+    assert_eq!(trace.records.len(), 1);
+    assert_eq!(trace.rejected_attempts, 0);
+    assert_eq!(trace.failure_code, Some("map_snapshot_invalid"));
+    assert_eq!(trace.terminal["state"]["state"], "map");
+
+    // A failed run cannot masquerade as a complete terminal episode, even when a caller forgets
+    // to opt into prefix parsing.
+    assert!(ReplayTrace::parse(encode(&values).as_bytes()).is_err());
+}
+
+#[test]
+fn replay_truncation_marker_cannot_masquerade_as_a_complete_or_prefix_trace() {
+    let mut values = rows();
+    values.push(json!({
+        "event":"replay_stream_truncated",
+        "source_event":"episode_complete",
+        "reason":"event_exceeds_bound"
+    }));
+    let encode = |values: &[Value]| {
+        values
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    assert!(ReplayTrace::parse(encode(&values).as_bytes()).is_err());
+    values.truncate(3);
+    values.push(json!({
+        "event":"replay_stream_truncated",
+        "source_event":"operation_wait_completed",
+        "reason":"event_exceeds_bound"
+    }));
+    assert!(ReplayTrace::parse_mode(encode(&values).as_bytes(), true).is_err());
+}
+
+#[test]
+fn accepted_admission_must_be_followed_by_a_settled_wait() {
+    let mut values = rows();
+    values[1]["status"] = json!("Accepted");
+    values[1]["observation"] = observation("setup", 1, "start-1", "ironclad");
+    assert!(parse(&values).is_ok());
+    values[1]["effect"] = json!("provider_claimed_effect");
+    assert!(parse(&values).is_err());
+}
+
+#[test]
 fn settled_receipt_can_complete_an_action_without_an_extra_wait() {
     let mut values = rows();
     values[1]["status"] = json!("Settled");
