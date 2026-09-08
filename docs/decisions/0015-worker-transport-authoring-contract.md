@@ -140,6 +140,10 @@ configuration/restart, not automatic reload during recovery.
 
 ## Deadline and native cancellation
 
+[ADR 0016](0016-worker-native-io-fail-stop.md) qualifies normal cleanup and
+zeroization guarantees on the fatal, unproven-I/O path. It does not enlarge the
+ordinary connection deadline or permit detached resource owners.
+
 Create one local monotonic deadline of at most five seconds before accept and use
 it through peer checks, credential admission, framing and response. Preparation
 must not hide unbounded filesystem reads inside an accepted connection. Partial

@@ -22,6 +22,9 @@ repository. It owns only local named-pipe transport, protected credential reads
 and peer-identity verification. It has no game/host access, gameplay authority,
 process launch/termination, scheduling, provider behavior or database access.
 It does not depend on or copy the watchdog's platform implementation.
+The sole fatal self-termination exception, with no authority over another process,
+is the supervised-worker containment amendment in
+[ADR 0016](0016-worker-native-io-fail-stop.md).
 
 ## Narrow unsafe boundary
 
