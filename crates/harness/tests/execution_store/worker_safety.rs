@@ -243,3 +243,38 @@ fn utf8_reference(target_bytes: usize) -> String {
     assert_eq!(value.len(), target_bytes);
     value
 }
+
+#[test]
+fn duplicate_terminal_rejects_incompatible_durable_completion() {
+    let (mut store, tuple, _context, permit, database) =
+        admitted_file_store_with_permit("duplicate-completion-corruption");
+    drop(permit);
+    checkpoint(&mut store);
+    let receipt = WorkerTerminalReceipt::new(
+        tuple,
+        WorkerCompletionStatus::Completed,
+        1,
+        "terminal-completed",
+        "b".repeat(64),
+    )
+    .expect("synthetic receipt is valid");
+    store
+        .record_worker_completion(&receipt)
+        .expect("original completion commits");
+    store.close().expect("store closes");
+    drop(store);
+    let connection = Connection::open(&database).expect("database opens");
+    connection
+        .execute("UPDATE completions SET status = 'quarantined'", [])
+        .expect("incompatible durable completion installs");
+    drop(connection);
+    let mut reopened =
+        ExecutionStore::open(ExecutionStoreConfig::new(&database)).expect("database reopens");
+    let result = reopened.record_worker_completion(&receipt);
+    drop(reopened);
+    remove_database(&database);
+    assert!(
+        matches!(result, Err(ExecutionStoreError::Corrupt)),
+        "a duplicate must not accept a durable completion that cannot project to its receipt"
+    );
+}

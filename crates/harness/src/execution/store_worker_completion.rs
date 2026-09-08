@@ -29,8 +29,8 @@ impl ExecutionStore {
             if existing == receipt {
                 let durable = read_existing_completion(&tx, &receipt.tuple.episode_id)?;
                 if durable.as_ref().is_none_or(|completion| {
-                    receipt_from_completion(&receipt.tuple, completion)
-                        .is_ok_and(|projected| projected != *receipt)
+                    !receipt_from_completion(&receipt.tuple, completion)
+                        .is_ok_and(|projected| projected == *receipt)
                 }) {
                     return Err(super::types::ExecutionStoreError::Corrupt);
                 }
