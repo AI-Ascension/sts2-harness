@@ -10,17 +10,26 @@
 //! are borrowed only while their typed owner remains alive; ACL storage uses a
 //! four-byte-aligned allocation; token buffers use an eight-byte-aligned
 //! allocation; UTF-16 arguments are NUL terminated and bounded; DWORD byte
-//! lengths are checked before every call; and every overlapped buffer remains
-//! on the stack until successful completion or confirmed cancellation. Native
+//! lengths are checked before every call; and every overlapped owner remains
+//! heap-stable until successful completion or confirmed cancellation. Native
 //! errors are captured immediately and reduced to the fixed safe categories.
 
 #![allow(unsafe_code)]
 
+mod connection;
 mod io;
+mod io_operation;
 mod listener;
 mod process;
 mod resources;
 mod security;
+
+#[cfg(test)]
+mod test_peer;
+#[cfg(test)]
+mod test_support;
+#[cfg(test)]
+mod tests;
 
 pub(crate) use listener::{Connection, Listener};
 

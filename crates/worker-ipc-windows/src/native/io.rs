@@ -1,32 +1,30 @@
 // SPDX-License-Identifier: MIT
 #![allow(unsafe_code)]
 
-use std::mem::zeroed;
+//! Named-pipe framing and native operation entry points.
+
 use std::ptr::addr_of_mut;
 
 use windows_sys::Win32::Foundation::{
-    ERROR_BROKEN_PIPE, ERROR_INVALID_HANDLE, ERROR_IO_INCOMPLETE, ERROR_IO_PENDING,
-    ERROR_NOT_FOUND, ERROR_OPERATION_ABORTED, ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED,
-    FALSE, GetLastError, HANDLE, TRUE, WAIT_TIMEOUT,
+    ERROR_BROKEN_PIPE, ERROR_IO_PENDING, ERROR_PIPE_CONNECTED, ERROR_PIPE_NOT_CONNECTED, FALSE,
+    GetLastError, HANDLE,
 };
-use windows_sys::Win32::Storage::FileSystem::PIPE_ACCESS_DUPLEX;
 use windows_sys::Win32::Storage::FileSystem::{
-    FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED, ReadFile, WriteFile,
-};
-use windows_sys::Win32::System::IO::{
-    CancelIoEx, GetOverlappedResult, GetOverlappedResultEx, OVERLAPPED,
+    FILE_FLAG_FIRST_PIPE_INSTANCE, FILE_FLAG_OVERLAPPED, PIPE_ACCESS_DUPLEX, ReadFile, WriteFile,
 };
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_READMODE_BYTE,
     PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
 };
-use zeroize::Zeroizing;
 
+use super::io_operation::OperationOwner;
 use super::resources::{Handle, ProtectedCredential};
 use super::security::PipeSecurity;
 use super::wide_string;
 use crate::transport::{Deadline, TransportError};
 use crate::{AUTH_MAGIC, MAX_AUTH_BODY_BYTES, MAX_FRAME_BYTES, MIN_AUTH_BODY_BYTES};
+
+pub(super) use super::io_operation::cancel_all;
 
 pub(super) fn create_pipe(
     name: &str,
@@ -62,8 +60,8 @@ pub(super) fn create_pipe(
 
 pub(super) fn connect_pipe(handle: HANDLE, deadline: Deadline) -> Result<(), TransportError> {
     deadline.check()?;
-    let mut overlapped = zeroed_overlapped();
-    let connected = unsafe { ConnectNamedPipe(handle, addr_of_mut!(overlapped)) };
+    let mut operation = OperationOwner::new(0)?;
+    let connected = unsafe { ConnectNamedPipe(handle, operation.overlapped_mut()) };
     if connected != FALSE {
         deadline.check()?;
         return Ok(());
@@ -76,7 +74,7 @@ pub(super) fn connect_pipe(handle: HANDLE, deadline: Deadline) -> Result<(), Tra
     if error != ERROR_IO_PENDING {
         return Err(TransportError::Os);
     }
-    wait_overlapped(handle, &mut overlapped, deadline).map(|_| ())
+    operation.wait(handle, deadline).map(|_| ())
 }
 
 pub(super) fn authenticate(
@@ -91,7 +89,7 @@ pub(super) fn authenticate(
     if !(MIN_AUTH_BODY_BYTES..=MAX_AUTH_BODY_BYTES).contains(&length) {
         return Err(TransportError::Framing);
     }
-    let mut body = Zeroizing::new(vec![0_u8; length]);
+    let mut body = zeroize::Zeroizing::new(vec![0_u8; length]);
     read_exact(pipe, &mut body, deadline).map_err(map_auth_io)?;
     if body[..AUTH_MAGIC.len()] != *AUTH_MAGIC {
         return Err(TransportError::Credential);
@@ -110,6 +108,7 @@ fn map_auth_io(error: TransportError) -> TransportError {
         _ => TransportError::Credential,
     }
 }
+
 pub(super) fn read_frame(
     pipe: HANDLE,
     limit: usize,
@@ -178,135 +177,69 @@ fn write_all(pipe: HANDLE, body: &[u8], deadline: Deadline) -> Result<(), Transp
 fn read_once(pipe: HANDLE, body: &mut [u8], deadline: Deadline) -> Result<usize, TransportError> {
     deadline.check()?;
     let length = u32::try_from(body.len()).map_err(|_| TransportError::Framing)?;
+    let mut operation = OperationOwner::new(body.len())?;
     let mut transferred = 0_u32;
-    let mut overlapped = zeroed_overlapped();
     let ok = unsafe {
         ReadFile(
             pipe,
-            body.as_mut_ptr(),
+            operation.buffer_mut().as_mut_ptr(),
             length,
             addr_of_mut!(transferred),
-            addr_of_mut!(overlapped),
+            operation.overlapped_mut(),
         )
     };
-    if ok != FALSE {
+    let count = if ok != FALSE {
         deadline.check()?;
-        let count = usize::try_from(transferred).map_err(|_| TransportError::Framing)?;
-        return (count <= body.len())
-            .then_some(count)
-            .ok_or(TransportError::Framing);
-    }
-    let error = unsafe { GetLastError() };
-    if error == ERROR_BROKEN_PIPE || error == ERROR_PIPE_NOT_CONNECTED {
-        return Err(TransportError::Closed);
-    }
-    if error != ERROR_IO_PENDING {
-        return Err(TransportError::Os);
-    }
-    let count = wait_overlapped(pipe, &mut overlapped, deadline)?;
+        usize::try_from(transferred).map_err(|_| TransportError::Framing)?
+    } else {
+        let error = unsafe { GetLastError() };
+        if error == ERROR_BROKEN_PIPE || error == ERROR_PIPE_NOT_CONNECTED {
+            return Err(TransportError::Closed);
+        }
+        if error != ERROR_IO_PENDING {
+            return Err(TransportError::Os);
+        }
+        operation.wait(pipe, deadline)?
+    };
     if count > body.len() {
         return Err(TransportError::Framing);
     }
+    body[..count].copy_from_slice(&operation.buffer()[..count]);
     Ok(count)
 }
 
 fn write_once(pipe: HANDLE, body: &[u8], deadline: Deadline) -> Result<usize, TransportError> {
     deadline.check()?;
     let length = u32::try_from(body.len()).map_err(|_| TransportError::Framing)?;
+    let mut operation = OperationOwner::new(body.len())?;
+    operation.buffer_mut().copy_from_slice(body);
     let mut transferred = 0_u32;
-    let mut overlapped = zeroed_overlapped();
     let ok = unsafe {
         WriteFile(
             pipe,
-            body.as_ptr(),
+            operation.buffer().as_ptr(),
             length,
             addr_of_mut!(transferred),
-            addr_of_mut!(overlapped),
+            operation.overlapped_mut(),
         )
     };
-    if ok != FALSE {
+    let count = if ok != FALSE {
         deadline.check()?;
-        let count = usize::try_from(transferred).map_err(|_| TransportError::Framing)?;
-        return (count <= body.len())
-            .then_some(count)
-            .ok_or(TransportError::Framing);
-    }
-    let error = unsafe { GetLastError() };
-    if error == ERROR_BROKEN_PIPE || error == ERROR_PIPE_NOT_CONNECTED {
-        return Err(TransportError::Closed);
-    }
-    if error != ERROR_IO_PENDING {
-        return Err(TransportError::Os);
-    }
-    let count = wait_overlapped(pipe, &mut overlapped, deadline)?;
+        usize::try_from(transferred).map_err(|_| TransportError::Framing)?
+    } else {
+        let error = unsafe { GetLastError() };
+        if error == ERROR_BROKEN_PIPE || error == ERROR_PIPE_NOT_CONNECTED {
+            return Err(TransportError::Closed);
+        }
+        if error != ERROR_IO_PENDING {
+            return Err(TransportError::Os);
+        }
+        operation.wait(pipe, deadline)?
+    };
     if count > body.len() {
         return Err(TransportError::Framing);
     }
     Ok(count)
-}
-
-fn wait_overlapped(
-    handle: HANDLE,
-    overlapped: &mut OVERLAPPED,
-    deadline: Deadline,
-) -> Result<usize, TransportError> {
-    let remaining = deadline.remaining_millis()?;
-    let mut transferred = 0_u32;
-    let ok = unsafe {
-        GetOverlappedResultEx(
-            handle,
-            overlapped,
-            addr_of_mut!(transferred),
-            remaining,
-            FALSE,
-        )
-    };
-    if ok != FALSE {
-        deadline.check()?;
-        return usize::try_from(transferred).map_err(|_| TransportError::Framing);
-    }
-    let error = unsafe { GetLastError() };
-    if error == WAIT_TIMEOUT {
-        cancel_and_join(handle, overlapped)?;
-        return Err(TransportError::Deadline);
-    }
-    if error == ERROR_OPERATION_ABORTED {
-        return Err(TransportError::Closed);
-    }
-    if error == ERROR_BROKEN_PIPE || error == ERROR_PIPE_NOT_CONNECTED {
-        return Err(TransportError::Closed);
-    }
-    Err(TransportError::Os)
-}
-
-fn cancel_and_join(handle: HANDLE, overlapped: &mut OVERLAPPED) -> Result<(), TransportError> {
-    let cancelled = unsafe { CancelIoEx(handle, overlapped) };
-    if cancelled == FALSE {
-        let error = unsafe { GetLastError() };
-        if error != ERROR_NOT_FOUND && error != ERROR_INVALID_HANDLE {
-            return Err(TransportError::Os);
-        }
-    }
-    let mut transferred = 0_u32;
-    loop {
-        let completed =
-            unsafe { GetOverlappedResult(handle, overlapped, addr_of_mut!(transferred), TRUE) };
-        if completed != FALSE {
-            return Ok(());
-        }
-        let error = unsafe { GetLastError() };
-        if error == ERROR_OPERATION_ABORTED || error == ERROR_BROKEN_PIPE {
-            return Ok(());
-        }
-        if error != ERROR_IO_INCOMPLETE {
-            return Err(TransportError::Os);
-        }
-    }
-}
-
-fn zeroed_overlapped() -> OVERLAPPED {
-    // OVERLAPPED is a C POD; all fields must be zero before the native call.
-    unsafe { zeroed() }
 }
 
 pub(super) fn disconnect(handle: HANDLE) {

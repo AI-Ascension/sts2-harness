@@ -5,7 +5,7 @@ use std::mem::{size_of, zeroed};
 use std::path::PathBuf;
 use std::ptr::{addr_of_mut, null_mut};
 
-use windows_sys::Win32::Foundation::{FALSE, FILETIME, HANDLE};
+use windows_sys::Win32::Foundation::{FALSE, FILETIME, HANDLE, WAIT_FAILED, WAIT_OBJECT_0};
 use windows_sys::Win32::Security::GetTokenInformation;
 use windows_sys::Win32::Security::{GetLengthSid, IsValidSid, TOKEN_QUERY, TOKEN_USER, TokenUser};
 use windows_sys::Win32::Storage::FileSystem::{
@@ -13,8 +13,8 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 use windows_sys::Win32::System::Pipes::GetNamedPipeClientProcessId;
 use windows_sys::Win32::System::Threading::{
-    GetCurrentProcess, GetExitCodeProcess, GetProcessTimes, OpenProcess, OpenProcessToken,
-    PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
+    GetCurrentProcess, GetProcessTimes, OpenProcess, OpenProcessToken,
+    PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW, WaitForSingleObject,
 };
 
 use super::MAX_PATH_UTF16;
@@ -69,7 +69,7 @@ pub(super) fn verify_peer(
     deadline.check()?;
     Ok(VerifiedPeer { process, image })
 }
-fn process_sid(process: HANDLE) -> Result<Vec<u8>, TransportError> {
+pub(super) fn process_sid(process: HANDLE) -> Result<Vec<u8>, TransportError> {
     let mut token_raw = null_mut();
     if unsafe { OpenProcessToken(process, TOKEN_QUERY, addr_of_mut!(token_raw)) } == FALSE {
         return Err(TransportError::Identity);
@@ -113,7 +113,7 @@ fn process_sid(process: HANDLE) -> Result<Vec<u8>, TransportError> {
     Ok(sid)
 }
 
-fn process_creation(process: HANDLE) -> Result<u64, TransportError> {
+pub(super) fn process_creation(process: HANDLE) -> Result<u64, TransportError> {
     let mut creation: FILETIME = unsafe { zeroed() };
     let mut exit: FILETIME = unsafe { zeroed() };
     let mut kernel: FILETIME = unsafe { zeroed() };
@@ -133,7 +133,7 @@ fn process_creation(process: HANDLE) -> Result<u64, TransportError> {
     Ok((u64::from(creation.dwHighDateTime) << 32) | u64::from(creation.dwLowDateTime))
 }
 
-fn query_process_image(process: HANDLE) -> Result<PathBuf, TransportError> {
+pub(super) fn query_process_image(process: HANDLE) -> Result<PathBuf, TransportError> {
     let mut buffer = vec![0_u16; MAX_PATH_UTF16];
     let mut length = u32::try_from(buffer.len()).map_err(|_| TransportError::Identity)?;
     if unsafe { QueryFullProcessImageNameW(process, 0, buffer.as_mut_ptr(), addr_of_mut!(length)) }
@@ -150,8 +150,11 @@ fn query_process_image(process: HANDLE) -> Result<PathBuf, TransportError> {
 }
 
 fn process_is_live(process: HANDLE) -> Result<(), TransportError> {
-    let mut exit = 0_u32;
-    if unsafe { GetExitCodeProcess(process, addr_of_mut!(exit)) } == FALSE || exit != 259 {
+    // Exit code 259 (STILL_ACTIVE) is not reserved: a terminated process may
+    // legitimately return it.  The process object signaled state is the
+    // authoritative liveness check instead.
+    let state = unsafe { WaitForSingleObject(process, 0) };
+    if state == WAIT_OBJECT_0 || state == WAIT_FAILED {
         Err(TransportError::Identity)
     } else {
         Ok(())

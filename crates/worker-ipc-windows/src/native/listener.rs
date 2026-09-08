@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 #![allow(unsafe_code)]
 
-use std::cell::Cell;
-use std::rc::Rc;
+use std::sync::Arc;
 
+use super::connection::{ConnectionResources, ConnectionState};
 use super::io;
 use super::process::{check_worker_sid, verify_peer};
-use super::resources::{Handle, HeldImage, ProtectedCredential, ProtectedFile};
+use super::resources::{Handle, HeldImage, ProtectedCredential};
 use super::security::PipeSecurity;
 use crate::MAX_FRAME_BYTES;
 use crate::policy::EndpointPolicy;
@@ -21,7 +21,7 @@ pub(crate) struct Listener {
     credential: ProtectedCredential,
     image: HeldImage,
     pipe: Option<Handle>,
-    active: Rc<Cell<bool>>,
+    active: Option<Arc<ConnectionState>>,
     shutdown: bool,
 }
 
@@ -43,7 +43,7 @@ impl Listener {
             credential,
             image,
             pipe: Some(pipe),
-            active: Rc::new(Cell::new(false)),
+            active: None,
             shutdown: false,
         })
     }
@@ -55,13 +55,20 @@ impl Listener {
         if self.shutdown {
             return Err(TransportError::Closed);
         }
-        if self.active.get() {
-            return Err(TransportError::Busy);
+        if let Some(active) = self.active.as_ref() {
+            if !active.can_rearm() {
+                return Err(TransportError::Busy);
+            }
+            // A closed connection retains only an empty shared state.  Drop
+            // the listener's reference before creating the next *first*
+            // instance; an outstanding connection object may still retain
+            // the state without retaining any named-pipe resources.
+            self.active.take();
         }
         deadline.check()?;
         let pipe = match self.pipe.take() {
             Some(pipe) => pipe,
-            None => io::create_pipe(&self.pipe_name, &self.security, false)?,
+            None => io::create_pipe(&self.pipe_name, &self.security, true)?,
         };
         if let Err(error) = io::connect_pipe(pipe.raw(), deadline) {
             io::disconnect(pipe.raw());
@@ -92,12 +99,10 @@ impl Listener {
             self.rearm();
             return Err(error);
         }
-        self.active.set(true);
+        let state = ConnectionState::new(ConnectionResources::new(pipe, peer.process, peer.image));
+        self.active = Some(Arc::clone(&state));
         Ok(Connection {
-            pipe,
-            _process: peer.process,
-            _image: peer.image,
-            active: Rc::clone(&self.active),
+            state,
             witness: PeerWitness::verified(),
             deadline,
             request_read: false,
@@ -115,24 +120,24 @@ impl Listener {
             io::disconnect(pipe.raw());
             drop(pipe);
         }
-        Ok(())
+        self.active.take().map_or(Ok(()), |active| active.close())
     }
 
     fn rearm(&mut self) {
         if self.shutdown || self.pipe.is_some() {
             return;
         }
-        if let Ok(pipe) = io::create_pipe(&self.pipe_name, &self.security, false) {
+        // Every new instance must retain first-instance ownership.  Passing
+        // false after the original handle was consumed permits a process that
+        // raced the gap to create the endpoint under the same name.
+        if let Ok(pipe) = io::create_pipe(&self.pipe_name, &self.security, true) {
             self.pipe = Some(pipe);
         }
     }
 }
 
 pub(crate) struct Connection {
-    pipe: Handle,
-    _process: Handle,
-    _image: ProtectedFile,
-    active: Rc<Cell<bool>>,
+    state: Arc<ConnectionState>,
     witness: PeerWitness,
     deadline: Deadline,
     request_read: bool,
@@ -149,10 +154,21 @@ impl Connection {
         if self.closed || self.request_read || limit == 0 || limit > MAX_FRAME_BYTES {
             return Err(TransportError::Closed);
         }
-        let result = io::read_frame(self.pipe.raw(), limit, self.deadline);
+        let operation = self.state.begin()?;
+        let result = io::read_frame(operation.handle(), limit, self.deadline);
+        // The overlapped buffer is owned by read_frame and cannot be released
+        // until read_frame has returned.  Dropping this guard then publishes
+        // completion to listener shutdown.  The atomic finish also makes a
+        // concurrent close generation win over an otherwise completed read.
+        let current = operation.finish();
+        let result = if current {
+            result
+        } else {
+            Err(TransportError::Closed)
+        };
         self.request_read = true;
         if result.is_err() {
-            self.close_inner();
+            let _ = self.close_inner();
         }
         result
     }
@@ -162,34 +178,41 @@ impl Connection {
             return Err(TransportError::Closed);
         }
         if body.is_empty() || body.len() > limit || limit == 0 || limit > MAX_FRAME_BYTES {
-            self.close_inner();
+            let _ = self.close_inner();
             return Err(TransportError::Framing);
         }
-        let result = io::write_frame(self.pipe.raw(), body, limit, self.deadline);
+        let operation = self.state.begin()?;
+        let result = io::write_frame(operation.handle(), body, limit, self.deadline);
+        let current = operation.finish();
+        let result = if current {
+            result
+        } else {
+            Err(TransportError::Closed)
+        };
         self.response_written = true;
-        self.close_inner();
-        result
+        let close_result = self.close_inner();
+        match (result, close_result) {
+            (Err(error), _) => Err(error),
+            (Ok(()), Err(error)) => Err(error),
+            (Ok(()), Ok(())) => Ok(()),
+        }
     }
 
     pub(crate) fn close(&mut self) -> Result<(), TransportError> {
-        if !self.closed {
-            self.close_inner();
-        }
-        Ok(())
+        self.close_inner()
     }
 
-    fn close_inner(&mut self) {
+    fn close_inner(&mut self) -> Result<(), TransportError> {
         if self.closed {
-            return;
+            return self.state.close();
         }
-        io::disconnect(self.pipe.raw());
         self.closed = true;
-        self.active.set(false);
+        self.state.close()
     }
 }
 
 impl Drop for Connection {
     fn drop(&mut self) {
-        self.close_inner();
+        let _ = self.close_inner();
     }
 }

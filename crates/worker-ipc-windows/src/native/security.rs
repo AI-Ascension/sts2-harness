@@ -29,6 +29,13 @@ pub(super) struct PipeSecurity {
     pub(super) sids: Vec<Vec<u8>>,
 }
 
+// The descriptor's raw pointers borrow the separately allocated ACL/SID
+// buffers owned by this same value.  Moving the value does not move those
+// allocations, and the listener mutates neither the descriptor nor its
+// buffers after construction.  This permits a listener to be moved to the
+// thread that owns accept/shutdown while keeping the raw FFI pointers private.
+unsafe impl Send for PipeSecurity {}
+
 impl PipeSecurity {
     pub(super) fn new(worker_sid: &str, peer_sid: &str) -> Result<Self, TransportError> {
         let worker = sid_from_text(worker_sid)?;

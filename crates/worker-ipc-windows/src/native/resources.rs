@@ -28,6 +28,13 @@ use crate::transport::TransportError;
 /// partial-construction paths, and the invalid-handle sentinel is never closed.
 pub(super) struct Handle(HANDLE);
 
+// A HANDLE is an opaque kernel reference.  Ownership remains exclusive in
+// `Handle`; the shared connection state serializes every operation that can
+// release it and joins pending overlapped I/O before the final drop.  This
+// marker permits the listener and a returned connection to coordinate across
+// threads without exposing a raw handle through the safe API.
+unsafe impl Send for Handle {}
+
 impl Handle {
     pub(super) fn new(raw: HANDLE) -> Result<Self, TransportError> {
         if raw.is_null() || raw == INVALID_HANDLE_VALUE {
