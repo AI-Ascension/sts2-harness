@@ -3,6 +3,8 @@
 //! Harness-owned decoder for the frozen watchdog handoff contract.
 //! Valid framing does not authenticate a caller or authorize execution.
 
+#[path = "worker_command.rs"]
+mod command;
 mod json;
 mod request;
 mod response;
