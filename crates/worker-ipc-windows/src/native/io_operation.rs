@@ -108,6 +108,8 @@ impl OperationOwner {
                 Completion::Terminal(error) => {
                     return if uncertain {
                         Err(TransportError::Os)
+                    } else if cancel_requested {
+                        Err(TransportError::Deadline)
                     } else {
                         Err(error)
                     };

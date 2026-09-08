@@ -176,7 +176,11 @@ impl AuthenticatedConnection {
     }
 
     /// Writes exactly one bounded, framed handoff response and closes the
-    /// exchange.  A failed or cancelled write poisons the connection.
+    /// exchange after the client closes. The client must close after consuming
+    /// its response; that wait shares the original exchange deadline. Extra
+    /// client bytes are rejected. A failure does not prove the response was
+    /// unread or the application operation unsettled; no automatic retry is
+    /// authorized. A failed or cancelled write poisons the connection.
     pub fn write_response(&mut self, body: &[u8]) -> Result<(), TransportError> {
         self.inner.write_frame(body, MAX_FRAME_BYTES)
     }

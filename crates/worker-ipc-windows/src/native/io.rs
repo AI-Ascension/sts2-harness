@@ -142,6 +142,18 @@ pub(super) fn write_frame(
     write_all(pipe, body, deadline)
 }
 
+/// Keep the response pipe alive until the client closes its one-exchange
+/// connection. EOF is transport cleanup, not proof of application settlement.
+/// Extra bytes violate the single-request profile. The original deadline and
+/// cancellable operation owner also bound a client that never closes.
+pub(super) fn await_client_close(pipe: HANDLE, deadline: Deadline) -> Result<(), TransportError> {
+    match read_once(pipe, &mut [0_u8; 1], deadline) {
+        Ok(0) | Err(TransportError::Closed) => Ok(()),
+        Ok(_) => Err(TransportError::Framing),
+        Err(error) => Err(error),
+    }
+}
+
 fn read_exact(pipe: HANDLE, body: &mut [u8], deadline: Deadline) -> Result<(), TransportError> {
     let mut offset = 0_usize;
     while offset < body.len() {

@@ -130,6 +130,23 @@ fn cancellation_not_found_still_queries_for_completion() -> Result<(), Transport
 }
 
 #[test]
+fn deadline_cancellation_retains_deadline_after_abort_completion() -> Result<(), TransportError> {
+    let fake = FakeCompletion::new(
+        [
+            query(Some(WAIT_TIMEOUT), 0),
+            query(Some(ERROR_OPERATION_ABORTED), 0),
+        ],
+        [Ok(())],
+    );
+    let mut owner = OperationOwner::new(0)?;
+    let result = owner.wait_with(null_mut(), Deadline::new(Duration::from_secs(1))?, &fake);
+    assert!(matches!(result, Err(TransportError::Deadline)));
+    assert_eq!(fake.query_count(), 2);
+    assert_eq!(fake.cancel_count(), 1);
+    Ok(())
+}
+
+#[test]
 fn unknown_cancel_error_remains_unproven_until_terminal_query() -> Result<(), TransportError> {
     let fake = FakeCompletion::new(
         [

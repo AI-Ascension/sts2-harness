@@ -116,7 +116,13 @@ pub(super) fn peer_exchange(mode: &str, name: &str, credential: &Path) -> bool {
             auth[..AUTH_MAGIC.len()].fill(0);
             write_sync(handle.raw(), &auth_length) && write_sync(handle.raw(), &auth)
         }
-        "slow-auth" => write_sync(handle.raw(), &[0]),
+        "slow-auth" => {
+            let wrote = write_sync(handle.raw(), &[0]);
+            // Retain the partial prelude past the server's 50-ms deadline.
+            // Immediate exit tests disconnect, not a stalled live peer.
+            thread::sleep(Duration::from_millis(300));
+            wrote
+        }
         "slow-frame" => {
             let request_length = 2_u32.to_be_bytes();
             write_sync(handle.raw(), &auth_length)
@@ -139,15 +145,22 @@ pub(super) fn peer_exchange(mode: &str, name: &str, credential: &Path) -> bool {
                 return false;
             }
             let mut response_length = [0_u8; 4];
+            if mode == "delayed-reader" {
+                thread::sleep(Duration::from_millis(150));
+            }
             if !read_sync(handle.raw(), &mut response_length) {
-                return mode != "valid";
+                return false;
             }
             let length = u32::from_be_bytes(response_length) as usize;
             if length == 0 || length > MAX_FRAME_BYTES {
                 return false;
             }
             let mut response = vec![0_u8; length];
-            read_sync(handle.raw(), &mut response)
+            let received = read_sync(handle.raw(), &mut response) && response == b"{}";
+            if mode == "hold-after-response" {
+                thread::sleep(Duration::from_millis(800));
+            }
+            received
         }
     }
 }

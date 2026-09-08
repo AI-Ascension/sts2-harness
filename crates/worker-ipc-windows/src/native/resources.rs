@@ -15,7 +15,8 @@ use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
     FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_ID_INFO, FILE_READ_ATTRIBUTES,
     FILE_READ_DATA, FILE_SHARE_MODE, FILE_SHARE_READ, FileIdInfo, GetDriveTypeW,
-    GetFileInformationByHandle, GetFileInformationByHandleEx, OPEN_EXISTING, ReadFile,
+    GetFileInformationByHandle, GetFileInformationByHandleEx, OPEN_EXISTING, READ_CONTROL,
+    ReadFile,
 };
 
 use super::security::validate_private_acl;
@@ -170,8 +171,13 @@ pub(super) struct ProtectedCredential {
 
 impl ProtectedCredential {
     pub(super) fn open(path: &Path, worker_sid: &str) -> Result<Self, TransportError> {
-        let file =
-            ProtectedFile::open(path, FILE_READ_DATA | FILE_READ_ATTRIBUTES, FILE_SHARE_READ)?;
+        // Inspect owner and DACL through this same held file, which requires
+        // READ_CONTROL in addition to the data and identity query rights.
+        let file = ProtectedFile::open(
+            path,
+            FILE_READ_DATA | FILE_READ_ATTRIBUTES | READ_CONTROL,
+            FILE_SHARE_READ,
+        )?;
         validate_private_acl(file.raw(), worker_sid)?;
         let mut bytes = Zeroizing::new(Vec::with_capacity(MAX_CREDENTIAL_BYTES));
         let mut chunk = Zeroizing::new([0_u8; MAX_CREDENTIAL_BYTES]);

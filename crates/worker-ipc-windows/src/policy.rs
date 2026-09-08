@@ -214,7 +214,13 @@ pub(crate) fn validate_local_path(path: &Path) -> Result<(), TransportError> {
     {
         return Err(TransportError::Configuration);
     }
-    if value[2..].contains(':') {
+    // Path::components normalizes interior `.` segments on Windows. Inspect
+    // the original spelling first so normalization cannot bypass this policy.
+    if value[2..].contains(':')
+        || value[3..]
+            .split(['\\', '/'])
+            .any(|component| matches!(component, "." | ".."))
+    {
         return Err(TransportError::Configuration);
     }
     for component in path.components() {
@@ -284,6 +290,9 @@ mod tests {
         assert!(validate_local_path(Path::new(r"C:\worker\credential.txt")).is_ok());
         assert!(validate_local_path(Path::new(r"C:\worker\..\credential.txt")).is_err());
         assert!(validate_local_path(Path::new(r"C:\worker\.\credential.txt")).is_err());
+        assert!(validate_local_path(Path::new("C:/worker/./credential.txt")).is_err());
+        assert!(validate_local_path(Path::new(r"C:\worker/../credential.txt")).is_err());
+        assert!(validate_local_path(Path::new(r"C:\worker\.")).is_err());
         assert!(validate_local_path(Path::new(r"C:\worker\credential.txt:stream")).is_err());
         assert!(validate_local_path(Path::new(r"C:\worker\credential.txt")).is_ok());
         assert!(validate_local_path(Path::new(r"\\server\share\credential.txt")).is_err());

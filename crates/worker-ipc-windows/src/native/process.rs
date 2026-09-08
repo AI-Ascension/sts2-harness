@@ -14,7 +14,8 @@ use windows_sys::Win32::Storage::FileSystem::{
 use windows_sys::Win32::System::Pipes::GetNamedPipeClientProcessId;
 use windows_sys::Win32::System::Threading::{
     GetCurrentProcess, GetProcessTimes, OpenProcess, OpenProcessToken,
-    PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW, WaitForSingleObject,
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, QueryFullProcessImageNameW,
+    WaitForSingleObject,
 };
 
 use super::MAX_PATH_UTF16;
@@ -41,7 +42,15 @@ pub(super) fn verify_peer(
     {
         return Err(TransportError::Identity);
     }
-    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) };
+    // The retained process is queried and waited on for liveness; limited
+    // query access alone cannot authorize WaitForSingleObject.
+    let process = unsafe {
+        OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
+            FALSE,
+            pid,
+        )
+    };
     let process = Handle::new(process).map_err(|_| TransportError::Identity)?;
     deadline.check()?;
     if process_creation(process.raw())? != expected_creation_filetime {

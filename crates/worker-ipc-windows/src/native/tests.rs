@@ -18,7 +18,7 @@ use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_I
 
 use super::io;
 use super::process::{process_creation, process_sid, query_process_image};
-use super::resources::{Handle, HeldImage, ProtectedCredential};
+use super::resources::{Handle, HeldImage, ProtectedCredential, ProtectedFile};
 use super::security::PipeSecurity;
 use super::test_peer::{peer_exchange, spawn_peer};
 use super::test_support::{Fixture, pipe_name};
@@ -50,6 +50,33 @@ fn native_finite_peer_completes_one_exchange() -> Result<(), TransportError> {
     let status = child.wait().map_err(|_| TransportError::Os)?;
     assert!(status.success());
     listener.shutdown()
+}
+
+#[test]
+fn native_response_delivery_and_client_close_are_bounded() -> Result<(), TransportError> {
+    for (index, mode) in ["delayed-reader", "hold-after-response"]
+        .into_iter()
+        .enumerate()
+    {
+        let fixture = Fixture::new()?;
+        let endpoint_nonce = super::test_support::nonce(50 + index as u64);
+        let mut child = spawn_peer(mode, endpoint_nonce, &fixture.credential)?;
+        let policy = fixture.policy_for_child(&child, endpoint_nonce)?;
+        let mut listener = WorkerListener::bind(policy)?;
+        let mut connection =
+            listener.accept_authenticated(Deadline::new(Duration::from_millis(500))?)?;
+        assert_eq!(connection.read_request()?, b"{}");
+        let result = connection.write_response(b"{}");
+        if mode == "delayed-reader" {
+            assert!(result.is_ok());
+        } else {
+            assert!(matches!(result, Err(TransportError::Deadline)));
+            assert!(child.try_wait().map_err(|_| TransportError::Os)?.is_none());
+        }
+        assert!(child.wait().map_err(|_| TransportError::Os)?.success());
+        listener.shutdown()?;
+    }
+    Ok(())
 }
 
 #[test]
@@ -133,6 +160,30 @@ fn native_peer_pid_creation_and_sid_mismatches_fail_closed() -> Result<(), Trans
 }
 
 #[test]
+fn native_same_bytes_different_image_file_is_rejected() -> Result<(), TransportError> {
+    let fixture = Fixture::new()?;
+    let different_image = fixture.directory.join("different-image.exe");
+    fs::copy(&fixture.image, &different_image).map_err(|_| TransportError::Os)?;
+    let endpoint_nonce = super::test_support::nonce(60);
+    let mut child = spawn_peer("valid", endpoint_nonce, &fixture.credential)?;
+    let actual_policy = fixture.policy_for_child(&child, endpoint_nonce)?;
+    let actual = actual_policy.expected_peer();
+    let policy = fixture.policy_for_child_parts(
+        actual.pid(),
+        endpoint_nonce,
+        actual.sid().as_str().to_owned(),
+        actual.creation_filetime(),
+        different_image,
+        fixture.image_sha256,
+    )?;
+    let mut listener = WorkerListener::bind(policy)?;
+    let result = listener.accept_authenticated(Deadline::new(Duration::from_secs(2))?);
+    assert!(matches!(result, Err(TransportError::Identity)));
+    let _ = child.wait().map_err(|_| TransportError::Os)?;
+    listener.shutdown()
+}
+
+#[test]
 fn native_shutdown_cancels_and_joins_active_reader() -> Result<(), TransportError> {
     let fixture = Fixture::new()?;
     let endpoint_nonce = super::test_support::nonce(20);
@@ -172,7 +223,7 @@ fn native_shutdown_cancels_and_joins_active_reader() -> Result<(), TransportErro
 }
 
 #[test]
-fn native_first_instance_acl_and_reparse_guards_hold() -> Result<(), TransportError> {
+fn native_first_instance_acl_and_hardlink_guards_hold() -> Result<(), TransportError> {
     let fixture = Fixture::new()?;
     let first_nonce = super::test_support::nonce(30);
     let first_policy = fixture.policy_for_current(first_nonce)?;
@@ -183,11 +234,23 @@ fn native_first_instance_acl_and_reparse_guards_hold() -> Result<(), TransportEr
         Err(TransportError::Os)
     ));
     listener.shutdown()?;
+    // Shutdown closes the endpoint; dropping the owner also releases its
+    // intentionally retained image and credential sharing locks.
+    drop(listener);
 
+    // Create an alias before imposing a read-only credential ACL (Windows
+    // denies alias creation on that ACL). Test the file-type gate directly so
+    // an ACL rejection cannot falsely satisfy the hardlink assertion.
+    let source = fixture.directory.join("hardlink-source.txt");
+    fs::write(&source, b"synthetic-hardlink-fixture").map_err(|_| TransportError::Os)?;
     let hardlink = fixture.directory.join("credential-hardlink.txt");
-    fs::hard_link(&fixture.credential, &hardlink).map_err(|_| TransportError::Os)?;
+    fs::hard_link(&source, &hardlink).map_err(|_| TransportError::Os)?;
     assert!(matches!(
-        ProtectedCredential::open(&hardlink, &fixture.worker_sid),
+        ProtectedFile::open(
+            &hardlink,
+            windows_sys::Win32::Storage::FileSystem::FILE_READ_ATTRIBUTES,
+            windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ,
+        ),
         Err(TransportError::Credential)
     ));
 
@@ -198,13 +261,20 @@ fn native_first_instance_acl_and_reparse_guards_hold() -> Result<(), TransportEr
         Err(TransportError::Credential)
     ));
 
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires Windows symlink creation privilege; fixture failure is not a pass"]
+fn native_credential_symlink_is_rejected() -> Result<(), TransportError> {
+    let fixture = Fixture::new()?;
     let reparse = fixture.directory.join("credential-link.txt");
-    if std::os::windows::fs::symlink_file(&fixture.credential, &reparse).is_ok() {
-        assert!(matches!(
-            ProtectedCredential::open(&reparse, &fixture.worker_sid),
-            Err(TransportError::Credential)
-        ));
-    }
+    std::os::windows::fs::symlink_file(&fixture.credential, &reparse)
+        .map_err(|_| TransportError::Os)?;
+    assert!(matches!(
+        ProtectedCredential::open(&reparse, &fixture.worker_sid),
+        Err(TransportError::Credential)
+    ));
     Ok(())
 }
 

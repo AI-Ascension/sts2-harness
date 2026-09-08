@@ -182,7 +182,8 @@ impl Connection {
             return Err(TransportError::Framing);
         }
         let operation = self.state.begin()?;
-        let result = io::write_frame(operation.handle(), body, limit, self.deadline);
+        let result = io::write_frame(operation.handle(), body, limit, self.deadline)
+            .and_then(|()| io::await_client_close(operation.handle(), self.deadline));
         let current = operation.finish();
         let result = if current {
             result
