@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use super::super::worker_store::try_lock_recovery;
+use super::super::worker_store::{
+    begin_quarantine, finish_quarantine, try_lock, try_lock_recovery,
+};
 use super::*;
 use serde_json::{Map, json};
 use sts2_harness::worker_handoff::{SCHEMA_DIGEST, WorkerCapability, WorkerRequest};
@@ -119,6 +121,24 @@ fn authenticated(
     ))
 }
 
+fn admitted_reservation(
+    runtime: &mut WorkerRuntime,
+) -> Result<WorkerExecutionReservation, Box<dyn std::error::Error>> {
+    let exchange = runtime.handle_authenticated(&authenticated(request()?)?)?;
+    let (_, reservation) = exchange.into_parts();
+    reservation.ok_or_else(|| "dispatch did not return an execution reservation".into())
+}
+
+fn handoff_state(
+    runtime: &WorkerRuntime,
+) -> Result<WorkerHandoffState, Box<dyn std::error::Error>> {
+    let store = try_lock_recovery(&runtime.store)?;
+    Ok(store
+        .worker_handoff(HANDOFF_ID)?
+        .ok_or("missing handoff")?
+        .state)
+}
+
 #[test]
 fn failed_response_retains_unknown_and_never_starts() -> Result<(), Box<dyn std::error::Error>> {
     let mut runtime = runtime()?;
@@ -146,6 +166,95 @@ fn successful_response_crosses_the_running_fence() -> Result<(), Box<dyn std::er
     let store = try_lock(&runtime.store)?;
     let handoff = store.worker_handoff(HANDOFF_ID)?.ok_or("missing handoff")?;
     assert_eq!(handoff.state, WorkerHandoffState::Running);
+    Ok(())
+}
+
+#[test]
+fn held_store_lock_retains_primary_and_quarantine_diagnostics()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut runtime = runtime()?;
+    let reservation = admitted_reservation(&mut runtime)?;
+    let shared_store = runtime.store.clone();
+    let held_store = try_lock_recovery(&shared_store)?;
+    let error = match runtime.finish_reservation(Some(reservation), ResponseWriteStatus::Written) {
+        Ok(_) => return Err("held store lock unexpectedly started a reservation".into()),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("execution store is busy"),
+        "primary: {error}"
+    );
+    assert!(
+        error.contains("failed to retain unknown worker handoff"),
+        "quarantine: {error}"
+    );
+    assert_eq!(runtime.lane.active_handoff_id(), Some(HANDOFF_ID));
+    drop(held_store);
+    assert_eq!(handoff_state(&runtime)?, WorkerHandoffState::Admitted);
+
+    let retry = runtime.handle_authenticated(&authenticated(request()?)?);
+    let retry_error = match retry {
+        Ok(_) => return Err("quarantine-pending gate admitted a fresh dispatch".into()),
+        Err(error) => error,
+    };
+    assert!(retry_error.contains("fail-closed"), "retry: {retry_error}");
+    assert_eq!(handoff_state(&runtime)?, WorkerHandoffState::Admitted);
+    Ok(())
+}
+
+#[test]
+fn already_quarantined_gate_accounts_for_admitted_reservation()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut runtime = runtime()?;
+    let reservation = admitted_reservation(&mut runtime)?;
+    assert!(!begin_quarantine(&runtime.store)?);
+    finish_quarantine(&runtime.store);
+
+    let outcome = runtime.finish_reservation(Some(reservation), ResponseWriteStatus::Written)?;
+    assert!(matches!(outcome, WorkerStartOutcome::Unknown { .. }));
+    assert_eq!(handoff_state(&runtime)?, WorkerHandoffState::Unknown);
+    assert_eq!(runtime.lane.active_handoff_id(), Some(HANDOFF_ID));
+
+    let retry = runtime.handle_authenticated(&authenticated(request()?)?);
+    let retry_error = match retry {
+        Ok(_) => return Err("quarantined gate admitted a fresh dispatch".into()),
+        Err(error) => error,
+    };
+    assert!(retry_error.contains("fail-closed"), "retry: {retry_error}");
+    assert_eq!(handoff_state(&runtime)?, WorkerHandoffState::Unknown);
+    Ok(())
+}
+
+#[test]
+fn closed_store_preserves_start_and_unknown_retention_failures()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut runtime = runtime()?;
+    let reservation = admitted_reservation(&mut runtime)?;
+    {
+        let mut store = try_lock_recovery(&runtime.store)?;
+        store.close()?;
+    }
+
+    let error = match runtime.finish_reservation(Some(reservation), ResponseWriteStatus::Written) {
+        Ok(_) => return Err("closed store unexpectedly started a reservation".into()),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("worker command durable store operation failed"),
+        "primary: {error}"
+    );
+    assert!(
+        error.contains("cannot retain uncertain worker handoff"),
+        "quarantine: {error}"
+    );
+    assert_eq!(runtime.lane.active_handoff_id(), Some(HANDOFF_ID));
+
+    let retry = runtime.handle_authenticated(&authenticated(request()?)?);
+    let retry_error = match retry {
+        Ok(_) => return Err("closed-store gate admitted a fresh dispatch".into()),
+        Err(error) => error,
+    };
+    assert!(retry_error.contains("fail-closed"), "retry: {retry_error}");
     Ok(())
 }
 

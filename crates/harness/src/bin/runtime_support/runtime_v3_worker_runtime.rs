@@ -250,7 +250,20 @@ impl WorkerRuntime {
                 )),
             };
         }
-        let mut store = try_lock(&self.store)?;
+        let mut store = match try_lock(&self.store) {
+            Ok(store) => store,
+            Err(error) => {
+                // The response already crossed the admission boundary. The permit cannot be
+                // retried or silently dropped when the normal lease is unavailable: preserve
+                // the reservation as unknown through the recovery lease, while retaining the
+                // original lock/gate diagnostic if that write is also blocked.
+                drop(reservation);
+                return match self.retain_unknown(&handoff_id) {
+                    Ok(()) => Ok(WorkerStartOutcome::Unknown { handoff_id }),
+                    Err(quarantine) => Err(combine_failure(error, Err(quarantine))),
+                };
+            }
+        };
         match reservation.start(&mut store) {
             Ok(running) => {
                 if running.state != WorkerHandoffState::Running {
