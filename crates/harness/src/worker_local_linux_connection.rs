@@ -72,9 +72,13 @@ impl AuthenticatedWorkerConnection {
         if self.request_read || self.response_written {
             return Err(LinuxTransportError::Closed);
         }
-        let result = self.io.read_frame(MAX_FRAME_BYTES).await;
         self.request_read = true;
-        result.map_err(Into::into)
+        // Close before awaiting: cancellation or a partial/failed frame must
+        // never leave a reusable exchange behind.
+        self.response_written = true;
+        let request = self.io.read_frame(MAX_FRAME_BYTES).await?;
+        self.response_written = false;
+        Ok(request)
     }
 
     /// Writes exactly one bounded handoff response frame after the request has
@@ -86,9 +90,11 @@ impl AuthenticatedWorkerConnection {
         if !self.request_read || self.response_written {
             return Err(LinuxTransportError::Closed);
         }
-        let result = self.io.write_frame(response, MAX_FRAME_BYTES).await;
         self.response_written = true;
-        result.map_err(Into::into)
+        self.io
+            .write_frame(response, MAX_FRAME_BYTES)
+            .await
+            .map_err(Into::into)
     }
 }
 

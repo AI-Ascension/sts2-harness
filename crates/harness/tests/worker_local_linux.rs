@@ -319,6 +319,32 @@ fn protected_path_and_credential_permissions_fail_closed() -> TestResult {
 }
 
 #[tokio::test]
+async fn cancelled_request_read_closes_exchange() -> TestResult {
+    let fixture = Fixture::new(b"worker-control-secret")?;
+    let listener = fixture_config(&fixture)?.bind()?;
+    let mut stream = UnixStream::connect(&fixture.endpoint).await?;
+    write_auth(&mut stream, &fixture.secret, AUTH_MAGIC).await?;
+    let mut connection = listener
+        .accept_authenticated(ConnectionDeadline::start(IDENTITY_DEADLINE)?)
+        .await?;
+    let mut pending = Box::pin(connection.read_request_bytes());
+    tokio::select! {
+        result = &mut pending => return Err(format!("read completed before cancellation: {result:?}").into()),
+        _ = sleep(Duration::from_millis(20)) => {}
+    }
+    drop(pending);
+    assert_eq!(
+        connection.read_request_bytes().await,
+        Err(LinuxTransportError::Closed)
+    );
+    assert_eq!(
+        connection.write_response_bytes(b"x").await,
+        Err(LinuxTransportError::Closed)
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn oversized_request_poisoning_cannot_be_restarted() -> TestResult {
     let fixture = Fixture::new(b"worker-control-secret")?;
     let listener = fixture_config(&fixture)?.bind()?;
