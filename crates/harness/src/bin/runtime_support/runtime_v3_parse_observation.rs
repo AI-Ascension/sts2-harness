@@ -61,20 +61,19 @@ pub(in super::super) fn action_set_with_catalog(
     Ok((actions, payloads, catalog))
 }
 
+pub(in super::super) struct ParsedActionCatalog {
+    pub(in super::super) actions: EpisodeLegalActionSet,
+    pub(in super::super) payloads: BTreeMap<String, Value>,
+    pub(in super::super) catalog: Value,
+    pub(in super::super) catalog_raw: Vec<u8>,
+}
+
 pub(in super::super) fn action_set_with_catalog_text(
     value: &Value,
     response_text: &str,
     expected_kind: &str,
     config: &RuntimeConfig,
-) -> Result<
-    (
-        EpisodeLegalActionSet,
-        BTreeMap<String, Value>,
-        Value,
-        Vec<u8>,
-    ),
-    String,
-> {
+) -> Result<ParsedActionCatalog, String> {
     let root = root(value, expected_kind, config)?;
     validate_observation_fields(root)?;
     require_null(root, "observation")?;
@@ -86,7 +85,12 @@ pub(in super::super) fn action_set_with_catalog_text(
         .ok_or_else(|| String::from("Runtime-v3 response omitted legal_actions"))?;
     let catalog_raw = raw_catalog(Some(response_text), &catalog)?;
     let (actions, payloads) = parse_actions(Some(&catalog), state_id, generation)?;
-    Ok((actions, payloads, catalog, catalog_raw))
+    Ok(ParsedActionCatalog {
+        actions,
+        payloads,
+        catalog,
+        catalog_raw,
+    })
 }
 
 // Installation of an already validated receipt/wait uses its result shape, not the

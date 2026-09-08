@@ -27,6 +27,8 @@ mod operations;
 #[path = "runtime_v3_durable_support.rs"]
 mod support;
 
+pub(super) use operations::OperationCatalogEvidence;
+
 use support::{config_digest, fingerprint, optional_env, sha256_bytes, sha256_json};
 
 /// A cloneable handle deliberately backed by one owner-local SQLite connection.
@@ -107,7 +109,7 @@ impl DurableHandle {
                     .ok_or_else(|| String::from("runtime-v3 checkpoint sequence exhausted"))
             })?;
         let resume_boundary = match &state {
-            ResumeState::Ready { checkpoint, .. } => checkpoint.clone(),
+            ResumeState::Ready { checkpoint, .. } => checkpoint.as_deref().cloned(),
             _ => None,
         };
         let handle = Self {

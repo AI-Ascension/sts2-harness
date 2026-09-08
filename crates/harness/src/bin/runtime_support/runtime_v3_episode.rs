@@ -10,6 +10,7 @@ use sts2_harness::{
 
 use super::super::mcp::validate_or_release_allocation_with;
 use super::super::runtime_v3_telemetry::ObservationSource;
+use super::durable::OperationCatalogEvidence;
 use super::{OperationRecord, RuntimeV3Port, allocation_context, parse, wire};
 
 const MAX_OPERATIONS: usize = 1_024;
@@ -125,19 +126,20 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                 true,
             ));
         }
-        let (actions, payloads, catalog, catalog_raw) = parse::action_set_with_catalog_text(
+        let parsed = parse::action_set_with_catalog_text(
             &value,
             &response_text,
             "legal_actions_response",
             &self.config,
         )
         .map_err(|error| wire::port_error("legal_actions_invalid", error, false))?;
+        let actions = parsed.actions;
         self.generation = actions.generation();
         self.current_state = Some(actions.state_id().to_owned());
         self.current_actions = Some(actions.clone());
-        self.catalog = Some(catalog);
-        self.catalog_raw = Some(catalog_raw);
-        self.payloads = payloads;
+        self.catalog = Some(parsed.catalog);
+        self.catalog_raw = Some(parsed.catalog_raw);
+        self.payloads = parsed.payloads;
         Ok(actions)
     }
 
@@ -168,14 +170,16 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                     identity.generation,
                     action,
                     &payload,
-                    &input,
-                    self.catalog_raw.as_deref().ok_or_else(|| {
-                        wire::port_error(
-                            "catalog_missing",
-                            "operation intent has no retained legal-action bytes",
-                            false,
-                        )
-                    })?,
+                    OperationCatalogEvidence {
+                        input: &input,
+                        raw: self.catalog_raw.as_deref().ok_or_else(|| {
+                            wire::port_error(
+                                "catalog_missing",
+                                "operation intent has no retained legal-action bytes",
+                                false,
+                            )
+                        })?,
+                    },
                 )
                 .map_err(|error| wire::port_error("operation_intent_failed", error, false))?;
             durable

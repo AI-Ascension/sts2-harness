@@ -12,6 +12,11 @@ use super::super::decision_replay;
 use super::support::{decision_input_digest, response_evidence, sha256_bytes, sha256_json};
 use super::{DurableHandle, PROVIDER_RESERVATION_UNITS, ProviderReservationToken};
 
+pub(in super::super) struct OperationCatalogEvidence<'a> {
+    pub(in super::super) input: &'a Value,
+    pub(in super::super) raw: &'a [u8],
+}
+
 impl DurableHandle {
     #[cfg(test)]
     pub(in super::super) fn operation_intent(
@@ -39,8 +44,10 @@ impl DurableHandle {
             generation,
             action,
             payload,
-            input,
-            &catalog_raw,
+            OperationCatalogEvidence {
+                input,
+                raw: &catalog_raw,
+            },
         )
     }
 
@@ -51,16 +58,15 @@ impl DurableHandle {
         generation: u64,
         action: &EpisodeLegalAction,
         payload: &Value,
-        input: &Value,
-        catalog_raw: &[u8],
+        catalog: OperationCatalogEvidence<'_>,
     ) -> Result<String, String> {
         let action_payload = super::super::super::runtime_v3_wire::canonical_action_bytes(
             action.action_id(),
             payload,
         )?;
         let payload_digest = format!("{:x}", sha2::Sha256::digest(&action_payload));
-        let input_digest = sha256_json(input)?;
-        let catalog_digest = Some(sha256_bytes(catalog_raw));
+        let input_digest = sha256_json(catalog.input)?;
+        let catalog_digest = Some(sha256_bytes(catalog.raw));
         let intent = OperationIntent::new_with_action_and_catalog(
             self.lineage.clone(),
             operation_id,
@@ -72,7 +78,7 @@ impl DurableHandle {
             payload_digest.clone(),
             input_digest,
             catalog_digest,
-            Some(catalog_raw.to_vec()),
+            Some(catalog.raw.to_vec()),
         )
         .map_err(|error| format!("runtime-v3 operation intent is invalid: {error}"))?;
         self.store

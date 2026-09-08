@@ -200,7 +200,7 @@ pub enum JobClaimOutcome {
 pub enum ResumeState {
     New,
     Ready {
-        checkpoint: Option<Checkpoint>,
+        checkpoint: Option<Box<Checkpoint>>,
         pending_operations: Vec<StoredOperation>,
         pending_decisions: Vec<StoredDecision>,
     },

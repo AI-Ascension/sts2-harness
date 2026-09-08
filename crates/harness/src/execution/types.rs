@@ -11,7 +11,7 @@ mod error;
 #[path = "types_records.rs"]
 mod records;
 
-pub use checkpoint::Checkpoint;
+pub use checkpoint::{CatalogEvidence, Checkpoint};
 pub use core::{
     ExecutionFingerprint, ExecutionLineage, ExecutionStoreConfig, MAX_CATALOG_BYTES,
     RECOVERY_CONTRACT_VERSION, RECOVERY_SCHEMA_DIGEST, StorePragmas,

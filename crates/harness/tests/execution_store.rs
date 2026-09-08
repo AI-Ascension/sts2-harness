@@ -9,10 +9,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use sha2::{Digest, Sha256};
 
 use sts2_harness::{
-    AttemptKind, AttemptState, Checkpoint, CompletionRecord, CompletionStatus, DecisionReference,
-    ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig, JobClaimOutcome,
-    JobState, OperationIntent, ProviderFailureClass, ProviderReservation, ProviderReservationState,
-    RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState,
+    AttemptKind, AttemptState, CatalogEvidence, Checkpoint, CompletionRecord, CompletionStatus,
+    DecisionReference, ExecutionFingerprint, ExecutionLineage, ExecutionStore,
+    ExecutionStoreConfig, JobClaimOutcome, JobState, OperationIntent, ProviderFailureClass,
+    ProviderReservation, ProviderReservationState, RECOVERY_SCHEMA_DIGEST, RecoveryDisposition,
+    ResumeState,
 };
 
 fn path(name: &str) -> PathBuf {
@@ -244,7 +245,7 @@ fn checkpoint_reconstruction_copies_the_verified_boundary_and_preserves_attempt_
     assert_eq!(
         store.resume_episode("episode-1", &fingerprint()),
         Ok(ResumeState::Ready {
-            checkpoint: Some(checkpoint(next, 3, 12)),
+            checkpoint: Some(Box::new(checkpoint(next, 3, 12))),
             pending_operations: Vec::new(),
             pending_decisions: Vec::new(),
         })

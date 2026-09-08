@@ -4,19 +4,20 @@ use serde_json::{Value, json};
 
 use super::catalog::raw_catalog;
 
-fn parsed(text: &str) -> Value {
-    serde_json::from_str(text).expect("catalog fixture is valid JSON")
+fn parsed(text: &str) -> Result<Value, serde_json::Error> {
+    serde_json::from_str(text)
 }
 
 #[test]
-fn catalog_retention_preserves_noncanonical_wire_bytes() {
+fn catalog_retention_preserves_noncanonical_wire_bytes() -> Result<(), Box<dyn std::error::Error>> {
     let text = r#"{"legal_actions" : [ {"action_id":"a","action":{"kind":"end_turn","label":"\u0061"}} ]}"#;
-    let value = parsed(text);
+    let value = parsed(text)?;
     let semantic = value["legal_actions"].clone();
     assert_eq!(
-        raw_catalog(Some(text), &semantic).expect("raw catalog is retained"),
+        raw_catalog(Some(text), &semantic)?,
         br#"[ {"action_id":"a","action":{"kind":"end_turn","label":"\u0061"}} ]"#
     );
+    Ok(())
 }
 
 #[test]
@@ -33,7 +34,8 @@ fn catalog_retention_rejects_duplicate_members_and_trailing_bytes() {
 }
 
 #[test]
-fn catalog_retention_rejects_malformed_deep_and_oversized_input() {
+fn catalog_retention_rejects_malformed_deep_and_oversized_input()
+-> Result<(), Box<dyn std::error::Error>> {
     assert!(raw_catalog(Some(r#"{"legal_actions":[}"#), &json!([])).is_err());
 
     let deep = format!(
@@ -45,8 +47,9 @@ fn catalog_retention_rejects_malformed_deep_and_oversized_input() {
 
     let large_string = "x".repeat(sts2_harness::MAX_CATALOG_BYTES);
     let large = format!(r#"{{"legal_actions":["{large_string}"]}}"#);
-    let value = parsed(&large);
+    let value = parsed(&large)?;
     assert!(raw_catalog(Some(&large), &value["legal_actions"]).is_err());
+    Ok(())
 }
 
 #[test]

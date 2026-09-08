@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 use serde_json::Value;
-use sts2_harness::{Checkpoint, EpisodeObservation};
+use sts2_harness::{CatalogEvidence, Checkpoint, EpisodeObservation};
 
 use super::{DurableHandle, sha256_bytes};
 
@@ -120,8 +120,7 @@ impl DurableHandle {
             observation.generation(),
             self.fingerprint.clone(),
             observation_bytes,
-            legal_actions_digest,
-            catalog_raw.to_vec(),
+            CatalogEvidence::new(legal_actions_digest, Some(catalog_raw.to_vec())),
         )
         .map_err(|error| format!("runtime-v3 checkpoint is invalid: {error}"))?;
         self.store
