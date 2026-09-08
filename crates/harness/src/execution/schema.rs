@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: MIT
 
-use rusqlite::{Connection, Transaction};
+use {super::types::ExecutionStoreError, rusqlite::Connection};
 
-use super::types::ExecutionStoreError;
+#[path = "schema_transaction.rs"]
+mod schema_transaction;
+#[path = "schema_worker.rs"]
+mod schema_worker;
 
 #[path = "schema_bootstrap.rs"]
 mod bootstrap;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 6;
+pub(crate) use schema_transaction::transaction;
+
+pub const CURRENT_SCHEMA_VERSION: i32 = 7;
 
 use bootstrap::MIGRATION_1;
 
@@ -110,6 +115,10 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), ExecutionStoreE
             .execute_batch("PRAGMA user_version = 6")
             .map_err(map_sqlite)?;
         transaction.commit().map_err(map_sqlite)?;
+        version = 6;
+    }
+    if version == 6 {
+        schema_worker::migrate(connection)?;
     }
     Ok(())
 }
@@ -146,18 +155,6 @@ pub(crate) fn map_sqlite(error: rusqlite::Error) -> ExecutionStoreError {
         return ExecutionStoreError::Corrupt;
     }
     ExecutionStoreError::Persistence(String::from("SQLite operation failed"))
-}
-
-pub(crate) fn map_transaction(error: rusqlite::Error) -> ExecutionStoreError {
-    map_sqlite(error)
-}
-
-pub(crate) fn transaction<'a>(
-    connection: &'a mut Connection,
-) -> Result<Transaction<'a>, ExecutionStoreError> {
-    connection
-        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-        .map_err(map_transaction)
 }
 
 #[cfg(test)]

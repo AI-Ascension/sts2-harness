@@ -324,6 +324,9 @@ mod original_context;
 #[path = "execution_store/operation_identity.rs"]
 mod operation_identity;
 
+#[path = "execution_store/worker.rs"]
+mod worker;
+
 #[path = "execution_store/oversized_result.rs"]
 mod oversized_result;
 

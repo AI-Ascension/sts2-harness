@@ -15,6 +15,11 @@ mod store_provider_results;
 mod store_recovery;
 mod store_recovery_attempt;
 mod store_recovery_disposition;
+mod store_worker;
+mod store_worker_completion;
+mod store_worker_control;
+mod store_worker_lookup;
+mod store_worker_queries;
 mod types;
 
 pub use store_core::ExecutionStore;
@@ -25,5 +30,9 @@ pub use types::{
     MAX_OPERATION_ACTION_BYTES, MAX_ORIGINAL_CONTEXT_BYTES, OperationIntent, OperationState,
     ProviderFailureClass, ProviderReservation, ProviderReservationState, RECOVERY_CONTRACT_VERSION,
     RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState, StorePragmas, StoredAttempt,
-    StoredDecision, StoredEpisode, StoredJob, StoredOperation,
+    StoredDecision, StoredEpisode, StoredJob, StoredOperation, StoredWorkerHandoff,
+    WORKER_EMPTY_PARAMETERS_DIGEST, WORKER_HANDOFF_CONTRACT, WORKER_HANDOFF_SCHEMA_DIGEST,
+    WORKER_MAX_ATTEMPT_NUMBER, WorkerAdmissionContext, WorkerBoot, WorkerCompletionStatus,
+    WorkerControlMode, WorkerControlRequest, WorkerControlState, WorkerHandoffState, WorkerLookup,
+    WorkerOwnerProof, WorkerReservationState, WorkerTerminalReceipt, WorkerTuple,
 };

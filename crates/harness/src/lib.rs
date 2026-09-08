@@ -52,6 +52,11 @@ pub use execution::{
     OperationState, ProviderFailureClass, ProviderReservation, ProviderReservationState,
     RECOVERY_CONTRACT_VERSION, RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState,
     StorePragmas, StoredAttempt, StoredDecision, StoredEpisode, StoredJob, StoredOperation,
+    StoredWorkerHandoff, WORKER_EMPTY_PARAMETERS_DIGEST, WORKER_HANDOFF_CONTRACT,
+    WORKER_HANDOFF_SCHEMA_DIGEST, WORKER_MAX_ATTEMPT_NUMBER, WorkerAdmissionContext, WorkerBoot,
+    WorkerCompletionStatus, WorkerControlMode, WorkerControlRequest, WorkerControlState,
+    WorkerHandoffState, WorkerLookup, WorkerOwnerProof, WorkerReservationState,
+    WorkerTerminalReceipt, WorkerTuple,
 };
 pub use exo::{
     BoundDecision, Decision, DecisionError, ExoClient, ExoConfig, ExoDecisionRequest, ExoError,
