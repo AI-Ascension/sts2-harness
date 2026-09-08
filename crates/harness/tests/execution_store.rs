@@ -318,6 +318,9 @@ mod recovery;
 #[path = "execution_store/catalog.rs"]
 mod catalog;
 
+#[path = "execution_store/original_context.rs"]
+mod original_context;
+
 #[path = "execution_store/operation_identity.rs"]
 mod operation_identity;
 

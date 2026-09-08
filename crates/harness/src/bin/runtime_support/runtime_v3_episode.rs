@@ -10,7 +10,7 @@ use sts2_harness::{
 
 use super::super::mcp::validate_or_release_allocation_with;
 use super::super::runtime_v3_telemetry::ObservationSource;
-use super::durable::OperationCatalogEvidence;
+use super::durable::{OperationCatalogEvidence, OperationIntentEvidence};
 use super::{OperationRecord, RuntimeV3Port, allocation_context, parse, wire};
 
 const MAX_OPERATIONS: usize = 1_024;
@@ -174,13 +174,13 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                 super::recovery::RecoveryContext::original_context_raw(authority)
                     .map_err(|error| wire::port_error("operation_context_failed", error, false))?;
             durable
-                .operation_intent_with_catalog_and_context(
-                    &identity.operation_id,
-                    &identity.state_id,
-                    identity.generation,
+                .persist_operation_intent(OperationIntentEvidence {
+                    operation_id: &identity.operation_id,
+                    state_id: &identity.state_id,
+                    generation: identity.generation,
                     action,
-                    &payload,
-                    OperationCatalogEvidence {
+                    payload: &payload,
+                    catalog: OperationCatalogEvidence {
                         input: &input,
                         raw: self.catalog_raw.as_deref().ok_or_else(|| {
                             wire::port_error(
@@ -190,8 +190,8 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                             )
                         })?,
                     },
-                    Some(&original_context_raw),
-                )
+                    original_context_raw: Some(&original_context_raw),
+                })
                 .map_err(|error| wire::port_error("operation_intent_failed", error, false))?;
             durable
                 .operation_dispatched(&identity.operation_id, &payload_digest)

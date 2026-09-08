@@ -2,15 +2,13 @@
 
 use serde_json::Value;
 use sha2::Digest;
-use sts2_harness::{
-    Decision, DecisionInput, DecisionReference, EpisodeLegalAction, OperationIntent,
-    OperationState, ProviderFailureClass, ProviderReservation,
-};
+use sts2_harness::{EpisodeLegalAction, OperationIntent, OperationState};
 
-use super::super::DecisionAdmission;
-use super::super::decision_replay;
-use super::support::{decision_input_digest, response_evidence, sha256_bytes, sha256_json};
-use super::{DurableHandle, PROVIDER_RESERVATION_UNITS, ProviderReservationToken};
+use super::DurableHandle;
+use super::support::{response_evidence, sha256_bytes, sha256_json};
+
+#[path = "runtime_v3_durable_decisions.rs"]
+mod decisions;
 
 #[cfg(test)]
 const TEST_ORIGINAL_CONTEXT_RAW: &[u8] = br#"{"deployment_id":"33333333-3333-4333-8333-333333333333","instance_id":"44444444-4444-4444-8444-444444444444","instance_incarnation":"55555555-5555-4555-8555-555555555555","boot_id":"66666666-6666-4666-8666-666666666666","authority_generation":1,"lease_id":"77777777-7777-4777-8777-777777777777","lease_epoch":1}"#;
@@ -18,6 +16,16 @@ const TEST_ORIGINAL_CONTEXT_RAW: &[u8] = br#"{"deployment_id":"33333333-3333-433
 pub(in super::super) struct OperationCatalogEvidence<'a> {
     pub(in super::super) input: &'a Value,
     pub(in super::super) raw: &'a [u8],
+}
+
+pub(in super::super) struct OperationIntentEvidence<'a> {
+    pub(in super::super) operation_id: &'a str,
+    pub(in super::super) state_id: &'a str,
+    pub(in super::super) generation: u64,
+    pub(in super::super) action: &'a EpisodeLegalAction,
+    pub(in super::super) payload: &'a Value,
+    pub(in super::super) catalog: OperationCatalogEvidence<'a>,
+    pub(in super::super) original_context_raw: Option<&'a [u8]>,
 }
 
 impl DurableHandle {
@@ -41,51 +49,44 @@ impl DurableHandle {
                 "runtime-v3 operation intent omitted legal-action catalog",
             ));
         };
-        self.operation_intent_with_catalog_and_context(
+        self.persist_operation_intent(OperationIntentEvidence {
             operation_id,
             state_id,
             generation,
             action,
             payload,
-            OperationCatalogEvidence {
+            catalog: OperationCatalogEvidence {
                 input,
                 raw: &catalog_raw,
             },
-            Some(TEST_ORIGINAL_CONTEXT_RAW),
-        )
+            original_context_raw: Some(TEST_ORIGINAL_CONTEXT_RAW),
+        })
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub(in super::super) fn operation_intent_with_catalog_and_context(
+    pub(in super::super) fn persist_operation_intent(
         &self,
-        operation_id: &str,
-        state_id: &str,
-        generation: u64,
-        action: &EpisodeLegalAction,
-        payload: &Value,
-        catalog: OperationCatalogEvidence<'_>,
-        original_context_raw: Option<&[u8]>,
+        evidence: OperationIntentEvidence<'_>,
     ) -> Result<String, String> {
         let action_payload = super::super::super::runtime_v3_wire::canonical_action_bytes(
-            action.action_id(),
-            payload,
+            evidence.action.action_id(),
+            evidence.payload,
         )?;
         let payload_digest = format!("{:x}", sha2::Sha256::digest(&action_payload));
-        let input_digest = sha256_json(catalog.input)?;
-        let catalog_digest = Some(sha256_bytes(catalog.raw));
+        let input_digest = sha256_json(evidence.catalog.input)?;
+        let catalog_digest = Some(sha256_bytes(evidence.catalog.raw));
         let intent = OperationIntent::new_with_action_and_catalog_and_context(
             self.lineage.clone(),
-            operation_id,
-            state_id,
-            generation,
-            action.action_id(),
-            super::super::super::runtime_v3_wire::action_kind_name(action.kind()),
+            evidence.operation_id,
+            evidence.state_id,
+            evidence.generation,
+            evidence.action.action_id(),
+            super::super::super::runtime_v3_wire::action_kind_name(evidence.action.kind()),
             action_payload,
             payload_digest.clone(),
             input_digest,
             catalog_digest,
-            Some(catalog.raw.to_vec()),
-            original_context_raw.map(<[u8]>::to_vec),
+            Some(evidence.catalog.raw.to_vec()),
+            evidence.original_context_raw.map(<[u8]>::to_vec),
         )
         .map_err(|error| format!("runtime-v3 operation intent is invalid: {error}"))?;
         self.store
@@ -187,132 +188,4 @@ impl DurableHandle {
             .map(|_| ())
             .map_err(|error| format!("cannot reconcile runtime-v3 operation: {error}"))
     }
-
-    pub(in super::super) fn decision_admission_with_reuse(
-        &self,
-        input: &DecisionInput,
-    ) -> Result<DecisionAdmission, String> {
-        self.store
-            .try_borrow()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
-            .resume_for_decision(&self.lineage.episode_id, &self.fingerprint)
-            .map_err(|error| format!("runtime-v3 decision admission is blocked: {error}"))?;
-        let input_fingerprint = decision_input_digest(input)?;
-        let execution_id = input.execution_id.to_string();
-        let reference = DecisionReference::new(
-            self.lineage.clone(),
-            execution_id.clone(),
-            input_fingerprint,
-            self.model_revision.clone(),
-            self.config_digest.clone(),
-        )
-        .map_err(|error| format!("runtime-v3 decision reference is invalid: {error}"))?;
-        if let Some(stored) = self
-            .store
-            .try_borrow()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
-            .reuse_completed_decision(
-                &self.lineage,
-                &reference.execution_id,
-                &reference.input_fingerprint,
-                &reference.model_revision,
-                &reference.config_digest,
-            )
-            .map_err(|error| format!("cannot inspect reusable runtime-v3 decision: {error}"))?
-        {
-            return Ok(DecisionAdmission::Reused(replay_stored_decision(&stored)?));
-        }
-        let stored = self
-            .store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
-            .record_decision(&reference)
-            .map_err(|error| format!("cannot persist runtime-v3 decision reference: {error}"))?;
-        if stored.completed {
-            return Ok(DecisionAdmission::Reused(replay_stored_decision(&stored)?));
-        }
-        if stored.unknown {
-            return Err(String::from(
-                "runtime-v3 provider decision is unknown and cannot be reused",
-            ));
-        }
-        let reservation_id = format!("provider-reservation-{execution_id}");
-        let provider_execution_id = format!("provider-execution-{execution_id}");
-        let reservation = ProviderReservation::new(
-            self.lineage.clone(),
-            reservation_id.clone(),
-            execution_id,
-            provider_execution_id,
-            PROVIDER_RESERVATION_UNITS,
-        )
-        .map_err(|error| format!("runtime-v3 provider reservation is invalid: {error}"))?;
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
-            .reserve_provider(&reservation)
-            .map_err(|error| format!("cannot reserve runtime-v3 provider usage: {error}"))?;
-        Ok(DecisionAdmission::Fresh(ProviderReservationToken {
-            reservation_id,
-        }))
-    }
-
-    pub(in super::super) fn complete_decision(
-        &self,
-        token: &ProviderReservationToken,
-        decision: &Decision,
-    ) -> Result<(), String> {
-        let (result_payload, result_digest) = decision_replay::encode(decision)?;
-        let result_ref = format!("decision-result-{}", token.reservation_id);
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
-            .complete_provider_with_result(
-                &token.reservation_id,
-                &result_ref,
-                &result_digest,
-                &result_payload,
-                PROVIDER_RESERVATION_UNITS,
-            )
-            .map(|_| ())
-            .map_err(|error| format!("cannot persist runtime-v3 provider completion: {error}"))
-    }
-
-    pub(in super::super) fn fail_decision(
-        &self,
-        token: &ProviderReservationToken,
-        failure: ProviderFailureClass,
-    ) -> Result<(), String> {
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
-            .fail_provider(&token.reservation_id, failure, None)
-            .map(|_| ())
-            .map_err(|error| format!("cannot persist runtime-v3 provider failure: {error}"))
-    }
-
-    pub(in super::super) fn unknown_decision(
-        &self,
-        token: &ProviderReservationToken,
-        failure: ProviderFailureClass,
-    ) -> Result<(), String> {
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
-            .mark_provider_unknown(&token.reservation_id, failure, None)
-            .map(|_| ())
-            .map_err(|error| format!("cannot persist unknown runtime-v3 provider result: {error}"))
-    }
-}
-
-fn replay_stored_decision(stored: &sts2_harness::StoredDecision) -> Result<Decision, String> {
-    let payload = stored.result_payload.as_deref().ok_or_else(|| {
-        String::from(
-            "runtime-v3 completed provider result has no replayable payload; refusing provider call",
-        )
-    })?;
-    let digest =
-        stored.reference.result_digest.as_deref().ok_or_else(|| {
-            String::from("runtime-v3 completed provider result has no replay digest")
-        })?;
-    decision_replay::decode(payload, digest)
 }

@@ -27,7 +27,7 @@ mod operations;
 #[path = "runtime_v3_durable_support.rs"]
 mod support;
 
-pub(super) use operations::OperationCatalogEvidence;
+pub(super) use operations::{OperationCatalogEvidence, OperationIntentEvidence};
 
 use support::{config_digest, fingerprint, optional_env, sha256_bytes, sha256_json};
 

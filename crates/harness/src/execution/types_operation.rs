@@ -63,16 +63,7 @@ impl OperationIntent {
             catalog_raw: None,
             original_context_raw: None,
         };
-        if intent.lineage.validate().is_err()
-            || !valid_id(&intent.operation_id)
-            || !valid_id(&intent.state_id)
-            || !valid_id(&intent.action_id)
-            || intent.generation > 9_007_199_254_740_991
-            || !valid_reference(&intent.payload_digest)
-            || !valid_reference(&intent.input_digest)
-        {
-            return Err(ExecutionStoreError::InvalidOperation);
-        }
+        intent.validate()?;
         Ok(intent)
     }
 
@@ -195,17 +186,63 @@ impl OperationIntent {
             catalog_raw,
             original_context_raw,
         };
-        if intent.lineage.validate().is_err()
-            || !valid_id(&intent.operation_id)
-            || !valid_id(&intent.state_id)
-            || !valid_id(&intent.action_id)
-            || intent.generation > 9_007_199_254_740_991
-            || !valid_reference(&intent.payload_digest)
-            || !valid_reference(&intent.input_digest)
+        intent.validate()?;
+        Ok(intent)
+    }
+
+    pub(crate) fn validate(&self) -> Result<(), ExecutionStoreError> {
+        if self.lineage.validate().is_err()
+            || !valid_id(&self.operation_id)
+            || !valid_id(&self.state_id)
+            || !valid_id(&self.action_id)
+            || self.generation > 9_007_199_254_740_991
+            || !valid_reference(&self.payload_digest)
+            || !valid_reference(&self.input_digest)
+            || self
+                .original_context_raw
+                .as_ref()
+                .is_some_and(|raw| !valid_original_context_raw(raw))
         {
             return Err(ExecutionStoreError::InvalidOperation);
         }
-        Ok(intent)
+        match (&self.action_kind, &self.action_payload) {
+            (None, None) => {
+                if self.catalog_raw.is_some()
+                    || self
+                        .catalog_digest
+                        .as_deref()
+                        .is_some_and(|digest| !valid_digest(digest))
+                {
+                    return Err(ExecutionStoreError::InvalidOperation);
+                }
+            }
+            (Some(action_kind), Some(action_payload)) => {
+                if action_payload.is_empty()
+                    || action_payload.len() > MAX_OPERATION_ACTION_BYTES
+                    || !valid_reference(action_kind)
+                    || format!("{:x}", sha2::Sha256::digest(action_payload)) != self.payload_digest
+                    || !validate_canonical_action_envelope(
+                        &self.action_id,
+                        action_payload,
+                        MAX_OPERATION_ACTION_BYTES,
+                    )
+                    || self
+                        .catalog_digest
+                        .as_deref()
+                        .is_some_and(|digest| !valid_digest(digest))
+                    || self.catalog_raw.as_ref().is_some_and(|raw| {
+                        self.catalog_digest
+                            .as_deref()
+                            .is_none_or(|digest| !valid_catalog_raw(raw, digest))
+                    })
+                    || (self.catalog_raw.is_some() && self.catalog_digest.is_none())
+                {
+                    return Err(ExecutionStoreError::InvalidOperation);
+                }
+            }
+            _ => return Err(ExecutionStoreError::InvalidOperation),
+        }
+        Ok(())
     }
 
     pub fn has_durable_action(&self) -> bool {

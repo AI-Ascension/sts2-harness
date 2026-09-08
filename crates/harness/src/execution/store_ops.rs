@@ -17,7 +17,7 @@ impl ExecutionStore {
         intent: &OperationIntent,
     ) -> Result<StoredOperation, super::types::ExecutionStoreError> {
         self.ensure_open()?;
-        intent.lineage.validate()?;
+        intent.validate()?;
         let now = ExecutionStore::now();
         let tx = schema::transaction(&mut self.connection)?;
         let existing = tx
