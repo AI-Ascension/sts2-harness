@@ -236,6 +236,15 @@ pub(crate) fn assert_success(
     {
         return Err(format!("unexpected path ledger: {actual:?}").into());
     }
+    let methods: Vec<&str> = result
+        .ledger
+        .requests
+        .iter()
+        .map(|request| request.method.as_str())
+        .collect();
+    if methods != ["GET", "GET", "GET", "GET", "POST", "GET"] {
+        return Err(format!("unexpected downstream methods: {methods:?}").into());
+    }
     let statuses: Vec<u16> = result
         .ledger
         .responses
@@ -301,8 +310,15 @@ pub(crate) fn assert_foreign_state_rejected(
     if result.runtime.status.code() != Some(2) {
         return Err(format!("foreign state exit: {:?}", result.runtime.status.code()).into());
     }
+    let methods: Vec<&str> = result
+        .ledger
+        .requests
+        .iter()
+        .map(|request| request.method.as_str())
+        .collect();
     if !result.ledger.errors.is_empty()
         || paths(&result.ledger) != ["/api/v3/runtime/state", "/api/v4/runtime/expert-state"]
+        || methods != ["GET", "GET"]
         || result.ledger.responses.len() != 2
         || result.ledger.responses[0].status != 200
         || result.ledger.responses[1].status != 200
