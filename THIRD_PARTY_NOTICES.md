@@ -59,6 +59,12 @@ advisories matched newly added package names; the locked versions satisfy their 
 No records matched the other newly added package names at that snapshot. This is a bounded
 dependency-change review, not a full-lockfile `cargo audit` result (that tool was unavailable).
 
+The Windows-only `worker-ipc-windows` package uses `subtle` exactly `2.6.1` (BSD-3-Clause),
+`zeroize` exactly `1.9.0` (Apache-2.0 OR MIT), and the already-locked `windows-sys` exactly
+`0.61.2` (MIT OR Apache-2.0), all from crates.io and with target features restricted in its
+manifest. Locked offline Cargo metadata verified these declarations on 2026-09-08; no source is
+vendored. The changed lockfile requires a fresh full-lock advisory review before release.
+
 Future dependencies, imported fixtures, generated schemas, provider adapters, and model artifacts
 must record their source, exact version or digest, license, redistribution permission, and retention
 status before they become release inputs. Unknown or incompatible provenance is a release blocker.

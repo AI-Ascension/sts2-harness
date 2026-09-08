@@ -1,5 +1,11 @@
 [workspace]
-members = ["tools/repo-policy", "tools/patch-diff", "crates/harness", "tools/sts2-expert-state-package"]
+members = [
+    "tools/repo-policy",
+    "tools/patch-diff",
+    "crates/harness",
+    "crates/worker-ipc-windows",
+    "tools/sts2-expert-state-package",
+]
 resolver = "3"
 
 [workspace.package]
