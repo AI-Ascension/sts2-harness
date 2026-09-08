@@ -151,7 +151,7 @@ fn decode(fields: Map<String, Value>) -> Result<WorkerRequest, Box<dyn std::erro
 fn probe_request(watchdog: &str) -> Result<WorkerRequest, Box<dyn std::error::Error>> {
     let mut fields = fields("probe", "probe");
     fields.insert("watchdog_boot_id".into(), json!(watchdog));
-    Ok(decode(fields)?)
+    decode(fields)
 }
 
 fn tuple_fields(fields: &mut Map<String, Value>) {
@@ -180,7 +180,7 @@ fn dispatch_request() -> Result<WorkerRequest, Box<dyn std::error::Error>> {
     fields.insert("operation".into(), json!("runtime_v3_episode"));
     fields.insert("parameters".into(), json!({}));
     tuple_fields(&mut fields);
-    Ok(decode(fields)?)
+    decode(fields)
 }
 
 fn lookup_request_for(deployment: &str) -> Result<WorkerRequest, Box<dyn std::error::Error>> {
@@ -188,7 +188,7 @@ fn lookup_request_for(deployment: &str) -> Result<WorkerRequest, Box<dyn std::er
     fields.insert("worker_boot_id".into(), json!(WORKER_BOOT_ID));
     tuple_fields(&mut fields);
     fields.insert("deployment_id".into(), json!(deployment));
-    Ok(decode(fields)?)
+    decode(fields)
 }
 
 fn acknowledge_request(digest: &str) -> Result<WorkerRequest, Box<dyn std::error::Error>> {
@@ -196,7 +196,7 @@ fn acknowledge_request(digest: &str) -> Result<WorkerRequest, Box<dyn std::error
     fields.insert("worker_boot_id".into(), json!(WORKER_BOOT_ID));
     fields.insert("terminal_digest".into(), json!(digest));
     tuple_fields(&mut fields);
-    Ok(decode(fields)?)
+    decode(fields)
 }
 
 fn control_request(mode: &str, sequence: u64) -> Result<WorkerRequest, Box<dyn std::error::Error>> {
@@ -209,7 +209,7 @@ fn control_request(mode: &str, sequence: u64) -> Result<WorkerRequest, Box<dyn s
         ("mode".into(), json!(mode)),
         ("mode_sequence".into(), json!(sequence)),
     ]));
-    Ok(decode(fields)?)
+    decode(fields)
 }
 
 fn authenticated(
