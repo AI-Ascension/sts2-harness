@@ -62,6 +62,7 @@ impl WorkerExchange {
 #[derive(Default)]
 struct ExecutionLane {
     active: Option<WorkerTuple>,
+    execution_taken: bool,
 }
 
 impl ExecutionLane {
@@ -88,6 +89,7 @@ impl ExecutionLane {
             ));
         }
         self.active = None;
+        self.execution_taken = false;
         Ok(())
     }
 }
@@ -99,6 +101,7 @@ pub struct WorkerRuntime {
     fingerprint: ExecutionFingerprint,
     worker_boot_id: String,
     lane: ExecutionLane,
+    execution_owner: std::sync::Arc<()>,
 }
 
 impl WorkerRuntime {
@@ -117,6 +120,7 @@ impl WorkerRuntime {
             fingerprint,
             worker_boot_id,
             lane: ExecutionLane::default(),
+            execution_owner: std::sync::Arc::new(()),
         })
     }
 
@@ -239,6 +243,9 @@ fn combine_failure(original: String, quarantine: Result<(), String>) -> String {
 
 #[path = "worker_runtime_completion.rs"]
 mod completion;
+#[path = "worker_runtime_execution.rs"]
+mod execution;
+pub use execution::{WorkerExecutionCompletion, WorkerExecutionTask};
 #[cfg(test)]
 #[path = "worker_runtime_control_tests.rs"]
 mod control_tests;

@@ -8,7 +8,7 @@ use crate::worker_handoff::{AcknowledgmentStatus, LookupReply, WorkerCapability,
 use crate::{WorkerControlMode, WorkerOwnerProof};
 use serde_json::{Map, Value, json};
 
-fn command(
+pub(super) fn command(
     capability: WorkerCapability,
     mode: Option<&str>,
 ) -> Result<AuthenticatedWorkerRequest, Box<dyn std::error::Error>> {
@@ -36,10 +36,10 @@ fn command(
     let mut fields: Map<String, Value> = serde_json::from_slice(fixture)?;
     let dispatch = request()?;
     for (key, value) in &mut fields {
-        if !matches!(key.as_str(), "command" | "scope") {
-            if let Some(original) = dispatch.fields().get(key) {
-                *value = original.clone();
-            }
+        if !matches!(key.as_str(), "command" | "scope")
+            && let Some(original) = dispatch.fields().get(key)
+        {
+            *value = original.clone();
         }
     }
     if let Some(mode) = mode {

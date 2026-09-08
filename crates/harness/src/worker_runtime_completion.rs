@@ -70,27 +70,21 @@ impl WorkerRuntime {
     }
 
     pub fn retain_unknown(&self, handoff_id: &str) -> Result<(), String> {
-        // Latch the admission fence before attempting the recovery write. Once a runtime has
-        // crossed an uncertainty boundary, no concurrent dispatch may reopen the lane while this
-        // handoff is being retained. The recovery lease deliberately bypasses that fence so an
-        // already-running quarantine can still account for the existing handoff.
-        let _already_quarantined = begin_quarantine(&self.store)?;
-        let mut store = try_lock_quarantine(&self.store).map_err(|error| {
-            format!("cannot acquire worker recovery lease for unknown handoff: {error}")
-        })?;
-        let result = store
-            .mark_worker_handoff_unknown(handoff_id)
-            .map(|_| ())
-            .map_err(|error| format!("cannot retain uncertain worker handoff: {error}"));
-        if result.is_ok() {
-            finish_quarantine(&self.store);
-        }
-        result
+        retain_unknown(&self.store, handoff_id)
     }
 
     /// Releases the capacity-one lane only after the same durable handoff has a projected
     /// terminal receipt. Unknown, admitted, and running rows remain lookup-only.
     pub fn release_completed(&mut self, handoff_id: &str) -> Result<(), String> {
+        if self.lane.execution_taken {
+            return Err(String::from(
+                "worker execution completion is still owned by its task",
+            ));
+        }
+        self.release_durable_completion(handoff_id)
+    }
+
+    pub(super) fn release_durable_completion(&mut self, handoff_id: &str) -> Result<(), String> {
         let tuple = self
             .lane
             .tuple()
@@ -117,9 +111,33 @@ impl WorkerRuntime {
     }
 
     pub fn close(&self) -> Result<(), String> {
+        if self.lane.execution_taken {
+            return Err(String::from(
+                "cannot close worker store while execution is owned",
+            ));
+        }
         let mut store = try_lock_close(&self.store)?;
         store
             .close()
             .map_err(|_| String::from("cannot close worker execution store"))
     }
+}
+
+pub(super) fn retain_unknown(store: &SharedExecutionStore, handoff_id: &str) -> Result<(), String> {
+    // Latch the admission fence before attempting the recovery write. Once a runtime has
+    // crossed an uncertainty boundary, no concurrent dispatch may reopen the lane while this
+    // handoff is being retained. The recovery lease deliberately bypasses that fence so an
+    // already-running quarantine can still account for the existing handoff.
+    let _already_quarantined = begin_quarantine(store)?;
+    let mut lease = try_lock_quarantine(store).map_err(|error| {
+        format!("cannot acquire worker recovery lease for unknown handoff: {error}")
+    })?;
+    let result = lease
+        .mark_worker_handoff_unknown(handoff_id)
+        .map(|_| ())
+        .map_err(|error| format!("cannot retain uncertain worker handoff: {error}"));
+    if result.is_ok() {
+        finish_quarantine(store);
+    }
+    result
 }

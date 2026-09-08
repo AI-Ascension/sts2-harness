@@ -79,13 +79,6 @@ fn read_bootstrap() -> Result<sts2_harness::worker_bootstrap::WorkerBootstrap, S
     }
 }
 
-fn combine_failure(original: String, quarantine: Result<(), String>) -> String {
-    match quarantine {
-        Ok(()) => original,
-        Err(error) => format!("{original}; failed to retain unknown worker handoff: {error}"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::MISSING_TRANSPORT_ERROR;
