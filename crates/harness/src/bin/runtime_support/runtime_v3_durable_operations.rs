@@ -74,7 +74,7 @@ impl DurableHandle {
         let payload_digest = format!("{:x}", sha2::Sha256::digest(&action_payload));
         let input_digest = sha256_json(evidence.catalog.input)?;
         let catalog_digest = Some(sha256_bytes(evidence.catalog.raw));
-        let intent = OperationIntent::new_with_action_and_catalog_and_context(
+        let intent = OperationIntent::new_with_action_and_catalog(
             self.lineage.clone(),
             evidence.operation_id,
             evidence.state_id,
@@ -86,8 +86,10 @@ impl DurableHandle {
             input_digest,
             catalog_digest,
             Some(evidence.catalog.raw.to_vec()),
-            evidence.original_context_raw.map(<[u8]>::to_vec),
         )
+        .and_then(|intent| {
+            intent.with_original_context(evidence.original_context_raw.map(<[u8]>::to_vec))
+        })
         .map_err(|error| format!("runtime-v3 operation intent is invalid: {error}"))?;
         self.store
             .try_borrow_mut()

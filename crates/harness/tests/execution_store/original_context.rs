@@ -13,7 +13,7 @@ fn action_intent(
 ) -> OperationIntent {
     let action_payload = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}"#;
     let catalog_raw = br#"[{"action_id":"combat.end-turn","action":{"kind":"end_turn"}}]"#;
-    OperationIntent::new_with_action_and_catalog_and_context(
+    OperationIntent::new_with_action_and_catalog(
         lineage,
         operation_id,
         "44444444-4444-4444-8444-444444444444",
@@ -25,8 +25,8 @@ fn action_intent(
         "input-digest",
         Some(result_digest(catalog_raw)),
         Some(catalog_raw.to_vec()),
-        Some(original_context_raw.to_vec()),
     )
+    .and_then(|intent| intent.with_original_context(Some(original_context_raw.to_vec())))
     .expect("action intent is valid")
 }
 
@@ -139,16 +139,30 @@ fn public_original_context_mutation_is_revalidated_before_insert() {
     store
         .start_episode(&current, &fingerprint())
         .expect("episode starts");
-    let mut intent = action_intent(current, "operation-original-mutation", ORIGINAL_CONTEXT_A);
-    intent.original_context_raw = Some(vec![b'{', b'}']);
-    assert_eq!(
-        store.record_operation_intent(&intent),
-        Err(sts2_harness::ExecutionStoreError::InvalidOperation)
-    );
+    let original = action_intent(current, "operation-original-mutation", ORIGINAL_CONTEXT_A);
+    for raw in [
+        vec![b'{', b'}'],
+        vec![b'x'; sts2_harness::MAX_ORIGINAL_CONTEXT_BYTES + 1],
+        b"not-json".to_vec(),
+    ] {
+        let mut intent = original.clone();
+        intent.original_context_raw = Some(raw);
+        assert_eq!(
+            store.record_operation_intent(&intent),
+            Err(sts2_harness::ExecutionStoreError::InvalidOperation)
+        );
+        assert_eq!(
+            store
+                .operation("operation-original-mutation")
+                .expect_err("invalid intent cannot leave a row"),
+            sts2_harness::ExecutionStoreError::Missing
+        );
+    }
     assert_eq!(
         store
-            .operation("operation-original-mutation")
-            .expect_err("invalid intent cannot leave a row"),
-        sts2_harness::ExecutionStoreError::Missing
+            .record_operation_intent(&original)
+            .expect("valid retry persists")
+            .intent,
+        original
     );
 }

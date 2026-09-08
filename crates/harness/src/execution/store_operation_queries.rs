@@ -116,7 +116,7 @@ pub(super) fn read_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Stored
             if calculated != payload_digest {
                 return Err(rusqlite::Error::InvalidQuery);
             }
-            OperationIntent::new_with_action_and_catalog_and_context(
+            OperationIntent::new_with_action_and_catalog(
                 lineage,
                 operation_id,
                 state_id,
@@ -128,8 +128,8 @@ pub(super) fn read_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Stored
                 input_digest,
                 catalog_digest,
                 catalog_raw,
-                original_context_raw,
             )
+            .and_then(|intent| intent.with_original_context(original_context_raw))
         }
         _ => Err(super::types::ExecutionStoreError::InvalidOperation),
     }

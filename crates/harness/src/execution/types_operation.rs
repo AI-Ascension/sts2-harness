@@ -112,37 +112,6 @@ impl OperationIntent {
         catalog_digest: Option<String>,
         catalog_raw: Option<Vec<u8>>,
     ) -> Result<Self, ExecutionStoreError> {
-        Self::new_with_action_and_catalog_and_context(
-            lineage,
-            operation_id,
-            state_id,
-            generation,
-            action_id,
-            action_kind,
-            action_payload,
-            payload_digest,
-            input_digest,
-            catalog_digest,
-            catalog_raw,
-            None,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn new_with_action_and_catalog_and_context(
-        lineage: ExecutionLineage,
-        operation_id: impl Into<String>,
-        state_id: impl Into<String>,
-        generation: u64,
-        action_id: impl Into<String>,
-        action_kind: impl Into<String>,
-        action_payload: Vec<u8>,
-        payload_digest: impl Into<String>,
-        input_digest: impl Into<String>,
-        catalog_digest: Option<String>,
-        catalog_raw: Option<Vec<u8>>,
-        original_context_raw: Option<Vec<u8>>,
-    ) -> Result<Self, ExecutionStoreError> {
         let action_id = action_id.into();
         let action_kind = action_kind.into();
         let payload_digest = payload_digest.into();
@@ -166,9 +135,6 @@ impl OperationIntent {
                     .is_none_or(|digest| !valid_catalog_raw(raw, digest))
             })
             || (catalog_raw.is_some() && catalog_digest.is_none())
-            || original_context_raw
-                .as_ref()
-                .is_some_and(|raw| !valid_original_context_raw(raw))
         {
             return Err(ExecutionStoreError::InvalidOperation);
         }
@@ -184,10 +150,21 @@ impl OperationIntent {
             input_digest: input_digest.into(),
             catalog_digest,
             catalog_raw,
-            original_context_raw,
+            original_context_raw: None,
         };
         intent.validate()?;
         Ok(intent)
+    }
+
+    /// Adds the original authority context without extending the action constructor.
+    /// `None` preserves legacy missing-context history; it does not permit recovery.
+    pub fn with_original_context(
+        mut self,
+        original_context_raw: Option<Vec<u8>>,
+    ) -> Result<Self, ExecutionStoreError> {
+        self.original_context_raw = original_context_raw;
+        self.validate()?;
+        Ok(self)
     }
 
     pub(crate) fn validate(&self) -> Result<(), ExecutionStoreError> {
