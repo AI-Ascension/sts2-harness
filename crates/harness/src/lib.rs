@@ -22,6 +22,8 @@ mod runtime_v2_artifact;
 pub mod worker_frame_io;
 pub mod worker_handoff;
 #[cfg(target_os = "linux")]
+pub mod worker_linux_exchange;
+#[cfg(target_os = "linux")]
 pub mod worker_local_linux;
 
 pub use artifact::{
