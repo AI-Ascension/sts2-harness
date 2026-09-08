@@ -93,7 +93,11 @@ fn runner_script(
                 "id":2,
                 "error":{"code":-32008,"message":"gateway request timed out"}
             })),
-            reobserve.clone(),
+            if expert_profile && failure == "expert-reobserve-gateway" {
+                reply_for_method("sts2.reobserve", reobserved.clone(), 3)
+            } else {
+                reobserve.clone()
+            },
             keep_reading()
         ),
         "timeout" => format!(
@@ -109,12 +113,10 @@ fn runner_script(
             pipe_eof()
         ),
     };
-    let mut reobserved_id4 = reobserved.clone();
-    reobserved_id4["correlation_id"] = json!("4");
     let second_normal = format!(
         "{}{}",
         init_sequence(false),
-        reply_for_ids(&[(3, reobserved.clone()), (4, reobserved_id4)])
+        reply_for_method("sts2.reobserve", reobserved.clone(), 3)
     );
     let normal_branch = format!(
         "if [ -e normal-started ]; then\n{}{}else\n: > normal-started\n{}fi\n",
@@ -163,14 +165,16 @@ fn runner_script(
                 pipe_timeout()
             ),
             "expert-reobserve-gateway" => format!(
-                "{}{}{}",
+                "{}{}{}{}{}",
                 init_sequence(true),
                 reply_artifact(1, initial_expert),
                 reply(json!({
                     "jsonrpc":"2.0",
                     "id":2,
                     "error":{"code":-32008,"message":"gateway request timed out"}
-                }))
+                })),
+                reply_artifact(3, terminal_expert.clone()),
+                keep_reading()
             ),
             "expert-reobserve-schema" => {
                 let mut invalid = terminal_expert.clone();
@@ -241,7 +245,7 @@ fn runner_script(
                     first_response
                 )
             } else if failure == "expert-reobserve-gateway" {
-                format!("{}{}", init_sequence(true), reply_if_requested(3, terminal_expert.clone()))
+                format!("{}{}", init_sequence(true), reply_artifact(3, terminal_expert.clone()))
             } else {
                 format!("{}{}{}", init_sequence(true), retry_response, keep_reading())
             }

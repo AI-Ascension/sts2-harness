@@ -12,7 +12,12 @@ use super::config::RuntimeConfig;
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(5);
-const CLEANUP_TIMEOUT: Duration = Duration::from_millis(250);
+// A child may still be finishing a response or flushing its own shutdown work after the
+// caller has closed its pipes. Give that graceful path a bounded second before treating it
+// as a failed shutdown. The force-reap budget remains short so a stalled child cannot hold
+// the supervisor indefinitely after the graceful path has failed.
+const GRACEFUL_CLOSE_TIMEOUT: Duration = Duration::from_secs(1);
+const FORCE_REAP_TIMEOUT: Duration = Duration::from_millis(250);
 
 include!("mcp_process_error.rs");
 
@@ -216,7 +221,7 @@ impl McpProcess {
                 self.child
                     .start_kill()
                     .map_err(|_| "MCP termination failed")?;
-                tokio::time::timeout(CLEANUP_TIMEOUT, self.child.wait())
+                tokio::time::timeout(FORCE_REAP_TIMEOUT, self.child.wait())
                     .await
                     .map_err(|_| "MCP reap timed out")?
                     .map_err(|_| "MCP reap failed")?;
@@ -238,7 +243,7 @@ impl McpProcess {
         let runtime = self.runtime.as_ref().ok_or("MCP supervisor is closed")?;
         let result = supervised(|| {
             runtime.block_on(async {
-                let status = tokio::time::timeout(CLEANUP_TIMEOUT, self.child.wait())
+                let status = tokio::time::timeout(GRACEFUL_CLOSE_TIMEOUT, self.child.wait())
                     .await
                     .map_err(|_| "MCP shutdown timed out")?
                     .map_err(|_| "MCP process wait failed")?;
@@ -250,7 +255,8 @@ impl McpProcess {
             })
         });
         if let Err(error) = result {
-            return match self.terminate() {
+            let cleanup = self.terminate();
+            return match cleanup {
                 Ok(()) => Err(error),
                 Err(cleanup) => Err(format!("{error}; {cleanup}")),
             };

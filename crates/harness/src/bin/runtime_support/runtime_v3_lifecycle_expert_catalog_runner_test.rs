@@ -45,8 +45,19 @@ fn expert_reobserve_transport_failures_are_bounded_reads_after_normal_reobserve(
         "expert-reobserve-gateway",
     ] {
         let fixture = Fixture::new()?;
-        let expected_reconnects = 1;
-        run_runner_fixture(&fixture, failure, true, expected_reconnects, 2)?;
+        let expected_reconnects = if failure == "expert-reobserve-gateway" {
+            0
+        } else {
+            1
+        };
+        let expected_recoveries = 2;
+        run_runner_fixture(
+            &fixture,
+            failure,
+            true,
+            expected_reconnects,
+            expected_recoveries,
+        )?;
         let requests: Vec<Value> = fs::read_to_string(fixture.0.join("requests"))?
             .lines()
             .map(serde_json::from_str)
