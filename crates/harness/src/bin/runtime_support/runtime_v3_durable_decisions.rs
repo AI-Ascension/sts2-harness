@@ -14,7 +14,7 @@ impl DurableHandle {
         &self,
         input: &DecisionInput,
     ) -> Result<DecisionAdmission, String> {
-        super::super::try_lock(&self.store)?
+        self.new_work_lease()?
             .resume_for_decision(&self.lineage.episode_id, &self.fingerprint)
             .map_err(|error| format!("runtime-v3 decision admission is blocked: {error}"))?;
         let input_fingerprint = decision_input_digest(input)?;
@@ -27,7 +27,8 @@ impl DurableHandle {
             self.config_digest.clone(),
         )
         .map_err(|error| format!("runtime-v3 decision reference is invalid: {error}"))?;
-        if let Some(stored) = super::super::try_lock(&self.store)?
+        if let Some(stored) = self
+            .new_work_lease()?
             .reuse_completed_decision(
                 &self.lineage,
                 &reference.execution_id,
@@ -39,7 +40,8 @@ impl DurableHandle {
         {
             return Ok(DecisionAdmission::Reused(replay_stored_decision(&stored)?));
         }
-        let stored = super::super::try_lock(&self.store)?
+        let stored = self
+            .new_work_lease()?
             .record_decision(&reference)
             .map_err(|error| format!("cannot persist runtime-v3 decision reference: {error}"))?;
         if stored.completed {
@@ -60,7 +62,7 @@ impl DurableHandle {
             PROVIDER_RESERVATION_UNITS,
         )
         .map_err(|error| format!("runtime-v3 provider reservation is invalid: {error}"))?;
-        super::super::try_lock(&self.store)?
+        self.new_work_lease()?
             .reserve_provider(&reservation)
             .map_err(|error| format!("cannot reserve runtime-v3 provider usage: {error}"))?;
         Ok(DecisionAdmission::Fresh(ProviderReservationToken {

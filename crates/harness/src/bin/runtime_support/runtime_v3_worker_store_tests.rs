@@ -19,6 +19,8 @@ use super::worker_store::{SharedExecutionStore, share_store, try_lock};
 
 #[path = "runtime_v3_worker_store_attachment_tests.rs"]
 mod attachment_tests;
+#[path = "runtime_v3_worker_store_fence_tests.rs"]
+mod fence_tests;
 #[path = "runtime_v3_worker_store_quarantine_tests.rs"]
 mod quarantine_tests;
 

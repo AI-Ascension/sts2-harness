@@ -91,7 +91,7 @@ impl DurableHandle {
             intent.with_original_context(evidence.original_context_raw.map(<[u8]>::to_vec))
         })
         .map_err(|error| format!("runtime-v3 operation intent is invalid: {error}"))?;
-        super::try_lock(&self.store)?
+        self.new_work_lease()?
             .record_operation_intent(&intent)
             .map_err(|error| format!("cannot persist runtime-v3 operation intent: {error}"))?;
         Ok(payload_digest)
@@ -102,7 +102,7 @@ impl DurableHandle {
         operation_id: &str,
         payload_digest: &str,
     ) -> Result<(), String> {
-        super::try_lock(&self.store)?
+        self.new_work_lease()?
             .mark_operation_dispatched(operation_id, payload_digest)
             .map(|_| ())
             .map_err(|error| format!("cannot persist runtime-v3 dispatch intent: {error}"))

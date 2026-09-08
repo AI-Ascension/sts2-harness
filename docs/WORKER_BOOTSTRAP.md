@@ -61,6 +61,15 @@ running/resume control cannot use the recovery lease, and neither stop nor
 historical lookup clears the admission fence. Capability and boot/tuple checks
 still apply on these recovery paths.
 
+The admitted runtime retains its exact handoff identity. Before a new decision,
+provider reservation, operation intent, or dispatch uncertainty record, it checks
+the current handoff and authenticated running control under the same store lease
+as the durable operation. A changed boot, mode, sequence, or handoff closes that
+execution path; changing back to running does not revive an old sequence.
+Completion and uncertainty accounting for already-admitted work continue through
+the separate recovery lease. Ordinary non-worker runtime handles do not acquire
+this worker-specific binding.
+
 This uses `SO_PASSCRED` and `SCM_CREDENTIALS`, whose kernel checks and privileged
 exceptions are documented in [unix(7)](https://man7.org/linux/man-pages/man7/unix.7.html).
 It is not a defense against privileged host compromise. The private verifier

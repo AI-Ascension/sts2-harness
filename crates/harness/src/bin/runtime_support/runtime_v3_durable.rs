@@ -31,6 +31,8 @@ mod operations;
 mod quarantine;
 #[path = "runtime_v3_durable_support.rs"]
 mod support;
+#[path = "runtime_v3_durable_worker_fence.rs"]
+mod worker_fence;
 
 pub(super) use operations::{OperationCatalogEvidence, OperationIntentEvidence};
 
@@ -50,6 +52,7 @@ pub(super) struct DurableHandle {
     next_checkpoint: Rc<RefCell<u64>>,
     resume_boundary: Rc<RefCell<Option<Checkpoint>>>,
     owns_store: bool,
+    worker_handoff: Option<Box<sts2_harness::StoredWorkerHandoff>>,
 }
 
 impl DurableHandle {
@@ -153,6 +156,7 @@ impl DurableHandle {
             next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
             resume_boundary: Rc::new(RefCell::new(resume_boundary)),
             owns_store: true,
+            worker_handoff: None,
         };
         Ok((handle, state))
     }
@@ -257,6 +261,7 @@ impl DurableHandle {
             next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
             resume_boundary: Rc::new(RefCell::new(None)),
             owns_store: true,
+            worker_handoff: None,
         })
     }
 }

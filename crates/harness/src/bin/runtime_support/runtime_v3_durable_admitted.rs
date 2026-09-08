@@ -109,7 +109,9 @@ impl DurableHandle {
             next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
             resume_boundary: Rc::new(RefCell::new(resume_boundary)),
             owns_store: false,
+            worker_handoff: Some(Box::new(current)),
         };
+        drop(handle.new_work_lease()?);
         Ok((handle, stored.resume))
     }
 
@@ -144,6 +146,7 @@ impl DurableHandle {
             next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
             resume_boundary: Rc::new(RefCell::new(None)),
             owns_store: false,
+            worker_handoff: None,
         })
     }
 }
