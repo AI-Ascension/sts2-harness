@@ -175,6 +175,39 @@ fn worker_v7_rejects_preexisting_worker_tables_without_promoting_version()
 }
 
 #[test]
+fn worker_v7_index_collision_rolls_back_all_worker_tables() -> Result<(), Box<dyn std::error::Error>>
+{
+    let mut connection = Connection::open_in_memory()?;
+    connection.execute_batch(
+        "CREATE TABLE retained_records (marker TEXT);
+         INSERT INTO retained_records VALUES ('retained');
+         CREATE INDEX worker_handoffs_state ON retained_records(marker);
+         PRAGMA user_version = 6;",
+    )?;
+    assert!(migrate(&mut connection).is_err());
+    let version = connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))?;
+    assert_eq!(version, 6);
+    let count = connection.query_row(
+        "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table'
+         AND name IN ('worker_control', 'worker_control_boots', 'worker_handoffs')",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    assert_eq!(count, 0);
+    let index_owner = connection.query_row(
+        "SELECT tbl_name FROM sqlite_schema WHERE name = 'worker_handoffs_state'",
+        [],
+        |row| row.get::<_, String>(0),
+    )?;
+    assert_eq!(index_owner, "retained_records");
+    let marker = connection.query_row("SELECT marker FROM retained_records", [], |row| {
+        row.get::<_, String>(0)
+    })?;
+    assert_eq!(marker, "retained");
+    Ok(())
+}
+
+#[test]
 fn future_schema_is_rejected_before_any_migration() -> Result<(), Box<dyn std::error::Error>> {
     let mut connection = Connection::open_in_memory()?;
     connection.execute_batch("PRAGMA user_version = 99;")?;
