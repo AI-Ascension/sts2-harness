@@ -36,6 +36,8 @@ mod recording;
 mod recovery;
 #[path = "runtime_v3_wait.rs"]
 mod wait;
+#[path = "runtime_v3_worker_store.rs"]
+mod worker_store;
 use ledger::OperationRecord;
 
 #[path = "runtime_v3_combat_demo.rs"]
@@ -52,6 +54,10 @@ use decision_admission::DecisionAdmission;
 #[cfg(test)]
 #[path = "runtime_v3_lifecycle_test.rs"]
 mod lifecycle_tests;
+
+#[cfg(test)]
+#[path = "runtime_v3_worker_store_tests.rs"]
+mod worker_store_tests;
 
 pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let settings = RuntimeV3Settings::from_environment()?;

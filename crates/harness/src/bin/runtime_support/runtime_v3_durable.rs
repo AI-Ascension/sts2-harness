@@ -14,10 +14,13 @@ use sts2_harness::{
 
 use super::super::config::RuntimeConfig;
 use super::super::runtime_v3_settings::RuntimeV3Settings;
+use super::worker_store::{SharedExecutionStore, share_store, try_lock};
 
 const DEFAULT_STORE_PATH: &str = "harness-execution.sqlite3";
 const PROVIDER_RESERVATION_UNITS: u64 = 1;
 
+#[path = "runtime_v3_durable_admitted.rs"]
+mod admitted;
 #[path = "runtime_v3_durable_checkpoints.rs"]
 mod checkpoints;
 #[path = "runtime_v3_durable_identity.rs"]
@@ -31,19 +34,20 @@ pub(super) use operations::{OperationCatalogEvidence, OperationIntentEvidence};
 
 use support::{config_digest, fingerprint, optional_env, sha256_bytes, sha256_json};
 
-/// A cloneable handle deliberately backed by one owner-local SQLite connection.
+/// A cloneable handle backed by the one worker-owned SQLite connection.
 ///
-/// The runtime port, provider recorder, and test seams all use this handle, but each database
-/// borrow is kept short.  No store connection is shared across processes or threads.
+/// Each database lease is kept short. The handle's checkpoint metadata remains worker-local; the
+/// `SharedExecutionStore` is the only value shared with control/probe/lookup paths.
 #[derive(Clone)]
 pub(super) struct DurableHandle {
-    store: Rc<RefCell<ExecutionStore>>,
+    store: SharedExecutionStore,
     lineage: ExecutionLineage,
     fingerprint: ExecutionFingerprint,
     model_revision: String,
     config_digest: String,
     next_checkpoint: Rc<RefCell<u64>>,
     resume_boundary: Rc<RefCell<Option<Checkpoint>>>,
+    owns_store: bool,
 }
 
 impl DurableHandle {
@@ -113,21 +117,20 @@ impl DurableHandle {
             _ => None,
         };
         let handle = Self {
-            store: Rc::new(RefCell::new(store)),
+            store: share_store(store),
             lineage,
             fingerprint,
             model_revision: settings.exo.revision.clone(),
             config_digest: config_digest(config, settings)?,
             next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
             resume_boundary: Rc::new(RefCell::new(resume_boundary)),
+            owns_store: true,
         };
         Ok((handle, state))
     }
 
     pub(super) fn pending_operations(&self) -> Result<Vec<sts2_harness::StoredOperation>, String> {
-        self.store
-            .try_borrow()
-            .map_err(|_| String::from("runtime-v3 execution store is already mutably borrowed"))?
+        try_lock(&self.store)?
             .pending_operations(&self.lineage.episode_id)
             .map_err(|error| format!("cannot read pending runtime-v3 operations: {error}"))
     }
@@ -151,10 +154,7 @@ impl DurableHandle {
             .next_checkpoint
             .try_borrow()
             .map_err(|_| String::from("runtime-v3 checkpoint sequence is already borrowed"))?;
-        let checkpoint = self
-            .store
-            .try_borrow()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        let checkpoint = try_lock(&self.store)?
             .last_checkpoint(&self.lineage.episode_id)
             .map_err(|error| format!("cannot read runtime-v3 terminal checkpoint: {error}"))?
             .ok_or_else(|| String::from("runtime-v3 terminal observation was not checkpointed"))?;
@@ -184,24 +184,23 @@ impl DurableHandle {
             result_digest,
         )
         .map_err(|error| format!("runtime-v3 completion is invalid: {error}"))?;
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        try_lock(&self.store)?
             .record_completion(&completion)
             .map(|_| ())
             .map_err(|error| format!("cannot persist runtime-v3 completion: {error}"))
     }
 
     pub(super) fn mark_interrupted_unknown(&self, reason: &str) {
-        if let Ok(mut store) = self.store.try_borrow_mut() {
+        if let Ok(mut store) = try_lock(&self.store) {
             let _ = store.mark_interrupted_unknown(&self.lineage.episode_id, reason);
         }
     }
 
     pub(super) fn close(&self) -> Result<(), String> {
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        if !self.owns_store {
+            return Ok(());
+        }
+        try_lock(&self.store)?
             .close()
             .map_err(|error| format!("cannot close runtime-v3 execution store: {error}"))
     }
@@ -223,15 +222,29 @@ impl DurableHandle {
             })?;
         let config_digest = fingerprint.config_digest.clone();
         Ok(Self {
-            store: Rc::new(RefCell::new(store)),
+            store: share_store(store),
             lineage,
             fingerprint,
             model_revision: String::from("synthetic-provider"),
             config_digest,
             next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
             resume_boundary: Rc::new(RefCell::new(None)),
+            owns_store: true,
         })
     }
+}
+
+#[cfg(test)]
+pub(super) fn validate_worker_config_path_for_test(config: &RuntimeConfig) -> Result<(), String> {
+    admitted::validate_worker_config_path_for_test(config)
+}
+
+#[cfg(test)]
+pub(super) fn config_digest_for_test(
+    config: &RuntimeConfig,
+    settings: &RuntimeV3Settings,
+) -> Result<String, String> {
+    admitted::config_digest_for_test(config, settings)
 }
 
 #[derive(Clone)]

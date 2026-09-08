@@ -14,9 +14,7 @@ impl DurableHandle {
         &self,
         input: &DecisionInput,
     ) -> Result<DecisionAdmission, String> {
-        self.store
-            .try_borrow()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        super::super::try_lock(&self.store)?
             .resume_for_decision(&self.lineage.episode_id, &self.fingerprint)
             .map_err(|error| format!("runtime-v3 decision admission is blocked: {error}"))?;
         let input_fingerprint = decision_input_digest(input)?;
@@ -29,10 +27,7 @@ impl DurableHandle {
             self.config_digest.clone(),
         )
         .map_err(|error| format!("runtime-v3 decision reference is invalid: {error}"))?;
-        if let Some(stored) = self
-            .store
-            .try_borrow()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        if let Some(stored) = super::super::try_lock(&self.store)?
             .reuse_completed_decision(
                 &self.lineage,
                 &reference.execution_id,
@@ -44,10 +39,7 @@ impl DurableHandle {
         {
             return Ok(DecisionAdmission::Reused(replay_stored_decision(&stored)?));
         }
-        let stored = self
-            .store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        let stored = super::super::try_lock(&self.store)?
             .record_decision(&reference)
             .map_err(|error| format!("cannot persist runtime-v3 decision reference: {error}"))?;
         if stored.completed {
@@ -68,9 +60,7 @@ impl DurableHandle {
             PROVIDER_RESERVATION_UNITS,
         )
         .map_err(|error| format!("runtime-v3 provider reservation is invalid: {error}"))?;
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        super::super::try_lock(&self.store)?
             .reserve_provider(&reservation)
             .map_err(|error| format!("cannot reserve runtime-v3 provider usage: {error}"))?;
         Ok(DecisionAdmission::Fresh(ProviderReservationToken {
@@ -85,9 +75,7 @@ impl DurableHandle {
     ) -> Result<(), String> {
         let (result_payload, result_digest) = decision_replay::encode(decision)?;
         let result_ref = format!("decision-result-{}", token.reservation_id);
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        super::super::try_lock(&self.store)?
             .complete_provider_with_result(
                 &token.reservation_id,
                 &result_ref,
@@ -104,9 +92,7 @@ impl DurableHandle {
         token: &ProviderReservationToken,
         failure: ProviderFailureClass,
     ) -> Result<(), String> {
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        super::super::try_lock(&self.store)?
             .fail_provider(&token.reservation_id, failure, None)
             .map(|_| ())
             .map_err(|error| format!("cannot persist runtime-v3 provider failure: {error}"))
@@ -117,9 +103,7 @@ impl DurableHandle {
         token: &ProviderReservationToken,
         failure: ProviderFailureClass,
     ) -> Result<(), String> {
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        super::super::try_lock(&self.store)?
             .mark_provider_unknown(&token.reservation_id, failure, None)
             .map(|_| ())
             .map_err(|error| format!("cannot persist unknown runtime-v3 provider result: {error}"))

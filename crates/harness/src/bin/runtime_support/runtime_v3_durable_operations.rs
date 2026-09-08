@@ -91,9 +91,7 @@ impl DurableHandle {
             intent.with_original_context(evidence.original_context_raw.map(<[u8]>::to_vec))
         })
         .map_err(|error| format!("runtime-v3 operation intent is invalid: {error}"))?;
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        super::try_lock(&self.store)?
             .record_operation_intent(&intent)
             .map_err(|error| format!("cannot persist runtime-v3 operation intent: {error}"))?;
         Ok(payload_digest)
@@ -104,9 +102,7 @@ impl DurableHandle {
         operation_id: &str,
         payload_digest: &str,
     ) -> Result<(), String> {
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        super::try_lock(&self.store)?
             .mark_operation_dispatched(operation_id, payload_digest)
             .map(|_| ())
             .map_err(|error| format!("cannot persist runtime-v3 dispatch intent: {error}"))
@@ -122,9 +118,7 @@ impl DurableHandle {
         let evidence = response
             .map(|value| response_evidence(operation_id, value))
             .transpose()?;
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        super::try_lock(&self.store)?
             .record_operation_result(
                 operation_id,
                 payload_digest,
@@ -140,9 +134,7 @@ impl DurableHandle {
         &self,
         operation_id: &str,
     ) -> Result<OperationState, String> {
-        self.store
-            .try_borrow()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        super::try_lock(&self.store)?
             .operation(operation_id)
             .map(|operation| operation.state)
             .map_err(|error| format!("cannot read runtime-v3 operation state: {error}"))
@@ -152,9 +144,7 @@ impl DurableHandle {
         &self,
         operation_id: &str,
     ) -> Result<String, String> {
-        self.store
-            .try_borrow()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        super::try_lock(&self.store)?
             .operation(operation_id)
             .map(|operation| operation.intent.payload_digest)
             .map_err(|error| format!("cannot read runtime-v3 operation digest: {error}"))
@@ -168,18 +158,13 @@ impl DurableHandle {
         resolved_state: OperationState,
         response: &Value,
     ) -> Result<(), String> {
-        let operation = self
-            .store
-            .try_borrow()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        let operation = super::try_lock(&self.store)?
             .operation(operation_id)
             .map_err(|error| {
                 format!("cannot read runtime-v3 operation for reconciliation: {error}")
             })?;
         let (result_ref, result_digest) = response_evidence(operation_id, response)?;
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        super::try_lock(&self.store)?
             .reconcile_operation(
                 operation_id,
                 &operation.intent.payload_digest,

@@ -76,10 +76,7 @@ impl DurableHandle {
     /// authoritative observation. This is deliberately called only after all pending mutations
     /// have been reconciled.
     pub(in super::super) fn refresh_resume_boundary(&self) -> Result<(), String> {
-        let checkpoint = self
-            .store
-            .try_borrow()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        let checkpoint = super::try_lock(&self.store)?
             .last_checkpoint(&self.lineage.episode_id)
             .map_err(|error| format!("cannot refresh runtime-v3 resume boundary: {error}"))?;
         *self
@@ -123,9 +120,7 @@ impl DurableHandle {
             CatalogEvidence::new(legal_actions_digest, Some(catalog_raw.to_vec())),
         )
         .map_err(|error| format!("runtime-v3 checkpoint is invalid: {error}"))?;
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
+        super::try_lock(&self.store)?
             .save_checkpoint(&checkpoint)
             .map_err(|error| format!("cannot persist runtime-v3 checkpoint: {error}"))?;
         *sequence = sequence
