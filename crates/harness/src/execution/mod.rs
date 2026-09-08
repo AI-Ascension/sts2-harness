@@ -22,8 +22,8 @@ pub use types::{
     AttemptKind, AttemptState, CatalogEvidence, Checkpoint, CompletionRecord, CompletionStatus,
     DecisionReference, ExecutionFingerprint, ExecutionLineage, ExecutionStoreConfig,
     ExecutionStoreError, JobClaim, JobClaimOutcome, JobState, MAX_CATALOG_BYTES,
-    MAX_OPERATION_ACTION_BYTES, OperationIntent, OperationState, ProviderFailureClass,
-    ProviderReservation, ProviderReservationState, RECOVERY_CONTRACT_VERSION,
+    MAX_OPERATION_ACTION_BYTES, MAX_ORIGINAL_CONTEXT_BYTES, OperationIntent, OperationState,
+    ProviderFailureClass, ProviderReservation, ProviderReservationState, RECOVERY_CONTRACT_VERSION,
     RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState, StorePragmas, StoredAttempt,
     StoredDecision, StoredEpisode, StoredJob, StoredOperation,
 };

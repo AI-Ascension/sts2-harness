@@ -83,6 +83,7 @@ impl RecoveryCase {
             TelemetryHandle::disabled(),
             self.durable.clone(),
         )?;
+        port.recovery_authority = Some(recovery_authority());
         port.reconcile_pending_operations()
     }
 

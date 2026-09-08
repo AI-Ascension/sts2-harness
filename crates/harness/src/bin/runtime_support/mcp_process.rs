@@ -37,6 +37,7 @@ impl McpProcess {
         instance_id: &str,
         lease_id: &str,
         lease_epoch: u64,
+        authority: &Value,
     ) -> Result<Self, String> {
         let mut command = Self::configured_command(config);
         command
@@ -62,6 +63,40 @@ impl McpProcess {
                 command.env(name, value);
             }
         }
+        for (name, value) in [
+            (
+                "STS2_RECOVERY_DEPLOYMENT_ID",
+                authority["deployment_id"].as_str(),
+            ),
+            (
+                "STS2_RECOVERY_INSTANCE_ID",
+                authority["instance_id"].as_str(),
+            ),
+            (
+                "STS2_RECOVERY_INSTANCE_INCAR",
+                authority["instance_incarnation"].as_str(),
+            ),
+            ("STS2_RECOVERY_BOOT_ID", authority["boot_id"].as_str()),
+            ("STS2_RECOVERY_LEASE_ID", authority["lease_id"].as_str()),
+        ] {
+            let value = value.ok_or("validated recovery authority omitted an identity")?;
+            command.env(name, value);
+        }
+        let authority_generation = authority["authority_generation"]
+            .as_u64()
+            .ok_or("validated recovery authority omitted authority_generation")?;
+        let lease_epoch = authority["lease_epoch"]
+            .as_u64()
+            .ok_or("validated recovery authority omitted lease_epoch")?;
+        let current_fence = serde_json::to_string(&authority["current_fence"])
+            .map_err(|_| "validated recovery authority fence could not be encoded")?;
+        command
+            .env(
+                "STS2_RECOVERY_AUTHORITY_GENERATION",
+                authority_generation.to_string(),
+            )
+            .env("STS2_RECOVERY_LEASE_EPOCH", lease_epoch.to_string())
+            .env("STS2_RECOVERY_CURRENT_FENCE_JSON", current_fence);
         if config.recovery_value("STS2_RECOVERY_TOKEN").is_none() {
             return Err(String::from(
                 "STS2_RECOVERY_TOKEN is required for the recovery sideband",

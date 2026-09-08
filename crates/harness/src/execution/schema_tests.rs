@@ -70,6 +70,12 @@ fn schema_v1_migrates_decisions_to_result_aware_v2() -> Result<(), Box<dyn std::
         |row| row.get::<_, i64>(0),
     )?;
     assert_eq!(operation_catalog_column, 1);
+    let original_context_column = connection.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('operations') WHERE name = 'original_context_raw'",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    assert_eq!(original_context_column, 1);
     Ok(())
 }
 

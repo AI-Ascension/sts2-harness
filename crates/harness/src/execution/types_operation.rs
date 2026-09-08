@@ -2,7 +2,8 @@
 
 use super::super::super::action_envelope::validate_canonical_action_envelope;
 use super::super::core::{
-    ExecutionLineage, valid_catalog_raw, valid_digest, valid_id, valid_reference,
+    ExecutionLineage, valid_catalog_raw, valid_digest, valid_id, valid_original_context_raw,
+    valid_reference,
 };
 use super::super::error::ExecutionStoreError;
 use sha2::Digest;
@@ -33,6 +34,9 @@ pub struct OperationIntent {
     /// Exact legal_actions array bytes at the original boundary. Legacy rows may omit this
     /// retention field, but a present value is always checked against `catalog_digest`.
     pub catalog_raw: Option<Vec<u8>>,
+    /// Exact closed original host/lease context captured before dispatch. Legacy rows retain
+    /// `None` and are intentionally blocked from historical mutation reconciliation.
+    pub original_context_raw: Option<Vec<u8>>,
 }
 
 impl OperationIntent {
@@ -57,6 +61,7 @@ impl OperationIntent {
             input_digest: input_digest.into(),
             catalog_digest: None,
             catalog_raw: None,
+            original_context_raw: None,
         };
         if intent.lineage.validate().is_err()
             || !valid_id(&intent.operation_id)
@@ -116,6 +121,37 @@ impl OperationIntent {
         catalog_digest: Option<String>,
         catalog_raw: Option<Vec<u8>>,
     ) -> Result<Self, ExecutionStoreError> {
+        Self::new_with_action_and_catalog_and_context(
+            lineage,
+            operation_id,
+            state_id,
+            generation,
+            action_id,
+            action_kind,
+            action_payload,
+            payload_digest,
+            input_digest,
+            catalog_digest,
+            catalog_raw,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_action_and_catalog_and_context(
+        lineage: ExecutionLineage,
+        operation_id: impl Into<String>,
+        state_id: impl Into<String>,
+        generation: u64,
+        action_id: impl Into<String>,
+        action_kind: impl Into<String>,
+        action_payload: Vec<u8>,
+        payload_digest: impl Into<String>,
+        input_digest: impl Into<String>,
+        catalog_digest: Option<String>,
+        catalog_raw: Option<Vec<u8>>,
+        original_context_raw: Option<Vec<u8>>,
+    ) -> Result<Self, ExecutionStoreError> {
         let action_id = action_id.into();
         let action_kind = action_kind.into();
         let payload_digest = payload_digest.into();
@@ -139,6 +175,9 @@ impl OperationIntent {
                     .is_none_or(|digest| !valid_catalog_raw(raw, digest))
             })
             || (catalog_raw.is_some() && catalog_digest.is_none())
+            || original_context_raw
+                .as_ref()
+                .is_some_and(|raw| !valid_original_context_raw(raw))
         {
             return Err(ExecutionStoreError::InvalidOperation);
         }
@@ -154,6 +193,7 @@ impl OperationIntent {
             input_digest: input_digest.into(),
             catalog_digest,
             catalog_raw,
+            original_context_raw,
         };
         if intent.lineage.validate().is_err()
             || !valid_id(&intent.operation_id)

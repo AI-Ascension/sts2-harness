@@ -232,7 +232,10 @@ and original authority. Recorded requests must contain only historical lookup/re
 the same operation reference, and never invoke gameplay poll or dispatch. Unit tests cover exact
 ticket/witness bindings, malformed raw JSON, redacted parser errors and the frame byte limit.
 These are synthetic consumer/subprocess tests, not real gateway, host, service, reboot or provider
-evidence. Full cross-boot original-context handoff still requires its separate integration work.
+evidence. Execution-store schema-v6 and recovery-sideband tests cover immutable original-context
+retention, legacy missing-context blocking, and fresh allocation-authority handoff. These remain
+synthetic consumer/subprocess checks; gateway/host reboot settlement still needs live release-set
+evidence.
 
 Synthetic process tests cover unread stdin, simultaneous full pipes, oversized unterminated output,
 slow trickles, inherited descendant handles, malformed/miscorrelated replies, bounded close/drop,

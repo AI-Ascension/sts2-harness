@@ -4,7 +4,7 @@ use rusqlite::{Connection, Transaction};
 
 use super::types::ExecutionStoreError;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 5;
+pub const CURRENT_SCHEMA_VERSION: i32 = 6;
 
 const MIGRATION_1: &str = r#"
 CREATE TABLE IF NOT EXISTS store_metadata (
@@ -238,6 +238,22 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), ExecutionStoreE
             .map_err(map_sqlite)?;
         transaction
             .execute_batch("PRAGMA user_version = 5")
+            .map_err(map_sqlite)?;
+        transaction.commit().map_err(map_sqlite)?;
+        version = 5;
+    }
+    if version == 5 {
+        let transaction = connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(map_sqlite)?;
+        transaction
+            .execute(
+                "ALTER TABLE operations ADD COLUMN original_context_raw BLOB",
+                [],
+            )
+            .map_err(map_sqlite)?;
+        transaction
+            .execute_batch("PRAGMA user_version = 6")
             .map_err(map_sqlite)?;
         transaction.commit().map_err(map_sqlite)?;
     }

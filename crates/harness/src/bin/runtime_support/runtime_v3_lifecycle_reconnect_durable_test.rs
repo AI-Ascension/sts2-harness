@@ -38,6 +38,7 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
         durable.clone(),
     )?;
     port.allocated = true;
+    port.recovery_authority = Some(recovery_authority());
     let mut mcp = McpProcess::spawn(&port.config)?;
     wire::initialize_mcp(&mut mcp)?;
     port.mcp = Some(mcp);
@@ -163,6 +164,7 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
         durable.clone(),
     )?;
     resumed.allocated = true;
+    resumed.recovery_authority = Some(recovery_authority());
     let mut mcp = McpProcess::spawn(&resumed.config)?;
     wire::initialize_mcp(&mut mcp)?;
     resumed.mcp = Some(mcp);

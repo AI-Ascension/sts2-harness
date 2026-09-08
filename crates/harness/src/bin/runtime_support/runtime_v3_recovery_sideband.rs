@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::super::super::mcp::McpProcess;
 use super::{RecoveryContext, RuntimeV3Port, wire};
@@ -13,16 +13,26 @@ impl RuntimeV3Port {
         if let Some(mut previous) = self.recovery.take() {
             previous.close()?;
         }
-        let context = self
-            .recovery_context
-            .clone()
-            .map(Ok)
-            .unwrap_or_else(|| RecoveryContext::from_environment(&self.config))?;
+        let authority = self.recovery_authority.as_ref().ok_or_else(|| {
+            String::from("validated allocation recovery authority is unavailable")
+        })?;
+        let context = RecoveryContext::from_authority(&self.config, authority)?;
+        let authority_value = json!({
+            "deployment_id": authority.deployment_id,
+            "instance_id": authority.instance_id,
+            "instance_incarnation": authority.instance_incarnation,
+            "boot_id": authority.boot_id,
+            "authority_generation": authority.authority_generation,
+            "lease_id": authority.lease_id,
+            "lease_epoch": authority.lease_epoch,
+            "current_fence": authority.current_fence,
+        });
         let mut mcp = McpProcess::spawn_recovery(
             &self.config,
             &context.instance_id,
             &context.lease_id,
             context.lease_epoch,
+            &authority_value,
         )?;
         if let Err(error) = wire::initialize_recovery_mcp(&mut mcp) {
             let _ = mcp.close();

@@ -27,6 +27,15 @@ impl RuntimeV3Port {
         };
         let pending = durable.pending_operations()?;
         for operation in pending {
+            if operation.intent.original_context_raw.is_none() {
+                durable.mark_interrupted_unknown(
+                    "durable operation has no immutable original recovery context evidence",
+                );
+                return Err(format!(
+                    "cannot resume operation {} without its original recovery context",
+                    operation.intent.operation_id
+                ));
+            }
             let action_bytes = match operation.intent.action_payload.as_deref() {
                 Some(bytes) => bytes,
                 None => {
@@ -185,14 +194,14 @@ impl RecoveryPort for RuntimeV3Port {
         let operation = self
             .durable_operation(operation_id)
             .map_err(|_| RecoveryError::PortFailure)?;
+        let operation_ref =
+            RecoveryContext::operation_ref(&operation).map_err(|_| RecoveryError::PortFailure)?;
+        self.ensure_recovery_sideband()
+            .map_err(|_| RecoveryError::PortFailure)?;
         let context = self
             .recovery_context
             .clone()
-            .or_else(|| RecoveryContext::from_environment(&self.config).ok())
             .ok_or(RecoveryError::PortFailure)?;
-        let operation_ref = context
-            .operation_ref(&operation)
-            .map_err(|_| RecoveryError::PortFailure)?;
         let lookup = self
             .recovery_call_tool(
                 "watchdog.operation_lookup",

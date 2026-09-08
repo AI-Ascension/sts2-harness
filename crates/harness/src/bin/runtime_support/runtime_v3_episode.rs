@@ -163,8 +163,18 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                     )
                 })?,
             });
+            let authority = self.recovery_authority.as_ref().ok_or_else(|| {
+                wire::port_error(
+                    "operation_context_missing",
+                    "validated allocation recovery authority is required before dispatch",
+                    false,
+                )
+            })?;
+            let original_context_raw =
+                super::recovery::RecoveryContext::original_context_raw(authority)
+                    .map_err(|error| wire::port_error("operation_context_failed", error, false))?;
             durable
-                .operation_intent_with_catalog(
+                .operation_intent_with_catalog_and_context(
                     &identity.operation_id,
                     &identity.state_id,
                     identity.generation,
@@ -180,6 +190,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                             )
                         })?,
                     },
+                    Some(&original_context_raw),
                 )
                 .map_err(|error| wire::port_error("operation_intent_failed", error, false))?;
             durable

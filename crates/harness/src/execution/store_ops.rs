@@ -47,10 +47,10 @@ impl ExecutionStore {
         tx.execute(
             "INSERT INTO operations(operation_id, run_id, episode_id, attempt_id, trajectory_id,
              state_id, generation, action_id, action_kind, action_payload, payload_digest,
-             input_digest, catalog_digest, catalog_raw, state, result_ref, result_digest,
+             input_digest, catalog_digest, catalog_raw, original_context_raw, state, result_ref, result_digest,
              created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-                     NULL, NULL, ?16, ?16)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
+                     NULL, NULL, ?17, ?17)",
             params![
                 intent.operation_id,
                 intent.lineage.run_id,
@@ -67,6 +67,7 @@ impl ExecutionStore {
                 intent.input_digest,
                 intent.catalog_digest,
                 intent.catalog_raw,
+                intent.original_context_raw,
                 OperationState::IntentRecorded.as_str(),
                 now
             ],

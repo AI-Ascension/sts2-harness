@@ -45,6 +45,9 @@ The producer state/encoding behavior was inspected in gateway source; these harn
 not an execution of the combined gateway/MCP/host release set.
 
 The legacy environment-supplied original context is still insufficient for multiple historical
-boots. Follow-up integration must persist the immutable original context with each operation
-before possible dispatch, and keep fresh allocation/recovery authority separate. This candidate
-does not declare that dependency, cross-boot recovery, live settlement or the watchdog complete.
+boots. Execution-store schema v6 now persists the immutable original context with each operation
+before possible dispatch, while fresh allocation/recovery authority is constructed separately for
+every recovery sideband. Legacy operations with NULL context remain unresolved and block recovery;
+no context is inferred from the current allocation or environment. This closes the consumer-side
+cross-boot identity dependency, but does not claim live gateway/host reboot settlement or a
+complete watchdog release set.

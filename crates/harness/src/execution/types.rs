@@ -14,7 +14,7 @@ mod records;
 pub use checkpoint::{CatalogEvidence, Checkpoint};
 pub use core::{
     ExecutionFingerprint, ExecutionLineage, ExecutionStoreConfig, MAX_CATALOG_BYTES,
-    RECOVERY_CONTRACT_VERSION, RECOVERY_SCHEMA_DIGEST, StorePragmas,
+    MAX_ORIGINAL_CONTEXT_BYTES, RECOVERY_CONTRACT_VERSION, RECOVERY_SCHEMA_DIGEST, StorePragmas,
 };
 pub use enums::{
     AttemptKind, AttemptState, CompletionStatus, JobState, OperationState, ProviderFailureClass,
@@ -27,4 +27,4 @@ pub use records::{
     StoredEpisode, StoredJob, StoredOperation,
 };
 
-pub(crate) use core::{valid_digest, valid_id, valid_reference};
+pub(crate) use core::{valid_digest, valid_id, valid_original_context_raw, valid_reference};

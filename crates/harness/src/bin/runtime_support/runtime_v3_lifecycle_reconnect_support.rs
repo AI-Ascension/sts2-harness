@@ -31,6 +31,28 @@ const RECOVERY_RECONCILE_CORRELATION_ID: &str = "ffffffff-ffff-4fff-8fff-fffffff
 
 pub(super) struct RecoveryEnvironment(pub(super) Vec<(String, String)>);
 
+pub(super) fn recovery_authority() -> super::allocation_context::RecoveryAuthority {
+    super::allocation_context::RecoveryAuthority {
+        deployment_id: RECOVERY_DEPLOYMENT_ID.to_owned(),
+        instance_id: RECOVERY_INSTANCE_ID.to_owned(),
+        instance_incarnation: RECOVERY_INSTANCE_INCAR.to_owned(),
+        boot_id: RECOVERY_BOOT_ID.to_owned(),
+        authority_generation: 1,
+        lease_id: RECOVERY_LEASE_ID.to_owned(),
+        lease_epoch: 1,
+        current_fence: json!({
+            "host_fence_id": RECOVERY_FENCE_ID,
+            "deployment_id": RECOVERY_DEPLOYMENT_ID,
+            "instance_id": RECOVERY_INSTANCE_ID,
+            "instance_incarnation": RECOVERY_INSTANCE_INCAR,
+            "boot_id": RECOVERY_BOOT_ID,
+            "authority_generation": 1,
+            "fence_generation": 1,
+            "created_at": "2026-09-07T00:00:00Z"
+        }),
+    }
+}
+
 impl RecoveryEnvironment {
     pub(super) fn new() -> Self {
         let fence = json!({

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::types::{
-    MAX_CATALOG_BYTES, MAX_OPERATION_ACTION_BYTES, OperationIntent, OperationState,
-    StoredOperation, valid_digest, valid_reference,
+    MAX_CATALOG_BYTES, MAX_OPERATION_ACTION_BYTES, MAX_ORIGINAL_CONTEXT_BYTES, OperationIntent,
+    OperationState, StoredOperation, valid_digest, valid_reference,
 };
 use sha2::Digest;
 
@@ -29,6 +29,13 @@ pub(super) fn operation_select(suffix: &str) -> String {
               WHEN typeof(catalog_raw) <> 'blob' THEN 1
               WHEN length(catalog_raw) > {catalog_limit} THEN 2
               ELSE 0 END AS catalog_raw_invalid,
+         CASE WHEN original_context_raw IS NULL THEN NULL
+              WHEN typeof(original_context_raw) = 'blob'
+              THEN substr(original_context_raw, 1, {context_limit_plus_one}) ELSE NULL END AS original_context_raw,
+         CASE WHEN original_context_raw IS NULL THEN 0
+              WHEN typeof(original_context_raw) <> 'blob' THEN 1
+              WHEN length(original_context_raw) > {context_limit} THEN 2
+              ELSE 0 END AS original_context_raw_invalid,
          state,
          result_ref, result_digest
          FROM operations {suffix}",
@@ -36,6 +43,8 @@ pub(super) fn operation_select(suffix: &str) -> String {
         limit_plus_one = MAX_OPERATION_ACTION_BYTES + 1,
         catalog_limit = MAX_CATALOG_BYTES,
         catalog_limit_plus_one = MAX_CATALOG_BYTES + 1,
+        context_limit = MAX_ORIGINAL_CONTEXT_BYTES,
+        context_limit_plus_one = MAX_ORIGINAL_CONTEXT_BYTES + 1,
     )
 }
 
@@ -64,6 +73,10 @@ pub(super) fn read_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Stored
     if row.get::<_, i64>(15)? != 0 {
         return Err(rusqlite::Error::InvalidQuery);
     }
+    let original_context_raw = row.get::<_, Option<Vec<u8>>>(16)?;
+    if row.get::<_, i64>(17)? != 0 {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
     let intent = match (action_kind, action_payload) {
         (None, None) => {
             if catalog_raw.is_some()
@@ -87,6 +100,13 @@ pub(super) fn read_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Stored
             // Preserve that historical fact so recovery can explicitly block it instead of
             // treating the row as if no boundary had ever been recorded.
             intent.catalog_digest = catalog_digest;
+            if original_context_raw
+                .as_ref()
+                .is_some_and(|raw| !super::types::valid_original_context_raw(raw))
+            {
+                return Err(rusqlite::Error::InvalidQuery);
+            }
+            intent.original_context_raw = original_context_raw;
             Ok(intent)
         }
         (Some(action_kind), Some(action_payload))
@@ -96,7 +116,7 @@ pub(super) fn read_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Stored
             if calculated != payload_digest {
                 return Err(rusqlite::Error::InvalidQuery);
             }
-            OperationIntent::new_with_action_and_catalog(
+            OperationIntent::new_with_action_and_catalog_and_context(
                 lineage,
                 operation_id,
                 state_id,
@@ -108,15 +128,16 @@ pub(super) fn read_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Stored
                 input_digest,
                 catalog_digest,
                 catalog_raw,
+                original_context_raw,
             )
         }
         _ => Err(super::types::ExecutionStoreError::InvalidOperation),
     }
     .map_err(|_| rusqlite::Error::InvalidQuery)?;
-    let state = OperationState::from_str(&row.get::<_, String>(16)?)
+    let state = OperationState::from_str(&row.get::<_, String>(18)?)
         .ok_or(rusqlite::Error::InvalidQuery)?;
-    let result_ref = row.get::<_, Option<String>>(17)?;
-    let result_digest = row.get::<_, Option<String>>(18)?;
+    let result_ref = row.get::<_, Option<String>>(19)?;
+    let result_digest = row.get::<_, Option<String>>(20)?;
     if result_ref.is_some() != result_digest.is_some()
         || result_ref
             .as_deref()
