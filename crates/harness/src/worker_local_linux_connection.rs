@@ -9,9 +9,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use rustix::fd::OwnedFd;
 
-use super::LinuxTransportError;
 use super::worker_local_linux_image::HeldImage;
 use super::worker_local_linux_stream::CredentialStream;
+use super::{LinuxTransportError, LinuxWorkerListener};
 use crate::worker_frame_io::WorkerFrameIo;
 use crate::worker_handoff::MAX_FRAME_BYTES;
 
@@ -37,19 +37,25 @@ impl LinuxPeerWitness {
 /// One authenticated connection. It owns the stream and held peer fd;
 /// dropping it closes both. It permits exactly one request followed by one
 /// response and cannot resume a failed or cancelled operation.
-pub struct AuthenticatedWorkerConnection {
+pub struct AuthenticatedWorkerConnection<'a> {
     io: WorkerFrameIo<CredentialStream>,
     witness: LinuxPeerWitness,
     _exchange: ExchangeGuard,
     request_read: bool,
     response_written: bool,
+    listener: &'a LinuxWorkerListener,
+    peer_stream: OwnedFd,
+    deadline: tokio::time::Instant,
 }
 
-impl AuthenticatedWorkerConnection {
+impl<'a> AuthenticatedWorkerConnection<'a> {
     pub(super) fn new(
         io: WorkerFrameIo<CredentialStream>,
         witness: LinuxPeerWitness,
         exchange: ExchangeGuard,
+        listener: &'a LinuxWorkerListener,
+        peer_stream: OwnedFd,
+        deadline: tokio::time::Instant,
     ) -> Self {
         Self {
             io,
@@ -57,6 +63,9 @@ impl AuthenticatedWorkerConnection {
             _exchange: exchange,
             request_read: false,
             response_written: false,
+            listener,
+            peer_stream,
+            deadline,
         }
     }
 
@@ -77,6 +86,13 @@ impl AuthenticatedWorkerConnection {
         // never leave a reusable exchange behind.
         self.response_written = true;
         let request = self.io.read_frame(MAX_FRAME_BYTES).await?;
+        // A live PID can exec a different image during framing. Recheck the
+        // original connection's native peer and endpoint after the complete
+        // request, under the same deadline, before exposing admission bytes.
+        self.witness = self
+            .listener
+            .verify_peer(&self.peer_stream, self.deadline)
+            .await?;
         self.response_written = false;
         Ok(request)
     }

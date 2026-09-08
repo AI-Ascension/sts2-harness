@@ -33,6 +33,18 @@ prelude and request. It rejects a different sender, missing/truncated ancillary
 data, unexpected descriptors, and a dead held pidfd. Merely passing the connected
 socket to a child does not transfer the configured process identity.
 
+After a complete request frame, the connection repeats native peer, image, and
+endpoint verification under the original connection deadline before exposing
+the bytes to admission. The connection borrows its listener and retains the
+original socket handle, so revalidation cannot substitute a later connection.
+A synthetic subprocess test replaces the authenticated sender with another
+executable under the same live PID and confirms rejection before admission.
+
+The exchange bridge selects capabilities from a local `WorkerEndpointPolicy`:
+one command, read-only probe/lookup, or the watchdog owner's complete command
+set. The policy is not deserialized from the request. These APIs remain separate
+from the still-unintegrated executable serving loop.
+
 This uses `SO_PASSCRED` and `SCM_CREDENTIALS`, whose kernel checks and privileged
 exceptions are documented in [unix(7)](https://man7.org/linux/man-pages/man7/unix.7.html).
 It is not a defense against privileged host compromise. The private verifier

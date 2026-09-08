@@ -27,6 +27,8 @@ mod worker_local_linux_image;
 mod worker_local_linux_image_tests;
 #[path = "worker_local_linux_process.rs"]
 mod worker_local_linux_process;
+#[path = "worker_local_linux_revalidation.rs"]
+mod worker_local_linux_revalidation;
 #[path = "worker_local_linux_stream.rs"]
 mod worker_local_linux_stream;
 
@@ -38,7 +40,7 @@ use tokio::net::UnixListener;
 use tokio::time::{Instant, timeout_at};
 
 use crate::worker_frame_io::{ConnectionDeadline, FrameIoError, WorkerFrameIo};
-use worker_linux_verifier::{VerifierController, VerifierFailure, VerifierOutcome};
+use worker_linux_verifier::{VerifierController, VerifierFailure};
 use worker_local_linux_auth::authenticate_credential;
 use worker_local_linux_connection::ExchangeGuard;
 pub use worker_local_linux_connection::{AuthenticatedWorkerConnection, LinuxPeerWitness};
@@ -224,7 +226,7 @@ impl LinuxWorkerListener {
     pub async fn accept_authenticated(
         &self,
         deadline: ConnectionDeadline,
-    ) -> Result<AuthenticatedWorkerConnection, LinuxTransportError> {
+    ) -> Result<AuthenticatedWorkerConnection<'_>, LinuxTransportError> {
         let exchange = ExchangeGuard::acquire(&self.active)?;
         #[cfg(test)]
         self.credential_read_started
@@ -247,33 +249,8 @@ impl LinuxWorkerListener {
         if Instant::now() >= instant {
             return Err(LinuxTransportError::Deadline);
         }
-        let endpoint = self.endpoint.duplicate_verifier_path()?;
-        let verifier = self
-            .verifier
-            .verify(&stream, &self.peer, &self.image, endpoint, instant)
-            .await
-            .map_err(|error| match error {
-                VerifierFailure::Configuration => LinuxTransportError::Configuration,
-                VerifierFailure::Busy => LinuxTransportError::Busy,
-                VerifierFailure::Deadline => LinuxTransportError::Deadline,
-                VerifierFailure::Poisoned | VerifierFailure::Io => LinuxTransportError::Io,
-            })?;
-        let witness = match verifier {
-            VerifierOutcome::Accepted { pidfd, image_fd } => LinuxPeerWitness::from_verified(
-                pidfd,
-                self.peer.pid,
-                self.peer.uid,
-                HeldImage::from_verified_fd(
-                    image_fd,
-                    self.peer.uid,
-                    self.image.identity(),
-                    &self.peer.executable_sha256,
-                )
-                .map_err(|_| LinuxTransportError::Io)?,
-            ),
-            VerifierOutcome::Rejected => return Err(LinuxTransportError::Peer),
-            VerifierOutcome::Closed => return Err(LinuxTransportError::Closed),
-        };
+        let witness = self.verify_peer(&stream, instant).await?;
+        let peer_stream = rustix::io::dup(&stream).map_err(|_| LinuxTransportError::Io)?;
         let mut stream =
             worker_local_linux_stream::CredentialStream::new(stream, &self.peer, &witness)?;
         #[cfg(test)]
@@ -287,6 +264,9 @@ impl LinuxWorkerListener {
             WorkerFrameIo::new(stream, deadline),
             witness,
             exchange,
+            self,
+            peer_stream,
+            instant,
         ))
     }
 

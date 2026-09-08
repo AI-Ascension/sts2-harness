@@ -13,7 +13,6 @@ use std::sync::{Condvar, Mutex};
 use rustix::io::dup;
 use rustix::net::{AddressFamily, SocketFlags, SocketType, socketpair};
 use tokio::io::unix::AsyncFd;
-use tokio::net::UnixStream;
 use tokio::time::{Instant, timeout_at};
 
 use super::super::LinuxPeerIdentity;
@@ -171,7 +170,7 @@ impl VerifierController {
 
     pub(crate) async fn verify(
         &self,
-        stream: &UnixStream,
+        stream: &impl AsFd,
         expected: &LinuxPeerIdentity,
         approved_image: &HeldImage,
         endpoint: (OwnedFd, FileIdentity, Vec<u8>),
