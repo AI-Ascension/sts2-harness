@@ -287,27 +287,4 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) struct RuntimeV3Port {
-    config: RuntimeConfig,
-    gateway: GatewayClient,
-    mcp: Option<McpProcess>,
-    allocated: bool,
-    released: bool,
-    next_rpc_id: u64,
-    generation: u64,
-    current_state: Option<String>,
-    current_actions: Option<EpisodeLegalActionSet>,
-    catalog: Option<Value>,
-    catalog_raw: Option<Vec<u8>>,
-    payloads: BTreeMap<String, Value>,
-    operations: BTreeMap<String, OperationRecord>,
-    reconnect_attempts: u8,
-    telemetry: TelemetryHandle,
-    durable: Option<durable::DurableHandle>,
-    recovery_authority: Option<allocation_context::RecoveryAuthority>,
-    recovery: Option<McpProcess>,
-    recovery_context: Option<recovery::RecoveryContext>,
-    recovery_rpc_id: u64,
-}
-
 include!("runtime_v3_port.rs");
