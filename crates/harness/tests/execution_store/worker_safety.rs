@@ -278,3 +278,47 @@ fn duplicate_terminal_rejects_incompatible_durable_completion() {
         "a duplicate must not accept a durable completion that cannot project to its receipt"
     );
 }
+
+#[test]
+fn newer_control_fences_an_already_issued_execution_permit() {
+    use sts2_harness::{WorkerControlMode, WorkerControlRequest, WorkerOwnerProof};
+
+    for mode in [
+        WorkerControlMode::Paused,
+        WorkerControlMode::Draining,
+        WorkerControlMode::Stopped,
+        WorkerControlMode::Running,
+    ] {
+        let (mut store, tuple, old_context, permit) = admitted_store_with_permit();
+        let request = WorkerControlRequest::new(
+            "deployment-1",
+            "harness",
+            profile(),
+            WATCHDOG_BOOT_1,
+            WORKER_BOOT_1,
+            mode,
+            2,
+        )
+        .expect("new control is valid");
+        let proof = WorkerOwnerProof::new("authenticated-owner").expect("proof is valid");
+        store
+            .set_worker_control_mode(&request, &proof)
+            .expect("newer intent commits before execution starts");
+        assert!(matches!(
+            store.mark_worker_handoff_running(permit, &old_context),
+            Err(ExecutionStoreError::Conflict)
+        ));
+        assert_eq!(
+            store
+                .worker_handoff(&tuple.handoff_id)
+                .expect("handoff reads")
+                .expect("reservation remains")
+                .state,
+            WorkerHandoffState::Admitted
+        );
+        assert_eq!(
+            store.job(&tuple.job_id).expect("job reads").state,
+            JobState::Claimed
+        );
+    }
+}
