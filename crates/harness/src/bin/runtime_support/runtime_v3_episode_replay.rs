@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::io::Read;
+use std::path::Path;
 
 #[cfg(test)]
 use serde_json::Value;
@@ -27,7 +28,8 @@ const MAX_BYTES: u64 = 32 * 1024 * 1024;
 pub(super) fn run(
     port: &mut RuntimeV3Port,
     config: &EpisodeRunnerConfig,
-    path: &str,
+    path: &Path,
+    prefix: bool,
 ) -> Result<(), String> {
     // Validate the complete source before the runner allocates a host lease.
     let file = std::fs::File::open(path).map_err(|_| "cannot open episode replay")?;
@@ -38,11 +40,6 @@ pub(super) fn run(
     if bytes.len() as u64 > MAX_BYTES {
         return Err("episode replay exceeds byte bound".into());
     }
-    let prefix = match std::env::var("STS2_REPLAY_PREFIX").as_deref() {
-        Ok("true") => true,
-        Ok("false") | Err(std::env::VarError::NotPresent) => false,
-        _ => return Err("STS2_REPLAY_PREFIX must be true or false".into()),
-    };
     let trace = if prefix {
         ReplayTrace::parse_mode(&bytes, true)?
     } else {

@@ -2,6 +2,7 @@
 
 use serde_json::Value;
 use std::io::Read;
+use std::path::Path;
 use sts2_harness::{Decision, EpisodeLegalActionSet, EpisodeObservation};
 
 pub(super) struct Replay {
@@ -10,14 +11,13 @@ pub(super) struct Replay {
 }
 
 impl Replay {
-    pub(super) fn load() -> Result<Self, String> {
-        let path = std::env::var("STS2_REPLAY_TRAJECTORY").unwrap_or_default();
-        if path.is_empty() {
+    pub(super) fn load(path: Option<&Path>) -> Result<Self, String> {
+        let Some(path) = path else {
             return Ok(Self {
                 records: None,
                 terminal: None,
             });
-        }
+        };
         let file = std::fs::File::open(path).map_err(|_| "cannot open replay trajectory")?;
         let mut text = String::new();
         file.take(8 * 1024 * 1024 + 1)

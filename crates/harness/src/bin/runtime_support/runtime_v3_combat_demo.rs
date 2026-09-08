@@ -15,9 +15,10 @@ pub(super) fn run<S: DecisionSource>(
     port: &mut RuntimeV3Port,
     source: &mut S,
     config: &EpisodeRunnerConfig,
+    replay_path: Option<&std::path::Path>,
 ) -> Result<(), String> {
     port.launch().map_err(|error| error.to_string())?;
-    let result = run_inner(port, source, config);
+    let result = run_inner(port, source, config, replay_path);
     let cleanup = EpisodeShutdown
         .close(port)
         .map_err(|error| error.to_string());
@@ -28,11 +29,12 @@ fn run_inner<S: DecisionSource>(
     port: &mut RuntimeV3Port,
     source: &mut S,
     config: &EpisodeRunnerConfig,
+    replay_path: Option<&std::path::Path>,
 ) -> Result<(), String> {
     let deadline = Instant::now() + Duration::from_secs(900);
     let mut steps = 0_u32;
     let mut saw_combat = false;
-    let replay = replay::Replay::load()?;
+    let replay = replay::Replay::load(replay_path)?;
     while Instant::now() < deadline && steps < config.max_steps() {
         let before = port.observe().map_err(|error| error.to_string())?;
         saw_combat |= before.stage() == EpisodeStage::Combat;
