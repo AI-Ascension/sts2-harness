@@ -1,5 +1,19 @@
 # Third-Party Notices
 
+The isolated Linux worker-transport candidate adds Linux-targeted Tokio `net`
+and rustix 1.1.4 `event`, `fs`, `net`, and `process` features. Rustix offers
+Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT and originates at
+https://github.com/bytecodealliance/rustix. Tokio's newly locked socket2 0.6.5
+dependency is MIT OR Apache-2.0 (https://github.com/rust-lang/socket2).
+Secret comparison uses subtle 2.6.1, BSD-3-Clause
+(https://github.com/dalek-cryptography/subtle), with defaults disabled;
+secret buffer cleanup uses zeroize 1.9.0, Apache-2.0 OR MIT
+(https://github.com/RustCrypto/utils), with defaults disabled and `alloc` enabled.
+Locked offline Cargo metadata confirmed these declarations on 2026-09-08.
+Cargo.lock retains crates.io sources and integrity checksums; no source is
+vendored. The earlier advisory result below does not cover this changed lockfile.
+Transport review, a refreshed advisory check, and native validation remain gates.
+
 Operation identity creation uses `uuid` exactly `1.23.5` (Apache-2.0 OR MIT;
 https://github.com/uuid-rs/uuid), with UUIDv4 generation backed by `getrandom`.
 The dependency change locks `getrandom` 0.4.3 (MIT OR Apache-2.0), `r-efi` 6.0.0
