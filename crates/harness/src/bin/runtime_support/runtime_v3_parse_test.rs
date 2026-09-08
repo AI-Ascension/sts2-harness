@@ -9,6 +9,10 @@ use super::{action_set, observation, receipt, result_observation, wait_sample};
 #[path = "runtime_v3_contract_test.rs"]
 mod contract;
 
+fn wire_text(value: &Value) -> String {
+    value.to_string()
+}
+
 #[test]
 fn unknown_results_still_validate_generation_and_nullable_state_identity() -> Result<(), String> {
     let action = EpisodeLegalAction::new("combat.end-turn", ActionKind::EndTurn)
@@ -32,6 +36,7 @@ fn unknown_results_still_validate_generation_and_nullable_state_identity() -> Re
         value["state_id"] = Value::Null;
         receipt(
             &value,
+            &wire_text(&value),
             "dispatch_action_response",
             &config(),
             "op-1",
@@ -42,6 +47,7 @@ fn unknown_results_still_validate_generation_and_nullable_state_identity() -> Re
         assert!(
             receipt(
                 &value,
+                &wire_text(&value),
                 "dispatch_action_response",
                 &config(),
                 "op-1",
@@ -52,7 +58,7 @@ fn unknown_results_still_validate_generation_and_nullable_state_identity() -> Re
         );
         value["kind"] = json!("wait_response");
         value["wait_outcome"] = json!("timeout");
-        assert!(wait_sample(&value, &config(), "op-1", 0).is_err());
+        assert!(wait_sample(&value, &wire_text(&value), &config(), "op-1", 0).is_err());
     }
     Ok(())
 }
@@ -152,13 +158,15 @@ fn privileged_projection_is_rejected_before_policy_use() {
 fn settled_receipt_requires_and_preserves_a_fresh_witness() -> Result<(), String> {
     let action = EpisodeLegalAction::new("combat.end-turn", ActionKind::EndTurn)
         .map_err(|error| error.to_string())?;
+    let value = response(
+        "dispatch_action_response",
+        1,
+        json!("op-1"),
+        json!("settled"),
+    );
     let receipt = receipt(
-        &response(
-            "dispatch_action_response",
-            1,
-            json!("op-1"),
-            json!("settled"),
-        ),
+        &value,
+        &wire_text(&value),
         "dispatch_action_response",
         &config(),
         "op-1",
@@ -168,6 +176,29 @@ fn settled_receipt_requires_and_preserves_a_fresh_witness() -> Result<(), String
     assert_eq!(receipt.status(), DispatchStatus::Settled);
     assert_eq!(receipt.after().map(|value| value.generation()), Some(1));
     assert_eq!(receipt.effect_kind(), Some("end_turn.settled"));
+    Ok(())
+}
+
+#[test]
+fn result_parser_retains_noncanonical_catalog_bytes_from_response_text() -> Result<(), String> {
+    let value = response(
+        "dispatch_action_response",
+        1,
+        json!("op-1"),
+        json!("settled"),
+    );
+    let canonical = wire_text(&value);
+    let noncanonical = canonical.replace("\"legal_actions\":[", "\"legal_actions\" : [ ");
+    let parsed = super::result_observation_with_text(
+        &value,
+        &noncanonical,
+        "dispatch_action_response",
+        &config(),
+    )?;
+    assert_eq!(
+        parsed.catalog_raw,
+        br#"[ {"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}]"#
+    );
     Ok(())
 }
 
@@ -186,6 +217,7 @@ fn settlement_must_start_at_the_operations_original_generation() -> Result<(), S
     assert!(
         receipt(
             &value,
+            &wire_text(&value),
             "dispatch_action_response",
             &config(),
             "op-1",
@@ -198,6 +230,7 @@ fn settlement_must_start_at_the_operations_original_generation() -> Result<(), S
     assert!(
         receipt(
             &value,
+            &wire_text(&value),
             "dispatch_action_response",
             &config(),
             "op-1",
@@ -209,9 +242,9 @@ fn settlement_must_start_at_the_operations_original_generation() -> Result<(), S
     value["kind"] = json!("wait_response");
     value["wait_outcome"] = json!("successor");
     // Even after observation advances, waits bind to the ledger's original operation generation.
-    assert!(wait_sample(&value, &config(), "op-1", 0).is_ok());
+    assert!(wait_sample(&value, &wire_text(&value), &config(), "op-1", 0).is_ok());
     value["transition"]["from_generation"] = json!(2);
-    assert!(wait_sample(&value, &config(), "op-1", 0).is_err());
+    assert!(wait_sample(&value, &wire_text(&value), &config(), "op-1", 0).is_err());
     Ok(())
 }
 
@@ -236,6 +269,7 @@ fn response_shapes_reject_request_payloads_and_contradictory_errors() -> Result<
         assert!(
             receipt(
                 &value,
+                &wire_text(&value),
                 "dispatch_action_response",
                 &config(),
                 "op-1",
@@ -250,12 +284,12 @@ fn response_shapes_reject_request_payloads_and_contradictory_errors() -> Result<
     value["observation"] = Value::Null;
     value["legal_actions"] = Value::Null;
     value["wait_outcome"] = json!("timeout");
-    assert!(wait_sample(&value, &config(), "op-1", 0).is_err());
+    assert!(wait_sample(&value, &wire_text(&value), &config(), "op-1", 0).is_err());
     value["error_code"] = json!("host_pending");
-    assert!(wait_sample(&value, &config(), "op-1", 0).is_ok());
+    assert!(wait_sample(&value, &wire_text(&value), &config(), "op-1", 0).is_ok());
     for invalid in [json!(""), json!(17), json!("private arbitrary text")] {
         value["error_code"] = invalid;
-        assert!(wait_sample(&value, &config(), "op-1", 0).is_err());
+        assert!(wait_sample(&value, &wire_text(&value), &config(), "op-1", 0).is_err());
     }
     let mut state = response("state_response", 0, Value::Null, Value::Null);
     state["action"] = json!({"kind": "end_turn"});
@@ -276,9 +310,17 @@ fn validated_results_install_their_observation_without_using_state_response_shap
         let mut value = response(kind, 1, json!("op-1"), json!("settled"));
         if kind == "wait_response" {
             value["wait_outcome"] = json!("successor");
-            wait_sample(&value, &config(), "op-1", 0)?;
+            wait_sample(&value, &wire_text(&value), &config(), "op-1", 0)?;
         } else {
-            receipt(&value, kind, &config(), "op-1", 0, action.clone())?;
+            receipt(
+                &value,
+                &wire_text(&value),
+                kind,
+                &config(),
+                "op-1",
+                0,
+                action.clone(),
+            )?;
         }
         let parsed = result_observation(&value, kind, &config())?;
         assert_eq!(parsed.observation.generation(), 1);

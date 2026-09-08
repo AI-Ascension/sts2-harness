@@ -87,8 +87,14 @@ impl RuntimeV3Port {
             "generation":self.generation, "operation_id":operation_id,
             "wait_for_millis":wait_for_millis
         })).map_err(|_| BarrierError::PortFailure)?;
-        let sample = parse::wait_sample(&value, &self.config, operation_id, generation)
-            .map_err(|_| BarrierError::PortFailure)?;
+        let sample = parse::wait_sample(
+            &value,
+            &response_text,
+            &self.config,
+            operation_id,
+            generation,
+        )
+        .map_err(|_| BarrierError::PortFailure)?;
         self.install_response(&value, &response_text, "wait_response")
             .map_err(|_| BarrierError::PortFailure)?;
         if let Some(durable) = &self.durable {

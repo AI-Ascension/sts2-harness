@@ -9,6 +9,7 @@ use super::super::config::RuntimeConfig;
 
 pub(crate) fn receipt(
     value: &Value,
+    response_text: &str,
     expected_kind: &str,
     config: &RuntimeConfig,
     expected_operation: &str,
@@ -24,7 +25,7 @@ pub(crate) fn receipt(
     }
     let status = dispatch_status(root)?;
     validate_result_fields(root, status, false)?;
-    let after = receipt_observation(root, status)?;
+    let after = receipt_observation(root, response_text, status)?;
     let effect_kind = transition(
         root,
         after.as_ref().map(|parsed| &parsed.observation),
@@ -56,6 +57,7 @@ pub(crate) fn receipt(
 
 fn receipt_observation(
     root: &Map<String, Value>,
+    response_text: &str,
     status: DispatchStatus,
 ) -> Result<Option<super::ParsedObservation>, String> {
     match status {
@@ -73,12 +75,13 @@ fn receipt_observation(
         DispatchStatus::Accepted
         | DispatchStatus::Settled
         | DispatchStatus::Rejected
-        | DispatchStatus::Cancelled => Ok(Some(super::observation_from_root(root, None)?)),
+        | DispatchStatus::Cancelled => Ok(Some(super::observation_from_root(root, response_text)?)),
     }
 }
 
 pub(crate) fn wait_sample(
     value: &Value,
+    response_text: &str,
     config: &RuntimeConfig,
     expected_operation: &str,
     expected_generation: u64,
@@ -101,7 +104,7 @@ pub(crate) fn wait_sample(
     validate_result_fields(root, status, true)?;
     match (status, outcome) {
         (DispatchStatus::Settled, WaitOutcome::Successor | WaitOutcome::SameStateMutation) => {
-            let after = super::observation_from_root(root, None)?;
+            let after = super::observation_from_root(root, response_text)?;
             let effect_kind = transition(root, Some(&after.observation), expected_generation)?
                 .ok_or_else(|| String::from("settled Runtime-v3 wait omitted effect witness"))?;
             Ok(WaitSample::new(outcome, Some(after.observation)).with_effect_kind(effect_kind))
