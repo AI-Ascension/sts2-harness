@@ -49,7 +49,23 @@ SHA-256 of selected tested files:
 | `tests/worker_control_restart.rs` | `b5134a12d11994b1601b3f363f9bb0e816c90d63de70f8ff207cb1f1cb7908c5` |
 | `tests/worker_terminal_reference.rs` | `85a62cf4a1c53f1ba976b1895441d65418d5acc00a473a98e490a0d5c6364a06` |
 
-## Limits
+## Duplicate completion correction
+
+Subsequent tested source: `5e79bca` (the earlier file hashes above remain scoped
+to `9e6adc2`). A new file-backed corruption regression first failed with exit
+101: after a completed worker receipt, changing the durable completion status
+to the core-valid `quarantined` value was incorrectly accepted by duplicate
+completion recording. The projection returned an error, but the duplicate check
+only rejected successfully projected unequal values.
+
+The correction requires a successful equal projection; missing, failed, and
+unequal projections reject as corruption. The new regression and all 46
+execution-store tests pass. Root also reran the full workspace/all-target/
+all-feature locked offline test suite, formatting, workspace Clippy with warnings
+denied, and strict policy (480 sized files, zero warnings/errors); all returned
+exit 0. Independent acceptance of this follow-up remains pending.
+
+## Validation limits
 
 This evidence does not prove authenticated worker endpoint wiring, continued
 episode execution, native service behavior, power-loss durability, live game
