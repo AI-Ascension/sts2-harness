@@ -60,3 +60,25 @@ response suite tests all status shapes, terminal field corruption and boot/tuple
 substitution. The durable worker store and actual server-to-runtime path remain
 unfinished. No service, provider or game is launched by these tests. Conformance
 is not end-to-end worker compatibility, release completion or live recovery.
+
+## Transport framing adapter
+
+The separate safe `worker_frame_io` module owns bounded asynchronous length-prefix
+I/O, not the decoder or authentication policy. Its process-local connection budget
+is created before connect/accept and peer checks, then moved into framing without
+resetting elapsed time. A request timeout can only shorten it. The native endpoint
+must apply the same instant to its earlier authentication and credential phases.
+
+Each read validates the four-byte big-endian prefix against its phase-specific
+bound before allocating a body; neither reads nor writes exceed 65536 bytes.
+Zero-length, oversized, truncated, expired or cancelled exchanges poison the
+connection so partial messages cannot be resumed under a new prefix. There are no
+spawned I/O tasks, detached readers or per-frame timer resets. Errors expose no
+payload, credential, OS message, path or peer identity.
+
+Duplex-stream tests exercise the exact maximum size through partial I/O, prefix
+rejection before body consumption, elapsed pre-framing budgets, failed timeout
+extension, partial-read/write cancellation, EOF, stalled readers/writers and typed
+redacted errors. These are adapter tests only: OS peer verification, credential
+admission, native Windows cancellation, server wiring and runtime execution remain
+separate required gates.

@@ -19,6 +19,7 @@ mod replay;
 mod routing;
 mod runtime_v2;
 mod runtime_v2_artifact;
+pub mod worker_frame_io;
 pub mod worker_handoff;
 
 pub use artifact::{
