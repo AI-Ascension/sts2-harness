@@ -23,7 +23,8 @@ impl RuntimeV3Port {
         if let Some(mut previous) = self.mcp.take() {
             previous.close().map_err(|_| RecoveryError::PortFailure)?;
         }
-        let mut mcp = McpProcess::spawn(&self.config).map_err(|_| RecoveryError::PortFailure)?;
+        let mut mcp = McpProcess::spawn_with_cancellation(&self.config, &self.cancellation)
+            .map_err(|_| RecoveryError::PortFailure)?;
         wire::initialize_mcp(&mut mcp).map_err(|_| RecoveryError::PortFailure)?;
         self.mcp = Some(mcp);
         let _ = self.telemetry.recovery(

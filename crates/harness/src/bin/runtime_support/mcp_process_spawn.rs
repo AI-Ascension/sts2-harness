@@ -17,13 +17,29 @@ impl McpProcess {
         Self::spawn_command(Self::configured_command(config), EXCHANGE_TIMEOUT)
     }
 
+    pub(in super::super) fn spawn_with_cancellation(
+        config: &RuntimeConfig,
+        cancellation: &sts2_harness::ExecutionCancellation,
+    ) -> Result<Self, String> {
+        if cancellation.is_cancelled() {
+            return Err(String::from("MCP launch cancelled"));
+        }
+        let mut process = Self::spawn(config)?;
+        process.cancellation = cancellation.clone();
+        Ok(process)
+    }
+
     pub(in super::super) fn spawn_recovery(
         config: &RuntimeConfig,
         instance_id: &str,
         lease_id: &str,
         lease_epoch: u64,
         authority: &Value,
+        cancellation: &sts2_harness::ExecutionCancellation,
     ) -> Result<Self, String> {
+        if cancellation.is_cancelled() {
+            return Err(String::from("MCP recovery launch cancelled"));
+        }
         let mut command = Self::configured_command(config);
         command
             .env("STS2_RUNTIME_PROFILE", "watchdog-recovery-v1")
@@ -87,7 +103,12 @@ impl McpProcess {
                 "STS2_RECOVERY_TOKEN is required for the recovery sideband",
             ));
         }
-        Self::spawn_command(command, EXCHANGE_TIMEOUT)
+        if cancellation.is_cancelled() {
+            return Err(String::from("MCP recovery launch cancelled"));
+        }
+        let mut process = Self::spawn_command(command, EXCHANGE_TIMEOUT)?;
+        process.cancellation = cancellation.clone();
+        Ok(process)
     }
 
     pub(in super::super) fn configured_command(config: &RuntimeConfig) -> Command {
@@ -142,6 +163,7 @@ impl McpProcess {
             output,
             timeout,
             closed: false,
+            cancellation: sts2_harness::ExecutionCancellation::default(),
         })
     }
 }

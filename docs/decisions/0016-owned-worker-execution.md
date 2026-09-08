@@ -56,8 +56,14 @@ deadline, then invoke bounded direct-child termination/reaping. Cancellation is
 typed separately from timeout and is not retryable; durable recording retains
 unknown consumption using the existing cancelled-provider classification.
 
+The same signal reaches primary and recovery MCP exchanges. Cancellation drops
+their pipe futures, poisons the session, and invokes bounded direct-child cleanup.
+An already-cancelled execution cannot launch a replacement primary or recovery
+MCP. A request written before cancellation remains uncertain; cancellation is
+never converted to an authoritative rejection or a replacement dispatch.
+
 This signal does not prove remote inference cancellation, descendant containment,
-or settlement of a game effect. MCP/gateway phases still use their existing
+or settlement of a game effect. Gateway phases still use their existing
 deadlines. Forced descendant cleanup and active-execution shutdown bounds need
 additional implementation and fault evidence; neither the synthetic barrier test
 nor the compile-time `Send` check proves those guarantees.

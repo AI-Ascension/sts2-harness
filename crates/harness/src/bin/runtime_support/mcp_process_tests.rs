@@ -51,7 +51,7 @@ fn child_environment_preserves_distinct_gateway_and_mcp_sessions() {
     }
 }
 
-fn session_config() -> RuntimeConfig {
+pub(super) fn session_config() -> RuntimeConfig {
     RuntimeConfig {
         gateway_address: "127.0.0.1:15525".into(),
         gateway_token: "synthetic-token".into(),

@@ -17,6 +17,7 @@ pub(super) struct McpProcess {
     output: Option<BufReader<ChildStdout>>,
     timeout: Duration,
     closed: bool,
+    cancellation: sts2_harness::ExecutionCancellation,
 }
 
 #[path = "mcp_process_spawn.rs"]
@@ -57,7 +58,7 @@ impl McpProcess {
             runtime.block_on(async {
                 let input = self.input.as_mut().ok_or("MCP stdin is closed")?;
                 let output = self.output.as_mut().ok_or("MCP stdout is closed")?;
-                tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), async {
+                let exchange = tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), async {
                     let write = async {
                         input
                             .write_all(&bytes)
@@ -67,9 +68,12 @@ impl McpProcess {
                     };
                     let (_, response) = tokio::try_join!(write, read_frame(output))?;
                     validate_response(&response, id)
-                })
-                .await
-                .map_err(|_| "MCP exchange timed out")?
+                });
+                tokio::select! {
+                    biased;
+                    _ = self.cancellation.cancelled() => Err("MCP exchange cancelled; outcome remains uncertain"),
+                    result = exchange => result.map_err(|_| "MCP exchange timed out")?,
+                }
             })
         });
         if let Err(error) = result {
@@ -202,3 +206,7 @@ fn validate_response(bytes: &[u8], id: u64) -> Result<Value, &'static str> {
 #[cfg(test)]
 #[path = "mcp_process_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "mcp_process_cancellation_tests.rs"]
+mod cancellation_tests;

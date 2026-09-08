@@ -21,6 +21,7 @@ pub(super) struct RuntimeV3Port {
     recovery: Option<McpProcess>,
     recovery_context: Option<recovery::RecoveryContext>,
     recovery_rpc_id: u64,
+    cancellation: sts2_harness::ExecutionCancellation,
 }
 
 fn finish_telemetry(telemetry: RuntimeV3Telemetry) {
@@ -83,6 +84,7 @@ impl RuntimeV3Port {
             recovery: None,
             recovery_context: None,
             recovery_rpc_id: 1,
+            cancellation: sts2_harness::ExecutionCancellation::default(),
         })
     }
 
@@ -232,7 +234,7 @@ impl RuntimeV3Port {
     }
 
     fn launch_mcp(&mut self) -> Result<(), String> {
-        let mut mcp = match McpProcess::spawn(&self.config) {
+        let mut mcp = match McpProcess::spawn_with_cancellation(&self.config, &self.cancellation) {
             Ok(mcp) => mcp,
             Err(error) => {
                 let release = self.release_lease_inner();

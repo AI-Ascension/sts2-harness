@@ -33,6 +33,7 @@ impl RuntimeV3Port {
             &context.lease_id,
             context.lease_epoch,
             &authority_value,
+            &self.cancellation,
         )?;
         if let Err(error) = wire::initialize_recovery_mcp(&mut mcp) {
             let _ = mcp.close();
