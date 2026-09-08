@@ -102,6 +102,60 @@ fn v5_migration_rolls_back_both_columns_when_the_second_alter_fails()
 }
 
 #[test]
+fn worker_v7_migration_retains_legacy_bytes_and_is_idempotent()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut connection = Connection::open_in_memory()?;
+    connection.execute_batch(
+        "CREATE TABLE operations (operation_id TEXT, original_context_raw BLOB);
+         INSERT INTO operations VALUES ('retained-operation', X'0001FEFF');
+         PRAGMA user_version = 6;",
+    )?;
+    migrate(&mut connection)?;
+    migrate(&mut connection)?;
+    let version = connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))?;
+    assert_eq!(version, 7);
+    let retained = connection.query_row(
+        "SELECT original_context_raw FROM operations WHERE operation_id = 'retained-operation'",
+        [],
+        |row| row.get::<_, Vec<u8>>(0),
+    )?;
+    assert_eq!(retained, [0, 1, 254, 255]);
+    let count = connection.query_row(
+        "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table'
+         AND name IN ('worker_control', 'worker_control_boots', 'worker_handoffs')",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    assert_eq!(count, 3);
+    Ok(())
+}
+
+#[test]
+fn worker_v7_late_migration_failure_rolls_back_tables_and_version()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut connection = Connection::open_in_memory()?;
+    connection.execute_batch(
+        "CREATE VIEW worker_handoffs AS SELECT 'retained' AS marker;
+         PRAGMA user_version = 6;",
+    )?;
+    assert!(migrate(&mut connection).is_err());
+    let version = connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))?;
+    assert_eq!(version, 6);
+    let count = connection.query_row(
+        "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table'
+         AND name IN ('worker_control', 'worker_control_boots')",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    assert_eq!(count, 0);
+    let marker = connection.query_row("SELECT marker FROM worker_handoffs", [], |row| {
+        row.get::<_, String>(0)
+    })?;
+    assert_eq!(marker, "retained");
+    Ok(())
+}
+
+#[test]
 fn future_schema_is_rejected_before_any_migration() -> Result<(), Box<dyn std::error::Error>> {
     let mut connection = Connection::open_in_memory()?;
     connection.execute_batch("PRAGMA user_version = 99;")?;
