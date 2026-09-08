@@ -55,13 +55,27 @@ impl WorkerRuntime {
 /// Starts worker mode, persists its stopped boot, and fails closed until a native authenticated
 /// listener is supplied by the platform-specific transport integration.
 pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
-    let settings = WorkerSettings::from_environment(&config)?;
+    let bootstrap = read_bootstrap()?;
+    let settings = WorkerSettings::from_environment(&config, &bootstrap)?;
     let runtime = WorkerRuntime::open(settings)?;
     let result = runtime.transport_unavailable();
     let close = runtime.close();
     match close {
         Ok(()) => result,
         Err(error) => Err(format!("{MISSING_TRANSPORT_ERROR}; {error}")),
+    }
+}
+
+fn read_bootstrap() -> Result<sts2_harness::worker_bootstrap::WorkerBootstrap, String> {
+    #[cfg(target_os = "linux")]
+    {
+        sts2_harness::worker_bootstrap_linux::read_stdin().map_err(|error| error.to_string())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Err(String::from(
+            "native worker bootstrap transport is not integrated on this platform",
+        ))
     }
 }
 

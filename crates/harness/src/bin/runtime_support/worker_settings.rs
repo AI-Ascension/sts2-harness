@@ -9,6 +9,7 @@
 
 use std::path::PathBuf;
 
+use sts2_harness::worker_bootstrap::WorkerBootstrap;
 use sts2_harness::worker_handoff::{WorkerCommandConfig, WorkerCommandError};
 use sts2_harness::{ExecutionFingerprint, WorkerBoot};
 
@@ -48,7 +49,10 @@ pub(super) struct WorkerSettings {
 }
 
 impl WorkerSettings {
-    pub(super) fn from_environment(config: &RuntimeConfig) -> Result<Self, String> {
+    pub(super) fn from_environment(
+        config: &RuntimeConfig,
+        bootstrap: &WorkerBootstrap,
+    ) -> Result<Self, String> {
         if config.runtime_profile != "runtime-v3-gameplay" {
             return Err(String::from(
                 "worker mode requires the runtime-v3-gameplay profile",
@@ -64,7 +68,12 @@ impl WorkerSettings {
         let worker_profile_digest = required("STS2_WORKER_PROFILE_DIGEST")?;
         let release_digest = required("STS2_BUILD_DIGEST")?;
         let config_digest = required("STS2_RUNTIME_CONFIG_DIGEST")?;
-        let watchdog_boot_id = required("STS2_WATCHDOG_BOOT_ID")?;
+        if std::env::var_os("STS2_WATCHDOG_BOOT_ID").is_some() {
+            return Err(String::from(
+                "watchdog boot must come from the worker bootstrap pipe",
+            ));
+        }
+        let watchdog_boot_id = bootstrap.watchdog_boot_id().to_owned();
         let worker_owner_id =
             optional("STS2_WORKER_OWNER_ID")?.unwrap_or_else(|| WORKER_OWNER_ID.to_owned());
         if worker_owner_id != WORKER_OWNER_ID {
@@ -88,8 +97,8 @@ impl WorkerSettings {
         )
         .map_err(|error| format!("worker execution fingerprint is invalid: {error}"))?;
         // The worker boot belongs to this harness process and must not be replayable from a
-        // launch environment. The watchdog boot remains owner-provided until the protected
-        // bootstrap/peer handoff is integrated.
+        // launch environment. The watchdog boot comes exclusively from the dynamic bootstrap
+        // frame; native peer authentication remains a separate required boundary.
         let worker_boot_id = fresh_worker_boot_id();
         let command = WorkerCommandConfig::new(
             deployment_id.clone(),
