@@ -49,6 +49,13 @@ pub const MAX_CREDENTIAL_BYTES: usize = 4_096;
 /// Maximum auth body after the four-byte big-endian body length.
 pub const MAX_AUTH_BODY_BYTES: usize = AUTH_MAGIC.len() + MAX_CREDENTIAL_BYTES;
 
+/// Run the fixed peer-verifier child over its inherited control socket.
+/// This entry point supplies no admission authority and accepts no paths or commands.
+/// The executable must select it before loading ordinary runtime configuration.
+pub fn run_peer_verifier_from_stdin() -> Result<(), LinuxTransportError> {
+    worker_linux_verifier::run_verifier_from_stdin()
+}
+
 /// Fixed, redacted transport failures. No path, PID, OS error or secret is
 /// included in a public error value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

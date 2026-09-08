@@ -21,6 +21,8 @@ mod runtime_v2;
 mod runtime_v2_artifact;
 pub mod worker_frame_io;
 pub mod worker_handoff;
+#[cfg(target_os = "linux")]
+pub mod worker_local_linux;
 
 pub use artifact::{
     ArtifactDraft, ArtifactKind, ArtifactLineage, ArtifactMetadata, ArtifactMetadataInput,
