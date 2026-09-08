@@ -6,7 +6,6 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use serde_json::Value;
 use sts2_harness::{
     Checkpoint, CompletionRecord, CompletionStatus, EpisodeObservation, EpisodeRunReport,
     ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig,
@@ -19,6 +18,8 @@ use super::super::runtime_v3_settings::RuntimeV3Settings;
 const DEFAULT_STORE_PATH: &str = "harness-execution.sqlite3";
 const PROVIDER_RESERVATION_UNITS: u64 = 1;
 
+#[path = "runtime_v3_durable_checkpoints.rs"]
+mod checkpoints;
 #[path = "runtime_v3_durable_identity.rs"]
 mod identity;
 #[path = "runtime_v3_durable_operations.rs"]
@@ -26,7 +27,7 @@ mod operations;
 #[path = "runtime_v3_durable_support.rs"]
 mod support;
 
-use support::{config_digest, fingerprint, optional_env, sha256_json};
+use support::{config_digest, fingerprint, optional_env, sha256_bytes, sha256_json};
 
 /// A cloneable handle deliberately backed by one owner-local SQLite connection.
 ///
@@ -127,86 +128,6 @@ impl DurableHandle {
             .map_err(|_| String::from("runtime-v3 execution store is already mutably borrowed"))?
             .pending_operations(&self.lineage.episode_id)
             .map_err(|error| format!("cannot read pending runtime-v3 operations: {error}"))
-    }
-
-    /// Requires the first fresh host observation after an explicit resume to equal the last
-    /// durable public boundary. A mismatch cannot be turned into a new provider decision.
-    pub(super) fn verify_resume_boundary(
-        &self,
-        observation: &EpisodeObservation,
-    ) -> Result<(), String> {
-        let observation_bytes = serde_json::to_vec(observation.fair_play().as_value())
-            .map_err(|error| format!("cannot encode runtime-v3 resume observation: {error}"))?;
-        let mut boundary = self
-            .resume_boundary
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 resume boundary is already borrowed"))?;
-        let Some(expected) = boundary.as_ref() else {
-            return Ok(());
-        };
-        if expected.lineage != self.lineage
-            || expected.fingerprint != self.fingerprint
-            || expected.state_id != observation.state_id()
-            || expected.generation != observation.generation()
-            || expected.observation != observation_bytes
-        {
-            return Err(String::from(
-                "runtime-v3 fresh observation does not match the verified resume boundary",
-            ));
-        }
-        *boundary = None;
-        Ok(())
-    }
-
-    /// Makes the latest checkpoint the next resume boundary after recovery has produced an
-    /// authoritative observation. This is deliberately called only after all pending mutations
-    /// have been reconciled.
-    pub(super) fn refresh_resume_boundary(&self) -> Result<(), String> {
-        let checkpoint = self
-            .store
-            .try_borrow()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
-            .last_checkpoint(&self.lineage.episode_id)
-            .map_err(|error| format!("cannot refresh runtime-v3 resume boundary: {error}"))?;
-        *self
-            .resume_boundary
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 resume boundary is already borrowed"))? =
-            checkpoint;
-        Ok(())
-    }
-
-    pub(super) fn checkpoint(
-        &self,
-        observation: &EpisodeObservation,
-        payloads: &Value,
-    ) -> Result<(), String> {
-        let observation_bytes = serde_json::to_vec(observation.fair_play().as_value())
-            .map_err(|error| format!("cannot encode runtime-v3 checkpoint: {error}"))?;
-        let legal_actions_digest = sha256_json(payloads)?;
-        let mut sequence = self
-            .next_checkpoint
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 checkpoint sequence is already borrowed"))?;
-        let checkpoint = Checkpoint::new(
-            self.lineage.clone(),
-            *sequence,
-            observation.state_id(),
-            observation.generation(),
-            self.fingerprint.clone(),
-            observation_bytes,
-            legal_actions_digest,
-        )
-        .map_err(|error| format!("runtime-v3 checkpoint is invalid: {error}"))?;
-        self.store
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
-            .save_checkpoint(&checkpoint)
-            .map_err(|error| format!("cannot persist runtime-v3 checkpoint: {error}"))?;
-        *sequence = sequence
-            .checked_add(1)
-            .ok_or_else(|| String::from("runtime-v3 checkpoint sequence exhausted"))?;
-        Ok(())
     }
 
     pub(super) fn complete_episode(&self, report: &EpisodeRunReport) -> Result<(), String> {

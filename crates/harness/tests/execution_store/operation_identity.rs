@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use rusqlite::{Connection, params, types::Value as SqlValue};
 use sts2_harness::{OperationIntent, OperationState};
 
 #[test]
@@ -87,10 +86,10 @@ fn complete_action_identity_survives_file_store_reopen() {
     let database = path("action-identity");
     let canonical = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}"#;
     let payload_digest = result_digest(canonical);
-    let catalog_digest =
-        result_digest(br#"[{"action_id":"combat.end-turn","action":{"kind":"end_turn"}}]"#);
+    let catalog_raw = br#"[ {"action_id":"combat.end-turn","action":{"kind":"end_turn"}} ]"#;
+    let catalog_digest = result_digest(catalog_raw);
     let current = lineage("attempt-action", "trajectory-action");
-    let intent = OperationIntent::new_with_action(
+    let intent = OperationIntent::new_with_action_and_catalog(
         current.clone(),
         "operation-action",
         "state-action",
@@ -101,6 +100,7 @@ fn complete_action_identity_survives_file_store_reopen() {
         payload_digest.clone(),
         "input-action",
         Some(catalog_digest.clone()),
+        Some(catalog_raw.to_vec()),
     )
     .expect("complete action intent is valid");
     let mut store =
@@ -120,6 +120,10 @@ fn complete_action_identity_survives_file_store_reopen() {
     assert_eq!(
         recorded.intent.catalog_digest.as_deref(),
         Some(catalog_digest.as_str())
+    );
+    assert_eq!(
+        recorded.intent.catalog_raw.as_deref(),
+        Some(catalog_raw.as_slice())
     );
     store.close().expect("store closes");
     drop(store);
@@ -219,140 +223,5 @@ fn action_identity_requires_a_bounded_canonical_unique_envelope() {
     }
 }
 
-fn legacy_operation_database(name: &str) -> std::path::PathBuf {
-    let database = path(name);
-    let mut store =
-        ExecutionStore::open(ExecutionStoreConfig::new(&database)).expect("store opens");
-    let current = lineage("attempt-hostile", "trajectory-hostile");
-    store
-        .start_episode(&current, &fingerprint())
-        .expect("episode starts");
-    let intent = OperationIntent::new(
-        current,
-        "operation-hostile",
-        "state-hostile",
-        1,
-        "end_turn",
-        "payload-digest",
-        "input-digest",
-    )
-    .expect("legacy operation is valid");
-    store
-        .record_operation_intent(&intent)
-        .expect("legacy operation is persisted");
-    store.close().expect("store closes");
-    database
-}
-
-fn poison_operation(database: &std::path::Path, kind: Option<&str>, payload: SqlValue) {
-    let connection = Connection::open(database).expect("database opens for hostile rewrite");
-    connection
-        .execute(
-            "UPDATE operations SET action_kind = ?1, action_payload = ?2
-             WHERE operation_id = 'operation-hostile'",
-            params![kind, payload],
-        )
-        .expect("hostile operation row updates");
-}
-
-fn poison_operation_with_digest(
-    database: &std::path::Path,
-    kind: &str,
-    payload: &[u8],
-    digest: &str,
-) {
-    let connection = Connection::open(database).expect("database opens for hostile rewrite");
-    connection
-        .execute(
-            "UPDATE operations SET action_kind = ?1, action_payload = ?2, payload_digest = ?3
-             WHERE operation_id = 'operation-hostile'",
-            params![kind, SqlValue::Blob(payload.to_vec()), digest],
-        )
-        .expect("hostile operation row updates");
-}
-
-#[test]
-fn operation_reads_reject_oversized_and_malformed_payloads_before_materializing_them() {
-    let oversized = legacy_operation_database("oversized-operation");
-    poison_operation(
-        &oversized,
-        Some("end_turn"),
-        SqlValue::Blob(vec![b'x'; sts2_harness::MAX_OPERATION_ACTION_BYTES + 1]),
-    );
-    let store = ExecutionStore::open(ExecutionStoreConfig::new(&oversized)).expect("store opens");
-    assert!(matches!(
-        store.operation("operation-hostile"),
-        Err(sts2_harness::ExecutionStoreError::Corrupt)
-    ));
-    drop(store);
-    remove_database(&oversized);
-
-    let text = legacy_operation_database("text-operation");
-    poison_operation(
-        &text,
-        Some("end_turn"),
-        SqlValue::Text(String::from("not-a-blob")),
-    );
-    let store = ExecutionStore::open(ExecutionStoreConfig::new(&text)).expect("store opens");
-    assert!(matches!(
-        store.operation("operation-hostile"),
-        Err(sts2_harness::ExecutionStoreError::Corrupt)
-    ));
-    drop(store);
-    remove_database(&text);
-}
-
-#[test]
-fn operation_reads_reject_partial_legacy_action_identity_rows() {
-    for (name, kind, payload) in [
-        ("kind-without-payload", Some("end_turn"), SqlValue::Null),
-        (
-            "payload-without-kind",
-            None,
-            SqlValue::Blob(vec![b'{', b'}']),
-        ),
-    ] {
-        let database = legacy_operation_database(name);
-        poison_operation(&database, kind, payload);
-        let store =
-            ExecutionStore::open(ExecutionStoreConfig::new(&database)).expect("store opens");
-        assert!(matches!(
-            store.operation("operation-hostile"),
-            Err(sts2_harness::ExecutionStoreError::Corrupt)
-        ));
-        drop(store);
-        remove_database(&database);
-    }
-}
-
-#[test]
-fn operation_reads_reject_matching_digest_malformed_and_hash_mismatch_payloads() {
-    let malformed = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn""#;
-    let malformed_database = legacy_operation_database("matching-digest-malformed");
-    poison_operation_with_digest(
-        &malformed_database,
-        "end_turn",
-        malformed,
-        &result_digest(malformed),
-    );
-    let store =
-        ExecutionStore::open(ExecutionStoreConfig::new(&malformed_database)).expect("store opens");
-    assert!(matches!(
-        store.operation("operation-hostile"),
-        Err(sts2_harness::ExecutionStoreError::Corrupt)
-    ));
-    drop(store);
-    remove_database(&malformed_database);
-
-    let canonical = br#"{"action":{"kind":"end_turn"},"action_id":"end_turn"}"#;
-    let mismatch_database = legacy_operation_database("wrong-hash-action");
-    poison_operation_with_digest(&mismatch_database, "end_turn", canonical, &"0".repeat(64));
-    let store =
-        ExecutionStore::open(ExecutionStoreConfig::new(&mismatch_database)).expect("store opens");
-    assert!(matches!(
-        store.operation("operation-hostile"),
-        Err(sts2_harness::ExecutionStoreError::Corrupt)
-    ));
-    drop(store);
-    remove_database(&mismatch_database);
-}
+#[path = "operation_identity_catalog.rs"]
+mod catalog;

@@ -150,11 +150,16 @@ impl RuntimeV3Port {
 impl RecoveryPort for RuntimeV3Port {
     fn reobserve(&mut self) -> Result<EpisodeObservation, RecoveryError> {
         self.reconnect_for_recovery()?;
-        let value = self
+        let (value, response_text) = self
             .call_tool("sts2.reobserve", self.context(self.generation))
             .map_err(|_| RecoveryError::PortFailure)?;
-        let parsed = parse::observation(&value, "reobserve_response", &self.config)
-            .map_err(|_| RecoveryError::PortFailure)?;
+        let parsed = parse::observation_with_text(
+            &value,
+            &response_text,
+            "reobserve_response",
+            &self.config,
+        )
+        .map_err(|_| RecoveryError::PortFailure)?;
         let observation = self
             .install(parsed)
             .map_err(|_| RecoveryError::PortFailure)?;

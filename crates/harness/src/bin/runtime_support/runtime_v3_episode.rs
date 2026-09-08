@@ -86,14 +86,15 @@ impl EpisodeRuntimePort for RuntimeV3Port {
 
     fn observe(&mut self) -> Result<EpisodeObservation, sts2_harness::PortError> {
         let arguments = self.context(self.generation);
-        let value = self
+        let (value, response_text) = self
             .call_tool("sts2.observe", arguments)
             .map_err(|error| wire::port_error("observe_failed", error, false))?;
-        let parsed = parse::observation(&value, "state_response", &self.config)
-            .map_err(|error| wire::port_error("observe_invalid", error, false))?;
+        let parsed =
+            parse::observation_with_text(&value, &response_text, "state_response", &self.config)
+                .map_err(|error| wire::port_error("observe_invalid", error, false))?;
         if let Some(durable) = &self.durable {
             durable
-                .verify_resume_boundary(&parsed.observation)
+                .verify_resume_boundary_with_catalog(&parsed.observation, &parsed.catalog_raw)
                 .map_err(|error| wire::port_error("resume_boundary_mismatch", error, false))?;
         }
         let observation = self
@@ -114,7 +115,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         if let Value::Object(object) = &mut arguments {
             object.insert(String::from("state_id"), Value::String(state_id.to_owned()));
         }
-        let value = self
+        let (value, response_text) = self
             .call_tool("sts2.legal_actions", arguments)
             .map_err(|error| wire::port_error("legal_actions_failed", error, false))?;
         if wire::catalog_reobserve(&value) {
@@ -124,13 +125,18 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                 true,
             ));
         }
-        let (actions, payloads, catalog) =
-            parse::action_set_with_catalog(&value, "legal_actions_response", &self.config)
-                .map_err(|error| wire::port_error("legal_actions_invalid", error, false))?;
+        let (actions, payloads, catalog, catalog_raw) = parse::action_set_with_catalog_text(
+            &value,
+            &response_text,
+            "legal_actions_response",
+            &self.config,
+        )
+        .map_err(|error| wire::port_error("legal_actions_invalid", error, false))?;
         self.generation = actions.generation();
         self.current_state = Some(actions.state_id().to_owned());
         self.current_actions = Some(actions.clone());
         self.catalog = Some(catalog);
+        self.catalog_raw = Some(catalog_raw);
         self.payloads = payloads;
         Ok(actions)
     }
@@ -156,20 +162,27 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                 })?,
             });
             durable
-                .operation_intent(
+                .operation_intent_with_catalog(
                     &identity.operation_id,
                     &identity.state_id,
                     identity.generation,
                     action,
                     &payload,
                     &input,
+                    self.catalog_raw.as_deref().ok_or_else(|| {
+                        wire::port_error(
+                            "catalog_missing",
+                            "operation intent has no retained legal-action bytes",
+                            false,
+                        )
+                    })?,
                 )
                 .map_err(|error| wire::port_error("operation_intent_failed", error, false))?;
             durable
                 .operation_dispatched(&identity.operation_id, &payload_digest)
                 .map_err(|error| wire::port_error("dispatch_intent_failed", error, false))?;
         }
-        let value = match self.call_tool(
+        let (value, response_text) = match self.call_tool(
             "sts2.dispatch_action",
             json!({
                 "instance_id": self.config.instance_id,
@@ -224,7 +237,9 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                 return Err(wire::port_error("dispatch_invalid", error, false));
             }
         };
-        if let Err(error) = self.install_response(&value, "dispatch_action_response") {
+        if let Err(error) =
+            self.install_response(&value, &response_text, "dispatch_action_response")
+        {
             if let Some(durable) = &self.durable {
                 durable
                     .operation_result(

@@ -114,6 +114,10 @@ pub(super) fn sha256_json(value: &Value) -> Result<String, String> {
         .map_err(|error| format!("cannot hash runtime-v3 evidence: {error}"))
 }
 
+pub(super) fn sha256_bytes(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
 fn digest_text(value: &str) -> String {
     format!("{:x}", Sha256::digest(value.as_bytes()))
 }

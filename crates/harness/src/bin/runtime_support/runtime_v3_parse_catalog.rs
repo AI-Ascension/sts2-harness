@@ -7,6 +7,52 @@ use sts2_harness::{ActionKind, ActionSetError, EpisodeLegalAction, EpisodeLegalA
 
 use super::safe_identity;
 
+const MAX_RESPONSE_TEXT_BYTES: usize = 256 * 1024;
+
+#[path = "runtime_v3_parse_catalog_scanner.rs"]
+mod scanner;
+
+/// Retains the exact array bytes while `Value` remains the semantic representation used by the
+/// episode policy.  The outer MCP response has already decoded this text from its JSON string;
+/// no serializer is involved in this extraction.
+pub(super) fn raw_catalog(
+    response_text: Option<&str>,
+    semantic: &Value,
+) -> Result<Vec<u8>, String> {
+    let Some(response_text) = response_text else {
+        #[cfg(not(test))]
+        {
+            let _ = semantic;
+            return Err(String::from(
+                "Runtime-v3 exact response text is required for catalog retention",
+            ));
+        }
+        #[cfg(test)]
+        return serde_json::to_vec(semantic)
+            .map_err(|error| format!("Runtime-v3 catalog encoding failed: {error}"));
+    };
+    if response_text.len() > MAX_RESPONSE_TEXT_BYTES {
+        return Err(String::from("Runtime-v3 MCP text exceeds its size bound"));
+    }
+    let bytes = response_text.as_bytes();
+    let range = scanner::root_catalog(bytes)?
+        .ok_or_else(|| String::from("Runtime-v3 MCP content omitted legal_actions"))?;
+    let raw = &bytes[range.0..range.1];
+    if raw.len() > sts2_harness::MAX_CATALOG_BYTES {
+        return Err(String::from(
+            "Runtime-v3 legal-action catalog exceeds its size bound",
+        ));
+    }
+    let parsed: Value = serde_json::from_slice(raw)
+        .map_err(|error| format!("Runtime-v3 legal-action catalog is invalid JSON: {error}"))?;
+    if !parsed.is_array() || &parsed != semantic {
+        return Err(String::from(
+            "Runtime-v3 legal-action catalog text disagrees with its parsed value",
+        ));
+    }
+    Ok(raw.to_vec())
+}
+
 pub(super) fn parse_actions(
     value: Option<&Value>,
     state_id: &str,

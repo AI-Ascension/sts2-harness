@@ -71,6 +71,13 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
         durable.operation_state("op-settled")?,
         sts2_harness::OperationState::Settled
     );
+    durable.refresh_resume_boundary()?;
+    durable.verify_resume_boundary_with_catalog(
+        receipt
+            .after()
+            .ok_or("settled receipt omitted observation")?,
+        b"[ ]",
+    )?;
 
     let input = DecisionInput::new(
         ModelExecutionId::new(1).ok_or("execution identity")?,
@@ -168,7 +175,7 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
     assert_eq!(resumed_observation.generation(), 1);
 
     let terminal = synthetic_observation("victory-2", 2, "victory", json!([]))?;
-    durable.checkpoint(&terminal, &json!({}))?;
+    durable.checkpoint(&terminal, &json!([]))?;
     resumed.complete_durable_observation(&terminal)?;
     assert!(durable.decision_admission_with_reuse(&input).is_err());
     resumed.mcp.as_mut().ok_or("missing MCP")?.close()?;

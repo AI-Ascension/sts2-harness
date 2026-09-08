@@ -3,7 +3,7 @@
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-use super::{RuntimeConfig, identity_headers};
+use super::{RuntimeConfig, identity_headers, release_correlation};
 
 pub(in super::super) fn validate_or_release_allocation(
     allocation: Result<Value, String>,
@@ -27,7 +27,7 @@ pub(in super::super) fn validate_or_release_allocation_with<T>(
         Ok(value) => return Ok(value),
         Err(error) => error,
     };
-    let mut headers = identity_headers(config, "release-0001");
+    let mut headers = identity_headers(config, &release_correlation());
     if let Ok(value) = allocation
         && let Some((lease, epoch)) = attributable_lease(&value, config)
     {

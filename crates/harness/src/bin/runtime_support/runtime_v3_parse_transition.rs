@@ -73,7 +73,7 @@ fn receipt_observation(
         DispatchStatus::Accepted
         | DispatchStatus::Settled
         | DispatchStatus::Rejected
-        | DispatchStatus::Cancelled => Ok(Some(super::observation_from_root(root)?)),
+        | DispatchStatus::Cancelled => Ok(Some(super::observation_from_root(root, None)?)),
     }
 }
 
@@ -101,7 +101,7 @@ pub(crate) fn wait_sample(
     validate_result_fields(root, status, true)?;
     match (status, outcome) {
         (DispatchStatus::Settled, WaitOutcome::Successor | WaitOutcome::SameStateMutation) => {
-            let after = super::observation_from_root(root)?;
+            let after = super::observation_from_root(root, None)?;
             let effect_kind = transition(root, Some(&after.observation), expected_generation)?
                 .ok_or_else(|| String::from("settled Runtime-v3 wait omitted effect witness"))?;
             Ok(WaitSample::new(outcome, Some(after.observation)).with_effect_kind(effect_kind))

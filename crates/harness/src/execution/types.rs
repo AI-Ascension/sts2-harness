@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+#[path = "types_checkpoint.rs"]
+mod checkpoint;
 #[path = "types_core.rs"]
 mod core;
 #[path = "types_enums.rs"]
@@ -9,8 +11,9 @@ mod error;
 #[path = "types_records.rs"]
 mod records;
 
+pub use checkpoint::Checkpoint;
 pub use core::{
-    Checkpoint, ExecutionFingerprint, ExecutionLineage, ExecutionStoreConfig,
+    ExecutionFingerprint, ExecutionLineage, ExecutionStoreConfig, MAX_CATALOG_BYTES,
     RECOVERY_CONTRACT_VERSION, RECOVERY_SCHEMA_DIGEST, StorePragmas,
 };
 pub use enums::{

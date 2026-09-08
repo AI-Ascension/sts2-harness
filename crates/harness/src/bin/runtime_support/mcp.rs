@@ -35,7 +35,7 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
                 "POST",
                 &format!("/v1/instances/{}/release", config.instance_id),
                 &Value::Null,
-                identity_headers(&config, "release-0001"),
+                identity_headers(&config, &release_correlation()),
             );
             return match confirm_release(release) {
                 Ok(_) => Err(error),
@@ -51,7 +51,7 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
         "POST",
         &format!("/v1/instances/{}/release", config.instance_id),
         &Value::Null,
-        identity_headers(&config, "release-0001"),
+        identity_headers(&config, &release_correlation()),
     );
     let failures: Vec<_> = [trace_result, close_result, confirm_release(release_result)]
         .into_iter()
@@ -245,6 +245,9 @@ mod allocation_cleanup;
 pub(super) use allocation_cleanup::{
     validate_or_release_allocation, validate_or_release_allocation_with,
 };
+#[path = "release_correlation.rs"]
+mod release;
+pub(super) use release::release_correlation;
 
 pub(super) fn validate_allocation(value: &Value, config: &RuntimeConfig) -> Result<(), String> {
     for (key, expected) in [

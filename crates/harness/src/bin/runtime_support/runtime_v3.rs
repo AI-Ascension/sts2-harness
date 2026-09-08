@@ -4,13 +4,13 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 use sts2_harness::{
-    Decision, EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, ExoDecisionSource,
+    EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, ExoDecisionSource,
     ExoProcessTransport, ExoProvider, ExoSession, ResumeState, ShutdownError, ShutdownPort,
 };
 
 use super::config::RuntimeConfig;
 use super::http::GatewayClient;
-use super::mcp::{McpProcess, identity_headers};
+use super::mcp::{McpProcess, identity_headers, release_correlation};
 use super::runtime_v3_parse as parse;
 use super::runtime_v3_settings::RuntimeV3Settings;
 use super::runtime_v3_telemetry::{
@@ -23,6 +23,8 @@ use super::runtime_v3_wire as wire;
 mod allocation_context;
 #[path = "runtime_v3_completed_resume.rs"]
 mod completed_resume;
+#[path = "runtime_v3_decision_admission.rs"]
+mod decision_admission;
 #[path = "runtime_v3_decision_replay.rs"]
 mod decision_replay;
 #[path = "runtime_v3_durable.rs"]
@@ -43,6 +45,8 @@ use ledger::OperationRecord;
 pub(crate) mod combat_demo;
 #[path = "runtime_v3_episode_replay.rs"]
 mod episode_replay;
+
+use decision_admission::DecisionAdmission;
 
 #[cfg(test)]
 #[path = "runtime_v3_lifecycle_test.rs"]
@@ -294,6 +298,7 @@ pub(super) struct RuntimeV3Port {
     current_state: Option<String>,
     current_actions: Option<EpisodeLegalActionSet>,
     catalog: Option<Value>,
+    catalog_raw: Option<Vec<u8>>,
     payloads: BTreeMap<String, Value>,
     operations: BTreeMap<String, OperationRecord>,
     reconnect_attempts: u8,

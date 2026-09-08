@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use super::core::{Checkpoint, ExecutionFingerprint, ExecutionLineage, valid_id, valid_reference};
+use super::checkpoint::Checkpoint;
+use super::core::{ExecutionFingerprint, ExecutionLineage, valid_id, valid_reference};
 use super::enums::{
     AttemptKind, AttemptState, CompletionStatus, JobState, OperationState, ProviderFailureClass,
     ProviderReservationState,

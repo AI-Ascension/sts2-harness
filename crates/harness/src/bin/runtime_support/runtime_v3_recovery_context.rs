@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Value, json};
+use sha2::Digest;
 use std::collections::BTreeSet;
 
 use super::super::super::config::RuntimeConfig;
@@ -84,9 +85,13 @@ impl RecoveryContext {
         let catalog_digest = operation.intent.catalog_digest.as_deref().ok_or_else(|| {
             String::from("durable operation has no original legal-action catalog digest")
         })?;
+        let catalog_raw = operation.intent.catalog_raw.as_deref().ok_or_else(|| {
+            String::from("durable operation has no retained legal-action catalog bytes")
+        })?;
         if !valid_uuid_v4(&operation.intent.operation_id)
             || !valid_digest(&operation.intent.payload_digest)
             || !valid_digest(catalog_digest)
+            || format!("{:x}", sha2::Sha256::digest(catalog_raw)) != catalog_digest
             || !valid_uuid(&operation.intent.state_id)
         {
             return Err(String::from(

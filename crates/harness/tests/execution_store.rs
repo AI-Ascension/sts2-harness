@@ -314,6 +314,9 @@ fn completion_and_job_claim_are_durable_before_acknowledgement() {
 #[path = "execution_store/recovery.rs"]
 mod recovery;
 
+#[path = "execution_store/catalog.rs"]
+mod catalog;
+
 #[path = "execution_store/operation_identity.rs"]
 mod operation_identity;
 

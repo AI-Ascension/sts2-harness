@@ -26,6 +26,7 @@ fn schema_v1_migrates_decisions_to_result_aware_v2() -> Result<(), Box<dyn std::
             updated_at INTEGER NOT NULL
         );
         CREATE TABLE operations (operation_id TEXT PRIMARY KEY NOT NULL);
+        CREATE TABLE checkpoints (legal_actions_digest TEXT NOT NULL);
         PRAGMA user_version = 1;",
     )?;
 
@@ -57,6 +58,40 @@ fn schema_v1_migrates_decisions_to_result_aware_v2() -> Result<(), Box<dyn std::
         |row| row.get::<_, i64>(0),
     )?;
     assert_eq!(catalog_digest_column, 1);
+    let checkpoint_catalog_column = connection.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('checkpoints') WHERE name = 'legal_actions_raw'",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    assert_eq!(checkpoint_catalog_column, 1);
+    let operation_catalog_column = connection.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('operations') WHERE name = 'catalog_raw'",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    assert_eq!(operation_catalog_column, 1);
+    Ok(())
+}
+
+#[test]
+fn v5_migration_rolls_back_both_columns_when_the_second_alter_fails()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut connection = Connection::open_in_memory()?;
+    connection.execute_batch(
+        "CREATE TABLE checkpoints (legal_actions_digest TEXT NOT NULL);
+         CREATE TABLE operations (catalog_raw BLOB);
+         PRAGMA user_version = 4;",
+    )?;
+
+    assert!(migrate(&mut connection).is_err());
+    let version = connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))?;
+    assert_eq!(version, 4);
+    let checkpoint_catalog_column = connection.query_row(
+        "SELECT COUNT(*) FROM pragma_table_info('checkpoints') WHERE name = 'legal_actions_raw'",
+        [],
+        |row| row.get::<_, i64>(0),
+    )?;
+    assert_eq!(checkpoint_catalog_column, 0);
     Ok(())
 }
 

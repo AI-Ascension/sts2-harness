@@ -121,6 +121,18 @@ pub(super) fn reply(value: Value) -> String {
     )
 }
 
+pub(super) fn reply_text(text: &str) -> String {
+    let response = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {"content": [{"text": text}]}
+    });
+    format!(
+        "IFS= read -r line || exit 1\nprintf '%s\\n' \"$line\" >> requests\nprintf '%s\\n' '{}'\n",
+        response.to_string().replace('\'', "'\\''")
+    )
+}
+
 pub(super) fn encode_base64(bytes: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut encoded = String::with_capacity(bytes.len().div_ceil(3) * 4);
@@ -150,6 +162,9 @@ pub(super) fn dispatch_script(fixture: &Fixture) -> Result<String, Box<dyn std::
     ))?;
     settled["correlation_id"] = json!("1");
     settled["operation_id"] = json!("op-settled");
+    let settled_text = settled
+        .to_string()
+        .replace("\"legal_actions\":[]", "\"legal_actions\" : [ ]");
     let tools: Vec<_> = [
         "sts2.observe",
         "sts2.legal_actions",
@@ -168,11 +183,7 @@ pub(super) fn dispatch_script(fixture: &Fixture) -> Result<String, Box<dyn std::
         reply(
             json!({"jsonrpc":"2.0","id":2,"result":{"revision":"runtime-v3-gameplay-mcp","tools":tools}})
         ),
-        reply(json!({
-            "jsonrpc":"2.0",
-            "id":1,
-            "result":{"content":[{"text":settled.to_string()}]}
-        }))
+        reply_text(&settled_text)
     );
     fixture.script(&script)
 }

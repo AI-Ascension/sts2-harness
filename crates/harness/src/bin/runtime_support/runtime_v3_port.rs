@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-enum DecisionAdmission {
-    Reused(Decision),
-    Fresh(durable::ProviderReservationToken),
-}
-
 fn finish_telemetry(telemetry: RuntimeV3Telemetry) {
     let report = telemetry.finish(std::time::Duration::from_secs(2));
     if report.export_status() != "delivered" {
@@ -55,6 +50,7 @@ impl RuntimeV3Port {
             current_state: None,
             current_actions: None,
             catalog: None,
+            catalog_raw: None,
             payloads: BTreeMap::new(),
             operations: BTreeMap::new(),
             reconnect_attempts: 0,
@@ -101,7 +97,7 @@ impl RuntimeV3Port {
         }
     }
 
-    fn call_tool(&mut self, name: &str, arguments: Value) -> Result<Value, String> {
+    fn call_tool(&mut self, name: &str, arguments: Value) -> Result<(Value, String), String> {
         let id = self.next_rpc_id;
         self.next_rpc_id = self
             .next_rpc_id
@@ -138,7 +134,7 @@ impl RuntimeV3Port {
         {
             return Err(format!("MCP tool {name} returned mismatched correlation"));
         }
-        Ok(value)
+        Ok((value, text.to_owned()))
     }
 
     fn mcp_mut(&mut self) -> Result<&mut McpProcess, sts2_harness::PortError> {
@@ -162,20 +158,30 @@ impl RuntimeV3Port {
         self.current_state = Some(parsed.observation.state_id().to_owned());
         self.current_actions = Some(parsed.actions);
         self.catalog = Some(parsed.catalog);
+        self.catalog_raw = Some(parsed.catalog_raw.clone());
         self.payloads = parsed.payloads;
         if let Some(durable) = &self.durable {
-            let payloads = Value::Object(self.payloads.clone().into_iter().collect());
-            durable.checkpoint(&parsed.observation, &payloads)?;
+            durable.checkpoint_raw(&parsed.observation, &parsed.catalog_raw)?;
         }
         Ok(parsed.observation)
     }
 
-    fn install_response(&mut self, value: &Value, expected_kind: &str) -> Result<(), String> {
+    fn install_response(
+        &mut self,
+        value: &Value,
+        response_text: &str,
+        expected_kind: &str,
+    ) -> Result<(), String> {
         if value
             .get("observation")
             .is_some_and(|observation| observation.is_object())
         {
-            let parsed = parse::result_observation(value, expected_kind, &self.config)?;
+            let parsed = parse::result_observation_with_text(
+                value,
+                response_text,
+                expected_kind,
+                &self.config,
+            )?;
             let _ = self.install(parsed)?;
         }
         Ok(())
@@ -189,7 +195,7 @@ impl RuntimeV3Port {
             "POST",
             &format!("/v1/instances/{}/release", self.config.instance_id),
             &Value::Null,
-            identity_headers(&self.config, "release-0001"),
+            identity_headers(&self.config, &release_correlation()),
         )?;
         if response.get("status").and_then(Value::as_str) != Some("released") {
             return Err(String::from(

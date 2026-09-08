@@ -9,10 +9,11 @@ use sts2_harness::{
 
 use super::super::DecisionAdmission;
 use super::super::decision_replay;
-use super::support::{decision_input_digest, response_evidence, sha256_json};
+use super::support::{decision_input_digest, response_evidence, sha256_bytes, sha256_json};
 use super::{DurableHandle, PROVIDER_RESERVATION_UNITS, ProviderReservationToken};
 
 impl DurableHandle {
+    #[cfg(test)]
     pub(in super::super) fn operation_intent(
         &self,
         operation_id: &str,
@@ -22,14 +23,45 @@ impl DurableHandle {
         payload: &Value,
         input: &Value,
     ) -> Result<String, String> {
+        let catalog_raw = input
+            .get("legal_actions")
+            .map(serde_json::to_vec)
+            .transpose()
+            .map_err(|error| format!("cannot encode runtime-v3 operation catalog: {error}"))?;
+        let Some(catalog_raw) = catalog_raw else {
+            return Err(String::from(
+                "runtime-v3 operation intent omitted legal-action catalog",
+            ));
+        };
+        self.operation_intent_with_catalog(
+            operation_id,
+            state_id,
+            generation,
+            action,
+            payload,
+            input,
+            &catalog_raw,
+        )
+    }
+
+    pub(in super::super) fn operation_intent_with_catalog(
+        &self,
+        operation_id: &str,
+        state_id: &str,
+        generation: u64,
+        action: &EpisodeLegalAction,
+        payload: &Value,
+        input: &Value,
+        catalog_raw: &[u8],
+    ) -> Result<String, String> {
         let action_payload = super::super::super::runtime_v3_wire::canonical_action_bytes(
             action.action_id(),
             payload,
         )?;
         let payload_digest = format!("{:x}", sha2::Sha256::digest(&action_payload));
         let input_digest = sha256_json(input)?;
-        let catalog_digest = input.get("legal_actions").map(sha256_json).transpose()?;
-        let intent = OperationIntent::new_with_action(
+        let catalog_digest = Some(sha256_bytes(catalog_raw));
+        let intent = OperationIntent::new_with_action_and_catalog(
             self.lineage.clone(),
             operation_id,
             state_id,
@@ -40,6 +72,7 @@ impl DurableHandle {
             payload_digest.clone(),
             input_digest,
             catalog_digest,
+            Some(catalog_raw.to_vec()),
         )
         .map_err(|error| format!("runtime-v3 operation intent is invalid: {error}"))?;
         self.store

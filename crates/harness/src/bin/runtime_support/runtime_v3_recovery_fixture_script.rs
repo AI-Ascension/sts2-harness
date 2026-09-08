@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::super::reply_text;
 use super::{Fixture, reply};
 use serde_json::{Value, json};
 
@@ -15,6 +16,9 @@ pub(in super::super::super) fn response_script(
     observed["generation"] = json!(1);
     observed["observation"]["generation"] = json!(1);
     observed["observation"]["state"]["turn_index"] = json!(2);
+    let observed_text = observed
+        .to_string()
+        .replace("\"legal_actions\":[]", "\"legal_actions\" : [ ]");
     let gameplay_tools: Vec<_> = [
         "sts2.observe",
         "sts2.legal_actions",
@@ -53,11 +57,7 @@ pub(in super::super::super) fn response_script(
         reply(
             json!({"jsonrpc":"2.0","id":2,"result":{"revision":"runtime-v3-gameplay-mcp","tools":gameplay_tools}})
         ),
-        reply(json!({
-            "jsonrpc":"2.0",
-            "id":1,
-            "result":{"content":[{"text":observed.to_string()}]}
-        }))
+        reply_text(&observed_text)
     );
     fixture.script(&script)
 }
