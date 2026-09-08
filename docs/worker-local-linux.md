@@ -108,8 +108,8 @@ and configured runtime policy before the endpoint is bound, and again at executi
 attachment. That digest includes the configured run/episode/trajectory lineage;
 the executable test explicitly approves its dispatched lineage. This change does
 not establish generic multi-job reuse with different approved configurations.
-Tokio's Linux-only `net` and `signal` features provide local transport and
-SIGTERM/SIGINT ownership; no new dependency package is introduced by signal support.
+Tokio's `net` feature provides network transport; its Linux-specific `signal`
+feature provides SIGTERM/SIGINT ownership. Signal support adds no dependency package.
 
 The native exchange authenticates before decoding. The core persists admission,
 writes the correlated response, crosses the running fence, and then transfers the
@@ -117,6 +117,15 @@ one-use execution task to one scoped thread. Failed authentication or client I/O
 does not start work or restart the worker. Stop/pause and historical commands stay
 on the control loop during execution. A completed thread is joined before its
 durable completion can release capacity. Execution errors keep the lane fenced.
+
+Each execution claim owns a fresh monotonic cancellation signal. After accepting
+a durable control change, the command loop checks the committed control identity
+under its existing store lease and cancels a superseded execution before sending
+the response. Pause, drain, stop, or a new running sequence invalidate the old
+claim; an identical running replay does not. Rejected commands do not cancel it,
+and later resume cannot reset it. Provider, MCP, and gateway I/O use this signal.
+The explicit gateway lease-release cleanup retains its own bounded deadline;
+cancellation is neither proof of non-execution nor a refund of uncertain usage.
 
 SIGTERM/SIGINT fence new admission and retain an active handoff as UNKNOWN before
 draining and closing. They do not modify the watchdog's deployment desired state;
@@ -141,8 +150,10 @@ actual copied runtime binary with protected synthetic credentials and an exact
 native parent identity. It checks invalid-policy refusal before bind, rejected
 credentials, stopped startup, authenticated running/stop control, persisted stop
 after SIGTERM, and stop/probe responsiveness while an owned execution thread waits
-on a synthetic gateway allocation. The interrupted handoff remains UNKNOWN after
-shutdown. These are executable synthetic checks, not real MCP/provider/gameplay
+on a synthetic gateway allocation. Separate tests keep that socket open while
+operator stop or SIGTERM cancels the exchange. The stop case requires durable
+UNKNOWN within three seconds while the worker is still alive; the SIGTERM case
+receives no prior stop command. These are executable synthetic checks, not real MCP/provider/gameplay
 or a proof of forced cleanup during a hung provider call.
 
 Source review and Linux synthetic transport tests can establish bounded safe

@@ -42,8 +42,8 @@ executable under the same live PID and confirms rejection before admission.
 
 The exchange bridge selects capabilities from a local `WorkerEndpointPolicy`:
 one command, read-only probe/lookup, or the watchdog owner's complete command
-set. The policy is not deserialized from the request. These APIs remain separate
-from the still-unintegrated executable serving loop.
+set. The policy is not deserialized from the request. The Linux executable uses
+this bridge in its authenticated serving loop; Windows serving remains unintegrated.
 
 `LinuxWorkerExchange::admit` joins native authentication to the worker-owned
 durable admission path and consumes the original connection for its response.
@@ -81,11 +81,15 @@ Windows fixture decoding is supported, but the Windows native bootstrap reader
 is not integrated. Linux stdin tests do not prove watchdog producer integration,
 peer authentication, service installation, recovery, or gameplay execution.
 
-Worker mode still stops with the fixed missing-listener error after successful
-configuration and boot persistence. It must not be deployed as an operational
-worker until the native listener, peer policy, and execution-loop wiring pass
-their separate integration gates. The companion launcher must deliver this frame;
-legacy environment-only worker launches are incompatible.
+Linux worker mode binds its authenticated native listener after configuration
+validation and stopped boot persistence. Its owned execution thread leaves control
+and historical lookup available. Accepted durable control changes cancel active
+execution I/O without resetting its signal on resume or claiming effect settlement.
+See [Linux executable integration](worker-local-linux.md#executable-integration)
+for required endpoint settings and synthetic evidence. Windows native bootstrap
+and serving, companion launcher integration, and deployment acceptance remain
+separate gates. The companion launcher must deliver this frame; legacy
+environment-only worker launches are incompatible.
 
 Focused checks:
 
