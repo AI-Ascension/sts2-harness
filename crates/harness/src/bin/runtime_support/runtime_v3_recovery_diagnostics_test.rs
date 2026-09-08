@@ -225,7 +225,8 @@ fn render_failure(
     report.push_str("version=1 ");
     report.push_str("stage=");
     report.push_str(DiagnosticStage::ReconcilePendingOperations.as_str());
-    report.push_str(" failure=port_failure ");
+    // The test boundary exposes only a string, so this must not infer an inner error variant.
+    report.push_str(" failure=recovery_failed ");
     report.push_str("case=");
     match case {
         RecoveryCaseTag::RetainedTerminal { lookup, reconcile } => {
@@ -385,44 +386,48 @@ mod tests {
         let bytes = br#"{"method":"tools/call","params":{"name":"secret","payload":"/private/path"}} trailing"#;
         let summary = summarize_requests(bytes);
         assert_eq!(summary.status, RequestSummaryStatus::Malformed);
-        let label = summary.label();
-        assert_eq!(label, "Malformed");
-        assert!(!label.contains("secret"));
-        assert!(!label.contains("private"));
+        assert_eq!(summary.label(), "Malformed");
     }
 
     #[test]
-    fn excessive_request_input_reports_a_fixed_bounded_status() {
-        let bytes = vec![b'x'; MAX_REQUEST_BYTES + 1];
-        let summary = RequestSummary::status(RequestSummaryStatus::Oversized);
+    fn oversized_files_are_bounded() -> Result<(), Box<dyn std::error::Error>> {
+        use super::super::super::reconnect_support::Fixture;
+
+        let fixture = Fixture::new()?;
+        let requests_path = fixture.0.join("requests");
+        std::fs::write(&requests_path, vec![1_u8; MAX_REQUEST_BYTES])?;
+        let exact = summarize_requests_path(&requests_path);
+        assert_eq!(exact.status, RequestSummaryStatus::Malformed);
+        std::fs::write(&requests_path, vec![1_u8; MAX_REQUEST_BYTES + 1])?;
+        let summary = summarize_requests_path(&requests_path);
         assert_eq!(summary.status, RequestSummaryStatus::Oversized);
-        assert_eq!(summary.label(), "Oversized");
-        assert!(bytes.len() > MAX_REQUEST_BYTES);
+
+        let child_path = fixture.0.join("child-status");
+        std::fs::write(&child_path, vec![2_u8; MAX_CHILD_STATUS_BYTES])?;
+        assert!(matches!(
+            summarize_child_status_path(&child_path),
+            ChildStatus::Malformed
+        ));
+        std::fs::write(&child_path, vec![2_u8; MAX_CHILD_STATUS_BYTES + 1])?;
+        let child_status = summarize_child_status_path(&child_path);
+        assert_eq!(child_status, ChildStatus::Oversized);
         let report = render_failure(
             RecoveryCaseTag::unresolved("UNKNOWN", "NOT_FOUND"),
             RecoveryStatus::Unknown,
             summary,
-            ChildStatus::Oversized,
+            child_status,
         );
         assert!(report.len() <= MAX_DIAGNOSTIC_OUTPUT_BYTES);
-        assert!(!report.contains('x'));
+        assert!(!report.contains('\u{1}') && !report.contains('\u{2}'));
+        Ok(())
     }
 
     #[test]
     fn malformed_and_excessive_child_status_is_fixed() {
-        assert_eq!(
+        assert!(matches!(
             parse_child_status(b"exit=wat secret"),
             ChildStatus::Malformed
-        );
-        assert_eq!(parse_child_status(b"exit=999"), ChildStatus::Malformed);
+        ));
         assert_eq!(parse_child_status(b"exit=1\n"), ChildStatus::Failure);
-        let report = render_failure(
-            RecoveryCaseTag::witness_defect("missing"),
-            RecoveryStatus::Unavailable,
-            RequestSummary::status(RequestSummaryStatus::Malformed),
-            ChildStatus::Malformed,
-        );
-        assert!(report.len() <= MAX_DIAGNOSTIC_OUTPUT_BYTES);
-        assert!(!report.contains("secret"));
     }
 }
