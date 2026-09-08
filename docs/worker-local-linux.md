@@ -40,18 +40,21 @@ owner-approved digest remain held by the listener. Release artifacts with any
 owner, group or other write bit are rejected. Each accepted peer first checks
 the exact kernel-reported `/proc/<pid>/exe` path, then follows only that
 generated proc magic link with a read-only descriptor. The descriptor itself is
-type-checked, compared by device/inode with the approved held image, and
-hashed against the approved digest (at most 128 MiB) before it is retained in
-the opaque witness. A second descriptor identity check and path check catch an
+type-checked and compared by device/inode with the approved held image. The
+accepted-peer path does not rehash that live descriptor: the SHA-256 digest was
+established for the owner-approved image when the listener opened it, and
+device/inode equality binds the live proc image to that held artifact for this
+point-in-time proof. A second descriptor identity check and path check catch an
 exec transition during proof; a path string alone is never proof. The proc
 magic-link follow is deliberately not used for caller-provided paths.
 
-The bounded image hash is current-byte proof for the point-in-time admission,
-not continuous loaded-code attestation. Open/stat/read operations are
-synchronous and bounded in bytes but are not preemptible by Tokio; the adapter
-checks the absolute deadline before and after each operation and rejects if it
-has elapsed, while honestly allowing a syscall already in the kernel to return
-after that instant. No detached or unbounded blocking worker is created.
+The bounded image hash performed while opening the owner-approved image is
+current-byte proof for that point in time, not continuous loaded-code
+attestation. Open/stat/read operations are synchronous and bounded in bytes but
+are not preemptible by Tokio; the adapter checks the absolute deadline before
+and after each operation and rejects if it has elapsed, while honestly allowing
+a syscall already in the kernel to return after that instant. No detached or
+unbounded blocking worker is created.
 `O_NONBLOCK` prevents a FIFO substitution from hanging before type validation,
 but does not make ordinary regular-file reads cancellable.
 

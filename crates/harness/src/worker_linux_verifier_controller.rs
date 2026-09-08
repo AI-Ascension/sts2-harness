@@ -7,6 +7,8 @@
 use std::os::fd::{AsFd, OwnedFd};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
+#[cfg(test)]
+use std::sync::{Condvar, Mutex};
 
 use rustix::io::dup;
 use rustix::net::{AddressFamily, SocketFlags, SocketType, socketpair};
@@ -18,7 +20,8 @@ use super::super::LinuxPeerIdentity;
 use super::super::worker_local_linux_fs::FileIdentity;
 use super::super::worker_local_linux_image::HeldImage;
 use super::lifecycle::{
-    ChildStatus, SESSION_ACTIVE, SESSION_AVAILABLE, SESSION_POISONED, VerifierSession,
+    ChildStatus, RegistryError, SESSION_ACTIVE, SESSION_AVAILABLE, SESSION_POISONED,
+    SESSION_STARTING, VerifierSession,
 };
 use super::protocol::{
     VerifierFailure, VerifierOutcome, decode_endpoint_response, decode_response,
@@ -26,11 +29,65 @@ use super::protocol::{
 };
 use super::transport::{receive_packet, send_packet};
 
+#[cfg(test)]
+static TEST_CONTROLLER_SERIAL: (Mutex<Option<std::thread::ThreadId>>, Condvar) =
+    (Mutex::new(None), Condvar::new());
+
+#[cfg(test)]
+struct TestControllerSerialGuard {
+    owner: Option<std::thread::ThreadId>,
+}
+
+#[cfg(test)]
+impl TestControllerSerialGuard {
+    fn acquire() -> Self {
+        let thread = std::thread::current().id();
+        let (owners, wake) = &TEST_CONTROLLER_SERIAL;
+        let mut owner = owners
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if owner.as_ref() == Some(&thread) {
+            // A same-thread constructor is allowed to reach the lifecycle
+            // registry and receive its ordinary Occupied error. This avoids
+            // deadlocking a test that probes the singleton while holding it.
+            return Self { owner: None };
+        }
+        while owner.is_some() {
+            owner = wake
+                .wait(owner)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        *owner = Some(thread);
+        Self {
+            owner: Some(thread),
+        }
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestControllerSerialGuard {
+    fn drop(&mut self) {
+        let Some(thread) = self.owner.take() else {
+            return;
+        };
+        let (owners, wake) = &TEST_CONTROLLER_SERIAL;
+        let mut owner = owners
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if owner.as_ref() == Some(&thread) {
+            *owner = None;
+            wake.notify_one();
+        }
+    }
+}
+
 /// One fixed verifier process and its private control channel. The process is
 /// reused serially, so an accepted listener has at most one verifier
 /// descendant and never creates a process per connection.
 pub struct VerifierController {
     session: Arc<VerifierSession>,
+    #[cfg(test)]
+    _test_serial: TestControllerSerialGuard,
 }
 
 impl VerifierController {
@@ -39,25 +96,76 @@ impl VerifierController {
     /// identity budget; the control descriptor is registered with Tokio only
     /// when the first async verification call runs.
     pub(crate) fn new() -> Result<Self, VerifierFailure> {
-        if !super::lifecycle::may_launch_helper() {
-            return Err(VerifierFailure::Poisoned);
-        }
-        let (parent, child_control) = socketpair(
+        // The production registry intentionally owns one helper slot. Keep
+        // integration fixtures that compile this module under `cfg(test)`
+        // serial, while retaining the same singleton lifecycle contract.
+        #[cfg(test)]
+        let test_serial = TestControllerSerialGuard::acquire();
+
+        let session = Arc::new(VerifierSession {
+            control: std::sync::Mutex::new(None),
+            async_control: std::sync::Mutex::new(None),
+            child: std::sync::Mutex::new(None),
+            state: std::sync::atomic::AtomicU8::new(SESSION_STARTING),
+            cleanup: std::sync::atomic::AtomicU8::new(0),
+        });
+        // Hold the initial guards while the session is globally registered.
+        // A concurrent constructor can observe the `Starting` owner but can
+        // neither take its handles nor launch around this reservation.
+        let mut control = session
+            .control
+            .try_lock()
+            .map_err(|_| VerifierFailure::Poisoned)?;
+        let mut child_slot = session
+            .child
+            .try_lock()
+            .map_err(|_| VerifierFailure::Poisoned)?;
+        let _launch =
+            super::lifecycle::reserve_helper_slot(&session).map_err(map_registry_error)?;
+        let (parent, child_control) = match socketpair(
             AddressFamily::UNIX,
             SocketType::SEQPACKET,
             SocketFlags::CLOEXEC | SocketFlags::NONBLOCK,
             None,
-        )
-        .map_err(|_| VerifierFailure::Io)?;
-        let child = spawn_fixed_verifier(child_control)?;
+        ) {
+            Ok(pair) => pair,
+            Err(_) => {
+                session
+                    .state
+                    .store(SESSION_POISONED, std::sync::atomic::Ordering::Release);
+                drop(child_slot);
+                drop(control);
+                drop(_launch);
+                super::lifecycle::release_reaped_session(&session);
+                return Err(VerifierFailure::Io);
+            }
+        };
+        *control = Some(parent);
+        let child = match spawn_fixed_verifier(child_control) {
+            Ok(child) => child,
+            Err(error) => {
+                let _ = control.take();
+                session
+                    .state
+                    .store(SESSION_POISONED, std::sync::atomic::Ordering::Release);
+                drop(child_slot);
+                drop(control);
+                drop(_launch);
+                super::lifecycle::release_reaped_session(&session);
+                return Err(error);
+            }
+        };
+        *child_slot = Some(child);
+        session
+            .state
+            .store(SESSION_AVAILABLE, std::sync::atomic::Ordering::Release);
+        drop(child_slot);
+        drop(control);
+        drop(_launch);
         Ok(Self {
-            session: Arc::new(VerifierSession {
-                control: std::sync::Mutex::new(Some(parent)),
-                async_control: std::sync::Mutex::new(None),
-                child: std::sync::Mutex::new(child),
-                state: std::sync::atomic::AtomicU8::new(SESSION_AVAILABLE),
-                cleanup: std::sync::atomic::AtomicU8::new(0),
-            }),
+            session,
+            #[cfg(test)]
+            _test_serial: test_serial,
         })
     }
 
@@ -157,6 +265,14 @@ impl Drop for VerifierController {
             .state
             .store(SESSION_POISONED, std::sync::atomic::Ordering::Release);
         self.session.poison();
+        super::lifecycle::release_reaped_session(&self.session);
+    }
+}
+
+fn map_registry_error(error: RegistryError) -> VerifierFailure {
+    match error {
+        RegistryError::Busy | RegistryError::Occupied => VerifierFailure::Busy,
+        RegistryError::Poisoned => VerifierFailure::Poisoned,
     }
 }
 
