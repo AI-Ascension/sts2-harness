@@ -4,26 +4,27 @@
 
 #![cfg(target_os = "linux")]
 
-use std::fs::{self, File, OpenOptions};
+use std::fs::{File, OpenOptions};
 use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::fd::OwnedFd;
-use rustix::fs::{FileType, Mode, OFlags, fstat, openat};
+use rustix::fs::{OFlags, fstat};
 use rustix::net::sockopt::socket_peercred;
 use rustix::process::{Pid, PidfdFlags, pidfd_open};
-use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use tokio::net::UnixStream;
 use tokio::time::Instant;
 
-use super::worker_local_linux_fs::{FileIdentity, HeldDirectories, compare_path_identity};
+use super::worker_local_linux_fs::{
+    FileIdentity, HeldDirectories, compare_path_identity, ensure_deadline, open_held_file,
+};
+use super::worker_local_linux_image::{HeldImage, process_image_identity, read_proc_executable};
 use super::{LinuxPeerIdentity, LinuxPeerWitness, LinuxTransportError, MAX_CREDENTIAL_BYTES};
 
 const MAX_PROCESS_STAT_BYTES: usize = 4_096;
-const MAX_IMAGE_BYTES: usize = 128 * 1024 * 1024;
 const READ_CHUNK_BYTES: usize = 16 * 1024;
 
 pub(super) struct ProtectedCredential {
@@ -91,113 +92,6 @@ fn valid_credential(bytes: &[u8]) -> bool {
         && bytes.iter().all(|byte| (0x21..=0x7e).contains(byte))
 }
 
-pub(super) struct HeldImage {
-    _directories: HeldDirectories,
-    _file: File,
-    identity: FileIdentity,
-}
-
-impl HeldImage {
-    pub(super) fn open(
-        path: &Path,
-        owner_uid: u32,
-        expected_digest: Option<&[u8; 32]>,
-    ) -> Result<Self, LinuxTransportError> {
-        let (directories, mut file, identity, stat) =
-            open_held_file(path, owner_uid, LinuxTransportError::Peer)?;
-        validate_image_stat(&stat, owner_uid)?;
-        if let Some(expected) = expected_digest {
-            hash_image(&mut file, expected)?;
-        }
-        let after = fstat(&file).map_err(|_| LinuxTransportError::Peer)?;
-        if FileIdentity::from_stat(&after) != identity {
-            return Err(LinuxTransportError::Peer);
-        }
-        compare_path_identity(
-            directories.parent()?,
-            directories.leaf(),
-            identity,
-            LinuxTransportError::Peer,
-        )?;
-        Ok(Self {
-            _directories: directories,
-            _file: file,
-            identity,
-        })
-    }
-
-    pub(super) fn identity(&self) -> FileIdentity {
-        self.identity
-    }
-
-    pub(super) fn verify_path(&self) -> Result<(), LinuxTransportError> {
-        compare_path_identity(
-            self._directories.parent()?,
-            self._directories.leaf(),
-            self.identity,
-            LinuxTransportError::Peer,
-        )
-    }
-}
-
-fn validate_image_stat(stat: &rustix::fs::Stat, owner_uid: u32) -> Result<(), LinuxTransportError> {
-    if !FileType::from_raw_mode(stat.st_mode).is_file()
-        || !super::worker_local_linux_fs::owner_allowed(stat.st_uid, owner_uid)
-        || stat.st_nlink != 1
-        || stat.st_mode & 0o022 != 0
-        || stat.st_mode & 0o400 == 0
-        || stat.st_size < 0
-        || stat.st_size as u64 > MAX_IMAGE_BYTES as u64
-    {
-        return Err(LinuxTransportError::Peer);
-    }
-    Ok(())
-}
-
-fn hash_image(file: &mut File, expected: &[u8; 32]) -> Result<[u8; 32], LinuxTransportError> {
-    let mut hasher = Sha256::new();
-    let mut total = 0_usize;
-    let mut chunk = [0_u8; READ_CHUNK_BYTES];
-    loop {
-        let count = file
-            .read(&mut chunk)
-            .map_err(|_| LinuxTransportError::Peer)?;
-        if count == 0 {
-            break;
-        }
-        total = total.checked_add(count).ok_or(LinuxTransportError::Peer)?;
-        if total > MAX_IMAGE_BYTES {
-            return Err(LinuxTransportError::Peer);
-        }
-        hasher.update(&chunk[..count]);
-    }
-    let digest: [u8; 32] = hasher.finalize().into();
-    if bool::from(digest.ct_eq(expected)) {
-        Ok(digest)
-    } else {
-        Err(LinuxTransportError::Peer)
-    }
-}
-
-fn open_held_file(
-    path: &Path,
-    owner_uid: u32,
-    error: LinuxTransportError,
-) -> Result<(HeldDirectories, File, FileIdentity, rustix::fs::Stat), LinuxTransportError> {
-    let directories = HeldDirectories::open(path, owner_uid)?;
-    let fd = openat(
-        directories.parent()?,
-        directories.leaf(),
-        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK,
-        Mode::empty(),
-    )
-    .map_err(|_| error)?;
-    let stat = fstat(&fd).map_err(|_| error)?;
-    let identity = FileIdentity::from_stat(&stat);
-    compare_path_identity(directories.parent()?, directories.leaf(), identity, error)?;
-    Ok((directories, File::from(fd), identity, stat))
-}
-
 pub(super) fn verify_peer(
     stream: &UnixStream,
     expected: &LinuxPeerIdentity,
@@ -208,6 +102,7 @@ pub(super) fn verify_peer(
         return Err(LinuxTransportError::Deadline);
     }
     let credentials = socket_peercred(stream).map_err(|_| LinuxTransportError::Peer)?;
+    ensure_deadline(deadline)?;
     if credentials.uid.as_raw() != expected.uid
         || credentials.pid.as_raw_pid() <= 0
         || u32::try_from(credentials.pid.as_raw_pid()).ok() != Some(expected.pid)
@@ -216,28 +111,34 @@ pub(super) fn verify_peer(
     }
     let pid = Pid::from_raw(credentials.pid.as_raw_pid()).ok_or(LinuxTransportError::Peer)?;
     let pidfd = pidfd_open(pid, PidfdFlags::empty()).map_err(|_| LinuxTransportError::Peer)?;
+    ensure_deadline(deadline)?;
     ensure_pidfd_live(&pidfd)?;
+    ensure_deadline(deadline)?;
     let before = process_start_token(expected.pid, deadline)?;
     if before != expected.start_token {
         return Err(LinuxTransportError::Peer);
     }
-    let proc_executable = PathBuf::from(format!("/proc/{}/exe", expected.pid));
-    let executable = fs::read_link(&proc_executable).map_err(|_| LinuxTransportError::Peer)?;
-    if executable != expected.executable {
-        return Err(LinuxTransportError::Peer);
-    }
-    let actual_image = HeldImage::open(&executable, expected.uid, None)?;
+    let actual_image = HeldImage::open_proc(
+        expected.pid,
+        &expected.executable,
+        expected.uid,
+        &expected.executable_sha256,
+        deadline,
+    )?;
     if actual_image.identity() != approved_image.identity() || approved_image.verify_path().is_err()
     {
         return Err(LinuxTransportError::Peer);
     }
+    ensure_deadline(deadline)?;
     let after = process_start_token(expected.pid, deadline)?;
-    let executable_after =
-        fs::read_link(&proc_executable).map_err(|_| LinuxTransportError::Peer)?;
+    let executable_after = read_proc_executable(expected.pid, deadline)?;
+    let actual_identity_after = process_image_identity(expected.pid, expected.uid, deadline)?;
     ensure_pidfd_live(&pidfd)?;
+    ensure_deadline(deadline)?;
     if before != after
-        || executable != executable_after
+        || executable_after != expected.executable
         || actual_image.identity() != approved_image.identity()
+        || actual_identity_after != actual_image.identity()
         || approved_image.verify_path().is_err()
         || Instant::now() >= deadline
     {

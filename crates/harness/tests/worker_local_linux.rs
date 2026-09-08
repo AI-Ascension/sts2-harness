@@ -7,94 +7,42 @@ mod worker_frame_io {
 mod worker_handoff {
     pub use sts2_harness::worker_handoff::MAX_FRAME_BYTES;
 }
+#[path = "worker_local_linux_support.rs"]
+mod support;
 #[path = "../src/worker_local_linux.rs"]
 mod worker_local_linux;
 use sha2::{Digest, Sha256};
-use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::fs::{self, File};
+use std::io::Read;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener as StdUnixListener;
-use std::path::PathBuf;
+use std::path::Path;
 use std::process;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use sts2_harness::worker_frame_io::ConnectionDeadline;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use support::{
+    Fixture, IDENTITY_DEADLINE, TestError, TestResult, read_frame, write_auth, write_frame,
+};
+use tokio::io::AsyncWriteExt;
 use tokio::net::UnixStream;
 use tokio::time::sleep;
 use worker_handoff::MAX_FRAME_BYTES;
-use worker_local_linux::{
-    AUTH_MAGIC, LinuxPeerIdentity, LinuxTransportError, LinuxWorkerConfig, MAX_AUTH_BODY_BYTES,
-};
+use worker_local_linux::{AUTH_MAGIC, LinuxTransportError, LinuxWorkerConfig, MAX_AUTH_BODY_BYTES};
 
-type TestError = Box<dyn std::error::Error + Send + Sync>;
-type TestResult<T = ()> = Result<T, TestError>;
-const IDENTITY_DEADLINE: Duration = Duration::from_secs(5);
-static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(1);
-struct Fixture {
-    root: PathBuf,
-    endpoint: PathBuf,
-    credential: PathBuf,
-    secret: Vec<u8>,
-}
-
-impl Fixture {
-    fn new(secret: &[u8]) -> TestResult<Self> {
-        let nonce = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!(
-            "ascension-harness-linux-worker-{}-{nonce}",
-            process::id()
-        ));
-        fs::create_dir(&root)?;
-        fs::set_permissions(&root, fs::Permissions::from_mode(0o700))?;
-        let credential = root.join("worker-credential");
-        let mut file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .mode(0o600)
-            .open(&credential)?;
-        file.write_all(secret)?;
-        file.sync_all()?;
-        let endpoint = root.join("worker.sock");
-        Ok(Self {
-            root,
-            endpoint,
-            credential,
-            secret: secret.to_vec(),
-        })
-    }
-
-    fn config(&self) -> TestResult<LinuxWorkerConfig> {
-        Ok(LinuxWorkerConfig::new(
-            self.endpoint.clone(),
-            self.credential.clone(),
-            peer_variant(4)?,
-        )?)
-    }
-}
-
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.endpoint);
-        let _ = fs::remove_file(&self.credential);
-        let _ = fs::remove_dir(&self.root);
-    }
-}
-
-fn peer_variant(mutation: u8) -> TestResult<LinuxPeerIdentity> {
+fn peer_variant(mutation: u8) -> TestResult<worker_local_linux::LinuxPeerIdentity> {
     let mut uid = rustix::process::getuid().as_raw();
     let mut pid = process::id();
     let mut start_token = read_start_token(pid)?;
     let executable = fs::read_link(format!("/proc/{pid}/exe"))?;
-    let mut digest = image_digest()?;
+    let mut digest = image_digest(&executable)?;
     match mutation {
-        0 => uid = peer_uid_plus_one(),
+        0 => uid = rustix::process::getuid().as_raw().saturating_add(1),
         1 => pid = pid.saturating_add(1),
         2 => start_token = start_token.saturating_add(1),
         3 => digest[0] ^= 1,
         _ => {}
     }
-    Ok(LinuxPeerIdentity::new(
+    Ok(worker_local_linux::LinuxPeerIdentity::new(
         uid,
         pid,
         start_token,
@@ -114,37 +62,32 @@ fn read_start_token(pid: u32) -> TestResult<u64> {
     Ok(token)
 }
 
-async fn write_auth(stream: &mut UnixStream, secret: &[u8]) -> TestResult {
-    let body_length = AUTH_MAGIC.len().saturating_add(secret.len());
-    stream
-        .write_all(&(u32::try_from(body_length)?).to_be_bytes())
-        .await?;
-    stream.write_all(AUTH_MAGIC).await?;
-    stream.write_all(secret).await?;
-    Ok(())
+fn image_digest(path: &Path) -> TestResult<[u8; 32]> {
+    let mut file = File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut bytes = [0_u8; 16 * 1024];
+    loop {
+        let count = file.read(&mut bytes)?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&bytes[..count]);
+    }
+    Ok(hasher.finalize().into())
 }
 
-async fn write_frame(stream: &mut UnixStream, body: &[u8]) -> TestResult {
-    stream
-        .write_all(&(u32::try_from(body.len())?).to_be_bytes())
-        .await?;
-    stream.write_all(body).await?;
-    Ok(())
-}
-
-async fn read_frame(stream: &mut UnixStream) -> TestResult<Vec<u8>> {
-    let mut length = [0_u8; 4];
-    stream.read_exact(&mut length).await?;
-    let length = usize::try_from(u32::from_be_bytes(length))?;
-    let mut body = vec![0_u8; length];
-    stream.read_exact(&mut body).await?;
-    Ok(body)
+fn fixture_config(fixture: &Fixture) -> TestResult<LinuxWorkerConfig> {
+    Ok(LinuxWorkerConfig::new(
+        fixture.endpoint.clone(),
+        fixture.credential.clone(),
+        peer_variant(4)?,
+    )?)
 }
 
 #[tokio::test]
 async fn positive_process_peer_auth_and_one_frame_roundtrip() -> TestResult {
     let fixture = Fixture::new(b"worker-control-secret")?;
-    let listener = fixture.config()?.bind()?;
+    let listener = fixture_config(&fixture)?.bind()?;
     assert_eq!(
         fs::metadata(&fixture.endpoint)?.permissions().mode() & 0o777,
         0o600
@@ -154,7 +97,7 @@ async fn positive_process_peer_auth_and_one_frame_roundtrip() -> TestResult {
     let secret = fixture.secret.clone();
     let client = tokio::spawn(async move {
         let mut stream = UnixStream::connect(endpoint).await?;
-        write_auth(&mut stream, &secret).await?;
+        write_auth(&mut stream, &secret, AUTH_MAGIC).await?;
         write_frame(&mut stream, b"{\"scope\":\"probe\"}").await?;
         read_frame(&mut stream).await
     });
@@ -174,7 +117,7 @@ async fn positive_process_peer_auth_and_one_frame_roundtrip() -> TestResult {
 #[tokio::test]
 async fn concurrent_accept_is_rejected_busy() -> TestResult {
     let fixture = Fixture::new(b"worker-control-secret")?;
-    let listener = fixture.config()?.bind()?;
+    let listener = fixture_config(&fixture)?.bind()?;
     let deadline = ConnectionDeadline::start(IDENTITY_DEADLINE)?;
     let mut pending = Box::pin(listener.accept_authenticated(deadline));
     let completed = tokio::select! {
@@ -226,7 +169,7 @@ async fn wrong_uid_pid_start_and_image_fail_before_credential_read() -> TestResu
 #[tokio::test]
 async fn dead_peer_and_bad_credentials_receive_no_request() -> TestResult {
     let fixture = Fixture::new(b"worker-control-secret")?;
-    let listener = fixture.config()?.bind()?;
+    let listener = fixture_config(&fixture)?.bind()?;
     let endpoint = fixture.endpoint.clone();
     let client = tokio::spawn(async move {
         let stream = UnixStream::connect(endpoint).await?;
@@ -271,7 +214,7 @@ async fn malformed_oversized_and_trickled_preludes_are_bounded() -> TestResult {
     ];
     for (length, first_byte) in cases {
         let fixture = Fixture::new(b"worker-control-secret")?;
-        let listener = fixture.config()?.bind()?;
+        let listener = fixture_config(&fixture)?.bind()?;
         let endpoint = fixture.endpoint.clone();
         let secret = fixture.secret.clone();
         let client = tokio::spawn(async move {
@@ -282,7 +225,7 @@ async fn malformed_oversized_and_trickled_preludes_are_bounded() -> TestResult {
                 sleep(Duration::from_secs(6)).await;
             }
             if length == u32::try_from(AUTH_MAGIC.len() + 1)? {
-                let _ = write_auth(&mut stream, &secret).await;
+                let _ = write_auth(&mut stream, &secret, AUTH_MAGIC).await;
             }
             Ok::<(), TestError>(())
         });
@@ -303,7 +246,7 @@ async fn malformed_oversized_and_trickled_preludes_are_bounded() -> TestResult {
 #[tokio::test]
 async fn cancellation_drops_auth_stream_and_keeps_listener_usable() -> TestResult {
     let fixture = Fixture::new(b"worker-control-secret")?;
-    let listener = fixture.config()?.bind()?;
+    let listener = fixture_config(&fixture)?.bind()?;
     let endpoint = fixture.endpoint.clone();
     let client = tokio::spawn(async move {
         let mut stream = UnixStream::connect(endpoint).await?;
@@ -323,7 +266,7 @@ async fn cancellation_drops_auth_stream_and_keeps_listener_usable() -> TestResul
     client.await??;
 
     let mut stream = UnixStream::connect(&fixture.endpoint).await?;
-    write_auth(&mut stream, &fixture.secret).await?;
+    write_auth(&mut stream, &fixture.secret, AUTH_MAGIC).await?;
     write_frame(&mut stream, b"{}\n").await?;
     let mut connection = listener
         .accept_authenticated(ConnectionDeadline::start(IDENTITY_DEADLINE)?)
@@ -337,7 +280,7 @@ async fn cancellation_drops_auth_stream_and_keeps_listener_usable() -> TestResul
 #[tokio::test]
 async fn endpoint_path_replacement_is_rejected_before_accept() -> TestResult {
     let fixture = Fixture::new(b"worker-control-secret")?;
-    let listener = fixture.config()?.bind()?;
+    let listener = fixture_config(&fixture)?.bind()?;
     fs::remove_file(&fixture.endpoint)?;
     let replacement = StdUnixListener::bind(&fixture.endpoint)?;
     replacement.set_nonblocking(true)?;
@@ -356,7 +299,7 @@ fn protected_path_and_credential_permissions_fail_closed() -> TestResult {
     let fixture = Fixture::new(b"worker-control-secret")?;
     fs::set_permissions(&fixture.credential, fs::Permissions::from_mode(0o644))?;
     assert!(matches!(
-        fixture.config()?.bind(),
+        fixture_config(&fixture)?.bind(),
         Err(LinuxTransportError::Credential)
     ));
     fs::set_permissions(&fixture.credential, fs::Permissions::from_mode(0o600))?;
@@ -378,11 +321,11 @@ fn protected_path_and_credential_permissions_fail_closed() -> TestResult {
 #[tokio::test]
 async fn oversized_request_poisoning_cannot_be_restarted() -> TestResult {
     let fixture = Fixture::new(b"worker-control-secret")?;
-    let listener = fixture.config()?.bind()?;
+    let listener = fixture_config(&fixture)?.bind()?;
     let endpoint = fixture.endpoint.clone();
     let client = tokio::spawn(async move {
         let mut stream = UnixStream::connect(endpoint).await?;
-        write_auth(&mut stream, b"worker-control-secret").await?;
+        write_auth(&mut stream, b"worker-control-secret", AUTH_MAGIC).await?;
         stream
             .write_all(&u32::try_from(MAX_FRAME_BYTES + 1)?.to_be_bytes())
             .await?;
@@ -401,23 +344,4 @@ async fn oversized_request_poisoning_cannot_be_restarted() -> TestResult {
     );
     client.await??;
     Ok(())
-}
-
-fn image_digest() -> TestResult<[u8; 32]> {
-    let executable = fs::read_link(format!("/proc/{}/exe", process::id()))?;
-    let mut file = File::open(executable)?;
-    let mut hasher = Sha256::new();
-    let mut bytes = [0_u8; 16 * 1024];
-    loop {
-        let count = file.read(&mut bytes)?;
-        if count == 0 {
-            break;
-        }
-        hasher.update(&bytes[..count]);
-    }
-    Ok(hasher.finalize().into())
-}
-
-fn peer_uid_plus_one() -> u32 {
-    rustix::process::getuid().as_raw().saturating_add(1)
 }

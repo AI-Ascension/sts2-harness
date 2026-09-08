@@ -5,6 +5,7 @@
 #![cfg(target_os = "linux")]
 
 use std::ffi::OsString;
+use std::fs::File;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixListener as StdUnixListener;
 use std::path::{Component, Path};
@@ -12,10 +13,12 @@ use std::path::{Component, Path};
 use rustix::fd::OwnedFd;
 use rustix::fs::{AtFlags, FileType, Mode, OFlags, chmodat, fstat, openat, statat, unlinkat};
 use tokio::net::UnixListener;
+use tokio::time::Instant;
 
 use super::LinuxTransportError;
 
 const MAX_PATH_BYTES: usize = 4_096;
+pub(super) const MAX_IMAGE_BYTES: usize = 128 * 1024 * 1024;
 
 pub(super) struct HeldEndpoint {
     directories: HeldDirectories,
@@ -155,6 +158,33 @@ impl HeldDirectories {
 
     pub(super) fn leaf(&self) -> &OsString {
         &self.leaf
+    }
+}
+
+pub(super) fn open_held_file(
+    path: &Path,
+    owner_uid: u32,
+    error: LinuxTransportError,
+) -> Result<(HeldDirectories, File, FileIdentity, rustix::fs::Stat), LinuxTransportError> {
+    let directories = HeldDirectories::open(path, owner_uid)?;
+    let fd = openat(
+        directories.parent()?,
+        directories.leaf(),
+        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK,
+        Mode::empty(),
+    )
+    .map_err(|_| error)?;
+    let stat = fstat(&fd).map_err(|_| error)?;
+    let identity = FileIdentity::from_stat(&stat);
+    compare_path_identity(directories.parent()?, directories.leaf(), identity, error)?;
+    Ok((directories, File::from(fd), identity, stat))
+}
+
+pub(super) fn ensure_deadline(deadline: Instant) -> Result<(), LinuxTransportError> {
+    if Instant::now() >= deadline {
+        Err(LinuxTransportError::Deadline)
+    } else {
+        Ok(())
     }
 }
 

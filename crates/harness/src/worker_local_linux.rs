@@ -7,16 +7,16 @@
 //! handoff command, access a store, admit work, or execute a process. The
 //! parent harness server receives bounded bytes plus an opaque witness and
 //! remains responsible for every semantic and durable decision.
-//!
-//! Root integration must add the Linux-only module/export and the
-//! target-specific `rustix`/`tokio`/`subtle`/`zeroize` dependencies after
-//! independent review. This preparation branch intentionally does not export
-//! the module from the library.
 
 #![cfg(target_os = "linux")]
 
 #[path = "worker_local_linux_fs.rs"]
 mod worker_local_linux_fs;
+#[path = "worker_local_linux_image.rs"]
+mod worker_local_linux_image;
+#[cfg(test)]
+#[path = "worker_local_linux_image_tests.rs"]
+mod worker_local_linux_image_tests;
 #[path = "worker_local_linux_process.rs"]
 mod worker_local_linux_process;
 
@@ -33,7 +33,8 @@ use zeroize::Zeroizing;
 use crate::worker_frame_io::{ConnectionDeadline, FrameIoError, WorkerFrameIo};
 use crate::worker_handoff::MAX_FRAME_BYTES;
 use worker_local_linux_fs::{HeldEndpoint, is_canonical_absolute};
-use worker_local_linux_process::{HeldImage, ProtectedCredential, verify_peer};
+use worker_local_linux_image::HeldImage;
+use worker_local_linux_process::{ProtectedCredential, verify_peer};
 
 /// The fixed authentication profile prefix, including its NUL terminator.
 pub const AUTH_MAGIC: &[u8; 25] = b"ascension-worker-auth-v1\0";
@@ -171,7 +172,7 @@ impl LinuxWorkerListener {
         let image = HeldImage::open(
             &config.peer.executable,
             owner_uid,
-            Some(&config.peer.executable_sha256),
+            &config.peer.executable_sha256,
         )
         .map_err(|_| LinuxTransportError::Configuration)?;
         let mut endpoint = HeldEndpoint::bind(&config.endpoint, owner_uid)?;
@@ -187,7 +188,10 @@ impl LinuxWorkerListener {
 
     /// Accepts one connection and authenticates it before exposing any frame
     /// bytes. `deadline` must be created before this call; it is reused for
-    /// accept, peer proof, auth prelude and JSON framing.
+    /// accept, peer proof, auth prelude and JSON framing. Peer proof contains
+    /// bounded synchronous kernel/filesystem calls. They are checked before
+    /// and after each phase, but cannot be preempted while the kernel is
+    /// servicing a syscall; this adapter does not detach a blocking worker.
     pub async fn accept_authenticated(
         &self,
         deadline: ConnectionDeadline,
@@ -219,9 +223,7 @@ impl LinuxWorkerListener {
     }
 }
 
-/// Opaque proof that the connected peer passed kernel credentials, pidfd,
-/// start-token, executable path and executable-digest checks. The type is not
-/// serializable, cloneable or constructible outside this module.
+/// Opaque, non-serializable proof of the connected peer's authenticated identity.
 pub struct LinuxPeerWitness {
     _pidfd: OwnedFd,
     _pid: u32,

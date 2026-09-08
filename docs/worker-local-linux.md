@@ -36,13 +36,24 @@ environment, frames after authentication or durable records.
 
 The approved executable is opened and hashed from its held descriptor before
 the listener is ready; its protected ancestors, regular-file identity and
-owner-approved digest remain held by the listener. Each accepted peer opens
-the `/proc/<pid>/exe` target through the same protected path walk and retains
-that image and its ancestors in the opaque witness. The live and approved
-images must match by device/inode and exact path; a path string alone is not
-proof. The bounded regular-file hash is startup preparation, not an accepted
-connection deadline. `O_NONBLOCK` prevents a FIFO substitution from hanging
-before type validation, but does not make ordinary disk reads cancellable.
+owner-approved digest remain held by the listener. Release artifacts with any
+owner, group or other write bit are rejected. Each accepted peer first checks
+the exact kernel-reported `/proc/<pid>/exe` path, then follows only that
+generated proc magic link with a read-only descriptor. The descriptor itself is
+type-checked, compared by device/inode with the approved held image, and
+hashed against the approved digest (at most 128 MiB) before it is retained in
+the opaque witness. A second descriptor identity check and path check catch an
+exec transition during proof; a path string alone is never proof. The proc
+magic-link follow is deliberately not used for caller-provided paths.
+
+The bounded image hash is current-byte proof for the point-in-time admission,
+not continuous loaded-code attestation. Open/stat/read operations are
+synchronous and bounded in bytes but are not preemptible by Tokio; the adapter
+checks the absolute deadline before and after each operation and rejects if it
+has elapsed, while honestly allowing a syscall already in the kernel to return
+after that instant. No detached or unbounded blocking worker is created.
+`O_NONBLOCK` prevents a FIFO substitution from hanging before type validation,
+but does not make ordinary regular-file reads cancellable.
 
 ## Peer and wire proof
 
@@ -50,8 +61,11 @@ The configured peer is an owner-approved UID/PID, `/proc/<pid>/stat` start
 token, executable path and SHA-256 image digest. Every accepted stream obtains
 `SO_PEERCRED`, opens and holds a pidfd, checks pidfd liveness, the start token,
 and executable path/image identity around peer proof before credential
-admission. Mismatches are rejected before reading the credential. The held pidfd and
-approved/live image descriptors are the non-forgeable witness lifetime.
+admission. Mismatches are rejected before reading the credential. The held
+pidfd and approved/live image descriptors are the non-forgeable witness
+lifetime. This remains a point-in-time configured-principal check: a held
+pidfd does not prevent a trusted process from later calling `exec`, and the
+transport makes no root-compromise or continuous-attestation claim.
 
 The listener admits one exchange at a time. A concurrent accept returns a fixed
 `Busy` error immediately; there is no application-level waiting queue. Dropping
