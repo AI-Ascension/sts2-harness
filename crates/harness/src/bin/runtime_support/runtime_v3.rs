@@ -48,6 +48,8 @@ mod episode_replay;
 mod execution;
 #[path = "runtime_v3_launch_options.rs"]
 mod launch_options;
+#[path = "runtime_v3_worker_runtime.rs"]
+pub(super) mod worker_runtime;
 
 use decision_admission::DecisionAdmission;
 

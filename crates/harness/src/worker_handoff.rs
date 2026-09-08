@@ -10,6 +10,11 @@ mod request;
 mod response;
 mod terminal;
 
+pub use command::{
+    ApprovedWorkerExecution, AuthenticatedWorkerRequest, WorkerCapability, WorkerCommandAdmission,
+    WorkerCommandConfig, WorkerCommandError, WorkerCommandResult, WorkerDispatchPreparation,
+    WorkerExecutionReservation,
+};
 pub use request::{WorkerCommand, WorkerRequest};
 pub use response::{AcknowledgmentStatus, DispatchReply, LookupReply, ProbeReply, WorkerReply};
 pub use terminal::{TerminalCompletion, TerminalRecord, TerminalStatus};

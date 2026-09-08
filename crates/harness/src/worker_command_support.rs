@@ -12,7 +12,11 @@ use crate::execution::{
 use super::super::{DispatchReply, WorkerCommand, WorkerReply, WorkerRequest};
 
 /// Immutable values pinned by the owner-approved worker launch record.
-pub(in crate::worker_handoff) struct WorkerCommandConfig {
+///
+/// The fields intentionally remain private.  A transport adapter may construct this value from
+/// its already-authorized launch configuration, but it cannot mutate the binding after admission
+/// has been created.
+pub struct WorkerCommandConfig {
     pub(in crate::worker_handoff) deployment_id: String,
     pub(in crate::worker_handoff) worker_owner_id: String,
     pub(in crate::worker_handoff) worker_profile_digest: String,
@@ -23,7 +27,30 @@ pub(in crate::worker_handoff) struct WorkerCommandConfig {
 }
 
 impl WorkerCommandConfig {
-    pub(in crate::worker_handoff) fn validate(&self) -> Result<(), WorkerCommandError> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        deployment_id: impl Into<String>,
+        worker_owner_id: impl Into<String>,
+        worker_profile_digest: impl Into<String>,
+        release_digest: impl Into<String>,
+        config_digest: impl Into<String>,
+        worker_boot_id: impl Into<String>,
+        watchdog_boot_id: impl Into<String>,
+    ) -> Result<Self, WorkerCommandError> {
+        let config = Self {
+            deployment_id: deployment_id.into(),
+            worker_owner_id: worker_owner_id.into(),
+            worker_profile_digest: worker_profile_digest.into(),
+            release_digest: release_digest.into(),
+            config_digest: config_digest.into(),
+            worker_boot_id: worker_boot_id.into(),
+            watchdog_boot_id: watchdog_boot_id.into(),
+        };
+        config.validate()?;
+        Ok(config)
+    }
+
+    pub fn validate(&self) -> Result<(), WorkerCommandError> {
         if !identity(&self.deployment_id)
             || !identity(&self.worker_owner_id)
             || !digest(&self.worker_profile_digest)
@@ -41,7 +68,7 @@ impl WorkerCommandConfig {
 
 /// An authorization capability is selected by the authenticated transport, never by the frame.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::worker_handoff) enum WorkerCapability {
+pub enum WorkerCapability {
     Probe,
     Dispatch,
     Lookup,
@@ -50,7 +77,7 @@ pub(in crate::worker_handoff) enum WorkerCapability {
 }
 
 impl WorkerCapability {
-    pub(in crate::worker_handoff) const fn command(self) -> WorkerCommand {
+    pub const fn command(self) -> WorkerCommand {
         match self {
             Self::Probe => WorkerCommand::Probe,
             Self::Dispatch => WorkerCommand::Dispatch,
@@ -63,10 +90,32 @@ impl WorkerCapability {
 
 /// Transport code fills this only after protected local peer authentication. It has no public
 /// constructor and deliberately carries no boolean authentication claim.
-pub(in crate::worker_handoff) struct AuthenticatedWorkerRequest {
+pub struct AuthenticatedWorkerRequest {
     pub(in crate::worker_handoff) request: WorkerRequest,
     pub(in crate::worker_handoff) capability: WorkerCapability,
     pub(in crate::worker_handoff) owner_proof: WorkerOwnerProof,
+}
+
+impl AuthenticatedWorkerRequest {
+    /// Marks a request as transport-authenticated after the caller has completed its protected
+    /// peer and credential checks.  The owner proof is deliberately retained as an opaque value;
+    /// this constructor does not authenticate a peer or inspect a credential.
+    pub fn from_transport(
+        request: WorkerRequest,
+        capability: WorkerCapability,
+        owner_proof: WorkerOwnerProof,
+    ) -> Self {
+        Self {
+            request,
+            capability,
+            owner_proof,
+        }
+    }
+
+    /// Returns the validated request retained by the endpoint for response correlation.
+    pub fn request(&self) -> &WorkerRequest {
+        &self.request
+    }
 }
 
 /// Caller-supplied execution material from an approved runtime launch record.
@@ -74,7 +123,8 @@ pub(in crate::worker_handoff) struct AuthenticatedWorkerRequest {
 /// The command frame cannot create this value. Its fingerprint is intentionally retained here so
 /// preparation can bind the frame to the approved seed/build/state/config/provider values instead
 /// of deriving any of them from remote JSON.
-pub(in crate::worker_handoff) struct ApprovedWorkerExecution {
+#[derive(Clone)]
+pub struct ApprovedWorkerExecution {
     pub(in crate::worker_handoff) lineage: ExecutionLineage,
     pub(in crate::worker_handoff) fingerprint: ExecutionFingerprint,
     pub(in crate::worker_handoff) job_id: String,
@@ -82,7 +132,7 @@ pub(in crate::worker_handoff) struct ApprovedWorkerExecution {
 }
 
 impl ApprovedWorkerExecution {
-    pub(in crate::worker_handoff) fn new(
+    pub fn new(
         lineage: ExecutionLineage,
         fingerprint: ExecutionFingerprint,
         job_id: impl Into<String>,
@@ -114,12 +164,12 @@ impl ApprovedWorkerExecution {
 
 /// A completed, idempotent preparation. It owns the exact tuple/context used by the atomic store
 /// call; it is not itself execution authority and has no public constructor.
-pub(in crate::worker_handoff) struct WorkerDispatchPreparation {
+pub struct WorkerDispatchPreparation {
     pub(in crate::worker_handoff) tuple: WorkerTuple,
     pub(in crate::worker_handoff) context: WorkerAdmissionContext,
 }
 
-pub(in crate::worker_handoff) struct WorkerCommandResult {
+pub struct WorkerCommandResult {
     pub(in crate::worker_handoff) reply: WorkerReply,
     reservation: Option<WorkerExecutionReservation>,
 }
@@ -148,30 +198,32 @@ impl WorkerCommandResult {
 
     /// Moves the one-time execution reservation to the runtime bridge. Dropping the result
     /// without taking it intentionally leaves the durable handoff admitted for reconciliation.
-    pub(in crate::worker_handoff) fn take_reservation(
-        &mut self,
-    ) -> Option<WorkerExecutionReservation> {
+    pub fn take_reservation(&mut self) -> Option<WorkerExecutionReservation> {
         self.reservation.take()
+    }
+
+    pub fn into_parts(self) -> (WorkerReply, Option<WorkerExecutionReservation>) {
+        (self.reply, self.reservation)
     }
 }
 
 /// A fresh dispatch winner owns the store-issued permit and the exact admission context/tuple.
 /// The runtime bridge must consume this value after the response is written and immediately
 /// before provider/episode execution. There is no constructor from a handoff row or string.
-pub(in crate::worker_handoff) struct WorkerExecutionReservation {
+pub struct WorkerExecutionReservation {
     tuple: WorkerTuple,
     context: WorkerAdmissionContext,
     permit: WorkerExecutionPermit,
 }
 
 impl WorkerExecutionReservation {
-    pub(in crate::worker_handoff) fn tuple(&self) -> &WorkerTuple {
+    pub fn tuple(&self) -> &WorkerTuple {
         &self.tuple
     }
 
     /// Consumes the opaque permit and performs the durable current-control fence immediately
     /// before execution. Calling this twice is impossible because the reservation is consumed.
-    pub(in crate::worker_handoff) fn start(
+    pub fn start(
         self,
         store: &mut ExecutionStore,
     ) -> Result<StoredWorkerHandoff, WorkerCommandError> {
@@ -187,7 +239,7 @@ impl WorkerExecutionReservation {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::worker_handoff) enum WorkerCommandError {
+pub enum WorkerCommandError {
     InvalidRequest,
     InvalidBinding,
     Unauthorized,

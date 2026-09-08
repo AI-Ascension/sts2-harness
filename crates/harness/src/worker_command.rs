@@ -17,25 +17,30 @@ use crate::execution::{
 };
 
 use super::{WorkerCommand, WorkerReply};
-use support::{
-    ApprovedWorkerExecution, AuthenticatedWorkerRequest, WorkerCommandConfig, WorkerCommandError,
-    WorkerCommandResult, WorkerDispatchPreparation, context, text, tuple,
+pub use support::{
+    ApprovedWorkerExecution, AuthenticatedWorkerRequest, WorkerCapability, WorkerCommandConfig,
+    WorkerCommandError, WorkerCommandResult, WorkerDispatchPreparation, WorkerExecutionReservation,
 };
+use support::{context, text, tuple};
 
 /// Private command admission state bound to one owner-approved worker launch.
-pub(super) struct WorkerCommandAdmission {
+/// Safe command-admission adapter used by an authenticated worker endpoint.
+///
+/// The adapter owns no transport and does not authenticate callers.  The caller must construct
+/// [`AuthenticatedWorkerRequest`] only after its transport-specific peer checks have succeeded.
+pub struct WorkerCommandAdmission {
     config: WorkerCommandConfig,
 }
 
 impl WorkerCommandAdmission {
-    pub(super) fn new(config: WorkerCommandConfig) -> Result<Self, WorkerCommandError> {
+    pub fn new(config: WorkerCommandConfig) -> Result<Self, WorkerCommandError> {
         config.validate()?;
         Ok(Self { config })
     }
 
     /// Handles historical and control commands after transport authentication. Dispatch is
     /// rejected here because it requires the separate approved-preparation path.
-    pub(super) fn handle_authenticated(
+    pub fn handle_authenticated(
         &self,
         store: &mut ExecutionStore,
         authenticated: &AuthenticatedWorkerRequest,
@@ -56,7 +61,7 @@ impl WorkerCommandAdmission {
     /// supply its fingerprint, seed, provider identity, or executable configuration. Missing
     /// episode/job rows are created only from that approved material; retained rows are matched
     /// exactly, and a fresh admission requires an active episode plus an admitted job.
-    pub(super) fn prepare_dispatch(
+    pub fn prepare_dispatch(
         &self,
         store: &mut ExecutionStore,
         authenticated: &AuthenticatedWorkerRequest,
@@ -94,7 +99,7 @@ impl WorkerCommandAdmission {
 
     /// Revalidates a prepared request and atomically admits only a fresh execution winner.
     /// Duplicate observations return a retained status without an execution reservation.
-    pub(super) fn admit_prepared_dispatch(
+    pub fn admit_prepared_dispatch(
         &self,
         store: &mut ExecutionStore,
         authenticated: &AuthenticatedWorkerRequest,
