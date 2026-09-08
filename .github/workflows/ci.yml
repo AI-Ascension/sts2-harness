@@ -41,6 +41,17 @@ jobs:
         run: |
           (cd protocol-artifact/runtime-v1 && sha256sum -c SHA256SUMS)
           (cd protocol-artifact/runtime-v2 && sha256sum -c SHA256SUMS)
+
+      - name: Verify every copied protocol artifact inventory
+        # Discovers every SHA256SUMS under protocol-artifact/ so a profile copied later
+        # (for example runtime-v4-expert or runtime-v4-expert-action) cannot be missed.
+        run: |
+          inventories=$(find protocol-artifact -mindepth 2 -name SHA256SUMS -type f | LC_ALL=C sort)
+          test -n "$inventories"
+          for inventory in $inventories; do
+            (cd "$(dirname "$inventory")" && sha256sum -c SHA256SUMS)
+          done
+
       - name: Validate full M10 manifest schema and quarantine gate
         run: cargo test --package sts2-patch-diff --test patch_manifest --locked
 
