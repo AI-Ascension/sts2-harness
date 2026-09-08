@@ -218,9 +218,8 @@ impl RuntimeV3Port {
         if !self.allocated || self.released {
             return Ok(());
         }
-        let response = self.gateway.request(
-            "POST",
-            &format!("/v1/instances/{}/release", self.config.instance_id),
+        let response = self.gateway.release(
+            &self.config.instance_id,
             &Value::Null,
             identity_headers(&self.config, &release_correlation()),
         )?;

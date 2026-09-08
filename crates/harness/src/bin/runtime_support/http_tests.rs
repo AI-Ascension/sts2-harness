@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::thread;
 
@@ -81,6 +82,7 @@ fn exchange_response(response: Vec<u8>) -> Result<Value, String> {
     let result = GatewayClient {
         address,
         token: "synthetic-token".into(),
+        cancellation: sts2_harness::ExecutionCancellation::default(),
     }
     .request("GET", "/", &Value::Null, BTreeMap::new());
     server
@@ -154,6 +156,7 @@ fn trickling_response_cannot_extend_exchange_deadline() -> Result<(), String> {
     let result = GatewayClient {
         address,
         token: "synthetic-token".into(),
+        cancellation: sts2_harness::ExecutionCancellation::default(),
     }
     .exchange(
         "GET",
@@ -169,5 +172,17 @@ fn trickling_response_cannot_extend_exchange_deadline() -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     assert!(result.is_err());
     assert!(elapsed < Duration::from_millis(500), "{elapsed:?}");
+    Ok(())
+}
+
+#[test]
+fn synchronous_gateway_can_run_inside_an_async_runtime() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .map_err(|_| String::from("test runtime unavailable"))?;
+    let result = runtime.block_on(async {
+        exchange_response(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}".to_vec())
+    });
+    assert_eq!(result?, serde_json::json!({}));
     Ok(())
 }

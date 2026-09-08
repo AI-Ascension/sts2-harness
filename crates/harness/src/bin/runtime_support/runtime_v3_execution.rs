@@ -91,6 +91,7 @@ pub(super) fn run(
         }
     };
     port.cancellation = options.cancellation.clone();
+    port.gateway.set_cancellation(options.cancellation.clone());
     if !options.combat_demo
         && let Some(path) = options.replay_path.as_deref()
     {

@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::BTreeMap;
-use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
+use tokio::net::TcpStream;
 
 use super::config::RuntimeConfig;
 
 #[path = "gateway_json.rs"]
 mod gateway_json;
+#[path = "http_transport.rs"]
+mod transport;
+use transport::read_deadline;
 
 const MAX_BODY_BYTES: usize = 16 * 1024;
 const MAX_RESPONSE_BYTES: usize = 64 * 1024;
@@ -19,6 +22,7 @@ const MAX_HEADER_BYTES: usize = 8 * 1024;
 pub(crate) struct GatewayClient {
     address: SocketAddr,
     token: String,
+    cancellation: sts2_harness::ExecutionCancellation,
 }
 
 impl GatewayClient {
@@ -36,7 +40,33 @@ impl GatewayClient {
         Ok(Self {
             address,
             token: config.gateway_token.clone(),
+            cancellation: sts2_harness::ExecutionCancellation::default(),
         })
+    }
+
+    pub(crate) fn set_cancellation(&mut self, signal: sts2_harness::ExecutionCancellation) {
+        self.cancellation = signal;
+    }
+
+    /// Lease cleanup retains its own deadline after execution cancellation.
+    /// This does not reset the execution signal or permit a new allocation.
+    pub(crate) fn release(
+        &self,
+        instance_id: &str,
+        body: &Value,
+        headers: BTreeMap<String, String>,
+    ) -> Result<Value, String> {
+        let cleanup = Self {
+            address: self.address,
+            token: self.token.clone(),
+            cancellation: sts2_harness::ExecutionCancellation::default(),
+        };
+        cleanup.request(
+            "POST",
+            &format!("/v1/instances/{instance_id}/release"),
+            body,
+            headers,
+        )
     }
 
     pub(crate) fn request(
@@ -89,11 +119,13 @@ impl GatewayClient {
         if request.len() > MAX_HEADER_BYTES {
             return Err(String::from("gateway request headers exceed the bound"));
         }
-        let mut stream = TcpStream::connect_timeout(&self.address, remaining(deadline)?)
-            .map_err(|_| String::from("gateway connection failed"))?;
-        write_deadline(&mut stream, request.as_bytes(), deadline)?;
-        write_deadline(&mut stream, &bytes, deadline)?;
-        let response = read_response(&mut stream, deadline)?;
+        let response = transport::exchange(
+            self.address,
+            request.as_bytes(),
+            &bytes,
+            deadline,
+            &self.cancellation,
+        )?;
         if !(200..300).contains(&response.status) {
             return Err(format!("gateway returned HTTP {}", response.status));
         }
@@ -179,42 +211,6 @@ fn remaining(deadline: Instant) -> Result<Duration, String> {
         .ok_or_else(|| String::from("gateway exchange deadline expired"))
 }
 
-fn write_deadline(
-    stream: &mut TcpStream,
-    mut bytes: &[u8],
-    deadline: Instant,
-) -> Result<(), String> {
-    while !bytes.is_empty() {
-        stream
-            .set_write_timeout(Some(remaining(deadline)?))
-            .map_err(|_| String::from("gateway write timeout setup failed"))?;
-        let written = stream
-            .write(bytes)
-            .map_err(|_| String::from("gateway request failed or timed out"))?;
-        if written == 0 {
-            return Err(String::from("gateway closed during request"));
-        }
-        bytes = &bytes[written..];
-    }
-    remaining(deadline)?;
-    Ok(())
-}
-
-fn read_deadline(
-    stream: &mut TcpStream,
-    bytes: &mut [u8],
-    deadline: Instant,
-) -> Result<usize, String> {
-    stream
-        .set_read_timeout(Some(remaining(deadline)?))
-        .map_err(|_| String::from("gateway read timeout setup failed"))?;
-    let read = stream
-        .read(bytes)
-        .map_err(|_| String::from("gateway response read failed or timed out"))?;
-    remaining(deadline)?;
-    Ok(read)
-}
-
 fn response_length<'a>(lines: impl Iterator<Item = &'a str>) -> Result<usize, String> {
     let mut length = None;
     for line in lines {
@@ -249,7 +245,7 @@ fn response_length<'a>(lines: impl Iterator<Item = &'a str>) -> Result<usize, St
     length.ok_or_else(|| String::from("gateway response omitted content length"))
 }
 
-fn read_response(stream: &mut TcpStream, deadline: Instant) -> Result<HttpResponse, String> {
+async fn read_response(stream: &mut TcpStream, deadline: Instant) -> Result<HttpResponse, String> {
     let mut bytes = Vec::new();
     let mut buffer = [0_u8; 2048];
     let header_end = loop {
@@ -262,7 +258,7 @@ fn read_response(stream: &mut TcpStream, deadline: Instant) -> Result<HttpRespon
         if bytes.len() >= MAX_HEADER_BYTES {
             return Err(String::from("gateway response headers exceed the bound"));
         }
-        let read = read_deadline(stream, &mut buffer, deadline)?;
+        let read = read_deadline(stream, &mut buffer, deadline).await?;
         if read == 0 {
             return Err(String::from("gateway closed before response headers"));
         }
@@ -305,7 +301,7 @@ fn read_response(stream: &mut TcpStream, deadline: Instant) -> Result<HttpRespon
     while body.len() < content_length {
         let remaining = content_length - body.len();
         let read_capacity = remaining.min(buffer.len());
-        let read = read_deadline(stream, &mut buffer[..read_capacity], deadline)?;
+        let read = read_deadline(stream, &mut buffer[..read_capacity], deadline).await?;
         if read == 0 {
             return Err(String::from("gateway closed before response body"));
         }
@@ -317,3 +313,7 @@ fn read_response(stream: &mut TcpStream, deadline: Instant) -> Result<HttpRespon
 #[cfg(test)]
 #[path = "http_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "http_cancellation_tests.rs"]
+mod cancellation_tests;

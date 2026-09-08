@@ -62,8 +62,14 @@ An already-cancelled execution cannot launch a replacement primary or recovery
 MCP. A request written before cancellation remains uncertain; cancellation is
 never converted to an authoritative rejection or a replacement dispatch.
 
+Gateway connect/write/read now run in an owned, joined asynchronous exchange under
+the same cancellation signal and absolute deadline. Cancelling a sent request
+closes its socket without resending or inferring rejection. Explicit lease cleanup
+uses its own bounded exchange after cancellation and does not reset the original
+signal. Native worker tests retain a stalled allocation socket during SIGTERM and
+acknowledge only the separate release; the handoff still remains UNKNOWN.
+
 This signal does not prove remote inference cancellation, descendant containment,
-or settlement of a game effect. Gateway phases still use their existing
-deadlines. Forced descendant cleanup and active-execution shutdown bounds need
+or settlement of a game effect. Forced descendant cleanup and active-execution shutdown bounds need
 additional implementation and fault evidence; neither the synthetic barrier test
 nor the compile-time `Send` check proves those guarantees.

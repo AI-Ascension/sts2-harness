@@ -55,12 +55,9 @@ impl EpisodeRuntimePort for RuntimeV3Port {
             &self.config,
             allocation_context::validate,
             |headers| {
-                let response = self.gateway.request(
-                    "POST",
-                    &format!("/v1/instances/{}/release", self.config.instance_id),
-                    &json!({}),
-                    headers,
-                );
+                let response = self
+                    .gateway
+                    .release(&self.config.instance_id, &json!({}), headers);
                 self.released = response
                     .as_ref()
                     .is_ok_and(|value| value["status"] == "released");
