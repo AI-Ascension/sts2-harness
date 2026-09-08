@@ -32,6 +32,28 @@ fn successful_store_close_keeps_the_original_failure() {
     );
 }
 
+#[test]
+fn cleanup_results_preserve_every_failure_without_manufacturing_success() {
+    assert_eq!(finish_cleanup(Ok(()), Ok(()), "close"), Ok(()));
+    assert_eq!(
+        finish_cleanup(Err("run".into()), Ok(()), "close"),
+        Err("run".into())
+    );
+    assert_eq!(
+        finish_cleanup(Ok(()), Err("io".into()), "close"),
+        Err("close: io".into())
+    );
+    let result = finish_cleanup(
+        Err("run".into()),
+        Err("provider".into()),
+        "provider close failed",
+    );
+    assert_eq!(
+        finish_cleanup(result, Err("store".into()), "execution store close failed"),
+        Err("run; provider close failed: provider; execution store close failed: store".into())
+    );
+}
+
 fn config() -> RuntimeConfig {
     RuntimeConfig {
         gateway_address: String::from("127.0.0.1:15525"),

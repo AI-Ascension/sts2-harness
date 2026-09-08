@@ -35,6 +35,18 @@ fn combine_store_close(error: String, close: Result<(), String>) -> String {
     }
 }
 
+fn finish_cleanup(
+    result: Result<(), String>,
+    cleanup: Result<(), String>,
+    label: &str,
+) -> Result<(), String> {
+    match (result, cleanup) {
+        (result, Ok(())) => result,
+        (Ok(()), Err(error)) => Err(format!("{label}: {error}")),
+        (Err(original), Err(error)) => Err(format!("{original}; {label}: {error}")),
+    }
+}
+
 /// Runs one already-admitted runtime-v3 episode.
 ///
 /// All process-global launch selection is resolved by [`RuntimeV3LaunchOptions`] before this
@@ -106,7 +118,7 @@ pub(super) fn run(
             },
         );
         finish_telemetry(telemetry);
-        return result.and(store_close);
+        return finish_cleanup(result, store_close, "execution store close failed");
     }
     let transport = ExoProcessTransport::new(settings.process);
     let provider = ExoProvider::new(transport, settings.exo);
@@ -138,14 +150,15 @@ pub(super) fn run(
         let _ = telemetry_handle.run_finished(
             game_outcome,
             TelemetryStage::Unknown,
-            if close.is_ok() {
+            if close.is_ok() && store_close.is_ok() {
                 CleanupStatus::Clean
             } else {
                 CleanupStatus::Failed
             },
         );
         finish_telemetry(telemetry);
-        return outcome.and(close).and(store_close);
+        let outcome = finish_cleanup(outcome, close, "provider close failed");
+        return finish_cleanup(outcome, store_close, "execution store close failed");
     }
     let durable_handle = port.durable_handle();
     let mut recorder =
