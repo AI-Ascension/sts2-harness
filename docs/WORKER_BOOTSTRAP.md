@@ -45,6 +45,15 @@ one command, read-only probe/lookup, or the watchdog owner's complete command
 set. The policy is not deserialized from the request. These APIs remain separate
 from the still-unintegrated executable serving loop.
 
+`LinuxWorkerExchange::admit` joins native authentication to the worker-owned
+durable admission path and consumes the original connection for its response.
+Response-write status remains distinct from execution-start outcome. An admitted
+reservation crosses the running fence only after a successful response write;
+a failed or cancelled write retains UNKNOWN. Cancellation while the store is
+busy leaves admission fenced until the uncertainty can be retained. Tests cover
+native successful/failed responses and cancellation before/after polling.
+This operation returns a start outcome; it does not launch gameplay itself.
+
 This uses `SO_PASSCRED` and `SCM_CREDENTIALS`, whose kernel checks and privileged
 exceptions are documented in [unix(7)](https://man7.org/linux/man-pages/man7/unix.7.html).
 It is not a defense against privileged host compromise. The private verifier

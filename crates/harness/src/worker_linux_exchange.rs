@@ -12,6 +12,10 @@ use crate::worker_local_linux::{
     AuthenticatedWorkerConnection, LinuxTransportError, LinuxWorkerListener,
 };
 
+#[path = "worker_linux_admission.rs"]
+mod admission;
+pub use admission::LinuxAdmissionOutcome;
+
 /// Approved local endpoint policy. This type is never deserialized from a
 /// request. Even the owner policy still requires the configured native peer
 /// and protected credential before any capability is selected.

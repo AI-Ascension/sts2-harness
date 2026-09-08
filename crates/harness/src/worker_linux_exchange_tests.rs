@@ -2,7 +2,7 @@
 #![cfg(target_os = "linux")]
 
 #[path = "../tests/worker_local_linux_support.rs"]
-mod support;
+pub(crate) mod support;
 
 use crate::worker_frame_io::ConnectionDeadline;
 use crate::worker_handoff::{ProbeReply, WorkerCapability, WorkerReply};
@@ -20,7 +20,7 @@ const PROBE: &[u8] = include_bytes!(
     "../../../protocol-artifact/watchdog-worker-v1/fixtures/valid/probe-request.json"
 );
 
-fn config(fixture: &Fixture) -> TestResult<LinuxWorkerConfig> {
+pub(crate) fn config(fixture: &Fixture) -> TestResult<LinuxWorkerConfig> {
     let pid = std::process::id();
     let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
     let close = stat.rfind(')').ok_or("missing process comm terminator")?;

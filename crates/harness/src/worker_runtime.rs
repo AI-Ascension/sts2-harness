@@ -219,4 +219,4 @@ fn combine_failure(original: String, quarantine: Result<(), String>) -> String {
 mod completion;
 #[cfg(test)]
 #[path = "worker_runtime_tests.rs"]
-mod tests;
+pub(crate) mod tests;

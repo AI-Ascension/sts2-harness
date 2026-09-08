@@ -42,7 +42,7 @@ fn fingerprint() -> Result<ExecutionFingerprint, Box<dyn std::error::Error>> {
     )?)
 }
 
-fn request() -> Result<WorkerRequest, Box<dyn std::error::Error>> {
+pub(crate) fn request() -> Result<WorkerRequest, Box<dyn std::error::Error>> {
     let fields = Map::from_iter([
         (
             "contract".into(),
@@ -77,7 +77,7 @@ fn request() -> Result<WorkerRequest, Box<dyn std::error::Error>> {
     Ok(WorkerRequest::decode(&serde_json::to_vec(&fields)?)?)
 }
 
-fn runtime() -> Result<WorkerRuntime, Box<dyn std::error::Error>> {
+pub(crate) fn runtime() -> Result<WorkerRuntime, Box<dyn std::error::Error>> {
     let mut store = ExecutionStore::open_in_memory()?;
     let boot = WorkerBoot::new("deployment-1", "harness", profile(), WORKER_BOOT_ID)?;
     store.start_worker_boot(&boot)?;
@@ -121,7 +121,7 @@ fn authenticated(
     ))
 }
 
-fn admitted_reservation(
+pub(crate) fn admitted_reservation(
     runtime: &mut WorkerRuntime,
 ) -> Result<WorkerExecutionReservation, Box<dyn std::error::Error>> {
     let exchange = runtime.handle_authenticated(&authenticated(request()?)?)?;
@@ -129,7 +129,7 @@ fn admitted_reservation(
     reservation.ok_or_else(|| "dispatch did not return an execution reservation".into())
 }
 
-fn handoff_state(
+pub(crate) fn handoff_state(
     runtime: &WorkerRuntime,
 ) -> Result<WorkerHandoffState, Box<dyn std::error::Error>> {
     let store = try_lock_recovery(&runtime.store)?;
