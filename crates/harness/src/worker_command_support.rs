@@ -6,10 +6,14 @@ use std::fmt;
 
 use crate::execution::{
     ExecutionFingerprint, ExecutionLineage, ExecutionStore, StoredWorkerHandoff,
-    WorkerAdmissionContext, WorkerExecutionPermit, WorkerOwnerProof, WorkerTuple,
+    WorkerAdmissionContext, WorkerExecutionPermit, WorkerTuple,
 };
 
-use super::super::{DispatchReply, WorkerCommand, WorkerReply, WorkerRequest};
+use super::super::{DispatchReply, WorkerReply, WorkerRequest};
+
+#[path = "worker_command_authentication.rs"]
+mod authentication;
+pub use authentication::{AuthenticatedWorkerRequest, WorkerCapability};
 
 /// Immutable values pinned by the owner-approved worker launch record.
 ///
@@ -63,70 +67,6 @@ impl WorkerCommandConfig {
             return Err(WorkerCommandError::InvalidBinding);
         }
         Ok(())
-    }
-}
-
-/// An authorization capability is selected by the authenticated transport, never by the frame.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum WorkerCapability {
-    Probe,
-    Dispatch,
-    Lookup,
-    Acknowledge,
-    SetControlMode,
-}
-
-impl WorkerCapability {
-    pub const fn command(self) -> WorkerCommand {
-        match self {
-            Self::Probe => WorkerCommand::Probe,
-            Self::Dispatch => WorkerCommand::Dispatch,
-            Self::Lookup => WorkerCommand::Lookup,
-            Self::Acknowledge => WorkerCommand::Acknowledge,
-            Self::SetControlMode => WorkerCommand::SetControlMode,
-        }
-    }
-}
-
-/// Transport code fills this only after protected local peer authentication. It has no public
-/// constructor and deliberately carries no boolean authentication claim.
-///
-/// External callers cannot turn a marker string into authenticated admission:
-/// ```compile_fail,E0624
-/// use sts2_harness::{WorkerOwnerProof, worker_handoff::{
-///     AuthenticatedWorkerRequest, WorkerCapability, WorkerRequest,
-/// }};
-/// fn forge(request: WorkerRequest, proof: WorkerOwnerProof) {
-///     let _ = AuthenticatedWorkerRequest::from_transport(
-///         request, WorkerCapability::Dispatch, proof,
-///     );
-/// }
-/// ```
-pub struct AuthenticatedWorkerRequest {
-    pub(in crate::worker_handoff) request: WorkerRequest,
-    pub(in crate::worker_handoff) capability: WorkerCapability,
-    pub(in crate::worker_handoff) owner_proof: WorkerOwnerProof,
-}
-
-impl AuthenticatedWorkerRequest {
-    /// Marks a request as transport-authenticated after the caller has completed its protected
-    /// peer and credential checks.  The owner proof is deliberately retained as an opaque value;
-    /// this constructor does not authenticate a peer or inspect a credential.
-    pub(crate) fn from_transport(
-        request: WorkerRequest,
-        capability: WorkerCapability,
-        owner_proof: WorkerOwnerProof,
-    ) -> Self {
-        Self {
-            request,
-            capability,
-            owner_proof,
-        }
-    }
-
-    /// Returns the validated request retained by the endpoint for response correlation.
-    pub fn request(&self) -> &WorkerRequest {
-        &self.request
     }
 }
 

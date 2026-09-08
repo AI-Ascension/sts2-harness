@@ -24,7 +24,7 @@ fn exec_writer_entry() -> TestResult {
     };
     let mut signal = [0_u8; 1];
     std::io::stdin().read_exact(&mut signal)?;
-    if signal != [b'C'] {
+    if signal != *b"C" {
         return Err("unexpected connect signal".into());
     }
     let mut stream = std::os::unix::net::UnixStream::connect(endpoint)?;
@@ -33,7 +33,7 @@ fn exec_writer_entry() -> TestResult {
     stream.write_all(&u32::try_from(auth.len())?.to_be_bytes())?;
     stream.write_all(&auth)?;
     std::io::stdin().read_exact(&mut signal)?;
-    if signal != [b'E'] {
+    if signal != *b"E" {
         return Err("unexpected exec signal".into());
     }
     let socket = std::os::fd::OwnedFd::from(stream);

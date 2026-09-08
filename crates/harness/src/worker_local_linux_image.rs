@@ -64,6 +64,7 @@ impl HeldImage {
     /// a caller-provided filesystem path. Opening it without `NOFOLLOW` gives
     /// a descriptor for the image the kernel reports as loaded, after which
     /// the descriptor is type-checked, identity-checked and hashed.
+    #[cfg(test)]
     pub(super) fn open_proc(
         pid: u32,
         expected_path: &Path,

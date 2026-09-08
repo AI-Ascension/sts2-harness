@@ -88,6 +88,7 @@ impl<T> LaunchRegistry<T> {
         })()
     }
 
+    #[cfg(test)]
     fn current(&self) -> Result<Option<Arc<T>>, RegistryError> {
         let owner = match self.owner.try_lock() {
             Ok(owner) => owner,

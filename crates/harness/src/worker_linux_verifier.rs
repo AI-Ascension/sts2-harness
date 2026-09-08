@@ -32,8 +32,7 @@ pub(super) use controller::VerifierController;
 use helper::run_verifier_from_stdin as run_verifier_process;
 pub(super) use protocol::{VerifierFailure, VerifierOutcome};
 
-/// Entry point for a future harness binary integration. This branch keeps it
-/// internal; tests exercise the subprocess through the test binary.
+/// Internal implementation behind the public fixed executable entry point.
 pub(crate) fn run_verifier_from_stdin() -> Result<(), LinuxTransportError> {
     run_verifier_process()
 }
@@ -45,7 +44,7 @@ mod tests {
     #[test]
     fn verifier_process_entry() {
         if std::env::var_os(TEST_HELPER_ENV).is_some() {
-            assert!(run_verifier_from_stdin().is_ok());
+            assert!(super::super::run_peer_verifier_from_stdin().is_ok());
         }
     }
 }
