@@ -156,6 +156,25 @@ fn worker_v7_late_migration_failure_rolls_back_tables_and_version()
 }
 
 #[test]
+fn worker_v7_rejects_preexisting_worker_tables_without_promoting_version()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut connection = Connection::open_in_memory()?;
+    connection.execute_batch(
+        "CREATE TABLE worker_control (unrecognized TEXT);
+         INSERT INTO worker_control VALUES ('retain-unrecognized-state');
+         PRAGMA user_version = 6;",
+    )?;
+    assert!(migrate(&mut connection).is_err());
+    let version = connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))?;
+    assert_eq!(version, 6);
+    let retained = connection.query_row("SELECT unrecognized FROM worker_control", [], |row| {
+        row.get::<_, String>(0)
+    })?;
+    assert_eq!(retained, "retain-unrecognized-state");
+    Ok(())
+}
+
+#[test]
 fn future_schema_is_rejected_before_any_migration() -> Result<(), Box<dyn std::error::Error>> {
     let mut connection = Connection::open_in_memory()?;
     connection.execute_batch("PRAGMA user_version = 99;")?;

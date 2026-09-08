@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use super::{ExecutionStoreError, map_sqlite};
 
 const WORKER_MIGRATION: &str = r#"
-CREATE TABLE IF NOT EXISTS worker_control (
+CREATE TABLE worker_control (
     control_id INTEGER PRIMARY KEY NOT NULL CHECK (control_id = 1),
     deployment_id TEXT NOT NULL,
     worker_owner_id TEXT NOT NULL,
@@ -19,13 +19,13 @@ CREATE TABLE IF NOT EXISTS worker_control (
     admitting INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
-CREATE TABLE IF NOT EXISTS worker_control_boots (
+CREATE TABLE worker_control_boots (
     boot_id TEXT PRIMARY KEY NOT NULL,
     kind TEXT NOT NULL,
     generation INTEGER NOT NULL,
     created_at INTEGER NOT NULL
 );
-CREATE TABLE IF NOT EXISTS worker_handoffs (
+CREATE TABLE worker_handoffs (
     handoff_id TEXT PRIMARY KEY NOT NULL,
     deployment_id TEXT NOT NULL,
     job_id TEXT NOT NULL UNIQUE REFERENCES jobs(job_id),
@@ -52,11 +52,14 @@ CREATE TABLE IF NOT EXISTS worker_handoffs (
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS worker_handoffs_state
+CREATE INDEX worker_handoffs_state
     ON worker_handoffs(state, reservation_state);
 "#;
 
 pub(crate) fn migrate(connection: &mut Connection) -> Result<(), ExecutionStoreError> {
+    // Version 6 cannot own any worker-v7 object: the DDL and version advance
+    // commit together. A collision is incompatible state, not an interrupted
+    // migration to silently bless with IF NOT EXISTS.
     let transaction = connection
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(map_sqlite)?;
