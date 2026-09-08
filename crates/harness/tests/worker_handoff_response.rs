@@ -228,3 +228,39 @@ fn malformed_terminal_rows_cannot_be_encoded_or_acknowledged() -> TestResult {
     assert!(TerminalRecord::decode(noncanonical.as_bytes()).is_err());
     Ok(())
 }
+
+#[test]
+fn terminal_canonicalization_preserves_unicode_and_required_escapes() -> TestResult {
+    let mut value: Value = serde_json::from_slice(&terminal(&request("dispatch")?)?.encode()?)?;
+    value["terminal_ref"] = json!("é/\"\\終");
+    let bytes = serde_json::to_vec(&value)?;
+    let receipt = TerminalRecord::decode(&bytes)?;
+    let encoded = String::from_utf8(receipt.encode()?)?;
+    assert!(encoded.contains(r#""terminal_ref":"é/\"\\終""#));
+    let escaped = String::from_utf8(bytes)?
+        .replace('é', "\\u00e9")
+        .replace('/', "\\/")
+        .replace('終', "\\u7d42");
+    let equivalent = TerminalRecord::decode(escaped.as_bytes())?;
+    assert_eq!(equivalent.encode()?, receipt.encode()?);
+    assert_eq!(
+        equivalent.acknowledgment_digest()?,
+        receipt.acknowledgment_digest()?
+    );
+    Ok(())
+}
+
+#[test]
+fn terminal_input_and_reference_limits_are_exact_byte_bounds() -> TestResult {
+    let mut value: Value = serde_json::from_slice(&terminal(&request("dispatch")?)?.encode()?)?;
+    value["terminal_ref"] = json!("é".repeat(512));
+    let mut bytes = serde_json::to_vec(&value)?;
+    assert!(TerminalRecord::decode(&bytes).is_ok());
+    bytes.resize(16_384, b' ');
+    assert!(TerminalRecord::decode(&bytes).is_ok());
+    bytes.push(b' ');
+    assert!(TerminalRecord::decode(&bytes).is_err());
+    value["terminal_ref"] = json!(format!("{}a", "é".repeat(512)));
+    assert!(TerminalRecord::decode(&serde_json::to_vec(&value)?).is_err());
+    Ok(())
+}
