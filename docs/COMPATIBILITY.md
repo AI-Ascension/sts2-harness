@@ -57,7 +57,7 @@ See `experiments/live-combat/README.md` for the exact scope.
 | Direct game access | Outside the harness boundary; requests use MCP/gateway | No direct host authority; bounded indirect runtime-v1 probe only |
 | Replay/artifact lineage | Offline seams and fresh-process combat action replay | Confirmed visible-state comparison for the demo; broader replay unverified |
 | Runtime-v2 coordinator | Four-lane bounded pure scheduler with explicit lineage, fairness, overload, cancellation, and shutdown seams | Confirmed by offline component tests; live supervisor/profile/host isolation unverified |
-| Runtime-v3 map context | Opt-in host-authored map projection carried to the Exo provider | Source/component evidence only; target-build map production, provider behavior, and live compatibility unverified |
+| Runtime map context | Opt-in host-authored map projection carried to the Exo provider | Source/component evidence only; target-build map production, provider behavior, and live compatibility unverified |
 | Evaluation | Library aggregation over supplied samples; not wired into the Runtime-v3 runner | Synthetic tests, not game parity or experimental performance evidence |
 
 ## Compatibility classifications
@@ -97,11 +97,13 @@ and current host action IDs. The executable assembles one configured instance's 
 path, not the separate record, memory, evaluation, replay, artifact-publication or co-op library
 seams. Target-build and live provider behavior remain `unverified`.
 
-### Runtime-v3 map context
+### Runtime map context
 
 Map context is an additive, opt-in provider-request capability. `STS2_ENABLE_MAP_CONTEXT` defaults to
-`false` and accepts only the exact values `true` or `false`; the operator path is the
-`runtime-v3-gameplay` profile. Enabling it requires an Exo bridge that accepts the
+`false` and accepts only the exact values `true` or `false`. The runtime coordinator accepts the
+map flag with both the `runtime-v3-gameplay` and `runtime-v4-expert` profiles; this source-level
+profile composition is not evidence that a native target supports the combination. Enabling it
+requires an Exo bridge that accepts the
 `sts2.exo-decision-map-v1` request and its `map_context` field. A bridge that only accepts
 `sts2.exo-decision-v1` is incompatible with map-stage requests; the runner fails closed rather than
 falling back to an ordinary request or choosing a heuristic action.
@@ -117,8 +119,13 @@ and the hand-authored `sts2-protocol/runtime-map-v1` provenance. Only a snapshot
 the current host-generated `select_map_node` action ID set. The snapshot is canonicalized and sent
 with its digest, state ID, generation, profile, and schema digest in `map_context`.
 
-The map-profile MCP response has a separate 512 KiB stdout bound because MCP carries the snapshot as
-escaped JSON text. The complete Exo request bound is 393,443 bytes, derived from the ordinary
+The 256 KiB snapshot bound applies only to the serialized snapshot body; it does not guarantee that
+the enclosing raw native, gateway, or projected-MCP whole envelope fits. Those whole-envelope paths
+remain bounded at 256 KiB. Ordinary MCP stdout remains bounded at 256 KiB; only the map-profile
+framed stdout allowance is 512 KiB so escaped snapshot JSON and its JSON-RPC/content wrapper can be
+read. These are separate bounds, so the lower-level envelope checks remain authoritative and a
+snapshot near its own limit may still be rejected after wrapping. The complete Exo request bound is
+393,443 bytes, derived from the ordinary
 131,072-byte request bound, the 256 KiB snapshot bound, and the fixed map wrapper. With map context
 enabled, `STS2_EXO_MAX_REQUEST_BYTES` defaults to and must equal `393443`; the provider response
 remains bounded at 8 KiB. Other episode stages continue to use the ordinary `sts2.exo-decision-v1`

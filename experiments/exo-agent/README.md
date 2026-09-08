@@ -23,9 +23,10 @@ unavailable or timed-out Exo calls as fail-closed provider outcomes.
 
 ### Optional map context
 
-The full `runtime-v3-gameplay` episode can request a host-authored map projection at Map stages. Keep
-the ordinary behavior by leaving `STS2_ENABLE_MAP_CONTEXT` unset or setting it to `false`. To enable
-the map path, set the exact boolean and use a bridge that understands the map request schema:
+The runtime coordinator can request a host-authored map projection at Map stages under either the
+`runtime-v3-gameplay` or `runtime-v4-expert` profile. Keep the ordinary behavior by leaving
+`STS2_ENABLE_MAP_CONTEXT` unset or setting it to `false`. To enable the map path, set the exact
+boolean and use a bridge that understands the map request schema:
 
 ```text
 STS2_RUNTIME_PROFILE=runtime-v3-gameplay
@@ -35,7 +36,11 @@ STS2_EXO_MAX_REQUEST_BYTES=393443
 
 The flag accepts only `true` or `false`. With the flag enabled, `STS2_EXO_MAX_REQUEST_BYTES` defaults
 to `393443` and must remain exactly that value. This bound carries the ordinary 128 KiB request, one
-complete 256 KiB map snapshot, and the fixed map wrapper. Provider responses remain bounded at 8 KiB.
+complete 256 KiB map snapshot, and the fixed map wrapper. The snapshot limit is body-only: raw native,
+gateway, and projected-MCP whole envelopes remain bounded at 256 KiB, so a snapshot at its own limit
+may not fit once those wrappers are added. Ordinary MCP stdout remains bounded at 256 KiB; only the
+map-profile framed stdout allowance is 512 KiB for the escaped snapshot and JSON-RPC/content wrapper.
+Provider responses remain bounded at 8 KiB.
 The bridge must accept `schema: "sts2.exo-decision-map-v1"` and validate the `map_context` object;
 an ordinary-schema-only bridge cannot serve map-stage requests. The map schema is used only at Map
 stages, while other stages continue to use `sts2.exo-decision-v1`.
@@ -48,12 +53,13 @@ observation, and whose bindings exactly match the current host-generated `select
 IDs. The snapshot uses `visible-map-v1`, the schema digest
 `ceab0d2dfc471d1ec36d12edaf4654b8c7fdced06548bf47265e11c63f98115b`, and a canonical SHA-256
 snapshot digest. It is bounded at 256 KiB, 256 nodes, 1,024 edges, and 256 bindings; its graph must
-be acyclic. MCP's map-profile stdout bound is 512 KiB because the snapshot is carried as escaped
-JSON text inside the wrapper.
+be acyclic. Lower-level whole-envelope checks remain authoritative even with the wider map-profile
+framed stdout allowance. The snapshot is carried as escaped JSON text inside the wrapper.
 
 If the map profile, snapshot, digest, identity, generation, or action bindings are unavailable or
-invalid, the episode fails closed. The runner does not send an ordinary request for that Map stage
-and does not invent a fallback action. The projection remains subject to the fair-play boundary:
+invalid, the episode fails closed. Native target support for either profile plus map context remains
+unverified. The runner does not send an ordinary request for that Map stage and does not invent a
+fallback action. The projection remains subject to the fair-play boundary:
 raw host objects, assemblies, saves, credentials, private prompts, hidden RNG internals, and
 unrevealed random outcomes are not sent to Exo. Target-build map production, live wiring, provider
 interpretation, and gameplay compatibility require a separately recorded runtime handoff.
