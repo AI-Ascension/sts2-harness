@@ -15,6 +15,43 @@ impl Drop for OwnedChild {
 }
 
 #[test]
+fn verifier_entry_exits_cleanly_when_private_control_owner_closes()
+-> Result<(), Box<dyn std::error::Error>> {
+    use rustix::net::{AddressFamily, SocketFlags, SocketType, socketpair};
+    let (owner, child_control) = socketpair(
+        AddressFamily::UNIX,
+        SocketType::SEQPACKET,
+        SocketFlags::CLOEXEC | SocketFlags::NONBLOCK,
+        None,
+    )?;
+    let mut child = OwnedChild(
+        Command::new(env!("CARGO_BIN_EXE_sts2-harness-runtime"))
+            .env_clear()
+            .arg("--worker-peer-verifier-v1")
+            .stdin(Stdio::from(std::fs::File::from(child_control)))
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?,
+    );
+    drop(owner);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(status) = child.0.try_wait()? {
+            assert!(
+                status.success(),
+                "private control close must end the helper"
+            );
+            return Ok(());
+        }
+        assert!(
+            Instant::now() < deadline,
+            "helper retained a closed control socket"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
 fn verifier_entry_precedes_configuration_and_rejects_extra_arguments()
 -> Result<(), Box<dyn std::error::Error>> {
     for extra in [false, true] {
