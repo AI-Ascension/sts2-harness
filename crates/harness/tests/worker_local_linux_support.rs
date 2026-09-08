@@ -88,10 +88,8 @@ impl Fixture {
     pub(crate) fn new(secret: &[u8]) -> TestResult<Self> {
         let image_guard = TestImageGuard::acquire()?;
         let nonce = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!(
-            "ascension-harness-linux-worker-{}-{nonce}",
-            process::id()
-        ));
+        // Reserve socket-path space for the production launch-nonce suffix.
+        let root = std::env::temp_dir().join(format!("asc-w-{}-{nonce}", process::id()));
         fs::create_dir(&root)?;
         fs::set_permissions(&root, fs::Permissions::from_mode(0o700))?;
         let credential = root.join("worker-credential");

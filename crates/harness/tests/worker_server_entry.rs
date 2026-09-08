@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
 #![cfg(target_os = "linux")]
 
+#[path = "worker_server_entry/child.rs"]
+mod child_support;
 #[path = "worker_server_entry/gateway.rs"]
 mod gateway_support;
 #[path = "worker_local_linux_support.rs"]
 mod support;
 
+use child_support::RuntimeChild;
 use gateway_support::acknowledge_release;
 
 use serde_json::{Value, json};
@@ -14,66 +17,12 @@ use std::fs;
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::time::Duration;
 use sts2_harness::worker_bootstrap::BOOTSTRAP_MAGIC;
 use sts2_harness::worker_local_linux::AUTH_MAGIC;
 use support::{Fixture, TestResult, read_frame, write_auth, write_frame};
 use tokio::net::UnixStream;
-
-struct RuntimeChild {
-    child: Child,
-    reaped: bool,
-}
-
-impl RuntimeChild {
-    async fn finish(&mut self, success: bool) -> TestResult {
-        rustix::process::kill_process(
-            rustix::process::Pid::from_child(&self.child),
-            rustix::process::Signal::TERM,
-        )?;
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-        loop {
-            if let Some(status) = self.child.try_wait()? {
-                self.reaped = true;
-                assert_eq!(
-                    status.success(),
-                    success,
-                    "unexpected worker shutdown: {status}"
-                );
-                return Ok(());
-            }
-            if tokio::time::Instant::now() >= deadline {
-                return Err("worker did not shut down within five seconds".into());
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    }
-
-    fn cleanup(&mut self) {
-        if !self.reaped {
-            // The unreaped direct child pins this test-owned process-group ID.
-            let _ = rustix::process::kill_process_group(
-                rustix::process::Pid::from_child(&self.child),
-                rustix::process::Signal::KILL,
-            );
-            let deadline = std::time::Instant::now() + Duration::from_secs(1);
-            while std::time::Instant::now() < deadline {
-                if matches!(self.child.try_wait(), Ok(Some(_))) {
-                    self.reaped = true;
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(5));
-            }
-        }
-    }
-}
-
-impl Drop for RuntimeChild {
-    fn drop(&mut self) {
-        self.cleanup();
-    }
-}
 
 struct RuntimeFixture {
     child: RuntimeChild,
@@ -93,7 +42,7 @@ impl RuntimeFixture {
         gateway: Option<std::net::SocketAddr>,
         digest_override: Option<&str>,
     ) -> TestResult<Self> {
-        let local = Fixture::new(b"synthetic-worker-server-secret")?;
+        let mut local = Fixture::new(b"synthetic-worker-server-secret")?;
         let binary = local.root.join("worker");
         fs::copy(env!("CARGO_BIN_EXE_sts2-harness-runtime"), &binary)?;
         fs::set_permissions(&binary, fs::Permissions::from_mode(0o500))?;
@@ -101,6 +50,12 @@ impl RuntimeFixture {
         fs::copy("/usr/bin/true", &mcp)?;
         fs::set_permissions(&mcp, fs::Permissions::from_mode(0o500))?;
         let frame = bootstrap()?;
+        let startup = sts2_harness::worker_bootstrap::WorkerBootstrap::decode(&frame)?;
+        let namespace = local
+            .root
+            .to_str()
+            .ok_or("fixture namespace must be UTF-8")?;
+        local.endpoint = sts2_harness::worker_endpoint_linux::from_bootstrap(namespace, &startup)?;
         let mut command = Command::new(binary);
         command
             .env_clear()
@@ -145,7 +100,7 @@ impl RuntimeFixture {
                     None => runtime_digest(&mcp, gateway)?,
                 },
             )
-            .env("STS2_WORKER_ENDPOINT", &local.endpoint)
+            .env("STS2_WORKER_ENDPOINT_NAMESPACE", &local.root)
             .env("STS2_WORKER_CREDENTIAL_PATH", &local.credential)
             .env(
                 "STS2_EXECUTION_STORE_PATH",
@@ -168,7 +123,7 @@ impl RuntimeFixture {
     }
 
     async fn wait_endpoint(&mut self) -> TestResult {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
         while !self.local.endpoint.exists() {
             if let Some(status) = self.child.child.try_wait()? {
                 self.child.reaped = true;

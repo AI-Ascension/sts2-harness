@@ -14,8 +14,13 @@ pub(super) struct ListenerSettings {
 
 impl ListenerSettings {
     pub(super) fn from_environment(bootstrap: &WorkerBootstrap) -> Result<Self, String> {
+        if std::env::var_os("STS2_WORKER_ENDPOINT").is_some() {
+            return Err(String::from(
+                "legacy fixed worker endpoint requires explicit namespace configuration",
+            ));
+        }
         Self::from_values(
-            &required("STS2_WORKER_ENDPOINT")?,
+            &required("STS2_WORKER_ENDPOINT_NAMESPACE")?,
             &required("STS2_WORKER_CREDENTIAL_PATH")?,
             &required("STS2_WORKER_TIMEOUT_MS")?,
             bootstrap,
@@ -23,7 +28,7 @@ impl ListenerSettings {
     }
 
     fn from_values(
-        endpoint: &str,
+        namespace: &str,
         credential: &str,
         timeout: &str,
         bootstrap: &WorkerBootstrap,
@@ -35,8 +40,10 @@ impl ListenerSettings {
             .ok_or_else(|| {
                 String::from("STS2_WORKER_TIMEOUT_MS must be a canonical integer in 1..=5000")
             })?;
+        let endpoint = sts2_harness::worker_endpoint_linux::from_bootstrap(namespace, bootstrap)
+            .map_err(|error| error.to_string())?;
         let transport = LinuxWorkerConfig::from_bootstrap(
-            PathBuf::from(endpoint),
+            endpoint,
             PathBuf::from(credential),
             "harness",
             bootstrap,
@@ -105,7 +112,10 @@ mod tests {
         }
         for (endpoint, credential) in [
             ("relative", "/run/synthetic/secret"),
-            ("/run/synthetic/same", "/run/synthetic/same"),
+            (
+                "/run/synthetic",
+                "/run/synthetic/ascension-worker-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.sock",
+            ),
             ("/run/../worker.sock", "/run/synthetic/secret"),
         ] {
             assert!(

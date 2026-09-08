@@ -96,12 +96,17 @@ worker/runtime policy, the approved launch environment must provide:
 
 | Setting | Meaning |
 | --- | --- |
-| `STS2_WORKER_ENDPOINT` | Protected absolute Unix socket path; an existing name is rejected |
+| `STS2_WORKER_ENDPOINT_NAMESPACE` | Protected absolute directory; socket is `ascension-worker-{bootstrap launch nonce}.sock`, with a total UTF-8 path bound of 100 bytes |
 | `STS2_WORKER_CREDENTIAL_PATH` | Protected absolute credential file path, never credential bytes |
 | `STS2_WORKER_TIMEOUT_MS` | Canonical decimal integer from 1 through 5000; one full exchange budget |
 
 The bootstrap component must be `harness`; the exact expected live watchdog
 process comes only from that bootstrap, not from command JSON or environment.
+The legacy `STS2_WORKER_ENDPOINT` setting is rejected, even when the new setting
+is also present. Migration requires an explicitly approved static configuration;
+startup does not rewrite arguments, environment, or configuration digests. An
+occupied current socket fails closed. A prior launch's socket is never adopted
+or blindly removed; this namespace change does not implement stale-file archival.
 Runtime/provider settings and workflow selection are captured before binding.
 The existing runtime configuration digest is checked against the actual MCP bytes
 and configured runtime policy before the endpoint is bound, and again at execution
