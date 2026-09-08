@@ -1,41 +1,22 @@
 // SPDX-License-Identifier: MIT
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use sha2::{Digest, Sha256};
-
-static RELEASE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
-
+/// Each release call has a fresh transport identity, independent of its lease.
 pub(crate) fn release_correlation() -> String {
-    let sequence = RELEASE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_nanos());
-    let mut hasher = Sha256::new();
-    hasher.update(std::process::id().to_le_bytes());
-    hasher.update(sequence.to_le_bytes());
-    hasher.update(nanos.to_le_bytes());
-    let mut bytes = hasher.finalize();
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    format!(
-        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        bytes[0],
-        bytes[1],
-        bytes[2],
-        bytes[3],
-        bytes[4],
-        bytes[5],
-        bytes[6],
-        bytes[7],
-        bytes[8],
-        bytes[9],
-        bytes[10],
-        bytes[11],
-        bytes[12],
-        bytes[13],
-        bytes[14],
-        bytes[15]
-    )
+    uuid::Uuid::new_v4().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn release_requests_have_distinct_canonical_uuid4_identities() {
+        let first = super::release_correlation();
+        let second = super::release_correlation();
+        assert_ne!(first, second);
+        for value in [first, second] {
+            let parsed = uuid::Uuid::parse_str(&value).expect("UUID");
+            assert_eq!(parsed.get_version_num(), 4);
+            assert_eq!(parsed.get_variant(), uuid::Variant::RFC4122);
+            assert_eq!(parsed.to_string(), value);
+        }
+    }
 }

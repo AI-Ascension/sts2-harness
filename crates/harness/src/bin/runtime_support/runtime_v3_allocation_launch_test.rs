@@ -216,10 +216,28 @@ fn gateway(listener: TcpListener, allocation: Value) -> Result<(), String> {
         || !headers.contains("x-mcp-session-id: mcp-session-1\r\n")
         || !headers.contains("x-sts2-lease-id: 00000000-0000-4000-8000-000000000006\r\n")
         || !headers.contains("x-sts2-lease-epoch: 3\r\n")
-        || !headers.contains("x-sts2-correlation-id: release-0001\r\n")
     {
         return Err(String::from(
             "release did not use the acquired identity and lease fence",
+        ));
+    }
+    let correlations = headers
+        .lines()
+        .filter_map(|line| line.strip_prefix("x-sts2-correlation-id: "))
+        .collect::<Vec<_>>();
+    if correlations.len() != 1 {
+        return Err(String::from(
+            "release must have exactly one correlation identity",
+        ));
+    }
+    let correlation = uuid::Uuid::parse_str(correlations[0])
+        .map_err(|_| String::from("release correlation is not a UUID"))?;
+    if correlation.get_version_num() != 4
+        || correlation.get_variant() != uuid::Variant::RFC4122
+        || correlation.to_string() != correlations[0]
+    {
+        return Err(String::from(
+            "release correlation is not a canonical UUIDv4",
         ));
     }
     response(&mut release, &json!({"status": "released"}))
