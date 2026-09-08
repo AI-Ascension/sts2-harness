@@ -8,7 +8,7 @@ use sts2_harness::{ExecutionFingerprint, ExecutionLineage, ResumeState};
 
 use super::super::super::config::RuntimeConfig;
 use super::super::super::runtime_v3_settings::RuntimeV3Settings;
-use super::super::worker_store::{SharedExecutionStore, try_lock};
+use super::super::worker_store::{SharedExecutionStore, snapshot, try_lock};
 use super::DurableHandle;
 use super::support::config_digest;
 
@@ -51,7 +51,7 @@ impl DurableHandle {
                 "runtime-v3 approved fingerprint does not match the runtime configuration",
             ));
         }
-        let (current, state) = {
+        let (current, stored) = {
             let store_guard = try_lock(&store)?;
             let current = store_guard
                 .worker_handoff(&handoff.tuple.handoff_id)
@@ -62,17 +62,15 @@ impl DurableHandle {
                     "runtime-v3 worker handoff changed before runtime attachment",
                 ));
             }
-            let state = store_guard
-                .resume_episode(&lineage.episode_id, &fingerprint)
-                .map_err(|error| format!("cannot inspect runtime-v3 execution state: {error}"))?;
-            (current, state)
+            let stored = snapshot(&store_guard, &lineage, &fingerprint)?;
+            (current, stored)
         };
         if worker_lineage(&current.tuple)? != lineage {
             return Err(String::from(
                 "runtime-v3 stored worker handoff lineage does not match the approved runtime",
             ));
         }
-        let resume_boundary = match &state {
+        let resume_boundary = match &stored.resume {
             ResumeState::Ready { checkpoint, .. } => checkpoint.as_deref().cloned(),
             ResumeState::Completed(_) => {
                 return Err(String::from(
@@ -91,18 +89,17 @@ impl DurableHandle {
                 ));
             }
         };
-        let next_checkpoint = {
-            let store_guard = try_lock(&store)?;
-            store_guard
-                .last_checkpoint(&lineage.episode_id)
-                .map_err(|error| format!("cannot read runtime-v3 checkpoint: {error}"))?
+        let next_checkpoint =
+            stored
+                .episode
+                .last_checkpoint
+                .as_ref()
                 .map_or(Ok(0_u64), |checkpoint| {
                     checkpoint
                         .sequence
                         .checked_add(1)
                         .ok_or_else(|| String::from("runtime-v3 checkpoint sequence exhausted"))
-                })?
-        };
+                })?;
         let handle = Self {
             store,
             lineage,
@@ -113,7 +110,7 @@ impl DurableHandle {
             resume_boundary: Rc::new(RefCell::new(resume_boundary)),
             owns_store: false,
         };
-        Ok((handle, state))
+        Ok((handle, stored.resume))
     }
 
     #[cfg(test)]
@@ -122,15 +119,21 @@ impl DurableHandle {
         lineage: ExecutionLineage,
         fingerprint: ExecutionFingerprint,
     ) -> Result<Self, String> {
-        let next_checkpoint = try_lock(&store)?
-            .last_checkpoint(&lineage.episode_id)
-            .map_err(|error| format!("cannot read test checkpoint: {error}"))?
-            .map_or(Ok(0_u64), |checkpoint| {
-                checkpoint
-                    .sequence
-                    .checked_add(1)
-                    .ok_or_else(|| String::from("test checkpoint sequence exhausted"))
-            })?;
+        let stored = {
+            let store_guard = try_lock(&store)?;
+            snapshot(&store_guard, &lineage, &fingerprint)?
+        };
+        let next_checkpoint =
+            stored
+                .episode
+                .last_checkpoint
+                .as_ref()
+                .map_or(Ok(0_u64), |checkpoint| {
+                    checkpoint
+                        .sequence
+                        .checked_add(1)
+                        .ok_or_else(|| String::from("test checkpoint sequence exhausted"))
+                })?;
         let config_digest = fingerprint.config_digest.clone();
         Ok(Self {
             store,

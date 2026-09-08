@@ -14,7 +14,7 @@ use sts2_harness::{
 
 use super::super::config::RuntimeConfig;
 use super::super::runtime_v3_settings::RuntimeV3Settings;
-use super::worker_store::{SharedExecutionStore, share_store, try_lock};
+use super::worker_store::{SharedExecutionStore, share_store, snapshot, try_lock};
 
 const DEFAULT_STORE_PATH: &str = "harness-execution.sqlite3";
 const PROVIDER_RESERVATION_UNITS: u64 = 1;
@@ -77,17 +77,42 @@ impl DurableHandle {
         }
         let mut store = ExecutionStore::open(store_config)
             .map_err(|error| format!("cannot open runtime-v3 execution store: {error}"))?;
-        let existing = store
-            .resume_episode(&lineage.episode_id, &fingerprint)
-            .map_err(|error| format!("cannot inspect runtime-v3 execution state: {error}"))?;
-        if !matches!(existing, ResumeState::New) && !resume_requested {
+        let (state, stored_episode) = {
+            // Keep admission, the stored identity, resume state, and checkpoint on one shared
+            // store lease. A control/probe path must not advance the episode between these reads.
+            let existing = store
+                .resume_episode(&lineage.episode_id, &fingerprint)
+                .map_err(|error| format!("cannot inspect runtime-v3 execution state: {error}"))?;
+            if !matches!(existing, ResumeState::New) && !resume_requested {
+                return Err(String::from(
+                    "durable runtime-v3 episode already exists; rerun with --resume after reviewing pending state",
+                ));
+            }
+            let state = store
+                .resume_or_start_episode(&lineage, &fingerprint)
+                .map_err(|error| format!("cannot admit runtime-v3 episode: {error}"))?;
+            let stored_episode = store
+                .load_episode(&lineage.episode_id)
+                .map_err(|error| format!("cannot load runtime-v3 execution episode: {error}"))?;
+            (state, stored_episode)
+        };
+        if stored_episode.lineage != lineage {
             return Err(String::from(
-                "durable runtime-v3 episode already exists; rerun with --resume after reviewing pending state",
+                "runtime-v3 stored episode lineage does not match the approved runtime",
             ));
         }
-        let state = store
-            .resume_or_start_episode(&lineage, &fingerprint)
-            .map_err(|error| format!("cannot admit runtime-v3 episode: {error}"))?;
+        if stored_episode.fingerprint != fingerprint {
+            return Err(String::from(
+                "runtime-v3 stored episode fingerprint does not match the approved runtime",
+            ));
+        }
+        if let ResumeState::Ready { checkpoint, .. } = &state
+            && checkpoint.as_deref() != stored_episode.last_checkpoint.as_ref()
+        {
+            return Err(String::from(
+                "runtime-v3 stored resume boundary does not match the latest checkpoint",
+            ));
+        }
         match &state {
             ResumeState::Completed(_) => {}
             ResumeState::ReconstructionRequired { reason }
@@ -103,15 +128,16 @@ impl DurableHandle {
             }
             ResumeState::Ready { .. } => {}
         }
-        let next_checkpoint = store
-            .last_checkpoint(&lineage.episode_id)
-            .map_err(|error| format!("cannot read runtime-v3 checkpoint: {error}"))?
-            .map_or(Ok(0_u64), |checkpoint| {
-                checkpoint
-                    .sequence
-                    .checked_add(1)
-                    .ok_or_else(|| String::from("runtime-v3 checkpoint sequence exhausted"))
-            })?;
+        let next_checkpoint =
+            stored_episode
+                .last_checkpoint
+                .as_ref()
+                .map_or(Ok(0_u64), |checkpoint| {
+                    checkpoint
+                        .sequence
+                        .checked_add(1)
+                        .ok_or_else(|| String::from("runtime-v3 checkpoint sequence exhausted"))
+                })?;
         let resume_boundary = match &state {
             ResumeState::Ready { checkpoint, .. } => checkpoint.as_deref().cloned(),
             _ => None,
@@ -154,9 +180,11 @@ impl DurableHandle {
             .next_checkpoint
             .try_borrow()
             .map_err(|_| String::from("runtime-v3 checkpoint sequence is already borrowed"))?;
-        let checkpoint = try_lock(&self.store)?
-            .last_checkpoint(&self.lineage.episode_id)
-            .map_err(|error| format!("cannot read runtime-v3 terminal checkpoint: {error}"))?
+        let mut store = try_lock(&self.store)?;
+        let snapshot = snapshot(&store, &self.lineage, &self.fingerprint)?;
+        let checkpoint = snapshot
+            .episode
+            .last_checkpoint
             .ok_or_else(|| String::from("runtime-v3 terminal observation was not checkpointed"))?;
         if checkpoint.sequence.checked_add(1) != Some(*expected_next)
             || checkpoint.lineage != self.lineage
@@ -184,7 +212,7 @@ impl DurableHandle {
             result_digest,
         )
         .map_err(|error| format!("runtime-v3 completion is invalid: {error}"))?;
-        try_lock(&self.store)?
+        store
             .record_completion(&completion)
             .map(|_| ())
             .map_err(|error| format!("cannot persist runtime-v3 completion: {error}"))
@@ -211,15 +239,18 @@ impl DurableHandle {
         lineage: ExecutionLineage,
         fingerprint: ExecutionFingerprint,
     ) -> Result<Self, String> {
-        let next_checkpoint = store
-            .last_checkpoint(&lineage.episode_id)
-            .map_err(|error| format!("cannot read test checkpoint: {error}"))?
-            .map_or(Ok(0_u64), |checkpoint| {
-                checkpoint
-                    .sequence
-                    .checked_add(1)
-                    .ok_or_else(|| String::from("test checkpoint sequence exhausted"))
-            })?;
+        let stored = snapshot(&store, &lineage, &fingerprint)?;
+        let next_checkpoint =
+            stored
+                .episode
+                .last_checkpoint
+                .as_ref()
+                .map_or(Ok(0_u64), |checkpoint| {
+                    checkpoint
+                        .sequence
+                        .checked_add(1)
+                        .ok_or_else(|| String::from("test checkpoint sequence exhausted"))
+                })?;
         let config_digest = fingerprint.config_digest.clone();
         Ok(Self {
             store: share_store(store),

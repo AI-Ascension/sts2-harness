@@ -6,11 +6,13 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde_json::json;
 use sts2_harness::{
-    Checkpoint, CompletionRecord, CompletionStatus, EpisodeRunnerConfig, ExecutionFingerprint,
-    ExecutionLineage, ExecutionStore, ExoConfig, ExoProcessConfig, RecoveryController,
-    StabilityBarrier, StoredWorkerHandoff, WORKER_EMPTY_PARAMETERS_DIGEST, WorkerAdmissionContext,
-    WorkerBoot, WorkerControlMode, WorkerControlRequest, WorkerOwnerProof, WorkerTuple,
+    Checkpoint, CompletionRecord, CompletionStatus, EpisodeObservation, EpisodeRunnerConfig,
+    EpisodeStage, ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExoConfig,
+    ExoProcessConfig, RecoveryController, StabilityBarrier, StoredWorkerHandoff,
+    WORKER_EMPTY_PARAMETERS_DIGEST, WorkerAdmissionContext, WorkerBoot, WorkerControlMode,
+    WorkerControlRequest, WorkerOwnerProof, WorkerTuple,
 };
 
 use super::super::runtime_v3_settings::RuntimeV3Settings;
@@ -186,6 +188,55 @@ fn remove_executable(path: &std::path::Path) {
     let _ = std::fs::remove_file(path);
 }
 
+fn foreign_lineage() -> ExecutionLineage {
+    ExecutionLineage::new(
+        "foreign-run",
+        EPISODE_ID,
+        "foreign-attempt",
+        "foreign-trajectory",
+    )
+    .expect("foreign lineage is valid")
+}
+
+fn foreign_fingerprint() -> ExecutionFingerprint {
+    ExecutionFingerprint::new(
+        "foreign-seed",
+        "foreign-build",
+        "foreign-state",
+        "config-1",
+        "provider-1",
+    )
+    .expect("foreign fingerprint is valid")
+}
+
+fn checkpoint_observation(state_id: &str, generation: u64) -> EpisodeObservation {
+    EpisodeObservation::new(
+        state_id,
+        generation,
+        EpisodeStage::Combat,
+        true,
+        false,
+        true,
+        json!({
+            "state_id": state_id,
+            "generation": generation,
+            "player": {
+                "hp": 50,
+                "max_hp": 50,
+                "energy": 3,
+                "gold": 99,
+                "hand": [],
+                "deck": [],
+                "discard": [],
+                "exhaust": []
+            },
+            "state": {"state": "combat", "turn_index": 1, "enemies": []},
+            "legal_actions": []
+        }),
+    )
+    .expect("checkpoint observation is valid")
+}
+
 #[test]
 fn shared_store_is_send_sync_and_cross_thread_operations_use_one_connection() {
     fn assert_send_sync<T: Send + Sync>() {}
@@ -280,6 +331,79 @@ fn admitted_attachment_rejects_a_wrong_approved_fingerprint() {
     );
     remove_executable(&path);
     assert!(result.is_err());
+}
+
+#[test]
+fn shared_runtime_attachment_rejects_a_foreign_stored_lineage() {
+    let (store, _tuple, _context) = setup_store();
+    let result = DurableHandle::from_shared_store_for_test(
+        share_store(store),
+        foreign_lineage(),
+        fingerprint(),
+    );
+    let error = match result {
+        Ok(_) => panic!("foreign stored lineage was attached"),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("stored episode lineage"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn shared_runtime_attachment_rejects_a_foreign_stored_fingerprint() {
+    let (store, _tuple, _context) = setup_store();
+    let result = DurableHandle::from_shared_store_for_test(
+        share_store(store),
+        lineage(),
+        foreign_fingerprint(),
+    );
+    let error = match result {
+        Ok(_) => panic!("foreign stored fingerprint was attached"),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("stored episode fingerprint"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn shared_runtime_attachment_reports_store_contention_without_waiting() {
+    let (store, _tuple, _context) = setup_store();
+    let shared = share_store(store);
+    let guard = try_lock(&shared).expect("test owns the store lease");
+    let result =
+        DurableHandle::from_shared_store_for_test(Arc::clone(&shared), lineage(), fingerprint());
+    drop(guard);
+    let error = match result {
+        Ok(_) => panic!("contended shared-store attachment succeeded"),
+        Err(error) => error,
+    };
+    assert!(error.contains("store is busy"), "unexpected error: {error}");
+}
+
+#[test]
+fn stale_shared_runtime_checkpoint_is_rejected_before_a_duplicate_sequence() {
+    let (store, _tuple, _context) = setup_store();
+    let shared = share_store(store);
+    let first =
+        DurableHandle::from_shared_store_for_test(Arc::clone(&shared), lineage(), fingerprint())
+            .expect("first runtime attachment");
+    let second = DurableHandle::from_shared_store_for_test(shared, lineage(), fingerprint())
+        .expect("second runtime attachment");
+    first
+        .checkpoint(&checkpoint_observation("state-1", 1), &json!([]))
+        .expect("first checkpoint persists");
+    let error = match second.checkpoint(&checkpoint_observation("state-2", 2), &json!([])) {
+        Ok(()) => panic!("stale checkpoint sequence was accepted"),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("checkpoint sequence changed"),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]

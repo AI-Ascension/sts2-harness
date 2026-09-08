@@ -76,9 +76,12 @@ impl DurableHandle {
     /// authoritative observation. This is deliberately called only after all pending mutations
     /// have been reconciled.
     pub(in super::super) fn refresh_resume_boundary(&self) -> Result<(), String> {
-        let checkpoint = super::try_lock(&self.store)?
-            .last_checkpoint(&self.lineage.episode_id)
-            .map_err(|error| format!("cannot refresh runtime-v3 resume boundary: {error}"))?;
+        let checkpoint = {
+            let store = super::try_lock(&self.store)?;
+            super::super::worker_store::snapshot(&store, &self.lineage, &self.fingerprint)?
+                .episode
+                .last_checkpoint
+        };
         *self
             .resume_boundary
             .try_borrow_mut()
@@ -110,6 +113,25 @@ impl DurableHandle {
             .next_checkpoint
             .try_borrow_mut()
             .map_err(|_| String::from("runtime-v3 checkpoint sequence is already borrowed"))?;
+        let mut store = super::try_lock(&self.store)?;
+        let stored =
+            super::super::worker_store::snapshot(&store, &self.lineage, &self.fingerprint)?;
+        let stored_next =
+            stored
+                .episode
+                .last_checkpoint
+                .as_ref()
+                .map_or(Ok(0_u64), |checkpoint| {
+                    checkpoint
+                        .sequence
+                        .checked_add(1)
+                        .ok_or_else(|| String::from("runtime-v3 checkpoint sequence exhausted"))
+                })?;
+        if *sequence != stored_next {
+            return Err(String::from(
+                "runtime-v3 checkpoint sequence changed in the shared store",
+            ));
+        }
         let checkpoint = Checkpoint::new_with_catalog(
             self.lineage.clone(),
             *sequence,
@@ -120,7 +142,7 @@ impl DurableHandle {
             CatalogEvidence::new(legal_actions_digest, Some(catalog_raw.to_vec())),
         )
         .map_err(|error| format!("runtime-v3 checkpoint is invalid: {error}"))?;
-        super::try_lock(&self.store)?
+        store
             .save_checkpoint(&checkpoint)
             .map_err(|error| format!("cannot persist runtime-v3 checkpoint: {error}"))?;
         *sequence = sequence
