@@ -12,6 +12,7 @@ mod identity;
 mod memory;
 mod poc;
 mod protocol_artifact;
+mod protocol_artifact_coop_receipt_query;
 mod provider;
 mod records;
 mod replay;
@@ -36,10 +37,12 @@ pub use episode::{
     EpisodeMachineError, EpisodeObservation, EpisodePhase, EpisodeRunReport, EpisodeRunner,
     EpisodeRunnerConfig, EpisodeRunnerError, EpisodeRuntimePort, EpisodeShutdown, EpisodeStage,
     ExoDecisionSource, IdempotencyError, NoncombatCoordinator, NoncombatStage, ObservationError,
-    PolicyChoice, PolicyError, PolicyRouter, PostconditionError, RecoveryController, RecoveryError,
-    RecoveryOperation, RecoveryPort, RecoveryResult, RunSetupCoordinator, SetupPort, ShutdownError,
-    ShutdownPort, StabilityBarrier, TransitionReceipt, VerifiedTransition, WaitOutcome, WaitSample,
-    verify_settlement,
+    PolicyChoice, PolicyError, PolicyRouter, PostconditionError, ReceiptQueryActionKind,
+    ReceiptQueryCoordinate, ReceiptQueryError, ReceiptQueryIdentity, ReceiptQueryIdentityError,
+    ReceiptQueryLocation, ReceiptQueryReceipt, ReceiptQueryResult, ReceiptQueryStatus,
+    RecoveryController, RecoveryError, RecoveryOperation, RecoveryPort, RecoveryResult,
+    RunSetupCoordinator, SetupPort, ShutdownError, ShutdownPort, StabilityBarrier,
+    TransitionReceipt, VerifiedTransition, WaitOutcome, WaitSample, verify_settlement,
 };
 pub use error::{CloseFailure, CloseReport, Component, HarnessError, PortError, ProviderError};
 pub use evaluation::{
@@ -47,9 +50,10 @@ pub use evaluation::{
 };
 pub use exo::{
     BoundDecision, CodexEventAccounting, CodexEventError, CodexStreamStatus, CodexTokenUsage,
-    CodexUsageStatus, Decision, DecisionError, ExoClient, ExoConfig, ExoDecisionRequest, ExoError,
-    ExoProvider, ExoSession, ExoTransport, ExoTransportError, SandboxError, SanitizedObservation,
-    parse_codex_events, parse_decision,
+    CodexUsageStatus, Decision, DecisionError, EXO_MAP_REQUEST_OVERHEAD_BYTES,
+    EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES, ExoClient, ExoConfig,
+    ExoDecisionRequest, ExoError, ExoProvider, ExoSession, ExoTransport, ExoTransportError,
+    SandboxError, SanitizedObservation, parse_codex_events, parse_decision,
 };
 pub use exo_process::{ExoProcessConfig, ExoProcessConfigError, ExoProcessTransport};
 pub use identity::{
@@ -64,6 +68,11 @@ pub use poc::{
 pub use protocol_artifact::{
     ArtifactError, POC_ARTIFACT, POC_GENERATOR, POC_MAX_SETTLED_EFFECTS, POC_MAX_UNITS,
     POC_PROTOCOL_VERSION, POC_SCHEMA_DIGEST, POC_SCHEMA_SOURCE, verify_poc_artifact,
+};
+pub use protocol_artifact_coop_receipt_query::{
+    COOP_RECEIPT_QUERY_ARTIFACT, COOP_RECEIPT_QUERY_GENERATOR, COOP_RECEIPT_QUERY_PROTOCOL_VERSION,
+    COOP_RECEIPT_QUERY_SCHEMA_DIGEST, COOP_RECEIPT_QUERY_SCHEMA_SOURCE,
+    CoopReceiptQueryArtifactError, verify_coop_receipt_query_artifact,
 };
 pub use provider::{
     ModelOutput, ModelRequest, ModelResponse, ModelResult, Prompt, ProviderPort, RetryPolicy,

@@ -18,7 +18,7 @@ fn map_initialization_error(error: wire::RpcFailure) -> RecoveryError {
 impl RuntimeV3Port {
     // Reconnect only for recovery reads, never to repeat a dispatch. The episode ledger and
     // configured lease/session survive replacement of a failed MCP transport.
-    fn reconnect_for_recovery(&mut self) -> Result<(), RecoveryError> {
+    pub(super) fn reconnect_for_recovery(&mut self) -> Result<(), RecoveryError> {
         if !self.allocated || self.released {
             return Err(RecoveryError::PortFailure);
         }
@@ -164,6 +164,13 @@ impl RecoveryPort for RuntimeV3Port {
             None,
         );
         Ok(receipt)
+    }
+
+    fn query_receipt(
+        &mut self,
+        identity: &sts2_harness::ReceiptQueryIdentity,
+    ) -> Result<sts2_harness::ReceiptQueryResult, RecoveryError> {
+        super::receipt_query::query(self, identity)
     }
 
     fn release_lease(&mut self) -> Result<(), RecoveryError> {

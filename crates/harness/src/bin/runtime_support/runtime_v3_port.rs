@@ -92,7 +92,8 @@ impl RuntimeV3Port {
                 RuntimeV3ToolError::Terminal(String::from("MCP request identity exhausted"))
         })?;
         let request = json!({"name": name, "arguments": arguments});
-        let recovery_read = matches!(name, "sts2.legal_actions" | "sts2.reobserve");
+        let recovery_read =
+            matches!(name, "sts2.legal_actions" | "sts2.reobserve") || name == "sts2.coop_receipt_query";
         let response = if name == "sts2.legal_actions" {
             wire::rpc_call_catalog_read(
                 self.mcp_mut()
@@ -101,7 +102,7 @@ impl RuntimeV3Port {
                 "tools/call",
                 request,
             )
-        } else if name == "sts2.reobserve" {
+        } else if recovery_read {
             wire::rpc_call_recovery_read(
                 self.mcp_mut()
                     .map_err(|error| classify_mcp_error(error, recovery_read))?,

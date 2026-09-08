@@ -2,12 +2,19 @@
 
 use super::observation::EpisodeObservation;
 use super::transition::TransitionReceipt;
+use super::{ReceiptQueryIdentity, ReceiptQueryResult};
 
 /// Operations that are safe after contradiction or uncertain mutation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RecoveryOperation {
     Reobserve,
-    Reconcile { operation_id: String },
+    Reconcile {
+        operation_id: String,
+    },
+    /// Read one retained receipt using the complete original operation identity.
+    ReceiptQuery {
+        identity: Box<ReceiptQueryIdentity>,
+    },
     ReleaseLease,
     StopEpisode,
 }
@@ -17,6 +24,7 @@ pub enum RecoveryOperation {
 pub enum RecoveryResult {
     Observation(EpisodeObservation),
     Receipt(TransitionReceipt),
+    ReceiptQuery(Box<ReceiptQueryResult>),
     Released,
     Stopped,
 }
@@ -24,6 +32,13 @@ pub enum RecoveryResult {
 pub trait RecoveryPort {
     fn reobserve(&mut self) -> Result<EpisodeObservation, RecoveryError>;
     fn reconcile(&mut self, operation_id: &str) -> Result<TransitionReceipt, RecoveryError>;
+    /// Reads retained evidence without observing, reconciling, or dispatching an action.
+    fn query_receipt(
+        &mut self,
+        _identity: &ReceiptQueryIdentity,
+    ) -> Result<ReceiptQueryResult, RecoveryError> {
+        Err(RecoveryError::Unsupported)
+    }
     fn release_lease(&mut self) -> Result<(), RecoveryError>;
     fn stop_episode(&mut self) -> Result<(), RecoveryError>;
 }
@@ -60,6 +75,9 @@ impl RecoveryController {
                 RecoveryOperation::Reconcile { operation_id } => {
                     port.reconcile(operation_id).map(RecoveryResult::Receipt)
                 }
+                RecoveryOperation::ReceiptQuery { identity } => port
+                    .query_receipt(identity)
+                    .map(|result| RecoveryResult::ReceiptQuery(Box::new(result))),
                 RecoveryOperation::ReleaseLease => {
                     port.release_lease().map(|()| RecoveryResult::Released)
                 }
@@ -75,6 +93,23 @@ impl RecoveryController {
             }
         }
     }
+
+    /// Performs a bounded, same-operation retained receipt lookup.
+    pub fn query_receipt<P: RecoveryPort>(
+        &self,
+        port: &mut P,
+        identity: ReceiptQueryIdentity,
+    ) -> Result<ReceiptQueryResult, RecoveryError> {
+        match self.recover(
+            port,
+            RecoveryOperation::ReceiptQuery {
+                identity: Box::new(identity),
+            },
+        )? {
+            RecoveryResult::ReceiptQuery(result) => Ok(*result),
+            _ => Err(RecoveryError::Terminal),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -84,6 +119,7 @@ pub enum RecoveryError {
     Exhausted,
     PortFailure,
     Terminal,
+    Unsupported,
 }
 
 impl std::fmt::Display for RecoveryError {
@@ -94,6 +130,7 @@ impl std::fmt::Display for RecoveryError {
             Self::Exhausted => "recovery attempt budget is exhausted",
             Self::PortFailure => "recovery port failed",
             Self::Terminal => "recovery boundary returned a terminal failure",
+            Self::Unsupported => "recovery port does not support retained receipt queries",
         })
     }
 }

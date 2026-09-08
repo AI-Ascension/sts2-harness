@@ -123,6 +123,24 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         Ok(actions)
     }
 
+    fn map_snapshot(
+        &mut self,
+        state_id: &str,
+        generation: u64,
+        _execution_id: sts2_harness::ModelExecutionId,
+    ) -> Result<Option<Value>, sts2_harness::PortError> {
+        if self.current_state.as_deref() != Some(state_id) || self.generation != generation {
+            return Err(wire::port_error(
+                "map_snapshot_stale",
+                "map snapshot request is not bound to the current observation",
+                false,
+            ));
+        }
+        super::runtime_map::snapshot(&self.config, generation)
+            .map(Some)
+            .map_err(|error| wire::port_error("map_snapshot_failed", error, false))
+    }
+
     fn dispatch_action(
         &mut self,
         identity: &ActionIdentity,

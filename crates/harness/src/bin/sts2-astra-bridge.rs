@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
-use sts2_harness::parse_codex_events;
+use sts2_harness::{EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES, parse_codex_events};
 
 #[path = "support/bridge_accounting.rs"]
 mod accounting;
@@ -14,7 +14,8 @@ use accounting::{
     write_accounting,
 };
 
-const LIMIT: usize = 128 * 1024;
+const INPUT_LIMIT: usize = EXO_MAX_MAP_REQUEST_BYTES;
+const OUTPUT_LIMIT: usize = EXO_MAX_STANDARD_REQUEST_BYTES;
 const CODEX_ARGS: &[&str] = &[
     "--signal=TERM",
     "--kill-after=5s",
@@ -69,12 +70,15 @@ fn main() {
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut bytes = Vec::new();
     std::io::stdin()
-        .take((LIMIT + 1) as u64)
+        .take((INPUT_LIMIT + 1) as u64)
         .read_to_end(&mut bytes)?;
-    if bytes.len() > LIMIT {
+    if bytes.len() > INPUT_LIMIT {
         return Err("request exceeds bound".into());
     }
     let request: Value = serde_json::from_slice(&bytes)?;
+    if bytes.len() > request_limit(&request) {
+        return Err("request exceeds bound".into());
+    }
     let ids = request["legal_action_ids"]
         .as_array()
         .ok_or("missing catalog")?;
@@ -124,8 +128,8 @@ fn decide(
     );
     let stdout = child.stdout.take().ok_or("missing provider stdout")?;
     let stderr = child.stderr.take().ok_or("missing provider stderr")?;
-    let stdout_reader = capture_stream(stdout, LIMIT);
-    let stderr_reader = capture_stream(stderr, LIMIT);
+    let stdout_reader = capture_stream(stdout, OUTPUT_LIMIT);
+    let stderr_reader = capture_stream(stderr, OUTPUT_LIMIT);
     let written = child
         .stdin
         .take()
@@ -178,6 +182,16 @@ fn decide(
     decision_result
 }
 
+fn request_limit(request: &Value) -> usize {
+    if request.get("schema").and_then(Value::as_str) == Some("sts2.exo-decision-map-v1")
+        && request.get("map_context").is_some()
+    {
+        INPUT_LIMIT
+    } else {
+        EXO_MAX_STANDARD_REQUEST_BYTES
+    }
+}
+
 fn validate(content: &str, ids: &[Value]) -> Result<Value, Box<dyn std::error::Error>> {
     if content.len() > 8192 {
         return Err("response exceeds bound".into());
@@ -220,64 +234,5 @@ impl Temporary {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn model_output_must_be_a_bounded_catalog_choice() {
-        let ids = vec![json!("end:1")];
-        assert!(validate(r#"{"action_ids":["end:1"],"rationale":"No energy"}"#, &ids).is_ok());
-        assert!(validate(r#"{"action_ids":["other"],"rationale":"No energy"}"#, &ids).is_err());
-        assert!(
-            validate(
-                r#"{"action_ids":["end:1","end:1"],"rationale":"No energy"}"#,
-                &ids
-            )
-            .is_err()
-        );
-        assert!(
-            validate(
-                r#"{"action_ids":["end:1"],"rationale":"No energy","tool":"shell"}"#,
-                &ids
-            )
-            .is_err()
-        );
-        assert!(validate(&"x".repeat(8193), &ids).is_err());
-    }
-
-    #[test]
-    fn provider_capture_is_bounded_and_keeps_raw_stream_out_of_the_record()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let captured = capture_stream(std::io::Cursor::new(vec![b'x'; LIMIT + 17]), LIMIT)
-            .join()
-            .map_err(|_| "capture reader panicked")?;
-        assert_eq!(captured.bytes.len(), LIMIT);
-        assert_eq!(captured.total_bytes, LIMIT + 17);
-        assert!(captured.truncated);
-
-        let events = parse_codex_events(
-            br#"{"type":"thread.started","thread_id":"thread-1"}
-{"type":"turn.completed","usage":{"input_tokens":2,"cached_input_tokens":1,"output_tokens":3}}"#,
-        )?;
-        let record = accounting_record(
-            &json!({"model_execution_id":"model-7","private_prompt":"do not retain"}),
-            b"private prompt",
-            &events,
-            &ProviderExecution {
-                completed: true,
-                input_written: true,
-                stdout_invalid: false,
-                stderr_invalid: false,
-                stdout_bytes: 100,
-                stderr_bytes: 0,
-            },
-            Some("decision-digest"),
-            true,
-        );
-        let serialized = serde_json::to_string(&record)?;
-        assert_eq!(record["usage_status"], "reported");
-        assert_eq!(record["provider_request_id"], "thread-1");
-        assert!(!serialized.contains("private prompt"));
-        assert!(!serialized.contains("do not retain"));
-        Ok(())
-    }
-}
+#[path = "support/sts2-astra-bridge_tests.rs"]
+mod tests;

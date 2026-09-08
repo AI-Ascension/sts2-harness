@@ -25,10 +25,14 @@ mod episode;
 mod expert;
 #[path = "runtime_v3_ledger.rs"]
 mod ledger;
+#[path = "runtime_v3_receipt_query.rs"]
+mod receipt_query;
 #[path = "runtime_v3_recording.rs"]
 mod recording;
 #[path = "runtime_v3_recovery.rs"]
 mod recovery;
+#[path = "runtime_map.rs"]
+mod runtime_map;
 #[path = "runtime_v3_wait.rs"]
 mod wait;
 use ledger::OperationRecord;
@@ -44,7 +48,7 @@ mod lifecycle_tests;
 
 pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let runtime_profile = config.runtime_profile.clone();
-    let settings = RuntimeV3Settings::from_environment()?;
+    let settings = RuntimeV3Settings::from_environment(&config)?;
     let telemetry_context = TelemetryContext::new(TelemetryContextInput {
         run_id: &config.run_id,
         episode_id: &config.episode_id,
