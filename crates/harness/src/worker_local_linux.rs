@@ -10,6 +10,12 @@
 
 #![cfg(target_os = "linux")]
 
+#[path = "worker_linux_verifier.rs"]
+pub(crate) mod worker_linux_verifier;
+#[path = "worker_local_linux_auth.rs"]
+mod worker_local_linux_auth;
+#[path = "worker_local_linux_connection.rs"]
+mod worker_local_linux_connection;
 #[path = "worker_local_linux_fs.rs"]
 mod worker_local_linux_fs;
 #[path = "worker_local_linux_image.rs"]
@@ -22,19 +28,19 @@ mod worker_local_linux_process;
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 
-use rustix::fd::OwnedFd;
-use tokio::io::{AsyncRead, AsyncReadExt};
-use tokio::net::{UnixListener, UnixStream};
+use tokio::net::UnixListener;
 use tokio::time::{Instant, timeout_at};
-use zeroize::Zeroizing;
 
 use crate::worker_frame_io::{ConnectionDeadline, FrameIoError, WorkerFrameIo};
-use crate::worker_handoff::MAX_FRAME_BYTES;
+use worker_linux_verifier::{VerifierController, VerifierFailure, VerifierOutcome};
+use worker_local_linux_auth::authenticate_credential;
+use worker_local_linux_connection::ExchangeGuard;
+pub use worker_local_linux_connection::{AuthenticatedWorkerConnection, LinuxPeerWitness};
 use worker_local_linux_fs::{HeldEndpoint, is_canonical_absolute};
 use worker_local_linux_image::HeldImage;
-use worker_local_linux_process::{ProtectedCredential, verify_peer};
+use worker_local_linux_process::ProtectedCredential;
 
 /// The fixed authentication profile prefix, including its NUL terminator.
 pub const AUTH_MAGIC: &[u8; 25] = b"ascension-worker-auth-v1\0";
@@ -163,6 +169,7 @@ pub struct LinuxWorkerListener {
     image: HeldImage,
     peer: LinuxPeerIdentity,
     active: Arc<AtomicBool>,
+    verifier: VerifierController,
 }
 
 impl LinuxWorkerListener {
@@ -183,6 +190,7 @@ impl LinuxWorkerListener {
             image,
             peer: config.peer,
             active: Arc::new(AtomicBool::new(false)),
+            verifier: VerifierController::new().map_err(|_| LinuxTransportError::Io)?,
         })
     }
 
@@ -198,7 +206,16 @@ impl LinuxWorkerListener {
     ) -> Result<AuthenticatedWorkerConnection, LinuxTransportError> {
         let exchange = ExchangeGuard::acquire(&self.active)?;
         let instant = deadline.instant();
-        self.endpoint.verify_path()?;
+        let endpoint = self.endpoint.duplicate_verifier_path()?;
+        self.verifier
+            .verify_endpoint(endpoint, instant)
+            .await
+            .map_err(|error| match error {
+                VerifierFailure::Configuration => LinuxTransportError::Configuration,
+                VerifierFailure::Deadline => LinuxTransportError::Deadline,
+                VerifierFailure::Busy => LinuxTransportError::Busy,
+                VerifierFailure::Poisoned | VerifierFailure::Io => LinuxTransportError::Io,
+            })?;
         let (stream, _) = timeout_at(instant, self.listener.accept())
             .await
             .map_err(|_| LinuxTransportError::Deadline)?
@@ -206,123 +223,42 @@ impl LinuxWorkerListener {
         if Instant::now() >= instant {
             return Err(LinuxTransportError::Deadline);
         }
-        self.endpoint.verify_path()?;
-        let witness = verify_peer(&stream, &self.peer, &self.image, instant)?;
+        let endpoint = self.endpoint.duplicate_verifier_path()?;
+        let verifier = self
+            .verifier
+            .verify(&stream, &self.peer, &self.image, endpoint, instant)
+            .await
+            .map_err(|error| match error {
+                VerifierFailure::Configuration => LinuxTransportError::Configuration,
+                VerifierFailure::Busy => LinuxTransportError::Busy,
+                VerifierFailure::Deadline => LinuxTransportError::Deadline,
+                VerifierFailure::Poisoned | VerifierFailure::Io => LinuxTransportError::Io,
+            })?;
+        let witness = match verifier {
+            VerifierOutcome::Accepted { pidfd, image_fd } => LinuxPeerWitness::from_verified(
+                pidfd,
+                self.peer.pid,
+                self.peer.uid,
+                HeldImage::from_verified_fd(
+                    image_fd,
+                    self.peer.uid,
+                    self.image.identity(),
+                    &self.peer.executable_sha256,
+                )
+                .map_err(|_| LinuxTransportError::Io)?,
+            ),
+            VerifierOutcome::Rejected => return Err(LinuxTransportError::Peer),
+            VerifierOutcome::Closed => return Err(LinuxTransportError::Closed),
+        };
         let mut stream = stream;
         authenticate_credential(&mut stream, &self.credential, instant).await?;
         if Instant::now() >= instant {
             return Err(LinuxTransportError::Deadline);
         }
-        Ok(AuthenticatedWorkerConnection {
-            io: WorkerFrameIo::new(stream, deadline),
+        Ok(AuthenticatedWorkerConnection::new(
+            WorkerFrameIo::new(stream, deadline),
             witness,
-            _exchange: exchange,
-            request_read: false,
-            response_written: false,
-        })
+            exchange,
+        ))
     }
-}
-
-/// Opaque, non-serializable proof of the connected peer's authenticated identity.
-pub struct LinuxPeerWitness {
-    _pidfd: OwnedFd,
-    _pid: u32,
-    _uid: u32,
-    _image: HeldImage,
-}
-
-/// One authenticated connection. It owns the stream and held peer fd;
-/// dropping it closes both. It permits exactly one request followed by one
-/// response and cannot resume a failed or cancelled operation.
-pub struct AuthenticatedWorkerConnection {
-    io: WorkerFrameIo<UnixStream>,
-    witness: LinuxPeerWitness,
-    _exchange: ExchangeGuard,
-    request_read: bool,
-    response_written: bool,
-}
-
-struct ExchangeGuard(Arc<AtomicBool>);
-
-impl ExchangeGuard {
-    fn acquire(active: &Arc<AtomicBool>) -> Result<Self, LinuxTransportError> {
-        active
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .map(|_| Self(Arc::clone(active)))
-            .map_err(|_| LinuxTransportError::Busy)
-    }
-}
-
-impl Drop for ExchangeGuard {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::Release);
-    }
-}
-
-impl AuthenticatedWorkerConnection {
-    /// Returns the non-forgeable proof witness for parent-side capability and
-    /// durable admission checks. No PID or credential accessor is exposed.
-    pub fn peer_witness(&self) -> &LinuxPeerWitness {
-        &self.witness
-    }
-
-    /// Reads exactly one bounded handoff request frame. The caller owns JSON
-    /// decoding and all semantic/admission decisions.
-    pub async fn read_request_bytes(&mut self) -> Result<Vec<u8>, LinuxTransportError> {
-        if self.request_read || self.response_written {
-            return Err(LinuxTransportError::Closed);
-        }
-        let result = self.io.read_frame(MAX_FRAME_BYTES).await;
-        self.request_read = true;
-        result.map_err(Into::into)
-    }
-
-    /// Writes exactly one bounded handoff response frame after the request has
-    /// been read. This performs no response decoding or authorization.
-    pub async fn write_response_bytes(
-        &mut self,
-        response: &[u8],
-    ) -> Result<(), LinuxTransportError> {
-        if !self.request_read || self.response_written {
-            return Err(LinuxTransportError::Closed);
-        }
-        let result = self.io.write_frame(response, MAX_FRAME_BYTES).await;
-        self.response_written = true;
-        result.map_err(Into::into)
-    }
-}
-
-async fn authenticate_credential(
-    stream: &mut UnixStream,
-    credential: &ProtectedCredential,
-    deadline: Instant,
-) -> Result<(), LinuxTransportError> {
-    let mut length = [0_u8; 4];
-    read_exact_until(stream, &mut length, deadline).await?;
-    let body_length =
-        usize::try_from(u32::from_be_bytes(length)).map_err(|_| LinuxTransportError::Credential)?;
-    if !(AUTH_MAGIC.len() + 1..=MAX_AUTH_BODY_BYTES).contains(&body_length) {
-        return Err(LinuxTransportError::Credential);
-    }
-    let mut body = Zeroizing::new(vec![0_u8; body_length]);
-    read_exact_until(stream, body.as_mut_slice(), deadline).await?;
-    if body.get(..AUTH_MAGIC.len()) != Some(AUTH_MAGIC.as_slice()) {
-        return Err(LinuxTransportError::Credential);
-    }
-    if !credential.matches(&body[AUTH_MAGIC.len()..]) {
-        return Err(LinuxTransportError::Credential);
-    }
-    Ok(())
-}
-
-async fn read_exact_until<R: AsyncRead + Unpin>(
-    reader: &mut R,
-    bytes: &mut [u8],
-    deadline: Instant,
-) -> Result<(), LinuxTransportError> {
-    timeout_at(deadline, reader.read_exact(bytes))
-        .await
-        .map_err(|_| LinuxTransportError::Deadline)?
-        .map(|_| ())
-        .map_err(|_| LinuxTransportError::Closed)
 }

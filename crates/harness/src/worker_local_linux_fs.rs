@@ -80,13 +80,20 @@ impl HeldEndpoint {
         UnixListener::from_std(listener).map_err(|_| LinuxTransportError::Io)
     }
 
-    pub(super) fn verify_path(&self) -> Result<(), LinuxTransportError> {
-        compare_path_identity(
-            self.directories.parent()?,
-            self.directories.leaf(),
+    /// Duplicates the protected parent directory and returns the stable leaf
+    /// identity/name used by the out-of-process verifier. The verifier repeats
+    /// the `statat(..., NOFOLLOW)` check so accepted-connection work does not
+    /// perform blocking endpoint filesystem calls on the async parent.
+    pub(super) fn duplicate_verifier_path(
+        &self,
+    ) -> Result<(OwnedFd, FileIdentity, Vec<u8>), LinuxTransportError> {
+        let parent = rustix::io::dup(self.directories.parent()?)
+            .map_err(|_| LinuxTransportError::Configuration)?;
+        Ok((
+            parent,
             self.identity,
-            LinuxTransportError::Configuration,
-        )
+            self.directories.leaf().as_bytes().to_vec(),
+        ))
     }
 
     fn remove_if_owned(&self) {
@@ -200,6 +207,14 @@ impl FileIdentity {
             device: stat.st_dev,
             inode: stat.st_ino,
         }
+    }
+
+    pub(super) fn parts(self) -> (u64, u64) {
+        (self.device, self.inode)
+    }
+
+    pub(super) const fn from_parts(device: u64, inode: u64) -> Self {
+        Self { device, inode }
     }
 }
 

@@ -10,19 +10,19 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
-use rustix::fd::OwnedFd;
+use rustix::fd::{BorrowedFd, OwnedFd};
 use rustix::fs::{OFlags, fstat};
 use rustix::net::sockopt::socket_peercred;
+use rustix::net::{RecvFlags, recv};
 use rustix::process::{Pid, PidfdFlags, pidfd_open};
 use subtle::ConstantTimeEq;
-use tokio::net::UnixStream;
 use tokio::time::Instant;
 
 use super::worker_local_linux_fs::{
     FileIdentity, HeldDirectories, compare_path_identity, ensure_deadline, open_held_file,
 };
 use super::worker_local_linux_image::{HeldImage, process_image_identity, read_proc_executable};
-use super::{LinuxPeerIdentity, LinuxPeerWitness, LinuxTransportError, MAX_CREDENTIAL_BYTES};
+use super::{LinuxPeerIdentity, LinuxTransportError, MAX_CREDENTIAL_BYTES};
 
 const MAX_PROCESS_STAT_BYTES: usize = 4_096;
 const READ_CHUNK_BYTES: usize = 16 * 1024;
@@ -92,12 +92,20 @@ fn valid_credential(bytes: &[u8]) -> bool {
         && bytes.iter().all(|byte| (0x21..=0x7e).contains(byte))
 }
 
-pub(super) fn verify_peer(
-    stream: &UnixStream,
+pub(super) struct VerifiedPeer {
+    pub(super) pidfd: OwnedFd,
+    pub(super) image: HeldImage,
+}
+
+/// Verifies a connected peer through a borrowed socket descriptor. The
+/// verifier subprocess uses this same proof path after receiving the socket
+/// and approved image descriptors over its private control channel.
+pub(super) fn verify_peer_fd(
+    stream: BorrowedFd<'_>,
     expected: &LinuxPeerIdentity,
     approved_image: &HeldImage,
     deadline: Instant,
-) -> Result<LinuxPeerWitness, LinuxTransportError> {
+) -> Result<VerifiedPeer, LinuxTransportError> {
     if Instant::now() >= deadline {
         return Err(LinuxTransportError::Deadline);
     }
@@ -118,15 +126,17 @@ pub(super) fn verify_peer(
     if before != expected.start_token {
         return Err(LinuxTransportError::Peer);
     }
-    let actual_image = HeldImage::open_proc(
+    if peer_stream_is_closed(stream)? {
+        return Err(LinuxTransportError::Closed);
+    }
+    let actual_image = HeldImage::open_proc_verified(
         expected.pid,
         &expected.executable,
         expected.uid,
-        &expected.executable_sha256,
+        approved_image.identity(),
         deadline,
     )?;
-    if actual_image.identity() != approved_image.identity() || approved_image.verify_path().is_err()
-    {
+    if actual_image.identity() != approved_image.identity() {
         return Err(LinuxTransportError::Peer);
     }
     ensure_deadline(deadline)?;
@@ -139,7 +149,6 @@ pub(super) fn verify_peer(
         || executable_after != expected.executable
         || actual_image.identity() != approved_image.identity()
         || actual_identity_after != actual_image.identity()
-        || approved_image.verify_path().is_err()
         || Instant::now() >= deadline
     {
         return Err(if Instant::now() >= deadline {
@@ -148,12 +157,23 @@ pub(super) fn verify_peer(
             LinuxTransportError::Peer
         });
     }
-    Ok(LinuxPeerWitness {
-        _pidfd: pidfd,
-        _pid: expected.pid,
-        _uid: expected.uid,
-        _image: actual_image,
+    Ok(VerifiedPeer {
+        pidfd,
+        image: actual_image,
     })
+}
+
+/// Performs a nonblocking EOF probe before the expensive `/proc` image hash.
+/// A closed accepted stream is an ordinary connection rejection and must not
+/// consume the verifier's identity/hash work or become a generic peer error.
+pub(super) fn peer_stream_is_closed(stream: BorrowedFd<'_>) -> Result<bool, LinuxTransportError> {
+    let mut byte = [0_u8; 1];
+    match recv(stream, &mut byte, RecvFlags::PEEK | RecvFlags::DONTWAIT) {
+        Ok((_, 0)) => Ok(true),
+        Ok(_) => Ok(false),
+        Err(error) if error == rustix::io::Errno::AGAIN => Ok(false),
+        Err(_) => Err(LinuxTransportError::Peer),
+    }
 }
 
 fn ensure_pidfd_live(pidfd: &OwnedFd) -> Result<(), LinuxTransportError> {

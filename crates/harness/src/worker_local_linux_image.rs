@@ -6,6 +6,7 @@
 
 use std::fs::{self, File};
 use std::io::Read;
+use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
 
 use rustix::fs::{FileType, Mode, OFlags, fstat, openat};
@@ -19,7 +20,9 @@ use super::worker_local_linux_fs::{
     open_held_file, owner_allowed,
 };
 
-const READ_CHUNK_BYTES: usize = 16 * 1024;
+// Keep the bounded read loop preemptible at its chunk boundaries while
+// avoiding thousands of tiny syscalls for a normal executable image.
+const READ_CHUNK_BYTES: usize = 256 * 1024;
 
 pub(super) struct HeldImage {
     _directories: Option<HeldDirectories>,
@@ -91,21 +94,83 @@ impl HeldImage {
         })
     }
 
+    /// Opens the executable selected by the kernel's `/proc/<pid>/exe` link
+    /// and checks its descriptor identity without re-reading the image. The
+    /// owner has already hashed the approved descriptor during bind; the
+    /// verifier only needs to prove that the live process still points at
+    /// that exact, owner-approved inode. Keeping this path descriptor-only
+    /// makes the proof bounded by metadata operations rather than a second
+    /// potentially slow image read.
+    pub(super) fn open_proc_verified(
+        pid: u32,
+        expected_path: &Path,
+        owner_uid: u32,
+        expected_identity: FileIdentity,
+        deadline: Instant,
+    ) -> Result<Self, LinuxTransportError> {
+        if read_proc_executable(pid, deadline)? != expected_path {
+            return Err(LinuxTransportError::Peer);
+        }
+        ensure_deadline(deadline)?;
+        let file = open_proc_image(pid)?;
+        ensure_deadline(deadline)?;
+        let stat = fstat(&file).map_err(|_| LinuxTransportError::Peer)?;
+        ensure_deadline(deadline)?;
+        validate_image_stat(&stat, owner_uid)?;
+        let identity = FileIdentity::from_stat(&stat);
+        if identity != expected_identity {
+            return Err(LinuxTransportError::Peer);
+        }
+        Ok(Self {
+            _directories: None,
+            _file: file,
+            identity,
+        })
+    }
+
     pub(super) fn identity(&self) -> FileIdentity {
         self.identity
     }
 
-    pub(super) fn verify_path(&self) -> Result<(), LinuxTransportError> {
-        let directories = self
-            ._directories
-            .as_ref()
-            .ok_or(LinuxTransportError::Peer)?;
-        compare_path_identity(
-            directories.parent()?,
-            directories.leaf(),
-            self.identity,
-            LinuxTransportError::Peer,
-        )
+    /// Returns the stable identity of the held file as kernel device/inode
+    /// numbers. The verifier control packet carries this non-secret identity
+    /// alongside a duplicated descriptor; it never carries a path proof by
+    /// itself.
+    pub(super) fn identity_parts(&self) -> (u64, u64) {
+        self.identity.parts()
+    }
+
+    /// Duplicates the held descriptor for a private verifier handoff. The
+    /// caller retains its own descriptor and path ancestry proof.
+    pub(super) fn duplicate_fd(&self) -> Result<OwnedFd, LinuxTransportError> {
+        rustix::io::dup(&self._file).map_err(|_| LinuxTransportError::Peer)
+    }
+
+    /// Reconstructs an image held through a descriptor received from the
+    /// private verifier. The parent already checked the approved path; this
+    /// constructor checks the received descriptor's regular-file policy and
+    /// exact identity before the witness retains it.
+    pub(super) fn from_verified_fd(
+        fd: OwnedFd,
+        owner_uid: u32,
+        expected_identity: FileIdentity,
+        _expected_digest: &[u8; 32],
+    ) -> Result<Self, LinuxTransportError> {
+        let file = File::from(fd);
+        let stat = fstat(&file).map_err(|_| LinuxTransportError::Peer)?;
+        validate_image_stat(&stat, owner_uid)?;
+        if FileIdentity::from_stat(&stat) != expected_identity {
+            return Err(LinuxTransportError::Peer);
+        }
+        let after = fstat(&file).map_err(|_| LinuxTransportError::Peer)?;
+        if FileIdentity::from_stat(&after) != expected_identity {
+            return Err(LinuxTransportError::Peer);
+        }
+        Ok(Self {
+            _directories: None,
+            _file: file,
+            identity: expected_identity,
+        })
     }
 }
 
