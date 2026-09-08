@@ -53,33 +53,6 @@ fn native_finite_peer_completes_one_exchange() -> Result<(), TransportError> {
 }
 
 #[test]
-fn native_response_delivery_and_client_close_are_bounded() -> Result<(), TransportError> {
-    for (index, mode) in ["delayed-reader", "hold-after-response"]
-        .into_iter()
-        .enumerate()
-    {
-        let fixture = Fixture::new()?;
-        let endpoint_nonce = super::test_support::nonce(50 + index as u64);
-        let mut child = spawn_peer(mode, endpoint_nonce, &fixture.credential)?;
-        let policy = fixture.policy_for_child(&child, endpoint_nonce)?;
-        let mut listener = WorkerListener::bind(policy)?;
-        let mut connection =
-            listener.accept_authenticated(Deadline::new(Duration::from_millis(500))?)?;
-        assert_eq!(connection.read_request()?, b"{}");
-        let result = connection.write_response(b"{}");
-        if mode == "delayed-reader" {
-            assert!(result.is_ok());
-        } else {
-            assert!(matches!(result, Err(TransportError::Deadline)));
-            assert!(child.try_wait().map_err(|_| TransportError::Os)?.is_none());
-        }
-        assert!(child.wait().map_err(|_| TransportError::Os)?.success());
-        listener.shutdown()?;
-    }
-    Ok(())
-}
-
-#[test]
 fn native_malformed_auth_and_deadline_are_bounded() -> Result<(), TransportError> {
     for (index, mode) in ["wrong-magic", "oversized-auth", "slow-auth"]
         .into_iter()
@@ -180,6 +153,33 @@ fn native_same_bytes_different_image_file_is_rejected() -> Result<(), TransportE
     let result = listener.accept_authenticated(Deadline::new(Duration::from_secs(2))?);
     assert!(matches!(result, Err(TransportError::Identity)));
     let _ = child.wait().map_err(|_| TransportError::Os)?;
+    listener.shutdown()
+}
+
+#[test]
+fn native_authenticated_peer_death_closes_partial_request() -> Result<(), TransportError> {
+    let fixture = Fixture::new()?;
+    let endpoint_nonce = super::test_support::nonce(61);
+    let mut child = spawn_peer("slow-frame", endpoint_nonce, &fixture.credential)?;
+    let policy = fixture.policy_for_child(&child, endpoint_nonce)?;
+    let mut listener = WorkerListener::bind(policy)?;
+    let mut connection = listener.accept_authenticated(Deadline::new(Duration::from_secs(2))?)?;
+    // Terminate only this test's authenticated child and observe its exit
+    // before attempting to consume its incomplete request prefix.
+    child.kill().map_err(|_| TransportError::Os)?;
+    let _ = child.wait().map_err(|_| TransportError::Os)?;
+    assert!(matches!(
+        connection.read_request(),
+        Err(TransportError::Closed)
+    ));
+    assert!(matches!(
+        connection.read_request(),
+        Err(TransportError::Closed)
+    ));
+    assert!(matches!(
+        connection.write_response(b"{}"),
+        Err(TransportError::Closed)
+    ));
     listener.shutdown()
 }
 

@@ -108,3 +108,69 @@ Windows package Clippy with warnings denied, and diff whitespace checks. It foun
 no blocker to committing this isolated correction. This is not ADR 0014 integration
 approval. Client EOF cannot distinguish consumed bytes from an early close and
 must never be used as application-delivery or settlement evidence.
+
+After the correction commit, the response-lifetime test gained an adversarial
+client that sends an extra byte after reading the response. The server must
+return `Framing`, and both a second request read and a second response write must
+return `Closed`. The finite native test passed all three response-lifetime cases
+in 2.63 seconds. This is additional single-connection framing evidence, not
+completion of the remaining ADR 0014 fault matrix.
+
+The native `native_authenticated_peer_death_closes_partial_request` regression
+authenticates an owned finite child, terminates and reaps only that child, then
+asserts the incomplete request returns `Closed`. Repeated request reads and a
+response write also return `Closed`. The focused test passed in 0.54 seconds;
+Windows package Clippy with warnings denied passed afterward. This covers death
+after authentication during an incomplete request, not PID reuse, inherited pipe
+handles, or death at every exchange phase.
+
+After moving response tests into their own safe test module, the full native suite
+passed 20 tests with 1 explicit ignore in 11.80 seconds. A subsequent
+`native_unread_maximum_response_is_deadline_bounded` test passed in 1.34 seconds:
+the peer never reads a maximum-size response and remains alive when the original
+500-ms exchange deadline expires. This verifies the end-to-end response deadline;
+it does not independently identify whether native writing or EOF waiting consumed
+that deadline. The peer is finite and reaped by the test.
+
+The full native suite including the unread-response case passed **21 tests,
+0 failed, 1 ignored**, in 13.79 seconds. Executable SHA-256:
+
+```text
+237de396663a6951b76446bf712fc06084ea35ba62eeaccf5456fb07aa6458ec
+```
+
+A subsequent `native_held_image_blocks_file_write_and_ancestor_rename` regression
+passed in 0.71 seconds. It uses only a disposable copy of the synthetic executable.
+Writing that file and renaming its immediate ancestor fail while the image guard
+is held, and both succeed after release. The positive controls distinguish held
+sharing protection from a permanently restricted fixture. This is not a concurrent
+reparse replacement campaign or protection against loaded-process memory changes.
+
+Full native rerun including image-lock coverage: **22 passed, 0 failed, 1 ignored**,
+15.08 seconds, exit 0. Executable SHA-256:
+
+```text
+317728a39737fc382b5789a11e678c2b17ae3a45afb8206e4b6ade46ab92a7a9
+```
+
+The subsequent `native_accept_timeout_rearms_exclusive_endpoint` test passed in
+1.51 seconds. Two no-client accepts expire under their 50-ms budgets. After each,
+a competing bind of the same endpoint fails; after shutdown and owner drop,
+replacement binding succeeds. This covers observed post-rearm ownership and
+accept timeout, not an adversarial race inside the disconnect-to-rearm interval.
+
+Final test-batch native run: **23 passed, 0 failed, 1 ignored**, 18.63 seconds,
+exit 0. Executable SHA-256:
+
+```text
+4fc90345821d7cde863ed0e5a9690a3161eee6f2fcf3da8a0ac6ad30ed7d795a
+```
+
+Final formatting, strict policy (480 sized files, no warnings/errors), and diff
+whitespace checks passed. The prior Windows package Clippy run includes the rearm
+case and passed with warnings denied.
+
+Independent review reproduced the final executable hash and 23-pass/1-ignore
+native result, and passed formatting, diff checks, and Windows package Clippy.
+No correction-level blocker was found for this isolated test batch. The broader
+integration gates and evidence limitations above remain unchanged.

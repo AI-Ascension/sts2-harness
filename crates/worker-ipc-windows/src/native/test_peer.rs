@@ -145,6 +145,10 @@ pub(super) fn peer_exchange(mode: &str, name: &str, credential: &Path) -> bool {
                 return false;
             }
             let mut response_length = [0_u8; 4];
+            if mode == "unread-response" {
+                thread::sleep(Duration::from_millis(800));
+                return true;
+            }
             if mode == "delayed-reader" {
                 thread::sleep(Duration::from_millis(150));
             }
@@ -157,6 +161,9 @@ pub(super) fn peer_exchange(mode: &str, name: &str, credential: &Path) -> bool {
             }
             let mut response = vec![0_u8; length];
             let received = read_sync(handle.raw(), &mut response) && response == b"{}";
+            if mode == "extra-after-response" {
+                return received && write_sync(handle.raw(), &[1]);
+            }
             if mode == "hold-after-response" {
                 thread::sleep(Duration::from_millis(800));
             }

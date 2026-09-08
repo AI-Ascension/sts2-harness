@@ -61,3 +61,7 @@ pub(super) fn wide_string(value: &str) -> Result<Vec<u16>, crate::transport::Tra
     wide.push(0);
     Ok(wide)
 }
+#[cfg(test)]
+mod filesystem_tests;
+#[cfg(test)]
+mod response_tests;
