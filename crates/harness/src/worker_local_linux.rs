@@ -14,6 +14,8 @@
 pub(crate) mod worker_linux_verifier;
 #[path = "worker_local_linux_auth.rs"]
 mod worker_local_linux_auth;
+#[path = "worker_local_linux_bootstrap.rs"]
+mod worker_local_linux_bootstrap;
 #[path = "worker_local_linux_connection.rs"]
 mod worker_local_linux_connection;
 #[path = "worker_local_linux_fs.rs"]

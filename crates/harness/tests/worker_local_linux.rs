@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 #![cfg(target_os = "linux")]
+mod worker_bootstrap {
+    pub use sts2_harness::worker_bootstrap::{ExpectedBootstrapPeer, WorkerBootstrap};
+}
 mod worker_frame_io {
     pub use sts2_harness::worker_frame_io::{ConnectionDeadline, FrameIoError, WorkerFrameIo};
 }

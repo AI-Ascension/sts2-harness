@@ -17,6 +17,13 @@ noncanonical integers, invalid platform paths, out-of-range creation/SID values,
 oversized input, truncated frames, and buffered trailing frames. Parsing only
 establishes expected policy: it does not authenticate a connected process.
 
+`LinuxWorkerConfig::from_bootstrap` converts this validated policy to the native
+listener configuration without opening any paths. The caller supplies approved
+endpoint and credential references plus the expected component identifier; a
+component mismatch or Windows peer is rejected. UID, GID, PID, creation token,
+executable path, and digest are carried unchanged into native peer verification.
+This configuration API does not itself enable the executable's serving loop.
+
 ## Linux transport identity
 
 The native expected-peer configuration includes UID, GID, PID, process creation
