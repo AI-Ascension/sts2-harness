@@ -269,8 +269,13 @@ fn native_first_instance_acl_and_hardlink_guards_hold() -> Result<(), TransportE
 fn native_credential_symlink_is_rejected() -> Result<(), TransportError> {
     let fixture = Fixture::new()?;
     let reparse = fixture.directory.join("credential-link.txt");
-    std::os::windows::fs::symlink_file(&fixture.credential, &reparse)
-        .map_err(|_| TransportError::Os)?;
+    std::os::windows::fs::symlink_file(&fixture.credential, &reparse).map_err(|error| {
+        eprintln!(
+            "symlink fixture creation failed: {:?}",
+            error.raw_os_error()
+        );
+        TransportError::Os
+    })?;
     assert!(matches!(
         ProtectedCredential::open(&reparse, &fixture.worker_sid),
         Err(TransportError::Credential)

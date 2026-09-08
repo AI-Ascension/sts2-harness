@@ -174,3 +174,37 @@ Independent review reproduced the final executable hash and 23-pass/1-ignore
 native result, and passed formatting, diff checks, and Windows package Clippy.
 No correction-level blocker was found for this isolated test batch. The broader
 integration gates and evidence limitations above remain unchanged.
+
+The subsequent `native_failed_image_preparation_releases_handles` test runs its
+handle-count oracle in a separate exact-filter test process. After one warmup,
+16 listener preparations fail on an incorrect image digest, after protected
+credential preparation. Each iteration must return the process handle count to
+the same baseline. Native execution passed in 5.59 seconds (inner oracle 5.57
+seconds), and Windows package Clippy passed. An initial WSL interop invocation
+failed before test output with error 110; the same executable's next invocation
+produced the recorded result. This checks one partial-construction failure path,
+not all cancellation races or heap/resource leak classes.
+
+Full native suite with the isolated handle oracle: **24 passed, 0 failed, 1 ignored**,
+22.34 seconds, exit 0. Executable SHA-256:
+
+```text
+e3e02c2509be93dc377a1b09e684575e75e66189ac4bf13d840c5e61be476616
+```
+
+Strict policy passed with 481 sized files and no warnings/errors; formatting and
+diff whitespace checks passed on this test snapshot.
+
+The ignored symlink case was then explicitly executed with `--ignored --nocapture`.
+It failed before the rejection oracle: symlink fixture creation returned Windows
+error 1314 (required privilege unavailable), exit 101, 0.28 seconds. A test-only
+numeric diagnostic makes this distinction visible without printing paths. No
+privilege, account security, or OS configuration was changed. Native symlink
+rejection remains unverified in this environment.
+
+Independent review accepted the isolated handle-cleanup test: the focused child
+oracle and full 24-pass/1-ignore native suite passed, as did formatting, Windows
+package Clippy, and diff checks. Review confirmed the borrowed pseudo-handle,
+output-pointer lifetime, isolated process count, warmup, and partial-construction
+failure location. This approval does not close ADR 0014's remaining integration
+gates or generalize this one leak oracle to all resources and cancellation paths.
