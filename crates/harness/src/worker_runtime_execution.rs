@@ -14,6 +14,7 @@ pub struct WorkerExecutionTask {
     store: SharedExecutionStore,
     running: StoredWorkerHandoff,
     fingerprint: ExecutionFingerprint,
+    cancellation: crate::ExecutionCancellation,
     armed: bool,
 }
 
@@ -51,13 +52,58 @@ impl WorkerRuntime {
         }
         drop(store);
         self.lane.execution_taken = true;
+        let cancellation = crate::ExecutionCancellation::default();
+        self.lane.cancellation = Some(cancellation.clone());
         Ok(WorkerExecutionTask {
             owner: Arc::clone(&self.execution_owner),
             store: self.store.clone(),
             running,
             fingerprint: self.fingerprint.clone(),
+            cancellation,
             armed: true,
         })
+    }
+
+    /// Read the committed control under the command's existing store lease.
+    /// A lost response cannot undo cancellation, and rejected commands never
+    /// reach this check. Missing or unreadable authority cancels fail-closed.
+    pub(super) fn cancel_changed_execution(
+        &self,
+        store: &crate::ExecutionStore,
+    ) -> Result<(), String> {
+        let Some(signal) = &self.lane.cancellation else {
+            return Ok(());
+        };
+        let valid = (|| {
+            let Some(tuple) = self.lane.tuple() else {
+                return Ok(false);
+            };
+            let Some(running) = store.worker_handoff(&tuple.handoff_id)? else {
+                return Ok(false);
+            };
+            let Some(control) = store.worker_control()? else {
+                return Ok(false);
+            };
+            Ok::<_, crate::ExecutionStoreError>(
+                running.tuple == *tuple
+                    && control.deployment_id == tuple.deployment_id
+                    && control.worker_owner_id == tuple.worker_owner_id
+                    && control.worker_profile_digest == tuple.worker_profile_digest
+                    && control.worker_boot_id == running.worker_boot_id
+                    && control.watchdog_boot_id.as_deref()
+                        == Some(running.watchdog_boot_id.as_str())
+                    && control.mode_sequence == running.mode_sequence
+                    && control.mode == crate::WorkerControlMode::Running
+                    && control.authenticated
+                    && control.admitting,
+            )
+        })();
+        if !matches!(valid, Ok(true)) {
+            signal.cancel();
+        }
+        valid
+            .map(|_| ())
+            .map_err(|_| String::from("cannot inspect active execution control"))
     }
 
     /// Accepts only this processor's one-use completion, then checks the
@@ -96,6 +142,11 @@ impl WorkerRuntime {
 }
 
 impl WorkerExecutionTask {
+    /// This claim owns a fresh monotonic signal, never reused by a later job.
+    pub fn cancellation(&self) -> &crate::ExecutionCancellation {
+        &self.cancellation
+    }
+
     pub fn running(&self) -> &StoredWorkerHandoff {
         &self.running
     }
@@ -127,6 +178,7 @@ impl WorkerExecutionTask {
 
 impl Drop for WorkerExecutionTask {
     fn drop(&mut self) {
+        self.cancellation.cancel();
         if self.armed {
             let _ = completion::retain_unknown(&self.store, &self.running.tuple.handoff_id);
         }

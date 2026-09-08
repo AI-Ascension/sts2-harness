@@ -27,10 +27,12 @@ impl WorkerRuntime {
         running: StoredWorkerHandoff,
         config: RuntimeConfig,
         settings: RuntimeSettings,
-        launch_options: RuntimeV3LaunchOptions,
+        mut launch_options: RuntimeV3LaunchOptions,
     ) -> Result<PreparedWorkerExecution, String> {
+        let task = self.core.take_execution(running)?;
+        launch_options.cancellation = task.cancellation().clone();
         Ok(PreparedWorkerExecution {
-            task: self.core.take_execution(running)?,
+            task,
             config,
             settings,
             launch_options,
@@ -39,6 +41,10 @@ impl WorkerRuntime {
 }
 
 impl PreparedWorkerExecution {
+    pub(super) fn cancellation(&self) -> &sts2_harness::ExecutionCancellation {
+        self.task.cancellation()
+    }
+
     pub(super) fn run(self) -> WorkerExecutionCompletion {
         let Self {
             task,

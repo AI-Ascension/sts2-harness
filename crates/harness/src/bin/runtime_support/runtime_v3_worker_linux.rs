@@ -103,7 +103,7 @@ async fn serve<'scope, 'env>(
     timeout: Duration,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), String> {
-    let _exit_fence = ExitFence {
+    let mut exit_fence = ExitFence {
         store: worker.store().clone(),
         cancellation: inputs.options.cancellation.clone(),
     };
@@ -126,7 +126,14 @@ async fn serve<'scope, 'env>(
                 if let Ok(outcome) = exchange.admit(worker).await
                     && let WorkerStartOutcome::Started(running) = outcome.start
                 {
-                    start_execution(scope, worker, inputs, &mut execution, *running)?;
+                    start_execution(
+                        scope,
+                        worker,
+                        inputs,
+                        &mut execution,
+                        *running,
+                        &mut exit_fence.cancellation,
+                    )?;
                 }
             }
             Err(LinuxTransportError::Configuration) => {
@@ -140,7 +147,7 @@ async fn serve<'scope, 'env>(
     let fence = fence_shutdown(worker);
     // Admission/uncertainty is fenced first. Cancellation is not a receipt and
     // must not turn an in-flight provider reservation into unused budget.
-    inputs.options.cancellation.cancel();
+    exit_fence.cancellation.cancel();
     while execution.is_some() {
         reap(worker, &mut execution, &mut execution_failure)?;
         if execution.is_some() {
@@ -160,6 +167,7 @@ fn start_execution<'scope, 'env>(
     inputs: &ExecutionInputs,
     execution: &mut Option<ScopedJoinHandle<'scope, WorkerExecutionCompletion>>,
     running: sts2_harness::StoredWorkerHandoff,
+    cancellation: &mut sts2_harness::ExecutionCancellation,
 ) -> Result<(), String> {
     let handoff_id = running.tuple.handoff_id.clone();
     if execution.is_some() {
@@ -177,6 +185,7 @@ fn start_execution<'scope, 'env>(
             inputs.options.clone(),
         )
         .map_err(|error| retain_failure(worker, &handoff_id, error))?;
+    *cancellation = prepared.cancellation().clone();
     *execution = Some(
         std::thread::Builder::new()
             .name(String::from("harness-worker-execution"))

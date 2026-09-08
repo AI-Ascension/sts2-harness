@@ -63,6 +63,7 @@ impl WorkerExchange {
 struct ExecutionLane {
     active: Option<WorkerTuple>,
     execution_taken: bool,
+    cancellation: Option<crate::ExecutionCancellation>,
 }
 
 impl ExecutionLane {
@@ -90,6 +91,7 @@ impl ExecutionLane {
         }
         self.active = None;
         self.execution_taken = false;
+        self.cancellation = None;
         Ok(())
     }
 }
@@ -160,6 +162,9 @@ impl WorkerRuntime {
             .map_err(command_error)?;
         let reservation = result.take_reservation();
         let (mut reply, leftover) = result.into_parts();
+        if matches!(reply, WorkerReply::Control { accepted: true }) {
+            self.cancel_changed_execution(&store)?;
+        }
         if let WorkerReply::Probe(probe) = &mut reply {
             probe.ready &= self.store.admission_open();
         }

@@ -21,9 +21,12 @@ fn claim_is_one_use_and_abandonment_retains_unknown() -> TestResult {
     let mut core = runtime()?;
     let running = started(&mut core)?;
     let task = core.take_execution(running.clone())?;
+    let cancellation = task.cancellation().clone();
+    assert!(!cancellation.is_cancelled());
     assert!(core.take_execution(running).is_err());
     assert!(core.close().is_err());
     drop(task);
+    assert!(cancellation.is_cancelled());
     assert_eq!(handoff_state(&core)?, WorkerHandoffState::Unknown);
     assert!(!core.store().admission_open());
     assert!(core.active_tuple().is_some());
@@ -39,6 +42,42 @@ fn fabricated_or_changed_running_rows_cannot_claim_a_lane() -> TestResult {
     assert!(core.take_execution(wrong).is_err());
     let task = core.take_execution(running)?;
     drop(task);
+    Ok(())
+}
+
+#[test]
+fn durable_control_changes_cancel_before_response_and_never_reset() -> TestResult {
+    for mode in ["paused", "draining", "stopped", "running"] {
+        let mut core = runtime()?;
+        let running = started(&mut core)?;
+        let task = core.take_execution(running)?;
+        let signal = task.cancellation().clone();
+        // An identical Running replay does not invalidate this execution.
+        core.handle_authenticated(&command(WorkerCapability::SetControlMode, None)?)?;
+        assert!(!signal.is_cancelled());
+        let control = command(WorkerCapability::SetControlMode, Some(mode))?;
+        let unauthorized = AuthenticatedWorkerRequest::from_transport(
+            control.request().clone(),
+            WorkerCapability::Probe,
+            crate::WorkerOwnerProof::new("test-owner")?,
+        );
+        assert!(core.handle_authenticated(&unauthorized).is_err());
+        assert!(!signal.is_cancelled());
+        let (reply, _) = core.handle_authenticated(&control)?.into_parts();
+        assert!(matches!(reply, WorkerReply::Control { accepted: true }));
+        assert!(signal.is_cancelled());
+        let mut fields = control.request().fields().clone();
+        fields.insert("mode".into(), serde_json::json!("running"));
+        fields.insert("mode_sequence".into(), serde_json::json!(3));
+        let resume = AuthenticatedWorkerRequest::from_transport(
+            crate::worker_handoff::WorkerRequest::decode(&serde_json::to_vec(&fields)?)?,
+            WorkerCapability::SetControlMode,
+            crate::WorkerOwnerProof::new("test-owner")?,
+        );
+        core.handle_authenticated(&resume)?;
+        assert!(signal.is_cancelled());
+        drop(task);
+    }
     Ok(())
 }
 
@@ -138,7 +177,11 @@ fn completion_from_another_processor_cannot_release_same_named_lane() -> TestRes
     let mut second = runtime()?;
     let second_running = started(&mut second)?;
     let second_task = second.take_execution(second_running)?;
-    let completion = first.take_execution(first_running)?.run(|_| Ok(()));
+    let first_signal = first.take_execution(first_running.clone())?;
+    let cancellation = first_signal.cancellation().clone();
+    cancellation.cancel();
+    assert!(!second_task.cancellation().is_cancelled());
+    let completion = first_signal.run(|_| Ok(()));
     assert!(second.complete_execution(completion).is_err());
     assert_eq!(handoff_state(&first)?, WorkerHandoffState::Unknown);
     assert_eq!(handoff_state(&second)?, WorkerHandoffState::Running);

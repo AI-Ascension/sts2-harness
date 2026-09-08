@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: MIT
 #![cfg(target_os = "linux")]
 
+#[path = "worker_server_entry/gateway.rs"]
+mod gateway_support;
 #[path = "worker_local_linux_support.rs"]
 mod support;
+
+use gateway_support::acknowledge_release;
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -328,6 +332,15 @@ async fn executable_worker_authenticates_control_and_persists_stop_before_shutdo
 
 #[tokio::test]
 async fn executable_control_remains_available_during_owned_gateway_execution() -> TestResult {
+    stalled_gateway_cancellation(true).await
+}
+
+#[tokio::test]
+async fn executable_sigterm_cancels_owned_gateway_execution() -> TestResult {
+    stalled_gateway_cancellation(false).await
+}
+
+async fn stalled_gateway_cancellation(operator_stop: bool) -> TestResult {
     let gateway = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let mut fixture = RuntimeFixture::start_with_gateway(Some(gateway.local_addr()?))?;
     fixture.wait_endpoint().await?;
@@ -351,18 +364,42 @@ async fn executable_control_remains_available_during_owned_gateway_execution() -
         .await
         .map_err(|_| "owned execution did not reach the synthetic gateway")??;
     let began = tokio::time::Instant::now();
-    control["mode"] = json!("stopped");
-    control["mode_sequence"] = json!(2);
-    control["request_id"] = json!("dddddddd-dddd-4ddd-8ddd-dddddddddddd");
-    exchange(&fixture, &control).await?;
-    assert_eq!(exchange(&fixture, &probe).await?["ready"], false);
-    // No gateway response was sent. Control completed before the runtime's
-    // five-second HTTP deadline, while the actual execution thread owned I/O.
-    assert!(began.elapsed() < Duration::from_secs(5));
-    // Keep the gateway socket open: SIGTERM must cancel the actual in-flight
-    // allocation exchange, not depend on a remote close or its five-second timeout.
+    if operator_stop {
+        control["mode"] = json!("stopped");
+        control["mode_sequence"] = json!(2);
+        control["request_id"] = json!("dddddddd-dddd-4ddd-8ddd-dddddddddddd");
+        exchange(&fixture, &control).await?;
+        assert_eq!(exchange(&fixture, &probe).await?["ready"], false);
+        // No gateway response was sent. Control completed before the runtime's
+        // five-second HTTP deadline, while the actual execution thread owned I/O.
+        assert!(began.elapsed() < Duration::from_secs(5));
+        acknowledge_release(&gateway).await?;
+        let store = rusqlite::Connection::open_with_flags(
+            fixture.local.root.join("execution.sqlite3"),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        loop {
+            let state: String =
+                store.query_row("SELECT state FROM worker_handoffs", [], |row| row.get(0))?;
+            if state == "unknown" {
+                break;
+            }
+            if began.elapsed() >= Duration::from_secs(3) {
+                return Err("operator stop did not durably retain uncertainty".into());
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(began.elapsed() < Duration::from_secs(3));
+        assert!(fixture.child.child.try_wait()?.is_none());
+    }
+    // Keep allocation open in both cases. Neither stop nor SIGTERM may depend
+    // on a remote close or the five-second allocation timeout.
     let shutdown_started = tokio::time::Instant::now();
-    tokio::try_join!(fixture.child.finish(false), acknowledge_release(&gateway))?;
+    if operator_stop {
+        fixture.child.finish(false).await?;
+    } else {
+        tokio::try_join!(fixture.child.finish(false), acknowledge_release(&gateway))?;
+    }
     assert!(shutdown_started.elapsed() < Duration::from_secs(3));
     drop(blocked_allocation);
     drop(gateway);
@@ -374,28 +411,6 @@ async fn executable_control_remains_available_during_owned_gateway_execution() -
         store.query_row("SELECT state FROM worker_handoffs", [], |row| row.get(0))?;
     let mode: String = store.query_row("SELECT mode FROM worker_control", [], |row| row.get(0))?;
     assert_eq!(state, "unknown");
-    assert_eq!(mode, "stopped");
+    assert_eq!(mode, if operator_stop { "stopped" } else { "running" });
     Ok(())
-}
-
-async fn acknowledge_release(gateway: &tokio::net::TcpListener) -> TestResult {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    tokio::time::timeout(Duration::from_secs(3), async {
-        let (mut stream, _) = gateway.accept().await?;
-        let mut bytes = Vec::new();
-        let mut buffer = [0_u8; 1024];
-        while !bytes.windows(4).any(|value| value == b"\r\n\r\n") {
-            let count = stream.read(&mut buffer).await?;
-            if count == 0 || bytes.len() + count > 4096 {
-                return Err("invalid synthetic cleanup request".into());
-            }
-            bytes.extend_from_slice(&buffer[..count]);
-        }
-        assert!(bytes.starts_with(b"POST /v1/instances/instance-1/release "));
-        stream
-            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 21\r\n\r\n{\"status\":\"released\"}")
-            .await?;
-        Ok(())
-    })
-    .await?
 }
