@@ -12,7 +12,13 @@ secret buffer cleanup uses zeroize 1.9.0, Apache-2.0 OR MIT
 Locked offline Cargo metadata confirmed these declarations on 2026-09-08.
 Cargo.lock retains crates.io sources and integrity checksums; no source is
 vendored. The earlier advisory result below does not cover this changed lockfile.
-Transport review, a refreshed advisory check, and native validation remain gates.
+The refreshed `cargo-audit 0.22.2 audit --file Cargo.lock --deny warnings --format json`
+completed with exit 0 against RustSec revision
+`8a1eb4f933fb5821add5b4e98601ebd90b8b3538`: 129 dependencies, zero vulnerabilities,
+empty warnings, no ignored advisories and no target filters. Audited lock SHA-256:
+`8547cc0581bb00da9151e0a7ace1b16d5a398729c125f587de9eeea115d9a0c6`.
+Transport review and native validation remain gates; this snapshot must be
+refreshed for later dependency changes or release.
 
 Operation identity creation uses `uuid` exactly `1.23.5` (Apache-2.0 OR MIT;
 https://github.com/uuid-rs/uuid), with UUIDv4 generation backed by `getrandom`.
