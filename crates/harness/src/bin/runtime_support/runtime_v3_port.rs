@@ -7,8 +7,8 @@ pub(super) enum RuntimeV3ToolError {
 }
 
 impl RuntimeV3ToolError {
-    fn from_rpc(error: wire::RpcFailure) -> Self {
-        if error.is_transient() {
+    fn from_rpc_for(error: wire::RpcFailure, transient_allowed: bool) -> Self {
+        if transient_allowed && error.is_transient() {
             Self::Transient(error.to_string())
         } else {
             Self::Terminal(error.to_string())
@@ -19,6 +19,17 @@ impl RuntimeV3ToolError {
         match self {
             Self::Transient(message) | Self::Terminal(message) => message,
         }
+    }
+}
+
+fn classify_mcp_error(
+    error: sts2_harness::PortError,
+    transient_allowed: bool,
+) -> RuntimeV3ToolError {
+    if transient_allowed {
+        RuntimeV3ToolError::Transient(error.to_string())
+    } else {
+        RuntimeV3ToolError::Terminal(error.to_string())
     }
 }
 
@@ -79,12 +90,21 @@ impl RuntimeV3Port {
             .checked_add(1)
             .ok_or_else(|| {
                 RuntimeV3ToolError::Terminal(String::from("MCP request identity exhausted"))
-            })?;
+        })?;
         let request = json!({"name": name, "arguments": arguments});
+        let recovery_read = matches!(name, "sts2.legal_actions" | "sts2.reobserve");
         let response = if name == "sts2.legal_actions" {
             wire::rpc_call_catalog_read(
                 self.mcp_mut()
-                    .map_err(|error| RuntimeV3ToolError::Transient(error.to_string()))?,
+                    .map_err(|error| classify_mcp_error(error, recovery_read))?,
+                id,
+                "tools/call",
+                request,
+            )
+        } else if name == "sts2.reobserve" {
+            wire::rpc_call_recovery_read(
+                self.mcp_mut()
+                    .map_err(|error| classify_mcp_error(error, recovery_read))?,
                 id,
                 "tools/call",
                 request,
@@ -92,13 +112,13 @@ impl RuntimeV3Port {
         } else {
             wire::rpc_call(
                 self.mcp_mut()
-                    .map_err(|error| RuntimeV3ToolError::Transient(error.to_string()))?,
+                    .map_err(|error| classify_mcp_error(error, recovery_read))?,
                 id,
                 "tools/call",
                 request,
             )
         }
-        .map_err(RuntimeV3ToolError::from_rpc)?;
+        .map_err(|error| RuntimeV3ToolError::from_rpc_for(error, recovery_read))?;
         let text = response
             .get("result")
             .and_then(|result| result.get("content"))

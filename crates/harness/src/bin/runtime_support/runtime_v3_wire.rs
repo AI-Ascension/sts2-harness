@@ -4,14 +4,29 @@ use serde_json::{Value, json};
 use sts2_harness::ActionKind;
 
 use super::mcp::McpProcess;
+use super::mcp_process::McpProcessError;
 
 const CATALOG_REVISION: &str = "runtime-v3-gameplay-mcp";
 const EXPERT_CATALOG_REVISION: &str = "runtime-v4-expert-mcp";
 
 include!("runtime_v3_wire_failure.rs");
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RpcReadKind {
+    None,
+    Catalog,
+    Recovery,
+}
+
 pub(super) fn initialize_mcp_profile(mcp: &mut McpProcess, profile: &str) -> Result<(), String> {
-    let initialize = rpc_call(
+    initialize_mcp_profile_classified(mcp, profile).map_err(|error| error.to_string())
+}
+
+pub(super) fn initialize_mcp_profile_classified(
+    mcp: &mut McpProcess,
+    profile: &str,
+) -> Result<(), RpcFailure> {
+    let initialize = rpc_call_recovery_read(
         mcp,
         1,
         "initialize",
@@ -20,13 +35,12 @@ pub(super) fn initialize_mcp_profile(mcp: &mut McpProcess, profile: &str) -> Res
             "capabilities": {},
             "clientInfo": {"name": "sts2-harness-runtime", "version": profile}
         }),
-    )
-    .map_err(|error| error.to_string())?;
+    )?;
     if initialize.get("result").is_none() {
-        return Err(String::from("MCP initialize omitted result"));
+        return Err(RpcFailure::terminal("MCP initialize omitted result"));
     }
-    let catalog = rpc_call(mcp, 2, "tools/list", json!({})).map_err(|error| error.to_string())?;
-    validate_catalog(&catalog, profile)
+    let catalog = rpc_call_recovery_read(mcp, 2, "tools/list", json!({}))?;
+    validate_catalog(&catalog, profile).map_err(RpcFailure::terminal)
 }
 
 pub(super) fn rpc_call(
@@ -36,7 +50,17 @@ pub(super) fn rpc_call(
     params: Value,
 ) -> Result<Value, RpcFailure> {
     let catalog_read = method == "tools/call" && params["name"] == "sts2.legal_actions";
-    rpc_call_with_catalog_read(mcp, id, method, params, catalog_read)
+    rpc_call_with_read_kind(
+        mcp,
+        id,
+        method,
+        params,
+        if catalog_read {
+            RpcReadKind::Catalog
+        } else {
+            RpcReadKind::None
+        },
+    )
 }
 
 pub(super) fn rpc_call_catalog_read(
@@ -45,19 +69,28 @@ pub(super) fn rpc_call_catalog_read(
     method: &str,
     params: Value,
 ) -> Result<Value, RpcFailure> {
-    rpc_call_with_catalog_read(mcp, id, method, params, true)
+    rpc_call_with_read_kind(mcp, id, method, params, RpcReadKind::Catalog)
 }
 
-fn rpc_call_with_catalog_read(
+pub(super) fn rpc_call_recovery_read(
     mcp: &mut McpProcess,
     id: u64,
     method: &str,
     params: Value,
-    catalog_read: bool,
+) -> Result<Value, RpcFailure> {
+    rpc_call_with_read_kind(mcp, id, method, params, RpcReadKind::Recovery)
+}
+
+fn rpc_call_with_read_kind(
+    mcp: &mut McpProcess,
+    id: u64,
+    method: &str,
+    params: Value,
+    read_kind: RpcReadKind,
 ) -> Result<Value, RpcFailure> {
     let timeout = request_timeout(method, &params).map_err(RpcFailure::terminal)?;
     let response = mcp
-        .call_with_timeout(id, method, params, timeout)
+        .call_with_timeout_classified(id, method, params, timeout)
         .map_err(RpcFailure::from_mcp)?;
     if response.get("id").and_then(Value::as_u64) != Some(id) {
         return Err(RpcFailure::terminal(format!(
@@ -72,9 +105,9 @@ fn rpc_call_with_catalog_read(
                 response["error"]["code"].as_i64()
             );
         }
-        if catalog_read && is_transient_catalog_rpc_error(&response) {
+        if read_kind != RpcReadKind::None && is_transient_gateway_rpc_error(&response) {
             return Err(RpcFailure::transient(
-                "MCP legal-action catalog request was temporarily unavailable",
+                "MCP recovery read was temporarily unavailable",
             ));
         }
         return Err(RpcFailure::terminal(format!(
@@ -92,11 +125,11 @@ fn rpc_call_with_catalog_read(
         if method != "tools/call"
             || !(has_gameplay_envelope(&response)
                 || has_expert_action_envelope(&response)
-                || (catalog_read && has_catalog_reobserve(&response, id)))
+                || (read_kind == RpcReadKind::Catalog && has_catalog_reobserve(&response, id)))
         {
-            if catalog_read && is_transient_catalog_tool_error(&response) {
+            if read_kind != RpcReadKind::None && is_transient_gateway_tool_error(&response) {
                 return Err(RpcFailure::transient(
-                    "MCP legal-action catalog request was temporarily unavailable",
+                    "MCP recovery read was temporarily unavailable",
                 ));
             }
             return Err(RpcFailure::terminal(format!(
@@ -107,32 +140,11 @@ fn rpc_call_with_catalog_read(
     Ok(response)
 }
 
-fn is_transient_mcp_error(message: &str) -> bool {
-    [
-        "MCP exchange timed out",
-        "MCP request write failed",
-        "MCP request flush failed",
-        "MCP response read failed",
-        "MCP response ended before its delimiter",
-        "MCP process is closed",
-        "MCP stdin is closed",
-        "MCP stdout is closed",
-        "MCP supervisor is closed",
-    ]
-    .into_iter()
-    .any(|prefix| {
-        message == prefix
-            || message
-                .strip_prefix(prefix)
-                .is_some_and(|rest| rest.starts_with("; "))
-    })
-}
-
-fn is_transient_catalog_rpc_error(response: &Value) -> bool {
+fn is_transient_gateway_rpc_error(response: &Value) -> bool {
     matches!(response["error"]["code"].as_i64(), Some(-32003 | -32008))
 }
 
-fn is_transient_catalog_tool_error(response: &Value) -> bool {
+fn is_transient_gateway_tool_error(response: &Value) -> bool {
     response["result"]["content"]
         .as_array()
         .is_some_and(|content| content.len() == 1)

@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use sts2_harness::{
-    Decision, DecisionInput, DecisionSource, EpisodeRunner, EpisodeRunnerConfig, EpisodeStage,
-    PolicyError, RecoveryController, StabilityBarrier,
+    Decision, DecisionInput, DecisionSource, EpisodeRunner, EpisodeRunnerConfig, EpisodeRunnerError,
+    EpisodeStage, PolicyError, RecoveryController, RecoveryError, StabilityBarrier,
 };
 
 use super::Fixture;
@@ -191,6 +191,7 @@ fn run_runner_fixture(
     failure: &str,
     expert_profile: bool,
     expected_reconnects: u8,
+    expected_recoveries: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
     listener.set_nonblocking(true)?;
@@ -211,7 +212,7 @@ fn run_runner_fixture(
         let report = EpisodeRunner::new(runner_config()?).run(&mut port, &mut source)?;
         assert_eq!(report.terminal_stage(), EpisodeStage::Victory);
         assert_eq!(report.transitions(), 0);
-        assert_eq!(report.recoveries(), 1);
+        assert_eq!(report.recoveries(), expected_recoveries);
         assert_eq!(port.reconnect_attempts, expected_reconnects);
         assert!(port.released);
         gateway.join().map_err(|_| "fake gateway panicked")??;
@@ -228,6 +229,43 @@ fn run_runner_fixture(
     Ok(())
 }
 
+fn run_runner_fixture_terminal(
+    fixture: &Fixture,
+    failure: &str,
+    expected_reconnects: u8,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    listener.set_nonblocking(true)?;
+    let mut runtime_config = config(listener.local_addr()?.to_string());
+    runtime_config.runtime_profile = String::from("runtime-v4-expert");
+    runtime_config.mcp_binary = runner_script(fixture, failure, true)?;
+    let mut port = RuntimeV3Port::new_with_telemetry(
+        runtime_config,
+        TelemetryHandle::disabled(),
+    )?;
+    std::thread::scope(|scope| -> Result<(), Box<dyn std::error::Error>> {
+        let gateway = scope.spawn(move || runner_gateway(listener));
+        let mut source = FirstActionSource;
+        let result = EpisodeRunner::new(runner_config()?).run(&mut port, &mut source);
+        assert_eq!(
+            result,
+            Err(EpisodeRunnerError::Recovery(RecoveryError::Terminal))
+        );
+        assert_eq!(port.reconnect_attempts, expected_reconnects);
+        assert!(port.released);
+        gateway.join().map_err(|_| "fake gateway panicked")??;
+        Ok(())
+    })?;
+    let requests: Vec<Value> = fs::read_to_string(fixture.0.join("requests"))?
+        .lines()
+        .map(serde_json::from_str)
+        .collect::<Result<_, _>>()?;
+    assert!(requests.iter().all(|request| {
+        request["params"]["name"] != "sts2.dispatch_action"
+    }));
+    Ok(())
+}
+
 fn reply(value: Value) -> String {
     format!(
         "IFS= read -r line || exit 1\nprintf '%s\\n' \"$line\" >> requests\nprintf '%s\\n' '{}'\n",
@@ -235,16 +273,51 @@ fn reply(value: Value) -> String {
     )
 }
 
+fn reply_if_requested(id: u64, value: Value) -> String {
+    let response = json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": {"content": [{"type": "text", "text": value.to_string()}]}
+    })
+    .to_string()
+    .replace('\'', "'\\''");
+    format!(
+        "while IFS= read -r line; do printf '%s\\n' \"$line\" >> requests\ncase \"$line\" in\n*'\"id\":{id},'*) printf '%s\\n' '{response}'; break;;\nesac\ndone\n"
+    )
+}
+
+fn reply_for_ids(responses: &[(u64, Value)]) -> String {
+    let cases = responses
+        .iter()
+        .map(|(id, value)| {
+            let response = json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {"content": [{"type": "text", "text": value.to_string()}]}
+            })
+            .to_string()
+            .replace('\'', "'\\''");
+            format!(
+                "*'\"id\":{id},'*) printf '%s\\n' '{response}'; break;;"
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "while IFS= read -r line; do printf '%s\\n' \"$line\" >> requests\ncase \"$line\" in\n{cases}\nesac\ndone\n"
+    )
+}
+
 #[test]
 fn runner_catalog_pipe_eof_reconnects_without_dispatch() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = Fixture::new()?;
-    run_runner_fixture(&fixture, "eof", false, 1)
+    run_runner_fixture(&fixture, "eof", false, 1, 1)
 }
 
 #[test]
 fn runner_catalog_timeout_reconnects_without_dispatch() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = Fixture::new()?;
-    run_runner_fixture(&fixture, "timeout", false, 1)
+    run_runner_fixture(&fixture, "timeout", false, 1, 1)
 }
 
 #[test]
@@ -252,7 +325,7 @@ fn runner_catalog_gateway_errors_reobserve_without_dispatch()
 -> Result<(), Box<dyn std::error::Error>> {
     for failure in ["rpc", "tool"] {
         let fixture = Fixture::new()?;
-        run_runner_fixture(&fixture, failure, false, 0)?;
+        run_runner_fixture(&fixture, failure, false, 0, 1)?;
     }
     Ok(())
 }
@@ -261,7 +334,7 @@ fn runner_catalog_gateway_errors_reobserve_without_dispatch()
 fn expert_runner_reconnects_and_composes_without_dispatch()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = Fixture::new()?;
-    run_runner_fixture(&fixture, "eof", true, 1)
+    run_runner_fixture(&fixture, "eof", true, 1, 1)
 }
 
 

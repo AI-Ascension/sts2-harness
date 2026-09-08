@@ -29,11 +29,11 @@ impl RpcFailure {
         }
     }
 
-    fn from_mcp(message: String) -> Self {
-        if is_transient_mcp_error(&message) {
-            Self::transient(message)
+    fn from_mcp(error: McpProcessError) -> Self {
+        if error.is_transient_transport() {
+            Self::transient(error.to_string())
         } else {
-            Self::terminal(message)
+            Self::terminal(error.to_string())
         }
     }
 
