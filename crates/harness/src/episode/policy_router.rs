@@ -256,7 +256,7 @@ impl std::fmt::Display for PolicyError {
 fn map_exo_error(error: ExoError) -> PolicyError {
     match error {
         ExoError::Unavailable | ExoError::Timeout => PolicyError::ProviderUnavailable,
-        ExoError::Closed => PolicyError::ProviderClosed,
+        ExoError::Closed | ExoError::Cancelled => PolicyError::ProviderClosed,
         ExoError::Decision(_) => PolicyError::MalformedDecision,
         ExoError::InvalidConfig
         | ExoError::InvalidRequest

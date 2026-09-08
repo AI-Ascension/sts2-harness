@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
 
+use crate::ExecutionCancellation;
 use crate::exo::{ExoTransport, ExoTransportError};
 
 const MAX_EXECUTABLE_BYTES: usize = 1_024;
@@ -99,6 +100,7 @@ impl std::error::Error for ExoProcessConfigError {}
 pub struct ExoProcessTransport {
     config: ExoProcessConfig,
     closed: bool,
+    cancellation: ExecutionCancellation,
 }
 
 impl ExoProcessTransport {
@@ -107,12 +109,20 @@ impl ExoProcessTransport {
         Self {
             config,
             closed: false,
+            cancellation: ExecutionCancellation::default(),
         }
     }
 
     #[must_use]
     pub fn config(&self) -> &ExoProcessConfig {
         &self.config
+    }
+
+    /// Attach the owning execution's cancellation signal before starting exchanges.
+    #[must_use]
+    pub fn with_cancellation(mut self, cancellation: ExecutionCancellation) -> Self {
+        self.cancellation = cancellation;
+        self
     }
 }
 
@@ -125,6 +135,9 @@ impl ExoTransport for ExoProcessTransport {
     ) -> Result<Vec<u8>, ExoTransportError> {
         if self.closed || request.is_empty() || max_response_bytes == 0 || timeout_millis == 0 {
             return Err(ExoTransportError::MalformedResponse);
+        }
+        if self.cancellation.is_cancelled() {
+            return Err(ExoTransportError::Cancelled);
         }
         let deadline = Instant::now() + Duration::from_millis(u64::from(timeout_millis));
         // A joined supervisor permits synchronous callers inside or outside an async runtime.
@@ -142,6 +155,7 @@ impl ExoTransport for ExoProcessTransport {
                         request,
                         max_response_bytes,
                         deadline,
+                        &self.cancellation,
                     ))
                 })
                 .map_err(|_| ExoTransportError::Unavailable)?;
@@ -160,7 +174,11 @@ async fn exchange_process(
     request: &[u8],
     maximum: usize,
     deadline: Instant,
+    cancellation: &ExecutionCancellation,
 ) -> Result<Vec<u8>, ExoTransportError> {
+    if cancellation.is_cancelled() {
+        return Err(ExoTransportError::Cancelled);
+    }
     if Instant::now() >= deadline {
         return Err(ExoTransportError::Timeout);
     }
@@ -183,12 +201,14 @@ async fn exchange_process(
     let mut child = command
         .spawn()
         .map_err(|_| ExoTransportError::Unavailable)?;
-    let result = tokio::time::timeout_at(
-        tokio::time::Instant::from_std(deadline),
-        exchange_pipes(&mut child, request, maximum),
-    )
-    .await
-    .unwrap_or(Err(ExoTransportError::Timeout));
+    let result = tokio::select! {
+        biased;
+        _ = cancellation.cancelled() => Err(ExoTransportError::Cancelled),
+        result = tokio::time::timeout_at(
+            tokio::time::Instant::from_std(deadline),
+            exchange_pipes(&mut child, request, maximum),
+        ) => result.unwrap_or(Err(ExoTransportError::Timeout)),
+    };
     if result.is_err() {
         // The timeout has dropped both pipe futures and their handles before cleanup begins.
         terminate(&mut child).await?;

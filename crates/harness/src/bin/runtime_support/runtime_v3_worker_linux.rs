@@ -30,11 +30,15 @@ struct ExecutionInputs {
 
 /// On unwinding, close admission before the enclosing scope joins execution.
 /// This is a safety fence, not proof that an in-flight effect was cancelled.
-struct ExitFence(SharedExecutionStore);
+struct ExitFence {
+    store: SharedExecutionStore,
+    cancellation: sts2_harness::ExecutionCancellation,
+}
 
 impl Drop for ExitFence {
     fn drop(&mut self) {
-        let _ = begin_quarantine(&self.0);
+        let _ = begin_quarantine(&self.store);
+        self.cancellation.cancel();
     }
 }
 
@@ -99,7 +103,10 @@ async fn serve<'scope, 'env>(
     timeout: Duration,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), String> {
-    let _exit_fence = ExitFence(worker.store().clone());
+    let _exit_fence = ExitFence {
+        store: worker.store().clone(),
+        cancellation: inputs.options.cancellation.clone(),
+    };
     tokio::pin!(shutdown);
     let mut execution: Option<ScopedJoinHandle<'scope, WorkerExecutionCompletion>> = None;
     let mut execution_failure = None;
@@ -131,6 +138,9 @@ async fn serve<'scope, 'env>(
         tokio::time::sleep(REAP_INTERVAL).await;
     }
     let fence = fence_shutdown(worker);
+    // Admission/uncertainty is fenced first. Cancellation is not a receipt and
+    // must not turn an in-flight provider reservation into unused budget.
+    inputs.options.cancellation.cancel();
     while execution.is_some() {
         reap(worker, &mut execution, &mut execution_failure)?;
         if execution.is_some() {

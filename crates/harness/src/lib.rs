@@ -7,6 +7,7 @@ mod episode;
 mod error;
 mod evaluation;
 mod execution;
+mod execution_cancellation;
 mod exo;
 mod exo_process;
 mod identity;
@@ -69,6 +70,7 @@ pub use execution::{
     WorkerControlRequest, WorkerControlState, WorkerExecutionPermit, WorkerHandoffState,
     WorkerLookup, WorkerOwnerProof, WorkerReservationState, WorkerTerminalReceipt, WorkerTuple,
 };
+pub use execution_cancellation::ExecutionCancellation;
 pub use exo::{
     BoundDecision, Decision, DecisionError, ExoClient, ExoConfig, ExoDecisionRequest, ExoError,
     ExoProvider, ExoSession, ExoTransport, ExoTransportError, SandboxError, SanitizedObservation,

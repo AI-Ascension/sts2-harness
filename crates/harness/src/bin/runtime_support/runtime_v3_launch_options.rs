@@ -6,12 +6,13 @@ use std::path::PathBuf;
 ///
 /// The process environment and command line are sampled once by the executable adapter. The
 /// extracted workflow receives this value instead of consulting process-global selection state.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub(super) struct RuntimeV3LaunchOptions {
     pub(super) resume: bool,
     pub(super) combat_demo: bool,
     pub(super) replay_path: Option<PathBuf>,
     pub(super) replay_prefix: Result<bool, String>,
+    pub(super) cancellation: sts2_harness::ExecutionCancellation,
 }
 
 impl RuntimeV3LaunchOptions {
@@ -82,6 +83,7 @@ impl RuntimeV3LaunchOptions {
             combat_demo,
             replay_path,
             replay_prefix,
+            cancellation: sts2_harness::ExecutionCancellation::default(),
         }
     }
 

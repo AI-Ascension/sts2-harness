@@ -142,6 +142,7 @@ fn completed_resume_uses_the_admitted_store_without_opening_a_second_store() -> 
             combat_demo: false,
             replay_path: Some("never-read.jsonl".into()),
             replay_prefix: Err(String::from("STS2_REPLAY_PREFIX must be true or false")),
+            cancellation: sts2_harness::ExecutionCancellation::default(),
         },
         telemetry_handle,
         telemetry,

@@ -14,6 +14,7 @@ use crate::provider::{ModelRequest, ModelResponse, ProviderPort};
 pub enum ExoTransportError {
     Unavailable,
     Timeout,
+    Cancelled,
     OversizedResponse,
     MalformedResponse,
 }
@@ -100,6 +101,7 @@ pub enum ExoError {
     RequestTooLarge,
     Unavailable,
     Timeout,
+    Cancelled,
     OversizedResponse,
     MalformedResponse,
     Decision(DecisionError),
@@ -115,6 +117,7 @@ impl std::fmt::Display for ExoError {
             Self::RequestTooLarge => "Exo decision request exceeds its bound",
             Self::Unavailable => "Exo is unavailable",
             Self::Timeout => "Exo decision timed out",
+            Self::Cancelled => "Exo decision cancelled; consumption may be unknown",
             Self::OversizedResponse => "Exo response exceeds its bound",
             Self::MalformedResponse => "Exo response is malformed",
             Self::Decision(_) => "Exo decision failed strict validation",
@@ -143,6 +146,7 @@ impl From<ExoTransportError> for ExoError {
         match error {
             ExoTransportError::Unavailable => Self::Unavailable,
             ExoTransportError::Timeout => Self::Timeout,
+            ExoTransportError::Cancelled => Self::Cancelled,
             ExoTransportError::OversizedResponse => Self::OversizedResponse,
             ExoTransportError::MalformedResponse => Self::MalformedResponse,
         }
@@ -275,6 +279,7 @@ fn error_code(error: ExoError) -> &'static str {
     match error {
         ExoError::Unavailable => "exo_unavailable",
         ExoError::Timeout => "exo_timeout",
+        ExoError::Cancelled => "exo_cancelled",
         ExoError::OversizedResponse => "exo_oversized_response",
         ExoError::MalformedResponse | ExoError::Decision(_) => "exo_malformed_response",
         ExoError::Closed => "exo_closed",
@@ -287,6 +292,14 @@ fn error_code(error: ExoError) -> &'static str {
 
 fn is_retryable(error: ExoError) -> bool {
     matches!(error, ExoError::Unavailable | ExoError::Timeout)
+}
+
+#[cfg(test)]
+#[test]
+fn cancellation_is_distinct_and_never_retryable() {
+    let error = ExoError::from(ExoTransportError::Cancelled);
+    assert_eq!(error_code(error), "exo_cancelled");
+    assert!(!is_retryable(error));
 }
 
 fn decision_error_code(error: DecisionError) -> &'static str {

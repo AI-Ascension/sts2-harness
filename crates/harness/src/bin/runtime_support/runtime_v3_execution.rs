@@ -120,7 +120,8 @@ pub(super) fn run(
         finish_telemetry(telemetry);
         return finish_cleanup(result, store_close, "execution store close failed");
     }
-    let transport = ExoProcessTransport::new(settings.process);
+    let transport =
+        ExoProcessTransport::new(settings.process).with_cancellation(options.cancellation.clone());
     let provider = ExoProvider::new(transport, settings.exo);
     let mut source = ExoDecisionSource::new(ExoSession::new(provider));
     if options.combat_demo {

@@ -49,8 +49,15 @@ An exit/unwind guard closes admission before the scope's fallback join. Complete
 receipts are not overwritten by this uncertainty accounting. Execution failures
 keep historical commands available and are retained for shutdown reporting.
 
-The scope prevents detachment, but does not impose a hard join deadline or cancel
-an in-flight provider call. Execution still depends on existing phase deadlines
-and execution-time fences. Forced descendant cleanup and active-execution shutdown
-bounds need additional implementation and fault evidence; neither the synthetic
-barrier test nor the compile-time `Send` check proves those guarantees.
+The scope prevents detachment, but does not impose a hard join deadline. The Linux
+shutdown owner now signals provider cancellation after fencing admission and
+uncertainty. Exo pipe futures select cancellation against the existing exchange
+deadline, then invoke bounded direct-child termination/reaping. Cancellation is
+typed separately from timeout and is not retryable; durable recording retains
+unknown consumption using the existing cancelled-provider classification.
+
+This signal does not prove remote inference cancellation, descendant containment,
+or settlement of a game effect. MCP/gateway phases still use their existing
+deadlines. Forced descendant cleanup and active-execution shutdown bounds need
+additional implementation and fault evidence; neither the synthetic barrier test
+nor the compile-time `Send` check proves those guarantees.
