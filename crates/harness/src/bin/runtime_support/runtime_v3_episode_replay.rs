@@ -8,7 +8,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use sts2_harness::{
     Decision, DecisionInput, DecisionSource, EpisodeObservation, EpisodeRunner,
-    EpisodeRunnerConfig, PolicyError,
+    EpisodeRunnerConfig, EpisodeStage, PolicyError,
 };
 
 use super::{RuntimeV3Port, recording, wire};
@@ -24,11 +24,21 @@ use cards::CardBindings;
 
 const MAX_BYTES: u64 = 32 * 1024 * 1024;
 
+#[path = "runtime_v3_replay_digest.rs"]
+mod digest;
+use digest::digest_value;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ReplayOutcome {
+    Terminal(EpisodeStage),
+    PrefixVerified,
+}
+
 pub(super) fn run(
     port: &mut RuntimeV3Port,
     config: &EpisodeRunnerConfig,
     path: &str,
-) -> Result<(), String> {
+) -> Result<ReplayOutcome, String> {
     // Validate the complete source before the runner allocates a host lease.
     let file = std::fs::File::open(path).map_err(|_| "cannot open episode replay")?;
     let mut bytes = Vec::new();
@@ -66,10 +76,9 @@ pub(super) fn run(
             "{}",
             json!({"event":"episode_replay_prefix_verified",
             "source_sha256":digest,"replayed_actions":source.cursor,"provider_calls":0,
-            "skipped_rejected_attempts":source.trace.rejected_attempts,
-            "observation":source.prefix_observation})
+            "skipped_rejected_attempts":source.trace.rejected_attempts})
         );
-        return Ok(());
+        return Ok(ReplayOutcome::PrefixVerified);
     }
     let report = result.map_err(|error| {
         format!(
@@ -81,16 +90,15 @@ pub(super) fn run(
         )
     })?;
     source.finish(report.final_observation())?;
-    recording::complete(&report);
+    recording::complete(&report, &port.telemetry);
     println!(
         "{}",
         json!({"event":"episode_replay_verified", "source_sha256":digest,
         "replayed_actions":source.cursor, "provider_calls":0,
         "skipped_rejected_attempts":source.trace.rejected_attempts,
-        "terminal_stage":wire::stage_name(report.terminal_stage()),
-        "observation":report.final_observation().fair_play().as_value()})
+        "terminal_stage":wire::stage_name(report.terminal_stage())})
     );
-    Ok(())
+    Ok(ReplayOutcome::Terminal(report.terminal_stage()))
 }
 
 fn error_category(error: &sts2_harness::EpisodeRunnerError) -> String {
@@ -213,8 +221,11 @@ impl DecisionSource for ReplaySource {
         println!(
             "{}",
             json!({"event":"replay_decision", "replay_index":self.cursor,
-            "action_id":action_id, "source_action_id":record.action_id,
-            "observation":input.observation.fair_play().as_value()})
+            "observation_digest":digest_value(
+                "replay-observation",
+                input.observation.fair_play().as_value(),
+            ),
+            "action_digest":digest_value("replay-action", &payload)})
         );
         Ok(Decision::Action {
             action_id,

@@ -27,7 +27,8 @@ jobs:
       - name: Verify whitespace and fair-play source
         run: |
           git diff --check
-          grep -Fq 'is_privileged_key' crates/harness/src/exo/sandbox.rs
+          grep -Fxq 'include!("sandbox_validator.rs");' crates/harness/src/exo/sandbox.rs
+          grep -Fq 'fn is_privileged_key(' crates/harness/src/exo/sandbox_validator.rs
           if grep -REn 'std::process|Command::|TcpStream' crates/harness/src/exo; then exit 1; fi
 
       - name: Install pinned Rust toolchain

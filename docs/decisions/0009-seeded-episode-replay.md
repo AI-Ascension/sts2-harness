@@ -45,6 +45,11 @@ immediately. Persistent divergence fails without dispatching the recorded action
 The replay cursor advances only after settlement. Terminal verification requires every recorded
 action to settle and the terminal public observation to match. `replay_decision` records have no
 model execution identity. `episode_replay_verified` records the source digest and zero provider calls.
+Runtime-v3 telemetry derives `game_outcome` and `stage` from that verified terminal report:
+replayed defeat is `failure`/`defeat`, not `success`/`unknown`. A prefix checkpoint has no
+terminal report and is therefore `unavailable`/`recovery`; it does not claim a completed run.
+For provider-backed runs, a cleanup error is recorded separately as `cleanup_status=failed` after
+the terminal observation has been emitted, so cleanup cannot erase an authoritative Victory or Defeat.
 
 An operator may explicitly set `STS2_REPLAY_PREFIX=true` for a source truncated at a settled,
 actionable, nonterminal checkpoint. This mode rejects terminal sources and unresolved trailing
