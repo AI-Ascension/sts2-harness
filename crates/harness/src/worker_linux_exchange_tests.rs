@@ -1,32 +1,20 @@
 // SPDX-License-Identifier: MIT
 #![cfg(target_os = "linux")]
 
-#[path = "worker_local_linux_support.rs"]
+#[path = "../tests/worker_local_linux_support.rs"]
 mod support;
 
-mod execution {
-    pub use sts2_harness::WorkerOwnerProof;
-}
-mod worker_frame_io {
-    pub use sts2_harness::worker_frame_io::*;
-}
-mod worker_handoff {
-    pub use sts2_harness::worker_handoff::*;
-}
-#[path = "../src/worker_linux_exchange.rs"]
-mod worker_linux_exchange;
-#[path = "../src/worker_local_linux.rs"]
-mod worker_local_linux;
-
+use crate::worker_frame_io::ConnectionDeadline;
+use crate::worker_handoff::{ProbeReply, WorkerCapability, WorkerReply};
+use crate::worker_linux_exchange::LinuxWorkerExchange;
+use crate::worker_local_linux::{
+    AUTH_MAGIC, LinuxPeerIdentity, LinuxTransportError, LinuxWorkerConfig,
+};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::Read;
-use sts2_harness::worker_frame_io::ConnectionDeadline;
-use sts2_harness::worker_handoff::{ProbeReply, WorkerCapability, WorkerReply};
 use support::{Fixture, IDENTITY_DEADLINE, TestResult, read_frame, write_auth, write_frame};
 use tokio::net::UnixStream;
-use worker_linux_exchange::LinuxWorkerExchange;
-use worker_local_linux::{AUTH_MAGIC, LinuxPeerIdentity, LinuxTransportError, LinuxWorkerConfig};
 
 const PROBE: &[u8] = include_bytes!(
     "../../../protocol-artifact/watchdog-worker-v1/fixtures/valid/probe-request.json"

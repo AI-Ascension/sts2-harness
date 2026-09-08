@@ -90,6 +90,18 @@ impl WorkerCapability {
 
 /// Transport code fills this only after protected local peer authentication. It has no public
 /// constructor and deliberately carries no boolean authentication claim.
+///
+/// External callers cannot turn a marker string into authenticated admission:
+/// ```compile_fail,E0624
+/// use sts2_harness::{WorkerOwnerProof, worker_handoff::{
+///     AuthenticatedWorkerRequest, WorkerCapability, WorkerRequest,
+/// }};
+/// fn forge(request: WorkerRequest, proof: WorkerOwnerProof) {
+///     let _ = AuthenticatedWorkerRequest::from_transport(
+///         request, WorkerCapability::Dispatch, proof,
+///     );
+/// }
+/// ```
 pub struct AuthenticatedWorkerRequest {
     pub(in crate::worker_handoff) request: WorkerRequest,
     pub(in crate::worker_handoff) capability: WorkerCapability,
@@ -100,7 +112,7 @@ impl AuthenticatedWorkerRequest {
     /// Marks a request as transport-authenticated after the caller has completed its protected
     /// peer and credential checks.  The owner proof is deliberately retained as an opaque value;
     /// this constructor does not authenticate a peer or inspect a credential.
-    pub fn from_transport(
+    pub(crate) fn from_transport(
         request: WorkerRequest,
         capability: WorkerCapability,
         owner_proof: WorkerOwnerProof,

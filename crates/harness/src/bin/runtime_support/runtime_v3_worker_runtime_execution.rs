@@ -10,7 +10,6 @@ use super::super::super::runtime_v3_telemetry::{
     RuntimeV3Telemetry, TelemetryContext, TelemetryContextLineage,
 };
 use super::super::launch_options::RuntimeV3LaunchOptions;
-use super::super::worker_store::try_lock_close;
 
 impl WorkerRuntime {
     /// Runs the already-started handoff through the existing admitted runtime path.  This method
@@ -43,10 +42,10 @@ impl WorkerRuntime {
         config: RuntimeConfig,
         settings: RuntimeSettings,
     ) -> Result<(), String> {
-        let Some(active) = self.lane.tuple() else {
+        let Some(active) = self.core.active_tuple() else {
             return Err(String::from("worker execution lane has no active handoff"));
         };
-        if running.tuple != *active || running.worker_boot_id != self.worker_boot_id {
+        if running.tuple != *active || running.worker_boot_id != self.core.worker_boot_id() {
             return Err(String::from(
                 "started worker handoff does not match the active worker lane",
             ));
@@ -81,12 +80,12 @@ impl WorkerRuntime {
         let telemetry_handle = telemetry.handle();
         let _ = telemetry_handle.run_started();
         let (durable, state) = super::super::durable::DurableHandle::from_admitted_shared_store(
-            self.store.clone(),
+            self.core.store().clone(),
             &running,
             &config,
             &settings,
             lineage,
-            self.fingerprint.clone(),
+            self.core.fingerprint().clone(),
         )?;
         let result = super::super::execution::run(
             config,
@@ -101,44 +100,5 @@ impl WorkerRuntime {
             self.release_completed(&running.tuple.handoff_id)?;
         }
         result
-    }
-
-    /// Releases the capacity-one lane only after the same durable handoff has a projected
-    /// terminal receipt. Unknown, admitted, and running rows remain lookup-only.
-    pub fn release_completed(&mut self, handoff_id: &str) -> Result<(), String> {
-        let tuple = self
-            .lane
-            .tuple()
-            .filter(|tuple| tuple.handoff_id == handoff_id)
-            .cloned()
-            .ok_or_else(|| String::from("worker completion does not match active lane"))?;
-        let mut store = try_lock(&self.store)?;
-        let handoff = match store
-            .lookup_worker_handoff(&tuple)
-            .map_err(|_| String::from("cannot reconcile worker completion"))?
-        {
-            sts2_harness::WorkerLookup::Known(handoff) => *handoff,
-            sts2_harness::WorkerLookup::Unknown { .. } => {
-                return Err(String::from("worker completion handoff is not retained"));
-            }
-        };
-        if handoff.terminal.is_none() {
-            return Err(String::from(
-                "worker execution cannot release its lane before durable completion",
-            ));
-        }
-        drop(store);
-        self.lane.release(handoff_id)
-    }
-
-    pub fn close(&self) -> Result<(), String> {
-        let mut store = try_lock_close(&self.store)?;
-        store
-            .close()
-            .map_err(|_| String::from("cannot close worker execution store"))
-    }
-
-    pub fn worker_boot_id(&self) -> &str {
-        &self.worker_boot_id
     }
 }

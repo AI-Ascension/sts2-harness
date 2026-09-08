@@ -23,8 +23,12 @@ pub mod worker_frame_io;
 pub mod worker_handoff;
 #[cfg(target_os = "linux")]
 pub mod worker_linux_exchange;
+#[cfg(all(test, target_os = "linux"))]
+mod worker_linux_exchange_tests;
 #[cfg(target_os = "linux")]
 pub mod worker_local_linux;
+pub mod worker_runtime;
+pub mod worker_runtime_store;
 
 pub use artifact::{
     ArtifactDraft, ArtifactKind, ArtifactLineage, ArtifactMetadata, ArtifactMetadataInput,

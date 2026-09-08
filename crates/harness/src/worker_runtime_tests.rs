@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-use super::super::worker_store::{
-    begin_quarantine, finish_quarantine, try_lock, try_lock_recovery,
-};
 use super::*;
-use serde_json::{Map, json};
-use sts2_harness::worker_handoff::{SCHEMA_DIGEST, WorkerCapability, WorkerRequest};
-use sts2_harness::{
-    ExecutionFingerprint, ExecutionLineage, WORKER_EMPTY_PARAMETERS_DIGEST, WorkerBoot,
-    WorkerControlMode, WorkerControlRequest, WorkerOwnerProof,
+use crate::worker_handoff::{SCHEMA_DIGEST, WorkerCapability, WorkerRequest};
+use crate::worker_runtime_store::{
+    begin_quarantine, finish_quarantine, share_store, try_lock, try_lock_recovery,
 };
+use crate::{
+    ExecutionFingerprint, ExecutionLineage, ExecutionStore, WORKER_EMPTY_PARAMETERS_DIGEST,
+    WorkerBoot, WorkerControlMode, WorkerControlRequest, WorkerOwnerProof,
+};
+use serde_json::{Map, json};
 
 const RUN_ID: &str = "11111111-1111-4111-8111-111111111111";
 const EPISODE_ID: &str = "22222222-2222-4222-8222-222222222222";
@@ -256,12 +256,4 @@ fn closed_store_preserves_start_and_unknown_retention_failures()
     };
     assert!(retry_error.contains("fail-closed"), "retry: {retry_error}");
     Ok(())
-}
-
-#[test]
-fn missing_transport_is_a_fixed_production_failure() {
-    assert_eq!(
-        MISSING_TRANSPORT_ERROR,
-        "worker transport unavailable: authenticated native worker listener is not integrated"
-    );
 }
