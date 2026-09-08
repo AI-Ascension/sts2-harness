@@ -28,7 +28,8 @@ pub(super) fn parse_receipt(
         return if matches!(
             status,
             ReceiptQueryStatus::Unknown | ReceiptQueryStatus::RecoveryRequired
-        ) {
+        ) && top_error.is_some()
+        {
             Ok(None)
         } else {
             Err(ReceiptQueryError::InvalidReceipt)

@@ -132,3 +132,47 @@ fn wire_parser_accepts_each_canonical_outcome() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+fn wire_parser_rejects_uncertain_outcomes_without_error_code() -> Result<(), String> {
+    let text = include_str!(
+        "../../../../protocol-artifact/coop-receipt-query-v1/golden/receipt-query-response-unknown.json"
+    );
+    let identity = identity().map_err(|error| error.to_string())?;
+    let parse = |body: &str| {
+        ReceiptQueryResult::from_json(
+            body,
+            &identity,
+            "corr:17:1",
+            "instance-1",
+            "session-native-17",
+            "lease-1",
+            9,
+        )
+    };
+
+    let unknown_without_error = text.replacen(
+        "\"error_code\":\"native_receipt_query_cache_miss\"",
+        "\"error_code\":null",
+        1,
+    );
+    if parse(&unknown_without_error).is_ok() {
+        return Err("unknown response without error_code was accepted".into());
+    }
+
+    let recovery_without_error = text
+        .replacen(
+            "\"status\":\"unknown\"",
+            "\"status\":\"recovery_required\"",
+            1,
+        )
+        .replacen(
+            "\"error_code\":\"native_receipt_query_cache_miss\"",
+            "\"error_code\":null",
+            1,
+        );
+    if parse(&recovery_without_error).is_ok() {
+        return Err("recovery_required response without error_code was accepted".into());
+    }
+    Ok(())
+}
