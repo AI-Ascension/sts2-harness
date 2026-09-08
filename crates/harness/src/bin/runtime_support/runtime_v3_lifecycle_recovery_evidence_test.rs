@@ -9,6 +9,9 @@ use super::super::durable::DurableHandle;
 use super::reconnect_support::*;
 use super::*;
 
+#[path = "runtime_v3_recovery_diagnostics_test.rs"]
+mod diagnostics;
+
 struct RecoveryCase {
     fixture: Fixture,
     durable: DurableHandle,
@@ -152,7 +155,15 @@ fn subprocess_recovery_resolves_unknown_and_accepts_retained_terminal_states()
             }
             case.reconcile["payload"]["witness"] = Value::Null;
         }
-        case.run()?;
+        if let Err(error) = case.run() {
+            diagnostics::emit_failure(
+                &case.fixture.0.join("requests"),
+                &case.fixture.0.join("child-status"),
+                diagnostics::RecoveryCaseTag::retained_terminal(lookup, reconciled),
+                case.durable.operation_state(PENDING_OPERATION_ID),
+            );
+            return Err(error.into());
+        }
         assert_eq!(
             case.durable.operation_state(PENDING_OPERATION_ID)?,
             OperationState::Reconciled
@@ -180,7 +191,17 @@ fn subprocess_missing_or_unresolved_evidence_does_not_poll_gameplay()
             case.reconcile["payload"]["operation"] = Value::Null;
             case.reconcile["payload"]["witness"] = Value::Null;
         }
-        assert!(case.run().is_err());
+        let result = case.run();
+        if let Err(error) = &result {
+            diagnostics::emit_failure(
+                &case.fixture.0.join("requests"),
+                &case.fixture.0.join("child-status"),
+                diagnostics::RecoveryCaseTag::unresolved(lookup, reconcile),
+                case.durable.operation_state(PENDING_OPERATION_ID),
+            );
+            assert!(!error.is_empty(), "recovery failure must remain observable");
+        }
+        assert!(result.is_err());
         assert!(
             case.durable
                 .operation_state(PENDING_OPERATION_ID)?
@@ -218,7 +239,17 @@ fn subprocess_missing_or_cross_operation_witness_never_closes_durable_uncertaint
         } else {
             case.reconcile["payload"]["witness"]["witness_id"] = json!(PENDING_STATE_ID);
         }
-        assert!(case.run().is_err(), "accepted {defect}");
+        let result = case.run();
+        if let Err(error) = &result {
+            diagnostics::emit_failure(
+                &case.fixture.0.join("requests"),
+                &case.fixture.0.join("child-status"),
+                diagnostics::RecoveryCaseTag::witness_defect(defect),
+                case.durable.operation_state(PENDING_OPERATION_ID),
+            );
+            assert!(!error.is_empty(), "recovery failure must remain observable");
+        }
+        assert!(result.is_err(), "accepted {defect}");
         assert!(
             case.durable
                 .operation_state(PENDING_OPERATION_ID)?

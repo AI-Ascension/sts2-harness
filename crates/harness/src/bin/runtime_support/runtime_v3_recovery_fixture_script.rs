@@ -45,7 +45,7 @@ pub(in super::super::super) fn response_script(
     .map(|name| json!({"name":name}))
     .collect();
     let script = format!(
-        "cd '{}' || exit 1\nif [ \"$STS2_RUNTIME_PROFILE\" = \"watchdog-recovery-v1\" ]; then\n{}{}{}{}else\n{}{}{}\nfi\n",
+        "cd '{}' || exit 1\ntrap 'status=$?; printf \"exit=%s\\n\" \"$status\" > child-status' EXIT\nif [ \"$STS2_RUNTIME_PROFILE\" = \"watchdog-recovery-v1\" ]; then\n{}{}{}{}else\n{}{}{}\nfi\n",
         fixture.0.display(),
         reply(json!({"jsonrpc":"2.0","id":1,"result":{}})),
         reply(
