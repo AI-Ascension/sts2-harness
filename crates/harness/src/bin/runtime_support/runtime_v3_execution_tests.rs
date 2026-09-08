@@ -14,6 +14,24 @@ use sts2_harness::{
     StabilityBarrier,
 };
 
+#[test]
+fn failed_store_close_preserves_original_and_quarantine_errors() {
+    let error = combine_quarantine("episode failed".into(), Err("store unavailable".into()));
+    let combined = combine_store_close(error, Err("close unavailable".into()));
+    assert_eq!(
+        combined,
+        "episode failed; failed to persist interrupted-unknown quarantine: store unavailable; execution store close failed: close unavailable"
+    );
+}
+
+#[test]
+fn successful_store_close_keeps_the_original_failure() {
+    assert_eq!(
+        combine_store_close("episode failed".into(), Ok(())),
+        "episode failed"
+    );
+}
+
 fn config() -> RuntimeConfig {
     RuntimeConfig {
         gateway_address: String::from("127.0.0.1:15525"),
