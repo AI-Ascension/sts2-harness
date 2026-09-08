@@ -7,6 +7,25 @@ use super::core::{
 use super::error::ExecutionStoreError;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CatalogEvidence {
+    digest: String,
+    raw: Option<Vec<u8>>,
+}
+
+impl CatalogEvidence {
+    pub fn new(digest: impl Into<String>, raw: Option<Vec<u8>>) -> Self {
+        Self {
+            digest: digest.into(),
+            raw,
+        }
+    }
+
+    pub fn legacy(digest: impl Into<String>) -> Self {
+        Self::new(digest, None)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Checkpoint {
     pub lineage: ExecutionLineage,
     pub sequence: u64,
@@ -37,8 +56,7 @@ impl Checkpoint {
             generation,
             fingerprint,
             observation,
-            legal_actions_digest,
-            None,
+            CatalogEvidence::legacy(legal_actions_digest),
         )
     }
 
@@ -49,8 +67,7 @@ impl Checkpoint {
         generation: u64,
         fingerprint: ExecutionFingerprint,
         observation: Vec<u8>,
-        legal_actions_digest: impl Into<String>,
-        catalog_raw: Vec<u8>,
+        catalog: CatalogEvidence,
     ) -> Result<Self, ExecutionStoreError> {
         Self::new_with_optional_catalog(
             lineage,
@@ -59,8 +76,7 @@ impl Checkpoint {
             generation,
             fingerprint,
             observation,
-            legal_actions_digest,
-            Some(catalog_raw),
+            catalog,
         )
     }
 
@@ -71,9 +87,9 @@ impl Checkpoint {
         generation: u64,
         fingerprint: ExecutionFingerprint,
         observation: Vec<u8>,
-        legal_actions_digest: impl Into<String>,
-        catalog_raw: Option<Vec<u8>>,
+        catalog: CatalogEvidence,
     ) -> Result<Self, ExecutionStoreError> {
+        let CatalogEvidence { digest, raw } = catalog;
         let checkpoint = Self {
             lineage,
             sequence,
@@ -81,8 +97,8 @@ impl Checkpoint {
             generation,
             fingerprint,
             observation,
-            legal_actions_digest: legal_actions_digest.into(),
-            catalog_raw,
+            legal_actions_digest: digest,
+            catalog_raw: raw,
         };
         checkpoint.validate(MAX_PAYLOAD_BYTES)?;
         Ok(checkpoint)

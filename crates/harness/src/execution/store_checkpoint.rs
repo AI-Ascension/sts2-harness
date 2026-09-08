@@ -6,7 +6,7 @@ use super::schema;
 use super::store_core::{
     ExecutionStore, append_event, attempt_fingerprint, ensure_current_lineage,
 };
-use super::types::{Checkpoint, ExecutionLineage, MAX_CATALOG_BYTES};
+use super::types::{CatalogEvidence, Checkpoint, ExecutionLineage, MAX_CATALOG_BYTES};
 
 impl ExecutionStore {
     /// Stores a verified public boundary. A sequence can be retried only with byte-identical
@@ -218,8 +218,10 @@ impl ExecutionStore {
                         .map_err(|_| rusqlite::Error::InvalidQuery)?,
                     fingerprint,
                     row.get::<_, Vec<u8>>(8)?,
-                    row.get::<_, String>(9)?,
-                    row.get::<_, Option<Vec<u8>>>(10)?,
+                    CatalogEvidence::new(
+                        row.get::<_, String>(9)?,
+                        row.get::<_, Option<Vec<u8>>>(10)?,
+                    ),
                 )
                 .map_err(|_| rusqlite::Error::InvalidQuery)
             })

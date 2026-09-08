@@ -17,8 +17,7 @@ fn checkpoint_catalog_bytes_survive_reopen_and_reconstruction() {
         7,
         fingerprint(),
         vec![b'{', b'}'],
-        result_digest(catalog_raw),
-        catalog_raw.to_vec(),
+        CatalogEvidence::new(result_digest(catalog_raw), Some(catalog_raw.to_vec())),
     )
     .expect("raw checkpoint is valid");
     store
@@ -62,8 +61,7 @@ fn checkpoint_reads_reject_oversized_and_malformed_catalog_bytes() {
         1,
         fingerprint(),
         vec![b'{', b'}'],
-        result_digest(catalog_raw),
-        catalog_raw.to_vec(),
+        CatalogEvidence::new(result_digest(catalog_raw), Some(catalog_raw.to_vec())),
     )
     .expect("raw checkpoint is valid");
     let mut store =

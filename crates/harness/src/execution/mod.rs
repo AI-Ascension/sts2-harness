@@ -19,10 +19,11 @@ mod types;
 
 pub use store_core::ExecutionStore;
 pub use types::{
-    AttemptKind, AttemptState, Checkpoint, CompletionRecord, CompletionStatus, DecisionReference,
-    ExecutionFingerprint, ExecutionLineage, ExecutionStoreConfig, ExecutionStoreError, JobClaim,
-    JobClaimOutcome, JobState, MAX_CATALOG_BYTES, MAX_OPERATION_ACTION_BYTES, OperationIntent,
-    OperationState, ProviderFailureClass, ProviderReservation, ProviderReservationState,
-    RECOVERY_CONTRACT_VERSION, RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState,
-    StorePragmas, StoredAttempt, StoredDecision, StoredEpisode, StoredJob, StoredOperation,
+    AttemptKind, AttemptState, CatalogEvidence, Checkpoint, CompletionRecord, CompletionStatus,
+    DecisionReference, ExecutionFingerprint, ExecutionLineage, ExecutionStoreConfig,
+    ExecutionStoreError, JobClaim, JobClaimOutcome, JobState, MAX_CATALOG_BYTES,
+    MAX_OPERATION_ACTION_BYTES, OperationIntent, OperationState, ProviderFailureClass,
+    ProviderReservation, ProviderReservationState, RECOVERY_CONTRACT_VERSION,
+    RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState, StorePragmas, StoredAttempt,
+    StoredDecision, StoredEpisode, StoredJob, StoredOperation,
 };
