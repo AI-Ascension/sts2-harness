@@ -1,8 +1,8 @@
 # Release Policy and Procedure
 
-This repository currently contains foundation policy, documentation, and a non-released preparation
-package. A release is a deliberate, immutable, evidence-backed publication; preparing a candidate,
-publishing it, and verifying it are separate states.
+This repository currently contains a non-released preparation package and a bounded runtime
+coordinator. A release is a deliberate, immutable, evidence-backed publication; preparing a
+candidate, publishing it, and verifying it are separate states.
 
 ## Authority
 
@@ -32,10 +32,15 @@ A candidate is not release-ready until:
 - any claimed runtime or model/provider compatibility has exact evidence; and
 - known unverified boundaries do not make the release unsafe or misleading.
 
-The target has no released product artifact or live provider/full-gameplay result. It does retain a
-[dated bounded runtime-v1 host trace](docs/evidence/runtime-v1-host-integration-20260902.md) for one
-disposable profile and the safe overlay probe. That record includes a host launch and cleanup; it
-does not establish current-head reproduction, autonomous gameplay, co-op, or release readiness.
+Current evidence includes the [dated bounded runtime-v1 host trace](docs/evidence/runtime-v1-host-integration-20260902.md),
+the [Windows Astra runtime-v3 campaign and replay](docs/evidence/seeded-astra-campaign-20260906.md),
+and the [Linux Astra runtime-v3 campaign and replay](docs/evidence/linux-seeded-campaign-20260906.md).
+The Windows record documents an uninterrupted setup-to-defeat campaign followed by a fresh complete
+replay; the Linux record documents a campaign continued across one controller restart followed by a
+fresh complete replay. They preserve provider-backed decisions and settled operations for the named
+STS2 v0.107.1 fixtures, exact downstream artifacts, and recorded configurations. They do not
+establish a released artifact, a model-played victory, complete campaign or state coverage, native
+multiplayer, or broader compatibility.
 
 ## Prepare and verify
 
@@ -63,6 +68,13 @@ Promotion requires independent evidence for the host package, native package, ga
 configuration, Exo revision, fair-play leak tests, stale/recovery behavior, setup-to-terminal
 full-run traces, two-to-four-peer co-op traces, cleanup, clean-install replay, and rollback. Any
 missing item keeps the candidate quarantined.
+
+The current runtime coordinator is a bounded one-instance executable. Its deterministic coordinator,
+replay, record, and artifact-lineage libraries are not all assembled into that executable, and the
+runtime-v2 lane remains a fake-boundary check. Provider execution and the named runtime-v3 campaigns
+have recorded evidence, while final current-head release artifacts, full native Runtime-v4
+legality/effects, model-played victory, complete campaign coverage, co-op actuation, release
+packaging, deployment, and compatibility beyond the recorded host remain unverified.
 
 ## Post-release and failure
 
