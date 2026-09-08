@@ -12,7 +12,14 @@ use super::config::RuntimeConfig;
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(5);
-const CLEANUP_TIMEOUT: Duration = Duration::from_millis(250);
+// A child may still be finishing a response or flushing its own shutdown work after the
+// caller has closed its pipes. Give that graceful path a bounded second before treating it
+// as a failed shutdown. The force-reap budget remains short so a stalled child cannot hold
+// the supervisor indefinitely after the graceful path has failed.
+const GRACEFUL_CLOSE_TIMEOUT: Duration = Duration::from_secs(1);
+const FORCE_REAP_TIMEOUT: Duration = Duration::from_millis(250);
+
+include!("mcp_process_error.rs");
 
 pub(super) struct McpProcess {
     runtime: Option<tokio::runtime::Runtime>,
@@ -24,7 +31,18 @@ pub(super) struct McpProcess {
 }
 
 impl McpProcess {
+    #[cfg(test)]
     pub(super) const fn is_closed(&self) -> bool {
+        self.closed
+    }
+
+    pub(super) fn refresh_closed(&mut self) -> bool {
+        if self.closed {
+            return true;
+        }
+        if self.child.try_wait().ok().flatten().is_some() {
+            self.closed = true;
+        }
         self.closed
     }
 
@@ -106,44 +124,88 @@ impl McpProcess {
         params: Value,
         timeout: Duration,
     ) -> Result<Value, String> {
+        self.call_with_timeout_classified(id, method, params, timeout)
+            .map_err(|error| error.to_string())
+    }
+
+    pub(super) fn call_with_timeout_classified(
+        &mut self,
+        id: u64,
+        method: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> Result<Value, McpProcessError> {
         let deadline = Instant::now()
             .checked_add(timeout)
             .filter(|_| !timeout.is_zero())
-            .ok_or_else(|| String::from("MCP exchange deadline is invalid"))?;
+            .ok_or_else(|| {
+                McpProcessError::new(
+                    McpProcessErrorKind::Protocol,
+                    "MCP exchange deadline is invalid",
+                )
+            })?;
         if self.closed {
-            return Err(String::from("MCP process is closed"));
+            return Err(McpProcessError::new(
+                McpProcessErrorKind::ProcessClosed,
+                "MCP process is closed",
+            ));
         }
         let request = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
-        let mut bytes = serde_json::to_vec(&request)
-            .map_err(|_| String::from("MCP request serialization failed"))?;
+        let mut bytes = serde_json::to_vec(&request).map_err(|_| {
+            McpProcessError::new(
+                McpProcessErrorKind::Protocol,
+                "MCP request serialization failed",
+            )
+        })?;
         bytes.push(b'\n');
         if bytes.len() > MAX_REQUEST_BYTES {
-            return Err(String::from("MCP request exceeded its size limit"));
+            return Err(McpProcessError::new(
+                McpProcessErrorKind::Protocol,
+                "MCP request exceeded its size limit",
+            ));
         }
-        let runtime = self.runtime.as_ref().ok_or("MCP supervisor is closed")?;
-        let result = supervised(|| {
+        let runtime = self.runtime.as_ref().ok_or_else(|| {
+            McpProcessError::new(
+                McpProcessErrorKind::SupervisorClosed,
+                "MCP supervisor is closed",
+            )
+        })?;
+        let result = supervised_call(|| {
             runtime.block_on(async {
-                let input = self.input.as_mut().ok_or("MCP stdin is closed")?;
-                let output = self.output.as_mut().ok_or("MCP stdout is closed")?;
+                let input = self.input.as_mut().ok_or_else(|| {
+                    McpProcessError::new(McpProcessErrorKind::StdinClosed, "MCP stdin is closed")
+                })?;
+                let output = self.output.as_mut().ok_or_else(|| {
+                    McpProcessError::new(McpProcessErrorKind::StdoutClosed, "MCP stdout is closed")
+                })?;
                 tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), async {
                     let write = async {
-                        input
-                            .write_all(&bytes)
-                            .await
-                            .map_err(|_| "MCP request write failed")?;
-                        input.flush().await.map_err(|_| "MCP request flush failed")
+                        input.write_all(&bytes).await.map_err(|_| {
+                            McpProcessError::new(
+                                McpProcessErrorKind::RequestWrite,
+                                "MCP request write failed",
+                            )
+                        })?;
+                        input.flush().await.map_err(|_| {
+                            McpProcessError::new(
+                                McpProcessErrorKind::RequestFlush,
+                                "MCP request flush failed",
+                            )
+                        })
                     };
                     let (_, response) = tokio::try_join!(write, read_frame(output))?;
                     validate_response(&response, id)
                 })
                 .await
-                .map_err(|_| "MCP exchange timed out")?
+                .map_err(|_| {
+                    McpProcessError::new(McpProcessErrorKind::Deadline, "MCP exchange timed out")
+                })?
             })
         });
         if let Err(error) = result {
             return match self.terminate() {
                 Ok(()) => Err(error),
-                Err(cleanup) => Err(format!("{error}; {cleanup}")),
+                Err(cleanup) => Err(error.with_cleanup(cleanup)),
             };
         }
         result
@@ -159,7 +221,7 @@ impl McpProcess {
                 self.child
                     .start_kill()
                     .map_err(|_| "MCP termination failed")?;
-                tokio::time::timeout(CLEANUP_TIMEOUT, self.child.wait())
+                tokio::time::timeout(FORCE_REAP_TIMEOUT, self.child.wait())
                     .await
                     .map_err(|_| "MCP reap timed out")?
                     .map_err(|_| "MCP reap failed")?;
@@ -181,7 +243,7 @@ impl McpProcess {
         let runtime = self.runtime.as_ref().ok_or("MCP supervisor is closed")?;
         let result = supervised(|| {
             runtime.block_on(async {
-                let status = tokio::time::timeout(CLEANUP_TIMEOUT, self.child.wait())
+                let status = tokio::time::timeout(GRACEFUL_CLOSE_TIMEOUT, self.child.wait())
                     .await
                     .map_err(|_| "MCP shutdown timed out")?
                     .map_err(|_| "MCP process wait failed")?;
@@ -193,7 +255,8 @@ impl McpProcess {
             })
         });
         if let Err(error) = result {
-            return match self.terminate() {
+            let cleanup = self.terminate();
+            return match cleanup {
                 Ok(()) => Err(error),
                 Err(cleanup) => Err(format!("{error}; {cleanup}")),
             };
@@ -219,53 +282,7 @@ impl Drop for McpProcess {
 
 // No detached workers: cancellation drops asynchronous pipe futures, including when a
 // descendant retains inherited descriptors. Every scoped supervisor is joined before return.
-fn supervised<T: Send>(work: impl FnOnce() -> Result<T, &'static str> + Send) -> Result<T, String> {
-    std::thread::scope(|scope| {
-        let worker = std::thread::Builder::new()
-            .name(String::from("mcp-exchange"))
-            .spawn_scoped(scope, work)
-            .map_err(|_| String::from("MCP supervisor unavailable"))?;
-        worker
-            .join()
-            .map_err(|_| String::from("MCP supervisor failed"))?
-            .map_err(String::from)
-    })
-}
-
-async fn read_frame(output: &mut BufReader<ChildStdout>) -> Result<Vec<u8>, &'static str> {
-    let mut bytes = Vec::new();
-    loop {
-        let available = output
-            .fill_buf()
-            .await
-            .map_err(|_| "MCP response read failed")?;
-        if available.is_empty() {
-            return Err("MCP response ended before its delimiter");
-        }
-        let delimiter = available.iter().position(|byte| *byte == b'\n');
-        let count = delimiter.map_or(available.len(), |index| index + 1);
-        if bytes.len().saturating_add(count) > MAX_RESPONSE_BYTES {
-            return Err("MCP response exceeded its size limit");
-        }
-        bytes.extend_from_slice(&available[..count]);
-        output.consume(count);
-        if delimiter.is_some() {
-            return Ok(bytes);
-        }
-    }
-}
-
-fn validate_response(bytes: &[u8], id: u64) -> Result<Value, &'static str> {
-    let response: Value = serde_json::from_slice(bytes).map_err(|_| "MCP response was not JSON")?;
-    if !response.is_object()
-        || response["jsonrpc"] != "2.0"
-        || response["id"].as_u64() != Some(id)
-        || response.get("result").is_some() == response.get("error").is_some()
-    {
-        return Err("MCP response envelope was invalid");
-    }
-    Ok(response)
-}
+include!("mcp_process_transport.rs");
 
 #[cfg(test)]
 #[path = "mcp_process_tests.rs"]

@@ -7,6 +7,14 @@ use super::super::mcp::McpProcess;
 use super::super::runtime_v3_telemetry::{ObservationSource, RecoveryKind};
 use super::{RuntimeV3Port, parse, wire};
 
+fn map_initialization_error(error: wire::RpcFailure) -> RecoveryError {
+    if error.is_transient() {
+        RecoveryError::PortFailure
+    } else {
+        RecoveryError::Terminal
+    }
+}
+
 impl RuntimeV3Port {
     // Reconnect only for recovery reads, never to repeat a dispatch. The episode ledger and
     // configured lease/session survive replacement of a failed MCP transport.
@@ -14,9 +22,12 @@ impl RuntimeV3Port {
         if !self.allocated || self.released {
             return Err(RecoveryError::PortFailure);
         }
-        let normal_ready = self.mcp.as_ref().is_some_and(|mcp| !mcp.is_closed());
+        let normal_ready = self.mcp.as_mut().is_some_and(|mcp| !mcp.refresh_closed());
         let expert_ready = !self.is_expert_profile()
-            || self.expert_mcp.as_ref().is_some_and(|mcp| !mcp.is_closed());
+            || self
+                .expert_mcp
+                .as_mut()
+                .is_some_and(|mcp| !mcp.refresh_closed());
         if normal_ready && expert_ready {
             return Ok(());
         }
@@ -37,14 +48,14 @@ impl RuntimeV3Port {
         };
         let mut mcp = McpProcess::spawn_profile(&self.config, normal_profile)
             .map_err(|_| RecoveryError::PortFailure)?;
-        wire::initialize_mcp_profile(&mut mcp, normal_profile)
-            .map_err(|_| RecoveryError::PortFailure)?;
+        wire::initialize_mcp_profile_classified(&mut mcp, normal_profile)
+            .map_err(map_initialization_error)?;
         self.mcp = Some(mcp);
         if self.is_expert_profile() {
             let mut expert = McpProcess::spawn_profile(&self.config, "runtime-v4-expert")
                 .map_err(|_| RecoveryError::PortFailure)?;
-            wire::initialize_mcp_profile(&mut expert, "runtime-v4-expert")
-                .map_err(|_| RecoveryError::PortFailure)?;
+            wire::initialize_mcp_profile_classified(&mut expert, "runtime-v4-expert")
+                .map_err(map_initialization_error)?;
             self.expert_mcp = Some(expert);
         }
         let _ = self.telemetry.recovery(
@@ -61,15 +72,21 @@ impl RuntimeV3Port {
 impl RecoveryPort for RuntimeV3Port {
     fn reobserve(&mut self) -> Result<EpisodeObservation, RecoveryError> {
         self.reconnect_for_recovery()?;
-        let value = self
-            .call_tool("sts2.reobserve", self.context(self.generation))
-            .map_err(|_| RecoveryError::PortFailure)?;
+        let value = match self.call_tool_classified("sts2.reobserve", self.context(self.generation))
+        {
+            Ok(value) => value,
+            Err(super::RuntimeV3ToolError::Transient(_)) => return Err(RecoveryError::PortFailure),
+            Err(super::RuntimeV3ToolError::Terminal(_)) => return Err(RecoveryError::Terminal),
+        };
         let parsed = parse::observation(&value, "reobserve_response", &self.config)
-            .map_err(|_| RecoveryError::PortFailure)?;
+            .map_err(|_| RecoveryError::Terminal)?;
         let baseline = self.install(parsed);
         let observation = if self.is_expert_profile() {
-            self.compose_current_observation(baseline)
-                .map_err(|_| RecoveryError::PortFailure)?
+            self.compose_current_observation_recovery(baseline)
+                .map_err(|error| match error {
+                    super::RuntimeV3ToolError::Transient(_) => RecoveryError::PortFailure,
+                    super::RuntimeV3ToolError::Terminal(_) => RecoveryError::Terminal,
+                })?
         } else {
             baseline
         };

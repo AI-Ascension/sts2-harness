@@ -2,12 +2,14 @@
 
 use std::fs;
 use std::io::Write;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 use sts2_harness::{
-    Decision, DecisionInput, DecisionSource, EpisodeRunner, EpisodeRunnerConfig, EpisodeStage,
-    PolicyError, RecoveryController, StabilityBarrier,
+    Decision, DecisionInput, DecisionSource, EpisodeRunner, EpisodeRunnerConfig, EpisodeRunnerError,
+    EpisodeStage, PolicyError, RecoveryController, RecoveryError, StabilityBarrier,
 };
 
 use super::Fixture;
@@ -15,6 +17,20 @@ use super::super::config;
 use super::super::*;
 
 struct FirstActionSource;
+
+// The fixture may exercise two five-second recovery reads and up to two bounded process-close
+// paths (one second graceful plus 250ms force-reap each) before the runner releases its lease.
+// Keep one deadline for the whole gateway exchange so a valid recovery cannot outlive a
+// phase-local wait, while a stalled fixture remains bounded.
+const RUNNER_GATEWAY_DEADLINE: Duration = Duration::from_secs(20);
+
+struct CancelGatewayOnDrop(Arc<AtomicBool>);
+
+impl Drop for CancelGatewayOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
 
 impl DecisionSource for FirstActionSource {
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError> {
@@ -42,8 +58,34 @@ fn runner_config() -> Result<EpisodeRunnerConfig, Box<dyn std::error::Error>> {
     )?)
 }
 
-fn runner_gateway(listener: std::net::TcpListener) -> Result<(), String> {
-    let mut allocation = super::accept_until(&listener, Duration::from_secs(10))?;
+fn accept_runner_gateway(
+    listener: &std::net::TcpListener,
+    deadline: Instant,
+    cancelled: &AtomicBool,
+) -> Result<std::net::TcpStream, String> {
+    loop {
+        if cancelled.load(Ordering::Acquire) {
+            return Err(String::from("fake gateway cancelled"));
+        }
+        match listener.accept() {
+            Ok((stream, _)) => return Ok(stream),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                if Instant::now() >= deadline {
+                    return Err(String::from("fake gateway did not receive expected cleanup"));
+                }
+                std::thread::yield_now();
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+}
+
+fn runner_gateway(
+    listener: std::net::TcpListener,
+    cancelled: Arc<AtomicBool>,
+) -> Result<(), String> {
+    let deadline = Instant::now() + RUNNER_GATEWAY_DEADLINE;
+    let mut allocation = accept_runner_gateway(&listener, deadline, &cancelled)?;
     let headers = super::request(&mut allocation).map_err(|error| error.to_string())?;
     if !headers.starts_with("POST /v1/sessions/allocate ") {
         return Err(String::from("runner did not allocate through the gateway"));
@@ -65,7 +107,7 @@ fn runner_gateway(listener: std::net::TcpListener) -> Result<(), String> {
     .map_err(|error| error.to_string())?;
     drop(allocation);
 
-    let mut release = super::accept_until(&listener, Duration::from_secs(10))?;
+    let mut release = accept_runner_gateway(&listener, deadline, &cancelled)?;
     let headers = super::request(&mut release).map_err(|error| error.to_string())?;
     if !headers.starts_with("POST /v1/instances/instance-1/release ") {
         return Err(String::from("runner did not release through the gateway"));
@@ -191,6 +233,7 @@ fn run_runner_fixture(
     failure: &str,
     expert_profile: bool,
     expected_reconnects: u8,
+    expected_recoveries: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
     listener.set_nonblocking(true)?;
@@ -205,20 +248,72 @@ fn run_runner_fixture(
         runtime_config,
         TelemetryHandle::disabled(),
     )?;
+    let cancelled = Arc::new(AtomicBool::new(false));
     std::thread::scope(|scope| -> Result<(), Box<dyn std::error::Error>> {
-        let gateway = scope.spawn(move || runner_gateway(listener));
+        let gateway_cancelled = Arc::clone(&cancelled);
+        let gateway = scope.spawn(move || runner_gateway(listener, gateway_cancelled));
+        let _cancel_gateway_on_drop = CancelGatewayOnDrop(Arc::clone(&cancelled));
         let mut source = FirstActionSource;
         let report = EpisodeRunner::new(runner_config()?).run(&mut port, &mut source)?;
         assert_eq!(report.terminal_stage(), EpisodeStage::Victory);
         assert_eq!(report.transitions(), 0);
-        assert_eq!(report.recoveries(), 1);
+        if failure == "expert-reobserve-gateway" {
+            // A closed expert child can race refresh_closed on the normal child. Both paths
+            // remain bounded: the normal path needs two or, after one extra refresh, three
+            // recovery reads before the terminal expert observation.
+            assert!((2..=3).contains(&report.recoveries()));
+        } else {
+            assert_eq!(report.recoveries(), expected_recoveries);
+        }
         assert_eq!(port.reconnect_attempts, expected_reconnects);
         assert!(port.released);
+        cancelled.store(true, Ordering::Release);
         gateway.join().map_err(|_| "fake gateway panicked")??;
         Ok(())
     })?;
     let requests = fs::read_to_string(fixture.0.join("requests"))?;
     let requests: Vec<Value> = requests
+        .lines()
+        .map(serde_json::from_str)
+        .collect::<Result<_, _>>()?;
+    assert!(requests.iter().all(|request| {
+        request["params"]["name"] != "sts2.dispatch_action"
+    }));
+    Ok(())
+}
+
+fn run_runner_fixture_terminal(
+    fixture: &Fixture,
+    failure: &str,
+    expected_reconnects: u8,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    listener.set_nonblocking(true)?;
+    let mut runtime_config = config(listener.local_addr()?.to_string());
+    runtime_config.runtime_profile = String::from("runtime-v4-expert");
+    runtime_config.mcp_binary = runner_script(fixture, failure, true)?;
+    let mut port = RuntimeV3Port::new_with_telemetry(
+        runtime_config,
+        TelemetryHandle::disabled(),
+    )?;
+    let cancelled = Arc::new(AtomicBool::new(false));
+    std::thread::scope(|scope| -> Result<(), Box<dyn std::error::Error>> {
+        let gateway_cancelled = Arc::clone(&cancelled);
+        let gateway = scope.spawn(move || runner_gateway(listener, gateway_cancelled));
+        let _cancel_gateway_on_drop = CancelGatewayOnDrop(Arc::clone(&cancelled));
+        let mut source = FirstActionSource;
+        let result = EpisodeRunner::new(runner_config()?).run(&mut port, &mut source);
+        assert_eq!(
+            result,
+            Err(EpisodeRunnerError::Recovery(RecoveryError::Terminal))
+        );
+        assert_eq!(port.reconnect_attempts, expected_reconnects);
+        assert!(port.released);
+        cancelled.store(true, Ordering::Release);
+        gateway.join().map_err(|_| "fake gateway panicked")??;
+        Ok(())
+    })?;
+    let requests: Vec<Value> = fs::read_to_string(fixture.0.join("requests"))?
         .lines()
         .map(serde_json::from_str)
         .collect::<Result<_, _>>()?;
@@ -235,16 +330,31 @@ fn reply(value: Value) -> String {
     )
 }
 
+fn reply_for_method(method: &str, mut value: Value, max_requests: u8) -> String {
+    value["correlation_id"] = json!("__REQUEST_ID__");
+    let response = json!({
+        "jsonrpc": "2.0",
+        "id": 0,
+        "result": {"content": [{"type": "text", "text": value.to_string()}]}
+    })
+    .to_string()
+    .replacen("\"id\":0,", "\"id\":__REQUEST_ID__,", 1)
+    .replace('\'', "'\\''");
+    format!(
+        "remaining={max_requests}\nhandled=0\nwhile IFS= read -r line; do\nprintf '%s\\n' \"$line\" >> requests\ncase \"$line\" in\n*'\"method\":\"tools/call\"'*'\"name\":\"{method}\"'*)\nif [ \"$remaining\" -eq 0 ]; then echo 'fixture received too many {method} requests' >&2; exit 1; fi\nid=$(printf '%s\\n' \"$line\" | sed -n 's/.*\"id\":\\([0-9][0-9]*\\).*/\\1/p')\ncase \"$id\" in\n''|*[!0-9]*) echo 'fixture received a tools/call request without a numeric id' >&2; exit 1;;\nesac\nprintf '%s\\n' '{response}' | sed \"s/__REQUEST_ID__/$id/g\"\nremaining=$((remaining - 1))\nhandled=$((handled + 1))\n;;\n*) echo 'fixture received an unexpected MCP request' >&2; exit 1;;\nesac\ndone\nif [ \"$handled\" -eq 0 ]; then echo 'fixture did not receive {method}' >&2; exit 1; fi\n"
+    )
+}
+
 #[test]
 fn runner_catalog_pipe_eof_reconnects_without_dispatch() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = Fixture::new()?;
-    run_runner_fixture(&fixture, "eof", false, 1)
+    run_runner_fixture(&fixture, "eof", false, 1, 1)
 }
 
 #[test]
 fn runner_catalog_timeout_reconnects_without_dispatch() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = Fixture::new()?;
-    run_runner_fixture(&fixture, "timeout", false, 1)
+    run_runner_fixture(&fixture, "timeout", false, 1, 1)
 }
 
 #[test]
@@ -252,7 +362,7 @@ fn runner_catalog_gateway_errors_reobserve_without_dispatch()
 -> Result<(), Box<dyn std::error::Error>> {
     for failure in ["rpc", "tool"] {
         let fixture = Fixture::new()?;
-        run_runner_fixture(&fixture, failure, false, 0)?;
+        run_runner_fixture(&fixture, failure, false, 0, 1)?;
     }
     Ok(())
 }
@@ -261,7 +371,7 @@ fn runner_catalog_gateway_errors_reobserve_without_dispatch()
 fn expert_runner_reconnects_and_composes_without_dispatch()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = Fixture::new()?;
-    run_runner_fixture(&fixture, "eof", true, 1)
+    run_runner_fixture(&fixture, "eof", true, 1, 1)
 }
 
 

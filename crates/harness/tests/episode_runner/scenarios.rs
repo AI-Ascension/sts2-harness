@@ -124,7 +124,7 @@ fn assert_conflicting_action_stops(runtime: &mut FakeRuntime) {
     assert!(runtime.gateway_closed);
 }
 
-fn blocked_state(generation: u64) -> State {
+pub(super) fn blocked_state(generation: u64) -> State {
     let mut blocked = state(EpisodeStage::Setup, generation);
     blocked.observation = EpisodeObservation::new(
         blocked.observation.state_id(),
