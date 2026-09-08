@@ -4,14 +4,14 @@
 //! Native authentication and executable gameplay adapters remain separate boundaries.
 
 use crate::worker_handoff::{
-    AuthenticatedWorkerRequest, DispatchReply, WorkerCommandAdmission, WorkerCommandConfig,
-    WorkerCommandError, WorkerExecutionReservation, WorkerReply,
+    AuthenticatedWorkerRequest, DispatchReply, WorkerCommand, WorkerCommandAdmission,
+    WorkerCommandConfig, WorkerCommandError, WorkerExecutionReservation, WorkerReply,
 };
 use crate::{ExecutionFingerprint, StoredWorkerHandoff, WorkerHandoffState, WorkerTuple};
 
 use crate::worker_runtime_store::{
     SharedExecutionStore, begin_quarantine, finish_quarantine, try_lock, try_lock_close,
-    try_lock_quarantine,
+    try_lock_quarantine, try_lock_recovery,
 };
 
 /// Result of a response write as observed by the endpoint.  A failed response after durable
@@ -130,13 +130,35 @@ impl WorkerRuntime {
         if authenticated.request().command() == crate::worker_handoff::WorkerCommand::Dispatch {
             return self.handle_dispatch(authenticated);
         }
-        let mut store = try_lock(&self.store)?;
+        // Quarantine blocks new authority, not authenticated historical lookup
+        // or a more restrictive operator intent. Running control still needs
+        // the ordinary admission lease and can never clear this local fence.
+        let recovery_safe = match authenticated.request().command() {
+            WorkerCommand::Probe | WorkerCommand::Lookup | WorkerCommand::Acknowledge => true,
+            WorkerCommand::SetControlMode => matches!(
+                authenticated
+                    .request()
+                    .fields()
+                    .get("mode")
+                    .and_then(serde_json::Value::as_str),
+                Some("paused" | "draining" | "stopped")
+            ),
+            WorkerCommand::Dispatch => false,
+        };
+        let mut store = if recovery_safe {
+            try_lock_recovery(&self.store)?
+        } else {
+            try_lock(&self.store)?
+        };
         let mut result = self
             .admission
             .handle_authenticated(&mut store, authenticated)
             .map_err(command_error)?;
         let reservation = result.take_reservation();
-        let (reply, leftover) = result.into_parts();
+        let (mut reply, leftover) = result.into_parts();
+        if let WorkerReply::Probe(probe) = &mut reply {
+            probe.ready &= self.store.admission_open();
+        }
         debug_assert!(leftover.is_none());
         if reservation.is_some() {
             return Err(String::from(
@@ -217,6 +239,9 @@ fn combine_failure(original: String, quarantine: Result<(), String>) -> String {
 
 #[path = "worker_runtime_completion.rs"]
 mod completion;
+#[cfg(test)]
+#[path = "worker_runtime_control_tests.rs"]
+mod control_tests;
 #[cfg(test)]
 #[path = "worker_runtime_tests.rs"]
 pub(crate) mod tests;

@@ -54,6 +54,13 @@ busy leaves admission fenced until the uncertainty can be retained. Tests cover
 native successful/failed responses and cancellation before/after polling.
 This operation returns a start outcome; it does not launch gameplay itself.
 
+The worker runtime keeps authenticated probe, lookup, terminal acknowledgment,
+and restrictive control changes available after its admission fence closes.
+Probes remain not-ready during pending or persisted quarantine. Dispatch and
+running/resume control cannot use the recovery lease, and neither stop nor
+historical lookup clears the admission fence. Capability and boot/tuple checks
+still apply on these recovery paths.
+
 This uses `SO_PASSCRED` and `SCM_CREDENTIALS`, whose kernel checks and privileged
 exceptions are documented in [unix(7)](https://man7.org/linux/man-pages/man7/unix.7.html).
 It is not a defense against privileged host compromise. The private verifier

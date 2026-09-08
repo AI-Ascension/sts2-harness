@@ -83,6 +83,11 @@ impl GateState {
 }
 
 impl SharedExecutionStore {
+    /// Status only; callers must still acquire a checked lease for admission.
+    pub(crate) fn admission_open(&self) -> bool {
+        self.gate_state() == GateState::Open
+    }
+
     fn gate_state(&self) -> GateState {
         GateState::from_code(self.gate.load(Ordering::Acquire))
     }
