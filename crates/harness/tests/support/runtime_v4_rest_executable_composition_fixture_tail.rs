@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-fn mend_response(request: &Value, step: usize) -> Result<Value, String> {
+fn mend_response(
+    request: &Value,
+    step: usize,
+    selector_encoding: SelectorEncoding,
+) -> Result<Value, String> {
     if step > 1 {
         return Err(format!("unsupported Mend producer-vector step {step}"));
     }
@@ -16,18 +20,21 @@ fn mend_response(request: &Value, step: usize) -> Result<Value, String> {
         json!(after_generation),
         json!(after_state),
     );
-    response["observation"] = expert_observation(if step == 0 {
-        Phase::MendSelection
-    } else {
-        Phase::Victory
-    })?;
+    response["observation"] = expert_observation(
+        if step == 0 {
+            Phase::MendSelection
+        } else {
+            Phase::Victory
+        },
+        selector_encoding,
+    )?;
     response["observation"]["state_id"] = json!(after_state);
     response["observation"]["generation"] = json!(after_generation);
     response["transition"]["before_generation"] = json!(before_generation);
     response["transition"]["after_generation"] = json!(after_generation);
     response["transition"]["rest_option_id"] = json!("mend");
     if step == 0 {
-        response["transition"]["selector"] = mend_selector();
+        response["transition"]["selector"] = mend_selector(selector_encoding);
     } else {
         response["transition"]["selection_id"] = json!("selection:14:mend");
         response["transition"]["selection_kind"] = json!("player");
@@ -114,11 +121,14 @@ fn golden(file: &str) -> Result<Value, String> {
     serde_json::from_str(text).map_err(|error| error.to_string())
 }
 
-fn expert_state(phase: Phase) -> Result<Value, String> {
-    expert_observation(phase)
+fn expert_state(phase: Phase, selector_encoding: SelectorEncoding) -> Result<Value, String> {
+    expert_observation(phase, selector_encoding)
 }
 
-fn expert_observation(phase: Phase) -> Result<Value, String> {
+fn expert_observation(
+    phase: Phase,
+    selector_encoding: SelectorEncoding,
+) -> Result<Value, String> {
     let mut value: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../protocol-artifact/runtime-v4-expert/golden/observation.json"
@@ -153,14 +163,14 @@ fn expert_observation(phase: Phase) -> Result<Value, String> {
         }),
         Phase::Victory => json!({"state":"victory"}),
     };
-    value["legal_actions"] = expert_legal_actions(phase);
+    value["legal_actions"] = expert_legal_actions(phase, selector_encoding);
     if matches!(phase, Phase::Victory) {
         value["player"]["potions"] = json!([]);
     }
     Ok(value)
 }
 
-fn expert_legal_actions(phase: Phase) -> Value {
+fn expert_legal_actions(phase: Phase, selector_encoding: SelectorEncoding) -> Value {
     match phase {
         Phase::SmithOption => json!([
             {"action_id":"rest-option:9:smith","action":{"kind":"rest_option","rest_option_id":"smith"}},
@@ -168,45 +178,45 @@ fn expert_legal_actions(phase: Phase) -> Value {
         ]),
         Phase::SmithSelection(selected) => match selected {
             0 => json!([
-                {"action_id":"select_card:10:card:1","action":{"kind":"select_card","selection_id":null,"card_id":"card:1"}},
-                {"action_id":"select_card:10:card:2","action":{"kind":"select_card","selection_id":null,"card_id":"card:2"}},
-                {"action_id":"confirm_selection:10","action":{"kind":"confirm_selection","selection_id":null}},
-                {"action_id":"cancel_selection:10","action":{"kind":"cancel_selection","selection_id":null}}
+                {"action_id":selector_encoding.action_id(10, "selection:10:smith", "smith", "select_card", Some("card:1")), "action":{"kind":"select_card","selection_id":null,"card_id":"card:1"}},
+                {"action_id":selector_encoding.action_id(10, "selection:10:smith", "smith", "select_card", Some("card:2")), "action":{"kind":"select_card","selection_id":null,"card_id":"card:2"}},
+                {"action_id":selector_encoding.action_id(10, "selection:10:smith", "smith", "confirm_selection", None), "action":{"kind":"confirm_selection","selection_id":null}},
+                {"action_id":selector_encoding.action_id(10, "selection:10:smith", "smith", "cancel_selection", None), "action":{"kind":"cancel_selection","selection_id":null}}
             ]),
             1 => json!([
-                {"action_id":"select_card:11:card:2","action":{"kind":"select_card","selection_id":null,"card_id":"card:2"}},
-                {"action_id":"confirm_selection:11","action":{"kind":"confirm_selection","selection_id":null}},
-                {"action_id":"cancel_selection:11","action":{"kind":"cancel_selection","selection_id":null}}
+                {"action_id":selector_encoding.action_id(11, "selection:10:smith", "smith", "select_card", Some("card:2")), "action":{"kind":"select_card","selection_id":null,"card_id":"card:2"}},
+                {"action_id":selector_encoding.action_id(11, "selection:10:smith", "smith", "confirm_selection", None), "action":{"kind":"confirm_selection","selection_id":null}},
+                {"action_id":selector_encoding.action_id(11, "selection:10:smith", "smith", "cancel_selection", None), "action":{"kind":"cancel_selection","selection_id":null}}
             ]),
             _ => json!([
-                {"action_id":"confirm_selection:12","action":{"kind":"confirm_selection","selection_id":null}},
-                {"action_id":"cancel_selection:12","action":{"kind":"cancel_selection","selection_id":null}}
+                {"action_id":selector_encoding.action_id(12, "selection:10:smith", "smith", "confirm_selection", None), "action":{"kind":"confirm_selection","selection_id":null}},
+                {"action_id":selector_encoding.action_id(12, "selection:10:smith", "smith", "cancel_selection", None), "action":{"kind":"cancel_selection","selection_id":null}}
             ]),
         },
         Phase::MendOption => json!([
             {"action_id":"rest-option:13:mend","action":{"kind":"rest_option","rest_option_id":"mend"}}
         ]),
         Phase::MendSelection => json!([
-            {"action_id":"cancel_selection:14","action":{"kind":"cancel_selection","selection_id":null}}
+            {"action_id":selector_encoding.action_id(14, "selection:14:mend", "mend", "cancel_selection", None), "action":{"kind":"cancel_selection","selection_id":null}}
         ]),
         Phase::Victory => json!([]),
     }
 }
 
-fn smith_selector(selected: u8) -> Value {
+fn smith_selector(selected: u8, selector_encoding: SelectorEncoding) -> Value {
     let actions = match selected {
         0 => json!([
-            selector_action("select_card:10:smith:card:1", "select_card", Some("card:1")),
-            selector_action("select_card:10:smith:card:2", "select_card", Some("card:2")),
-            selector_action("cancel_selection:10:smith", "cancel_selection", None)
+            selector_action(selector_encoding, 10, "selection:10:smith", "smith", "select_card", Some("card:1")),
+            selector_action(selector_encoding, 10, "selection:10:smith", "smith", "select_card", Some("card:2")),
+            selector_action(selector_encoding, 10, "selection:10:smith", "smith", "cancel_selection", None)
         ]),
         1 => json!([
-            selector_action("select_card:11:smith:card:2", "select_card", Some("card:2")),
-            selector_action("cancel_selection:11:smith", "cancel_selection", None)
+            selector_action(selector_encoding, 11, "selection:10:smith", "smith", "select_card", Some("card:2")),
+            selector_action(selector_encoding, 11, "selection:10:smith", "smith", "cancel_selection", None)
         ]),
         _ => json!([
-            selector_action("confirm_selection:12:smith", "confirm_selection", None),
-            selector_action("cancel_selection:12:smith", "cancel_selection", None)
+            selector_action(selector_encoding, 12, "selection:10:smith", "smith", "confirm_selection", None),
+            selector_action(selector_encoding, 12, "selection:10:smith", "smith", "cancel_selection", None)
         ]),
     };
     json!({
@@ -219,7 +229,7 @@ fn smith_selector(selected: u8) -> Value {
     })
 }
 
-fn mend_selector() -> Value {
+fn mend_selector(selector_encoding: SelectorEncoding) -> Value {
     json!({
         "selection_id":"selection:14:mend",
         "selection_kind":"player",
@@ -227,22 +237,36 @@ fn mend_selector() -> Value {
         "selected_choice_ids":[],
         "remaining_count":1,
         "legal_actions":[
-            selector_action("select_player:14:mend:player:local", "select_player", Some("player:local")),
-            selector_action("cancel_selection:14:mend", "cancel_selection", None)
+            selector_action(selector_encoding, 14, "selection:14:mend", "mend", "select_player", Some("player:local")),
+            selector_action(selector_encoding, 14, "selection:14:mend", "mend", "cancel_selection", None)
         ]
     })
 }
 
-fn selector_action(action_id: &str, kind: &str, choice: Option<&str>) -> Value {
+fn selector_action(
+    selector_encoding: SelectorEncoding,
+    generation: u64,
+    selection_id: &str,
+    option_id: &str,
+    kind: &str,
+    choice: Option<&str>,
+) -> Value {
+    let action_id = selector_encoding.action_id(
+        generation,
+        selection_id,
+        option_id,
+        kind,
+        choice,
+    );
     let action = match kind {
         "select_card" => {
-            json!({"kind":"select_card","selection_id":"selection:10:smith","rest_option_id":"smith","card_id":choice.unwrap_or("")})
+            json!({"kind":"select_card","selection_id":selection_id,"rest_option_id":option_id,"card_id":choice.unwrap_or("")})
         }
         "select_player" => {
-            json!({"kind":"select_player","selection_id":"selection:14:mend","rest_option_id":"mend","player_id":choice.unwrap_or("")})
+            json!({"kind":"select_player","selection_id":selection_id,"rest_option_id":option_id,"player_id":choice.unwrap_or("")})
         }
         "confirm_selection" | "cancel_selection" => {
-            json!({"kind":kind,"selection_id":if action_id.contains(":smith") {"selection:10:smith"} else {"selection:14:mend"},"rest_option_id":if action_id.contains(":smith") {"smith"} else {"mend"}})
+            json!({"kind":kind,"selection_id":selection_id,"rest_option_id":option_id})
         }
         _ => Value::Null,
     };

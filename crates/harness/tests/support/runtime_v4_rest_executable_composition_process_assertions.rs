@@ -3,6 +3,13 @@
 pub(crate) fn assert_success(
     result: &ScenarioResult,
 ) -> Result<String, Box<dyn std::error::Error>> {
+    assert_success_with_style(result, SelectorEncoding::Synthetic)
+}
+
+pub(crate) fn assert_success_with_style(
+    result: &ScenarioResult,
+    selector_encoding: SelectorEncoding,
+) -> Result<String, Box<dyn std::error::Error>> {
     if result.runtime.status.code() != Some(0) {
         let native = result
             .ledger
@@ -56,14 +63,33 @@ pub(crate) fn assert_success(
         })
         .collect();
     let expected_actions = [
-        "rest-option:9:smith",
-        "select_card:10:smith:card:1",
-        "select_card:11:smith:card:2",
-        "confirm_selection:12:smith",
-        "rest-option:13:mend",
-        "select_player:14:mend:player:local",
+        String::from("rest-option:9:smith"),
+        selector_encoding
+            .action_id(10, "selection:10:smith", "smith", "select_card", Some("card:1")),
+        selector_encoding
+            .action_id(11, "selection:10:smith", "smith", "select_card", Some("card:2")),
+        selector_encoding.action_id(
+            12,
+            "selection:10:smith",
+            "smith",
+            "confirm_selection",
+            None,
+        ),
+        String::from("rest-option:13:mend"),
+        selector_encoding.action_id(
+            14,
+            "selection:14:mend",
+            "mend",
+            "select_player",
+            Some("player:local"),
+        ),
     ];
-    if action_ids != expected_actions {
+    if action_ids
+        != expected_actions
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+    {
         return Err(format!("unexpected REST action sequence: {action_ids:?}").into());
     }
     let statuses: Vec<u16> = result
@@ -80,6 +106,10 @@ pub(crate) fn assert_success(
     if statuses != [503, 202, 200, 200, 503, 200] {
         return Err(format!("unexpected REST action statuses: {statuses:?}").into());
     }
+    let operation_ids: Vec<&str> = posts
+        .iter()
+        .map(|request| request.body["operation_id"].as_str().unwrap_or("<missing>"))
+        .collect();
     let reconciles: Vec<_> = result
         .ledger
         .requests
@@ -91,7 +121,7 @@ pub(crate) fn assert_success(
             .starts_with("/api/v4/runtime/expert-rest-actions/")
         })
         .collect();
-    if reconciles.len() != 3
+    if reconciles.len() != operation_ids.len()
         || reconciles
             .iter()
             .any(|(request, response)| {
@@ -100,10 +130,6 @@ pub(crate) fn assert_success(
     {
         return Err(format!("unexpected REST reconciliation requests: {reconciles:?}").into());
     }
-    let operation_ids: Vec<&str> = posts
-        .iter()
-        .map(|request| request.body["operation_id"].as_str().unwrap_or("<missing>"))
-        .collect();
     if operation_ids
         != [
             "episode-action-9-1",
@@ -125,17 +151,25 @@ pub(crate) fn assert_success(
                 .unwrap_or("<missing>")
         })
         .collect();
-    if reconcile_operation_ids != [operation_ids[0], operation_ids[1], operation_ids[4]] {
+    if reconcile_operation_ids != operation_ids {
         return Err(format!(
             "reconciliation did not retain original operation IDs: {reconcile_operation_ids:?}"
         )
         .into());
     }
-    for ((_, response), expected_operation, expected_generation, expected_state) in [
-        (&reconciles[0], operation_ids[0], 10, "live:10"),
-        (&reconciles[1], operation_ids[1], 11, "live:11"),
-        (&reconciles[2], operation_ids[4], 14, "live:14"),
-    ] {
+    for (index, (expected_generation, expected_state)) in [
+        (10_u64, "live:10"),
+        (11, "live:11"),
+        (12, "live:12"),
+        (13, "live:13"),
+        (14, "live:14"),
+        (15, "live:15"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let (_, response) = reconciles[index];
+        let expected_operation = operation_ids[index];
         if response.body["status"] != "settled"
             || response.body["operation_id"] != expected_operation
             || response.body["generation"] != expected_generation
@@ -228,7 +262,7 @@ pub(crate) fn assert_success(
         return Err("REST action request envelope was not canonical".into());
     }
     let operation = operation_ids[0].to_owned();
-    assert_persisted_receipts(result)?;
+    assert_persisted_receipts(result, selector_encoding)?;
     let report = completion_report(&result.runtime.stderr)?;
     if report["protocol"] != "runtime-v4-expert-rest-action"
         || report["status"] != "complete"
@@ -258,6 +292,7 @@ pub(crate) fn assert_success(
 
 fn assert_additional_settled_receipts(
     records: &[Value],
+    selector_encoding: SelectorEncoding,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let receipt = |operation_id: &str, status: &str| {
         records.iter().find(|record| {
@@ -266,22 +301,35 @@ fn assert_additional_settled_receipts(
                 && record["status"] == status
         })
     };
-    for (operation_id, action_id, effect, generation, state_id) in [
+    let expected = [
         (
             "episode-action-11-3",
-            "select_card:11:smith:card:2",
+            selector_encoding.action_id(
+                11,
+                "selection:10:smith",
+                "smith",
+                "select_card",
+                Some("card:2"),
+            ),
             "rest_option_selection_progressed",
             12,
             "live:12",
         ),
         (
             "episode-action-12-4",
-            "confirm_selection:12:smith",
+            selector_encoding.action_id(
+                12,
+                "selection:10:smith",
+                "smith",
+                "confirm_selection",
+                None,
+            ),
             "rest_option_selection_completed",
             13,
             "live:13",
         ),
-    ] {
+    ];
+    for (operation_id, action_id, effect, generation, state_id) in expected {
         let settled = receipt(operation_id, "Settled")
             .ok_or_else(|| format!("runtime receipt ledger omitted Settled {operation_id}"))?;
         if settled["action_id"] != action_id

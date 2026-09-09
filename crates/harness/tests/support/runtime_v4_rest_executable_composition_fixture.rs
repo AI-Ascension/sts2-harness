@@ -20,6 +20,35 @@ pub(crate) const LEASE_EPOCH: u64 = 1;
 pub(crate) const REST_SCHEMA_DIGEST: &str =
     "bb3555fae28eb1f79d08a15e9884696a579e4c20836f5016509f17e0f4c36fbd";
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SelectorEncoding {
+    Synthetic,
+    Native,
+}
+
+impl SelectorEncoding {
+    pub(crate) fn action_id(
+        self,
+        generation: u64,
+        selection_id: &str,
+        option_id: &str,
+        kind: &str,
+        choice: Option<&str>,
+    ) -> String {
+        match self {
+            Self::Synthetic => choice.map_or_else(
+                || format!("{kind}:{generation}:{option_id}"),
+                |choice| format!("{kind}:{generation}:{option_id}:{choice}"),
+            ),
+            Self::Native => {
+                let suffix =
+                    choice.map_or_else(|| kind.to_owned(), |choice| format!("{kind}:{choice}"));
+                format!("rest-selection:{generation}:{selection_id}:{suffix}")
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct DownstreamRequest {
     pub(crate) method: String,
@@ -53,7 +82,11 @@ impl Phase {
     fn identity(self) -> (&'static str, u64) {
         match self {
             Self::SmithOption => ("live:9", 9),
-            Self::SmithSelection(selected) => ("live:10", 10 + u64::from(selected)),
+            Self::SmithSelection(selected) => match selected {
+                0 => ("live:10", 10),
+                1 => ("live:11", 11),
+                _ => ("live:12", 12),
+            },
             Self::MendOption => ("live:13", 13),
             Self::MendSelection => ("live:14", 14),
             Self::Victory => ("live:15", 15),
@@ -84,6 +117,7 @@ struct Operation {
 #[derive(Debug)]
 struct FixtureState {
     phase: Phase,
+    selector_encoding: SelectorEncoding,
     operations: BTreeMap<String, Operation>,
     duplicate_posts: usize,
 }
@@ -115,13 +149,16 @@ pub(crate) fn verify_canonical_inputs() -> Result<(), Box<dyn std::error::Error>
 }
 
 impl ModServer {
-    pub(crate) fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn new_with_style(
+        selector_encoding: SelectorEncoding,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
         listener.set_nonblocking(true)?;
         let address = listener.local_addr()?;
         let stop = Arc::new(AtomicBool::new(false));
         let state = Arc::new(Mutex::new(FixtureState {
             phase: Phase::SmithOption,
+            selector_encoding,
             operations: BTreeMap::new(),
             duplicate_posts: 0,
         }));

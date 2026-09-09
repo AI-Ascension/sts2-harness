@@ -11,7 +11,9 @@ fn fixture_response(
             200,
             v3_response("legal_actions_response", request, state.phase)?,
         )),
-        "/api/v4/runtime/expert-state" => Ok((200, expert_state(state.phase)?)),
+        "/api/v4/runtime/expert-state" => {
+            Ok((200, expert_state(state.phase, state.selector_encoding)?))
+        }
         "/api/v4/runtime/expert-rest-action" => rest_action_post(state, request),
         path if path.starts_with("/api/v4/runtime/expert-rest-actions/") => {
             rest_action_get(state, request, path)
@@ -112,7 +114,16 @@ fn rest_action_post(
         (Phase::SmithOption, "rest-option:9:smith") => {
             (503, unknown_response(&body_value(body))?, true, None)
         }
-        (Phase::SmithSelection(0), "select_card:10:smith:card:1") => {
+        (Phase::SmithSelection(0), action_id)
+            if action_id
+                == state.selector_encoding.action_id(
+                    10,
+                    "selection:10:smith",
+                    "smith",
+                    "select_card",
+                    Some("card:1"),
+                ) =>
+        {
             state.phase = Phase::SmithSelection(1);
             (
                 202,
@@ -121,20 +132,38 @@ fn rest_action_post(
                 Some(Settlement::SmithCardOne),
             )
         }
-        (Phase::SmithSelection(1), "select_card:11:smith:card:2") => {
+        (Phase::SmithSelection(1), action_id)
+            if action_id
+                == state.selector_encoding.action_id(
+                    11,
+                    "selection:10:smith",
+                    "smith",
+                    "select_card",
+                    Some("card:2"),
+                ) =>
+        {
             state.phase = Phase::SmithSelection(2);
             (
                 200,
-                smith_response(&body_value(body), 2)?,
+                smith_response(&body_value(body), 2, state.selector_encoding)?,
                 false,
                 Some(Settlement::SmithCardTwo),
             )
         }
-        (Phase::SmithSelection(2), "confirm_selection:12:smith") => {
+        (Phase::SmithSelection(2), action_id)
+            if action_id
+                == state.selector_encoding.action_id(
+                    12,
+                    "selection:10:smith",
+                    "smith",
+                    "confirm_selection",
+                    None,
+                ) =>
+        {
             state.phase = Phase::MendOption;
             (
                 200,
-                smith_response(&body_value(body), 3)?,
+                smith_response(&body_value(body), 3, state.selector_encoding)?,
                 false,
                 Some(Settlement::SmithCompleted),
             )
@@ -142,11 +171,20 @@ fn rest_action_post(
         (Phase::MendOption, "rest-option:13:mend") => {
             (503, unknown_response(&body_value(body))?, true, None)
         }
-        (Phase::MendSelection, "select_player:14:mend:player:local") => {
+        (Phase::MendSelection, action_id)
+            if action_id
+                == state.selector_encoding.action_id(
+                    14,
+                    "selection:14:mend",
+                    "mend",
+                    "select_player",
+                    Some("player:local"),
+                ) =>
+        {
             state.phase = Phase::Victory;
             (
                 200,
-                mend_response(&body_value(body), 1)?,
+                mend_response(&body_value(body), 1, state.selector_encoding)?,
                 false,
                 Some(Settlement::MendCompleted),
             )
@@ -193,11 +231,33 @@ fn rest_action_get(
         .get(operation_id)
         .cloned()
         .ok_or_else(|| format!("REST reconcile referenced unknown operation {operation_id}"))?;
-    if operation.settlement == Some(Settlement::SmithCardOne) {
-        return Ok((
-            200,
-            smith_response(&reconcile_body(request, operation_id, &operation), 1)?,
-        ));
+    let body = reconcile_body(request, operation_id, &operation);
+    match operation.settlement {
+        Some(Settlement::SmithCardOne) => {
+            return Ok((
+                200,
+                smith_response(&body, 1, state.selector_encoding)?,
+            ));
+        }
+        Some(Settlement::SmithCardTwo) => {
+            return Ok((
+                200,
+                smith_response(&body, 2, state.selector_encoding)?,
+            ));
+        }
+        Some(Settlement::SmithCompleted) => {
+            return Ok((
+                200,
+                smith_response(&body, 3, state.selector_encoding)?,
+            ));
+        }
+        Some(Settlement::MendCompleted) => {
+            return Ok((
+                200,
+                mend_response(&body, 1, state.selector_encoding)?,
+            ));
+        }
+        Some(Settlement::SmithRequested | Settlement::MendRequested) | None => {}
     }
     if !operation.unknown {
         return Err(format!(
@@ -218,10 +278,9 @@ fn rest_action_get(
     if let Some(record) = state.operations.get_mut(operation_id) {
         record.settlement = Some(settlement);
     }
-    let body = reconcile_body(request, operation_id, &operation);
     let response = match settlement {
-        Settlement::SmithRequested => smith_response(&body, 0)?,
-        Settlement::MendRequested => mend_response(&body, 0)?,
+        Settlement::SmithRequested => smith_response(&body, 0, state.selector_encoding)?,
+        Settlement::MendRequested => mend_response(&body, 0, state.selector_encoding)?,
         _ => return Err(String::from("invalid unknown operation settlement")),
     };
     Ok((200, response))
@@ -267,7 +326,11 @@ fn accepted_response(request: &Value) -> Result<Value, String> {
     Ok(response)
 }
 
-fn smith_response(request: &Value, step: usize) -> Result<Value, String> {
+fn smith_response(
+    request: &Value,
+    step: usize,
+    selector_encoding: SelectorEncoding,
+) -> Result<Value, String> {
     if step > 3 {
         return Err(format!("unsupported Smith producer-vector step {step}"));
     }
@@ -285,10 +348,13 @@ fn smith_response(request: &Value, step: usize) -> Result<Value, String> {
         json!(after_generation),
         json!(after_state),
     );
-    response["observation"] = expert_observation(match step {
-        0..=2 => Phase::SmithSelection(step as u8),
-        _ => Phase::MendOption,
-    })?;
+    response["observation"] = expert_observation(
+        match step {
+            0..=2 => Phase::SmithSelection(step as u8),
+            _ => Phase::MendOption,
+        },
+        selector_encoding,
+    )?;
     response["observation"]["state_id"] = json!(after_state);
     response["observation"]["generation"] = json!(after_generation);
     response["transition"]["before_generation"] = json!(before_generation);
@@ -296,7 +362,7 @@ fn smith_response(request: &Value, step: usize) -> Result<Value, String> {
     response["transition"]["rest_option_id"] = json!("smith");
     match step {
         0 => {
-            response["transition"]["selector"] = smith_selector(0);
+            response["transition"]["selector"] = smith_selector(0, selector_encoding);
         }
         1 => {
             response["transition"]["selection_id"] = json!("selection:10:smith");
@@ -304,7 +370,7 @@ fn smith_response(request: &Value, step: usize) -> Result<Value, String> {
             response["transition"]["required_count"] = json!(2);
             response["transition"]["selected_choice_ids"] = json!(["card:1"]);
             response["transition"]["remaining_count"] = json!(1);
-            response["transition"]["selector"] = smith_selector(1);
+            response["transition"]["selector"] = smith_selector(1, selector_encoding);
         }
         2 => {
             response["transition"]["selection_id"] = json!("selection:10:smith");
@@ -312,7 +378,7 @@ fn smith_response(request: &Value, step: usize) -> Result<Value, String> {
             response["transition"]["required_count"] = json!(2);
             response["transition"]["selected_choice_ids"] = json!(["card:1", "card:2"]);
             response["transition"]["remaining_count"] = json!(0);
-            response["transition"]["selector"] = smith_selector(2);
+            response["transition"]["selector"] = smith_selector(2, selector_encoding);
         }
         3 => {
             response["transition"]["selection_id"] = json!("selection:10:smith");
