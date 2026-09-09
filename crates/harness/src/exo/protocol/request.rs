@@ -159,7 +159,7 @@ impl ExoDecisionRequest {
 mod tests;
 
 #[cfg(all(test, unix))]
-#[path = "request_real_mcp_tests.rs"]
+#[path = "../../../tests/support/exo_request_real_mcp_tests.rs"]
 mod real_mcp_tests;
 
 pub(super) fn valid_revision(value: &str) -> bool {
