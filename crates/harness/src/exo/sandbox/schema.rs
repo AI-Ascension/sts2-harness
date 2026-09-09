@@ -49,6 +49,7 @@ pub(super) fn is_allowed(kind: ValueKind, key: &str) -> bool {
             "character_id",
             "node_id",
             "card_id",
+            "player_id",
             "target_id",
             "reward_id",
             "item_id",
@@ -150,6 +151,7 @@ pub(super) fn validate_shape(
             Some("shop_remove" | "smith" | "select_card") => {
                 require_exact(object, &["kind", "card_id"])
             }
+            Some("select_player") => require_exact(object, &["kind", "player_id"]),
             Some("event_choice") => require_exact(object, &["kind", "choice_id"]),
             Some("end_turn" | "skip_reward" | "rest" | "confirm_victory" | "save_quit") => {
                 require_exact(object, &["kind"])

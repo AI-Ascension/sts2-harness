@@ -75,7 +75,7 @@ fn rest_selection_completion_reconcile_uses_operation_selector_after_reobserve()
         rpc_value(1, v3_state("state_response", "1", "live:9", 9, "rest")?),
         rpc_value(2, v3_state("legal_actions_response", "2", "live:9", 9, "rest")?),
         rpc_value(3, v3_state("legal_actions_response", "3", "live:10", 10, "selection")?),
-        rpc_value(4, v3_state("state_response", "4", "live:11", 11, "rest")?),
+        rpc_value(4, v3_state("reobserve_response", "4", "live:11", 11, "rest")?),
     ];
     let expert_responses = vec![
         rpc_value(1, initial.clone()),
@@ -114,6 +114,16 @@ fn rest_selection_completion_reconcile_uses_operation_selector_after_reobserve()
     let mend_identity = identity("rest-op:9:mend", "live:9", 9, &mend)?;
     let requested = port.dispatch_action(&mend_identity, &mend)?;
     assert_eq!(requested.status(), DispatchStatus::Settled);
+    let selector_observation = requested
+        .after()
+        .ok_or("selection request omitted its composed observation")?;
+    assert_eq!(
+        selector_observation.fair_play().as_value()["legal_actions"][0]["action"],
+        json!({"kind":"select_player", "player_id":"player:local"})
+    );
+    assert!(selector_observation.fair_play().as_value()["legal_actions"][0]["action"]
+        .get("selection_id")
+        .is_none());
 
     let selection_legal = port.legal_actions("live:10", 10)?;
     let select_player = action(&selection_legal, "select_player:10:mend:player:local")?;
@@ -126,7 +136,7 @@ fn rest_selection_completion_reconcile_uses_operation_selector_after_reobserve()
     let unknown = port.dispatch_action(&select_identity, &select_player)?;
     assert_eq!(unknown.status(), DispatchStatus::Unknown);
 
-    let fresh = port.observe()?;
+    let fresh = RecoveryPort::reobserve(&mut port)?;
     assert_eq!(fresh.state_id(), "live:11");
     assert_eq!(fresh.generation(), 11);
     let completed = port.reconcile("rest-select:10-mend-player")?;
@@ -161,5 +171,9 @@ fn rest_selection_completion_reconcile_uses_operation_selector_after_reobserve()
         reconciled[0]["params"]["arguments"]["operation_id"],
         "rest-select:10-mend-player"
     );
+    let normal_requests = fixture.read_requests("normal.requests")?;
+    assert!(normal_requests
+        .iter()
+        .any(|request| request["params"]["name"] == "sts2.reobserve"));
     Ok(())
 }

@@ -117,44 +117,6 @@ impl RuntimeV3Port {
         })
     }
 
-    pub(super) fn compose_current_observation(
-        &mut self,
-        baseline: EpisodeObservation,
-    ) -> Result<EpisodeObservation, String> {
-        self.compose_current_observation_classified(baseline, false)
-            .map_err(|error| error.message().to_owned())
-    }
-
-    /// Compose a fresh ordinary reobserve with the expert projection. The expert state call is
-    /// a bounded recovery read here, while parsing and cross-projection identity remain terminal.
-    pub(super) fn compose_current_observation_recovery(
-        &mut self,
-        baseline: EpisodeObservation,
-    ) -> Result<EpisodeObservation, RuntimeV3ToolError> {
-        self.compose_current_observation_classified(baseline, true)
-    }
-
-    fn compose_current_observation_classified(
-        &mut self,
-        baseline: EpisodeObservation,
-        catalog_read: bool,
-    ) -> Result<EpisodeObservation, RuntimeV3ToolError> {
-        let expert = self.expert_state_classified(catalog_read)?;
-        let normal_actions = self
-            .current_actions
-            .clone()
-            .ok_or_else(|| {
-                RuntimeV3ToolError::Terminal(String::from(
-                    "normal catalog is unavailable for expert composition",
-                ))
-            })?;
-        let normal_payloads = self.payloads.clone();
-        let composed = compose_with_normal(&baseline, &normal_actions, &normal_payloads, &expert)
-            .map_err(RuntimeV3ToolError::Terminal)?;
-        self.install_composed(&composed);
-        Ok(composed.observation)
-    }
-
     pub(super) fn merge_current_expert_actions(
         &mut self,
         state_id: &str,
@@ -304,3 +266,4 @@ impl RuntimeV3Port {
 
 include!("runtime_v4_expert_port_transport_receipt.rs");
 include!("runtime_v4_expert_port_transport_composition.rs");
+include!("runtime_v4_expert_port_transport_observation.rs");

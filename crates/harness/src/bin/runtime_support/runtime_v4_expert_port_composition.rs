@@ -105,6 +105,7 @@ fn compose_with_normal(
     })
 }
 
+
 fn merge_actions(
     normal_actions: &EpisodeLegalActionSet,
     normal_payloads: &BTreeMap<String, Value>,
@@ -285,3 +286,4 @@ impl RuntimeV3Port {
         self.retain_rest_selector();
     }
 }
+include!("runtime_v4_expert_port_composition_rest.rs");

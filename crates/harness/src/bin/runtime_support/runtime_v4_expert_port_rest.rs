@@ -125,8 +125,7 @@ impl RuntimeV3Port {
             {
                 return Err(String::from("REST settlement observation identity is inconsistent"));
             }
-            let composed = expert_only_observation(&expert)?;
-            self.install_composed(&composed);
+            let mut composed = expert_only_observation(&expert)?;
             if let Some(transition) = result.transition()
                 && matches!(
                     transition["kind"].as_str(),
@@ -138,7 +137,9 @@ impl RuntimeV3Port {
                     expert.state_id(),
                     expert.generation(),
                 )?;
+                self.apply_active_rest_selector(&mut composed)?;
             }
+            self.install_composed(&composed);
             Some(composed.observation)
         } else {
             None
@@ -193,6 +194,8 @@ impl RuntimeV3Port {
         Ok(())
     }
 }
+
+include!("runtime_v4_expert_port_rest_overlay.rs");
 
 fn rest_action_request(
     config: &super::RuntimeConfig,

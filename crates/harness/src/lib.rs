@@ -115,7 +115,8 @@ pub use runtime_v4_expert_action_artifact::{
     verify_runtime_v4_expert_action_artifact,
 };
 pub use runtime_v4_expert_artifact::{
-    RUNTIME_V4_EXPERT_ARTIFACT, RUNTIME_V4_EXPERT_GENERATOR, RUNTIME_V4_EXPERT_PROTOCOL_VERSION,
+    RUNTIME_V4_EXPERT_ARTIFACT, RUNTIME_V4_EXPERT_FAIR_PLAY_PROJECTION,
+    RUNTIME_V4_EXPERT_GENERATOR, RUNTIME_V4_EXPERT_PROTOCOL_VERSION,
     RUNTIME_V4_EXPERT_SCHEMA_DIGEST, RUNTIME_V4_EXPERT_SCHEMA_SOURCE, RuntimeV4ExpertArtifactError,
     verify_runtime_v4_expert_artifact,
 };
