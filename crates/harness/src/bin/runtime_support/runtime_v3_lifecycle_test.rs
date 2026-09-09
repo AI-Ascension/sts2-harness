@@ -249,3 +249,8 @@ mod reconnect {
         include!("runtime_v3_lifecycle_fault_matrix_test.rs");
     }
 }
+
+#[cfg(unix)]
+mod rest_action {
+    include!("runtime_v3_lifecycle_rest_action_test.rs");
+}

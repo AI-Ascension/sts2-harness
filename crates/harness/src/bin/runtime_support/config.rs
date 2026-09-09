@@ -26,10 +26,14 @@ impl RuntimeConfig {
         let runtime_profile = env_or_default("STS2_RUNTIME_PROFILE", "runtime-v1")?;
         if !matches!(
             runtime_profile.as_str(),
-            "runtime-v1" | "runtime-v2" | "runtime-v3-gameplay" | "runtime-v4-expert"
+            "runtime-v1"
+                | "runtime-v2"
+                | "runtime-v3-gameplay"
+                | "runtime-v4-expert"
+                | "runtime-v4-expert-rest-action"
         ) {
             return Err(String::from(
-                "STS2_RUNTIME_PROFILE must be runtime-v1, runtime-v2, runtime-v3-gameplay, or runtime-v4-expert",
+                "STS2_RUNTIME_PROFILE must be runtime-v1, runtime-v2, runtime-v3-gameplay, runtime-v4-expert, or runtime-v4-expert-rest-action",
             ));
         }
         let session_id = env_or_default("STS2_SESSION_ID", "session-1")?;

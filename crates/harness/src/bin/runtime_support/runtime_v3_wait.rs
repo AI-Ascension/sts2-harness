@@ -21,7 +21,7 @@ impl BarrierPort for RuntimeV3Port {
             let sample = if self.operations.contains_key(operation_id) {
                 if self.is_expert_profile()
                     && self.operations.get(operation_id).is_some_and(|record| {
-                        record.action.kind() == sts2_harness::ActionKind::UsePotion
+                        self.uses_expert_transport(&record.action, &record.payload)
                     })
                 {
                     self.poll_expert_operation(operation_id)?

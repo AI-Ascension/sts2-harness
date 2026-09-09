@@ -1,53 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-#[derive(Debug)]
-pub(super) enum RuntimeV3ToolError {
-    Transient(String),
-    Terminal(String),
-}
 
-impl RuntimeV3ToolError {
-    fn from_rpc_for(error: wire::RpcFailure, transient_allowed: bool) -> Self {
-        if transient_allowed && error.is_transient() {
-            Self::Transient(error.to_string())
-        } else {
-            Self::Terminal(error.to_string())
-        }
-    }
-
-    pub(super) fn message(&self) -> &str {
-        match self {
-            Self::Transient(message) | Self::Terminal(message) => message,
-        }
-    }
-}
-
-fn classify_mcp_error(
-    error: sts2_harness::PortError,
-    transient_allowed: bool,
-) -> RuntimeV3ToolError {
-    if transient_allowed {
-        RuntimeV3ToolError::Transient(error.to_string())
-    } else {
-        RuntimeV3ToolError::Terminal(error.to_string())
-    }
-}
-
-fn finish_telemetry(telemetry: RuntimeV3Telemetry) {
-    let report = telemetry.finish(std::time::Duration::from_secs(2));
-    if report.export_status() != "delivered" {
-        eprintln!(
-            "runtime-v3 telemetry export status={} sent={} failed={} dropped={} timed_out={}",
-            report.export_status(),
-            report.sent,
-            report.failed,
-            report
-                .normal_dropped
-                .saturating_add(report.critical_dropped),
-            report.timed_out
-        );
-    }
-}
+include!("runtime_v3_port_helpers.rs");
 
 impl RuntimeV3Port {
     fn new_with_telemetry(
@@ -68,6 +22,8 @@ impl RuntimeV3Port {
             current_state: None,
             current_actions: None,
             payloads: BTreeMap::new(),
+            rest_selector_actions: None,
+            rest_selector_payloads: BTreeMap::new(),
             operations: BTreeMap::new(),
             reconnect_attempts: 0,
             telemetry,
@@ -203,7 +159,21 @@ impl RuntimeV3Port {
         self.current_state = Some(parsed.observation.state_id().to_owned());
         self.current_actions = Some(parsed.actions);
         self.payloads = parsed.payloads;
+        self.retain_rest_selector();
         parsed.observation
+    }
+
+    fn retain_rest_selector(&mut self) {
+        let keep = self.is_rest_profile()
+            && self.rest_selector_actions.as_ref().is_some_and(|selector| {
+                self.current_state
+                    .as_deref()
+                    .is_some_and(|state| selector.assert_matches(state, self.generation).is_ok())
+            });
+        if !keep {
+            self.rest_selector_actions = None;
+            self.rest_selector_payloads.clear();
+        }
     }
 
     fn install_response(&mut self, value: &Value, expected_kind: &str) -> Result<(), String> {
@@ -256,7 +226,8 @@ impl RuntimeV3Port {
         }
         self.mcp = Some(mcp);
         if self.is_expert_profile() {
-            let mut expert = match McpProcess::spawn_profile(&self.config, "runtime-v4-expert") {
+            let profile = self.expert_mcp_profile();
+            let mut expert = match McpProcess::spawn_profile(&self.config, profile) {
                 Ok(expert) => expert,
                 Err(error) => {
                     let close = self
@@ -267,7 +238,7 @@ impl RuntimeV3Port {
                     return Err(wire::combine_cleanup(error, close, release));
                 }
             };
-            if let Err(error) = wire::initialize_mcp_profile(&mut expert, "runtime-v4-expert") {
+            if let Err(error) = wire::initialize_mcp_profile(&mut expert, profile) {
                 let expert_close = expert.close();
                 let normal_close = self
                     .mcp

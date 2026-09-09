@@ -52,9 +52,10 @@ impl RuntimeV3Port {
             .map_err(map_initialization_error)?;
         self.mcp = Some(mcp);
         if self.is_expert_profile() {
-            let mut expert = McpProcess::spawn_profile(&self.config, "runtime-v4-expert")
+            let profile = self.expert_mcp_profile();
+            let mut expert = McpProcess::spawn_profile(&self.config, profile)
                 .map_err(|_| RecoveryError::PortFailure)?;
-            wire::initialize_mcp_profile_classified(&mut expert, "runtime-v4-expert")
+            wire::initialize_mcp_profile_classified(&mut expert, profile)
                 .map_err(map_initialization_error)?;
             self.expert_mcp = Some(expert);
         }
@@ -110,7 +111,7 @@ impl RecoveryPort for RuntimeV3Port {
             .cloned()
             .ok_or(RecoveryError::InvalidOperation)?;
         self.reconnect_for_recovery()?;
-        if self.is_expert_profile() && record.action.kind() == sts2_harness::ActionKind::UsePotion {
+        if self.uses_expert_transport(&record.action, &record.payload) {
             let receipt = self
                 .reconcile_expert_operation(operation_id)
                 .map_err(|_| RecoveryError::PortFailure)?;

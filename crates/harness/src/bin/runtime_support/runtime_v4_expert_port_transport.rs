@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-impl RuntimeV3Port {
-    pub(super) fn is_expert_profile(&self) -> bool {
-        self.config.runtime_profile == PROFILE
-    }
+include!("runtime_v4_expert_port_profile.rs");
 
+impl RuntimeV3Port {
     fn expert_mcp_mut(&mut self) -> Result<&mut super::super::mcp::McpProcess, String> {
         self.expert_mcp
             .as_mut()
@@ -199,6 +197,9 @@ impl RuntimeV3Port {
         action: &EpisodeLegalAction,
         payload: Value,
     ) -> Result<TransitionReceipt, sts2_harness::PortError> {
+        if self.is_rest_profile() {
+            return self.dispatch_rest_action(identity, action, payload);
+        }
         let request_value = action_request(&self.config, identity, action, &payload, "request");
         let request = RuntimeV4ExpertActionRequest::from_value(request_value).map_err(|error| {
             wire::port_error("expert_request_invalid", error.to_string(), false)
@@ -239,8 +240,11 @@ impl RuntimeV3Port {
             .get(operation_id)
             .cloned()
             .ok_or_else(|| String::from("expert operation is not in the ledger"))?;
-        if record.action.kind() != ActionKind::UsePotion {
+        if !self.uses_expert_transport(&record.action, &record.payload) {
             return Err(String::from("operation is not a Runtime-v4 expert action"));
+        }
+        if self.is_rest_profile() {
+            return self.reconcile_rest_operation(operation_id);
         }
         let identity = ActionIdentity::new(
             operation_id.to_owned(),

@@ -118,7 +118,21 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         self.current_actions = Some(actions.clone());
         self.payloads = payloads;
         if self.is_expert_profile() {
-            return self.expert_catalog(state_id, generation);
+            let actions = self.expert_catalog(state_id, generation)?;
+            if self.is_rest_profile()
+                && self
+                    .rest_selector_actions
+                    .as_ref()
+                    .is_some_and(|selector| selector.assert_matches(state_id, generation).is_ok())
+            {
+                let selector = self.rest_selector_actions.clone().ok_or_else(|| {
+                    wire::port_error("rest_selector_invalid", "selector disappeared", false)
+                })?;
+                self.current_actions = Some(selector.clone());
+                self.payloads = self.rest_selector_payloads.clone();
+                return Ok(selector);
+            }
+            return Ok(actions);
         }
         Ok(actions)
     }
@@ -149,7 +163,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         self.validate_current_action(identity, action)?;
         let payload = self.current_payload(action)?;
         self.retain_operation(identity, action, &payload)?;
-        if self.is_expert_profile() && action.kind() == sts2_harness::ActionKind::UsePotion {
+        if self.uses_expert_transport(action, &payload) {
             return self.dispatch_expert_action(identity, action, payload);
         }
         let value = self
@@ -280,35 +294,5 @@ fn legal_action_argument(action_id: &str, payload: Value) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{json, legal_action_argument};
-    use serde_json::Value;
-
-    #[test]
-    fn dispatch_preserves_the_complete_host_legal_action_reference()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let mut request: Value = serde_json::from_str(include_str!(
-            "../../../../../protocol-artifact/runtime-v3-gameplay/golden/dispatch-action-request.json"
-        ))?;
-        let schema: Value = serde_json::from_str(include_str!(
-            "../../../../../protocol-artifact/runtime-v3-gameplay/schema.json"
-        ))?;
-        let validator = jsonschema::validator_for(&schema)?;
-        let original_action = request["action"].clone();
-        let action_id = original_action["action_id"].as_str().ok_or("action ID")?;
-        let payload = original_action["action"].clone();
-        request["action"] = legal_action_argument(action_id, payload.clone());
-        assert_eq!(request["action"], original_action);
-        assert!(validator.is_valid(&request));
-        request["action"] = payload;
-        assert!(
-            !validator.is_valid(&request),
-            "bare payload must be rejected"
-        );
-        let card = json!({"kind": "play_card", "card_id": "c1", "target_id": null});
-        request["action"] = legal_action_argument("host-card-ref", card.clone());
-        assert_eq!(request["action"]["action_id"], "host-card-ref");
-        assert_eq!(request["action"]["action"], card);
-        assert!(validator.is_valid(&request));
-        Ok(())
-    }
+    include!("runtime_v3_episode_tests.rs");
 }
