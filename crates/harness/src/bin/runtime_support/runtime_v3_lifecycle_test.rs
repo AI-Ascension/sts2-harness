@@ -10,6 +10,7 @@ use super::*;
 
 fn config(address: String) -> RuntimeConfig {
     RuntimeConfig {
+        seed_transport: None,
         gateway_address: address,
         gateway_token: "synthetic-token".into(),
         mcp_binary: "unused-test-binary".into(),

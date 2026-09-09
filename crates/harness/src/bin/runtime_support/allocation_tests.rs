@@ -5,6 +5,7 @@ use super::*;
 
 fn config() -> RuntimeConfig {
     RuntimeConfig {
+        seed_transport: None,
         gateway_address: "127.0.0.1:1".into(),
         gateway_token: "synthetic-token".into(),
         mcp_binary: "unused".into(),

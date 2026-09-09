@@ -13,6 +13,8 @@ impl RuntimeV3Port {
             config,
             gateway,
             mcp: None,
+            seeded_mcp: None,
+            seeded_receipt: None,
             expert_mcp: None,
             allocated: false,
             released: false,
@@ -189,6 +191,28 @@ impl RuntimeV3Port {
         Ok(())
     }
 
+    fn close_mcp_processes(&mut self) -> Result<(), String> {
+        let mut failure = None;
+        if let Some(mcp) = self.seeded_mcp.as_mut()
+            && let Err(error) = mcp.close()
+        {
+            failure = Some(error);
+        }
+        if let Some(mcp) = self.expert_mcp.as_mut()
+            && let Err(error) = mcp.close()
+            && failure.is_none()
+        {
+            failure = Some(error);
+        }
+        if let Some(mcp) = self.mcp.as_mut()
+            && let Err(error) = mcp.close()
+            && failure.is_none()
+        {
+            failure = Some(error);
+        }
+        failure.map_or(Ok(()), Err)
+    }
+
     fn release_lease_inner(&mut self) -> Result<(), String> {
         if !self.allocated || self.released {
             return Ok(());
@@ -258,34 +282,5 @@ impl RuntimeV3Port {
         }
         Ok(())
     }
-}
 
-impl ShutdownPort for RuntimeV3Port {
-    fn release_lease(&mut self) -> Result<(), ShutdownError> {
-        self.release_lease_inner()
-            .map_err(|_| ShutdownError::ReleaseFailed)
-    }
-
-    fn close_mcp(&mut self) -> Result<(), ShutdownError> {
-        let mut failure = None;
-        if let Some(mcp) = self.expert_mcp.as_mut()
-            && mcp.close().is_err()
-        {
-            failure = Some(ShutdownError::McpCloseFailed);
-        }
-        if let Some(mcp) = self.mcp.as_mut()
-            && mcp.close().is_err()
-            && failure.is_none()
-        {
-            failure = Some(ShutdownError::McpCloseFailed);
-        }
-        failure.map_or(Ok(()), Err)
-    }
-
-    fn close_gateway(&mut self) -> Result<(), ShutdownError> {
-        if self.allocated && !self.released {
-            return Err(ShutdownError::GatewayCloseFailed);
-        }
-        Ok(())
-    }
 }

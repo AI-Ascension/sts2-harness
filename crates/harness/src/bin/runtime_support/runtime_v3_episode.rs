@@ -58,6 +58,26 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         if let Err(error) = self.launch_mcp() {
             return Err(wire::port_error("runtime_launch_failed", error, false));
         }
+        if self.config.seed_transport.is_some() {
+            if let Err(error) = self.prime_seed_generation() {
+                let close = self.close_mcp_processes();
+                let release = self.release_lease_inner();
+                return Err(wire::port_error(
+                    "seeded_run_preflight_failed",
+                    wire::combine_cleanup(error, close, release),
+                    false,
+                ));
+            }
+            if let Err(error) = self.launch_seeded_run() {
+                let close = self.close_mcp_processes();
+                let release = self.release_lease_inner();
+                return Err(wire::port_error(
+                    "seeded_run_failed",
+                    wire::combine_cleanup(error, close, release),
+                    false,
+                ));
+            }
+        }
         Ok(())
     }
 

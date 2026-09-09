@@ -89,6 +89,7 @@ mod tests {
         )
         .map_err(|error| error.to_string())?;
         let config = super::super::RuntimeConfig {
+            seed_transport: None,
             gateway_address: String::from("127.0.0.1:15525"),
             gateway_token: String::from("token"),
             mcp_binary: String::from("mcp"),
@@ -135,6 +136,7 @@ mod tests {
         )
         .map_err(|error| error.to_string())?;
         let config = super::super::RuntimeConfig {
+            seed_transport: None,
             gateway_address: String::from("127.0.0.1:15525"),
             gateway_token: String::from("token"),
             mcp_binary: String::from("mcp"),

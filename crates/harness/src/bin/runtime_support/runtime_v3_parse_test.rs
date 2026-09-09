@@ -59,6 +59,7 @@ fn unknown_results_still_validate_generation_and_nullable_state_identity() -> Re
 
 fn config() -> RuntimeConfig {
     RuntimeConfig {
+        seed_transport: None,
         gateway_address: String::from("127.0.0.1:15525"),
         gateway_token: String::from("test-token"),
         mcp_binary: String::from("mcp"),
