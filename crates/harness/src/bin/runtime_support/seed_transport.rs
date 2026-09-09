@@ -272,10 +272,9 @@ impl SeedTransportConfig {
             "lease_epoch": lease_epoch,
             "generation": generation,
             "operation_id": self.operation_id,
-            "requested_seed": self.requested_seed,
+            "seed": self.requested_seed,
             "run_mode": self.run_mode,
             "selected_context": self.selected_context(),
-            "context_digest": self.context_digest(),
         })
     }
 

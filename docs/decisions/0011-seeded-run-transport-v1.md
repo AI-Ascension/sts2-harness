@@ -37,6 +37,13 @@ operation ID. It never retries start with a new operation identity. A settled re
 native canonical seed lineage, a fresh advanced observation, and a `run_started` effect witness;
 an accepted response is admission only.
 
+The `start_seeded_run` MCP arguments follow the catalog exactly: the requested seed is sent as
+`seed`, while `selected_context` carries its validated `context_digest`. The top-level MCP
+arguments contain no `requested_seed`, `context_digest`, `plan_digest`, or `entry_ordinal`; the
+MCP mapper converts `seed` to the native protocol's `requested_seed` and derives the native
+`context_digest` from `selected_context`. The harness still preserves `requested_seed` in its
+reservation, receipt, and native response validation.
+
 When `STS2_SEED_VERIFY_IDEMPOTENCY=true`, the harness sends one exact duplicate start request with
 the same operation, lease, context, and generation identity after settlement. It compares the
 canonical seed, observation, and effect witness, then performs a read-only reconciliation. This is

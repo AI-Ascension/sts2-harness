@@ -4,6 +4,8 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde_json::Value;
+
 use super::validation::{context_digest, validate_context, validate_plan};
 use super::{PlanDocument, SeedTransportConfig, SelectedContext};
 
@@ -18,6 +20,45 @@ fn concrete_standard_ironclad_context_matches_protocol_golden_digest() {
     assert_eq!(
         context_digest(&context).unwrap_or_default(),
         context.context_digest
+    );
+}
+
+#[test]
+fn seeded_start_arguments_match_seeded_run_v1_mcp_catalog() {
+    let config = SeedTransportConfig::fixture_for_tests("S2TSWF0651", "seed-start-test");
+    let arguments = config.start_arguments("instance-1", "mcp-session-1", "lease-1", 3, 7);
+    let object = arguments
+        .as_object()
+        .unwrap_or_else(|| panic!("seeded start arguments must be an object"));
+    let mut actual = object.keys().map(String::as_str).collect::<Vec<_>>();
+    actual.sort_unstable();
+    let mut expected = vec![
+        "generation",
+        "instance_id",
+        "lease_epoch",
+        "lease_id",
+        "mcp_session_id",
+        "operation_id",
+        "run_mode",
+        "seed",
+        "selected_context",
+    ];
+    expected.sort_unstable();
+    assert_eq!(actual, expected);
+    assert_eq!(
+        object.get("seed").and_then(Value::as_str),
+        Some("S2TSWF0651")
+    );
+    assert!(!object.contains_key("requested_seed"));
+    assert!(!object.contains_key("context_digest"));
+    assert!(!object.contains_key("plan_digest"));
+    assert!(!object.contains_key("entry_ordinal"));
+    assert_eq!(
+        object
+            .get("selected_context")
+            .and_then(|value| value.get("context_digest"))
+            .and_then(Value::as_str),
+        Some(config.context_digest())
     );
 }
 
