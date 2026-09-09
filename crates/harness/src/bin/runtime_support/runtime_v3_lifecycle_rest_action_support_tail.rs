@@ -84,6 +84,62 @@ fn settled_selection_requested(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn settled_mend_selection_completed(
+    correlation_id: &str,
+    state_id: &str,
+    generation: u64,
+    before_generation: u64,
+    operation_id: &str,
+    action_id: &str,
+    selection_id: &str,
+    target_player_id: &str,
+    observation_actions: Value,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let mut value: Value = serde_json::from_str(include_str!(
+        "../../../../../protocol-artifact/runtime-v4-expert-rest-action/golden/action-mend-selection-completed.json"
+    ))?;
+    set_response_identity(
+        &mut value,
+        correlation_id,
+        state_id,
+        generation,
+        operation_id,
+        action_id,
+        json!({
+            "kind":"select_player",
+            "selection_id":selection_id,
+            "rest_option_id":"mend",
+            "player_id":target_player_id
+        }),
+    );
+    value["observation"]["state_id"] = json!(state_id);
+    value["observation"]["generation"] = json!(generation);
+    value["observation"]["state"] = json!({
+        "state":"rest",
+        "choices":[{"choice_id":"rest:proceed","label":"Proceed","kind":"rest","domain":null}]
+    });
+    value["observation"]["legal_actions"] = observation_actions;
+    value["transition"]["before_generation"] = json!(before_generation);
+    value["transition"]["after_generation"] = json!(generation);
+    value["transition"]["rest_option_id"] = json!("mend");
+    value["transition"]["selection_id"] = json!(selection_id);
+    value["transition"]["selection_kind"] = json!("player");
+    value["transition"]["required_count"] = json!(1);
+    value["transition"]["selected_choice_ids"] = json!([target_player_id]);
+    value["transition"]["remaining_count"] = json!(0);
+    value["transition"]["completed"] = json!(true);
+    value["effect_witness"]["operation_id"] = json!(operation_id);
+    value["effect_witness"]["rest_option_id"] = json!("mend");
+    value["effect_witness"]["generation"] = json!(generation);
+    value["effect_witness"]["target_player_id"] = json!(target_player_id);
+    value["transition"]["effect_witness"]["operation_id"] = json!(operation_id);
+    value["transition"]["effect_witness"]["rest_option_id"] = json!("mend");
+    value["transition"]["effect_witness"]["generation"] = json!(generation);
+    value["transition"]["effect_witness"]["target_player_id"] = json!(target_player_id);
+    Ok(value)
+}
+
+#[allow(clippy::too_many_arguments)]
 fn settled_progressed(
     file: &str,
     correlation_id: &str,

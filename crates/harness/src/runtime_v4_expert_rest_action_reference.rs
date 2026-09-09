@@ -97,7 +97,7 @@ fn validate_selector(
     let required = positive_count(&selector["required_count"])?;
     let selected = bounded_unique_ids(&selector["selected_choice_ids"])?;
     let remaining = bounded_count(&selector["remaining_count"])?;
-    if remaining != required.saturating_sub(selected.len()) {
+    if selected.len() > required || remaining != required - selected.len() {
         return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
     }
     let option = selector_option_from_actions(&selector["legal_actions"])?;
@@ -106,13 +106,22 @@ fn validate_selector(
     {
         return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
     }
-    let choices: BTreeSet<&str> = expert.as_value()["state"]["choices"]
+    let choice_values = expert.as_value()["state"]["choices"]
         .as_array()
-        .ok_or(RuntimeV4ExpertRestActionParseError::InvalidValue)?
-        .iter()
-        .filter_map(|choice| choice["choice_id"].as_str())
-        .collect();
+        .ok_or(RuntimeV4ExpertRestActionParseError::InvalidValue)?;
+    let mut choices = BTreeSet::new();
+    for choice in choice_values {
+        let choice_id = choice["choice_id"]
+            .as_str()
+            .ok_or(RuntimeV4ExpertRestActionParseError::InvalidValue)?;
+        if !identity(&Value::String(choice_id.to_owned())) || !choices.insert(choice_id) {
+            return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
+        }
+    }
     if choices.is_empty() {
+        return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
+    }
+    if selected.iter().any(|choice_id| !choices.contains(choice_id)) {
         return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
     }
     let actions = selector["legal_actions"]

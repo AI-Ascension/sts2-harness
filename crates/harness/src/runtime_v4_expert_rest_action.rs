@@ -229,6 +229,8 @@ impl RuntimeV4ExpertRestActionResult {
 include!("runtime_v4_expert_rest_action_boundary.rs");
 include!("runtime_v4_expert_rest_action_reference.rs");
 include!("runtime_v4_expert_rest_action_witness.rs");
+include!("runtime_v4_expert_rest_action_settled.rs");
+include!("runtime_v4_expert_rest_action_validation_helpers.rs");
 include!("runtime_v4_expert_rest_action_strict.rs");
 
 #[cfg(test)]

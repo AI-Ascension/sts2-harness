@@ -172,3 +172,5 @@ fn rest_action_transport_reconciles_selectors_and_preserves_operation_identity()
     }));
     Ok(())
 }
+
+include!("runtime_v3_lifecycle_rest_action_reobserve.rs");

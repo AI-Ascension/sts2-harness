@@ -281,9 +281,13 @@ impl RuntimeV3Port {
                 false,
             ));
         }
+        let rest_selector = self.rest_selector_value.clone();
         self.operations
             .entry(identity.operation_id.clone())
-            .or_insert_with(|| OperationRecord::new(identity, action, payload.clone()));
+            .or_insert_with(|| {
+                OperationRecord::new(identity, action, payload.clone())
+                    .with_rest_selector(rest_selector)
+            });
         Ok(())
     }
 }

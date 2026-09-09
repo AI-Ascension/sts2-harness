@@ -23,12 +23,13 @@ fn validate_selection_fields(
 ) -> Result<(), RuntimeV4ExpertRestActionParseError> {
     if !identity(&value["selection_id"])
         || !matches!(value["selection_kind"].as_str(), Some("card" | "player"))
-        || positive_count(&value["required_count"])? > MAX_SELECTOR_ITEMS
-        || bounded_unique_ids(&value["selected_choice_ids"])?.len() > MAX_SELECTOR_ITEMS
-        || bounded_count(&value["remaining_count"])?
-            != positive_count(&value["required_count"])?
-                .saturating_sub(bounded_unique_ids(&value["selected_choice_ids"])?.len())
     {
+        return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
+    }
+    let required = positive_count(&value["required_count"])?;
+    let selected = bounded_unique_ids(&value["selected_choice_ids"])?;
+    let remaining = bounded_count(&value["remaining_count"])?;
+    if selected.len() > required || remaining != required - selected.len() {
         return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
     }
     Ok(())
@@ -89,22 +90,47 @@ fn validate_witness(
     if witness["kind"] != expected_kind {
         return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
     }
-    let evidence = witness["evidence"]
-        .as_object()
+    let evidence = witness
+        .get("evidence")
         .ok_or(RuntimeV4ExpertRestActionParseError::InvalidShape)?;
-    let evidence_kind = evidence["kind"]
-        .as_str()
+    let evidence_kind = evidence
+        .get("kind")
+        .and_then(Value::as_str)
         .ok_or(RuntimeV4ExpertRestActionParseError::InvalidValue)?;
-    let expected_evidence = match option {
-        "heal" | "mend" => ["hp_change", "native_completion"].as_slice(),
-        "smith" | "clone" | "cook" => ["card_change"].as_slice(),
-        "dig" | "hatch" => ["relic_change"].as_slice(),
-        "lift" => ["stat_change", "native_completion"].as_slice(),
-        "kindle" => ["native_completion"].as_slice(),
-        _ => [].as_slice(),
-    };
-    if !expected_evidence.contains(&evidence_kind) {
-        return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
+    match option {
+        "heal" => {
+            if evidence_kind != "hp_change" {
+                return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
+            }
+            validate_hp_evidence(evidence, true)?;
+        }
+        "mend" => match evidence_kind {
+            "hp_change" => validate_hp_evidence(evidence, true)?,
+            "native_completion" => {
+                validate_native_evidence(evidence, root["state_id"].as_str().unwrap_or(""))?;
+            }
+            _ => return Err(RuntimeV4ExpertRestActionParseError::InvalidValue),
+        },
+        "clone" | "cook" | "smith" => {
+            validate_card_evidence(evidence, option)?;
+        }
+        "dig" | "hatch" => {
+            validate_relic_evidence(evidence)?;
+        }
+        "lift" => match evidence_kind {
+            "stat_change" => validate_stat_evidence(evidence)?,
+            "native_completion" => {
+                validate_native_evidence(evidence, root["state_id"].as_str().unwrap_or(""))?;
+            }
+            _ => return Err(RuntimeV4ExpertRestActionParseError::InvalidValue),
+        },
+        "kindle" => {
+            if evidence_kind != "native_completion" {
+                return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
+            }
+            validate_native_evidence(evidence, root["state_id"].as_str().unwrap_or(""))?;
+        }
+        _ => return Err(RuntimeV4ExpertRestActionParseError::InvalidValue),
     }
     if selection && option == "mend" && !identity(&witness["target_player_id"]) {
         return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
@@ -112,68 +138,110 @@ fn validate_witness(
     Ok(())
 }
 
-fn exact_fields(
-    value: &Map<String, Value>,
-    fields: &[&str],
+fn validate_card_evidence(
+    evidence: &Value,
+    option: &str,
 ) -> Result<(), RuntimeV4ExpertRestActionParseError> {
-    if value.len() != fields.len() || fields.iter().any(|field| !value.contains_key(*field)) {
-        Err(RuntimeV4ExpertRestActionParseError::InvalidShape)
-    } else {
-        Ok(())
-    }
-}
-fn require_null(value: &Value) -> Result<(), RuntimeV4ExpertRestActionParseError> {
-    value
-        .is_null()
-        .then_some(())
-        .ok_or(RuntimeV4ExpertRestActionParseError::InvalidValue)
-}
-fn number(value: &Value) -> Result<u64, RuntimeV4ExpertRestActionParseError> {
-    value
-        .as_u64()
-        .filter(|number| *number <= MAX_SAFE_INTEGER)
-        .ok_or(RuntimeV4ExpertRestActionParseError::InvalidValue)
-}
-fn positive_count(value: &Value) -> Result<usize, RuntimeV4ExpertRestActionParseError> {
-    number(value)
-        .ok()
-        .filter(|value| (1..=MAX_SELECTOR_ITEMS as u64).contains(value))
-        .and_then(|value| usize::try_from(value).ok())
-        .ok_or(RuntimeV4ExpertRestActionParseError::InvalidValue)
-}
-fn bounded_count(value: &Value) -> Result<usize, RuntimeV4ExpertRestActionParseError> {
-    number(value)
-        .ok()
-        .filter(|value| *value <= MAX_SELECTOR_ITEMS as u64)
-        .and_then(|value| usize::try_from(value).ok())
-        .ok_or(RuntimeV4ExpertRestActionParseError::InvalidValue)
-}
-fn bounded_unique_ids(value: &Value) -> Result<Vec<&str>, RuntimeV4ExpertRestActionParseError> {
-    let ids = value
-        .as_array()
+    let evidence = evidence
+        .as_object()
         .ok_or(RuntimeV4ExpertRestActionParseError::InvalidShape)?;
-    if ids.len() > MAX_SELECTOR_ITEMS {
+    exact_fields(
+        evidence,
+        &["kind", "added_card_ids", "removed_card_ids", "upgraded_card_ids"],
+    )?;
+    if evidence["kind"] != "card_change" {
         return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
     }
-    let mut seen = BTreeSet::new();
-    let mut result = Vec::with_capacity(ids.len());
-    for id in ids {
-        let id = id
-            .as_str()
-            .ok_or(RuntimeV4ExpertRestActionParseError::InvalidValue)?;
-        if !identity(&Value::String(id.to_owned())) || !seen.insert(id) {
-            return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
-        }
-        result.push(id);
+    let added = bounded_unique_ids(&evidence["added_card_ids"])?;
+    let removed = bounded_unique_ids(&evidence["removed_card_ids"])?;
+    let upgraded = bounded_unique_ids(&evidence["upgraded_card_ids"])?;
+    let changed = match option {
+        "clone" => added.is_empty(),
+        "cook" => removed.is_empty(),
+        "smith" => upgraded.is_empty(),
+        _ => true,
+    };
+    if changed {
+        return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
     }
-    Ok(result)
+    Ok(())
 }
-fn identity(value: &Value) -> bool {
-    value.as_str().is_some_and(|value| {
-        !value.is_empty()
-            && value.len() <= MAX_IDENTITY_BYTES
-            && value.bytes().all(|byte| {
-                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
-            })
-    })
+
+fn validate_relic_evidence(
+    evidence: &Value,
+) -> Result<(), RuntimeV4ExpertRestActionParseError> {
+    let evidence = evidence
+        .as_object()
+        .ok_or(RuntimeV4ExpertRestActionParseError::InvalidShape)?;
+    exact_fields(evidence, &["kind", "added_relic_ids", "removed_relic_ids"])?;
+    if evidence["kind"] != "relic_change" {
+        return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
+    }
+    if bounded_unique_ids(&evidence["added_relic_ids"])?.is_empty() {
+        return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
+    }
+    bounded_unique_ids(&evidence["removed_relic_ids"])?;
+    Ok(())
+}
+
+fn validate_hp_evidence(
+    evidence: &Value,
+    require_increase: bool,
+) -> Result<(), RuntimeV4ExpertRestActionParseError> {
+    let evidence = evidence
+        .as_object()
+        .ok_or(RuntimeV4ExpertRestActionParseError::InvalidShape)?;
+    exact_fields(
+        evidence,
+        &["kind", "hp_before", "hp_after", "max_hp_before", "max_hp_after"],
+    )?;
+    if evidence["kind"] != "hp_change" {
+        return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
+    }
+    let before = bounded_u16(&evidence["hp_before"])?;
+    let after = bounded_u16(&evidence["hp_after"])?;
+    let max_before = bounded_u16(&evidence["max_hp_before"])?;
+    let max_after = bounded_u16(&evidence["max_hp_after"])?;
+    if before > max_before || after > max_after || (require_increase && after <= before) {
+        return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
+    }
+    Ok(())
+}
+
+fn validate_stat_evidence(
+    evidence: &Value,
+) -> Result<(), RuntimeV4ExpertRestActionParseError> {
+    let evidence = evidence
+        .as_object()
+        .ok_or(RuntimeV4ExpertRestActionParseError::InvalidShape)?;
+    exact_fields(evidence, &["kind", "stat_id", "before", "after"])?;
+    if evidence["kind"] != "stat_change"
+        || !identity(&evidence["stat_id"])
+    {
+        return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
+    }
+    let before = signed_bounded(&evidence["before"])?;
+    let after = signed_bounded(&evidence["after"])?;
+    if before == after {
+        return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
+    }
+    Ok(())
+}
+
+fn validate_native_evidence(
+    evidence: &Value,
+    state_id: &str,
+) -> Result<(), RuntimeV4ExpertRestActionParseError> {
+    let evidence = evidence
+        .as_object()
+        .ok_or(RuntimeV4ExpertRestActionParseError::InvalidShape)?;
+    exact_fields(evidence, &["kind", "completion_id", "native_state_id"])?;
+    if evidence["kind"] != "native_completion"
+        || !identity(&evidence["completion_id"])
+        || !identity(&evidence["native_state_id"])
+        || evidence["native_state_id"] != state_id
+    {
+        return Err(RuntimeV4ExpertRestActionParseError::InvalidValue);
+    }
+    Ok(())
 }

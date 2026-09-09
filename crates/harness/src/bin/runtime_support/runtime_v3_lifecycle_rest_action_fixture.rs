@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: MIT
 
 fn fake_mcp_script(fixture: &Fixture) -> Result<String, Box<dyn std::error::Error>> {
-    let directory = fixture.shell_path()?;
     let (normal_responses, expert_responses) = rest_response_sets()?;
+    fake_mcp_script_with_sets(fixture, normal_responses, expert_responses)
+}
+
+fn fake_mcp_script_with_sets(
+    fixture: &Fixture,
+    normal_responses: Vec<Value>,
+    expert_responses: Vec<Value>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let directory = fixture.shell_path()?;
     let normal = profile_script(
         &directory,
         "normal.requests",

@@ -24,6 +24,7 @@ impl RuntimeV3Port {
             payloads: BTreeMap::new(),
             rest_selector_actions: None,
             rest_selector_payloads: BTreeMap::new(),
+            rest_selector_value: None,
             operations: BTreeMap::new(),
             reconnect_attempts: 0,
             telemetry,
@@ -173,6 +174,7 @@ impl RuntimeV3Port {
         if !keep {
             self.rest_selector_actions = None;
             self.rest_selector_payloads.clear();
+            self.rest_selector_value = None;
         }
     }
 

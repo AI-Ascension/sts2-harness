@@ -32,8 +32,18 @@ impl RuntimeV3Port {
         let result = RuntimeV4ExpertRestActionResult::from_value(value).map_err(|error| {
             wire::port_error("rest_action_dispatch_invalid", error.to_string(), false)
         })?;
-        self.rest_result_receipt(result, &request, identity, action)
-            .map_err(|error| wire::port_error("rest_action_receipt_invalid", error, false))
+        let selector_context = self.rest_selector_value.clone();
+        let receipt = self
+            .rest_result_receipt(
+                result,
+                &request,
+                identity,
+                action,
+                selector_context.as_ref(),
+            )
+            .map_err(|error| wire::port_error("rest_action_receipt_invalid", error, false))?;
+        super::recording::receipt(&receipt, identity.generation, &self.telemetry);
+        Ok(receipt)
     }
 
     fn reconcile_rest_operation(&mut self, operation_id: &str) -> Result<TransitionReceipt, String> {
@@ -68,7 +78,13 @@ impl RuntimeV3Port {
         )?;
         let result = RuntimeV4ExpertRestActionResult::from_value(value)
             .map_err(|error| format!("REST action reconcile response is invalid: {error}"))?;
-        self.rest_result_receipt(result, &request, &identity, &record.action)
+        self.rest_result_receipt(
+            result,
+            &request,
+            &identity,
+            &record.action,
+            record.rest_selector.as_ref(),
+        )
     }
 
     fn rest_result_receipt(
@@ -77,6 +93,7 @@ impl RuntimeV3Port {
         request: &RuntimeV4ExpertRestActionRequest,
         identity: &ActionIdentity,
         action: &EpisodeLegalAction,
+        selector_context: Option<&Value>,
     ) -> Result<TransitionReceipt, String> {
         result
             .matches_request(request)
@@ -88,6 +105,7 @@ impl RuntimeV3Port {
         {
             return Err(String::from("REST action response changed the action identity"));
         }
+        self.validate_rest_selection_completion(&result, action, selector_context)?;
         let status = match result.status() {
             RuntimeV4ExpertRestActionStatus::Accepted => DispatchStatus::Accepted,
             RuntimeV4ExpertRestActionStatus::Settled => DispatchStatus::Settled,
@@ -171,6 +189,7 @@ impl RuntimeV3Port {
             .map_err(|error| error.to_string())?;
         self.rest_selector_actions = Some(action_set);
         self.rest_selector_payloads = payloads;
+        self.rest_selector_value = Some(selector.clone());
         Ok(())
     }
 }

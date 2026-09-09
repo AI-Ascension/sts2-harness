@@ -255,6 +255,7 @@ pub(super) struct RuntimeV3Port {
     payloads: BTreeMap<String, Value>,
     rest_selector_actions: Option<EpisodeLegalActionSet>,
     rest_selector_payloads: BTreeMap<String, Value>,
+    rest_selector_value: Option<Value>,
     operations: BTreeMap<String, OperationRecord>,
     reconnect_attempts: u8,
     telemetry: TelemetryHandle,
