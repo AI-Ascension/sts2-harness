@@ -11,7 +11,7 @@ use super::{
 
 #[path = "runtime_v3_recovery_fixture_script.rs"]
 mod script;
-pub(in super::super) use script::response_script;
+pub(in super::super) use script::{response_script, response_script_with_identity};
 
 pub(crate) fn recovery_settled_script(
     fixture: &Fixture,

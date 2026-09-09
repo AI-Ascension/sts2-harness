@@ -227,6 +227,12 @@ fn fingerprint(
             "objective": "complete the test episode",
             "hard_constraints": [],
         },
+        "workflow_binding": {
+            "version": "runtime-v3-workflow-binding-v1",
+            "workflow": "full_episode",
+            "replay": "none",
+            "source_sha256": null,
+        },
     });
     ExecutionFingerprint::new(
         "seed-runtime-startup-hostile",

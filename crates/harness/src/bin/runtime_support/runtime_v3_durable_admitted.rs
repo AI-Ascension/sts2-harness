@@ -9,6 +9,7 @@ use sts2_harness::{ExecutionFingerprint, ExecutionLineage, ResumeState};
 use super::super::super::config::RuntimeConfig;
 use super::super::super::runtime_v3_settings::RuntimeV3Settings;
 use super::super::worker_store::{SharedExecutionStore, snapshot, try_lock};
+use super::super::workflow_binding::WorkflowBinding;
 use super::DurableHandle;
 use super::support::config_digest;
 
@@ -103,6 +104,7 @@ impl DurableHandle {
             config_digest: expected_config_digest,
             next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
             resume_boundary: Rc::new(RefCell::new(resume_boundary)),
+            workflow_binding: WorkflowBinding::default_full_episode(),
             owns_store: false,
             worker_handoff: Some(Box::new(current)),
         };
@@ -140,6 +142,7 @@ impl DurableHandle {
             config_digest,
             next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
             resume_boundary: Rc::new(RefCell::new(None)),
+            workflow_binding: WorkflowBinding::default_full_episode(),
             owns_store: false,
             worker_handoff: None,
         })

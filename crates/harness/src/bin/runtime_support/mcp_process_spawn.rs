@@ -1,22 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-use std::process::Stdio;
-use std::time::Duration;
-
 use serde_json::Value;
-use tokio::io::BufReader;
-use tokio::process::Command;
 
 use super::super::config::RuntimeConfig;
 use super::McpProcess;
 
-const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(5);
-
 impl McpProcess {
-    pub(in super::super) fn spawn(config: &RuntimeConfig) -> Result<Self, String> {
-        Self::spawn_command(Self::configured_command(config), EXCHANGE_TIMEOUT)
-    }
-
     pub(in super::super) fn spawn_with_cancellation(
         config: &RuntimeConfig,
         cancellation: &sts2_harness::ExecutionCancellation,
@@ -24,7 +13,10 @@ impl McpProcess {
         if cancellation.is_cancelled() {
             return Err(String::from("MCP launch cancelled"));
         }
-        let mut process = Self::spawn(config)?;
+        let mut process = Self::spawn_command(
+            Self::configured_command(config),
+            std::time::Duration::from_secs(5),
+        )?;
         process.cancellation = cancellation.clone();
         Ok(process)
     }
@@ -106,64 +98,8 @@ impl McpProcess {
         if cancellation.is_cancelled() {
             return Err(String::from("MCP recovery launch cancelled"));
         }
-        let mut process = Self::spawn_command(command, EXCHANGE_TIMEOUT)?;
+        let mut process = Self::spawn_command(command, std::time::Duration::from_secs(5))?;
         process.cancellation = cancellation.clone();
         Ok(process)
-    }
-
-    pub(in super::super) fn configured_command(config: &RuntimeConfig) -> Command {
-        let mut command = Command::new(&config.mcp_binary);
-        command.env_clear();
-        for name in ["PATH", "SystemRoot", "TEMP", "TMP"] {
-            if let Some(value) = std::env::var_os(name) {
-                command.env(name, value);
-            }
-        }
-        command
-            .env("STS2_GATEWAY_ADDR", &config.gateway_address)
-            .env("STS2_GATEWAY_TOKEN", &config.gateway_token)
-            .env("STS2_RUNTIME_PROFILE", &config.runtime_profile)
-            .env("STS2_INSTANCE_ID", &config.instance_id)
-            .env("STS2_CALLER_ID", &config.caller_id)
-            .env("STS2_SESSION_ID", &config.session_id)
-            .env("STS2_MCP_SESSION_ID", &config.mcp_session_id)
-            .env("STS2_LEASE_ID", &config.lease_id)
-            .env("STS2_LEASE_EPOCH", config.lease_epoch.to_string());
-        command
-    }
-
-    pub(in super::super) fn spawn_command(
-        mut command: Command,
-        timeout: Duration,
-    ) -> Result<Self, String> {
-        super::supervised(|| Self::spawn_supervised(&mut command, timeout))
-    }
-
-    fn spawn_supervised(command: &mut Command, timeout: Duration) -> Result<Self, &'static str> {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|_| "MCP supervisor unavailable")?;
-        let mut child = {
-            let _guard = runtime.enter();
-            command
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::null())
-                .kill_on_drop(true)
-                .spawn()
-                .map_err(|_| "MCP process failed to start")?
-        };
-        let input = child.stdin.take();
-        let output = child.stdout.take().map(BufReader::new);
-        Ok(Self {
-            runtime: Some(runtime),
-            child,
-            input,
-            output,
-            timeout,
-            closed: false,
-            cancellation: sts2_harness::ExecutionCancellation::default(),
-        })
     }
 }

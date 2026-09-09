@@ -7,8 +7,13 @@ use super::{RecoveryContext, RuntimeV3Port, wire};
 
 impl RuntimeV3Port {
     pub(super) fn ensure_recovery_sideband(&mut self) -> Result<(), String> {
-        if self.recovery.as_ref().is_some_and(|mcp| !mcp.is_closed()) {
-            return Ok(());
+        if let Some(mcp) = self.recovery.as_mut() {
+            // The child can exit between recovery calls without updating the cached flag.  A
+            // fresh process-state probe keeps a dead sideband from being reused for a second
+            // historical read.
+            if !mcp.refresh_closed() {
+                return Ok(());
+            }
         }
         if let Some(mut previous) = self.recovery.take() {
             previous.close()?;

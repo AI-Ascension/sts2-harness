@@ -1,0 +1,200 @@
+// SPDX-License-Identifier: MIT
+
+/// Main-branch runtime-v4 expert executable composition.
+///
+/// This path intentionally keeps its existing non-durable startup contract: the executable
+/// composition fixture supplies its own gateway and does not opt into the runtime-v3 execution
+/// store. Runtime-v3 gameplay and worker mode use the durable path in [`run`].
+fn run_legacy(config: RuntimeConfig) -> Result<(), String> {
+    let runtime_profile = config.runtime_profile.clone();
+    let settings = RuntimeV3Settings::from_environment()?;
+    let telemetry_context = TelemetryContext::new(TelemetryContextInput {
+        run_id: &config.run_id,
+        episode_id: &config.episode_id,
+        trajectory_id: &config.trajectory_id,
+        trace_id: &config.trace_id,
+        instance_id: &config.instance_id,
+        session_id: &config.session_id,
+        runtime_profile: &config.runtime_profile,
+        provider_revision: &settings.exo.revision,
+    })?;
+    let telemetry = RuntimeV3Telemetry::new(telemetry_context);
+    let telemetry_handle = telemetry.handle();
+    let _ = telemetry_handle.run_started();
+    let mut port = match RuntimeV3Port::new_with_telemetry(config, telemetry_handle.clone()) {
+        Ok(port) => port,
+        Err(error) => {
+            let _ = telemetry_handle.failure(
+                "runtime_init",
+                super::runtime_v3_telemetry::FailureCode::Configuration,
+                false,
+                None,
+            );
+            finish_telemetry(telemetry);
+            return Err(error);
+        }
+    };
+    if std::env::var("STS2_COMBAT_DEMO").as_deref() != Ok("true") {
+        let path = std::env::var("STS2_REPLAY_TRAJECTORY").unwrap_or_default();
+        if !path.is_empty() {
+            let result = episode_replay::run(&mut port, &settings.runner, &path);
+            drop(port);
+            if let Ok(episode_replay::ReplayOutcome::Terminal(stage)) = result.as_ref() {
+                let _ = telemetry_handle.run_finished(
+                    recording::game_outcome(*stage),
+                    TelemetryStage::from(*stage),
+                    CleanupStatus::Clean,
+                );
+            } else if result.is_err() {
+                let _ = telemetry_handle.failure(
+                    "episode_replay",
+                    super::runtime_v3_telemetry::FailureCode::Other,
+                    false,
+                    None,
+                );
+            }
+            finish_telemetry(telemetry);
+            return result.map(|_| ());
+        }
+    }
+    let transport = ExoProcessTransport::new(settings.process);
+    let provider = ExoProvider::new(transport, settings.exo);
+    let mut source = ExoDecisionSource::new(ExoSession::new(provider));
+    if std::env::var("STS2_COMBAT_DEMO").as_deref() == Ok("true") {
+        let outcome = combat_demo::run(&mut port, &mut source, &settings.runner);
+        let close = source.close().map_err(|error| error.to_string());
+        drop(port);
+        let mut completion = None;
+        let result = match outcome {
+            Ok(report) => {
+                completion = Some((
+                    report.steps(),
+                    report.terminal_observation().stage(),
+                    report.terminal_observation_digest(),
+                ));
+                let game_outcome = recording::game_outcome(report.terminal_observation().stage());
+                recording::complete_observation(report.terminal_observation(), &telemetry_handle);
+                let cleanup_status = if close.is_ok() {
+                    CleanupStatus::Clean
+                } else {
+                    CleanupStatus::Failed
+                };
+                let _ = telemetry_handle.run_finished(
+                    game_outcome,
+                    TelemetryStage::from(report.terminal_observation().stage()),
+                    cleanup_status,
+                );
+                match close {
+                    Ok(()) => Ok(()),
+                    Err(error) => Err(error),
+                }
+            }
+            Err(failure) => {
+                let cleanup_status =
+                    if close.is_ok() && failure.cleanup_status() == CleanupStatus::Clean {
+                        CleanupStatus::Clean
+                    } else {
+                        CleanupStatus::Failed
+                    };
+                if let Some(observation) = failure.terminal_observation() {
+                    recording::complete_observation(observation, &telemetry_handle);
+                    let _ = telemetry_handle.run_finished(
+                        recording::game_outcome(observation.stage()),
+                        TelemetryStage::from(observation.stage()),
+                        cleanup_status,
+                    );
+                } else {
+                    let _ = telemetry_handle.failure(
+                        "combat_demo",
+                        if cleanup_status == CleanupStatus::Failed {
+                            super::runtime_v3_telemetry::FailureCode::Cleanup
+                        } else {
+                            super::runtime_v3_telemetry::FailureCode::Other
+                        },
+                        false,
+                        None,
+                    );
+                }
+                let mut message = failure.message().to_owned();
+                if let Err(error) = close {
+                    message.push_str(&format!("; provider cleanup failed: {error}"));
+                }
+                Err(message)
+            }
+        };
+        finish_telemetry(telemetry);
+        if let Some((steps, stage, terminal_observation_digest)) = completion {
+            println!(
+                "{}",
+                json!({"event":"combat_demo_complete", "steps":steps,
+                "stage":wire::stage_name(stage),
+                "terminal_observation_digest":terminal_observation_digest})
+            );
+        }
+        return result;
+    }
+    let result = EpisodeRunner::new(settings.runner).run(
+        &mut port,
+        &mut recording::DecisionRecorder::new(&mut source, telemetry_handle.clone(), None),
+    );
+    let source_close = source.close();
+    drop(port);
+    let report = match result {
+        Ok(report) => report,
+        Err(error) => {
+            let _ = telemetry_handle.failure(
+                "episode",
+                super::runtime_v3_telemetry::FailureCode::Other,
+                false,
+                None,
+            );
+            if source_close.is_err() {
+                let _ = telemetry_handle.failure(
+                    "provider_close",
+                    super::runtime_v3_telemetry::FailureCode::Cleanup,
+                    false,
+                    None,
+                );
+            }
+            finish_telemetry(telemetry);
+            return Err(format!("Runtime-v3 episode failed: {error}"));
+        }
+    };
+    let game_outcome = recording::game_outcome(report.terminal_stage());
+    recording::complete(&report, &telemetry_handle);
+    if source_close.is_err() {
+        let _ = telemetry_handle.failure(
+            "provider_close",
+            super::runtime_v3_telemetry::FailureCode::Cleanup,
+            false,
+            None,
+        );
+        let _ = telemetry_handle.run_finished(
+            game_outcome,
+            TelemetryStage::from(report.terminal_stage()),
+            CleanupStatus::Failed,
+        );
+        finish_telemetry(telemetry);
+        return Err(String::from("Exo session close failed"));
+    }
+    let _ = telemetry_handle.run_finished(
+        game_outcome,
+        TelemetryStage::from(report.terminal_stage()),
+        CleanupStatus::Clean,
+    );
+    finish_telemetry(telemetry);
+    println!(
+        "{}",
+        serde_json::to_string(&json!({
+            "protocol": runtime_profile,
+            "status": "complete",
+            "terminal_stage": wire::stage_name(report.terminal_stage()),
+            "steps": report.steps(),
+            "transitions": report.transitions(),
+            "recoveries": report.recoveries(),
+            "final_generation": report.final_observation().generation()
+        }))
+        .map_err(|error| format!("Runtime-v3 report serialization failed: {error}"))?
+    );
+    Ok(())
+}

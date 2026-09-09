@@ -4,16 +4,16 @@
 //
 // This module deliberately lives beside the executable adapter. It accepts only
 // finite enums, bounded scalars, and digests of host/provider identities. The
-// worker owns the loopback socket; gameplay calls only enqueue into bounded
-// channels and never perform network I/O.
+// worker owns the loopback socket; gameplay calls only enqueue into one bounded
+// FIFO channel and never perform network I/O.
 
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError, TrySendError};
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -22,21 +22,14 @@ use sts2_harness::{ActionKind, DispatchStatus, EpisodeObservation, EpisodeStage,
 const ENDPOINT: SocketAddr =
     SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 14318);
 const OTLP_PATH: &str = "/v1/traces";
+// The queue keeps the historical normal/critical budget as one FIFO total.
+// This preserves bounded admission while making sequence order authoritative.
 const NORMAL_QUEUE_CAPACITY: usize = 256;
 const CRITICAL_QUEUE_CAPACITY: usize = 8;
 const MAX_BATCH: usize = 64;
 const MAX_BODY_BYTES: usize = 512 * 1024;
 const SOCKET_TIMEOUT: Duration = Duration::from_millis(500);
 const MAX_RESPONSE_BYTES: usize = 16 * 1024;
-
-/// The four independent lineage namespaces carried by every telemetry context.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct TelemetryContextLineage<'a> {
-    pub run_id: &'a str,
-    pub episode_id: &'a str,
-    pub trajectory_id: &'a str,
-    pub trace_id: &'a str,
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TelemetryContext {
@@ -51,20 +44,29 @@ pub struct TelemetryContext {
     pub provider_revision_digest: String,
 }
 
+pub struct TelemetryContextInput<'a> {
+    pub run_id: &'a str,
+    pub episode_id: &'a str,
+    pub trajectory_id: &'a str,
+    pub trace_id: &'a str,
+    pub instance_id: &'a str,
+    pub session_id: &'a str,
+    pub runtime_profile: &'a str,
+    pub provider_revision: &'a str,
+}
+
 impl TelemetryContext {
-    pub fn new(
-        lineage: TelemetryContextLineage<'_>,
-        instance_id: &str,
-        session_id: &str,
-        runtime_profile: &str,
-        provider_revision: &str,
-    ) -> Result<Self, String> {
-        let TelemetryContextLineage {
+    pub fn new(input: TelemetryContextInput<'_>) -> Result<Self, String> {
+        let TelemetryContextInput {
             run_id,
             episode_id,
             trajectory_id,
             trace_id,
-        } = lineage;
+            instance_id,
+            session_id,
+            runtime_profile,
+            provider_revision,
+        } = input;
         for (name, value) in [
             ("run_id", run_id),
             ("episode_id", episode_id),
@@ -117,14 +119,17 @@ pub enum DecisionKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TelemetryActionKind {
     StartRun,
+    SelectCharacter,
     SelectMapNode,
     PlayCard,
+    UsePotion,
     EndTurn,
     ChooseReward,
     SkipReward,
     ShopPurchase,
     ShopRemove,
     Rest,
+    RestOption,
     Smith,
     EventChoice,
     SelectCard,
@@ -139,14 +144,17 @@ impl TelemetryActionKind {
     fn as_str(self) -> &'static str {
         match self {
             Self::StartRun => "start_run",
+            Self::SelectCharacter => "select_character",
             Self::SelectMapNode => "select_map_node",
             Self::PlayCard => "play_card",
+            Self::UsePotion => "use_potion",
             Self::EndTurn => "end_turn",
             Self::ChooseReward => "choose_reward",
             Self::SkipReward => "skip_reward",
             Self::ShopPurchase => "shop_purchase",
             Self::ShopRemove => "shop_remove",
             Self::Rest => "rest",
+            Self::RestOption => "rest_option",
             Self::Smith => "smith",
             Self::EventChoice => "event_choice",
             Self::SelectCard => "select_card",
@@ -163,14 +171,17 @@ impl From<ActionKind> for TelemetryActionKind {
     fn from(kind: ActionKind) -> Self {
         match kind {
             ActionKind::StartRun => Self::StartRun,
+            ActionKind::SelectCharacter => Self::SelectCharacter,
             ActionKind::SelectMapNode => Self::SelectMapNode,
             ActionKind::PlayCard => Self::PlayCard,
+            ActionKind::UsePotion => Self::UsePotion,
             ActionKind::EndTurn => Self::EndTurn,
             ActionKind::ChooseReward => Self::ChooseReward,
             ActionKind::SkipReward => Self::SkipReward,
             ActionKind::ShopPurchase => Self::ShopPurchase,
             ActionKind::ShopRemove => Self::ShopRemove,
             ActionKind::Rest => Self::Rest,
+            ActionKind::RestOption => Self::RestOption,
             ActionKind::Smith => Self::Smith,
             ActionKind::EventChoice => Self::EventChoice,
             ActionKind::SelectCard => Self::SelectCard,

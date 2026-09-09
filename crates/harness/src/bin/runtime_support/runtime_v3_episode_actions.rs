@@ -3,7 +3,8 @@
 use serde_json::Value;
 use sts2_harness::{ActionIdentity, EpisodeLegalAction};
 
-use super::{MAX_OPERATIONS, OperationRecord, RuntimeV3Port, wire};
+use super::super::OperationRecord;
+use super::{MAX_OPERATIONS, RuntimeV3Port, wire};
 
 impl RuntimeV3Port {
     pub(super) fn validate_current_action(
@@ -28,7 +29,7 @@ impl RuntimeV3Port {
         Ok(())
     }
 
-    pub(super) fn current_payload(
+    pub(in super::super) fn current_payload(
         &self,
         action: &EpisodeLegalAction,
     ) -> Result<Value, sts2_harness::PortError> {
@@ -59,11 +60,13 @@ impl RuntimeV3Port {
         &mut self,
         identity: &ActionIdentity,
         action: &EpisodeLegalAction,
+        payload: &Value,
     ) -> Result<String, sts2_harness::PortError> {
         if let Some(existing) = self.operations.get(&identity.operation_id)
             && (existing.action != *action
                 || existing.generation != identity.generation
-                || existing.state_id != identity.state_id)
+                || existing.state_id != identity.state_id
+                || existing.payload != *payload)
         {
             return Err(wire::port_error(
                 "operation_conflict",
@@ -82,9 +85,8 @@ impl RuntimeV3Port {
         }
         self.operations
             .entry(identity.operation_id.clone())
-            .or_insert_with(|| OperationRecord::new(identity, action));
-        let payload = self.current_payload(action)?;
-        wire::canonical_action_digest(action.action_id(), &payload)
+            .or_insert_with(|| OperationRecord::new(identity, action, payload.clone()));
+        wire::canonical_action_digest(action.action_id(), payload)
             .map_err(|error| wire::port_error("operation_digest_failed", error, false))
     }
 }

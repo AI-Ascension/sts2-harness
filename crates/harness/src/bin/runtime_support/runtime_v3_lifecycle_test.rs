@@ -32,7 +32,11 @@ fn config(address: String) -> RuntimeConfig {
 }
 
 fn accept(listener: &TcpListener) -> Result<TcpStream, String> {
-    let deadline = Instant::now() + Duration::from_secs(3);
+    accept_until(listener, Duration::from_secs(3))
+}
+
+fn accept_until(listener: &TcpListener, timeout: Duration) -> Result<TcpStream, String> {
+    let deadline = Instant::now() + timeout;
     loop {
         match listener.accept() {
             Ok((stream, _)) => return Ok(stream),
@@ -187,11 +191,11 @@ fn runtime_v3_wrong_lease_uses_returned_fence_and_requires_release_confirmation(
 #[path = "runtime_v3_allocation_launch_test.rs"]
 mod allocation_launch;
 #[cfg(unix)]
+#[path = "runtime_v3_lifecycle_reconnect_test.rs"]
+mod historical_reconnect;
+#[cfg(unix)]
 #[path = "runtime_v3_lifecycle_original_context_test.rs"]
 mod original_context;
-#[cfg(unix)]
-#[path = "runtime_v3_lifecycle_reconnect_test.rs"]
-mod reconnect;
 #[cfg(unix)]
 #[path = "runtime_v3_lifecycle_reconnect_durable_test.rs"]
 mod reconnect_durable;
@@ -200,3 +204,57 @@ mod reconnect_durable;
 mod reconnect_support;
 #[path = "runtime_v3_lifecycle_recovery_evidence_test.rs"]
 mod recovery_evidence;
+
+#[cfg(unix)]
+mod reconnect {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+
+    use sts2_harness::{ActionIdentity, RecoveryPort};
+
+    use super::*;
+
+    struct Fixture(PathBuf);
+
+    impl Fixture {
+        fn new() -> Result<Self, std::io::Error> {
+            let path = std::env::temp_dir()
+                .join(format!("sts2-v3-legacy-reconnect-{}", uuid::Uuid::new_v4()));
+            fs::create_dir(&path)?;
+            Ok(Self(path))
+        }
+
+        fn script(&self, content: &str) -> Result<String, Box<dyn std::error::Error>> {
+            let path = self.0.join("mcp");
+            fs::write(&path, format!("#!/bin/sh\n{content}"))?;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
+            Ok(path.to_str().ok_or("non-UTF8 fixture path")?.to_owned())
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _cleanup = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    mod runner {
+        include!("runtime_v3_lifecycle_runner_test.rs");
+    }
+
+    fn reply(value: Value) -> String {
+        format!(
+            "IFS= read -r line || exit 1\nprintf '%s\\n' \"$line\" >> requests\nprintf '%s\\n' '{}'\n",
+            value.to_string().replace('\'', "'\\''")
+        )
+    }
+
+    mod recovery {
+        include!("runtime_v3_lifecycle_recovery_test.rs");
+    }
+
+    mod fault_matrix {
+        include!("runtime_v3_lifecycle_fault_matrix_test.rs");
+    }
+}

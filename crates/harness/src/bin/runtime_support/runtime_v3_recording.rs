@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use sts2_harness::{
-    Decision, DecisionInput, DecisionSource, DispatchStatus, EpisodeRunReport, PolicyError,
-    TransitionReceipt, WaitOutcome, WaitSample,
+    Decision, DecisionInput, DecisionSource, DispatchStatus, EpisodeObservation, EpisodeRunReport,
+    PolicyError, TransitionReceipt, WaitOutcome, WaitSample,
 };
 
 use super::super::runtime_v3_telemetry::{
@@ -233,4 +233,25 @@ pub(super) fn complete(report: &EpisodeRunReport, telemetry: &TelemetryHandle) {
         _ => GameOutcome::Unavailable,
     };
     let _ = telemetry.terminal(report.final_observation(), outcome);
+}
+
+pub(super) fn complete_observation(observation: &EpisodeObservation, telemetry: &TelemetryHandle) {
+    let outcome = match observation.stage() {
+        sts2_harness::EpisodeStage::Victory | sts2_harness::EpisodeStage::Reward => {
+            GameOutcome::Success
+        }
+        sts2_harness::EpisodeStage::Defeat => GameOutcome::Failure,
+        _ => GameOutcome::Unavailable,
+    };
+    let _ = telemetry.terminal(observation, outcome);
+}
+
+pub(super) fn game_outcome(stage: sts2_harness::EpisodeStage) -> GameOutcome {
+    match stage {
+        sts2_harness::EpisodeStage::Victory | sts2_harness::EpisodeStage::Reward => {
+            GameOutcome::Success
+        }
+        sts2_harness::EpisodeStage::Defeat => GameOutcome::Failure,
+        _ => GameOutcome::Unavailable,
+    }
 }

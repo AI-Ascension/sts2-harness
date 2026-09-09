@@ -2,13 +2,13 @@
 
 impl RuntimeV3Telemetry {
     pub fn new(context: TelemetryContext) -> Self {
-        let (normal_tx, normal_rx) = mpsc::sync_channel(NORMAL_QUEUE_CAPACITY);
-        let (critical_tx, critical_rx) = mpsc::sync_channel(CRITICAL_QUEUE_CAPACITY);
+        let (telemetry_tx, telemetry_rx) =
+            mpsc::sync_channel(NORMAL_QUEUE_CAPACITY + CRITICAL_QUEUE_CAPACITY);
         let (control_tx, control_rx) = mpsc::sync_channel(1);
         let state = Arc::new(ExporterState {
             context,
-            normal_tx,
-            critical_tx,
+            telemetry_tx,
+            admission: Mutex::new(()),
             closed: AtomicBool::new(false),
             sequence: AtomicU64::new(1),
             normal_dropped: AtomicU64::new(0),
@@ -17,7 +17,7 @@ impl RuntimeV3Telemetry {
         let worker_state = Arc::clone(&state);
         let worker = thread::Builder::new()
             .name(String::from("sts2-telemetry"))
-            .spawn(move || worker_loop(worker_state, normal_rx, critical_rx, control_rx))
+            .spawn(move || worker_loop(worker_state, telemetry_rx, control_rx))
             .ok();
         Self {
             handle: TelemetryHandle { state },
@@ -31,8 +31,14 @@ impl RuntimeV3Telemetry {
     }
 
     pub fn finish(mut self, deadline: Duration) -> FlushReport {
+        let admission = match self.handle.state.admission.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        self.handle.state.closed.store(true, Ordering::Release);
         let (reply_tx, reply_rx) = mpsc::sync_channel(1);
         let control_status = self.control_tx.try_send(ControlMessage::Flush(reply_tx));
+        drop(admission);
         let mut report = match control_status {
             Ok(()) => match reply_rx.recv_timeout(deadline) {
                 Ok(worker) => FlushReport {
@@ -55,17 +61,13 @@ impl RuntimeV3Telemetry {
                 timed_out: true,
                 ..FlushReport::default()
             },
-        };
-        self.handle.state.closed.store(true, Ordering::Release);
+                    };
         let normal_dropped = self.handle.state.normal_dropped.load(Ordering::Relaxed);
         let critical_dropped = self.handle.state.critical_dropped.load(Ordering::Relaxed);
         drop(self.handle);
         drop(self.control_tx);
         if let Some(worker) = self.worker.take() {
             if report.timed_out {
-                // `JoinHandle::join` has no deadline. The worker owns only a loopback
-                // socket with bounded I/O timeouts, so detach it after a timed-out
-                // flush rather than extending the gameplay shutdown indefinitely.
                 drop(worker);
             } else if worker.join().is_err() {
                 report.failed = report.failed.saturating_add(1);
@@ -80,8 +82,7 @@ impl RuntimeV3Telemetry {
 impl TelemetryHandle {
     #[cfg(test)]
     pub fn disabled() -> Self {
-        let (normal_tx, _normal_rx) = mpsc::sync_channel(0);
-        let (critical_tx, _critical_rx) = mpsc::sync_channel(0);
+        let (telemetry_tx, _telemetry_rx) = mpsc::sync_channel(0);
         let state = ExporterState {
             context: TelemetryContext {
                 run_id: String::from("disabled-run"),
@@ -94,8 +95,8 @@ impl TelemetryHandle {
                 schema_version: String::from("disabled"),
                 provider_revision_digest: String::from("disabled"),
             },
-            normal_tx,
-            critical_tx,
+            telemetry_tx,
+            admission: Mutex::new(()),
             closed: AtomicBool::new(true),
             sequence: AtomicU64::new(1),
             normal_dropped: AtomicU64::new(0),
@@ -283,14 +284,20 @@ impl TelemetryHandle {
     }
 
     fn enqueue(&self, event: TelemetryEvent, critical: bool) -> EnqueueStatus {
+        let admission = match self.state.admission.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         if self.state.closed.load(Ordering::Acquire) {
             return EnqueueStatus::Closed;
         }
-        let result = if critical {
-            self.state.critical_tx.try_send(event)
-        } else {
-            self.state.normal_tx.try_send(event)
+        let event = QueuedTelemetryEvent {
+            event,
+            enqueued_at_unix_nanos: unix_nanos(),
+            sequence: self.state.sequence.fetch_add(1, Ordering::Relaxed),
         };
+        let result = self.state.telemetry_tx.try_send(event);
+        drop(admission);
         match result {
             Ok(()) => EnqueueStatus::Queued,
             Err(TrySendError::Full(_)) => {

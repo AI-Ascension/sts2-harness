@@ -192,6 +192,13 @@ fn shutdown_and_drop_are_bounded_for_stalled_children() -> Result<(), String> {
 
 #[test]
 #[cfg(unix)]
+fn graceful_close_budget_allows_a_child_to_finish_after_the_reap_budget() -> Result<(), String> {
+    let mut process = shell("exec /bin/sleep 0.35")?;
+    process.close()
+}
+
+#[test]
+#[cfg(unix)]
 fn separate_calls_preserve_session_and_buffered_frames() -> Result<(), String> {
     let mut process = shell(
         "read first; printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'; read second; printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}'",

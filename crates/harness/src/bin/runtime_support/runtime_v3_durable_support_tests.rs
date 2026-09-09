@@ -3,6 +3,13 @@
 use std::fs;
 use std::path::PathBuf;
 
+use super::super::super::super::config::RuntimeConfig;
+use super::super::super::super::runtime_v3_settings::RuntimeV3Settings;
+use super::super::super::workflow_binding::WorkflowBinding;
+use sts2_harness::{
+    EpisodeRunnerConfig, ExoConfig, ExoProcessConfig, RecoveryController, StabilityBarrier,
+};
+
 use super::{fingerprint_component, mcp_executable};
 
 fn fixture_path(name: &str) -> PathBuf {
@@ -59,5 +66,59 @@ fn mcp_executable_digest_rejects_a_symbolic_link() -> Result<(), String> {
     assert!(result.is_err());
     fs::remove_file(link).map_err(|error| format!("cannot remove link: {error}"))?;
     fs::remove_file(target).map_err(|error| format!("cannot remove target: {error}"))?;
+    Ok(())
+}
+
+#[test]
+fn worker_fingerprint_keeps_the_legacy_config_digest() -> Result<(), String> {
+    let path = fixture_path("worker-fingerprint");
+    fs::write(&path, b"synthetic mcp executable")
+        .map_err(|error| format!("cannot write fixture: {error}"))?;
+    let path_text = path
+        .to_str()
+        .ok_or_else(|| String::from("fixture path is not UTF-8"))?;
+    let config = RuntimeConfig {
+        gateway_address: String::from("127.0.0.1:15525"),
+        gateway_token: String::from("synthetic-token"),
+        mcp_binary: path_text.to_owned(),
+        runtime_profile: String::from("runtime-v3-gameplay"),
+        instance_id: String::from("instance-1"),
+        caller_id: String::from("harness"),
+        session_id: String::from("session-1"),
+        lease_id: String::from("lease-1"),
+        lease_epoch: 1,
+        mcp_session_id: String::from("mcp-session-1"),
+        run_id: String::from("run-1"),
+        episode_id: String::from("episode-1"),
+        trajectory_id: String::from("trajectory-1"),
+        trace_id: String::from("trace-1"),
+        artifact_id: String::from("artifact-1"),
+        wait_for_combat_seconds: 0,
+        settlement_timeout_seconds: 30,
+        recovery_environment: Vec::new(),
+    };
+    let settings = RuntimeV3Settings {
+        runner: EpisodeRunnerConfig::new(
+            1,
+            StabilityBarrier::new(1, 1).map_err(|error| error.to_string())?,
+            RecoveryController::new(1).map_err(|error| error.to_string())?,
+            "synthetic objective",
+            Vec::new(),
+        )
+        .map_err(|error| error.to_string())?,
+        exo: ExoConfig::new(String::from("a").repeat(64), 1, 1, 1)
+            .map_err(|error| error.to_string())?,
+        process: ExoProcessConfig::new(path_text, Vec::new(), None, Vec::new())
+            .map_err(|error| error.to_string())?,
+    };
+    let legacy = super::fingerprint(&config, &settings, false)?;
+    let binding = WorkflowBinding::for_launch(true, false, None)?;
+    let gameplay = super::fingerprint_with_binding(&config, &settings, &binding, false)?;
+    assert_eq!(legacy.seed, gameplay.seed);
+    assert_eq!(legacy.build_digest, gameplay.build_digest);
+    assert_eq!(legacy.state_digest, gameplay.state_digest);
+    assert_eq!(legacy.provider_digest, gameplay.provider_digest);
+    assert_ne!(legacy.config_digest, gameplay.config_digest);
+    fs::remove_file(path).map_err(|error| error.to_string())?;
     Ok(())
 }

@@ -7,7 +7,7 @@ use sts2_harness::{ExecutionLineage, StoredWorkerHandoff};
 use super::super::super::config::RuntimeConfig;
 use super::super::super::runtime_v3_settings::RuntimeV3Settings as RuntimeSettings;
 use super::super::super::runtime_v3_telemetry::{
-    RuntimeV3Telemetry, TelemetryContext, TelemetryContextLineage,
+    RuntimeV3Telemetry, TelemetryContext, TelemetryContextInput,
 };
 use super::super::launch_options::RuntimeV3LaunchOptions;
 
@@ -76,18 +76,16 @@ fn execute_task(
     config.run_id = lineage.run_id.clone();
     config.episode_id = lineage.episode_id.clone();
     config.trajectory_id = lineage.trajectory_id.clone();
-    let telemetry_context = TelemetryContext::new(
-        TelemetryContextLineage {
-            run_id: &config.run_id,
-            episode_id: &config.episode_id,
-            trajectory_id: &config.trajectory_id,
-            trace_id: &config.trace_id,
-        },
-        &config.instance_id,
-        &config.session_id,
-        &config.runtime_profile,
-        &settings.exo.revision,
-    )?;
+    let telemetry_context = TelemetryContext::new(TelemetryContextInput {
+        run_id: &config.run_id,
+        episode_id: &config.episode_id,
+        trajectory_id: &config.trajectory_id,
+        trace_id: &config.trace_id,
+        instance_id: &config.instance_id,
+        session_id: &config.session_id,
+        runtime_profile: &config.runtime_profile,
+        provider_revision: &settings.exo.revision,
+    })?;
     let telemetry = RuntimeV3Telemetry::new(telemetry_context);
     let telemetry_handle = telemetry.handle();
     let _ = telemetry_handle.run_started();

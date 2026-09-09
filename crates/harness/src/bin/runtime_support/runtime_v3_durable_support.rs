@@ -10,12 +10,14 @@ use sts2_harness::{DecisionInput, ExecutionFingerprint};
 
 use super::super::super::config::RuntimeConfig;
 use super::super::super::runtime_v3_settings::RuntimeV3Settings;
+use super::super::workflow_binding::WorkflowBinding;
 
 const DEFAULT_SEED: &str = "seed:unavailable";
 const DEFAULT_BUILD: &str = "build:unavailable";
 const DEFAULT_STATE: &str = "state:unavailable";
 const MAX_MCP_EXECUTABLE_BYTES: u64 = 128 * 1024 * 1024;
 
+#[allow(dead_code)]
 pub(super) fn fingerprint(
     config: &RuntimeConfig,
     settings: &RuntimeV3Settings,
@@ -35,11 +37,45 @@ pub(super) fn fingerprint(
         .map_err(|error| format!("runtime-v3 execution fingerprint is invalid: {error}"))
 }
 
+pub(super) fn fingerprint_with_binding(
+    config: &RuntimeConfig,
+    settings: &RuntimeV3Settings,
+    binding: &WorkflowBinding,
+    resume_requested: bool,
+) -> Result<ExecutionFingerprint, String> {
+    let seed = fingerprint_component(
+        "STS2_SEED",
+        Some("STS2_VISIBLE_SEED"),
+        DEFAULT_SEED,
+        resume_requested,
+    )?;
+    let build = fingerprint_component("STS2_BUILD_DIGEST", None, DEFAULT_BUILD, resume_requested)?;
+    let state = fingerprint_component("STS2_STATE_DIGEST", None, DEFAULT_STATE, resume_requested)?;
+    let config_digest = config_digest_with_binding(config, settings, binding)?;
+    let provider_digest = reference_or_digest(&settings.exo.revision);
+    ExecutionFingerprint::new(seed, build, state, config_digest, provider_digest)
+        .map_err(|error| format!("runtime-v3 execution fingerprint is invalid: {error}"))
+}
+
 pub(super) fn config_digest(
     config: &RuntimeConfig,
     settings: &RuntimeV3Settings,
 ) -> Result<String, String> {
-    let value = json!({
+    sha256_json(&config_value(config, settings)?)
+}
+
+pub(super) fn config_digest_with_binding(
+    config: &RuntimeConfig,
+    settings: &RuntimeV3Settings,
+    binding: &WorkflowBinding,
+) -> Result<String, String> {
+    let mut value = config_value(config, settings)?;
+    value["workflow_binding"] = binding.descriptor();
+    sha256_json(&value)
+}
+
+fn config_value(config: &RuntimeConfig, settings: &RuntimeV3Settings) -> Result<Value, String> {
+    Ok(json!({
         "runtime_profile": config.runtime_profile,
         "gateway_address": config.gateway_address,
         "mcp_binary": config.mcp_binary,
@@ -72,8 +108,7 @@ pub(super) fn config_digest(
             "objective": settings.runner.objective(),
             "hard_constraints": settings.runner.hard_constraints(),
         },
-    });
-    sha256_json(&value)
+    }))
 }
 
 pub(super) fn decision_input_digest(input: &DecisionInput) -> Result<String, String> {

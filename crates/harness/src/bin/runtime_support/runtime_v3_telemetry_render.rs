@@ -1,8 +1,24 @@
 // SPDX-License-Identifier: MIT
 
+// Runtime-v3 telemetry uses point-in-time event spans. The enqueue timestamp
+// and sequence are preserved through one bounded FIFO queue, and run-finished
+// is sent behind a flush barrier. The root RunStarted span is intentionally
+// not a wall-clock duration span. Harness identifiers are represented by
+// digest values under their canonical attribute names.
+
+#[cfg(test)]
 fn render_span(context: &TelemetryContext, event: &TelemetryEvent, sequence: u64) -> Value {
-    let (kind, status_error, attrs) = event_attributes(context, event);
-    let now = unix_nanos();
+    render_span_at(context, event, sequence, unix_nanos())
+}
+
+fn render_span_at(
+    context: &TelemetryContext,
+    event: &TelemetryEvent,
+    sequence: u64,
+    timestamp_unix_nanos: u128,
+) -> Value {
+    let (kind, status_error, mut attrs) = event_attributes(context, event);
+    add(&mut attrs, "sts2.event_sequence", sequence.to_string());
     let trace_id = digest("trace", &context.trace_id)[..32].to_owned();
     let root_span_id = digest("root-span", &context.trace_id)[..16].to_owned();
     let span_id = if kind == EventKind::RunStarted {
@@ -22,8 +38,8 @@ fn render_span(context: &TelemetryContext, event: &TelemetryEvent, sequence: u64
         "traceId": trace_id,
         "spanId": span_id,
         "name": format!("sts2.{}", kind.as_str()),
-        "startTimeUnixNano": now.to_string(),
-        "endTimeUnixNano": now.to_string(),
+        "startTimeUnixNano": timestamp_unix_nanos.to_string(),
+        "endTimeUnixNano": timestamp_unix_nanos.to_string(),
         "attributes": attributes,
         "status": {"code": if status_error {"STATUS_CODE_ERROR"} else {"STATUS_CODE_UNSET"}}
     });
@@ -51,6 +67,7 @@ fn event_attributes(
         ),
         ("sts2.schema_version", context.schema_version.clone()),
         ("sts2.runtime_profile", context.runtime_profile.clone()),
+        ("sts2.id_encoding", "digest".to_owned()),
     ];
     let kind = match event {
         TelemetryEvent::RunStarted => EventKind::RunStarted,
@@ -72,8 +89,8 @@ fn event_attributes(
                 "sts2.status",
                 decision_kind_name(*decision_kind),
             );
-            add_optional(&mut attrs, "sts2.action_id_digest", action_id_digest);
-            add_optional(&mut attrs, "sts2.operation_id_digest", operation_id_digest);
+            add_optional(&mut attrs, "sts2.action_id", action_id_digest);
+            add_optional(&mut attrs, "sts2.operation_id", operation_id_digest);
             if let Some(confidence) = confidence {
                 add(&mut attrs, "sts2.confidence", confidence.to_string());
             }
@@ -88,7 +105,7 @@ fn event_attributes(
                 "sts2.model_execution_id",
                 model_execution_id.to_string(),
             );
-            add(&mut attrs, "sts2.failure_code", failure_code.as_str());
+            add(&mut attrs, "sts2.error_code", failure_code.as_str());
             EventKind::ModelFailure
         }
         TelemetryEvent::Observation {
@@ -111,12 +128,12 @@ fn event_attributes(
             status,
             failure_code,
         } => {
-            add(&mut attrs, "sts2.operation_id_digest", operation_id_digest);
-            add(&mut attrs, "sts2.action_id_digest", action_id_digest);
+            add(&mut attrs, "sts2.operation_id", operation_id_digest);
+            add(&mut attrs, "sts2.action_id", action_id_digest);
             add(&mut attrs, "sts2.action_kind", action_kind.as_str());
             add(&mut attrs, "sts2.generation", generation.to_string());
             add(&mut attrs, "sts2.status", status.as_str());
-            add_optional_code(&mut attrs, "sts2.failure_code", failure_code);
+            add_optional_code(&mut attrs, "sts2.error_code", failure_code);
             EventKind::ActionDispatch
         }
         TelemetryEvent::SettlementObservation {
@@ -129,8 +146,8 @@ fn event_attributes(
             effect_digest,
             source,
         } => {
-            add(&mut attrs, "sts2.operation_id_digest", operation_id_digest);
-            add(&mut attrs, "sts2.action_id_digest", action_id_digest);
+            add(&mut attrs, "sts2.operation_id", operation_id_digest);
+            add(&mut attrs, "sts2.action_id", action_id_digest);
             add(
                 &mut attrs,
                 "sts2.from_generation",
@@ -138,7 +155,7 @@ fn event_attributes(
             );
             add(&mut attrs, "sts2.to_generation", to_generation.to_string());
             add(&mut attrs, "sts2.stage", stage.as_str());
-            add(&mut attrs, "sts2.effect_class", *effect_class);
+            add(&mut attrs, "sts2.effect_kind", *effect_class);
             add(&mut attrs, "sts2.effect_digest", effect_digest);
             add(&mut attrs, "sts2.source", source.as_str());
             EventKind::SettlementObservation
@@ -150,11 +167,11 @@ fn event_attributes(
             outcome,
             failure_code,
         } => {
-            add(&mut attrs, "sts2.recovery_kind", kind.as_str());
-            add_optional(&mut attrs, "sts2.operation_id_digest", operation_id_digest);
+            add(&mut attrs, "sts2.recovery", kind.as_str());
+            add_optional(&mut attrs, "sts2.operation_id", operation_id_digest);
             add(&mut attrs, "sts2.recovery_attempt", attempt.to_string());
             add(&mut attrs, "sts2.status", *outcome);
-            add_optional_code(&mut attrs, "sts2.failure_code", failure_code);
+            add_optional_code(&mut attrs, "sts2.error_code", failure_code);
             EventKind::Recovery
         }
         TelemetryEvent::Failure {
@@ -164,9 +181,9 @@ fn event_attributes(
             operation_id_digest,
         } => {
             add(&mut attrs, "sts2.boundary", *boundary);
-            add(&mut attrs, "sts2.failure_code", failure_code.as_str());
+            add(&mut attrs, "sts2.error_code", failure_code.as_str());
             add(&mut attrs, "sts2.retryable", bool_string(*retryable));
-            add_optional(&mut attrs, "sts2.operation_id_digest", operation_id_digest);
+            add_optional(&mut attrs, "sts2.operation_id", operation_id_digest);
             EventKind::Failure
         }
         TelemetryEvent::TerminalObserved {
@@ -195,8 +212,23 @@ fn event_attributes(
                 "sts2.dropped_events",
                 dropped_events.to_string(),
             );
-            add(&mut attrs, "sts2.export_status", "queued");
             EventKind::RunFinished
+        }
+        TelemetryEvent::ExportStatus {
+            status,
+            sent,
+            failed,
+            dropped_events,
+        } => {
+            add(&mut attrs, "sts2.export_status", *status);
+            add(&mut attrs, "sts2.exported_spans", sent.to_string());
+            add(&mut attrs, "sts2.failed_spans", failed.to_string());
+            add(
+                &mut attrs,
+                "sts2.dropped_events",
+                dropped_events.to_string(),
+            );
+            EventKind::ExportStatus
         }
     };
     attrs[0].1 = kind.as_str().to_owned();

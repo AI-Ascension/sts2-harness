@@ -228,8 +228,12 @@ tests does not supply licensed-host, live Exo/provider, full-run, or co-op evide
 Historical recovery tests invoke the real harness recovery adapter and its owned stdio subprocess
 against synthetic sideband replies. They exercise unresolved lookup followed by reconciliation,
 retained terminal states, gateway-style unpadded action bytes, missing records, mismatched witnesses
-and original authority. Recorded requests must contain only historical lookup/reconcile, preserve
-the same operation reference, and never invoke gameplay poll or dispatch. Unit tests cover exact
+and original authority. Unresolved cases record only historical lookup/reconcile and never invoke
+gameplay polling or dispatch; an authoritative terminal settlement may append one post-closure
+gameplay wait carrying a fresh observation and transition witness. Runner-level launch regressions
+cover NOT_FOUND, unresolved, malformed/missing witness and replacement-incarnation cases, while a
+terminal-sideband test returning an unresolved/no-observation wait remains durable-unknown. Every
+recovery request preserves the same operation reference and never redispatches. Unit tests cover exact
 ticket/witness bindings, malformed raw JSON, redacted parser errors and the frame byte limit.
 These are synthetic consumer/subprocess tests, not real gateway, host, service, reboot or provider
 evidence. Execution-store schema-v6 and recovery-sideband tests cover immutable original-context

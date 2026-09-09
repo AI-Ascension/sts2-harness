@@ -17,11 +17,13 @@ pub(in super::super) fn initialize_recovery_mcp(mcp: &mut McpProcess) -> Result<
             "capabilities": {},
             "clientInfo": {"name": "sts2-harness-recovery", "version": "0.0.0"}
         }),
-    )?;
+    )
+    .map_err(|error| error.to_string())?;
     if initialize.get("result").is_none() {
         return Err(String::from("recovery MCP initialize omitted result"));
     }
-    let catalog = super::rpc_call(mcp, 2, "tools/list", json!({}))?;
+    let catalog =
+        super::rpc_call(mcp, 2, "tools/list", json!({})).map_err(|error| error.to_string())?;
     validate_catalog(&catalog)
 }
 
@@ -33,7 +35,11 @@ pub(in super::super) fn recovery_call(
     expected_kind: &str,
     payload: Value,
 ) -> Result<Value, String> {
-    let response = super::rpc_call(
+    // Recovery lookup/reconcile responses may be marked `isError` when the
+    // authoritative operation state is UNKNOWN or unresolved.  Keep the
+    // envelope so the recovery parser can validate its identity and decide
+    // whether a reconcile read is still required.
+    let response = super::rpc_call_recovery_read(
         mcp,
         id,
         "tools/call",
@@ -41,7 +47,8 @@ pub(in super::super) fn recovery_call(
             "name": name,
             "arguments": {"mcp_session_id": mcp_session_id, "payload": payload}
         }),
-    )?;
+    )
+    .map_err(|error| error.to_string())?;
     let text = response
         .get("result")
         .and_then(|result| result.get("content"))

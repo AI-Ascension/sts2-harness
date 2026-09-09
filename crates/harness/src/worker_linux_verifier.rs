@@ -25,6 +25,8 @@ mod helper_io;
 mod lifecycle;
 #[path = "worker_linux_verifier_protocol.rs"]
 mod protocol;
+#[path = "worker_linux_verifier_spawn.rs"]
+mod spawn;
 #[path = "worker_linux_verifier_transport.rs"]
 mod transport;
 

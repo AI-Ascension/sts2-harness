@@ -19,20 +19,18 @@ const B_BOOT_ID: &str = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const B_LEASE_ID: &str = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const B_FENCE_ID: &str = "12121212-1212-4121-8121-121212121212";
 
-fn authority_b() -> super::allocation_context::RecoveryAuthority {
-    let mut authority = recovery_authority();
-    authority.deployment_id = B_DEPLOYMENT_ID.to_owned();
-    authority.instance_id = B_INSTANCE_ID.to_owned();
-    authority.instance_incarnation = B_INCARCATION.to_owned();
+fn fresh_allocation_authority(
+    mut authority: super::allocation_context::RecoveryAuthority,
+) -> super::allocation_context::RecoveryAuthority {
     authority.boot_id = B_BOOT_ID.to_owned();
     authority.authority_generation = 2;
     authority.lease_id = B_LEASE_ID.to_owned();
     authority.lease_epoch = 2;
     authority.current_fence = json!({
         "host_fence_id": B_FENCE_ID,
-        "deployment_id": B_DEPLOYMENT_ID,
-        "instance_id": B_INSTANCE_ID,
-        "instance_incarnation": B_INCARCATION,
+        "deployment_id": authority.deployment_id.clone(),
+        "instance_id": authority.instance_id.clone(),
+        "instance_incarnation": authority.instance_incarnation.clone(),
         "boot_id": B_BOOT_ID,
         "authority_generation": 2,
         "fence_generation": 2,
@@ -41,17 +39,29 @@ fn authority_b() -> super::allocation_context::RecoveryAuthority {
     authority
 }
 
+fn authority_b() -> super::allocation_context::RecoveryAuthority {
+    let mut authority = recovery_authority();
+    authority.deployment_id = B_DEPLOYMENT_ID.to_owned();
+    authority.instance_id = B_INSTANCE_ID.to_owned();
+    authority.instance_incarnation = B_INCARCATION.to_owned();
+    fresh_allocation_authority(authority)
+}
+
+fn same_host_fresh_authority() -> super::allocation_context::RecoveryAuthority {
+    fresh_allocation_authority(recovery_authority())
+}
+
 fn authority_value(authority: &super::allocation_context::RecoveryAuthority) -> Value {
     json!({
         "contract": "watchdog-runtime-allocation-v1",
         "schema_digest": super::allocation_context::ALLOCATION_SCHEMA_DIGEST,
         "context": {
             "deployment_id": authority.deployment_id,
-            "instance_id": authority.instance_id,
+            "instance_id": authority.instance_id.clone(),
             "instance_incarnation": authority.instance_incarnation,
             "boot_id": authority.boot_id,
             "authority_generation": authority.authority_generation,
-            "lease_id": authority.lease_id,
+            "lease_id": authority.lease_id.clone(),
             "lease_epoch": authority.lease_epoch
         },
         "current_fence": authority.current_fence
@@ -133,7 +143,7 @@ fn gateway(
     }
     let allocation_request: Value = serde_json::from_slice(&body)
         .map_err(|error| format!("allocation request was not JSON: {error}"))?;
-    if allocation_request["instance_id"] != B_INSTANCE_ID
+    if allocation_request["instance_id"].as_str() != Some(authority.instance_id.as_str())
         || allocation_request["caller_id"] != "harness"
         || allocation_request["session_id"] != "session-b"
     {
@@ -145,11 +155,11 @@ fn gateway(
         &mut allocation,
         &json!({
             "status": "allocated",
-            "instance_id": B_INSTANCE_ID,
+            "instance_id": authority.instance_id,
             "caller_id": "harness",
             "session_id": "session-b",
-            "lease_id": B_LEASE_ID,
-            "lease_epoch": 2,
+            "lease_id": authority.lease_id,
+            "lease_epoch": authority.lease_epoch,
             "transport": "attached-loopback",
             "recovery_authority": authority_value(authority)
         }),
@@ -157,15 +167,16 @@ fn gateway(
 
     let mut release = accept(&listener)?;
     let (headers, _) = request(&mut release)?;
-    for expected in [
-        "POST /v1/instances/cccccccc-cccc-4ccc-8ccc-cccccccccccc/release ",
-        "x-sts2-instance-id: cccccccc-cccc-4ccc-8ccc-cccccccccccc\r\n",
-        "x-sts2-session-id: session-b\r\n",
-        "x-mcp-session-id: mcp-session-b\r\n",
-        "x-sts2-lease-id: ffffffff-ffff-4fff-8fff-ffffffffffff\r\n",
-        "x-sts2-lease-epoch: 2\r\n",
-    ] {
-        if !headers.contains(expected) {
+    let expected = [
+        format!("POST /v1/instances/{}/release ", authority.instance_id),
+        format!("x-sts2-instance-id: {}\r\n", authority.instance_id),
+        String::from("x-sts2-session-id: session-b\r\n"),
+        String::from("x-mcp-session-id: mcp-session-b\r\n"),
+        format!("x-sts2-lease-id: {}\r\n", authority.lease_id),
+        format!("x-sts2-lease-epoch: {}\r\n", authority.lease_epoch),
+    ];
+    for expected in expected {
+        if !headers.contains(&expected) {
             return Err(format!(
                 "release omitted fresh allocation field {expected:?}"
             ));
@@ -178,8 +189,17 @@ fn recovery_script_with_environment(
     fixture: &Fixture,
     lookup: &Value,
     reconcile: &Value,
+    authority: &super::allocation_context::RecoveryAuthority,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let path = response_script(fixture, lookup, reconcile)?;
+    let path = response_script_with_identity(
+        fixture,
+        lookup,
+        reconcile,
+        &authority.instance_id,
+        "session-b",
+        &authority.lease_id,
+        authority.lease_epoch,
+    )?;
     let script = fs::read_to_string(&path)?;
     let body = script
         .strip_prefix("#!/bin/sh\n")
@@ -197,8 +217,21 @@ fn recovery_script_with_environment(
 }
 
 #[test]
-fn disk_reopen_fresh_allocation_preserves_original_context_and_uses_current_fence()
+fn disk_reopen_new_incarnation_preserves_historical_context_but_blocks_continuation()
 -> Result<(), Box<dyn std::error::Error>> {
+    run_disk_reopen(authority_b(), false)
+}
+
+#[test]
+fn disk_reopen_same_host_fresh_authority_continues_with_a_fresh_witness()
+-> Result<(), Box<dyn std::error::Error>> {
+    run_disk_reopen(same_host_fresh_authority(), true)
+}
+
+fn run_disk_reopen(
+    authority: super::allocation_context::RecoveryAuthority,
+    continue_after_recovery: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = Fixture::new()?;
     let database = fixture.0.join("execution.sqlite3");
     let lineage = ExecutionLineage::new("run-1", "episode-1", "attempt-a", "trajectory-a")?;
@@ -258,13 +291,12 @@ fn disk_reopen_fresh_allocation_preserves_original_context_and_uses_current_fenc
 
     let reopened = ExecutionStore::open(ExecutionStoreConfig::new(&database))?;
     let durable_b = DurableHandle::from_store_for_test(reopened, lineage, fingerprint)?;
-    let authority = authority_b();
     let mut runtime_config = config("127.0.0.1:0".into());
-    runtime_config.instance_id = B_INSTANCE_ID.to_owned();
+    runtime_config.instance_id = authority.instance_id.clone();
     runtime_config.session_id = String::from("session-b");
     runtime_config.mcp_session_id = String::from("mcp-session-b");
-    runtime_config.lease_id = B_LEASE_ID.to_owned();
-    runtime_config.lease_epoch = 2;
+    runtime_config.lease_id = authority.lease_id.clone();
+    runtime_config.lease_epoch = authority.lease_epoch;
     runtime_config.recovery_environment = RecoveryEnvironment::new()
         .0
         .into_iter()
@@ -277,7 +309,8 @@ fn disk_reopen_fresh_allocation_preserves_original_context_and_uses_current_fenc
     let listener = TcpListener::bind("127.0.0.1:0")?;
     listener.set_nonblocking(true)?;
     runtime_config.gateway_address = listener.local_addr()?.to_string();
-    runtime_config.mcp_binary = recovery_script_with_environment(&fixture, &lookup, &reconcile)?;
+    runtime_config.mcp_binary =
+        recovery_script_with_environment(&fixture, &lookup, &reconcile, &authority)?;
     let mut port_b = RuntimeV3Port::new_with_store(
         runtime_config,
         TelemetryHandle::disabled(),
@@ -286,20 +319,35 @@ fn disk_reopen_fresh_allocation_preserves_original_context_and_uses_current_fenc
     let gateway_authority = authority.clone();
     std::thread::scope(|scope| -> Result<(), Box<dyn std::error::Error>> {
         let gateway = scope.spawn(move || gateway(listener, &gateway_authority));
-        port_b.launch().map_err(|error| error.to_string())?;
-        port_b
-            .close_mcp()
-            .map_err(|error| format!("MCP close failed: {error:?}"))?;
-        port_b
-            .release_lease()
-            .map_err(|error| format!("lease release failed: {error:?}"))?;
+        if continue_after_recovery {
+            port_b.launch().map_err(|error| error.to_string())?;
+            port_b
+                .close_mcp()
+                .map_err(|error| format!("MCP close failed: {error:?}"))?;
+            port_b
+                .release_lease()
+                .map_err(|error| format!("lease release failed: {error:?}"))?;
+        } else {
+            let error = port_b
+                .launch()
+                .err()
+                .ok_or("replacement incarnation unexpectedly continued")?;
+            assert_eq!(error.code(), "runtime_resume_failed");
+            assert!(!error.is_retryable());
+            assert!(port_b.released, "failed resume did not release its lease");
+        }
         gateway.join().map_err(|_| "gateway thread panicked")??;
         Ok(())
     })?;
-    assert_eq!(
-        durable_b.operation_state(PENDING_OPERATION_ID)?,
-        sts2_harness::OperationState::Reconciled
-    );
+    let state = durable_b.operation_state(PENDING_OPERATION_ID)?;
+    if continue_after_recovery {
+        assert_eq!(state, sts2_harness::OperationState::Reconciled);
+    } else {
+        assert!(
+            state.is_unresolved(),
+            "replacement operation was closed: {state:?}"
+        );
+    }
     let requests = fs::read_to_string(fixture.0.join("requests"))?;
     let calls: Vec<Value> = requests
         .lines()
@@ -328,6 +376,31 @@ fn disk_reopen_fresh_allocation_preserves_original_context_and_uses_current_fenc
             .iter()
             .any(|call| call["params"]["name"] == "sts2.dispatch_action")
     );
+    let wait_calls: Vec<&Value> = calls
+        .iter()
+        .filter(|call| call["params"]["name"] == "sts2.wait_for_transition")
+        .collect();
+    assert_eq!(wait_calls.len(), usize::from(continue_after_recovery));
+    if let Some(wait) = wait_calls.first() {
+        assert_eq!(
+            wait["params"]["arguments"]["wait_for_millis"],
+            json!(1),
+            "continuation must use the bounded retained-witness read"
+        );
+        assert_eq!(
+            wait["params"]["arguments"]["instance_id"],
+            authority.instance_id
+        );
+        assert_eq!(wait["params"]["arguments"]["lease_id"], authority.lease_id);
+        assert_eq!(
+            wait["params"]["arguments"]["lease_epoch"],
+            authority.lease_epoch
+        );
+        assert_eq!(
+            wait["params"]["arguments"]["operation_id"],
+            PENDING_OPERATION_ID
+        );
+    }
     let lookup_operation = &recovery_calls[0]["params"]["arguments"]["payload"]["operation"];
     assert_eq!(
         lookup_operation["original_context"]["boot_id"],

@@ -164,11 +164,39 @@ impl EpisodeRunner {
         port: &mut P,
         source: &mut S,
     ) -> Result<EpisodeRunReport, EpisodeRunnerError> {
+        self.run_with_completion(port, source, |_, _, _| Ok(()))
+    }
+
+    /// Validates or persists a successful terminal report before resource cleanup.
+    ///
+    /// The adapter may use `complete` to validate replay termination and commit durable
+    /// completion while its ports are still open. The callback is never called for a failed
+    /// episode. Callback failure still runs all cleanup steps; cleanup failure cannot undo a
+    /// completion that the callback already committed. The ordinary [`Self::run`] entry point
+    /// retains its nondurable behavior by supplying a no-op callback.
+    pub fn run_with_completion<P, S, F>(
+        &self,
+        port: &mut P,
+        source: &mut S,
+        complete: F,
+    ) -> Result<EpisodeRunReport, EpisodeRunnerError>
+    where
+        P: EpisodeRuntimePort,
+        S: super::policy_router::DecisionSource,
+        F: FnOnce(&mut P, &mut S, &EpisodeRunReport) -> Result<(), PortError>,
+    {
         port.launch().map_err(EpisodeRunnerError::Launch)?;
-        let outcome = self.run_inner(port, source);
-        match EpisodeShutdown.close(port) {
-            Ok(()) => outcome,
-            Err(error) => Err(EpisodeRunnerError::Shutdown(error)),
+        let outcome = self.run_inner(port, source).and_then(|report| {
+            complete(port, source, &report).map_err(EpisodeRunnerError::Completion)?;
+            Ok(report)
+        });
+        match (outcome, EpisodeShutdown.close(port)) {
+            (outcome, Ok(())) => outcome,
+            (Ok(_), Err(error)) => Err(EpisodeRunnerError::Shutdown(error)),
+            (Err(failure), Err(cleanup)) => Err(EpisodeRunnerError::FailureWithCleanup {
+                failure: Box::new(failure),
+                cleanup,
+            }),
         }
     }
 }

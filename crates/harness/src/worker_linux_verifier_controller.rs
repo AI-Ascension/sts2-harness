@@ -5,7 +5,6 @@
 #![cfg(target_os = "linux")]
 
 use std::os::fd::{AsFd, OwnedFd};
-use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 
 use rustix::io::dup;
@@ -24,6 +23,7 @@ use super::protocol::{
     VerifierFailure, VerifierOutcome, decode_endpoint_response, decode_response,
     encode_endpoint_request, encode_request,
 };
+use super::spawn::spawn_fixed_verifier;
 use super::transport::{receive_packet, send_packet};
 
 #[path = "worker_linux_verifier_lease.rs"]
@@ -297,20 +297,4 @@ impl VerifierSession {
         send_packet(&control, request, &fds).await?;
         receive_packet(&control).await
     }
-}
-
-fn spawn_fixed_verifier(control: OwnedFd) -> Result<Child, VerifierFailure> {
-    let executable = std::env::current_exe().map_err(|_| VerifierFailure::Io)?;
-    let mut command = Command::new(executable);
-    #[cfg(test)]
-    command
-        .args(["--exact", super::TEST_HELPER_NAME, "--nocapture"])
-        .env(super::TEST_HELPER_ENV, "1");
-    #[cfg(not(test))]
-    command.arg("--worker-peer-verifier-v1");
-    command
-        .stdin(Stdio::from(std::fs::File::from(control)))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    command.spawn().map_err(|_| VerifierFailure::Io)
 }

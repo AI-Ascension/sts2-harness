@@ -10,6 +10,8 @@ use super::{RuntimeV3Port, parse, wire};
 
 #[path = "runtime_v3_recovery_context.rs"]
 mod context;
+#[path = "runtime_v3_recovery_durable_reconcile.rs"]
+mod durable_reconcile;
 #[path = "runtime_v3_recovery_reconnect.rs"]
 mod reconnect;
 #[path = "runtime_v3_recovery_record.rs"]
@@ -17,6 +19,15 @@ mod record;
 #[path = "runtime_v3_recovery_sideband.rs"]
 mod sideband;
 pub(super) use context::RecoveryContext;
+use durable_reconcile::reconcile_durable_operation;
+
+fn map_initialization_error(error: wire::RpcFailure) -> RecoveryError {
+    if error.is_transient() {
+        RecoveryError::PortFailure
+    } else {
+        RecoveryError::Terminal
+    }
+}
 
 impl RuntimeV3Port {
     /// Rehydrates the durable operation ledger after MCP startup and resolves each retained
@@ -100,17 +111,19 @@ impl RuntimeV3Port {
                     })?;
             if operation.intent.action_kind.as_deref()
                 != Some(super::wire::action_kind_name(action.kind()))
-                || super::wire::canonical_action_digest(action.action_id(), action_payload)
-                    .map_err(|error| {
-                        durable.quarantine_failure(
-                            format!(
-                                "cannot validate operation {} canonical action: {error}",
-                                operation.intent.operation_id
-                            ),
-                            "durable operation canonical action digest could not be calculated",
-                        )
-                    })?
-                    != operation.intent.payload_digest
+                || super::wire::canonical_action_digest(
+                    operation.intent.action_id.as_str(),
+                    action_payload,
+                )
+                .map_err(|error| {
+                    durable.quarantine_failure(
+                        format!(
+                            "cannot validate operation {} canonical action: {error}",
+                            operation.intent.operation_id
+                        ),
+                        "durable operation canonical action digest could not be calculated",
+                    )
+                })? != operation.intent.payload_digest
             {
                 return Err(durable.quarantine_failure(
                     format!(
@@ -126,6 +139,7 @@ impl RuntimeV3Port {
                     state_id: operation.intent.state_id.clone(),
                     generation: operation.intent.generation,
                     action,
+                    payload: action_payload.clone(),
                 },
             );
             let operation_id = operation.intent.operation_id.as_str();
@@ -135,8 +149,6 @@ impl RuntimeV3Port {
             match receipt.status() {
                 DispatchStatus::Settled | DispatchStatus::Rejected | DispatchStatus::Cancelled => {}
                 DispatchStatus::Accepted | DispatchStatus::Unknown => {
-                    // Historical uncertainty cannot be resolved through the ordinary gameplay
-                    // poll path, whose lease and generation belong to the current controller.
                     return Err(format!(
                         "retained operation {operation_id} remains unresolved"
                     ));
@@ -157,19 +169,32 @@ impl RuntimeV3Port {
 impl RecoveryPort for RuntimeV3Port {
     fn reobserve(&mut self) -> Result<EpisodeObservation, RecoveryError> {
         self.reconnect_for_recovery()?;
-        let (value, response_text) = self
-            .call_tool("sts2.reobserve", self.context(self.generation))
-            .map_err(|_| RecoveryError::PortFailure)?;
+        let (value, response_text) = match self
+            .call_tool_classified_with_text("sts2.reobserve", self.context(self.generation))
+        {
+            Ok(value) => value,
+            Err(super::RuntimeV3ToolError::Transient(_)) => return Err(RecoveryError::PortFailure),
+            Err(super::RuntimeV3ToolError::Terminal(_)) => return Err(RecoveryError::Terminal),
+        };
         let parsed = parse::observation_with_text(
             &value,
             &response_text,
             "reobserve_response",
             &self.config,
         )
-        .map_err(|_| RecoveryError::PortFailure)?;
-        let observation = self
+        .map_err(|_| RecoveryError::Terminal)?;
+        let baseline = self
             .install(parsed)
             .map_err(|_| RecoveryError::PortFailure)?;
+        let observation = if self.is_expert_profile() {
+            self.compose_current_observation_recovery(baseline)
+                .map_err(|error| match error {
+                    super::RuntimeV3ToolError::Transient(_) => RecoveryError::PortFailure,
+                    super::RuntimeV3ToolError::Terminal(_) => RecoveryError::Terminal,
+                })?
+        } else {
+            baseline
+        };
         let _ = self
             .telemetry
             .observation(ObservationSource::Reobserve, &observation);
@@ -189,68 +214,56 @@ impl RecoveryPort for RuntimeV3Port {
             .get(operation_id)
             .cloned()
             .ok_or(RecoveryError::InvalidOperation)?;
-        let operation = self
-            .durable_operation(operation_id)
-            .map_err(|_| RecoveryError::PortFailure)?;
-        let operation_ref =
-            RecoveryContext::operation_ref(&operation).map_err(|_| RecoveryError::PortFailure)?;
-        self.ensure_recovery_sideband()
-            .map_err(|_| RecoveryError::PortFailure)?;
-        let context = self
-            .recovery_context
-            .clone()
-            .ok_or(RecoveryError::PortFailure)?;
-        let lookup = self
-            .recovery_call_tool(
-                "watchdog.operation_lookup",
-                "operation_lookup_response",
-                json!({"operation": operation_ref, "lookup_scope": "historical_read"}),
+        if self.durable.is_some() {
+            return reconcile_durable_operation(self, operation_id, record);
+        }
+        self.reconnect_for_recovery()?;
+        if self.is_expert_profile() && record.action.kind() == sts2_harness::ActionKind::UsePotion {
+            let receipt = self
+                .reconcile_expert_operation(operation_id)
+                .map_err(|_| RecoveryError::PortFailure)?;
+            super::recording::receipt(&receipt, record.generation, &self.telemetry);
+            let _ = self.telemetry.recovery(
+                RecoveryKind::Reconcile,
+                Some(operation_id),
+                self.reconnect_attempts,
+                "success",
+                None,
+            );
+            return Ok(receipt);
+        }
+        let (value, response_text) = self
+            .call_tool_with_text(
+                "sts2.recover",
+                json!({
+                    "instance_id": self.config.instance_id,
+                    "mcp_session_id": self.config.mcp_session_id,
+                    "lease_id": self.config.lease_id,
+                    "lease_epoch": self.config.lease_epoch,
+                    "generation": self.generation,
+                    "recovery_kind": "reconcile",
+                    "operation_id": operation_id
+                }),
             )
             .map_err(|_| RecoveryError::PortFailure)?;
-        let lookup_payload = lookup.get("payload").ok_or(RecoveryError::PortFailure)?;
-        if lookup_payload.get("mutation_authorized") != Some(&Value::Bool(false)) {
-            return Err(RecoveryError::PortFailure);
-        }
-        let original_context = &operation_ref["original_context"];
-        let lookup_state = record::response_state(lookup_payload, &operation, original_context)
-            .map_err(|_| RecoveryError::PortFailure)?;
-        if lookup_state.is_none() {
-            return Ok(unknown_receipt(operation_id, record.action));
-        }
-        let reconcile = self
-            .recovery_call_tool(
-                "watchdog.operation_reconcile",
-                "operation_reconcile_response",
-                context
-                    .reconcile_payload(&operation)
-                    .map_err(|_| RecoveryError::PortFailure)?,
-            )
-            .map_err(|_| RecoveryError::PortFailure)?;
-        let reconcile_payload = reconcile.get("payload").ok_or(RecoveryError::PortFailure)?;
-        let state = record::response_state(reconcile_payload, &operation, original_context)
-            .map_err(|_| RecoveryError::PortFailure)?;
-        if !matches!(
-            state.as_deref(),
-            Some("SETTLED" | "REJECTED" | "RECONCILED")
-        ) {
-            return Ok(unknown_receipt(operation_id, record.action));
-        }
-        let resolved_state =
-            record::authoritative_reconcile_state(reconcile_payload, &operation, original_context)
-                .map_err(|_| RecoveryError::PortFailure)?;
-        if let Some(durable) = &self.durable {
-            durable
-                .reconcile_response(operation_id, resolved_state.0, &reconcile)
-                .map_err(|_| RecoveryError::PortFailure)?;
-        }
-        let receipt = TransitionReceipt::new(
+        let receipt = parse::receipt(
+            &value,
+            &response_text,
+            "recover_response",
+            &self.config,
             operation_id,
+            record.generation,
             record.action,
-            resolved_state.1,
-            None,
-            None,
-            None,
-        );
+        )
+        .map_err(|_| RecoveryError::PortFailure)?;
+        self.install_response(&value, &response_text, "recover_response")
+            .map_err(|_| RecoveryError::PortFailure)?;
+        let receipt = if self.is_expert_profile() {
+            self.compose_receipt_after(receipt)
+                .map_err(|_| RecoveryError::PortFailure)?
+        } else {
+            receipt
+        };
         super::recording::receipt(&receipt, record.generation, &self.telemetry);
         let _ = self.telemetry.recovery(
             RecoveryKind::Reconcile,
@@ -270,18 +283,4 @@ impl RecoveryPort for RuntimeV3Port {
     fn stop_episode(&mut self) -> Result<(), RecoveryError> {
         RecoveryPort::release_lease(self)
     }
-}
-
-fn unknown_receipt(
-    operation_id: &str,
-    action: sts2_harness::EpisodeLegalAction,
-) -> TransitionReceipt {
-    TransitionReceipt::new(
-        operation_id,
-        action,
-        DispatchStatus::Unknown,
-        None,
-        None,
-        Some(String::from("recovery_required")),
-    )
 }

@@ -5,18 +5,20 @@ use std::collections::BTreeMap;
 use serde_json::{Value, json};
 use sts2_harness::{
     ActionIdentity, EpisodeLegalAction, EpisodeLegalActionSet, EpisodeObservation,
-    EpisodeRuntimePort, OperationState, ShutdownPort, TransitionReceipt,
+    EpisodeRuntimePort, ShutdownPort, TransitionReceipt,
 };
 
 use super::super::mcp::validate_or_release_allocation_with;
 use super::super::runtime_v3_telemetry::ObservationSource;
 use super::durable::{OperationCatalogEvidence, OperationIntentEvidence};
-use super::{OperationRecord, RuntimeV3Port, allocation_context, parse, wire};
+use super::{RuntimeV3Port, RuntimeV3ToolError, allocation_context, parse, wire};
 
 const MAX_OPERATIONS: usize = 1_024;
 
 #[path = "runtime_v3_episode_actions.rs"]
 mod actions;
+#[path = "runtime_v3_episode_durable.rs"]
+mod durable;
 #[cfg(test)]
 #[path = "runtime_v3_episode_tests.rs"]
 mod tests;
@@ -55,6 +57,9 @@ impl EpisodeRuntimePort for RuntimeV3Port {
             &self.config,
             allocation_context::validate,
             |headers| {
+                // Allocation may have committed even when the cancellation-bound response
+                // exchange did not complete. Cleanup must retain its own deadline and must not
+                // inherit the canceled execution signal.
                 let response = self
                     .gateway
                     .release(&self.config.instance_id, &json!({}), headers);
@@ -85,7 +90,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
     fn observe(&mut self) -> Result<EpisodeObservation, sts2_harness::PortError> {
         let arguments = self.context(self.generation);
         let (value, response_text) = self
-            .call_tool("sts2.observe", arguments)
+            .call_tool_with_text("sts2.observe", arguments)
             .map_err(|error| wire::port_error("observe_failed", error, false))?;
         let parsed =
             parse::observation_with_text(&value, &response_text, "state_response", &self.config)
@@ -95,9 +100,15 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                 .verify_resume_boundary_with_catalog(&parsed.observation, &parsed.catalog_raw)
                 .map_err(|error| wire::port_error("resume_boundary_mismatch", error, false))?;
         }
-        let observation = self
+        let baseline = self
             .install(parsed)
             .map_err(|error| wire::port_error("observe_durability_failed", error, false))?;
+        let observation = if self.is_expert_profile() {
+            self.compose_current_observation(baseline)
+                .map_err(|error| wire::port_error("expert_observe_invalid", error, false))?
+        } else {
+            baseline
+        };
         let _ = self
             .telemetry
             .observation(ObservationSource::Observe, &observation);
@@ -113,9 +124,20 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         if let Value::Object(object) = &mut arguments {
             object.insert(String::from("state_id"), Value::String(state_id.to_owned()));
         }
-        let (value, response_text) = self
-            .call_tool("sts2.legal_actions", arguments)
-            .map_err(|error| wire::port_error("legal_actions_failed", error, false))?;
+        let (value, response_text) =
+            match self.call_tool_classified_with_text("sts2.legal_actions", arguments) {
+                Ok(value) => value,
+                Err(RuntimeV3ToolError::Transient(error)) => {
+                    return Err(wire::port_error(
+                        "catalog_reobserve",
+                        format!("legal-action catalog transport failed: {error}"),
+                        true,
+                    ));
+                }
+                Err(RuntimeV3ToolError::Terminal(error)) => {
+                    return Err(wire::port_error("legal_actions_failed", error, false));
+                }
+            };
         if wire::catalog_reobserve(&value) {
             return Err(wire::port_error(
                 "catalog_reobserve",
@@ -137,6 +159,9 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         self.catalog = Some(parsed.catalog);
         self.catalog_raw = Some(parsed.catalog_raw);
         self.payloads = parsed.payloads;
+        if self.is_expert_profile() {
+            return self.expert_catalog(state_id, generation);
+        }
         Ok(actions)
     }
 
@@ -147,7 +172,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
     ) -> Result<TransitionReceipt, sts2_harness::PortError> {
         self.validate_current_action(identity, action)?;
         let payload = self.current_payload(action)?;
-        let payload_digest = self.retain_operation(identity, action)?;
+        let payload_digest = self.retain_operation(identity, action, &payload)?;
         if let Some(durable) = &self.durable {
             let input = json!({
                 "state_id": identity.state_id,
@@ -194,7 +219,11 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                 .operation_dispatched(&identity.operation_id, &payload_digest)
                 .map_err(|error| wire::port_error("dispatch_intent_failed", error, false))?;
         }
-        let (value, response_text) = match self.call_tool(
+        if self.is_expert_profile() && action.kind() == sts2_harness::ActionKind::UsePotion {
+            let result = self.dispatch_expert_action(identity, action, payload);
+            return self.finish_durable_dispatch(identity, &payload_digest, result);
+        }
+        let (value, response_text) = match self.call_tool_with_text(
             "sts2.dispatch_action",
             json!({
                 "instance_id": self.config.instance_id,
@@ -209,18 +238,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         ) {
             Ok(value) => value,
             Err(error) => {
-                if let Some(durable) = &self.durable {
-                    durable
-                        .operation_result(
-                            &identity.operation_id,
-                            &payload_digest,
-                            OperationState::Unknown,
-                            None,
-                        )
-                        .map_err(|durability_error| {
-                            wire::port_error("dispatch_durability_failed", durability_error, false)
-                        })?;
-                }
+                self.record_unknown(&identity.operation_id, &payload_digest)?;
                 return Err(wire::port_error("dispatch_failed", error, true));
             }
         };
@@ -235,60 +253,33 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         ) {
             Ok(receipt) => receipt,
             Err(error) => {
-                if let Some(durable) = &self.durable {
-                    durable
-                        .operation_result(
-                            &identity.operation_id,
-                            &payload_digest,
-                            OperationState::Unknown,
-                            None,
-                        )
-                        .map_err(|durability_error| {
-                            wire::port_error("dispatch_durability_failed", durability_error, false)
-                        })?;
-                }
+                self.record_unknown(&identity.operation_id, &payload_digest)?;
                 return Err(wire::port_error("dispatch_invalid", error, false));
             }
         };
         if let Err(error) =
             self.install_response(&value, &response_text, "dispatch_action_response")
         {
-            if let Some(durable) = &self.durable {
-                durable
-                    .operation_result(
-                        &identity.operation_id,
-                        &payload_digest,
-                        OperationState::Unknown,
-                        None,
-                    )
-                    .map_err(|durability_error| {
-                        wire::port_error("dispatch_durability_failed", durability_error, false)
-                    })?;
-            }
+            self.record_unknown(&identity.operation_id, &payload_digest)?;
             return Err(wire::port_error(
                 "dispatch_observation_invalid",
                 error,
                 false,
             ));
         }
-        if let Some(durable) = &self.durable {
-            let state = match receipt.status() {
-                sts2_harness::DispatchStatus::Accepted => OperationState::Accepted,
-                sts2_harness::DispatchStatus::Settled => OperationState::Settled,
-                sts2_harness::DispatchStatus::Rejected
-                | sts2_harness::DispatchStatus::Cancelled => OperationState::Rejected,
-                sts2_harness::DispatchStatus::Unknown => OperationState::Unknown,
-            };
-            durable
-                .operation_result(
-                    &identity.operation_id,
-                    &payload_digest,
-                    state,
-                    (state == OperationState::Settled || state == OperationState::Rejected)
-                        .then_some(&value),
-                )
-                .map_err(|error| wire::port_error("dispatch_durability_failed", error, false))?;
-        }
+        let receipt = if self.is_expert_profile() {
+            self.compose_receipt_after(receipt).map_err(|error| {
+                wire::port_error("expert_dispatch_observation_invalid", error, false)
+            })?
+        } else {
+            receipt
+        };
+        self.persist_dispatch_result(
+            &identity.operation_id,
+            &payload_digest,
+            &receipt,
+            Some(&value),
+        )?;
         super::recording::receipt(&receipt, identity.generation, &self.telemetry);
         Ok(receipt)
     }

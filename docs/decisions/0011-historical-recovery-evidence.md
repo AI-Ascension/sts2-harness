@@ -25,7 +25,14 @@ The decoded bytes must still exactly equal the durable canonical action and its 
 Historical lookup must return mutation_authorized=false. Compare any retained record with the
 requested original context, operation ID, payload digest and expected state/catalog boundary.
 An unresolved lookup proceeds to authenticated reconciliation using that same reference, never
-to ordinary gameplay polling or redispatch. NOT_FOUND remains unresolved.
+to ordinary gameplay polling or redispatch. NOT_FOUND remains unresolved. If reconciliation
+returns an authoritative terminal settlement under the same instance incarnation, the consumer
+first treats the historical result as resolved for this recovery decision, then must obtain a
+fresh ordinary gameplay observation and transition witness before exposing a usable settled
+receipt. Durable closure is deferred until that fresh receipt is validated; a failed, unresolved
+or no-observation read leaves the operation unresolved. The retained-witness read is one
+immediate bounded request, not the ordinary 120-second transition barrier, so it cannot silently
+extend the recovery deadline.
 
 The gateway may preserve an already terminal SETTLED/REJECTED record when asked to reconcile.
 Accept those states and RECONCILED only when the response result agrees with the record and its

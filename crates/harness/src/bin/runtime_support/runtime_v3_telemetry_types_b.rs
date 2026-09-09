@@ -63,6 +63,12 @@ enum TelemetryEvent {
         cleanup_status: CleanupStatus,
         dropped_events: u64,
     },
+    ExportStatus {
+        status: &'static str,
+        sent: u64,
+        failed: u64,
+        dropped_events: u64,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -95,12 +101,18 @@ impl FlushReport {
 
 struct ExporterState {
     context: TelemetryContext,
-    normal_tx: SyncSender<TelemetryEvent>,
-    critical_tx: SyncSender<TelemetryEvent>,
+    telemetry_tx: SyncSender<QueuedTelemetryEvent>,
+    admission: Mutex<()>,
     closed: AtomicBool,
     sequence: AtomicU64,
     normal_dropped: AtomicU64,
     critical_dropped: AtomicU64,
+}
+
+struct QueuedTelemetryEvent {
+    event: TelemetryEvent,
+    enqueued_at_unix_nanos: u128,
+    sequence: u64,
 }
 
 #[derive(Clone)]
@@ -122,4 +134,14 @@ enum ControlMessage {
 struct WorkerReport {
     sent: u64,
     failed: u64,
+}
+
+impl WorkerReport {
+    fn export_status(&self, dropped_events: u64) -> &'static str {
+        if self.failed > 0 || dropped_events > 0 {
+            "partial"
+        } else {
+            "delivered"
+        }
+    }
 }

@@ -45,9 +45,21 @@ impl Drop for TestControllerSerialGuard {
         let mut owner = owners
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if owner.as_ref() == Some(&thread) {
+        let reap_error = if owner.as_ref() == Some(&thread) {
+            // Keep the serial owner while the exact retained child is reaped;
+            // otherwise the next constructor could race the barrier and
+            // observe the same uncertain registry owner.
+            let reap_error = super::super::lifecycle::reap_poisoned_session_for_test().err();
             *owner = None;
             wake.notify_one();
-        }
+            reap_error
+        } else {
+            None
+        };
+        drop(owner);
+        assert!(
+            reap_error.is_none(),
+            "Linux verifier test session reap failed: {reap_error:?}"
+        );
     }
 }

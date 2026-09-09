@@ -24,36 +24,12 @@ impl DiagnosticStage {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum RecoveryCaseTag {
-    RetainedTerminal {
-        lookup: RecoveryStatus,
-        reconcile: RecoveryStatus,
-    },
-    Unresolved {
-        lookup: RecoveryStatus,
-        reconcile: RecoveryStatus,
-    },
-    WitnessDefect(WitnessDefect),
-}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct RecoveryCaseTag(String);
 
 impl RecoveryCaseTag {
-    pub(super) fn retained_terminal(lookup: &str, reconcile: &str) -> Self {
-        Self::RetainedTerminal {
-            lookup: RecoveryStatus::from_label(lookup),
-            reconcile: RecoveryStatus::from_label(reconcile),
-        }
-    }
-
-    pub(super) fn unresolved(lookup: &str, reconcile: &str) -> Self {
-        Self::Unresolved {
-            lookup: RecoveryStatus::from_label(lookup),
-            reconcile: RecoveryStatus::from_label(reconcile),
-        }
-    }
-
-    pub(super) fn witness_defect(defect: &str) -> Self {
-        Self::WitnessDefect(WitnessDefect::from_label(defect))
+    pub(super) fn new(label: impl Into<String>) -> Self {
+        Self(label.into())
     }
 }
 
@@ -66,50 +42,7 @@ pub(super) enum RecoveryStatus {
     Rejected,
     Unknown,
     Reconciled,
-    NotFound,
-    Invalid,
     Unavailable,
-}
-
-impl RecoveryStatus {
-    fn from_label(value: &str) -> Self {
-        match value {
-            "INTENT_RECORDED" => Self::IntentRecorded,
-            "MAY_HAVE_BEEN_DISPATCHED" => Self::MayHaveBeenDispatched,
-            "ACCEPTED" => Self::Accepted,
-            "SETTLED" => Self::Settled,
-            "REJECTED" => Self::Rejected,
-            "UNKNOWN" => Self::Unknown,
-            "RECONCILED" => Self::Reconciled,
-            "NOT_FOUND" => Self::NotFound,
-            _ => Self::Invalid,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum WitnessDefect {
-    Missing,
-    OtherOperation,
-    OtherContext,
-    OtherFence,
-    Generation,
-    DuplicateWitness,
-    Other,
-}
-
-impl WitnessDefect {
-    fn from_label(value: &str) -> Self {
-        match value {
-            "missing" => Self::Missing,
-            "other_operation" => Self::OtherOperation,
-            "other_context" => Self::OtherContext,
-            "other_fence" => Self::OtherFence,
-            "generation" => Self::Generation,
-            "duplicate_witness" => Self::DuplicateWitness,
-            _ => Self::Other,
-        }
-    }
 }
 
 fn state_tag(state: Result<OperationState, String>) -> RecoveryStatus {
@@ -228,23 +161,7 @@ fn render_failure(
     // The test boundary exposes only a string, so this must not infer an inner error variant.
     report.push_str(" failure=recovery_failed ");
     report.push_str("case=");
-    match case {
-        RecoveryCaseTag::RetainedTerminal { lookup, reconcile } => {
-            let _ = write!(
-                report,
-                "retained_terminal,lookup={lookup:?},reconcile={reconcile:?}"
-            );
-        }
-        RecoveryCaseTag::Unresolved { lookup, reconcile } => {
-            let _ = write!(
-                report,
-                "unresolved,lookup={lookup:?},reconcile={reconcile:?}"
-            );
-        }
-        RecoveryCaseTag::WitnessDefect(defect) => {
-            let _ = write!(report, "witness_defect,{defect:?}");
-        }
-    }
+    report.push_str(&case.0);
     let _ = write!(
         report,
         " durable_state={durable_state:?} requests={} child_status={child_status:?}",
@@ -391,7 +308,7 @@ mod tests {
 
     #[test]
     fn oversized_files_are_bounded() -> Result<(), Box<dyn std::error::Error>> {
-        use super::super::super::reconnect_support::Fixture;
+        use super::super::reconnect_support::Fixture;
 
         let fixture = Fixture::new()?;
         let requests_path = fixture.0.join("requests");
@@ -412,7 +329,7 @@ mod tests {
         let child_status = summarize_child_status_path(&child_path);
         assert_eq!(child_status, ChildStatus::Oversized);
         let report = render_failure(
-            RecoveryCaseTag::unresolved("UNKNOWN", "NOT_FOUND"),
+            RecoveryCaseTag::new("unresolved,lookup=UNKNOWN,reconcile=NOT_FOUND"),
             RecoveryStatus::Unknown,
             summary,
             child_status,

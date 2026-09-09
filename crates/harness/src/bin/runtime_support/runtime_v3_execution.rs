@@ -19,32 +19,27 @@ use super::launch_options::RuntimeV3LaunchOptions;
 use super::recording;
 use super::{RuntimeV3Port, finish_telemetry};
 
-fn combine_quarantine(error: String, quarantine: Result<(), String>) -> String {
-    match quarantine {
-        Ok(()) => error,
-        Err(quarantine_error) => {
-            format!("{error}; failed to persist interrupted-unknown quarantine: {quarantine_error}")
-        }
-    }
-}
+#[path = "runtime_v3_execution_cleanup.rs"]
+mod cleanup;
+use cleanup::{
+    combine_quarantine, combine_store_close, finish_cleanup, quarantine_unless_completed,
+};
 
-fn combine_store_close(error: String, close: Result<(), String>) -> String {
-    match close {
-        Ok(()) => error,
-        Err(close_error) => format!("{error}; execution store close failed: {close_error}"),
-    }
-}
+#[path = "runtime_v3_execution_telemetry.rs"]
+mod execution_telemetry;
+use execution_telemetry::combat_demo_telemetry;
 
-fn finish_cleanup(
-    result: Result<(), String>,
-    cleanup: Result<(), String>,
-    label: &str,
-) -> Result<(), String> {
-    match (result, cleanup) {
-        (result, Ok(())) => result,
-        (Ok(()), Err(error)) => Err(format!("{label}: {error}")),
-        (Err(original), Err(error)) => Err(format!("{original}; {label}: {error}")),
-    }
+fn combat_demo_complete_event(
+    steps: u32,
+    stage: sts2_harness::EpisodeStage,
+    terminal_observation_digest: String,
+) -> serde_json::Value {
+    json!({
+        "event": "combat_demo_complete",
+        "steps": steps,
+        "stage": wire::stage_name(stage),
+        "terminal_observation_digest": terminal_observation_digest,
+    })
 }
 
 /// Runs one already-admitted runtime-v3 episode.
@@ -92,27 +87,34 @@ pub(super) fn run(
     };
     port.cancellation = options.cancellation.clone();
     port.gateway.set_cancellation(options.cancellation.clone());
-    if !options.combat_demo
-        && let Some(path) = options.replay_path.as_deref()
-    {
-        let result = options
-            .episode_replay_prefix()
-            .and_then(|prefix| episode_replay::run(&mut port, &settings.runner, path, prefix));
+    if !options.combat_demo && options.replay_path.is_some() {
+        let result = options.episode_replay_prefix().and_then(|prefix| {
+            let bytes = options.replay_bytes.as_deref().ok_or_else(|| {
+                String::from("runtime-v3 replay bytes were not captured before admission")
+            })?;
+            episode_replay::run_with_bytes(&mut port, &settings.runner, bytes, prefix)
+        });
         let quarantine = if result.is_err() {
-            port.mark_interrupted_unknown("runtime-v3 episode replay failed")
+            quarantine_unless_completed(&port, "runtime-v3 episode replay failed")
         } else {
             Ok(())
         };
         let result = result.map_err(|error| combine_quarantine(error, quarantine));
         let store_close = port.close_durable();
         drop(port);
+        let (game_outcome, telemetry_stage) = match result.as_ref().ok() {
+            Some(episode_replay::ReplayOutcome::Terminal(stage)) => (
+                recording::game_outcome(*stage),
+                TelemetryStage::from(*stage),
+            ),
+            Some(episode_replay::ReplayOutcome::PrefixVerified) => {
+                (GameOutcome::Unavailable, TelemetryStage::Recovery)
+            }
+            None => (GameOutcome::Failure, TelemetryStage::Unknown),
+        };
         let _ = telemetry_handle.run_finished(
-            if result.is_ok() {
-                GameOutcome::Success
-            } else {
-                GameOutcome::Failure
-            },
-            TelemetryStage::Unknown,
+            game_outcome,
+            telemetry_stage,
             if store_close.is_ok() {
                 CleanupStatus::Clean
             } else {
@@ -120,7 +122,11 @@ pub(super) fn run(
             },
         );
         finish_telemetry(telemetry);
-        return finish_cleanup(result, store_close, "execution store close failed");
+        return finish_cleanup(
+            result.map(|_| ()),
+            store_close,
+            "execution store close failed",
+        );
     }
     let transport =
         ExoProcessTransport::new(settings.process).with_cancellation(options.cancellation.clone());
@@ -130,51 +136,89 @@ pub(super) fn run(
         let durable_handle = port.durable_handle();
         let mut recorder =
             recording::DecisionRecorder::new(&mut source, telemetry_handle.clone(), durable_handle);
-        let outcome = combat_demo::run(
+        let (outcome, terminal_stage, workflow_cleanup) = match combat_demo::run_with_replay_bytes(
             &mut port,
             &mut recorder,
             &settings.runner,
-            options.replay_path.as_deref(),
-        );
-        let quarantine = if outcome.is_err() {
-            port.mark_interrupted_unknown("runtime-v3 combat demo failed")
-        } else {
-            Ok(())
+            options.replay_bytes.as_deref(),
+        ) {
+            Ok(report) => {
+                let terminal_stage = report.terminal_observation().stage();
+                (Ok(report), Some(terminal_stage), CleanupStatus::Clean)
+            }
+            Err(failure) => {
+                let terminal_stage = failure
+                    .terminal_observation()
+                    .map(|observation| observation.stage());
+                let workflow_cleanup = failure.cleanup_status();
+                let quarantine = if failure.needs_quarantine() {
+                    port.mark_interrupted_unknown("runtime-v3 combat demo failed")
+                } else {
+                    Ok(())
+                };
+                (
+                    Err(combine_quarantine(failure.message().to_owned(), quarantine)),
+                    terminal_stage,
+                    workflow_cleanup,
+                )
+            }
         };
-        let outcome = outcome.map_err(|error| combine_quarantine(error, quarantine));
+        // `Ok(report)` means the combat workflow crossed its durable completion boundary and
+        // its own shutdown policy. Keep the completion event outside the workflow so it cannot be
+        // emitted when durable completion itself failed.
+        let completion = outcome.as_ref().ok().map(|report| {
+            (
+                report.steps(),
+                report.terminal_observation().stage(),
+                report.terminal_observation_digest(),
+            )
+        });
         let close = source.close().map_err(|error| error.to_string());
         let store_close = port.close_durable();
         drop(port);
-        let game_outcome = if outcome.is_ok() && close.is_ok() {
-            GameOutcome::Success
-        } else {
-            GameOutcome::Failure
-        };
+        let summary = combat_demo_telemetry(
+            terminal_stage,
+            workflow_cleanup,
+            close.is_ok(),
+            store_close.is_ok(),
+        );
         let _ = telemetry_handle.run_finished(
-            game_outcome,
-            TelemetryStage::Unknown,
-            if close.is_ok() && store_close.is_ok() {
-                CleanupStatus::Clean
-            } else {
-                CleanupStatus::Failed
-            },
+            summary.game_outcome,
+            summary.terminal_stage,
+            summary.cleanup_status,
         );
         finish_telemetry(telemetry);
-        let outcome = finish_cleanup(outcome, close, "provider close failed");
-        return finish_cleanup(outcome, store_close, "execution store close failed");
+        let outcome = finish_cleanup(outcome.map(|_| ()), close, "provider close failed");
+        let result = finish_cleanup(outcome, store_close, "execution store close failed");
+        if result.is_ok()
+            && let Some((steps, stage, terminal_observation_digest)) = completion
+        {
+            println!(
+                "{}",
+                combat_demo_complete_event(steps, stage, terminal_observation_digest)
+            );
+        }
+        return result;
     }
     let durable_handle = port.durable_handle();
     let mut recorder =
         recording::DecisionRecorder::new(&mut source, telemetry_handle.clone(), durable_handle);
-    let result = EpisodeRunner::new(settings.runner).run(&mut port, &mut recorder);
+    let result = EpisodeRunner::new(settings.runner).run_with_completion(
+        &mut port,
+        &mut recorder,
+        |port, _, report| {
+            port.complete_durable(report)
+                .map_err(|error| wire::port_error("durable_completion", error, false))
+        },
+    );
     let source_close = source.close();
     let report = match result {
         Ok(report) => report,
         Err(error) => {
             let quarantine = if source_close.is_err() {
-                port.mark_interrupted_unknown("runtime-v3 episode and provider close failed")
+                quarantine_unless_completed(&port, "runtime-v3 episode and provider close failed")
             } else {
-                port.mark_interrupted_unknown("runtime-v3 episode failed")
+                quarantine_unless_completed(&port, "runtime-v3 episode failed")
             };
             let error =
                 combine_quarantine(format!("Runtime-v3 episode failed: {error}"), quarantine);
@@ -191,7 +235,7 @@ pub(super) fn run(
         }
     };
     if source_close.is_err() {
-        let quarantine = port.mark_interrupted_unknown("runtime-v3 provider close failed");
+        let quarantine = quarantine_unless_completed(&port, "runtime-v3 provider close failed");
         let error = combine_store_close(
             combine_quarantine(String::from("Exo session close failed"), quarantine),
             port.close_durable(),
@@ -200,20 +244,6 @@ pub(super) fn run(
         let _ = telemetry_handle.failure("provider_close", FailureCode::Cleanup, false, None);
         let _ = telemetry_handle.run_finished(
             GameOutcome::Unavailable,
-            TelemetryStage::from(report.terminal_stage()),
-            CleanupStatus::Failed,
-        );
-        finish_telemetry(telemetry);
-        return Err(error);
-    }
-    if let Err(error) = port.complete_durable(&report) {
-        let quarantine = port.mark_interrupted_unknown("runtime-v3 durable completion failed");
-        let error =
-            combine_store_close(combine_quarantine(error, quarantine), port.close_durable());
-        drop(port);
-        let _ = telemetry_handle.failure("durable_completion", FailureCode::Other, false, None);
-        let _ = telemetry_handle.run_finished(
-            GameOutcome::Failure,
             TelemetryStage::from(report.terminal_stage()),
             CleanupStatus::Failed,
         );

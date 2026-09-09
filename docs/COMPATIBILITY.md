@@ -99,6 +99,23 @@ an integrity digest, evidence validation, or a substitute for independent versio
 `DecisionPayload` and `DecisionMemory` require caller classification and redaction: their
 bounded JSON and forbidden-key checks do not detect private content or authorize storage/export.
 
+Runtime-v3 gameplay durable admission also binds the versioned workflow (`full_episode` or
+`combat_demo`), replay mode (`none`, `full`, or `prefix`), and the SHA-256 of the exact bounded
+replay bytes when a source is selected. This prevents a completed combat demonstration, replay
+prefix, or different trajectory source from being resumed under another completion contract.
+The generic durable completion boundary remains Victory/Defeat; only the combat-demo owner path
+may complete at Reward. Existing attempts with the pre-binding fingerprint are rejected as an
+incompatible reconstruction and require a separately admitted attempt; no database rewrite is
+performed. The worker's owner-supplied fingerprint and full-episode-only admission remain
+unchanged. This is a breaking safety correction for unreleased runtime-v3 durable state.
+
+`EpisodeRunner::run_with_completion` adds an optional adapter callback that runs after a terminal
+report is validated but before episode shutdown; the ordinary `run` method delegates with a no-op
+and remains nondurable for existing callers. The new `Completion` and `FailureWithCleanup` error
+variants require exhaustive Rust matches to handle terminal persistence and combined cleanup
+failures. A completion committed before cleanup remains authoritative while the cleanup error is
+still reported. This changes no wire or schema bytes.
+
 ## Promotion evidence
 
 Future support advances through deterministic offline tests, fake boundary/component tests, real

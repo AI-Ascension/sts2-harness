@@ -7,14 +7,16 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use sts2_harness::{
-    Checkpoint, CompletionRecord, CompletionStatus, EpisodeObservation, EpisodeRunReport,
-    ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig,
+    Checkpoint, ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig,
     RECOVERY_SCHEMA_DIGEST, ResumeState,
 };
 
 use super::super::config::RuntimeConfig;
 use super::super::runtime_v3_settings::RuntimeV3Settings;
-use super::worker_store::{SharedExecutionStore, share_store, snapshot, try_lock, try_lock_close};
+#[cfg(test)]
+use super::worker_store::snapshot;
+use super::worker_store::{SharedExecutionStore, share_store, try_lock, try_lock_close};
+use super::workflow_binding::WorkflowBinding;
 
 const DEFAULT_STORE_PATH: &str = "harness-execution.sqlite3";
 const PROVIDER_RESERVATION_UNITS: u64 = 1;
@@ -23,6 +25,8 @@ const PROVIDER_RESERVATION_UNITS: u64 = 1;
 mod admitted;
 #[path = "runtime_v3_durable_checkpoints.rs"]
 mod checkpoints;
+#[path = "runtime_v3_durable_completion.rs"]
+mod completion;
 #[path = "runtime_v3_durable_identity.rs"]
 mod identity;
 #[path = "runtime_v3_durable_operations.rs"]
@@ -38,7 +42,7 @@ pub(super) use operations::{OperationCatalogEvidence, OperationIntentEvidence};
 
 #[cfg(target_os = "linux")]
 pub(super) use admitted::validate_worker_configuration;
-use support::{config_digest, fingerprint, optional_env, sha256_bytes, sha256_json};
+use support::{config_digest_with_binding, optional_env, sha256_bytes};
 
 /// A cloneable handle backed by the one worker-owned SQLite connection.
 ///
@@ -53,14 +57,30 @@ pub(super) struct DurableHandle {
     config_digest: String,
     next_checkpoint: Rc<RefCell<u64>>,
     resume_boundary: Rc<RefCell<Option<Checkpoint>>>,
+    workflow_binding: WorkflowBinding,
     owns_store: bool,
     worker_handoff: Option<Box<sts2_harness::StoredWorkerHandoff>>,
 }
 
 impl DurableHandle {
+    #[allow(dead_code)]
     pub(super) fn open(
         config: &RuntimeConfig,
         settings: &RuntimeV3Settings,
+        resume_requested: bool,
+    ) -> Result<(Self, ResumeState), String> {
+        Self::open_with_binding(
+            config,
+            settings,
+            WorkflowBinding::default_full_episode(),
+            resume_requested,
+        )
+    }
+
+    pub(super) fn open_with_binding(
+        config: &RuntimeConfig,
+        settings: &RuntimeV3Settings,
+        workflow_binding: WorkflowBinding,
         resume_requested: bool,
     ) -> Result<(Self, ResumeState), String> {
         let attempt_id = optional_env("STS2_ATTEMPT_ID")?
@@ -72,7 +92,12 @@ impl DurableHandle {
             config.trajectory_id.clone(),
         )
         .map_err(|error| format!("runtime-v3 execution lineage is invalid: {error}"))?;
-        let fingerprint = fingerprint(config, settings, resume_requested)?;
+        let fingerprint = support::fingerprint_with_binding(
+            config,
+            settings,
+            &workflow_binding,
+            resume_requested,
+        )?;
         let path = optional_env("STS2_EXECUTION_STORE_PATH")?
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(DEFAULT_STORE_PATH));
@@ -154,9 +179,10 @@ impl DurableHandle {
             lineage,
             fingerprint,
             model_revision: settings.exo.revision.clone(),
-            config_digest: config_digest(config, settings)?,
+            config_digest: config_digest_with_binding(config, settings, &workflow_binding)?,
             next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
             resume_boundary: Rc::new(RefCell::new(resume_boundary)),
+            workflow_binding,
             owns_store: true,
             worker_handoff: None,
         };
@@ -167,63 +193,6 @@ impl DurableHandle {
         super::worker_store::try_lock_recovery(&self.store)?
             .pending_operations(&self.lineage.episode_id)
             .map_err(|error| format!("cannot read pending runtime-v3 operations: {error}"))
-    }
-
-    pub(super) fn complete_episode(&self, report: &EpisodeRunReport) -> Result<(), String> {
-        self.complete_observation(report.final_observation())
-    }
-
-    pub(super) fn complete_observation(
-        &self,
-        observation: &EpisodeObservation,
-    ) -> Result<(), String> {
-        if !observation.stage().is_terminal() {
-            return Err(String::from(
-                "runtime-v3 completion requires a terminal observation",
-            ));
-        }
-        let observation_bytes = serde_json::to_vec(observation.fair_play().as_value())
-            .map_err(|error| format!("cannot encode runtime-v3 terminal observation: {error}"))?;
-        let expected_next = self
-            .next_checkpoint
-            .try_borrow()
-            .map_err(|_| String::from("runtime-v3 checkpoint sequence is already borrowed"))?;
-        let mut store = try_lock(&self.store)?;
-        let snapshot = snapshot(&store, &self.lineage, &self.fingerprint)?;
-        let checkpoint = snapshot
-            .episode
-            .last_checkpoint
-            .ok_or_else(|| String::from("runtime-v3 terminal observation was not checkpointed"))?;
-        if checkpoint.sequence.checked_add(1) != Some(*expected_next)
-            || checkpoint.lineage != self.lineage
-            || checkpoint.fingerprint != self.fingerprint
-            || checkpoint.state_id != observation.state_id()
-            || checkpoint.generation != observation.generation()
-            || checkpoint.observation != observation_bytes
-        {
-            return Err(String::from(
-                "runtime-v3 terminal observation does not match the latest checkpoint",
-            ));
-        }
-        let checkpoint_sequence = checkpoint.sequence;
-        let terminal_ref = format!(
-            "terminal-{}-{}",
-            super::super::runtime_v3_wire::stage_name(observation.stage()),
-            observation.generation()
-        );
-        let result_digest = sha256_json(observation.fair_play().as_value())?;
-        let completion = CompletionRecord::new(
-            self.lineage.clone(),
-            CompletionStatus::Completed,
-            terminal_ref,
-            checkpoint_sequence,
-            result_digest,
-        )
-        .map_err(|error| format!("runtime-v3 completion is invalid: {error}"))?;
-        store
-            .record_completion(&completion)
-            .map(|_| ())
-            .map_err(|error| format!("cannot persist runtime-v3 completion: {error}"))
     }
 
     pub(super) fn close(&self) -> Result<(), String> {
@@ -240,6 +209,21 @@ impl DurableHandle {
         store: ExecutionStore,
         lineage: ExecutionLineage,
         fingerprint: ExecutionFingerprint,
+    ) -> Result<Self, String> {
+        Self::from_store_for_test_with_binding(
+            store,
+            lineage,
+            fingerprint,
+            WorkflowBinding::default_full_episode(),
+        )
+    }
+
+    #[cfg(test)]
+    pub(super) fn from_store_for_test_with_binding(
+        store: ExecutionStore,
+        lineage: ExecutionLineage,
+        fingerprint: ExecutionFingerprint,
+        workflow_binding: WorkflowBinding,
     ) -> Result<Self, String> {
         let stored = snapshot(&store, &lineage, &fingerprint)?;
         let next_checkpoint =
@@ -262,6 +246,7 @@ impl DurableHandle {
             config_digest,
             next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
             resume_boundary: Rc::new(RefCell::new(None)),
+            workflow_binding,
             owns_store: true,
             worker_handoff: None,
         })

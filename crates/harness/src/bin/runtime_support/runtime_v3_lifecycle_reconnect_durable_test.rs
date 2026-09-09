@@ -40,7 +40,7 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
     port.allocated = true;
     port.recovery_authority = Some(recovery_authority());
     let mut mcp = McpProcess::spawn(&port.config)?;
-    wire::initialize_mcp(&mut mcp)?;
+    wire::initialize_mcp_profile(&mut mcp, "runtime-v3-gameplay")?;
     port.mcp = Some(mcp);
     let mut state: Value = serde_json::from_str(include_str!(
         "../../../../../protocol-artifact/runtime-v3-gameplay/golden/state-response.json"
@@ -166,7 +166,7 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
     resumed.allocated = true;
     resumed.recovery_authority = Some(recovery_authority());
     let mut mcp = McpProcess::spawn(&resumed.config)?;
-    wire::initialize_mcp(&mut mcp)?;
+    wire::initialize_mcp_profile(&mut mcp, "runtime-v3-gameplay")?;
     resumed.mcp = Some(mcp);
     resumed.reconcile_pending_operations()?;
     assert_eq!(

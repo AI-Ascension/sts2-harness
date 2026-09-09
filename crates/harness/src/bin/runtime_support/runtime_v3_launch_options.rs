@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use super::workflow_binding::{WorkflowBinding, read_replay_source};
+
 /// Startup-only switches for the runtime-v3 gameplay workflow.
 ///
 /// The process environment and command line are sampled once by the executable adapter. The
@@ -11,6 +13,7 @@ pub(super) struct RuntimeV3LaunchOptions {
     pub(super) resume: bool,
     pub(super) combat_demo: bool,
     pub(super) replay_path: Option<PathBuf>,
+    pub(super) replay_bytes: Option<Vec<u8>>,
     pub(super) replay_prefix: Result<bool, String>,
     pub(super) cancellation: sts2_harness::ExecutionCancellation,
 }
@@ -18,13 +21,30 @@ pub(super) struct RuntimeV3LaunchOptions {
 impl RuntimeV3LaunchOptions {
     pub(super) fn from_environment() -> Result<Self, String> {
         let arguments = std::env::args().skip(1).collect::<Vec<_>>();
-        Ok(Self::from_captured(
+        let worker_mode = capture("STS2_WORKER_MODE").as_str() == Some("true");
+        let combat_demo_env = if worker_mode {
+            CapturedValue::Missing
+        } else {
+            capture("STS2_COMBAT_DEMO")
+        };
+        let replay_path_env = if worker_mode {
+            CapturedValue::Missing
+        } else {
+            capture_path("STS2_REPLAY_TRAJECTORY")
+        };
+        let replay_prefix_env = if worker_mode {
+            CapturedValue::Missing
+        } else {
+            capture("STS2_REPLAY_PREFIX")
+        };
+        Self::from_captured(
             arguments,
             capture("STS2_RESUME"),
-            capture("STS2_COMBAT_DEMO"),
-            capture("STS2_REPLAY_TRAJECTORY"),
-            capture("STS2_REPLAY_PREFIX"),
-        ))
+            combat_demo_env,
+            replay_path_env,
+            replay_prefix_env,
+        )
+        .with_replay_source()
     }
 
     #[cfg(test)]
@@ -64,10 +84,14 @@ impl RuntimeV3LaunchOptions {
             .any(|argument| argument.as_ref() == "--resume")
             || resume_env.as_str() == Some("true");
         let combat_demo = combat_demo_env.as_str() == Some("true");
-        let replay_path = replay_path_env
-            .as_str()
-            .filter(|path| !path.is_empty())
-            .map(PathBuf::from);
+        let replay_path = match replay_path_env {
+            CapturedValue::Text(value) if !value.is_empty() => Some(PathBuf::from(value)),
+            CapturedValue::Path(path) if !path.as_os_str().is_empty() => Some(path),
+            CapturedValue::Missing
+            | CapturedValue::InvalidUnicode
+            | CapturedValue::Text(_)
+            | CapturedValue::Path(_) => None,
+        };
         let replay_selected = !combat_demo && replay_path.is_some();
         let replay_prefix = match replay_prefix_env {
             CapturedValue::Text(value) if value == "true" => Ok(true),
@@ -76,15 +100,40 @@ impl RuntimeV3LaunchOptions {
             CapturedValue::InvalidUnicode | CapturedValue::Text(_) if replay_selected => {
                 Err(String::from("STS2_REPLAY_PREFIX must be true or false"))
             }
-            CapturedValue::InvalidUnicode | CapturedValue::Text(_) => Ok(false),
+            CapturedValue::InvalidUnicode | CapturedValue::Path(_) | CapturedValue::Text(_) => {
+                Ok(false)
+            }
         };
         Self {
             resume,
             combat_demo,
             replay_path,
+            replay_bytes: None,
             replay_prefix,
             cancellation: sts2_harness::ExecutionCancellation::default(),
         }
+    }
+
+    fn with_replay_source(mut self) -> Result<Self, String> {
+        self.replay_bytes = self
+            .replay_path
+            .as_deref()
+            .map(read_replay_source)
+            .transpose()?;
+        Ok(self)
+    }
+
+    pub(super) fn workflow_binding(&self) -> Result<WorkflowBinding, String> {
+        if self.replay_path.is_some() && self.replay_bytes.is_none() {
+            return Err(String::from(
+                "runtime-v3 replay selection was not loaded before durable admission",
+            ));
+        }
+        WorkflowBinding::for_launch(
+            self.combat_demo,
+            self.episode_replay_prefix()?,
+            self.replay_bytes.as_deref(),
+        )
     }
 
     pub(super) fn episode_replay_prefix(&self) -> Result<bool, String> {
@@ -96,6 +145,7 @@ impl RuntimeV3LaunchOptions {
 enum CapturedValue {
     Missing,
     Text(String),
+    Path(PathBuf),
     InvalidUnicode,
 }
 
@@ -103,7 +153,7 @@ impl CapturedValue {
     fn as_str(&self) -> Option<&str> {
         match self {
             Self::Text(value) => Some(value),
-            Self::Missing | Self::InvalidUnicode => None,
+            Self::Missing | Self::Path(_) | Self::InvalidUnicode => None,
         }
     }
 }
@@ -113,6 +163,14 @@ fn capture(name: &str) -> CapturedValue {
         Ok(value) => CapturedValue::Text(value),
         Err(std::env::VarError::NotPresent) => CapturedValue::Missing,
         Err(std::env::VarError::NotUnicode(_)) => CapturedValue::InvalidUnicode,
+    }
+}
+
+fn capture_path(name: &str) -> CapturedValue {
+    match std::env::var_os(name) {
+        Some(value) if value.is_empty() => CapturedValue::Text(String::new()),
+        Some(value) => CapturedValue::Path(PathBuf::from(value)),
+        None => CapturedValue::Missing,
     }
 }
 

@@ -21,7 +21,12 @@ pub enum EpisodeRunnerError {
     Dispatch(PortError),
     Barrier(BarrierError),
     Recovery(RecoveryError),
+    Completion(PortError),
     Shutdown(ShutdownError),
+    FailureWithCleanup {
+        failure: Box<Self>,
+        cleanup: ShutdownError,
+    },
     Machine(EpisodeMachineError),
     Observation(ObservationError),
     ActionSet(ActionSetError),
@@ -53,7 +58,14 @@ impl std::fmt::Display for EpisodeRunnerError {
                 return write!(formatter, "episode transition barrier failed: {error}");
             }
             Self::Recovery(_) => "episode recovery failed",
+            Self::Completion(_) => "episode terminal validation or persistence failed",
             Self::Shutdown(_) => "episode cleanup failed",
+            Self::FailureWithCleanup { failure, cleanup } => {
+                return write!(
+                    formatter,
+                    "{failure}; episode cleanup also failed: {cleanup}"
+                );
+            }
             Self::Machine(_) => "episode state machine rejected a transition",
             Self::Observation(_) => "episode observation is invalid",
             Self::ActionSet(_) => "episode legal-action set is invalid",

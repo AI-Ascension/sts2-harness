@@ -11,7 +11,9 @@ use super::*;
 
 #[path = "runtime_v3_recovery_fixture.rs"]
 mod recovery_fixture;
-pub(super) use recovery_fixture::{recovery_settled_script, response_script, settled_frames};
+pub(super) use recovery_fixture::{
+    recovery_settled_script, response_script, response_script_with_identity, settled_frames,
+};
 
 pub(super) const PENDING_OPERATION_ID: &str = "11111111-1111-4111-8111-111111111111";
 pub(super) const PENDING_STATE_ID: &str = "22222222-2222-4222-8222-222222222222";
@@ -144,9 +146,13 @@ pub(super) fn reply(value: Value) -> String {
 }
 
 pub(super) fn reply_text(text: &str) -> String {
+    reply_text_with_id(1, text)
+}
+
+pub(super) fn reply_text_with_id(id: u64, text: &str) -> String {
     let response = json!({
         "jsonrpc": "2.0",
-        "id": 1,
+        "id": id,
         "result": {"content": [{"text": text}]}
     });
     format!(

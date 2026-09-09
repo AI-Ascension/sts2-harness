@@ -3,15 +3,17 @@
 use super::super::super::config::RuntimeConfig;
 use super::super::super::runtime_v3_settings::RuntimeV3Settings;
 use super::super::super::runtime_v3_telemetry::{
-    RuntimeV3Telemetry, TelemetryContext, TelemetryContextLineage,
+    CleanupStatus, GameOutcome, RuntimeV3Telemetry, TelemetryContext, TelemetryContextInput,
+    TelemetryStage,
 };
 use super::super::durable::DurableHandle;
 use super::super::launch_options::RuntimeV3LaunchOptions;
+use super::execution_telemetry::CombatDemoTelemetry;
 use super::*;
 use sts2_harness::{
-    CompletionRecord, CompletionStatus, EpisodeRunnerConfig, ExecutionFingerprint,
-    ExecutionLineage, ExecutionStore, ExoConfig, ExoProcessConfig, RecoveryController, ResumeState,
-    StabilityBarrier,
+    CompletionRecord, CompletionStatus, EpisodeObservation, EpisodeRunnerConfig, EpisodeStage,
+    ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExoConfig, ExoProcessConfig,
+    RecoveryController, ResumeState, StabilityBarrier,
 };
 
 #[test]
@@ -29,6 +31,61 @@ fn successful_store_close_keeps_the_original_failure() {
     assert_eq!(
         combine_store_close("episode failed".into(), Ok(())),
         "episode failed"
+    );
+}
+
+#[test]
+fn combat_completion_event_keeps_the_replay_contract() {
+    let event = combat_demo_complete_event(7, EpisodeStage::Victory, "a".repeat(64));
+    assert_eq!(
+        event,
+        serde_json::json!({
+            "event": "combat_demo_complete",
+            "steps": 7,
+            "stage": "victory",
+            "terminal_observation_digest": "a".repeat(64),
+        })
+    );
+}
+
+#[test]
+fn combat_telemetry_preserves_authoritative_defeat() {
+    assert_eq!(
+        combat_demo_telemetry(Some(EpisodeStage::Defeat), CleanupStatus::Clean, true, true),
+        CombatDemoTelemetry {
+            game_outcome: GameOutcome::Failure,
+            terminal_stage: TelemetryStage::Defeat,
+            cleanup_status: CleanupStatus::Clean,
+        }
+    );
+}
+
+#[test]
+fn combat_telemetry_preserves_victory_when_cleanup_fails() {
+    assert_eq!(
+        combat_demo_telemetry(
+            Some(EpisodeStage::Victory),
+            CleanupStatus::Failed,
+            true,
+            true,
+        ),
+        CombatDemoTelemetry {
+            game_outcome: GameOutcome::Success,
+            terminal_stage: TelemetryStage::Victory,
+            cleanup_status: CleanupStatus::Failed,
+        }
+    );
+}
+
+#[test]
+fn combat_telemetry_maps_unknown_failure_to_unavailable_without_terminal_stage() {
+    assert_eq!(
+        combat_demo_telemetry(None, CleanupStatus::Clean, true, true),
+        CombatDemoTelemetry {
+            game_outcome: GameOutcome::Unavailable,
+            terminal_stage: TelemetryStage::Unknown,
+            cleanup_status: CleanupStatus::Clean,
+        }
     );
 }
 
@@ -97,6 +154,71 @@ fn settings() -> Result<RuntimeV3Settings, String> {
     })
 }
 
+fn completed_terminal_observation() -> Result<EpisodeObservation, String> {
+    EpisodeObservation::new(
+        "victory-state",
+        1,
+        EpisodeStage::Victory,
+        false,
+        false,
+        false,
+        serde_json::json!({
+            "state_id": "victory-state",
+            "generation": 1,
+            "visible_seed": "synthetic-seed",
+            "player": {
+                "hp": 50,
+                "max_hp": 50,
+                "energy": 3,
+                "gold": 99,
+                "hand": [],
+                "deck": [],
+                "discard": [],
+                "exhaust": []
+            },
+            "state": {"state": "victory"},
+            "legal_actions": []
+        }),
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[test]
+fn completed_durable_boundary_is_preserved_when_cleanup_checks_for_quarantine() -> Result<(), String>
+{
+    let lineage = ExecutionLineage::new(
+        "run-completed-cleanup",
+        "episode-completed-cleanup",
+        "attempt-completed-cleanup",
+        "trajectory-completed-cleanup",
+    )
+    .map_err(|error| error.to_string())?;
+    let fingerprint = ExecutionFingerprint::new(
+        "seed-completed-cleanup",
+        "build-completed-cleanup",
+        "state-completed-cleanup",
+        "config-completed-cleanup",
+        "provider-completed-cleanup",
+    )
+    .map_err(|error| error.to_string())?;
+    let mut store = ExecutionStore::open_in_memory().map_err(|error| error.to_string())?;
+    store
+        .start_episode(&lineage, &fingerprint)
+        .map_err(|error| error.to_string())?;
+    let durable = DurableHandle::from_store_for_test(store, lineage, fingerprint)?;
+    let terminal = completed_terminal_observation()?;
+    durable.checkpoint(&terminal, &serde_json::json!([]))?;
+    durable.complete_observation(&terminal)?;
+    let port = RuntimeV3Port::new_with_store(config(), TelemetryHandle::disabled(), durable)?;
+    assert!(quarantine_unless_completed(&port, "cleanup failed after completion").is_ok());
+    assert!(
+        port.durable_handle()
+            .ok_or_else(|| String::from("missing durable handle"))?
+            .is_completed()?
+    );
+    Ok(())
+}
+
 #[test]
 fn completed_resume_uses_the_admitted_store_without_opening_a_second_store() -> Result<(), String> {
     let lineage = ExecutionLineage::new("run-1", "episode-1", "attempt-1", "trajectory-1")
@@ -118,18 +240,16 @@ fn completed_resume_uses_the_admitted_store_without_opening_a_second_store() -> 
     .map_err(|error| error.to_string())?;
     let config = config();
     let revision = format!("1{}", "0".repeat(63));
-    let telemetry_context = TelemetryContext::new(
-        TelemetryContextLineage {
-            run_id: &config.run_id,
-            episode_id: &config.episode_id,
-            trajectory_id: &config.trajectory_id,
-            trace_id: &config.trace_id,
-        },
-        &config.instance_id,
-        &config.session_id,
-        &config.runtime_profile,
-        &revision,
-    )?;
+    let telemetry_context = TelemetryContext::new(TelemetryContextInput {
+        run_id: &config.run_id,
+        episode_id: &config.episode_id,
+        trajectory_id: &config.trajectory_id,
+        trace_id: &config.trace_id,
+        instance_id: &config.instance_id,
+        session_id: &config.session_id,
+        runtime_profile: &config.runtime_profile,
+        provider_revision: &revision,
+    })?;
     let telemetry = RuntimeV3Telemetry::new(telemetry_context);
     let telemetry_handle = telemetry.handle();
     let result = run(
@@ -141,6 +261,7 @@ fn completed_resume_uses_the_admitted_store_without_opening_a_second_store() -> 
             resume: true,
             combat_demo: false,
             replay_path: Some("never-read.jsonl".into()),
+            replay_bytes: None,
             replay_prefix: Err(String::from("STS2_REPLAY_PREFIX must be true or false")),
             cancellation: sts2_harness::ExecutionCancellation::default(),
         },

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-use std::io::Read;
 use std::path::Path;
 
 #[cfg(test)]
@@ -9,7 +8,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use sts2_harness::{
     Decision, DecisionInput, DecisionSource, EpisodeObservation, EpisodeRunner,
-    EpisodeRunnerConfig, PolicyError,
+    EpisodeRunnerConfig, EpisodeStage, PolicyError,
 };
 
 use super::{RuntimeV3Port, recording, wire};
@@ -25,27 +24,62 @@ use cards::CardBindings;
 
 const MAX_BYTES: u64 = 32 * 1024 * 1024;
 
+#[path = "runtime_v3_replay_digest.rs"]
+mod digest;
+use digest::digest_value;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ReplayOutcome {
+    Terminal(EpisodeStage),
+    PrefixVerified,
+}
+
 pub(super) fn run(
+    port: &mut RuntimeV3Port,
+    config: &EpisodeRunnerConfig,
+    path: &str,
+) -> Result<ReplayOutcome, String> {
+    let prefix = match std::env::var("STS2_REPLAY_PREFIX").as_deref() {
+        Ok("true") => true,
+        Ok("false") | Err(std::env::VarError::NotPresent) => false,
+        _ => return Err("STS2_REPLAY_PREFIX must be true or false".into()),
+    };
+    run_with_prefix(port, config, Path::new(path), prefix)
+}
+
+/// Replays a trajectory using the prefix choice captured by the executable adapter.
+///
+/// Runtime-v3 calls this after startup selection has been sampled. Keeping the selection as an
+/// argument prevents a concurrent environment change from changing the replay mode mid-launch.
+pub(super) fn run_with_prefix(
     port: &mut RuntimeV3Port,
     config: &EpisodeRunnerConfig,
     path: &Path,
     prefix: bool,
-) -> Result<(), String> {
-    // Validate the complete source before the runner allocates a host lease.
-    let file = std::fs::File::open(path).map_err(|_| "cannot open episode replay")?;
-    let mut bytes = Vec::new();
-    file.take(MAX_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| "cannot read episode replay")?;
+) -> Result<ReplayOutcome, String> {
+    let bytes = super::workflow_binding::read_replay_source(path)?;
+    run_with_bytes(port, config, &bytes, prefix)
+}
+
+/// Replays a trajectory from the exact bounded bytes captured during startup admission.
+///
+/// Runtime-v3 uses this entry point so the source digest in the workflow binding and the bytes
+/// consumed by the parser cannot diverge through a path replacement between admission and use.
+pub(super) fn run_with_bytes(
+    port: &mut RuntimeV3Port,
+    config: &EpisodeRunnerConfig,
+    bytes: &[u8],
+    prefix: bool,
+) -> Result<ReplayOutcome, String> {
     if bytes.len() as u64 > MAX_BYTES {
         return Err("episode replay exceeds byte bound".into());
     }
     let trace = if prefix {
-        ReplayTrace::parse_mode(&bytes, true)?
+        ReplayTrace::parse_mode(bytes, true)?
     } else {
-        ReplayTrace::parse(&bytes)?
+        ReplayTrace::parse(bytes)?
     };
-    let digest = format!("{:x}", Sha256::digest(&bytes));
+    let digest = format!("{:x}", Sha256::digest(bytes));
     let mut source = ReplaySource::new(trace);
     println!(
         "{}",
@@ -53,7 +87,17 @@ pub(super) fn run(
         "recorded_actions":source.trace.records.len(), "provider_calls":0,
         "skipped_rejected_attempts":source.trace.rejected_attempts})
     );
-    let result = EpisodeRunner::new(config.clone()).run(port, &mut source);
+    let result = EpisodeRunner::new(config.clone()).run_with_completion(
+        port,
+        &mut source,
+        |port, source, report| {
+            source
+                .finish(report.final_observation())
+                .map_err(|error| wire::port_error("replay_terminal_invalid", error, false))?;
+            port.complete_durable(report)
+                .map_err(|error| wire::port_error("durable_completion", error, false))
+        },
+    );
     if matches!(
         result,
         Err(sts2_harness::EpisodeRunnerError::StoppedByRecovery)
@@ -65,7 +109,7 @@ pub(super) fn run(
             "source_sha256":digest,"replayed_actions":source.cursor,"provider_calls":0,
             "skipped_rejected_attempts":source.trace.rejected_attempts})
         );
-        return Ok(());
+        return Ok(ReplayOutcome::PrefixVerified);
     }
     let report = result.map_err(|error| {
         format!(
@@ -76,8 +120,6 @@ pub(super) fn run(
                 .unwrap_or_else(|| error_category(&error))
         )
     })?;
-    source.finish(report.final_observation())?;
-    port.complete_durable(&report)?;
     recording::complete(&report, &port.telemetry);
     println!(
         "{}",
@@ -86,7 +128,7 @@ pub(super) fn run(
         "skipped_rejected_attempts":source.trace.rejected_attempts,
         "terminal_stage":wire::stage_name(report.terminal_stage())})
     );
-    Ok(())
+    Ok(ReplayOutcome::Terminal(report.terminal_stage()))
 }
 
 fn error_category(error: &sts2_harness::EpisodeRunnerError) -> String {
@@ -130,7 +172,7 @@ impl ReplaySource {
         Err(PolicyError::MalformedDecision)
     }
 
-    fn finish(&self, observation: &EpisodeObservation) -> Result<(), String> {
+    fn finish(&mut self, observation: &EpisodeObservation) -> Result<(), String> {
         if self.awaiting || self.failure.is_some() || self.cursor != self.trace.records.len() {
             return Err("episode ended before all replay actions settled".into());
         }
@@ -139,6 +181,7 @@ impl ReplaySource {
             .reconcile(&self.trace.terminal, observation.fair_play().as_value())
             .is_none()
         {
+            self.failure = Some("terminal episode replay observation diverged");
             return Err("terminal episode replay observation diverged".into());
         }
         Ok(())
@@ -209,8 +252,11 @@ impl DecisionSource for ReplaySource {
         println!(
             "{}",
             json!({"event":"replay_decision", "replay_index":self.cursor,
-            "action_id":action_id, "source_action_id":record.action_id,
-            "observation":input.observation.fair_play().as_value()})
+            "observation_digest":digest_value(
+                "replay-observation",
+                input.observation.fair_play().as_value(),
+            ),
+            "action_digest":digest_value("replay-action", &payload)})
         );
         Ok(Decision::Action {
             action_id,

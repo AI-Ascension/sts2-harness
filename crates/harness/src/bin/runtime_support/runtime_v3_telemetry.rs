@@ -12,5 +12,5 @@ mod implementation {
 
 pub(super) use implementation::{
     CleanupStatus, DecisionKind, FailureCode, GameOutcome, ObservationSource, RecoveryKind,
-    RuntimeV3Telemetry, TelemetryContext, TelemetryContextLineage, TelemetryHandle, TelemetryStage,
+    RuntimeV3Telemetry, TelemetryContext, TelemetryContextInput, TelemetryHandle, TelemetryStage,
 };

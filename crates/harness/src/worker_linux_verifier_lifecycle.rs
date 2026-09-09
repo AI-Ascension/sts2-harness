@@ -175,6 +175,12 @@ pub(super) fn release_reaped_session(session: &Arc<VerifierSession>) {
     let _ = retained_sessions().remove_if(session);
 }
 
+#[cfg(test)]
+#[path = "worker_linux_verifier_test_reap.rs"]
+mod test_reap;
+#[cfg(test)]
+pub(super) use test_reap::reap_poisoned_session_for_test;
+
 pub(super) struct VerifierSession {
     pub(super) control: Mutex<Option<OwnedFd>>,
     pub(super) async_control: Mutex<Option<Arc<AsyncFd<OwnedFd>>>>,
