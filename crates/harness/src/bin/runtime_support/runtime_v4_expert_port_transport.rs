@@ -133,6 +133,14 @@ impl RuntimeV3Port {
             RuntimeV3ToolError::Terminal(format!("Runtime-v4 expert state is invalid: {error}"))
         })?;
         if expert.state_id() != state_id || expert.generation() != generation {
+            // A newer expert snapshot means the normal catalog became stale during the two
+            // projection reads. Let the existing catalog-reobserve recovery path obtain a new
+            // pair; equal-generation identity changes and retrograde data remain terminal.
+            if expert.generation() > generation {
+                return Err(RuntimeV3ToolError::Transient(String::from(
+                    "Runtime-v4 expert catalog advanced beyond the Runtime-v3 observation",
+                )));
+            }
             return Err(RuntimeV3ToolError::Terminal(String::from(
                 "Runtime-v4 expert catalog does not match the Runtime-v3 observation",
             )));

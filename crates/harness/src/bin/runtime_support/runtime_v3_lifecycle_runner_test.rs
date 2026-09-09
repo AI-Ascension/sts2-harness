@@ -374,6 +374,8 @@ fn expert_runner_reconnects_and_composes_without_dispatch()
     run_runner_fixture(&fixture, "eof", true, 1, 1)
 }
 
+include!("runtime_v3_lifecycle_runner_composition_test.rs");
+
 
 mod expert_catalog {
     include!("runtime_v3_lifecycle_expert_catalog_runner_test.rs");
