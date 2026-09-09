@@ -9,7 +9,6 @@ use std::cell::RefCell;
 thread_local! {
     static REPLAY_CAPTURE: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
 }
-
 fn replay_enabled() -> bool {
     std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true")
 }
@@ -99,4 +98,3 @@ pub(super) fn flush_replay_stream() -> std::io::Result<()> {
         Ok(())
     }
 }
-
