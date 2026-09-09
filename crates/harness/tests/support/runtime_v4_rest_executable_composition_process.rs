@@ -313,6 +313,35 @@ fn assert_persisted_receipts(result: &ScenarioResult) -> Result<(), Box<dyn std:
         )
         .into());
     }
+    for (operation_id, action_id, effect, generation, state_id) in [
+        (
+            "episode-action-11-3",
+            "select_card:11:smith:card:2",
+            "rest_option_selection_progressed",
+            12,
+            "live:12",
+        ),
+        (
+            "episode-action-12-4",
+            "confirm_selection:12:smith",
+            "rest_option_selection_completed",
+            13,
+            "live:13",
+        ),
+    ] {
+        let settled = receipt(operation_id, "Settled")
+            .ok_or_else(|| format!("runtime receipt ledger omitted Settled {operation_id}"))?;
+        if settled["action_id"] != action_id
+            || settled["effect"] != effect
+            || settled["observation"]["state_id"] != state_id
+            || settled["observation"]["generation"] != generation
+        {
+            return Err(format!(
+                "runtime Settled receipt lost original identity for {operation_id}: {settled}"
+            )
+            .into());
+        }
+    }
     let final_settled = receipt("episode-action-14-6", "Settled")
         .ok_or("runtime receipt ledger omitted Settled episode-action-14-6")?;
     if final_settled["action_id"] != "select_player:14:mend:player:local"
