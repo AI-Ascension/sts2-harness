@@ -5,8 +5,8 @@
 use super::worker_local_linux_image::HeldImage;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
-use std::io::{Read, Write};
-use std::os::unix::fs::PermissionsExt;
+use std::io::{self, Read, Write};
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -88,7 +88,8 @@ fn cross_process_magic_link_checks_path_and_identity() -> Result<(), Box<dyn std
     fs::set_permissions(&live_path, fs::Permissions::from_mode(0o555))?;
     let digest = image_digest(&approved_path)?;
     let owner_uid = rustix::process::getuid().as_raw();
-    let approved = HeldImage::open(&approved_path, owner_uid, &digest)?;
+    let approved = HeldImage::open(&approved_path, owner_uid, &digest)
+        .map_err(|error| io::Error::other(format!("approved fixture image rejected: {error}")))?;
     let child = ChildGuard::new(
         Command::new(&live_path)
             .args(["-c", "read value"])
@@ -98,10 +99,34 @@ fn cross_process_magic_link_checks_path_and_identity() -> Result<(), Box<dyn std
     let deadline = Instant::now() + Duration::from_secs(5);
     let wrong_path = HeldImage::open_proc(child.id(), &approved_path, owner_uid, &digest, deadline);
     assert!(matches!(wrong_path, Err(super::LinuxTransportError::Peer)));
-    let live = HeldImage::open_proc(child.id(), &live_path, owner_uid, &digest, deadline)?;
+    let live = HeldImage::open_proc(child.id(), &live_path, owner_uid, &digest, deadline)
+        .map_err(|error| live_image_diagnostic(error, child.id(), &live_path, owner_uid))?;
     assert!(live.identity() != approved.identity());
     drop(live);
     drop(approved);
     fs::remove_dir_all(root)?;
     Ok(())
+}
+
+// Report bounded structural facts, not private paths or environment contents,
+// when a hosted kernel rejects an otherwise locally passing image fixture.
+fn live_image_diagnostic(
+    error: super::LinuxTransportError,
+    pid: u32,
+    expected_path: &Path,
+    expected_uid: u32,
+) -> io::Error {
+    let proc_path = PathBuf::from(format!("/proc/{pid}/exe"));
+    let path_matches = fs::read_link(&proc_path).map(|path| path == expected_path);
+    let identity = fs::metadata(&proc_path).map(|metadata| {
+        (
+            metadata.uid(),
+            metadata.mode(),
+            metadata.nlink(),
+            metadata.len(),
+        )
+    });
+    io::Error::other(format!(
+        "live fixture image rejected: {error}; path_matches={path_matches:?}; expected_uid={expected_uid}; identity={identity:?}"
+    ))
 }
