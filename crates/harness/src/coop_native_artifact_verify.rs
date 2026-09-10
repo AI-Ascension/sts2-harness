@@ -222,6 +222,8 @@ fn consumer_conformance_matches(consumer: &Value) -> bool {
             == Some("component_serialized_conformance")
         && consumer.get("source").and_then(Value::as_object).is_some_and(|source| {
             source.get("role").and_then(Value::as_str) == Some("producer")
+                && source.get("commit").is_some_and(is_git_identity)
+                && source.get("tree").is_some_and(is_git_identity)
                 && source.get("result").and_then(Value::as_str) == Some("pass")
                 && source.get("live_status").and_then(Value::as_str) == Some("unverified")
         })
@@ -234,7 +236,9 @@ fn consumer_conformance_matches(consumer: &Value) -> bool {
                 ]).all(|(value, (name, role))| {
                     value.get("name").and_then(Value::as_str) == Some(name)
                         && value.get("role").and_then(Value::as_str) == Some(role)
-                        && value.get("result").and_then(Value::as_str) == Some("pending")
+                        && value.get("commit").is_some_and(is_git_identity)
+                        && value.get("tree").is_some_and(is_git_identity)
+                        && value.get("result").and_then(Value::as_str) == Some("pass")
                         && value.get("live_status").and_then(Value::as_str)
                             == Some("unverified")
                 })
@@ -242,12 +246,22 @@ fn consumer_conformance_matches(consumer: &Value) -> bool {
         && consumer.get("cross_boundary").and_then(Value::as_object).is_some_and(|value| {
             value.get("catalog_action_count") == Some(&Value::from(2))
                 && value.get("catalog_vote_count") == Some(&Value::from(1))
+                && value.get("source_to_consumer").and_then(Value::as_str) == Some("pass")
         })
         && consumer.get("admission").and_then(Value::as_object).is_some_and(|value| {
             value.get("artifact_status").and_then(Value::as_str)
                 == Some("accepted_component")
                 && value.get("artifact_admission").and_then(Value::as_str) == Some("component")
         })
+}
+
+fn is_git_identity(value: &Value) -> bool {
+    value.as_str().is_some_and(|identity| {
+        identity.len() == 40
+            && identity
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
 }
 
 fn checksums_match() -> bool {

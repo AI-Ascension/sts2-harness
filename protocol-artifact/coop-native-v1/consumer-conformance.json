@@ -24,34 +24,34 @@
       "name": "sts2-gateway",
       "role": "native route and forwarder",
       "repository": "sts2-gateway",
-      "commit": "pending-final-adapter",
-      "tree": "pending-final-adapter",
-      "result": "pending",
+      "commit": "de1fe72345ea972d56c05d30837da5327e5f1655",
+      "tree": "cbf10caa6775ca06adf7fe1e9d6cc98be6453a66",
+      "result": "pass",
       "live_status": "unverified"
     },
     {
       "name": "sts2-mcp-server",
       "role": "projection and tool mapping",
       "repository": "sts2-mcp-server",
-      "commit": "pending-final-adapter",
-      "tree": "pending-final-adapter",
-      "result": "pending",
+      "commit": "47d63f6ce41c9efb3431dea6dc31b39fddc5d79a",
+      "tree": "a6eb009912a4f624c49398f6cfc25022da65b563",
+      "result": "pass",
       "live_status": "unverified"
     },
     {
       "name": "sts2-harness",
       "role": "coordination and provider boundary",
       "repository": "sts2-harness",
-      "commit": "pending-final-adapter",
-      "tree": "pending-final-adapter",
-      "result": "pending",
+      "commit": "a2cb481cfc57475f147d5c8c3783afc6d2b2d63b",
+      "tree": "083e1dc3ca88c35eedc10a6187a63c91a9864c46",
+      "result": "pass",
       "live_status": "unverified"
     }
   ],
   "cross_boundary": {
     "catalog_action_count": 2,
     "catalog_vote_count": 1,
-    "source_to_consumer": "pending-final-adapter-conformance"
+    "source_to_consumer": "pass"
   },
   "admission": {
     "artifact_status": "accepted_component",
