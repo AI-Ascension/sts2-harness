@@ -108,6 +108,7 @@ mod tests {
             wait_for_combat_seconds: 0,
             settlement_timeout_seconds: 30,
             map_context_enabled: false,
+            recovery_environment: Vec::new(),
         };
         let value = action_request(
             &config,
@@ -155,6 +156,7 @@ mod tests {
             wait_for_combat_seconds: 0,
             settlement_timeout_seconds: 30,
             map_context_enabled: false,
+            recovery_environment: Vec::new(),
         };
         let mut port =
             RuntimeV3Port::new_with_telemetry(config, super::super::TelemetryHandle::disabled())?;

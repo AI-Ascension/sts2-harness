@@ -28,9 +28,12 @@ const MAX_BYTES: u64 = 32 * 1024 * 1024;
 mod digest;
 use digest::digest_value;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub(super) enum ReplayOutcome {
-    Terminal(EpisodeStage),
+    Terminal {
+        stage: EpisodeStage,
+        observation: EpisodeObservation,
+    },
     PrefixVerified,
 }
 
@@ -99,7 +102,10 @@ pub(super) fn run(
         "skipped_rejected_attempts":source.trace.rejected_attempts,
         "terminal_stage":wire::stage_name(report.terminal_stage())})
     );
-    Ok(ReplayOutcome::Terminal(report.terminal_stage()))
+    Ok(ReplayOutcome::Terminal {
+        stage: report.terminal_stage(),
+        observation: report.final_observation().clone(),
+    })
 }
 
 fn error_category(error: &sts2_harness::EpisodeRunnerError) -> String {

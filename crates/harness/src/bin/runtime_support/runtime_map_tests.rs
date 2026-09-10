@@ -107,6 +107,7 @@ fn config_for_script(script: &Path, response: &str) -> RuntimeConfig {
         wait_for_combat_seconds: 0,
         settlement_timeout_seconds: 30,
         map_context_enabled: true,
+        recovery_environment: Vec::new(),
     }
 }
 

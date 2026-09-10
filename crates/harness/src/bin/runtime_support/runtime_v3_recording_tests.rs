@@ -5,21 +5,47 @@ use std::collections::VecDeque;
 use super::{
         DecisionRecorder, GameOutcome, MAX_REPLAY_EVENT_BYTES, capture_replay_events,
         dispatch_status_name, emit_replay_event, encode_replay_event, game_outcome,
-        replay_failure_code,
+        replay_failure_code, complete_observation,
 };
 use serde_json::json;
 use sts2_harness::{
         ActionKind, DecisionInput, DecisionSource, EpisodeLegalAction, EpisodeLegalActionSet,
         EpisodeObservation, EpisodeRunnerError, EpisodeStage, ExoConfig, ExoDecisionSource,
         ExoProvider, ExoSession, ExoTransport, ExoTransportError, ModelExecutionId, PortError,
-};
+    };
+use super::super::super::runtime_v3_telemetry::TelemetryHandle;
 
     #[test]
     fn terminal_stage_outcome_survives_independent_cleanup_status() {
         assert_eq!(game_outcome(EpisodeStage::Victory), GameOutcome::Success);
-        assert_eq!(game_outcome(EpisodeStage::Reward), GameOutcome::Success);
+        assert_eq!(game_outcome(EpisodeStage::Reward), GameOutcome::Unavailable);
         assert_eq!(game_outcome(EpisodeStage::Defeat), GameOutcome::Failure);
         assert_eq!(game_outcome(EpisodeStage::Combat), GameOutcome::Unavailable);
+    }
+
+    #[test]
+    fn nonterminal_reward_is_not_reported_as_terminal() {
+        let reward = EpisodeObservation::new(
+            "reward-1",
+            1,
+            EpisodeStage::Reward,
+            false,
+            false,
+            true,
+            json!({
+                "state_id": "reward-1",
+                "generation": 1,
+                "visible_seed": "seed",
+                "player": {"hp": 80, "max_hp": 80, "energy": 0, "gold": 0,
+                    "hand": [], "deck": [], "discard": [], "exhaust": []},
+                "state": {"state": "reward", "options": []},
+                "legal_actions": []
+            }),
+        )
+        .expect("reward observation");
+        let telemetry = TelemetryHandle::disabled();
+
+        assert!(!complete_observation(&reward, &telemetry));
     }
 
     #[test]

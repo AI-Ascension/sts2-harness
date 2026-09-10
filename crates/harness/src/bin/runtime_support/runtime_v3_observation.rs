@@ -15,12 +15,14 @@ impl RuntimeV3Port {
         allow_lagging_expert_retry: bool,
     ) -> Result<EpisodeObservation, sts2_harness::PortError> {
         let arguments = self.context(self.generation);
-        let value = self
-            .call_tool("sts2.observe", arguments)
+        let (value, response_text) = self
+            .call_tool_with_text("sts2.observe", arguments)
             .map_err(|error| wire::port_error("observe_failed", error, false))?;
-        let parsed = parse::observation(&value, "state_response", &self.config)
+        let parsed = parse::observation_with_text(&value, &response_text, "state_response", &self.config)
             .map_err(|error| wire::port_error("observe_invalid", error, false))?;
-        let baseline = self.install(parsed);
+        let baseline = self
+            .install(parsed)
+            .map_err(|error| wire::port_error("observe_durability_failed", error, false))?;
         let observation = if self.is_expert_profile() {
             let composed = if allow_lagging_expert_retry {
                 self.compose_current_observation_for_idle(baseline)

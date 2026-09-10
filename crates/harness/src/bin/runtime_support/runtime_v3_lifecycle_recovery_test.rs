@@ -199,7 +199,7 @@ fn runtime_v3_reconnect_reconciles_same_operation_without_redispatch()
     ]);
     let parsed = parse::observation(&state, "state_response", &port.config)?;
     let action = parsed.actions.actions()[0].clone();
-    let observation = port.install(parsed);
+    let observation = port.install(parsed)?;
     let identity = ActionIdentity::new(
         "op-1",
         observation.state_id(),

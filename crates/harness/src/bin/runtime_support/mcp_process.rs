@@ -67,6 +67,43 @@ impl McpProcess {
         )
     }
 
+    pub(super) fn spawn_recovery(
+        config: &RuntimeConfig,
+        instance_id: &str,
+        lease_id: &str,
+        lease_epoch: u64,
+    ) -> Result<Self, String> {
+        let mut command = Self::configured_command_for_profile(config, "watchdog-recovery-v1");
+        command
+            .env("STS2_INSTANCE_ID", instance_id)
+            .env("STS2_LEASE_ID", lease_id)
+            .env("STS2_LEASE_EPOCH", lease_epoch.to_string());
+        for name in [
+            "STS2_RECOVERY_TOKEN",
+            "STS2_RECOVERY_PRINCIPAL_ID",
+            "STS2_RECOVERY_ROLE",
+            "STS2_RECOVERY_PROOF",
+            "STS2_RECOVERY_DEPLOYMENT_ID",
+            "STS2_RECOVERY_INSTANCE_ID",
+            "STS2_RECOVERY_INSTANCE_INCAR",
+            "STS2_RECOVERY_BOOT_ID",
+            "STS2_RECOVERY_LEASE_ID",
+            "STS2_RECOVERY_AUTHORITY_GENERATION",
+            "STS2_RECOVERY_LEASE_EPOCH",
+            "STS2_RECOVERY_CURRENT_FENCE_JSON",
+        ] {
+            if let Some(value) = config.recovery_value(name) {
+                command.env(name, value);
+            }
+        }
+        if config.recovery_value("STS2_RECOVERY_TOKEN").is_none() {
+            return Err(String::from(
+                "STS2_RECOVERY_TOKEN is required for the recovery sideband",
+            ));
+        }
+        Self::spawn_command(command, EXCHANGE_TIMEOUT)
+    }
+
     fn configured_command(config: &RuntimeConfig) -> Command {
         Self::configured_command_for_profile(config, &config.runtime_profile)
     }
@@ -234,75 +271,9 @@ impl McpProcess {
         }
         result
     }
-
-    fn terminate(&mut self) -> Result<(), String> {
-        self.closed = true;
-        self.input.take();
-        self.output.take();
-        let runtime = self.runtime.as_ref().ok_or("MCP supervisor is closed")?;
-        supervised(|| {
-            runtime.block_on(async {
-                self.child
-                    .start_kill()
-                    .map_err(|_| "MCP termination failed")?;
-                tokio::time::timeout(FORCE_REAP_TIMEOUT, self.child.wait())
-                    .await
-                    .map_err(|_| "MCP reap timed out")?
-                    .map_err(|_| "MCP reap failed")?;
-                Ok(())
-            })
-        })
-    }
-
-    pub(super) fn close(&mut self) -> Result<(), String> {
-        if self.closed {
-            return if self.child.id().is_some() {
-                self.terminate()
-            } else {
-                Ok(())
-            };
-        }
-        self.input.take();
-        self.output.take();
-        let runtime = self.runtime.as_ref().ok_or("MCP supervisor is closed")?;
-        let result = supervised(|| {
-            runtime.block_on(async {
-                let status = tokio::time::timeout(GRACEFUL_CLOSE_TIMEOUT, self.child.wait())
-                    .await
-                    .map_err(|_| "MCP shutdown timed out")?
-                    .map_err(|_| "MCP process wait failed")?;
-                if status.success() {
-                    Ok(())
-                } else {
-                    Err("MCP process exited unsuccessfully")
-                }
-            })
-        });
-        if let Err(error) = result {
-            let cleanup = self.terminate();
-            return match cleanup {
-                Ok(()) => Err(error),
-                Err(cleanup) => Err(format!("{error}; {cleanup}")),
-            };
-        }
-        self.closed = true;
-        result
-    }
 }
 
-impl Drop for McpProcess {
-    fn drop(&mut self) {
-        if self.child.id().is_some() {
-            let _cleanup = self.terminate();
-        }
-        if let Some(runtime) = self.runtime.take() {
-            let _cleanup = supervised(|| {
-                drop(runtime);
-                Ok(())
-            });
-        }
-    }
-}
+include!("mcp_process_lifecycle.rs");
 
 // No detached workers: cancellation drops asynchronous pipe futures, including when a
 // descendant retains inherited descriptors. Every scoped supervisor is joined before return.
