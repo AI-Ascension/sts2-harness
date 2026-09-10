@@ -243,12 +243,30 @@ impl ControlAuthority {
         if journal.schema != CONTROL_JOURNAL_SCHEMA || journal.events.len() > 4096 {
             return Err("journal_invalid".to_owned());
         }
+        if journal.owner_epoch != journal.state.boundary.controller_epoch {
+            return Err("journal_owner_epoch_mismatch".to_owned());
+        }
+        let next_owner_epoch = journal
+            .owner_epoch
+            .checked_add(1)
+            .ok_or_else(|| "journal_owner_epoch_exhausted".to_owned())?;
+        let next_id = journal
+            .commands
+            .values()
+            .filter_map(|(_, receipt)| receipt.command_id.strip_prefix("control-command-"))
+            .filter_map(|value| value.parse::<u64>().ok())
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or_else(|| "journal_command_id_exhausted".to_owned())?;
+        let mut state = journal.state;
+        state.boundary.controller_epoch = next_owner_epoch;
         Ok(Self {
-            owner_epoch: journal.owner_epoch.saturating_add(1),
-            state: journal.state,
+            owner_epoch: next_owner_epoch,
+            state,
             commands: journal.commands,
             events: journal.events,
-            next_id: 1,
+            next_id,
         })
     }
 

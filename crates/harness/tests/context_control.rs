@@ -218,16 +218,26 @@ fn control_authority_recovers_pause_and_fences_boundary_changes() {
     let journal = authority.export_journal().expect("journal");
     let mut recovered = ControlAuthority::recover(&journal).expect("recover");
     assert!(recovered.state().pause_latched);
+    assert_eq!(recovered.state().boundary.controller_epoch, 2);
     assert_eq!(
         recovered
             .request_pause("pause-1", 0)
             .expect("recovered idempotent pause"),
         paused
     );
-    let expected = recovered.state().boundary.clone();
+    let mut resumed_authority = recovered.clone();
+    let expected = resumed_authority.state().boundary.clone();
+    let resumed = resumed_authority
+        .resume("resume-1", recovered.state().control_version, &expected)
+        .expect("resume after recovery");
+    assert_ne!(resumed.command_id, paused.command_id);
     recovered.advance_boundary();
     let error = recovered
-        .resume("resume-1", recovered.state().control_version, &expected)
+        .resume(
+            "resume-stale-1",
+            recovered.state().control_version,
+            &expected,
+        )
         .expect_err("changed host boundary must block resume");
     assert_eq!(error, "preview_stale");
 }
