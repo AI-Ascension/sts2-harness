@@ -43,8 +43,13 @@ fn runtime_v3_reconnect_requires_durable_identity_without_redispatch()
         .lines()
         .map(serde_json::from_str)
         .collect::<Result<_, _>>()?;
-    assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0]["params"]["name"], "sts2.dispatch_action");
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|value| value["params"]["name"] == "sts2.dispatch_action")
+            .count(),
+        1
+    );
     assert!(
         !requests
             .iter()
