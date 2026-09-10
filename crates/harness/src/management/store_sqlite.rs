@@ -63,6 +63,13 @@ impl SqliteWorkflowStore {
             .busy_timeout(SQLITE_BUSY_TIMEOUT)
             .map_err(support::sqlite_error)?;
         connection
+            .execute_batch(
+                "PRAGMA journal_mode = WAL;
+                 PRAGMA synchronous = FULL;
+                 PRAGMA foreign_keys = ON;",
+            )
+            .map_err(support::sqlite_error)?;
+        connection
             .execute_batch(SQLITE_SCHEMA)
             .map_err(support::sqlite_error)?;
         Ok(Self {

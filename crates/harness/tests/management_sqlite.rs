@@ -66,6 +66,26 @@ fn sqlite_store_reopens_durable_run_and_event_state() -> Result<(), Box<dyn std:
 }
 
 #[test]
+fn sqlite_store_enables_durable_local_database_pragmas() -> Result<(), Box<dyn std::error::Error>> {
+    let directory =
+        std::env::temp_dir().join(format!("sts2-management-pragmas-{}", std::process::id()));
+    std::fs::create_dir_all(&directory)?;
+    let path = directory.join("store.sqlite3");
+    let store = SqliteWorkflowStore::open(&path)?;
+    drop(store);
+
+    let connection = rusqlite::Connection::open(&path)?;
+    let journal_mode: String = connection.query_row("PRAGMA journal_mode", [], |row| row.get(0))?;
+    let synchronous: i64 = connection.query_row("PRAGMA synchronous", [], |row| row.get(0))?;
+    let foreign_keys: i64 = connection.query_row("PRAGMA foreign_keys", [], |row| row.get(0))?;
+    assert_eq!(journal_mode.to_ascii_lowercase(), "wal");
+    assert_eq!(synchronous, 2);
+    assert_eq!(foreign_keys, 1);
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
 fn persistent_synthetic_runtime_restores_after_service_restart()
 -> Result<(), Box<dyn std::error::Error>> {
     let directory =
