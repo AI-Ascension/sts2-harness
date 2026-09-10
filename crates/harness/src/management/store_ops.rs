@@ -117,6 +117,17 @@ pub(super) fn accept_command(
                 application_in_flight: existing.application_in_flight,
             });
         }
+        if run
+            .commands
+            .values()
+            .any(|command| command.application_in_flight)
+        {
+            return Ok(CommandAcceptance::Existing {
+                snapshot: run.snapshot.clone(),
+                response: None,
+                application_in_flight: true,
+            });
+        }
         if request.expected_revision != run.snapshot.run_revision {
             return Err(StoreError::new(
                 "stale_revision",

@@ -118,6 +118,25 @@ pub(super) fn accept_command(
             application_in_flight: in_flight,
         });
     }
+    let another_command_in_flight = transaction
+        .query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM management_commands
+                WHERE workflow_run_id = ?1 AND application_in_flight = 1
+            )",
+            [request.run_id.as_str()],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(sqlite_error)?
+        != 0;
+    if another_command_in_flight {
+        transaction.commit().map_err(sqlite_error)?;
+        return Ok(CommandAcceptance::Existing {
+            snapshot,
+            response: None,
+            application_in_flight: true,
+        });
+    }
     if request.expected_revision != snapshot.run_revision {
         return Err(StoreError::new(
             "stale_revision",

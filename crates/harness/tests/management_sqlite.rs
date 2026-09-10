@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 use sts2_harness::management::{
-    AuthContext, Budget, CleanupState, CommandKind, CommandParameters, CommandRequest, Cursor,
-    EVENT_SCHEMA_VERSION, EventClassification, EventPayload, EventType, GameOutcome,
-    MANAGEMENT_SCHEMA_VERSION, ManagementReplayRequest, RUN_SCHEMA_VERSION, RunEvent, RunRequest,
-    RunSnapshot, SqliteWorkflowStore, WorkflowRunStatus, WorkflowStore, synthetic_sqlite_store,
+    AuthContext, Budget, CleanupState, CommandAcceptance, CommandKind, CommandParameters,
+    CommandRequest, Cursor, EVENT_SCHEMA_VERSION, EventClassification, EventPayload, EventType,
+    GameOutcome, MANAGEMENT_SCHEMA_VERSION, ManagementReplayRequest, RUN_SCHEMA_VERSION, RunEvent,
+    RunRequest, RunSnapshot, SqliteWorkflowStore, WorkflowRunStatus, WorkflowStore, digest_value,
+    synthetic_sqlite_store,
 };
 
 fn snapshot(run_id: &str, digest: &str) -> RunSnapshot {
@@ -81,6 +82,65 @@ fn sqlite_store_enables_durable_local_database_pragmas() -> Result<(), Box<dyn s
     assert_eq!(journal_mode.to_ascii_lowercase(), "wal");
     assert_eq!(synchronous, 2);
     assert_eq!(foreign_keys, 1);
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn sqlite_store_serializes_in_flight_commands_across_connections()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = std::env::temp_dir().join(format!(
+        "sts2-management-command-lease-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&directory)?;
+    let path = directory.join("store.sqlite3");
+    let first_store = SqliteWorkflowStore::open(&path)?;
+    let digest = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    let run = snapshot("run-command-lease", digest);
+    first_store.create_run(
+        "request-command-lease",
+        digest,
+        run.clone(),
+        vec![event(&run)],
+    )?;
+
+    let first = CommandRequest {
+        schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
+        command_id: "command-first".to_owned(),
+        run_id: run.workflow_run_id.clone(),
+        expected_revision: run.run_revision,
+        actor_scope: "operator".to_owned(),
+        kind: CommandKind::Pause,
+        parameters: CommandParameters::default(),
+    };
+    let first_digest = digest_value(&serde_json::to_value(&first)?)?;
+    assert!(matches!(
+        first_store.accept_command(&first, &first_digest)?,
+        CommandAcceptance::New { .. }
+    ));
+
+    let second_store = SqliteWorkflowStore::open(&path)?;
+    let second = CommandRequest {
+        command_id: "command-second".to_owned(),
+        kind: CommandKind::Step,
+        ..first.clone()
+    };
+    let second_digest = digest_value(&serde_json::to_value(&second)?)?;
+    assert!(matches!(
+        second_store.accept_command(&second, &second_digest)?,
+        CommandAcceptance::Existing {
+            response: None,
+            application_in_flight: true,
+            ..
+        }
+    ));
+    assert_eq!(
+        second_store
+            .get_run(&run.workflow_run_id)?
+            .map(|snapshot| snapshot.run_revision),
+        Some(1)
+    );
     std::fs::remove_dir_all(directory)?;
     Ok(())
 }
