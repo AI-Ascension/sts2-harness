@@ -35,7 +35,7 @@ pub(in super::super) fn recovery_call(
     expected_kind: &str,
     payload: Value,
 ) -> Result<Value, String> {
-    let response = super::rpc_call(
+    let response = super::rpc_call_recovery_read(
         mcp,
         id,
         "tools/call",

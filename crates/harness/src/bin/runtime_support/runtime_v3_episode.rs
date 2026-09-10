@@ -169,8 +169,19 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                 })?;
                 self.current_actions = Some(selector.clone());
                 self.payloads = self.rest_selector_payloads.clone();
+                let (catalog, catalog_raw) =
+                    super::expert::composed_catalog(&selector, &self.rest_selector_payloads)
+                        .map_err(|error| {
+                            wire::port_error("expert_legal_actions_invalid", error, false)
+                        })?;
+                self.catalog = Some(catalog);
+                self.catalog_raw = Some(catalog_raw);
                 return Ok(selector);
             }
+            let (catalog, catalog_raw) = super::expert::composed_catalog(&actions, &self.payloads)
+                .map_err(|error| wire::port_error("expert_legal_actions_invalid", error, false))?;
+            self.catalog = Some(catalog);
+            self.catalog_raw = Some(catalog_raw);
             return Ok(actions);
         }
         Ok(actions)
