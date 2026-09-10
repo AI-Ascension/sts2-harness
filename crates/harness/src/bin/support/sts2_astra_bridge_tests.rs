@@ -75,6 +75,11 @@ fn prepared_astra_input_lists_exact_stdin_schema_and_configuration() {
     assert_eq!(records[0].component_kind.unwrap().as_str(), "stdin");
     assert_eq!(records[1].component_kind.unwrap().as_str(), "output_schema");
     assert_eq!(records[2].component_kind.unwrap().as_str(), "configuration");
+    assert!(
+        records
+            .iter()
+            .all(|record| record.boundary == CaptureBoundary::ExoSessionRequest)
+    );
     assert_eq!(records[0].content.as_deref(), Some(b"stdin".as_slice()));
     assert_eq!(records[0].attempt_id.as_deref(), Some("attempt-2"));
 }
@@ -159,6 +164,15 @@ fn actual_fake_codex_receives_the_same_prepared_components_as_capture()
         configuration["working_directory"],
         provider_directory.0.to_string_lossy().as_ref()
     );
+    let all_records = capture.records().collect::<Vec<_>>();
+    assert!(all_records.iter().all(|record| record.attempt_id.is_some()));
+    assert!(all_records.iter().all(|record| {
+        record.boundary == CaptureBoundary::ExoSessionRequest
+            && record
+                .parent_snapshot_id
+                .as_ref()
+                .is_none_or(|parent| parent != &record.snapshot_id)
+    }));
 
     std::fs::remove_dir_all(provider_directory.0)?;
     std::fs::remove_dir_all(oracle_directory.0)?;

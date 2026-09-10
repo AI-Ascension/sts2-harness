@@ -53,7 +53,7 @@ impl<'a> PreparedAstraInput<'a> {
         let _ = capture.prepared_input(PreparedInput {
             execution_id,
             attempt_id,
-            boundary: CaptureBoundary::ProviderRequest,
+            boundary: CaptureBoundary::ExoSessionRequest,
             components: &components,
         });
     }
@@ -89,7 +89,7 @@ impl<'a> PreparedOllamaInput<'a> {
         let _ = capture.prepared_input(PreparedInput {
             execution_id,
             attempt_id,
-            boundary: CaptureBoundary::ProviderRequest,
+            boundary: CaptureBoundary::HttpBody,
             components: std::slice::from_ref(&component),
         });
     }

@@ -2,8 +2,8 @@
 
 use super::{
     CaptureBoundary, CaptureComponentKind, CaptureError, CaptureInput, CaptureMode, CapturePort,
-    CaptureRecord, MAX_CAPTURE_BYTES, MAX_CAPTURE_RECORDS, TransportState, snapshot_id,
-    valid_identity,
+    CaptureRecord, MAX_CAPTURE_BYTES, MAX_CAPTURE_RECORDS, TransportState, lifecycle_id,
+    snapshot_id, valid_identity,
 };
 use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
@@ -148,7 +148,7 @@ impl CapturePort for MemoryCapture {
         {
             return Err(CaptureError::InvalidIdentity);
         }
-        self.write_completed_at(execution_id, attempt_id, CaptureBoundary::ProviderRequest)
+        self.write_completed_at(execution_id, attempt_id, CaptureBoundary::HttpBody)
     }
 
     fn write_completed_at(
@@ -164,7 +164,15 @@ impl CapturePort for MemoryCapture {
         }
         let parent_snapshot_id = snapshot_id(execution_id, attempt_id, boundary);
         self.push(CaptureRecord {
-            snapshot_id: parent_snapshot_id.clone(),
+            // Lifecycle records have their own immutable event identity and point back to the
+            // prepared snapshot through parent_snapshot_id.
+            snapshot_id: lifecycle_id(
+                execution_id,
+                attempt_id,
+                boundary,
+                TransportState::WriteCompleted,
+                None,
+            ),
             parent_snapshot_id: Some(parent_snapshot_id),
             execution_id: execution_id.to_owned(),
             attempt_id: attempt_id.map(str::to_owned),
@@ -180,34 +188,29 @@ impl CapturePort for MemoryCapture {
         Ok(())
     }
 
-    fn write_failed(&mut self, execution_id: &str, _code: &str) -> Result<(), CaptureError> {
-        self.write_failed_with_attempt(execution_id, None, _code)
+    fn write_failed(&mut self, execution_id: &str, code: &str) -> Result<(), CaptureError> {
+        self.write_failed_with_attempt(execution_id, None, code)
     }
 
     fn write_failed_with_attempt(
         &mut self,
         execution_id: &str,
         attempt_id: Option<&str>,
-        _code: &str,
+        code: &str,
     ) -> Result<(), CaptureError> {
         if !valid_identity(execution_id)
             || attempt_id.is_some_and(|attempt_id| !valid_identity(attempt_id))
         {
             return Err(CaptureError::InvalidIdentity);
         }
-        self.write_unknown(
-            execution_id,
-            attempt_id,
-            _code,
-            CaptureBoundary::ProviderRequest,
-        )
+        self.write_unknown(execution_id, attempt_id, code, CaptureBoundary::HttpBody)
     }
 
     fn write_unknown(
         &mut self,
         execution_id: &str,
         attempt_id: Option<&str>,
-        _code: &str,
+        code: &str,
         boundary: CaptureBoundary,
     ) -> Result<(), CaptureError> {
         if !valid_identity(execution_id)
@@ -217,7 +220,15 @@ impl CapturePort for MemoryCapture {
         }
         let parent_snapshot_id = snapshot_id(execution_id, attempt_id, boundary);
         self.push(CaptureRecord {
-            snapshot_id: parent_snapshot_id.clone(),
+            // Keep a separate lifecycle identity so repeated state transitions cannot masquerade
+            // as the prepared snapshot itself.
+            snapshot_id: lifecycle_id(
+                execution_id,
+                attempt_id,
+                boundary,
+                TransportState::Unknown,
+                Some(code),
+            ),
             parent_snapshot_id: Some(parent_snapshot_id),
             execution_id: execution_id.to_owned(),
             attempt_id: attempt_id.map(str::to_owned),

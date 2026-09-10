@@ -208,7 +208,7 @@ impl<T> ExoProvider<T> {
         let bytes = request.encode(self.config.max_request_bytes)?;
         self.capture_prepared(
             request.model_execution_id.as_str(),
-            CaptureBoundary::ProviderRequest,
+            CaptureBoundary::ExoSessionRequest,
             &bytes,
         );
         let attempt_id = self.attempt_id.clone();
@@ -218,7 +218,7 @@ impl<T> ExoProvider<T> {
                 self.capture_write_completed(
                     request.model_execution_id.as_str(),
                     attempt_id.as_deref(),
-                    CaptureBoundary::ProviderRequest,
+                    CaptureBoundary::ExoSessionRequest,
                 );
                 Ok(response)
             }
@@ -227,7 +227,7 @@ impl<T> ExoProvider<T> {
                     request.model_execution_id.as_str(),
                     attempt_id.as_deref(),
                     error_code(ExoError::from(error)),
-                    CaptureBoundary::ProviderRequest,
+                    CaptureBoundary::ExoSessionRequest,
                 );
                 Err(ExoError::from(error))
             }

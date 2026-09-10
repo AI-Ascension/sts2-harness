@@ -93,7 +93,19 @@ fn actual_loopback_server_receives_the_same_serialized_body_as_capture()
         .records()
         .find(|record| record.component_kind == Some(sts2_harness::CaptureComponentKind::Opaque))
         .ok_or("captured body is absent")?;
+    assert_eq!(record.boundary, sts2_harness::CaptureBoundary::HttpBody);
+    assert!(record.attempt_id.is_some());
     assert_eq!(record.content.as_deref(), Some(body.as_slice()));
     assert_eq!(record.observed_bytes, body.len());
+    let lifecycle = capture
+        .records()
+        .find(|record| record.state == sts2_harness::TransportState::WriteCompleted)
+        .ok_or("write completion is absent")?;
+    assert_eq!(lifecycle.boundary, sts2_harness::CaptureBoundary::HttpBody);
+    assert_eq!(
+        lifecycle.parent_snapshot_id.as_deref(),
+        Some(record.snapshot_id.as_str())
+    );
+    assert_ne!(lifecycle.snapshot_id, record.snapshot_id);
     Ok(())
 }

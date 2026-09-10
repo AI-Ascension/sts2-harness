@@ -35,6 +35,9 @@ impl CaptureMode {
 pub enum CaptureBoundary {
     HarnessRequest,
     ExoSessionRequest,
+    /// The final serialized HTTP body passed to an adapter transport.
+    HttpBody,
+    /// Compatibility name for older callers. It serializes to the canonical HTTP-body boundary.
     ProviderRequest,
 }
 
@@ -70,7 +73,7 @@ impl CaptureBoundary {
         match self {
             Self::HarnessRequest => "harness.request",
             Self::ExoSessionRequest => "adapter.cli_input",
-            Self::ProviderRequest => "provider.request",
+            Self::HttpBody | Self::ProviderRequest => "adapter.http_body",
         }
     }
 }
@@ -279,11 +282,53 @@ fn valid_identity(value: &str) -> bool {
 }
 
 fn snapshot_id(execution_id: &str, attempt_id: Option<&str>, boundary: CaptureBoundary) -> String {
-    let boundary = boundary.as_str().replace('.', "-");
-    match attempt_id {
-        Some(attempt_id) => format!("snapshot-{execution_id}-{attempt_id}-{boundary}"),
-        None => format!("snapshot-{execution_id}-{boundary}"),
+    canonical_id(
+        "snapshot",
+        &[
+            execution_id,
+            attempt_id.unwrap_or("<unavailable>"),
+            boundary.as_str(),
+        ],
+    )
+}
+
+/// Build an injective bounded identifier from length-prefixed fields. Delimiters alone are not
+/// sufficient because execution and attempt IDs may themselves contain hyphens.
+fn canonical_id(prefix: &str, fields: &[&str]) -> String {
+    use sha2::{Digest, Sha256};
+
+    let mut hasher = Sha256::new();
+    hasher.update(b"ascension.context-capture-id.v1\0");
+    for field in fields {
+        hasher.update((*field).len().to_be_bytes());
+        hasher.update(field.as_bytes());
     }
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(64);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(hex, "{byte:02x}");
+    }
+    format!("{prefix}-{hex}")
+}
+
+fn lifecycle_id(
+    execution_id: &str,
+    attempt_id: Option<&str>,
+    boundary: CaptureBoundary,
+    state: TransportState,
+    code: Option<&str>,
+) -> String {
+    canonical_id(
+        "event",
+        &[
+            execution_id,
+            attempt_id.unwrap_or("<unavailable>"),
+            boundary.as_str(),
+            state.as_str(),
+            code.unwrap_or("<none>"),
+        ],
+    )
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use sts2_harness::{CapturePort, NoopCapture, PreparedOllamaInput};
 
 const LIMIT: usize = 128 * 1024;
@@ -78,14 +78,20 @@ fn run_with_capture_bytes_timeout(
         .as_str()
         .filter(|id| !id.is_empty())
         .unwrap_or("ollama-bridge-execution");
-    PreparedOllamaInput::new(&body).capture(capture, execution_id, None);
+    // Keep repeated bridge invocations distinct even when the request's execution ID repeats.
+    let attempt_id = format!(
+        "ollama-attempt-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+    );
+    PreparedOllamaInput::new(&body).capture(capture, execution_id, Some(attempt_id.as_str()));
     let mut write_completed = false;
     let mut mark_write_completed = || {
         write_completed = true;
         let _ = capture.write_completed_at(
             execution_id,
-            None,
-            sts2_harness::CaptureBoundary::ProviderRequest,
+            Some(attempt_id.as_str()),
+            sts2_harness::CaptureBoundary::HttpBody,
         );
     };
     let response = match exchange_at(&body, address, timeout, &mut mark_write_completed) {
@@ -94,9 +100,9 @@ fn run_with_capture_bytes_timeout(
             if !write_completed {
                 let _ = capture.write_unknown(
                     execution_id,
-                    None,
+                    Some(attempt_id.as_str()),
                     "ollama_transport_write_unknown",
-                    sts2_harness::CaptureBoundary::ProviderRequest,
+                    sts2_harness::CaptureBoundary::HttpBody,
                 );
             }
             return Err(error);

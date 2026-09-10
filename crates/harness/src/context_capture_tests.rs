@@ -46,7 +46,7 @@ fn repeated_input_with_distinct_attempts_keeps_distinct_snapshot_identity() {
             .prepared(CaptureInput {
                 execution_id: "model-execution-7",
                 attempt_id: Some(attempt_id),
-                boundary: CaptureBoundary::ProviderRequest,
+                boundary: CaptureBoundary::HttpBody,
                 bytes: b"same input",
             })
             .expect("record");
@@ -54,6 +54,26 @@ fn repeated_input_with_distinct_attempts_keeps_distinct_snapshot_identity() {
     let records = capture.records().collect::<Vec<_>>();
     assert_ne!(records[0].snapshot_id, records[1].snapshot_id);
     assert_ne!(records[0].attempt_id, records[1].attempt_id);
+}
+
+#[test]
+fn length_prefixed_identity_avoids_hyphenated_execution_attempt_collisions() {
+    let mut capture = MemoryCapture::new(CaptureMode::Metadata, 8, 128).expect("config");
+    for (execution_id, attempt_id) in [
+        ("execution-a-b", "attempt-c"),
+        ("execution-a", "attempt-b-c"),
+    ] {
+        capture
+            .prepared(CaptureInput {
+                execution_id,
+                attempt_id: Some(attempt_id),
+                boundary: CaptureBoundary::ExoSessionRequest,
+                bytes: b"same input",
+            })
+            .expect("record");
+    }
+    let records = capture.records().collect::<Vec<_>>();
+    assert_ne!(records[0].snapshot_id, records[1].snapshot_id);
 }
 
 #[test]
@@ -86,7 +106,7 @@ fn boundary_and_parent_linkage_are_preserved_for_lifecycle_records() {
             .prepared(CaptureInput {
                 execution_id: "model-execution-7",
                 attempt_id: Some("attempt-a"),
-                boundary: CaptureBoundary::ProviderRequest,
+                boundary: CaptureBoundary::HttpBody,
                 bytes: b"input",
             })
             .expect("prepared");
@@ -107,6 +127,7 @@ fn boundary_and_parent_linkage_are_preserved_for_lifecycle_records() {
         .expect("unknown");
     let records = capture.records().collect::<Vec<_>>();
     assert_eq!(records[1].boundary, CaptureBoundary::ExoSessionRequest);
+    assert_ne!(records[1].snapshot_id, prepared_snapshot_id);
     assert_eq!(
         records[1].parent_snapshot_id.as_deref(),
         Some(prepared_snapshot_id.as_str())

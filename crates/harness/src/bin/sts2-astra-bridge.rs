@@ -160,6 +160,13 @@ fn decide_with_executable(
         .as_str()
         .filter(|id| !id.is_empty())
         .unwrap_or("astra-bridge-execution");
+    // The request may be retried with identical bytes. Keep each bridge invocation distinct even
+    // when the upstream execution does not provide a provider attempt identifier.
+    let attempt_id = format!(
+        "astra-attempt-{}-{}",
+        std::process::id(),
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+    );
     if capture.enabled()
         && let Ok(schema_bytes) = std::fs::read(&schema)
         && let Ok(configuration) = serde_json::to_vec(&json!({
@@ -170,7 +177,7 @@ fn decide_with_executable(
         PreparedAstraInput::new(prompt.as_bytes(), &schema_bytes, &configuration).capture(
             capture,
             execution_id,
-            None,
+            Some(attempt_id.as_str()),
         );
     }
     let stdout = child.stdout.take().ok_or("missing provider stdout")?;
@@ -183,13 +190,17 @@ fn decide_with_executable(
         .ok_or("missing provider input")?
         .write_all(prompt.as_bytes());
     if written.is_ok() {
-        let _ = capture.write_completed_at(execution_id, None, CaptureBoundary::ProviderRequest);
+        let _ = capture.write_completed_at(
+            execution_id,
+            Some(attempt_id.as_str()),
+            CaptureBoundary::ExoSessionRequest,
+        );
     } else {
         let _ = capture.write_unknown(
             execution_id,
-            None,
+            Some(attempt_id.as_str()),
             "input_write_unknown",
-            CaptureBoundary::ProviderRequest,
+            CaptureBoundary::ExoSessionRequest,
         );
     }
     let status = child.wait()?;
