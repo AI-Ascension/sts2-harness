@@ -300,7 +300,7 @@ fn canonical_id(prefix: &str, fields: &[&str]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"ascension.context-capture-id.v1\0");
     for field in fields {
-        hasher.update((*field).len().to_be_bytes());
+        hasher.update(((*field).len() as u64).to_be_bytes());
         hasher.update(field.as_bytes());
     }
     let digest = hasher.finalize();
