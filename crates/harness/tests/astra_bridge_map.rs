@@ -3,7 +3,6 @@
 #![cfg(unix)]
 
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -167,7 +166,7 @@ fn large_map_request() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
             "action":{"kind":"select_map_node","node_id":node_ids[1]}}]
     });
     let snapshot_bytes = serde_json::to_vec(&snapshot)?;
-    let snapshot_digest = format!("{:x}", Sha256::digest(&snapshot_bytes));
+    let snapshot_digest = sts2_harness::sha256_hex(&snapshot_bytes);
     let request = json!({
         "schema":"sts2.exo-decision-map-v1", "provider_revision":REVISION,
         "model_execution_id":"model-1", "state_id":"state-1", "generation":1,

@@ -2,7 +2,6 @@
 
 use std::error::Error;
 
-use sha2::{Digest as _, Sha256};
 use sts2_harness::{
     ArtifactDraft, ArtifactId, ArtifactKind, ArtifactLineage, ArtifactMetadata,
     ArtifactMetadataInput, Digest, RunId, SchemaVersion,
@@ -16,7 +15,7 @@ fn metadata(bytes: &[u8]) -> Result<ArtifactMetadata, Box<dyn Error>> {
             owner_run: run,
             kind: ArtifactKind::Trajectory,
             schema_version: SchemaVersion::new(1).ok_or("invalid schema")?,
-            content_digest: Digest::new(format!("{:x}", Sha256::digest(bytes)))?,
+            content_digest: Digest::new(sts2_harness::sha256_hex(bytes))?,
             producer: "synthetic-test".to_owned(),
             lineage: ArtifactLineage::new(run, None, Vec::new())?,
         },

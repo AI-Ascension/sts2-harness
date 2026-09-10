@@ -138,6 +138,36 @@ fn parse_recovery_response(
                 if before != observation_generation {
                     return Err(CoopNativeEnvelopeError::InvalidValue);
                 }
+                match receipt.status {
+                    // A rejoin can be admitted while the host remains at the
+                    // same generation. The canonical pending-rejoin witness
+                    // carries that accepted receipt with an explicit same-
+                    // generation after fence.
+                    CoopNativeStatus::Accepted
+                        if recovery.kind == CoopNativeRecoveryKind::Rejoin
+                            && receipt.after_host_generation
+                                != Some(observation_generation) =>
+                    {
+                        return Err(CoopNativeEnvelopeError::InvalidValue);
+                    }
+                    // Reconciliation cannot claim the rejoin-only same-generation
+                    // exception; it remains unresolved until a settled response.
+                    CoopNativeStatus::Accepted
+                        if recovery.kind != CoopNativeRecoveryKind::Rejoin
+                            && receipt.after_host_generation.is_some() =>
+                    {
+                        return Err(CoopNativeEnvelopeError::InvalidValue);
+                    }
+                    // An unresolved recovery receipt has no settled after
+                    // generation; retaining one would invent a host change.
+                    CoopNativeStatus::Unknown
+                        if receipt.after_host_generation.is_some() =>
+                    {
+                        return Err(CoopNativeEnvelopeError::InvalidValue);
+                    }
+                    CoopNativeStatus::Accepted | CoopNativeStatus::Unknown => {}
+                    _ => return Err(CoopNativeEnvelopeError::InvalidValue),
+                }
             }
             CoopNativeStatus::Settled => {
                 if receipt.after_host_generation != Some(observation_generation) {

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::Value;
-use sha2::Digest;
 use std::path::PathBuf;
 
 use super::error::ExecutionStoreError;
@@ -239,7 +238,7 @@ pub(crate) fn valid_digest(value: &str) -> bool {
 pub(crate) fn valid_catalog_raw(raw: &[u8], expected_digest: &str) -> bool {
     raw.len() <= MAX_CATALOG_BYTES
         && !raw.is_empty()
-        && format!("{:x}", sha2::Sha256::digest(raw)) == expected_digest
+        && crate::sha256_hex(raw) == expected_digest
         && serde_json::from_slice::<Value>(raw)
             .ok()
             .is_some_and(|value| value.is_array())

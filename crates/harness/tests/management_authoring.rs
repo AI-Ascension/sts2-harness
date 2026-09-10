@@ -188,6 +188,21 @@ fn authoring_rejects_secret_like_fields() -> Result<(), Box<dyn std::error::Erro
 }
 
 #[test]
+fn authoring_accepts_workflow_output_budget_fields() -> Result<(), Box<dyn std::error::Error>> {
+    let service = service();
+    let actor = actor()?;
+    let created = service.studio_create_draft(
+        &actor,
+        create_request(json!({
+            "workflow_id": "authoring-fixture",
+            "limits": {"max_output_tokens": 128}
+        })),
+    )?;
+    assert_eq!(created.revision, 0);
+    Ok(())
+}
+
+#[test]
 fn sqlite_authoring_reopens_drafts_and_publications() -> Result<(), Box<dyn std::error::Error>> {
     let directory = std::env::temp_dir().join(format!(
         "sts2-studio-authoring-{}-{}",

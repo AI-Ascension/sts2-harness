@@ -3,7 +3,6 @@
 #![allow(clippy::expect_used, clippy::panic)]
 
 use rusqlite::{Connection, params};
-use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 
 use sts2_harness::ExecutionStoreError;
@@ -49,7 +48,7 @@ fn result_payload_is_bounded_digest_bound_and_tamper_evident() {
         store.complete_provider_with_result(
             "reservation-1",
             "result-1",
-            &format!("{:x}", Sha256::digest(&oversized)),
+            &sts2_harness::sha256_hex(&oversized),
             &oversized,
             1,
         ),
@@ -60,7 +59,7 @@ fn result_payload_is_bounded_digest_bound_and_tamper_evident() {
         Err(ExecutionStoreError::InvalidProviderReservation)
     );
     let payload = br#"{"decision":"wait","rationale":"safe"}"#;
-    let digest = format!("{:x}", Sha256::digest(payload));
+    let digest = sts2_harness::sha256_hex(payload);
     store
         .complete_provider_with_result("reservation-1", "result-1", &digest, payload, 1)
         .expect("valid result records");
@@ -87,7 +86,7 @@ fn result_payload_is_bounded_digest_bound_and_tamper_evident() {
 fn duplicate_completion_with_conflicting_result_metadata_is_rejected() {
     let (mut store, database) = provider_store("provider-result-dedup");
     let payload = br#"{"decision":"wait","rationale":"safe"}"#;
-    let digest = format!("{:x}", Sha256::digest(payload));
+    let digest = sts2_harness::sha256_hex(payload);
     store
         .complete_provider_with_result("reservation-1", "result-1", &digest, payload, 1)
         .expect("first completion records");

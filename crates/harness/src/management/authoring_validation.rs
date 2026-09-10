@@ -119,17 +119,12 @@ fn reject_secret_like(value: &Value, path: &str) -> Result<(), StoreError> {
         Value::Object(object) => {
             for (key, child) in object {
                 let lower = key.to_ascii_lowercase();
-                if [
-                    "token",
-                    "secret",
-                    "password",
-                    "apikey",
-                    "api_key",
-                    "private_key",
-                ]
-                .iter()
-                .any(|needle| lower == *needle || lower.contains(needle))
-                {
+                let broad_secret_name = ["secret", "password", "apikey", "api_key", "private_key"]
+                    .iter()
+                    .any(|needle| lower == *needle || lower.contains(needle));
+                let token_name =
+                    lower == "token" || lower.ends_with("_token") || lower.ends_with("-token");
+                if broad_secret_name || token_name {
                     return Err(StoreError::new(
                         "secret_like_field",
                         format!("authoring payload contains a secret-like field at {path}.{key}"),

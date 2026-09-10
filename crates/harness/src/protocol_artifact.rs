@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 
 /// Version consumed by the deterministic harness POC.
 pub const POC_PROTOCOL_VERSION: &str = "poc-v1";
@@ -253,8 +252,7 @@ fn checksum_matches(path: &str, bytes: &[u8]) -> bool {
     let Some(expected) = checksum_for(path) else {
         return false;
     };
-    let actual = Sha256::digest(bytes);
-    format!("{actual:x}") == expected
+    crate::sha256_hex(bytes) == expected
 }
 
 fn checksum_for(path: &str) -> Option<&str> {

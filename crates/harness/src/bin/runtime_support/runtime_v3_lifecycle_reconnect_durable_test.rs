@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-use sha2::Digest;
 use sts2_harness::{
     ActionIdentity, ActionKind, Decision, DecisionInput, DecisionSource, EpisodeLegalAction,
     ExecutionFingerprint, ExecutionLineage, ExecutionStore, ModelExecutionId,
@@ -154,10 +153,7 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
     let canonical_action =
         wire::canonical_action_bytes(pending_action.action_id(), &json!({"kind":"end_turn"}))?;
     let canonical_json_b64 = encode_base64(&canonical_action);
-    let catalog_digest = format!(
-        "{:x}",
-        sha2::Sha256::digest(serde_json::to_vec(&pending_catalog)?)
-    );
+    let catalog_digest = sts2_harness::sha256_hex(serde_json::to_vec(&pending_catalog)?);
     durable.operation_dispatched(PENDING_OPERATION_ID, &pending_digest)?;
     drop(port);
 

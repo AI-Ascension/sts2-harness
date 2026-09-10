@@ -2,7 +2,6 @@
 
 use std::error::Error;
 
-use sha2::{Digest, Sha256};
 use sts2_harness::{
     POC_CLOCK_TICK, POC_SCHEMA_DIGEST, POC_SEED, PocAction, PocRunner, PocStatus, run_poc,
     verify_poc_artifact,
@@ -27,7 +26,7 @@ fn deterministic_trace_covers_the_requested_path_and_outcomes() -> Result<(), Bo
     assert!(first.trace_bytes().ends_with('\n'));
     assert!(first.trace_bytes().contains("sts2.game-core/zero_units"));
     assert_eq!(
-        format!("{:x}", Sha256::digest(first.trace_bytes().as_bytes())),
+        sts2_harness::sha256_hex(first.trace_bytes().as_bytes()),
         EXPECTED_TRACE_SHA256
     );
     assert!(
