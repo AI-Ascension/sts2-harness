@@ -14,8 +14,8 @@ use super::mcp::{McpProcess, identity_headers};
 use super::runtime_v3_parse as parse;
 use super::runtime_v3_settings::RuntimeV3Settings;
 use super::runtime_v3_telemetry::{
-    CleanupStatus, RuntimeV3Telemetry, TelemetryContext, TelemetryContextInput, TelemetryHandle,
-    TelemetryStage,
+    CleanupStatus, ObservationSource, RuntimeV3Telemetry, TelemetryContext, TelemetryContextInput,
+    TelemetryHandle, TelemetryStage,
 };
 use super::runtime_v3_wire as wire;
 
@@ -262,3 +262,4 @@ pub(super) struct RuntimeV3Port {
 }
 
 include!("runtime_v3_port.rs");
+include!("runtime_v3_observation.rs");

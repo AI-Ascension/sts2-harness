@@ -9,7 +9,6 @@ use sts2_harness::{
 };
 
 use super::super::mcp::validate_or_release_allocation;
-use super::super::runtime_v3_telemetry::ObservationSource;
 use super::{OperationRecord, RuntimeV3Port, RuntimeV3ToolError, parse, wire};
 
 const MAX_OPERATIONS: usize = 1_024;
@@ -63,23 +62,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
     }
 
     fn observe(&mut self) -> Result<EpisodeObservation, sts2_harness::PortError> {
-        let arguments = self.context(self.generation);
-        let value = self
-            .call_tool("sts2.observe", arguments)
-            .map_err(|error| wire::port_error("observe_failed", error, false))?;
-        let parsed = parse::observation(&value, "state_response", &self.config)
-            .map_err(|error| wire::port_error("observe_invalid", error, false))?;
-        let baseline = self.install(parsed);
-        let observation = if self.is_expert_profile() {
-            self.compose_current_observation(baseline)
-                .map_err(|error| wire::port_error("expert_observe_invalid", error, false))?
-        } else {
-            baseline
-        };
-        let _ = self
-            .telemetry
-            .observation(ObservationSource::Observe, &observation);
-        Ok(observation)
+        self.observe_inner(false)
     }
 
     fn legal_actions(

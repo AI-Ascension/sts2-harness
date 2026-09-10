@@ -13,7 +13,18 @@ impl RuntimeV3Port {
         &mut self,
         baseline: EpisodeObservation,
     ) -> Result<EpisodeObservation, String> {
-        self.compose_current_observation_classified(baseline, false)
+        self.compose_current_observation_classified(baseline, false, false)
+            .map_err(|error| error.message().to_owned())
+    }
+
+    /// Compose an idle-transition observation with a bounded retry when the expert process
+    /// returns a lagging projection. The normal read already advanced, so rereading the expert
+    /// projection is sufficient; a persistent lag remains terminal.
+    pub(super) fn compose_current_observation_for_idle(
+        &mut self,
+        baseline: EpisodeObservation,
+    ) -> Result<EpisodeObservation, String> {
+        self.compose_current_observation_classified(baseline, false, true)
             .map_err(|error| error.message().to_owned())
     }
 
@@ -23,13 +34,14 @@ impl RuntimeV3Port {
         &mut self,
         baseline: EpisodeObservation,
     ) -> Result<EpisodeObservation, RuntimeV3ToolError> {
-        self.compose_current_observation_classified(baseline, true)
+        self.compose_current_observation_classified(baseline, true, false)
     }
 
     fn compose_current_observation_classified(
         &mut self,
         mut baseline: EpisodeObservation,
         catalog_read: bool,
+        allow_lagging_expert_retry: bool,
     ) -> Result<EpisodeObservation, RuntimeV3ToolError> {
         for reobserve_count in 0..=MAX_EXPERT_COMPOSITION_REOBSERVES {
             let expert = self.expert_state_classified(catalog_read)?;
@@ -53,6 +65,16 @@ impl RuntimeV3Port {
                     )));
                 }
                 baseline = self.reobserve_for_composition(&baseline)?;
+                continue;
+            }
+            if expert.generation() < baseline.generation() && allow_lagging_expert_retry {
+                if reobserve_count == MAX_EXPERT_COMPOSITION_REOBSERVES {
+                    return Err(RuntimeV3ToolError::Terminal(String::from(
+                        "Runtime-v4 expert state remained behind the Runtime-v3 idle observation",
+                    )));
+                }
+                // The normal projection is newer than this expert read. Re-read only the
+                // expert projection so the idle wait cannot repeat or manufacture a mutation.
                 continue;
             }
 
