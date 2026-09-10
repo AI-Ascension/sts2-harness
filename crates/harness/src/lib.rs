@@ -3,6 +3,7 @@
 mod artifact;
 mod context_capture;
 pub mod context_control;
+mod coop_native;
 mod coordinator;
 mod decision_records;
 mod episode;
@@ -48,6 +49,7 @@ pub use context_capture::{
     generated_capture_attempt_id,
 };
 pub use context_control::*;
+pub use coop_native::*;
 pub use coordinator::{EpisodeHandle, Harness, HarnessParts};
 pub use decision_records::{DecisionPayload, DecisionRecord, DecisionRecordKind, EvidenceStatus};
 pub use episode::{
