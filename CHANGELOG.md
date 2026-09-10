@@ -25,6 +25,10 @@ claim a released harness version or runtime compatibility.
   host legality, settlement, checksum convergence, rejoin, deployment, and release compatibility
   remain `unverified`.
 
+- 2026-09-10: Fence unknown recovery receipts to the observed host generation. The accepted
+  same-generation receipt exception is limited to pending rejoin recovery; reconcile and unresolved
+  receipts retain a null after-generation until a settled response.
+
 - Record visible Astra-controlled v0.107.1 campaigns and fresh process replays through the full
   harness → MCP → gateway → mod path: Windows reached Defeat with 333 settled actions; Linux
   reached Defeat with 431 after one controller restart following a catalog-read failure. These
