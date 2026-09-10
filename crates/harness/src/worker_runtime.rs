@@ -182,6 +182,13 @@ impl WorkerRuntime {
         authenticated: &AuthenticatedWorkerRequest,
     ) -> Result<WorkerExchange, String> {
         let request = authenticated.request();
+        // Validate identity and capability before the local busy fast path.
+        // Returning Busy for a different handoff before this check would let
+        // an authenticated-but-misbound caller observe lane state and would
+        // bypass the command admission boundary.
+        self.admission
+            .validate_request(authenticated)
+            .map_err(command_error)?;
         if let Some(active_handoff_id) = self.lane.active_handoff_id()
             && request
                 .fields()

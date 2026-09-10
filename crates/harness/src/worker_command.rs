@@ -185,7 +185,7 @@ impl WorkerCommandAdmission {
         Ok(())
     }
 
-    fn validate_request(
+    pub(crate) fn validate_request(
         &self,
         authenticated: &AuthenticatedWorkerRequest,
     ) -> Result<(), WorkerCommandError> {

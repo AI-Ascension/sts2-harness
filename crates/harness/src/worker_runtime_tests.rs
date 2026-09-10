@@ -203,6 +203,38 @@ fn held_store_lock_retains_primary_and_quarantine_diagnostics()
 }
 
 #[test]
+fn busy_fast_path_validates_identity_before_revealing_lane_state()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut runtime = runtime()?;
+    let _reservation = admitted_reservation(&mut runtime)?;
+    let mut fields = request()?.fields().clone();
+    fields.insert(
+        "watchdog_boot_id".into(),
+        json!("99999999-9999-4999-8999-999999999999"),
+    );
+    fields.insert(
+        "handoff_id".into(),
+        json!("55555555-5555-4555-8555-555555555555"),
+    );
+    let forged = WorkerRequest::decode(&serde_json::to_vec(&fields)?)?;
+    let error = match runtime.handle_authenticated(&authenticated(forged)?) {
+        Ok(_) => return Err("misbound dispatch unexpectedly received a busy response".into()),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("identity does not match configuration"),
+        "{error}"
+    );
+    assert_eq!(
+        runtime
+            .active_tuple()
+            .map(|tuple| tuple.handoff_id.as_str()),
+        Some(HANDOFF_ID)
+    );
+    Ok(())
+}
+
+#[test]
 fn already_quarantined_gate_accounts_for_admitted_reservation()
 -> Result<(), Box<dyn std::error::Error>> {
     let mut runtime = runtime()?;
