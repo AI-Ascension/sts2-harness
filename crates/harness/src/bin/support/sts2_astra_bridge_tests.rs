@@ -150,20 +150,26 @@ fn actual_fake_codex_receives_the_same_prepared_components_as_capture()
         .iter()
         .map(|value| value.as_str().unwrap_or_default().to_owned())
         .collect::<Vec<_>>();
-    let fake_path = fake.to_string_lossy();
-    let fake_index = configured
-        .iter()
-        .position(|argument| argument == fake_path.as_ref())
-        .ok_or("fake executable is absent from captured argv")?;
-    let child_args = configured[(fake_index + 1)..].join("\n") + "\n";
-    assert_eq!(
-        child_args,
-        std::fs::read_to_string(oracle_directory.0.join("argv.txt"))?
+    let child_args = std::fs::read_to_string(oracle_directory.0.join("argv.txt"))?;
+    assert!(child_args.contains(&format!("{}\n", provider_directory.0.to_string_lossy())));
+    assert!(child_args.contains(&format!("{}\n", schema_path(&provider_directory))));
+    assert!(child_args.contains(&format!("{}\n", output_path(&provider_directory))));
+    assert!(configured.iter().any(|argument| argument == "<path>"));
+    assert!(
+        configured
+            .iter()
+            .any(|argument| argument == "<schema-file>")
     );
-    assert_eq!(
-        configuration["working_directory"],
-        provider_directory.0.to_string_lossy().as_ref()
+    assert!(
+        configured
+            .iter()
+            .any(|argument| argument == "<decision-file>")
     );
+    assert_eq!(configuration["working_directory"], "<temporary-directory>");
+    assert_eq!(configuration["path_redaction"], "application-private-paths");
+    let serialized = serde_json::to_string(&configuration)?;
+    assert!(!serialized.contains(provider_directory.0.to_string_lossy().as_ref()));
+    assert!(!serialized.contains(oracle_directory.0.to_string_lossy().as_ref()));
     let all_records = capture.records().collect::<Vec<_>>();
     assert!(all_records.iter().all(|record| record.attempt_id.is_some()));
     assert!(all_records.iter().all(|record| {
@@ -177,4 +183,20 @@ fn actual_fake_codex_receives_the_same_prepared_components_as_capture()
     std::fs::remove_dir_all(provider_directory.0)?;
     std::fs::remove_dir_all(oracle_directory.0)?;
     Ok(())
+}
+
+fn schema_path(directory: &Temporary) -> String {
+    directory
+        .0
+        .join("schema.json")
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn output_path(directory: &Temporary) -> String {
+    directory
+        .0
+        .join("decision.json")
+        .to_string_lossy()
+        .into_owned()
 }

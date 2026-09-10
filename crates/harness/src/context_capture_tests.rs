@@ -57,6 +57,15 @@ fn repeated_input_with_distinct_attempts_keeps_distinct_snapshot_identity() {
 }
 
 #[test]
+fn generated_attempt_ids_are_valid_and_unique() {
+    let first = generated_capture_attempt_id("exo");
+    let second = generated_capture_attempt_id("exo");
+    assert_ne!(first, second);
+    assert!(valid_identity(&first));
+    assert!(valid_identity(&second));
+}
+
+#[test]
 fn length_prefixed_identity_avoids_hyphenated_execution_attempt_collisions() {
     let mut capture = MemoryCapture::new(CaptureMode::Metadata, 8, 128).expect("config");
     for (execution_id, attempt_id) in [

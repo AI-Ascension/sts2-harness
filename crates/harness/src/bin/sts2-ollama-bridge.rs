@@ -5,8 +5,8 @@
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use sts2_harness::{CapturePort, NoopCapture, PreparedOllamaInput};
+use std::time::{Duration, Instant};
+use sts2_harness::{CapturePort, NoopCapture, PreparedOllamaInput, generated_capture_attempt_id};
 
 const LIMIT: usize = 128 * 1024;
 
@@ -79,11 +79,7 @@ fn run_with_capture_bytes_timeout(
         .filter(|id| !id.is_empty())
         .unwrap_or("ollama-bridge-execution");
     // Keep repeated bridge invocations distinct even when the request's execution ID repeats.
-    let attempt_id = format!(
-        "ollama-attempt-{}-{}",
-        std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
-    );
+    let attempt_id = generated_capture_attempt_id("ollama");
     PreparedOllamaInput::new(&body).capture(capture, execution_id, Some(attempt_id.as_str()));
     let mut write_completed = false;
     let mut mark_write_completed = || {

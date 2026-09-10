@@ -69,17 +69,22 @@ impl<T> ExoSession<T> {
             self.provider.config().max_response_bytes,
         )?;
         let bytes = request.encode(self.provider.config().max_request_bytes)?;
-        self.provider.capture_prepared(
+        let attempt_id = self
+            .provider
+            .capture_attempt_id()
+            .map(str::to_owned)
+            .unwrap_or_else(|| crate::context_capture::generated_capture_attempt_id("exo"));
+        self.provider.capture_prepared_with_attempt(
             &execution_id.to_string(),
+            Some(attempt_id.as_str()),
             crate::context_capture::CaptureBoundary::ExoSessionRequest,
             &bytes,
         );
-        let attempt_id = self.provider.capture_attempt_id().map(str::to_owned);
         let response = match self.provider.transport_exchange_for_session(&bytes) {
             Ok(response) => {
                 self.provider.capture_write_completed(
                     &execution_id.to_string(),
-                    attempt_id.as_deref(),
+                    Some(attempt_id.as_str()),
                     crate::context_capture::CaptureBoundary::ExoSessionRequest,
                 );
                 response
@@ -87,7 +92,7 @@ impl<T> ExoSession<T> {
             Err(error) => {
                 self.provider.capture_write_unknown(
                     &execution_id.to_string(),
-                    attempt_id.as_deref(),
+                    Some(attempt_id.as_str()),
                     match error {
                         super::protocol::ExoTransportError::Unavailable => "transport_unavailable",
                         super::protocol::ExoTransportError::Timeout => "transport_timeout",

@@ -8,7 +8,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 use sts2_harness::{
-    CaptureBoundary, CapturePort, NoopCapture, PreparedAstraInput, parse_codex_events,
+    CaptureBoundary, CapturePort, NoopCapture, PreparedAstraInput, generated_capture_attempt_id,
+    parse_codex_events,
 };
 
 #[path = "support/bridge_accounting.rs"]
@@ -162,17 +163,10 @@ fn decide_with_executable(
         .unwrap_or("astra-bridge-execution");
     // The request may be retried with identical bytes. Keep each bridge invocation distinct even
     // when the upstream execution does not provide a provider attempt identifier.
-    let attempt_id = format!(
-        "astra-attempt-{}-{}",
-        std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
-    );
+    let attempt_id = generated_capture_attempt_id("astra");
     if capture.enabled()
         && let Ok(schema_bytes) = std::fs::read(&schema)
-        && let Ok(configuration) = serde_json::to_vec(&json!({
-            "argv": provider_args,
-            "working_directory": directory.0.to_string_lossy(),
-        }))
+        && let Ok(configuration) = redacted_capture_configuration(&provider_args)
     {
         PreparedAstraInput::new(prompt.as_bytes(), &schema_bytes, &configuration).capture(
             capture,
@@ -248,6 +242,35 @@ fn decide_with_executable(
     );
     write_accounting(&record)?;
     decision_result
+}
+
+fn redacted_capture_configuration(provider_args: &[String]) -> Result<Vec<u8>, serde_json::Error> {
+    let mut argv = Vec::with_capacity(provider_args.len());
+    let mut previous = None;
+    for argument in provider_args {
+        let value = match previous {
+            Some("--cd") => "<temporary-directory>",
+            Some("--output-schema") => "<schema-file>",
+            Some("--output-last-message") => "<decision-file>",
+            _ if looks_like_absolute_path(argument) => "<path>",
+            _ => argument.as_str(),
+        };
+        argv.push(value.to_owned());
+        previous = Some(argument.as_str());
+    }
+    serde_json::to_vec(&json!({
+        "argv": argv,
+        "working_directory": "<temporary-directory>",
+        "path_redaction": "application-private-paths",
+    }))
+}
+
+fn looks_like_absolute_path(value: &str) -> bool {
+    value.starts_with('/')
+        || value.starts_with('\\')
+        || (value.len() > 2
+            && value.as_bytes()[1] == b':'
+            && (value.as_bytes()[2] == b'\\' || value.as_bytes()[2] == b'/'))
 }
 
 fn validate(content: &str, ids: &[Value]) -> Result<Value, Box<dyn std::error::Error>> {

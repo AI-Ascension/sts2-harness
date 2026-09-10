@@ -5,7 +5,9 @@ mod request;
 pub use request::ExoDecisionRequest;
 use request::{request_from_prompt, valid_revision};
 
-use crate::context_capture::{CaptureBoundary, CaptureInput, CapturePort};
+use crate::context_capture::{
+    CaptureBoundary, CaptureInput, CapturePort, generated_capture_attempt_id,
+};
 use crate::exo::decision::{DecisionError, parse_decision};
 use crate::exo::sandbox::{SandboxError, SanitizedObservation};
 use provider_impl::error_code;
@@ -206,18 +208,22 @@ impl<T> ExoProvider<T> {
         }
         self.config.validate()?;
         let bytes = request.encode(self.config.max_request_bytes)?;
-        self.capture_prepared(
+        let attempt_id = self
+            .attempt_id
+            .clone()
+            .unwrap_or_else(|| generated_capture_attempt_id("exo"));
+        self.capture_prepared_with_attempt(
             request.model_execution_id.as_str(),
+            Some(attempt_id.as_str()),
             CaptureBoundary::ExoSessionRequest,
             &bytes,
         );
-        let attempt_id = self.attempt_id.clone();
         let response = self.transport_exchange(&bytes);
         match response {
             Ok(response) => {
                 self.capture_write_completed(
                     request.model_execution_id.as_str(),
-                    attempt_id.as_deref(),
+                    Some(attempt_id.as_str()),
                     CaptureBoundary::ExoSessionRequest,
                 );
                 Ok(response)
@@ -225,7 +231,7 @@ impl<T> ExoProvider<T> {
             Err(error) => {
                 self.capture_write_unknown(
                     request.model_execution_id.as_str(),
-                    attempt_id.as_deref(),
+                    Some(attempt_id.as_str()),
                     error_code(ExoError::from(error)),
                     CaptureBoundary::ExoSessionRequest,
                 );
@@ -234,16 +240,17 @@ impl<T> ExoProvider<T> {
         }
     }
 
-    pub(super) fn capture_prepared(
+    pub(super) fn capture_prepared_with_attempt(
         &mut self,
         execution_id: &str,
+        attempt_id: Option<&str>,
         boundary: CaptureBoundary,
         bytes: &[u8],
     ) {
         if let Some(capture) = self.capture.as_mut() {
             let _ = capture.prepared(CaptureInput {
                 execution_id,
-                attempt_id: self.attempt_id.as_deref(),
+                attempt_id,
                 boundary,
                 bytes,
             });

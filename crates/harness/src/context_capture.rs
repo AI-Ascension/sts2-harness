@@ -9,8 +9,25 @@
 mod input;
 pub use input::{PreparedAstraInput, PreparedOllamaInput};
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
 pub const MAX_CAPTURE_RECORDS: usize = 128;
 pub const MAX_CAPTURE_BYTES: usize = 1_048_576;
+
+static NEXT_GENERATED_ATTEMPT: AtomicU64 = AtomicU64::new(0);
+
+/// Creates a process-local attempt identifier for a bridge or generic adapter call that does not
+/// receive one from its caller. The timestamp and monotonic serial keep repeated execution IDs
+/// distinct without changing the provider request payload.
+pub fn generated_capture_attempt_id(prefix: &str) -> String {
+    let serial = NEXT_GENERATED_ATTEMPT.fetch_add(1, Ordering::Relaxed);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("{prefix}-attempt-{}-{nanos}-{serial}", std::process::id())
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CaptureMode {
