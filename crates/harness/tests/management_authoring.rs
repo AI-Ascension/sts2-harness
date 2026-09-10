@@ -270,6 +270,8 @@ fn http_authoring_routes_accept_create_get_and_put() -> Result<(), Box<dyn std::
     let fetched_record: sts2_harness::management::StudioDraftRecord =
         serde_json::from_slice(&fetched.body)?;
     assert_eq!(fetched_record.revision, 1);
+    let missing = client.request_json("GET", "/v1/studio/drafts/draft.missing", None)?;
+    assert_eq!(missing.status, 404);
     server.shutdown()?;
     Ok(())
 }
