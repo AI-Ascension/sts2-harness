@@ -256,6 +256,15 @@ impl RuntimeV3Port {
         let result = RuntimeV4ExpertActionResult::from_value(value)
             .map_err(|error| format!("Runtime-v4 expert reconcile response is invalid: {error}"))?;
         validate_expert_result(&result, &request, &identity, &record.action)?;
+        if matches!(
+            result.status(),
+            RuntimeV4ExpertActionStatus::Settled
+                | RuntimeV4ExpertActionStatus::Rejected
+                | RuntimeV4ExpertActionStatus::Cancelled
+        ) && let Some(durable) = &self.durable
+        {
+            durable.clear_resume_boundary()?;
+        }
         let response = result.as_value().clone();
         let receipt = self.expert_result_receipt(result, &request, &identity, &record.action)?;
         let payload_digest = self
@@ -265,7 +274,7 @@ impl RuntimeV3Port {
                 || Ok(String::new()),
                 |durable| durable.operation_payload_digest(operation_id),
             )?;
-        self.record_durable_receipt(
+        self.record_reconciled_durable_receipt(
             operation_id,
             &payload_digest,
             &receipt,

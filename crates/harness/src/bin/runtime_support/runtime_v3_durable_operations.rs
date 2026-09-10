@@ -15,6 +15,7 @@ use super::{DurableHandle, PROVIDER_RESERVATION_UNITS, ProviderReservationToken}
 pub(in super::super) struct OperationCatalogEvidence<'a> {
     pub(in super::super) input: &'a Value,
     pub(in super::super) raw: &'a [u8],
+    pub(in super::super) original_context: Option<&'a Value>,
 }
 
 impl DurableHandle {
@@ -48,6 +49,17 @@ impl DurableHandle {
             Some(catalog.raw.to_vec()),
         )
         .map_err(|error| format!("runtime-v3 operation intent is invalid: {error}"))?;
+        let intent = match catalog.original_context {
+            Some(context) => {
+                let context = serde_json::to_vec(context).map_err(|error| {
+                    format!("runtime-v3 recovery context is not encodable: {error}")
+                })?;
+                intent
+                    .with_original_context(context)
+                    .map_err(|error| format!("runtime-v3 recovery context is invalid: {error}"))?
+            }
+            None => intent,
+        };
         self.store
             .try_borrow_mut()
             .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?

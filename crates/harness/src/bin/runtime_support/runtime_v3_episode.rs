@@ -234,6 +234,10 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                     super::durable::OperationCatalogEvidence {
                         input: &input,
                         raw: catalog_raw,
+                        original_context: self
+                            .recovery_context
+                            .as_ref()
+                            .map(|context| context.original_context()),
                     },
                 )
                 .map_err(|error| wire::port_error("operation_intent_failed", error, false))?;

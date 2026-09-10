@@ -89,6 +89,16 @@ fn complete_action_identity_survives_file_store_reopen() {
     let catalog_raw = br#"[ {"action_id":"combat.end-turn","action":{"kind":"end_turn"}} ]"#;
     let catalog_digest = result_digest(catalog_raw);
     let current = lineage("attempt-action", "trajectory-action");
+    let original_context = serde_json::to_vec(&serde_json::json!({
+        "deployment_id": "33333333-3333-3333-8333-333333333333",
+        "instance_id": "44444444-4444-4444-8444-444444444444",
+        "instance_incarnation": "55555555-5555-4555-8555-555555555555",
+        "boot_id": "66666666-6666-4666-8666-666666666666",
+        "authority_generation": 1,
+        "lease_id": "77777777-7777-4777-8777-777777777777",
+        "lease_epoch": 1
+    }))
+    .expect("original context bytes");
     let intent = OperationIntent::new_with_action_and_catalog(
         current.clone(),
         "11111111-1111-4111-8111-111111111111",
@@ -102,7 +112,9 @@ fn complete_action_identity_survives_file_store_reopen() {
         Some(catalog_digest.clone()),
         Some(catalog_raw.to_vec()),
     )
-    .expect("complete action intent is valid");
+    .expect("complete action intent is valid")
+    .with_original_context(original_context.clone())
+    .expect("original context is valid");
     let mut store =
         ExecutionStore::open(ExecutionStoreConfig::new(&database)).expect("store opens");
     store
@@ -124,6 +136,10 @@ fn complete_action_identity_survives_file_store_reopen() {
     assert_eq!(
         recorded.intent.catalog_raw.as_deref(),
         Some(catalog_raw.as_slice())
+    );
+    assert_eq!(
+        recorded.intent.original_context.as_deref(),
+        Some(original_context.as_slice())
     );
     store.close().expect("store closes");
     drop(store);

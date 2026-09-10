@@ -44,7 +44,8 @@ stdio subprocess tests assert unresolved state is retained and no gameplay poll/
 The producer state/encoding behavior was inspected in gateway source; these harness tests are
 not an execution of the combined gateway/MCP/host release set.
 
-The legacy environment-supplied original context is still insufficient for multiple historical
-boots. Follow-up integration must persist the immutable original context with each operation
-before possible dispatch, and keep fresh allocation/recovery authority separate. This candidate
-does not declare that dependency, cross-boot recovery, live settlement or the watchdog complete.
+Runtime-v3 schema migration 6 persists the immutable original context with each operation before
+possible dispatch, and recovery keeps the fresh allocation authority separate as the current fence.
+Rows created before that migration remain explicitly blocked from historical recovery rather than
+guessing a replacement context. This consumer still does not declare live cross-boot recovery,
+settlement, or watchdog completion.

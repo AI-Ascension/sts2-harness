@@ -91,6 +91,15 @@ impl RuntimeV3Port {
         )?;
         let result = RuntimeV4ExpertRestActionResult::from_value(value)
             .map_err(|error| format!("REST action reconcile response is invalid: {error}"))?;
+        if matches!(
+            result.status(),
+            RuntimeV4ExpertRestActionStatus::Settled
+                | RuntimeV4ExpertRestActionStatus::Rejected
+                | RuntimeV4ExpertRestActionStatus::Cancelled
+        ) && let Some(durable) = &self.durable
+        {
+            durable.clear_resume_boundary()?;
+        }
         let response = result.as_value().clone();
         let receipt = self.rest_result_receipt(
             result,
@@ -106,7 +115,7 @@ impl RuntimeV3Port {
                 || Ok(String::new()),
                 |durable| durable.operation_payload_digest(operation_id),
             )?;
-        self.record_durable_receipt(operation_id, &payload_digest, &receipt, &response)?;
+        self.record_reconciled_durable_receipt(operation_id, &payload_digest, &receipt, &response)?;
         Ok(receipt)
     }
 

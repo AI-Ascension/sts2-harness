@@ -282,6 +282,9 @@ impl RuntimeV3Port {
         self.generation = composed.observation.generation();
         self.current_state = Some(composed.observation.state_id().to_owned());
         self.current_actions = Some(composed.actions.clone());
+        let (catalog, catalog_raw) = composed_catalog(&composed.observation)?;
+        self.catalog = Some(catalog);
+        self.catalog_raw = Some(catalog_raw);
         self.payloads = composed.payloads.clone();
         self.retain_rest_selector();
         if let Some(durable) = &self.durable {
@@ -296,3 +299,4 @@ impl RuntimeV3Port {
     }
 }
 include!("runtime_v4_expert_port_composition_rest.rs");
+include!("runtime_v4_expert_port_composition_catalog.rs");

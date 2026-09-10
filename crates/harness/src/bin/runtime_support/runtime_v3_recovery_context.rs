@@ -19,6 +19,10 @@ pub(in super::super) struct RecoveryContext {
 }
 
 impl RecoveryContext {
+    pub(crate) fn original_context(&self) -> &Value {
+        &self.original_context
+    }
+
     pub(crate) fn from_authority(
         authority: &RecoveryAuthority,
         config: &RuntimeConfig,
@@ -129,11 +133,18 @@ impl RecoveryContext {
         let catalog_raw = operation.intent.catalog_raw.as_deref().ok_or_else(|| {
             String::from("durable operation has no retained legal-action catalog bytes")
         })?;
+        let original_context = operation
+            .intent
+            .original_context
+            .as_deref()
+            .ok_or_else(|| String::from("durable operation has no original recovery context"))?;
+        let original_context: Value = serde_json::from_slice(original_context)
+            .map_err(|_| String::from("durable operation original recovery context is invalid"))?;
+        validate_original_context(&original_context)?;
         if !valid_uuid_v4(&operation.intent.operation_id)
             || !valid_digest(&operation.intent.payload_digest)
             || !valid_digest(catalog_digest)
             || format!("{:x}", sha2::Sha256::digest(catalog_raw)) != catalog_digest
-            || !valid_uuid(&operation.intent.state_id)
         {
             return Err(String::from(
                 "durable operation boundary is incompatible with the recovery sideband",
@@ -142,7 +153,7 @@ impl RecoveryContext {
         Ok(json!({
             "operation_id": operation.intent.operation_id,
             "payload_digest": operation.intent.payload_digest,
-            "original_context": self.original_context,
+            "original_context": original_context,
         }))
     }
 
@@ -158,4 +169,120 @@ impl RecoveryContext {
     }
 }
 
+fn validate_original_context(value: &Value) -> Result<(), String> {
+    let object = value.as_object().ok_or_else(|| {
+        String::from("durable operation original recovery context is not an object")
+    })?;
+    let expected = [
+        "deployment_id",
+        "instance_id",
+        "instance_incarnation",
+        "boot_id",
+        "authority_generation",
+        "lease_id",
+        "lease_epoch",
+    ];
+    if object.len() != expected.len() || expected.iter().any(|key| !object.contains_key(*key)) {
+        return Err(String::from(
+            "durable operation original recovery context has an invalid shape",
+        ));
+    }
+    for field in ["deployment_id", "instance_id"] {
+        if !object
+            .get(field)
+            .and_then(Value::as_str)
+            .is_some_and(valid_uuid)
+        {
+            return Err(format!(
+                "durable operation original recovery context {field} is invalid"
+            ));
+        }
+    }
+    for field in ["instance_incarnation", "boot_id", "lease_id"] {
+        if !object
+            .get(field)
+            .and_then(Value::as_str)
+            .is_some_and(valid_uuid_v4)
+        {
+            return Err(format!(
+                "durable operation original recovery context {field} is invalid"
+            ));
+        }
+    }
+    for field in ["authority_generation", "lease_epoch"] {
+        if !object
+            .get(field)
+            .and_then(Value::as_u64)
+            .is_some_and(positive_wire_integer)
+        {
+            return Err(format!(
+                "durable operation original recovery context {field} is invalid"
+            ));
+        }
+    }
+    Ok(())
+}
+
 include!("runtime_v3_recovery_context_validation.rs");
+
+#[cfg(test)]
+mod context_tests {
+    use super::*;
+    use serde_json::json;
+    use sha2::Digest;
+    use sts2_harness::{ExecutionLineage, OperationIntent, OperationState, StoredOperation};
+
+    #[test]
+    fn operation_reference_accepts_bounded_runtime_state_ids() -> Result<(), String> {
+        let lineage = ExecutionLineage::new("run-1", "episode-1", "attempt-1", "trajectory-1")
+            .map_err(|error| error.to_string())?;
+        let action_payload = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}"#;
+        let catalog_raw = br#"[{"action_id":"combat.end-turn","action":{"kind":"end_turn"}}]"#;
+        let payload_digest = format!("{:x}", sha2::Sha256::digest(action_payload));
+        let catalog_digest = format!("{:x}", sha2::Sha256::digest(catalog_raw));
+        let original_context = serde_json::to_vec(&json!({
+            "deployment_id": "33333333-3333-3333-8333-333333333333",
+            "instance_id": "44444444-4444-4444-8444-444444444444",
+            "instance_incarnation": "55555555-5555-4555-8555-555555555555",
+            "boot_id": "66666666-6666-4666-8666-666666666666",
+            "authority_generation": 1,
+            "lease_id": "77777777-7777-4777-8777-777777777777",
+            "lease_epoch": 1
+        }))
+        .map_err(|error| error.to_string())?;
+        let intent = OperationIntent::new_with_action_and_catalog(
+            lineage,
+            "11111111-1111-4111-8111-111111111111",
+            "live:7",
+            3,
+            "combat.end-turn",
+            "end_turn",
+            action_payload.to_vec(),
+            payload_digest,
+            "input-digest",
+            Some(catalog_digest),
+            Some(catalog_raw.to_vec()),
+        )
+        .map_err(|error| error.to_string())?
+        .with_original_context(original_context)
+        .map_err(|error| error.to_string())?;
+        let operation = StoredOperation {
+            intent,
+            state: OperationState::Unknown,
+            result_ref: None,
+            result_digest: None,
+        };
+        let context = RecoveryContext {
+            instance_id: String::from("44444444-4444-4444-8444-444444444444"),
+            lease_id: String::from("77777777-7777-4777-8777-777777777777"),
+            lease_epoch: 1,
+            mcp_session_id: String::from("mcp-session"),
+            original_context: json!({}),
+            current_fence: Value::Null,
+        };
+        let reference = context.operation_ref(&operation)?;
+        assert_eq!(reference["operation_id"], operation.intent.operation_id);
+        assert_eq!(reference["original_context"]["lease_epoch"], 1);
+        Ok(())
+    }
+}

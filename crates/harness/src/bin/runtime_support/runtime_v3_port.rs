@@ -82,6 +82,45 @@ impl RuntimeV3Port {
         durable.operation_result(operation_id, payload_digest, state, Some(response))
     }
 
+    pub(super) fn record_reconciled_durable_receipt(
+        &self,
+        operation_id: &str,
+        payload_digest: &str,
+        receipt: &TransitionReceipt,
+        response: &Value,
+    ) -> Result<(), String> {
+        let Some(durable) = &self.durable else {
+            return Ok(());
+        };
+        match receipt.status() {
+            sts2_harness::DispatchStatus::Settled => {
+                durable.reconcile_response(operation_id, sts2_harness::OperationState::Settled, response)
+            }
+            sts2_harness::DispatchStatus::Rejected | sts2_harness::DispatchStatus::Cancelled => {
+                durable.reconcile_response(operation_id, sts2_harness::OperationState::Rejected, response)
+            }
+            sts2_harness::DispatchStatus::Accepted => {
+                let state = durable.operation_state(operation_id)?;
+                durable.operation_result(
+                    operation_id,
+                    payload_digest,
+                    if state == sts2_harness::OperationState::Unknown {
+                        sts2_harness::OperationState::Unknown
+                    } else {
+                        sts2_harness::OperationState::Accepted
+                    },
+                    Some(response),
+                )
+            }
+            sts2_harness::DispatchStatus::Unknown => durable.operation_result(
+                operation_id,
+                payload_digest,
+                sts2_harness::OperationState::Unknown,
+                Some(response),
+            ),
+        }
+    }
+
 }
 
 include!("runtime_v3_port_transport.rs");

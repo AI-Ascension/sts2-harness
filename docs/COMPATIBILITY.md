@@ -11,8 +11,10 @@ Reconcile responses may retain `SETTLED` or `REJECTED`, or record `RECONCILED`; 
 original context, result, ticket and witness must agree before closing durable uncertainty.
 `NOT_FOUND` and unresolved states do not prove non-execution. See
 [ADR 0011](decisions/0011-historical-recovery-evidence.md).
-Per-operation original-context persistence and fresh allocation-authority handoff remain a separate,
-unfinished integration dependency; environment-supplied context is not cross-boot recovery proof.
+Runtime-v3 schema migration 6 now persists the canonical per-operation original allocation context
+before dispatch, while the fresh allocation supplies only the current fence for a recovery lookup.
+Legacy operation rows without that field remain explicitly non-recoverable; synthetic cross-boot
+consumer tests still do not establish a live gateway/host reboot result.
 
 With `STS2_LIVE_EPISODE=true`, idle observation failures now log the harness-owned error code,
 and MCP RPC failures log only the numeric RPC code. Remote error messages and data remain

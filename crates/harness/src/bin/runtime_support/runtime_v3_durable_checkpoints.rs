@@ -5,6 +5,14 @@ use sts2_harness::{CatalogEvidence, Checkpoint, EpisodeObservation};
 use super::{DurableHandle, sha256_bytes};
 
 impl DurableHandle {
+    pub(in super::super) fn clear_resume_boundary(&self) -> Result<(), String> {
+        *self
+            .resume_boundary
+            .try_borrow_mut()
+            .map_err(|_| String::from("runtime-v3 resume boundary is already borrowed"))? = None;
+        Ok(())
+    }
+
     /// Requires the first fresh host observation after an explicit resume to equal the last
     /// durable public boundary. A mismatch cannot be turned into a new provider decision.
     pub(in super::super) fn verify_resume_boundary_with_catalog(

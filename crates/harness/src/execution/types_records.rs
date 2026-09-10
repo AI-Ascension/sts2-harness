@@ -10,7 +10,7 @@ use super::error::ExecutionStoreError;
 
 #[path = "types_operation.rs"]
 mod operation;
-pub use operation::{MAX_OPERATION_ACTION_BYTES, OperationIntent};
+pub use operation::{MAX_OPERATION_ACTION_BYTES, MAX_ORIGINAL_CONTEXT_BYTES, OperationIntent};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DecisionReference {

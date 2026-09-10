@@ -5,12 +5,14 @@ use super::super::core::{
     ExecutionLineage, valid_catalog_raw, valid_digest, valid_id, valid_reference,
 };
 use super::super::error::ExecutionStoreError;
+use serde_json::Value;
 use sha2::Digest;
 
 /// The recovery sideband caps the encoded canonical action at 65,536 bytes.  The decoded
 /// canonical JSON is deliberately kept below that bound so an invalid row can be rejected before
 /// it is copied into a transport request or a recovery frame.
 pub const MAX_OPERATION_ACTION_BYTES: usize = 65_536;
+pub const MAX_ORIGINAL_CONTEXT_BYTES: usize = 4_096;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OperationIntent {
@@ -33,6 +35,9 @@ pub struct OperationIntent {
     /// Exact legal_actions array bytes at the original boundary. Legacy rows may omit this
     /// retention field, but a present value is always checked against `catalog_digest`.
     pub catalog_raw: Option<Vec<u8>>,
+    /// Canonical allocation identity at the original boundary. Historical recovery must never
+    /// replace this with the context of a fresh lease or boot.
+    pub original_context: Option<Vec<u8>>,
 }
 
 impl OperationIntent {
@@ -57,6 +62,7 @@ impl OperationIntent {
             input_digest: input_digest.into(),
             catalog_digest: None,
             catalog_raw: None,
+            original_context: None,
         };
         if intent.lineage.validate().is_err()
             || !valid_id(&intent.operation_id)
@@ -155,6 +161,7 @@ impl OperationIntent {
             input_digest: input_digest.into(),
             catalog_digest,
             catalog_raw,
+            original_context: None,
         };
         if intent.lineage.validate().is_err()
             || !valid_uuid_v4(&intent.operation_id)
@@ -167,6 +174,27 @@ impl OperationIntent {
             return Err(ExecutionStoreError::InvalidOperation);
         }
         Ok(intent)
+    }
+
+    pub fn with_original_context(
+        mut self,
+        original_context: Vec<u8>,
+    ) -> Result<Self, ExecutionStoreError> {
+        if !valid_original_context(&original_context) {
+            return Err(ExecutionStoreError::InvalidOperation);
+        }
+        self.original_context = Some(original_context);
+        Ok(self)
+    }
+
+    pub(crate) fn with_optional_original_context(
+        self,
+        original_context: Option<Vec<u8>>,
+    ) -> Result<Self, ExecutionStoreError> {
+        match original_context {
+            Some(value) => self.with_original_context(value),
+            None => Ok(self),
+        }
     }
 
     pub fn has_durable_action(&self) -> bool {
@@ -183,4 +211,17 @@ fn valid_uuid_v4(value: &str) -> bool {
         })
         && value.as_bytes().get(14) == Some(&b'4')
         && matches!(value.as_bytes().get(19), Some(b'8' | b'9' | b'a' | b'b'))
+}
+
+fn valid_original_context(value: &[u8]) -> bool {
+    if value.is_empty() || value.len() > MAX_ORIGINAL_CONTEXT_BYTES {
+        return false;
+    }
+    let Ok(decoded) = serde_json::from_slice::<Value>(value) else {
+        return false;
+    };
+    decoded.is_object()
+        && serde_json::to_vec(&decoded)
+            .ok()
+            .is_some_and(|canonical| canonical == value)
 }

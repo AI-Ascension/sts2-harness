@@ -112,8 +112,22 @@ impl RecoveryPort for RuntimeV3Port {
                 record.action,
             )
             .map_err(|_| RecoveryError::PortFailure)?;
-            self.install_response(&value, &response_text, "recover_response")
-                .map_err(|_| RecoveryError::PortFailure)?;
+            if matches!(
+                receipt.status(),
+                DispatchStatus::Settled | DispatchStatus::Rejected | DispatchStatus::Cancelled
+            ) && let Some(durable) = &self.durable
+            {
+                durable
+                    .clear_resume_boundary()
+                    .map_err(|_| RecoveryError::PortFailure)?;
+            }
+            if matches!(
+                receipt.status(),
+                DispatchStatus::Settled | DispatchStatus::Rejected | DispatchStatus::Cancelled
+            ) {
+                self.install_response(&value, &response_text, "recover_response")
+                    .map_err(|_| RecoveryError::PortFailure)?;
+            }
             let receipt = if self.is_expert_profile() {
                 self.compose_receipt_after(receipt)
                     .map_err(|_| RecoveryError::PortFailure)?
@@ -128,7 +142,7 @@ impl RecoveryPort for RuntimeV3Port {
                     |durable| durable.operation_payload_digest(operation_id),
                 )
                 .map_err(|_| RecoveryError::PortFailure)?;
-            self.record_durable_receipt(operation_id, &payload_digest, &receipt, &value)
+            self.record_reconciled_durable_receipt(operation_id, &payload_digest, &receipt, &value)
                 .map_err(|_| RecoveryError::PortFailure)?;
             super::recording::receipt(&receipt, record.generation, &self.telemetry);
             let _ = self.telemetry.recovery(
@@ -193,6 +207,15 @@ impl RecoveryPort for RuntimeV3Port {
             record::authoritative_reconcile_state(reconcile_payload, &operation, original_context)
                 .map_err(|_| RecoveryError::PortFailure)?;
         if let Some(durable) = &self.durable {
+            // The old pre-dispatch checkpoint is no longer an admissible fresh observation after
+            // authoritative settlement. Clear it only after the sideband evidence has been
+            // validated, then let a read-only reobserve install the post-reconcile boundary.
+            durable
+                .clear_resume_boundary()
+                .map_err(|_| RecoveryError::PortFailure)?;
+        }
+        let after = self.reobserve().map_err(|_| RecoveryError::PortFailure)?;
+        if let Some(durable) = &self.durable {
             durable
                 .reconcile_response(operation_id, resolved_state.0, &reconcile)
                 .map_err(|_| RecoveryError::PortFailure)?;
@@ -201,8 +224,9 @@ impl RecoveryPort for RuntimeV3Port {
             operation_id,
             record.action,
             resolved_state.1,
-            None,
-            None,
+            (resolved_state.1 == DispatchStatus::Settled).then_some(after),
+            (resolved_state.1 == DispatchStatus::Settled)
+                .then(|| String::from("authoritative_reobserve")),
             None,
         );
         super::recording::receipt(&receipt, record.generation, &self.telemetry);
