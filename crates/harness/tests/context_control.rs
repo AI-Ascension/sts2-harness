@@ -195,6 +195,13 @@ fn renderer_rejects_unreadable_expired_and_unselected_pinned_content() {
         ContextRenderError::ExpiredItem
     );
 
+    draft.pinned_item_ids = vec!["expired-1".to_owned()];
+    assert_eq!(
+        ContextRenderer::enabled_at(&boundary(), render_input(), &draft, &registry, &config, 2,)
+            .expect_err("an expired pinned item must not bypass its TTL"),
+        ContextRenderError::ExpiredItem
+    );
+
     draft.selected_items.clear();
     draft.pinned_item_ids = vec!["expired-1".to_owned()];
     assert_eq!(
