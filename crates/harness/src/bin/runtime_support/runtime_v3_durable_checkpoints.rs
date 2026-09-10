@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-#[cfg(test)]
-use serde_json::Value;
 use sts2_harness::{CatalogEvidence, Checkpoint, EpisodeObservation};
 
 use super::{DurableHandle, sha256_bytes};
@@ -44,34 +42,6 @@ impl DurableHandle {
         Ok(())
     }
 
-    #[cfg(test)]
-    pub(in super::super) fn verify_resume_boundary(
-        &self,
-        observation: &EpisodeObservation,
-    ) -> Result<(), String> {
-        let observation_bytes = serde_json::to_vec(observation.fair_play().as_value())
-            .map_err(|error| format!("cannot encode runtime-v3 resume observation: {error}"))?;
-        let mut boundary = self
-            .resume_boundary
-            .try_borrow_mut()
-            .map_err(|_| String::from("runtime-v3 resume boundary is already borrowed"))?;
-        let Some(expected) = boundary.as_ref() else {
-            return Ok(());
-        };
-        if expected.lineage != self.lineage
-            || expected.fingerprint != self.fingerprint
-            || expected.state_id != observation.state_id()
-            || expected.generation != observation.generation()
-            || expected.observation != observation_bytes
-        {
-            return Err(String::from(
-                "runtime-v3 fresh observation does not match the verified resume boundary",
-            ));
-        }
-        *boundary = None;
-        Ok(())
-    }
-
     /// Makes the latest checkpoint the next resume boundary after recovery has produced an
     /// authoritative observation. This is deliberately called only after all pending mutations
     /// have been reconciled.
@@ -88,17 +58,6 @@ impl DurableHandle {
             .map_err(|_| String::from("runtime-v3 resume boundary is already borrowed"))? =
             checkpoint;
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub(in super::super) fn checkpoint(
-        &self,
-        observation: &EpisodeObservation,
-        payloads: &Value,
-    ) -> Result<(), String> {
-        let catalog_raw = serde_json::to_vec(payloads)
-            .map_err(|error| format!("cannot encode runtime-v3 checkpoint catalog: {error}"))?;
-        self.checkpoint_raw(observation, &catalog_raw)
     }
 
     pub(in super::super) fn checkpoint_raw(

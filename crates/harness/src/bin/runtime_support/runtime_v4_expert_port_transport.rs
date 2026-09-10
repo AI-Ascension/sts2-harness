@@ -174,6 +174,8 @@ impl RuntimeV3Port {
         let request = RuntimeV4ExpertActionRequest::from_value(request_value).map_err(|error| {
             wire::port_error("expert_request_invalid", error.to_string(), false)
         })?;
+        let payload_digest = wire::canonical_action_digest(action.action_id(), &payload)
+            .map_err(|error| wire::port_error("dispatch_intent_failed", error, false))?;
         let (_, value) = self
             .call_expert_tool(
                 ACTION_TOOL,
@@ -194,9 +196,17 @@ impl RuntimeV3Port {
         })?;
         validate_expert_result(&result, &request, identity, action)
             .map_err(|error| wire::port_error("expert_dispatch_invalid", error, false))?;
+        let response = result.as_value().clone();
         let receipt = self
             .expert_result_receipt(result, &request, identity, action)
             .map_err(|error| wire::port_error("expert_receipt_invalid", error, false))?;
+        self.record_durable_receipt(
+            &identity.operation_id,
+            &payload_digest,
+            &receipt,
+            &response,
+        )
+        .map_err(|error| wire::port_error("dispatch_durability_failed", error, false))?;
         super::recording::receipt(&receipt, identity.generation, &self.telemetry);
         Ok(receipt)
     }
@@ -216,6 +226,8 @@ impl RuntimeV3Port {
         if self.is_rest_profile() {
             return self.reconcile_rest_operation(operation_id);
         }
+        // Ordinary sts2.recover callers may retain pre-UUIDv4 identities; strict UUIDv4 binding
+        // remains enforced when an action is created and at the historical sideband boundary.
         let identity = ActionIdentity::new(
             operation_id.to_owned(),
             record.state_id.clone(),
@@ -244,7 +256,22 @@ impl RuntimeV3Port {
         let result = RuntimeV4ExpertActionResult::from_value(value)
             .map_err(|error| format!("Runtime-v4 expert reconcile response is invalid: {error}"))?;
         validate_expert_result(&result, &request, &identity, &record.action)?;
-        self.expert_result_receipt(result, &request, &identity, &record.action)
+        let response = result.as_value().clone();
+        let receipt = self.expert_result_receipt(result, &request, &identity, &record.action)?;
+        let payload_digest = self
+            .durable
+            .as_ref()
+            .map_or_else(
+                || Ok(String::new()),
+                |durable| durable.operation_payload_digest(operation_id),
+            )?;
+        self.record_durable_receipt(
+            operation_id,
+            &payload_digest,
+            &receipt,
+            &response,
+        )?;
+        Ok(receipt)
     }
 
     pub(super) fn wait_expert_operation(

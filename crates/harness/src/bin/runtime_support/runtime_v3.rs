@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use sts2_harness::{
     EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, ExoDecisionSource,
-    ExoProcessTransport, ExoProvider, ExoSession, ResumeState,
+    ExoProcessTransport, ExoProvider, ExoSession, ResumeState, TransitionReceipt,
 };
 
 use super::config::RuntimeConfig;
@@ -29,13 +29,18 @@ mod decision_replay;
 #[path = "runtime_v3_durable.rs"]
 mod durable;
 
+#[path = "runtime_v3_combat_demo.rs"]
+pub(crate) mod combat_demo;
 #[path = "runtime_v3_episode.rs"]
 mod episode;
+#[path = "runtime_v3_episode_replay.rs"]
+mod episode_replay;
 #[path = "runtime_v4_expert_port.rs"]
 mod expert;
 #[path = "runtime_v3_ledger.rs"]
 mod ledger;
 #[path = "runtime_v3_receipt_query.rs"]
+#[allow(dead_code)]
 mod receipt_query;
 #[path = "runtime_v3_recording.rs"]
 mod recording;
@@ -43,14 +48,6 @@ mod recording;
 mod recovery;
 #[path = "runtime_map.rs"]
 mod runtime_map;
-#[path = "runtime_v3_wait.rs"]
-mod wait;
-use ledger::OperationRecord;
-
-#[path = "runtime_v3_combat_demo.rs"]
-pub(crate) mod combat_demo;
-#[path = "runtime_v3_episode_replay.rs"]
-mod episode_replay;
 #[path = "runtime_v3_seeded.rs"]
 mod seeded;
 #[path = "runtime_v3_seeded_receipt.rs"]
@@ -59,10 +56,14 @@ mod seeded_receipt;
 mod seeded_validation;
 #[path = "runtime_v3_shutdown.rs"]
 mod shutdown;
+#[path = "runtime_v3_wait.rs"]
+mod wait;
 
 #[cfg(test)]
 #[path = "runtime_v3_lifecycle_test.rs"]
 mod lifecycle_tests;
+
+include!("runtime_v3_run_combat.rs");
 
 pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let runtime_profile = config.runtime_profile.clone();
@@ -180,101 +181,7 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let provider = ExoProvider::new(transport, settings.exo);
     let mut source = ExoDecisionSource::new(ExoSession::new(provider));
     if std::env::var("STS2_COMBAT_DEMO").as_deref() == Ok("true") {
-        let durable = port
-            .durable_handle()
-            .ok_or_else(|| String::from("runtime-v3 durable handle disappeared"))?;
-        let mut recorder = recording::DecisionRecorder::with_durable(
-            &mut source,
-            telemetry_handle.clone(),
-            durable.clone(),
-        );
-        let outcome = combat_demo::run(&mut port, &mut recorder, &settings.runner);
-        drop(recorder);
-        match outcome.as_ref() {
-            Ok(report) => durable.complete_observation(report.terminal_observation())?,
-            Err(failure) => {
-                if let Some(observation) = failure.terminal_observation() {
-                    durable.complete_observation(observation)?;
-                } else {
-                    durable.mark_interrupted_unknown("runtime-v3 combat demo failed");
-                }
-            }
-        }
-        let close = source.close().map_err(|error| error.to_string());
-        let store_close = durable.close();
-        drop(port);
-        let mut completion = None;
-        let result = match outcome {
-            Ok(report) => {
-                completion = Some((
-                    report.steps(),
-                    report.terminal_observation().stage(),
-                    report.terminal_observation_digest(),
-                ));
-                let game_outcome = recording::game_outcome(report.terminal_observation().stage());
-                recording::complete_observation(report.terminal_observation(), &telemetry_handle);
-                let cleanup_status = if close.is_ok() {
-                    CleanupStatus::Clean
-                } else {
-                    CleanupStatus::Failed
-                };
-                let _ = telemetry_handle.run_finished(
-                    game_outcome,
-                    TelemetryStage::from(report.terminal_observation().stage()),
-                    cleanup_status,
-                );
-                match close {
-                    Ok(()) => store_close,
-                    Err(error) => Err(error),
-                }
-            }
-            Err(failure) => {
-                let cleanup_status =
-                    if close.is_ok() && failure.cleanup_status() == CleanupStatus::Clean {
-                        CleanupStatus::Clean
-                    } else {
-                        CleanupStatus::Failed
-                    };
-                if let Some(observation) = failure.terminal_observation() {
-                    recording::complete_observation(observation, &telemetry_handle);
-                    let _ = telemetry_handle.run_finished(
-                        recording::game_outcome(observation.stage()),
-                        TelemetryStage::from(observation.stage()),
-                        cleanup_status,
-                    );
-                } else {
-                    let _ = telemetry_handle.failure(
-                        "combat_demo",
-                        if cleanup_status == CleanupStatus::Failed {
-                            super::runtime_v3_telemetry::FailureCode::Cleanup
-                        } else {
-                            super::runtime_v3_telemetry::FailureCode::Other
-                        },
-                        false,
-                        None,
-                    );
-                }
-                let mut message = failure.message().to_owned();
-                if let Err(error) = close {
-                    message.push_str(&format!("; provider cleanup failed: {error}"));
-                }
-                if let Err(error) = store_close {
-                    message.push_str(&format!("; durable store cleanup failed: {error}"));
-                }
-                Err(message)
-            }
-        };
-        let _ = recording::flush_replay_stream();
-        finish_telemetry(telemetry);
-        if let Some((steps, stage, terminal_observation_digest)) = completion {
-            println!(
-                "{}",
-                json!({"event":"combat_demo_complete", "steps":steps,
-                "stage":wire::stage_name(stage),
-                "terminal_observation_digest":terminal_observation_digest})
-            );
-        }
-        return result;
+        return run_combat_demo(port, source, settings.runner, telemetry_handle, telemetry);
     }
     let durable = port
         .durable_handle()
@@ -300,8 +207,6 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
                     None,
                 );
             }
-            // Preserve the runner's original, category-only error even if the private replay
-            // sink has a broken pipe or another flush failure.
             let message = format!("Runtime-v3 episode failed: {error}");
             let _ = durable.close();
             drop(port);
@@ -389,7 +294,7 @@ pub(super) struct RuntimeV3Port {
     rest_selector_actions: Option<EpisodeLegalActionSet>,
     rest_selector_payloads: BTreeMap<String, Value>,
     rest_selector_value: Option<Value>,
-    operations: BTreeMap<String, OperationRecord>,
+    operations: BTreeMap<String, ledger::OperationRecord>,
     reconnect_attempts: u8,
     telemetry: TelemetryHandle,
     durable: Option<durable::DurableHandle>,

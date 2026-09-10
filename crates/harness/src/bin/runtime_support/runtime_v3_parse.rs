@@ -16,6 +16,7 @@ mod transition;
 
 #[path = "runtime_v3_parse_observation.rs"]
 mod observation;
+#[cfg(test)]
 pub(super) use observation::{action_set, observation, result_observation};
 pub(super) use observation::{
     action_set_with_catalog_text, observation_from_root, observation_with_text,

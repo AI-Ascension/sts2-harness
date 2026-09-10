@@ -116,6 +116,7 @@ impl OperationIntent {
         catalog_digest: Option<String>,
         catalog_raw: Option<Vec<u8>>,
     ) -> Result<Self, ExecutionStoreError> {
+        let operation_id = operation_id.into();
         let action_id = action_id.into();
         let action_kind = action_kind.into();
         let payload_digest = payload_digest.into();
@@ -144,7 +145,7 @@ impl OperationIntent {
         }
         let intent = Self {
             lineage,
-            operation_id: operation_id.into(),
+            operation_id,
             state_id: state_id.into(),
             generation,
             action_id,
@@ -156,7 +157,7 @@ impl OperationIntent {
             catalog_raw,
         };
         if intent.lineage.validate().is_err()
-            || !valid_id(&intent.operation_id)
+            || !valid_uuid_v4(&intent.operation_id)
             || !valid_id(&intent.state_id)
             || !valid_id(&intent.action_id)
             || intent.generation > 9_007_199_254_740_991
@@ -171,4 +172,15 @@ impl OperationIntent {
     pub fn has_durable_action(&self) -> bool {
         self.action_kind.is_some() && self.action_payload.is_some()
     }
+}
+
+fn valid_uuid_v4(value: &str) -> bool {
+    value.len() == 36
+        && value.as_bytes().iter().enumerate().all(|(index, byte)| {
+            matches!(index, 8 | 13 | 18 | 23) && *byte == b'-'
+                || !matches!(index, 8 | 13 | 18 | 23)
+                    && (byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+        })
+        && value.as_bytes().get(14) == Some(&b'4')
+        && matches!(value.as_bytes().get(19), Some(b'8' | b'9' | b'a' | b'b'))
 }

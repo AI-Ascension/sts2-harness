@@ -205,33 +205,6 @@ impl DurableHandle {
             .close()
             .map_err(|error| format!("cannot close runtime-v3 execution store: {error}"))
     }
-
-    #[cfg(test)]
-    pub(super) fn from_store_for_test(
-        store: ExecutionStore,
-        lineage: ExecutionLineage,
-        fingerprint: ExecutionFingerprint,
-    ) -> Result<Self, String> {
-        let next_checkpoint = store
-            .last_checkpoint(&lineage.episode_id)
-            .map_err(|error| format!("cannot read test checkpoint: {error}"))?
-            .map_or(Ok(0_u64), |checkpoint| {
-                checkpoint
-                    .sequence
-                    .checked_add(1)
-                    .ok_or_else(|| String::from("test checkpoint sequence exhausted"))
-            })?;
-        let config_digest = fingerprint.config_digest.clone();
-        Ok(Self {
-            store: Rc::new(RefCell::new(store)),
-            lineage,
-            fingerprint,
-            model_revision: String::from("synthetic-provider"),
-            config_digest,
-            next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
-            resume_boundary: Rc::new(RefCell::new(None)),
-        })
-    }
 }
 
 #[derive(Clone)]

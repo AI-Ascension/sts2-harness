@@ -236,7 +236,7 @@ fn prepare_action(
         .cloned()
         .ok_or(EpisodeRunnerError::ActionNotCurrent)?;
     let operation_id = new_operation_id();
-    let identity = ActionIdentity::new(
+    let identity = ActionIdentity::new_v4(
         operation_id.clone(),
         observation.state_id().to_owned(),
         observation.generation(),

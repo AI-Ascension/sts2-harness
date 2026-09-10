@@ -106,7 +106,8 @@ impl RuntimeV3Port {
                 self.overlay_active_rest_selector(&mut composed)
                     .map_err(RuntimeV3ToolError::Terminal)?;
             }
-            self.install_composed(&composed);
+            self.install_composed(&composed)
+                .map_err(RuntimeV3ToolError::Terminal)?;
             return Ok(composed.observation);
         }
 
@@ -123,7 +124,21 @@ impl RuntimeV3Port {
             "sts2.reobserve",
             self.context(baseline.generation()),
         )?;
-        let parsed = parse::observation(&value, "reobserve_response", &self.config).map_err(|error| {
+        let response_text = self
+            .last_response_text
+            .clone()
+            .ok_or_else(|| {
+                RuntimeV3ToolError::Terminal(String::from(
+                    "Runtime-v3 expert composition reobserve omitted response text",
+                ))
+            })?;
+        let parsed = parse::observation_with_text(
+            &value,
+            &response_text,
+            "reobserve_response",
+            &self.config,
+        )
+        .map_err(|error| {
             RuntimeV3ToolError::Terminal(format!(
                 "Runtime-v3 reobserve for expert composition is invalid: {error}"
             ))

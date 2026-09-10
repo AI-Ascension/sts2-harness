@@ -271,7 +271,7 @@ fn seed_valid_operation(fixture: &Fixture) -> Result<(), String> {
         digest_bytes(br#"[{"action_id":"combat.end-turn","action":{"kind":"end_turn"}}]"#);
     let intent = OperationIntent::new_with_action(
         fixture.lineage.clone(),
-        "operation-hostile",
+        "11111111-1111-4111-8111-111111111111",
         "state-hostile",
         1,
         "combat.end-turn",
@@ -301,7 +301,7 @@ fn rewrite_operation_payload(
     connection
         .execute(
             "UPDATE operations SET action_payload = ?1, payload_digest = ?2
-             WHERE operation_id = 'operation-hostile'",
+             WHERE operation_id = '11111111-1111-4111-8111-111111111111'",
             params![SqlValue::Blob(payload.to_vec()), digest],
         )
         .map_err(|error| format!("cannot poison operation: {error}"))?;

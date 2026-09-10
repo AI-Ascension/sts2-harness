@@ -18,148 +18,7 @@ mod record;
 mod sideband;
 pub(super) use context::RecoveryContext;
 
-impl RuntimeV3Port {
-    /// Use the watchdog recovery sideband only when the allocation (or an explicitly captured
-    /// recovery environment) supplied its authority.  Synthetic/legacy callers still exercise
-    /// the ordinary MCP `sts2.recover` contract, which is deliberately kept as a compatibility
-    /// path while the sideband is being rolled out.
-    fn historical_recovery_enabled(&self) -> bool {
-        self.recovery_authority.is_some()
-            || self
-                .config
-                .recovery_value("STS2_RECOVERY_DEPLOYMENT_ID")
-                .is_some()
-    }
-
-    /// Rehydrates the durable operation ledger after MCP startup and resolves each retained
-    /// mutation before the runner can ask the provider for a new decision.
-    pub(super) fn reconcile_pending_operations(&mut self) -> Result<(), String> {
-        let Some(durable) = self.durable.clone() else {
-            return Ok(());
-        };
-        let pending = durable.pending_operations()?;
-        for operation in pending {
-            let action_bytes = match operation.intent.action_payload.as_deref() {
-                Some(bytes) => bytes,
-                None => {
-                    durable.mark_interrupted_unknown(
-                        "legacy operation has no canonical action payload; recovery is blocked",
-                    );
-                    return Err(format!(
-                        "cannot resume operation {} without its canonical action payload",
-                        operation.intent.operation_id
-                    ));
-                }
-            };
-            let payload: Value = serde_json::from_slice(action_bytes).map_err(|_| {
-                durable.mark_interrupted_unknown(
-                    "durable operation canonical action payload is malformed",
-                );
-                format!(
-                    "cannot resume operation {} with malformed canonical action payload",
-                    operation.intent.operation_id
-                )
-            })?;
-            let envelope = payload.as_object().ok_or_else(|| {
-                durable.mark_interrupted_unknown(
-                    "durable operation canonical action payload is not an object",
-                );
-                format!(
-                    "cannot resume operation {} with a non-object canonical action payload",
-                    operation.intent.operation_id
-                )
-            })?;
-            if envelope.len() != 2
-                || envelope.get("action_id").and_then(Value::as_str)
-                    != Some(operation.intent.action_id.as_str())
-            {
-                durable.mark_interrupted_unknown(
-                    "durable operation canonical action identity is inconsistent",
-                );
-                return Err(format!(
-                    "cannot resume operation {} with inconsistent canonical action identity",
-                    operation.intent.operation_id
-                ));
-            }
-            let action_payload = envelope.get("action").ok_or_else(|| {
-                durable.mark_interrupted_unknown(
-                    "durable operation canonical action payload is incomplete",
-                );
-                format!(
-                    "cannot resume operation {} with incomplete canonical action payload",
-                    operation.intent.operation_id
-                )
-            })?;
-            let action = super::parse::action_from_payload(
-                &operation.intent.action_id,
-                action_payload,
-            )
-            .map_err(|error| {
-                durable.mark_interrupted_unknown(
-                    "durable operation canonical action payload failed validation",
-                );
-                format!(
-                    "cannot resume operation {} with invalid canonical action payload: {error}",
-                    operation.intent.operation_id
-                )
-            })?;
-            if operation.intent.action_kind.as_deref()
-                != Some(super::wire::action_kind_name(action.kind()))
-                || super::wire::canonical_action_digest(action.action_id(), action_payload)
-                    .map_err(|error| {
-                        durable.mark_interrupted_unknown(
-                            "durable operation canonical action digest could not be calculated",
-                        );
-                        format!(
-                            "cannot validate operation {} canonical action: {error}",
-                            operation.intent.operation_id
-                        )
-                    })?
-                    != operation.intent.payload_digest
-            {
-                durable.mark_interrupted_unknown(
-                    "durable operation canonical action kind or digest does not match",
-                );
-                return Err(format!(
-                    "cannot resume operation {} with mismatched canonical action identity",
-                    operation.intent.operation_id
-                ));
-            }
-            self.operations.insert(
-                operation.intent.operation_id.clone(),
-                super::OperationRecord {
-                    state_id: operation.intent.state_id.clone(),
-                    generation: operation.intent.generation,
-                    action,
-                    payload: action_payload.clone(),
-                    rest_selector: None,
-                },
-            );
-            let operation_id = operation.intent.operation_id.as_str();
-            let receipt = self.reconcile(operation_id).map_err(|error| {
-                format!("cannot reconcile retained operation {operation_id}: {error}")
-            })?;
-            match receipt.status() {
-                DispatchStatus::Settled | DispatchStatus::Rejected | DispatchStatus::Cancelled => {}
-                DispatchStatus::Accepted | DispatchStatus::Unknown => {
-                    // Historical uncertainty cannot be resolved through the ordinary gameplay
-                    // poll path, whose lease and generation belong to the current controller.
-                    return Err(format!(
-                        "retained operation {operation_id} remains unresolved"
-                    ));
-                }
-            }
-            let state = durable.operation_state(operation_id)?;
-            if state.is_unresolved() {
-                return Err(format!(
-                    "retained operation {operation_id} remains in durable state {state:?}"
-                ));
-            }
-        }
-        durable.refresh_resume_boundary()?;
-        Ok(())
-    }
-}
+include!("runtime_v3_recovery_pending.rs");
 
 impl RecoveryPort for RuntimeV3Port {
     fn reobserve(&mut self) -> Result<EpisodeObservation, RecoveryError> {
@@ -261,6 +120,16 @@ impl RecoveryPort for RuntimeV3Port {
             } else {
                 receipt
             };
+            let payload_digest = self
+                .durable
+                .as_ref()
+                .map_or_else(
+                    || Ok(String::new()),
+                    |durable| durable.operation_payload_digest(operation_id),
+                )
+                .map_err(|_| RecoveryError::PortFailure)?;
+            self.record_durable_receipt(operation_id, &payload_digest, &receipt, &value)
+                .map_err(|_| RecoveryError::PortFailure)?;
             super::recording::receipt(&receipt, record.generation, &self.telemetry);
             let _ = self.telemetry.recovery(
                 RecoveryKind::Reconcile,
@@ -275,11 +144,13 @@ impl RecoveryPort for RuntimeV3Port {
         let operation = self
             .durable_operation(operation_id)
             .map_err(|_| RecoveryError::PortFailure)?;
-        let context = self
-            .recovery_context
-            .clone()
-            .or_else(|| RecoveryContext::from_environment(&self.config).ok())
-            .ok_or(RecoveryError::PortFailure)?;
+        let context = match (&self.recovery_authority, self.recovery_context.clone()) {
+            (Some(_), Some(context)) => context,
+            (Some(_), None) => return Err(RecoveryError::PortFailure),
+            (None, context) => context
+                .or_else(|| RecoveryContext::from_environment(&self.config).ok())
+                .ok_or(RecoveryError::PortFailure)?,
+        };
         let operation_ref = context
             .operation_ref(&operation)
             .map_err(|_| RecoveryError::PortFailure)?;

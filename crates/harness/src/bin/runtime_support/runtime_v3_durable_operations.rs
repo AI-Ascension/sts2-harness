@@ -18,39 +18,6 @@ pub(in super::super) struct OperationCatalogEvidence<'a> {
 }
 
 impl DurableHandle {
-    #[cfg(test)]
-    pub(in super::super) fn operation_intent(
-        &self,
-        operation_id: &str,
-        state_id: &str,
-        generation: u64,
-        action: &EpisodeLegalAction,
-        payload: &Value,
-        input: &Value,
-    ) -> Result<String, String> {
-        let catalog_raw = input
-            .get("legal_actions")
-            .map(serde_json::to_vec)
-            .transpose()
-            .map_err(|error| format!("cannot encode runtime-v3 operation catalog: {error}"))?;
-        let Some(catalog_raw) = catalog_raw else {
-            return Err(String::from(
-                "runtime-v3 operation intent omitted legal-action catalog",
-            ));
-        };
-        self.operation_intent_with_catalog(
-            operation_id,
-            state_id,
-            generation,
-            action,
-            payload,
-            OperationCatalogEvidence {
-                input,
-                raw: &catalog_raw,
-            },
-        )
-    }
-
     pub(in super::super) fn operation_intent_with_catalog(
         &self,
         operation_id: &str,

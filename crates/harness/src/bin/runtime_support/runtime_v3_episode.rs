@@ -9,7 +9,8 @@ use sts2_harness::{
 };
 
 use super::super::mcp::validate_or_release_allocation_with;
-use super::{OperationRecord, RuntimeV3Port, RuntimeV3ToolError, allocation_context, parse, wire};
+use super::{RuntimeV3Port, RuntimeV3ToolError, allocation_context, ledger, parse, wire};
+use ledger::OperationRecord;
 
 const MAX_OPERATIONS: usize = 1_024;
 
@@ -62,6 +63,13 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         .map_err(|error| wire::port_error(code, error, false))?;
         allocation.apply_current_lease(&mut self.config);
         self.recovery_authority = allocation.recovery_authority;
+        if let Some(authority) = self.recovery_authority.as_ref() {
+            self.recovery_context = Some(
+                super::recovery::RecoveryContext::from_authority(authority, &self.config).map_err(
+                    |error| wire::port_error("recovery_authority_invalid", error, false),
+                )?,
+            );
+        }
         if let Err(error) = self.launch_mcp() {
             return Err(wire::port_error("runtime_launch_failed", error, false));
         }
@@ -270,121 +278,14 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         } else {
             receipt
         };
-        if let Some(durable) = &self.durable {
-            let state = match receipt.status() {
-                sts2_harness::DispatchStatus::Accepted => sts2_harness::OperationState::Accepted,
-                sts2_harness::DispatchStatus::Settled => sts2_harness::OperationState::Settled,
-                sts2_harness::DispatchStatus::Rejected
-                | sts2_harness::DispatchStatus::Cancelled => sts2_harness::OperationState::Rejected,
-                sts2_harness::DispatchStatus::Unknown => sts2_harness::OperationState::Unknown,
-            };
-            durable
-                .operation_result(
-                    &identity.operation_id,
-                    &payload_digest,
-                    state,
-                    (state == sts2_harness::OperationState::Settled
-                        || state == sts2_harness::OperationState::Rejected)
-                        .then_some(&value),
-                )
-                .map_err(|error| wire::port_error("dispatch_durability_failed", error, false))?;
-        }
+        self.record_durable_receipt(&identity.operation_id, &payload_digest, &receipt, &value)
+            .map_err(|error| wire::port_error("dispatch_durability_failed", error, false))?;
         super::recording::receipt(&receipt, identity.generation, &self.telemetry);
         Ok(receipt)
     }
 }
 
-impl RuntimeV3Port {
-    fn validate_current_action(
-        &self,
-        identity: &ActionIdentity,
-        action: &EpisodeLegalAction,
-    ) -> Result<(), sts2_harness::PortError> {
-        if self.current_state.as_deref() != Some(identity.state_id.as_str())
-            || self.generation != identity.generation
-            || self
-                .current_actions
-                .as_ref()
-                .and_then(|set| set.find(action.action_id()))
-                != Some(action)
-        {
-            return Err(wire::port_error(
-                "action_not_current",
-                "dispatch action is not bound to the current host catalog",
-                false,
-            ));
-        }
-        Ok(())
-    }
-
-    pub(super) fn current_payload(
-        &self,
-        action: &EpisodeLegalAction,
-    ) -> Result<Value, sts2_harness::PortError> {
-        let payload = self
-            .payloads
-            .get(action.action_id())
-            .cloned()
-            .ok_or_else(|| {
-                wire::port_error(
-                    "action_payload_missing",
-                    "current legal action payload is unavailable",
-                    false,
-                )
-            })?;
-        if payload.get("kind").and_then(Value::as_str)
-            != Some(wire::action_kind_name(action.kind()))
-        {
-            return Err(wire::port_error(
-                "action_payload_mismatch",
-                "legal action kind changed",
-                false,
-            ));
-        }
-        Ok(payload)
-    }
-
-    fn retain_operation(
-        &mut self,
-        identity: &ActionIdentity,
-        action: &EpisodeLegalAction,
-        payload: &Value,
-    ) -> Result<(), sts2_harness::PortError> {
-        if let Some(existing) = self.operations.get(&identity.operation_id)
-            && (existing.action != *action
-                || existing.generation != identity.generation
-                || existing.state_id != identity.state_id
-                || existing.payload != *payload)
-        {
-            return Err(wire::port_error(
-                "operation_conflict",
-                "operation identity conflicts",
-                false,
-            ));
-        }
-        if self.operations.len() >= MAX_OPERATIONS
-            && !self.operations.contains_key(&identity.operation_id)
-        {
-            return Err(wire::port_error(
-                "operation_capacity",
-                "operation ledger is full",
-                false,
-            ));
-        }
-        let rest_selector = self.rest_selector_value.clone();
-        self.operations
-            .entry(identity.operation_id.clone())
-            .or_insert_with(|| {
-                OperationRecord::new(identity, action, payload.clone())
-                    .with_rest_selector(rest_selector)
-            });
-        Ok(())
-    }
-}
-
-fn legal_action_argument(action_id: &str, payload: Value) -> Value {
-    json!({"action_id": action_id, "action": payload})
-}
+include!("runtime_v3_episode_helpers.rs");
 
 #[cfg(test)]
 mod tests {

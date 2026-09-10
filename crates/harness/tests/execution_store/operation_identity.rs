@@ -91,7 +91,7 @@ fn complete_action_identity_survives_file_store_reopen() {
     let current = lineage("attempt-action", "trajectory-action");
     let intent = OperationIntent::new_with_action_and_catalog(
         current.clone(),
-        "operation-action",
+        "11111111-1111-4111-8111-111111111111",
         "state-action",
         1,
         "combat.end-turn",
@@ -132,7 +132,7 @@ fn complete_action_identity_survives_file_store_reopen() {
         ExecutionStore::open(ExecutionStoreConfig::new(&database)).expect("state reopens");
     assert_eq!(
         reopened
-            .operation("operation-action")
+            .operation("11111111-1111-4111-8111-111111111111")
             .expect("operation remains")
             .intent,
         intent

@@ -18,8 +18,10 @@ impl RuntimeV3Port {
     /// constructed port starts at zero, but the host may already have advanced
     /// while it was entering its setup screen.
     pub(super) fn prime_seed_generation(&mut self) -> Result<(), String> {
-        let value = self.call_tool("sts2.observe", self.context(self.generation))?;
-        let parsed = parse::observation(&value, "state_response", &self.config)?;
+        let (value, response_text) =
+            self.call_tool_with_text("sts2.observe", self.context(self.generation))?;
+        let parsed =
+            parse::observation_with_text(&value, &response_text, "state_response", &self.config)?;
         let observation = self.install(parsed)?;
         if observation.generation() > super::super::seed_transport::SEEDED_RUN_MAX_GENERATION {
             return Err(String::from(

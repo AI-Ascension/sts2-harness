@@ -58,12 +58,6 @@ pub(in super::super) fn recovery_call(
     })
 }
 
-pub(super) fn has_recovery_envelope(response: &Value) -> bool {
-    response["result"]["content"][0]["text"]
-        .as_str()
-        .is_some_and(|text| validation::decode_frame(text, None, None).is_ok())
-}
-
 fn validate_catalog(response: &Value) -> Result<(), String> {
     let result = response
         .get("result")
