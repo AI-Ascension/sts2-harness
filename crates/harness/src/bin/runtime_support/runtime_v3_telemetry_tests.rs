@@ -156,6 +156,29 @@ mod tests {
     }
 
     #[test]
+    fn rendered_otlp_status_code_uses_numeric_enum_values() -> Result<(), String> {
+        let success = render_span(&context()?, &TelemetryEvent::RunStarted, 1);
+        let failure = render_span(
+            &context()?,
+            &TelemetryEvent::Failure {
+                boundary: "provider",
+                failure_code: FailureCode::ProviderUnavailable,
+                retryable: true,
+                operation_id_digest: None,
+            },
+            2,
+        );
+
+        assert_eq!(success["status"]["code"], json!(0));
+        assert!(success["status"]["code"].is_number());
+        assert_eq!(failure["status"]["code"], json!(2));
+        assert!(failure["status"]["code"].is_number());
+        assert!(!success.to_string().contains("STATUS_CODE_UNSET"));
+        assert!(!failure.to_string().contains("STATUS_CODE_ERROR"));
+        Ok(())
+    }
+
+    #[test]
     fn export_status_is_persisted_after_run_finished_without_queued_claim() -> Result<(), String> {
         let run_finished = render_span(
             &context()?,
