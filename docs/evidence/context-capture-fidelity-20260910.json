@@ -1,0 +1,84 @@
+{
+  "schema": "ascension.bridge-fidelity-evidence.v1",
+  "case_id": "ASTRA-OFF-001",
+  "mode": "off",
+  "failure_injection": "none",
+  "baseline": {
+    "revision": "fc44d3ef65fefa6d13ecd5f690e5335a6ef60080",
+    "executable_sha256": "291bd474b0d8d58203233ab2570a705c07a95f68b6052901e683fcaf0e1bec27",
+    "invocation_count": 1,
+    "external_network_attempts": 0
+  },
+  "successor": {
+    "revision": "316c8bd1814d9f9762a08c534898ec827365c91a",
+    "executable_sha256": "4a5c5718a760ace0a6c043872a6e1a3332c45154d249fbf84e560d610768d2ce",
+    "invocation_count": 1,
+    "external_network_attempts": 0
+  },
+  "fixture_sha256": "dfae8133e60e14adb88780f043ae26110c2a3670331d87610c4bb59ea08c5ad9",
+  "raw_component_equal": {
+    "stdin.bin": true,
+    "schema.json": true,
+    "bridge.stdout": true,
+    "bridge.stderr": true,
+    "accounting.jsonl": true
+  },
+  "argv_equal_after_normalization": true,
+  "working_directory_equal_after_normalization": true,
+  "decision_equal": true,
+  "accounting_equal": true,
+  "normalizations": [
+    "generated temporary Astra directory names and process IDs",
+    "oracle lane directory names"
+  ],
+  "result": "passed",
+  "ollama": {
+    "case_id": "OLLAMA-OFF-001",
+    "mode": "off",
+    "failure_injection": "none",
+    "baseline": {
+      "revision": "fc44d3ef65fefa6d13ecd5f690e5335a6ef60080",
+      "executable_sha256": "47f14cf4d48618c500ca5d24f4954885cfc489230d0a982e88ce6efa485e7b8f",
+      "invocation_count": 1,
+      "external_network_attempts": 0
+    },
+    "successor": {
+      "revision": "316c8bd1814d9f9762a08c534898ec827365c91a",
+      "executable_sha256": "247c83a23f24de549f55195652c18dba2f5329bb2504405a02f7c51f9ec6e50e",
+      "invocation_count": 1,
+      "external_network_attempts": 0
+    },
+    "raw_component_equal": {
+      "request.bin": true,
+      "body.json": true,
+      "bridge.stdout": true,
+      "bridge.stderr": true,
+      "connection-count": true
+    },
+    "decision_equal": true,
+    "normalizations": [
+      "ephemeral fake-server peer ports"
+    ],
+    "result": "passed"
+  },
+  "failure_cases": {
+    "ASTRA-INVALID-EVENT-001": {
+      "baseline_exit": 2,
+      "successor_exit": 2,
+      "stdout_equal": true,
+      "stderr_equal": true,
+      "accounting_equal": true,
+      "provider_retries": 0,
+      "result": "passed"
+    },
+    "OLLAMA-HTTP-503-001": {
+      "baseline_exit": 2,
+      "successor_exit": 2,
+      "stdout_equal": true,
+      "stderr_equal": true,
+      "server_connection_count_equal": true,
+      "provider_retries": 0,
+      "result": "passed"
+    }
+  }
+}

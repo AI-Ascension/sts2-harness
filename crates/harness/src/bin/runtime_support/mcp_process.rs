@@ -72,6 +72,7 @@ impl McpProcess {
         instance_id: &str,
         lease_id: &str,
         lease_epoch: u64,
+        recovery_environment: &[(String, String)],
     ) -> Result<Self, String> {
         let mut command = Self::configured_command_for_profile(config, "watchdog-recovery-v1");
         command
@@ -95,6 +96,9 @@ impl McpProcess {
             if let Some(value) = config.recovery_value(name) {
                 command.env(name, value);
             }
+        }
+        for (name, value) in recovery_environment {
+            command.env(name, value);
         }
         if config.recovery_value("STS2_RECOVERY_TOKEN").is_none() {
             return Err(String::from(

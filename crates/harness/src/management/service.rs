@@ -5,6 +5,7 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 
 use super::auth::AuthContext;
+use super::authoring::{AuthoringStore, MemoryAuthoringStore};
 use super::contract::{
     AuthoritySummary, CapabilityResponse, CleanupState, CommandRequest, CommandResponse,
     ContractError, Diagnostic, DiffRequest, DiffResponse, ErrorBody, ErrorClass, ErrorResponse,
@@ -20,6 +21,8 @@ use super::store::{
     MemoryWorkflowStore, StoreError, SubmissionLookup, WorkflowStore,
 };
 
+#[path = "service_authoring.rs"]
+mod authoring_ops;
 #[path = "service_ops.rs"]
 mod ops;
 #[path = "service_read.rs"]
@@ -28,8 +31,8 @@ mod read;
 mod support;
 
 pub use support::{
-    UnavailableCapabilityPort, UnavailableDefinitionPort, UnavailableExecutionPort,
-    UnavailableReplayPort,
+    UnavailableAuthoringStore, UnavailableCapabilityPort, UnavailableDefinitionPort,
+    UnavailableExecutionPort, UnavailableReplayPort,
 };
 
 /// A stable management error. The HTTP and CLI adapters map `class` to their
@@ -223,6 +226,7 @@ pub trait CapabilityPort: Send + Sync {
 
 pub struct ManagementService {
     store: Arc<dyn WorkflowStore>,
+    authoring: Arc<dyn AuthoringStore>,
     definitions: Arc<dyn DefinitionPort>,
     execution: Arc<dyn WorkflowExecutionPort>,
     replay: Arc<dyn WorkflowReplayPort>,
@@ -233,6 +237,7 @@ impl ManagementService {
     pub fn new(store: Arc<dyn WorkflowStore>) -> Self {
         Self {
             store,
+            authoring: Arc::new(UnavailableAuthoringStore),
             definitions: Arc::new(support::UnavailableDefinitionPort),
             execution: Arc::new(support::UnavailableExecutionPort),
             replay: Arc::new(support::UnavailableReplayPort),
@@ -242,6 +247,7 @@ impl ManagementService {
 
     pub fn in_memory() -> Self {
         Self::new(Arc::new(MemoryWorkflowStore::new()))
+            .with_authoring_store(Arc::new(MemoryAuthoringStore::new()))
     }
 
     pub fn file_store(store: FileWorkflowStore) -> Self {
@@ -250,6 +256,11 @@ impl ManagementService {
 
     pub fn with_definition_port(mut self, port: Arc<dyn DefinitionPort>) -> Self {
         self.definitions = port;
+        self
+    }
+
+    pub fn with_authoring_store(mut self, store: Arc<dyn AuthoringStore>) -> Self {
+        self.authoring = store;
         self
     }
 

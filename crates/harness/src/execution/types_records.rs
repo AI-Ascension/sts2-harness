@@ -162,7 +162,7 @@ impl CompletionRecord {
         };
         if completion.lineage.validate().is_err()
             || completion.checkpoint_sequence > 9_007_199_254_740_991
-            || !valid_reference(&completion.terminal_ref)
+            || !valid_completion_terminal_reference(&completion.terminal_ref)
             || !valid_reference(&completion.result_digest)
         {
             return Err(ExecutionStoreError::InvalidCompletion);
@@ -172,13 +172,17 @@ impl CompletionRecord {
 
     pub fn validate(&self) -> Result<(), ExecutionStoreError> {
         if self.checkpoint_sequence > 9_007_199_254_740_991
-            || !valid_reference(&self.terminal_ref)
+            || !valid_completion_terminal_reference(&self.terminal_ref)
             || !valid_reference(&self.result_digest)
         {
             return Err(ExecutionStoreError::InvalidCompletion);
         }
         self.lineage.validate()
     }
+}
+
+fn valid_completion_terminal_reference(value: &str) -> bool {
+    !value.is_empty() && value.len() <= 1024 && value.bytes().all(|byte| byte >= 32 && byte != 127)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

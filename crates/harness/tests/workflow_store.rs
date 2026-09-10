@@ -223,7 +223,7 @@ fn invocation_intent_send_marker_and_completion_are_durable_and_atomic() {
 }
 
 #[test]
-fn version_one_database_migrates_to_the_workflow_schema() {
+fn version_one_database_migrates_to_workflow_and_worker_schema() {
     let path = database_path("migration");
     {
         let raw = Connection::open(&path).expect("migration fixture opens");
@@ -246,16 +246,16 @@ fn version_one_database_migrates_to_the_workflow_schema() {
     let version: i32 = raw
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .expect("version reads");
-    let workflow_events: i64 = raw
+    let runtime_tables: i64 = raw
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master
-             WHERE type = 'table' AND name = 'workflow_events')",
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN
+             ('workflow_events', 'worker_control', 'worker_control_boots', 'worker_handoffs')",
             [],
             |row| row.get(0),
         )
-        .expect("workflow table reads");
-    assert_eq!(version, 7);
-    assert_eq!(workflow_events, 1);
+        .expect("runtime table reads");
+    assert_eq!(version, 8);
+    assert_eq!(runtime_tables, 4);
     drop(raw);
     remove_database(&path);
 }

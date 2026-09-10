@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 
 mod artifact;
+mod context_capture;
+mod coop_native;
 mod coordinator;
 mod decision_records;
 mod episode;
 mod error;
 mod evaluation;
 mod execution;
+mod execution_cancellation;
 mod exo;
 mod exo_process;
 mod identity;
@@ -28,12 +31,23 @@ mod runtime_v4_expert_artifact;
 mod runtime_v4_expert_rest_action;
 mod runtime_v4_expert_rest_action_artifact;
 
+pub mod worker_handoff;
+pub mod worker_runtime;
+pub mod worker_runtime_store;
+
 pub mod workflow;
 
 pub use artifact::{
     ArtifactDraft, ArtifactKind, ArtifactLineage, ArtifactMetadata, ArtifactMetadataInput,
     ArtifactPort, ArtifactPublicationRequest, ArtifactReceipt,
 };
+pub use context_capture::{
+    CaptureBoundary, CaptureComponent, CaptureComponentKind, CaptureError, CaptureInput,
+    CaptureMode, CapturePort, CaptureRecord, MAX_CAPTURE_BYTES, MAX_CAPTURE_RECORDS, MemoryCapture,
+    NoopCapture, PreparedAstraInput, PreparedInput, PreparedOllamaInput, TransportState,
+    generated_capture_attempt_id,
+};
+pub use coop_native::*;
 pub use coordinator::{EpisodeHandle, Harness, HarnessParts};
 pub use decision_records::{DecisionPayload, DecisionRecord, DecisionRecordKind, EvidenceStatus};
 pub use episode::{
@@ -61,16 +75,22 @@ pub use execution::{
     DecisionReference, ExecutionFingerprint, ExecutionLineage, ExecutionStore,
     ExecutionStoreConfig, ExecutionStoreError, GameOperationId, InvocationOutcome, InvocationState,
     JobClaim, JobClaimOutcome, JobState, MAX_CATALOG_BYTES, MAX_OPERATION_ACTION_BYTES,
-    MAX_WORKFLOW_BYTES, MAX_WORKFLOW_COUNTER_NAME_BYTES, MAX_WORKFLOW_COUNTERS,
-    MAX_WORKFLOW_CURSOR, MAX_WORKFLOW_STACK_DEPTH, OperationIntent, OperationState,
-    ProviderFailureClass, ProviderReservation, ProviderReservationState, RECOVERY_CONTRACT_VERSION,
-    RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState, RunProjection, RunStatus,
-    StorePragmas, StoredAttempt, StoredDecision, StoredEpisode, StoredJob, StoredOperation,
-    StoredWorkflowInvocation, WORKFLOW_CONTRACT_VERSION, WorkflowCommandId, WorkflowDefinition,
-    WorkflowDefinitionId, WorkflowEpisodeId, WorkflowEvent, WorkflowEventId, WorkflowEventPayload,
-    WorkflowInvocation, WorkflowInvocationId, WorkflowPlan, WorkflowPlanId, WorkflowRunId,
-    WorkflowRunSnapshot, WorkflowRunStart,
+    MAX_ORIGINAL_CONTEXT_BYTES, MAX_WORKFLOW_BYTES, MAX_WORKFLOW_COUNTER_NAME_BYTES,
+    MAX_WORKFLOW_COUNTERS, MAX_WORKFLOW_CURSOR, MAX_WORKFLOW_STACK_DEPTH, OperationIntent,
+    OperationState, ProviderFailureClass, ProviderReservation, ProviderReservationState,
+    RECOVERY_CONTRACT_VERSION, RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState,
+    RunProjection, RunStatus, StorePragmas, StoredAttempt, StoredDecision, StoredEpisode,
+    StoredJob, StoredOperation, StoredWorkerHandoff, StoredWorkflowInvocation,
+    WORKER_EMPTY_PARAMETERS_DIGEST, WORKER_HANDOFF_CONTRACT, WORKER_HANDOFF_SCHEMA_DIGEST,
+    WORKER_MAX_ATTEMPT_NUMBER, WORKFLOW_CONTRACT_VERSION, WorkerAdmissionContext,
+    WorkerAdmissionOutcome, WorkerBoot, WorkerCompletionStatus, WorkerControlMode,
+    WorkerControlRequest, WorkerControlState, WorkerExecutionPermit, WorkerHandoffState,
+    WorkerLookup, WorkerOwnerProof, WorkerReservationState, WorkerTerminalReceipt, WorkerTuple,
+    WorkflowCommandId, WorkflowDefinition, WorkflowDefinitionId, WorkflowEpisodeId, WorkflowEvent,
+    WorkflowEventId, WorkflowEventPayload, WorkflowInvocation, WorkflowInvocationId, WorkflowPlan,
+    WorkflowPlanId, WorkflowRunId, WorkflowRunSnapshot, WorkflowRunStart,
 };
+pub use execution_cancellation::ExecutionCancellation;
 pub use exo::{
     BoundDecision, CodexEventAccounting, CodexEventError, CodexStreamStatus, CodexTokenUsage,
     CodexUsageStatus, Decision, DecisionError, EXO_MAP_REQUEST_OVERHEAD_BYTES,

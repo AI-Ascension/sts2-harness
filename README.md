@@ -217,6 +217,21 @@ observation, and the `run_started` effect witness. The copied artifact is schema
 evidence; they do not establish a native run, profile/save isolation, gameplay, deployment, or
 release support.
 
+## Native co-op consumer boundary
+
+The harness now consumes the accepted `sts2-protocol/coop-native-v1` component artifact. The
+transport-free consumer validates its closed envelope, provenance and schema digest, strict
+request/response direction (including bodyful same-operation recovery requests), opaque peer-token
+uniqueness, host-generation fences, legal-catalog identity, effect/receipt generation relations,
+and recovery state transitions. Its coordinator records requested, accepted, settled, rejected,
+unknown, duplicate and reconciled outcomes and never blindly retries an unknown mutation.
+
+This is source and deterministic component evidence only. The consumer has no MCP process, HTTP
+client, gateway lease, provider, game access, or live native session. The accepted component artifact
+and its seventeen goldens do not prove native peer admission, host legality, settled shared effects,
+checksum convergence, disconnect/rejoin behavior, deployment, or release compatibility; those remain
+`unverified` until an authorized disposable two-peer host run records each witness.
+
 ## Runtime-v2 deterministic fake lane
 
 The separate `sts2-harness-runtime-v2-fake` binary consumes the copied `runtime-v2` release-like
