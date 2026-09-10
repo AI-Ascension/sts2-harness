@@ -27,6 +27,8 @@ mod runtime_v4_expert_artifact;
 mod runtime_v4_expert_rest_action;
 mod runtime_v4_expert_rest_action_artifact;
 
+pub mod workflow;
+
 pub use artifact::{
     ArtifactDraft, ArtifactKind, ArtifactLineage, ArtifactMetadata, ArtifactMetadataInput,
     ArtifactPort, ArtifactPublicationRequest, ArtifactReceipt,
