@@ -11,15 +11,16 @@ path = "src/lib.rs"
 
 [dependencies]
 rusqlite.workspace = true
+rustix.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 tokio.workspace = true
 uuid = { version = "=1.23.5", features = ["v4"] }
+zeroize.workspace = true
 
 [dev-dependencies]
 jsonschema = { version = "=0.55.0", default-features = false }
-rustix = { version = "=1.1.4", features = ["event", "fs", "process"] }
 
 [lints]
 workspace = true
