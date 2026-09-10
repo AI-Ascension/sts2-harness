@@ -10,8 +10,8 @@
     "external_network_attempts": 0
   },
   "successor": {
-    "revision": "f3746edc62a950de490b4fdfefe8f5dea38d440d",
-    "executable_sha256": "ddb1f2b175054f179259d1c86372863c5059609e0ab486a3634ee472240a8d21",
+    "revision": "578595baa10a45fd6fcbf712ed0f59975cf47ef7",
+    "executable_sha256": "f0788453f87851a6b076763f3aef895b05e422d93df51604d22b4ae20407a575",
     "invocation_count": 1,
     "external_network_attempts": 0
   },
@@ -43,8 +43,8 @@
       "external_network_attempts": 0
     },
     "successor": {
-      "revision": "f3746edc62a950de490b4fdfefe8f5dea38d440d",
-      "executable_sha256": "ff1aa98a1fde3ba71f5820aa526028ebf0fdb69488cee05222029d76a298beca",
+      "revision": "578595baa10a45fd6fcbf712ed0f59975cf47ef7",
+      "executable_sha256": "835b35689f319b6564250c3bda28fa9fa29f1e937dfb71474d226804583e6092",
       "invocation_count": 1,
       "external_network_attempts": 0
     },
