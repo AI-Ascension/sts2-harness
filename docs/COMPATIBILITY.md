@@ -100,7 +100,7 @@ seams. Target-build and live provider behavior remain `unverified`.
 ### Runtime-v4 expert source/component row
 
 At current harness main
-[`ee28096dc722b1e9ef466fc966a79a3422f56ecc`](https://github.com/AI-Ascension/sts2-harness/commit/ee28096dc722b1e9ef466fc966a79a3422f56ecc),
+[`b8c50c87db0275f0e08d69892f1ebce275f4acb6`](https://github.com/AI-Ascension/sts2-harness/commit/b8c50c87db0275f0e08d69892f1ebce275f4acb6),
 the coordinator consumes the copied `runtime-v4-expert` and `runtime-v4-expert-action` artifacts,
 maps the expert MCP catalog, validates the fair-play observation and legal-action bindings, and
 exercises bounded executable composition and recovery checks. Their schema digests are

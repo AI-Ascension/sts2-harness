@@ -206,7 +206,7 @@ remain `unverified`; see
 ## Runtime-v4 expert coordinator boundary
 
 At current harness main
-[`ee28096dc722b1e9ef466fc966a79a3422f56ecc`](https://github.com/AI-Ascension/sts2-harness/commit/ee28096dc722b1e9ef466fc966a79a3422f56ecc),
+[`b8c50c87db0275f0e08d69892f1ebce275f4acb6`](https://github.com/AI-Ascension/sts2-harness/commit/b8c50c87db0275f0e08d69892f1ebce275f4acb6),
 the coordinator consumes the copied `runtime-v4-expert` state and `runtime-v4-expert-action`
 artifacts, validates the fair-play observation and host-generated legal-action catalog, and runs
 bounded executable composition and recovery checks through the expert MCP profile. Their schema
