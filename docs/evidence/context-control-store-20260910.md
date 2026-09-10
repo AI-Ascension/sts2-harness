@@ -4,8 +4,11 @@ This record covers the opt-in `ContextControlStore` companion seam at the Phase 
 head. It is local source/component evidence; it does not establish native target-console, provider,
 gateway, game, deployment, or soak behavior.
 
-The focused context-control suite at commit `c7ff0ad2ff9b397ea5eccba1bb2fc81113dee354` has six
-tests, including a renderer digest-substitution regression. The focused migration suite is
+The context-control suites at source revision `59a9752de03321168e2834f939f93850e1db69d9` have
+12 tests: the original renderer/control suite has six tests, including a renderer
+digest-substitution regression, and `crates/harness/tests/context_control_races.rs` adds six
+bounded admission, settlement, unknown-operation, plan-fencing, boundary, and identifier tests.
+The focused migration suite is
 `crates/harness/tests/context_control_migration.rs` and has eight
 tests:
 
@@ -21,6 +24,11 @@ tests:
 The renderer regression recomputes SHA-256 for selected, note, and objective bytes and rejects a
 same-reference content substitution before the bridge can serialize it. This closes the immutable
 content-digest check for the companion prepared-input seam.
+
+The `crates/harness/tests/phase2_recovery.rs` fixture adds three recovery assertions: an interrupted
+resume remains unknown and denies a new input, a provider write timeout retains an ambiguous
+operation without retransmission, and a game dispatch is reconciled under the original operation
+identity.
 
 The migration suite also verifies replacement ownership: a second authenticated store handle
 claims a per-handle SQLite fence, increments the recovered controller incarnation, and causes the
