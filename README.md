@@ -202,3 +202,18 @@ Runtime-v1 coordinator or contact a live host, game, provider, model, profile, s
 Live host settlement, gameplay mutation, provider/model execution, and Runtime-v2 compatibility
 remain `unverified`; see
 [`docs/evidence/runtime-v2-fake-20260902.md`](docs/evidence/runtime-v2-fake-20260902.md).
+
+## Runtime-v4 expert coordinator boundary
+
+At current harness main
+[`b8c50c87db0275f0e08d69892f1ebce275f4acb6`](https://github.com/AI-Ascension/sts2-harness/commit/b8c50c87db0275f0e08d69892f1ebce275f4acb6),
+the coordinator consumes the copied `runtime-v4-expert` state and `runtime-v4-expert-action`
+artifacts, validates the fair-play observation and host-generated legal-action catalog, and runs
+bounded executable composition and recovery checks through the expert MCP profile. Their schema
+digests are `0ee034d5da83f34e9fa0ba23038738d56ef8cfccb1c6e752af3ab63d212c8e42` and
+`393318bda8c3522c0ecbacc78b95471a9f4dc3f825169d2048f4c74a7b7f2929`, aligned with protocol main
+`f2dac90529f584a6511c1760adce9da28f7f910a`. The separate REST-action artifact remains a candidate
+at digest `bb3555fae28eb1f79d08a15e9884696a579e4c20836f5016509f17e0f4c36fbd`. These are
+source/component and bounded synthetic composition checks; the harness has no direct host access,
+so native host legality, settled effects, provider-run compatibility, deployment, release, and live
+end-to-end behavior remain unverified.
