@@ -60,8 +60,8 @@ impl CapturePort for SharedCapture {
 
     fn write_completed(&mut self, execution_id: &str) -> Result<(), CaptureError> {
         self.0.lock().expect("capture lock").push(CaptureRecord {
-            snapshot_id: format!("snapshot-{execution_id}"),
-            parent_snapshot_id: None,
+            snapshot_id: format!("event-{execution_id}-completed"),
+            parent_snapshot_id: Some(format!("snapshot-{execution_id}")),
             execution_id: execution_id.to_owned(),
             attempt_id: None,
             boundary: CaptureBoundary::HttpBody,
@@ -78,8 +78,8 @@ impl CapturePort for SharedCapture {
 
     fn write_failed(&mut self, execution_id: &str, _code: &str) -> Result<(), CaptureError> {
         self.0.lock().expect("capture lock").push(CaptureRecord {
-            snapshot_id: format!("snapshot-{execution_id}"),
-            parent_snapshot_id: None,
+            snapshot_id: format!("event-{execution_id}-failed"),
+            parent_snapshot_id: Some(format!("snapshot-{execution_id}")),
             execution_id: execution_id.to_owned(),
             attempt_id: None,
             boundary: CaptureBoundary::HttpBody,
@@ -102,10 +102,10 @@ impl CapturePort for SharedCapture {
         boundary: CaptureBoundary,
     ) -> Result<(), CaptureError> {
         self.0.lock().expect("capture lock").push(CaptureRecord {
-            snapshot_id: format!("snapshot-{execution_id}"),
+            snapshot_id: format!("event-{execution_id}-unknown"),
             parent_snapshot_id: Some(format!("snapshot-{execution_id}")),
             execution_id: execution_id.to_owned(),
-            attempt_id: None,
+            attempt_id: _attempt_id.map(str::to_owned),
             boundary,
             state: sts2_harness::TransportState::Unknown,
             observed_bytes: 0,
