@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::Value;
-use sha2::{Digest as Sha2Digest, Sha256};
 
 /// The Runtime-v2 profile consumed by the deterministic fake lane.
 pub const RUNTIME_V2_PROTOCOL_VERSION: &str = "runtime-v2";

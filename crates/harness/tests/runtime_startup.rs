@@ -12,7 +12,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, params, types::Value as SqlValue};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use sts2_harness::{
     ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig, OperationIntent,
 };
@@ -335,7 +334,7 @@ fn assert_failure_contains(output: &Output, expected: &str) -> Result<(), String
 }
 
 fn digest_bytes(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    sts2_harness::sha256_hex(bytes)
 }
 
 fn digest_value(value: &Value) -> Result<String, String> {

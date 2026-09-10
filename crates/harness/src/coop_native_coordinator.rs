@@ -13,7 +13,6 @@ use super::wire::{
     CoopNativeEnvelope, CoopNativeEnvelopeError, CoopNativeKind, CoopNativeRecoveryResponse,
 };
 use serde::Serialize;
-use sha2::{Digest as _, Sha256};
 use std::collections::BTreeMap;
 use std::fmt;
 

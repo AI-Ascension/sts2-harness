@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::Value;
-use sha2::Digest;
 use sts2_harness::{
     Decision, DecisionInput, DecisionReference, EpisodeLegalAction, OperationIntent,
     OperationState, ProviderFailureClass, ProviderReservation,
@@ -32,7 +31,7 @@ impl DurableHandle {
             action.action_id(),
             payload,
         )?;
-        let payload_digest = format!("{:x}", sha2::Sha256::digest(&action_payload));
+        let payload_digest = sts2_harness::sha256_hex(&action_payload);
         let input_digest = sha256_json(catalog.input)?;
         let catalog_digest = Some(sha256_bytes(catalog.raw));
         let intent = OperationIntent::new_with_action_and_catalog(

@@ -56,7 +56,6 @@ fn verify_revision(revision: &str) -> Result<(), String> {
         ));
     }
     if local_bridge {
-        use sha2::{Digest, Sha256};
         use std::io::Read;
         let file = std::fs::File::open(required("STS2_EXO_BRIDGE_BINARY")?)
             .map_err(|_| String::from("cannot open provider bridge for digest verification"))?;
@@ -65,7 +64,7 @@ fn verify_revision(revision: &str) -> Result<(), String> {
             .read_to_end(&mut bytes)
             .map_err(|_| String::from("cannot hash provider bridge"))?;
         if bytes.len() > 128 * 1024 * 1024
-            || format!("{:x}", Sha256::digest(&bytes)) != revision
+            || sts2_harness::sha256_hex(&bytes) != revision
             || !string_list("STS2_EXO_BRIDGE_ARGS_JSON")?.is_empty()
         {
             return Err(String::from(

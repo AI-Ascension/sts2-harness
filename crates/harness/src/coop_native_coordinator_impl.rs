@@ -146,7 +146,7 @@ impl<P: CoopNativePort> CoopNativeCoordinator<P> {
     ) -> Result<CoopNativeReceipt, CoopNativeCoordinatorError> {
         envelope.validate_lineage(&self.lineage)?;
         let canonical = envelope.to_json()?;
-        let digest = format!("{:x}", Sha256::digest(canonical.as_bytes()));
+        let digest = crate::sha256_hex(canonical.as_bytes());
         if self.seen_digests.contains_key(&digest) {
             let state = envelope
                 .operation_id()
