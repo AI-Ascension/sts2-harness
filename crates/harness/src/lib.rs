@@ -6,6 +6,7 @@ mod decision_records;
 mod episode;
 mod error;
 mod evaluation;
+mod execution;
 mod exo;
 mod exo_process;
 mod identity;
@@ -49,6 +50,15 @@ pub use episode::{
 pub use error::{CloseFailure, CloseReport, Component, HarnessError, PortError, ProviderError};
 pub use evaluation::{
     EvaluationError, EvaluationReport, EvaluationSample, Evaluator, TerminalOutcome,
+};
+pub use execution::{
+    AttemptKind, AttemptState, CatalogEvidence, Checkpoint, CompletionRecord, CompletionStatus,
+    DecisionReference, ExecutionFingerprint, ExecutionLineage, ExecutionStore,
+    ExecutionStoreConfig, ExecutionStoreError, JobClaim, JobClaimOutcome, JobState,
+    MAX_CATALOG_BYTES, MAX_OPERATION_ACTION_BYTES, OperationIntent, OperationState,
+    ProviderFailureClass, ProviderReservation, ProviderReservationState, RECOVERY_CONTRACT_VERSION,
+    RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState, StorePragmas, StoredAttempt,
+    StoredDecision, StoredEpisode, StoredJob, StoredOperation,
 };
 pub use exo::{
     BoundDecision, CodexEventAccounting, CodexEventError, CodexStreamStatus, CodexTokenUsage,

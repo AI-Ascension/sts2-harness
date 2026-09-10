@@ -112,8 +112,39 @@ fn uncertain_dispatch_is_reconciled_without_a_strategic_retry() {
     assert_eq!(report.terminal_stage(), EpisodeStage::Victory);
     assert_eq!(runtime.dispatches, 8);
     assert_eq!(runtime.reconciles, 1);
+    assert_eq!(runtime.reconciled_operation_ids.len(), 1);
+    assert_eq!(
+        runtime.reconciled_operation_ids[0],
+        runtime.dispatched_operation_ids[0]
+    );
+    assert!(is_uuid_v4(&runtime.dispatched_operation_ids[0]));
+    assert_eq!(runtime.dispatched_state_ids[0], "setup-0");
     assert_eq!(report.recoveries(), 1);
     assert_eq!(model.completions, vec![true; 8]);
+}
+
+#[test]
+fn fresh_runner_restart_allocates_a_distinct_uuidv4_operation() {
+    let mut first_runtime = FakeRuntime::new(complete_states());
+    let mut first_model = FakeModel::default();
+    runner()
+        .run(&mut first_runtime, &mut first_model)
+        .expect("first fake run should complete");
+
+    let mut second_runtime = FakeRuntime::new(complete_states());
+    let mut second_model = FakeModel::default();
+    runner()
+        .run(&mut second_runtime, &mut second_model)
+        .expect("restarted fake run should complete");
+
+    assert!(is_uuid_v4(&first_runtime.dispatched_operation_ids[0]));
+    assert!(is_uuid_v4(&second_runtime.dispatched_operation_ids[0]));
+    assert_ne!(
+        first_runtime.dispatched_operation_ids[0],
+        second_runtime.dispatched_operation_ids[0]
+    );
+    assert_eq!(first_runtime.dispatched_state_ids[0], "setup-0");
+    assert_eq!(second_runtime.dispatched_state_ids[0], "setup-0");
 }
 
 #[test]
@@ -147,6 +178,11 @@ fn assert_conflicting_action_stops(runtime: &mut FakeRuntime) {
     assert!(matches!(error, EpisodeRunnerError::ConflictingOperation));
     assert_eq!(runtime.dispatches, 1);
     assert_eq!(runtime.reconciles, 1);
+    assert!(is_uuid_v4(&runtime.dispatched_operation_ids[0]));
+    assert_eq!(
+        runtime.reconciled_operation_ids,
+        runtime.dispatched_operation_ids
+    );
     assert_eq!(model.calls, 1);
     assert_eq!(model.completions, vec![false]);
     assert!(runtime.released);
@@ -233,4 +269,12 @@ fn unresolved_operation_timeout_never_calls_policy_again() {
     assert!(runtime.pending.is_some());
     assert_eq!(model.completions, vec![false]);
     assert!(runtime.released && runtime.mcp_closed && runtime.gateway_closed);
+}
+
+fn is_uuid_v4(value: &str) -> bool {
+    uuid::Uuid::parse_str(value).is_ok_and(|id| {
+        id.get_version_num() == 4
+            && id.get_variant() == uuid::Variant::RFC4122
+            && id.to_string() == value
+    })
 }

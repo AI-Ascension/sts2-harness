@@ -108,6 +108,20 @@ fn response_payload_is_never_exposed_in_errors() {
 }
 
 #[test]
+fn gateway_json_rejects_duplicate_allocation_keys_before_value_validation() {
+    let body = br#"{"status":"allocated","status":"rejected"}"#;
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+        body.len(),
+        String::from_utf8_lossy(body)
+    );
+    assert_eq!(
+        exchange_response(response.into_bytes()),
+        Err(String::from("gateway response was not JSON"))
+    );
+}
+
+#[test]
 fn terminator_cannot_cross_header_budget() {
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nX-Pad: {}\r\n\r\n{{}}",

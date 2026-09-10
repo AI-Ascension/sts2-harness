@@ -7,6 +7,37 @@ use sts2_harness::{ActionKind, ActionSetError, EpisodeLegalAction, EpisodeLegalA
 
 use super::safe_identity;
 
+const MAX_RESPONSE_TEXT_BYTES: usize = 256 * 1024;
+
+#[path = "runtime_v3_parse_catalog_scanner.rs"]
+mod scanner;
+
+/// Retains the exact array bytes while `Value` remains the semantic representation used by the
+/// episode policy.  The outer MCP response has already decoded this text from its JSON string;
+/// no serializer is involved in this extraction.
+pub(super) fn raw_catalog(response_text: &str, semantic: &Value) -> Result<Vec<u8>, String> {
+    if response_text.len() > MAX_RESPONSE_TEXT_BYTES {
+        return Err(String::from("Runtime-v3 MCP text exceeds its size bound"));
+    }
+    let bytes = response_text.as_bytes();
+    let range = scanner::root_catalog(bytes)?
+        .ok_or_else(|| String::from("Runtime-v3 MCP content omitted legal_actions"))?;
+    let raw = &bytes[range.0..range.1];
+    if raw.len() > sts2_harness::MAX_CATALOG_BYTES {
+        return Err(String::from(
+            "Runtime-v3 legal-action catalog exceeds its size bound",
+        ));
+    }
+    let parsed: Value = serde_json::from_slice(raw)
+        .map_err(|error| format!("Runtime-v3 legal-action catalog is invalid JSON: {error}"))?;
+    if !parsed.is_array() || &parsed != semantic {
+        return Err(String::from(
+            "Runtime-v3 legal-action catalog text disagrees with its parsed value",
+        ));
+    }
+    Ok(raw.to_vec())
+}
+
 pub(super) fn parse_actions(
     value: Option<&Value>,
     state_id: &str,
@@ -112,6 +143,19 @@ fn action_kind(kind: &str) -> ActionKind {
         "save_quit" => ActionKind::SaveQuit,
         _ => ActionKind::SaveQuit,
     }
+}
+
+pub(crate) fn action_from_payload(
+    action_id: &str,
+    payload: &Value,
+) -> Result<EpisodeLegalAction, String> {
+    let kind = payload
+        .get("kind")
+        .and_then(Value::as_str)
+        .ok_or_else(|| String::from("Runtime-v3 stored action omitted its kind"))?;
+    validate_payload(payload, kind)?;
+    EpisodeLegalAction::new(action_id, action_kind(kind))
+        .map_err(|error| format!("Runtime-v3 stored action identity is invalid: {error}"))
 }
 
 fn action_set_error(error: ActionSetError) -> String {
