@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 pub(crate) struct RuntimeConfig {
+    #[allow(dead_code)]
+    pub(crate) seed_transport: Option<super::seed_transport::SeedTransportConfig>,
     pub(crate) gateway_address: String,
     pub(crate) gateway_token: String,
     pub(crate) mcp_binary: String,
@@ -37,11 +39,13 @@ impl RuntimeConfig {
             ));
         }
         let session_id = env_or_default("STS2_SESSION_ID", "session-1")?;
+        let seed_transport = super::seed_transport::SeedTransportConfig::from_environment()?;
         let wait_for_combat_seconds = bounded_seconds("STS2_RUNTIME_WAIT_FOR_COMBAT_SECONDS", "0")?;
         let settlement_timeout_seconds =
             bounded_seconds("STS2_RUNTIME_SETTLEMENT_TIMEOUT_SECONDS", "30")?;
         let map_context_enabled = flag_with_default("STS2_ENABLE_MAP_CONTEXT", false)?;
         let config = Self {
+            seed_transport,
             gateway_address: env_or_default("STS2_GATEWAY_ADDR", "127.0.0.1:15525")?,
             gateway_token: required("STS2_GATEWAY_TOKEN")?,
             mcp_binary: env_or_default("STS2_MCP_BINARY", "sts2-mcp-server")?,
@@ -186,6 +190,7 @@ mod tests {
     #[test]
     fn runtime_sessions_are_validated_independently() {
         let mut config = RuntimeConfig {
+            seed_transport: None,
             gateway_address: String::from("127.0.0.1:15525"),
             gateway_token: String::from("synthetic-token"),
             mcp_binary: String::from("mcp"),

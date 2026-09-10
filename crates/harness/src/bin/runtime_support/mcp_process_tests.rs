@@ -64,6 +64,7 @@ fn map_profile_has_a_wider_response_bound_without_widening_gameplay() -> Result<
 
 fn session_config() -> RuntimeConfig {
     RuntimeConfig {
+        seed_transport: None,
         gateway_address: "127.0.0.1:15525".into(),
         gateway_token: "synthetic-token".into(),
         mcp_binary: "unused-test-binary".into(),

@@ -88,6 +88,7 @@ fn catalog_response() -> String {
 
 fn config_for_script(script: &Path, response: &str) -> RuntimeConfig {
     RuntimeConfig {
+        seed_transport: None,
         gateway_address: String::from("127.0.0.1:15525"),
         gateway_token: response.to_owned(),
         mcp_binary: script.to_string_lossy().into_owned(),

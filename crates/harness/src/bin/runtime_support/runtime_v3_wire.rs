@@ -10,6 +10,7 @@ const CATALOG_REVISION: &str = "runtime-v3-gameplay-mcp";
 const EXPERT_CATALOG_REVISION: &str = "runtime-v4-expert-mcp";
 const EXPERT_REST_ACTION_CATALOG_REVISION: &str = "runtime-v4-expert-rest-action-mcp";
 const RECEIPT_QUERY_CATALOG_REVISION: &str = "coop-receipt-query-v1-mcp";
+const SEEDED_RUN_CATALOG_REVISION: &str = "seeded-run-v1-mcp";
 
 include!("runtime_v3_wire_failure.rs");
 
@@ -256,6 +257,10 @@ fn validate_catalog(response: &Value, profile: &str) -> Result<(), String> {
             ],
         ),
         "coop-receipt-query-v1" => (RECEIPT_QUERY_CATALOG_REVISION, &["sts2.coop_receipt_query"]),
+        "seeded-run-v1" => (
+            SEEDED_RUN_CATALOG_REVISION,
+            &["start_seeded_run", "reconcile_seeded_run"],
+        ),
         _ => return Err(String::from("MCP profile is unsupported")),
     };
     if result.get("revision").and_then(Value::as_str) != Some(revision) {

@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use std::collections::BTreeMap;
-
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use sts2_harness::{
     EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, ExoDecisionSource,
-    ExoProcessTransport, ExoProvider, ExoSession, ShutdownError, ShutdownPort,
+    ExoProcessTransport, ExoProvider, ExoSession,
 };
 
 use super::config::RuntimeConfig;
@@ -41,6 +40,14 @@ use ledger::OperationRecord;
 mod combat_demo;
 #[path = "runtime_v3_episode_replay.rs"]
 mod episode_replay;
+#[path = "runtime_v3_seeded.rs"]
+mod seeded;
+#[path = "runtime_v3_seeded_receipt.rs"]
+mod seeded_receipt;
+#[path = "runtime_v3_seeded_validation.rs"]
+mod seeded_validation;
+#[path = "runtime_v3_shutdown.rs"]
+mod shutdown;
 
 #[cfg(test)]
 #[path = "runtime_v3_lifecycle_test.rs"]
@@ -244,6 +251,8 @@ pub(super) struct RuntimeV3Port {
     config: RuntimeConfig,
     gateway: GatewayClient,
     mcp: Option<McpProcess>,
+    seeded_mcp: Option<McpProcess>,
+    seeded_receipt: Option<Value>,
     expert_mcp: Option<McpProcess>,
     allocated: bool,
     released: bool,
