@@ -22,11 +22,13 @@ impl RuntimeV3Port {
             .clone()
             .map(Ok)
             .unwrap_or_else(|| RecoveryContext::from_environment(&self.config))?;
+        let recovery_environment = context.child_environment()?;
         let mut mcp = McpProcess::spawn_recovery(
             &self.config,
             &context.instance_id,
             &context.lease_id,
             context.lease_epoch,
+            &recovery_environment,
         )?;
         if let Err(error) = wire::initialize_recovery_mcp(&mut mcp) {
             let _ = mcp.close();

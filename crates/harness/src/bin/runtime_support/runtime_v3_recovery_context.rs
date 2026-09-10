@@ -169,6 +169,8 @@ impl RecoveryContext {
     }
 }
 
+include!("runtime_v3_recovery_context_child.rs");
+
 fn validate_original_context(value: &Value) -> Result<(), String> {
     let object = value.as_object().ok_or_else(|| {
         String::from("durable operation original recovery context is not an object")

@@ -28,6 +28,20 @@ fn has_receipt_query_envelope(response: &Value) -> bool {
         .is_some_and(|value| value["protocol_version"] == "coop-receipt-query-v1")
 }
 
+fn has_recovery_envelope(response: &Value) -> bool {
+    response["result"]["content"][0]["text"]
+        .as_str()
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .is_some_and(|value| {
+            value["contract"] == "watchdog-recovery-v1"
+                && value["schema_digest"] == sts2_harness::RECOVERY_SCHEMA_DIGEST
+                && matches!(
+                    value["kind"].as_str(),
+                    Some("operation_lookup_response" | "operation_reconcile_response")
+                )
+        })
+}
+
 fn request_timeout(method: &str, params: &Value) -> Result<std::time::Duration, String> {
     let wait = if method == "tools/call" && params["name"] == "sts2.wait_for_transition" {
         params["arguments"]["wait_for_millis"]
