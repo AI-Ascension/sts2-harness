@@ -186,6 +186,10 @@ fn parser_rejects_non_settled_and_recovery_generation_drift() -> Result<(), Box<
     let mut recovered: Value = serde_json::from_slice(golden("local-action-recovered-response"))?;
     recovered["receipt"]["after_host_generation"] = json!(1);
     assert!(CoopNativeEnvelope::parse_response(&serde_json::to_vec(&recovered)?).is_err());
+
+    let mut pending_rejoin: Value = serde_json::from_slice(golden("rejoin-pending-response"))?;
+    pending_rejoin["receipt"]["after_host_generation"] = json!(2);
+    assert!(CoopNativeEnvelope::parse_response(&serde_json::to_vec(&pending_rejoin)?).is_err());
     Ok(())
 }
 
