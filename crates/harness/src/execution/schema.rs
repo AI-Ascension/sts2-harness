@@ -9,7 +9,7 @@ mod support;
 
 pub(crate) use support::{map_sqlite, transaction};
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 7;
+pub const CURRENT_SCHEMA_VERSION: i32 = 8;
 
 const MIGRATION_1: &str = r#"
 CREATE TABLE IF NOT EXISTS store_metadata (
@@ -292,6 +292,10 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), ExecutionStoreE
             .execute_batch("PRAGMA user_version = 7")
             .map_err(map_sqlite)?;
         transaction.commit().map_err(map_sqlite)?;
+        version = 7;
+    }
+    if version == 7 {
+        super::schema_worker::migrate(connection)?;
     }
     Ok(())
 }
