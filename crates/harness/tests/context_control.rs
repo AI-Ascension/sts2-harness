@@ -205,6 +205,59 @@ fn renderer_rejects_unreadable_expired_and_unselected_pinned_content() {
 }
 
 #[test]
+fn renderer_rejects_content_digest_mismatch_for_selected_note_and_objective() {
+    let config = ExoConfig::new(REVISION, 64 * 1024, 1024, 1_000).expect("config");
+    let original = item();
+    let tampered = ContextItem {
+        bytes: b"tampered fixture".to_vec(),
+        ..original.clone()
+    };
+    let mut registry = BTreeMap::new();
+    registry.insert("history-1:1".to_owned(), tampered);
+
+    let mut selected = ContextDraft::new("draft-selected", "revision-1");
+    selected.selected_items.push(original.reference.clone());
+    assert_eq!(
+        ContextRenderer::enabled_at(
+            &boundary(),
+            render_input(),
+            &selected,
+            &registry,
+            &config,
+            1,
+        )
+        .expect_err("selected content digest mismatch must fail closed"),
+        ContextRenderError::UnknownItem
+    );
+
+    let mut note = ContextDraft::new("draft-note", "revision-1");
+    note.notes.push(ContextNote {
+        reference: original.reference.clone(),
+        attributed_to: "operator-1".to_owned(),
+    });
+    assert_eq!(
+        ContextRenderer::enabled_at(&boundary(), render_input(), &note, &registry, &config, 1,)
+            .expect_err("note content digest mismatch must fail closed"),
+        ContextRenderError::UnknownItem
+    );
+
+    let mut objective = ContextDraft::new("draft-objective", "revision-1");
+    objective.objective = Some(original.reference);
+    assert_eq!(
+        ContextRenderer::enabled_at(
+            &boundary(),
+            render_input(),
+            &objective,
+            &registry,
+            &config,
+            1,
+        )
+        .expect_err("objective content digest mismatch must fail closed"),
+        ContextRenderError::UnknownItem
+    );
+}
+
+#[test]
 fn control_authority_recovers_pause_and_fences_boundary_changes() {
     let mut authority = ControlAuthority::new(boundary(), "revision-1");
     let paused = authority.request_pause("pause-1", 0).expect("pause");

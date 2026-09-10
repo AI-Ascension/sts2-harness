@@ -244,7 +244,7 @@ impl ContextRenderer {
             let item = registry
                 .get(&reference_key(reference))
                 .ok_or(ContextRenderError::UnknownItem)?;
-            if item.reference != *reference {
+            if item.reference != *reference || digest(&item.bytes) != reference.sha256 {
                 return Err(ContextRenderError::UnknownItem);
             }
             if item.protected {
@@ -270,7 +270,13 @@ impl ContextRenderer {
                 let item = registry
                     .get(&reference_key(&note.reference))
                     .ok_or(ContextRenderError::UnknownItem)?;
-                if item.reference != note.reference || !item.editable(now) {
+                if item.reference != note.reference {
+                    return Err(ContextRenderError::ExpiredItem);
+                }
+                if digest(&item.bytes) != note.reference.sha256 {
+                    return Err(ContextRenderError::UnknownItem);
+                }
+                if !item.editable(now) {
                     return Err(ContextRenderError::ExpiredItem);
                 }
                 if item.bytes.len() > MAX_NOTE_BYTES {
@@ -294,7 +300,13 @@ impl ContextRenderer {
                 let item = registry
                     .get(&reference_key(reference))
                     .ok_or(ContextRenderError::UnknownItem)?;
-                if item.reference != *reference || !item.editable(now) {
+                if item.reference != *reference {
+                    return Err(ContextRenderError::ExpiredItem);
+                }
+                if digest(&item.bytes) != reference.sha256 {
+                    return Err(ContextRenderError::UnknownItem);
+                }
+                if !item.editable(now) {
                     return Err(ContextRenderError::ExpiredItem);
                 }
                 if item.bytes.len() > MAX_OBJECTIVE_BYTES {
@@ -422,6 +434,13 @@ fn valid_attributed_to(value: &str) -> bool {
         && value.bytes().enumerate().all(|(index, byte)| {
             byte.is_ascii_alphanumeric() || (index > 0 && b"._:-".contains(&byte))
         })
+}
+
+fn digest(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn manifest_digest(input: &[u8], schema: &[u8], configuration: &[u8], profile: &str) -> String {
