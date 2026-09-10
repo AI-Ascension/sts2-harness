@@ -5,7 +5,7 @@ use serde_json::{Map, Value};
 
 use super::{HandoffError, MAX_FRAME_BYTES, MAX_INTEGER};
 
-pub(super) fn decode(bytes: &[u8]) -> Result<Value, HandoffError> {
+pub(crate) fn decode(bytes: &[u8]) -> Result<Value, HandoffError> {
     if bytes.is_empty() || bytes.len() > MAX_FRAME_BYTES {
         return Err(HandoffError);
     }

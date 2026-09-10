@@ -21,6 +21,17 @@ pub(super) fn fingerprint(
     settings: &RuntimeV3Settings,
     resume_requested: bool,
 ) -> Result<ExecutionFingerprint, String> {
+    if optional_env("STS2_APPROVED_WORKER_FINGERPRINT")?.as_deref() == Some("true") {
+        let seed = required_worker_reference("STS2_WORKER_SEED", "STS2_SEED")?;
+        let build = required_worker_reference("STS2_WORKER_RELEASE_DIGEST", "STS2_BUILD_DIGEST")?;
+        let state = required_worker_reference("STS2_WORKER_STATE_DIGEST", "STS2_STATE_DIGEST")?;
+        let config_digest =
+            required_worker_reference("STS2_WORKER_CONFIG_DIGEST", "STS2_RUNTIME_CONFIG_DIGEST")?;
+        let provider =
+            required_worker_reference("STS2_WORKER_PROVIDER_DIGEST", "STS2_PROVIDER_DIGEST")?;
+        return ExecutionFingerprint::new(seed, build, state, config_digest, provider)
+            .map_err(|error| format!("approved worker fingerprint is invalid: {error}"));
+    }
     let seed = fingerprint_component(
         "STS2_SEED",
         Some("STS2_VISIBLE_SEED"),
@@ -33,6 +44,13 @@ pub(super) fn fingerprint(
     let provider_digest = reference_or_digest(&settings.exo.revision);
     ExecutionFingerprint::new(seed, build, state, config_digest, provider_digest)
         .map_err(|error| format!("runtime-v3 execution fingerprint is invalid: {error}"))
+}
+
+fn required_worker_reference(primary: &str, alias: &str) -> Result<String, String> {
+    optional_env(primary)?
+        .or(optional_env(alias)?)
+        .ok_or_else(|| format!("approved worker fingerprint requires {primary} or {alias}"))
+        .map(|value| reference_or_digest(&value))
 }
 
 pub(super) fn config_digest(

@@ -15,7 +15,9 @@ serde_json = "=1.0.151"
 sha2 = "=0.11.0"
 toml = "=1.1.5"
 rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled"] }
+rustix = { version = "=1.1.4", features = ["event", "fs", "net", "process"] }
 tokio = { version = "=1.53.1", default-features = false, features = ["io-util", "macros", "process", "rt", "time"] }
+zeroize = "=1.9.0"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

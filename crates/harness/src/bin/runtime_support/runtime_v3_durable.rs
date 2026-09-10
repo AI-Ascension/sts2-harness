@@ -138,12 +138,18 @@ impl DurableHandle {
             ResumeState::Ready { checkpoint, .. } => checkpoint.as_deref().cloned(),
             _ => None,
         };
+        let handle_config_digest =
+            if optional_env("STS2_APPROVED_WORKER_FINGERPRINT")?.as_deref() == Some("true") {
+                fingerprint.config_digest.clone()
+            } else {
+                config_digest(config, settings)?
+            };
         let handle = Self {
             store: Rc::new(RefCell::new(store)),
             lineage,
             fingerprint,
             model_revision: settings.exo.revision.clone(),
-            config_digest: config_digest(config, settings)?,
+            config_digest: handle_config_digest,
             next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
             resume_boundary: Rc::new(RefCell::new(resume_boundary)),
         };

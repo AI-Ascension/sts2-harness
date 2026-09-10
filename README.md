@@ -177,7 +177,11 @@ and harness environments; use the same `STS2_RUNTIME_PROFILE=runtime-v3-gameplay
 for both processes. Gateway and MCP session identities remain separate namespaces. The harness
 passes both identities and the profile to its MCP child. Harness, gateway, and MCP default to the
 independent MCP session `mcp-session-1`; a shared explicit override also keeps custom session names
-consistent across processes.
+consistent across processes. The native watchdog worker adapter is documented in
+[`docs/worker-endpoint-v1.md`](docs/worker-endpoint-v1.md). It is a Linux-only, owner-local
+authenticated endpoint around the harness worker runtime; its bootstrap, peer-image proof,
+credential prelude, bounded framing, durable admission, and child resume behavior remain distinct
+from gameplay settlement and live-host evidence.
 The current runtime-v3 handoff has been exercised on the named Windows and Linux v0.107.1 fixtures.
 The Windows campaign reached Defeat without a controller restart; the Linux campaign reached
 Defeat after one controller restart following a catalog-read failure. Both had fresh-process
