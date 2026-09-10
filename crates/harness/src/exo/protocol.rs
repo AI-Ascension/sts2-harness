@@ -5,6 +5,7 @@ mod request;
 pub use request::ExoDecisionRequest;
 use request::{request_from_prompt, valid_revision};
 
+use crate::context_capture::{CaptureBoundary, CaptureInput, CapturePort};
 use crate::exo::decision::{DecisionError, parse_decision};
 use crate::exo::sandbox::{SandboxError, SanitizedObservation};
 use crate::provider::{ModelRequest, ModelResponse, ProviderPort};
@@ -155,6 +156,8 @@ pub struct ExoProvider<T> {
     transport: T,
     config: ExoConfig,
     closed: bool,
+    capture: Option<Box<dyn CapturePort>>,
+    attempt_id: Option<String>,
 }
 
 impl<T> ExoProvider<T> {
@@ -163,7 +166,26 @@ impl<T> ExoProvider<T> {
             transport,
             config,
             closed: false,
+            capture: None,
+            attempt_id: None,
         }
+    }
+
+    /// Attaches an optional inspection sink. The sink is sideband-only and receives the same
+    /// encoded bytes that the existing transport receives. Sink failures are ignored by design.
+    #[must_use]
+    pub fn with_capture(mut self, capture: Box<dyn CapturePort>) -> Self {
+        self.capture = Some(capture);
+        self
+    }
+
+    /// Records a trusted process-side attempt identifier without changing the provider payload.
+    pub fn set_capture_attempt_id(&mut self, attempt_id: Option<String>) {
+        self.attempt_id = attempt_id;
+    }
+
+    pub(super) fn capture_attempt_id(&self) -> Option<&str> {
+        self.attempt_id.as_deref()
     }
 
     #[must_use]
@@ -184,7 +206,63 @@ impl<T> ExoProvider<T> {
         }
         self.config.validate()?;
         let bytes = request.encode(self.config.max_request_bytes)?;
-        self.transport_exchange(&bytes).map_err(ExoError::from)
+        self.capture_prepared(
+            request.model_execution_id.as_str(),
+            CaptureBoundary::ProviderRequest,
+            &bytes,
+        );
+        let attempt_id = self.attempt_id.clone();
+        let response = self.transport_exchange(&bytes);
+        match response {
+            Ok(response) => {
+                self.capture_write_completed(
+                    request.model_execution_id.as_str(),
+                    attempt_id.as_deref(),
+                );
+                Ok(response)
+            }
+            Err(error) => {
+                self.capture_write_failed(
+                    request.model_execution_id.as_str(),
+                    attempt_id.as_deref(),
+                    error_code(ExoError::from(error)),
+                );
+                Err(ExoError::from(error))
+            }
+        }
+    }
+
+    pub(super) fn capture_prepared(
+        &mut self,
+        execution_id: &str,
+        boundary: CaptureBoundary,
+        bytes: &[u8],
+    ) {
+        if let Some(capture) = self.capture.as_mut() {
+            let _ = capture.prepared(CaptureInput {
+                execution_id,
+                attempt_id: self.attempt_id.as_deref(),
+                boundary,
+                bytes,
+            });
+        }
+    }
+
+    pub(super) fn capture_write_completed(&mut self, execution_id: &str, attempt_id: Option<&str>) {
+        if let Some(capture) = self.capture.as_mut() {
+            let _ = capture.write_completed_with_attempt(execution_id, attempt_id);
+        }
+    }
+
+    pub(super) fn capture_write_failed(
+        &mut self,
+        execution_id: &str,
+        attempt_id: Option<&str>,
+        code: &str,
+    ) {
+        if let Some(capture) = self.capture.as_mut() {
+            let _ = capture.write_failed_with_attempt(execution_id, attempt_id, code);
+        }
     }
 }
 

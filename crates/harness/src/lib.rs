@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod artifact;
+mod context_capture;
 mod coordinator;
 mod decision_records;
 mod episode;
@@ -26,6 +27,11 @@ mod runtime_v4_expert_artifact;
 pub use artifact::{
     ArtifactDraft, ArtifactKind, ArtifactLineage, ArtifactMetadata, ArtifactMetadataInput,
     ArtifactPort, ArtifactPublicationRequest, ArtifactReceipt,
+};
+pub use context_capture::{
+    CaptureBoundary, CaptureComponent, CaptureComponentKind, CaptureError, CaptureInput,
+    CaptureMode, CapturePort, CaptureRecord, MAX_CAPTURE_BYTES, MAX_CAPTURE_RECORDS, MemoryCapture,
+    NoopCapture, PreparedAstraInput, PreparedInput, PreparedOllamaInput, TransportState,
 };
 pub use coordinator::{EpisodeHandle, Harness, HarnessParts};
 pub use decision_records::{DecisionPayload, DecisionRecord, DecisionRecordKind, EvidenceStatus};
