@@ -1,0 +1,68 @@
+{
+  "schema_version": "ascension.workflow/v1",
+  "workflow_id": "fixture.one-action.strict",
+  "version": "0.1.0",
+  "mode": "strict",
+  "game_profile": "synthetic-sts2-v1",
+  "policy_ref": "policy.synthetic.v1",
+  "capabilities": {
+    "required": ["observe.fair-play.v1", "actions.catalog.v1", "actions.settlement.v1"],
+    "optional": []
+  },
+  "limits": {
+    "max_steps": 32,
+    "max_subworkflow_depth": 3,
+    "max_provider_calls": 8,
+    "max_parallel_analyses": 1,
+    "max_output_tokens": 4096
+  },
+  "entry_graph": "main",
+  "graphs": [
+    {
+      "id": "main",
+      "entry_node": "observe",
+      "nodes": [
+        {
+          "id": "observe",
+          "kind": "observe",
+          "config": {"projection_ref": "fair-play.synthetic.v1"}
+        },
+        {
+          "id": "decide",
+          "kind": "decide",
+          "config": {
+            "decision_profile_ref": "decision.synthetic.v1",
+            "context_ref": "context.synthetic.v1"
+          }
+        },
+        {
+          "id": "execute",
+          "kind": "execute_action",
+          "config": {"proposal_from": {"node_id": "decide", "output": "proposal"}}
+        },
+        {
+          "id": "done",
+          "kind": "terminal",
+          "config": {"outcome": "completed"}
+        },
+        {
+          "id": "blocked",
+          "kind": "terminal",
+          "config": {"outcome": "needs_operator"}
+        }
+      ],
+      "edges": [
+        {"from": "observe", "to": "decide", "on": "ok", "priority": 0},
+        {"from": "decide", "to": "execute", "on": "ok", "priority": 0},
+        {"from": "execute", "to": "done", "on": "ok", "priority": 0},
+        {"from": "observe", "to": "blocked", "on": "error", "priority": 0},
+        {"from": "decide", "to": "blocked", "on": "error", "priority": 0},
+        {"from": "execute", "to": "blocked", "on": "error", "priority": 0}
+      ]
+    }
+  ],
+  "annotations": {
+    "summary": "Synthetic one action contract vector.",
+    "synthetic": true
+  }
+}

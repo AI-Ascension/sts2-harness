@@ -1,0 +1,659 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ascension:workflow:v1",
+  "title": "Harness-owned Ascension workflow v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "workflow_id",
+    "version",
+    "mode",
+    "game_profile",
+    "policy_ref",
+    "capabilities",
+    "limits",
+    "entry_graph",
+    "graphs"
+  ],
+  "properties": {
+    "schema_version": { "const": "ascension.workflow/v1" },
+    "workflow_id": { "$ref": "#/$defs/id" },
+    "version": { "$ref": "#/$defs/version" },
+    "mode": { "enum": ["strict", "dynamic"] },
+    "game_profile": { "$ref": "#/$defs/id" },
+    "policy_ref": { "$ref": "#/$defs/id" },
+    "capabilities": { "$ref": "#/$defs/capabilities" },
+    "limits": { "$ref": "#/$defs/limits" },
+    "entry_graph": { "$ref": "#/$defs/id" },
+    "graphs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/graph" }
+    },
+    "annotations": { "$ref": "#/$defs/annotations" }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "optional"],
+      "properties": {
+        "required": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "optional": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_steps",
+        "max_subworkflow_depth",
+        "max_provider_calls",
+        "max_parallel_analyses",
+        "max_output_tokens"
+      ],
+      "properties": {
+        "max_steps": { "type": "integer", "minimum": 1, "maximum": 4096 },
+        "max_subworkflow_depth": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "max_provider_calls": { "type": "integer", "minimum": 0, "maximum": 4096 },
+        "max_parallel_analyses": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "max_output_tokens": { "type": "integer", "minimum": 0, "maximum": 2000000 }
+      }
+    },
+    "annotations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "synthetic"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "synthetic": { "type": "boolean" }
+      }
+    },
+    "graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "entry_node", "nodes", "edges"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "entry_node": { "$ref": "#/$defs/id" },
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/node" }
+        },
+        "edges": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": { "$ref": "#/$defs/edge" }
+        },
+        "guards": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/guard" }
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "on", "priority"],
+      "properties": {
+        "from": { "$ref": "#/$defs/id" },
+        "to": { "$ref": "#/$defs/id" },
+        "on": {
+          "enum": ["ok", "error", "timeout", "unavailable", "true", "false", "unknown"]
+        },
+        "priority": { "type": "integer", "minimum": 0, "maximum": 1024 },
+        "guard_ref": { "$ref": "#/$defs/id" }
+      }
+    },
+    "node": {
+      "oneOf": [
+        { "$ref": "#/$defs/observe_node" },
+        { "$ref": "#/$defs/await_stability_node" },
+        { "$ref": "#/$defs/route_node" },
+        { "$ref": "#/$defs/analyze_node" },
+        { "$ref": "#/$defs/decide_node" },
+        { "$ref": "#/$defs/adaptive_region_node" },
+        { "$ref": "#/$defs/execute_action_node" },
+        { "$ref": "#/$defs/subworkflow_node" },
+        { "$ref": "#/$defs/loop_node" },
+        { "$ref": "#/$defs/checkpoint_node" },
+        { "$ref": "#/$defs/emit_artifact_node" },
+        { "$ref": "#/$defs/pause_node" },
+        { "$ref": "#/$defs/terminal_node" }
+      ]
+    },
+    "node_base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "config"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "type": "string" },
+        "config": { "type": "object" }
+      }
+    },
+    "observe_node": {
+      "allOf": [
+        { "$ref": "#/$defs/node_base" },
+        {
+          "properties": {
+            "kind": { "const": "observe" },
+            "config": { "$ref": "#/$defs/observe_config" }
+          }
+        }
+      ]
+    },
+    "observe_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projection_ref"],
+      "properties": { "projection_ref": { "$ref": "#/$defs/id" } }
+    },
+    "await_stability_node": {
+      "allOf": [
+        { "$ref": "#/$defs/node_base" },
+        {
+          "properties": {
+            "kind": { "const": "await_stability" },
+            "config": { "$ref": "#/$defs/await_stability_config" }
+          }
+        }
+      ]
+    },
+    "await_stability_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deadline_ms"],
+      "properties": { "deadline_ms": { "type": "integer", "minimum": 1, "maximum": 3600000 } }
+    },
+    "route_node": {
+      "allOf": [
+        { "$ref": "#/$defs/node_base" },
+        {
+          "properties": {
+            "kind": { "const": "route" },
+            "config": { "$ref": "#/$defs/route_config" }
+          }
+        }
+      ]
+    },
+    "route_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selector_ref"],
+      "properties": { "selector_ref": { "$ref": "#/$defs/id" } }
+    },
+    "analyze_node": {
+      "allOf": [
+        { "$ref": "#/$defs/node_base" },
+        {
+          "properties": {
+            "kind": { "const": "analyze" },
+            "config": { "$ref": "#/$defs/analyze_config" }
+          }
+        }
+      ]
+    },
+    "analyze_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation_ref", "context_ref"],
+      "properties": {
+        "operation_ref": { "$ref": "#/$defs/id" },
+        "context_ref": { "$ref": "#/$defs/id" }
+      }
+    },
+    "decide_node": {
+      "allOf": [
+        { "$ref": "#/$defs/node_base" },
+        {
+          "properties": {
+            "kind": { "const": "decide" },
+            "config": { "$ref": "#/$defs/decide_config" }
+          }
+        }
+      ]
+    },
+    "decide_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision_profile_ref", "context_ref"],
+      "properties": {
+        "decision_profile_ref": { "$ref": "#/$defs/id" },
+        "context_ref": { "$ref": "#/$defs/id" }
+      }
+    },
+    "adaptive_region_node": {
+      "allOf": [
+        { "$ref": "#/$defs/node_base" },
+        {
+          "properties": {
+            "kind": { "const": "adaptive_region" },
+            "config": { "$ref": "#/$defs/adaptive_region_config" }
+          }
+        }
+      ]
+    },
+    "adaptive_region_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "region_id",
+        "planner_profile_ref",
+        "allowed_operations",
+        "max_plan_nodes",
+        "max_plan_edges",
+        "max_replans",
+        "output_type"
+      ],
+      "properties": {
+        "region_id": { "$ref": "#/$defs/id" },
+        "planner_profile_ref": { "$ref": "#/$defs/id" },
+        "allowed_operations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "max_plan_nodes": { "type": "integer", "minimum": 1, "maximum": 32 },
+        "max_plan_edges": { "type": "integer", "minimum": 0, "maximum": 128 },
+        "max_replans": { "type": "integer", "minimum": 0, "maximum": 8 },
+        "output_type": { "const": "DecisionProposal" }
+      }
+    },
+    "proposal_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "output"],
+      "properties": {
+        "node_id": { "$ref": "#/$defs/id" },
+        "output": { "$ref": "#/$defs/id" }
+      }
+    },
+    "execute_action_node": {
+      "allOf": [
+        { "$ref": "#/$defs/node_base" },
+        {
+          "properties": {
+            "kind": { "const": "execute_action" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["proposal_from"],
+              "properties": { "proposal_from": { "$ref": "#/$defs/proposal_binding" } }
+            }
+          }
+        }
+      ]
+    },
+    "subworkflow_node": {
+      "allOf": [
+        { "$ref": "#/$defs/node_base" },
+        {
+          "properties": {
+            "kind": { "const": "subworkflow" },
+            "config": { "$ref": "#/$defs/subworkflow_config" }
+          }
+        }
+      ]
+    },
+    "subworkflow_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_ref"],
+      "properties": {
+        "artifact_ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "digest"],
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "version": { "$ref": "#/$defs/version" },
+            "digest": { "$ref": "#/$defs/digest" }
+          }
+        }
+      }
+    },
+    "loop_node": {
+      "allOf": [
+        { "$ref": "#/$defs/node_base" },
+        {
+          "properties": {
+            "kind": { "const": "loop" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["body_graph", "max_iterations", "exit_guard_ref"],
+              "properties": {
+                "body_graph": { "$ref": "#/$defs/id" },
+                "max_iterations": { "type": "integer", "minimum": 1, "maximum": 4096 },
+                "exit_guard_ref": { "$ref": "#/$defs/id" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "checkpoint_node": {
+      "allOf": [
+        { "$ref": "#/$defs/node_base" },
+        {
+          "properties": {
+            "kind": { "const": "checkpoint" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label"],
+              "properties": { "label": { "$ref": "#/$defs/id" } }
+            }
+          }
+        }
+      ]
+    },
+    "emit_artifact_node": {
+      "allOf": [
+        { "$ref": "#/$defs/node_base" },
+        {
+          "properties": {
+            "kind": { "const": "emit_artifact" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["artifact_kind_ref", "input_from"],
+              "properties": {
+                "artifact_kind_ref": { "$ref": "#/$defs/id" },
+                "input_from": { "$ref": "#/$defs/proposal_binding" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "pause_node": {
+      "allOf": [
+        { "$ref": "#/$defs/node_base" },
+        {
+          "properties": {
+            "kind": { "const": "pause" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["reason_code"],
+              "properties": { "reason_code": { "$ref": "#/$defs/id" } }
+            }
+          }
+        }
+      ]
+    },
+    "terminal_node": {
+      "allOf": [
+        { "$ref": "#/$defs/node_base" },
+        {
+          "properties": {
+            "kind": { "const": "terminal" },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["outcome"],
+              "properties": { "outcome": { "enum": ["completed", "failed", "needs_operator"] } }
+            }
+          }
+        }
+      ]
+    },
+    "guard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "expression"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "expression": { "$ref": "#/$defs/guard_expression" }
+      }
+    },
+    "guard_value": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "null" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "boolean" },
+            "value": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "integer" },
+            "value": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "text" },
+            "value": { "type": "string", "minLength": 1, "maxLength": 4096 }
+          }
+        }
+      ]
+    },
+    "guard_expression": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "literal" },
+            "value": { "$ref": "#/$defs/guard_value" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "field" },
+            "value": { "$ref": "#/$defs/id" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "exists" },
+            "value": { "$ref": "#/$defs/id" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "equal" },
+            "value": { "$ref": "#/$defs/guard_comparison" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "not_equal" },
+            "value": { "$ref": "#/$defs/guard_comparison" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "less" },
+            "value": { "$ref": "#/$defs/guard_comparison" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "less_or_equal" },
+            "value": { "$ref": "#/$defs/guard_comparison" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "greater" },
+            "value": { "$ref": "#/$defs/guard_comparison" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "greater_or_equal" },
+            "value": { "$ref": "#/$defs/guard_comparison" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "and" },
+            "value": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 256,
+              "items": { "$ref": "#/$defs/guard_expression" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "or" },
+            "value": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 256,
+              "items": { "$ref": "#/$defs/guard_expression" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "not" },
+            "value": { "$ref": "#/$defs/guard_expression" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "in" },
+            "value": { "$ref": "#/$defs/guard_membership" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "add" },
+            "value": { "$ref": "#/$defs/guard_add" }
+          }
+        }
+      ]
+    },
+    "guard_comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["left", "right"],
+      "properties": {
+        "left": { "$ref": "#/$defs/id" },
+        "right": { "$ref": "#/$defs/guard_value" }
+      }
+    },
+    "guard_membership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "values"],
+      "properties": {
+        "field": { "$ref": "#/$defs/id" },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/guard_value" }
+        }
+      }
+    },
+    "guard_add": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["left", "right"],
+      "properties": {
+        "left": { "$ref": "#/$defs/id" },
+        "right": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      }
+    }
+  }
+}

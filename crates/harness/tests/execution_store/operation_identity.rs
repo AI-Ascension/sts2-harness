@@ -38,8 +38,8 @@ fn operation_intent_is_durable_idempotent_and_unknown_is_reconciled_without_redi
                 "operation-1",
                 "payload-digest",
                 OperationState::Unknown,
-                None,
-                None,
+                Some("unknown-receipt"),
+                Some("unknown-digest"),
             )
             .expect("unknown outcome is retained")
             .state,

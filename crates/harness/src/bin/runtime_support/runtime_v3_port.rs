@@ -94,7 +94,22 @@ impl RuntimeV3Port {
         };
         match receipt.status() {
             sts2_harness::DispatchStatus::Settled => {
-                durable.reconcile_response(operation_id, sts2_harness::OperationState::Settled, response)
+                match durable.operation_state(operation_id)? {
+                    sts2_harness::OperationState::Settled
+                    | sts2_harness::OperationState::Reconciled => Ok(()),
+                    sts2_harness::OperationState::Accepted
+                    | sts2_harness::OperationState::Unknown
+                    | sts2_harness::OperationState::MayHaveBeenDispatched
+                    | sts2_harness::OperationState::IntentRecorded => durable
+                        .reconcile_response(
+                            operation_id,
+                            sts2_harness::OperationState::Settled,
+                            response,
+                        ),
+                    sts2_harness::OperationState::Rejected => Err(String::from(
+                        "cannot reconcile a settled receipt after durable rejection",
+                    )),
+                }
             }
             sts2_harness::DispatchStatus::Rejected | sts2_harness::DispatchStatus::Cancelled => {
                 durable.reconcile_response(operation_id, sts2_harness::OperationState::Rejected, response)
