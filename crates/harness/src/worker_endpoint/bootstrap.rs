@@ -11,7 +11,9 @@
     use crate::{
         ExecutionFingerprint, ExecutionStore, ExecutionStoreConfig, WorkerBoot, WorkerOwnerProof,
     };
-    use rustix::fs::{Mode, OFlags, fstat, open};
+    use rustix::fs::{
+        MemfdFlags, Mode, OFlags, SealFlags, fcntl_add_seals, fstat, memfd_create, open,
+    };
     use rustix::net::RecvAncillaryMessage;
     use rustix::net::sockopt::{set_socket_passcred, socket_peercred};
     use rustix::process::{Pid, PidfdFlags, geteuid, pidfd_open};
@@ -20,6 +22,7 @@
     use std::ffi::OsString;
     use std::fs::{self, File, Permissions};
     use std::io::{ErrorKind, IoSliceMut, Read, Write};
+    use std::os::fd::AsRawFd;
     use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::{Component, Path, PathBuf};
@@ -37,6 +40,9 @@
     const MAX_EXECUTABLE_BYTES: u64 = 128 * 1024 * 1024;
     const TRANSPORT_MAX_FRAME_BYTES: usize = crate::worker_handoff::MAX_FRAME_BYTES;
     const BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(5);
+    const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
+    const TRANSPORT_TIMEOUT: Duration = Duration::from_secs(5);
+    const MAX_AUTH_SLOTS: usize = 4;
     const CHILD_REAP_TIMEOUT: Duration = Duration::from_secs(5);
     const POLL_INTERVAL: Duration = Duration::from_millis(5);
 
@@ -98,7 +104,7 @@
         release_digest: String,
         config_digest: String,
         fingerprint: ExecutionFingerprint,
-        runtime_binary: PathBuf,
+        runtime_executable: ApprovedExecutable,
         environment: Vec<(OsString, OsString)>,
     }
 
@@ -158,7 +164,8 @@
             };
             let expected_runtime_digest = optional_env("STS2_WORKER_RUNTIME_SHA256")?
                 .or_else(|| Some(release_digest.clone()));
-            let _ = verify_executable(&runtime_binary, expected_runtime_digest.as_deref())?;
+            let runtime_executable =
+                verify_executable(&runtime_binary, expected_runtime_digest.as_deref())?;
             let environment = approved_environment();
             Ok(Self {
                 endpoint_namespace,
@@ -170,7 +177,7 @@
                 release_digest,
                 config_digest,
                 fingerprint,
-                runtime_binary,
+                runtime_executable,
                 environment,
             })
         }

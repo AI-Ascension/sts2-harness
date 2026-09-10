@@ -267,20 +267,20 @@
     fn read_transport_frame(
         stream: &mut UnixStream,
         peer: &PeerSession,
+        timeout: Duration,
     ) -> Result<Vec<u8>, String> {
-        let timeout = Duration::from_millis(5_000);
-        stream
-            .set_read_timeout(Some(timeout))
-            .map_err(|_| String::from("worker transport read deadline is unavailable"))?;
+        let deadline = Instant::now()
+            .checked_add(timeout)
+            .ok_or_else(|| String::from("worker transport deadline overflow"))?;
         let mut length_bytes = [0_u8; 4];
-        read_message_exact(stream, &mut length_bytes, peer)?;
+        read_message_exact(stream, &mut length_bytes, peer, deadline)?;
         let length = usize::try_from(u32::from_be_bytes(length_bytes))
             .map_err(|_| String::from("worker transport frame length is invalid"))?;
         if length == 0 || length > TRANSPORT_MAX_FRAME_BYTES {
             return Err(String::from("worker transport frame exceeds its bound"));
         }
         let mut body = vec![0_u8; length];
-        read_message_exact(stream, &mut body, peer)?;
+        read_message_exact(stream, &mut body, peer, deadline)?;
         Ok(body)
     }
 
@@ -288,9 +288,17 @@
         stream: &mut UnixStream,
         target: &mut [u8],
         peer: &PeerSession,
+        deadline: Instant,
     ) -> Result<(), String> {
         let mut offset = 0;
         while offset < target.len() {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(String::from("worker transport deadline expired"));
+            }
+            stream
+                .set_read_timeout(Some(remaining))
+                .map_err(|_| String::from("worker transport read deadline is unavailable"))?;
             peer.verify_current()?;
             let count = recv_message(stream, &mut target[offset..], peer)?;
             offset += count;

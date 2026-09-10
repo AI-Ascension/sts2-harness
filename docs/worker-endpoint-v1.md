@@ -15,7 +15,9 @@ closed payload contains exactly `version`, `launch_nonce`, `watchdog_boot_id`,
 canonical `/proc/<pid>/stat` start token, absolute executable path, lowercase
 SHA-256 image digest, UID, and GID. The endpoint rejects other versions, unknown
 or duplicate fields, non-canonical UUIDs, unsafe paths, invalid tokens, and
-non-lowercase digests before creating a listener.
+non-lowercase digests before creating a listener. The bootstrap pipe must also
+reach true EOF after the declared frame within the bootstrap deadline; a
+delayed byte is not treated as an empty read.
 
 Static owner-approved configuration is supplied through the environment:
 
@@ -71,6 +73,11 @@ Each connection is authenticated in this order:
    unsupported ancillary data, missing credentials, peer changes, and truncated
    control data are rejected.
 
+Authentication has a fixed overall five-second frame deadline and at most four
+in-flight authentication slots. Once those slots are occupied, the listener is
+left unread so the kernel backlog supplies bounded backpressure; an incomplete
+client cannot indefinitely serialize all subsequent connections.
+
 The request and response use the frozen `worker_handoff` JSON codec and a
 big-endian `u32` length prefix, bounded by `worker_handoff::MAX_FRAME_BYTES`.
 The endpoint rechecks the peer before and after every received frame and around
@@ -86,7 +93,11 @@ records the durable handoff, and sends the response before starting the child.
 If the response cannot be written after admission, the handoff remains an
 uncertain retained record; it is not silently retried.
 
-Only an admitted reservation can start the configured runtime child. The child
+Only an admitted reservation can start the configured runtime child. Before the
+endpoint accepts the runtime configuration, it copies the verified executable
+bytes into a sealed executable memfd. Every child is launched through that
+retained descriptor, so pathname replacement or in-place source mutation after
+startup cannot change the approved image. The child
 receives `--resume`, the exact run/episode/attempt/trajectory identities, the
 approved fingerprint components, and the execution-store path. It does not
 inherit the endpoint or credential controls and cannot select a different image

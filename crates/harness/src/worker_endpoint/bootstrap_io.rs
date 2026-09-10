@@ -8,11 +8,15 @@
         )
         .map_err(|_| String::from("worker bootstrap stdin is unavailable"))?;
         let mut reader: File = descriptor.into();
+        read_bootstrap_from(&mut reader, BOOTSTRAP_TIMEOUT)
+    }
+
+    fn read_bootstrap_from(reader: &mut File, timeout: Duration) -> Result<Bootstrap, String> {
         let deadline = Instant::now()
-            .checked_add(BOOTSTRAP_TIMEOUT)
+            .checked_add(timeout)
             .ok_or_else(|| String::from("worker bootstrap deadline overflow"))?;
         let mut prefix = [0_u8; BOOTSTRAP_PREFIX_BYTES];
-        read_exact_deadline(&mut reader, &mut prefix, deadline, "worker bootstrap")?;
+        read_exact_deadline(reader, &mut prefix, deadline, "worker bootstrap")?;
         if &prefix[..BOOTSTRAP_MAGIC.len()] != BOOTSTRAP_MAGIC {
             return Err(String::from("worker bootstrap magic is invalid"));
         }
@@ -22,17 +26,28 @@
             return Err(String::from("worker bootstrap payload length is invalid"));
         }
         let mut payload = vec![0_u8; payload_len];
-        read_exact_deadline(&mut reader, &mut payload, deadline, "worker bootstrap")?;
-        let mut trailing = [0_u8; 1];
-        match reader.read(&mut trailing) {
-            Ok(0) => {}
-            Err(error) if error.kind() == ErrorKind::WouldBlock => {}
-            Ok(_) => return Err(String::from("worker bootstrap has trailing bytes")),
-            Err(_) => return Err(String::from("worker bootstrap could not be completed")),
-        }
+        read_exact_deadline(reader, &mut payload, deadline, "worker bootstrap")?;
+        read_until_eof_deadline(reader, deadline)?;
         let mut bootstrap = parse_bootstrap_payload(&payload)?;
         bootstrap.peer_proof = Some(spawn_peer_image_proof(&bootstrap.peer)?);
         Ok(bootstrap)
+    }
+
+    fn read_until_eof_deadline(reader: &mut File, deadline: Instant) -> Result<(), String> {
+        let mut trailing = [0_u8; 256];
+        loop {
+            if Instant::now() >= deadline {
+                return Err(String::from("worker bootstrap EOF timed out"));
+            }
+            match reader.read(&mut trailing) {
+                Ok(0) => return Ok(()),
+                Ok(_) => return Err(String::from("worker bootstrap has trailing bytes")),
+                Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                    thread::sleep(POLL_INTERVAL);
+                }
+                Err(_) => return Err(String::from("worker bootstrap could not be completed")),
+            }
+        }
     }
 
     fn parse_bootstrap_payload(payload: &[u8]) -> Result<Bootstrap, String> {

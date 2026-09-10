@@ -57,45 +57,61 @@
         }
     }
 
-    fn verify_executable(path: &Path, expected: Option<&str>) -> Result<String, String> {
-        if path == Path::new("/proc/self/exe") {
-            let file = File::open(path)
-                .map_err(|_| String::from("worker runtime executable is unavailable"))?;
-            let metadata = fstat(&file)
-                .map_err(|_| String::from("worker runtime executable is unavailable"))?;
-            if (metadata.st_mode & 0o170_000) != 0o100_000 || metadata.st_mode & 0o111 == 0 {
+    #[derive(Clone)]
+    struct ApprovedExecutable {
+        /// The endpoint executes this sealed snapshot through its descriptor,
+        /// never by reopening the configured pathname after validation.
+        image: std::sync::Arc<File>,
+    }
+
+    impl ApprovedExecutable {
+        fn command_path(&self) -> PathBuf {
+            PathBuf::from(format!("/proc/self/fd/{}", self.image.as_raw_fd()))
+        }
+    }
+
+    fn verify_executable(
+        path: &Path,
+        expected: Option<&str>,
+    ) -> Result<ApprovedExecutable, String> {
+        let mut source = if path == Path::new("/proc/self/exe") {
+            File::open(path)
+                .map_err(|_| String::from("worker runtime executable is unavailable"))?
+        } else {
+            validate_reference(path, "worker runtime executable")?;
+            let metadata = fs::symlink_metadata(path).map_err(|error| {
+                format!("worker runtime executable is unavailable: metadata {error}")
+            })?;
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
                 return Err(String::from("worker runtime executable is not immutable"));
             }
-            let mut file = file;
-            let digest = hash_file(&mut file)?;
-            if let Some(expected) = expected {
-                validate_digest(expected)
-                    .map_err(|_| String::from("worker runtime digest is invalid"))?;
-                if digest != expected {
-                    return Err(String::from("worker runtime digest is not approved"));
-                }
+            let canonical = fs::canonicalize(path).map_err(|error| {
+                format!("worker runtime executable is unavailable: canonicalize {error}")
+            })?;
+            if canonical != path {
+                return Err(String::from("worker runtime executable is not canonical"));
             }
-            return Ok(digest);
-        }
-        validate_reference(path, "worker runtime executable")?;
-        let metadata = fs::symlink_metadata(path).map_err(|error| {
-            format!("worker runtime executable is unavailable: metadata {error}")
-        })?;
-        if metadata.file_type().is_symlink()
-            || !metadata.is_file()
-            || metadata.permissions().mode() & 0o111 == 0
+            open(
+                path,
+                OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+                Mode::empty(),
+            )
+            .map(File::from)
+            .map_err(|error| {
+                format!("worker runtime executable is unavailable: open {error}")
+            })?
+        };
+        let metadata = fstat(&source)
+            .map_err(|_| String::from("worker runtime executable is unavailable"))?;
+        if (metadata.st_mode & 0o170_000) != 0o100_000
+            || metadata.st_mode & 0o111 == 0
+            || (path != Path::new("/proc/self/exe") && metadata.st_mode & 0o022 != 0)
         {
             return Err(String::from("worker runtime executable is not immutable"));
         }
-        let canonical = fs::canonicalize(path).map_err(|error| {
-            format!("worker runtime executable is unavailable: canonicalize {error}")
-        })?;
-        if canonical != path {
-            return Err(String::from("worker runtime executable is not canonical"));
-        }
-        let mut file = File::open(path)
-            .map_err(|error| format!("worker runtime executable is unavailable: open {error}"))?;
-        let digest = hash_file(&mut file)?;
+        let snapshot_fd = create_executable_snapshot()?;
+        let mut snapshot: File = snapshot_fd.into();
+        let digest = hash_and_copy(&mut source, &mut snapshot)?;
         if let Some(expected) = expected {
             validate_digest(expected)
                 .map_err(|_| String::from("worker runtime digest is invalid"))?;
@@ -103,7 +119,56 @@
                 return Err(String::from("worker runtime digest is not approved"));
             }
         }
-        Ok(digest)
+        fcntl_add_seals(
+            &snapshot,
+            SealFlags::WRITE | SealFlags::SHRINK | SealFlags::GROW | SealFlags::SEAL,
+        )
+        .map_err(|_| String::from("worker runtime executable snapshot is not immutable"))?;
+        Ok(ApprovedExecutable {
+            image: std::sync::Arc::new(snapshot),
+        })
+    }
+
+    fn create_executable_snapshot() -> Result<rustix::fd::OwnedFd, String> {
+        let base_flags = MemfdFlags::CLOEXEC | MemfdFlags::ALLOW_SEALING;
+        match memfd_create("ascension-verified-worker-runtime", base_flags | MemfdFlags::EXEC) {
+            Ok(fd) => Ok(fd),
+            Err(error) if error == rustix::io::Errno::INVAL => {
+                memfd_create("ascension-verified-worker-runtime", base_flags)
+                    .map_err(|_| String::from("worker runtime executable snapshot unavailable"))
+            }
+            Err(_) => Err(String::from(
+                "worker runtime executable snapshot unavailable",
+            )),
+        }
+    }
+
+    fn hash_and_copy(source: &mut File, snapshot: &mut File) -> Result<String, String> {
+        let mut hasher = Sha256::new();
+        let mut total = 0_u64;
+        let mut buffer = [0_u8; 32 * 1024];
+        loop {
+            let count = source
+                .read(&mut buffer)
+                .map_err(|_| String::from("worker executable could not be hashed"))?;
+            if count == 0 {
+                break;
+            }
+            total = total
+                .checked_add(
+                    u64::try_from(count)
+                        .map_err(|_| String::from("worker executable size overflowed"))?,
+                )
+                .ok_or_else(|| String::from("worker executable size overflowed"))?;
+            if total > MAX_EXECUTABLE_BYTES {
+                return Err(String::from("worker executable exceeds its size bound"));
+            }
+            snapshot
+                .write_all(&buffer[..count])
+                .map_err(|_| String::from("worker executable snapshot could not be written"))?;
+            hasher.update(&buffer[..count]);
+        }
+        Ok(crate::hex_bytes(hasher.finalize()))
     }
 
     fn approved_environment() -> Vec<(OsString, OsString)> {

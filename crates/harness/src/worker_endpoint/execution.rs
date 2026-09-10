@@ -14,25 +14,108 @@
         let owner_proof = WorkerOwnerProof::new("linux-peer-and-credential-authenticated")
             .map_err(|_| String::from("worker owner proof is invalid"))?;
         let mut active = None;
+        let mut auth_slots = AuthSlotBudget::default();
+        let mut pending_authentication = Vec::new();
         loop {
             reap_execution(&mut active, runtime)?;
-            match listener.accept() {
-                Ok((stream, _)) => {
-                    handle_connection(
-                        stream,
+            let mut progressed = false;
+            if let Some(result) = reap_authentication(
+                &mut pending_authentication,
+                &mut auth_slots,
+            ) {
+                progressed = true;
+                if let Ok(connection) = result {
+                    handle_authenticated_connection(
+                        connection.stream,
+                        connection.peer,
                         config,
-                        bootstrap,
                         runtime,
                         &owner_proof,
                         &mut active,
                     )?;
                 }
-                Err(error) if error.kind() == ErrorKind::WouldBlock => {
-                    thread::sleep(POLL_INTERVAL);
+            }
+            if auth_slots.try_acquire() {
+                match listener.accept() {
+                    Ok((stream, _)) => {
+                        progressed = true;
+                        let peer = bootstrap.peer.clone();
+                        let proof = bootstrap.peer_proof.clone().ok_or_else(|| {
+                            String::from("worker peer proof is unavailable")
+                        })?;
+                        let credential_path = config.credential_path.clone();
+                        let handle = thread::Builder::new()
+                            .name(String::from("sts2-worker-authentication"))
+                            .spawn(move || {
+                                authenticate_connection_owned(
+                                    stream,
+                                    peer,
+                                    proof,
+                                    credential_path,
+                                )
+                            })
+                            .map_err(|_| {
+                                String::from("worker authentication thread could not start")
+                            })?;
+                        pending_authentication.push(PendingAuthentication { handle });
+                    }
+                    Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                        auth_slots.release();
+                    }
+                    Err(_) => return Err(String::from("worker endpoint accept failed")),
                 }
-                Err(_) => return Err(String::from("worker endpoint accept failed")),
+            }
+            if !progressed {
+                thread::sleep(POLL_INTERVAL);
             }
         }
+    }
+
+    struct PendingAuthentication {
+        handle: thread::JoinHandle<Result<AuthenticatedConnection, String>>,
+    }
+
+    struct AuthenticatedConnection {
+        stream: UnixStream,
+        peer: PeerSession,
+    }
+
+    #[derive(Default)]
+    struct AuthSlotBudget {
+        active: usize,
+    }
+
+    impl AuthSlotBudget {
+        fn try_acquire(&mut self) -> bool {
+            if self.active >= MAX_AUTH_SLOTS {
+                return false;
+            }
+            self.active += 1;
+            true
+        }
+
+        fn release(&mut self) {
+            if self.active > 0 {
+                self.active -= 1;
+            }
+        }
+    }
+
+    fn reap_authentication(
+        pending: &mut Vec<PendingAuthentication>,
+        slots: &mut AuthSlotBudget,
+    ) -> Option<Result<AuthenticatedConnection, String>> {
+        let index = pending
+            .iter()
+            .position(|authentication| authentication.handle.is_finished())?;
+        let authentication = pending.swap_remove(index);
+        slots.release();
+        Some(
+            authentication
+                .handle
+                .join()
+                .unwrap_or_else(|_| Err(String::from("worker authentication thread failed"))),
+        )
     }
 
     fn reap_execution(
@@ -55,17 +138,16 @@
         runtime.complete_execution(completion)
     }
 
-    fn handle_connection(
+    fn handle_authenticated_connection(
         stream: UnixStream,
+        peer: PeerSession,
         config: &EndpointConfig,
-        bootstrap: &Bootstrap,
         runtime: &mut WorkerRuntime,
         owner_proof: &WorkerOwnerProof,
         active: &mut Option<ActiveExecution>,
     ) -> Result<(), String> {
-        let peer = authenticate_connection(&stream, bootstrap, &config.credential_path)?;
         let mut transport = stream;
-        let request_bytes = read_transport_frame(&mut transport, &peer)?;
+        let request_bytes = read_transport_frame(&mut transport, &peer, TRANSPORT_TIMEOUT)?;
         let request = WorkerRequest::decode(&request_bytes)
             .map_err(|_| String::from("worker request is invalid"))?;
         let capability = capability_for(request.command());
@@ -95,6 +177,19 @@
             start_execution(*handoff, config, runtime, active)?;
         }
         Ok(())
+    }
+
+    fn authenticate_connection_owned(
+        stream: UnixStream,
+        peer: LinuxPeer,
+        proof: Arc<PeerProofState>,
+        credential_path: PathBuf,
+    ) -> Result<AuthenticatedConnection, String> {
+        let session = authenticate_connection(&stream, &peer, &proof, &credential_path)?;
+        Ok(AuthenticatedConnection {
+            stream,
+            peer: session,
+        })
     }
 
     fn capability_for(command: WorkerCommand) -> WorkerCapability {
@@ -134,7 +229,7 @@
     }
 
     struct ChildConfig {
-        binary: PathBuf,
+        executable: ApprovedExecutable,
         environment: Vec<(OsString, OsString)>,
         store_path: PathBuf,
         fingerprint: ExecutionFingerprint,
@@ -143,7 +238,7 @@
     impl ChildConfig {
         fn from_endpoint(config: &EndpointConfig) -> Self {
             Self {
-                binary: config.runtime_binary.clone(),
+                executable: config.runtime_executable.clone(),
                 environment: config.environment.clone(),
                 store_path: config.execution_store_path.clone(),
                 fingerprint: config.fingerprint.clone(),
@@ -153,7 +248,7 @@
 
     fn run_runtime_child(task: &WorkerExecutionTask, config: &ChildConfig) -> Result<(), String> {
         let tuple = &task.running().tuple;
-        let mut command = std::process::Command::new(&config.binary);
+        let mut command = std::process::Command::new(config.executable.command_path());
         command
             .arg("--resume")
             .env_clear()

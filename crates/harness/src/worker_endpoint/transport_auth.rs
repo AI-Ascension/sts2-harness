@@ -31,18 +31,15 @@
 
     fn authenticate_connection(
         stream: &UnixStream,
-        bootstrap: &Bootstrap,
+        peer: &LinuxPeer,
+        proof_state: &PeerProofState,
         credential_path: &Path,
     ) -> Result<PeerSession, String> {
-        let proof = bootstrap
-            .peer_proof
-            .as_ref()
-            .ok_or_else(|| String::from("worker peer proof is unavailable"))?;
-        let session = PeerSession::authenticate(stream, &bootstrap.peer, proof)?;
+        let session = PeerSession::authenticate(stream, peer, proof_state)?;
         let mut stream = stream
             .try_clone()
             .map_err(|_| String::from("worker transport could not be prepared"))?;
-        let auth = read_transport_frame(&mut stream, &session)?;
+        let auth = read_transport_frame(&mut stream, &session, AUTH_TIMEOUT)?;
         let credential = read_credential(credential_path)?;
         let mut expected = Zeroizing::new(Vec::with_capacity(AUTH_MAGIC.len() + credential.len()));
         expected.extend_from_slice(AUTH_MAGIC);
