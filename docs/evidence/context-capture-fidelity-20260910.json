@@ -10,8 +10,8 @@
     "external_network_attempts": 0
   },
   "successor": {
-    "revision": "b905429a2d0c0890b0bf7fcc4568467126df519d",
-    "executable_sha256": "13935b51950cde3af20f5e8975454c7a1fe3005e8e70cb6622760d6cd919832e",
+    "revision": "f3746edc62a950de490b4fdfefe8f5dea38d440d",
+    "executable_sha256": "ddb1f2b175054f179259d1c86372863c5059609e0ab486a3634ee472240a8d21",
     "invocation_count": 1,
     "external_network_attempts": 0
   },
@@ -43,8 +43,8 @@
       "external_network_attempts": 0
     },
     "successor": {
-      "revision": "b905429a2d0c0890b0bf7fcc4568467126df519d",
-      "executable_sha256": "c5a2b59d858010d30b7bd0a4a098a02a009c90bf09c98571d3abb9764aa92bfc",
+      "revision": "f3746edc62a950de490b4fdfefe8f5dea38d440d",
+      "executable_sha256": "ff1aa98a1fde3ba71f5820aa526028ebf0fdb69488cee05222029d76a298beca",
       "invocation_count": 1,
       "external_network_attempts": 0
     },
@@ -56,7 +56,9 @@
       "connection-count": true
     },
     "decision_equal": true,
-    "normalizations": ["ephemeral fake-server peer ports"],
+    "normalizations": [
+      "ephemeral fake-server peer ports"
+    ],
     "result": "passed"
   },
   "failure_cases": {
