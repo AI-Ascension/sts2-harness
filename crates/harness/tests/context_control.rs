@@ -6,8 +6,8 @@ use serde_json::json;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use sts2_harness::{
-    ContextBoundary, ContextDraft, ContextItem, ContextItemRef, ContextNote, ContextRenderer,
-    ControlAuthority, ExoConfig, ExoError, ExoProvider, ExoSession, ExoTransport,
+    ContextBoundary, ContextDraft, ContextItem, ContextItemRef, ContextNote, ContextRenderError,
+    ContextRenderer, ControlAuthority, ExoConfig, ExoError, ExoProvider, ExoSession, ExoTransport,
     ExoTransportError, GateStatus, ManagedRenderInput, ManagementProfile, ModelExecutionId,
 };
 
@@ -148,6 +148,60 @@ fn compiled_exo_session_sends_the_approved_bytes_once() {
         .expect_err("different reserved execution must fail");
     assert_eq!(error, ExoError::InvalidRequest);
     assert_eq!(seen.lock().expect("lock").len(), 1);
+}
+
+#[test]
+fn renderer_rejects_unreadable_expired_and_unselected_pinned_content() {
+    let config = ExoConfig::new(REVISION, 64 * 1024, 1024, 1_000).expect("config");
+    let mut registry = BTreeMap::new();
+    let invalid_bytes = vec![0xff, 0xfe];
+    let invalid = ContextItem {
+        reference: ContextItemRef {
+            item_id: "invalid-utf8".to_owned(),
+            version: 1,
+            sha256: sha256(&invalid_bytes),
+        },
+        kind: "history".to_owned(),
+        bytes: invalid_bytes,
+        protected: false,
+        expires_at: 100,
+    };
+    registry.insert("invalid-utf8:1".to_owned(), invalid.clone());
+    let mut draft = ContextDraft::new("draft-invalid", "revision-1");
+    draft.selected_items.push(invalid.reference.clone());
+    assert_eq!(
+        ContextRenderer::enabled_at(&boundary(), render_input(), &draft, &registry, &config, 1,)
+            .expect_err("invalid UTF-8 must fail closed"),
+        ContextRenderError::InvalidUtf8
+    );
+
+    let valid_bytes = b"expired fixture".to_vec();
+    let expired = ContextItem {
+        reference: ContextItemRef {
+            item_id: "expired-1".to_owned(),
+            version: 1,
+            sha256: sha256(&valid_bytes),
+        },
+        kind: "history".to_owned(),
+        bytes: valid_bytes,
+        protected: false,
+        expires_at: 2,
+    };
+    registry.insert("expired-1:1".to_owned(), expired.clone());
+    draft.selected_items = vec![expired.reference.clone()];
+    assert_eq!(
+        ContextRenderer::enabled_at(&boundary(), render_input(), &draft, &registry, &config, 2,)
+            .expect_err("expired content must fail closed"),
+        ContextRenderError::ExpiredItem
+    );
+
+    draft.selected_items.clear();
+    draft.pinned_item_ids = vec!["expired-1".to_owned()];
+    assert_eq!(
+        ContextRenderer::enabled_at(&boundary(), render_input(), &draft, &registry, &config, 1,)
+            .expect_err("unselected pin must fail closed"),
+        ContextRenderError::InvalidInput("pinned item is not selected")
+    );
 }
 
 #[test]

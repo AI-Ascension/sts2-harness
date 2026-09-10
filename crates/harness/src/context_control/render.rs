@@ -126,6 +126,7 @@ pub enum ContextRenderError {
     UnknownItem,
     ProtectedItem,
     ExpiredItem,
+    InvalidUtf8,
     TooLarge,
     Encode,
 }
@@ -137,6 +138,7 @@ impl std::fmt::Display for ContextRenderError {
             Self::UnknownItem => "selected item is unavailable",
             Self::ProtectedItem => "protected item cannot be selected for editing",
             Self::ExpiredItem => "selected item is expired",
+            Self::InvalidUtf8 => "selected item is not valid UTF-8",
             Self::TooLarge => "prepared context exceeds its bound",
             Self::Encode => "prepared context encoding failed",
         })
@@ -183,9 +185,59 @@ impl ContextRenderer {
         registry: &BTreeMap<String, ContextItem>,
         config: &ExoConfig,
     ) -> Result<PreparedContext, ContextRenderError> {
+        Self::enabled_at(
+            boundary,
+            request,
+            draft,
+            registry,
+            config,
+            boundary.generation,
+        )
+    }
+
+    /// Renders against an explicit logical clock. The compatibility `enabled` entry point uses
+    /// the boundary generation as its deterministic clock; callers with a wall-clock or fixture
+    /// clock should use this method so expiry is checked at the same instant as approval.
+    pub fn enabled_at(
+        boundary: &ContextBoundary,
+        request: ManagedRenderInput,
+        draft: &ContextDraft,
+        registry: &BTreeMap<String, ContextItem>,
+        config: &ExoConfig,
+        now: u64,
+    ) -> Result<PreparedContext, ContextRenderError> {
         validate_request(&request)?;
         if draft.selected_items.len() > MAX_CONTEXT_ITEMS || draft.notes.len() > MAX_CONTEXT_NOTES {
             return Err(ContextRenderError::TooLarge);
+        }
+        if draft
+            .selected_items
+            .iter()
+            .any(|reference| !reference.valid())
+            || draft
+                .notes
+                .iter()
+                .any(|note| !note.reference.valid() || !valid_attributed_to(&note.attributed_to))
+            || draft
+                .objective
+                .as_ref()
+                .is_some_and(|reference| !reference.valid())
+        {
+            return Err(ContextRenderError::InvalidInput(
+                "context reference is invalid",
+            ));
+        }
+        if draft.pinned_item_ids.len() > draft.selected_items.len()
+            || draft.pinned_item_ids.iter().any(|item_id| {
+                !draft
+                    .selected_items
+                    .iter()
+                    .any(|reference| reference.item_id == *item_id)
+            })
+        {
+            return Err(ContextRenderError::InvalidInput(
+                "pinned item is not selected",
+            ));
         }
         let mut selected = Vec::with_capacity(draft.selected_items.len());
         for reference in &draft.selected_items {
@@ -198,15 +250,17 @@ impl ContextRenderer {
             if item.protected {
                 return Err(ContextRenderError::ProtectedItem);
             }
-            if !item.editable(boundary.generation) {
+            if !item.editable(now) {
                 return Err(ContextRenderError::ExpiredItem);
             }
+            let content =
+                std::str::from_utf8(&item.bytes).map_err(|_| ContextRenderError::InvalidUtf8)?;
             selected.push(json!({
                 "item_id": item.reference.item_id,
                 "version": item.reference.version,
                 "sha256": item.reference.sha256,
                 "kind": item.kind,
-                "content": String::from_utf8_lossy(&item.bytes),
+                "content": content,
             }));
         }
         let notes = draft
@@ -216,18 +270,20 @@ impl ContextRenderer {
                 let item = registry
                     .get(&reference_key(&note.reference))
                     .ok_or(ContextRenderError::UnknownItem)?;
-                if item.reference != note.reference || !item.editable(boundary.generation) {
+                if item.reference != note.reference || !item.editable(now) {
                     return Err(ContextRenderError::ExpiredItem);
                 }
                 if item.bytes.len() > MAX_NOTE_BYTES {
                     return Err(ContextRenderError::TooLarge);
                 }
+                let content = std::str::from_utf8(&item.bytes)
+                    .map_err(|_| ContextRenderError::InvalidUtf8)?;
                 Ok(json!({
                     "item_id": item.reference.item_id,
                     "version": item.reference.version,
                     "sha256": item.reference.sha256,
                     "attributed_to": note.attributed_to,
-                    "content": String::from_utf8_lossy(&item.bytes),
+                    "content": content,
                 }))
             })
             .collect::<Result<Vec<_>, ContextRenderError>>()?;
@@ -238,13 +294,15 @@ impl ContextRenderer {
                 let item = registry
                     .get(&reference_key(reference))
                     .ok_or(ContextRenderError::UnknownItem)?;
-                if item.reference != *reference || !item.editable(boundary.generation) {
+                if item.reference != *reference || !item.editable(now) {
                     return Err(ContextRenderError::ExpiredItem);
                 }
                 if item.bytes.len() > MAX_OBJECTIVE_BYTES {
                     return Err(ContextRenderError::TooLarge);
                 }
-                Ok(String::from_utf8_lossy(&item.bytes).into_owned())
+                std::str::from_utf8(&item.bytes)
+                    .map(str::to_owned)
+                    .map_err(|_| ContextRenderError::InvalidUtf8)
             })
             .transpose()?;
         let managed_context = json!({
@@ -356,6 +414,14 @@ fn validate_request(request: &ManagedRenderInput) -> Result<(), ContextRenderErr
 
 fn reference_key(reference: &super::types::ContextItemRef) -> String {
     format!("{}:{}", reference.item_id, reference.version)
+}
+
+fn valid_attributed_to(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.bytes().enumerate().all(|(index, byte)| {
+            byte.is_ascii_alphanumeric() || (index > 0 && b"._:-".contains(&byte))
+        })
 }
 
 fn manifest_digest(input: &[u8], schema: &[u8], configuration: &[u8], profile: &str) -> String {
