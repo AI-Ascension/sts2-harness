@@ -136,8 +136,9 @@ fn decide(
         .as_str()
         .filter(|id| !id.is_empty())
         .unwrap_or("astra-bridge-execution");
-    if capture.enabled() {
-        let schema_bytes = std::fs::read(&schema)?;
+    if capture.enabled()
+        && let Ok(schema_bytes) = std::fs::read(&schema)
+    {
         let mut argv = CODEX_ARGS
             .iter()
             .map(|argument| (*argument).to_owned())
@@ -150,15 +151,16 @@ fn decide(
             output.to_string_lossy().into_owned(),
             "-".to_owned(),
         ]);
-        let configuration = serde_json::to_vec(&json!({
+        if let Ok(configuration) = serde_json::to_vec(&json!({
             "argv": argv,
             "working_directory": directory.0.to_string_lossy(),
-        }))?;
-        PreparedAstraInput::new(prompt.as_bytes(), &schema_bytes, &configuration).capture(
-            capture,
-            execution_id,
-            None,
-        );
+        })) {
+            PreparedAstraInput::new(prompt.as_bytes(), &schema_bytes, &configuration).capture(
+                capture,
+                execution_id,
+                None,
+            );
+        }
     }
     let stdout = child.stdout.take().ok_or("missing provider stdout")?;
     let stderr = child.stderr.take().ok_or("missing provider stderr")?;
