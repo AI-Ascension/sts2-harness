@@ -6,7 +6,7 @@ use sts2_harness::{
     ExecutionFingerprint, ExecutionLineage, ExecutionStore, ModelExecutionId,
 };
 
-use super::super::durable::DurableHandle;
+use super::super::durable::{DurableHandle, OperationCatalogEvidence};
 use super::reconnect_support::*;
 use super::*;
 
@@ -49,6 +49,7 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
     ]);
     let parsed = parse::observation(&state, "state_response", &port.config)?;
     let action = parsed.actions.actions()[0].clone();
+    let catalog_raw = parsed.catalog_raw.clone();
     let observation = port.install(parsed)?;
     durable.refresh_resume_boundary()?;
     let divergent = synthetic_observation(
@@ -57,10 +58,14 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
         "combat",
         json!([{"action_id":"combat.end-turn", "action":{"kind":"end_turn"}}]),
     )?;
-    assert!(durable.verify_resume_boundary(&divergent).is_err());
-    durable.verify_resume_boundary(&observation)?;
+    assert!(
+        durable
+            .verify_resume_boundary_with_catalog(&divergent, &catalog_raw)
+            .is_err()
+    );
+    durable.verify_resume_boundary_with_catalog(&observation, &catalog_raw)?;
     let identity = ActionIdentity::new(
-        "op-settled",
+        SETTLED_OPERATION_ID,
         observation.state_id(),
         observation.generation(),
         action.action_id(),
@@ -68,7 +73,7 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
     let receipt = port.dispatch_action(&identity, &action)?;
     assert_eq!(receipt.status(), sts2_harness::DispatchStatus::Settled);
     assert_eq!(
-        durable.operation_state("op-settled")?,
+        durable.operation_state(SETTLED_OPERATION_ID)?,
         sts2_harness::OperationState::Settled
     );
     durable.refresh_resume_boundary()?;
@@ -87,8 +92,8 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
         Vec::new(),
     );
     let reservation = match durable.decision_admission_with_reuse(&input)? {
-        super::super::DecisionAdmission::Fresh(reservation) => reservation,
-        super::super::DecisionAdmission::Reused(_) => {
+        super::super::decision_admission::DecisionAdmission::Fresh(reservation) => reservation,
+        super::super::decision_admission::DecisionAdmission::Reused(_) => {
             return Err("new decision unexpectedly reused a result".into());
         }
     };
@@ -104,35 +109,46 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
             rationale: String::from("provider must not be called"),
         },
     };
-    let mut recorder = super::super::recording::DecisionRecorder::new(
+    let mut recorder = super::super::recording::DecisionRecorder::with_durable(
         &mut source,
         TelemetryHandle::disabled(),
-        Some(durable.clone()),
+        durable.clone(),
     );
     assert_eq!(recorder.decide(&input)?, decision);
     drop(recorder);
     assert_eq!(source.calls, 0);
     assert!(matches!(
         durable.decision_admission_with_reuse(&input)?,
-        super::super::DecisionAdmission::Reused(_)
+        super::super::decision_admission::DecisionAdmission::Reused(_)
     ));
 
     let pending_action = EpisodeLegalAction::new("combat.end-turn-pending", ActionKind::EndTurn)?;
+    let recovery_context = recovery_original_context();
     let pending_catalog = json!([{
         "action_id": "combat.end-turn-pending",
         "action": {"kind": "end_turn"}
     }]);
-    durable.operation_intent(
+    let pending_input = json!({
+        "state_id": PENDING_STATE_ID,
+        "generation": observation.generation(),
+        "legal_actions": pending_catalog.clone()
+    });
+    let pending_catalog_raw = serde_json::to_vec(
+        pending_input
+            .get("legal_actions")
+            .ok_or("pending catalog omitted from operation input")?,
+    )?;
+    durable.operation_intent_with_catalog(
         PENDING_OPERATION_ID,
         PENDING_STATE_ID,
         observation.generation(),
         &pending_action,
         &json!({"kind":"end_turn"}),
-        &json!({
-            "state_id": PENDING_STATE_ID,
-            "generation": observation.generation(),
-            "legal_actions": pending_catalog
-        }),
+        OperationCatalogEvidence {
+            input: &pending_input,
+            raw: &pending_catalog_raw,
+            original_context: Some(&recovery_context),
+        },
     )?;
     let pending_digest = durable.operation_payload_digest(PENDING_OPERATION_ID)?;
     let canonical_action =
@@ -162,6 +178,7 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
         TelemetryHandle::disabled(),
         durable.clone(),
     )?;
+    enable_historical_recovery(&mut resumed)?;
     resumed.allocated = true;
     let mut mcp = McpProcess::spawn(&resumed.config)?;
     wire::initialize_mcp(&mut mcp)?;
@@ -175,8 +192,9 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
     assert_eq!(resumed_observation.generation(), 1);
 
     let terminal = synthetic_observation("victory-2", 2, "victory", json!([]))?;
-    durable.checkpoint(&terminal, &json!([]))?;
-    resumed.complete_durable_observation(&terminal)?;
+    let terminal_catalog_raw = serde_json::to_vec(&json!([]))?;
+    durable.checkpoint_raw(&terminal, &terminal_catalog_raw)?;
+    durable.complete_observation(&terminal)?;
     assert!(durable.decision_admission_with_reuse(&input).is_err());
     resumed.mcp.as_mut().ok_or("missing MCP")?.close()?;
     Ok(())

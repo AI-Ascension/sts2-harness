@@ -5,7 +5,7 @@ use sts2_harness::{
     OperationState,
 };
 
-use super::super::durable::DurableHandle;
+use super::super::durable::{DurableHandle, OperationCatalogEvidence};
 use super::reconnect_support::*;
 use super::*;
 
@@ -26,15 +26,32 @@ impl RecoveryCase {
         store.start_episode(&lineage, &fingerprint)?;
         let durable = DurableHandle::from_store_for_test(store, lineage, fingerprint)?;
         let action = EpisodeLegalAction::new("combat.end-turn-pending", ActionKind::EndTurn)?;
-        durable.operation_intent(
+        let recovery_context = recovery_original_context();
+        let catalog = json!([{
+            "action_id": action.action_id(),
+            "action": {"kind":"end_turn"}
+        }]);
+        let input = json!({
+            "state_id": PENDING_STATE_ID,
+            "generation": 0,
+            "legal_actions": catalog
+        });
+        let catalog_raw = serde_json::to_vec(
+            input
+                .get("legal_actions")
+                .ok_or("pending catalog omitted from operation input")?,
+        )?;
+        durable.operation_intent_with_catalog(
             PENDING_OPERATION_ID,
             PENDING_STATE_ID,
             0,
             &action,
             &json!({"kind":"end_turn"}),
-            &json!({"state_id":PENDING_STATE_ID,"generation":0,"legal_actions":[
-                {"action_id":action.action_id(),"action":{"kind":"end_turn"}}
-            ]}),
+            OperationCatalogEvidence {
+                input: &input,
+                raw: &catalog_raw,
+                original_context: Some(&recovery_context),
+            },
         )?;
         let digest = durable.operation_payload_digest(PENDING_OPERATION_ID)?;
         durable.operation_dispatched(PENDING_OPERATION_ID, &digest)?;
@@ -83,10 +100,16 @@ impl RecoveryCase {
             TelemetryHandle::disabled(),
             self.durable.clone(),
         )?;
+        enable_historical_recovery(&mut port)?;
+        port.allocated = true;
         port.reconcile_pending_operations()
     }
 
-    fn assert_requests(&self, reconciled: bool) -> Result<(), Box<dyn std::error::Error>> {
+    fn assert_requests(
+        &self,
+        reconciled: bool,
+        reobserved: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let requests = std::fs::read_to_string(self.fixture.0.join("requests"))?;
         let calls: Vec<Value> = requests
             .lines()
@@ -96,17 +119,24 @@ impl RecoveryCase {
             .iter()
             .filter_map(|value| value["params"]["name"].as_str())
             .collect();
-        let expected = if reconciled {
-            vec!["watchdog.operation_lookup", "watchdog.operation_reconcile"]
-        } else {
-            vec!["watchdog.operation_lookup"]
-        };
+        let mut expected = vec!["watchdog.operation_lookup"];
+        if reconciled {
+            expected.push("watchdog.operation_reconcile");
+        }
+        if reobserved {
+            expected.push("sts2.reobserve");
+        }
         assert_eq!(
             names, expected,
             "recovery must never poll or dispatch ordinary gameplay"
         );
         let mut original = None;
-        for call in calls.iter().filter(|value| value["method"] == "tools/call") {
+        for call in calls.iter().filter(|value| {
+            matches!(
+                value["params"]["name"].as_str(),
+                Some("watchdog.operation_lookup" | "watchdog.operation_reconcile")
+            )
+        }) {
             let reference = &call["params"]["arguments"]["payload"]["operation"];
             assert_eq!(reference["operation_id"], PENDING_OPERATION_ID);
             assert_eq!(
@@ -156,7 +186,7 @@ fn subprocess_recovery_resolves_unknown_and_accepts_retained_terminal_states()
             case.durable.operation_state(PENDING_OPERATION_ID)?,
             OperationState::Reconciled
         );
-        case.assert_requests(true)?;
+        case.assert_requests(true, true)?;
     }
     Ok(())
 }
@@ -185,7 +215,7 @@ fn subprocess_missing_or_unresolved_evidence_does_not_poll_gameplay()
                 .operation_state(PENDING_OPERATION_ID)?
                 .is_unresolved()
         );
-        case.assert_requests(lookup != "NOT_FOUND")?;
+        case.assert_requests(lookup != "NOT_FOUND", false)?;
     }
     Ok(())
 }
@@ -223,7 +253,7 @@ fn subprocess_missing_or_cross_operation_witness_never_closes_durable_uncertaint
                 .operation_state(PENDING_OPERATION_ID)?
                 .is_unresolved()
         );
-        case.assert_requests(true)?;
+        case.assert_requests(true, false)?;
     }
     Ok(())
 }
