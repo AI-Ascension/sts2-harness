@@ -63,7 +63,14 @@ fn parse_with_limit(
         return Err(CoopNativeEnvelopeError::DepthExceeded);
     }
     let envelope = parse_envelope(value)?;
-    if expected_request.is_some_and(|request| request != envelope.kind.is_request()) {
+    let actual_request = match envelope.kind() {
+        CoopNativeKind::RecoveryResponse => envelope
+            .recovery_response()
+            .and_then(CoopNativeRecoveryResponse::status)
+            .is_none(),
+        kind => kind.is_request(),
+    };
+    if expected_request.is_some_and(|request| request != actual_request) {
         return Err(CoopNativeEnvelopeError::WrongDirection);
     }
     Ok(envelope)

@@ -23,10 +23,10 @@ fn parse_observation(value: &Value) -> Result<CoopNativeObservation, CoopNativeE
         .iter()
         .map(parse_peer)
         .collect::<Result<Vec<_>, _>>()?;
+    let mut peer_tokens = std::collections::BTreeSet::new();
     if peers
         .iter()
-        .enumerate()
-        .any(|(index, peer)| peers[..index].iter().any(|other| other == peer))
+        .any(|peer| !peer_tokens.insert(peer.peer_token.as_str()))
     {
         return Err(CoopNativeEnvelopeError::InvalidValue);
     }

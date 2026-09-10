@@ -235,6 +235,23 @@ canonical seed readback, fresh observation advancement, and the `run_started` wi
 artifact checks do not launch a host, call a provider, or prove native seed settlement, profile/save
 isolation, gameplay, deployment, or release compatibility.
 
+### Native co-op consumer checks
+
+The `coop_native` library tests verify the copied `coop-native-v1` artifact, all seventeen producer
+goldens in their declared direction, strict duplicate-key and closed-shape rejection, peer-token
+uniqueness, legal-catalog identity, and status-specific effect/receipt generation relations. They
+also cover the bodyful `recovery_response` request shape, unknown mutation retention, duplicate
+replay, and same-operation recovery without a blind retry. Settled effects require
+`before < after == observation.host_generation`; accepted, rejected, and unknown effects retain a
+null `after_host_generation` at the observation generation. A pending rejoin recovery may carry an
+accepted receipt at the same generation, as captured by the producer golden.
+
+These are deterministic source/component checks. They do not start an MCP process, make an HTTP
+request, acquire a gateway lease, call a provider, load a game, authenticate native peers, or prove
+live host legality, effect settlement, checksum convergence, disconnect/rejoin behavior,
+deployment, or release support. A separate authorized two-peer runtime run is required for those
+claims.
+
 The transport's live boundary remains explicit: a pre-start observation establishes the generation
 fence, one reservation permits one start mutation, and an unknown or disconnected start can only be
 reconciled with the original operation ID. `STS2_SEED_VERIFY_IDEMPOTENCY=true` adds an exact

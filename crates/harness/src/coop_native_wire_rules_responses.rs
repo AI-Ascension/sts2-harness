@@ -45,6 +45,23 @@ fn parse_effect_response(
     {
         return Err(CoopNativeEnvelopeError::InvalidValue);
     }
+    let before = receipt.before_host_generation;
+    let observation_generation = observation.host_generation;
+    match status {
+        CoopNativeStatus::Settled => {
+            let Some(after) = receipt.after_host_generation else {
+                return Err(CoopNativeEnvelopeError::InvalidValue);
+            };
+            if after != observation_generation || before >= after {
+                return Err(CoopNativeEnvelopeError::InvalidValue);
+            }
+        }
+        CoopNativeStatus::Accepted | CoopNativeStatus::Rejected | CoopNativeStatus::Unknown => {
+            if receipt.after_host_generation.is_some() || before != observation_generation {
+                return Err(CoopNativeEnvelopeError::InvalidValue);
+            }
+        }
+    }
     Ok(CoopNativeBody::EffectResponse(CoopNativeEffectResponse {
         operation_id,
         status,
@@ -112,6 +129,28 @@ fn parse_recovery_response(
             ))
     {
         return Err(CoopNativeEnvelopeError::InvalidValue);
+    }
+    if let (Some(status), Some(observation), Some(receipt)) = (status, &observation, &receipt) {
+        let before = receipt.before_host_generation;
+        let observation_generation = observation.host_generation;
+        match status {
+            CoopNativeStatus::Unknown => {
+                if before != observation_generation {
+                    return Err(CoopNativeEnvelopeError::InvalidValue);
+                }
+            }
+            CoopNativeStatus::Settled => {
+                if receipt.after_host_generation != Some(observation_generation) {
+                    return Err(CoopNativeEnvelopeError::InvalidValue);
+                }
+            }
+            CoopNativeStatus::Rejected => {
+                if receipt.after_host_generation.is_some() {
+                    return Err(CoopNativeEnvelopeError::InvalidValue);
+                }
+            }
+            CoopNativeStatus::Accepted => unreachable!("accepted recovery status was rejected above"),
+        }
     }
     Ok(CoopNativeBody::RecoveryResponse(CoopNativeRecoveryResponse {
         operation_id,

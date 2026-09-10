@@ -119,10 +119,16 @@ fn all_seventeen_goldens_parse_in_their_declared_direction() -> Result<(), Box<d
     ] {
         let bytes = golden(name);
         let value: Value = serde_json::from_slice(bytes)?;
-        let is_request = matches!(
-            value.get("kind").and_then(Value::as_str),
-            Some("legal_catalog_request" | "local_action_request" | "shared_vote_request" | "rejoin_request")
-        );
+        let is_request = match value.get("kind").and_then(Value::as_str) {
+            Some(
+                "legal_catalog_request"
+                | "local_action_request"
+                | "shared_vote_request"
+                | "rejoin_request",
+            ) => true,
+            Some("recovery_response") => value.get("status").is_some_and(Value::is_null),
+            _ => false,
+        };
         let parsed = if is_request {
             CoopNativeEnvelope::parse_request(bytes)
         } else {
@@ -154,6 +160,35 @@ fn parser_rejects_stale_digest_and_duplicate_members() -> Result<(), Box<dyn Err
     Ok(())
 }
 
+#[test]
+fn parser_rejects_duplicate_peer_tokens_even_when_snapshots_differ() -> Result<(), Box<dyn Error>> {
+    let mut value: Value = serde_json::from_slice(golden("observation-response"))?;
+    let local = value["observation"]["peers"][0]["peer_token"].clone();
+    value["observation"]["peers"][1]["peer_token"] = local;
+    value["observation"]["peers"][1]["role"] = json!("ally");
+    assert!(matches!(
+        CoopNativeEnvelope::parse_response(&serde_json::to_vec(&value)?),
+        Err(CoopNativeEnvelopeError::InvalidValue)
+    ));
+    Ok(())
+}
+
+#[test]
+fn parser_rejects_non_settled_and_recovery_generation_drift() -> Result<(), Box<dyn Error>> {
+    let mut unknown: Value = serde_json::from_slice(golden("local-action-unknown-response"))?;
+    unknown["receipt"]["after_host_generation"] = json!(2);
+    assert!(CoopNativeEnvelope::parse_response(&serde_json::to_vec(&unknown)?).is_err());
+
+    let mut rejected: Value = serde_json::from_slice(golden("local-action-rejected-response"))?;
+    rejected["receipt"]["before_host_generation"] = json!(0);
+    assert!(CoopNativeEnvelope::parse_response(&serde_json::to_vec(&rejected)?).is_err());
+
+    let mut recovered: Value = serde_json::from_slice(golden("local-action-recovered-response"))?;
+    recovered["receipt"]["after_host_generation"] = json!(1);
+    assert!(CoopNativeEnvelope::parse_response(&serde_json::to_vec(&recovered)?).is_err());
+    Ok(())
+}
+
 #[derive(Default)]
 struct CountingPort {
     calls: usize,
@@ -170,7 +205,7 @@ impl CoopNativePort for CountingPort {
 fn unknown_mutation_is_reconciled_without_retry() -> Result<(), Box<dyn Error>> {
     let request = parse_request("local-action-unknown-request")?;
     let unknown = parse_response("local-action-unknown-response")?;
-    let reconcile_request = parse_response("local-action-recovered-request")?;
+    let reconcile_request = parse_request("local-action-recovered-request")?;
     let reconcile_response = parse_response("local-action-recovered-response")?;
     let operation = request.operation_id().cloned().ok_or("operation missing")?;
     let mut coordinator = CoopNativeCoordinator::new(CountingPort::default(), lineage()?)?;
