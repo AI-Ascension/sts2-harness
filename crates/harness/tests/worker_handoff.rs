@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use sts2_harness::worker_handoff::{MAX_FRAME_BYTES, SCHEMA_DIGEST, WorkerCommand, WorkerRequest};
 
@@ -18,7 +17,7 @@ fn dispatch() -> Result<String, std::io::Error> {
 #[test]
 fn copied_schema_is_exact_and_all_request_goldens_decode() -> TestResult {
     let schema = std::fs::read(artifact().join("schema.json"))?;
-    assert_eq!(format!("{:x}", Sha256::digest(schema)), SCHEMA_DIGEST);
+    assert_eq!(sts2_harness::sha256_hex(schema), SCHEMA_DIGEST);
     for (name, command) in [
         ("probe-request", WorkerCommand::Probe),
         ("dispatch", WorkerCommand::Dispatch),

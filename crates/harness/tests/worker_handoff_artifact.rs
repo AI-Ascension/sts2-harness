@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use sts2_harness::worker_handoff::{MAX_FRAME_BYTES, PAYLOAD_DIGEST, SCHEMA_DIGEST};
@@ -16,7 +15,7 @@ fn root() -> PathBuf {
 fn full_copied_json_inventory_is_frozen_and_complete() -> TestResult {
     let inventory = std::fs::read(root().join("SHA256SUMS"))?;
     assert_eq!(
-        format!("{:x}", Sha256::digest(&inventory)),
+        sts2_harness::sha256_hex(&inventory),
         "7835a5396f3f9671b5dfa7e9a4f1ef4249809253a8554b6e6ad1cf6b32b502db"
     );
     let mut paths = BTreeSet::new();
@@ -24,7 +23,7 @@ fn full_copied_json_inventory_is_frozen_and_complete() -> TestResult {
         let (digest, path) = line.split_once("  ").ok_or("inventory row")?;
         assert!(paths.insert(path.to_owned()));
         let bytes = std::fs::read(root().join(path))?;
-        assert_eq!(format!("{:x}", Sha256::digest(bytes)), digest, "{path}");
+        assert_eq!(sts2_harness::sha256_hex(bytes), digest, "{path}");
     }
     let mut actual = BTreeSet::from(["schema.json".to_owned(), "manifest.json".to_owned()]);
     for folder in ["valid", "invalid"] {
@@ -45,7 +44,7 @@ fn full_copied_json_inventory_is_frozen_and_complete() -> TestResult {
 fn manifest_pins_the_decoder_limits_and_empty_operation_contract() -> TestResult {
     let bytes = std::fs::read(root().join("manifest.json"))?;
     assert_eq!(
-        format!("{:x}", Sha256::digest(&bytes)),
+        sts2_harness::sha256_hex(&bytes),
         "63a66dc883da24f2be324ce6c25cf8a5e103109f15bdddd49a713d19004fe76a"
     );
     let manifest: Value = serde_json::from_slice(&bytes)?;

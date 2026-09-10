@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 
 pub const COOP_RECEIPT_QUERY_PROTOCOL_VERSION: &str = "coop-receipt-query-v1";
 pub const COOP_RECEIPT_QUERY_ARTIFACT: &str = "sts2-protocol/coop-receipt-query-v1";
@@ -181,7 +180,7 @@ fn verify_checksums(files: &[(&str, &[u8])]) -> Result<(), CoopReceiptQueryArtif
 }
 
 fn format_digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    crate::sha256_hex(bytes)
 }
 
 #[cfg(test)]

@@ -241,7 +241,7 @@ impl RuntimeV2Runner {
             RuntimeV2Trajectory::new(TRAJECTORY_ID, &context, lineage.clone(), records)?;
         let trajectory_bytes =
             serde_json::to_vec(&trajectory).map_err(|_| RuntimeV2Error::Encode)?;
-        let content_digest = format!("{:x}", Sha256::digest(&trajectory_bytes));
+        let content_digest = crate::sha256_hex(&trajectory_bytes);
         let artifact = RuntimeV2ArtifactRecord::new(
             TRACE_ARTIFACT_ID,
             content_digest,

@@ -3,7 +3,6 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 
 use super::{
     EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES, ExoDecisionRequest, ExoError,
@@ -52,10 +51,7 @@ fn snapshot(edge_count: usize) -> Value {
 
 fn map_context(edge_count: usize) -> MapDecisionContext {
     let snapshot = snapshot(edge_count);
-    let digest = format!(
-        "{:x}",
-        Sha256::digest(serde_json::to_vec(&snapshot).unwrap())
-    );
+    let digest = crate::sha256_hex(serde_json::to_vec(&snapshot).unwrap());
     let wrapper = json!({
         "profile":RUNTIME_MAP_PROFILE,
         "schema_digest":RUNTIME_MAP_SCHEMA_DIGEST,

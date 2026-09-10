@@ -2,7 +2,6 @@
 
 use super::identity::CoopNativeLineage;
 use serde_json::Value;
-use sha2::{Digest as _, Sha256};
 
 /// Version of the accepted source and serialization component contract.
 pub const COOP_NATIVE_PROTOCOL_VERSION: &str = "coop-native-v1";
@@ -273,7 +272,7 @@ impl CoopNativeArtifactRecord {
             return Err(CoopNativeArtifactError::ArtifactTooLarge);
         }
         Ok(Self {
-            content_digest: format!("{:x}", Sha256::digest(bytes)),
+            content_digest: crate::sha256_hex(bytes),
             byte_length: bytes.len() as u64,
             lineage,
         })

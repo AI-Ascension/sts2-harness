@@ -6,8 +6,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use sha2::{Digest, Sha256};
-
 use sts2_harness::{
     AttemptKind, AttemptState, CatalogEvidence, Checkpoint, CompletionRecord, CompletionStatus,
     DecisionReference, ExecutionFingerprint, ExecutionLineage, ExecutionStore,
@@ -50,7 +48,7 @@ fn checkpoint(lineage: ExecutionLineage, sequence: u64, generation: u64) -> Chec
 }
 
 fn result_digest(payload: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(payload))
+    sts2_harness::sha256_hex(payload)
 }
 
 #[test]
