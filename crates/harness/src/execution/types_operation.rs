@@ -6,7 +6,6 @@ use super::super::core::{
 };
 use super::super::error::ExecutionStoreError;
 use serde_json::Value;
-use sha2::Digest;
 
 /// The recovery sideband caps the encoded canonical action at 65,536 bytes.  The decoded
 /// canonical JSON is deliberately kept below that bound so an invalid row can be rejected before
@@ -129,7 +128,7 @@ impl OperationIntent {
         if action_payload.is_empty() || action_payload.len() > MAX_OPERATION_ACTION_BYTES {
             return Err(ExecutionStoreError::InvalidOperation);
         }
-        let calculated = format!("{:x}", sha2::Sha256::digest(&action_payload));
+        let calculated = crate::sha256_hex(&action_payload);
         if calculated != payload_digest
             || !validate_canonical_action_envelope(
                 &action_id,

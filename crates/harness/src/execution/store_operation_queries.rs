@@ -4,7 +4,6 @@ use super::types::{
     MAX_CATALOG_BYTES, MAX_OPERATION_ACTION_BYTES, MAX_ORIGINAL_CONTEXT_BYTES, OperationIntent,
     OperationState, StoredOperation, valid_digest, valid_reference,
 };
-use sha2::Digest;
 
 /// Every operation query uses this projection. SQLite computes the source BLOB length and only
 /// returns the first `MAX_OPERATION_ACTION_BYTES + 1` bytes, so hostile rows cannot force an
@@ -105,7 +104,7 @@ pub(super) fn read_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Stored
         (Some(action_kind), Some(action_payload))
             if !action_payload.is_empty() && action_payload.len() <= MAX_OPERATION_ACTION_BYTES =>
         {
-            let calculated = format!("{:x}", sha2::Sha256::digest(&action_payload));
+            let calculated = crate::sha256_hex(&action_payload);
             if calculated != payload_digest {
                 return Err(rusqlite::Error::InvalidQuery);
             }

@@ -2,7 +2,6 @@
 
 use serde::ser::{SerializeMap, Serializer};
 use serde_json::{Map, Value};
-use sha2::{Digest, Sha256};
 
 use super::request::{TUPLE, digest, string, tuple};
 use super::{HandoffError, MAX_INTEGER, WorkerRequest, json};
@@ -110,7 +109,7 @@ impl TerminalRecord {
 
     /// SHA-256 of the entire canonical terminal, never merely `result_digest`.
     pub fn acknowledgment_digest(&self) -> Result<String, HandoffError> {
-        Ok(format!("{:x}", Sha256::digest(self.encode()?)))
+        Ok(crate::sha256_hex(self.encode()?))
     }
 
     /// Exact retained tuple match; no identity is rewritten after a reboot.

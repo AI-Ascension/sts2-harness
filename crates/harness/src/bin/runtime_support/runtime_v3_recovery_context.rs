@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Value, json};
-use sha2::Digest;
 
 use super::super::super::config::RuntimeConfig;
 use super::super::allocation_context::RecoveryAuthority;
@@ -144,7 +143,7 @@ impl RecoveryContext {
         if !valid_uuid_v4(&operation.intent.operation_id)
             || !valid_digest(&operation.intent.payload_digest)
             || !valid_digest(catalog_digest)
-            || format!("{:x}", sha2::Sha256::digest(catalog_raw)) != catalog_digest
+            || sts2_harness::sha256_hex(catalog_raw) != catalog_digest
         {
             return Err(String::from(
                 "durable operation boundary is incompatible with the recovery sideband",
@@ -231,7 +230,6 @@ include!("runtime_v3_recovery_context_validation.rs");
 mod context_tests {
     use super::*;
     use serde_json::json;
-    use sha2::Digest;
     use sts2_harness::{ExecutionLineage, OperationIntent, OperationState, StoredOperation};
 
     #[test]
@@ -240,8 +238,8 @@ mod context_tests {
             .map_err(|error| error.to_string())?;
         let action_payload = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}"#;
         let catalog_raw = br#"[{"action_id":"combat.end-turn","action":{"kind":"end_turn"}}]"#;
-        let payload_digest = format!("{:x}", sha2::Sha256::digest(action_payload));
-        let catalog_digest = format!("{:x}", sha2::Sha256::digest(catalog_raw));
+        let payload_digest = sts2_harness::sha256_hex(action_payload);
+        let catalog_digest = sts2_harness::sha256_hex(catalog_raw);
         let original_context = serde_json::to_vec(&json!({
             "deployment_id": "33333333-3333-3333-8333-333333333333",
             "instance_id": "44444444-4444-4444-8444-444444444444",

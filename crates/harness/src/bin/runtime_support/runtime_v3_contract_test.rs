@@ -3,7 +3,6 @@
 use std::{fs, path::PathBuf};
 
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use sts2_harness::{ActionKind, DispatchStatus, EpisodeLegalAction};
 
 fn artifact() -> PathBuf {
@@ -19,7 +18,7 @@ fn copied_contract_matches_authoritative_byte_inventory() -> Result<(), Box<dyn 
 {
     let sums = fs::read(artifact().join("SHA256SUMS"))?;
     assert_eq!(
-        format!("{:x}", Sha256::digest(&sums)),
+        sts2_harness::sha256_hex(&sums),
         "ddc7c0a3697bcb474de8e7967041302dab072e11bc9990ffd5a508eb391cc1db"
     );
     let sums = String::from_utf8(sums)?;
@@ -34,15 +33,12 @@ fn copied_contract_matches_authoritative_byte_inventory() -> Result<(), Box<dyn 
             _ => return Err("unexpected upstream path".into()),
         };
         assert_eq!(
-            format!("{:x}", Sha256::digest(fs::read(artifact().join(local))?)),
+            sts2_harness::sha256_hex(fs::read(artifact().join(local))?),
             digest
         );
     }
     assert_eq!(
-        format!(
-            "{:x}",
-            Sha256::digest(fs::read(artifact().join("schema.json"))?)
-        ),
+        sts2_harness::sha256_hex(fs::read(artifact().join("schema.json"))?),
         super::super::SCHEMA_DIGEST
     );
     Ok(())

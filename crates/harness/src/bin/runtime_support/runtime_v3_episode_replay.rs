@@ -5,7 +5,6 @@ use std::io::Read;
 #[cfg(test)]
 use serde_json::Value;
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use sts2_harness::{
     Decision, DecisionInput, DecisionSource, EpisodeObservation, EpisodeRunner,
     EpisodeRunnerConfig, EpisodeStage, PolicyError,
@@ -61,7 +60,7 @@ pub(super) fn run(
     } else {
         ReplayTrace::parse(&bytes)?
     };
-    let digest = format!("{:x}", Sha256::digest(&bytes));
+    let digest = sts2_harness::sha256_hex(&bytes);
     let mut source = ReplaySource::new(trace);
     println!(
         "{}",

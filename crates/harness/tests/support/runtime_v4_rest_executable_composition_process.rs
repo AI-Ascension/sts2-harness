@@ -11,13 +11,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
-
 use super::fixture::{
     CALLER_ID, DownstreamLedger, INSTANCE_ID, LEASE_EPOCH, LEASE_ID, MCP_SESSION_ID, ModServer,
     REST_SCHEMA_DIGEST, SESSION_ID, SelectorEncoding,
 };
+use serde_json::{Value, json};
 
 const MAX_CAPTURE_BYTES: usize = 4 * 1024 * 1024;
 const OUTPUT_TRUNCATION_MARKER: &[u8] = b"\n{\"event\":\"process_output_truncated\"}\n";
@@ -134,7 +132,7 @@ pub(crate) fn executable(name: &str) -> Result<PathBuf, Box<dyn std::error::Erro
 }
 
 fn sha256_file(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
-    Ok(format!("{:x}", Sha256::digest(fs::read(path)?)))
+    Ok(sts2_harness::sha256_hex(fs::read(path)?))
 }
 
 fn free_address() -> Result<SocketAddr, Box<dyn std::error::Error>> {

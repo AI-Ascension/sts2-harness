@@ -304,5 +304,5 @@ fn checksums_match() -> bool {
 }
 
 fn sha256(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    crate::sha256_hex(bytes)
 }

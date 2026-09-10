@@ -110,16 +110,16 @@ pub(super) fn response_evidence(
 
 pub(super) fn sha256_json(value: &Value) -> Result<String, String> {
     serde_json::to_vec(value)
-        .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
+        .map(sts2_harness::sha256_hex)
         .map_err(|error| format!("cannot hash runtime-v3 evidence: {error}"))
 }
 
 pub(super) fn sha256_bytes(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    sts2_harness::sha256_hex(bytes)
 }
 
 fn digest_text(value: &str) -> String {
-    format!("{:x}", Sha256::digest(value.as_bytes()))
+    sts2_harness::sha256_hex(value.as_bytes())
 }
 
 fn fingerprint_component(
@@ -197,7 +197,7 @@ fn mcp_executable(binary: &str) -> Result<Value, String> {
     }
     Ok(json!({
         "path": path.to_string_lossy(),
-        "sha256": format!("{:x}", hasher.finalize()),
+        "sha256": sts2_harness::hex_bytes(hasher.finalize()),
         "bytes": total,
     }))
 }
