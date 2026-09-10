@@ -3,7 +3,7 @@
 use super::{RuntimeV3Port, parse, recording};
 use serde_json::json;
 use std::time::{Duration, Instant};
-use sts2_harness::{BarrierError, BarrierPort, EpisodeRuntimePort, WaitOutcome, WaitSample};
+use sts2_harness::{BarrierError, BarrierPort, WaitOutcome, WaitSample};
 
 impl BarrierPort for RuntimeV3Port {
     fn wait_for_transition(
@@ -21,7 +21,7 @@ impl BarrierPort for RuntimeV3Port {
             let sample = if self.operations.contains_key(operation_id) {
                 if self.is_expert_profile()
                     && self.operations.get(operation_id).is_some_and(|record| {
-                        record.action.kind() == sts2_harness::ActionKind::UsePotion
+                        self.uses_expert_transport(&record.action, &record.payload)
                     })
                 {
                     self.poll_expert_operation(operation_id)?
@@ -32,7 +32,7 @@ impl BarrierPort for RuntimeV3Port {
                 || operation_id.starts_with("episode-wait-")
             {
                 // Idle stability observes host state; it cannot manufacture an action witness.
-                let observation = self.observe().map_err(|error| {
+                let observation = self.observe_for_idle_transition().map_err(|error| {
                     if std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true") {
                         // Codes are harness-owned constants. Do not log arbitrary port messages.
                         eprintln!("idle transition observation failed: code={}", error.code());
@@ -106,15 +106,21 @@ impl RuntimeV3Port {
             .get(operation_id)
             .map(|record| record.action.action_id().to_owned())
             .ok_or(BarrierError::InvalidOperation)?;
-        let value = self.call_tool("sts2.wait_for_transition", json!({
+        let (value, response_text) = self.call_tool_with_text("sts2.wait_for_transition", json!({
             "instance_id":self.config.instance_id, "mcp_session_id":self.config.mcp_session_id,
             "lease_id":self.config.lease_id, "lease_epoch":self.config.lease_epoch,
             "generation":self.generation, "operation_id":operation_id,
             "wait_for_millis":wait_for_millis
         })).map_err(|_| BarrierError::PortFailure)?;
-        let sample = parse::wait_sample(&value, &self.config, operation_id, generation)
-            .map_err(|_| BarrierError::PortFailure)?;
-        self.install_response(&value, "wait_response")
+        let sample = parse::wait_sample(
+            &value,
+            &response_text,
+            &self.config,
+            operation_id,
+            generation,
+        )
+        .map_err(|_| BarrierError::PortFailure)?;
+        self.install_response(&value, &response_text, "wait_response")
             .map_err(|_| BarrierError::PortFailure)?;
         let sample = if self.is_expert_profile() {
             self.compose_wait_sample(sample)

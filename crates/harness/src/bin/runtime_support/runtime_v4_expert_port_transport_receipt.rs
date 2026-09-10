@@ -22,7 +22,7 @@ impl RuntimeV3Port {
                         format!("expert settlement observation is invalid: {error}")
                     })?;
             let composed = expert_only_observation(&expert)?;
-            self.install_composed(&composed);
+            self.install_composed(&composed)?;
             Some(composed.observation)
         } else {
             None

@@ -174,6 +174,33 @@ The episode surface routes the declared playable stages through the provider por
 and recovery states are handled by the episode state machine. Its full-run tests use scripted
 observations and successors; they do not establish coverage of every target-game state or a live run.
 
+## Seeded-run transport handoff
+
+The additive seeded-run transport is an opt-in startup handoff layered onto the Runtime-v3
+coordinator. `STS2_SEED_PLAN_JSON` supplies a bounded, contiguous plan; the selected entry keeps its
+requested seed byte-for-byte. `STS2_SEED_CONTEXT_JSON` supplies the concrete context, which is
+validated as standard Ironclad with ascension 0 through 20, ordered acts and modifiers, a selection
+policy, profile baseline, save policy, and game/mod compatibility identities. The context digest
+excludes only its own digest field. Plan and context digests can be pinned independently through
+`STS2_SEED_PLAN_DIGEST` and `STS2_SEED_CONTEXT_DIGEST`.
+
+After allocation, the coordinator performs one read-only observation to establish the host
+generation fence. It then atomically creates `STS2_SEED_RESERVATION_PATH` before spawning the
+`seeded-run-v1` MCP profile. A new reservation permits one `start_seeded_run` mutation. A matching
+`start_pending`, `unknown`, or `settled` reservation enters reconcile-only recovery, and timeout or
+disconnect retains the original operation ID. The optional `STS2_SEED_VERIFY_IDEMPOTENCY=true`
+exchange repeats the exact request only to verify idempotency after settlement; it is not a second
+admission.
+
+The handoff accepts settlement only when the response carries the canonical seed, a fresh advanced
+host observation, and a `run_started` effect witness bound to the selected context and original
+generation. The harness records the bounded receipt and then continues the gameplay profile on the
+same leased instance; the harness does not infer settlement from process readiness, MCP
+acknowledgement, or HTTP success. The copied `sts2-protocol/seeded-run-v1` artifact has schema
+digest `5c659f344be78f84e8d783986925d462714f933cac95d18943358992f7d3e2b8` and is aligned with
+protocol main `d3ab5fca7d9d74bb31eeb3e5b343d8024ee44404`. Source/component and artifact checks do
+not establish a native seeded run, profile/save isolation, gameplay, or release compatibility.
+
 The current [Runtime-v3 entry point](../crates/harness/src/bin/runtime_support/runtime_v3.rs)
 assembles `EpisodeRunner`, one gateway/MCP port and an Exo decision source. It retains an in-memory
 operation ledger and emits a terminal summary. It does not wire `DecisionRecord`, `DecisionMemory`,

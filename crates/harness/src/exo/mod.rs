@@ -14,6 +14,7 @@ pub use codex_accounting::{
 };
 pub use decision::{BoundDecision, Decision, DecisionError, parse_decision};
 pub use protocol::{
+    EXO_MAP_REQUEST_OVERHEAD_BYTES, EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES,
     ExoConfig, ExoDecisionRequest, ExoError, ExoProvider, ExoTransport, ExoTransportError,
 };
 pub use sandbox::{SandboxError, SanitizedObservation};

@@ -1,0 +1,30 @@
+{
+  "case_id": "CT-HARNESS-WORKFLOW-V1-001",
+  "contract": "ascension.workflow/v1",
+  "schema": "../../schemas/workflow-v1.schema.json",
+  "artifact": "contract-artifact/workflow-v1",
+  "canonical_vectors": "contract-artifact/workflow-v1/canonical-vectors.json",
+  "vectors": {
+    "positive": ["conformance/workflow-v1/valid-strict.json"],
+    "duplicate_key": ["conformance/workflow-v1/invalid-duplicate-key.json"],
+    "unknown_node": ["conformance/workflow-v1/invalid-unknown-node.json"]
+  },
+  "setup": {
+    "live_runtime": false,
+    "network": false,
+    "provider": false,
+    "proprietary_data": false
+  },
+  "evidence": [
+    "strict_raw_json_decoder",
+    "typed_node_specific_configs",
+    "local_reference_validation",
+    "semantic_digest_vectors",
+    "immutable_catalog_publication"
+  ],
+  "unsupported_claims": [
+    "scheduler_execution",
+    "durable_store_recovery",
+    "native_game_compatibility"
+  ]
+}

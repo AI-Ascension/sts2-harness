@@ -2,12 +2,15 @@
 
 mod action_plan;
 mod coop;
+mod coop_receipt_query;
 mod idempotency;
 mod legal_actions;
+pub(crate) mod map;
 mod noncombat;
 mod observation;
 mod policy_router;
 mod postconditions;
+mod protected;
 mod recovery;
 mod run_setup;
 mod runner;
@@ -17,6 +20,11 @@ mod state_machine;
 mod transition;
 
 pub use coop::{CoopCoordinator, CoopError, CoopPeerRole, CoopSyncStatus};
+pub use coop_receipt_query::{
+    ReceiptQueryActionKind, ReceiptQueryCoordinate, ReceiptQueryError, ReceiptQueryIdentity,
+    ReceiptQueryIdentityError, ReceiptQueryLocation, ReceiptQueryReceipt, ReceiptQueryResult,
+    ReceiptQueryStatus,
+};
 pub use idempotency::{
     ActionIdentity, ActionLedger, Admission as ActionAdmission, IdempotencyError,
 };
@@ -27,14 +35,18 @@ pub use policy_router::{
     DecisionInput, DecisionSource, ExoDecisionSource, PolicyChoice, PolicyError, PolicyRouter,
 };
 pub use postconditions::{PostconditionError, VerifiedTransition, verify_settlement};
+pub use protected::{
+    EpisodeActionPort, EpisodeLifecyclePort, EpisodeObservationPort, ProtectedEpisodePort,
+};
 pub use recovery::{
     RecoveryController, RecoveryError, RecoveryOperation, RecoveryPort, RecoveryResult,
 };
 pub use run_setup::{RunSetupCoordinator, SetupPort};
 pub use runner::{
-    EpisodeRunReport, EpisodeRunner, EpisodeRunnerConfig, EpisodeRunnerError, EpisodeRuntimePort,
+    EpisodeRunFailure, EpisodeRunReport, EpisodeRunner, EpisodeRunnerConfig, EpisodeRunnerError,
+    EpisodeRuntimePort,
 };
-pub use shutdown::{EpisodeShutdown, ShutdownError, ShutdownPort};
+pub use shutdown::{EpisodeCleanupReport, EpisodeShutdown, ShutdownError, ShutdownPort};
 pub use stability_barrier::{BarrierError, BarrierPort, StabilityBarrier, WaitOutcome, WaitSample};
 pub use state_machine::{EpisodeMachine, EpisodeMachineError, EpisodePhase};
 pub use transition::{DispatchStatus, TransitionReceipt};

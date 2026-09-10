@@ -28,3 +28,34 @@ include!("runtime_v4_expert_validation.rs");
 include!("runtime_v4_expert_shape_root.rs");
 include!("runtime_v4_expert_shape_collections.rs");
 include!("runtime_v4_expert_shape_actions.rs");
+include!("runtime_v4_expert_fair_play.rs");
+
+#[cfg(test)]
+mod fair_play_tests {
+    use super::*;
+
+    #[test]
+    fn projected_selector_forms_use_a_separate_provider_validation_path()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../../protocol-artifact/runtime-v4-expert/golden/observation.json"
+        ))?;
+        value["legal_actions"] = serde_json::json!([
+            {"action_id":"select-card:7:card:1", "action":{"kind":"select_card", "card_id":"card:1"}},
+            {"action_id":"confirm:7", "action":{"kind":"confirm_selection"}},
+            {"action_id":"select-player:7:player:local", "action":{"kind":"select_player", "player_id":"player:local"}}
+        ]);
+        assert_eq!(
+            RuntimeV4ExpertObservation::from_value(value.clone()),
+            Err(RuntimeV4ExpertParseError::InvalidShape)
+        );
+        assert_eq!(
+            crate::SanitizedObservation::new(value.clone()),
+            Err(crate::SandboxError::InvalidExpertObservation)
+        );
+        value["harness_projection"] =
+            Value::String(crate::RUNTIME_V4_EXPERT_FAIR_PLAY_PROJECTION.to_owned());
+        assert!(crate::SanitizedObservation::new(value).is_ok());
+        Ok(())
+    }
+}

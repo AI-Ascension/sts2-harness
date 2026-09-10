@@ -40,17 +40,26 @@ impl EpisodeRunner {
             request.observation,
             request.legal_actions,
             request.action_id,
-            request.step_number,
         )?;
         let receipt = match port.dispatch_action(&execution.identity, &execution.action) {
             Ok(receipt) => receipt,
-            Err(_error) => {
+            Err(dispatch) => {
                 let context = ActionContext {
                     observation: request.observation,
                     execution: &execution,
                     step_number: request.step_number,
                 };
-                return self.recover_action(port, machine, context, counters);
+                return match self.recover_action(port, machine, context, counters) {
+                    Ok(result) => Ok(result),
+                    Err(EpisodeRunnerError::ConflictingOperation) => {
+                        Err(EpisodeRunnerError::ConflictingOperation)
+                    }
+                    Err(recovery) => Err(EpisodeRunnerError::DispatchRecovery {
+                        operation_id: execution.operation_id,
+                        dispatch,
+                        recovery: Box::new(recovery),
+                    }),
+                };
             }
         };
         let context = ActionContext {
@@ -173,6 +182,12 @@ impl EpisodeRunner {
             RecoveryResult::Receipt(receipt) => {
                 finish_recovery_receipt(machine, observation, receipt, counters)
             }
+            RecoveryResult::ReceiptQuery(_) => {
+                // A retained receipt has no public post-action observation. The caller must
+                // consume it through RecoveryController::query_receipt; advancing the episode
+                // here would turn historical evidence into a fresh state claim.
+                Err(EpisodeRunnerError::UnexpectedRecoveryResult)
+            }
             RecoveryResult::Released | RecoveryResult::Stopped => {
                 machine.fail();
                 Err(EpisodeRunnerError::StoppedByRecovery)
@@ -222,18 +237,16 @@ fn prepare_action(
     observation: &EpisodeObservation,
     legal_actions: &EpisodeLegalActionSet,
     action_id: &str,
-    step_number: u32,
 ) -> Result<ActionExecution, EpisodeRunnerError> {
+    legal_actions
+        .assert_matches(observation.state_id(), observation.generation())
+        .map_err(EpisodeRunnerError::ActionSet)?;
     let action = legal_actions
         .find(action_id)
         .cloned()
         .ok_or(EpisodeRunnerError::ActionNotCurrent)?;
-    let operation_id = format!(
-        "episode-action-{}-{}",
-        observation.generation(),
-        step_number
-    );
-    let identity = ActionIdentity::new(
+    let operation_id = new_operation_id();
+    let identity = ActionIdentity::new_v4(
         operation_id.clone(),
         observation.state_id().to_owned(),
         observation.generation(),
@@ -256,4 +269,8 @@ fn prepare_action(
         identity,
         action,
     })
+}
+
+fn new_operation_id() -> String {
+    uuid::Uuid::new_v4().to_string()
 }

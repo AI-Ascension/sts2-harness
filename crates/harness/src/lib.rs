@@ -7,12 +7,16 @@ mod decision_records;
 mod episode;
 mod error;
 mod evaluation;
+mod execution;
+mod execution_cancellation;
 mod exo;
 mod exo_process;
 mod identity;
+pub mod management;
 mod memory;
 mod poc;
 mod protocol_artifact;
+mod protocol_artifact_coop_receipt_query;
 mod provider;
 mod records;
 mod replay;
@@ -23,6 +27,14 @@ mod runtime_v4_expert;
 mod runtime_v4_expert_action;
 mod runtime_v4_expert_action_artifact;
 mod runtime_v4_expert_artifact;
+mod runtime_v4_expert_rest_action;
+mod runtime_v4_expert_rest_action_artifact;
+
+pub mod worker_handoff;
+pub mod worker_runtime;
+pub mod worker_runtime_store;
+
+pub mod workflow;
 
 pub use artifact::{
     ArtifactDraft, ArtifactKind, ArtifactLineage, ArtifactMetadata, ArtifactMetadataInput,
@@ -39,30 +51,57 @@ pub use decision_records::{DecisionPayload, DecisionRecord, DecisionRecordKind, 
 pub use episode::{
     ActionAdmission, ActionIdentity, ActionKind, ActionLedger, ActionSetError, BarrierError,
     BarrierPort, CoopCoordinator, CoopError, CoopPeerRole, CoopSyncStatus, DecisionInput,
-    DecisionSource, DispatchStatus, EpisodeLegalAction, EpisodeLegalActionSet, EpisodeMachine,
-    EpisodeMachineError, EpisodeObservation, EpisodePhase, EpisodeRunReport, EpisodeRunner,
-    EpisodeRunnerConfig, EpisodeRunnerError, EpisodeRuntimePort, EpisodeShutdown, EpisodeStage,
-    ExoDecisionSource, IdempotencyError, NoncombatCoordinator, NoncombatStage, ObservationError,
-    PolicyChoice, PolicyError, PolicyRouter, PostconditionError, RecoveryController, RecoveryError,
-    RecoveryOperation, RecoveryPort, RecoveryResult, RunSetupCoordinator, SetupPort, ShutdownError,
-    ShutdownPort, StabilityBarrier, TransitionReceipt, VerifiedTransition, WaitOutcome, WaitSample,
+    DecisionSource, DispatchStatus, EpisodeActionPort, EpisodeCleanupReport, EpisodeLegalAction,
+    EpisodeLegalActionSet, EpisodeLifecyclePort, EpisodeMachine, EpisodeMachineError,
+    EpisodeObservation, EpisodeObservationPort, EpisodePhase, EpisodeRunFailure, EpisodeRunReport,
+    EpisodeRunner, EpisodeRunnerConfig, EpisodeRunnerError, EpisodeRuntimePort, EpisodeShutdown,
+    EpisodeStage, ExoDecisionSource, IdempotencyError, NoncombatCoordinator, NoncombatStage,
+    ObservationError, PolicyChoice, PolicyError, PolicyRouter, PostconditionError,
+    ProtectedEpisodePort, ReceiptQueryActionKind, ReceiptQueryCoordinate, ReceiptQueryError,
+    ReceiptQueryIdentity, ReceiptQueryIdentityError, ReceiptQueryLocation, ReceiptQueryReceipt,
+    ReceiptQueryResult, ReceiptQueryStatus, RecoveryController, RecoveryError, RecoveryOperation,
+    RecoveryPort, RecoveryResult, RunSetupCoordinator, SetupPort, ShutdownError, ShutdownPort,
+    StabilityBarrier, TransitionReceipt, VerifiedTransition, WaitOutcome, WaitSample,
     verify_settlement,
 };
 pub use error::{CloseFailure, CloseReport, Component, HarnessError, PortError, ProviderError};
 pub use evaluation::{
     EvaluationError, EvaluationReport, EvaluationSample, Evaluator, TerminalOutcome,
 };
+pub use execution::{
+    AttemptKind, AttemptState, CatalogEvidence, Checkpoint, CompletionRecord, CompletionStatus,
+    DecisionReference, ExecutionFingerprint, ExecutionLineage, ExecutionStore,
+    ExecutionStoreConfig, ExecutionStoreError, GameOperationId, InvocationOutcome, InvocationState,
+    JobClaim, JobClaimOutcome, JobState, MAX_CATALOG_BYTES, MAX_OPERATION_ACTION_BYTES,
+    MAX_ORIGINAL_CONTEXT_BYTES, MAX_WORKFLOW_BYTES, MAX_WORKFLOW_COUNTER_NAME_BYTES,
+    MAX_WORKFLOW_COUNTERS, MAX_WORKFLOW_CURSOR, MAX_WORKFLOW_STACK_DEPTH, OperationIntent,
+    OperationState, ProviderFailureClass, ProviderReservation, ProviderReservationState,
+    RECOVERY_CONTRACT_VERSION, RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState,
+    RunProjection, RunStatus, StorePragmas, StoredAttempt, StoredDecision, StoredEpisode,
+    StoredJob, StoredOperation, StoredWorkerHandoff, StoredWorkflowInvocation,
+    WORKER_EMPTY_PARAMETERS_DIGEST, WORKER_HANDOFF_CONTRACT, WORKER_HANDOFF_SCHEMA_DIGEST,
+    WORKER_MAX_ATTEMPT_NUMBER, WORKFLOW_CONTRACT_VERSION, WorkerAdmissionContext,
+    WorkerAdmissionOutcome, WorkerBoot, WorkerCompletionStatus, WorkerControlMode,
+    WorkerControlRequest, WorkerControlState, WorkerExecutionPermit, WorkerHandoffState,
+    WorkerLookup, WorkerOwnerProof, WorkerReservationState, WorkerTerminalReceipt, WorkerTuple,
+    WorkflowCommandId, WorkflowDefinition, WorkflowDefinitionId, WorkflowEpisodeId, WorkflowEvent,
+    WorkflowEventId, WorkflowEventPayload, WorkflowInvocation, WorkflowInvocationId, WorkflowPlan,
+    WorkflowPlanId, WorkflowRunId, WorkflowRunSnapshot, WorkflowRunStart,
+};
+pub use execution_cancellation::ExecutionCancellation;
 pub use exo::{
     BoundDecision, CodexEventAccounting, CodexEventError, CodexStreamStatus, CodexTokenUsage,
-    CodexUsageStatus, Decision, DecisionError, ExoClient, ExoConfig, ExoDecisionRequest, ExoError,
-    ExoProvider, ExoSession, ExoTransport, ExoTransportError, SandboxError, SanitizedObservation,
-    parse_codex_events, parse_decision,
+    CodexUsageStatus, Decision, DecisionError, EXO_MAP_REQUEST_OVERHEAD_BYTES,
+    EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES, ExoClient, ExoConfig,
+    ExoDecisionRequest, ExoError, ExoProvider, ExoSession, ExoTransport, ExoTransportError,
+    SandboxError, SanitizedObservation, parse_codex_events, parse_decision,
 };
 pub use exo_process::{ExoProcessConfig, ExoProcessConfigError, ExoProcessTransport};
 pub use identity::{
     ActionId, ArtifactId, Digest, EpisodeId, GatewaySessionId, IdempotencyKey, InstanceId,
     ModelExecutionId, RecordId, RequestId, RunId, SchemaVersion, TraceId, TrajectoryId,
 };
+pub use management::*;
 pub use memory::{DecisionMemory, MemoryAppend, MemoryError};
 pub use poc::{
     POC_CLOCK_TICK, POC_SEED, PocAction, PocCoreError, PocError, PocObservation, PocReport,
@@ -71,6 +110,11 @@ pub use poc::{
 pub use protocol_artifact::{
     ArtifactError, POC_ARTIFACT, POC_GENERATOR, POC_MAX_SETTLED_EFFECTS, POC_MAX_UNITS,
     POC_PROTOCOL_VERSION, POC_SCHEMA_DIGEST, POC_SCHEMA_SOURCE, verify_poc_artifact,
+};
+pub use protocol_artifact_coop_receipt_query::{
+    COOP_RECEIPT_QUERY_ARTIFACT, COOP_RECEIPT_QUERY_GENERATOR, COOP_RECEIPT_QUERY_PROTOCOL_VERSION,
+    COOP_RECEIPT_QUERY_SCHEMA_DIGEST, COOP_RECEIPT_QUERY_SCHEMA_SOURCE,
+    CoopReceiptQueryArtifactError, verify_coop_receipt_query_artifact,
 };
 pub use provider::{
     ModelOutput, ModelRequest, ModelResponse, ModelResult, Prompt, ProviderPort, RetryPolicy,
@@ -111,7 +155,18 @@ pub use runtime_v4_expert_action_artifact::{
     verify_runtime_v4_expert_action_artifact,
 };
 pub use runtime_v4_expert_artifact::{
-    RUNTIME_V4_EXPERT_ARTIFACT, RUNTIME_V4_EXPERT_GENERATOR, RUNTIME_V4_EXPERT_PROTOCOL_VERSION,
+    RUNTIME_V4_EXPERT_ARTIFACT, RUNTIME_V4_EXPERT_FAIR_PLAY_PROJECTION,
+    RUNTIME_V4_EXPERT_GENERATOR, RUNTIME_V4_EXPERT_PROTOCOL_VERSION,
     RUNTIME_V4_EXPERT_SCHEMA_DIGEST, RUNTIME_V4_EXPERT_SCHEMA_SOURCE, RuntimeV4ExpertArtifactError,
     verify_runtime_v4_expert_artifact,
+};
+pub use runtime_v4_expert_rest_action::{
+    RuntimeV4ExpertRestActionParseError, RuntimeV4ExpertRestActionRequest,
+    RuntimeV4ExpertRestActionResult, RuntimeV4ExpertRestActionStatus,
+};
+pub use runtime_v4_expert_rest_action_artifact::{
+    RUNTIME_V4_EXPERT_REST_ACTION_ARTIFACT, RUNTIME_V4_EXPERT_REST_ACTION_GENERATOR,
+    RUNTIME_V4_EXPERT_REST_ACTION_PROTOCOL_VERSION, RUNTIME_V4_EXPERT_REST_ACTION_SCHEMA_DIGEST,
+    RUNTIME_V4_EXPERT_REST_ACTION_SCHEMA_SOURCE, RuntimeV4ExpertRestActionArtifactError,
+    verify_runtime_v4_expert_rest_action_artifact,
 };

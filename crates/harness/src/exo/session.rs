@@ -3,6 +3,7 @@
 use super::decision::{BoundDecision, Decision, DecisionError};
 use super::protocol::{ExoDecisionRequest, ExoError, ExoProvider, ExoTransport};
 use super::sandbox::SanitizedObservation;
+use crate::episode::map::MapDecisionContext;
 use crate::identity::ModelExecutionId;
 
 /// One bounded Exo decision session. It has no heuristic action path.
@@ -108,6 +109,47 @@ impl<T> ExoSession<T> {
                 return Err(ExoError::from(error));
             }
         };
+        super::decision::parse_decision(&response).map_err(ExoError::from)
+    }
+
+    /// Sends the same bounded decision request with a validated current map projection.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn decide_with_map(
+        &mut self,
+        execution_id: ModelExecutionId,
+        state_id: impl Into<String>,
+        generation: u64,
+        observation: SanitizedObservation,
+        legal_action_ids: Vec<String>,
+        objective: impl Into<String>,
+        constraints: Vec<String>,
+        map_context: MapDecisionContext,
+    ) -> Result<Decision, ExoError>
+    where
+        T: ExoTransport,
+    {
+        if self.closed {
+            return Err(ExoError::Closed);
+        }
+        self.provider.config().validate()?;
+        let observation = self.provider.config().project(observation);
+        let request = super::protocol::ExoDecisionRequest::new_with_map(
+            execution_id,
+            self.provider.config().revision.clone(),
+            state_id,
+            generation,
+            observation,
+            legal_action_ids,
+            objective,
+            constraints,
+            self.provider.config().max_response_bytes,
+            map_context,
+        )?;
+        let bytes = request.encode(self.provider.config().max_request_bytes)?;
+        let response = self
+            .provider
+            .transport_exchange_for_session(&bytes)
+            .map_err(ExoError::from)?;
         super::decision::parse_decision(&response).map_err(ExoError::from)
     }
 

@@ -2,6 +2,7 @@
 
 use super::super::idempotency::{ActionIdentity, ActionLedger};
 use super::super::legal_actions::{EpisodeLegalAction, EpisodeLegalActionSet};
+use super::super::map::MapDecisionContext;
 use super::super::observation::EpisodeObservation;
 use super::super::policy_router::{DecisionInput, DecisionSource, PolicyChoice, PolicyRouter};
 use super::super::recovery::RecoveryError;
@@ -194,13 +195,45 @@ impl EpisodeRunner {
             .map_err(EpisodeRunnerError::ActionSet)?;
         let execution_id = ModelExecutionId::new(u64::from(step + 1))
             .ok_or(EpisodeRunnerError::InvalidIdentity)?;
-        let input = DecisionInput::new(
+        let mut input = DecisionInput::new(
             execution_id,
             observation.clone(),
             legal_actions.clone(),
             self.config.objective.clone(),
             self.config.hard_constraints.clone(),
         );
+        if self.config.map_context_enabled()
+            && observation.stage() == super::super::observation::EpisodeStage::Map
+        {
+            let map = port
+                .map_snapshot(
+                    observation.state_id(),
+                    observation.generation(),
+                    execution_id,
+                )
+                .map_err(EpisodeRunnerError::LegalActions)?
+                .ok_or_else(|| {
+                    EpisodeRunnerError::LegalActions(crate::error::PortError::new(
+                        "map_snapshot_unavailable",
+                        "map context is enabled but the runtime did not provide a snapshot",
+                        false,
+                    ))
+                })?;
+            let context = MapDecisionContext::from_mcp_value(
+                &map,
+                observation.state_id(),
+                observation.generation(),
+                &legal_actions,
+            )
+            .map_err(|error| {
+                EpisodeRunnerError::LegalActions(crate::error::PortError::new(
+                    "map_snapshot_invalid",
+                    error.to_string(),
+                    false,
+                ))
+            })?;
+            input = input.with_map_context(context);
+        }
         let choice = PolicyRouter::choose(source, &input).map_err(EpisodeRunnerError::Policy)?;
         Ok((legal_actions, choice))
     }

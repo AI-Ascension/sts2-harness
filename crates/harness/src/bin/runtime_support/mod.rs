@@ -10,6 +10,7 @@ mod runtime_v3_parse;
 mod runtime_v3_settings;
 mod runtime_v3_telemetry;
 mod runtime_v3_wire;
+mod seed_transport;
 mod v1_projection;
 
 pub(crate) use config::RuntimeConfig;
@@ -17,7 +18,7 @@ pub(crate) use config::RuntimeConfig;
 pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
     if matches!(
         config.runtime_profile.as_str(),
-        "runtime-v3-gameplay" | "runtime-v4-expert"
+        "runtime-v3-gameplay" | "runtime-v4-expert" | "runtime-v4-expert-rest-action"
     ) {
         runtime_v3::run(config)
     } else {

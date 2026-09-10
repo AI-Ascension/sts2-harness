@@ -10,6 +10,9 @@ use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use super::config::RuntimeConfig;
 
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
+// A complete map snapshot is bounded at 256 KiB before MCP wraps it as JSON text. The map profile
+// needs room for that escaped text and the JSON-RPC/content envelope while remaining bounded.
+const MAP_MAX_RESPONSE_BYTES: usize = 512 * 1024;
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(5);
 // A child may still be finishing a response or flushing its own shutdown work after the
@@ -27,6 +30,7 @@ pub(super) struct McpProcess {
     input: Option<ChildStdin>,
     output: Option<BufReader<ChildStdout>>,
     timeout: Duration,
+    max_response_bytes: usize,
     closed: bool,
 }
 
@@ -51,10 +55,57 @@ impl McpProcess {
     }
 
     pub(super) fn spawn_profile(config: &RuntimeConfig, profile: &str) -> Result<Self, String> {
-        Self::spawn_command(
+        let max_response_bytes = if profile == "runtime-map-v1" {
+            MAP_MAX_RESPONSE_BYTES
+        } else {
+            MAX_RESPONSE_BYTES
+        };
+        Self::spawn_command_with_response_limit(
             Self::configured_command_for_profile(config, profile),
             EXCHANGE_TIMEOUT,
+            max_response_bytes,
         )
+    }
+
+    pub(super) fn spawn_recovery(
+        config: &RuntimeConfig,
+        instance_id: &str,
+        lease_id: &str,
+        lease_epoch: u64,
+        recovery_environment: &[(String, String)],
+    ) -> Result<Self, String> {
+        let mut command = Self::configured_command_for_profile(config, "watchdog-recovery-v1");
+        command
+            .env("STS2_INSTANCE_ID", instance_id)
+            .env("STS2_LEASE_ID", lease_id)
+            .env("STS2_LEASE_EPOCH", lease_epoch.to_string());
+        for name in [
+            "STS2_RECOVERY_TOKEN",
+            "STS2_RECOVERY_PRINCIPAL_ID",
+            "STS2_RECOVERY_ROLE",
+            "STS2_RECOVERY_PROOF",
+            "STS2_RECOVERY_DEPLOYMENT_ID",
+            "STS2_RECOVERY_INSTANCE_ID",
+            "STS2_RECOVERY_INSTANCE_INCAR",
+            "STS2_RECOVERY_BOOT_ID",
+            "STS2_RECOVERY_LEASE_ID",
+            "STS2_RECOVERY_AUTHORITY_GENERATION",
+            "STS2_RECOVERY_LEASE_EPOCH",
+            "STS2_RECOVERY_CURRENT_FENCE_JSON",
+        ] {
+            if let Some(value) = config.recovery_value(name) {
+                command.env(name, value);
+            }
+        }
+        for (name, value) in recovery_environment {
+            command.env(name, value);
+        }
+        if config.recovery_value("STS2_RECOVERY_TOKEN").is_none() {
+            return Err(String::from(
+                "STS2_RECOVERY_TOKEN is required for the recovery sideband",
+            ));
+        }
+        Self::spawn_command(command, EXCHANGE_TIMEOUT)
     }
 
     fn configured_command(config: &RuntimeConfig) -> Command {
@@ -82,11 +133,23 @@ impl McpProcess {
         command
     }
 
-    fn spawn_command(mut command: Command, timeout: Duration) -> Result<Self, String> {
-        supervised(|| Self::spawn_supervised(&mut command, timeout))
+    fn spawn_command(command: Command, timeout: Duration) -> Result<Self, String> {
+        Self::spawn_command_with_response_limit(command, timeout, MAX_RESPONSE_BYTES)
     }
 
-    fn spawn_supervised(command: &mut Command, timeout: Duration) -> Result<Self, &'static str> {
+    fn spawn_command_with_response_limit(
+        mut command: Command,
+        timeout: Duration,
+        max_response_bytes: usize,
+    ) -> Result<Self, String> {
+        supervised(|| Self::spawn_supervised(&mut command, timeout, max_response_bytes))
+    }
+
+    fn spawn_supervised(
+        command: &mut Command,
+        timeout: Duration,
+        max_response_bytes: usize,
+    ) -> Result<Self, &'static str> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -109,6 +172,7 @@ impl McpProcess {
             input,
             output,
             timeout,
+            max_response_bytes,
             closed: false,
         })
     }
@@ -193,7 +257,8 @@ impl McpProcess {
                             )
                         })
                     };
-                    let (_, response) = tokio::try_join!(write, read_frame(output))?;
+                    let (_, response) =
+                        tokio::try_join!(write, read_frame(output, self.max_response_bytes))?;
                     validate_response(&response, id)
                 })
                 .await
@@ -210,75 +275,9 @@ impl McpProcess {
         }
         result
     }
-
-    fn terminate(&mut self) -> Result<(), String> {
-        self.closed = true;
-        self.input.take();
-        self.output.take();
-        let runtime = self.runtime.as_ref().ok_or("MCP supervisor is closed")?;
-        supervised(|| {
-            runtime.block_on(async {
-                self.child
-                    .start_kill()
-                    .map_err(|_| "MCP termination failed")?;
-                tokio::time::timeout(FORCE_REAP_TIMEOUT, self.child.wait())
-                    .await
-                    .map_err(|_| "MCP reap timed out")?
-                    .map_err(|_| "MCP reap failed")?;
-                Ok(())
-            })
-        })
-    }
-
-    pub(super) fn close(&mut self) -> Result<(), String> {
-        if self.closed {
-            return if self.child.id().is_some() {
-                self.terminate()
-            } else {
-                Ok(())
-            };
-        }
-        self.input.take();
-        self.output.take();
-        let runtime = self.runtime.as_ref().ok_or("MCP supervisor is closed")?;
-        let result = supervised(|| {
-            runtime.block_on(async {
-                let status = tokio::time::timeout(GRACEFUL_CLOSE_TIMEOUT, self.child.wait())
-                    .await
-                    .map_err(|_| "MCP shutdown timed out")?
-                    .map_err(|_| "MCP process wait failed")?;
-                if status.success() {
-                    Ok(())
-                } else {
-                    Err("MCP process exited unsuccessfully")
-                }
-            })
-        });
-        if let Err(error) = result {
-            let cleanup = self.terminate();
-            return match cleanup {
-                Ok(()) => Err(error),
-                Err(cleanup) => Err(format!("{error}; {cleanup}")),
-            };
-        }
-        self.closed = true;
-        result
-    }
 }
 
-impl Drop for McpProcess {
-    fn drop(&mut self) {
-        if self.child.id().is_some() {
-            let _cleanup = self.terminate();
-        }
-        if let Some(runtime) = self.runtime.take() {
-            let _cleanup = supervised(|| {
-                drop(runtime);
-                Ok(())
-            });
-        }
-    }
-}
+include!("mcp_process_lifecycle.rs");
 
 // No detached workers: cancellation drops asynchronous pipe futures, including when a
 // descendant retains inherited descriptors. Every scoped supervisor is joined before return.

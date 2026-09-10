@@ -15,6 +15,7 @@ pub(super) struct ReplayTrace {
     pub(super) terminal: Value,
     pub(super) prefix: bool,
     pub(super) rejected_attempts: usize,
+    pub(super) failure_code: Option<&'static str>,
 }
 
 impl ReplayTrace {
@@ -31,12 +32,17 @@ impl ReplayTrace {
         let mut checkpoint = None;
         let mut operations = HashSet::new();
         let mut rejected_attempts = 0;
+        let mut failure_code = None;
         for line in text.lines() {
             let row: Value =
                 serde_json::from_str(line).map_err(|_| "invalid episode replay JSON")?;
             match row["event"].as_str() {
                 Some("model_decision") => {
-                    if !settled || terminal.is_some() || records.len() + rejected_attempts >= 1024 {
+                    if !settled
+                        || terminal.is_some()
+                        || failure_code.is_some()
+                        || records.len() + rejected_attempts >= 1024
+                    {
                         return Err("episode replay has unresolved or excess decisions".into());
                     }
                     let id = row["action_id"]
@@ -60,7 +66,11 @@ impl ReplayTrace {
                     let record = records
                         .last()
                         .ok_or("receipt precedes any replay decision")?;
-                    if settled || terminal.is_some() || row["action_id"] != record.action_id {
+                    if settled
+                        || terminal.is_some()
+                        || failure_code.is_some()
+                        || row["action_id"] != record.action_id
+                    {
                         return Err("replay receipt does not match its decision".into());
                     }
                     let id = row["operation_id"]
@@ -100,6 +110,14 @@ impl ReplayTrace {
                             settled = true;
                             checkpoint = Some(row["observation"].clone());
                         }
+                        Some("Accepted")
+                            if row["effect"].is_null()
+                                && (row["observation"].is_null()
+                                    || row["observation"].is_object()) =>
+                        {
+                            // Admission is not a settlement witness. Keep the action unresolved
+                            // until the transition wait or a later reconciliation receipt.
+                        }
                         Some("Unknown") if !settled => {}
                         _ => {
                             return Err(
@@ -110,6 +128,7 @@ impl ReplayTrace {
                 }
                 Some("operation_wait_completed") => {
                     if terminal.is_some()
+                        || failure_code.is_some()
                         || operation.as_deref() != row["operation_id"].as_str()
                         || operation.is_none()
                         || !row["observation"].is_object()
@@ -126,8 +145,30 @@ impl ReplayTrace {
                     settled = true;
                     checkpoint = Some(row["observation"].clone());
                 }
+                Some("episode_failed") => {
+                    if !prefix
+                        || terminal.is_some()
+                        || !settled
+                        || failure_code.is_some()
+                        || records.is_empty()
+                        || checkpoint.is_none()
+                    {
+                        return Err("episode replay failure record is invalid".into());
+                    }
+                    let code = row["error_code"]
+                        .as_str()
+                        .and_then(failure_code_name)
+                        .ok_or("episode replay failure code is invalid")?;
+                    if row.as_object().is_none_or(|object| object.len() != 2)
+                        || row["event"] != "episode_failed"
+                    {
+                        return Err("episode replay failure record has an invalid shape".into());
+                    }
+                    failure_code = Some(code);
+                }
                 Some("episode_complete") => {
                     if terminal.is_some()
+                        || failure_code.is_some()
                         || !settled
                         || records.is_empty()
                         || !matches!(
@@ -143,6 +184,9 @@ impl ReplayTrace {
                         );
                     }
                     terminal = Some(row["observation"].clone());
+                }
+                Some("replay_stream_truncated") => {
+                    return Err("episode replay stream was truncated".into());
                 }
                 Some(_) => return Err("unsupported episode replay record".into()),
                 None if row["protocol"] == "runtime-v3-gameplay"
@@ -185,8 +229,31 @@ impl ReplayTrace {
             terminal,
             prefix,
             rejected_attempts,
+            failure_code,
         })
     }
+}
+
+fn failure_code_name(value: &str) -> Option<&'static str> {
+    Some(match value {
+        "map_snapshot_invalid" => "map_snapshot_invalid",
+        "input_blocked" => "input_blocked",
+        "stale_catalog" => "stale_catalog",
+        "illegal_action" => "illegal_action",
+        "missing_operation" => "missing_operation",
+        "malformed_decision" => "malformed_decision",
+        "provider_unavailable" => "provider_unavailable",
+        "provider_malformed" => "provider_malformed",
+        "provider_closed" => "provider_closed",
+        "rejected" => "rejected",
+        "unknown_outcome" => "unknown_outcome",
+        "cleanup" => "cleanup",
+        "cleanup_failed" => "cleanup_failed",
+        "configuration" => "configuration",
+        "configuration_failed" => "configuration_failed",
+        "other" => "other",
+        _ => return None,
+    })
 }
 
 pub(super) fn canonical(value: &Value) -> Value {

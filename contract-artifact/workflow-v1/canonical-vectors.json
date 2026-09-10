@@ -1,0 +1,12 @@
+{
+  "contract": "ascension.workflow/v1",
+  "algorithm": "sha-256",
+  "excluded_fields": ["annotations"],
+  "vectors": [
+    {
+      "name": "valid-strict-semantic",
+      "source": "../../conformance/workflow-v1/valid-strict.json",
+      "semantic_digest": "55e0763a496a97373a4e3641eda83157d1a7ae440eb8810a8a337b24a49f4230"
+    }
+  ]
+}

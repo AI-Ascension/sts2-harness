@@ -8,8 +8,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 use sts2_harness::{
-    CaptureBoundary, CapturePort, NoopCapture, PreparedAstraInput, generated_capture_attempt_id,
-    parse_codex_events,
+    CaptureBoundary, CapturePort, EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES,
+    NoopCapture, PreparedAstraInput, generated_capture_attempt_id, parse_codex_events,
 };
 
 #[path = "support/bridge_accounting.rs"]
@@ -19,7 +19,11 @@ use accounting::{
     write_accounting,
 };
 
-const LIMIT: usize = 128 * 1024;
+const INPUT_LIMIT: usize = EXO_MAX_MAP_REQUEST_BYTES;
+const OUTPUT_LIMIT: usize = EXO_MAX_STANDARD_REQUEST_BYTES;
+// Kept as the legacy stream bound name for the Phase 1 capture tests.
+#[cfg(test)]
+const LIMIT: usize = OUTPUT_LIMIT;
 const CODEX_ARGS: &[&str] = &[
     "--signal=TERM",
     "--kill-after=5s",
@@ -79,12 +83,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 fn run_with_capture(capture: &mut dyn CapturePort) -> Result<(), Box<dyn std::error::Error>> {
     let mut bytes = Vec::new();
     std::io::stdin()
-        .take((LIMIT + 1) as u64)
+        .take((INPUT_LIMIT + 1) as u64)
         .read_to_end(&mut bytes)?;
-    if bytes.len() > LIMIT {
+    if bytes.len() > INPUT_LIMIT {
         return Err("request exceeds bound".into());
     }
     let request: Value = serde_json::from_slice(&bytes)?;
+    if bytes.len() > request_limit(&request) {
+        return Err("request exceeds bound".into());
+    }
     let ids = request["legal_action_ids"]
         .as_array()
         .ok_or("missing catalog")?;
@@ -164,8 +171,8 @@ fn decide_with_executable(
     }
     let stdout = child.stdout.take().ok_or("missing provider stdout")?;
     let stderr = child.stderr.take().ok_or("missing provider stderr")?;
-    let stdout_reader = capture_stream(stdout, LIMIT);
-    let stderr_reader = capture_stream(stderr, LIMIT);
+    let stdout_reader = capture_stream(stdout, OUTPUT_LIMIT);
+    let stderr_reader = capture_stream(stderr, OUTPUT_LIMIT);
     let written = child
         .stdin
         .take()
@@ -259,6 +266,16 @@ fn looks_like_absolute_path(value: &str) -> bool {
         || (value.len() > 2
             && value.as_bytes()[1] == b':'
             && (value.as_bytes()[2] == b'\\' || value.as_bytes()[2] == b'/'))
+}
+
+fn request_limit(request: &Value) -> usize {
+    if request.get("schema").and_then(Value::as_str) == Some("sts2.exo-decision-map-v1")
+        && request.get("map_context").is_some()
+    {
+        INPUT_LIMIT
+    } else {
+        EXO_MAX_STANDARD_REQUEST_BYTES
+    }
 }
 
 fn validate(content: &str, ids: &[Value]) -> Result<Value, Box<dyn std::error::Error>> {

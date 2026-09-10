@@ -8,8 +8,13 @@ use sts2_harness::EpisodeRuntimePort;
 
 use super::*;
 
+#[cfg(unix)]
+#[path = "runtime_v3_lifecycle_reconnect_support.rs"]
+mod reconnect_support;
+
 fn config(address: String) -> RuntimeConfig {
     RuntimeConfig {
+        seed_transport: None,
         gateway_address: address,
         gateway_token: "synthetic-token".into(),
         mcp_binary: "unused-test-binary".into(),
@@ -27,6 +32,8 @@ fn config(address: String) -> RuntimeConfig {
         artifact_id: "artifact-1".into(),
         wait_for_combat_seconds: 0,
         settlement_timeout_seconds: 30,
+        map_context_enabled: false,
+        recovery_environment: Vec::new(),
     }
 }
 
@@ -187,6 +194,10 @@ fn runtime_v3_wrong_lease_uses_returned_fence_and_requires_release_confirmation(
 }
 
 #[cfg(unix)]
+#[path = "runtime_v3_lifecycle_replay_evidence_test.rs"]
+mod replay_evidence;
+
+#[cfg(unix)]
 mod reconnect {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
@@ -244,3 +255,16 @@ mod reconnect {
         include!("runtime_v3_lifecycle_fault_matrix_test.rs");
     }
 }
+
+#[cfg(unix)]
+mod rest_action {
+    include!("runtime_v3_lifecycle_rest_action_test.rs");
+}
+
+#[cfg(unix)]
+#[path = "runtime_v3_lifecycle_reconnect_durable_test.rs"]
+mod reconnect_durable;
+
+#[cfg(unix)]
+#[path = "runtime_v3_lifecycle_recovery_evidence_test.rs"]
+mod recovery_evidence;

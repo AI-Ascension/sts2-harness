@@ -1,13 +1,27 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Value, json};
+use sha2::Digest;
 use sts2_harness::ActionKind;
 
 use super::mcp::McpProcess;
 use super::mcp_process::McpProcessError;
 
+#[path = "runtime_v3_wire_recovery.rs"]
+mod recovery;
+pub(super) use recovery::{initialize_recovery_mcp, recovery_call};
+#[path = "runtime_v3_recovery_base64.rs"]
+mod recovery_encoding;
+pub(super) use recovery_encoding::decode as decode_recovery_action;
+
+pub(super) const RUNTIME_V3_SCHEMA_DIGEST: &str =
+    "8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63";
+
 const CATALOG_REVISION: &str = "runtime-v3-gameplay-mcp";
 const EXPERT_CATALOG_REVISION: &str = "runtime-v4-expert-mcp";
+const EXPERT_REST_ACTION_CATALOG_REVISION: &str = "runtime-v4-expert-rest-action-mcp";
+const RECEIPT_QUERY_CATALOG_REVISION: &str = "coop-receipt-query-v1-mcp";
+const SEEDED_RUN_CATALOG_REVISION: &str = "seeded-run-v1-mcp";
 
 include!("runtime_v3_wire_failure.rs");
 
@@ -20,6 +34,12 @@ enum RpcReadKind {
 
 pub(super) fn initialize_mcp_profile(mcp: &mut McpProcess, profile: &str) -> Result<(), String> {
     initialize_mcp_profile_classified(mcp, profile).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+pub(super) fn initialize_mcp(mcp: &mut McpProcess) -> Result<(), String> {
+    initialize_mcp_profile(mcp, "runtime-v3-gameplay")
 }
 
 pub(super) fn initialize_mcp_profile_classified(
@@ -125,6 +145,9 @@ fn rpc_call_with_read_kind(
         if method != "tools/call"
             || !(has_gameplay_envelope(&response)
                 || has_expert_action_envelope(&response)
+                || has_expert_rest_action_envelope(&response)
+                || has_receipt_query_envelope(&response)
+                || (read_kind == RpcReadKind::Recovery && has_recovery_envelope(&response))
                 || (read_kind == RpcReadKind::Catalog && has_catalog_reobserve(&response, id)))
         {
             if read_kind != RpcReadKind::None && is_transient_gateway_tool_error(&response) {
@@ -179,31 +202,7 @@ pub(super) fn catalog_reobserve(value: &Value) -> bool {
         )
 }
 
-fn has_gameplay_envelope(response: &Value) -> bool {
-    response["result"]["content"][0]["text"]
-        .as_str()
-        .and_then(|text| serde_json::from_str::<Value>(text).ok())
-        .is_some_and(|value| value["protocol_version"] == "runtime-v3-gameplay")
-}
-
-fn has_expert_action_envelope(response: &Value) -> bool {
-    response["result"]["content"][0]["text"]
-        .as_str()
-        .and_then(|text| serde_json::from_str::<Value>(text).ok())
-        .is_some_and(|value| value["protocol_version"] == "runtime-v4-expert-action")
-}
-
-fn request_timeout(method: &str, params: &Value) -> Result<std::time::Duration, String> {
-    let wait = if method == "tools/call" && params["name"] == "sts2.wait_for_transition" {
-        params["arguments"]["wait_for_millis"]
-            .as_u64()
-            .filter(|value| *value <= 120_000)
-            .ok_or_else(|| String::from("MCP transition wait is outside its bound"))?
-    } else {
-        0
-    };
-    Ok(std::time::Duration::from_millis(wait + 5_000))
-}
+include!("runtime_v3_wire_validation.rs");
 
 fn validate_catalog(response: &Value, profile: &str) -> Result<(), String> {
     let result = response
@@ -229,6 +228,19 @@ fn validate_catalog(response: &Value, profile: &str) -> Result<(), String> {
                 "sts2.expert_reconcile",
             ],
         ),
+        "runtime-v4-expert-rest-action" => (
+            EXPERT_REST_ACTION_CATALOG_REVISION,
+            &[
+                "sts2.expert_state",
+                "sts2.expert_rest_action",
+                "sts2.expert_rest_reconcile",
+            ],
+        ),
+        "coop-receipt-query-v1" => (RECEIPT_QUERY_CATALOG_REVISION, &["sts2.coop_receipt_query"]),
+        "seeded-run-v1" => (
+            SEEDED_RUN_CATALOG_REVISION,
+            &["start_seeded_run", "reconcile_seeded_run"],
+        ),
         _ => return Err(String::from("MCP profile is unsupported")),
     };
     if result.get("revision").and_then(Value::as_str) != Some(revision) {
@@ -245,7 +257,7 @@ fn validate_catalog(response: &Value, profile: &str) -> Result<(), String> {
             .any(|(tool, expected)| tool.get("name").and_then(Value::as_str) != Some(expected))
     {
         return Err(String::from(
-            "MCP catalog does not expose the exact six-tool surface",
+            "MCP catalog does not expose the exact profile tool surface",
         ));
     }
     Ok(())
@@ -266,29 +278,19 @@ pub(super) fn combine_cleanup(
     message
 }
 
-pub(super) const fn action_kind_name(kind: ActionKind) -> &'static str {
-    match kind {
-        ActionKind::StartRun => "start_run",
-        ActionKind::SelectCharacter => "select_character",
-        ActionKind::SelectMapNode => "select_map_node",
-        ActionKind::PlayCard => "play_card",
-        ActionKind::UsePotion => "use_potion",
-        ActionKind::EndTurn => "end_turn",
-        ActionKind::ChooseReward => "choose_reward",
-        ActionKind::SkipReward => "skip_reward",
-        ActionKind::Proceed => "proceed",
-        ActionKind::ConfirmSelection => "confirm_selection",
-        ActionKind::CancelSelection => "cancel_selection",
-        ActionKind::ShopPurchase => "shop_purchase",
-        ActionKind::ShopRemove => "shop_remove",
-        ActionKind::Rest => "rest",
-        ActionKind::RestOption => "rest_option",
-        ActionKind::Smith => "smith",
-        ActionKind::EventChoice => "event_choice",
-        ActionKind::SelectCard => "select_card",
-        ActionKind::ConfirmVictory => "confirm_victory",
-        ActionKind::SaveQuit => "save_quit",
-    }
+include!("runtime_v3_wire_action_kind.rs");
+
+/// The canonical recovery action is the complete legal-action envelope, not merely the inner
+/// payload sent to the frozen gameplay tool. Its bytes are retained before dispatch and are the
+/// only bytes accepted for historical recovery.
+pub(super) fn canonical_action_bytes(action_id: &str, payload: &Value) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(&json!({"action": payload, "action_id": action_id}))
+        .map_err(|error| format!("cannot encode canonical runtime-v3 action: {error}"))
+}
+
+pub(super) fn canonical_action_digest(action_id: &str, payload: &Value) -> Result<String, String> {
+    let bytes = canonical_action_bytes(action_id, payload)?;
+    Ok(format!("{:x}", sha2::Sha256::digest(bytes)))
 }
 
 include!("runtime_v3_wire_stage.rs");

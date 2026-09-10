@@ -8,9 +8,27 @@ use request::{request_from_prompt, valid_revision};
 use crate::context_capture::{
     CaptureBoundary, CaptureInput, CapturePort, generated_capture_attempt_id,
 };
+use crate::episode::map::{MAP_CONTEXT_WIRE_FIXED_BYTES, MAX_SNAPSHOT_BYTES};
 use crate::exo::decision::{DecisionError, parse_decision};
 use crate::exo::sandbox::{SandboxError, SanitizedObservation};
 use provider_impl::error_code;
+
+/// Maximum serialized request for the ordinary Exo schema.
+pub const EXO_MAX_STANDARD_REQUEST_BYTES: usize = 128 * 1024;
+
+// A map request consists of one ordinary request, the schema-name delta, the map_context field,
+// and the fixed map wrapper around the schema-bounded snapshot. These are the exact serialized
+// bytes added by serde_json for the current wire shape.
+const MAP_SCHEMA_DELTA_BYTES: usize =
+    "sts2.exo-decision-map-v1".len() - "sts2.exo-decision-v1".len();
+const MAP_CONTEXT_FIELD_BYTES: usize = ",\"map_context\":".len();
+/// Serialized bytes added by the map schema and wrapper around the ordinary request body.
+pub const EXO_MAP_REQUEST_OVERHEAD_BYTES: usize =
+    MAP_SCHEMA_DELTA_BYTES + MAP_CONTEXT_FIELD_BYTES + MAP_CONTEXT_WIRE_FIXED_BYTES;
+
+/// Maximum serialized request that can carry a schema-bounded complete map.
+pub const EXO_MAX_MAP_REQUEST_BYTES: usize =
+    EXO_MAX_STANDARD_REQUEST_BYTES + MAX_SNAPSHOT_BYTES + EXO_MAP_REQUEST_OVERHEAD_BYTES;
 
 /// External Exo transport failure; no gameplay fallback is attached to it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -83,7 +101,7 @@ impl ExoConfig {
     pub(super) fn validate(&self) -> Result<(), ExoError> {
         if !valid_revision(&self.revision)
             || self.max_request_bytes == 0
-            || self.max_request_bytes > 128 * 1024
+            || self.max_request_bytes > EXO_MAX_MAP_REQUEST_BYTES
             || self.max_response_bytes == 0
             || self.max_response_bytes > 8 * 1024
             || self.timeout_millis == 0

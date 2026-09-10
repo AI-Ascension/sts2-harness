@@ -11,6 +11,18 @@ impl SanitizedObservation {
         if encoded.len() > MAX_OBSERVATION_BYTES {
             return Err(SandboxError::TooLarge);
         }
+        if value.get("harness_projection").and_then(Value::as_str)
+            == Some(crate::RUNTIME_V4_EXPERT_FAIR_PLAY_PROJECTION)
+        {
+            let mut native = value.clone();
+            native
+                .as_object_mut()
+                .ok_or(SandboxError::InvalidExpertObservation)?
+                .remove("harness_projection");
+            crate::RuntimeV4ExpertObservation::validate_fair_play_value(native)
+                .map_err(|_| SandboxError::InvalidExpertObservation)?;
+            return Ok(Self(value));
+        }
         if value.get("protocol_version").and_then(Value::as_str)
             == Some(crate::RUNTIME_V4_EXPERT_PROTOCOL_VERSION)
         {

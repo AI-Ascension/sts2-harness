@@ -1,5 +1,21 @@
 # Compatibility Policy and Matrix
 
+## Historical recovery consumer candidate
+
+The additive `watchdog-recovery-v1` consumer accepts the schema-permitted standard/URL-safe
+base64 alphabets, with or without complete padding, while rejecting invalid tail bits, malformed
+padding, whitespace and oversized input. Canonical RCJ-1 bytes, frozen Runtime-v3 schema identity
+and the retained payload digest still have to match exactly. No frozen artifact bytes change.
+
+Reconcile responses may retain `SETTLED` or `REJECTED`, or record `RECONCILED`; the operation,
+original context, result, ticket and witness must agree before closing durable uncertainty.
+`NOT_FOUND` and unresolved states do not prove non-execution. See
+[ADR 0011](decisions/0011-historical-recovery-evidence.md).
+Runtime-v3 schema migration 6 now persists the canonical per-operation original allocation context
+before dispatch, while the fresh allocation supplies only the current fence for a recovery lookup.
+Legacy operation rows without that field remain explicitly non-recoverable; synthetic cross-boot
+consumer tests still do not establish a live gateway/host reboot result.
+
 With `STS2_LIVE_EPISODE=true`, idle observation failures now log the harness-owned error code,
 and MCP RPC failures log only the numeric RPC code. Remote error messages and data remain
 suppressed. These diagnostics do not retry actions or change failure and cleanup behavior.
@@ -57,6 +73,8 @@ See `experiments/live-combat/README.md` for the exact scope.
 | Direct game access | Outside the harness boundary; requests use MCP/gateway | No direct host authority; bounded indirect runtime-v1 probe only |
 | Replay/artifact lineage | Offline seams and fresh-process combat action replay | Confirmed visible-state comparison for the demo; broader replay unverified |
 | Runtime-v2 coordinator | Four-lane bounded pure scheduler with explicit lineage, fairness, overload, cancellation, and shutdown seams | Confirmed by offline component tests; live supervisor/profile/host isolation unverified |
+| Seeded-run transport | Opt-in bounded plan, context digest, durable reservation, and same-operation MCP recovery | Source/component and artifact checks confirmed; native seed settlement, profile/save isolation, gameplay, deployment, and release unverified |
+| Runtime map context | Opt-in host-authored map projection carried to the Exo provider | Source/component evidence only; target-build map production, provider behavior, and live compatibility unverified |
 | Evaluation | Library aggregation over supplied samples; not wired into the Runtime-v3 runner | Synthetic tests, not game parity or experimental performance evidence |
 
 ## Compatibility classifications
@@ -96,6 +114,78 @@ and current host action IDs. The executable assembles one configured instance's 
 path, not the separate record, memory, evaluation, replay, artifact-publication or co-op library
 seams. Target-build and live provider behavior remain `unverified`.
 
+### Runtime-v4 expert source/component row
+
+At current harness main
+[`3926e5a30ab569612e67d2dfdc6542f1391e95d7`](https://github.com/AI-Ascension/sts2-harness/commit/3926e5a30ab569612e67d2dfdc6542f1391e95d7),
+the coordinator consumes the copied `runtime-v4-expert` and `runtime-v4-expert-action` artifacts,
+maps the expert MCP catalog, validates the fair-play observation and legal-action bindings, and
+exercises bounded executable composition and recovery checks. Their schema digests are
+`0ee034d5da83f34e9fa0ba23038738d56ef8cfccb1c6e752af3ab63d212c8e42` and
+`393318bda8c3522c0ecbacc78b95471a9f4dc3f825169d2048f4c74a7b7f2929`; the copied protocol source
+was admitted from protocol main `f2dac90529f584a6511c1760adce9da28f7f910a`; current protocol main
+is `d3ab5fca7d9d74bb31eeb3e5b343d8024ee44404`. The separate
+`runtime-v4-expert-rest-action` artifact remains a candidate at digest
+`bb3555fae28eb1f79d08a15e9884696a579e4c20836f5016509f17e0f4c36fbd`. This is source/component
+and bounded synthetic composition evidence; native host legality, settled effects, provider-run
+compatibility, deployment, release, and live end-to-end behavior remain unverified.
+
+### Seeded-run transport source/component row
+
+At current harness main
+[`3926e5a30ab569612e67d2dfdc6542f1391e95d7`](https://github.com/AI-Ascension/sts2-harness/commit/3926e5a30ab569612e67d2dfdc6542f1391e95d7),
+the opt-in transport validates a contiguous seed plan and a concrete standard Ironclad context,
+establishes a generation fence with one read-only observation, and creates a durable reservation
+before the single `start_seeded_run` mutation. The `seeded-run-v1` MCP profile is used for start and
+bodyless reconciliation; `unknown` or disconnected starts retain the original operation ID and
+never issue a new seed mutation. Settlement requires canonical seed readback, a fresh observation,
+and the `run_started` witness. The copied protocol artifact is
+`sts2-protocol/seeded-run-v1` at schema digest
+`5c659f344be78f84e8d783986925d462714f933cac95d18943358992f7d3e2b8`, aligned with protocol main
+`d3ab5fca7d9d74bb31eeb3e5b343d8024ee44404`. These checks confirm the source/component boundary and
+artifact integrity; native host settlement, profile/save isolation, gameplay, provider execution,
+deployment, and release compatibility remain unverified.
+
+### Runtime map context
+
+Map context is an additive, opt-in provider-request capability. `STS2_ENABLE_MAP_CONTEXT` defaults to
+`false` and accepts only the exact values `true` or `false`. The runtime coordinator accepts the
+map flag with both the `runtime-v3-gameplay` and `runtime-v4-expert` profiles; this source-level
+profile composition is not evidence that a native target supports the combination. Enabling it
+requires an Exo bridge that accepts the
+`sts2.exo-decision-map-v1` request and its `map_context` field. A bridge that only accepts
+`sts2.exo-decision-v1` is incompatible with map-stage requests; the runner fails closed rather than
+falling back to an ordinary request or choosing a heuristic action.
+
+At a Map-stage observation, after the current observation and host legal-action catalog have been
+validated, the runtime starts a short-lived `runtime-map-v1` MCP profile. That profile must expose
+the ordered seven-tool catalog ending in `sts2.map_snapshot`. The returned envelope is checked for
+the `runtime-map-v1` profile, schema digest
+`ceab0d2dfc471d1ec36d12edaf4654b8c7fdced06548bf47265e11c63f98115b`, exact identity and generation,
+and the hand-authored `sts2-protocol/runtime-map-v1` provenance. Only a snapshot marked
+`available`, `complete`, and `current` is accepted. Its graph is bounded at 256 KiB, 256 nodes,
+1,024 edges, and 256 action bindings; the graph must be acyclic. Every binding must correspond to
+the current host-generated `select_map_node` action ID set. The snapshot is canonicalized and sent
+with its digest, state ID, generation, profile, and schema digest in `map_context`.
+
+The 256 KiB snapshot bound applies only to the serialized snapshot body; it does not guarantee that
+the enclosing raw native, gateway, or projected-MCP whole envelope fits. Those whole-envelope paths
+remain bounded at 256 KiB. Ordinary MCP stdout remains bounded at 256 KiB; only the map-profile
+framed stdout allowance is 512 KiB so escaped snapshot JSON and its JSON-RPC/content wrapper can be
+read. These are separate bounds, so the lower-level envelope checks remain authoritative and a
+snapshot near its own limit may still be rejected after wrapping. The complete Exo request bound is
+393,443 bytes, derived from the ordinary
+131,072-byte request bound, the 256 KiB snapshot bound, and the fixed map wrapper. With map context
+enabled, `STS2_EXO_MAX_REQUEST_BYTES` defaults to and must equal `393443`; the provider response
+remains bounded at 8 KiB. Other episode stages continue to use the ordinary `sts2.exo-decision-v1`
+request. Map visibility does not change action authority: the host still supplies and validates the
+typed legal-action payloads.
+
+This capability is confirmed only by source and deterministic/component tests in this target. Map
+production by a target build, live MCP/gateway wiring, provider interpretation, gameplay settlement,
+and compatibility beyond the recorded fixtures remain `unverified`. Operator setup and the data
+boundary are documented in [`experiments/exo-agent/README.md`](../experiments/exo-agent/README.md).
+
 The co-op library gate suspends local admission when a registered peer is reported disconnected or
 disagrees with its fixed generation snapshot. It cannot detect missing members of an expected roster:
 no such roster is configured, and local-only registration can pass. It also has no API to advance
@@ -104,9 +194,13 @@ authoritative membership, or multiplayer host compatibility; these require a def
 runtime integration before any stronger guarantee.
 
 This target-local helper has no co-op wire schema, profile, digest, MCP tool or runtime transport.
-The protocol co-op contract is a blocked proposal outside the admitted Runtime-v3 gameplay bundle;
-exporting `CoopCoordinator` does not advertise protocol support. Co-op digests in dated preparation
-records describe that historical proposal, not the currently admitted consumer artifact inventory.
+The admitted protocol profile is `coop-synchronization-v1`, produced by gateway serialization and
+read by MCP as coordinator-reported metadata; it carries no action, vote, shared-effect, or host-game
+authority. This harness helper does not produce or consume that wire profile. Exporting
+`CoopCoordinator` therefore remains a local source/component check, and its source does not establish
+native peer admission, actions, votes, shared effects, or disconnect/rejoin recovery. Co-op digests in
+dated preparation records describe the preserved unadmitted gameplay proposal, not this admitted
+read-only synchronization profile.
 
 M10 records build, data, UI, action, and schema dimensions independently in
 [`build-manifest.json`](evidence/runtime-v3-preparation/data/build-manifest.json). The manifest
@@ -117,9 +211,10 @@ checks, cleanup, replay, rollback, and all repository gates are available.
 
 ### Runtime-v3 canonical artifact provenance
 
-The [Runtime-v3 bundle](../protocol-artifact/runtime-v3-gameplay/README.md) is copied byte-for-byte
-from `AI-Ascension/sts2-protocol` candidate `a81ec64d7d14bdb3079b8c7dc3c75e5c88693dfd` (MIT).
-This candidate must be checked against merged protocol main before consumer merge. The canonical
+The [Runtime-v3 bundle](../protocol-artifact/runtime-v3-gameplay/README.md) was copied byte-for-byte
+from `AI-Ascension/sts2-protocol` main
+`f2dac90529f584a6511c1760adce9da28f7f910a` (MIT) at artifact admission; current protocol main is
+`d3ab5fca7d9d74bb31eeb3e5b343d8024ee44404`. The canonical
 `SHA256SUMS`, README, manifest, schema and seven goldens retain upstream bytes; the
 [source schema](../schemas/runtime-v3-gameplay.schema.json) and
 [conformance case](../conformance/cases/runtime-v3-gameplay.json) preserve the inventory's relative

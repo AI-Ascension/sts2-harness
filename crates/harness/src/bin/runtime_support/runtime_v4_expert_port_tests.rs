@@ -89,6 +89,7 @@ mod tests {
         )
         .map_err(|error| error.to_string())?;
         let config = super::super::RuntimeConfig {
+            seed_transport: None,
             gateway_address: String::from("127.0.0.1:15525"),
             gateway_token: String::from("token"),
             mcp_binary: String::from("mcp"),
@@ -106,6 +107,8 @@ mod tests {
             artifact_id: String::from("artifact-1"),
             wait_for_combat_seconds: 0,
             settlement_timeout_seconds: 30,
+            map_context_enabled: false,
+            recovery_environment: Vec::new(),
         };
         let value = action_request(
             &config,
@@ -134,6 +137,7 @@ mod tests {
         )
         .map_err(|error| error.to_string())?;
         let config = super::super::RuntimeConfig {
+            seed_transport: None,
             gateway_address: String::from("127.0.0.1:15525"),
             gateway_token: String::from("token"),
             mcp_binary: String::from("mcp"),
@@ -151,6 +155,8 @@ mod tests {
             artifact_id: String::from("artifact-1"),
             wait_for_combat_seconds: 0,
             settlement_timeout_seconds: 30,
+            map_context_enabled: false,
+            recovery_environment: Vec::new(),
         };
         let mut port =
             RuntimeV3Port::new_with_telemetry(config, super::super::TelemetryHandle::disabled())?;

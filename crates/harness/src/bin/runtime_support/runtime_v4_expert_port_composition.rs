@@ -105,6 +105,7 @@ fn compose_with_normal(
     })
 }
 
+
 fn merge_actions(
     normal_actions: &EpisodeLegalActionSet,
     normal_payloads: &BTreeMap<String, Value>,
@@ -247,6 +248,7 @@ fn expert_action_kind(kind: &str) -> Option<ActionKind> {
         "smith" => ActionKind::Smith,
         "event_choice" => ActionKind::EventChoice,
         "select_card" => ActionKind::SelectCard,
+        "select_player" => ActionKind::SelectPlayer,
         "confirm_victory" => ActionKind::ConfirmVictory,
         "save_quit" => ActionKind::SaveQuit,
         _ => return None,
@@ -276,11 +278,25 @@ fn expert_stage(value: &Value) -> Result<EpisodeStage, String> {
 }
 
 impl RuntimeV3Port {
-    fn install_composed(&mut self, composed: &ComposedExpertObservation) {
+    fn install_composed(&mut self, composed: &ComposedExpertObservation) -> Result<(), String> {
         self.generation = composed.observation.generation();
         self.current_state = Some(composed.observation.state_id().to_owned());
         self.current_actions = Some(composed.actions.clone());
+        let (catalog, catalog_raw) = composed_catalog(&composed.actions, &composed.payloads)?;
+        self.catalog = Some(catalog);
+        self.catalog_raw = Some(catalog_raw);
         self.payloads = composed.payloads.clone();
+        self.retain_rest_selector();
+        if let Some(durable) = &self.durable {
+            let catalog_raw = self
+                .catalog_raw
+                .as_deref()
+                .ok_or_else(|| String::from("expert composition has no retained catalog bytes"))?;
+            durable.verify_resume_boundary_with_catalog(&composed.observation, catalog_raw)?;
+            durable.checkpoint_raw(&composed.observation, catalog_raw)?;
+        }
+        Ok(())
     }
 }
-
+include!("runtime_v4_expert_port_composition_rest.rs");
+include!("runtime_v4_expert_port_composition_catalog.rs");

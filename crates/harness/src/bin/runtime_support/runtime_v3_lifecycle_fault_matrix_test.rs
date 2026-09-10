@@ -282,7 +282,7 @@ fn dispatch_transport_fault_is_terminal_and_never_retried_as_catalog()
     let state = state_response("state_response", "1", 0)?;
     let parsed = parse::observation(&state, "state_response", &port.config)?;
     let action = parsed.actions.actions()[0].clone();
-    let observation = port.install(parsed);
+    let observation = port.install(parsed)?;
     let identity = sts2_harness::ActionIdentity::new(
         "operation-1",
         observation.state_id(),
