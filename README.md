@@ -37,6 +37,17 @@ contains the 131-state requirements baseline, typed inventories, JSON schemas, s
 per-state Markdown requirements, and Mermaid source diagrams. It is generated research material,
 not a game adapter or target-build certification.
 
+## Phase 2 context-control seam
+
+The companion now exposes `context_control` beside the existing provider ports. Its renderer has a
+legacy profile that preserves existing input bytes and an enabled profile that emits bounded,
+attributed managed context with a pinned adapter revision. Immutable prepared bytes can be sent
+through `ExoSession::decide_prepared`; the Ollama bridge uses the same managed-context projection
+while preserving its legacy body when the profile is absent. `ControlAuthority` keeps pause,
+commit, resume, stop, idempotent receipts, plan fencing, and a bounded recovery journal. The module
+never owns game state or direct game actions. Contract artifacts and the cross-repository source
+pin are in `contracts/context-control`.
+
 ## Owner and consumers
 
 The target owner is the harness maintainers. The harness owns the experiment control plane and the

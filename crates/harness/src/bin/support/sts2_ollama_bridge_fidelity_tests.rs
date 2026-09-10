@@ -109,3 +109,83 @@ fn actual_loopback_server_receives_the_same_serialized_body_as_capture()
     assert_ne!(lifecycle.snapshot_id, record.snapshot_id);
     Ok(())
 }
+
+#[test]
+fn enabled_management_context_reaches_the_compiled_http_body()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::net::TcpListener;
+    use std::thread;
+
+    let listener = TcpListener::bind(("127.0.0.1", 0))?;
+    let address = listener.local_addr()?;
+    let server = thread::spawn(move || -> Result<Vec<u8>, String> {
+        let (mut stream, _) = listener.accept().map_err(|_| "accept failed".to_owned())?;
+        let mut request = Vec::new();
+        let mut buffer = [0_u8; 4096];
+        loop {
+            let count = stream
+                .read(&mut buffer)
+                .map_err(|_| "read failed".to_owned())?;
+            if count == 0 {
+                return Err("request ended before body".to_owned());
+            }
+            request.extend_from_slice(&buffer[..count]);
+            let Some(split) = request.windows(4).position(|part| part == b"\r\n\r\n") else {
+                continue;
+            };
+            let body_start = split + 4;
+            let headers = std::str::from_utf8(&request[..split]).map_err(|_| "headers utf8")?;
+            let length = headers
+                .lines()
+                .find_map(|line| line.strip_prefix("Content-Length: "))
+                .ok_or("missing content length")?
+                .parse::<usize>()
+                .map_err(|_| "invalid content length")?;
+            while request.len() < body_start + length {
+                let count = stream
+                    .read(&mut buffer)
+                    .map_err(|_| "body read failed".to_owned())?;
+                if count == 0 {
+                    return Err("body ended early".to_owned());
+                }
+                request.extend_from_slice(&buffer[..count]);
+            }
+            let body = request[body_start..body_start + length].to_vec();
+            let payload =
+                br#"{"message":{"content":"{\"action_id\":\"combat.end-turn\",\"rationale\":\"synthetic oracle\"}"}}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                payload.len()
+            )
+            .map_err(|_| "response headers failed")?;
+            stream
+                .write_all(payload)
+                .map_err(|_| "response body failed")?;
+            return Ok(body);
+        }
+    });
+
+    let request = json!({
+        "model_execution_id":"oracle-management-1",
+        "legal_action_ids":["combat.end-turn"],
+        "observation":{"state_id":"oracle-combat","generation":0},
+        "management_profile":"management-enabled",
+        "management_context":{"notes":[{"attributed_to":"operator-1","content":"operator note"}]}
+    });
+    let request_bytes = serde_json::to_vec(&request)?;
+    let mut capture =
+        sts2_harness::MemoryCapture::new(sts2_harness::CaptureMode::Metadata, 4, LIMIT)?;
+    run_with_capture_bytes(&request_bytes, &mut capture, address)?;
+    let body = server
+        .join()
+        .map_err(|_| "server panicked")?
+        .map_err(|error| error.to_owned())?;
+    let value: Value = serde_json::from_slice(&body)?;
+    let content = value["messages"][1]["content"]
+        .as_str()
+        .ok_or("missing managed user content")?;
+    assert!(content.contains("[management-context-v1]"));
+    assert!(content.contains("operator note"));
+    Ok(())
+}

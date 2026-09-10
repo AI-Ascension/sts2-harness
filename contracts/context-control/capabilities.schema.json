@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ascension:context-control:capabilities:v1",
+  "title": "Proposed Phase 2 capabilities contract",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "ascension.context-control.capabilities.v1"
+    },
+    "product_phase": {
+      "const": 2
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "episode_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "agent_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        }
+      },
+      "required": [
+        "project_id",
+        "run_id",
+        "episode_id",
+        "agent_id"
+      ]
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "adapter_revision": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "supported_operations": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "include_item",
+          "exclude_item",
+          "pin_item",
+          "unpin_item",
+          "put_note",
+          "remove_note",
+          "set_objective",
+          "restore_configuration",
+          "pause",
+          "commit",
+          "resume"
+        ]
+      },
+      "maxItems": 11,
+      "minItems": 0,
+      "uniqueItems": true
+    },
+    "exact_application_preview": {
+      "enum": [
+        "supported",
+        "unsupported",
+        "unverified"
+      ]
+    },
+    "optional_images": {
+      "enum": [
+        "supported",
+        "unsupported",
+        "unverified"
+      ]
+    },
+    "durable_control_store": {
+      "enum": [
+        "available",
+        "unavailable",
+        "unverified"
+      ]
+    },
+    "provider_added_context": {
+      "const": "not_exposed"
+    },
+    "context_compact": {
+      "const": false
+    },
+    "persistent_provider_sessions": {
+      "const": false
+    },
+    "direct_game_dispatch": {
+      "const": false
+    },
+    "commit_auto_resumes": {
+      "const": false
+    }
+  },
+  "required": [
+    "schema",
+    "product_phase",
+    "scope",
+    "enabled",
+    "adapter_revision",
+    "supported_operations",
+    "exact_application_preview",
+    "optional_images",
+    "durable_control_store",
+    "provider_added_context",
+    "context_compact",
+    "persistent_provider_sessions",
+    "direct_game_dispatch",
+    "commit_auto_resumes"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "enabled": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "supported_operations": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}
