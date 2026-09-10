@@ -77,12 +77,15 @@ impl<T> ExoSession<T> {
         let attempt_id = self.provider.capture_attempt_id().map(str::to_owned);
         let response = match self.provider.transport_exchange_for_session(&bytes) {
             Ok(response) => {
-                self.provider
-                    .capture_write_completed(&execution_id.to_string(), attempt_id.as_deref());
+                self.provider.capture_write_completed(
+                    &execution_id.to_string(),
+                    attempt_id.as_deref(),
+                    crate::context_capture::CaptureBoundary::ExoSessionRequest,
+                );
                 response
             }
             Err(error) => {
-                self.provider.capture_write_failed(
+                self.provider.capture_write_unknown(
                     &execution_id.to_string(),
                     attempt_id.as_deref(),
                     match error {
@@ -95,6 +98,7 @@ impl<T> ExoSession<T> {
                             "transport_malformed"
                         }
                     },
+                    crate::context_capture::CaptureBoundary::ExoSessionRequest,
                 );
                 return Err(ExoError::from(error));
             }

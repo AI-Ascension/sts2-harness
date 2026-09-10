@@ -7,7 +7,9 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
-use sts2_harness::{CapturePort, NoopCapture, PreparedAstraInput, parse_codex_events};
+use sts2_harness::{
+    CaptureBoundary, CapturePort, NoopCapture, PreparedAstraInput, parse_codex_events,
+};
 
 #[path = "support/bridge_accounting.rs"]
 mod accounting;
@@ -181,9 +183,14 @@ fn decide_with_executable(
         .ok_or("missing provider input")?
         .write_all(prompt.as_bytes());
     if written.is_ok() {
-        let _ = capture.write_completed(execution_id);
+        let _ = capture.write_completed_at(execution_id, None, CaptureBoundary::ProviderRequest);
     } else {
-        let _ = capture.write_failed(execution_id, "input_write_failed");
+        let _ = capture.write_unknown(
+            execution_id,
+            None,
+            "input_write_unknown",
+            CaptureBoundary::ProviderRequest,
+        );
     }
     let status = child.wait()?;
     let stdout = stdout_reader

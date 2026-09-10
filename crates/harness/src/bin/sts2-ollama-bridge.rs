@@ -46,6 +46,15 @@ fn run_with_capture_bytes(
     capture: &mut dyn CapturePort,
     address: SocketAddr,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    run_with_capture_bytes_timeout(bytes, capture, address, Duration::from_secs(100))
+}
+
+fn run_with_capture_bytes_timeout(
+    bytes: &[u8],
+    capture: &mut dyn CapturePort,
+    address: SocketAddr,
+    timeout: Duration,
+) -> Result<(), Box<dyn std::error::Error>> {
     if bytes.len() > LIMIT {
         return Err("request exceeds bound".into());
     }
@@ -70,13 +79,26 @@ fn run_with_capture_bytes(
         .filter(|id| !id.is_empty())
         .unwrap_or("ollama-bridge-execution");
     PreparedOllamaInput::new(&body).capture(capture, execution_id, None);
-    let response = match exchange_at(&body, address) {
-        Ok(response) => {
-            let _ = capture.write_completed(execution_id);
-            response
-        }
+    let mut write_completed = false;
+    let mut mark_write_completed = || {
+        write_completed = true;
+        let _ = capture.write_completed_at(
+            execution_id,
+            None,
+            sts2_harness::CaptureBoundary::ProviderRequest,
+        );
+    };
+    let response = match exchange_at(&body, address, timeout, &mut mark_write_completed) {
+        Ok(response) => response,
         Err(error) => {
-            let _ = capture.write_failed(execution_id, "ollama_transport_failed");
+            if !write_completed {
+                let _ = capture.write_unknown(
+                    execution_id,
+                    None,
+                    "ollama_transport_write_unknown",
+                    sts2_harness::CaptureBoundary::ProviderRequest,
+                );
+            }
             return Err(error);
         }
     };
@@ -108,11 +130,16 @@ fn validate_decision(content: &str, ids: &[Value]) -> Result<Value, Box<dyn std:
     Ok(json!({"decision":"action", "action_id":value["action_id"], "rationale":rationale}))
 }
 
-fn exchange_at(body: &[u8], address: SocketAddr) -> Result<Value, Box<dyn std::error::Error>> {
+fn exchange_at(
+    body: &[u8],
+    address: SocketAddr,
+    timeout: Duration,
+    on_write_completed: &mut dyn FnMut(),
+) -> Result<Value, Box<dyn std::error::Error>> {
     if body.len() > LIMIT {
         return Err("provider request exceeds bound".into());
     }
-    let deadline = Instant::now() + Duration::from_secs(100);
+    let deadline = Instant::now() + timeout;
     let mut socket = TcpStream::connect_timeout(&address, Duration::from_secs(3))?;
     socket.set_write_timeout(Some(Duration::from_secs(5)))?;
     write!(
@@ -121,6 +148,7 @@ fn exchange_at(body: &[u8], address: SocketAddr) -> Result<Value, Box<dyn std::e
         body.len()
     )?;
     socket.write_all(body)?;
+    on_write_completed();
     let mut response = Vec::new();
     let mut buffer = [0_u8; 4096];
     loop {
@@ -143,6 +171,47 @@ fn exchange_at(body: &[u8], address: SocketAddr) -> Result<Value, Box<dyn std::e
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn oracle_request() -> Vec<u8> {
+        serde_json::to_vec(&json!({
+            "model_execution_id":"oracle-lifecycle",
+            "legal_action_ids":["combat.end-turn"],
+            "observation":{"state_id":"oracle-combat","generation":0},
+        }))
+        .expect("request")
+    }
+
+    fn consume_request(stream: &mut std::net::TcpStream) -> Result<(), String> {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .map_err(|_| "timeout failed".to_owned())?;
+        let mut request = Vec::new();
+        let mut buffer = [0_u8; 4096];
+        loop {
+            let count = stream
+                .read(&mut buffer)
+                .map_err(|_| "request read failed".to_owned())?;
+            if count == 0 {
+                return Err("request ended before body".to_owned());
+            }
+            request.extend_from_slice(&buffer[..count]);
+            let Some(split) = request.windows(4).position(|part| part == b"\r\n\r\n") else {
+                continue;
+            };
+            let body_start = split + 4;
+            let header_text =
+                std::str::from_utf8(&request[..split]).map_err(|_| "headers utf8".to_owned())?;
+            let content_length = header_text
+                .lines()
+                .find_map(|line| line.strip_prefix("Content-Length: "))
+                .ok_or_else(|| "missing content length".to_owned())?
+                .parse::<usize>()
+                .map_err(|_| "invalid content length".to_owned())?;
+            if request.len() >= body_start + content_length {
+                return Ok(());
+            }
+        }
+    }
     #[test]
     fn only_catalog_actions_and_bounded_rationale_are_accepted() {
         let ids = vec![json!("play:1")];
@@ -252,6 +321,110 @@ mod tests {
             .ok_or("captured body is absent")?;
         assert_eq!(record.content.as_deref(), Some(body.as_slice()));
         assert_eq!(record.observed_bytes, body.len());
+        Ok(())
+    }
+
+    #[test]
+    fn response_failure_after_body_write_is_recorded_as_completed() -> Result<(), String> {
+        use std::net::TcpListener;
+        use std::thread;
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|_| "bind".to_owned())?;
+        let address = listener.local_addr().map_err(|_| "address".to_owned())?;
+        let server = thread::spawn(move || -> Result<(), String> {
+            let (mut stream, _) = listener.accept().map_err(|_| "accept".to_owned())?;
+            consume_request(&mut stream)?;
+            stream
+                .write_all(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .map_err(|_| "response".to_owned())
+        });
+        let mut capture =
+            sts2_harness::MemoryCapture::new(sts2_harness::CaptureMode::Metadata, 4, LIMIT)
+                .map_err(|_| "capture")?;
+        assert!(run_with_capture_bytes(&oracle_request(), &mut capture, address).is_err());
+        server.join().map_err(|_| "server".to_owned())??;
+        let states = capture
+            .records()
+            .map(|record| record.state)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            states,
+            vec![
+                sts2_harness::TransportState::Prepared,
+                sts2_harness::TransportState::WriteCompleted,
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_response_after_body_write_is_recorded_as_completed() -> Result<(), String> {
+        use std::net::TcpListener;
+        use std::thread;
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|_| "bind".to_owned())?;
+        let address = listener.local_addr().map_err(|_| "address".to_owned())?;
+        let server = thread::spawn(move || -> Result<(), String> {
+            let (mut stream, _) = listener.accept().map_err(|_| "accept".to_owned())?;
+            consume_request(&mut stream)?;
+            stream
+                .write_all(b"malformed response")
+                .map_err(|_| "response".to_owned())
+        });
+        let mut capture =
+            sts2_harness::MemoryCapture::new(sts2_harness::CaptureMode::Metadata, 4, LIMIT)
+                .map_err(|_| "capture")?;
+        assert!(run_with_capture_bytes(&oracle_request(), &mut capture, address).is_err());
+        server.join().map_err(|_| "server".to_owned())??;
+        assert_eq!(
+            capture
+                .records()
+                .map(|record| record.state)
+                .collect::<Vec<_>>(),
+            vec![
+                sts2_harness::TransportState::Prepared,
+                sts2_harness::TransportState::WriteCompleted,
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn response_timeout_after_body_write_is_recorded_as_completed() -> Result<(), String> {
+        use std::net::TcpListener;
+        use std::thread;
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|_| "bind".to_owned())?;
+        let address = listener.local_addr().map_err(|_| "address".to_owned())?;
+        let server = thread::spawn(move || -> Result<(), String> {
+            let (mut stream, _) = listener.accept().map_err(|_| "accept".to_owned())?;
+            consume_request(&mut stream)?;
+            thread::sleep(Duration::from_millis(100));
+            Ok(())
+        });
+        let mut capture =
+            sts2_harness::MemoryCapture::new(sts2_harness::CaptureMode::Metadata, 4, LIMIT)
+                .map_err(|_| "capture")?;
+        assert!(
+            run_with_capture_bytes_timeout(
+                &oracle_request(),
+                &mut capture,
+                address,
+                Duration::from_millis(10),
+            )
+            .is_err()
+        );
+        server.join().map_err(|_| "server".to_owned())??;
+        assert_eq!(
+            capture
+                .records()
+                .map(|record| record.state)
+                .collect::<Vec<_>>(),
+            vec![
+                sts2_harness::TransportState::Prepared,
+                sts2_harness::TransportState::WriteCompleted,
+            ]
+        );
         Ok(())
     }
 }

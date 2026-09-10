@@ -126,6 +126,8 @@ pub struct PreparedInput<'a> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CaptureRecord {
     pub snapshot_id: String,
+    /// Lifecycle records point back to the prepared snapshot; prepared records have no parent.
+    pub parent_snapshot_id: Option<String>,
     pub execution_id: String,
     pub attempt_id: Option<String>,
     pub boundary: CaptureBoundary,
@@ -145,6 +147,7 @@ pub enum CaptureError {
     TooLarge,
     InvalidIdentity,
     QueueFull,
+    PrivateRequiresVault,
 }
 
 impl std::fmt::Display for CaptureError {
@@ -155,6 +158,7 @@ impl std::fmt::Display for CaptureError {
             Self::TooLarge => "captured bytes exceed their bound",
             Self::InvalidIdentity => "capture identity is invalid",
             Self::QueueFull => "capture queue is full",
+            Self::PrivateRequiresVault => "private capture requires an approved encrypted vault",
         })
     }
 }
@@ -220,6 +224,29 @@ pub trait CapturePort: std::fmt::Debug + Send {
         let _ = attempt_id;
         self.write_failed(execution_id, code)
     }
+
+    /// Records a completed outbound write while preserving the application boundary. Existing
+    /// sinks that only implement the original methods receive the compatible provider boundary.
+    fn write_completed_at(
+        &mut self,
+        execution_id: &str,
+        attempt_id: Option<&str>,
+        _boundary: CaptureBoundary,
+    ) -> Result<(), CaptureError> {
+        self.write_completed_with_attempt(execution_id, attempt_id)
+    }
+
+    /// Records an indeterminate transport outcome. A legacy sink falls back to its failure state;
+    /// structured sinks should override this method and emit `TransportState::Unknown`.
+    fn write_unknown(
+        &mut self,
+        execution_id: &str,
+        attempt_id: Option<&str>,
+        code: &str,
+        _boundary: CaptureBoundary,
+    ) -> Result<(), CaptureError> {
+        self.write_failed_with_attempt(execution_id, attempt_id, code)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -251,10 +278,11 @@ fn valid_identity(value: &str) -> bool {
         })
 }
 
-fn snapshot_id(execution_id: &str, attempt_id: Option<&str>) -> String {
+fn snapshot_id(execution_id: &str, attempt_id: Option<&str>, boundary: CaptureBoundary) -> String {
+    let boundary = boundary.as_str().replace('.', "-");
     match attempt_id {
-        Some(attempt_id) => format!("snapshot-{execution_id}-{attempt_id}"),
-        None => format!("snapshot-{execution_id}"),
+        Some(attempt_id) => format!("snapshot-{execution_id}-{attempt_id}-{boundary}"),
+        None => format!("snapshot-{execution_id}-{boundary}"),
     }
 }
 

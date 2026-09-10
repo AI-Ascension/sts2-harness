@@ -55,3 +55,72 @@ fn repeated_input_with_distinct_attempts_keeps_distinct_snapshot_identity() {
     assert_ne!(records[0].snapshot_id, records[1].snapshot_id);
     assert_ne!(records[0].attempt_id, records[1].attempt_id);
 }
+
+#[test]
+fn boundary_and_parent_linkage_are_preserved_for_lifecycle_records() {
+    let mut capture = MemoryCapture::new(CaptureMode::Metadata, 8, 128).expect("config");
+    capture
+        .prepared(CaptureInput {
+            execution_id: "model-execution-7",
+            attempt_id: Some("attempt-a"),
+            boundary: CaptureBoundary::ExoSessionRequest,
+            bytes: b"input",
+        })
+        .expect("prepared");
+    capture
+        .write_completed_at(
+            "model-execution-7",
+            Some("attempt-a"),
+            CaptureBoundary::ExoSessionRequest,
+        )
+        .expect("completed");
+    let prepared_snapshot_id = capture
+        .records()
+        .next()
+        .expect("prepared record")
+        .snapshot_id
+        .clone();
+    assert_ne!(prepared_snapshot_id, {
+        let mut other = MemoryCapture::new(CaptureMode::Metadata, 8, 128).expect("config");
+        other
+            .prepared(CaptureInput {
+                execution_id: "model-execution-7",
+                attempt_id: Some("attempt-a"),
+                boundary: CaptureBoundary::ProviderRequest,
+                bytes: b"input",
+            })
+            .expect("prepared");
+        other
+            .records()
+            .next()
+            .expect("other record")
+            .snapshot_id
+            .clone()
+    });
+    capture
+        .write_unknown(
+            "model-execution-7",
+            Some("attempt-a"),
+            "post_write_response_failure",
+            CaptureBoundary::ExoSessionRequest,
+        )
+        .expect("unknown");
+    let records = capture.records().collect::<Vec<_>>();
+    assert_eq!(records[1].boundary, CaptureBoundary::ExoSessionRequest);
+    assert_eq!(
+        records[1].parent_snapshot_id.as_deref(),
+        Some(prepared_snapshot_id.as_str())
+    );
+    assert_eq!(
+        capture.records().last().expect("unknown").state,
+        TransportState::Unknown
+    );
+}
+
+#[test]
+fn private_memory_capture_is_rejected_until_an_approved_vault_is_supplied() {
+    assert!(matches!(
+        MemoryCapture::new(CaptureMode::Private, 4, 128),
+        Err(CaptureError::PrivateRequiresVault)
+    ));
+}

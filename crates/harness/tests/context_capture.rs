@@ -43,6 +43,7 @@ impl CapturePort for SharedCapture {
     fn prepared(&mut self, input: CaptureInput<'_>) -> Result<(), CaptureError> {
         self.0.lock().expect("capture lock").push(CaptureRecord {
             snapshot_id: format!("snapshot-{}", input.execution_id),
+            parent_snapshot_id: None,
             execution_id: input.execution_id.to_owned(),
             attempt_id: input.attempt_id.map(str::to_owned),
             boundary: input.boundary,
@@ -60,6 +61,7 @@ impl CapturePort for SharedCapture {
     fn write_completed(&mut self, execution_id: &str) -> Result<(), CaptureError> {
         self.0.lock().expect("capture lock").push(CaptureRecord {
             snapshot_id: format!("snapshot-{execution_id}"),
+            parent_snapshot_id: None,
             execution_id: execution_id.to_owned(),
             attempt_id: None,
             boundary: CaptureBoundary::ProviderRequest,
@@ -77,6 +79,7 @@ impl CapturePort for SharedCapture {
     fn write_failed(&mut self, execution_id: &str, _code: &str) -> Result<(), CaptureError> {
         self.0.lock().expect("capture lock").push(CaptureRecord {
             snapshot_id: format!("snapshot-{execution_id}"),
+            parent_snapshot_id: None,
             execution_id: execution_id.to_owned(),
             attempt_id: None,
             boundary: CaptureBoundary::ProviderRequest,

@@ -218,14 +218,16 @@ impl<T> ExoProvider<T> {
                 self.capture_write_completed(
                     request.model_execution_id.as_str(),
                     attempt_id.as_deref(),
+                    CaptureBoundary::ProviderRequest,
                 );
                 Ok(response)
             }
             Err(error) => {
-                self.capture_write_failed(
+                self.capture_write_unknown(
                     request.model_execution_id.as_str(),
                     attempt_id.as_deref(),
                     error_code(ExoError::from(error)),
+                    CaptureBoundary::ProviderRequest,
                 );
                 Err(ExoError::from(error))
             }
@@ -248,20 +250,26 @@ impl<T> ExoProvider<T> {
         }
     }
 
-    pub(super) fn capture_write_completed(&mut self, execution_id: &str, attempt_id: Option<&str>) {
+    pub(super) fn capture_write_completed(
+        &mut self,
+        execution_id: &str,
+        attempt_id: Option<&str>,
+        boundary: CaptureBoundary,
+    ) {
         if let Some(capture) = self.capture.as_mut() {
-            let _ = capture.write_completed_with_attempt(execution_id, attempt_id);
+            let _ = capture.write_completed_at(execution_id, attempt_id, boundary);
         }
     }
 
-    pub(super) fn capture_write_failed(
+    pub(super) fn capture_write_unknown(
         &mut self,
         execution_id: &str,
         attempt_id: Option<&str>,
         code: &str,
+        boundary: CaptureBoundary,
     ) {
         if let Some(capture) = self.capture.as_mut() {
-            let _ = capture.write_failed_with_attempt(execution_id, attempt_id, code);
+            let _ = capture.write_unknown(execution_id, attempt_id, code, boundary);
         }
     }
 }

@@ -56,6 +56,11 @@ Machine-readable results and the exact executable digests are in
 scope and limitations in the accompanying
 [`context-capture-fidelity-20260910.md`](evidence/context-capture-fidelity-20260910.md).
 
+Private capture is deliberately rejected by the in-memory capture ring until an approved encrypted
+vault is supplied. Lifecycle tests keep prepared, completed, and indeterminate write outcomes
+distinct, including response, malformed-response, and timeout failures after the request body was
+sent.
+
 ## Coordinator and lifecycle tests
 
 `foundation::router_cleanup` exercises rejected-binding cleanup and explicit unbind failure through

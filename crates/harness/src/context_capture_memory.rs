@@ -23,6 +23,9 @@ impl MemoryCapture {
         max_records: usize,
         max_content_bytes: usize,
     ) -> Result<Self, CaptureError> {
+        if mode == CaptureMode::Private {
+            return Err(CaptureError::PrivateRequiresVault);
+        }
         if mode == CaptureMode::Off
             || max_records == 0
             || max_records > MAX_CAPTURE_RECORDS
@@ -72,12 +75,13 @@ impl CapturePort for MemoryCapture {
         {
             return Err(CaptureError::InvalidIdentity);
         }
-        let snapshot_id = snapshot_id(input.execution_id, input.attempt_id);
+        let snapshot_id = snapshot_id(input.execution_id, input.attempt_id, input.boundary);
         let content = (self.mode == CaptureMode::Memory).then(|| input.bytes.to_vec());
         let sha256 =
             (self.mode != CaptureMode::Metadata).then(|| Sha256::digest(input.bytes).into());
         self.push(CaptureRecord {
             snapshot_id,
+            parent_snapshot_id: None,
             execution_id: input.execution_id.to_owned(),
             attempt_id: input.attempt_id.map(str::to_owned),
             boundary: input.boundary,
@@ -109,12 +113,13 @@ impl CapturePort for MemoryCapture {
         {
             return Err(CaptureError::InvalidIdentity);
         }
-        let snapshot_id = snapshot_id(input.execution_id, input.attempt_id);
+        let snapshot_id = snapshot_id(input.execution_id, input.attempt_id, input.boundary);
         let content = (self.mode == CaptureMode::Memory).then(|| input.bytes.to_vec());
         let sha256 =
             (self.mode != CaptureMode::Metadata).then(|| Sha256::digest(input.bytes).into());
         self.push(CaptureRecord {
             snapshot_id,
+            parent_snapshot_id: None,
             execution_id: input.execution_id.to_owned(),
             attempt_id: input.attempt_id.map(str::to_owned),
             boundary: input.boundary,
@@ -143,11 +148,27 @@ impl CapturePort for MemoryCapture {
         {
             return Err(CaptureError::InvalidIdentity);
         }
+        self.write_completed_at(execution_id, attempt_id, CaptureBoundary::ProviderRequest)
+    }
+
+    fn write_completed_at(
+        &mut self,
+        execution_id: &str,
+        attempt_id: Option<&str>,
+        boundary: CaptureBoundary,
+    ) -> Result<(), CaptureError> {
+        if !valid_identity(execution_id)
+            || attempt_id.is_some_and(|attempt_id| !valid_identity(attempt_id))
+        {
+            return Err(CaptureError::InvalidIdentity);
+        }
+        let parent_snapshot_id = snapshot_id(execution_id, attempt_id, boundary);
         self.push(CaptureRecord {
-            snapshot_id: snapshot_id(execution_id, attempt_id),
+            snapshot_id: parent_snapshot_id.clone(),
+            parent_snapshot_id: Some(parent_snapshot_id),
             execution_id: execution_id.to_owned(),
             attempt_id: attempt_id.map(str::to_owned),
-            boundary: CaptureBoundary::ProviderRequest,
+            boundary,
             state: TransportState::WriteCompleted,
             observed_bytes: 0,
             sha256: None,
@@ -174,12 +195,34 @@ impl CapturePort for MemoryCapture {
         {
             return Err(CaptureError::InvalidIdentity);
         }
+        self.write_unknown(
+            execution_id,
+            attempt_id,
+            _code,
+            CaptureBoundary::ProviderRequest,
+        )
+    }
+
+    fn write_unknown(
+        &mut self,
+        execution_id: &str,
+        attempt_id: Option<&str>,
+        _code: &str,
+        boundary: CaptureBoundary,
+    ) -> Result<(), CaptureError> {
+        if !valid_identity(execution_id)
+            || attempt_id.is_some_and(|attempt_id| !valid_identity(attempt_id))
+        {
+            return Err(CaptureError::InvalidIdentity);
+        }
+        let parent_snapshot_id = snapshot_id(execution_id, attempt_id, boundary);
         self.push(CaptureRecord {
-            snapshot_id: snapshot_id(execution_id, attempt_id),
+            snapshot_id: parent_snapshot_id.clone(),
+            parent_snapshot_id: Some(parent_snapshot_id),
             execution_id: execution_id.to_owned(),
             attempt_id: attempt_id.map(str::to_owned),
-            boundary: CaptureBoundary::ProviderRequest,
-            state: TransportState::WriteFailed,
+            boundary,
+            state: TransportState::Unknown,
             observed_bytes: 0,
             sha256: None,
             content: None,
