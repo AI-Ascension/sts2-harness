@@ -4,7 +4,9 @@ This record covers the opt-in `ContextControlStore` companion seam at the Phase 
 head. It is local source/component evidence; it does not establish native target-console, provider,
 gateway, game, deployment, or soak behavior.
 
-The focused migration suite is `crates/harness/tests/context_control_migration.rs` and has seven
+The focused context-control suite at commit `c7ff0ad2ff9b397ea5eccba1bb2fc81113dee354` has six
+tests, including a renderer digest-substitution regression. The focused migration suite is
+`crates/harness/tests/context_control_migration.rs` and has seven
 tests:
 
 - encrypted journal reopen retains the Phase 1 snapshot digest and opaque outbox facts;
@@ -14,6 +16,10 @@ tests:
 - a legacy reader refuses management-active state and accepts explicit disabled state;
 - immutable Phase 1 snapshot identity and a WAL-checkpointed backup survive reopen; and
 - newer schema markers and tampered journal digests fail closed.
+
+The renderer regression recomputes SHA-256 for selected, note, and objective bytes and rejects a
+same-reference content substitution before the bridge can serialize it. This closes the immutable
+content-digest check for the companion prepared-input seam.
 
 The store uses SQLite WAL, `synchronous = FULL`, `BEGIN IMMEDIATE`, XChaCha20-Poly1305 journal
 envelopes, SHA-256 envelope/event/snapshot digests, bounded object sizes, and a schema marker
@@ -31,7 +37,7 @@ cargo test --locked --test context_control_migration       pass (7/7)
 cargo test --workspace --all-targets --all-features --locked pass
 ```
 
-The companion seam leaves the target console capability fact `durable_control_store` unverified
-until the target application adopts a durable implementation. Native filesystem crash behavior,
+The target console capability fact is now backed by its own local encrypted fixture; this companion
+record still does not claim native or production storage. Native filesystem crash behavior,
 exclusive OS ownership, prepared-provider claims, ambiguous external writes, and live migration
 remain outside this evidence record.
