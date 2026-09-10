@@ -3,7 +3,7 @@
 Date: 2026-09-10
 
 This record compares the accepted harness baseline `fc44d3ef65fefa6d13ecd5f690e5335a6ef60080`
-with successor `578595baa10a45fd6fcbf712ed0f59975cf47ef7`. Each bridge was built with the pinned
+with successor `b3ff9d967f5ae5459da409e1babf6512b014bc6c`. Each bridge was built with the pinned
 toolchain and run as a real executable against an isolated synthetic downstream. The fake Codex
 CLI recorded stdin, output schema, argv and the bounded JSONL outcome. The fake Ollama server
 recorded the complete HTTP request and returned one bounded action. Both bridges made one
