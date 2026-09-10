@@ -140,7 +140,7 @@ fn query_u64(
     default: u64,
 ) -> Result<u64, ManagementError> {
     for key in query.keys() {
-        if key != name {
+        if !matches!(key.as_str(), "after_sequence" | "limit") {
             return Err(ManagementError::invalid(
                 "unknown_query",
                 "query parameter is not supported",

@@ -46,9 +46,14 @@ impl ManagementService {
             SubmissionLookup::Missing => {}
         }
         let definition_digest = if let Some(definition) = &request.definition {
-            let validation = self
-                .definitions
-                .validate(definition, &json!({ "capabilities": [] }))?;
+            let capabilities = match self.capabilities.capabilities() {
+                Ok(value) => value,
+                Err(error) if error.class == ErrorClass::Unavailable => {
+                    json!({ "capabilities": [] })
+                }
+                Err(error) => return Err(error),
+            };
+            let validation = self.definitions.validate(definition, &capabilities)?;
             if validation.diagnostics.iter().any(|diagnostic| {
                 diagnostic.severity == super::super::contract::DiagnosticSeverity::Error
             }) {

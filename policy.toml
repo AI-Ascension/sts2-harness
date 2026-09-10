@@ -129,3 +129,4 @@ markdown_max = 700
 "crates/harness/src/workflow/runtime.rs" = "The strict reducer keeps cursor, guard, loop, and terminal transitions together for one auditable state machine; its 314-line implementation remains below the hard limit."
 "crates/harness/src/workflow/dynamic.rs" = "The dynamic plan registry, validator, and deterministic pure executor are reviewed as one bounded planning boundary; its 314-line implementation remains below the hard limit."
 "crates/harness/src/workflow/provider.rs" = "The provider registry, typed context projection, and reservation ledger share one budget boundary; its 315-line implementation remains below the hard limit."
+"crates/harness/src/management/workflow_ports.rs" = "The synthetic management adapter keeps definition admission, runtime control, replay, and capability wiring together so the process driver exercises one shared boundary; its 385-line implementation remains below the hard limit."

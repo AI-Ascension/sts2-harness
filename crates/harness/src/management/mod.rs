@@ -6,6 +6,7 @@ mod contract;
 mod http;
 mod service;
 mod store;
+mod workflow_ports;
 
 pub use cli::run_cli;
 
@@ -42,3 +43,4 @@ pub use service::{
 pub use store::{
     CommandAcceptance, FileWorkflowStore, MemoryWorkflowStore, StoreError, WorkflowStore,
 };
+pub use workflow_ports::synthetic_file_store;

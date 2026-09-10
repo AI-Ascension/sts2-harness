@@ -12,8 +12,8 @@ use self::support::{
 use super::{
     CommandKind, CommandParameters, CommandRequest, DiffRequest, EnvironmentAuthenticator,
     ExportRequest, ExportResponse, FileWorkflowStore, InspectRequest, MANAGEMENT_SCHEMA_VERSION,
-    ManagementReplayRequest, ManagementServer, ManagementService, OutputFormat, RunRequest,
-    ServerConfig, ValidateRequest, validate_identifier,
+    ManagementReplayRequest, ManagementServer, OutputFormat, RunRequest, ServerConfig,
+    ValidateRequest, validate_identifier,
 };
 
 const DEFAULT_LISTEN: &str = "127.0.0.1:8787";
@@ -85,7 +85,7 @@ fn serve(args: &[String]) -> Result<CliOutput, CliFailure> {
     let authenticator =
         Arc::new(EnvironmentAuthenticator::from_profile(auth_profile).map_err(CliFailure::local)?);
     let store = FileWorkflowStore::open(store_path).map_err(CliFailure::local)?;
-    let service = Arc::new(ManagementService::file_store(store));
+    let service = Arc::new(super::synthetic_file_store(store));
     let config = ServerConfig::new(listen, authenticator).map_err(CliFailure::local)?;
     let server = ManagementServer::start(config, service).map_err(CliFailure::local)?;
     eprintln!(
