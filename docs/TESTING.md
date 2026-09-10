@@ -33,6 +33,7 @@ cargo run --locked --package repo-policy -- --strict
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --all-targets --all-features --locked
+(cd protocol-artifact/seeded-run-v1 && sha256sum -c SHA256SUMS)
 ```
 
 These commands are the local/CI entrypoint for the current workspace. They do not launch a game,
@@ -206,6 +207,20 @@ The dated [Windows](evidence/seeded-astra-campaign-20260906.md) and
 [Linux](evidence/linux-seeded-campaign-20260906.md) records provide separate fresh seeded
 Setup-to-Defeat replay evidence. Linux's original model campaign required one controller
 restart; its final replay ran from fresh Setup without a continuation.
+
+The seeded-run transport tests are separate from those native campaign records. The
+`seed_transport_tests` module checks the canonical standard Ironclad context digest, exact MCP
+start argument shape, contiguous plan ordinals, bounded seeds, and durable reservation recovery.
+`runtime_v3_seeded_validation_tests` checks protocol identity, context/generation/lease fences,
+canonical seed readback, fresh observation advancement, and the `run_started` witness. The
+`seeded-run-v1` artifact checksum inventory is verified byte-for-byte. These source/component and
+artifact checks do not launch a host, call a provider, or prove native seed settlement, profile/save
+isolation, gameplay, deployment, or release compatibility.
+
+The transport's live boundary remains explicit: a pre-start observation establishes the generation
+fence, one reservation permits one start mutation, and an unknown or disconnected start can only be
+reconciled with the original operation ID. `STS2_SEED_VERIFY_IDEMPOTENCY=true` adds an exact
+post-settlement duplicate check; it does not authorize another run admission.
 The patch-diff utility
 is source-only and compares bounded manifests; it cannot promote a build or replace package hashes.
 Its workspace tests check bounded consumption even from an endless reader, exact-size admission,
