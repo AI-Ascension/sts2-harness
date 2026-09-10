@@ -97,6 +97,21 @@ and current host action IDs. The executable assembles one configured instance's 
 path, not the separate record, memory, evaluation, replay, artifact-publication or co-op library
 seams. Target-build and live provider behavior remain `unverified`.
 
+### Runtime-v4 expert source/component row
+
+At current harness main
+[`ee28096dc722b1e9ef466fc966a79a3422f56ecc`](https://github.com/AI-Ascension/sts2-harness/commit/ee28096dc722b1e9ef466fc966a79a3422f56ecc),
+the coordinator consumes the copied `runtime-v4-expert` and `runtime-v4-expert-action` artifacts,
+maps the expert MCP catalog, validates the fair-play observation and legal-action bindings, and
+exercises bounded executable composition and recovery checks. Their schema digests are
+`0ee034d5da83f34e9fa0ba23038738d56ef8cfccb1c6e752af3ab63d212c8e42` and
+`393318bda8c3522c0ecbacc78b95471a9f4dc3f825169d2048f4c74a7b7f2929`; the copied protocol source
+is aligned with protocol main `f2dac90529f584a6511c1760adce9da28f7f910a`. The separate
+`runtime-v4-expert-rest-action` artifact remains a candidate at digest
+`bb3555fae28eb1f79d08a15e9884696a579e4c20836f5016509f17e0f4c36fbd`. This is source/component
+and bounded synthetic composition evidence; native host legality, settled effects, provider-run
+compatibility, deployment, release, and live end-to-end behavior remain unverified.
+
 ### Runtime map context
 
 Map context is an additive, opt-in provider-request capability. `STS2_ENABLE_MAP_CONTEXT` defaults to
@@ -145,9 +160,13 @@ authoritative membership, or multiplayer host compatibility; these require a def
 runtime integration before any stronger guarantee.
 
 This target-local helper has no co-op wire schema, profile, digest, MCP tool or runtime transport.
-The protocol co-op contract is a blocked proposal outside the admitted Runtime-v3 gameplay bundle;
-exporting `CoopCoordinator` does not advertise protocol support. Co-op digests in dated preparation
-records describe that historical proposal, not the currently admitted consumer artifact inventory.
+The admitted protocol profile is `coop-synchronization-v1`, produced by gateway serialization and
+read by MCP as coordinator-reported metadata; it carries no action, vote, shared-effect, or host-game
+authority. This harness helper does not produce or consume that wire profile. Exporting
+`CoopCoordinator` therefore remains a local source/component check, and its source does not establish
+native peer admission, actions, votes, shared effects, or disconnect/rejoin recovery. Co-op digests in
+dated preparation records describe the preserved unadmitted gameplay proposal, not this admitted
+read-only synchronization profile.
 
 M10 records build, data, UI, action, and schema dimensions independently in
 [`build-manifest.json`](evidence/runtime-v3-preparation/data/build-manifest.json). The manifest
@@ -159,8 +178,8 @@ checks, cleanup, replay, rollback, and all repository gates are available.
 ### Runtime-v3 canonical artifact provenance
 
 The [Runtime-v3 bundle](../protocol-artifact/runtime-v3-gameplay/README.md) is copied byte-for-byte
-from `AI-Ascension/sts2-protocol` candidate `a81ec64d7d14bdb3079b8c7dc3c75e5c88693dfd` (MIT).
-This candidate must be checked against merged protocol main before consumer merge. The canonical
+from the current `AI-Ascension/sts2-protocol` main
+`f2dac90529f584a6511c1760adce9da28f7f910a` (MIT). The canonical
 `SHA256SUMS`, README, manifest, schema and seven goldens retain upstream bytes; the
 [source schema](../schemas/runtime-v3-gameplay.schema.json) and
 [conformance case](../conformance/cases/runtime-v3-gameplay.json) preserve the inventory's relative
