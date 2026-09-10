@@ -333,6 +333,9 @@ mod worker_safety;
 #[path = "execution_store/oversized_result.rs"]
 mod oversized_result;
 
+#[path = "execution_store/provider_result.rs"]
+mod provider_result;
+
 fn remove_database(database: &PathBuf) {
     let _ = fs::remove_file(database);
     let _ = fs::remove_file(database.with_extension("sqlite3-wal"));
