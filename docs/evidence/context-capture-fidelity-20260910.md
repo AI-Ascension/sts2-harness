@@ -17,4 +17,9 @@ event and Ollama HTTP-503 cases produced the same exit status, sanitized output,
 
 The bridge unit tests additionally run the actual fake downstream/server through the prepared
 capture paths and assert that retained component bytes equal the bytes consumed at the boundary.
+Final Astra captures use the canonical `adapter.cli_input` boundary and final Ollama captures use
+the canonical `adapter.http_body` boundary. Bridge-local attempt IDs are generated for every
+invocation, and lifecycle records receive a distinct event identity with an explicit parent link;
+the parent remains unavailable when no upstream snapshot is supplied. Capture snapshot IDs use
+length-prefixed hashing so hyphenated execution and attempt IDs cannot collide.
 The oracle scripts and raw captures remain outside the repository.
