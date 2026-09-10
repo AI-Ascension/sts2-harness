@@ -2,9 +2,11 @@
 
 use rusqlite::{Connection, Transaction};
 
+use super::schema_workflow::MIGRATION_2;
 use super::types::ExecutionStoreError;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 1;
+pub const CURRENT_SCHEMA_VERSION: i32 = 2;
+pub const WORKFLOW_SCHEMA_VERSION: i32 = 1;
 
 const MIGRATION_1: &str = r#"
 CREATE TABLE IF NOT EXISTS store_metadata (
@@ -180,6 +182,19 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), ExecutionStoreE
             .map_err(map_sqlite)?;
         transaction.commit().map_err(map_sqlite)?;
     }
+    let version = connection
+        .query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
+        .map_err(map_sqlite)?;
+    if version == 1 {
+        let transaction = connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(map_sqlite)?;
+        transaction.execute_batch(MIGRATION_2).map_err(map_sqlite)?;
+        transaction
+            .execute_batch("PRAGMA user_version = 2")
+            .map_err(map_sqlite)?;
+        transaction.commit().map_err(map_sqlite)?;
+    }
     Ok(())
 }
 
@@ -213,6 +228,13 @@ pub(crate) fn map_sqlite(error: rusqlite::Error) -> ExecutionStoreError {
             )
     ) {
         return ExecutionStoreError::Corrupt;
+    }
+    if matches!(
+        error,
+        rusqlite::Error::SqliteFailure(ref failure, _)
+            if matches!(failure.code, rusqlite::ErrorCode::DiskFull)
+    ) {
+        return ExecutionStoreError::StorageFull;
     }
     ExecutionStoreError::Persistence(String::from("SQLite operation failed"))
 }

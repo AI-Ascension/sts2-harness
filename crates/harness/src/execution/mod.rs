@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod schema;
+mod schema_workflow;
 mod store_checkpoint;
 mod store_completion;
 mod store_core;
@@ -11,7 +12,9 @@ mod store_provider;
 mod store_provider_queries;
 mod store_recovery;
 mod store_recovery_attempt;
+mod store_workflow;
 mod types;
+mod workflow_types;
 
 pub use store_core::ExecutionStore;
 pub use types::{
@@ -21,4 +24,13 @@ pub use types::{
     ProviderReservation, ProviderReservationState, RECOVERY_CONTRACT_VERSION,
     RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState, StorePragmas, StoredAttempt,
     StoredDecision, StoredEpisode, StoredJob, StoredOperation,
+};
+pub use workflow_types::{
+    GameOperationId, InvocationOutcome, InvocationState, MAX_WORKFLOW_BYTES,
+    MAX_WORKFLOW_COUNTER_NAME_BYTES, MAX_WORKFLOW_COUNTERS, MAX_WORKFLOW_CURSOR,
+    MAX_WORKFLOW_STACK_DEPTH, RunProjection, RunStatus, StoredWorkflowInvocation,
+    WORKFLOW_CONTRACT_VERSION, WorkflowCommandId, WorkflowDefinition, WorkflowDefinitionId,
+    WorkflowEpisodeId, WorkflowEvent, WorkflowEventId, WorkflowEventPayload, WorkflowInvocation,
+    WorkflowInvocationId, WorkflowPlan, WorkflowPlanId, WorkflowRunId, WorkflowRunSnapshot,
+    WorkflowRunStart,
 };

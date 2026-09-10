@@ -125,11 +125,36 @@ pub(crate) fn configure(
     connection: &mut Connection,
     config: &ExecutionStoreConfig,
 ) -> Result<(), ExecutionStoreError> {
+    if rusqlite::version_number() < 3_051_001 {
+        return Err(ExecutionStoreError::Incompatible);
+    }
     let timeout = config.busy_timeout.as_millis();
     let sql = format!(
         "PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = {timeout};"
     );
     connection.execute_batch(&sql).map_err(schema::map_sqlite)
+}
+
+pub(crate) fn verify_durable_pragmas(
+    connection: &Connection,
+    path: &Path,
+) -> Result<(), ExecutionStoreError> {
+    if path == Path::new(":memory:") {
+        return Ok(());
+    }
+    let journal_mode = connection
+        .query_row("PRAGMA journal_mode", [], |row| row.get::<_, String>(0))
+        .map_err(schema::map_sqlite)?;
+    let synchronous = connection
+        .query_row("PRAGMA synchronous", [], |row| row.get::<_, i64>(0))
+        .map_err(schema::map_sqlite)?;
+    let foreign_keys = connection
+        .query_row("PRAGMA foreign_keys", [], |row| row.get::<_, i64>(0))
+        .map_err(schema::map_sqlite)?;
+    if !journal_mode.eq_ignore_ascii_case("wal") || synchronous != 2 || foreign_keys != 1 {
+        return Err(ExecutionStoreError::InvalidConfiguration);
+    }
+    Ok(())
 }
 
 pub(crate) fn verify_contract(
@@ -174,6 +199,31 @@ pub(crate) fn verify_contract(
                 )
                 .map_err(schema::map_sqlite)?;
         }
+    }
+    let workflow_schema = connection
+        .query_row(
+            "SELECT value FROM store_metadata WHERE key = 'workflow_schema_version'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(schema::map_sqlite)?;
+    let workflow_schema_version = workflow_schema
+        .as_deref()
+        .and_then(|value| value.parse::<i32>().ok());
+    if workflow_schema_version != Some(schema::WORKFLOW_SCHEMA_VERSION) {
+        return Err(ExecutionStoreError::Incompatible);
+    }
+    let workflow_contract = connection
+        .query_row(
+            "SELECT value FROM store_metadata WHERE key = 'workflow_contract'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(schema::map_sqlite)?;
+    if workflow_contract.as_deref() != Some("workflow-v1") {
+        return Err(ExecutionStoreError::Incompatible);
     }
     Ok(())
 }

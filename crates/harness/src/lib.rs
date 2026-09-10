@@ -56,10 +56,16 @@ pub use evaluation::{
 pub use execution::{
     AttemptKind, AttemptState, Checkpoint, CompletionRecord, CompletionStatus, DecisionReference,
     ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig,
-    ExecutionStoreError, JobClaim, JobClaimOutcome, JobState, OperationIntent, OperationState,
-    ProviderFailureClass, ProviderReservation, ProviderReservationState, RECOVERY_CONTRACT_VERSION,
-    RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState, StorePragmas, StoredAttempt,
-    StoredDecision, StoredEpisode, StoredJob, StoredOperation,
+    ExecutionStoreError, GameOperationId, InvocationOutcome, InvocationState, JobClaim,
+    JobClaimOutcome, JobState, MAX_WORKFLOW_BYTES, MAX_WORKFLOW_COUNTER_NAME_BYTES,
+    MAX_WORKFLOW_COUNTERS, MAX_WORKFLOW_CURSOR, MAX_WORKFLOW_STACK_DEPTH, OperationIntent,
+    OperationState, ProviderFailureClass, ProviderReservation, ProviderReservationState,
+    RECOVERY_CONTRACT_VERSION, RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState,
+    RunProjection, RunStatus, StorePragmas, StoredAttempt, StoredDecision, StoredEpisode,
+    StoredJob, StoredOperation, StoredWorkflowInvocation, WORKFLOW_CONTRACT_VERSION,
+    WorkflowCommandId, WorkflowDefinition, WorkflowDefinitionId, WorkflowEpisodeId, WorkflowEvent,
+    WorkflowEventId, WorkflowEventPayload, WorkflowInvocation, WorkflowInvocationId, WorkflowPlan,
+    WorkflowPlanId, WorkflowRunId, WorkflowRunSnapshot, WorkflowRunStart,
 };
 pub use exo::{
     BoundDecision, CodexEventAccounting, CodexEventError, CodexStreamStatus, CodexTokenUsage,

@@ -9,7 +9,7 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use super::schema;
 pub(crate) use super::store_core_helpers::{
     append_event, attempt_fingerprint, configure, create_parent, ensure_current_lineage,
-    has_store_schema, insert_attempt, verify_contract,
+    has_store_schema, insert_attempt, verify_contract, verify_durable_pragmas,
 };
 use super::types::{
     AttemptKind, ExecutionFingerprint, ExecutionLineage, ExecutionStoreConfig, ExecutionStoreError,
@@ -37,6 +37,7 @@ impl ExecutionStore {
             return Err(ExecutionStoreError::Corrupt);
         }
         configure(&mut connection, &config)?;
+        verify_durable_pragmas(&connection, &config.path)?;
         schema::migrate(&mut connection)?;
         verify_contract(&connection, &config, false)?;
         let store = Self {
@@ -86,6 +87,12 @@ impl ExecutionStore {
     #[must_use]
     pub fn config(&self) -> &ExecutionStoreConfig {
         &self.config
+    }
+
+    /// Returns the SQLite library actually linked into the harness process.
+    #[must_use]
+    pub fn sqlite_version() -> &'static str {
+        rusqlite::version()
     }
 
     pub fn pragmas(&self) -> Result<StorePragmas, ExecutionStoreError> {
