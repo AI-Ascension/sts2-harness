@@ -13,6 +13,7 @@ pub(in super::super::super) fn response_script(
         "../../../../../protocol-artifact/runtime-v3-gameplay/golden/state-response.json"
     ))?;
     observed["correlation_id"] = json!("1");
+    observed["kind"] = json!("reobserve_response");
     observed["generation"] = json!(1);
     observed["observation"]["generation"] = json!(1);
     observed["observation"]["state"]["turn_index"] = json!(2);
@@ -63,11 +64,10 @@ pub(in super::super::super) fn response_script(
 }
 
 fn recovery_reply(id: u64, frame: &Value) -> String {
-    let is_error = !matches!(
-        frame["payload"]["result"]["status"].as_str(),
-        Some("SETTLED" | "REJECTED" | "RECONCILED")
-    );
+    // An UNKNOWN/NOT_FOUND application outcome is a valid sideband response;
+    // transport-level `isError` would prevent the recovery policy from
+    // retaining uncertainty and deciding the conservative next step.
     reply(json!({"jsonrpc":"2.0","id":id,"result":{
-        "isError":is_error,"content":[{"text":frame.to_string()}]
+        "isError":false,"content":[{"text":frame.to_string()}]
     }}))
 }

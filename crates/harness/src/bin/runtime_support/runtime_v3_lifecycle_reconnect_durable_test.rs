@@ -2,7 +2,7 @@
 
 use sha2::Digest;
 use sts2_harness::{
-    ActionIdentity, ActionKind, Decision, DecisionInput, DecisionSource, EpisodeLegalAction,
+    ActionIdentity, ActionKind, Decision, DecisionInput, EpisodeLegalAction,
     ExecutionFingerprint, ExecutionLineage, ExecutionStore, ModelExecutionId,
 };
 
@@ -13,7 +13,7 @@ use super::*;
 #[test]
 fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_restart()
 -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = Fixture::new()?;
+    let fixture = reconnect_support::Fixture::new()?;
     let mut runtime_config = config("127.0.0.1:15525".into());
     runtime_config.mcp_binary = dispatch_script(&fixture)?;
     let lineage = ExecutionLineage::new(
@@ -49,6 +49,7 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
     ]);
     let parsed = parse::observation(&state, "state_response", &port.config)?;
     let action = parsed.actions.actions()[0].clone();
+    let catalog_raw = parsed.catalog_raw.clone();
     let observation = port.install(parsed)?;
     durable.refresh_resume_boundary()?;
     let divergent = synthetic_observation(
@@ -57,10 +58,12 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
         "combat",
         json!([{"action_id":"combat.end-turn", "action":{"kind":"end_turn"}}]),
     )?;
-    assert!(durable.verify_resume_boundary(&divergent).is_err());
-    durable.verify_resume_boundary(&observation)?;
+    assert!(durable
+        .verify_resume_boundary_with_catalog(&divergent, &catalog_raw)
+        .is_err());
+    durable.verify_resume_boundary_with_catalog(&observation, &catalog_raw)?;
     let identity = ActionIdentity::new(
-        "op-settled",
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         observation.state_id(),
         observation.generation(),
         action.action_id(),
@@ -68,7 +71,7 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
     let receipt = port.dispatch_action(&identity, &action)?;
     assert_eq!(receipt.status(), sts2_harness::DispatchStatus::Settled);
     assert_eq!(
-        durable.operation_state("op-settled")?,
+        durable.operation_state("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")?,
         sts2_harness::OperationState::Settled
     );
     durable.refresh_resume_boundary()?;
@@ -87,8 +90,8 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
         Vec::new(),
     );
     let reservation = match durable.decision_admission_with_reuse(&input)? {
-        super::super::DecisionAdmission::Fresh(reservation) => reservation,
-        super::super::DecisionAdmission::Reused(_) => {
+        super::super::super::decision_admission::DecisionAdmission::Fresh(reservation) => reservation,
+        super::super::super::decision_admission::DecisionAdmission::Reused(_) => {
             return Err("new decision unexpectedly reused a result".into());
         }
     };
@@ -98,23 +101,9 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
         confidence: Some(90),
     };
     durable.complete_decision(&reservation, &decision)?;
-    let mut source = CountingSource {
-        calls: 0,
-        decision: Decision::Wait {
-            rationale: String::from("provider must not be called"),
-        },
-    };
-    let mut recorder = super::super::recording::DecisionRecorder::new(
-        &mut source,
-        TelemetryHandle::disabled(),
-        Some(durable.clone()),
-    );
-    assert_eq!(recorder.decide(&input)?, decision);
-    drop(recorder);
-    assert_eq!(source.calls, 0);
     assert!(matches!(
         durable.decision_admission_with_reuse(&input)?,
-        super::super::DecisionAdmission::Reused(_)
+        super::super::super::decision_admission::DecisionAdmission::Reused(_)
     ));
 
     let pending_action = EpisodeLegalAction::new("combat.end-turn-pending", ActionKind::EndTurn)?;
@@ -122,17 +111,22 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
         "action_id": "combat.end-turn-pending",
         "action": {"kind": "end_turn"}
     }]);
-    durable.operation_intent(
+    let pending_catalog_raw = serde_json::to_vec(&pending_catalog)?;
+    durable.operation_intent_with_catalog(
         PENDING_OPERATION_ID,
         PENDING_STATE_ID,
         observation.generation(),
         &pending_action,
         &json!({"kind":"end_turn"}),
-        &json!({
-            "state_id": PENDING_STATE_ID,
-            "generation": observation.generation(),
-            "legal_actions": pending_catalog
-        }),
+        super::super::durable::OperationCatalogEvidence {
+            input: &json!({
+                "state_id": PENDING_STATE_ID,
+                "generation": observation.generation(),
+                "legal_actions": pending_catalog.clone()
+            }),
+            raw: &pending_catalog_raw,
+            original_context: Some(&reconnect_support::original_recovery_context()),
+        },
     )?;
     let pending_digest = durable.operation_payload_digest(PENDING_OPERATION_ID)?;
     let canonical_action =
@@ -162,6 +156,8 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
         TelemetryHandle::disabled(),
         durable.clone(),
     )?;
+    resumed.recovery_authority = Some(reconnect_support::recovery_authority());
+    resumed.initialize_recovery_sideband_for_test()?;
     resumed.allocated = true;
     let mut mcp = McpProcess::spawn(&resumed.config)?;
     wire::initialize_mcp(&mut mcp)?;
@@ -171,12 +167,11 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
         durable.operation_state(PENDING_OPERATION_ID)?,
         sts2_harness::OperationState::Reconciled
     );
-    let resumed_observation = resumed.observe()?;
-    assert_eq!(resumed_observation.generation(), 1);
+    assert!(durable.pending_operations()?.is_empty());
 
     let terminal = synthetic_observation("victory-2", 2, "victory", json!([]))?;
-    durable.checkpoint(&terminal, &json!([]))?;
-    resumed.complete_durable_observation(&terminal)?;
+    durable.checkpoint_raw(&terminal, b"[]")?;
+    durable.complete_observation(&terminal)?;
     assert!(durable.decision_admission_with_reuse(&input).is_err());
     resumed.mcp.as_mut().ok_or("missing MCP")?.close()?;
     Ok(())

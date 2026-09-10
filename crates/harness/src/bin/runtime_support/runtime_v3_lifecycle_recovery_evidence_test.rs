@@ -10,7 +10,7 @@ use super::reconnect_support::*;
 use super::*;
 
 struct RecoveryCase {
-    fixture: Fixture,
+    fixture: reconnect_support::Fixture,
     durable: DurableHandle,
     lookup: Value,
     reconcile: Value,
@@ -18,7 +18,7 @@ struct RecoveryCase {
 
 impl RecoveryCase {
     fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let fixture = Fixture::new()?;
+        let fixture = reconnect_support::Fixture::new()?;
         let lineage = ExecutionLineage::new("run-1", "episode-1", "attempt-1", "trajectory-1")?;
         let fingerprint =
             ExecutionFingerprint::new("seed", "build", "state", "config", "provider")?;
@@ -26,15 +26,25 @@ impl RecoveryCase {
         store.start_episode(&lineage, &fingerprint)?;
         let durable = DurableHandle::from_store_for_test(store, lineage, fingerprint)?;
         let action = EpisodeLegalAction::new("combat.end-turn-pending", ActionKind::EndTurn)?;
-        durable.operation_intent(
+        let catalog = json!([{
+            "action_id":action.action_id(),"action":{"kind":"end_turn"}
+        }]);
+        let catalog_raw = serde_json::to_vec(&catalog)?;
+        durable.operation_intent_with_catalog(
             PENDING_OPERATION_ID,
             PENDING_STATE_ID,
             0,
             &action,
             &json!({"kind":"end_turn"}),
-            &json!({"state_id":PENDING_STATE_ID,"generation":0,"legal_actions":[
-                {"action_id":action.action_id(),"action":{"kind":"end_turn"}}
-            ]}),
+            super::super::durable::OperationCatalogEvidence {
+                input: &json!({
+                    "state_id":PENDING_STATE_ID,
+                    "generation":0,
+                    "legal_actions":catalog.clone()
+                }),
+                raw: &catalog_raw,
+                original_context: Some(&reconnect_support::original_recovery_context()),
+            },
         )?;
         let digest = durable.operation_payload_digest(PENDING_OPERATION_ID)?;
         durable.operation_dispatched(PENDING_OPERATION_ID, &digest)?;
@@ -83,10 +93,17 @@ impl RecoveryCase {
             TelemetryHandle::disabled(),
             self.durable.clone(),
         )?;
+        port.allocated = true;
+        port.recovery_authority = Some(reconnect_support::recovery_authority());
+        port.initialize_recovery_sideband_for_test()?;
         port.reconcile_pending_operations()
     }
 
-    fn assert_requests(&self, reconciled: bool) -> Result<(), Box<dyn std::error::Error>> {
+    fn assert_requests(
+        &self,
+        reconciled: bool,
+        reobserved: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let requests = std::fs::read_to_string(self.fixture.0.join("requests"))?;
         let calls: Vec<Value> = requests
             .lines()
@@ -96,17 +113,27 @@ impl RecoveryCase {
             .iter()
             .filter_map(|value| value["params"]["name"].as_str())
             .collect();
-        let expected = if reconciled {
-            vec!["watchdog.operation_lookup", "watchdog.operation_reconcile"]
-        } else {
-            vec!["watchdog.operation_lookup"]
+        let expected = match (reconciled, reobserved) {
+            (true, true) => vec![
+                "watchdog.operation_lookup",
+                "watchdog.operation_reconcile",
+                "sts2.reobserve",
+            ],
+            (true, false) => vec!["watchdog.operation_lookup", "watchdog.operation_reconcile"],
+            (false, false) => vec!["watchdog.operation_lookup"],
+            (false, true) => return Err("reobserve cannot occur without reconciliation".into()),
         };
         assert_eq!(
             names, expected,
             "recovery must never poll or dispatch ordinary gameplay"
         );
         let mut original = None;
-        for call in calls.iter().filter(|value| value["method"] == "tools/call") {
+        for call in calls.iter().filter(|value| {
+            value["method"] == "tools/call"
+                && value["params"]["name"]
+                    .as_str()
+                    .is_some_and(|name| name.starts_with("watchdog."))
+        }) {
             let reference = &call["params"]["arguments"]["payload"]["operation"];
             assert_eq!(reference["operation_id"], PENDING_OPERATION_ID);
             assert_eq!(
@@ -156,7 +183,7 @@ fn subprocess_recovery_resolves_unknown_and_accepts_retained_terminal_states()
             case.durable.operation_state(PENDING_OPERATION_ID)?,
             OperationState::Reconciled
         );
-        case.assert_requests(true)?;
+        case.assert_requests(true, true)?;
     }
     Ok(())
 }
@@ -185,7 +212,7 @@ fn subprocess_missing_or_unresolved_evidence_does_not_poll_gameplay()
                 .operation_state(PENDING_OPERATION_ID)?
                 .is_unresolved()
         );
-        case.assert_requests(lookup != "NOT_FOUND")?;
+        case.assert_requests(lookup != "NOT_FOUND", false)?;
     }
     Ok(())
 }
@@ -223,7 +250,7 @@ fn subprocess_missing_or_cross_operation_witness_never_closes_durable_uncertaint
                 .operation_state(PENDING_OPERATION_ID)?
                 .is_unresolved()
         );
-        case.assert_requests(true)?;
+        case.assert_requests(true, false)?;
     }
     Ok(())
 }

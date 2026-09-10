@@ -105,7 +105,6 @@ fn compose_with_normal(
     })
 }
 
-
 fn merge_actions(
     normal_actions: &EpisodeLegalActionSet,
     normal_payloads: &BTreeMap<String, Value>,

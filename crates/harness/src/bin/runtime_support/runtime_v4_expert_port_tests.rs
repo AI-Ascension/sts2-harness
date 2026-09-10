@@ -45,6 +45,31 @@ mod tests {
     }
 
     #[test]
+    fn composed_catalog_contains_expert_only_actions_for_durable_dispatch() -> Result<(), String> {
+        let expert = expert()?;
+        let normal = EpisodeLegalActionSet::new(
+            expert.state_id(),
+            expert.generation(),
+            vec![EpisodeLegalAction::new("end:7", ActionKind::EndTurn)
+                .map_err(|error| error.to_string())?],
+        )
+        .map_err(|error| error.to_string())?;
+        let payloads = BTreeMap::from([(
+            String::from("end:7"),
+            json!({"kind":"end_turn"}),
+        )]);
+        let (merged, merged_payloads) = merge_actions(&normal, &payloads, &expert)?;
+        let catalog = composed_catalog_from_actions(&merged, &merged_payloads)?;
+        let actions = catalog.as_array().ok_or("catalog is not an array")?;
+        assert!(actions.iter().any(|value| {
+            value["action_id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("potion:"))
+        }));
+        Ok(())
+    }
+
+    #[test]
     fn expert_settlement_keeps_parameterized_character_and_rest_actions() -> Result<(), String> {
         let mut value = expert()?.as_value().clone();
         value["legal_actions"] = json!([
