@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 mod auth;
+mod authoring;
 mod cli;
 mod contract;
+mod contract_authoring;
 mod http;
 mod service;
 mod store;
@@ -13,6 +15,7 @@ pub use cli::run_cli;
 pub use auth::{
     AuthContext, AuthError, Authenticator, EnvironmentAuthenticator, StaticAuthenticator,
 };
+pub use authoring::{AuthoringStore, MemoryAuthoringStore, PublishResult};
 pub use contract::ReplayRequest as ManagementReplayRequest;
 pub use contract::{
     AuthoritySummary, Budget, CAPABILITIES_SCHEMA_VERSION, CapabilityResponse, CleanupState,
@@ -30,6 +33,11 @@ pub use contract::{
     ValidateResponse, WorkflowRunStatus, decode_strict, decode_value, digest_value,
     validate_digest, validate_identifier,
 };
+pub use contract_authoring::{
+    STUDIO_SCHEMA_VERSION, StudioCreateDraftRequest, StudioDefinitionRecord,
+    StudioDefinitionsResponse, StudioDraftConflict, StudioDraftRecord, StudioPublishDraftRequest,
+    StudioPublishResponse, StudioSaveDraftRequest,
+};
 pub use http::{
     ClientResponse, HttpError, HttpLimits, ManagementClient, ManagementServer, ServerConfig,
     ServerHandle,
@@ -37,8 +45,9 @@ pub use http::{
 pub use service::{
     CapabilityPort, CommandApplication, CommandContext, DefinitionPort, DiffResult,
     InspectionResult, ManagementError, ManagementService, ReplayResult, RunAdmission,
-    UnavailableCapabilityPort, UnavailableDefinitionPort, UnavailableExecutionPort,
-    UnavailableReplayPort, ValidationResult, WorkflowExecutionPort, WorkflowReplayPort,
+    UnavailableAuthoringStore, UnavailableCapabilityPort, UnavailableDefinitionPort,
+    UnavailableExecutionPort, UnavailableReplayPort, ValidationResult, WorkflowExecutionPort,
+    WorkflowReplayPort,
 };
 pub use store::{
     CommandAcceptance, FileWorkflowStore, MemoryWorkflowStore, SqliteWorkflowStore, StoreError,

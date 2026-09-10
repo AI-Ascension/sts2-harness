@@ -37,7 +37,7 @@ impl ManagementClient {
         path: &str,
         body: Option<&[u8]>,
     ) -> Result<ClientResponse, HttpError> {
-        if method != "GET" && method != "POST" {
+        if method != "GET" && method != "POST" && method != "PUT" {
             return Err(HttpError::new(
                 "method_not_allowed",
                 "HTTP method is not supported",
@@ -60,10 +60,10 @@ impl ManagementClient {
                 "client body exceeds the bound",
             ));
         }
-        if method == "POST" && body.is_empty() {
+        if (method == "POST" || method == "PUT") && body.is_empty() {
             return Err(HttpError::new(
                 "body_required",
-                "POST client requests require a JSON body",
+                "POST and PUT client requests require a JSON body",
             ));
         }
         let deadline = Instant::now() + self.deadline;

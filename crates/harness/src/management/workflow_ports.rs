@@ -45,6 +45,7 @@ pub fn synthetic_sqlite_store(
 ) -> super::service::ManagementService {
     let service_store: Arc<dyn super::store::WorkflowStore> = store.clone();
     super::service::ManagementService::new(service_store)
+        .with_authoring_store(store.clone())
         .with_definition_port(Arc::new(SyntheticDefinitionPort))
         .with_execution_port(Arc::new(PersistentSyntheticExecutionPort::new(store)))
         .with_replay_port(Arc::new(SyntheticReplayPort))

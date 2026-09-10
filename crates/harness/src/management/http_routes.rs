@@ -5,6 +5,9 @@ use std::collections::BTreeMap;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use super::super::contract_authoring::{
+    StudioCreateDraftRequest, StudioPublishDraftRequest, StudioSaveDraftRequest,
+};
 use super::response::reason_phrase;
 use super::*;
 
@@ -48,11 +51,72 @@ pub(super) fn dispatch(
             ("GET", "/v1/capabilities") if request.query.is_empty() => service
                 .capabilities(&actor)
                 .and_then(|value| json_value(&value)),
-            _ => dispatch_run_route(&request, service, &actor),
+            ("GET", "/v1/studio/definitions") if request.query.is_empty() => service
+                .studio_definitions(&actor)
+                .and_then(|value| json_value(&value)),
+            ("POST", "/v1/studio/drafts") if request.query.is_empty() => {
+                let body: StudioCreateDraftRequest = decode_body_management(&request.body)?;
+                service
+                    .studio_create_draft(&actor, body)
+                    .and_then(|value| json_value(&value))
+            }
+            _ => dispatch_studio_or_run_route(&request, service, &actor),
         })();
     match result {
         Ok(body) => json_response(200, body),
         Err(error) => Err(HttpError::from_management(error)),
+    }
+}
+
+fn dispatch_studio_or_run_route(
+    request: &HttpRequest,
+    service: &ManagementService,
+    actor: &super::super::auth::AuthContext,
+) -> Result<Value, ManagementError> {
+    if request.path.starts_with("/v1/studio/") {
+        return dispatch_studio_route(request, service, actor);
+    }
+    dispatch_run_route(request, service, actor)
+}
+
+fn dispatch_studio_route(
+    request: &HttpRequest,
+    service: &ManagementService,
+    actor: &super::super::auth::AuthContext,
+) -> Result<Value, ManagementError> {
+    let segments = request.path.split('/').collect::<Vec<_>>();
+    if segments.len() < 5
+        || segments[1] != "v1"
+        || segments[2] != "studio"
+        || segments[3] != "drafts"
+    {
+        return Err(ManagementError::invalid(
+            "route_not_found",
+            "management route was not found",
+        ));
+    }
+    let draft_id = segments[4];
+    validate_identifier("draft_id", draft_id).map_err(ManagementError::from)?;
+    match (request.method.as_str(), segments.as_slice()) {
+        ("GET", ["", "v1", "studio", "drafts", _]) if request.query.is_empty() => service
+            .studio_draft(actor, draft_id)
+            .and_then(|value| json_value(&value)),
+        ("PUT", ["", "v1", "studio", "drafts", _]) if request.query.is_empty() => {
+            let body: StudioSaveDraftRequest = decode_body_management(&request.body)?;
+            service
+                .studio_save_draft(actor, draft_id, body)
+                .and_then(|value| json_value(&value))
+        }
+        ("POST", ["", "v1", "studio", "drafts", _, "publish"]) if request.query.is_empty() => {
+            let body: StudioPublishDraftRequest = decode_body_management(&request.body)?;
+            service
+                .studio_publish_draft(actor, draft_id, body)
+                .and_then(|value| json_value(&value))
+        }
+        _ => Err(ManagementError::invalid(
+            "route_not_found",
+            "management route was not found",
+        )),
     }
 }
 

@@ -28,7 +28,7 @@ const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 /// service entrypoint uses this store so run, event, and command acceptance survive process
 /// restart under SQLite transactions.
 pub struct SqliteWorkflowStore {
-    pub(super) connection: Mutex<Connection>,
+    pub(crate) connection: Mutex<Connection>,
 }
 
 impl SqliteWorkflowStore {
