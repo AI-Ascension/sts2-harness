@@ -93,6 +93,30 @@ impl CapturePort for SharedCapture {
         });
         Ok(())
     }
+
+    fn write_unknown(
+        &mut self,
+        execution_id: &str,
+        _attempt_id: Option<&str>,
+        _code: &str,
+        boundary: CaptureBoundary,
+    ) -> Result<(), CaptureError> {
+        self.0.lock().expect("capture lock").push(CaptureRecord {
+            snapshot_id: format!("snapshot-{execution_id}"),
+            parent_snapshot_id: Some(format!("snapshot-{execution_id}")),
+            execution_id: execution_id.to_owned(),
+            attempt_id: None,
+            boundary,
+            state: sts2_harness::TransportState::Unknown,
+            observed_bytes: 0,
+            sha256: None,
+            content: None,
+            component_kind: None,
+            ordinal: None,
+            media_type: None,
+        });
+        Ok(())
+    }
 }
 
 fn config() -> ExoConfig {
@@ -187,5 +211,5 @@ fn generic_provider_route_records_failure_without_retry() {
     assert_eq!(result.expect_err("failure").code(), "exo_unavailable");
     let records = records.lock().expect("records");
     assert_eq!(records.len(), 2);
-    assert_eq!(records[1].state, sts2_harness::TransportState::WriteFailed);
+    assert_eq!(records[1].state, sts2_harness::TransportState::Unknown);
 }
