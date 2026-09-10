@@ -10,7 +10,7 @@
     "external_network_attempts": 0
   },
   "successor": {
-    "revision": "578595baa10a45fd6fcbf712ed0f59975cf47ef7",
+    "revision": "316c8bd1814d9f9762a08c534898ec827365c91a",
     "executable_sha256": "4a5c5718a760ace0a6c043872a6e1a3332c45154d249fbf84e560d610768d2ce",
     "invocation_count": 1,
     "external_network_attempts": 0
@@ -43,7 +43,7 @@
       "external_network_attempts": 0
     },
     "successor": {
-      "revision": "578595baa10a45fd6fcbf712ed0f59975cf47ef7",
+      "revision": "316c8bd1814d9f9762a08c534898ec827365c91a",
       "executable_sha256": "247c83a23f24de549f55195652c18dba2f5329bb2504405a02f7c51f9ec6e50e",
       "invocation_count": 1,
       "external_network_attempts": 0
