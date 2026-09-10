@@ -88,6 +88,12 @@ impl ExecutionStore {
         &self.config
     }
 
+    /// Returns the SQLite library actually linked into the harness process.
+    #[must_use]
+    pub fn sqlite_version() -> &'static str {
+        rusqlite::version()
+    }
+
     pub fn pragmas(&self) -> Result<StorePragmas, ExecutionStoreError> {
         self.ensure_open()?;
         let journal_mode = self

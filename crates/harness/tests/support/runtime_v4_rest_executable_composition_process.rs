@@ -210,6 +210,10 @@ pub(crate) fn run_scenario_with_style(
 ) -> Result<ScenarioResult, Box<dyn std::error::Error>> {
     let mod_server = ModServer::new_with_style(selector_encoding)?;
     let address = free_address()?;
+    let execution_store = bridge
+        .parent()
+        .map(|path| path.join("execution.sqlite3"))
+        .ok_or("synthetic bridge has no parent directory")?;
     let mut gateway_process = gateway(gateway_binary, address, mod_server.address)?;
     let bridge_revision = sha256_file(bridge)?;
     let runtime = (|| {
@@ -224,6 +228,7 @@ pub(crate) fn run_scenario_with_style(
             .arg(harness_binary);
         command
             .env_clear()
+            .env("STS2_EXECUTION_STORE_PATH", execution_store)
             .env("STS2_GATEWAY_ADDR", address.to_string())
             .env("STS2_GATEWAY_TOKEN", "gateway-token")
             .env("STS2_MCP_BINARY", mcp_binary)
@@ -300,59 +305,38 @@ fn assert_persisted_receipts(
     selector_encoding: SelectorEncoding,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let records = runtime_records(&result.runtime.stderr);
-    let receipt = |operation_id: &str, status: &str| {
+    let receipt = |action_id: &str, status: &str| {
         records.iter().find(|record| {
             record["event"] == "action_receipt"
-                && record["operation_id"] == operation_id
+                && record["action_id"] == action_id
                 && record["status"] == status
         })
     };
-    for (operation_id, action_id, generation, state_id) in [
-        ("episode-action-9-1", "rest-option:9:smith", 10, "live:10"),
-        ("episode-action-13-5", "rest-option:13:mend", 14, "live:14"),
+    for (action_id, generation, state_id) in [
+        ("rest-option:9:smith", 10, "live:10"),
+        ("rest-option:13:mend", 14, "live:14"),
     ] {
-        let unknown = receipt(operation_id, "Unknown")
-            .ok_or_else(|| format!("runtime receipt ledger omitted Unknown {operation_id}"))?;
+        let unknown = receipt(action_id, "Unknown")
+            .ok_or_else(|| format!("runtime receipt ledger omitted Unknown {action_id}"))?;
         if unknown["action_id"] != action_id || !unknown["observation"].is_null() {
             return Err(format!(
-                "runtime Unknown receipt lost original identity for {operation_id}: {unknown}"
+                "runtime Unknown receipt lost original identity for {action_id}: {unknown}"
             )
             .into());
         }
-        let settled = receipt(operation_id, "Settled")
-            .ok_or_else(|| format!("runtime receipt ledger omitted Settled {operation_id}"))?;
+        let settled = receipt(action_id, "Settled")
+            .ok_or_else(|| format!("runtime receipt ledger omitted Settled {action_id}"))?;
         if settled["action_id"] != action_id
             || settled["effect"] != "rest_option_selection_requested"
             || settled["observation"]["state_id"] != state_id
             || settled["observation"]["generation"] != generation
         {
             return Err(format!(
-                "runtime Settled receipt lost original identity for {operation_id}: {settled}"
+                "runtime Settled receipt lost original identity for {action_id}: {settled}"
             )
             .into());
         }
     }
-    let accepted_index = records
-        .iter()
-        .position(|record| {
-            record["event"] == "action_receipt"
-                && record["operation_id"] == "episode-action-10-2"
-                && record["status"] == "Accepted"
-        })
-        .ok_or("runtime receipt ledger omitted Accepted episode-action-10-2")?;
-    let settled_index = records
-        .iter()
-        .enumerate()
-        .skip(accepted_index + 1)
-        .find_map(|(index, record)| {
-            (record["event"] == "operation_wait_completed"
-                && record["operation_id"] == "episode-action-10-2"
-                && record["effect"] == "rest_option_selection_progressed")
-                .then_some(index)
-        })
-        .ok_or("runtime receipt ledger omitted operation wait episode-action-10-2")?;
-    let accepted = &records[accepted_index];
-    let settled = &records[settled_index];
     let first_card_action = selector_encoding.action_id(
         10,
         "selection:10:smith",
@@ -360,6 +344,27 @@ fn assert_persisted_receipts(
         "select_card",
         Some("card:1"),
     );
+    let accepted_index = records
+        .iter()
+        .position(|record| {
+            record["event"] == "action_receipt"
+                && record["action_id"] == first_card_action
+                && record["status"] == "Accepted"
+        })
+        .ok_or("runtime receipt ledger omitted the first accepted selection")?;
+    let settled_index = records
+        .iter()
+        .enumerate()
+        .skip(accepted_index + 1)
+        .find_map(|(index, record)| {
+            (record["event"] == "operation_wait_completed"
+                && record["action_id"] == first_card_action
+                && record["effect"] == "rest_option_selection_progressed")
+                .then_some(index)
+        })
+        .ok_or("runtime receipt ledger omitted the first settled selection wait")?;
+    let accepted = &records[accepted_index];
+    let settled = &records[settled_index];
     if accepted["action_id"] != first_card_action
         || !accepted["effect"].is_null()
         || !accepted["observation"].is_null()
@@ -374,8 +379,6 @@ fn assert_persisted_receipts(
         .into());
     }
     assert_additional_settled_receipts(&records, selector_encoding)?;
-    let final_settled = receipt("episode-action-14-6", "Settled")
-        .ok_or("runtime receipt ledger omitted Settled episode-action-14-6")?;
     let mend_player_action = selector_encoding.action_id(
         14,
         "selection:14:mend",
@@ -383,6 +386,8 @@ fn assert_persisted_receipts(
         "select_player",
         Some("player:local"),
     );
+    let final_settled = receipt(&mend_player_action, "Settled")
+        .ok_or("runtime receipt ledger omitted the final settled Mend selection")?;
     if final_settled["action_id"] != mend_player_action
         || final_settled["effect"] != "rest_option_selection_completed"
         || final_settled["observation"]["state_id"] != "live:15"

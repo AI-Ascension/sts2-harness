@@ -39,13 +39,13 @@ impl ExecutionStore {
         tx.execute(
             "UPDATE attempts SET state = 'interrupted_unknown', updated_at = ?2
              WHERE attempt_id = ?1",
-            params![attempt_id, now],
+            params![&attempt_id, now],
         )
         .map_err(schema::map_sqlite)?;
         tx.execute(
             "UPDATE episodes SET state = 'interrupted_unknown', updated_at = ?2
              WHERE episode_id = ?1",
-            params![episode_id, now],
+            params![&episode_id, now],
         )
         .map_err(schema::map_sqlite)?;
         append_event(

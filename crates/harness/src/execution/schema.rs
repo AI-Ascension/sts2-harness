@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-use rusqlite::{Connection, Transaction};
+use rusqlite::Connection;
 
 use super::types::ExecutionStoreError;
 
-pub const CURRENT_SCHEMA_VERSION: i32 = 6;
+#[path = "schema_support.rs"]
+mod support;
+
+pub(crate) use support::{map_sqlite, transaction};
+
+pub const CURRENT_SCHEMA_VERSION: i32 = 7;
 
 const MIGRATION_1: &str = r#"
 CREATE TABLE IF NOT EXISTS store_metadata (
@@ -182,12 +187,15 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), ExecutionStoreE
         version = 1;
     }
     if version == 1 {
+        let decisions_exist = support::table_exists(connection, "decisions")?;
         let transaction = connection
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(map_sqlite)?;
-        transaction
-            .execute("ALTER TABLE decisions ADD COLUMN result_payload BLOB", [])
-            .map_err(map_sqlite)?;
+        if decisions_exist {
+            transaction
+                .execute("ALTER TABLE decisions ADD COLUMN result_payload BLOB", [])
+                .map_err(map_sqlite)?;
+        }
         transaction
             .execute_batch("PRAGMA user_version = 2")
             .map_err(map_sqlite)?;
@@ -195,15 +203,18 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), ExecutionStoreE
         version = 2;
     }
     if version == 2 {
+        let operations_exist = support::table_exists(connection, "operations")?;
         let transaction = connection
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(map_sqlite)?;
-        transaction
-            .execute("ALTER TABLE operations ADD COLUMN action_kind TEXT", [])
-            .map_err(map_sqlite)?;
-        transaction
-            .execute("ALTER TABLE operations ADD COLUMN action_payload BLOB", [])
-            .map_err(map_sqlite)?;
+        if operations_exist {
+            transaction
+                .execute("ALTER TABLE operations ADD COLUMN action_kind TEXT", [])
+                .map_err(map_sqlite)?;
+            transaction
+                .execute("ALTER TABLE operations ADD COLUMN action_payload BLOB", [])
+                .map_err(map_sqlite)?;
+        }
         transaction
             .execute_batch("PRAGMA user_version = 3")
             .map_err(map_sqlite)?;
@@ -211,12 +222,15 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), ExecutionStoreE
         version = 3;
     }
     if version == 3 {
+        let operations_exist = support::table_exists(connection, "operations")?;
         let transaction = connection
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(map_sqlite)?;
-        transaction
-            .execute("ALTER TABLE operations ADD COLUMN catalog_digest TEXT", [])
-            .map_err(map_sqlite)?;
+        if operations_exist {
+            transaction
+                .execute("ALTER TABLE operations ADD COLUMN catalog_digest TEXT", [])
+                .map_err(map_sqlite)?;
+        }
         transaction
             .execute_batch("PRAGMA user_version = 4")
             .map_err(map_sqlite)?;
@@ -224,18 +238,24 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), ExecutionStoreE
         version = 4;
     }
     if version == 4 {
+        let checkpoints_exist = support::table_exists(connection, "checkpoints")?;
+        let operations_exist = support::table_exists(connection, "operations")?;
         let transaction = connection
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(map_sqlite)?;
-        transaction
-            .execute(
-                "ALTER TABLE checkpoints ADD COLUMN legal_actions_raw BLOB",
-                [],
-            )
-            .map_err(map_sqlite)?;
-        transaction
-            .execute("ALTER TABLE operations ADD COLUMN catalog_raw BLOB", [])
-            .map_err(map_sqlite)?;
+        if checkpoints_exist {
+            transaction
+                .execute(
+                    "ALTER TABLE checkpoints ADD COLUMN legal_actions_raw BLOB",
+                    [],
+                )
+                .map_err(map_sqlite)?;
+        }
+        if operations_exist {
+            transaction
+                .execute("ALTER TABLE operations ADD COLUMN catalog_raw BLOB", [])
+                .map_err(map_sqlite)?;
+        }
         transaction
             .execute_batch("PRAGMA user_version = 5")
             .map_err(map_sqlite)?;
@@ -243,64 +263,37 @@ pub(crate) fn migrate(connection: &mut Connection) -> Result<(), ExecutionStoreE
         version = 5;
     }
     if version == 5 {
+        let operations_exist = support::table_exists(connection, "operations")?;
+        let transaction = connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(map_sqlite)?;
+        if operations_exist {
+            transaction
+                .execute(
+                    "ALTER TABLE operations ADD COLUMN original_context BLOB",
+                    [],
+                )
+                .map_err(map_sqlite)?;
+        }
+        transaction
+            .execute_batch("PRAGMA user_version = 6")
+            .map_err(map_sqlite)?;
+        transaction.commit().map_err(map_sqlite)?;
+        version = 6;
+    }
+    if version == 6 {
         let transaction = connection
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(map_sqlite)?;
         transaction
-            .execute_batch(
-                "ALTER TABLE operations ADD COLUMN original_context BLOB;
-                 PRAGMA user_version = 6",
-            )
+            .execute_batch(super::schema_workflow::MIGRATION_2)
+            .map_err(map_sqlite)?;
+        transaction
+            .execute_batch("PRAGMA user_version = 7")
             .map_err(map_sqlite)?;
         transaction.commit().map_err(map_sqlite)?;
     }
     Ok(())
-}
-
-pub(crate) fn map_sqlite(error: rusqlite::Error) -> ExecutionStoreError {
-    if matches!(error, rusqlite::Error::InvalidQuery) {
-        return ExecutionStoreError::Corrupt;
-    }
-    if matches!(
-        error,
-        rusqlite::Error::SqliteFailure(ref failure, _)
-            if matches!(
-                failure.code,
-                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
-            )
-    ) {
-        return ExecutionStoreError::Busy;
-    }
-    if matches!(
-        error,
-        rusqlite::Error::SqliteFailure(ref failure, _)
-            if matches!(failure.code, rusqlite::ErrorCode::ConstraintViolation)
-    ) {
-        return ExecutionStoreError::Conflict;
-    }
-    if matches!(
-        error,
-        rusqlite::Error::SqliteFailure(ref failure, _)
-            if matches!(
-                failure.code,
-                rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase
-            )
-    ) {
-        return ExecutionStoreError::Corrupt;
-    }
-    ExecutionStoreError::Persistence(String::from("SQLite operation failed"))
-}
-
-pub(crate) fn map_transaction(error: rusqlite::Error) -> ExecutionStoreError {
-    map_sqlite(error)
-}
-
-pub(crate) fn transaction<'a>(
-    connection: &'a mut Connection,
-) -> Result<Transaction<'a>, ExecutionStoreError> {
-    connection
-        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-        .map_err(map_transaction)
 }
 
 #[cfg(test)]

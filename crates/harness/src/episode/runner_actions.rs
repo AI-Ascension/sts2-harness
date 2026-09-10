@@ -43,13 +43,23 @@ impl EpisodeRunner {
         )?;
         let receipt = match port.dispatch_action(&execution.identity, &execution.action) {
             Ok(receipt) => receipt,
-            Err(_error) => {
+            Err(dispatch) => {
                 let context = ActionContext {
                     observation: request.observation,
                     execution: &execution,
                     step_number: request.step_number,
                 };
-                return self.recover_action(port, machine, context, counters);
+                return match self.recover_action(port, machine, context, counters) {
+                    Ok(result) => Ok(result),
+                    Err(EpisodeRunnerError::ConflictingOperation) => {
+                        Err(EpisodeRunnerError::ConflictingOperation)
+                    }
+                    Err(recovery) => Err(EpisodeRunnerError::DispatchRecovery {
+                        operation_id: execution.operation_id,
+                        dispatch,
+                        recovery: Box::new(recovery),
+                    }),
+                };
             }
         };
         let context = ActionContext {
