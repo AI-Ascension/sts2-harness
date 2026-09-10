@@ -76,8 +76,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     run_with_capture(&mut capture)
 }
 
-/// Runs the unchanged bridge with an optional harness-owned sideband. Production callers use
-/// `NoopCapture` by default; tests can inject a bounded sink and inspect the exact handoff.
 fn run_with_capture(capture: &mut dyn CapturePort) -> Result<(), Box<dyn std::error::Error>> {
     let mut bytes = Vec::new();
     std::io::stdin()
@@ -94,22 +92,12 @@ fn run_with_capture(capture: &mut dyn CapturePort) -> Result<(), Box<dyn std::er
         return Err("invalid catalog".into());
     }
     let temporary = Temporary::create()?;
-    let result = decide(&request, &bytes, ids, &temporary, capture);
+    let result = decide_with_executable(&request, &bytes, ids, &temporary, capture, "codex");
     let cleanup = std::fs::remove_dir_all(&temporary.0);
     cleanup?;
     let decision = result?;
     println!("{decision}");
     Ok(())
-}
-
-fn decide(
-    request: &Value,
-    request_bytes: &[u8],
-    ids: &[Value],
-    directory: &Temporary,
-    capture: &mut dyn CapturePort,
-) -> Result<Value, Box<dyn std::error::Error>> {
-    decide_with_executable(request, request_bytes, ids, directory, capture, "codex")
 }
 
 fn decide_with_executable(

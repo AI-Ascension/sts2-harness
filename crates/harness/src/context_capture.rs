@@ -8,26 +8,13 @@
 #[path = "context_capture_input.rs"]
 mod input;
 pub use input::{PreparedAstraInput, PreparedOllamaInput};
-
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+#[path = "context_capture_identity.rs"]
+mod identity;
+pub use identity::generated_capture_attempt_id;
+pub(crate) use identity::{lifecycle_id, snapshot_id, valid_identity};
 
 pub const MAX_CAPTURE_RECORDS: usize = 128;
 pub const MAX_CAPTURE_BYTES: usize = 1_048_576;
-
-static NEXT_GENERATED_ATTEMPT: AtomicU64 = AtomicU64::new(0);
-
-/// Creates a process-local attempt identifier for a bridge or generic adapter call that does not
-/// receive one from its caller. The timestamp and monotonic serial keep repeated execution IDs
-/// distinct without changing the provider request payload.
-pub fn generated_capture_attempt_id(prefix: &str) -> String {
-    let serial = NEXT_GENERATED_ATTEMPT.fetch_add(1, Ordering::Relaxed);
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("{prefix}-attempt-{}-{nanos}-{serial}", std::process::id())
-}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CaptureMode {
@@ -289,64 +276,6 @@ impl CapturePort for NoopCapture {
 #[path = "context_capture_memory.rs"]
 mod memory;
 pub use memory::MemoryCapture;
-
-fn valid_identity(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 128
-        && value.chars().enumerate().all(|(index, character)| {
-            character.is_ascii_alphanumeric() || (index > 0 && "._:-".contains(character))
-        })
-}
-
-fn snapshot_id(execution_id: &str, attempt_id: Option<&str>, boundary: CaptureBoundary) -> String {
-    canonical_id(
-        "snapshot",
-        &[
-            execution_id,
-            attempt_id.unwrap_or("<unavailable>"),
-            boundary.as_str(),
-        ],
-    )
-}
-
-/// Build an injective bounded identifier from length-prefixed fields. Delimiters alone are not
-/// sufficient because execution and attempt IDs may themselves contain hyphens.
-fn canonical_id(prefix: &str, fields: &[&str]) -> String {
-    use sha2::{Digest, Sha256};
-
-    let mut hasher = Sha256::new();
-    hasher.update(b"ascension.context-capture-id.v1\0");
-    for field in fields {
-        hasher.update(((*field).len() as u64).to_be_bytes());
-        hasher.update(field.as_bytes());
-    }
-    let digest = hasher.finalize();
-    let mut hex = String::with_capacity(64);
-    for byte in digest {
-        use std::fmt::Write as _;
-        let _ = write!(hex, "{byte:02x}");
-    }
-    format!("{prefix}-{hex}")
-}
-
-fn lifecycle_id(
-    execution_id: &str,
-    attempt_id: Option<&str>,
-    boundary: CaptureBoundary,
-    state: TransportState,
-    code: Option<&str>,
-) -> String {
-    canonical_id(
-        "event",
-        &[
-            execution_id,
-            attempt_id.unwrap_or("<unavailable>"),
-            boundary.as_str(),
-            state.as_str(),
-            code.unwrap_or("<none>"),
-        ],
-    )
-}
 
 #[cfg(test)]
 #[path = "context_capture_tests.rs"]
