@@ -38,10 +38,18 @@ fn run_with_capture(capture: &mut dyn CapturePort) -> Result<(), Box<dyn std::er
     std::io::stdin()
         .take((LIMIT + 1) as u64)
         .read_to_end(&mut bytes)?;
+    run_with_capture_bytes(&bytes, capture, SocketAddr::from(([127, 0, 0, 1], 11434)))
+}
+
+fn run_with_capture_bytes(
+    bytes: &[u8],
+    capture: &mut dyn CapturePort,
+    address: SocketAddr,
+) -> Result<(), Box<dyn std::error::Error>> {
     if bytes.len() > LIMIT {
         return Err("request exceeds bound".into());
     }
-    let request: Value = serde_json::from_slice(&bytes)?;
+    let request: Value = serde_json::from_slice(bytes)?;
     let ids = request["legal_action_ids"]
         .as_array()
         .ok_or("missing catalog")?;
@@ -62,7 +70,7 @@ fn run_with_capture(capture: &mut dyn CapturePort) -> Result<(), Box<dyn std::er
         .filter(|id| !id.is_empty())
         .unwrap_or("ollama-bridge-execution");
     PreparedOllamaInput::new(&body).capture(capture, execution_id, None);
-    let response = match exchange(&body) {
+    let response = match exchange_at(&body, address) {
         Ok(response) => {
             let _ = capture.write_completed(execution_id);
             response
@@ -100,11 +108,10 @@ fn validate_decision(content: &str, ids: &[Value]) -> Result<Value, Box<dyn std:
     Ok(json!({"decision":"action", "action_id":value["action_id"], "rationale":rationale}))
 }
 
-fn exchange(body: &[u8]) -> Result<Value, Box<dyn std::error::Error>> {
+fn exchange_at(body: &[u8], address: SocketAddr) -> Result<Value, Box<dyn std::error::Error>> {
     if body.len() > LIMIT {
         return Err("provider request exceeds bound".into());
     }
-    let address = SocketAddr::from(([127, 0, 0, 1], 11434));
     let deadline = Instant::now() + Duration::from_secs(100);
     let mut socket = TcpStream::connect_timeout(&address, Duration::from_secs(3))?;
     socket.set_write_timeout(Some(Duration::from_secs(5)))?;
@@ -166,5 +173,85 @@ mod tests {
         let record = metadata.records().next().expect("metadata record");
         assert!(record.content.is_none());
         assert!(record.sha256.is_none());
+    }
+
+    #[test]
+    fn actual_loopback_server_receives_the_same_serialized_body_as_capture()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use std::net::TcpListener;
+        use std::thread;
+
+        let listener = TcpListener::bind(("127.0.0.1", 0))?;
+        let address = listener.local_addr()?;
+        let server = thread::spawn(move || -> Result<Vec<u8>, String> {
+            let (mut stream, _) = listener.accept().map_err(|_| "accept failed")?;
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .map_err(|_| "timeout failed")?;
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            loop {
+                let count = stream.read(&mut buffer).map_err(|_| "read failed")?;
+                if count == 0 {
+                    return Err("request ended before body".to_owned());
+                }
+                request.extend_from_slice(&buffer[..count]);
+                let Some(split) = request.windows(4).position(|part| part == b"\r\n\r\n") else {
+                    continue;
+                };
+                let body_start = split + 4;
+                let header_text =
+                    std::str::from_utf8(&request[..split]).map_err(|_| "headers utf8")?;
+                let content_length = header_text
+                    .lines()
+                    .find_map(|line| line.strip_prefix("Content-Length: "))
+                    .ok_or("missing content length")?
+                    .parse::<usize>()
+                    .map_err(|_| "invalid content length")?;
+                while request.len() < body_start + content_length {
+                    let count = stream.read(&mut buffer).map_err(|_| "body read failed")?;
+                    if count == 0 {
+                        return Err("body ended early".to_owned());
+                    }
+                    request.extend_from_slice(&buffer[..count]);
+                }
+                let body = request[body_start..body_start + content_length].to_vec();
+                let payload =
+                    br#"{"message":{"content":"{\"action_id\":\"combat.end-turn\",\"rationale\":\"synthetic oracle\"}"}}"#;
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    payload.len()
+                )
+                .map_err(|_| "response headers failed")?;
+                stream
+                    .write_all(payload)
+                    .map_err(|_| "response body failed")?;
+                return Ok(body);
+            }
+        });
+
+        let request = json!({
+            "model_execution_id":"oracle-execution-2",
+            "legal_action_ids":["combat.end-turn"],
+            "observation":{"state_id":"oracle-combat","generation":0},
+        });
+        let request_bytes = serde_json::to_vec(&request)?;
+        let mut capture =
+            sts2_harness::MemoryCapture::new(sts2_harness::CaptureMode::Memory, 4, LIMIT)?;
+        run_with_capture_bytes(&request_bytes, &mut capture, address)?;
+        let body = server
+            .join()
+            .map_err(|_| "server panicked")?
+            .map_err(|error| error.to_owned())?;
+        let record = capture
+            .records()
+            .find(|record| {
+                record.component_kind == Some(sts2_harness::CaptureComponentKind::Opaque)
+            })
+            .ok_or("captured body is absent")?;
+        assert_eq!(record.content.as_deref(), Some(body.as_slice()));
+        assert_eq!(record.observed_bytes, body.len());
+        Ok(())
     }
 }

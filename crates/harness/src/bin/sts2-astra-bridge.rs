@@ -106,6 +106,17 @@ fn decide(
     directory: &Temporary,
     capture: &mut dyn CapturePort,
 ) -> Result<Value, Box<dyn std::error::Error>> {
+    decide_with_executable(request, request_bytes, ids, directory, capture, "codex")
+}
+
+fn decide_with_executable(
+    request: &Value,
+    request_bytes: &[u8],
+    ids: &[Value],
+    directory: &Temporary,
+    capture: &mut dyn CapturePort,
+    codex_executable: &str,
+) -> Result<Value, Box<dyn std::error::Error>> {
     let schema = directory.0.join("schema.json");
     let output = directory.0.join("decision.json");
     std::fs::write(
@@ -115,15 +126,26 @@ fn decide(
         "rationale":{"type":"string","maxLength":300}},
         "required":["action_ids","rationale"],"additionalProperties":false}))?,
     )?;
+    let mut provider_args = CODEX_ARGS
+        .iter()
+        .map(|argument| (*argument).to_owned())
+        .collect::<Vec<_>>();
+    let executable_index = provider_args
+        .iter()
+        .position(|argument| argument == "codex")
+        .ok_or("Codex executable slot is missing")?;
+    provider_args[executable_index] = codex_executable.to_owned();
+    provider_args.extend([
+        directory.0.to_string_lossy().into_owned(),
+        "--output-schema".to_owned(),
+        schema.to_string_lossy().into_owned(),
+        "--output-last-message".to_owned(),
+        output.to_string_lossy().into_owned(),
+        "-".to_owned(),
+    ]);
     let mut command = Command::new("timeout");
     command
-        .args(CODEX_ARGS)
-        .arg(&directory.0)
-        .arg("--output-schema")
-        .arg(&schema)
-        .arg("--output-last-message")
-        .arg(&output)
-        .arg("-")
+        .args(&provider_args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -138,29 +160,16 @@ fn decide(
         .unwrap_or("astra-bridge-execution");
     if capture.enabled()
         && let Ok(schema_bytes) = std::fs::read(&schema)
-    {
-        let mut argv = CODEX_ARGS
-            .iter()
-            .map(|argument| (*argument).to_owned())
-            .collect::<Vec<_>>();
-        argv.extend([
-            directory.0.to_string_lossy().into_owned(),
-            "--output-schema".to_owned(),
-            schema.to_string_lossy().into_owned(),
-            "--output-last-message".to_owned(),
-            output.to_string_lossy().into_owned(),
-            "-".to_owned(),
-        ]);
-        if let Ok(configuration) = serde_json::to_vec(&json!({
-            "argv": argv,
+        && let Ok(configuration) = serde_json::to_vec(&json!({
+            "argv": provider_args,
             "working_directory": directory.0.to_string_lossy(),
-        })) {
-            PreparedAstraInput::new(prompt.as_bytes(), &schema_bytes, &configuration).capture(
-                capture,
-                execution_id,
-                None,
-            );
-        }
+        }))
+    {
+        PreparedAstraInput::new(prompt.as_bytes(), &schema_bytes, &configuration).capture(
+            capture,
+            execution_id,
+            None,
+        );
     }
     let stdout = child.stdout.take().ok_or("missing provider stdout")?;
     let stderr = child.stderr.take().ok_or("missing provider stderr")?;
@@ -343,5 +352,91 @@ mod tests {
         assert_eq!(records[2].component_kind.unwrap().as_str(), "configuration");
         assert_eq!(records[0].content.as_deref(), Some(b"stdin".as_slice()));
         assert_eq!(records[0].attempt_id.as_deref(), Some("attempt-2"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn actual_fake_codex_receives_the_same_prepared_components_as_capture()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let provider_directory = Temporary::create()?;
+        let oracle_directory = Temporary::create()?;
+        let observed_directory = oracle_directory.0.to_string_lossy().into_owned();
+        if observed_directory.contains('\'') {
+            return Err("temporary path contains an unsupported quote".into());
+        }
+        let fake = oracle_directory.0.join("codex-fake");
+        let script = format!(
+            "#!/bin/sh\nset -eu\nobs='{observed_directory}'\nmkdir -p \"$obs\"\ncat > \"$obs/stdin.bin\"\nschema=''\noutput=''\nprevious=''\nfor arg in \"$@\"; do\n  if [ \"$previous\" = '--output-schema' ]; then schema=\"$arg\"; fi\n  if [ \"$previous\" = '--output-last-message' ]; then output=\"$arg\"; fi\n  previous=\"$arg\"\ndone\ncat \"$schema\" > \"$obs/schema.json\"\nprintf '%s\\n' \"$@\" > \"$obs/argv.txt\"\nprintf '%s' '{{\"action_ids\":[\"combat.end-turn\"],\"rationale\":\"synthetic oracle\"}}' > \"$output\"\nprintf '%s\\n%s\\n' '{{\"type\":\"thread.started\",\"thread_id\":\"oracle-thread-1\"}}' '{{\"type\":\"turn.completed\",\"usage\":{{\"input_tokens\":17,\"cached_input_tokens\":2,\"output_tokens\":5}}}}'\n"
+        );
+        std::fs::write(&fake, script)?;
+        let mut permissions = std::fs::metadata(&fake)?.permissions();
+        permissions.set_mode(0o700);
+        std::fs::set_permissions(&fake, permissions)?;
+
+        let request = json!({
+            "model_execution_id":"oracle-execution-1",
+            "legal_action_ids":["combat.end-turn"],
+        });
+        let request_bytes = serde_json::to_vec(&request)?;
+        let ids = request["legal_action_ids"]
+            .as_array()
+            .ok_or("missing test action catalog")?;
+        let mut capture =
+            sts2_harness::MemoryCapture::new(sts2_harness::CaptureMode::Memory, 8, LIMIT)?;
+        let decision = decide_with_executable(
+            &request,
+            &request_bytes,
+            ids,
+            &provider_directory,
+            &mut capture,
+            fake.to_str().ok_or("fake path is not UTF-8")?,
+        )?;
+        assert_eq!(decision["action_ids"][0], "combat.end-turn");
+
+        let records = capture
+            .records()
+            .filter(|record| record.component_kind.is_some())
+            .collect::<Vec<_>>();
+        assert_eq!(records.len(), 3);
+        assert_eq!(
+            records[0].content.as_deref(),
+            Some(std::fs::read(oracle_directory.0.join("stdin.bin"))?.as_slice())
+        );
+        assert_eq!(
+            records[1].content.as_deref(),
+            Some(std::fs::read(oracle_directory.0.join("schema.json"))?.as_slice())
+        );
+        let configuration: Value = serde_json::from_slice(
+            records[2]
+                .content
+                .as_deref()
+                .ok_or("configuration content is absent")?,
+        )?;
+        let configured = configuration["argv"]
+            .as_array()
+            .ok_or("captured argv is absent")?
+            .iter()
+            .map(|value| value.as_str().unwrap_or_default().to_owned())
+            .collect::<Vec<_>>();
+        let fake_path = fake.to_string_lossy();
+        let fake_index = configured
+            .iter()
+            .position(|argument| argument == fake_path.as_ref())
+            .ok_or("fake executable is absent from captured argv")?;
+        let child_args = configured[(fake_index + 1)..].join("\n") + "\n";
+        assert_eq!(
+            child_args,
+            std::fs::read_to_string(oracle_directory.0.join("argv.txt"))?
+        );
+        assert_eq!(
+            configuration["working_directory"],
+            provider_directory.0.to_string_lossy().as_ref()
+        );
+
+        std::fs::remove_dir_all(provider_directory.0)?;
+        std::fs::remove_dir_all(oracle_directory.0)?;
+        Ok(())
     }
 }
