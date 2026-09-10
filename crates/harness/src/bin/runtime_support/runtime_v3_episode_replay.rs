@@ -76,7 +76,8 @@ pub(super) fn run(
             "{}",
             json!({"event":"episode_replay_prefix_verified",
             "source_sha256":digest,"replayed_actions":source.cursor,"provider_calls":0,
-            "skipped_rejected_attempts":source.trace.rejected_attempts})
+            "skipped_rejected_attempts":source.trace.rejected_attempts,
+            "failure_code":source.trace.failure_code})
         );
         return Ok(ReplayOutcome::PrefixVerified);
     }

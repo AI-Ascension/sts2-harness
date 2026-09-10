@@ -35,7 +35,10 @@ fn supervised<T: Send>(work: impl FnOnce() -> Result<T, &'static str> + Send) ->
     })
 }
 
-async fn read_frame(output: &mut BufReader<ChildStdout>) -> Result<Vec<u8>, McpProcessError> {
+async fn read_frame(
+    output: &mut BufReader<ChildStdout>,
+    max_response_bytes: usize,
+) -> Result<Vec<u8>, McpProcessError> {
     let mut bytes = Vec::new();
     loop {
         let available = output.fill_buf().await.map_err(|_| {
@@ -52,7 +55,7 @@ async fn read_frame(output: &mut BufReader<ChildStdout>) -> Result<Vec<u8>, McpP
         }
         let delimiter = available.iter().position(|byte| *byte == b'\n');
         let count = delimiter.map_or(available.len(), |index| index + 1);
-        if bytes.len().saturating_add(count) > MAX_RESPONSE_BYTES {
+        if bytes.len().saturating_add(count) > max_response_bytes {
             return Err(McpProcessError::new(
                 McpProcessErrorKind::Protocol,
                 "MCP response exceeded its size limit",

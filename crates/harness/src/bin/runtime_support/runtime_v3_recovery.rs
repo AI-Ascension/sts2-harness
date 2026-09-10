@@ -18,7 +18,7 @@ fn map_initialization_error(error: wire::RpcFailure) -> RecoveryError {
 impl RuntimeV3Port {
     // Reconnect only for recovery reads, never to repeat a dispatch. The episode ledger and
     // configured lease/session survive replacement of a failed MCP transport.
-    fn reconnect_for_recovery(&mut self) -> Result<(), RecoveryError> {
+    pub(super) fn reconnect_for_recovery(&mut self) -> Result<(), RecoveryError> {
         if !self.allocated || self.released {
             return Err(RecoveryError::PortFailure);
         }
@@ -52,9 +52,10 @@ impl RuntimeV3Port {
             .map_err(map_initialization_error)?;
         self.mcp = Some(mcp);
         if self.is_expert_profile() {
-            let mut expert = McpProcess::spawn_profile(&self.config, "runtime-v4-expert")
+            let profile = self.expert_mcp_profile();
+            let mut expert = McpProcess::spawn_profile(&self.config, profile)
                 .map_err(|_| RecoveryError::PortFailure)?;
-            wire::initialize_mcp_profile_classified(&mut expert, "runtime-v4-expert")
+            wire::initialize_mcp_profile_classified(&mut expert, profile)
                 .map_err(map_initialization_error)?;
             self.expert_mcp = Some(expert);
         }
@@ -110,7 +111,7 @@ impl RecoveryPort for RuntimeV3Port {
             .cloned()
             .ok_or(RecoveryError::InvalidOperation)?;
         self.reconnect_for_recovery()?;
-        if self.is_expert_profile() && record.action.kind() == sts2_harness::ActionKind::UsePotion {
+        if self.uses_expert_transport(&record.action, &record.payload) {
             let receipt = self
                 .reconcile_expert_operation(operation_id)
                 .map_err(|_| RecoveryError::PortFailure)?;
@@ -164,6 +165,13 @@ impl RecoveryPort for RuntimeV3Port {
             None,
         );
         Ok(receipt)
+    }
+
+    fn query_receipt(
+        &mut self,
+        identity: &sts2_harness::ReceiptQueryIdentity,
+    ) -> Result<sts2_harness::ReceiptQueryResult, RecoveryError> {
+        super::receipt_query::query(self, identity)
     }
 
     fn release_lease(&mut self) -> Result<(), RecoveryError> {

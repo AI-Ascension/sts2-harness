@@ -2,8 +2,10 @@
 
 mod action_plan;
 mod coop;
+mod coop_receipt_query;
 mod idempotency;
 mod legal_actions;
+pub(crate) mod map;
 mod noncombat;
 mod observation;
 mod policy_router;
@@ -17,6 +19,11 @@ mod state_machine;
 mod transition;
 
 pub use coop::{CoopCoordinator, CoopError, CoopPeerRole, CoopSyncStatus};
+pub use coop_receipt_query::{
+    ReceiptQueryActionKind, ReceiptQueryCoordinate, ReceiptQueryError, ReceiptQueryIdentity,
+    ReceiptQueryIdentityError, ReceiptQueryLocation, ReceiptQueryReceipt, ReceiptQueryResult,
+    ReceiptQueryStatus,
+};
 pub use idempotency::{
     ActionIdentity, ActionLedger, Admission as ActionAdmission, IdempotencyError,
 };

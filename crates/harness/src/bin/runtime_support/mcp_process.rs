@@ -10,6 +10,9 @@ use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use super::config::RuntimeConfig;
 
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
+// A complete map snapshot is bounded at 256 KiB before MCP wraps it as JSON text. The map profile
+// needs room for that escaped text and the JSON-RPC/content envelope while remaining bounded.
+const MAP_MAX_RESPONSE_BYTES: usize = 512 * 1024;
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(5);
 // A child may still be finishing a response or flushing its own shutdown work after the
@@ -27,6 +30,7 @@ pub(super) struct McpProcess {
     input: Option<ChildStdin>,
     output: Option<BufReader<ChildStdout>>,
     timeout: Duration,
+    max_response_bytes: usize,
     closed: bool,
 }
 
@@ -51,9 +55,15 @@ impl McpProcess {
     }
 
     pub(super) fn spawn_profile(config: &RuntimeConfig, profile: &str) -> Result<Self, String> {
-        Self::spawn_command(
+        let max_response_bytes = if profile == "runtime-map-v1" {
+            MAP_MAX_RESPONSE_BYTES
+        } else {
+            MAX_RESPONSE_BYTES
+        };
+        Self::spawn_command_with_response_limit(
             Self::configured_command_for_profile(config, profile),
             EXCHANGE_TIMEOUT,
+            max_response_bytes,
         )
     }
 
@@ -82,11 +92,23 @@ impl McpProcess {
         command
     }
 
-    fn spawn_command(mut command: Command, timeout: Duration) -> Result<Self, String> {
-        supervised(|| Self::spawn_supervised(&mut command, timeout))
+    fn spawn_command(command: Command, timeout: Duration) -> Result<Self, String> {
+        Self::spawn_command_with_response_limit(command, timeout, MAX_RESPONSE_BYTES)
     }
 
-    fn spawn_supervised(command: &mut Command, timeout: Duration) -> Result<Self, &'static str> {
+    fn spawn_command_with_response_limit(
+        mut command: Command,
+        timeout: Duration,
+        max_response_bytes: usize,
+    ) -> Result<Self, String> {
+        supervised(|| Self::spawn_supervised(&mut command, timeout, max_response_bytes))
+    }
+
+    fn spawn_supervised(
+        command: &mut Command,
+        timeout: Duration,
+        max_response_bytes: usize,
+    ) -> Result<Self, &'static str> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -109,6 +131,7 @@ impl McpProcess {
             input,
             output,
             timeout,
+            max_response_bytes,
             closed: false,
         })
     }
@@ -193,7 +216,8 @@ impl McpProcess {
                             )
                         })
                     };
-                    let (_, response) = tokio::try_join!(write, read_frame(output))?;
+                    let (_, response) =
+                        tokio::try_join!(write, read_frame(output, self.max_response_bytes))?;
                     validate_response(&response, id)
                 })
                 .await

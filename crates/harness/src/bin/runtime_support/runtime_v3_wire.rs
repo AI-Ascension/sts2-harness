@@ -8,6 +8,8 @@ use super::mcp_process::McpProcessError;
 
 const CATALOG_REVISION: &str = "runtime-v3-gameplay-mcp";
 const EXPERT_CATALOG_REVISION: &str = "runtime-v4-expert-mcp";
+const EXPERT_REST_ACTION_CATALOG_REVISION: &str = "runtime-v4-expert-rest-action-mcp";
+const RECEIPT_QUERY_CATALOG_REVISION: &str = "coop-receipt-query-v1-mcp";
 
 include!("runtime_v3_wire_failure.rs");
 
@@ -125,6 +127,8 @@ fn rpc_call_with_read_kind(
         if method != "tools/call"
             || !(has_gameplay_envelope(&response)
                 || has_expert_action_envelope(&response)
+                || has_expert_rest_action_envelope(&response)
+                || has_receipt_query_envelope(&response)
                 || (read_kind == RpcReadKind::Catalog && has_catalog_reobserve(&response, id)))
         {
             if read_kind != RpcReadKind::None && is_transient_gateway_tool_error(&response) {
@@ -193,6 +197,20 @@ fn has_expert_action_envelope(response: &Value) -> bool {
         .is_some_and(|value| value["protocol_version"] == "runtime-v4-expert-action")
 }
 
+fn has_expert_rest_action_envelope(response: &Value) -> bool {
+    response["result"]["content"][0]["text"]
+        .as_str()
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .is_some_and(|value| value["protocol_version"] == "runtime-v4-expert-rest-action-v1")
+}
+
+fn has_receipt_query_envelope(response: &Value) -> bool {
+    response["result"]["content"][0]["text"]
+        .as_str()
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .is_some_and(|value| value["protocol_version"] == "coop-receipt-query-v1")
+}
+
 fn request_timeout(method: &str, params: &Value) -> Result<std::time::Duration, String> {
     let wait = if method == "tools/call" && params["name"] == "sts2.wait_for_transition" {
         params["arguments"]["wait_for_millis"]
@@ -229,6 +247,15 @@ fn validate_catalog(response: &Value, profile: &str) -> Result<(), String> {
                 "sts2.expert_reconcile",
             ],
         ),
+        "runtime-v4-expert-rest-action" => (
+            EXPERT_REST_ACTION_CATALOG_REVISION,
+            &[
+                "sts2.expert_state",
+                "sts2.expert_rest_action",
+                "sts2.expert_rest_reconcile",
+            ],
+        ),
+        "coop-receipt-query-v1" => (RECEIPT_QUERY_CATALOG_REVISION, &["sts2.coop_receipt_query"]),
         _ => return Err(String::from("MCP profile is unsupported")),
     };
     if result.get("revision").and_then(Value::as_str) != Some(revision) {
@@ -245,7 +272,7 @@ fn validate_catalog(response: &Value, profile: &str) -> Result<(), String> {
             .any(|(tool, expected)| tool.get("name").and_then(Value::as_str) != Some(expected))
     {
         return Err(String::from(
-            "MCP catalog does not expose the exact six-tool surface",
+            "MCP catalog does not expose the exact profile tool surface",
         ));
     }
     Ok(())
@@ -266,30 +293,7 @@ pub(super) fn combine_cleanup(
     message
 }
 
-pub(super) const fn action_kind_name(kind: ActionKind) -> &'static str {
-    match kind {
-        ActionKind::StartRun => "start_run",
-        ActionKind::SelectCharacter => "select_character",
-        ActionKind::SelectMapNode => "select_map_node",
-        ActionKind::PlayCard => "play_card",
-        ActionKind::UsePotion => "use_potion",
-        ActionKind::EndTurn => "end_turn",
-        ActionKind::ChooseReward => "choose_reward",
-        ActionKind::SkipReward => "skip_reward",
-        ActionKind::Proceed => "proceed",
-        ActionKind::ConfirmSelection => "confirm_selection",
-        ActionKind::CancelSelection => "cancel_selection",
-        ActionKind::ShopPurchase => "shop_purchase",
-        ActionKind::ShopRemove => "shop_remove",
-        ActionKind::Rest => "rest",
-        ActionKind::RestOption => "rest_option",
-        ActionKind::Smith => "smith",
-        ActionKind::EventChoice => "event_choice",
-        ActionKind::SelectCard => "select_card",
-        ActionKind::ConfirmVictory => "confirm_victory",
-        ActionKind::SaveQuit => "save_quit",
-    }
-}
+include!("runtime_v3_wire_action_kind.rs");
 
 include!("runtime_v3_wire_stage.rs");
 

@@ -11,6 +11,10 @@ pub(super) struct OperationRecord {
     /// The exact host payload admitted with the first dispatch. Reconciliation must not
     /// consult the mutable current catalog after a reobserve or settlement.
     pub(super) payload: Value,
+    /// The selector catalog that admitted a selection action, when one was active. A completion
+    /// response can expose only the post-selection rest catalog, so reconciliation must retain
+    /// the pre-dispatch selector alongside the operation record.
+    pub(super) rest_selector: Option<Value>,
 }
 
 impl OperationRecord {
@@ -24,7 +28,13 @@ impl OperationRecord {
             generation: identity.generation,
             action: action.clone(),
             payload,
+            rest_selector: None,
         }
+    }
+
+    pub(super) fn with_rest_selector(mut self, selector: Option<Value>) -> Self {
+        self.rest_selector = selector;
+        self
     }
 }
 

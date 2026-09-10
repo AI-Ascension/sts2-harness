@@ -25,6 +25,7 @@ pub enum ActionKind {
     Proceed,
     ConfirmSelection,
     CancelSelection,
+    SelectPlayer,
 }
 
 /// One host-generated legal action reference. The action payload remains owned by the host/MCP

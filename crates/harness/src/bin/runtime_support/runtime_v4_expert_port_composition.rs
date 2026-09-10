@@ -105,6 +105,7 @@ fn compose_with_normal(
     })
 }
 
+
 fn merge_actions(
     normal_actions: &EpisodeLegalActionSet,
     normal_payloads: &BTreeMap<String, Value>,
@@ -247,6 +248,7 @@ fn expert_action_kind(kind: &str) -> Option<ActionKind> {
         "smith" => ActionKind::Smith,
         "event_choice" => ActionKind::EventChoice,
         "select_card" => ActionKind::SelectCard,
+        "select_player" => ActionKind::SelectPlayer,
         "confirm_victory" => ActionKind::ConfirmVictory,
         "save_quit" => ActionKind::SaveQuit,
         _ => return None,
@@ -281,6 +283,7 @@ impl RuntimeV3Port {
         self.current_state = Some(composed.observation.state_id().to_owned());
         self.current_actions = Some(composed.actions.clone());
         self.payloads = composed.payloads.clone();
+        self.retain_rest_selector();
     }
 }
-
+include!("runtime_v4_expert_port_composition_rest.rs");

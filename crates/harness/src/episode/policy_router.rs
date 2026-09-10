@@ -2,6 +2,7 @@
 
 use super::action_plan::ActionPlan;
 use super::legal_actions::EpisodeLegalActionSet;
+use super::map::MapDecisionContext;
 use super::observation::EpisodeObservation;
 use super::recovery::RecoveryOperation;
 use crate::exo::{Decision, ExoError, ExoSession};
@@ -34,6 +35,17 @@ impl DecisionInput {
             objective: objective.into(),
             hard_constraints,
         }
+    }
+
+    #[must_use]
+    pub(crate) fn with_map_context(mut self, context: MapDecisionContext) -> Self {
+        self.observation = self.observation.clone().with_map_context(context);
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn map_context(&self) -> Option<&MapDecisionContext> {
+        self.observation.map_context()
     }
 }
 
@@ -121,9 +133,19 @@ impl<T: crate::exo::ExoTransport> DecisionSource for ExoDecisionSource<T> {
             .iter()
             .map(|action| action.action_id().to_owned())
             .collect();
-        let decision = self
-            .session
-            .decide(
+        let decision = if let Some(map_context) = input.map_context() {
+            self.session.decide_with_map(
+                input.execution_id,
+                input.observation.state_id(),
+                input.observation.generation(),
+                input.observation.fair_play().clone(),
+                legal_action_ids,
+                input.objective.clone(),
+                input.hard_constraints.clone(),
+                map_context.clone(),
+            )
+        } else {
+            self.session.decide(
                 input.execution_id,
                 input.observation.state_id(),
                 input.observation.generation(),
@@ -132,7 +154,8 @@ impl<T: crate::exo::ExoTransport> DecisionSource for ExoDecisionSource<T> {
                 input.objective.clone(),
                 input.hard_constraints.clone(),
             )
-            .map_err(map_exo_error)?;
+        }
+        .map_err(map_exo_error)?;
         if let Decision::Plan {
             action_ids,
             rationale,

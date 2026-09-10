@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-impl RuntimeV3Port {
-    pub(super) fn is_expert_profile(&self) -> bool {
-        self.config.runtime_profile == PROFILE
-    }
+include!("runtime_v4_expert_port_profile.rs");
 
+impl RuntimeV3Port {
     fn expert_mcp_mut(&mut self) -> Result<&mut super::super::mcp::McpProcess, String> {
         self.expert_mcp
             .as_mut()
@@ -119,44 +117,6 @@ impl RuntimeV3Port {
         })
     }
 
-    pub(super) fn compose_current_observation(
-        &mut self,
-        baseline: EpisodeObservation,
-    ) -> Result<EpisodeObservation, String> {
-        self.compose_current_observation_classified(baseline, false)
-            .map_err(|error| error.message().to_owned())
-    }
-
-    /// Compose a fresh ordinary reobserve with the expert projection. The expert state call is
-    /// a bounded recovery read here, while parsing and cross-projection identity remain terminal.
-    pub(super) fn compose_current_observation_recovery(
-        &mut self,
-        baseline: EpisodeObservation,
-    ) -> Result<EpisodeObservation, RuntimeV3ToolError> {
-        self.compose_current_observation_classified(baseline, true)
-    }
-
-    fn compose_current_observation_classified(
-        &mut self,
-        baseline: EpisodeObservation,
-        catalog_read: bool,
-    ) -> Result<EpisodeObservation, RuntimeV3ToolError> {
-        let expert = self.expert_state_classified(catalog_read)?;
-        let normal_actions = self
-            .current_actions
-            .clone()
-            .ok_or_else(|| {
-                RuntimeV3ToolError::Terminal(String::from(
-                    "normal catalog is unavailable for expert composition",
-                ))
-            })?;
-        let normal_payloads = self.payloads.clone();
-        let composed = compose_with_normal(&baseline, &normal_actions, &normal_payloads, &expert)
-            .map_err(RuntimeV3ToolError::Terminal)?;
-        self.install_composed(&composed);
-        Ok(composed.observation)
-    }
-
     pub(super) fn merge_current_expert_actions(
         &mut self,
         state_id: &str,
@@ -173,6 +133,14 @@ impl RuntimeV3Port {
             RuntimeV3ToolError::Terminal(format!("Runtime-v4 expert state is invalid: {error}"))
         })?;
         if expert.state_id() != state_id || expert.generation() != generation {
+            // A newer expert snapshot means the normal catalog became stale during the two
+            // projection reads. Let the existing catalog-reobserve recovery path obtain a new
+            // pair; equal-generation identity changes and retrograde data remain terminal.
+            if expert.generation() > generation {
+                return Err(RuntimeV3ToolError::Transient(String::from(
+                    "Runtime-v4 expert catalog advanced beyond the Runtime-v3 observation",
+                )));
+            }
             return Err(RuntimeV3ToolError::Terminal(String::from(
                 "Runtime-v4 expert catalog does not match the Runtime-v3 observation",
             )));
@@ -199,6 +167,9 @@ impl RuntimeV3Port {
         action: &EpisodeLegalAction,
         payload: Value,
     ) -> Result<TransitionReceipt, sts2_harness::PortError> {
+        if self.is_rest_profile() {
+            return self.dispatch_rest_action(identity, action, payload);
+        }
         let request_value = action_request(&self.config, identity, action, &payload, "request");
         let request = RuntimeV4ExpertActionRequest::from_value(request_value).map_err(|error| {
             wire::port_error("expert_request_invalid", error.to_string(), false)
@@ -239,8 +210,11 @@ impl RuntimeV3Port {
             .get(operation_id)
             .cloned()
             .ok_or_else(|| String::from("expert operation is not in the ledger"))?;
-        if record.action.kind() != ActionKind::UsePotion {
+        if !self.uses_expert_transport(&record.action, &record.payload) {
             return Err(String::from("operation is not a Runtime-v4 expert action"));
+        }
+        if self.is_rest_profile() {
+            return self.reconcile_rest_operation(operation_id);
         }
         let identity = ActionIdentity::new(
             operation_id.to_owned(),
@@ -300,3 +274,4 @@ impl RuntimeV3Port {
 
 include!("runtime_v4_expert_port_transport_receipt.rs");
 include!("runtime_v4_expert_port_transport_composition.rs");
+include!("runtime_v4_expert_port_transport_observation.rs");

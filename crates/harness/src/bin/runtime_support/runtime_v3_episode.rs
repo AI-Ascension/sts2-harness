@@ -9,7 +9,6 @@ use sts2_harness::{
 };
 
 use super::super::mcp::validate_or_release_allocation;
-use super::super::runtime_v3_telemetry::ObservationSource;
 use super::{OperationRecord, RuntimeV3Port, RuntimeV3ToolError, parse, wire};
 
 const MAX_OPERATIONS: usize = 1_024;
@@ -63,23 +62,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
     }
 
     fn observe(&mut self) -> Result<EpisodeObservation, sts2_harness::PortError> {
-        let arguments = self.context(self.generation);
-        let value = self
-            .call_tool("sts2.observe", arguments)
-            .map_err(|error| wire::port_error("observe_failed", error, false))?;
-        let parsed = parse::observation(&value, "state_response", &self.config)
-            .map_err(|error| wire::port_error("observe_invalid", error, false))?;
-        let baseline = self.install(parsed);
-        let observation = if self.is_expert_profile() {
-            self.compose_current_observation(baseline)
-                .map_err(|error| wire::port_error("expert_observe_invalid", error, false))?
-        } else {
-            baseline
-        };
-        let _ = self
-            .telemetry
-            .observation(ObservationSource::Observe, &observation);
-        Ok(observation)
+        self.observe_inner(false)
     }
 
     fn legal_actions(
@@ -118,9 +101,41 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         self.current_actions = Some(actions.clone());
         self.payloads = payloads;
         if self.is_expert_profile() {
-            return self.expert_catalog(state_id, generation);
+            let actions = self.expert_catalog(state_id, generation)?;
+            if self.is_rest_profile()
+                && self
+                    .rest_selector_actions
+                    .as_ref()
+                    .is_some_and(|selector| selector.assert_matches(state_id, generation).is_ok())
+            {
+                let selector = self.rest_selector_actions.clone().ok_or_else(|| {
+                    wire::port_error("rest_selector_invalid", "selector disappeared", false)
+                })?;
+                self.current_actions = Some(selector.clone());
+                self.payloads = self.rest_selector_payloads.clone();
+                return Ok(selector);
+            }
+            return Ok(actions);
         }
         Ok(actions)
+    }
+
+    fn map_snapshot(
+        &mut self,
+        state_id: &str,
+        generation: u64,
+        _execution_id: sts2_harness::ModelExecutionId,
+    ) -> Result<Option<Value>, sts2_harness::PortError> {
+        if self.current_state.as_deref() != Some(state_id) || self.generation != generation {
+            return Err(wire::port_error(
+                "map_snapshot_stale",
+                "map snapshot request is not bound to the current observation",
+                false,
+            ));
+        }
+        super::runtime_map::snapshot(&self.config, generation)
+            .map(Some)
+            .map_err(|error| wire::port_error("map_snapshot_failed", error, false))
     }
 
     fn dispatch_action(
@@ -131,7 +146,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         self.validate_current_action(identity, action)?;
         let payload = self.current_payload(action)?;
         self.retain_operation(identity, action, &payload)?;
-        if self.is_expert_profile() && action.kind() == sts2_harness::ActionKind::UsePotion {
+        if self.uses_expert_transport(action, &payload) {
             return self.dispatch_expert_action(identity, action, payload);
         }
         let value = self
@@ -249,9 +264,13 @@ impl RuntimeV3Port {
                 false,
             ));
         }
+        let rest_selector = self.rest_selector_value.clone();
         self.operations
             .entry(identity.operation_id.clone())
-            .or_insert_with(|| OperationRecord::new(identity, action, payload.clone()));
+            .or_insert_with(|| {
+                OperationRecord::new(identity, action, payload.clone())
+                    .with_rest_selector(rest_selector)
+            });
         Ok(())
     }
 }
@@ -262,35 +281,5 @@ fn legal_action_argument(action_id: &str, payload: Value) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{json, legal_action_argument};
-    use serde_json::Value;
-
-    #[test]
-    fn dispatch_preserves_the_complete_host_legal_action_reference()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let mut request: Value = serde_json::from_str(include_str!(
-            "../../../../../protocol-artifact/runtime-v3-gameplay/golden/dispatch-action-request.json"
-        ))?;
-        let schema: Value = serde_json::from_str(include_str!(
-            "../../../../../protocol-artifact/runtime-v3-gameplay/schema.json"
-        ))?;
-        let validator = jsonschema::validator_for(&schema)?;
-        let original_action = request["action"].clone();
-        let action_id = original_action["action_id"].as_str().ok_or("action ID")?;
-        let payload = original_action["action"].clone();
-        request["action"] = legal_action_argument(action_id, payload.clone());
-        assert_eq!(request["action"], original_action);
-        assert!(validator.is_valid(&request));
-        request["action"] = payload;
-        assert!(
-            !validator.is_valid(&request),
-            "bare payload must be rejected"
-        );
-        let card = json!({"kind": "play_card", "card_id": "c1", "target_id": null});
-        request["action"] = legal_action_argument("host-card-ref", card.clone());
-        assert_eq!(request["action"]["action_id"], "host-card-ref");
-        assert_eq!(request["action"]["action"], card);
-        assert!(validator.is_valid(&request));
-        Ok(())
-    }
+    include!("runtime_v3_episode_tests.rs");
 }

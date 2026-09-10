@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::EpisodeError;
+use super::map::MapDecisionContext;
 use crate::exo::SanitizedObservation;
 use serde_json::Value;
 
@@ -48,6 +49,7 @@ pub struct EpisodeObservation {
     modal_blocking: bool,
     input_enabled: bool,
     fair_play: SanitizedObservation,
+    map_context: Option<Box<MapDecisionContext>>,
 }
 
 impl EpisodeObservation {
@@ -91,6 +93,7 @@ impl EpisodeObservation {
             modal_blocking,
             input_enabled,
             fair_play,
+            map_context: None,
         })
     }
 
@@ -127,6 +130,17 @@ impl EpisodeObservation {
     #[must_use]
     pub fn fair_play(&self) -> &SanitizedObservation {
         &self.fair_play
+    }
+
+    #[must_use]
+    pub(crate) fn with_map_context(mut self, context: MapDecisionContext) -> Self {
+        self.map_context = Some(Box::new(context));
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn map_context(&self) -> Option<&MapDecisionContext> {
+        self.map_context.as_deref()
     }
 
     /// Returns whether policy may dispatch against this snapshot.

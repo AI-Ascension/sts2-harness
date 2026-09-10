@@ -18,6 +18,7 @@ pub(crate) struct RuntimeConfig {
     pub(crate) artifact_id: String,
     pub(crate) wait_for_combat_seconds: u64,
     pub(crate) settlement_timeout_seconds: u64,
+    pub(crate) map_context_enabled: bool,
 }
 
 impl RuntimeConfig {
@@ -25,16 +26,21 @@ impl RuntimeConfig {
         let runtime_profile = env_or_default("STS2_RUNTIME_PROFILE", "runtime-v1")?;
         if !matches!(
             runtime_profile.as_str(),
-            "runtime-v1" | "runtime-v2" | "runtime-v3-gameplay" | "runtime-v4-expert"
+            "runtime-v1"
+                | "runtime-v2"
+                | "runtime-v3-gameplay"
+                | "runtime-v4-expert"
+                | "runtime-v4-expert-rest-action"
         ) {
             return Err(String::from(
-                "STS2_RUNTIME_PROFILE must be runtime-v1, runtime-v2, runtime-v3-gameplay, or runtime-v4-expert",
+                "STS2_RUNTIME_PROFILE must be runtime-v1, runtime-v2, runtime-v3-gameplay, runtime-v4-expert, or runtime-v4-expert-rest-action",
             ));
         }
         let session_id = env_or_default("STS2_SESSION_ID", "session-1")?;
         let wait_for_combat_seconds = bounded_seconds("STS2_RUNTIME_WAIT_FOR_COMBAT_SECONDS", "0")?;
         let settlement_timeout_seconds =
             bounded_seconds("STS2_RUNTIME_SETTLEMENT_TIMEOUT_SECONDS", "30")?;
+        let map_context_enabled = flag_with_default("STS2_ENABLE_MAP_CONTEXT", false)?;
         let config = Self {
             gateway_address: env_or_default("STS2_GATEWAY_ADDR", "127.0.0.1:15525")?,
             gateway_token: required("STS2_GATEWAY_TOKEN")?,
@@ -55,6 +61,7 @@ impl RuntimeConfig {
             artifact_id: env_or_default("STS2_ARTIFACT_ID", "artifact-runtime-0001")?,
             wait_for_combat_seconds,
             settlement_timeout_seconds,
+            map_context_enabled,
         };
         config.validate()?;
         Ok(config)
@@ -144,9 +151,37 @@ fn safe_identity(value: &str) -> bool {
         })
 }
 
+fn flag_with_default(name: &str, default: bool) -> Result<bool, String> {
+    match std::env::var(name) {
+        Ok(value) => parse_flag(name, &value),
+        Err(std::env::VarError::NotPresent) => Ok(default),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!("{name} is not valid UTF-8")),
+    }
+}
+
+fn parse_flag(name: &str, value: &str) -> Result<bool, String> {
+    match value {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(format!("{name} must be exactly true or false")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::RuntimeConfig;
+    use super::{RuntimeConfig, parse_flag};
+
+    #[test]
+    fn map_context_flag_defaults_off_and_accepts_only_exact_booleans() {
+        assert_eq!(parse_flag("X", "false"), Ok(false));
+        assert_eq!(parse_flag("X", "true"), Ok(true));
+        for value in ["", "1", "0", "yes", "TRUE", "True", " true"] {
+            assert!(
+                parse_flag("X", value).is_err(),
+                "{value:?} must be rejected"
+            );
+        }
+    }
 
     #[test]
     fn runtime_sessions_are_validated_independently() {
@@ -168,6 +203,7 @@ mod tests {
             artifact_id: "artifact-1".into(),
             wait_for_combat_seconds: 0,
             settlement_timeout_seconds: 30,
+            map_context_enabled: false,
         };
         assert!(config.validate().is_ok());
         config.mcp_session_id = String::from("unsafe session");

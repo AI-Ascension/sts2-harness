@@ -48,6 +48,20 @@ fn child_environment_preserves_distinct_gateway_and_mcp_sessions() {
     }
 }
 
+#[test]
+#[cfg(unix)]
+fn map_profile_has_a_wider_response_bound_without_widening_gameplay() -> Result<(), String> {
+    let mut config = session_config();
+    config.mcp_binary = "/bin/true".into();
+    let mut gameplay = McpProcess::spawn(&config)?;
+    assert_eq!(gameplay.max_response_bytes, MAX_RESPONSE_BYTES);
+    gameplay.close()?;
+
+    let mut map = McpProcess::spawn_profile(&config, "runtime-map-v1")?;
+    assert_eq!(map.max_response_bytes, 512 * 1024);
+    map.close()
+}
+
 fn session_config() -> RuntimeConfig {
     RuntimeConfig {
         gateway_address: "127.0.0.1:15525".into(),
@@ -67,6 +81,7 @@ fn session_config() -> RuntimeConfig {
         artifact_id: "artifact-1".into(),
         wait_for_combat_seconds: 0,
         settlement_timeout_seconds: 30,
+        map_context_enabled: false,
     }
 }
 

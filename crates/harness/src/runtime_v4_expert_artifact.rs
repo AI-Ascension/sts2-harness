@@ -14,6 +14,10 @@ pub const RUNTIME_V4_EXPERT_ARTIFACT: &str = "sts2-protocol/runtime-v4-expert";
 pub const RUNTIME_V4_EXPERT_SCHEMA_SOURCE: &str = "schemas/runtime-v4-expert.schema.json";
 /// Generator recorded in artifact provenance.
 pub const RUNTIME_V4_EXPERT_GENERATOR: &str = "hand-authored";
+/// Marker for the harness-owned provider projection that may contain REST selector action forms.
+/// It is deliberately separate from the frozen native Runtime-v4 expert wire contract.
+pub const RUNTIME_V4_EXPERT_FAIR_PLAY_PROJECTION: &str =
+    "sts2-harness/runtime-v4-expert-fair-play-v1";
 
 const MANIFEST_BYTES: &[u8] =
     include_bytes!("../../../protocol-artifact/runtime-v4-expert/manifest.json");

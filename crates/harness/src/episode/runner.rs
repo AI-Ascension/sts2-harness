@@ -19,6 +19,8 @@ use super::shutdown::{EpisodeShutdown, ShutdownPort};
 use super::stability_barrier::{BarrierPort, StabilityBarrier};
 use super::transition::TransitionReceipt;
 use crate::error::PortError;
+use crate::identity::ModelExecutionId;
+use serde_json::Value;
 
 pub use runner_error::EpisodeRunnerError;
 
@@ -42,6 +44,17 @@ pub trait EpisodeRuntimePort: BarrierPort + RecoveryPort + ShutdownPort {
         generation: u64,
     ) -> Result<EpisodeLegalActionSet, PortError>;
 
+    /// Reads one generation-bound map projection through the runtime MCP boundary.
+    /// Implementations may return `None` when the active runtime does not expose map visibility.
+    fn map_snapshot(
+        &mut self,
+        _state_id: &str,
+        _generation: u64,
+        _execution_id: ModelExecutionId,
+    ) -> Result<Option<Value>, PortError> {
+        Ok(None)
+    }
+
     fn dispatch_action(
         &mut self,
         identity: &ActionIdentity,
@@ -57,6 +70,7 @@ pub struct EpisodeRunnerConfig {
     recovery: RecoveryController,
     objective: String,
     hard_constraints: Vec<String>,
+    map_context_enabled: bool,
 }
 
 impl EpisodeRunnerConfig {
@@ -84,7 +98,22 @@ impl EpisodeRunnerConfig {
             recovery,
             objective,
             hard_constraints,
+            map_context_enabled: false,
         })
+    }
+
+    /// Enables the negotiated map projection for this runner. When enabled, a map-stage
+    /// observation must receive a validated map snapshot; the runner never falls back to the
+    /// ordinary decision schema after this opt-in.
+    #[must_use]
+    pub fn with_map_context_enabled(mut self, enabled: bool) -> Self {
+        self.map_context_enabled = enabled;
+        self
+    }
+
+    #[must_use]
+    pub const fn map_context_enabled(&self) -> bool {
+        self.map_context_enabled
     }
 
     #[must_use]

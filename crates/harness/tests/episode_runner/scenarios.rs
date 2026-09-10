@@ -33,7 +33,9 @@ fn extended_campaign_budget_remains_bounded_and_cleans_up_after_long_episode() {
 fn runner_routes_every_playable_surface_and_verifies_terminal_transition() {
     let mut runtime = FakeRuntime::new(complete_states());
     let mut model = FakeModel::default();
-    let report = runner()
+    let runner = runner();
+    assert!(!runner.config().map_context_enabled());
+    let report = runner
         .run(&mut runtime, &mut model)
         .expect("fake run should complete");
     assert_eq!(report.terminal_stage(), EpisodeStage::Victory);
@@ -47,6 +49,34 @@ fn runner_routes_every_playable_surface_and_verifies_terminal_transition() {
     assert!(runtime.released);
     assert!(runtime.mcp_closed);
     assert!(runtime.gateway_closed);
+}
+
+#[test]
+fn enabled_map_context_fails_closed_when_runtime_has_no_map_capability() {
+    let mut runtime = FakeRuntime::new(vec![
+        state(EpisodeStage::Map, 0),
+        state(EpisodeStage::Victory, 1),
+    ]);
+    let mut model = FakeModel::default();
+    let config = EpisodeRunnerConfig::new(
+        16,
+        StabilityBarrier::new(2, 1).expect("barrier"),
+        RecoveryController::new(1).expect("recovery"),
+        "complete the run",
+        vec![String::from("use only current host legal actions")],
+    )
+    .expect("runner configuration")
+    .with_map_context_enabled(true);
+    assert!(config.map_context_enabled());
+    let error = EpisodeRunner::new(config)
+        .run(&mut runtime, &mut model)
+        .expect_err("enabled map context must not fall back to the ordinary schema");
+    assert!(matches!(
+        error,
+        EpisodeRunnerError::LegalActions(error) if error.code() == "map_snapshot_unavailable"
+    ));
+    assert_eq!(model.calls, 0);
+    assert!(runtime.released && runtime.mcp_closed && runtime.gateway_closed);
 }
 
 #[test]

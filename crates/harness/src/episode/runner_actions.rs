@@ -173,6 +173,12 @@ impl EpisodeRunner {
             RecoveryResult::Receipt(receipt) => {
                 finish_recovery_receipt(machine, observation, receipt, counters)
             }
+            RecoveryResult::ReceiptQuery(_) => {
+                // A retained receipt has no public post-action observation. The caller must
+                // consume it through RecoveryController::query_receipt; advancing the episode
+                // here would turn historical evidence into a fresh state claim.
+                Err(EpisodeRunnerError::UnexpectedRecoveryResult)
+            }
             RecoveryResult::Released | RecoveryResult::Stopped => {
                 machine.fail();
                 Err(EpisodeRunnerError::StoppedByRecovery)

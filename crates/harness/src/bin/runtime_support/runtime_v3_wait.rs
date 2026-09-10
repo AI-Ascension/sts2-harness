@@ -3,7 +3,7 @@
 use super::{RuntimeV3Port, parse, recording};
 use serde_json::json;
 use std::time::{Duration, Instant};
-use sts2_harness::{BarrierError, BarrierPort, EpisodeRuntimePort, WaitOutcome, WaitSample};
+use sts2_harness::{BarrierError, BarrierPort, WaitOutcome, WaitSample};
 
 impl BarrierPort for RuntimeV3Port {
     fn wait_for_transition(
@@ -21,7 +21,7 @@ impl BarrierPort for RuntimeV3Port {
             let sample = if self.operations.contains_key(operation_id) {
                 if self.is_expert_profile()
                     && self.operations.get(operation_id).is_some_and(|record| {
-                        record.action.kind() == sts2_harness::ActionKind::UsePotion
+                        self.uses_expert_transport(&record.action, &record.payload)
                     })
                 {
                     self.poll_expert_operation(operation_id)?
@@ -32,7 +32,7 @@ impl BarrierPort for RuntimeV3Port {
                 || operation_id.starts_with("episode-wait-")
             {
                 // Idle stability observes host state; it cannot manufacture an action witness.
-                let observation = self.observe().map_err(|error| {
+                let observation = self.observe_for_idle_transition().map_err(|error| {
                     if std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true") {
                         // Codes are harness-owned constants. Do not log arbitrary port messages.
                         eprintln!("idle transition observation failed: code={}", error.code());
