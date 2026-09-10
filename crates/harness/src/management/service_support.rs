@@ -151,6 +151,38 @@ pub(super) fn waiting_reason(status: &WorkflowRunStatus) -> Option<String> {
     }
 }
 
+pub(super) fn recovery_admission(snapshot: &RunSnapshot) -> RecoveryAdmission {
+    if snapshot.pending_operation.is_some()
+        || matches!(
+            snapshot.status,
+            WorkflowRunStatus::Pausing
+                | WorkflowRunStatus::Cancelling
+                | WorkflowRunStatus::Reconciling
+        )
+    {
+        return RecoveryAdmission::Reconciling;
+    }
+
+    match (&snapshot.status, &snapshot.cleanup) {
+        (WorkflowRunStatus::Created | WorkflowRunStatus::Validated, _) => {
+            RecoveryAdmission::NoPendingEffects
+        }
+        (
+            WorkflowRunStatus::Running
+            | WorkflowRunStatus::WaitingForProvider
+            | WorkflowRunStatus::WaitingForGame
+            | WorkflowRunStatus::Paused,
+            CleanupState::NotStarted | CleanupState::Complete,
+        ) => RecoveryAdmission::SafelyResumable {
+            capability: "synthetic.workflow.resume.v1".to_owned(),
+        },
+        (WorkflowRunStatus::Completed | WorkflowRunStatus::Cancelled, CleanupState::Complete) => {
+            RecoveryAdmission::TerminalVerifiedCleanup
+        }
+        _ => RecoveryAdmission::NeedsOperator,
+    }
+}
+
 pub struct UnavailableDefinitionPort;
 
 impl DefinitionPort for UnavailableDefinitionPort {

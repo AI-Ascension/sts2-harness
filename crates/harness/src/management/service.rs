@@ -6,12 +6,12 @@ use serde_json::{Value, json};
 
 use super::auth::AuthContext;
 use super::contract::{
-    AuthoritySummary, CapabilityResponse, CommandRequest, CommandResponse, ContractError,
-    Diagnostic, DiffRequest, DiffResponse, ErrorBody, ErrorClass, ErrorResponse, EventPage,
-    ExportRequest, ExportResponse, HealthResponse, InspectRequest, InspectResponse,
+    AuthoritySummary, CapabilityResponse, CleanupState, CommandRequest, CommandResponse,
+    ContractError, Diagnostic, DiffRequest, DiffResponse, ErrorBody, ErrorClass, ErrorResponse,
+    EventPage, ExportRequest, ExportResponse, HealthResponse, InspectRequest, InspectResponse,
     MANAGEMENT_SCHEMA_VERSION, OutputFormat, REPLAY_SCHEMA_VERSION, RUN_SCHEMA_VERSION,
-    ReplayDivergence, ReplayRequest, ReplayResponse, RunEvent, RunRequest, RunSnapshot,
-    RunSubmissionResponse, STATUS_SCHEMA_VERSION, StatusResponse, ValidateRequest,
+    RecoveryAdmission, ReplayDivergence, ReplayRequest, ReplayResponse, RunEvent, RunRequest,
+    RunSnapshot, RunSubmissionResponse, STATUS_SCHEMA_VERSION, StatusResponse, ValidateRequest,
     ValidateResponse, WorkflowRunStatus, digest_value, schema_is, validate_digest,
     validate_identifier,
 };

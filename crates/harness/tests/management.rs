@@ -12,8 +12,8 @@ use sts2_harness::management::{
     ErrorClass, EventClassification, EventPayload, EventType, FileWorkflowStore, GameOutcome,
     InspectRequest, InspectionResult, MANAGEMENT_SCHEMA_VERSION, ManagementClient, ManagementError,
     ManagementReplayRequest, ManagementServer, ManagementService, MemoryWorkflowStore,
-    OutputFormat, RUN_SCHEMA_VERSION, ReplayResult, RunAdmission, RunEvent, RunRequest,
-    RunSnapshot, ServerConfig, StaticAuthenticator, ValidateRequest, ValidationResult,
+    OutputFormat, RUN_SCHEMA_VERSION, RecoveryAdmission, ReplayResult, RunAdmission, RunEvent,
+    RunRequest, RunSnapshot, ServerConfig, StaticAuthenticator, ValidateRequest, ValidationResult,
     WorkflowExecutionPort, WorkflowReplayPort, WorkflowRunStatus, WorkflowStore, decode_strict,
     digest_value,
 };
@@ -229,6 +229,12 @@ fn command_acceptance_is_idempotent_and_revision_bound() -> Result<(), Box<dyn s
     let second = service.submit_run(&actor, run_request())?;
     assert_eq!(first.workflow_run_id, second.workflow_run_id);
     assert_eq!(execution.submissions.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        service
+            .status(&actor, &first.workflow_run_id)?
+            .recovery_admission,
+        RecoveryAdmission::NoPendingEffects
+    );
 
     let request = CommandRequest {
         schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
@@ -243,6 +249,14 @@ fn command_acceptance_is_idempotent_and_revision_bound() -> Result<(), Box<dyn s
     let duplicate = service.command(&actor, request)?;
     assert_eq!(applied, duplicate);
     assert_eq!(execution.commands.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        service
+            .status(&actor, &first.workflow_run_id)?
+            .recovery_admission,
+        RecoveryAdmission::SafelyResumable {
+            capability: "synthetic.workflow.resume.v1".to_owned()
+        }
+    );
 
     let stale = CommandRequest {
         schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),

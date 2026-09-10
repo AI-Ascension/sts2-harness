@@ -25,10 +25,10 @@ pub use contract::{
     MAX_JSON_ITEMS, MAX_PATH_BYTES, MAX_RESPONSE_BYTES, MAX_STORE_BYTES, MAX_STRING_BYTES,
     OutputFormat, PendingOperation, PendingOperationState, PersistedCommand, PersistedRun,
     PersistedStore, REPLAY_SCHEMA_VERSION, REQUEST_DEADLINE_MILLIS, RUN_SCHEMA_VERSION,
-    ReplayDivergence, ReplayResponse, RunEvent, RunRequest, RunSnapshot, RunSubmissionResponse,
-    STATUS_SCHEMA_VERSION, StatusResponse, SubmissionIndex, ValidateRequest, ValidateResponse,
-    WorkflowRunStatus, decode_strict, decode_value, digest_value, validate_digest,
-    validate_identifier,
+    RecoveryAdmission, ReplayDivergence, ReplayResponse, RunEvent, RunRequest, RunSnapshot,
+    RunSubmissionResponse, STATUS_SCHEMA_VERSION, StatusResponse, SubmissionIndex, ValidateRequest,
+    ValidateResponse, WorkflowRunStatus, decode_strict, decode_value, digest_value,
+    validate_digest, validate_identifier,
 };
 pub use http::{
     ClientResponse, HttpError, HttpLimits, ManagementClient, ManagementServer, ServerConfig,

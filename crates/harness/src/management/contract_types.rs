@@ -21,6 +21,20 @@ pub enum WorkflowRunStatus {
     NeedsOperator,
 }
 
+/// Typed recovery admission exposed to supervision consumers.
+///
+/// This is deliberately a control-plane result. It contains no workflow
+/// cursor, action identity, provider output, or command authority.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RecoveryAdmission {
+    NoPendingEffects,
+    Reconciling,
+    SafelyResumable { capability: String },
+    NeedsOperator,
+    TerminalVerifiedCleanup,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum GameOutcome {

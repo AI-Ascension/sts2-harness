@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{RunEvent, RunSnapshot, WorkflowRunStatus};
+use super::{RecoveryAdmission, RunEvent, RunSnapshot, WorkflowRunStatus};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -191,6 +191,7 @@ pub struct StatusResponse {
     pub accepted_plan_revision: Option<u64>,
     pub waiting_reason: Option<String>,
     pub authority: AuthoritySummary,
+    pub recovery_admission: RecoveryAdmission,
     pub last_progress_sequence: u64,
 }
 

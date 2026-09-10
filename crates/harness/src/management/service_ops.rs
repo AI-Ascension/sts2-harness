@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::support::{
-    authorize, enforce_live_profile, run_submission_response, validate_profile, verify_admission,
-    verify_digest, waiting_reason,
+    authorize, enforce_live_profile, recovery_admission, run_submission_response, validate_profile,
+    verify_admission, verify_digest, waiting_reason,
 };
 use super::*;
 
@@ -101,6 +101,7 @@ impl ManagementService {
                     "none".to_owned()
                 },
             },
+            recovery_admission: recovery_admission(&snapshot),
             last_progress_sequence: snapshot.run_revision,
             run: snapshot,
         })
