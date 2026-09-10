@@ -44,6 +44,24 @@ checks their exact release checksums, and records the actual ordered fake-hop le
 records the exact trace and labels each claim as `confirmed` (deterministic fake only),
 `source-derived`, `proposed`, or `unverified`: [`MINIMAL_POC_REPORT.md`](../MINIMAL_POC_REPORT.md).
 
+## Context capture bridge fidelity
+
+The Astra and Ollama bridge binaries were built from the accepted baseline and successor commits
+and run against isolated synthetic downstreams. The fake Codex process recorded stdin, output
+schema, argv and bounded JSONL accounting; the fake Ollama server recorded the complete loopback
+HTTP request. The successor retained the same bytes, decisions, invocation count and failure
+outcomes after normalization of generated temporary paths and peer ports. The prepared-input unit
+tests also compare the actual fake downstream bytes with the `MemoryCapture` component records.
+Machine-readable results and the exact executable digests are in
+[`context-capture-fidelity-20260910.json`](evidence/context-capture-fidelity-20260910.json), with
+scope and limitations in the accompanying
+[`context-capture-fidelity-20260910.md`](evidence/context-capture-fidelity-20260910.md).
+
+Private capture is deliberately rejected by the in-memory capture ring until an approved encrypted
+vault is supplied. Lifecycle tests keep prepared, completed, and indeterminate write outcomes
+distinct, including response, malformed-response, and timeout failures after the request body was
+sent.
+
 ## Coordinator and lifecycle tests
 
 `foundation::router_cleanup` exercises rejected-binding cleanup and explicit unbind failure through
