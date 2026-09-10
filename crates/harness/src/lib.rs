@@ -10,6 +10,7 @@ mod execution;
 mod exo;
 mod exo_process;
 mod identity;
+pub mod management;
 mod memory;
 mod poc;
 mod protocol_artifact;
@@ -81,6 +82,7 @@ pub use identity::{
     ActionId, ArtifactId, Digest, EpisodeId, GatewaySessionId, IdempotencyKey, InstanceId,
     ModelExecutionId, RecordId, RequestId, RunId, SchemaVersion, TraceId, TrajectoryId,
 };
+pub use management::*;
 pub use memory::{DecisionMemory, MemoryAppend, MemoryError};
 pub use poc::{
     POC_CLOCK_TICK, POC_SEED, PocAction, PocCoreError, PocError, PocObservation, PocReport,
