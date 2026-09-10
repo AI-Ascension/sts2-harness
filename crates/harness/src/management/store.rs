@@ -13,10 +13,12 @@ use super::contract::{
 mod file;
 #[path = "store_ops.rs"]
 mod ops;
+#[path = "store_sqlite.rs"]
+mod sqlite;
 
 use ops::{
     accept_command, apply_command, create_run, events, export, get_run, io_store_error,
-    lookup_submission, persist,
+    lookup_submission, persist, release_command,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,7 +28,7 @@ pub struct StoreError {
 }
 
 impl StoreError {
-    fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+    pub(super) fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             code: code.into(),
             message: message.into(),
@@ -107,6 +109,12 @@ pub trait WorkflowStore: Send + Sync {
         application: CommandApplication,
     ) -> Result<CommandResponse, StoreError>;
 
+    fn release_command(
+        &self,
+        request: &CommandRequest,
+        request_digest: &str,
+    ) -> Result<(), StoreError>;
+
     fn export(&self, run_id: &str, redacted: bool) -> Result<ExportResponse, StoreError>;
 }
 
@@ -178,6 +186,8 @@ impl Default for MemoryWorkflowStore {
 pub struct FileWorkflowStore {
     core: StoreCore,
 }
+
+pub use sqlite::SqliteWorkflowStore;
 
 impl FileWorkflowStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
@@ -288,6 +298,14 @@ impl WorkflowStore for MemoryWorkflowStore {
         application: CommandApplication,
     ) -> Result<CommandResponse, StoreError> {
         ops::apply_command(&self.core, request, request_digest, application)
+    }
+
+    fn release_command(
+        &self,
+        request: &CommandRequest,
+        request_digest: &str,
+    ) -> Result<(), StoreError> {
+        ops::release_command(&self.core, request, request_digest)
     }
 
     fn export(&self, run_id: &str, redacted: bool) -> Result<ExportResponse, StoreError> {

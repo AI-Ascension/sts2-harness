@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -135,6 +136,36 @@ pub struct RunEvent {
     pub definition_digest: String,
     pub node_execution_id: String,
     pub payload: EventPayload,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integrity_digest: Option<String>,
+}
+
+impl RunEvent {
+    pub(crate) fn seal_integrity(mut self) -> Result<Self, String> {
+        self.integrity_digest = None;
+        let bytes = serde_json::to_vec(&self).map_err(|error| error.to_string())?;
+        self.integrity_digest = Some(hex_digest(&bytes));
+        Ok(self)
+    }
+
+    #[must_use]
+    pub(crate) fn integrity_valid(&self) -> bool {
+        let Some(digest) = self.integrity_digest.as_deref() else {
+            return false;
+        };
+        let mut unsigned = self.clone();
+        unsigned.integrity_digest = None;
+        serde_json::to_vec(&unsigned)
+            .ok()
+            .is_some_and(|bytes| digest == hex_digest(&bytes))
+    }
+}
+
+fn hex_digest(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

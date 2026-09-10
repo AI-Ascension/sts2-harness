@@ -6,7 +6,7 @@ use super::super::super::contract::{
 };
 use super::super::StoreError;
 
-pub(super) fn validate_initial_run(
+pub(crate) fn validate_initial_run(
     snapshot: &RunSnapshot,
     events: &[RunEvent],
 ) -> Result<(), StoreError> {
@@ -51,6 +51,9 @@ pub(super) fn next_sequence(run: &PersistedRun) -> Result<u64, StoreError> {
 }
 
 pub(super) fn append_event(run: &mut PersistedRun, event: RunEvent) -> Result<(), StoreError> {
+    let event = event
+        .seal_integrity()
+        .map_err(|error| StoreError::new("event_integrity", error))?;
     if run
         .events
         .last()
@@ -89,6 +92,7 @@ pub(super) fn management_event(
             classification: Some(classification),
             reason_code,
         },
+        integrity_digest: None,
     }
 }
 

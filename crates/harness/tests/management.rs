@@ -184,6 +184,7 @@ fn event(snapshot: &RunSnapshot, sequence: u64, event_type: EventType, reason: &
             classification: Some(EventClassification::Accepted),
             reason_code: reason.to_owned(),
         },
+        integrity_digest: None,
     }
 }
 

@@ -1,26 +1,25 @@
 // SPDX-License-Identifier: MIT
 
-use std::collections::BTreeMap;
-
 use super::super::contract::{
     CommandRequest, CommandResponse, EVENT_SCHEMA_VERSION, EXPORT_SCHEMA_VERSION,
     EventClassification, EventPage, EventType, ExportResponse, MANAGEMENT_SCHEMA_VERSION,
-    MAX_EVENTS_PER_PAGE, MAX_EVENTS_PER_RUN, MAX_RESPONSE_BYTES, PersistedCommand, PersistedRun,
-    RunEvent, RunSnapshot, SubmissionIndex,
+    MAX_EVENTS_PER_PAGE, MAX_RESPONSE_BYTES, PersistedCommand, RunEvent, RunSnapshot,
 };
 use super::{CommandAcceptance, CommandApplication, StoreCore, StoreError, SubmissionLookup};
 
 #[path = "store_events.rs"]
 mod event_ops;
 
-use event_ops::{
-    append_event, classification_for_outcome, management_event, next_sequence, validate_initial_run,
-};
+pub(crate) use event_ops::validate_initial_run;
+use event_ops::{append_event, classification_for_outcome, management_event, next_sequence};
 
 #[path = "store_persist.rs"]
 mod persistence;
+#[path = "store_ops_run.rs"]
+mod run;
 
 pub(super) use persistence::{io_store_error, persist};
+pub(crate) use run::create_run;
 
 const REDACTED_FIELD: &str = "[redacted]";
 
@@ -44,51 +43,6 @@ pub(super) fn lookup_submission(
             }),
         Some(_) => Ok(SubmissionLookup::Conflict),
     }
-}
-
-pub(super) fn create_run(
-    core: &StoreCore,
-    request_id: &str,
-    request_digest: &str,
-    snapshot: RunSnapshot,
-    initial_events: Vec<RunEvent>,
-) -> Result<(), StoreError> {
-    core.mutate(|state| {
-        if state.submissions.contains_key(request_id)
-            || state.runs.contains_key(&snapshot.workflow_run_id)
-        {
-            return Err(StoreError::new(
-                "duplicate_run",
-                "workflow run or submission already exists",
-            ));
-        }
-        validate_initial_run(&snapshot, &initial_events)?;
-        if initial_events.len() > MAX_EVENTS_PER_RUN {
-            return Err(StoreError::new(
-                "event_limit",
-                "initial workflow event set exceeds the supported bound",
-            ));
-        }
-        state.submissions.insert(
-            request_id.to_owned(),
-            SubmissionIndex {
-                request_digest: request_digest.to_owned(),
-                workflow_run_id: snapshot.workflow_run_id.clone(),
-            },
-        );
-        state.runs.insert(
-            snapshot.workflow_run_id.clone(),
-            PersistedRun {
-                request_id: request_id.to_owned(),
-                request_digest: request_digest.to_owned(),
-                snapshot,
-                oldest_sequence: initial_events.first().map(|event| event.sequence),
-                events: initial_events,
-                commands: BTreeMap::new(),
-            },
-        );
-        Ok(())
-    })
 }
 
 pub(super) fn get_run(core: &StoreCore, run_id: &str) -> Result<Option<RunSnapshot>, StoreError> {
@@ -264,6 +218,33 @@ pub(super) fn apply_command(
     })
 }
 
+pub(super) fn release_command(
+    core: &StoreCore,
+    request: &CommandRequest,
+    request_digest: &str,
+) -> Result<(), StoreError> {
+    core.mutate(|state| {
+        let run = state
+            .runs
+            .get_mut(&request.run_id)
+            .ok_or_else(|| StoreError::new("run_not_found", "workflow run was not found"))?;
+        let command = run
+            .commands
+            .get_mut(&request.command_id)
+            .ok_or_else(|| StoreError::new("command_not_found", "command was not accepted"))?;
+        if command.request_digest != request_digest {
+            return Err(StoreError::new(
+                "command_conflict",
+                "command ID was reused with a different payload",
+            ));
+        }
+        if command.response.is_none() {
+            command.application_in_flight = false;
+        }
+        Ok(())
+    })
+}
+
 pub(super) fn export(
     core: &StoreCore,
     run_id: &str,
@@ -309,5 +290,6 @@ fn redact_event(event: &RunEvent) -> RunEvent {
     redacted.node_execution_id = REDACTED_FIELD.to_owned();
     redacted.payload.operation_id = None;
     redacted.payload.reason_code = "event".to_owned();
+    redacted.integrity_digest = None;
     redacted
 }

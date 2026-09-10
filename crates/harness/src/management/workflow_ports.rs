@@ -27,9 +27,26 @@ use crate::workflow::{
 pub fn synthetic_file_store(
     store: super::store::FileWorkflowStore,
 ) -> super::service::ManagementService {
-    super::service::ManagementService::file_store(store)
+    synthetic_store(Arc::new(store))
+}
+
+pub fn synthetic_store(
+    store: Arc<dyn super::store::WorkflowStore>,
+) -> super::service::ManagementService {
+    super::service::ManagementService::new(store)
         .with_definition_port(Arc::new(SyntheticDefinitionPort))
         .with_execution_port(Arc::new(SyntheticExecutionPort::default()))
+        .with_replay_port(Arc::new(SyntheticReplayPort))
+        .with_capability_port(Arc::new(SyntheticCapabilityPort))
+}
+
+pub fn synthetic_sqlite_store(
+    store: Arc<super::store::SqliteWorkflowStore>,
+) -> super::service::ManagementService {
+    let service_store: Arc<dyn super::store::WorkflowStore> = store.clone();
+    super::service::ManagementService::new(service_store)
+        .with_definition_port(Arc::new(SyntheticDefinitionPort))
+        .with_execution_port(Arc::new(PersistentSyntheticExecutionPort::new(store)))
         .with_replay_port(Arc::new(SyntheticReplayPort))
         .with_capability_port(Arc::new(SyntheticCapabilityPort))
 }
@@ -157,6 +174,7 @@ struct SyntheticExecutionPort {
 struct SyntheticRun {
     runtime: StrictRuntime,
     executor: FixtureExecutor,
+    definition: Value,
     definition_digest: String,
     cancelled: bool,
 }
@@ -217,12 +235,14 @@ impl WorkflowExecutionPort for SyntheticExecutionPort {
                 classification: Some(EventClassification::Accepted),
                 reason_code: "synthetic_admitted".to_owned(),
             },
+            integrity_digest: None,
         };
         self.runs.lock().map_err(lock_error)?.insert(
             run_id,
             SyntheticRun {
                 runtime,
                 executor: FixtureExecutor,
+                definition: definition.clone(),
                 definition_digest: definition_digest.to_owned(),
                 cancelled: false,
             },
@@ -285,6 +305,177 @@ impl WorkflowExecutionPort for SyntheticExecutionPort {
     }
 }
 
+/// Synthetic execution with a durable definition and runtime checkpoint. It exercises the
+/// management process restart boundary while keeping gameplay effects explicitly unavailable.
+struct PersistentSyntheticExecutionPort {
+    store: Arc<super::store::SqliteWorkflowStore>,
+    runs: Mutex<BTreeMap<String, SyntheticRun>>,
+}
+
+impl PersistentSyntheticExecutionPort {
+    fn new(store: Arc<super::store::SqliteWorkflowStore>) -> Self {
+        Self {
+            store,
+            runs: Mutex::new(BTreeMap::new()),
+        }
+    }
+
+    fn restore_run(&self, run_id: &str) -> Result<SyntheticRun, ManagementError> {
+        let record = self
+            .store
+            .load_runtime(run_id)
+            .map_err(runtime_store_error)?
+            .ok_or_else(|| {
+                ManagementError::unresolved(
+                    "runtime_after_restart",
+                    "durable runtime checkpoint is unavailable after service restart",
+                )
+            })?;
+        let definition = parse_definition(&record.definition)?;
+        let compiled = CompiledWorkflow::compile(definition)
+            .map_err(|error| ManagementError::invalid("definition_compile", error.to_string()))?;
+        let runtime =
+            StrictRuntime::from_snapshot(compiled, record.snapshot).map_err(runtime_error)?;
+        Ok(SyntheticRun {
+            runtime,
+            executor: FixtureExecutor,
+            definition: record.definition,
+            definition_digest: record.definition_digest,
+            cancelled: record.cancelled,
+        })
+    }
+
+    fn persist_run(&self, run_id: &str, run: &SyntheticRun) -> Result<(), ManagementError> {
+        self.store
+            .save_runtime(
+                run_id,
+                &run.definition_digest,
+                &run.definition,
+                &run.runtime.snapshot(),
+                run.cancelled,
+            )
+            .map_err(runtime_store_error)
+    }
+}
+
+impl WorkflowExecutionPort for PersistentSyntheticExecutionPort {
+    fn submit(
+        &self,
+        request: &RunRequest,
+        _actor: &AuthContext,
+        definition_digest: &str,
+    ) -> Result<RunAdmission, ManagementError> {
+        let definition = request.definition.as_ref().ok_or_else(|| {
+            ManagementError::unavailable(
+                "artifact_port_unavailable",
+                "synthetic execution requires an inline workflow definition",
+            )
+        })?;
+        let parsed = parse_definition(definition)?;
+        let compiled = CompiledWorkflow::compile(parsed)
+            .map_err(|error| ManagementError::invalid("definition_compile", error.to_string()))?;
+        let runtime = StrictRuntime::new(compiled)
+            .map_err(|error| ManagementError::invalid("runtime_admission", error.to_string()))?;
+        let run_id = format!(
+            "run.synthetic.{}",
+            &raw_digest(&json!({
+                "request_id": request.request_id,
+                "instance_id": request.instance_id,
+                "definition_digest": definition_digest,
+            }))?[..32]
+        );
+        let run = SyntheticRun {
+            runtime,
+            executor: FixtureExecutor,
+            definition: definition.clone(),
+            definition_digest: definition_digest.to_owned(),
+            cancelled: false,
+        };
+        self.persist_run(&run_id, &run)?;
+        let snapshot = snapshot_from_runtime(&run_id, definition_digest, &run.runtime, 1, false);
+        let event = admission_event(&run_id, definition_digest);
+        self.runs.lock().map_err(lock_error)?.insert(run_id, run);
+        Ok(RunAdmission {
+            snapshot,
+            initial_events: vec![event],
+        })
+    }
+
+    fn apply_command(
+        &self,
+        context: CommandContext,
+    ) -> Result<CommandApplication, ManagementError> {
+        let mut runs = self.runs.lock().map_err(lock_error)?;
+        if !runs.contains_key(&context.request.run_id) {
+            let restored = self.restore_run(&context.request.run_id)?;
+            runs.insert(context.request.run_id.clone(), restored);
+        }
+        let run = runs.get_mut(&context.request.run_id).ok_or_else(|| {
+            ManagementError::unresolved(
+                "runtime_after_restart",
+                "durable runtime checkpoint is unavailable after service restart",
+            )
+        })?;
+        let status = apply_runtime_command(run, &context.request.kind)?;
+        let revision = context
+            .snapshot
+            .run_revision
+            .checked_add(1)
+            .ok_or_else(|| ManagementError::budget("revision_overflow", "revision overflowed"))?;
+        self.persist_run(&context.request.run_id, run)?;
+        let snapshot = snapshot_from_runtime(
+            &context.request.run_id,
+            &run.definition_digest,
+            &run.runtime,
+            revision,
+            run.cancelled,
+        )
+        .with_status(status);
+        Ok(CommandApplication {
+            snapshot,
+            outcome: super::contract::CommandOutcome::Applied,
+            reason_code: context.request.kind.reason_code().to_owned(),
+        })
+    }
+}
+
+fn apply_runtime_command(
+    run: &mut SyntheticRun,
+    kind: &CommandKind,
+) -> Result<WorkflowRunStatus, ManagementError> {
+    match kind {
+        CommandKind::Pause => {
+            run.runtime.pause().map_err(runtime_error)?;
+        }
+        CommandKind::Resume => {
+            run.runtime.resume().map_err(runtime_error)?;
+        }
+        CommandKind::Step => {
+            run.runtime.step(&mut run.executor).map_err(runtime_error)?;
+        }
+        CommandKind::Cancel => run.cancelled = true,
+    }
+    Ok(management_status(run.runtime.status(), run.cancelled))
+}
+
+fn admission_event(run_id: &str, definition_digest: &str) -> RunEvent {
+    RunEvent {
+        schema_version: super::contract::EVENT_SCHEMA_VERSION.to_owned(),
+        workflow_run_id: run_id.to_owned(),
+        sequence: 1,
+        run_revision: 1,
+        event_type: EventType::RunStarted,
+        definition_digest: definition_digest.to_owned(),
+        node_execution_id: "synthetic.admission".to_owned(),
+        payload: EventPayload {
+            operation_id: None,
+            classification: Some(EventClassification::Accepted),
+            reason_code: "synthetic_admitted".to_owned(),
+        },
+        integrity_digest: None,
+    }
+}
+
 impl WorkflowReplayPort for SyntheticReplayPort {
     fn replay(
         &self,
@@ -297,13 +488,18 @@ impl WorkflowReplayPort for SyntheticReplayPort {
             if event.sequence != expected
                 || event.workflow_run_id != snapshot.workflow_run_id
                 || event.definition_digest != snapshot.definition_digest
+                || !event.integrity_valid()
             {
                 return Ok(ReplayResult {
                     matched: false,
                     compared_events: expected.saturating_sub(1),
                     first_divergence: Some(super::contract::ReplayDivergence {
                         path: format!("/events/{expected}"),
-                        code: "event_sequence_or_digest".to_owned(),
+                        code: if event.integrity_valid() {
+                            "event_sequence_or_digest".to_owned()
+                        } else {
+                            "event_integrity".to_owned()
+                        },
                     }),
                 });
             }
@@ -406,6 +602,10 @@ fn runtime_error(error: RuntimeFault) -> ManagementError {
         RuntimeFault::InvalidState => ManagementError::conflict("runtime_state", error.to_string()),
         _ => ManagementError::unavailable("runtime_failure", error.to_string()),
     }
+}
+
+fn runtime_store_error(error: super::store::StoreError) -> ManagementError {
+    ManagementError::store(error.code, error.message)
 }
 
 fn lock_error<T>(_: std::sync::PoisonError<T>) -> ManagementError {

@@ -41,6 +41,7 @@ pub use service::{
     UnavailableReplayPort, ValidationResult, WorkflowExecutionPort, WorkflowReplayPort,
 };
 pub use store::{
-    CommandAcceptance, FileWorkflowStore, MemoryWorkflowStore, StoreError, WorkflowStore,
+    CommandAcceptance, FileWorkflowStore, MemoryWorkflowStore, SqliteWorkflowStore, StoreError,
+    WorkflowStore,
 };
-pub use workflow_ports::synthetic_file_store;
+pub use workflow_ports::{synthetic_file_store, synthetic_sqlite_store, synthetic_store};

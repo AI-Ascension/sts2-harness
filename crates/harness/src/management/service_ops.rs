@@ -189,11 +189,19 @@ impl ManagementService {
                 "command revision is stale after acceptance",
             ));
         }
-        let application = self.execution.apply_command(CommandContext {
+        let application = match self.execution.apply_command(CommandContext {
             request: request.clone(),
             snapshot: snapshot.clone(),
             actor: actor.clone(),
-        })?;
+        }) {
+            Ok(application) => application,
+            Err(error) => {
+                if error.class != ErrorClass::Unresolved {
+                    let _ = self.store.release_command(&request, &request_digest);
+                }
+                return Err(error);
+            }
+        };
         let response = self.store.apply_command(
             &request,
             &request_digest,

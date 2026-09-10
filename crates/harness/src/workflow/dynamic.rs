@@ -314,16 +314,17 @@ pub fn execute_plan<A: PureAnalysisExecutor>(
                 let value = analysis.analyze(operation_ref, context_ref, &values)?;
                 values.insert(id.clone(), value);
             }
-            DynamicNodeKind::Decide { inputs, .. } => {
+            DynamicNodeKind::Decide {
+                decision_profile_ref,
+                context_ref,
+                inputs,
+            } => {
                 if inputs.iter().any(|input| !values.contains_key(input)) {
                     return Err(DynamicPlanError::MissingReference);
                 }
-                let value = analysis.analyze(
-                    &OperationRef::new("decision.compose")
-                        .map_err(|_| DynamicPlanError::InvalidPlan)?,
-                    &ContextId::new("decision").map_err(|_| DynamicPlanError::InvalidPlan)?,
-                    &values,
-                )?;
+                let decision_operation = OperationRef::new(decision_profile_ref.as_str())
+                    .map_err(|_| DynamicPlanError::InvalidPlan)?;
+                let value = analysis.analyze(&decision_operation, context_ref, &values)?;
                 values.insert(id.clone(), value);
             }
         }
