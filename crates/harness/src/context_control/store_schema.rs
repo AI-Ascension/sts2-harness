@@ -136,6 +136,10 @@ CREATE TABLE IF NOT EXISTS context_control_journal (
     plan_epoch INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS context_control_owners (
+    run_id TEXT PRIMARY KEY NOT NULL,
+    owner_token TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS context_control_outbox (
     run_id TEXT NOT NULL,
     sequence INTEGER NOT NULL,

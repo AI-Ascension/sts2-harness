@@ -10,6 +10,7 @@ mod render;
 mod state;
 mod store;
 mod store_ops;
+mod store_ownership;
 mod store_schema;
 mod store_types;
 mod types;

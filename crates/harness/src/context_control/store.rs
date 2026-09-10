@@ -15,6 +15,7 @@ use super::store_types::{
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -22,6 +23,8 @@ pub struct ContextControlStore {
     pub(super) path: PathBuf,
     pub(super) key: [u8; 32],
     pub(super) run_id: String,
+    pub(super) owner_token: String,
+    pub(super) owner_claimed: Cell<bool>,
     pub(super) connection: Connection,
     pub(super) failpoint: Option<DurableStoreFailpoint>,
 }
@@ -73,10 +76,12 @@ impl ContextControlStore {
         if state.boundary.run_id != self.run_id {
             return Err(DurableControlStoreError::ScopeMismatch);
         }
+        self.claim_owner()?;
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| DurableControlStoreError::Sqlite)?;
+        Self::verify_owner(&transaction, &self.run_id, &self.owner_token)?;
         transaction
             .execute(
                 "INSERT INTO context_control_journal
@@ -116,6 +121,7 @@ impl ContextControlStore {
     }
 
     pub fn load(&self) -> Result<ControlAuthority, DurableControlStoreError> {
+        self.verify_connection_owner()?;
         let (envelope, envelope_digest, active_revision, paused, controller_epoch, plan_epoch) =
             self.connection
                 .query_row(
@@ -152,10 +158,14 @@ impl ContextControlStore {
         {
             return Err(DurableControlStoreError::Corrupt);
         }
+        // A newly opened handle acquires ownership only after authenticating the journal. An
+        // already claimed handle can never reclaim ownership after a replacement has fenced it.
+        self.claim_owner()?;
         Ok(authority)
     }
 
     pub fn mode(&self) -> Result<StoreMode, DurableControlStoreError> {
+        self.verify_connection_owner()?;
         let value = self
             .connection
             .query_row(
@@ -199,6 +209,8 @@ impl ContextControlStore {
             path: path.to_owned(),
             key,
             run_id,
+            owner_token: Uuid::new_v4().to_string(),
+            owner_claimed: Cell::new(false),
             connection,
             failpoint: None,
         })
@@ -226,7 +238,7 @@ impl ContextControlStore {
         Ok(envelope)
     }
 
-    fn decrypt(&self, envelope: &[u8]) -> Result<Vec<u8>, DurableControlStoreError> {
+    pub(super) fn decrypt(&self, envelope: &[u8]) -> Result<Vec<u8>, DurableControlStoreError> {
         if envelope.len() < 24 + 16 {
             return Err(DurableControlStoreError::Corrupt);
         }

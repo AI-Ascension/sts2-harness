@@ -50,6 +50,7 @@ impl ContextControlStore {
     }
 
     pub fn snapshot(&self) -> Result<StoreSnapshot, DurableControlStoreError> {
+        self.verify_connection_owner()?;
         let (mode, journal_bytes, journal_digest) = self
             .connection
             .query_row(
@@ -140,10 +141,12 @@ impl ContextControlStore {
             return Err(DurableControlStoreError::TooLarge);
         }
         let content_digest = digest(bytes);
+        self.claim_owner()?;
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| DurableControlStoreError::Sqlite)?;
+        Self::verify_owner(&transaction, &self.run_id, &self.owner_token)?;
         let existing = transaction
             .query_row(
                 "SELECT digest FROM context_control_phase1_snapshots
@@ -172,6 +175,7 @@ impl ContextControlStore {
     }
 
     pub fn backup(&self, destination: impl AsRef<Path>) -> Result<(), DurableControlStoreError> {
+        self.verify_connection_owner()?;
         self.connection
             .execute_batch("PRAGMA wal_checkpoint(FULL)")
             .map_err(|_| DurableControlStoreError::Sqlite)?;

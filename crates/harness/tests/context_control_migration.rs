@@ -94,7 +94,7 @@ fn encrypted_journal_reopens_with_phase1_snapshots_and_outbox_facts() {
 fn wrong_key_and_invalid_key_fail_closed_without_plaintext_fallback() {
     let path = path("key");
     let authority = authority();
-    ContextControlStore::create(
+    let mut rightful = ContextControlStore::create(
         &path,
         [9_u8; 32],
         "run-migration",
@@ -108,6 +108,9 @@ fn wrong_key_and_invalid_key_fail_closed_without_plaintext_fallback() {
         wrong.load().expect_err("wrong key must fail"),
         DurableControlStoreError::AuthenticationFailed
     );
+    rightful
+        .persist(&authority, StoreMode::Enabled)
+        .expect("wrong key must not evict the rightful owner");
     assert!(matches!(
         ContextControlStore::open(&path, [0_u8; 32], "run-migration"),
         Err(DurableControlStoreError::InvalidKey)
@@ -281,4 +284,41 @@ fn incompatible_schema_and_tampered_envelope_fail_closed() {
         DurableControlStoreError::Corrupt
     );
     cleanup(&tampered);
+}
+
+#[test]
+fn replacement_owner_fences_the_old_live_handle() {
+    let path = path("owner-fence");
+    let key = [31_u8; 32];
+    let authority = authority();
+    let mut old_store =
+        ContextControlStore::create(&path, key, "run-migration", &authority, StoreMode::Enabled)
+            .expect("create");
+
+    let mut replacement = ContextControlStore::open(&path, key, "run-migration").expect("open");
+    let mut recovered = replacement.load().expect("replacement claims ownership");
+    assert_eq!(
+        recovered.state().boundary.controller_epoch,
+        authority.state().boundary.controller_epoch + 1
+    );
+    recovered
+        .request_pause("replacement-pause", 0)
+        .expect("replacement may mutate after claiming ownership");
+    replacement
+        .persist(&recovered, StoreMode::Enabled)
+        .expect("replacement mutation must persist");
+
+    assert_eq!(
+        old_store
+            .persist(&authority, StoreMode::Enabled)
+            .expect_err("old live handle must be fenced"),
+        DurableControlStoreError::Fenced
+    );
+    assert_eq!(
+        old_store
+            .snapshot()
+            .expect_err("old live handle reads must remain fenced"),
+        DurableControlStoreError::Fenced
+    );
+    cleanup(&path);
 }

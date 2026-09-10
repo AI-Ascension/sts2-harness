@@ -9,8 +9,11 @@ console remains bounded and in-memory until it adopts this seam explicitly.
 
 The store uses one local SQLite connection per owner and `BEGIN IMMEDIATE` for journal, outbox, and
 Phase 1 snapshot writes. SQLite is configured with WAL, `synchronous = FULL`, and foreign-key
-checks. The journal envelope and its digest, management-active marker, pause/control/plan epochs,
-active revision, and outbox rows commit atomically. A failpoint immediately before journal write or
+checks. A per-handle owner token is claimed only after an existing journal authenticates, and every
+mutating transaction verifies that token under the same immediate transaction. A replacement handle
+therefore fences an older live handle; a fenced handle cannot reclaim ownership for its lifetime.
+The journal envelope and its digest, management-active marker, pause/control/plan epochs, active
+revision, and outbox rows commit atomically. A failpoint immediately before journal write or
 transaction commit verifies that an error leaves the previous durable state intact. The store does
 not call external code while a transaction is open. SQLite and filesystem guarantees remain
 conditional on the host OS, storage device, and process ownership; this is deterministic local
@@ -33,6 +36,7 @@ the journal, revision, pause, or Phase 1 snapshots.
 
 Recovery decrypts and replays the authoritative journal and increments the controller incarnation
 inside the recovered authority. Restart therefore does not auto-resume a paused or committed run;
-the caller must apply its normal fresh-preview and ownership policy. This seam does not yet provide
-OS-level exclusive leases, prepared-provider claims, ambiguous-write reconciliation, or a native
-target-console integration. Those remain unverified and are intentionally reported separately.
+the caller must apply its normal fresh-preview and ownership policy. The token fence prevents an
+older live controller from persisting after replacement, but it is not an OS-level lease and does
+not forcibly terminate an old process. Prepared-provider claims, ambiguous-write reconciliation,
+and native target-console integration remain unverified and are intentionally reported separately.
