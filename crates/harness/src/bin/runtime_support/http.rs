@@ -9,9 +9,6 @@ use serde_json::Value;
 
 use super::config::RuntimeConfig;
 
-#[path = "gateway_json.rs"]
-mod gateway_json;
-
 const MAX_BODY_BYTES: usize = 16 * 1024;
 const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 const MAX_HEADER_BYTES: usize = 8 * 1024;
@@ -97,7 +94,8 @@ impl GatewayClient {
         if !(200..300).contains(&response.status) {
             return Err(format!("gateway returned HTTP {}", response.status));
         }
-        gateway_json::parse(&response.body)
+        serde_json::from_slice(&response.body)
+            .map_err(|_| String::from("gateway response was not JSON"))
     }
 }
 

@@ -136,7 +136,8 @@ impl RuntimeV3Port {
                 "Runtime-v3 reobserve regressed during expert composition",
             )));
         }
-        Ok(self.install(parsed))
+        self.install(parsed)
+            .map_err(RuntimeV3ToolError::Terminal)
     }
 
 }

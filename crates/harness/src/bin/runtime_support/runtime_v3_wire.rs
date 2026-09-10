@@ -1,10 +1,21 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Value, json};
+use sha2::Digest;
 use sts2_harness::ActionKind;
 
 use super::mcp::McpProcess;
 use super::mcp_process::McpProcessError;
+
+#[path = "runtime_v3_wire_recovery.rs"]
+mod recovery;
+pub(super) use recovery::{initialize_recovery_mcp, recovery_call};
+#[path = "runtime_v3_recovery_base64.rs"]
+mod recovery_encoding;
+pub(super) use recovery_encoding::decode as decode_recovery_action;
+
+pub(super) const RUNTIME_V3_SCHEMA_DIGEST: &str =
+    "8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63";
 
 const CATALOG_REVISION: &str = "runtime-v3-gameplay-mcp";
 const EXPERT_CATALOG_REVISION: &str = "runtime-v4-expert-mcp";
@@ -23,6 +34,10 @@ enum RpcReadKind {
 
 pub(super) fn initialize_mcp_profile(mcp: &mut McpProcess, profile: &str) -> Result<(), String> {
     initialize_mcp_profile_classified(mcp, profile).map_err(|error| error.to_string())
+}
+
+pub(super) fn initialize_mcp(mcp: &mut McpProcess) -> Result<(), String> {
+    initialize_mcp_profile(mcp, "runtime-v3-gameplay")
 }
 
 pub(super) fn initialize_mcp_profile_classified(
@@ -299,6 +314,19 @@ pub(super) fn combine_cleanup(
 }
 
 include!("runtime_v3_wire_action_kind.rs");
+
+/// The canonical recovery action is the complete legal-action envelope, not merely the inner
+/// payload sent to the frozen gameplay tool. Its bytes are retained before dispatch and are the
+/// only bytes accepted for historical recovery.
+pub(super) fn canonical_action_bytes(action_id: &str, payload: &Value) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(&json!({"action": payload, "action_id": action_id}))
+        .map_err(|error| format!("cannot encode canonical runtime-v3 action: {error}"))
+}
+
+pub(super) fn canonical_action_digest(action_id: &str, payload: &Value) -> Result<String, String> {
+    let bytes = canonical_action_bytes(action_id, payload)?;
+    Ok(format!("{:x}", sha2::Sha256::digest(bytes)))
+}
 
 include!("runtime_v3_wire_stage.rs");
 

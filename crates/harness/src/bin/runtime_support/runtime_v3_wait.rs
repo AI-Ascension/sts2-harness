@@ -106,15 +106,21 @@ impl RuntimeV3Port {
             .get(operation_id)
             .map(|record| record.action.action_id().to_owned())
             .ok_or(BarrierError::InvalidOperation)?;
-        let value = self.call_tool("sts2.wait_for_transition", json!({
+        let (value, response_text) = self.call_tool_with_text("sts2.wait_for_transition", json!({
             "instance_id":self.config.instance_id, "mcp_session_id":self.config.mcp_session_id,
             "lease_id":self.config.lease_id, "lease_epoch":self.config.lease_epoch,
             "generation":self.generation, "operation_id":operation_id,
             "wait_for_millis":wait_for_millis
         })).map_err(|_| BarrierError::PortFailure)?;
-        let sample = parse::wait_sample(&value, &self.config, operation_id, generation)
-            .map_err(|_| BarrierError::PortFailure)?;
-        self.install_response(&value, "wait_response")
+        let sample = parse::wait_sample(
+            &value,
+            &response_text,
+            &self.config,
+            operation_id,
+            generation,
+        )
+        .map_err(|_| BarrierError::PortFailure)?;
+        self.install_response(&value, &response_text, "wait_response")
             .map_err(|_| BarrierError::PortFailure)?;
         let sample = if self.is_expert_profile() {
             self.compose_wait_sample(sample)

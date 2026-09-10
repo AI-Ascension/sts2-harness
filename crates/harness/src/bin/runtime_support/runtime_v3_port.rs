@@ -8,6 +8,22 @@ impl RuntimeV3Port {
         config: RuntimeConfig,
         telemetry: TelemetryHandle,
     ) -> Result<Self, String> {
+        Self::new(config, telemetry, None)
+    }
+
+    fn new_with_store(
+        config: RuntimeConfig,
+        telemetry: TelemetryHandle,
+        durable: durable::DurableHandle,
+    ) -> Result<Self, String> {
+        Self::new(config, telemetry, Some(durable))
+    }
+
+    fn new(
+        config: RuntimeConfig,
+        telemetry: TelemetryHandle,
+        durable: Option<durable::DurableHandle>,
+    ) -> Result<Self, String> {
         let gateway = GatewayClient::new(&config)?;
         Ok(Self {
             config,
@@ -23,6 +39,8 @@ impl RuntimeV3Port {
             generation: 0,
             current_state: None,
             current_actions: None,
+            catalog: None,
+            catalog_raw: None,
             payloads: BTreeMap::new(),
             rest_selector_actions: None,
             rest_selector_payloads: BTreeMap::new(),
@@ -30,7 +48,60 @@ impl RuntimeV3Port {
             operations: BTreeMap::new(),
             reconnect_attempts: 0,
             telemetry,
+            durable,
+            last_response_text: None,
+            recovery_authority: None,
+            recovery: None,
+            recovery_context: None,
+            recovery_rpc_id: 1,
         })
+    }
+
+    fn durable_handle(&self) -> Option<durable::DurableHandle> {
+        self.durable.clone()
+    }
+
+    pub(super) fn complete_durable(
+        &self,
+        report: &sts2_harness::EpisodeRunReport,
+    ) -> Result<(), String> {
+        self.durable
+            .as_ref()
+            .map_or(Ok(()), |durable| durable.complete_episode(report))
+    }
+
+    pub(super) fn complete_durable_observation(
+        &self,
+        observation: &sts2_harness::EpisodeObservation,
+    ) -> Result<(), String> {
+        self.durable
+            .as_ref()
+            .map_or(Ok(()), |durable| durable.complete_observation(observation))
+    }
+
+    pub(super) fn close_durable(&self) -> Result<(), String> {
+        self.durable
+            .as_ref()
+            .map_or(Ok(()), durable::DurableHandle::close)
+    }
+
+    pub(super) fn mark_interrupted_unknown(&self, reason: &str) {
+        if let Some(durable) = &self.durable {
+            durable.mark_interrupted_unknown(reason);
+        }
+    }
+
+    fn call_tool_with_text(
+        &mut self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<(Value, String), String> {
+        let value = self.call_tool_classified(name, arguments).map_err(|error| error.message().to_owned())?;
+        let text = self
+            .last_response_text
+            .clone()
+            .ok_or_else(|| format!("MCP tool {name} omitted response text"))?;
+        Ok((value, text))
     }
 
     fn call_tool(&mut self, name: &str, arguments: Value) -> Result<Value, String> {
@@ -89,6 +160,7 @@ impl RuntimeV3Port {
             .ok_or_else(|| {
                 RuntimeV3ToolError::Terminal(format!("MCP tool {name} omitted text content"))
             })?;
+        self.last_response_text = Some(text.to_owned());
         let value: Value = serde_json::from_str(text)
             .map_err(|error| {
                 RuntimeV3ToolError::Terminal(format!(
@@ -157,13 +229,18 @@ impl RuntimeV3Port {
         }
     }
 
-    fn install(&mut self, parsed: parse::ParsedObservation) -> EpisodeObservation {
+    fn install(&mut self, parsed: parse::ParsedObservation) -> Result<EpisodeObservation, String> {
         self.generation = parsed.observation.generation();
         self.current_state = Some(parsed.observation.state_id().to_owned());
         self.current_actions = Some(parsed.actions);
+        self.catalog = Some(parsed.catalog);
+        self.catalog_raw = Some(parsed.catalog_raw.clone());
         self.payloads = parsed.payloads;
         self.retain_rest_selector();
-        parsed.observation
+        if let Some(durable) = &self.durable {
+            durable.checkpoint_raw(&parsed.observation, &parsed.catalog_raw)?;
+        }
+        Ok(parsed.observation)
     }
 
     fn retain_rest_selector(&mut self) {
@@ -180,13 +257,23 @@ impl RuntimeV3Port {
         }
     }
 
-    fn install_response(&mut self, value: &Value, expected_kind: &str) -> Result<(), String> {
+    fn install_response(
+        &mut self,
+        value: &Value,
+        response_text: &str,
+        expected_kind: &str,
+    ) -> Result<(), String> {
         if value
             .get("observation")
             .is_some_and(|observation| observation.is_object())
         {
-            let parsed = parse::result_observation(value, expected_kind, &self.config)?;
-            let _ = self.install(parsed);
+            let parsed = parse::result_observation_with_text(
+                value,
+                response_text,
+                expected_kind,
+                &self.config,
+            )?;
+            let _ = self.install(parsed)?;
         }
         Ok(())
     }
@@ -221,7 +308,7 @@ impl RuntimeV3Port {
             "POST",
             &format!("/v1/instances/{}/release", self.config.instance_id),
             &Value::Null,
-            identity_headers(&self.config, "release-0001"),
+            identity_headers(&self.config, &release_correlation()),
         )?;
         if response.get("status").and_then(Value::as_str) != Some("released") {
             return Err(String::from(

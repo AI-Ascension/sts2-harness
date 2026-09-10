@@ -7,7 +7,11 @@ use super::{RecoveryContext, RuntimeV3Port, wire};
 
 impl RuntimeV3Port {
     pub(super) fn ensure_recovery_sideband(&mut self) -> Result<(), String> {
-        if self.recovery.as_ref().is_some_and(|mcp| !mcp.is_closed()) {
+        if self
+            .recovery
+            .as_mut()
+            .is_some_and(|mcp| !mcp.refresh_closed())
+        {
             return Ok(());
         }
         if let Some(mut previous) = self.recovery.take() {

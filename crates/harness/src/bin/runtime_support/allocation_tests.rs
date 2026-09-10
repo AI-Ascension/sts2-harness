@@ -24,6 +24,7 @@ fn config() -> RuntimeConfig {
         wait_for_combat_seconds: 0,
         settlement_timeout_seconds: 30,
         map_context_enabled: false,
+        recovery_environment: Vec::new(),
     }
 }
 

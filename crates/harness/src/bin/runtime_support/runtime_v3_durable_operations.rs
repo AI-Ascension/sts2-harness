@@ -7,7 +7,7 @@ use sts2_harness::{
     OperationState, ProviderFailureClass, ProviderReservation,
 };
 
-use super::super::DecisionAdmission;
+use super::super::decision_admission::DecisionAdmission;
 use super::super::decision_replay;
 use super::support::{decision_input_digest, response_evidence, sha256_bytes, sha256_json};
 use super::{DurableHandle, PROVIDER_RESERVATION_UNITS, ProviderReservationToken};

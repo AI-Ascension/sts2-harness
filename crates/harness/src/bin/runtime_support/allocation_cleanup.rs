@@ -3,14 +3,14 @@
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-use super::{RuntimeConfig, identity_headers, release_correlation};
+use super::{RuntimeConfig, identity_headers, release_correlation, validate_allocation};
 
 pub(in super::super) fn validate_or_release_allocation(
     allocation: Result<Value, String>,
     config: &RuntimeConfig,
     release: impl FnOnce(BTreeMap<String, String>) -> Result<Value, String>,
 ) -> Result<(), String> {
-    validate_or_release_allocation_with(allocation, config, super::validate_allocation, release)
+    validate_or_release_allocation_with(allocation, config, validate_allocation, release)
 }
 
 pub(in super::super) fn validate_or_release_allocation_with<T>(
@@ -23,9 +23,8 @@ pub(in super::super) fn validate_or_release_allocation_with<T>(
         Ok(value) => validate(value, config),
         Err(error) => Err(error.clone()),
     };
-    let error = match validation {
-        Ok(value) => return Ok(value),
-        Err(error) => error,
+    let Err(error) = validation else {
+        return validation;
     };
     let mut headers = identity_headers(config, &release_correlation());
     if let Ok(value) = allocation

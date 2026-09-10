@@ -73,7 +73,7 @@ fn canonical_goldens_validate_and_reach_actual_consumer_parser()
     let action = EpisodeLegalAction::new("combat.end-turn", ActionKind::EndTurn)?;
     let receipt = super::receipt(
         &settled,
-        &super::wire_text(&settled),
+        &settled.to_string(),
         "dispatch_action_response",
         &super::config(),
         "op-1",
@@ -149,7 +149,7 @@ fn canonical_response_mutations_fail_at_actual_consumer_boundary()
     assert!(
         super::receipt(
             &settled,
-            &super::wire_text(&settled),
+            &settled.to_string(),
             "dispatch_action_response",
             &super::config(),
             "op-1",

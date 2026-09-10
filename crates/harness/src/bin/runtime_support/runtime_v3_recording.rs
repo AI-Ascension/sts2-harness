@@ -9,17 +9,36 @@ use sts2_harness::{
 use super::super::runtime_v3_telemetry::{
     DecisionKind, FailureCode, GameOutcome, ObservationSource, TelemetryHandle,
 };
+use super::decision_admission::DecisionAdmission;
+use super::durable::{DurableHandle, ProviderReservationToken};
 
 include!("runtime_v3_recording_stream.rs");
 
 pub(super) struct DecisionRecorder<'a, S> {
     source: &'a mut S,
     telemetry: TelemetryHandle,
+    durable: Option<DurableHandle>,
 }
 
 impl<'a, S> DecisionRecorder<'a, S> {
     pub(super) fn new(source: &'a mut S, telemetry: TelemetryHandle) -> Self {
-        Self { source, telemetry }
+        Self {
+            source,
+            telemetry,
+            durable: None,
+        }
+    }
+
+    pub(super) fn with_durable(
+        source: &'a mut S,
+        telemetry: TelemetryHandle,
+        durable: DurableHandle,
+    ) -> Self {
+        Self {
+            source,
+            telemetry,
+            durable: Some(durable),
+        }
     }
 }
 
@@ -33,19 +52,65 @@ impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
     }
 
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError> {
-        let decision = match self.source.decide(input) {
-            Ok(decision) => decision,
-            Err(error) => {
-                let execution_id = self
-                    .source
-                    .model_execution_id()
-                    .unwrap_or(input.execution_id);
-                let _ = self
-                    .telemetry
-                    .model_failure(execution_id.get(), FailureCode::from(&error));
-                return Err(error);
+        let mut reservation: Option<ProviderReservationToken> = None;
+        let decision = if let Some(durable) = &self.durable {
+            let admission = durable
+                .decision_admission_with_reuse(input)
+                .map_err(|_| PolicyError::ProviderMalformed)?;
+            match admission {
+                DecisionAdmission::Reused(decision) => decision,
+                DecisionAdmission::Fresh(token) => {
+                    reservation = Some(token);
+                    match self.source.decide(input) {
+                        Ok(decision) => decision,
+                        Err(error) => {
+                            if let Some(token) = reservation.as_ref() {
+                                let failure = provider_failure(&error);
+                                let result = if matches!(
+                                    error,
+                                    PolicyError::ProviderUnavailable | PolicyError::ProviderClosed
+                                ) {
+                                    durable.unknown_decision(token, failure)
+                                } else {
+                                    durable.fail_decision(token, failure)
+                                };
+                                if result.is_err() {
+                                    return Err(PolicyError::ProviderMalformed);
+                                }
+                            }
+                            let execution_id = self
+                                .source
+                                .model_execution_id()
+                                .unwrap_or(input.execution_id);
+                            let _ = self
+                                .telemetry
+                                .model_failure(execution_id.get(), FailureCode::from(&error));
+                            return Err(error);
+                        }
+                    }
+                }
+            }
+        } else {
+            match self.source.decide(input) {
+                Ok(decision) => decision,
+                Err(error) => {
+                    let execution_id = self
+                        .source
+                        .model_execution_id()
+                        .unwrap_or(input.execution_id);
+                    let _ = self
+                        .telemetry
+                        .model_failure(execution_id.get(), FailureCode::from(&error));
+                    return Err(error);
+                }
             }
         };
+        if let Some(token) = reservation
+            && let Some(durable) = &self.durable
+            && durable.complete_decision(&token, &decision).is_err()
+        {
+            return Err(PolicyError::ProviderMalformed);
+        }
         let execution_id = self
             .source
             .model_execution_id()
@@ -93,6 +158,17 @@ impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
             confidence,
         );
         Ok(decision)
+    }
+}
+
+fn provider_failure(error: &PolicyError) -> sts2_harness::ProviderFailureClass {
+    match error {
+        PolicyError::ProviderUnavailable => sts2_harness::ProviderFailureClass::Outage,
+        PolicyError::ProviderClosed => sts2_harness::ProviderFailureClass::Cancelled,
+        PolicyError::ProviderMalformed | PolicyError::MalformedDecision => {
+            sts2_harness::ProviderFailureClass::IncompatibleOutput
+        }
+        _ => sts2_harness::ProviderFailureClass::IncompatibleOutput,
     }
 }
 

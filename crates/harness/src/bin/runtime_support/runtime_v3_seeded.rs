@@ -20,7 +20,7 @@ impl RuntimeV3Port {
     pub(super) fn prime_seed_generation(&mut self) -> Result<(), String> {
         let value = self.call_tool("sts2.observe", self.context(self.generation))?;
         let parsed = parse::observation(&value, "state_response", &self.config)?;
-        let observation = self.install(parsed);
+        let observation = self.install(parsed)?;
         if observation.generation() > super::super::seed_transport::SEEDED_RUN_MAX_GENERATION {
             return Err(String::from(
                 "Runtime-v3 seed request generation exceeds the seeded-run bound",

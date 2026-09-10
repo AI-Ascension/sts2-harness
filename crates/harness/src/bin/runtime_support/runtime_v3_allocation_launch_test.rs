@@ -99,6 +99,8 @@ fn config(address: String, mcp: &Fixture) -> RuntimeConfig {
         wait_for_combat_seconds: 0,
         settlement_timeout_seconds: 30,
         recovery_environment: Vec::new(),
+        seed_transport: None,
+        map_context_enabled: false,
     }
 }
 

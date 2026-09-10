@@ -67,6 +67,43 @@ impl McpProcess {
         )
     }
 
+    pub(super) fn spawn_recovery(
+        config: &RuntimeConfig,
+        instance_id: &str,
+        lease_id: &str,
+        lease_epoch: u64,
+    ) -> Result<Self, String> {
+        let mut command = Self::configured_command_for_profile(config, "watchdog-recovery-v1");
+        command
+            .env("STS2_INSTANCE_ID", instance_id)
+            .env("STS2_LEASE_ID", lease_id)
+            .env("STS2_LEASE_EPOCH", lease_epoch.to_string());
+        for name in [
+            "STS2_RECOVERY_TOKEN",
+            "STS2_RECOVERY_PRINCIPAL_ID",
+            "STS2_RECOVERY_ROLE",
+            "STS2_RECOVERY_PROOF",
+            "STS2_RECOVERY_DEPLOYMENT_ID",
+            "STS2_RECOVERY_INSTANCE_ID",
+            "STS2_RECOVERY_INSTANCE_INCAR",
+            "STS2_RECOVERY_BOOT_ID",
+            "STS2_RECOVERY_LEASE_ID",
+            "STS2_RECOVERY_AUTHORITY_GENERATION",
+            "STS2_RECOVERY_LEASE_EPOCH",
+            "STS2_RECOVERY_CURRENT_FENCE_JSON",
+        ] {
+            if let Some(value) = config.recovery_value(name) {
+                command.env(name, value);
+            }
+        }
+        if config.recovery_value("STS2_RECOVERY_TOKEN").is_none() {
+            return Err(String::from(
+                "STS2_RECOVERY_TOKEN is required for the recovery sideband",
+            ));
+        }
+        Self::spawn_command(command, EXCHANGE_TIMEOUT)
+    }
+
     fn configured_command(config: &RuntimeConfig) -> Command {
         Self::configured_command_for_profile(config, &config.runtime_profile)
     }
