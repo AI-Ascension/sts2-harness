@@ -79,22 +79,26 @@ pub(super) fn wait(
 
 pub(super) fn game_outcome(stage: sts2_harness::EpisodeStage) -> GameOutcome {
     match stage {
-        sts2_harness::EpisodeStage::Victory | sts2_harness::EpisodeStage::Reward => {
-            GameOutcome::Success
-        }
+        sts2_harness::EpisodeStage::Victory => GameOutcome::Success,
         sts2_harness::EpisodeStage::Defeat => GameOutcome::Failure,
         _ => GameOutcome::Unavailable,
     }
 }
 
-pub(super) fn complete_observation(observation: &EpisodeObservation, telemetry: &TelemetryHandle) {
+pub(super) fn complete_observation(
+    observation: &EpisodeObservation,
+    telemetry: &TelemetryHandle,
+) -> bool {
+    if !observation.stage().is_terminal() {
+        return false;
+    }
     let outcome = game_outcome(observation.stage());
     let _ = telemetry.terminal(observation, outcome);
+    true
 }
 
 pub(super) fn complete(report: &EpisodeRunReport, telemetry: &TelemetryHandle) {
-    let outcome = game_outcome(report.terminal_stage());
-    let _ = telemetry.terminal(report.final_observation(), outcome);
+    let _ = complete_observation(report.final_observation(), telemetry);
     emit_replay_event(json!({
         "event": "episode_complete",
         "steps": report.steps(),

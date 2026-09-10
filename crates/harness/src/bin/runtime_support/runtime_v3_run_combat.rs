@@ -18,14 +18,20 @@ fn run_combat_demo(
     let outcome = combat_demo::run(&mut port, &mut recorder, &runner);
     drop(recorder);
     match outcome.as_ref() {
-        Ok(report) => durable.complete_observation(report.terminal_observation())?,
+        Ok(report) if report.terminal_observation().stage().is_terminal() => {
+            durable.complete_observation(report.terminal_observation())?;
+        }
         Err(failure) => {
-            if let Some(observation) = failure.terminal_observation() {
+            if let Some(observation) = failure
+                .terminal_observation()
+                .filter(|observation| observation.stage().is_terminal())
+            {
                 durable.complete_observation(observation)?;
             } else {
                 durable.mark_interrupted_unknown("runtime-v3 combat demo failed");
             }
         }
+        Ok(_) => {}
     }
     let close = source.close().map_err(|error| error.to_string());
     let store_close = durable.close();

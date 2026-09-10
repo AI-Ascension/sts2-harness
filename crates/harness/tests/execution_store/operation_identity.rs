@@ -158,6 +158,74 @@ fn complete_action_identity_survives_file_store_reopen() {
 }
 
 #[test]
+fn pending_action_survives_file_store_restart_for_recovery_admission() {
+    let database = path("pending-action-restart");
+    let canonical = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}"#;
+    let payload_digest = result_digest(canonical);
+    let catalog_raw = br#"[{"action_id":"combat.end-turn","action":{"kind":"end_turn"}}]"#;
+    let catalog_digest = result_digest(catalog_raw);
+    let current = lineage("attempt-pending", "trajectory-pending");
+    let intent = OperationIntent::new_with_action_and_catalog(
+        current.clone(),
+        "22222222-2222-4222-8222-222222222222",
+        "state-pending",
+        7,
+        "combat.end-turn",
+        "end_turn",
+        canonical.to_vec(),
+        payload_digest.clone(),
+        "input-pending",
+        Some(catalog_digest),
+        Some(catalog_raw.to_vec()),
+    )
+    .expect("pending action intent is valid");
+
+    let mut store = ExecutionStore::open(ExecutionStoreConfig::new(&database))
+        .expect("store opens before the simulated restart");
+    store
+        .start_episode(&current, &fingerprint())
+        .expect("episode starts");
+    store
+        .record_operation_intent(&intent)
+        .expect("operation intent is durable");
+    assert_eq!(
+        store
+            .mark_operation_dispatched(&intent.operation_id, &payload_digest)
+            .expect("dispatch uncertainty is durable")
+            .state,
+        OperationState::MayHaveBeenDispatched
+    );
+    store
+        .close()
+        .expect("store closes before the simulated restart");
+    drop(store);
+
+    let mut reopened =
+        ExecutionStore::open_read_only(&database).expect("state reopens without migration");
+    let ResumeState::Ready {
+        checkpoint,
+        pending_operations,
+        pending_decisions,
+    } = reopened
+        .resume_episode("episode-1", &fingerprint())
+        .expect("restart admission reads durable state")
+    else {
+        panic!("pending episode must reopen as ready");
+    };
+    assert!(checkpoint.is_none());
+    assert!(pending_decisions.is_empty());
+    assert_eq!(pending_operations.len(), 1);
+    assert_eq!(pending_operations[0].intent, intent);
+    assert_eq!(
+        pending_operations[0].state,
+        OperationState::MayHaveBeenDispatched
+    );
+    reopened.close().expect("read-only store closes");
+    drop(reopened);
+    remove_database(&database);
+}
+
+#[test]
 fn action_identity_rejects_digest_size_and_catalog_mismatches() {
     let canonical = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}"#;
     let digest = result_digest(canonical);
