@@ -10,6 +10,7 @@ mod noncombat;
 mod observation;
 mod policy_router;
 mod postconditions;
+mod protected;
 mod recovery;
 mod run_setup;
 mod runner;
@@ -34,14 +35,18 @@ pub use policy_router::{
     DecisionInput, DecisionSource, ExoDecisionSource, PolicyChoice, PolicyError, PolicyRouter,
 };
 pub use postconditions::{PostconditionError, VerifiedTransition, verify_settlement};
+pub use protected::{
+    EpisodeActionPort, EpisodeLifecyclePort, EpisodeObservationPort, ProtectedEpisodePort,
+};
 pub use recovery::{
     RecoveryController, RecoveryError, RecoveryOperation, RecoveryPort, RecoveryResult,
 };
 pub use run_setup::{RunSetupCoordinator, SetupPort};
 pub use runner::{
-    EpisodeRunReport, EpisodeRunner, EpisodeRunnerConfig, EpisodeRunnerError, EpisodeRuntimePort,
+    EpisodeRunFailure, EpisodeRunReport, EpisodeRunner, EpisodeRunnerConfig, EpisodeRunnerError,
+    EpisodeRuntimePort,
 };
-pub use shutdown::{EpisodeShutdown, ShutdownError, ShutdownPort};
+pub use shutdown::{EpisodeCleanupReport, EpisodeShutdown, ShutdownError, ShutdownPort};
 pub use stability_barrier::{BarrierError, BarrierPort, StabilityBarrier, WaitOutcome, WaitSample};
 pub use state_machine::{EpisodeMachine, EpisodeMachineError, EpisodePhase};
 pub use transition::{DispatchStatus, TransitionReceipt};

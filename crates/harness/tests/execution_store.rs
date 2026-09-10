@@ -6,8 +6,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use sha2::{Digest, Sha256};
-
 use sts2_harness::{
     AttemptKind, AttemptState, CatalogEvidence, Checkpoint, CompletionRecord, CompletionStatus,
     DecisionReference, ExecutionFingerprint, ExecutionLineage, ExecutionStore,
@@ -50,7 +48,7 @@ fn checkpoint(lineage: ExecutionLineage, sequence: u64, generation: u64) -> Chec
 }
 
 fn result_digest(payload: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(payload))
+    sts2_harness::sha256_hex(payload)
 }
 
 #[test]
@@ -321,8 +319,20 @@ mod catalog;
 #[path = "execution_store/operation_identity.rs"]
 mod operation_identity;
 
+#[path = "execution_store/worker.rs"]
+mod worker;
+
+#[path = "execution_store/worker_support.rs"]
+mod worker_support;
+
+#[path = "execution_store/worker_safety.rs"]
+mod worker_safety;
+
 #[path = "execution_store/oversized_result.rs"]
 mod oversized_result;
+
+#[path = "execution_store/provider_result.rs"]
+mod provider_result;
 
 fn remove_database(database: &PathBuf) {
     let _ = fs::remove_file(database);

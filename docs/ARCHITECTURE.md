@@ -201,6 +201,20 @@ digest `5c659f344be78f84e8d783986925d462714f933cac95d18943358992f7d3e2b8` and is
 protocol main `d3ab5fca7d9d74bb31eeb3e5b343d8024ee44404`. Source/component and artifact checks do
 not establish a native seeded run, profile/save isolation, gameplay, or release compatibility.
 
+### Native co-op consumer boundary
+
+`crates/harness` consumes the copied `sts2-protocol/coop-native-v1` artifact through a pure parser,
+port, and coordinator seam. It validates the exact closed envelope and provenance, treats a
+`recovery_response` with a null status as a recovery request, keeps peer tokens unique by token
+identity, and checks host-generation fences across effects, receipts, and recovery outcomes. The
+coordinator stores the original operation identity and classifies unknown mutations for explicit
+same-operation reconciliation; it never submits a blind retry.
+
+The seam is deliberately transport-free. It does not start MCP, make HTTP calls, own gateway leases,
+invoke providers, access a game host, or assert native multiplayer compatibility. Its accepted
+component status is separate from the live gate for two-peer admission, host-backed legality,
+settled actions/votes, checksum convergence, disconnect/rejoin recovery, deployment, and release.
+
 The current [Runtime-v3 entry point](../crates/harness/src/bin/runtime_support/runtime_v3.rs)
 assembles `EpisodeRunner`, one gateway/MCP port and an Exo decision source. It retains an in-memory
 operation ledger and emits a terminal summary. It does not wire `DecisionRecord`, `DecisionMemory`,

@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
@@ -22,6 +23,7 @@ pub struct ExecutionStore {
     pub(crate) config: ExecutionStoreConfig,
     pub(crate) closed: bool,
     pub(crate) read_only: bool,
+    incarnation: Arc<()>,
 }
 
 impl ExecutionStore {
@@ -44,6 +46,7 @@ impl ExecutionStore {
             config,
             closed: false,
             read_only: false,
+            incarnation: Arc::new(()),
         };
         store.integrity_check()?;
         Ok(store)
@@ -78,6 +81,7 @@ impl ExecutionStore {
             config,
             closed: false,
             read_only: true,
+            incarnation: Arc::new(()),
         };
         store.integrity_check()?;
         Ok(store)
@@ -86,6 +90,12 @@ impl ExecutionStore {
     #[must_use]
     pub fn config(&self) -> &ExecutionStoreConfig {
         &self.config
+    }
+
+    /// Returns the SQLite library actually linked into the harness process.
+    #[must_use]
+    pub fn sqlite_version() -> &'static str {
+        rusqlite::version()
     }
 
     pub fn pragmas(&self) -> Result<StorePragmas, ExecutionStoreError> {
@@ -250,6 +260,10 @@ impl ExecutionStore {
 
     pub(crate) fn now() -> i64 {
         now_millis()
+    }
+
+    pub(crate) fn incarnation(&self) -> &Arc<()> {
+        &self.incarnation
     }
 }
 

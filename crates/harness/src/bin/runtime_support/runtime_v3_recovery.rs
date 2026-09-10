@@ -18,13 +18,6 @@ mod record;
 mod sideband;
 pub(super) use context::RecoveryContext;
 
-#[cfg(test)]
-impl RuntimeV3Port {
-    pub(super) fn initialize_recovery_sideband_for_test(&mut self) -> Result<(), String> {
-        self.ensure_recovery_sideband()
-    }
-}
-
 include!("runtime_v3_recovery_pending.rs");
 
 impl RecoveryPort for RuntimeV3Port {

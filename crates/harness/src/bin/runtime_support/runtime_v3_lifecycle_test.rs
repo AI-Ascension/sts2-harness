@@ -8,6 +8,10 @@ use sts2_harness::EpisodeRuntimePort;
 
 use super::*;
 
+#[cfg(unix)]
+#[path = "runtime_v3_lifecycle_reconnect_support.rs"]
+mod reconnect_support;
+
 fn config(address: String) -> RuntimeConfig {
     RuntimeConfig {
         seed_transport: None,
@@ -195,14 +199,6 @@ mod replay_evidence;
 
 #[cfg(unix)]
 mod reconnect {
-    mod reconnect_support {
-        include!("runtime_v3_lifecycle_reconnect_support.rs");
-    }
-
-    mod reconnect_lifecycle {
-        include!("runtime_v3_lifecycle_reconnect_test.rs");
-    }
-
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
@@ -255,14 +251,6 @@ mod reconnect {
         include!("runtime_v3_lifecycle_recovery_test.rs");
     }
 
-    mod durable_recovery {
-        include!("runtime_v3_lifecycle_reconnect_durable_test.rs");
-    }
-
-    mod recovery_evidence {
-        include!("runtime_v3_lifecycle_recovery_evidence_test.rs");
-    }
-
     mod fault_matrix {
         include!("runtime_v3_lifecycle_fault_matrix_test.rs");
     }
@@ -272,3 +260,11 @@ mod reconnect {
 mod rest_action {
     include!("runtime_v3_lifecycle_rest_action_test.rs");
 }
+
+#[cfg(unix)]
+#[path = "runtime_v3_lifecycle_reconnect_durable_test.rs"]
+mod reconnect_durable;
+
+#[cfg(unix)]
+#[path = "runtime_v3_lifecycle_recovery_evidence_test.rs"]
+mod recovery_evidence;

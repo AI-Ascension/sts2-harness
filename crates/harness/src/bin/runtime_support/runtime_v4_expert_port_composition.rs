@@ -281,7 +281,7 @@ impl RuntimeV3Port {
         self.generation = composed.observation.generation();
         self.current_state = Some(composed.observation.state_id().to_owned());
         self.current_actions = Some(composed.actions.clone());
-        let (catalog, catalog_raw) = composed_catalog(&composed.observation)?;
+        let (catalog, catalog_raw) = composed_catalog(&composed.actions, &composed.payloads)?;
         self.catalog = Some(catalog);
         self.catalog_raw = Some(catalog_raw);
         self.payloads = composed.payloads.clone();

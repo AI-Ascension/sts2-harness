@@ -142,12 +142,22 @@ pub(crate) fn run_scenario(
 ) -> Result<ScenarioResult, Box<dyn std::error::Error>> {
     let mod_server = ModServer::new(mode)?;
     let address = free_address()?;
+    let execution_store = bridge
+        .parent()
+        .map(|path| {
+            path.join(match mode {
+                FixtureMode::Success => "execution-success.sqlite3",
+                FixtureMode::ForeignExpertState => "execution-foreign.sqlite3",
+            })
+        })
+        .ok_or("synthetic bridge has no parent directory")?;
     let mut gateway_process = gateway(gateway_binary, address, mod_server.address)?;
     let runtime = (|| {
         ready(&mut gateway_process, address)?;
         let mut command = Command::new(harness_binary);
         command
             .env_clear()
+            .env("STS2_EXECUTION_STORE_PATH", execution_store)
             .env("STS2_GATEWAY_ADDR", address.to_string())
             .env("STS2_GATEWAY_TOKEN", "gateway-token")
             .env("STS2_MCP_BINARY", mcp_binary)
@@ -324,7 +334,15 @@ pub(crate) fn assert_foreign_state_rejected(
         || result.ledger.responses[1].status != 200
         || result.ledger.responses[1].body["state_id"] != "foreign-state"
     {
-        return Err("foreign state was not rejected at composition".into());
+        return Err(format!(
+            "foreign state was not rejected at composition: exit={:?}, errors={:?}, paths={:?}, methods={methods:?}, responses={:?}, stderr={}",
+            result.runtime.status.code(),
+            result.ledger.errors,
+            paths(&result.ledger),
+            result.ledger.responses,
+            String::from_utf8_lossy(&result.runtime.stderr),
+        )
+        .into());
     }
     Ok(())
 }

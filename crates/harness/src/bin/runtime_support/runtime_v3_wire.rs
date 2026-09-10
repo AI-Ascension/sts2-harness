@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Value, json};
-use sha2::Digest;
 use sts2_harness::ActionKind;
 
 use super::mcp::McpProcess;
@@ -147,6 +146,7 @@ fn rpc_call_with_read_kind(
                 || has_expert_action_envelope(&response)
                 || has_expert_rest_action_envelope(&response)
                 || has_receipt_query_envelope(&response)
+                || (read_kind == RpcReadKind::Recovery && has_recovery_envelope(&response))
                 || (read_kind == RpcReadKind::Catalog && has_catalog_reobserve(&response, id)))
         {
             if read_kind != RpcReadKind::None && is_transient_gateway_tool_error(&response) {
@@ -289,7 +289,7 @@ pub(super) fn canonical_action_bytes(action_id: &str, payload: &Value) -> Result
 
 pub(super) fn canonical_action_digest(action_id: &str, payload: &Value) -> Result<String, String> {
     let bytes = canonical_action_bytes(action_id, payload)?;
-    Ok(format!("{:x}", sha2::Sha256::digest(bytes)))
+    Ok(sts2_harness::sha256_hex(bytes))
 }
 
 include!("runtime_v3_wire_stage.rs");

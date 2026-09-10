@@ -224,6 +224,19 @@ fn expert_catalog_forward_generation_race_enters_bounded_reobserve()
     let actions = port.legal_actions("live:8", 8)?;
     assert_eq!(actions.state_id(), "live:8");
     assert_eq!(actions.generation(), 8);
+    let catalog_raw = port
+        .catalog_raw
+        .as_deref()
+        .ok_or("expert legal_actions did not retain catalog bytes")?;
+    let catalog_text = std::str::from_utf8(catalog_raw)?;
+    assert!(catalog_text.contains("potion:8:potion:fire:enemy:1"));
+    assert_eq!(
+        port.catalog
+            .as_ref()
+            .and_then(Value::as_array)
+            .map(Vec::len),
+        Some(actions.actions().len())
+    );
 
     let normal_requests: Vec<Value> = fs::read_to_string(normal_log)?
         .lines()

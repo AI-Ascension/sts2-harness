@@ -5,7 +5,7 @@ use sts2_harness::{
     OperationState,
 };
 
-use super::super::durable::DurableHandle;
+use super::super::durable::{DurableHandle, OperationCatalogEvidence};
 use super::reconnect_support::*;
 use super::*;
 
@@ -26,24 +26,31 @@ impl RecoveryCase {
         store.start_episode(&lineage, &fingerprint)?;
         let durable = DurableHandle::from_store_for_test(store, lineage, fingerprint)?;
         let action = EpisodeLegalAction::new("combat.end-turn-pending", ActionKind::EndTurn)?;
+        let recovery_context = recovery_original_context();
         let catalog = json!([{
-            "action_id":action.action_id(),"action":{"kind":"end_turn"}
+            "action_id": action.action_id(),
+            "action": {"kind":"end_turn"}
         }]);
-        let catalog_raw = serde_json::to_vec(&catalog)?;
+        let input = json!({
+            "state_id": PENDING_STATE_ID,
+            "generation": 0,
+            "legal_actions": catalog
+        });
+        let catalog_raw = serde_json::to_vec(
+            input
+                .get("legal_actions")
+                .ok_or("pending catalog omitted from operation input")?,
+        )?;
         durable.operation_intent_with_catalog(
             PENDING_OPERATION_ID,
             PENDING_STATE_ID,
             0,
             &action,
             &json!({"kind":"end_turn"}),
-            super::super::durable::OperationCatalogEvidence {
-                input: &json!({
-                    "state_id":PENDING_STATE_ID,
-                    "generation":0,
-                    "legal_actions":catalog.clone()
-                }),
+            OperationCatalogEvidence {
+                input: &input,
                 raw: &catalog_raw,
-                original_context: Some(&reconnect_support::original_recovery_context()),
+                original_context: Some(&recovery_context),
             },
         )?;
         let digest = durable.operation_payload_digest(PENDING_OPERATION_ID)?;
@@ -93,9 +100,8 @@ impl RecoveryCase {
             TelemetryHandle::disabled(),
             self.durable.clone(),
         )?;
+        enable_historical_recovery(&mut port)?;
         port.allocated = true;
-        port.recovery_authority = Some(reconnect_support::recovery_authority());
-        port.initialize_recovery_sideband_for_test()?;
         port.reconcile_pending_operations()
     }
 
@@ -113,26 +119,23 @@ impl RecoveryCase {
             .iter()
             .filter_map(|value| value["params"]["name"].as_str())
             .collect();
-        let expected = match (reconciled, reobserved) {
-            (true, true) => vec![
-                "watchdog.operation_lookup",
-                "watchdog.operation_reconcile",
-                "sts2.reobserve",
-            ],
-            (true, false) => vec!["watchdog.operation_lookup", "watchdog.operation_reconcile"],
-            (false, false) => vec!["watchdog.operation_lookup"],
-            (false, true) => return Err("reobserve cannot occur without reconciliation".into()),
-        };
+        let mut expected = vec!["watchdog.operation_lookup"];
+        if reconciled {
+            expected.push("watchdog.operation_reconcile");
+        }
+        if reobserved {
+            expected.push("sts2.reobserve");
+        }
         assert_eq!(
             names, expected,
             "recovery must never poll or dispatch ordinary gameplay"
         );
         let mut original = None;
         for call in calls.iter().filter(|value| {
-            value["method"] == "tools/call"
-                && value["params"]["name"]
-                    .as_str()
-                    .is_some_and(|name| name.starts_with("watchdog."))
+            matches!(
+                value["params"]["name"].as_str(),
+                Some("watchdog.operation_lookup" | "watchdog.operation_reconcile")
+            )
         }) {
             let reference = &call["params"]["arguments"]["payload"]["operation"];
             assert_eq!(reference["operation_id"], PENDING_OPERATION_ID);

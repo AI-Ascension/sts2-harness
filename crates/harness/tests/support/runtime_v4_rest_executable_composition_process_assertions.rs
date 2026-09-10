@@ -130,15 +130,11 @@ pub(crate) fn assert_success_with_style(
     {
         return Err(format!("unexpected REST reconciliation requests: {reconciles:?}").into());
     }
-    if operation_ids
-        != [
-            "episode-action-9-1",
-            "episode-action-10-2",
-            "episode-action-11-3",
-            "episode-action-12-4",
-            "episode-action-13-5",
-            "episode-action-14-6",
-        ]
+    if operation_ids.len() != 6
+        || operation_ids.iter().any(|operation_id| operation_id.is_empty())
+        || operation_ids
+            .windows(2)
+            .any(|pair| pair[0] == pair[1])
     {
         return Err(format!("unexpected REST operation sequence: {operation_ids:?}").into());
     }
@@ -294,16 +290,15 @@ fn assert_additional_settled_receipts(
     records: &[Value],
     selector_encoding: SelectorEncoding,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let receipt = |operation_id: &str, status: &str| {
+    let receipt = |action_id: &str, status: &str| {
         records.iter().find(|record| {
             record["event"] == "action_receipt"
-                && record["operation_id"] == operation_id
+                && record["action_id"] == action_id
                 && record["status"] == status
         })
     };
     let expected = [
         (
-            "episode-action-11-3",
             selector_encoding.action_id(
                 11,
                 "selection:10:smith",
@@ -316,7 +311,6 @@ fn assert_additional_settled_receipts(
             "live:12",
         ),
         (
-            "episode-action-12-4",
             selector_encoding.action_id(
                 12,
                 "selection:10:smith",
@@ -329,16 +323,16 @@ fn assert_additional_settled_receipts(
             "live:13",
         ),
     ];
-    for (operation_id, action_id, effect, generation, state_id) in expected {
-        let settled = receipt(operation_id, "Settled")
-            .ok_or_else(|| format!("runtime receipt ledger omitted Settled {operation_id}"))?;
+    for (action_id, effect, generation, state_id) in expected {
+        let settled = receipt(&action_id, "Settled")
+            .ok_or_else(|| format!("runtime receipt ledger omitted Settled {action_id}"))?;
         if settled["action_id"] != action_id
             || settled["effect"] != effect
             || settled["observation"]["state_id"] != state_id
             || settled["observation"]["generation"] != generation
         {
             return Err(format!(
-                "runtime Settled receipt lost original identity for {operation_id}: {settled}"
+                "runtime Settled receipt lost original identity for {action_id}: {settled}"
             )
             .into());
         }

@@ -221,11 +221,19 @@ impl ExecutionStore {
                 rusqlite::Error::QueryReturnedNoRows => super::types::ExecutionStoreError::Missing,
                 other => schema::map_sqlite(other),
             })?;
+        // Transport evidence recorded for an Accepted or Unknown result is provisional. An
+        // authoritative reconciliation may carry a different response digest while retaining
+        // the same operation identity, so replace that evidence exactly once on reconciliation.
+        let replacing_provisional_outcome = matches!(
+            current.state,
+            OperationState::Accepted | OperationState::Unknown
+        ) && next == OperationState::Reconciled;
         if let Some(result_ref) = result_ref
             && current
                 .result_ref
                 .as_deref()
                 .is_some_and(|old| old != result_ref)
+            && !replacing_provisional_outcome
         {
             return Err(super::types::ExecutionStoreError::Conflict);
         }
@@ -234,6 +242,7 @@ impl ExecutionStore {
                 .result_digest
                 .as_deref()
                 .is_some_and(|old| old != result_digest)
+            && !replacing_provisional_outcome
         {
             return Err(super::types::ExecutionStoreError::Conflict);
         }

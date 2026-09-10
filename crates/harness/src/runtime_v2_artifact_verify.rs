@@ -18,8 +18,8 @@ pub fn verify_runtime_v2_artifact() -> Result<(), RuntimeV2ArtifactError> {
         return Err(RuntimeV2ArtifactError::ChecksumMismatch);
     }
 
-    let schema_digest = Sha256::digest(SCHEMA_BYTES);
-    if format!("{schema_digest:x}") != RUNTIME_V2_SCHEMA_DIGEST {
+    let schema_digest = crate::sha256_hex(SCHEMA_BYTES);
+    if schema_digest != RUNTIME_V2_SCHEMA_DIGEST {
         return Err(RuntimeV2ArtifactError::ChecksumMismatch);
     }
 
@@ -182,7 +182,7 @@ fn checksums_match() -> bool {
         if seen[index]
             || digest.len() != 64
             || !digest.bytes().all(|byte| byte.is_ascii_hexdigit())
-            || format!("{:x}", Sha256::digest(expected[index].1)) != digest
+            || crate::sha256_hex(expected[index].1) != digest
         {
             return false;
         }

@@ -5,6 +5,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use sts2_harness::{Decision, DecisionInput, DecisionSource, PolicyError};
 
 use super::*;
 
@@ -14,6 +15,7 @@ pub(super) use recovery_fixture::{recovery_settled_script, response_script, sett
 
 pub(super) const PENDING_OPERATION_ID: &str = "11111111-1111-4111-8111-111111111111";
 pub(super) const PENDING_STATE_ID: &str = "22222222-2222-4222-8222-222222222222";
+pub(super) const SETTLED_OPERATION_ID: &str = "10101010-1010-4010-8010-101010101010";
 const RECOVERY_DEPLOYMENT_ID: &str = "33333333-3333-4333-8333-333333333333";
 const RECOVERY_INSTANCE_ID: &str = "44444444-4444-4444-8444-444444444444";
 const RECOVERY_INSTANCE_INCAR: &str = "55555555-5555-4555-8555-555555555555";
@@ -30,7 +32,7 @@ const RECOVERY_RECONCILE_CORRELATION_ID: &str = "ffffffff-ffff-4fff-8fff-fffffff
 
 pub(super) struct RecoveryEnvironment(pub(super) Vec<(String, String)>);
 
-pub(super) fn original_recovery_context() -> Value {
+pub(super) fn recovery_original_context() -> Value {
     json!({
         "deployment_id": RECOVERY_DEPLOYMENT_ID,
         "instance_id": RECOVERY_INSTANCE_ID,
@@ -42,9 +44,24 @@ pub(super) fn original_recovery_context() -> Value {
     })
 }
 
-pub(super) fn recovery_authority(
-) -> super::super::super::allocation_context::RecoveryAuthority {
-    super::super::super::allocation_context::RecoveryAuthority {
+fn recovery_current_fence() -> Value {
+    json!({
+        "host_fence_id": RECOVERY_FENCE_ID,
+        "deployment_id": RECOVERY_DEPLOYMENT_ID,
+        "instance_id": RECOVERY_INSTANCE_ID,
+        "instance_incarnation": RECOVERY_INSTANCE_INCAR,
+        "boot_id": RECOVERY_BOOT_ID,
+        "authority_generation": 1,
+        "fence_generation": 1,
+        "created_at": "2026-09-07T00:00:00Z"
+    })
+}
+
+pub(super) fn enable_historical_recovery(port: &mut super::RuntimeV3Port) -> Result<(), String> {
+    port.config.instance_id = RECOVERY_INSTANCE_ID.to_owned();
+    port.config.lease_id = RECOVERY_LEASE_ID.to_owned();
+    port.config.lease_epoch = 1;
+    let authority = super::super::allocation_context::RecoveryAuthority {
         deployment_id: RECOVERY_DEPLOYMENT_ID.to_owned(),
         instance_id: RECOVERY_INSTANCE_ID.to_owned(),
         instance_incarnation: RECOVERY_INSTANCE_INCAR.to_owned(),
@@ -52,17 +69,13 @@ pub(super) fn recovery_authority(
         authority_generation: 1,
         lease_id: RECOVERY_LEASE_ID.to_owned(),
         lease_epoch: 1,
-        current_fence: json!({
-            "host_fence_id": RECOVERY_FENCE_ID,
-            "deployment_id": RECOVERY_DEPLOYMENT_ID,
-            "instance_id": RECOVERY_INSTANCE_ID,
-            "instance_incarnation": RECOVERY_INSTANCE_INCAR,
-            "boot_id": RECOVERY_BOOT_ID,
-            "authority_generation": 1,
-            "fence_generation": 1,
-            "created_at": "2026-09-07T00:00:00Z"
-        }),
-    }
+        current_fence: recovery_current_fence(),
+    };
+    let context =
+        super::super::recovery::RecoveryContext::from_authority(&authority, &port.config)?;
+    port.recovery_authority = Some(authority);
+    port.recovery_context = Some(context);
+    Ok(())
 }
 
 impl RecoveryEnvironment {
@@ -95,7 +108,10 @@ impl RecoveryEnvironment {
                     "STS2_RECOVERY_INSTANCE_INCAR",
                     RECOVERY_INSTANCE_INCAR.to_owned(),
                 ),
-                ("STS2_RECOVERY_BOOT_ID", RECOVERY_BOOT_ID.to_owned()),
+                (
+                    "STS2_RECOVERY_BOOT_ID",
+                    "abababab-abab-4bab-8bab-abababababab".to_owned(),
+                ),
                 ("STS2_RECOVERY_LEASE_ID", RECOVERY_LEASE_ID.to_owned()),
                 ("STS2_RECOVERY_AUTHORITY_GENERATION", String::from("1")),
                 ("STS2_RECOVERY_LEASE_EPOCH", String::from("1")),
@@ -110,11 +126,23 @@ impl RecoveryEnvironment {
 
 pub(super) struct Fixture(pub(super) PathBuf);
 
+pub(super) struct CountingSource {
+    pub(super) calls: usize,
+    pub(super) decision: Decision,
+}
+
+impl DecisionSource for CountingSource {
+    fn decide(&mut self, _input: &DecisionInput) -> Result<Decision, PolicyError> {
+        self.calls += 1;
+        Ok(self.decision.clone())
+    }
+}
+
 impl Fixture {
     pub(super) fn new() -> Result<Self, std::io::Error> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let path = std::env::temp_dir().join(format!(
-            "sts2-v3-reconnect-support-{}-{}",
+            "sts2-v3-durable-reconnect-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
@@ -183,7 +211,7 @@ pub(super) fn dispatch_script(fixture: &Fixture) -> Result<String, Box<dyn std::
         "../../../../../protocol-artifact/runtime-v3-gameplay/golden/dispatch-action-settled.json"
     ))?;
     settled["correlation_id"] = json!("1");
-    settled["operation_id"] = json!("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    settled["operation_id"] = json!(SETTLED_OPERATION_ID);
     let settled_text = settled
         .to_string()
         .replace("\"legal_actions\":[]", "\"legal_actions\" : [ ]");

@@ -291,7 +291,7 @@ fn digest(domain: &str, value: &str) -> String {
     hasher.update(domain.as_bytes());
     hasher.update([0]);
     hasher.update(value.as_bytes());
-    format!("{:x}", hasher.finalize())
+    sts2_harness::hex_bytes(hasher.finalize())
 }
 
 fn valid_revision(value: &str) -> bool {

@@ -75,6 +75,7 @@ See `experiments/live-combat/README.md` for the exact scope.
 | Runtime-v2 coordinator | Four-lane bounded pure scheduler with explicit lineage, fairness, overload, cancellation, and shutdown seams | Confirmed by offline component tests; live supervisor/profile/host isolation unverified |
 | Seeded-run transport | Opt-in bounded plan, context digest, durable reservation, and same-operation MCP recovery | Source/component and artifact checks confirmed; native seed settlement, profile/save isolation, gameplay, deployment, and release unverified |
 | Runtime map context | Opt-in host-authored map projection carried to the Exo provider | Source/component evidence only; target-build map production, provider behavior, and live compatibility unverified |
+| `coop-native-v1` harness consumer | Strict parser and coordinator for the accepted native co-op artifact | Source/component tests cover all seventeen goldens, peer-token uniqueness, generation fences, effects/receipts, and same-operation recovery; MCP/HTTP transport, native settlement, checksum convergence, deployment, and release unverified |
 | Evaluation | Library aggregation over supplied samples; not wired into the Runtime-v3 runner | Synthetic tests, not game parity or experimental performance evidence |
 
 ## Compatibility classifications
@@ -145,6 +146,18 @@ and the `run_started` witness. The copied protocol artifact is
 `d3ab5fca7d9d74bb31eeb3e5b343d8024ee44404`. These checks confirm the source/component boundary and
 artifact integrity; native host settlement, profile/save isolation, gameplay, provider execution,
 deployment, and release compatibility remain unverified.
+
+### Native co-op source/component row
+
+The harness consumes `sts2-protocol/coop-native-v1` as a component artifact with schema digest
+`2f3bc99e53080fa11b39592b64fb0ab964a16f568719a2622d0b2caf766ab629`. The parser preserves the
+producer's closed envelope and seventeen goldens, accepts bodyful same-operation recovery requests,
+uses peer-token identity for roster uniqueness, and enforces the producer/gateway generation rules:
+settled effects advance `before < after == observation.host_generation`, while non-settled effects
+remain at the observation generation; recovery outcomes retain their status-specific receipt
+relations. The coordinator records unknown operations and reconciles them with the original
+operation identity. This confirms a transport-free consumer component; native peer admission,
+host legality, settled effects/votes, checksums, rejoin, deployment, and release remain unverified.
 
 ### Runtime map context
 
