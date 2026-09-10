@@ -41,7 +41,7 @@ fn render_span_at(
         "startTimeUnixNano": timestamp_unix_nanos.to_string(),
         "endTimeUnixNano": timestamp_unix_nanos.to_string(),
         "attributes": attributes,
-        "status": {"code": if status_error {"STATUS_CODE_ERROR"} else {"STATUS_CODE_UNSET"}}
+        "status": {"code": if status_error {2} else {0}}
     });
     if kind != EventKind::RunStarted {
         span["parentSpanId"] = Value::String(root_span_id);
