@@ -1,6 +1,65 @@
 // SPDX-License-Identifier: MIT
 
+use super::super::authoring::{AuthoringStore, PublishResult};
+use super::super::contract_authoring::{StudioDefinitionRecord, StudioDraftRecord};
 use super::*;
+
+pub struct UnavailableAuthoringStore;
+
+impl AuthoringStore for UnavailableAuthoringStore {
+    fn list_definitions(&self) -> Result<Vec<StudioDefinitionRecord>, StoreError> {
+        Err(StoreError::new(
+            "authoring_store_unavailable",
+            "Studio authoring persistence is not injected",
+        ))
+    }
+
+    fn get_draft(&self, _draft_id: &str) -> Result<Option<StudioDraftRecord>, StoreError> {
+        Err(StoreError::new(
+            "authoring_store_unavailable",
+            "Studio authoring persistence is not injected",
+        ))
+    }
+
+    fn create_draft(
+        &self,
+        _draft: StudioDraftRecord,
+        _mutation_id: &str,
+    ) -> Result<StudioDraftRecord, StoreError> {
+        Err(StoreError::new(
+            "authoring_store_unavailable",
+            "Studio authoring persistence is not injected",
+        ))
+    }
+
+    fn save_draft(
+        &self,
+        _draft_id: &str,
+        _expected_revision: u64,
+        _expected_etag: &str,
+        _mutation_id: &str,
+        _document: Value,
+        _layout: Value,
+    ) -> Result<StudioDraftRecord, StoreError> {
+        Err(StoreError::new(
+            "authoring_store_unavailable",
+            "Studio authoring persistence is not injected",
+        ))
+    }
+
+    fn publish_draft(
+        &self,
+        _draft_id: &str,
+        _expected_revision: u64,
+        _expected_etag: &str,
+        _expected_definition_digest: &str,
+    ) -> Result<PublishResult, StoreError> {
+        Err(StoreError::new(
+            "authoring_store_unavailable",
+            "Studio authoring persistence is not injected",
+        ))
+    }
+}
 
 pub(super) fn authorize(
     actor: &AuthContext,

@@ -172,10 +172,14 @@ pub(super) fn reason_phrase(status: u16) -> &'static str {
 
 impl HttpError {
     pub(super) fn from_management(error: ManagementError) -> Self {
+        let status = match error.code.as_str() {
+            "draft_not_found" | "definition_not_found" => 404,
+            _ => management_status(&error.class),
+        };
         Self {
             code: error.code,
             message: error.message,
-            status: management_status(&error.class),
+            status,
         }
     }
 

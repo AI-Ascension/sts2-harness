@@ -28,7 +28,7 @@ pub struct StoreError {
 }
 
 impl StoreError {
-    pub(super) fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+    pub(crate) fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             code: code.into(),
             message: message.into(),
