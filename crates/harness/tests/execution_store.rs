@@ -6,11 +6,14 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use sha2::{Digest, Sha256};
+
 use sts2_harness::{
-    AttemptKind, AttemptState, Checkpoint, CompletionRecord, CompletionStatus, DecisionReference,
-    ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig, JobClaimOutcome,
-    JobState, OperationIntent, OperationState, ProviderFailureClass, ProviderReservation,
-    ProviderReservationState, RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState,
+    AttemptKind, AttemptState, CatalogEvidence, Checkpoint, CompletionRecord, CompletionStatus,
+    DecisionReference, ExecutionFingerprint, ExecutionLineage, ExecutionStore,
+    ExecutionStoreConfig, JobClaimOutcome, JobState, OperationIntent, ProviderFailureClass,
+    ProviderReservation, ProviderReservationState, RECOVERY_SCHEMA_DIGEST, RecoveryDisposition,
+    ResumeState,
 };
 
 fn path(name: &str) -> PathBuf {
@@ -44,6 +47,10 @@ fn checkpoint(lineage: ExecutionLineage, sequence: u64, generation: u64) -> Chec
         "catalog-digest",
     )
     .expect("test checkpoint is valid")
+}
+
+fn result_digest(payload: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(payload))
 }
 
 #[test]
@@ -95,84 +102,6 @@ fn default_store_configuration_pins_the_published_recovery_schema() {
 }
 
 #[test]
-fn operation_intent_is_durable_idempotent_and_unknown_is_reconciled_without_redispatch() {
-    let mut store = ExecutionStore::open_in_memory().expect("store opens");
-    let current = lineage("attempt-1", "trajectory-1");
-    store
-        .start_episode(&current, &fingerprint())
-        .expect("episode starts");
-    let intent = OperationIntent::new(
-        current.clone(),
-        "operation-1",
-        "state-1",
-        4,
-        "end_turn",
-        "payload-digest",
-        "input-digest",
-    )
-    .expect("operation intent is valid");
-    let first = store
-        .record_operation_intent(&intent)
-        .expect("intent is persisted");
-    assert_eq!(first.state, OperationState::IntentRecorded);
-    assert_eq!(store.record_operation_intent(&intent), Ok(first.clone()));
-    assert_eq!(
-        store
-            .mark_operation_dispatched("operation-1", "payload-digest")
-            .expect("dispatch uncertainty is persisted")
-            .state,
-        OperationState::MayHaveBeenDispatched
-    );
-    assert_eq!(
-        store
-            .record_operation_result(
-                "operation-1",
-                "payload-digest",
-                OperationState::Unknown,
-                None,
-                None,
-            )
-            .expect("unknown outcome is retained")
-            .state,
-        OperationState::Unknown
-    );
-    assert_eq!(
-        store.pending_operations("episode-1").expect("pending list"),
-        vec![store.operation("operation-1").expect("operation remains")]
-    );
-    let reconciled = store
-        .reconcile_operation(
-            "operation-1",
-            "payload-digest",
-            OperationState::Settled,
-            "receipt-1",
-            "receipt-digest",
-        )
-        .expect("reconciliation uses the same operation identity");
-    assert_eq!(reconciled.state, OperationState::Reconciled);
-    assert!(
-        store
-            .pending_operations("episode-1")
-            .expect("pending list")
-            .is_empty()
-    );
-    assert_eq!(
-        store.reconcile_operation(
-            "operation-1",
-            "payload-digest",
-            OperationState::Settled,
-            "receipt-1",
-            "receipt-digest",
-        ),
-        Ok(reconciled.clone())
-    );
-    assert!(matches!(
-        store.mark_operation_dispatched("operation-1", "payload-digest"),
-        Err(sts2_harness::ExecutionStoreError::Conflict)
-    ));
-}
-
-#[test]
 fn provider_reservation_is_conservative_and_completed_decisions_are_reusable() {
     let mut store = ExecutionStore::open_in_memory().expect("store opens");
     let current = lineage("attempt-1", "trajectory-1");
@@ -191,7 +120,7 @@ fn provider_reservation_is_conservative_and_completed_decisions_are_reusable() {
         .record_decision(&reference)
         .expect("decision is durable");
     let reservation = ProviderReservation::new(
-        current,
+        current.clone(),
         "reservation-1",
         "execution-1",
         "provider-execution-1",
@@ -205,14 +134,22 @@ fn provider_reservation_is_conservative_and_completed_decisions_are_reusable() {
             .state,
         ProviderReservationState::Reserved
     );
+    let result_payload = br#"{"decision":"wait","rationale":"resume"}"#;
     let completed = store
-        .complete_provider("reservation-1", "result-1", "result-digest", 7)
+        .complete_provider_with_result(
+            "reservation-1",
+            "result-1",
+            &result_digest(result_payload),
+            result_payload,
+            7,
+        )
         .expect("provider result is durable");
     assert!(completed.completed);
     assert!(!completed.unknown);
     let reusable = store
         .reuse_completed_decision(
-            "episode-1",
+            &current,
+            "execution-1",
             "input-fingerprint",
             "model-revision",
             "provider-config",
@@ -220,6 +157,10 @@ fn provider_reservation_is_conservative_and_completed_decisions_are_reusable() {
         .expect("reuse lookup succeeds")
         .expect("completed result is reusable");
     assert_eq!(reusable.reference.execution_id, "execution-1");
+    assert_eq!(
+        reusable.result_payload.as_deref(),
+        Some(result_payload.as_slice())
+    );
 
     let unknown_reference = DecisionReference::new(
         lineage("attempt-1", "trajectory-1"),
@@ -250,7 +191,8 @@ fn provider_reservation_is_conservative_and_completed_decisions_are_reusable() {
     assert!(
         store
             .reuse_completed_decision(
-                "episode-1",
+                &lineage("attempt-1", "trajectory-1"),
+                "execution-2",
                 "input-fingerprint-2",
                 "model-revision",
                 "provider-config",
@@ -303,7 +245,7 @@ fn checkpoint_reconstruction_copies_the_verified_boundary_and_preserves_attempt_
     assert_eq!(
         store.resume_episode("episode-1", &fingerprint()),
         Ok(ResumeState::Ready {
-            checkpoint: Some(checkpoint(next, 3, 12)),
+            checkpoint: Some(Box::new(checkpoint(next, 3, 12))),
             pending_operations: Vec::new(),
             pending_decisions: Vec::new(),
         })
@@ -370,90 +312,17 @@ fn completion_and_job_claim_are_durable_before_acknowledgement() {
     ));
 }
 
-#[test]
-fn fingerprint_mismatch_and_unknown_attempt_never_start_new_work_implicitly() {
-    let mut store = ExecutionStore::open_in_memory().expect("store opens");
-    let current = lineage("attempt-1", "trajectory-1");
-    store
-        .start_episode(&current, &fingerprint())
-        .expect("episode starts");
-    assert!(matches!(
-        store.resume_episode(
-            "episode-1",
-            &ExecutionFingerprint::new("seed-2", "build-1", "state-1", "config-1", "provider-1")
-                .expect("alternate fingerprint is valid")
-        ),
-        Ok(ResumeState::ReconstructionRequired { .. })
-    ));
-    store
-        .mark_interrupted_unknown("episode-1", "MCP connection was lost")
-        .expect("unknown attempt is durable");
-    assert!(matches!(
-        store.resume_episode("episode-1", &fingerprint()),
-        Ok(ResumeState::InterruptedUnknown { .. })
-    ));
-    assert!(matches!(
-        store.record_recovery_disposition(
-            "episode-1",
-            RecoveryDisposition::InPlaceContinuation,
-            "awaiting authoritative reconciliation"
-        ),
-        Ok(attempt) if attempt.state == AttemptState::InterruptedUnknown
-    ));
-}
+#[path = "execution_store/recovery.rs"]
+mod recovery;
 
-#[test]
-fn missing_or_empty_state_is_not_recreated_as_a_new_execution_epoch() {
-    let missing = path("missing");
-    assert!(matches!(
-        ExecutionStore::open_read_only(&missing),
-        Err(sts2_harness::ExecutionStoreError::Missing)
-    ));
-    let empty = path("empty");
-    fs::File::create(&empty).expect("empty fixture can be created");
-    assert!(matches!(
-        ExecutionStore::open(ExecutionStoreConfig::new(&empty)),
-        Err(sts2_harness::ExecutionStoreError::Corrupt)
-    ));
-    remove_database(&empty);
-}
+#[path = "execution_store/catalog.rs"]
+mod catalog;
 
-#[test]
-fn explicit_resume_entrypoint_starts_only_missing_episodes_and_requires_reconciliation() {
-    let mut store = ExecutionStore::open_in_memory().expect("store opens");
-    let current = lineage("attempt-1", "trajectory-1");
-    assert!(matches!(
-        store.resume_or_start_episode(&current, &fingerprint()),
-        Ok(ResumeState::Ready {
-            checkpoint: None,
-            pending_operations,
-            pending_decisions
-        }) if pending_operations.is_empty() && pending_decisions.is_empty()
-    ));
-    assert_eq!(
-        store
-            .resume_for_decision("episode-1", &fingerprint())
-            .expect("empty resume is admitted for a first decision"),
-        None
-    );
-    let intent = OperationIntent::new(
-        current,
-        "operation-1",
-        "state-1",
-        1,
-        "end_turn",
-        "payload",
-        "input",
-    )
-    .expect("operation is valid");
-    store
-        .record_operation_intent(&intent)
-        .expect("intent commits");
-    assert!(matches!(
-        store.resume_for_decision("episode-1", &fingerprint()),
-        Err(sts2_harness::ExecutionStoreError::Conflict)
-    ));
-}
+#[path = "execution_store/operation_identity.rs"]
+mod operation_identity;
+
+#[path = "execution_store/oversized_result.rs"]
+mod oversized_result;
 
 fn remove_database(database: &PathBuf) {
     let _ = fs::remove_file(database);

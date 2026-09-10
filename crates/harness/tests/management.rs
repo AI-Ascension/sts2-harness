@@ -11,10 +11,11 @@ use sts2_harness::management::{
     CommandRequest, Cursor, DefinitionPort, DiffRequest, DiffResult, EVENT_SCHEMA_VERSION,
     ErrorClass, EventClassification, EventPayload, EventType, FileWorkflowStore, GameOutcome,
     InspectRequest, InspectionResult, MANAGEMENT_SCHEMA_VERSION, ManagementClient, ManagementError,
-    ManagementReplayRequest, ManagementServer, ManagementService, OutputFormat, RUN_SCHEMA_VERSION,
-    ReplayResult, RunAdmission, RunEvent, RunRequest, RunSnapshot, ServerConfig,
-    StaticAuthenticator, ValidateRequest, ValidationResult, WorkflowExecutionPort,
-    WorkflowReplayPort, WorkflowRunStatus, WorkflowStore, decode_strict, digest_value,
+    ManagementReplayRequest, ManagementServer, ManagementService, MemoryWorkflowStore,
+    OutputFormat, RUN_SCHEMA_VERSION, ReplayResult, RunAdmission, RunEvent, RunRequest,
+    RunSnapshot, ServerConfig, StaticAuthenticator, ValidateRequest, ValidationResult,
+    WorkflowExecutionPort, WorkflowReplayPort, WorkflowRunStatus, WorkflowStore, decode_strict,
+    digest_value,
 };
 
 struct DefinitionDouble;
@@ -352,6 +353,37 @@ fn file_store_reopens_durable_run_state() -> Result<(), Box<dyn std::error::Erro
     let reopened = FileWorkflowStore::open(&path)?;
     assert_eq!(reopened.get_run("run-file")?, Some(run));
     std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn redacted_export_removes_untrusted_operation_and_cursor_fields()
+-> Result<(), Box<dyn std::error::Error>> {
+    let store = MemoryWorkflowStore::new();
+    let digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let mut run = snapshot("run-private", digest, 1, WorkflowRunStatus::Running);
+    run.cursor.graph_id = "sentinel-secret-graph".to_owned();
+    run.cursor.node_id = "sentinel-secret-node".to_owned();
+    run.cursor.node_execution_id = "sentinel-secret-execution".to_owned();
+    let mut initial = event(
+        &run,
+        1,
+        EventType::OperationUnknown,
+        "sentinel-secret-reason",
+    );
+    initial.node_execution_id = "sentinel-secret-event".to_owned();
+    initial.payload.operation_id = Some("sentinel-secret-operation".to_owned());
+    initial.payload.reason_code = "sentinel-secret-reason".to_owned();
+    store.create_run("request-private", digest, run, vec![initial])?;
+
+    let exported = store.export("run-private", true)?;
+    let encoded = serde_json::to_string(&exported)?;
+    assert!(!encoded.contains("sentinel-secret"));
+    assert_eq!(exported.run.cursor.graph_id, "[redacted]");
+    assert_eq!(exported.run.pending_operation, None);
+    assert_eq!(exported.events[0].payload.operation_id, None);
+    assert_eq!(exported.events[0].payload.reason_code, "event");
+    assert_eq!(exported.events[0].node_execution_id, "[redacted]");
     Ok(())
 }
 

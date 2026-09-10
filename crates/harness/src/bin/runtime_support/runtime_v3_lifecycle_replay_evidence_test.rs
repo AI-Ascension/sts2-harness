@@ -122,6 +122,20 @@ fn reply_artifact(id: u64, value: Value) -> String {
     }))
 }
 
+fn reply_artifact_with_request_operation(id: u64, value: Value) -> String {
+    let response = json!({
+        "jsonrpc":"2.0",
+        "id":id,
+        "result":{"content":[{"type":"text","text":value.to_string()}]}
+    })
+    .to_string()
+    .replace("episode-action-1-1", "__OPERATION_ID__")
+    .replace('\'', "'\\''");
+    format!(
+        "IFS= read -r line || exit 1\noperation_id=$(printf '%s\\n' \"$line\" | sed -n 's/.*\\\"operation_id\\\":\\\"\\([^\\\"]*\\)\\\".*/\\1/p')\nprintf '%s\\n' '{response}' | sed \"s/__OPERATION_ID__/$operation_id/g\"\n"
+    )
+}
+
 fn gameplay_init() -> String {
     reply(json!({"jsonrpc":"2.0","id":1,"result":{}}))
         + &reply(json!({
@@ -213,8 +227,8 @@ fn fake_mcp_script() -> Result<String, Box<dyn std::error::Error>> {
         gameplay_init(),
         reply_artifact(1, setup),
         reply_artifact(2, catalog),
-        reply_artifact(3, accepted),
-        reply_artifact(4, waited),
+        reply_artifact_with_request_operation(3, accepted),
+        reply_artifact_with_request_operation(4, waited),
         reply_artifact(5, map_observation),
         reply_artifact(6, map_catalog_response),
         ""
@@ -322,7 +336,11 @@ fn fake_mcp_map_error_flushes_a_replayable_settled_prefix() -> Result<(), Box<dy
         ]
     );
     assert_eq!(rows[1]["status"], "Accepted");
-    assert_eq!(rows[2]["operation_id"], "episode-action-1-1");
+    let operation_id = rows[2]["operation_id"]
+        .as_str()
+        .ok_or("replay wait row omitted operation id")?;
+    let operation_uuid = uuid::Uuid::parse_str(operation_id)?;
+    assert_eq!(operation_uuid.get_version_num(), 4);
     assert_eq!(rows[3]["error_code"], "map_snapshot_invalid");
     assert!(rows.iter().all(|row| {
         row["event"] != "episode_complete"

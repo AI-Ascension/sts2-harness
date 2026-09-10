@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 
+use serde_json::Value;
+use sha2::Digest;
 use std::path::PathBuf;
 
-use super::records::ExecutionStoreError;
+use super::error::ExecutionStoreError;
 use std::time::Duration;
 
 pub const RECOVERY_CONTRACT_VERSION: &str = "watchdog-recovery-v1";
@@ -13,6 +15,7 @@ pub const RECOVERY_SCHEMA_DIGEST: &str =
 pub const MAX_ID_BYTES: usize = 512;
 pub const MAX_REFERENCE_BYTES: usize = 512;
 pub const MAX_PAYLOAD_BYTES: usize = 1024 * 1024;
+pub const MAX_CATALOG_BYTES: usize = 64 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecutionStoreConfig {
@@ -211,61 +214,6 @@ impl ExecutionFingerprint {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Checkpoint {
-    pub lineage: ExecutionLineage,
-    pub sequence: u64,
-    pub state_id: String,
-    pub generation: u64,
-    pub fingerprint: ExecutionFingerprint,
-    pub observation: Vec<u8>,
-    pub legal_actions_digest: String,
-}
-
-impl Checkpoint {
-    pub fn new(
-        lineage: ExecutionLineage,
-        sequence: u64,
-        state_id: impl Into<String>,
-        generation: u64,
-        fingerprint: ExecutionFingerprint,
-        observation: Vec<u8>,
-        legal_actions_digest: impl Into<String>,
-    ) -> Result<Self, ExecutionStoreError> {
-        let checkpoint = Self {
-            lineage,
-            sequence,
-            state_id: state_id.into(),
-            generation,
-            fingerprint,
-            observation,
-            legal_actions_digest: legal_actions_digest.into(),
-        };
-        checkpoint.validate(MAX_PAYLOAD_BYTES)?;
-        Ok(checkpoint)
-    }
-
-    pub fn validate(&self, maximum: usize) -> Result<(), ExecutionStoreError> {
-        self.lineage
-            .validate()
-            .map_err(|_| ExecutionStoreError::InvalidCheckpoint)?;
-        self.fingerprint
-            .validate()
-            .map_err(|_| ExecutionStoreError::InvalidCheckpoint)?;
-        if maximum == 0
-            || maximum > MAX_PAYLOAD_BYTES
-            || !valid_id(&self.state_id)
-            || self.generation > 9_007_199_254_740_991
-            || self.observation.is_empty()
-            || self.observation.len() > maximum
-            || !valid_reference(&self.legal_actions_digest)
-        {
-            return Err(ExecutionStoreError::InvalidCheckpoint);
-        }
-        Ok(())
-    }
-}
-
 pub(crate) fn valid_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= MAX_ID_BYTES
@@ -283,6 +231,18 @@ pub(crate) fn valid_digest(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+/// Validates retained legal-action bytes without reconstructing them from a semantic value.
+/// Persistent rows are bounded before this helper is called; the JSON parse only establishes the
+/// required array root and rejects malformed bytes.
+pub(crate) fn valid_catalog_raw(raw: &[u8], expected_digest: &str) -> bool {
+    raw.len() <= MAX_CATALOG_BYTES
+        && !raw.is_empty()
+        && format!("{:x}", sha2::Sha256::digest(raw)) == expected_digest
+        && serde_json::from_slice::<Value>(raw)
+            .ok()
+            .is_some_and(|value| value.is_array())
 }
 
 fn distinct(values: &[&String]) -> Result<(), ()> {

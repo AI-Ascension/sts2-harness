@@ -1,10 +1,21 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Value, json};
+use sha2::Digest;
 use sts2_harness::ActionKind;
 
 use super::mcp::McpProcess;
 use super::mcp_process::McpProcessError;
+
+#[path = "runtime_v3_wire_recovery.rs"]
+mod recovery;
+pub(super) use recovery::{initialize_recovery_mcp, recovery_call};
+#[path = "runtime_v3_recovery_base64.rs"]
+mod recovery_encoding;
+pub(super) use recovery_encoding::decode as decode_recovery_action;
+
+pub(super) const RUNTIME_V3_SCHEMA_DIGEST: &str =
+    "8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63";
 
 const CATALOG_REVISION: &str = "runtime-v3-gameplay-mcp";
 const EXPERT_CATALOG_REVISION: &str = "runtime-v4-expert-mcp";
@@ -23,6 +34,12 @@ enum RpcReadKind {
 
 pub(super) fn initialize_mcp_profile(mcp: &mut McpProcess, profile: &str) -> Result<(), String> {
     initialize_mcp_profile_classified(mcp, profile).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+pub(super) fn initialize_mcp(mcp: &mut McpProcess) -> Result<(), String> {
+    initialize_mcp_profile(mcp, "runtime-v3-gameplay")
 }
 
 pub(super) fn initialize_mcp_profile_classified(
@@ -184,45 +201,7 @@ pub(super) fn catalog_reobserve(value: &Value) -> bool {
         )
 }
 
-fn has_gameplay_envelope(response: &Value) -> bool {
-    response["result"]["content"][0]["text"]
-        .as_str()
-        .and_then(|text| serde_json::from_str::<Value>(text).ok())
-        .is_some_and(|value| value["protocol_version"] == "runtime-v3-gameplay")
-}
-
-fn has_expert_action_envelope(response: &Value) -> bool {
-    response["result"]["content"][0]["text"]
-        .as_str()
-        .and_then(|text| serde_json::from_str::<Value>(text).ok())
-        .is_some_and(|value| value["protocol_version"] == "runtime-v4-expert-action")
-}
-
-fn has_expert_rest_action_envelope(response: &Value) -> bool {
-    response["result"]["content"][0]["text"]
-        .as_str()
-        .and_then(|text| serde_json::from_str::<Value>(text).ok())
-        .is_some_and(|value| value["protocol_version"] == "runtime-v4-expert-rest-action-v1")
-}
-
-fn has_receipt_query_envelope(response: &Value) -> bool {
-    response["result"]["content"][0]["text"]
-        .as_str()
-        .and_then(|text| serde_json::from_str::<Value>(text).ok())
-        .is_some_and(|value| value["protocol_version"] == "coop-receipt-query-v1")
-}
-
-fn request_timeout(method: &str, params: &Value) -> Result<std::time::Duration, String> {
-    let wait = if method == "tools/call" && params["name"] == "sts2.wait_for_transition" {
-        params["arguments"]["wait_for_millis"]
-            .as_u64()
-            .filter(|value| *value <= 120_000)
-            .ok_or_else(|| String::from("MCP transition wait is outside its bound"))?
-    } else {
-        0
-    };
-    Ok(std::time::Duration::from_millis(wait + 5_000))
-}
+include!("runtime_v3_wire_validation.rs");
 
 fn validate_catalog(response: &Value, profile: &str) -> Result<(), String> {
     let result = response
@@ -299,6 +278,19 @@ pub(super) fn combine_cleanup(
 }
 
 include!("runtime_v3_wire_action_kind.rs");
+
+/// The canonical recovery action is the complete legal-action envelope, not merely the inner
+/// payload sent to the frozen gameplay tool. Its bytes are retained before dispatch and are the
+/// only bytes accepted for historical recovery.
+pub(super) fn canonical_action_bytes(action_id: &str, payload: &Value) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(&json!({"action": payload, "action_id": action_id}))
+        .map_err(|error| format!("cannot encode canonical runtime-v3 action: {error}"))
+}
+
+pub(super) fn canonical_action_digest(action_id: &str, payload: &Value) -> Result<String, String> {
+    let bytes = canonical_action_bytes(action_id, payload)?;
+    Ok(format!("{:x}", sha2::Sha256::digest(bytes)))
+}
 
 include!("runtime_v3_wire_stage.rs");
 

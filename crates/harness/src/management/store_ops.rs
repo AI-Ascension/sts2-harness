@@ -22,6 +22,8 @@ mod persistence;
 
 pub(super) use persistence::{io_store_error, persist};
 
+const REDACTED_FIELD: &str = "[redacted]";
+
 pub(super) fn lookup_submission(
     core: &StoreCore,
     request_id: &str,
@@ -278,7 +280,20 @@ pub(super) fn export(
         .runs
         .get(run_id)
         .ok_or_else(|| StoreError::new("run_not_found", "workflow run was not found"))?;
-    let bytes = serde_json::to_vec(&run.events)
+    let mut redacted_run = run.snapshot.clone();
+    redacted_run.cursor.graph_id = REDACTED_FIELD.to_owned();
+    redacted_run.cursor.node_id = REDACTED_FIELD.to_owned();
+    redacted_run.cursor.node_execution_id = REDACTED_FIELD.to_owned();
+    redacted_run.pending_operation = None;
+    let redacted_events = run.events.iter().map(redact_event).collect::<Vec<_>>();
+    let export = ExportResponse {
+        schema_version: EXPORT_SCHEMA_VERSION.to_owned(),
+        workflow_run_id: run_id.to_owned(),
+        redacted: true,
+        run: redacted_run,
+        events: redacted_events,
+    };
+    let bytes = serde_json::to_vec(&export)
         .map_err(|error| StoreError::new("store_encode", error.to_string()))?;
     if bytes.len() > MAX_RESPONSE_BYTES {
         return Err(StoreError::new(
@@ -286,11 +301,13 @@ pub(super) fn export(
             "redacted workflow export exceeds the response limit",
         ));
     }
-    Ok(ExportResponse {
-        schema_version: EXPORT_SCHEMA_VERSION.to_owned(),
-        workflow_run_id: run_id.to_owned(),
-        redacted: true,
-        run: run.snapshot.clone(),
-        events: run.events.clone(),
-    })
+    Ok(export)
+}
+
+fn redact_event(event: &RunEvent) -> RunEvent {
+    let mut redacted = event.clone();
+    redacted.node_execution_id = REDACTED_FIELD.to_owned();
+    redacted.payload.operation_id = None;
+    redacted.payload.reason_code = "event".to_owned();
+    redacted
 }

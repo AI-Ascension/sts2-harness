@@ -14,6 +14,8 @@ impl RuntimeV3Port {
             &payload,
         ))
         .map_err(|error| wire::port_error("rest_action_request_invalid", error.to_string(), false))?;
+        let payload_digest = wire::canonical_action_digest(action.action_id(), &payload)
+            .map_err(|error| wire::port_error("dispatch_intent_failed", error, false))?;
         let (_, value) = self
             .call_expert_tool(
                 REST_ACTION_TOOL,
@@ -32,6 +34,7 @@ impl RuntimeV3Port {
         let result = RuntimeV4ExpertRestActionResult::from_value(value).map_err(|error| {
             wire::port_error("rest_action_dispatch_invalid", error.to_string(), false)
         })?;
+        let response = result.as_value().clone();
         let selector_context = self.rest_selector_value.clone();
         let receipt = self
             .rest_result_receipt(
@@ -42,6 +45,13 @@ impl RuntimeV3Port {
                 selector_context.as_ref(),
             )
             .map_err(|error| wire::port_error("rest_action_receipt_invalid", error, false))?;
+        self.record_durable_receipt(
+            &identity.operation_id,
+            &payload_digest,
+            &receipt,
+            &response,
+        )
+        .map_err(|error| wire::port_error("dispatch_durability_failed", error, false))?;
         super::recording::receipt(&receipt, identity.generation, &self.telemetry);
         Ok(receipt)
     }
@@ -52,6 +62,9 @@ impl RuntimeV3Port {
             .get(operation_id)
             .cloned()
             .ok_or_else(|| String::from("REST action is not in the operation ledger"))?;
+        // The legacy MCP recovery path must rehydrate the caller's bounded identity exactly;
+        // the UUIDv4 requirement is enforced at production action creation and by the historical
+        // recovery sideband, not by compatibility callers using the ordinary recover tool.
         let identity = ActionIdentity::new(
             operation_id.to_owned(),
             record.state_id.clone(),
@@ -78,13 +91,32 @@ impl RuntimeV3Port {
         )?;
         let result = RuntimeV4ExpertRestActionResult::from_value(value)
             .map_err(|error| format!("REST action reconcile response is invalid: {error}"))?;
-        self.rest_result_receipt(
+        if matches!(
+            result.status(),
+            RuntimeV4ExpertRestActionStatus::Settled
+                | RuntimeV4ExpertRestActionStatus::Rejected
+                | RuntimeV4ExpertRestActionStatus::Cancelled
+        ) && let Some(durable) = &self.durable
+        {
+            durable.clear_resume_boundary()?;
+        }
+        let response = result.as_value().clone();
+        let receipt = self.rest_result_receipt(
             result,
             &request,
             &identity,
             &record.action,
             record.rest_selector.as_ref(),
-        )
+        )?;
+        let payload_digest = self
+            .durable
+            .as_ref()
+            .map_or_else(
+                || Ok(String::new()),
+                |durable| durable.operation_payload_digest(operation_id),
+            )?;
+        self.record_reconciled_durable_receipt(operation_id, &payload_digest, &receipt, &response)?;
+        Ok(receipt)
     }
 
     fn rest_result_receipt(
@@ -139,7 +171,7 @@ impl RuntimeV3Port {
                 )?;
                 self.apply_active_rest_selector(&mut composed)?;
             }
-            self.install_composed(&composed);
+            self.install_composed(&composed)?;
             Some(composed.observation)
         } else {
             None

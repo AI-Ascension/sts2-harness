@@ -4,6 +4,7 @@ use rusqlite::{OptionalExtension, params};
 
 use super::schema;
 use super::store_core::{ExecutionStore, append_event, ensure_current_lineage};
+use super::store_operation_queries::{operation_select, read_operation, valid_transition};
 use super::types::{OperationIntent, OperationState, StoredOperation, valid_reference};
 
 const MAX_OPERATIONS: i64 = 4_096;
@@ -21,9 +22,7 @@ impl ExecutionStore {
         let tx = schema::transaction(&mut self.connection)?;
         let existing = tx
             .query_row(
-                "SELECT operation_id, run_id, episode_id, attempt_id, trajectory_id, state_id,
-                 generation, action_id, payload_digest, input_digest, state, result_ref, result_digest
-                 FROM operations WHERE operation_id = ?1",
+                &operation_select("WHERE operation_id = ?1"),
                 [intent.operation_id.as_str()],
                 read_operation,
             )
@@ -47,9 +46,11 @@ impl ExecutionStore {
         }
         tx.execute(
             "INSERT INTO operations(operation_id, run_id, episode_id, attempt_id, trajectory_id,
-             state_id, generation, action_id, payload_digest, input_digest, state,
-             result_ref, result_digest, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, NULL, ?12, ?12)",
+             state_id, generation, action_id, action_kind, action_payload, payload_digest,
+             input_digest, catalog_digest, catalog_raw, original_context, state, result_ref, result_digest,
+             created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
+                     ?16, NULL, NULL, ?17, ?17)",
             params![
                 intent.operation_id,
                 intent.lineage.run_id,
@@ -60,8 +61,13 @@ impl ExecutionStore {
                 i64::try_from(intent.generation)
                     .map_err(|_| { super::types::ExecutionStoreError::InvalidOperation })?,
                 intent.action_id,
+                intent.action_kind,
+                intent.action_payload,
                 intent.payload_digest,
                 intent.input_digest,
+                intent.catalog_digest,
+                intent.catalog_raw,
+                intent.original_context,
                 OperationState::IntentRecorded.as_str(),
                 now
             ],
@@ -161,9 +167,7 @@ impl ExecutionStore {
         self.ensure_open()?;
         self.connection
             .query_row(
-                "SELECT operation_id, run_id, episode_id, attempt_id, trajectory_id, state_id,
-                 generation, action_id, payload_digest, input_digest, state, result_ref, result_digest
-                 FROM operations WHERE operation_id = ?1",
+                &operation_select("WHERE operation_id = ?1"),
                 [operation_id],
                 read_operation,
             )
@@ -180,13 +184,11 @@ impl ExecutionStore {
         self.ensure_open()?;
         let mut statement = self
             .connection
-            .prepare(
-                "SELECT operation_id, run_id, episode_id, attempt_id, trajectory_id, state_id,
-                 generation, action_id, payload_digest, input_digest, state, result_ref, result_digest
-                 FROM operations WHERE episode_id = ?1 AND state IN
+            .prepare(&operation_select(
+                "WHERE episode_id = ?1 AND state IN
                  ('intent_recorded', 'may_have_been_dispatched', 'accepted', 'unknown')
                  ORDER BY created_at, operation_id",
-            )
+            ))
             .map_err(schema::map_sqlite)?;
         let rows = statement
             .query_map([episode_id], read_operation)
@@ -211,10 +213,7 @@ impl ExecutionStore {
         let tx = schema::transaction(&mut self.connection)?;
         let current = tx
             .query_row(
-                "SELECT operation_id, run_id, episode_id, attempt_id, trajectory_id, state_id,
-                 generation,
-                 action_id, payload_digest, input_digest, state, result_ref, result_digest
-                 FROM operations WHERE operation_id = ?1",
+                &operation_select("WHERE operation_id = ?1"),
                 [operation_id],
                 read_operation,
             )
@@ -269,78 +268,4 @@ impl ExecutionStore {
         tx.commit().map_err(schema::map_sqlite)?;
         self.operation(operation_id)
     }
-}
-
-fn read_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredOperation> {
-    let lineage = super::types::ExecutionLineage::new(
-        row.get::<_, String>(1)?,
-        row.get::<_, String>(2)?,
-        row.get::<_, String>(3)?,
-        row.get::<_, String>(4)?,
-    )
-    .map_err(|_| rusqlite::Error::InvalidQuery)?;
-    let generation = row.get::<_, i64>(6)?;
-    let generation = u64::try_from(generation).map_err(|_| rusqlite::Error::InvalidQuery)?;
-    let intent = OperationIntent::new(
-        lineage,
-        row.get::<_, String>(0)?,
-        row.get::<_, String>(5)?,
-        generation,
-        row.get::<_, String>(7)?,
-        row.get::<_, String>(8)?,
-        row.get::<_, String>(9)?,
-    )
-    .map_err(|_| rusqlite::Error::InvalidQuery)?;
-    let state = OperationState::from_str(&row.get::<_, String>(10)?)
-        .ok_or(rusqlite::Error::InvalidQuery)?;
-    let result_ref = row.get::<_, Option<String>>(11)?;
-    let result_digest = row.get::<_, Option<String>>(12)?;
-    if result_ref.is_some() != result_digest.is_some()
-        || result_ref
-            .as_deref()
-            .is_some_and(|value| !valid_reference(value))
-        || result_digest
-            .as_deref()
-            .is_some_and(|value| !valid_reference(value))
-        || state == OperationState::Reconciled && (result_ref.is_none() || result_digest.is_none())
-    {
-        return Err(rusqlite::Error::InvalidQuery);
-    }
-    Ok(StoredOperation {
-        intent,
-        state,
-        result_ref,
-        result_digest,
-    })
-}
-
-fn valid_transition(current: OperationState, next: OperationState) -> bool {
-    matches!(
-        (current, next),
-        (
-            OperationState::IntentRecorded,
-            OperationState::MayHaveBeenDispatched
-        ) | (
-            OperationState::MayHaveBeenDispatched,
-            OperationState::Accepted
-        ) | (
-            OperationState::MayHaveBeenDispatched,
-            OperationState::Settled
-        ) | (
-            OperationState::MayHaveBeenDispatched,
-            OperationState::Rejected
-        ) | (
-            OperationState::MayHaveBeenDispatched,
-            OperationState::Unknown
-        ) | (OperationState::Accepted, OperationState::Settled)
-            | (OperationState::Accepted, OperationState::Rejected)
-            | (OperationState::Accepted, OperationState::Unknown)
-            | (OperationState::Unknown, OperationState::Reconciled)
-            | (OperationState::Accepted, OperationState::Reconciled)
-            | (
-                OperationState::MayHaveBeenDispatched,
-                OperationState::Reconciled
-            )
-            | (OperationState::IntentRecorded, OperationState::Reconciled)
-    )
 }

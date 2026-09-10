@@ -48,7 +48,7 @@ impl ExecutionStore {
                 && pending_decisions.is_empty()
                 && self.pending_provider_reservations(episode_id)?.is_empty() =>
             {
-                Ok(checkpoint)
+                Ok(checkpoint.map(|checkpoint| *checkpoint))
             }
             ResumeState::Ready { .. } => Err(super::types::ExecutionStoreError::Conflict),
             ResumeState::New => Err(super::types::ExecutionStoreError::Missing),
@@ -220,7 +220,7 @@ impl ExecutionStore {
         let pending_operations = self.pending_operations(episode_id)?;
         let pending_decisions = self.pending_decisions(episode_id)?;
         Ok(ResumeState::Ready {
-            checkpoint: episode.last_checkpoint,
+            checkpoint: episode.last_checkpoint.map(Box::new),
             pending_operations,
             pending_decisions,
         })
@@ -231,14 +231,13 @@ impl ExecutionStore {
         episode_id: &str,
     ) -> Result<Vec<StoredDecision>, super::types::ExecutionStoreError> {
         self.ensure_open()?;
+        let query = super::store_provider::decision_query(
+            "WHERE episode_id = ?1 AND state IN ('pending', 'unknown')
+             ORDER BY created_at, execution_id",
+        );
         let mut statement = self
             .connection
-            .prepare(
-                "SELECT execution_id, run_id, episode_id, attempt_id, trajectory_id,
-                 input_fingerprint, model_revision, config_digest, state, result_ref,
-                 result_digest, provider_reservation_id FROM decisions WHERE episode_id = ?1
-                 AND state IN ('pending', 'unknown') ORDER BY created_at, execution_id",
-            )
+            .prepare(&query)
             .map_err(schema::map_sqlite)?;
         let rows = statement
             .query_map([episode_id], super::store_provider::read_decision)

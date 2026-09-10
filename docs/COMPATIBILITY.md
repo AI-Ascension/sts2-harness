@@ -1,5 +1,21 @@
 # Compatibility Policy and Matrix
 
+## Historical recovery consumer candidate
+
+The additive `watchdog-recovery-v1` consumer accepts the schema-permitted standard/URL-safe
+base64 alphabets, with or without complete padding, while rejecting invalid tail bits, malformed
+padding, whitespace and oversized input. Canonical RCJ-1 bytes, frozen Runtime-v3 schema identity
+and the retained payload digest still have to match exactly. No frozen artifact bytes change.
+
+Reconcile responses may retain `SETTLED` or `REJECTED`, or record `RECONCILED`; the operation,
+original context, result, ticket and witness must agree before closing durable uncertainty.
+`NOT_FOUND` and unresolved states do not prove non-execution. See
+[ADR 0011](decisions/0011-historical-recovery-evidence.md).
+Runtime-v3 schema migration 6 now persists the canonical per-operation original allocation context
+before dispatch, while the fresh allocation supplies only the current fence for a recovery lookup.
+Legacy operation rows without that field remain explicitly non-recoverable; synthetic cross-boot
+consumer tests still do not establish a live gateway/host reboot result.
+
 With `STS2_LIVE_EPISODE=true`, idle observation failures now log the harness-owned error code,
 and MCP RPC failures log only the numeric RPC code. Remote error messages and data remain
 suppressed. These diagnostics do not retry actions or change failure and cleanup behavior.

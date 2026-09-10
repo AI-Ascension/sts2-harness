@@ -6,7 +6,7 @@ use super::schema;
 use super::store_core::{
     ExecutionStore, append_event, attempt_fingerprint, ensure_current_lineage,
 };
-use super::types::{Checkpoint, ExecutionLineage};
+use super::types::{CatalogEvidence, Checkpoint, ExecutionLineage, MAX_CATALOG_BYTES};
 
 impl ExecutionStore {
     /// Stores a verified public boundary. A sequence can be retried only with byte-identical
@@ -46,9 +46,20 @@ impl ExecutionStore {
         }
         let existing = tx
             .query_row(
-                "SELECT state_id, generation, seed, build_digest, state_digest,
-                 config_digest, provider_digest, observation, legal_actions_digest
-                 FROM checkpoints WHERE episode_id = ?1 AND attempt_id = ?2 AND sequence = ?3",
+                &format!(
+                    "SELECT state_id, generation, seed, build_digest, state_digest,
+                     config_digest, provider_digest, observation, legal_actions_digest,
+                     CASE WHEN legal_actions_raw IS NULL THEN NULL
+                          WHEN typeof(legal_actions_raw) = 'blob'
+                          THEN substr(legal_actions_raw, 1, {}) ELSE NULL END,
+                     CASE WHEN legal_actions_raw IS NULL THEN 0
+                          WHEN typeof(legal_actions_raw) <> 'blob' THEN 1
+                          WHEN length(legal_actions_raw) > {} THEN 2
+                          ELSE 0 END
+                     FROM checkpoints WHERE episode_id = ?1 AND attempt_id = ?2 AND sequence = ?3",
+                    MAX_CATALOG_BYTES + 1,
+                    MAX_CATALOG_BYTES
+                ),
                 params![
                     checkpoint.lineage.episode_id,
                     checkpoint.lineage.attempt_id,
@@ -65,12 +76,17 @@ impl ExecutionStore {
                         row.get::<_, String>(6)?,
                         row.get::<_, Vec<u8>>(7)?,
                         row.get::<_, String>(8)?,
+                        row.get::<_, Option<Vec<u8>>>(9)?,
+                        row.get::<_, i64>(10)?,
                     ))
                 },
             )
             .optional()
             .map_err(schema::map_sqlite)?;
         if let Some(existing) = existing {
+            if existing.10 != 0 {
+                return Err(super::types::ExecutionStoreError::Corrupt);
+            }
             let same = existing.0 == checkpoint.state_id
                 && existing.1 == generation
                 && existing.2 == checkpoint.fingerprint.seed
@@ -79,7 +95,8 @@ impl ExecutionStore {
                 && existing.5 == checkpoint.fingerprint.config_digest
                 && existing.6 == checkpoint.fingerprint.provider_digest
                 && existing.7 == checkpoint.observation
-                && existing.8 == checkpoint.legal_actions_digest;
+                && existing.8 == checkpoint.legal_actions_digest
+                && existing.9 == checkpoint.catalog_raw;
             if !same {
                 return Err(super::types::ExecutionStoreError::Conflict);
             }
@@ -89,7 +106,8 @@ impl ExecutionStore {
         tx.execute(
             "INSERT INTO checkpoints(episode_id, attempt_id, sequence, state_id, generation,
              seed, build_digest, state_digest, config_digest, provider_digest, observation,
-             legal_actions_digest, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+             legal_actions_digest, legal_actions_raw, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 checkpoint.lineage.episode_id,
                 checkpoint.lineage.attempt_id,
@@ -103,6 +121,7 @@ impl ExecutionStore {
                 checkpoint.fingerprint.provider_digest,
                 checkpoint.observation,
                 checkpoint.legal_actions_digest,
+                checkpoint.catalog_raw,
                 now
             ],
         )
@@ -154,12 +173,21 @@ impl ExecutionStore {
         };
         let mut statement = self
             .connection
-            .prepare(
+            .prepare(&format!(
                 "SELECT sequence, state_id, generation, seed, build_digest, state_digest,
-                 config_digest, provider_digest, observation, legal_actions_digest
+                 config_digest, provider_digest, observation, legal_actions_digest,
+                 CASE WHEN legal_actions_raw IS NULL THEN NULL
+                      WHEN typeof(legal_actions_raw) = 'blob'
+                      THEN substr(legal_actions_raw, 1, {}) ELSE NULL END,
+                 CASE WHEN legal_actions_raw IS NULL THEN 0
+                      WHEN typeof(legal_actions_raw) <> 'blob' THEN 1
+                      WHEN length(legal_actions_raw) > {} THEN 2
+                      ELSE 0 END
                  FROM checkpoints WHERE episode_id = ?1 AND attempt_id = ?2
                  ORDER BY sequence DESC LIMIT 1",
-            )
+                MAX_CATALOG_BYTES + 1,
+                MAX_CATALOG_BYTES
+            ))
             .map_err(schema::map_sqlite)?;
         statement
             .query_row(params![episode_id, attempt_id], |row| {
@@ -178,7 +206,10 @@ impl ExecutionStore {
                     row.get::<_, String>(7)?,
                 )
                 .map_err(|_| rusqlite::Error::InvalidQuery)?;
-                Checkpoint::new(
+                if row.get::<_, i64>(11)? != 0 {
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+                Checkpoint::new_with_optional_catalog(
                     lineage,
                     u64::try_from(row.get::<_, i64>(0)?)
                         .map_err(|_| rusqlite::Error::InvalidQuery)?,
@@ -187,7 +218,10 @@ impl ExecutionStore {
                         .map_err(|_| rusqlite::Error::InvalidQuery)?,
                     fingerprint,
                     row.get::<_, Vec<u8>>(8)?,
-                    row.get::<_, String>(9)?,
+                    CatalogEvidence::new(
+                        row.get::<_, String>(9)?,
+                        row.get::<_, Option<Vec<u8>>>(10)?,
+                    ),
                 )
                 .map_err(|_| rusqlite::Error::InvalidQuery)
             })

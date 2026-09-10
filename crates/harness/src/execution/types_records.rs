@@ -1,56 +1,16 @@
 // SPDX-License-Identifier: MIT
 
-use std::fmt;
-
-use super::core::{Checkpoint, ExecutionFingerprint, ExecutionLineage, valid_id, valid_reference};
+use super::checkpoint::Checkpoint;
+use super::core::{ExecutionFingerprint, ExecutionLineage, valid_id, valid_reference};
 use super::enums::{
     AttemptKind, AttemptState, CompletionStatus, JobState, OperationState, ProviderFailureClass,
     ProviderReservationState,
 };
+use super::error::ExecutionStoreError;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OperationIntent {
-    pub lineage: ExecutionLineage,
-    pub operation_id: String,
-    pub state_id: String,
-    pub generation: u64,
-    pub action_id: String,
-    pub payload_digest: String,
-    pub input_digest: String,
-}
-
-impl OperationIntent {
-    pub fn new(
-        lineage: ExecutionLineage,
-        operation_id: impl Into<String>,
-        state_id: impl Into<String>,
-        generation: u64,
-        action_id: impl Into<String>,
-        payload_digest: impl Into<String>,
-        input_digest: impl Into<String>,
-    ) -> Result<Self, ExecutionStoreError> {
-        let intent = Self {
-            lineage,
-            operation_id: operation_id.into(),
-            state_id: state_id.into(),
-            generation,
-            action_id: action_id.into(),
-            payload_digest: payload_digest.into(),
-            input_digest: input_digest.into(),
-        };
-        if intent.lineage.validate().is_err()
-            || !valid_id(&intent.operation_id)
-            || !valid_id(&intent.state_id)
-            || !valid_id(&intent.action_id)
-            || intent.generation > 9_007_199_254_740_991
-            || !valid_reference(&intent.payload_digest)
-            || !valid_reference(&intent.input_digest)
-        {
-            return Err(ExecutionStoreError::InvalidOperation);
-        }
-        Ok(intent)
-    }
-}
+#[path = "types_operation.rs"]
+mod operation;
+pub use operation::{MAX_OPERATION_ACTION_BYTES, MAX_ORIGINAL_CONTEXT_BYTES, OperationIntent};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DecisionReference {
@@ -240,7 +200,7 @@ pub enum JobClaimOutcome {
 pub enum ResumeState {
     New,
     Ready {
-        checkpoint: Option<Checkpoint>,
+        checkpoint: Option<Box<Checkpoint>>,
         pending_operations: Vec<StoredOperation>,
         pending_decisions: Vec<StoredDecision>,
     },
@@ -284,6 +244,10 @@ pub struct StoredDecision {
     pub completed: bool,
     pub unknown: bool,
     pub provider_reservation_id: Option<String>,
+    /// Exact validated provider result bytes, when this completion was recorded by a
+    /// result-aware writer. Historical metadata-only completions remain `None` and are not
+    /// eligible for replay.
+    pub result_payload: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -295,61 +259,3 @@ pub struct StoredJob {
     pub claim: Option<JobClaim>,
     pub result_ref: Option<String>,
 }
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ExecutionStoreError {
-    InvalidConfiguration,
-    InvalidIdentity,
-    InvalidFingerprint,
-    InvalidCheckpoint,
-    InvalidOperation,
-    InvalidDecision,
-    InvalidProviderReservation,
-    InvalidCompletion,
-    InvalidJob,
-    InvalidWorkflowIdentity,
-    InvalidWorkflowRecord,
-    InvalidWorkflowEvent,
-    InvalidWorkflowProjection,
-    Conflict,
-    RevisionConflict,
-    Missing,
-    Busy,
-    Corrupt,
-    Incompatible,
-    Capacity,
-    StorageFull,
-    Persistence(String),
-}
-
-impl fmt::Display for ExecutionStoreError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let message = match self {
-            Self::InvalidConfiguration => "execution store configuration is invalid",
-            Self::InvalidIdentity => "execution identity is invalid",
-            Self::InvalidFingerprint => "execution fingerprint is invalid",
-            Self::InvalidCheckpoint => "checkpoint is invalid",
-            Self::InvalidOperation => "operation intent is invalid",
-            Self::InvalidDecision => "decision reference is invalid",
-            Self::InvalidProviderReservation => "provider reservation is invalid",
-            Self::InvalidCompletion => "completion record is invalid",
-            Self::InvalidJob => "job identity or digest is invalid",
-            Self::InvalidWorkflowIdentity => "workflow identity is invalid",
-            Self::InvalidWorkflowRecord => "workflow record is invalid",
-            Self::InvalidWorkflowEvent => "workflow event is invalid",
-            Self::InvalidWorkflowProjection => "workflow projection is invalid",
-            Self::Conflict => "durable execution record conflicts with an existing record",
-            Self::RevisionConflict => "workflow run revision does not match the expected revision",
-            Self::Missing => "durable execution record is missing",
-            Self::Busy => "execution store is busy",
-            Self::Corrupt => "execution store integrity check failed",
-            Self::Incompatible => "execution store or release is incompatible",
-            Self::Capacity => "execution store capacity is exhausted",
-            Self::StorageFull => "execution store reported a full filesystem or database",
-            Self::Persistence(message) => message,
-        };
-        formatter.write_str(message)
-    }
-}
-
-impl std::error::Error for ExecutionStoreError {}

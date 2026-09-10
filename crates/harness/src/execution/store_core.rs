@@ -9,7 +9,7 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 use super::schema;
 pub(crate) use super::store_core_helpers::{
     append_event, attempt_fingerprint, configure, create_parent, ensure_current_lineage,
-    has_store_schema, insert_attempt, verify_contract, verify_durable_pragmas,
+    has_store_schema, insert_attempt, verify_contract,
 };
 use super::types::{
     AttemptKind, ExecutionFingerprint, ExecutionLineage, ExecutionStoreConfig, ExecutionStoreError,
@@ -37,7 +37,6 @@ impl ExecutionStore {
             return Err(ExecutionStoreError::Corrupt);
         }
         configure(&mut connection, &config)?;
-        verify_durable_pragmas(&connection, &config.path)?;
         schema::migrate(&mut connection)?;
         verify_contract(&connection, &config, false)?;
         let store = Self {

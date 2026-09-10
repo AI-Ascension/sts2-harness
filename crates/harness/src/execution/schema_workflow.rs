@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 pub(super) const MIGRATION_2: &str = r#"
+CREATE TABLE IF NOT EXISTS store_metadata (
+    key TEXT PRIMARY KEY NOT NULL,
+    value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS workflow_definitions (
     workflow_id TEXT PRIMARY KEY NOT NULL,
     definition_digest TEXT NOT NULL UNIQUE,

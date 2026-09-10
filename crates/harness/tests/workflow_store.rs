@@ -254,7 +254,7 @@ fn version_one_database_migrates_to_the_workflow_schema() {
             |row| row.get(0),
         )
         .expect("workflow table reads");
-    assert_eq!(version, 2);
+    assert_eq!(version, 7);
     assert_eq!(workflow_events, 1);
     drop(raw);
     remove_database(&path);
