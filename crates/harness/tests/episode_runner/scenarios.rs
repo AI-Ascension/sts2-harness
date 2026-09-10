@@ -2,6 +2,99 @@
 
 use super::*;
 
+struct FailureRuntime {
+    inner: FakeRuntime,
+    dispatch_error: Option<PortError>,
+    reconcile_errors: Vec<RecoveryError>,
+    cleanup_errors: [Option<ShutdownError>; 3],
+}
+
+impl FailureRuntime {
+    fn new(states: Vec<State>) -> Self {
+        Self {
+            inner: FakeRuntime::new(states),
+            dispatch_error: None,
+            reconcile_errors: Vec::new(),
+            cleanup_errors: [None, None, None],
+        }
+    }
+}
+
+impl EpisodeRuntimePort for FailureRuntime {
+    fn launch(&mut self) -> Result<(), PortError> {
+        self.inner.launch()
+    }
+
+    fn observe(&mut self) -> Result<EpisodeObservation, PortError> {
+        self.inner.observe()
+    }
+
+    fn legal_actions(
+        &mut self,
+        state_id: &str,
+        generation: u64,
+    ) -> Result<EpisodeLegalActionSet, PortError> {
+        self.inner.legal_actions(state_id, generation)
+    }
+
+    fn dispatch_action(
+        &mut self,
+        identity: &ActionIdentity,
+        action: &EpisodeLegalAction,
+    ) -> Result<TransitionReceipt, PortError> {
+        let receipt = self.inner.dispatch_action(identity, action)?;
+        self.dispatch_error.take().map_or(Ok(receipt), Err)
+    }
+}
+
+impl BarrierPort for FailureRuntime {
+    fn wait_for_transition(
+        &mut self,
+        operation_id: &str,
+        wait_for_millis: u32,
+    ) -> Result<WaitSample, BarrierError> {
+        self.inner
+            .wait_for_transition(operation_id, wait_for_millis)
+    }
+}
+
+impl RecoveryPort for FailureRuntime {
+    fn reobserve(&mut self) -> Result<EpisodeObservation, RecoveryError> {
+        self.inner.reobserve()
+    }
+
+    fn reconcile(&mut self, operation_id: &str) -> Result<TransitionReceipt, RecoveryError> {
+        self.reconcile_errors
+            .pop()
+            .map_or_else(|| self.inner.reconcile(operation_id), Err)
+    }
+
+    fn release_lease(&mut self) -> Result<(), RecoveryError> {
+        RecoveryPort::release_lease(&mut self.inner)
+    }
+
+    fn stop_episode(&mut self) -> Result<(), RecoveryError> {
+        self.inner.stop_episode()
+    }
+}
+
+impl ShutdownPort for FailureRuntime {
+    fn release_lease(&mut self) -> Result<(), ShutdownError> {
+        let result = ShutdownPort::release_lease(&mut self.inner);
+        self.cleanup_errors[0].take().map_or(result, Err)
+    }
+
+    fn close_mcp(&mut self) -> Result<(), ShutdownError> {
+        let result = self.inner.close_mcp();
+        self.cleanup_errors[1].take().map_or(result, Err)
+    }
+
+    fn close_gateway(&mut self) -> Result<(), ShutdownError> {
+        let result = self.inner.close_gateway();
+        self.cleanup_errors[2].take().map_or(result, Err)
+    }
+}
+
 #[test]
 fn extended_campaign_budget_remains_bounded_and_cleans_up_after_long_episode() {
     let config = |steps| {
@@ -233,4 +326,104 @@ fn unresolved_operation_timeout_never_calls_policy_again() {
     assert!(runtime.pending.is_some());
     assert_eq!(model.completions, vec![false]);
     assert!(runtime.released && runtime.mcp_closed && runtime.gateway_closed);
+}
+
+#[test]
+fn legacy_runtime_is_reusable_through_focused_protected_ports() {
+    fn assert_protected<P: sts2_harness::ProtectedEpisodePort>() {}
+    fn assert_action<P: sts2_harness::EpisodeActionPort>() {}
+
+    assert_protected::<FakeRuntime>();
+    assert_action::<FakeRuntime>();
+    let mut runtime = FakeRuntime::new(vec![
+        state(EpisodeStage::Combat, 0),
+        state(EpisodeStage::Victory, 1),
+    ]);
+    let observation =
+        sts2_harness::EpisodeObservationPort::observe(&mut runtime).expect("observation port");
+    let actions = sts2_harness::EpisodeObservationPort::legal_actions(
+        &mut runtime,
+        observation.state_id(),
+        observation.generation(),
+    )
+    .expect("catalog port");
+    sts2_harness::EpisodeLifecyclePort::launch(&mut runtime).expect("lifecycle port");
+    let action = actions.actions().first().expect("catalog action");
+    let identity = ActionIdentity::new(
+        "focused-operation",
+        observation.state_id(),
+        observation.generation(),
+        action.action_id(),
+    )
+    .expect("operation identity");
+    sts2_harness::EpisodeActionPort::dispatch_action(&mut runtime, &identity, action)
+        .expect("action port");
+    assert_eq!(actions.state_id(), observation.state_id());
+}
+
+#[test]
+fn successful_run_keeps_the_historical_first_cleanup_error() {
+    let mut runtime = FailureRuntime::new(complete_states());
+    runtime.cleanup_errors = [
+        Some(ShutdownError::ReleaseFailed),
+        Some(ShutdownError::McpCloseFailed),
+        None,
+    ];
+    let mut model = FakeModel::default();
+
+    let error = runner()
+        .run(&mut runtime, &mut model)
+        .expect_err("cleanup failure must be reported");
+    assert!(matches!(
+        error,
+        EpisodeRunnerError::Shutdown(ShutdownError::ReleaseFailed)
+    ));
+    assert!(runtime.inner.released && runtime.inner.mcp_closed && runtime.inner.gateway_closed);
+}
+
+#[test]
+fn dispatch_and_cleanup_failures_preserve_both_causes_and_operation_identity() {
+    let mut runtime = FailureRuntime::new(complete_states());
+    runtime.dispatch_error = Some(PortError::new(
+        "dispatch_failed",
+        "synthetic dispatch",
+        false,
+    ));
+    runtime.reconcile_errors = vec![RecoveryError::PortFailure];
+    runtime.cleanup_errors = [
+        Some(ShutdownError::ReleaseFailed),
+        Some(ShutdownError::McpCloseFailed),
+        None,
+    ];
+    let mut model = FakeModel::default();
+
+    let error = runner()
+        .run(&mut runtime, &mut model)
+        .expect_err("dispatch and cleanup failures must be reported");
+    match error {
+        EpisodeRunnerError::Cleanup(failure) => {
+            assert_eq!(failure.pending_operation_id(), Some("episode-action-0-1"));
+            assert_eq!(
+                failure.cleanup().failures(),
+                &[ShutdownError::ReleaseFailed, ShutdownError::McpCloseFailed]
+            );
+            match failure.primary() {
+                EpisodeRunnerError::DispatchRecovery {
+                    operation_id,
+                    dispatch,
+                    recovery,
+                } => {
+                    assert_eq!(operation_id, "episode-action-0-1");
+                    assert_eq!(dispatch.code(), "dispatch_failed");
+                    assert!(matches!(
+                        recovery.as_ref(),
+                        EpisodeRunnerError::Recovery(RecoveryError::Exhausted)
+                    ));
+                }
+                other => assert!(matches!(other, EpisodeRunnerError::Dispatch(_))),
+            }
+        }
+        other => assert!(matches!(other, EpisodeRunnerError::Cleanup(_))),
+    }
+    assert!(runtime.inner.released && runtime.inner.mcp_closed && runtime.inner.gateway_closed);
 }
