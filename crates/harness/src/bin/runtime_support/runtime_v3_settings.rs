@@ -7,6 +7,9 @@ use sts2_harness::{
 
 use super::config::RuntimeConfig;
 
+#[path = "../support/ollama_options.rs"]
+mod ollama_options;
+
 const REVIEWED_EXO_REVISION: &str = "7801005e6a1ab77008a05dbba80e0a2a7a56e35d";
 const DEFAULT_MAX_REQUEST_BYTES: usize = EXO_MAX_STANDARD_REQUEST_BYTES;
 const DEFAULT_MAP_MAX_REQUEST_BYTES: usize = EXO_MAX_MAP_REQUEST_BYTES;
@@ -65,7 +68,10 @@ fn verify_revision(revision: &str) -> Result<(), String> {
             .map_err(|_| String::from("cannot hash provider bridge"))?;
         if bytes.len() > 128 * 1024 * 1024
             || sts2_harness::sha256_hex(&bytes) != revision
-            || !string_list("STS2_EXO_BRIDGE_ARGS_JSON")?.is_empty()
+            || !local_bridge_arguments_allowed(
+                provider.as_deref(),
+                &string_list("STS2_EXO_BRIDGE_ARGS_JSON")?,
+            )
         {
             return Err(String::from(
                 "Provider bridge digest or arguments do not match",
@@ -78,6 +84,17 @@ fn verify_revision(revision: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn local_bridge_arguments_allowed(provider: Option<&str>, arguments: &[String]) -> bool {
+    if arguments.is_empty() {
+        return true;
+    }
+    if provider != Some("ollama") || arguments.len() != 2 || arguments[0] != "--model" {
+        return false;
+    }
+    ollama_options::Options::parse(arguments.iter().cloned())
+        .is_ok_and(|options| !options.describe && options.model == arguments[1])
 }
 
 fn exo_from_environment(map_context_enabled: bool) -> Result<ExoConfig, String> {
@@ -229,6 +246,30 @@ mod tests {
         EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES, parse_flag,
         validate_request_bound,
     };
+
+    #[test]
+    fn local_bridge_admission_allows_only_explicit_ollama_model_selection() {
+        use super::local_bridge_arguments_allowed;
+        let selected = vec!["--model".to_owned(), "team/custom:7b".to_owned()];
+        assert!(local_bridge_arguments_allowed(Some("ollama"), &selected));
+        assert!(!local_bridge_arguments_allowed(
+            Some("openai-astra"),
+            &selected
+        ));
+        assert!(!local_bridge_arguments_allowed(None, &selected));
+        assert!(local_bridge_arguments_allowed(Some("ollama"), &[]));
+        assert!(local_bridge_arguments_allowed(Some("openai-astra"), &[]));
+        for args in [
+            vec!["--describe"],
+            vec!["--model", ""],
+            vec!["--model", "--describe"],
+            vec!["--model", "x", "--describe"],
+            vec!["--endpoint", "example.invalid"],
+        ] {
+            let args = args.into_iter().map(str::to_owned).collect::<Vec<_>>();
+            assert!(!local_bridge_arguments_allowed(Some("ollama"), &args));
+        }
+    }
 
     #[test]
     fn seed_forwarding_flag_accepts_only_exact_booleans() {
