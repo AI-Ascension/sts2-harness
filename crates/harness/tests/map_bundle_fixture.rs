@@ -25,7 +25,7 @@ fn finalized_protocol_fixture_loads_from_feed_and_replays_without_dispatch() {
     assert_eq!(bundle.manifest.renderer_version, "unrendered");
     assert_eq!(bundle.viewer.as_deref(), Some(b"{}".as_slice()));
     assert_eq!(store.list().expect("feed list"), vec![digest.to_owned()]);
-    let graph_digest = format!("{:x}", Sha256::digest(&bundle.snapshot_bytes));
+    let graph_digest = sts2_harness::hex_bytes(Sha256::digest(&bundle.snapshot_bytes));
     let graph = ValidatedMapGraph::from_visible_map_json(graph_digest, &bundle.snapshot_bytes)
         .expect("finalized visible-map adapter");
     assert_eq!(graph.map_instance(), "map-instance-1");
@@ -85,7 +85,7 @@ fn finalized_protocol_fixture_loads_from_feed_and_replays_without_dispatch() {
     let invalid_decision = br#""not-an-object""#.to_vec();
     let mut invalid_decision_manifest = bundle.manifest.clone();
     invalid_decision_manifest.contents.decision_digest =
-        Some(format!("{:x}", Sha256::digest(&invalid_decision)));
+        Some(sts2_harness::hex_bytes(Sha256::digest(&invalid_decision)));
     assert!(matches!(
         MapViewBundle::from_manifest_and_files(
             invalid_decision_manifest,
@@ -108,7 +108,7 @@ fn finalized_protocol_fixture_loads_from_feed_and_replays_without_dispatch() {
         layout_version: "ascension-map-logical-v1".to_owned(),
     });
     duplicate_viewer_manifest.contents.viewer_digest =
-        Some(format!("{:x}", Sha256::digest(&duplicate_viewer)));
+        Some(sts2_harness::hex_bytes(Sha256::digest(&duplicate_viewer)));
     assert!(matches!(
         MapViewBundle::from_manifest_and_files(
             duplicate_viewer_manifest,

@@ -41,7 +41,7 @@ pub fn canonical_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, CanonicalErro
 }
 
 pub fn canonical_digest<T: Serialize>(value: &T) -> Result<String, CanonicalError> {
-    Ok(format!("{:x}", Sha256::digest(canonical_bytes(value)?)))
+    Ok(crate::hex_bytes(Sha256::digest(canonical_bytes(value)?)))
 }
 
 pub fn reject_duplicate_keys(bytes: &[u8]) -> Result<(), CanonicalError> {

@@ -122,7 +122,7 @@ impl MapViewBundle {
         if snapshot_bytes.len() > MAP_MAX_SNAPSHOT_BYTES {
             return Err(MapBundleError::TooLarge("snapshot"));
         }
-        let snapshot_digest = format!("{:x}", Sha256::digest(&snapshot_bytes));
+        let snapshot_digest = crate::hex_bytes(Sha256::digest(&snapshot_bytes));
         let graph = ValidatedMapGraph::from_visible_map_json(snapshot_digest, &snapshot_bytes)
             .map_err(MapBundleError::Graph)?;
         let analysis = MapAnalysis::analyze(&graph, AnalysisConfig::default())
@@ -160,8 +160,8 @@ impl MapViewBundle {
                 png_ref: None,
                 svg_digest: None,
                 png_digest: None,
-                decision_digest: Some(format!("{:x}", Sha256::digest(&decision))),
-                viewer_digest: Some(format!("{:x}", Sha256::digest(&viewer))),
+                decision_digest: Some(crate::hex_bytes(Sha256::digest(&decision))),
+                viewer_digest: Some(crate::hex_bytes(Sha256::digest(&viewer))),
             },
             history: BundleHistory {
                 source_state_id: graph.source_state_id().to_owned(),

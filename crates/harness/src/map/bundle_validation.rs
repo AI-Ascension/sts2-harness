@@ -58,7 +58,7 @@ pub(crate) fn check_digest(
     if !is_digest(expected) {
         return Err(MapBundleError::InvalidDigest(name));
     }
-    let actual = format!("{:x}", Sha256::digest(bytes));
+    let actual = crate::hex_bytes(Sha256::digest(bytes));
     if expected != actual {
         return Err(MapBundleError::DigestMismatch(name));
     }
