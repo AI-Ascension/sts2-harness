@@ -55,6 +55,7 @@ mod runtime_v4_expert_artifact;
 mod runtime_v4_expert_rest_action;
 mod runtime_v4_expert_rest_action_artifact;
 
+pub mod worker_endpoint;
 pub mod worker_handoff;
 pub mod worker_runtime;
 pub mod worker_runtime_store;
