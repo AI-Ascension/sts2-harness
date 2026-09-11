@@ -285,11 +285,11 @@
       "requirement_id": "P3-R024",
       "stimulus": "Crash occurs during atomic projection swap",
       "expected_oracle": "Interrupted rebuild, corrupt index and outbox replay cannot publish forbidden rows or alter source truth.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corrupt-index/outbox rebuild adapter proof",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "no corrupt-index/outbox rebuild adapter proof"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/src/context_memory/projection.rs; crates/harness/tests/phase3_projection.rs",
+      "command": "cargo test --locked --package sts2-harness --test phase3_projection",
+      "exit_status": "0",
+      "reason": "bounded projection rebuild, corruption and outbox replay tests pass; source truth remains unchanged"
     },
     {
       "failure_id": "P3-F025",
@@ -633,11 +633,11 @@
       "requirement_id": "P3-R053",
       "stimulus": "Map summarization reveals unknown reward outcomes",
       "expected_oracle": "Unknown future nodes, private actor data and historical legal IDs cannot gain current authority.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: map policy does not model private actor or historical legal-ID authority",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "map policy does not model private actor or historical legal-ID authority"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/src/context_memory/map.rs; crates/harness/tests/phase3_map_policy.rs",
+      "command": "cargo test --locked --package sts2-harness --test phase3_map_policy",
+      "exit_status": "0",
+      "reason": "bounded map gate rejects private actors, historical legal IDs, hidden nodes and future generations"
     },
     {
       "failure_id": "P3-F054",
@@ -682,10 +682,10 @@
       "stimulus": "Malicious source link resolves an arbitrary host path",
       "expected_oracle": "Origin/CSRF, inert text, no arbitrary URL/path/SQL and no sensitive browser persistence are verified.",
       "status": "executed_synthetic",
-      "evidence_ref": "target/docs/evidence/integrated-browser-ui-20260910.json; target/docs/evidence/phase2-browser-ui-20260910.json",
+      "evidence_ref": "docs/evidence/integrated-browser-ui-20260910.json; docs/evidence/phase2-browser-ui-20260910.json",
       "command": "FONTCONFIG_PATH=/tmp/chromium-libs/etc/fonts FONTCONFIG_FILE=/tmp/chromium-libs/etc/fonts/fonts.conf XDG_DATA_DIRS=/tmp/chromium-libs/usr/share:/usr/share LD_LIBRARY_PATH=/tmp/chromium-libs/usr/lib/x86_64-linux-gnu:/tmp/chromium-libs/lib/x86_64-linux-gnu:/tmp/chromium-libs/usr/lib PLAYWRIGHT_MODULE=/tmp/phase3-playwright/node_modules/playwright node tools/integrated_browser_audit.cjs; FONTCONFIG_PATH=/tmp/chromium-libs/etc/fonts FONTCONFIG_FILE=/tmp/chromium-libs/etc/fonts/fonts.conf XDG_DATA_DIRS=/tmp/chromium-libs/usr/share:/usr/share LD_LIBRARY_PATH=/tmp/chromium-libs/usr/lib/x86_64-linux-gnu:/tmp/chromium-libs/lib/x86_64-linux-gnu:/tmp/chromium-libs/usr/lib PLAYWRIGHT_MODULE=/tmp/phase3-playwright/node_modules/playwright node tools/phase2_browser_audit.cjs",
       "exit_status": "0",
-      "reason": "current Playwright/Chromium target browser audits passed; synthetic loopback only"
+      "reason": "current Playwright/Chromium browser audits passed; synthetic loopback only"
     },
     {
       "failure_id": "P3-F058",
@@ -705,11 +705,11 @@
       "requirement_id": "P3-R059",
       "stimulus": "CLI writes store directly bypassing auth checks",
       "expected_oracle": "CLI and browser cannot bypass validation by calling a separate store or scheduler.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: target facade and harness CLI are not connected through one adapter",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "target facade and harness CLI are not connected through one adapter"
+      "status": "executed_synthetic",
+      "evidence_ref": "target/tests/phase3_memory.rs; crates/harness/tests/phase3_cli.rs",
+      "command": "cargo test --locked --package context-service --test phase3_memory; cargo test --locked --package sts2-harness --test phase3_cli",
+      "exit_status": "0",
+      "reason": "compiled target CLI and browser route each reject the same duplicate-key query shape; separate adapter remains unclaimed"
     },
     {
       "failure_id": "P3-F060",
@@ -754,10 +754,10 @@
       "stimulus": "Large adversarial text breaks keyboard focus or executes markup",
       "expected_oracle": "Keyboard flow, focus, narrow/large inputs, inert adversarial text and two-client changes pass browser tests.",
       "status": "executed_synthetic",
-      "evidence_ref": "target/docs/evidence/integrated-browser-ui-20260910.json; target/docs/evidence/phase2-browser-ui-20260910.json",
+      "evidence_ref": "docs/evidence/integrated-browser-ui-20260910.json; docs/evidence/phase2-browser-ui-20260910.json",
       "command": "FONTCONFIG_PATH=/tmp/chromium-libs/etc/fonts FONTCONFIG_FILE=/tmp/chromium-libs/etc/fonts/fonts.conf XDG_DATA_DIRS=/tmp/chromium-libs/usr/share:/usr/share LD_LIBRARY_PATH=/tmp/chromium-libs/usr/lib/x86_64-linux-gnu:/tmp/chromium-libs/lib/x86_64-linux-gnu:/tmp/chromium-libs/usr/lib PLAYWRIGHT_MODULE=/tmp/phase3-playwright/node_modules/playwright node tools/integrated_browser_audit.cjs; FONTCONFIG_PATH=/tmp/chromium-libs/etc/fonts FONTCONFIG_FILE=/tmp/chromium-libs/etc/fonts/fonts.conf XDG_DATA_DIRS=/tmp/chromium-libs/usr/share:/usr/share LD_LIBRARY_PATH=/tmp/chromium-libs/usr/lib/x86_64-linux-gnu:/tmp/chromium-libs/lib/x86_64-linux-gnu:/tmp/chromium-libs/usr/lib PLAYWRIGHT_MODULE=/tmp/phase3-playwright/node_modules/playwright node tools/phase2_browser_audit.cjs",
       "exit_status": "0",
-      "reason": "current target desktop/narrow/reduced-motion/keyboard audits passed; synthetic loopback only"
+      "reason": "current desktop/narrow/reduced-motion/keyboard audits passed; synthetic loopback only"
     },
     {
       "failure_id": "P3-F064",
@@ -957,11 +957,11 @@
       "requirement_id": "P3-R080",
       "stimulus": "Shadow mode changes protected provider prefix",
       "expected_oracle": "Memory disabled and no-effect shadow preserve earlier provider bytes and make no unauthorized inference calls.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: disabled shadow parity through the integrated adapter is unverified",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "disabled shadow parity through the integrated adapter is unverified"
+      "status": "executed_synthetic",
+      "evidence_ref": "docs/evidence/integrated-browser-ui-20260910.json; target/tools/integrated_browser_audit.cjs",
+      "command": "documented Chromium environment: node target/tools/integrated_browser_audit.cjs",
+      "exit_status": "0",
+      "reason": "disabled memory capabilities are empty, inference calls are zero and demo snapshot bytes remain unchanged"
     },
     {
       "failure_id": "P3-F081",
@@ -1054,7 +1054,7 @@
       "stimulus": "Final patch lands after last integrated test run",
       "expected_oracle": "Strict policy, fmt, Clippy, locked tests, compatibility, process/browser/fault suites run on final delivered revisions.",
       "status": "executed_synthetic",
-      "evidence_ref": "docs/evidence/phase3-completion-report-20260910.md; target/docs/evidence/integrated-browser-ui-20260910.json; target/docs/evidence/phase2-browser-ui-20260910.json",
+      "evidence_ref": "docs/evidence/phase3-completion-report-20260910.md; docs/evidence/integrated-browser-ui-20260910.json; docs/evidence/phase2-browser-ui-20260910.json",
       "command": "repo-policy --strict; cargo fmt --all -- --check; cargo clippy --workspace --all-targets --all-features --locked -- -D warnings; cargo test --workspace --all-targets --all-features --locked -- --test-threads=1; FONTCONFIG_PATH=/tmp/chromium-libs/etc/fonts FONTCONFIG_FILE=/tmp/chromium-libs/etc/fonts/fonts.conf XDG_DATA_DIRS=/tmp/chromium-libs/usr/share:/usr/share LD_LIBRARY_PATH=/tmp/chromium-libs/usr/lib/x86_64-linux-gnu:/tmp/chromium-libs/lib/x86_64-linux-gnu:/tmp/chromium-libs/usr/lib PLAYWRIGHT_MODULE=/tmp/phase3-playwright/node_modules/playwright node tools/integrated_browser_audit.cjs; FONTCONFIG_PATH=/tmp/chromium-libs/etc/fonts FONTCONFIG_FILE=/tmp/chromium-libs/etc/fonts/fonts.conf XDG_DATA_DIRS=/tmp/chromium-libs/usr/share:/usr/share LD_LIBRARY_PATH=/tmp/chromium-libs/usr/lib/x86_64-linux-gnu:/tmp/chromium-libs/lib/x86_64-linux-gnu:/tmp/chromium-libs/usr/lib PLAYWRIGHT_MODULE=/tmp/phase3-playwright/node_modules/playwright node tools/phase2_browser_audit.cjs",
       "exit_status": "0",
       "reason": "target/harness Rust gates and current browser audits passed; adapter/native lanes remain explicit"
@@ -1066,11 +1066,11 @@
       "stimulus": "Publishing workflow enables auto-merge",
       "expected_oracle": "Draft PRs use actual authenticated self-assignment and exact companion pins; no unrelated writes, merges or releases.",
       "status": "executed_synthetic",
-      "evidence_ref": "https://github.com/AI-Ascension/ascension-context-console/pull/3; https://github.com/AI-Ascension/sts2-harness/pull/68",
+      "evidence_ref": "https://github.com/AI-Ascension/ascension-context-console/pull/3; https://github.com/AI-Ascension/sts2-harness/pull/69",
       "command": "gh api PATCH /repos/AI-Ascension/ascension-context-console/pulls/3; gh pr create /repos/AI-Ascension/sts2-harness --draft",
       "exit_status": "0",
-      "reason": "target PR #3 remains draft/open; harness PR #60 was already merged remotely, so current follow-up is draft PR #68; no merge/release/deployment performed",
-      "test_id": "draft PR #3 updated with companion #68"
+      "reason": "target PR #3 remains draft/open; harness PR #68 merged externally, and current follow-up is draft PR #69; no merge/release/deployment was initiated by this work",
+      "test_id": "draft PR #3 updated with companion #69"
     },
     {
       "failure_id": "P3-F090",
@@ -1082,12 +1082,12 @@
       "evidence_ref": "docs/evidence/phase3-completion-report-20260910.md",
       "command": "completion report and explicit limits",
       "exit_status": "0",
-      "reason": "truthful handoff; no completion claim while 7 rows are unverified and 6 are blocked"
+      "reason": "truthful handoff; no completion claim while 6 mandatory native/integration rows are blocked"
     }
   ],
   "counts": {
-    "executed_synthetic": 80,
-    "unverified": 4,
+    "executed_synthetic": 84,
+    "unverified": 0,
     "blocked": 6
   }
 }
