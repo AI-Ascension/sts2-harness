@@ -89,6 +89,7 @@ impl ProviderSessionBroker {
                 binding.game_dispatch_capability = false;
             }
         }
+        self.fence_pending_maintenance();
 
         Ok(self.owner_epoch)
     }
@@ -188,6 +189,7 @@ impl ProviderSessionBroker {
                 binding.owner_epoch = self.owner_epoch;
             }
         }
+        self.fence_pending_maintenance();
         Ok(self.owner_epoch)
     }
 }

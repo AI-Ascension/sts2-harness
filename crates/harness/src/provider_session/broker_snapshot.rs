@@ -93,6 +93,7 @@ impl ProviderSessionBroker {
         broker.restore_events(snapshot.events)?;
         broker.restore_histories(snapshot.histories)?;
         broker.restore_maintenance(snapshot.compaction_jobs, snapshot.fork_plans)?;
+        broker.fence_pending_maintenance();
         broker.next_id = next_id_after_restore(&broker)?;
         broker.next_sequence = broker
             .events
