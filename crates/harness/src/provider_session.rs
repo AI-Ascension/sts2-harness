@@ -8,6 +8,7 @@
 
 mod broker;
 mod protocol;
+mod state_store;
 mod transport;
 mod types;
 
@@ -16,5 +17,13 @@ pub use protocol::{
     NativeFrame, NativeFrameKind, NativePeerError, NativeResponse, parse_native_frame,
     parse_native_request,
 };
+pub use state_store::{
+    ProviderSessionMetadataMode, ProviderSessionMetadataStore, ProviderSessionMetadataStoreError,
+};
 pub use transport::{NativeTransportError, OwnedNativeTransport};
 pub use types::*;
+
+fn digest_scope(scope: &SessionScope) -> String {
+    let bytes = serde_json::to_vec(scope).unwrap_or_default();
+    crate::sha256_hex(bytes)
+}

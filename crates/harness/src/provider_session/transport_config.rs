@@ -35,7 +35,7 @@ impl NativeProcessConfig {
             state_root: state_root.into(),
             max_frame_bytes: MAX_FRAME_BYTES,
         };
-        if !valid_path(&value.executable, 1024)
+        if !valid_executable(&value.executable)
             || value.arguments.len() > MAX_ARGUMENTS
             || value
                 .arguments
@@ -97,6 +97,10 @@ fn valid_path(value: &str, maximum: usize) -> bool {
         && !value.contains('\0')
 }
 
+fn valid_executable(value: &str) -> bool {
+    valid_path(value, 1024) && Path::new(value).is_absolute()
+}
+
 fn valid_root_path(path: &Path) -> bool {
     path.is_absolute()
         && !path.as_os_str().is_empty()
@@ -123,4 +127,19 @@ fn valid_environment_names(names: &[String]) -> bool {
             )
             && unique.insert(name)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{valid_executable, valid_root_path};
+
+    #[test]
+    fn process_paths_require_absolute_roots_and_executable() {
+        assert!(valid_executable("/opt/codex/bin/codex"));
+        assert!(!valid_executable("codex"));
+        assert!(!valid_executable("../codex"));
+        assert!(valid_root_path(std::path::Path::new("/tmp/provider-root")));
+        assert!(!valid_root_path(std::path::Path::new("relative-root")));
+        assert!(!valid_root_path(std::path::Path::new("/tmp/../escape")));
+    }
 }

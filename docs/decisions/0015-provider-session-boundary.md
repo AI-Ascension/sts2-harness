@@ -24,6 +24,13 @@ not serialized; recovery therefore remains held and requires explicit reconcilia
 automatic replay or scheduler resume. This is a fixture-side metadata restore, not evidence of
 native encrypted-store durability.
 
+The broker journal can be kept explicitly volatile or written through the
+`ProviderSessionMetadataStore` encrypted-persistent adapter. That adapter authenticates a bounded
+XChaCha20-Poly1305 metadata envelope, validates a private owner-checked path, atomically replaces
+the file, and requires exact scope/policy/profile matching on restore. It contains no prepared turn
+bytes and does not encrypt, redirect or attest to native Codex state, rollout files, WAL/log files
+or temporary files.
+
 The native Codex App Server profile, provider authentication, encrypted OS state, native binary
 compatibility and remote erasure require a later capability review; the fixture evidence does not
 claim any of them.

@@ -145,7 +145,8 @@ impl OwnedNativeTransport {
                 NativeTransportError::AlreadyInitialized
             });
         }
-        if !io::safe_directory(self.config.working_directory())
+        if !io::safe_executable(PathBuf::from(self.config.executable()).as_path())
+            || !io::safe_directory(self.config.working_directory())
             || !io::safe_directory(self.config.state_root())
         {
             return Err(NativeTransportError::Unavailable);
@@ -293,7 +294,11 @@ fn fixture_peer_executable() -> Option<PathBuf> {
     let current = std::env::current_exe().ok()?;
     let target_directory = current.parent()?.parent()?;
     let executable = target_directory.join("provider-session-peer");
-    executable.is_file().then_some(executable)
+    let canonical = std::fs::canonicalize(executable).ok()?;
+    (!io::has_symlink_component(&canonical)
+        && std::fs::symlink_metadata(&canonical)
+            .is_ok_and(|metadata| metadata.file_type().is_file()))
+    .then_some(canonical)
 }
 
 #[cfg(test)]

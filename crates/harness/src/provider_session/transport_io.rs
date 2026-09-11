@@ -78,10 +78,46 @@ impl OwnedNativeTransport {
 }
 
 pub(super) fn safe_directory(path: &std::path::Path) -> bool {
-    std::fs::metadata(path).is_ok_and(|metadata| metadata.is_dir()) && !has_symlink_component(path)
+    std::fs::symlink_metadata(path).is_ok_and(|metadata| {
+        metadata.is_dir() && restricted_metadata(&metadata) && !has_symlink_component(path)
+    })
 }
 
-fn has_symlink_component(path: &std::path::Path) -> bool {
+pub(super) fn safe_executable(path: &std::path::Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|metadata| {
+        metadata.file_type().is_file()
+            && restricted_executable_metadata(&metadata)
+            && !has_symlink_component(path)
+    })
+}
+
+#[cfg(unix)]
+fn restricted_metadata(metadata: &std::fs::Metadata) -> bool {
+    use rustix::process::geteuid;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    metadata.uid() == geteuid().as_raw() && metadata.permissions().mode() & 0o077 == 0
+}
+
+#[cfg(not(unix))]
+fn restricted_metadata(_metadata: &std::fs::Metadata) -> bool {
+    false
+}
+
+#[cfg(unix)]
+fn restricted_executable_metadata(metadata: &std::fs::Metadata) -> bool {
+    use rustix::process::geteuid;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    metadata.uid() == geteuid().as_raw() && metadata.permissions().mode() & 0o022 == 0
+}
+
+#[cfg(not(unix))]
+fn restricted_executable_metadata(_metadata: &std::fs::Metadata) -> bool {
+    false
+}
+
+pub(super) fn has_symlink_component(path: &std::path::Path) -> bool {
     let mut current = std::path::PathBuf::new();
     for component in path.components() {
         current.push(component.as_os_str());
