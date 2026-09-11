@@ -17,6 +17,7 @@ coverage/
 /dist/
 /out/
 /.orchestration/
+/artifacts/recorded-run/
 
 # Host SDKs and proprietary local references
 .tools/
