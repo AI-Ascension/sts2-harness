@@ -324,42 +324,6 @@ fn strict_frames_reject_duplicates_and_peer_runs_as_owned_stdio() {
     transport.close().expect("close");
 }
 
-#[test]
-fn snapshot_is_metadata_only_and_idempotency_conflicts() {
-    let mut broker = broker();
-    let first = broker
-        .create_candidate(
-            "owner-fixture",
-            "same-key",
-            "branch-a",
-            SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z",
-        )
-        .expect("candidate");
-    let same = broker
-        .create_candidate(
-            "owner-fixture",
-            "same-key",
-            "branch-a",
-            SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z",
-        )
-        .expect("same candidate");
-    assert_eq!(first.operation_id, same.operation_id);
-    assert_eq!(
-        broker.create_candidate(
-            "owner-fixture",
-            "same-key",
-            "branch-b",
-            SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z"
-        ),
-        Err(SessionError::Conflict)
-    );
-    let bytes = broker.snapshot_json().expect("snapshot");
-    assert!(!String::from_utf8_lossy(&bytes).contains("provider_internal_context"));
-}
-
 fn sha256_hex(value: impl AsRef<[u8]>) -> String {
     sts2_harness::sha256_hex(value)
 }

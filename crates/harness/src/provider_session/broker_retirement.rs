@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::types::*;
-use super::{BROKER_SNAPSHOT_SCHEMA, BrokerSnapshot, ProviderSessionBroker};
+use super::ProviderSessionBroker;
 
 impl ProviderSessionBroker {
     pub fn set_dependencies(
@@ -88,6 +88,7 @@ impl ProviderSessionBroker {
                 binding.game_dispatch_capability = false;
             }
         }
+
         Ok(self.owner_epoch)
     }
 
@@ -187,37 +188,5 @@ impl ProviderSessionBroker {
             }
         }
         Ok(self.owner_epoch)
-    }
-
-    #[must_use]
-    pub fn snapshot(&self) -> BrokerSnapshot {
-        BrokerSnapshot {
-            schema: BROKER_SNAPSHOT_SCHEMA,
-            scope: self.scope.clone(),
-            owner_epoch: self.owner_epoch,
-            revocation_epoch: self.revocation_epoch,
-            policy: self.policy.clone(),
-            capabilities: self.capabilities.clone(),
-            bindings: self.bindings.values().cloned().collect(),
-            operations: self
-                .operations
-                .values()
-                .filter(|operation| {
-                    !matches!(
-                        operation.kind,
-                        NativeOperationKind::Turn | NativeOperationKind::Interrupt
-                    )
-                })
-                .cloned()
-                .collect(),
-            events: self.events.clone(),
-            compaction_jobs: self.compaction_jobs.values().cloned().collect(),
-            fork_plans: self.fork_plans.values().cloned().collect(),
-            retirements: self.retirements.values().cloned().collect(),
-        }
-    }
-
-    pub fn snapshot_json(&self) -> Result<Vec<u8>, SessionError> {
-        serde_json::to_vec(&self.snapshot()).map_err(|_| SessionError::Protocol)
     }
 }

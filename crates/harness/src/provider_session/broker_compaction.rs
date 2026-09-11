@@ -66,7 +66,7 @@ impl ProviderSessionBroker {
             representation: CompactionRepresentation::Pending,
             automatic_adoption: false,
             game_effects: 0,
-            scheduler_after: "held",
+            scheduler_after: "held".to_owned(),
         };
         self.compaction_jobs.insert(job_id.to_owned(), job.clone());
         Ok(job)

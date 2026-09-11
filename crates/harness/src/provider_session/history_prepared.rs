@@ -16,7 +16,7 @@ pub struct HistoryItem {
     pub sequence: u64,
     pub kind: HistoryItemKind,
     pub content_ref: Option<String>,
-    #[serde(skip)]
+    #[serde(default)]
     pub redacted: bool,
 }
 

@@ -22,7 +22,7 @@ pub struct CompactionJob {
     pub representation: CompactionRepresentation,
     pub automatic_adoption: bool,
     pub game_effects: u64,
-    pub scheduler_after: &'static str,
+    pub scheduler_after: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -57,7 +57,7 @@ pub struct ForkPlan {
     pub cutoff_sequence: u64,
     pub native_cutoff_verified: bool,
     pub target_binding_id: String,
-    pub purpose: &'static str,
+    pub purpose: String,
     pub operation: ForkOperation,
     pub copies_native_history: bool,
     pub dependency_ids: Vec<String>,

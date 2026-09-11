@@ -12,7 +12,7 @@ pub struct SessionEvent {
     pub binding_id: String,
     pub operation_id: Option<String>,
     pub local_ingest_sequence: u64,
-    pub sequence_origin: &'static str,
+    pub sequence_origin: String,
     pub owner_epoch: u64,
     pub session_epoch: u64,
     pub kind: SessionEventKind,

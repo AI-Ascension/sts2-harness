@@ -27,12 +27,12 @@ pub struct NativeCapabilities {
     pub native_binary_sha256: String,
     pub native_schema_sha256: String,
     pub evidence: CapabilityEvidence,
-    pub transport: &'static str,
+    pub transport: String,
     pub enabled_methods: Vec<String>,
     pub hardening: CapabilityHardening,
     pub strict_executable: bool,
     pub experimental_api: bool,
-    pub unknown_methods: &'static str,
+    pub unknown_methods: String,
     pub raw_rpc: bool,
 }
 
@@ -76,7 +76,7 @@ impl NativeCapabilities {
             native_binary_sha256: digest(b"compiled-fake-native-peer"),
             native_schema_sha256: digest(NATIVE_FRAME_SCHEMA.as_bytes()),
             evidence: CapabilityEvidence::CompiledPeer,
-            transport: "owned_stdio",
+            transport: "owned_stdio".to_owned(),
             enabled_methods: methods,
             hardening: CapabilityHardening {
                 tools_enabled: false,
@@ -87,7 +87,7 @@ impl NativeCapabilities {
             },
             strict_executable: false,
             experimental_api: false,
-            unknown_methods: "deny",
+            unknown_methods: "deny".to_owned(),
             raw_rpc: false,
         }
     }

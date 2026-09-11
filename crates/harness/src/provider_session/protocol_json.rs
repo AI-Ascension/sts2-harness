@@ -9,7 +9,15 @@ use std::fmt;
 /// Serde's default JSON map visitor keeps the last duplicate key.  Authority-bearing frames use
 /// this visitor so duplicate keys fail closed before they reach the typed protocol structs.
 pub(super) fn parse_strict_json<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, SessionError> {
-    if bytes.len() > MAX_FRAME_BYTES || !within_depth(bytes, MAX_JSON_DEPTH) {
+    parse_strict_json_bounded(bytes, MAX_FRAME_BYTES, MAX_JSON_DEPTH)
+}
+
+pub(crate) fn parse_strict_json_bounded<T: DeserializeOwned>(
+    bytes: &[u8],
+    maximum_bytes: usize,
+    maximum_depth: usize,
+) -> Result<T, SessionError> {
+    if bytes.len() > maximum_bytes || !within_depth(bytes, maximum_depth) {
         return Err(SessionError::Capacity);
     }
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);

@@ -16,6 +16,8 @@ mod interrupts;
 mod maintenance;
 #[path = "broker_retirement.rs"]
 mod retirement;
+#[path = "broker_snapshot.rs"]
+mod snapshot;
 #[path = "broker_turn_lifecycle.rs"]
 mod turn_lifecycle;
 #[path = "broker_turns.rs"]
@@ -24,8 +26,9 @@ mod turns;
 /// A bounded, serializable view of the broker.  Exact prepared bytes are intentionally retained
 /// only by the broker and are never included in this metadata journal.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BrokerSnapshot {
-    pub schema: &'static str,
+    pub schema: String,
     pub scope: SessionScope,
     pub owner_epoch: u64,
     pub revocation_epoch: u64,
@@ -34,6 +37,7 @@ pub struct BrokerSnapshot {
     pub bindings: Vec<SessionBinding>,
     pub operations: Vec<NativeOperation>,
     pub events: Vec<SessionEvent>,
+    pub histories: BTreeMap<String, Vec<HistoryItem>>,
     pub compaction_jobs: Vec<CompactionJob>,
     pub fork_plans: Vec<ForkPlan>,
     pub retirements: Vec<Retirement>,
@@ -234,7 +238,7 @@ impl ProviderSessionBroker {
             binding_id: binding_id.to_owned(),
             operation_id: operation_id.map(str::to_owned),
             local_ingest_sequence: self.next_sequence,
-            sequence_origin: "local_broker",
+            sequence_origin: "local_broker".to_owned(),
             owner_epoch: self.owner_epoch,
             session_epoch: self.bindings.get(binding_id).map_or(1, |b| b.session_epoch),
             kind,

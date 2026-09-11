@@ -8,6 +8,7 @@ use serde_json::{Map, Value, json};
 mod protocol_json;
 #[path = "protocol_parse.rs"]
 mod protocol_parse;
+pub(crate) use protocol_json::parse_strict_json_bounded;
 use protocol_parse::validate_frame;
 pub use protocol_parse::{parse_native_frame, parse_native_request};
 

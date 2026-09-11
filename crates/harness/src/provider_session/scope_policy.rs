@@ -4,6 +4,7 @@ use super::common::{SESSION_POLICY_SCHEMA, SessionError, digest, valid_digest, v
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SessionScope {
     pub project_id: String,
     pub run_id: String,

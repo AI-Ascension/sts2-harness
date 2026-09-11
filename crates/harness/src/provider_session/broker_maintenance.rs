@@ -90,7 +90,7 @@ impl ProviderSessionBroker {
             cutoff_sequence,
             native_cutoff_verified: matches!(operation, ForkOperation::NativeFork),
             target_binding_id,
-            purpose: "evaluation",
+            purpose: "evaluation".to_owned(),
             operation,
             copies_native_history: matches!(operation, ForkOperation::NativeFork),
             dependency_ids: dependency_ids.clone(),

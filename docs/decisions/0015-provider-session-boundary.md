@@ -16,6 +16,14 @@ unreviewed native method. A candidate/reconnect/fork/compaction operation remain
 the existing Phase 2 approval and explicit resume path authorizes a decision turn. Unknown sends
 are not retried, and retirement is irreversible even if a late native response arrives.
 
+The broker metadata journal is versioned as ascension.provider-session.broker-snapshot.v1. Its
+strict, duplicate-key-checked JSON is bounded, retains operation idempotency, binding/event
+epochs, maintenance records and bounded history projections (including redaction flags), and
+restores only with a fresh owner token. Prepared turn bytes and in-flight turns are deliberately
+not serialized; recovery therefore remains held and requires explicit reconciliation rather than
+automatic replay or scheduler resume. This is a fixture-side metadata restore, not evidence of
+native encrypted-store durability.
+
 The native Codex App Server profile, provider authentication, encrypted OS state, native binary
 compatibility and remote erasure require a later capability review; the fixture evidence does not
 claim any of them.

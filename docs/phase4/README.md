@@ -9,7 +9,10 @@ Run the focused lane with:
 
 ```text
 cargo test --locked -p sts2-harness --test provider_session
+cargo test --locked -p sts2-harness --test provider_session_snapshot
 ```
 
 The lane is synthetic and offline. It does not certify an installed Codex binary, provider
-authentication, native persistence, gameplay settlement, or provider-side deletion.
+authentication, native persistence, gameplay settlement, or provider-side deletion. Snapshot
+restore only covers the bounded local metadata journal; prepared turns require explicit
+reconciliation after restart.
