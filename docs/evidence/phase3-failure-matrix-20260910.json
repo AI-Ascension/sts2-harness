@@ -1018,10 +1018,10 @@
       "stimulus": "Author self-signs independent review",
       "expected_oracle": "Independent reviewer identities differ from authors and bind findings to the actual integrated commits.",
       "status": "blocked",
-      "evidence_ref": "BLOCKED: independent reviewer/native three-level controls were not exposed",
-      "command": "not run",
+      "evidence_ref": "../phase2-target/docs/evidence/phase2-native-preflight-20260910.json",
+      "command": "codex agents; codex1 agents",
       "exit_status": "",
-      "reason": "independent reviewer/native three-level controls were not exposed"
+      "reason": "independent reviewer/native three-level controls remain unavailable; current recheck records missing account selection and standalone install"
     },
     {
       "failure_id": "P3-F086",
