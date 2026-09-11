@@ -28,6 +28,7 @@ impl DefinitionPort for DefinitionDouble {
     ) -> Result<ValidationResult, ManagementError> {
         Ok(ValidationResult {
             definition_digest: digest_value(definition).map_err(ManagementError::from)?,
+            compiler: "test-compiler.v1".to_owned(),
             diagnostics: Vec::new(),
         })
     }

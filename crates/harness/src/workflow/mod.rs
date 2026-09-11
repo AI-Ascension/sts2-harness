@@ -42,8 +42,8 @@ pub use definition::{
     BindingSource, CheckpointConfig, ControlEdge, DataBinding, DecideConfig, EdgeOutcome,
     EmitArtifactConfig, ExecuteActionConfig, GraphDefinition, GuardDefinition, GuardExpression,
     GuardValue, LoopConfig, NodeDefinition, NodeKind, ObserveConfig, PauseConfig, ProposalBinding,
-    RouteConfig, SubworkflowConfig, TerminalConfig, TerminalOutcome, WorkflowCapabilities,
-    WorkflowDefinition, WorkflowLimits, WorkflowMode, WorkflowSchemaVersion,
+    RouteConfig, SubworkflowConfig, TerminalConfig, TerminalOutcome, WORKFLOW_COMPILER_ID,
+    WorkflowCapabilities, WorkflowDefinition, WorkflowLimits, WorkflowMode, WorkflowSchemaVersion,
 };
 pub use diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticReport, DiagnosticSeverity, StructuralLocation,

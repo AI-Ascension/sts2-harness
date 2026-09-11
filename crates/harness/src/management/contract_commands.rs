@@ -125,6 +125,7 @@ pub struct ValidateResponse {
     pub schema_version: String,
     pub valid: bool,
     pub definition_digest: String,
+    pub compiler: String,
     pub diagnostics: Vec<Diagnostic>,
 }
 

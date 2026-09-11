@@ -66,6 +66,7 @@ impl DefinitionPort for SyntheticDefinitionPort {
         diagnostics.extend(capability_diagnostics(&parsed, capabilities)?);
         Ok(ValidationResult {
             definition_digest: digest,
+            compiler: crate::workflow::WORKFLOW_COMPILER_ID.to_owned(),
             diagnostics,
         })
     }

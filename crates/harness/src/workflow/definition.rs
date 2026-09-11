@@ -11,6 +11,10 @@ pub use super::node::*;
 
 pub const WORKFLOW_SCHEMA_VERSION: &str = "ascension.workflow/v1";
 
+/// Authoritative compiler identity for the harness workflow compiler/validator.
+/// It is reported separately from a definition digest or a Studio layout digest.
+pub const WORKFLOW_COMPILER_ID: &str = "sts2-harness.workflow-compiler.v1";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WorkflowSchemaVersion {
     #[serde(rename = "ascension.workflow/v1")]
