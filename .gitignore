@@ -16,6 +16,7 @@ target/
 coverage/
 /dist/
 /out/
+/.orchestration/
 
 # Host SDKs and proprietary local references
 .tools/

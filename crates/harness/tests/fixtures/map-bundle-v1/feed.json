@@ -1,0 +1,17 @@
+{
+  "entries": [
+    {
+      "bundle_digest": "5f50f23cf4d673187b8120cabb218f0803062c8dd14f0ba24070581c090de22d",
+      "episode_id": "synthetic-episode-001",
+      "generation": 42,
+      "observed_at_unix_ms": 1700000000000,
+      "run_id": "synthetic-run-001",
+      "sequence": 1,
+      "source_state_id": "map-state-42",
+      "trajectory_id": "synthetic-trajectory-001"
+    }
+  ],
+  "feed_version": "sts2.map-feed-v1",
+  "head": "5f50f23cf4d673187b8120cabb218f0803062c8dd14f0ba24070581c090de22d",
+  "sequence": 1
+}

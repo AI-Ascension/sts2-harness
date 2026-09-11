@@ -38,6 +38,7 @@ mod exo;
 mod exo_process;
 mod identity;
 pub mod management;
+mod map;
 mod memory;
 mod poc;
 mod protocol_artifact;
@@ -130,6 +131,29 @@ pub use identity::{
     ModelExecutionId, RecordId, RequestId, RunId, SchemaVersion, TraceId, TrajectoryId,
 };
 pub use management::*;
+pub use map::{
+    AnalysisCacheKey, AnalysisConfig, ApproximationStatus, BoundedCache, BundleContents,
+    BundleFileStore, BundleHistory, BundleManifest, BundleOrigin, BundlePresentation, CacheError,
+    CandidateRoute, ContextMode, CountStatus, HistoricalActionBinding, HistoricalReplay,
+    InFlightGuard, LegalDestination, LegalDestinationPathCount, MAP_ANALYSIS_MAX_CANDIDATES,
+    MAP_ANALYSIS_VERSION, MAP_BUNDLE_VERSION, MAP_CACHE_MAX_BYTES, MAP_CACHE_MAX_ENTRIES,
+    MAP_CACHE_MAX_IN_FLIGHT, MAP_FEED_FILE, MAP_FEED_VERSION, MAP_MAX_ACTION_ID_BYTES,
+    MAP_MAX_BUNDLE_BYTES, MAP_MAX_CATEGORY_BYTES, MAP_MAX_EDGES, MAP_MAX_FEED_ENTRIES,
+    MAP_MAX_IDENTIFIER_BYTES, MAP_MAX_NODES, MAP_MAX_PNG_BYTES, MAP_MAX_PRESENTATION_HEIGHT,
+    MAP_MAX_PRESENTATION_PIXELS, MAP_MAX_PRESENTATION_WIDTH, MAP_MAX_SNAPSHOT_BYTES,
+    MAP_MIN_PRESENTATION_HEIGHT, MAP_MIN_PRESENTATION_WIDTH, MapAnalysis, MapAnalysisError,
+    MapBundleError, MapBundleFeed, MapCompleteness, MapEdge, MapEvaluationError, MapFeed,
+    MapFeedEntry, MapGraphError, MapNode, MapNodeStatus, MapViewBundle, NavigationCacheKey,
+    NodeMetrics, PublicationReceipt, RUNTIME_MAP_SCHEMA_DIGEST, RUNTIME_MAP_UNRENDERED_DECISION,
+    RenderCacheKey, RoutePolicy, RouteScore, RuntimeMapBundleIdentity,
+    SYNTHETIC_MAX_ACTION_ID_BYTES, SYNTHETIC_MAX_DECISIONS, SYNTHETIC_MAX_EDGES,
+    SYNTHETIC_MAX_IDENTIFIER_BYTES, SYNTHETIC_MAX_LATENCY_MICROS, SYNTHETIC_MAX_NODES,
+    SYNTHETIC_MAX_REQUEST_BYTES, SYNTHETIC_MAX_ROUTE_NODES, SYNTHETIC_MAX_ROUTES,
+    SYNTHETIC_MAX_TASKS, SyntheticDecision, SyntheticEvaluationReport, SyntheticEvaluationRow,
+    SyntheticEvaluationRunner, SyntheticGraphTask, TerminalPathCount, TopologyCacheKey,
+    TopologySummary, ValidatedMapGraph, build_unrendered_runtime_map_bundle,
+    run_bounded_synthetic_context_matrix, synthetic_action_id, synthetic_context_bytes,
+};
 pub use memory::{DecisionMemory, MemoryAppend, MemoryError};
 pub use poc::{
     POC_CLOCK_TICK, POC_SEED, PocAction, PocCoreError, PocError, PocObservation, PocReport,

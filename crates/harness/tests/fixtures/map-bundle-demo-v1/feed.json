@@ -1,0 +1,17 @@
+{
+  "entries": [
+    {
+      "bundle_digest": "bd114749fabb6000816424582cbd696f9172dbe065e106cdcc125a3c64ae44f3",
+      "episode_id": "demo-episode-001",
+      "generation": 42,
+      "observed_at_unix_ms": 1700000000000,
+      "run_id": "demo-run-001",
+      "sequence": 1,
+      "source_state_id": "demo-state-42",
+      "trajectory_id": "demo-trajectory-001"
+    }
+  ],
+  "feed_version": "sts2.map-feed-v1",
+  "head": "bd114749fabb6000816424582cbd696f9172dbe065e106cdcc125a3c64ae44f3",
+  "sequence": 1
+}

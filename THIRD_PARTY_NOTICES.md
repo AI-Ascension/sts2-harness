@@ -69,3 +69,11 @@ https://github.com/Stranger6667/jsonschema) with default features disabled. This
 does not enable external HTTP/file schema resolution and is not linked into the utility binary.
 Exact transitive versions and integrity checksums are recorded in Cargo.lock. The validator checks
 schema structure, not the truth of runtime evidence or permission to promote a quarantined build.
+
+The bounded PNG validator uses `png` exactly `0.18.1` (MIT OR Apache-2.0,
+https://github.com/image-rs/image-png), with its locked `crc32fast`, `fdeflate`,
+`flate2`, and `miniz_oxide` dependencies. The decoder is used only for bounded
+format validation; it does not retain decoded image buffers or add provider SDKs.
+Exact versions and integrity checksums are recorded in `Cargo.lock`; each
+dependency's declared license remains applicable and must be included in release
+license review.
