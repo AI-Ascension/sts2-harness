@@ -151,6 +151,7 @@ pub trait DefinitionPort: Send + Sync {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ValidationResult {
     pub definition_digest: String,
+    pub compiler: String,
     pub diagnostics: Vec<Diagnostic>,
 }
 

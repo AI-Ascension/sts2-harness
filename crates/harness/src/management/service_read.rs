@@ -22,6 +22,7 @@ impl ManagementService {
                 diagnostic.severity != super::super::contract::DiagnosticSeverity::Error
             }),
             definition_digest: digest,
+            compiler: result.compiler,
             diagnostics: result.diagnostics,
         })
     }
