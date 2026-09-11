@@ -1053,11 +1053,11 @@
       "requirement_id": "P3-R088",
       "stimulus": "Final patch lands after last integrated test run",
       "expected_oracle": "Strict policy, fmt, Clippy, locked tests, compatibility, process/browser/fault suites run on final delivered revisions.",
-      "status": "blocked",
-      "evidence_ref": "BLOCKED: final post-commit gate run is pending",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "final post-commit gate run is pending"
+      "status": "executed_synthetic",
+      "evidence_ref": "docs/evidence/phase3-completion-report-20260910.md; target companion browser evidence",
+      "command": "harness repo-policy/fmt/clippy and locked workspace tests serially; target companion gates and browser audits",
+      "exit_status": "0",
+      "reason": "harness serial gate passed at b9a7283ef905005dfd7d34b2be2ff611c859b5cc; target final gates passed at b59f10823e5f99de4012b0aa097efd62a9260a01"
     },
     {
       "failure_id": "P3-F089",
@@ -1065,11 +1065,11 @@
       "requirement_id": "P3-R089",
       "stimulus": "Publishing workflow enables auto-merge",
       "expected_oracle": "Draft PRs use actual authenticated self-assignment and exact companion pins; no unrelated writes, merges or releases.",
-      "status": "blocked",
-      "evidence_ref": "BLOCKED: draft PR update is pending",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "draft PR update is pending"
+      "status": "executed_synthetic",
+      "evidence_ref": "https://github.com/AI-Ascension/sts2-harness/pull/60; https://github.com/AI-Ascension/ascension-context-console/pull/3",
+      "command": "gh api PATCH on draft PR #60 and draft PR #3",
+      "exit_status": "0",
+      "reason": "drafts retain exact companion pins; no merge, release, deployment or unrelated write"
     },
     {
       "failure_id": "P3-F090",
@@ -1077,16 +1077,16 @@
       "requirement_id": "P3-R090",
       "stimulus": "Completion report omits failed native depth handshake",
       "expected_oracle": "Report completed work, tests, native hierarchy evidence, external actions and precisely unverified/blocked gates.",
-      "status": "blocked",
-      "evidence_ref": "BLOCKED: final commit/push identifiers are pending",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "final commit/push identifiers are pending"
+      "status": "executed_synthetic",
+      "evidence_ref": "docs/evidence/phase3-completion-report-20260910.md; docs/evidence/phase2-native-preflight-20260910.json; docs/evidence/phase3-requirement-evidence.csv",
+      "command": "completion report, native preflight, requirement matrix and failure matrix review",
+      "exit_status": "0",
+      "reason": "final handoff records completed bounded work, exact revisions, external-action limits and remaining 40 unverified/6 blocked rows"
     }
   ],
   "counts": {
-    "executed_synthetic": 41,
+    "executed_synthetic": 44,
     "unverified": 40,
-    "blocked": 9
+    "blocked": 6
   }
 }
