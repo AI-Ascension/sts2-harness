@@ -2,8 +2,8 @@
 
 Date: 2026-09-11. This is the harness-side bounded policy record for the additive
 `ascension.context-memory.*.v1` namespace. Harness implementation code is pinned to
-`f801ee8a005d6df12a3ddc901f71a4d97eebb8cb`; the companion target implementation is pinned to
-`b21083719fb825be83088c9a6ab09531463a1a72`. The record is an implementation handoff, not a live
+`ae5a0cb09a34b766e9b0c899f8f8298f630b9111`; the companion target implementation is pinned to
+`f22296225c9e6b5a36004d1d689f9e27384920ba`. The record is an implementation handoff, not a live
 provider, native game, deployment, or three-level orchestration claim.
 
 The include-based `context_memory` module owns scoped source admission, occurrence identity,
@@ -21,9 +21,8 @@ Independent hand-labelled oracle tests cover causal membership, tie order, Unico
 stopwords, bounded terms, and held-out label isolation. The process tests use only synthetic bytes
 and loopback stdin/stdout. They are not evidence of the unavailable target↔harness Phase 2 adapter.
 
-The synchronized 90-row matrix records 80 `executed_synthetic`, 4 `unverified`, and 6 `blocked`
-rows. The unverified rows retain the missing rebuild-adapter, map-authority, CLI-adapter and
-disabled-shadow limits; the blocked rows are the unavailable cross-repository, real-process,
+The synchronized 90-row matrix records 84 `executed_synthetic` and 6 `blocked` rows. The blocked
+rows are the unavailable cross-repository, real-process,
 end-to-end, and native-review lanes.
 
 ## Gates
@@ -55,7 +54,7 @@ production WAL/temp/backup operations, provider quality, native action effects, 
 The remaining mandatory unavailable lanes are the atomic cross-repository Phase 2 binding, a real
 summary process/tool tripwire, target↔harness end-to-end process/network tripwires, and an
 independent native three-level reviewer. The current target browser audits passed with the
-documented Chromium library environment at target revision `58a283930b30348f34b9c19a0ccb432112521184`,
-recording zero external/provider/game effects and no browser persistence. The draft PR remains open
-and draft; no merge, release, deployment, provider call, game launch, or unrelated write was
-performed.
+documented Chromium library environment at target revision `f22296225c9e6b5a36004d1d689f9e27384920ba`,
+recording zero external/provider/game effects and no browser persistence. Harness PR #68 merged
+externally during the handoff; the new follow-up remains draft. No merge was initiated by this
+work, and no release, deployment, provider call, game launch, or unrelated write was performed.

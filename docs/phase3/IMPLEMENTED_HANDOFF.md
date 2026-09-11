@@ -1,8 +1,8 @@
 # Implemented Phase 3 harness handoff
 
 Date: 2026-09-11. The Phase 3 memory policy is additive to the existing harness branch
-`phase2/context-editing`. The implementation revision is `f801ee8`; the companion target pin is
-`b21083719fb825be83088c9a6ab09531463a1a72`.
+`phase2/context-editing`. The implementation revision is `ae5a0cb`; the companion target pin is
+`f22296225c9e6b5a36004d1d689f9e27384920ba`.
 
 `crates/harness/src/context_memory.rs` is a bounded include wrapper; its source files under
 `crates/harness/src/context_memory/` keep each policy unit reviewable and within repository size
@@ -25,7 +25,9 @@ permission, capture exact source bytes at the fake peer, and retain ambiguous pr
 cross-scope or automatic-summary activation, preserves pins and mandatory bytes, measures the
 rendered whole, records bounded exclusions, and binds the Phase 2 prepared-manifest digest.
 Approval (`approval.rs`) remains `committed_held` until explicit resume; capability/ACL/map/
-telemetry records are in `capabilities.rs` and `map.rs`.
+telemetry records are in `capabilities.rs` and `map.rs`. Projection rebuilds in `projection.rs`
+pin corpus and revocation generations, fail closed on corruption, and replay only eligible outbox
+references without mutating source truth.
 
 ## Contract and test table
 
@@ -37,7 +39,7 @@ telemetry records are in `capabilities.rs` and `map.rs`.
 | Summary job | harness provider port | summary-job v1; explicit generation only | fake peer and unknown test | live provider/process boundary unverified |
 | Selection/policy | harness | policy/selection v1; whole bytes | selection tests | Phase 2 serializer adapter unverified |
 | Approval/revocation | harness + existing Phase 2 | approval/revocation v1; held/epoch fenced | approval/revocation tests | restore/downgrade transaction unverified |
-| Map/telemetry | harness | generation-fenced map; redacted aggregate telemetry | map/ACL/telemetry tests | executable map artifact lane unverified |
+| Map/telemetry | harness | generation-fenced map, current legal authority and redacted aggregate telemetry | map policy/ACL/telemetry tests | executable map artifact lane unverified |
 
 The module has no game or host access, no provider credentials, no arbitrary process/network path,
 and no browser storage. The fake peer is synthetic boundary evidence only. A future target adapter
