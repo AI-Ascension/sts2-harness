@@ -86,8 +86,10 @@ impl ProviderSessionBroker {
         if matches!(policy.mode, ProviderSessionMode::Enabled) && !capabilities.strict_executable {
             return Err(SessionError::Unsupported);
         }
-        if matches!(policy.mode, ProviderSessionMode::Enabled)
-            && !capabilities.hardening.encrypted_state
+        if matches!(
+            policy.mode,
+            ProviderSessionMode::InspectOnly | ProviderSessionMode::Enabled
+        ) && !capabilities.hardening.encrypted_state
         {
             return Err(SessionError::Unsupported);
         }
