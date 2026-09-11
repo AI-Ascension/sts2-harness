@@ -149,7 +149,7 @@ impl OwnedNativeTransport {
         if !io::safe_executable(PathBuf::from(self.config.executable()).as_path())
             || !io::safe_directory(self.config.working_directory())
             || !io::safe_directory(self.config.state_root())
-            || !io::state_within_quota(self.config.state_root(), MAX_NATIVE_STATE_BYTES)
+            || !io::state_within_quota(self.config.state_root(), self.config.state_quota_bytes)
         {
             return Err(NativeTransportError::Unavailable);
         }
@@ -204,6 +204,9 @@ impl OwnedNativeTransport {
         if self.child.is_none() {
             return Err(NativeTransportError::Unavailable);
         }
+        if !io::state_within_quota(self.config.state_root(), self.config.state_quota_bytes) {
+            return Err(self.fence_for_state_quota());
+        }
         if !self.initialized && method != "initialize" {
             return Err(NativeTransportError::NotInitialized);
         }
@@ -227,6 +230,9 @@ impl OwnedNativeTransport {
         self.outstanding = self.outstanding.saturating_add(1);
         let result = self.read_until(id);
         self.outstanding = self.outstanding.saturating_sub(1);
+        if !io::state_within_quota(self.config.state_root(), self.config.state_quota_bytes) {
+            return Err(self.fence_for_state_quota());
+        }
         result
     }
 
@@ -259,6 +265,17 @@ impl OwnedNativeTransport {
             let _ = child.wait();
         }
         Ok(())
+    }
+
+    fn fence_for_state_quota(&mut self) -> NativeTransportError {
+        self.fenced = true;
+        self.writer = None;
+        self.reader = None;
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        NativeTransportError::Capacity
     }
 }
 
@@ -299,20 +316,5 @@ fn fixture_peer_executable() -> Option<PathBuf> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::allowlisted_method;
-
-    #[test]
-    fn method_allowlist_is_closed() {
-        assert!(allowlisted_method("initialize"));
-        assert!(allowlisted_method("thread/start"));
-        assert!(allowlisted_method("thread/read"));
-        assert!(allowlisted_method("turn/start"));
-        assert!(allowlisted_method("turn/interrupt"));
-        assert!(allowlisted_method("thread/fork"));
-        assert!(allowlisted_method("thread/compact/start"));
-        assert!(!allowlisted_method("thread/retire"));
-        assert!(!allowlisted_method("shell/execute"));
-        assert!(!allowlisted_method("thread/start/../shell"));
-    }
-}
+#[path = "transport_tests.rs"]
+mod tests;

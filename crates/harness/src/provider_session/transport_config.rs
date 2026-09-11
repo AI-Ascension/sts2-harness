@@ -32,6 +32,7 @@ pub(super) struct NativeProcessConfig {
     pub(super) working_directory: PathBuf,
     inherited_environment: Vec<String>,
     pub(super) state_root: PathBuf,
+    pub(super) state_quota_bytes: u64,
     pub(super) max_frame_bytes: usize,
 }
 
@@ -49,6 +50,7 @@ impl NativeProcessConfig {
             working_directory: working_directory.into(),
             inherited_environment,
             state_root: state_root.into(),
+            state_quota_bytes: super::MAX_NATIVE_STATE_BYTES,
             max_frame_bytes: MAX_FRAME_BYTES,
         };
         if !valid_executable(&value.executable)
