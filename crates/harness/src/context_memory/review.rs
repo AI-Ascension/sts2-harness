@@ -55,7 +55,7 @@ impl MemoryReview {
             || self.reason_codes.len() > 16
             || self.reason_codes.iter().any(|reason| !valid_id(reason))
             || self.reason_codes.iter().collect::<BTreeSet<_>>().len() != self.reason_codes.len()
-            || self.created_at.is_empty()
+            || !valid_timestamp(&self.created_at)
             || self.creates_active_revision
         {
             return Err(MemoryError::ReviewBinding);

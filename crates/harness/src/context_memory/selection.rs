@@ -22,6 +22,8 @@ impl MemoryCorpus {
             || !valid_digest(&request.phase2_prepared_manifest_sha256)
             || request.mandatory_bytes.len() > MAX_JOB_INPUT_BYTES
             || sha256_hex(&request.mandatory_bytes) != request.mandatory_manifest_sha256
+            || !valid_timestamp(&request.expires_at)
+            || !valid_timestamp(now)
             || request.expires_at.as_str() <= now
         {
             return Err(MemoryError::InvalidQuery);

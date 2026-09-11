@@ -73,6 +73,7 @@ impl SummaryJob {
             || self.max_output_bytes > MAX_SUMMARY_OUTPUT_BYTES
             || !self.review_required
             || self.auto_apply
+            || !valid_timestamp(&self.deadline_at)
             || self.effect_class != "authorized_summary_generation_only"
         {
             return Err(MemoryError::InvalidProposal);

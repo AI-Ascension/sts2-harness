@@ -29,7 +29,6 @@ pub const MAX_RESULTS: usize = 16;
 pub const MAX_SELECTED: usize = 32;
 pub const MAX_OPTIONAL_BYTES: usize = 8 * 1024;
 pub const MAX_LINEAGE_DEPTH: u8 = 2;
-
 fn valid_id(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 128
@@ -281,8 +280,9 @@ impl MemoryEntry {
             || self.parents.iter().map(MemoryParent::reference).collect::<BTreeSet<_>>().len()
                 != self.parents.len()
             || self.status != EntryStatus::Admitted
-            || self.created_at.is_empty()
-            || self.expires_at.is_empty()
+            || !valid_timestamp(&self.created_at)
+            || !valid_timestamp(&self.expires_at)
+            || self.expires_at.as_str() <= self.created_at.as_str()
             || self.game_profile.is_empty()
         {
             return Err(MemoryError::InvalidEntry);

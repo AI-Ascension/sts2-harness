@@ -109,6 +109,15 @@ impl MemoryPolicy {
         {
             return Err(MemoryError::InvalidQuery);
         }
+        for reference in &self.approved_summary_catalog {
+            let entry = corpus.entry(reference).ok_or(MemoryError::MissingParent)?;
+            if entry.kind != MemoryKind::Summary
+                || entry.status != EntryStatus::Admitted
+                || entry.scope != self.scope
+            {
+                return Err(MemoryError::InvalidQuery);
+            }
+        }
         Ok(())
     }
 }

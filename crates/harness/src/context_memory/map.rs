@@ -63,6 +63,44 @@ impl MapBundle {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MapBundleFailpoint {
+    BeforeSwap,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AtomicMapBundleStore {
+    current: Option<MapBundle>,
+    failpoint: Option<MapBundleFailpoint>,
+}
+
+impl AtomicMapBundleStore {
+    pub fn set_failpoint(&mut self, failpoint: Option<MapBundleFailpoint>) {
+        self.failpoint = failpoint;
+    }
+
+    pub fn commit(
+        &mut self,
+        bundle: MapBundle,
+        scope: &MemoryScope,
+        generation: u64,
+    ) -> Result<(), MemoryError> {
+        bundle.validate(scope, generation)?;
+        if self.current.as_ref() == Some(&bundle) {
+            return Ok(());
+        }
+        if self.failpoint.take().is_some() {
+            return Err(MemoryError::PublicationFailed);
+        }
+        self.current = Some(bundle);
+        Ok(())
+    }
+
+    pub fn current(&self) -> Option<&MapBundle> {
+        self.current.as_ref()
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct MemoryTelemetry {
     pub admitted_sources: u64,

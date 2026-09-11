@@ -26,6 +26,15 @@ The POC verifies the copied `poc-v1` artifact, runs a fixed-seed/fixed-clock fak
 for a state read, five for an accepted `use_budget` action, and five for a rejected zero-unit action.
 It does not prove provider, live MCP, gateway, game, or artifact-store runtime behavior.
 
+Phase 3 lifecycle tests additionally exercise the encrypted SQLite corpus adapter, tombstone-first
+restore, generation-aware cache invalidation, finite unknown-job reservations, immutable review
+versions and critical-fact checks, resumable migration checkpoints, bounded map attachments,
+least-privilege source envelopes, a race between revoke and dependent publication, and the compiled
+`context-memory-cli`, `context-memory-peer`, and `context-memory-bench` boundaries. Separate oracle
+tests assert hand-labelled causal membership, deterministic Unicode normalization and private
+held-out labels. The process tests use only synthetic bytes and loopback stdin/stdout; they do not
+stand in for the unavailable target↔harness Phase 2 adapter.
+
 ## Baseline commands
 
 ```bash
