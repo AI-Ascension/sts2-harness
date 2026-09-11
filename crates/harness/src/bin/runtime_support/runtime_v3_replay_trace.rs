@@ -42,6 +42,7 @@ impl ReplayTrace {
             match row["event"].as_str() {
                 Some("seeded_run_receipt") => {
                     if !records.is_empty()
+                        || rejected_attempts != 0
                         || terminal.is_some()
                         || operation.is_some()
                         || seeded_admission.is_some()

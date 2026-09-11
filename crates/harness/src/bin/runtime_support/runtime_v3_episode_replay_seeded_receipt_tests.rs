@@ -178,6 +178,27 @@ fn seeded_receipt_rejects_tampering_and_arbitrary_map_sources() {
 }
 
 #[test]
+fn seeded_receipt_rejects_a_prior_skipped_rejected_attempt() {
+    let mut values = rows();
+    let rejected_decision = values[1].clone();
+    let rejected = json!({
+        "event":"action_receipt",
+        "action_id":"start-1",
+        "operation_id":"not-dispatched",
+        "status":"Rejected",
+        "effect":null,
+        "observation":rejected_decision["observation"]
+    });
+    values.insert(0, rejected_decision);
+    values.insert(1, rejected);
+
+    assert!(
+        parse(&values).is_err(),
+        "a seeded receipt must be the first replay record, not follow a skipped rejection"
+    );
+}
+
+#[test]
 fn private_seeded_receipt_source_parser_validation() {
     let Ok(path) = std::env::var("STS2_PRIVATE_SEEDED_REPLAY_SOURCE") else {
         return;
