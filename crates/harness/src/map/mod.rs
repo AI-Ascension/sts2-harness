@@ -20,6 +20,7 @@ mod evaluation_fixture;
 mod evaluation_matrix;
 mod evaluation_oracle;
 mod evaluation_renderer;
+mod evaluation_renderer_png;
 mod evaluation_routes;
 mod evaluation_types;
 mod feed;

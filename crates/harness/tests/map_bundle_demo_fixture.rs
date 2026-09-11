@@ -106,7 +106,9 @@ fn dense_demo_fixture_is_generated_by_the_harness_builder() -> Result<(), String
             episode_id: "demo-episode-001".to_owned(),
             trajectory_id: "demo-trajectory-001".to_owned(),
             model_execution_id: Some("demo-model-execution-001".to_owned()),
-            action_catalog_digest: sts2_harness::hex_bytes(Sha256::digest(b"demo-action-catalog-v1")),
+            action_catalog_digest: sts2_harness::hex_bytes(Sha256::digest(
+                b"demo-action-catalog-v1",
+            )),
         },
     )
     .map_err(|error| error.to_string())?;
