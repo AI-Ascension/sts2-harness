@@ -1,8 +1,8 @@
 # Implemented Phase 3 harness handoff
 
 Date: 2026-09-11. The Phase 3 memory policy is additive to the existing harness branch
-`phase2/context-editing`. The implementation revision is `ae5a0cb`; the companion target pin is
-`f22296225c9e6b5a36004d1d689f9e27384920ba`.
+`phase2/context-editing`. The implementation revision is `3cb7296`; the companion target pin is
+`8e52da837ae0a23cea18d7cd3d5164765911e6b6`.
 
 `crates/harness/src/context_memory.rs` is a bounded include wrapper; its source files under
 `crates/harness/src/context_memory/` keep each policy unit reviewable and within repository size
@@ -37,11 +37,13 @@ references without mutating source truth.
 | Retrieval | harness | `query.v1` → `retrieval.v1`; local read/no inference | scope/tie/projection tests | index projection and cache persistence unverified |
 | Extract/review | harness | proposal/review v1; review-only | exact extract/admission tests | independent reviewer service unverified |
 | Summary job | harness provider port | summary-job v1; explicit generation only | fake peer and unknown test | live provider/process boundary unverified |
-| Selection/policy | harness | policy/selection v1; whole bytes | selection tests | Phase 2 serializer adapter unverified |
+| Selection/policy | harness | policy/selection v1; whole bytes | selection tests; `docs/evidence/phase3-adapter-demo-20260911.json` | offline Phase 2 adapter is proven; production attachment unverified |
 | Approval/revocation | harness + existing Phase 2 | approval/revocation v1; held/epoch fenced | approval/revocation tests | restore/downgrade transaction unverified |
 | Map/telemetry | harness | generation-fenced map, current legal authority and redacted aggregate telemetry | map policy/ACL/telemetry tests | executable map artifact lane unverified |
 
 The module has no game or host access, no provider credentials, no arbitrary process/network path,
-and no browser storage. The fake peer is synthetic boundary evidence only. A future target adapter
-must consume these policy outputs through declared ports and preserve the existing Phase 2 prepared
-bytes, pause/commit/resume, plan epoch, and action-lineage authorities.
+and no browser storage. The fake peer and `phase3-adapter-demo` are synthetic boundary evidence;
+the demo now consumes policy output through declared ports, preserves the existing Phase 2 prepared
+bytes, pause/commit/resume, plan epoch, and action-lineage authorities, and records the exact result in
+`docs/evidence/phase3-adapter-demo-20260911.json`. A production projection, live provider, native
+game, and native three-level reviewer still require separate integration work.

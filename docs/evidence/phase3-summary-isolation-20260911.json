@@ -1,0 +1,19 @@
+{
+  "schema": "ascension.context-memory.summary-isolation-evidence.v1",
+  "date": "2026-09-11",
+  "status": "passed",
+  "evidence_class": "executed_synthetic_process",
+  "source_revision": "3cb72968bee8943e89158a28cec27d7b88e1ce91",
+  "command": "cargo test --locked --package sts2-harness --test phase3_peer -- --exact executable_fake_peer_rejects_control_shell_and_network_tool_fields",
+  "tests_passed": 1,
+  "tests_failed": 0,
+  "strict_request_fields": ["schema", "source_manifest", "summary_id", "input_sha256"],
+  "rejected_fields": ["game_action", "management_command", "shell", "url"],
+  "provider_calls": 0,
+  "game_launches": 0,
+  "external_requests": 0,
+  "unauthorized_processes": 0,
+  "limits": [
+    "The executable peer is a checked-in synthetic boundary and does not prove a production sandbox or live provider policy."
+  ]
+}

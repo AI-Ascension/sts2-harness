@@ -2,8 +2,8 @@
 
 Date: 2026-09-11. This is the harness-side bounded policy record for the additive
 `ascension.context-memory.*.v1` namespace. Harness implementation code is pinned to
-`ae5a0cb09a34b766e9b0c899f8f8298f630b9111`; the companion target implementation is pinned to
-`f22296225c9e6b5a36004d1d689f9e27384920ba`. The record is an implementation handoff, not a live
+`3cb72968bee8943e89158a28cec27d7b88e1ce91`; the companion target implementation is pinned to
+`8e52da837ae0a23cea18d7cd3d5164765911e6b6`. The record is an implementation handoff, not a live
 provider, native game, deployment, or three-level orchestration claim.
 
 The include-based `context_memory` module owns scoped source admission, occurrence identity,
@@ -18,12 +18,12 @@ concurrency/race coverage, and one-shot exact resume. The compiled `context-memo
 `context-memory-peer`, and `context-memory-bench` binaries exercise bounded synthetic boundaries.
 
 Independent hand-labelled oracle tests cover causal membership, tie order, Unicode normalization,
-stopwords, bounded terms, and held-out label isolation. The process tests use only synthetic bytes
-and loopback stdin/stdout. They are not evidence of the unavailable target↔harness Phase 2 adapter.
+stopwords, bounded terms, and held-out label isolation. The executable fake-peer and adapter-demo
+tests use only synthetic bytes and loopback stdin/stdout; the adapter demo crosses the built target
+CLI, fake peer, review, Phase 2 commit-held approval, and first-resume paths.
 
-The synchronized 90-row matrix records 84 `executed_synthetic` and 6 `blocked` rows. The blocked
-rows are the unavailable cross-repository, real-process,
-end-to-end, and native-review lanes.
+The synchronized 90-row matrix records 89 `executed_synthetic` and 1 `blocked` row. The remaining
+blocked row is the unavailable native three-level reviewer lane.
 
 ## Gates
 
@@ -44,6 +44,11 @@ explicitly zero and provider class `none_local_lexical_only`; it makes no qualit
 or trajectory claim. The current run emitted `samples=32`, `corpus_entries=64`,
 `corpus_bytes=1782`, `baseline_p50_us=19`, and `memory_retrieval_p50_us=443`.
 
+The executable adapter demo also passed with target revision `8e52da8`, harness revision
+`3cb7296`, zero provider calls, zero game launches, zero external requests, and zero unauthorized
+processes. Its exact digests and binary hashes are in
+`docs/evidence/phase3-adapter-demo-20260911.json`.
+
 ## Limits and blockers
 
 The harness has no game or host access, provider credentials, arbitrary process/network path, or
@@ -51,9 +56,8 @@ browser storage. The fake peer reports a bounded source manifest and output dige
 raw source bytes or invokes management tools. Durable local persistence and policy tests do not prove
 production WAL/temp/backup operations, provider quality, native action effects, or deployment.
 
-The remaining mandatory unavailable lanes are the atomic cross-repository Phase 2 binding, a real
-summary process/tool tripwire, target↔harness end-to-end process/network tripwires, and an
-independent native three-level reviewer. The current target browser audits passed with the
+The remaining mandatory unavailable lane is an independent native three-level reviewer. The current
+target browser audits passed with the
 documented Chromium library environment at target revision `f22296225c9e6b5a36004d1d689f9e27384920ba`,
 recording zero external/provider/game effects and no browser persistence. Harness PR #68 merged
 externally during the handoff; the new follow-up remains draft. No merge was initiated by this

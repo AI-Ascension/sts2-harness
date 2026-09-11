@@ -69,11 +69,11 @@
       "requirement_id": "P3-R006",
       "stimulus": "Crash between revision update and policy-binding publication",
       "expected_oracle": "The memory-policy binding and Phase 2 revision/approval transaction are documented and tested as all-or-nothing.",
-      "status": "blocked",
-      "evidence_ref": "BLOCKED: atomic cross-repository memory-policy/Phase2 transaction adapter is not wired",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "atomic cross-repository memory-policy/Phase2 transaction adapter is not wired"
+      "status": "executed_synthetic",
+      "evidence_ref": "../phase2-target/tests/phase2_durable.rs; ../phase2-target/docs/evidence/phase3-adapter-demo-20260911.json",
+      "command": "cargo test --locked --test phase2_durable memory_binding_and_phase2_revision_commit_as_one_transaction -- --exact",
+      "exit_status": "0",
+      "reason": "target SQLite binding and Phase 2 revision commit are atomic and idempotent in the offline adapter fixture; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F007",
@@ -369,11 +369,11 @@
       "requirement_id": "P3-R031",
       "stimulus": "Source contains an instruction to call game controls",
       "expected_oracle": "Summary execution cannot call game, management, shell or arbitrary-network tools and cannot approve itself.",
-      "status": "blocked",
-      "evidence_ref": "BLOCKED: real summary process/tool tripwire lane is unavailable",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "real summary process/tool tripwire lane is unavailable"
+      "status": "executed_synthetic",
+      "evidence_ref": "tests/phase3_peer.rs; docs/evidence/phase3-summary-isolation-20260911.json",
+      "command": "cargo test --locked --package sts2-harness --test phase3_peer -- --exact executable_fake_peer_rejects_control_shell_and_network_tool_fields",
+      "exit_status": "0",
+      "reason": "executable fake peer rejects game, management, shell and URL fields before use; synthetic process boundary only"
     },
     {
       "failure_id": "P3-F032",
@@ -873,11 +873,11 @@
       "requirement_id": "P3-R073",
       "stimulus": "Demo uses imitation in-memory control server",
       "expected_oracle": "Demo is not a second fake control server or mock-only UI and records exact binary/contract pins.",
-      "status": "blocked",
-      "evidence_ref": "BLOCKED: built end-to-end memory demo with real harness adapter is not wired",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "built end-to-end memory demo with real harness adapter is not wired"
+      "status": "executed_synthetic",
+      "evidence_ref": "docs/evidence/phase3-adapter-demo-20260911.json",
+      "command": "phase3-adapter-demo with pinned target and fake-peer binaries",
+      "exit_status": "0",
+      "reason": "built target adapter and executable fake peer complete the reviewed synthetic flow; no live/native claim"
     },
     {
       "failure_id": "P3-F074",
@@ -885,11 +885,11 @@
       "requirement_id": "P3-R074",
       "stimulus": "Selected admitted summary never reaches real bridge",
       "expected_oracle": "A reviewed memory change reaches exact fake-peer input through Phase 2 and correct action lineage.",
-      "status": "blocked",
-      "evidence_ref": "BLOCKED: exact reviewed adoption through Phase2 and fake peer is not integrated",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "exact reviewed adoption through Phase2 and fake peer is not integrated"
+      "status": "executed_synthetic",
+      "evidence_ref": "docs/evidence/phase3-adapter-demo-20260911.json",
+      "command": "phase3-adapter-demo with pinned target and fake-peer binaries",
+      "exit_status": "0",
+      "reason": "reviewed summary, selection digest, Phase 2 prepared manifest, commit-held approval and first resume are checked end to end in the synthetic fixture"
     },
     {
       "failure_id": "P3-F075",
@@ -897,11 +897,11 @@
       "requirement_id": "P3-R075",
       "stimulus": "Fixture accidentally resolves real provider binary",
       "expected_oracle": "Network/process tripwires prove no real provider, game, production service or unauthorized endpoint was contacted.",
-      "status": "blocked",
-      "evidence_ref": "BLOCKED: Phase3 end-to-end process/network tripwires are not available",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "Phase3 end-to-end process/network tripwires are not available"
+      "status": "executed_synthetic",
+      "evidence_ref": "docs/evidence/phase3-adapter-demo-20260911.json",
+      "command": "phase3-adapter-demo with pinned target and fake-peer binaries",
+      "exit_status": "0",
+      "reason": "process count and no-network-capable-path tripwires report zero provider calls, game launches, external requests and unauthorized processes; offline synthetic only"
     },
     {
       "failure_id": "P3-F076",
@@ -1082,12 +1082,12 @@
       "evidence_ref": "docs/evidence/phase3-completion-report-20260910.md",
       "command": "completion report and explicit limits",
       "exit_status": "0",
-      "reason": "truthful handoff; no completion claim while 6 mandatory native/integration rows are blocked"
+      "reason": "truthful handoff; no completion claim while the mandatory native three-level reviewer row remains blocked"
     }
   ],
   "counts": {
-    "executed_synthetic": 84,
+    "executed_synthetic": 89,
     "unverified": 0,
-    "blocked": 6
+    "blocked": 1
   }
 }
