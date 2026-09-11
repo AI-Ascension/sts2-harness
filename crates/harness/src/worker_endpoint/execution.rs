@@ -6,16 +6,17 @@
     }
 
     fn serve(
-        listener: UnixListener,
+        listener: EndpointListener,
         config: &EndpointConfig,
         bootstrap: &Bootstrap,
         runtime: &mut WorkerRuntime,
     ) -> Result<(), String> {
-        let owner_proof = WorkerOwnerProof::new("linux-peer-and-credential-authenticated")
+        let owner_proof = WorkerOwnerProof::new(owner_proof_label())
             .map_err(|_| String::from("worker owner proof is invalid"))?;
         let mut active = None;
         let mut auth_slots = AuthSlotBudget::default();
         let mut pending_authentication = Vec::new();
+        let mut listener = listener;
         loop {
             reap_execution(&mut active, runtime)?;
             let mut progressed = false;
@@ -36,13 +37,10 @@
                 }
             }
             if auth_slots.try_acquire() {
-                match listener.accept() {
-                    Ok((stream, _)) => {
+                match accept_endpoint(&mut listener)? {
+                    Some(stream) => {
                         progressed = true;
                         let peer = bootstrap.peer.clone();
-                        let proof = bootstrap.peer_proof.clone().ok_or_else(|| {
-                            String::from("worker peer proof is unavailable")
-                        })?;
                         let credential_path = config.credential_path.clone();
                         let handle = thread::Builder::new()
                             .name(String::from("sts2-worker-authentication"))
@@ -50,7 +48,6 @@
                                 authenticate_connection_owned(
                                     stream,
                                     peer,
-                                    proof,
                                     credential_path,
                                 )
                             })
@@ -59,10 +56,9 @@
                             })?;
                         pending_authentication.push(PendingAuthentication { handle });
                     }
-                    Err(error) if error.kind() == ErrorKind::WouldBlock => {
+                    None => {
                         auth_slots.release();
                     }
-                    Err(_) => return Err(String::from("worker endpoint accept failed")),
                 }
             }
             if !progressed {
@@ -76,7 +72,7 @@
     }
 
     struct AuthenticatedConnection {
-        stream: UnixStream,
+        stream: EndpointStream,
         peer: PeerSession,
     }
 
@@ -139,7 +135,7 @@
     }
 
     fn handle_authenticated_connection(
-        stream: UnixStream,
+        stream: EndpointStream,
         peer: PeerSession,
         config: &EndpointConfig,
         runtime: &mut WorkerRuntime,
@@ -177,19 +173,6 @@
             start_execution(*handoff, config, runtime, active)?;
         }
         Ok(())
-    }
-
-    fn authenticate_connection_owned(
-        stream: UnixStream,
-        peer: LinuxPeer,
-        proof: Arc<PeerProofState>,
-        credential_path: PathBuf,
-    ) -> Result<AuthenticatedConnection, String> {
-        let session = authenticate_connection(&stream, &peer, &proof, &credential_path)?;
-        Ok(AuthenticatedConnection {
-            stream,
-            peer: session,
-        })
     }
 
     fn capability_for(command: WorkerCommand) -> WorkerCapability {
@@ -248,6 +231,7 @@
 
     fn run_runtime_child(task: &WorkerExecutionTask, config: &ChildConfig) -> Result<(), String> {
         let tuple = &task.running().tuple;
+        config.executable.verify_before_launch()?;
         let mut command = std::process::Command::new(config.executable.command_path());
         command
             .arg("--resume")

@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 
+use super::seeded_receipt::{SeededAdmission, parse_seeded_admission, validate_first};
 use serde_json::Value;
 
 pub(super) struct ReplayRecord {
@@ -16,6 +17,7 @@ pub(super) struct ReplayTrace {
     pub(super) prefix: bool,
     pub(super) rejected_attempts: usize,
     pub(super) failure_code: Option<&'static str>,
+    pub(super) seeded_admission: Option<SeededAdmission>,
 }
 
 impl ReplayTrace {
@@ -33,10 +35,23 @@ impl ReplayTrace {
         let mut operations = HashSet::new();
         let mut rejected_attempts = 0;
         let mut failure_code = None;
+        let mut seeded_admission = None;
         for line in text.lines() {
             let row: Value =
                 serde_json::from_str(line).map_err(|_| "invalid episode replay JSON")?;
             match row["event"].as_str() {
+                Some("seeded_run_receipt") => {
+                    if !records.is_empty()
+                        || rejected_attempts != 0
+                        || terminal.is_some()
+                        || operation.is_some()
+                        || seeded_admission.is_some()
+                        || failure_code.is_some()
+                    {
+                        return Err("seeded receipt is not a replay preamble".into());
+                    }
+                    seeded_admission = Some(parse_seeded_admission(&row)?);
+                }
                 Some("model_decision") => {
                     if !settled
                         || terminal.is_some()
@@ -215,14 +230,19 @@ impl ReplayTrace {
             terminal.ok_or("episode replay is incomplete")?
         };
         let first = records.first().ok_or("episode replay has no decisions")?;
-        let seed = first.observation["visible_seed"]
-            .as_str()
-            .filter(|seed| !seed.is_empty())
-            .ok_or("episode replay requires an explicit visible setup seed")?;
-        if first.observation["state"]["state"] != "setup" || terminal["visible_seed"] != seed {
-            return Err(
-                "episode replay must span a fresh seeded setup and matching terminal seed".into(),
-            );
+        if let Some(admission) = seeded_admission.as_ref() {
+            validate_first(admission, &first.observation, &terminal)?;
+        } else {
+            let seed = first.observation["visible_seed"]
+                .as_str()
+                .filter(|seed| !seed.is_empty())
+                .ok_or("episode replay requires an explicit visible setup seed")?;
+            if first.observation["state"]["state"] != "setup" || terminal["visible_seed"] != seed {
+                return Err(
+                    "episode replay must span a fresh seeded setup and matching terminal seed"
+                        .into(),
+                );
+            }
         }
         Ok(Self {
             records,
@@ -230,6 +250,7 @@ impl ReplayTrace {
             prefix,
             rejected_attempts,
             failure_code,
+            seeded_admission,
         })
     }
 }

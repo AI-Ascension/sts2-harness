@@ -1,9 +1,10 @@
 # Native worker endpoint v1
 
-Status: source-derived Linux endpoint implementation. The endpoint is an adapter
-around the harness-owned `WorkerRuntime`; it is not a second watchdog, gateway,
-MCP, game, or provider authority. Non-Linux builds return an explicit unsupported
-error until an equivalent platform adapter is reviewed.
+Status: source-derived Linux endpoint implementation and source-derived Windows
+named-pipe adapter. The endpoint is an adapter around the harness-owned
+`WorkerRuntime`; it is not a second watchdog, gateway, MCP, game, or provider
+authority. Native Windows build, launch, service, reboot, and live peer evidence
+remain unverified.
 
 ## Launch contract
 
@@ -83,6 +84,18 @@ big-endian `u32` length prefix, bounded by `worker_handoff::MAX_FRAME_BYTES`.
 The endpoint rechecks the peer before and after every received frame and around
 each response write. Transport success is not effect settlement.
 
+On Windows, the adapter creates only the exact nonce-bound named pipe under
+`\\.\pipe\ascension-worker-`. Its protected DACL grants the current SID, remote
+clients are rejected, and the first pipe instance fails if another owner has
+already claimed the name. Before a connection reaches the credential exchange,
+the adapter checks the named-pipe client PID and session, process creation time,
+image path, token SID, and a held non-reparse image SHA-256. The peer is checked
+again before and after each bounded frame read or write. The credential file is
+opened only after peer admission and must have a protected DACL with one
+non-inherited allow ACE for the current SID; its bytes are returned in a
+zeroizing buffer and compared in constant time. Windows polling, instance,
+frame, path, image, and credential bounds are fixed in the adapter.
+
 ## Admission and execution
 
 After authentication, `WorkerRuntime` owns the durable store and a capacity-one
@@ -93,11 +106,12 @@ records the durable handoff, and sends the response before starting the child.
 If the response cannot be written after admission, the handoff remains an
 uncertain retained record; it is not silently retried.
 
-Only an admitted reservation can start the configured runtime child. Before the
-endpoint accepts the runtime configuration, it copies the verified executable
-bytes into a sealed executable memfd. Every child is launched through that
-retained descriptor, so pathname replacement or in-place source mutation after
-startup cannot change the approved image. The child
+Only an admitted reservation can start the configured runtime child. On Linux,
+the endpoint copies the verified executable bytes into a sealed executable
+memfd and launches through that retained descriptor. On Windows, it opens a
+canonical non-reparse image without write/delete sharing, retains that handle,
+and reopens, rehashes, and compares the held file identity immediately before
+launch. The child
 receives `--resume`, the exact run/episode/attempt/trajectory identities, the
 approved fingerprint components, and the execution-store path. It does not
 inherit the endpoint or credential controls and cannot select a different image
@@ -126,5 +140,8 @@ reboot, or a release.
 
 The implementation is validated locally with the repository's strict policy,
 locked offline check, warnings-denied Clippy, and all-target/all-feature tests.
-The platform-specific endpoint is source-derived on non-Linux systems until an
-equivalent named-pipe/ACL adapter is implemented and independently tested.
+The Windows boundary additionally passes a target Rust check and strict Clippy
+for `x86_64-pc-windows-gnu` in the available environment. The full Windows
+workspace check still requires a native/link-capable Windows toolchain because
+the bundled SQLite build cannot be linked here; native endpoint and lifecycle
+execution remain `unverified`.

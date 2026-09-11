@@ -7,7 +7,9 @@ mod implementation {
     include!("runtime_v3_telemetry_types_c.rs");
     include!("runtime_v3_telemetry_worker.rs");
     include!("runtime_v3_telemetry_render.rs");
+    include!("runtime_v3_telemetry_test_support.rs");
     include!("runtime_v3_telemetry_tests.rs");
+    include!("runtime_v3_telemetry_identity_privacy_tests.rs");
 }
 
 pub(super) use implementation::{

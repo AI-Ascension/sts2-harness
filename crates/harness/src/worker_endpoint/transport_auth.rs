@@ -30,16 +30,13 @@
     }
 
     fn authenticate_connection(
-        stream: &UnixStream,
+        stream: &mut UnixStream,
         peer: &LinuxPeer,
-        proof_state: &PeerProofState,
         credential_path: &Path,
     ) -> Result<PeerSession, String> {
-        let session = PeerSession::authenticate(stream, peer, proof_state)?;
-        let mut stream = stream
-            .try_clone()
-            .map_err(|_| String::from("worker transport could not be prepared"))?;
-        let auth = read_transport_frame(&mut stream, &session, AUTH_TIMEOUT)?;
+        let proof_state = spawn_peer_image_proof(peer)?;
+        let session = PeerSession::authenticate(stream, peer, &proof_state)?;
+        let auth = Zeroizing::new(read_transport_frame(stream, &session, AUTH_TIMEOUT)?);
         let credential = read_credential(credential_path)?;
         let mut expected = Zeroizing::new(Vec::with_capacity(AUTH_MAGIC.len() + credential.len()));
         expected.extend_from_slice(AUTH_MAGIC);
@@ -48,6 +45,22 @@
             return Err(String::from("worker credential is not approved"));
         }
         Ok(session)
+    }
+
+    fn authenticate_connection_owned(
+        mut stream: EndpointStream,
+        peer: LinuxPeer,
+        credential_path: PathBuf,
+    ) -> Result<AuthenticatedConnection, String> {
+        let session = authenticate_connection(&mut stream, &peer, &credential_path)?;
+        Ok(AuthenticatedConnection {
+            stream,
+            peer: session,
+        })
+    }
+
+    fn owner_proof_label() -> &'static str {
+        "linux-peer-and-credential-authenticated"
     }
 
     fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {

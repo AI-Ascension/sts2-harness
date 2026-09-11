@@ -12,6 +12,11 @@ use sts2_harness::{
 
 use super::{RuntimeV3Port, recording, wire};
 
+#[path = "runtime_v3_replay_seeded_receipt.rs"]
+mod seeded_receipt;
+#[cfg(test)]
+#[path = "runtime_v3_episode_replay_seeded_receipt_tests.rs"]
+mod seeded_receipt_tests;
 #[path = "runtime_v3_replay_trace.rs"]
 mod trace;
 #[cfg(test)]
@@ -60,6 +65,7 @@ pub(super) fn run(
     } else {
         ReplayTrace::parse(&bytes)?
     };
+    trace.admit_seeded_receipt(port.config.seed_transport.as_ref())?;
     let digest = sts2_harness::sha256_hex(&bytes);
     let mut source = ReplaySource::new(trace);
     println!(

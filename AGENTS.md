@@ -20,6 +20,8 @@ The ownership and dependency decisions are recorded in
 and [`docs/decisions/0002-sixth-target-protocol-decision.md`](docs/decisions/0002-sixth-target-protocol-decision.md).
 The initial target-owned port surface is recorded in
 [`docs/decisions/0003-harness-initial-ports-and-deterministic-seams.md`](docs/decisions/0003-harness-initial-ports-and-deterministic-seams.md).
+The separately owned Windows worker IPC boundary is recorded in
+[`docs/decisions/0015-windows-worker-endpoint-boundary.md`](docs/decisions/0015-windows-worker-endpoint-boundary.md).
 
 ## Target contract
 
@@ -27,12 +29,13 @@ The target owner is the harness maintainers. This repository is the coordinator 
 artifact owner for multi-instance runs, model/provider ports, episodes, trajectories, replay,
 scoring, evaluation, datasets, and artifact lineage. It is not a game adapter.
 
-Wave 2 permits one non-empty target-owned Rust harness package with explicit ports and deterministic
-fake-boundary tests. Keep it to coordination seams, identity, records, replay checks, artifact
-lineage, and lifecycle cleanup; do not add live provider behavior, game behavior, gateway lease
-ownership, MCP framing, model weights, datasets, or copied implementation source. The existing
-directory and any future `experiments/managed-rust-interop` work must remain intact and must not be
-treated as game authority.
+Wave 2 permits one non-empty target-owned Rust harness coordination package with explicit ports and
+deterministic fake-boundary tests, plus a separately approved platform boundary when a native
+process/IPC contract requires FFI. Keep the target-owned package to coordination seams, identity,
+records, replay checks, artifact lineage, and lifecycle cleanup; do not add live provider behavior,
+game behavior, gateway lease ownership, MCP framing, model weights, datasets, or copied
+implementation source. The existing directory and any future `experiments/managed-rust-interop`
+work must remain intact and must not be treated as game authority.
 
 ## Non-negotiable boundaries
 

@@ -2,9 +2,9 @@
 
 #![allow(clippy::expect_used)]
 
-use sts2_harness::{
-    ExoProcessConfig, ExoProcessConfigError, ExoProcessTransport, ExoTransport, ExoTransportError,
-};
+use sts2_harness::{ExoProcessConfig, ExoProcessConfigError};
+#[cfg(unix)]
+use sts2_harness::{ExoProcessTransport, ExoTransport, ExoTransportError};
 
 #[test]
 fn process_configuration_requires_direct_bounded_inputs() {

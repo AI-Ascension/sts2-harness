@@ -102,7 +102,13 @@ impl DurableHandle {
         let existing = store
             .resume_episode(&lineage.episode_id, &fingerprint)
             .map_err(|error| format!("cannot inspect runtime-v3 execution state: {error}"))?;
-        if !matches!(existing, ResumeState::New) && !resume_requested {
+        if resume_requested {
+            if matches!(&existing, ResumeState::New) {
+                return Err(String::from(
+                    "resume requested but no durable episode exists; refusing to start a new episode",
+                ));
+            }
+        } else if !matches!(&existing, ResumeState::New) {
             return Err(String::from(
                 "durable runtime-v3 episode already exists; rerun with --resume after reviewing pending state",
             ));

@@ -297,3 +297,131 @@ fn catalog_and_receipt_relations_are_checked() -> Result<(), Box<dyn Error>> {
     ));
     Ok(())
 }
+
+fn route_fixture(
+    local: &str,
+    ally: &str,
+    route_suffix: &str,
+) -> Result<(CoopNativeEnvelope, CoopNativeEnvelope), Box<dyn Error>> {
+    let mut observation: Value = serde_json::from_slice(golden("observation-response"))?;
+    let mut catalog: Value = serde_json::from_slice(golden("legal-catalog-response"))?;
+    for value in [&mut observation, &mut catalog] {
+        value["instance_id"] = json!(format!("instance:native-{route_suffix}"));
+        value["session_id"] = json!(format!("session:native-{route_suffix}"));
+        value["lease_id"] = json!(format!("lease:native-{route_suffix}"));
+        value["lease_epoch"] = json!(7);
+        value["observation"]["peers"][0]["peer_token"] = json!(local);
+        value["observation"]["peers"][0]["role"] = json!("local");
+        value["observation"]["peers"][1]["peer_token"] = json!(ally);
+        value["observation"]["peers"][1]["role"] = json!("ally");
+    }
+    catalog["actor_peer"] = json!(local);
+    catalog["catalog"]["actor_peer"] = json!(local);
+    for vote in catalog["catalog"]["votes"].as_array_mut().ok_or("votes")? {
+        vote["voter_peer"] = json!(local);
+    }
+    Ok((
+        CoopNativeEnvelope::parse_response(&serde_json::to_vec(&observation)?)?,
+        CoopNativeEnvelope::parse_response(&serde_json::to_vec(&catalog)?)?,
+    ))
+}
+
+fn action_fixture(
+    route_suffix: &str,
+    actor: &str,
+    operation: &str,
+) -> Result<CoopNativeEnvelope, Box<dyn Error>> {
+    let mut request: Value = serde_json::from_slice(golden("local-action-settled-request"))?;
+    request["instance_id"] = json!(format!("instance:native-{route_suffix}"));
+    request["session_id"] = json!(format!("session:native-{route_suffix}"));
+    request["lease_id"] = json!(format!("lease:native-{route_suffix}"));
+    request["lease_epoch"] = json!(7);
+    request["actor_peer"] = json!(actor);
+    request["operation_id"] = json!(operation);
+    Ok(CoopNativeEnvelope::parse_request(&serde_json::to_vec(&request)?)?)
+}
+
+fn recovery_fixture(
+    route_suffix: &str,
+    operation: &str,
+) -> Result<CoopNativeEnvelope, Box<dyn Error>> {
+    let mut request: Value = serde_json::from_slice(golden("local-action-recovered-request"))?;
+    request["instance_id"] = json!(format!("instance:native-{route_suffix}"));
+    request["session_id"] = json!(format!("session:native-{route_suffix}"));
+    request["lease_id"] = json!(format!("lease:native-{route_suffix}"));
+    request["lease_epoch"] = json!(7);
+    request["operation_id"] = json!(operation);
+    Ok(CoopNativeEnvelope::parse_request(&serde_json::to_vec(&request)?)?)
+}
+
+fn cohort() -> Result<CoopNativeCohort, Box<dyn Error>> {
+    let (host_observation, host_catalog) = route_fixture("peer:host1", "peer:client1", "host")?;
+    let (client_observation, client_catalog) = route_fixture("peer:client1", "peer:host1", "client")?;
+    Ok(CoopNativeCohort::validate(vec![
+        CoopNativeCohortRoute::new(CoopNativePeerId::new("peer:host1")?, host_observation, host_catalog),
+        CoopNativeCohortRoute::new(
+            CoopNativePeerId::new("peer:client1")?,
+            client_observation,
+            client_catalog,
+        ),
+    ])?)
+}
+
+#[test]
+fn cohort_schedules_only_a_bound_current_catalog_action() -> Result<(), Box<dyn Error>> {
+    let cohort = cohort()?;
+    let actor = CoopNativePeerId::new("peer:host1")?;
+    let request = action_fixture("host", "peer:host1", "op:native:cohort-action")?;
+    let scheduled = cohort.schedule_local_action(&actor, &request)?;
+    assert_eq!(scheduled.route_peer(), &actor);
+    assert_eq!(scheduled.operation_id().as_str(), "op:native:cohort-action");
+    assert_eq!(scheduled.expected_host_generation(), 1);
+
+    let mut stale: Value = serde_json::from_str(&request.to_json()?)?;
+    stale["expected_host_generation"] = json!(2);
+    let stale = CoopNativeEnvelope::parse_request(&serde_json::to_vec(&stale)?)?;
+    assert_eq!(
+        cohort.schedule_local_action(&actor, &stale),
+        Err(CoopNativeCohortError::ActionNotCurrent)
+    );
+    Ok(())
+}
+
+#[test]
+fn cohort_rejects_extra_roster_peer_and_unbound_actor() -> Result<(), Box<dyn Error>> {
+    let (host_observation, host_catalog) = route_fixture("peer:host1", "peer:client1", "host")?;
+    let mut client_observation: Value = serde_json::from_str(&route_fixture("peer:client1", "peer:host1", "client")?.0.to_json()?)?;
+    client_observation["observation"]["peers"]
+        .as_array_mut()
+        .ok_or("peers")?
+        .push(json!({
+        "peer_token":"peer:third1", "authority_id":"authority:native-test", "role":"ally",
+        "connected":true, "peer_generation":1,
+        "state_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "rejoin_epoch":0, "authority_epoch":"epoch:native-test", "checkpoint_id":"checkpoint:1",
+        "digest_known":true, "is_loading":false, "is_divergent":false, "checksum_status":"unavailable"
+    }));
+    let (_, client_catalog) = route_fixture("peer:client1", "peer:host1", "client")?;
+    let mut client_catalog: Value = serde_json::from_str(&client_catalog.to_json()?)?;
+    client_catalog["observation"]["peers"] = client_observation["observation"]["peers"].clone();
+    let routes = vec![
+        CoopNativeCohortRoute::new(CoopNativePeerId::new("peer:host1")?, host_observation, host_catalog),
+        CoopNativeCohortRoute::new(
+            CoopNativePeerId::new("peer:client1")?,
+            CoopNativeEnvelope::parse_response(&serde_json::to_vec(&client_observation)?)?,
+            CoopNativeEnvelope::parse_response(&serde_json::to_vec(&client_catalog)?)?,
+        ),
+    ];
+    assert_eq!(CoopNativeCohort::validate(routes), Err(CoopNativeCohortError::RosterMismatch));
+
+    let cohort = cohort()?;
+    let request = action_fixture("host", "peer:client1", "op:native:wrong-actor")?;
+    assert_eq!(
+        cohort.schedule_local_action(&CoopNativePeerId::new("peer:host1")?, &request),
+        Err(CoopNativeCohortError::ActionNotCurrent)
+    );
+    Ok(())
+}
+
+include!("coop_native_cohort_tests.rs");
+include!("coop_native_canonical_peer_tests.rs");

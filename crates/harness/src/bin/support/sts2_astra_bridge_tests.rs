@@ -189,6 +189,7 @@ fn actual_fake_codex_receives_the_same_prepared_components_as_capture()
     Ok(())
 }
 
+#[cfg(unix)]
 fn schema_path(directory: &Temporary) -> String {
     directory
         .0
@@ -197,6 +198,7 @@ fn schema_path(directory: &Temporary) -> String {
         .into_owned()
 }
 
+#[cfg(unix)]
 fn output_path(directory: &Temporary) -> String {
     directory
         .0

@@ -52,12 +52,14 @@ struct PlanDocument {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct IdentityDigest {
     identity: String,
     digest: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct ProfileBaseline {
     kind: String,
     identity: String,
@@ -65,6 +67,7 @@ struct ProfileBaseline {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct Compatibility {
     game: IdentityDigest,
     #[serde(rename = "mod")]
@@ -74,6 +77,7 @@ struct Compatibility {
 /// Concrete native context selected for this one operation. Field order is
 /// intentionally fixed because it is the canonical digest input.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct SelectedContext {
     context_id: String,
     game_mode: String,
@@ -281,4 +285,28 @@ impl SeedTransportConfig {
     pub(crate) fn context_digest(&self) -> &str {
         &self.context.context_digest
     }
+
+    pub(crate) fn plan_digest(&self) -> &str {
+        &self.plan_digest
+    }
+
+    pub(crate) fn entry_ordinal(&self) -> u64 {
+        self.entry_ordinal
+    }
+
+    pub(crate) fn operation_id(&self) -> &str {
+        &self.operation_id
+    }
+
+    pub(crate) fn requested_seed(&self) -> &str {
+        &self.requested_seed
+    }
+
+    pub(crate) fn run_mode(&self) -> &str {
+        &self.run_mode
+    }
+}
+
+pub(crate) fn validate_recorded_context(value: &Value, claimed_digest: &str) -> Result<(), String> {
+    validation::validate_recorded_context(value, claimed_digest)
 }

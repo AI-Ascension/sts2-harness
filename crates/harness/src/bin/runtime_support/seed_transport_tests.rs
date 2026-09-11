@@ -6,8 +6,30 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
+use super::SeedTransportConfig;
 use super::validation::{context_digest, validate_context, validate_plan};
-use super::{PlanDocument, SeedTransportConfig, SelectedContext};
+
+impl SeedTransportConfig {
+    pub(crate) fn fixture_with_context_mismatch(kind: &str) -> Self {
+        let mut config = Self::fixture_for_tests("ironclad-42", "op-seed-1");
+        match kind {
+            "context" => config.context.selection_policy = String::from("alternate_policy"),
+            "profile" => {
+                config.context.profile_baseline.identity = String::from("other-profile");
+            }
+            "game_compatibility" => {
+                config.context.compatibility.game.identity = String::from("sts2-game/v0.107.2");
+            }
+            "mod_compatibility" => {
+                config.context.compatibility.mod_identity.identity = String::from("other-game-mod");
+            }
+            "context_digest" => config.context.context_digest = "b".repeat(64),
+            _ => config.context.selection_policy = String::from("alternate_policy"),
+        }
+        config
+    }
+}
+use super::{PlanDocument, SelectedContext};
 
 #[test]
 fn concrete_standard_ironclad_context_matches_protocol_golden_digest() {

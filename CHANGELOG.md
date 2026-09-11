@@ -7,6 +7,27 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Add the bounded `coop-native-v1` cohort coordinator and canonical-peer attribution safety
+  correction. A returned observation can be attributed only when its sole local peer equals the
+  originally scheduled canonical actor and its instance/session/lease/epoch fence matches the
+  original operation. Mismatches retain pending or unknown operations for same-operation
+  reconciliation. The frozen artifact, wire profile, digest, and producer goldens are unchanged;
+  route credentials remain outside harness records. This is source/component evidence only, not
+  native multiplayer transport, settlement, or release compatibility.
+
+- Digest all serialized Runtime-v3 telemetry lineage identities with domain-separated SHA-256
+  values while retaining raw trace lineage only for private OTLP topology derivation. Exporter
+  tests cover raw prompt, model-output, credential, path, and proprietary-text sentinels through
+  the full serialized OTLP envelope. Backend queries must use the deterministic digest while raw
+  mappings remain access-controlled local run evidence; collector/backend and live evidence remain
+  unverified.
+
+- Tighten optional seeded-receipt replay admission before `EpisodeRunner` construction. A receipt
+  preamble now requires exact current seed configuration and original operation/fence/context
+  equivalence, a fresh canonical-seed run-start witness, and a closed MCP wrapper/result chain.
+  This is deterministic source/component validation only; it does not execute replay or invoke a
+  provider, MCP server, gateway, or host.
+
 - Persist validated Runtime-v3 action-wait settlement against its original durable operation
   before admitting another model decision. Previously the host could settle the action while
   the durable store retained `unknown`, causing the next decision to fail with a misleading

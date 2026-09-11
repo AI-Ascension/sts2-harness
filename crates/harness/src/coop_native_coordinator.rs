@@ -194,6 +194,8 @@ pub enum CoopNativeCoordinatorError {
     OperationConflict,
     ReconciliationMismatch,
     WrongReconciliation,
+    CanonicalPeerMismatch,
+    RouteFenceMismatch,
     Serialization,
     NoBlindRetry,
 }
@@ -210,6 +212,8 @@ impl fmt::Display for CoopNativeCoordinatorError {
             Self::OperationConflict => "native co-op operation replay conflicts with its first input",
             Self::ReconciliationMismatch => "native co-op reconciliation does not match an unknown operation",
             Self::WrongReconciliation => "native co-op reconciliation requires a recovery response",
+            Self::CanonicalPeerMismatch => "native co-op response local peer does not match its canonical scheduled peer",
+            Self::RouteFenceMismatch => "native co-op response does not match the original operation route fence",
             Self::Serialization => "native co-op record serialization failed",
             Self::NoBlindRetry => "native co-op unknown mutation cannot be blindly retried",
         })

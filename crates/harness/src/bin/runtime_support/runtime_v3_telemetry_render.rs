@@ -3,8 +3,8 @@
 // Runtime-v3 telemetry uses point-in-time event spans. The enqueue timestamp
 // and sequence are preserved through one bounded FIFO queue, and run-finished
 // is sent behind a flush barrier. The root RunStarted span is intentionally
-// not a wall-clock duration span. Harness identifiers are represented by
-// digest values under their canonical attribute names.
+// not a wall-clock duration span. Serialized harness identifiers are
+// domain-separated digest values under their canonical attribute names.
 
 #[cfg(test)]
 fn render_span(context: &TelemetryContext, event: &TelemetryEvent, sequence: u64) -> Value {
@@ -19,14 +19,14 @@ fn render_span_at(
 ) -> Value {
     let (kind, status_error, mut attrs) = event_attributes(context, event);
     add(&mut attrs, "sts2.event_sequence", sequence.to_string());
-    let trace_id = digest("trace", &context.trace_id)[..32].to_owned();
-    let root_span_id = digest("root-span", &context.trace_id)[..16].to_owned();
+    let trace_id = digest("trace", &context.trace_lineage_id)[..32].to_owned();
+    let root_span_id = digest("root-span", &context.trace_lineage_id)[..16].to_owned();
     let span_id = if kind == EventKind::RunStarted {
         root_span_id.clone()
     } else {
         digest(
             "span",
-            &format!("{}:{sequence}:{}", context.trace_id, kind.as_str()),
+            &format!("{}:{sequence}:{}", context.trace_lineage_id, kind.as_str()),
         )[..16]
             .to_owned()
     };

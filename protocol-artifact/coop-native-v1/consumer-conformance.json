@@ -13,8 +13,8 @@
     "name": "sts2-game-mod",
     "role": "producer",
     "repository": "sts2-game-mod",
-    "commit": "ab702dbbc79bc5854bd0840b44a729834ae50e68",
-    "tree": "e3f0aa9d30fe25585fbb3c1fe8e3c1fcdfa43223",
+    "commit": "d23ca838a7be875f32242123955b4a27782bac04",
+    "tree": "23336ca834b5870d15ee6369c101d5c67ff34caf",
     "result": "pass",
     "test_profile": "managed source producer capture with legal catalog and receipt fields",
     "live_status": "unverified"
@@ -24,27 +24,30 @@
       "name": "sts2-gateway",
       "role": "native route and forwarder",
       "repository": "sts2-gateway",
-      "commit": "de1fe72345ea972d56c05d30837da5327e5f1655",
-      "tree": "cbf10caa6775ca06adf7fe1e9d6cc98be6453a66",
+      "commit": "d5dedd264115472799b780b49fd9a545cb6a1507",
+      "tree": "7868858f187b6b121981b3e36cf54e85665cefad",
       "result": "pass",
+      "verification_scope": "current-main native co-op route, forwarder, service binding, and service-loop component tests",
       "live_status": "unverified"
     },
     {
       "name": "sts2-mcp-server",
       "role": "projection and tool mapping",
       "repository": "sts2-mcp-server",
-      "commit": "47d63f6ce41c9efb3431dea6dc31b39fddc5d79a",
-      "tree": "a6eb009912a4f624c49398f6cfc25022da65b563",
+      "commit": "f376105ab779ea692855557a5ad6fdab32f9891d",
+      "tree": "679e8eae14f0269ab1dfa0244919ef419684560a",
       "result": "pass",
+      "verification_scope": "current-main native co-op mapping, projection, artifact-verification, and component tests",
       "live_status": "unverified"
     },
     {
       "name": "sts2-harness",
       "role": "coordination and provider boundary",
       "repository": "sts2-harness",
-      "commit": "a2cb481cfc57475f147d5c8c3783afc6d2b2d63b",
-      "tree": "083e1dc3ca88c35eedc10a6187a63c91a9864c46",
+      "commit": "4e738133822a48b99bea9a710aa49cf635e7cd2d",
+      "tree": "f9200703423d98ee2121a79864877342bb2ac5cd",
       "result": "pass",
+      "verification_scope": "current-main native co-op wire, coordinator, artifact-verification, and replay component tests",
       "live_status": "unverified"
     }
   ],
