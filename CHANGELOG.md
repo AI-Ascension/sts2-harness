@@ -7,6 +7,13 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Persist validated Runtime-v3 action-wait settlement against its original durable operation
+  before admitting another model decision. Previously the host could settle the action while
+  the durable store retained `unknown`, causing the next decision to fail with a misleading
+  provider-malformed error. Unresolved waits and invalid witnesses retain durable uncertainty.
+  Synthetic runtime tests cover decision admission, repeated waits, and database reopening;
+  native campaign validation remains a separate gate.
+
 - 2026-09-10: Add the additive `seeded-run-v1` transport handoff at harness main
   `3926e5a30ab569612e67d2dfdc6542f1391e95d7`. It validates a bounded contiguous seed plan and
   context-digest-bound standard Ironclad selection, establishes a generation fence, creates one

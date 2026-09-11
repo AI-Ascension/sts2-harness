@@ -268,3 +268,7 @@ mod reconnect_durable;
 #[cfg(unix)]
 #[path = "runtime_v3_lifecycle_recovery_evidence_test.rs"]
 mod recovery_evidence;
+
+#[cfg(unix)]
+#[path = "runtime_v3_lifecycle_durable_wait_test.rs"]
+mod durable_wait;
