@@ -61,7 +61,7 @@ pub(super) fn enable_historical_recovery(port: &mut super::RuntimeV3Port) -> Res
     port.config.instance_id = RECOVERY_INSTANCE_ID.to_owned();
     port.config.lease_id = RECOVERY_LEASE_ID.to_owned();
     port.config.lease_epoch = 1;
-    let authority = super::allocation_context::RecoveryAuthority {
+    let authority = super::super::allocation_context::RecoveryAuthority {
         deployment_id: RECOVERY_DEPLOYMENT_ID.to_owned(),
         instance_id: RECOVERY_INSTANCE_ID.to_owned(),
         instance_incarnation: RECOVERY_INSTANCE_INCAR.to_owned(),
@@ -71,7 +71,8 @@ pub(super) fn enable_historical_recovery(port: &mut super::RuntimeV3Port) -> Res
         lease_epoch: 1,
         current_fence: recovery_current_fence(),
     };
-    let context = super::recovery::RecoveryContext::from_authority(&authority, &port.config)?;
+    let context =
+        super::super::recovery::RecoveryContext::from_authority(&authority, &port.config)?;
     port.recovery_authority = Some(authority);
     port.recovery_context = Some(context);
     Ok(())

@@ -5,7 +5,7 @@
 
 #[path = "worker_command.rs"]
 mod command;
-mod json;
+pub(crate) mod json;
 mod request;
 mod response;
 mod terminal;

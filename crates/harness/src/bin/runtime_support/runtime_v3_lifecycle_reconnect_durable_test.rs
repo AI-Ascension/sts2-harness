@@ -12,7 +12,7 @@ use super::*;
 #[test]
 fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_restart()
 -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = Fixture::new()?;
+    let fixture = reconnect_support::Fixture::new()?;
     let mut runtime_config = config("127.0.0.1:15525".into());
     runtime_config.mcp_binary = dispatch_script(&fixture)?;
     let lineage = ExecutionLineage::new(
