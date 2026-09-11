@@ -1,0 +1,39 @@
+{
+  "schema": "ascension.context-memory.adapter-demo-evidence.v1",
+  "date": "2026-09-11",
+  "status": "passed",
+  "evidence_class": "executed_synthetic_process",
+  "source_revisions": {
+    "target": "8e52da837ae0a23cea18d7cd3d5164765911e6b6",
+    "harness": "3cb72968bee8943e89158a28cec27d7b88e1ce91"
+  },
+  "command": "PHASE3_TARGET_BINARY=/home/agent/sts2-project/context/phase2-target/target/debug/context-console PHASE3_FAKE_PEER_BINARY=/home/agent/sts2-project/context/phase2-harness/target/debug/context-memory-peer ./target/debug/phase3-adapter-demo",
+  "binary_sha256": {
+    "target_context_console": "d5a9208c9a9b8f97a2442a59cbeb4e857f61ff6b9e5f51b21ead090282a5a743",
+    "harness_phase3_adapter_demo": "9b107e7038b1d2bde8ce2e1b647aa8a2e1f3be37cfa3c2677e75e397e91a1ef4",
+    "harness_context_memory_peer": "ed3d75b14c4836585ba7580f85b6a5311312b8750c794d930c68f494b669320d"
+  },
+  "phase2_preview_id": "preview-7",
+  "phase2_revision_id": "revision-11",
+  "phase2_prepared_manifest_sha256": "38f97faf05df364f7a028199afd6dbde22f77352b6164cc0184139f426556859",
+  "selection_id": "selection-demo-1",
+  "selection_sha256": "70d879d940bc8aab1f55ea90a0a4dd211977ad7551ab73400f3a24a7b8b08b32",
+  "summary_output_sha256": "d9d9f6dbbb7d0a1f2d212d7427b2c2dab28a081ae1aebf34e4e8b4c81542666b",
+  "review_id": "review-demo-1",
+  "approval_state": "CommittedHeld",
+  "resume_outcome": "Submitted",
+  "first_input_bytes": 83,
+  "atomic_binding": true,
+  "paused_after_commit": true,
+  "resume_submitted": true,
+  "provider_calls": 0,
+  "game_launches": 0,
+  "external_requests": 0,
+  "unauthorized_processes": 0,
+  "approved_child_processes": 2,
+  "network_tripwire": "no network-capable adapter path",
+  "limits": [
+    "Offline synthetic fixture with a checked-in fake peer.",
+    "This does not prove a live provider, native game, production deployment, or native reviewer hierarchy."
+  ]
+}
