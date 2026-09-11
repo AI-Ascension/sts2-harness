@@ -2,8 +2,8 @@
 
 Status: implemented against the protocol-owned `runtime-map-v1` and
 `visible-map-v1` contract at revision
-`d9ffb190ad8990e15f43d7992581dcb2d60b1971`. Companion changes are unmerged;
-final assembly and live host/provider acceptance remain separate gates.
+`0bc689eabc5542ede2b09b030d9ea32daa8a73e7`; final assembly and live
+host/provider acceptance remain separate gates.
 
 ## Decision
 
@@ -55,6 +55,6 @@ comprehension and from host action settlement.
 
 The protocol dependency is pinned to the supplied frozen contract rather than a
 sibling checkout. Its map schema digest is
-`6340f3cbe6c1b5728144fe89fdfdf8645acf2f59a77c0e0c30ebfeafc77515d8`.
+`ceab0d2dfc471d1ec36d12edaf4654b8c7fdced06548bf47265e11c63f98115b`.
 The exact compiled adapter, provider CLI capture, and final host/provider slice
 must agree on that contract before cross-repository integration is accepted.

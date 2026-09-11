@@ -15,7 +15,7 @@ pub use super::bundle_validation::MapBundleError;
 
 pub const MAP_BUNDLE_VERSION: &str = "sts2.map-view-bundle-v1";
 pub const RUNTIME_MAP_SCHEMA_DIGEST: &str =
-    "6340f3cbe6c1b5728144fe89fdfdf8645acf2f59a77c0e0c30ebfeafc77515d8";
+    "ceab0d2dfc471d1ec36d12edaf4654b8c7fdced06548bf47265e11c63f98115b";
 pub const MAP_MAX_SNAPSHOT_BYTES: usize = 256 * 1024;
 pub const MAP_MAX_BUNDLE_BYTES: usize = 16 * 1024 * 1024;
 pub const MAP_MIN_PRESENTATION_WIDTH: u32 = 320;
