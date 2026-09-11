@@ -45,6 +45,8 @@ mod poc;
 mod protocol_artifact;
 mod protocol_artifact_coop_receipt_query;
 mod provider;
+#[cfg(unix)]
+pub mod recorded_run;
 mod records;
 mod replay;
 mod routing;
