@@ -1,8 +1,9 @@
 # Implemented Phase 3 harness handoff
 
-Date: 2026-09-10. The Phase 3 memory policy is additive to the existing harness branch
-`phase2/context-editing`. The implementation commit is `b923192`; the companion target pin is
-`9b69951`.
+Date: 2026-09-11. The Phase 3 memory policy is additive to the existing harness branch
+`phase2/context-editing`. The implementation commit is
+`321dbda4ed0a433ec700d9b7050d94a4b9f082ba`; the companion target pin is
+`9dfc7905b271a891b9c5d053477d4e8fb7c7d41e`.
 
 `crates/harness/src/context_memory.rs` is a bounded include wrapper; its source files under
 `crates/harness/src/context_memory/` keep each policy unit reviewable and within repository size
