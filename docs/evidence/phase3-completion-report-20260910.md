@@ -2,8 +2,8 @@
 
 Date: 2026-09-11. This is the harness-side bounded policy record for the additive
 `ascension.context-memory.*.v1` namespace. Harness implementation code is pinned to
-`321dbda4ed0a433ec700d9b7050d94a4b9f082ba`; the companion target implementation is pinned to
-`9dfc7905b271a891b9c5d053477d4e8fb7c7d41e`. The record is an implementation handoff, not a live
+`f8213e90388a77f5d893a40b37498aaf5eb78265`; the companion target implementation is pinned to
+`b21083719fb825be83088c9a6ab09531463a1a72`. The record is an implementation handoff, not a live
 provider, native game, deployment, or three-level orchestration claim.
 
 The include-based `context_memory` module owns scoped source admission, occurrence identity,
@@ -21,6 +21,11 @@ Independent hand-labelled oracle tests cover causal membership, tie order, Unico
 stopwords, bounded terms, and held-out label isolation. The process tests use only synthetic bytes
 and loopback stdin/stdout. They are not evidence of the unavailable target↔harness Phase 2 adapter.
 
+The synchronized 90-row matrix records 77 `executed_synthetic`, 7 `unverified`, and 6 `blocked`
+rows. The unverified rows retain the missing rebuild-adapter, map-authority, browser, CLI-adapter,
+and disabled-shadow limits; the blocked rows are the unavailable cross-repository, real-process,
+end-to-end, and native-review lanes.
+
 ## Gates
 
 The following locked commands passed with exit status 0 on the harness implementation revision:
@@ -37,7 +42,8 @@ held-out evaluation lanes. The workspace run includes the repository's existing 
 serially; no ignored test was promoted to evidence. The measurement binary reports a synthetic
 baseline and local lexical retrieval only, with `summary_calls` and `summary_maintenance_bytes`
 explicitly zero and provider class `none_local_lexical_only`; it makes no quality, cache-benefit,
-or trajectory claim.
+or trajectory claim. The current run emitted `samples=32`, `corpus_entries=64`,
+`corpus_bytes=1782`, `baseline_p50_us=19`, and `memory_retrieval_p50_us=443`.
 
 ## Limits and blockers
 
