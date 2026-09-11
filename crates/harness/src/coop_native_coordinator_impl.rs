@@ -3,7 +3,7 @@
 struct OperationEntry {
     state: CoopNativeOperationState,
     digest: String,
-    expected_host_generation: Option<u64>,
+    attribution: OperationAttribution,
 }
 
 pub struct CoopNativeCoordinator<P> {
@@ -144,6 +144,13 @@ impl<P: CoopNativePort> CoopNativeCoordinator<P> {
         envelope: CoopNativeEnvelope,
         deliver: bool,
     ) -> Result<CoopNativeReceipt, CoopNativeCoordinatorError> {
+        let operation = envelope.operation_id().cloned();
+        if let Some(operation_id) = &operation
+            && let Some(entry) = self.operations.get(operation_id)
+            && !envelope.kind().is_request()
+        {
+            self.validate_response_fence(&envelope, entry)?;
+        }
         envelope.validate_lineage(&self.lineage)?;
         let canonical = envelope.to_json()?;
         let digest = crate::sha256_hex(canonical.as_bytes());
@@ -153,7 +160,6 @@ impl<P: CoopNativePort> CoopNativeCoordinator<P> {
                 .and_then(|operation| self.operation_state(operation));
             return self.append_record(&envelope, canonical, digest, CoopNativeEventKind::DuplicateReplay, state);
         }
-        let operation = envelope.operation_id().cloned();
         if let Some(operation_id) = &operation
             && let Some(entry) = self.operations.get(operation_id)
             && envelope.kind().is_request()
@@ -164,11 +170,12 @@ impl<P: CoopNativePort> CoopNativeCoordinator<P> {
         if let Some(operation_id) = &operation
             && let Some(entry) = self.operations.get(operation_id)
             && let (Some(expected), Some(receipt_generation)) =
-                (entry.expected_host_generation, envelope.receipt().map(|receipt| receipt.before_host_generation()))
+                (entry.attribution.expected_host_generation, envelope.receipt().map(|receipt| receipt.before_host_generation()))
             && expected != receipt_generation
         {
             return Err(CoopNativeCoordinatorError::OperationConflict);
         }
+        self.validate_observation_peer(&envelope, operation.as_ref())?;
         let (event, next_state) = self.classify(&envelope, operation.as_ref())?;
         if deliver {
             self.port.consume(&envelope)?;
@@ -177,19 +184,18 @@ impl<P: CoopNativePort> CoopNativeCoordinator<P> {
         self.seen_digests.insert(digest.clone(), record.sequence);
         if let Some(operation_id) = operation {
             let state = next_state.ok_or(CoopNativeCoordinatorError::Serialization)?;
-            let expected_host_generation = self
-                .operations
-                .get(&operation_id)
-                .and_then(|entry| entry.expected_host_generation)
-                .or_else(|| envelope.expected_host_generation());
-            self.operations.insert(
-                operation_id,
-                OperationEntry {
-                    state,
-                    digest,
-                    expected_host_generation,
-                },
-            );
+            if let Some(entry) = self.operations.get_mut(&operation_id) {
+                entry.state = state;
+            } else {
+                self.operations.insert(
+                    operation_id,
+                    OperationEntry {
+                        state,
+                        digest,
+                        attribution: OperationAttribution::from_request(&envelope)?,
+                    },
+                );
+            }
         }
         Ok(record)
     }
@@ -305,4 +311,5 @@ impl<P: CoopNativePort> CoopNativeCoordinator<P> {
         })
     }
 }
+include!("coop_native_coordinator_attribution.rs");
 include!("coop_native_replay.rs");

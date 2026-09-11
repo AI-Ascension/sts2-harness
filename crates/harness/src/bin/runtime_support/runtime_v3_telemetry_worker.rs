@@ -97,10 +97,20 @@ fn send_segments(
 }
 
 fn send_batch(state: &ExporterState, events: &[QueuedTelemetryEvent]) -> bool {
+    let Some(bytes) = serialize_otlp_batch(&state.context, events) else {
+        return false;
+    };
+    post_otlp(&bytes)
+}
+
+fn serialize_otlp_batch(
+    context: &TelemetryContext,
+    events: &[QueuedTelemetryEvent],
+) -> Option<Vec<u8>> {
     let mut spans = Vec::with_capacity(events.len());
     for queued in events {
         spans.push(render_span_at(
-            &state.context,
+            context,
             &queued.event,
             queued.sequence,
             queued.enqueued_at_unix_nanos,
@@ -119,11 +129,10 @@ fn send_batch(state: &ExporterState, events: &[QueuedTelemetryEvent]) -> bool {
             }]
         }]
     });
-    let bytes = match serde_json::to_vec(&body) {
-        Ok(bytes) if bytes.len() <= MAX_BODY_BYTES => bytes,
-        _ => return false,
-    };
-    post_otlp(&bytes)
+    match serde_json::to_vec(&body) {
+        Ok(bytes) if bytes.len() <= MAX_BODY_BYTES => Some(bytes),
+        _ => None,
+    }
 }
 
 include!("runtime_v3_telemetry_worker_http.rs");

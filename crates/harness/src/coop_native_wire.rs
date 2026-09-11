@@ -170,6 +170,21 @@ impl CoopNativeEnvelope {
         }
     }
 
+    /// Returns the actor that names an observation's canonical peer when present.
+    #[must_use]
+    pub fn actor_peer(&self) -> Option<&CoopNativePeerId> {
+        match &self.body {
+            CoopNativeBody::LegalCatalogRequest(request) => Some(&request.actor_peer),
+            CoopNativeBody::LegalCatalogResponse(response) => Some(&response.actor_peer),
+            CoopNativeBody::LocalActionRequest(request) => Some(&request.actor_peer),
+            CoopNativeBody::SharedVoteRequest(request) => Some(&request.actor_peer),
+            CoopNativeBody::RejoinRequest(request) => Some(&request.actor_peer),
+            CoopNativeBody::Observation(_)
+            | CoopNativeBody::EffectResponse(_)
+            | CoopNativeBody::RecoveryResponse(_) => None,
+        }
+    }
+
     #[must_use]
     pub fn action_request(&self) -> Option<&CoopNativeLocalActionRequest> {
         match &self.body {

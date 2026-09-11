@@ -30,9 +30,18 @@ const MAX_BATCH: usize = 64;
 const MAX_BODY_BYTES: usize = 512 * 1024;
 const SOCKET_TIMEOUT: Duration = Duration::from_millis(500);
 const MAX_RESPONSE_BYTES: usize = 16 * 1024;
+const RUN_ID_DIGEST_DOMAIN: &str = "run";
+const EPISODE_ID_DIGEST_DOMAIN: &str = "episode";
+const TRAJECTORY_ID_DIGEST_DOMAIN: &str = "trajectory";
+const TRACE_ID_DIGEST_DOMAIN: &str = "trace";
+const INSTANCE_ID_DIGEST_DOMAIN: &str = "instance";
+const SESSION_ID_DIGEST_DOMAIN: &str = "session";
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct TelemetryContext {
+    // These values are the only harness lineage identities retained for
+    // serialization. Their field names intentionally remain the canonical
+    // OTLP attribute names; each value is a domain-separated SHA-256 digest.
     pub run_id: String,
     pub episode_id: String,
     pub trajectory_id: String,
@@ -42,6 +51,9 @@ pub struct TelemetryContext {
     pub runtime_profile: String,
     pub schema_version: String,
     pub provider_revision_digest: String,
+    // This is retained only to derive the OTLP trace/span topology. It is
+    // never added to an OTLP attribute.
+    trace_lineage_id: String,
 }
 
 pub struct TelemetryContextInput<'a> {
@@ -94,15 +106,16 @@ impl TelemetryContext {
             return Err(String::from("telemetry provider revision is invalid"));
         }
         Ok(Self {
-            run_id: run_id.to_owned(),
-            episode_id: episode_id.to_owned(),
-            trajectory_id: trajectory_id.to_owned(),
-            trace_id: trace_id.to_owned(),
-            instance_id: instance_id.to_owned(),
-            session_id: session_id.to_owned(),
+            run_id: digest(RUN_ID_DIGEST_DOMAIN, run_id),
+            episode_id: digest(EPISODE_ID_DIGEST_DOMAIN, episode_id),
+            trajectory_id: digest(TRAJECTORY_ID_DIGEST_DOMAIN, trajectory_id),
+            trace_id: digest(TRACE_ID_DIGEST_DOMAIN, trace_id),
+            instance_id: digest(INSTANCE_ID_DIGEST_DOMAIN, instance_id),
+            session_id: digest(SESSION_ID_DIGEST_DOMAIN, session_id),
             runtime_profile: runtime_profile.to_owned(),
             schema_version: String::from("runtime-v3-telemetry-1"),
             provider_revision_digest: digest("provider-revision", provider_revision),
+            trace_lineage_id: trace_id.to_owned(),
         })
     }
 }

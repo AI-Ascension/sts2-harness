@@ -329,3 +329,13 @@ impl CoopNativeObservation {
         &self.peers
     }
 }
+impl CoopNativeObservation {
+    /// The parser guarantees there is exactly one local peer in every observation.
+    #[must_use]
+    pub fn local_peer_token(&self) -> Option<&CoopNativePeerId> {
+        self.peers
+            .iter()
+            .find(|peer| peer.role == CoopNativePeerRole::Local)
+            .map(|peer| &peer.peer_token)
+    }
+}

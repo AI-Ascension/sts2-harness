@@ -20,6 +20,10 @@ mod coordinator {
     include!("coop_native_coordinator.rs");
 }
 
+mod cohort {
+    include!("coop_native_cohort.rs");
+}
+
 pub use artifact::{
     COOP_NATIVE_ARTIFACT, COOP_NATIVE_GENERATOR, COOP_NATIVE_MAX_RECORDS,
     COOP_NATIVE_MAX_REQUEST_BYTES, COOP_NATIVE_MAX_RESPONSE_BYTES,
@@ -28,6 +32,9 @@ pub use artifact::{
     CoopNativeArtifactLineage, CoopNativeArtifactRecord, CoopNativeArtifactState,
     CoopNativeArtifactStatus, coop_native_manifest_bytes, coop_native_schema_bytes,
     verify_coop_native_artifact, verify_coop_native_candidate_artifact,
+};
+pub use cohort::{
+    CoopNativeCohort, CoopNativeCohortError, CoopNativeCohortOperation, CoopNativeCohortRoute,
 };
 pub use coordinator::{
     CoopNativeCoordinator, CoopNativeCoordinatorError, CoopNativeEventKind,

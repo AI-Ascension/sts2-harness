@@ -75,7 +75,7 @@ See `experiments/live-combat/README.md` for the exact scope.
 | Runtime-v2 coordinator | Four-lane bounded pure scheduler with explicit lineage, fairness, overload, cancellation, and shutdown seams | Confirmed by offline component tests; live supervisor/profile/host isolation unverified |
 | Seeded-run transport | Opt-in bounded plan, context digest, durable reservation, and same-operation MCP recovery | Source/component and artifact checks confirmed; native seed settlement, profile/save isolation, gameplay, deployment, and release unverified |
 | Runtime map context | Opt-in host-authored map projection carried to the Exo provider | Source/component evidence only; target-build map production, provider behavior, and live compatibility unverified |
-| `coop-native-v1` harness consumer | Strict parser and coordinator for the accepted native co-op artifact | Source/component tests cover all seventeen goldens, peer-token uniqueness, generation fences, effects/receipts, and same-operation recovery; MCP/HTTP transport, native settlement, checksum convergence, deployment, and release unverified |
+| `coop-native-v1` harness consumer | Strict parser, bounded cohort coordinator, and canonical-peer attribution for the accepted native co-op artifact | Source/component tests cover all seventeen goldens, peer-token uniqueness, generation fences, effects/receipts, same-operation recovery, cohort route binding, and canonical local-peer/actor plus route-fence rejection; MCP/HTTP transport, native settlement, checksum convergence, deployment, and release unverified |
 | Evaluation | Library aggregation over supplied samples; not wired into the Runtime-v3 runner | Synthetic tests, not game parity or experimental performance evidence |
 
 ## Compatibility classifications
@@ -84,6 +84,21 @@ Use `contract-compatible`, `additive-compatible`, `deprecated-compatible`, `safe
 `breaking`. Every change identifies affected record fields, identifiers, versions, mappings, fixtures,
 consumers, migration, and unverified evidence. Do not call a successful parse, acknowledgement,
 action acceptance, or recorded trajectory runtime-compatible.
+
+### Runtime-v3 telemetry identity privacy correction
+
+Runtime-v3 telemetry is a `safety-correction`: all serialized harness lineage attributes
+(`sts2.run_id`, `sts2.episode_id`, `sts2.trajectory_id`, `sts2.trace_id`,
+`sts2.instance_id`, and `sts2.session_id`) use deterministic domain-separated SHA-256 digests,
+as do operation and action identifiers. `sts2.id_encoding=digest` applies to every emitted span.
+The raw trace lineage remains private process state solely for stable OTLP trace/span derivation;
+it is not serialized as an attribute.
+
+Operators must query the backend using the same domain-specific digest of an access-controlled raw
+run identifier. Raw-to-digest correspondence remains in local run evidence only and must not be
+copied into OTLP, exporter logs, terminal evidence, or a public artifact. Existing backend queries
+that predicate on raw identities are incompatible and must be updated before use. This source and
+component correction does not establish collector, backend, deployment, or live-runtime evidence.
 
 ## Version and lineage rules
 

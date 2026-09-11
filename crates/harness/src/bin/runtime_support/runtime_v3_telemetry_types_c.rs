@@ -94,6 +94,7 @@ impl TelemetryHandle {
                 runtime_profile: String::from("disabled"),
                 schema_version: String::from("disabled"),
                 provider_revision_digest: String::from("disabled"),
+                trace_lineage_id: String::from("disabled-trace"),
             },
             telemetry_tx,
             admission: Mutex::new(()),
