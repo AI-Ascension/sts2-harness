@@ -201,6 +201,8 @@ fn prepared_suffix_requires_explicit_resume_and_fences_unknown_turn() {
             support::expiry(),
         )
         .expect("prepared");
+    assert_eq!(prepared.auth_epoch, broker.owner_epoch());
+    assert_eq!(prepared.revocation_epoch, broker.revocation_epoch());
     assert_eq!(
         broker.admit_turn(
             "owner-fixture",

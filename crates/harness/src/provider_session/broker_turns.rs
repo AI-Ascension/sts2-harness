@@ -75,7 +75,7 @@ impl ProviderSessionBroker {
             return Err(SessionError::Stale);
         }
         self.ensure_not_expired(expires_at)?;
-        let prepared = PreparedSessionTurn::new(
+        let mut prepared = PreparedSessionTurn::new(
             prepared_id,
             self.scope.clone(),
             &binding,
@@ -90,6 +90,9 @@ impl ProviderSessionBroker {
             self.policy.continuity,
             expires_at,
         )?;
+        prepared.auth_epoch = self.owner_epoch;
+        prepared.revocation_epoch = self.revocation_epoch;
+        prepared.validate()?;
         self.prepared
             .insert(prepared.prepared_id.clone(), prepared.clone());
         Ok(prepared)

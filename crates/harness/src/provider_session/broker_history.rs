@@ -126,8 +126,14 @@ impl ProviderSessionBroker {
         let start = match cursor {
             None => 0,
             Some(value) => {
-                let (epoch, offset) = value.split_once(':').ok_or(SessionError::Stale)?;
-                if epoch.parse::<u64>().ok() != Some(binding.history_epoch) {
+                let mut parts = value.split(':');
+                let tag = parts.next().ok_or(SessionError::Stale)?;
+                let epoch = parts.next().ok_or(SessionError::Stale)?;
+                let offset = parts.next().ok_or(SessionError::Stale)?;
+                if parts.next().is_some()
+                    || tag != cursor_binding_tag(&binding.scope, binding_id)
+                    || epoch.parse::<u64>().ok() != Some(binding.history_epoch)
+                {
                     return Err(SessionError::Stale);
                 }
                 offset.parse::<usize>().map_err(|_| SessionError::Stale)?
@@ -138,7 +144,13 @@ impl ProviderSessionBroker {
             return Err(SessionError::Stale);
         }
         let end = start.saturating_add(limit).min(items.len());
-        let next_cursor = (end < items.len()).then(|| format!("{}:{end}", binding.history_epoch));
+        let next_cursor = (end < items.len()).then(|| {
+            format!(
+                "{}:{}:{end}",
+                cursor_binding_tag(&binding.scope, binding_id),
+                binding.history_epoch
+            )
+        });
         let coverage = match binding.history_coverage {
             HistoryCoverage::ApplicationManifestVerified => {
                 HistoryCoverageView::CompleteAtWatermark
@@ -162,4 +174,20 @@ impl ProviderSessionBroker {
             expires_at: binding.expires_at.clone(),
         })
     }
+}
+
+fn cursor_binding_tag(scope: &SessionScope, binding_id: &str) -> String {
+    let parts = [
+        scope.project_id.as_str(),
+        scope.run_id.as_str(),
+        scope.episode_id.as_str(),
+        scope.agent_id.as_str(),
+        binding_id,
+    ];
+    let mut bytes = Vec::new();
+    for part in parts {
+        bytes.extend_from_slice(&(part.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(part.as_bytes());
+    }
+    digest(bytes)[..16].to_owned()
 }

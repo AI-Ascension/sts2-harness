@@ -192,6 +192,7 @@ impl PreparedSessionTurn {
             || !valid_id(&self.phase3_selection_id)
             || !valid_id(&self.held_boundary_ref)
             || self.owner_epoch == 0
+            || self.auth_epoch == 0
             || self.session_epoch == 0
             || !valid_digest(&self.profile_sha256)
             || !valid_digest(&self.continuity_sha256)
