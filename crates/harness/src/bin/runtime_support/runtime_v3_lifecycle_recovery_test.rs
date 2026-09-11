@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: MIT
 
+use serde_json::{Value, json};
+use sts2_harness::{
+    ExecutionFingerprint, ExecutionLineage, ExecutionStore, RecoveryPort, StabilityBarrier,
+    WaitOutcome,
+};
+
 use super::*;
+
+use super::super::super::durable::DurableHandle;
+
+const LIVE_UNKNOWN_OPERATION_ID: &str = "11111111-1111-4111-8111-111111111111";
 
 fn recovery_script(fixture: &Fixture) -> Result<(), Box<dyn std::error::Error>> {
     let mut settled: Value = serde_json::from_str(include_str!(
@@ -71,6 +81,159 @@ fn catalog_recovery_script(fixture: &Fixture) -> Result<String, Box<dyn std::err
         }))
     );
     fixture.script(&script)
+}
+
+fn live_state() -> Result<Value, Box<dyn std::error::Error>> {
+    let mut value: Value = serde_json::from_str(include_str!(
+        "../../../../../protocol-artifact/runtime-v3-gameplay/golden/state-response.json"
+    ))?;
+    value["legal_actions"] = json!([
+        {"action_id":"combat.end-turn", "action":{"kind":"end_turn"}}
+    ]);
+    Ok(value)
+}
+
+fn unknown_receipt(
+    kind: &str,
+    correlation_id: &str,
+    operation_id: &str,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let mut value = live_state()?;
+    value["kind"] = json!(kind);
+    value["correlation_id"] = json!(correlation_id);
+    value["state_id"] = Value::Null;
+    value["operation_id"] = json!(operation_id);
+    value["observation"] = Value::Null;
+    value["legal_actions"] = Value::Null;
+    value["action"] = Value::Null;
+    value["status"] = json!("unknown");
+    value["transition"] = Value::Null;
+    value["error_code"] = json!("settlement_unproven");
+    value["wait_for_millis"] = Value::Null;
+    value["wait_outcome"] = Value::Null;
+    value["recovery"] = Value::Null;
+    Ok(value)
+}
+
+fn settled_wait(
+    operation_id: &str,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let mut value = live_state()?;
+    value["kind"] = json!("wait_response");
+    value["correlation_id"] = json!("3");
+    value["state_id"] = json!("combat-2");
+    value["generation"] = json!(1);
+    value["operation_id"] = json!(operation_id);
+    value["observation"]["state_id"] = json!("combat-2");
+    value["observation"]["generation"] = json!(1);
+    value["observation"]["state"]["turn_index"] = json!(2);
+    value["action"] = Value::Null;
+    value["status"] = json!("settled");
+    value["transition"] = json!({
+        "from_generation": 0,
+        "to_generation": 1,
+        "state_id": "combat-2",
+        "effect_kind": "combat.end-turn_settled"
+    });
+    value["error_code"] = Value::Null;
+    value["wait_for_millis"] = Value::Null;
+    value["wait_outcome"] = json!("successor");
+    value["recovery"] = Value::Null;
+    Ok(value)
+}
+
+fn rpc_reply(id: u64, value: &Value, is_error: bool) -> String {
+    let response = json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": {
+            "isError": is_error,
+            "content": [{"type": "text", "text": value.to_string()}]
+        }
+    });
+    format!(
+        "IFS= read -r line || exit 1\nprintf '%s\\n' \"$line\" >> requests\nprintf '%s\\n' '{}'\n",
+        response.to_string().replace('\'', "'\\''")
+    )
+}
+
+#[test]
+fn live_unknown_reconcile_preserves_uncertainty_and_reaches_transition_barrier()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new()?;
+    let lineage = ExecutionLineage::new("run-1", "episode-1", "attempt-1", "trajectory-1")?;
+    let fingerprint =
+        ExecutionFingerprint::new("seed", "build", "state", "config", "provider")?;
+    let mut store = ExecutionStore::open_in_memory()?;
+    store.start_episode(&lineage, &fingerprint)?;
+    let durable = DurableHandle::from_store_for_test(store, lineage, fingerprint)?;
+    let mut runtime_config = config("127.0.0.1:15525".into());
+    runtime_config.mcp_binary = fixture.script(&format!(
+        "cd '{}' || exit 1\n{}{}{}",
+        fixture.0.display(),
+        rpc_reply(
+            1,
+            &unknown_receipt("dispatch_action_response", "1", LIVE_UNKNOWN_OPERATION_ID)?,
+            true,
+        ),
+        rpc_reply(
+            2,
+            &unknown_receipt("recover_response", "2", LIVE_UNKNOWN_OPERATION_ID)?,
+            true,
+        ),
+        rpc_reply(3, &settled_wait(LIVE_UNKNOWN_OPERATION_ID)?, false),
+    ))?;
+    let mut port = RuntimeV3Port::new_with_store(
+        runtime_config,
+        TelemetryHandle::disabled(),
+        durable.clone(),
+    )?;
+    port.allocated = true;
+    port.mcp = Some(McpProcess::spawn(&port.config)?);
+
+    let parsed = parse::observation(&live_state()?, "state_response", &port.config)?;
+    let action = parsed.actions.actions()[0].clone();
+    let observation = port.install(parsed)?;
+    let identity = ActionIdentity::new(
+        LIVE_UNKNOWN_OPERATION_ID,
+        observation.state_id(),
+        observation.generation(),
+        action.action_id(),
+    )?;
+    let dispatched = port.dispatch_action(&identity, &action)?;
+    assert_eq!(dispatched.status(), sts2_harness::DispatchStatus::Unknown);
+    assert_eq!(
+        durable.operation_state(LIVE_UNKNOWN_OPERATION_ID)?,
+        sts2_harness::OperationState::Unknown
+    );
+
+    let reconciled = RecoveryPort::reconcile(&mut port, LIVE_UNKNOWN_OPERATION_ID)?;
+    assert_eq!(reconciled.status(), sts2_harness::DispatchStatus::Unknown);
+    assert_eq!(
+        durable.operation_state(LIVE_UNKNOWN_OPERATION_ID)?,
+        sts2_harness::OperationState::Unknown
+    );
+
+    let sample = StabilityBarrier::new(1, 1)?.await_transition_sample(
+        &mut port,
+        LIVE_UNKNOWN_OPERATION_ID,
+        &observation,
+    )?;
+    assert_eq!(sample.outcome(), WaitOutcome::Successor);
+    assert_eq!(sample.observation().map(|value| value.generation()), Some(1));
+
+    let requests = std::fs::read_to_string(fixture.0.join("requests"))?;
+    let calls: Vec<Value> = requests
+        .lines()
+        .map(serde_json::from_str)
+        .collect::<Result<_, _>>()?;
+    let names: Vec<&str> = calls
+        .iter()
+        .filter_map(|value| value["params"]["name"].as_str())
+        .collect();
+    assert_eq!(names, ["sts2.dispatch_action", "sts2.recover", "sts2.wait_for_transition"]);
+    assert!(port.mcp.as_mut().ok_or("missing MCP")?.close().is_ok());
+    Ok(())
 }
 
 #[test]
@@ -231,4 +394,9 @@ fn runtime_v3_reconnect_reconciles_same_operation_without_redispatch()
     port.reconnect_attempts = 2;
     assert!(port.reconcile("op-1").is_err());
     Ok(())
+}
+
+#[cfg(test)]
+mod accepted_recovery {
+    include!("runtime_v3_lifecycle_accepted_recovery_test.rs");
 }

@@ -127,12 +127,31 @@ impl RuntimeV3Port {
                     Some(response),
                 )
             }
-            sts2_harness::DispatchStatus::Unknown => durable.operation_result(
-                operation_id,
-                payload_digest,
-                sts2_harness::OperationState::Unknown,
-                Some(response),
-            ),
+            sts2_harness::DispatchStatus::Unknown => {
+                // Unknown is a provisional outcome. Keep the first transport evidence when a
+                // read-only reconcile reports Unknown again; recovery responses can carry a new
+                // correlation/result digest, but they must not create an evidence conflict or
+                // promote the operation to a terminal state.
+                match durable.operation_state(operation_id)? {
+                    sts2_harness::OperationState::Unknown => Ok(()),
+                    // An accepted response is also provisional. If a later read cannot prove
+                    // settlement, retain that first response while moving the operation back to
+                    // the unresolved Unknown state; replacing it with a fresh recovery response
+                    // would make the provisional evidence appear contradictory.
+                    sts2_harness::OperationState::Accepted => durable.operation_result(
+                        operation_id,
+                        payload_digest,
+                        sts2_harness::OperationState::Unknown,
+                        None,
+                    ),
+                    _ => durable.operation_result(
+                        operation_id,
+                        payload_digest,
+                        sts2_harness::OperationState::Unknown,
+                        Some(response),
+                    ),
+                }
+            }
         }
     }
 

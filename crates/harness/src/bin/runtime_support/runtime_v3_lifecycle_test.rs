@@ -204,7 +204,7 @@ mod reconnect {
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    use sts2_harness::{ActionIdentity, RecoveryPort};
+    use sts2_harness::ActionIdentity;
 
     use super::*;
 
