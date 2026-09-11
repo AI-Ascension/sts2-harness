@@ -3,7 +3,44 @@
   <img alt="AI-Ascension — Inspect how AI requests to a game get fenced, one Rust contract at a time. Bounded runtime host trace confirmed. Deterministic tests: confirmed." src="https://raw.githubusercontent.com/AI-Ascension/.github/main/profile/assets/banner-light.svg" width="100%">
 </picture>
 
-# sts2-harness
+# Ascension
+
+Open tooling for controlled game-playing agents, starting with Slay the Spire 2.
+Coordinate model decisions through explicit interfaces, inspect structured run
+records, and replay recorded actions with their original evidence boundaries.
+
+The repository slug remains [`sts2-harness`](https://github.com/AI-Ascension/sts2-harness)
+until an approved GitHub rename window. **The Climb — by AI Ascension** is the
+series that uses this toolkit to present recorded runs and their evidence.
+
+Watch AI play. Inspect the run. Help it climb.
+
+## Try an offline record workflow
+
+Prerequisites: Git, `rustup`, and the pinned Rust **1.97.1** toolchain. Fetching
+the source and locked dependencies requires network access. The following
+workflow uses deterministic fakes and needs no game installation, model key,
+server, or save.
+
+```sh
+git clone --branch main --single-branch https://github.com/AI-Ascension/sts2-harness.git
+cd sts2-harness
+git checkout cb17b6c15262ce9356f1e85fd475af997aedc445
+cargo fetch --locked
+cargo run --locked --offline --package sts2-harness --bin sts2-harness-runtime-v2-fake
+```
+
+Verified on Linux on 2026-09-07 at that exact commit: exit 0, one fake mutation,
+schema bytes verified, duplicate replay without a second application, stale
+epoch rejection, and no blind retry after disconnect. This exercises the
+record/reconciliation contract. It does not prove a live game or provider run.
+For parallel checkouts, give each a separate `CARGO_TARGET_DIR`.
+
+The [Windows campaign](docs/evidence/seeded-astra-campaign-20260906.md) and
+[Linux campaign](docs/evidence/linux-seeded-campaign-20260906.md) are separate,
+dated source-owner reports. Both reached Defeat; a model-played Victory remains
+unverified. Architecture, compatibility, examples, validation, contribution,
+and licensing details follow below.
 
 > **AI-Ascension · flagship · tier 4: experiment coordinator** — Experiment coordinator for AI runs: episodes, a pluggable model-provider interface, replay of recorded records, and artifact lineage.
 >
@@ -175,6 +212,8 @@ reported as unverified rather than converted into a pass.
 
 ## Runtime slice coordinator
 
+For user-selected Ollama models, see [Ollama model selection](docs/OLLAMA_MODEL_SELECTION.md).
+
 The standalone `sts2-harness-runtime` binary is the explicit coordinator for the first
 `runtime-v1` trace. It allocates one configured gateway lease, starts the MCP process, performs
 initialize/list/state/action/stale-action/fresh-state calls, checks the effect witness and stable
@@ -203,7 +242,11 @@ and harness environments; use the same `STS2_RUNTIME_PROFILE=runtime-v3-gameplay
 for both processes. Gateway and MCP session identities remain separate namespaces. The harness
 passes both identities and the profile to its MCP child. Harness, gateway, and MCP default to the
 independent MCP session `mcp-session-1`; a shared explicit override also keeps custom session names
-consistent across processes.
+consistent across processes. The native watchdog worker adapter is documented in
+[`docs/worker-endpoint-v1.md`](docs/worker-endpoint-v1.md). It is a Linux-only, owner-local
+authenticated endpoint around the harness worker runtime; its bootstrap, peer-image proof,
+credential prelude, bounded framing, durable admission, and child resume behavior remain distinct
+from gameplay settlement and live-host evidence.
 The current runtime-v3 handoff has been exercised on the named Windows and Linux v0.107.1 fixtures.
 The Windows campaign reached Defeat without a controller restart; the Linux campaign reached
 Defeat after one controller restart following a catalog-read failure. Both had fresh-process

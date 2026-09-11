@@ -85,11 +85,9 @@ fn reply_text_with_id(id: u64, text: &str) -> String {
 }
 
 fn recovery_reply(id: u64, frame: &Value) -> String {
-    let is_error = !matches!(
-        frame["payload"]["result"]["status"].as_str(),
-        Some("SETTLED" | "REJECTED" | "RECONCILED")
-    );
+    // UNKNOWN/NOT_FOUND is an application outcome carried by the sideband;
+    // transport-level `isError` would prevent recovery from retaining uncertainty.
     reply(json!({"jsonrpc":"2.0","id":id,"result":{
-        "isError":is_error,"content":[{"text":frame.to_string()}]
+        "isError":false,"content":[{"text":frame.to_string()}]
     }}))
 }
