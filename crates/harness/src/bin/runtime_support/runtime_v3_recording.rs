@@ -55,9 +55,10 @@ impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError> {
         let mut reservation: Option<ProviderReservationToken> = None;
         let decision = if let Some(durable) = &self.durable {
-            let admission = durable
-                .decision_admission_with_reuse(input)
-                .map_err(|_| PolicyError::ProviderMalformed)?;
+            let admission = match durable.decision_admission_with_reuse(input) {
+                Ok(admission) => admission,
+                Err(_) => return Err(self.durable_decision_failure()),
+            };
             match admission {
                 DecisionAdmission::Reused(decision) => decision,
                 DecisionAdmission::Fresh(token) => {
@@ -76,7 +77,7 @@ impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
                                     durable.fail_decision(token, failure)
                                 };
                                 if result.is_err() {
-                                    return Err(PolicyError::ProviderMalformed);
+                                    return Err(self.durable_decision_failure());
                                 }
                             }
                             let execution_id = self
@@ -110,7 +111,7 @@ impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
             && let Some(durable) = &self.durable
             && durable.complete_decision(&token, &decision).is_err()
         {
-            return Err(PolicyError::ProviderMalformed);
+            return Err(self.durable_decision_failure());
         }
         let execution_id = self
             .source
@@ -159,6 +160,18 @@ impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
             confidence,
         );
         Ok(decision)
+    }
+}
+
+impl<S> DecisionRecorder<'_, S> {
+    /// Durable admission and persistence failures must stop the episode without reclassifying a
+    /// local store boundary as malformed provider output. `InputBlocked` is the existing public
+    /// fail-closed policy outcome for a decision that cannot safely proceed.
+    fn durable_decision_failure(&self) -> PolicyError {
+        let _ = self
+            .telemetry
+            .failure("durable_decision", FailureCode::Other, false, None);
+        PolicyError::InputBlocked
     }
 }
 

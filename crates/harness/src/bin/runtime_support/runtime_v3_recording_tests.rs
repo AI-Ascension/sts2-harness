@@ -9,11 +9,14 @@ use super::{
 };
 use serde_json::json;
 use sts2_harness::{
-        ActionKind, DecisionInput, DecisionSource, EpisodeLegalAction, EpisodeLegalActionSet,
-        EpisodeObservation, EpisodeRunnerError, EpisodeStage, ExoConfig, ExoDecisionSource,
-        ExoProvider, ExoSession, ExoTransport, ExoTransportError, ModelExecutionId, PortError,
+        ActionKind, Decision, DecisionInput, DecisionSource, EpisodeLegalAction,
+        EpisodeLegalActionSet, EpisodeObservation, EpisodeRunnerError, EpisodeStage,
+        ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExoConfig, ExoDecisionSource,
+        ExoProvider, ExoSession, ExoTransport, ExoTransportError, ModelExecutionId, PolicyError,
+        PortError,
     };
 use super::super::super::runtime_v3_telemetry::TelemetryHandle;
+use super::super::durable::DurableHandle;
 
     #[test]
     fn terminal_stage_outcome_survives_independent_cleanup_status() {
@@ -234,4 +237,92 @@ use super::super::super::runtime_v3_telemetry::TelemetryHandle;
         assert_eq!(rows[1]["action_id"], "end-turn");
         assert_eq!(rows[1]["model_execution_id"], 1);
         assert_eq!(rows[1]["reused_model_execution"], true);
+    }
+
+    struct CountingSource {
+        calls: usize,
+        decision: Decision,
+        close_store_before_return: Option<DurableHandle>,
+    }
+
+    impl DecisionSource for CountingSource {
+        fn decide(&mut self, _input: &DecisionInput) -> Result<Decision, PolicyError> {
+            self.calls += 1;
+            if let Some(durable) = self.close_store_before_return.take() {
+                let _ = durable.close();
+            }
+            Ok(self.decision.clone())
+        }
+    }
+
+    fn durable_for_recorder_test() -> DurableHandle {
+        let lineage = ExecutionLineage::new(
+            "run-recorder-test",
+            "episode-recorder-test",
+            "attempt-recorder-test",
+            "trajectory-recorder-test",
+        )
+        .expect("test lineage");
+        let fingerprint = ExecutionFingerprint::new(
+            "seed-recorder-test",
+            "build-recorder-test",
+            "state-recorder-test",
+            "config-recorder-test",
+            "provider-recorder-test",
+        )
+        .expect("test fingerprint");
+        let mut store = ExecutionStore::open_in_memory().expect("test store");
+        store
+            .start_episode(&lineage, &fingerprint)
+            .expect("test episode");
+        DurableHandle::from_store_for_test(store, lineage, fingerprint).expect("durable handle")
+    }
+
+    fn recorded_action() -> Decision {
+        Decision::Action {
+            action_id: String::from("end-turn"),
+            rationale: String::from("synthetic decision"),
+            confidence: Some(90),
+        }
+    }
+
+    #[test]
+    fn durable_admission_failure_blocks_without_calling_or_blaming_provider() {
+        let durable = durable_for_recorder_test();
+        durable.close().expect("close test store");
+        let mut source = CountingSource {
+            calls: 0,
+            decision: recorded_action(),
+            close_store_before_return: None,
+        };
+        let input = plan_input(1, "combat-1", json!([]));
+        let mut recorder = DecisionRecorder::with_durable(
+            &mut source,
+            TelemetryHandle::disabled(),
+            durable,
+        );
+
+        assert_eq!(recorder.decide(&input), Err(PolicyError::InputBlocked));
+        drop(recorder);
+        assert_eq!(source.calls, 0);
+    }
+
+    #[test]
+    fn durable_completion_failure_blocks_without_reclassifying_provider_output() {
+        let durable = durable_for_recorder_test();
+        let mut source = CountingSource {
+            calls: 0,
+            decision: recorded_action(),
+            close_store_before_return: Some(durable.clone()),
+        };
+        let input = plan_input(1, "combat-1", json!([]));
+        let mut recorder = DecisionRecorder::with_durable(
+            &mut source,
+            TelemetryHandle::disabled(),
+            durable,
+        );
+
+        assert_eq!(recorder.decide(&input), Err(PolicyError::InputBlocked));
+        drop(recorder);
+        assert_eq!(source.calls, 1);
     }
