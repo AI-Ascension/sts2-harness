@@ -285,8 +285,7 @@ fn allowlisted_method(value: &str) -> bool {
             | "turn/start"
             | "turn/interrupt"
             | "thread/fork"
-            | "thread/compact"
-            | "thread/retire"
+            | "thread/compact/start"
     )
 }
 
@@ -309,8 +308,8 @@ mod tests {
         assert!(allowlisted_method("turn/start"));
         assert!(allowlisted_method("turn/interrupt"));
         assert!(allowlisted_method("thread/fork"));
-        assert!(allowlisted_method("thread/compact"));
-        assert!(allowlisted_method("thread/retire"));
+        assert!(allowlisted_method("thread/compact/start"));
+        assert!(!allowlisted_method("thread/retire"));
         assert!(!allowlisted_method("shell/execute"));
         assert!(!allowlisted_method("thread/start/../shell"));
     }

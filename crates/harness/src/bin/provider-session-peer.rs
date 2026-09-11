@@ -79,8 +79,7 @@ fn run() -> Result<(), String> {
             }
             "turn/interrupt" => json!({"status":"cancelled"}),
             "thread/fork" => json!({"thread_id":"native-fork-1","history_epoch":1}),
-            "thread/compact" => json!({"status":"acknowledged","compaction_epoch":1}),
-            "thread/retire" => json!({"status":"retired"}),
+            "thread/compact/start" => json!({"status":"acknowledged","compaction_epoch":1}),
             _ => {
                 let _ = params;
                 write_frame(

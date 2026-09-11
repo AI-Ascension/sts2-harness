@@ -31,11 +31,6 @@ impl OwnedNativeTransport {
 
     /// Compact a native thread using the adapter-owned request shape.
     pub fn compact_thread(&mut self) -> Result<serde_json::Value, NativeTransportError> {
-        self.request("thread/compact", json!({}))
-    }
-
-    /// Retire a native thread using the adapter-owned request shape.
-    pub fn retire_thread(&mut self) -> Result<serde_json::Value, NativeTransportError> {
-        self.request("thread/retire", json!({}))
+        self.request("thread/compact/start", json!({}))
     }
 }

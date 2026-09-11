@@ -99,14 +99,6 @@ impl ProviderSessionBroker {
         revoked_sources: Vec<String>,
     ) -> Result<Retirement, SessionError> {
         self.authorize_owner(owner_token)?;
-        if !self
-            .capabilities
-            .enabled_methods
-            .iter()
-            .any(|method| method == "thread/retire")
-        {
-            return Err(SessionError::Unsupported);
-        }
         if !valid_id(retirement_id)
             || revoked_sources.len() > MAX_DEPENDENCIES
             || !unique_ids(&revoked_sources)

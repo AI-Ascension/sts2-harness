@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-use super::types::{MAX_FRAME_BYTES, MAX_METHOD_BYTES, NATIVE_FRAME_SCHEMA, SessionError};
+use super::types::{MAX_FRAME_BYTES, NATIVE_FRAME_SCHEMA, SessionError};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value, json};
 
 #[path = "protocol_json.rs"]
 mod protocol_json;
-use protocol_json::parse_strict_json;
+#[path = "protocol_parse.rs"]
+mod protocol_parse;
+use protocol_parse::validate_frame;
+pub use protocol_parse::{parse_native_frame, parse_native_request};
 
 /// Typed frame kinds used by the owned fixture/native connection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -21,8 +24,7 @@ pub enum NativeFrameKind {
 
 /// A bounded product envelope around the version-pinned native protocol.  The product never
 /// accepts a caller-provided method/params pair; this shape is consumed only by the owned worker.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NativeFrame {
     schema: String,
     kind: NativeFrameKind,
@@ -57,22 +59,6 @@ pub enum NativeResponse {
         id: Option<u64>,
         error: NativePeerError,
     },
-}
-
-pub fn parse_native_request(line: &[u8]) -> Result<(u64, String, Value), SessionError> {
-    if line.is_empty() || line.len() > MAX_FRAME_BYTES || !line.ends_with(b"\n") {
-        return Err(SessionError::Protocol);
-    }
-    let frame: NativeFrame = parse_strict_json(&line[..line.len() - 1])?;
-    validate_frame(&frame)?;
-    if frame.kind != NativeFrameKind::Request {
-        return Err(SessionError::Protocol);
-    }
-    Ok((
-        frame.id.ok_or(SessionError::Protocol)?,
-        frame.method.ok_or(SessionError::Protocol)?,
-        frame.result.ok_or(SessionError::Protocol)?,
-    ))
 }
 
 impl NativeFrame {
@@ -146,112 +132,72 @@ impl NativeFrame {
 
     pub fn encode_line(&self) -> Result<Vec<u8>, SessionError> {
         validate_frame(self)?;
-        let mut bytes = serde_json::to_vec(self).map_err(|_| SessionError::Protocol)?;
+        let mut object = Map::new();
+        object.insert("jsonrpc".to_owned(), Value::String("2.0".to_owned()));
+        match self.kind {
+            NativeFrameKind::Request => {
+                object.insert(
+                    "id".to_owned(),
+                    json!(self.id.ok_or(SessionError::Protocol)?),
+                );
+                object.insert(
+                    "method".to_owned(),
+                    Value::String(self.method.clone().ok_or(SessionError::Protocol)?),
+                );
+                object.insert(
+                    "params".to_owned(),
+                    self.result.clone().unwrap_or(Value::Null),
+                );
+            }
+            NativeFrameKind::Response => {
+                object.insert(
+                    "id".to_owned(),
+                    json!(self.id.ok_or(SessionError::Protocol)?),
+                );
+                object.insert(
+                    "result".to_owned(),
+                    self.result.clone().unwrap_or(Value::Null),
+                );
+            }
+            NativeFrameKind::Notification => {
+                object.insert(
+                    "method".to_owned(),
+                    Value::String("codex/notification".to_owned()),
+                );
+                object.insert(
+                    "params".to_owned(),
+                    json!({
+                        "sequence": self.sequence.ok_or(SessionError::Protocol)?,
+                        "payload": self.result.clone().unwrap_or(Value::Null),
+                    }),
+                );
+            }
+            NativeFrameKind::ServerRequest => {
+                object.insert(
+                    "id".to_owned(),
+                    json!(self.id.ok_or(SessionError::Protocol)?),
+                );
+                object.insert(
+                    "method".to_owned(),
+                    Value::String(self.method.clone().ok_or(SessionError::Protocol)?),
+                );
+                object.insert("params".to_owned(), Value::Object(Map::new()));
+            }
+            NativeFrameKind::Error => {
+                object.insert("id".to_owned(), self.id.map_or(Value::Null, |id| json!(id)));
+                let peer_error = self.error.clone().ok_or(SessionError::Protocol)?;
+                object.insert(
+                    "error".to_owned(),
+                    json!({"code": peer_error.code, "message": peer_error.message}),
+                );
+            }
+        }
+        let mut bytes =
+            serde_json::to_vec(&Value::Object(object)).map_err(|_| SessionError::Protocol)?;
         bytes.push(b'\n');
         if bytes.len() > MAX_FRAME_BYTES {
             return Err(SessionError::Capacity);
         }
         Ok(bytes)
     }
-}
-
-pub fn parse_native_frame(line: &[u8]) -> Result<NativeResponse, SessionError> {
-    if line.is_empty() || line.len() > MAX_FRAME_BYTES || !line.ends_with(b"\n") {
-        return Err(SessionError::Protocol);
-    }
-    let frame: NativeFrame = parse_strict_json(&line[..line.len() - 1])?;
-    validate_frame(&frame)?;
-    match frame.kind {
-        NativeFrameKind::Response => Ok(NativeResponse::Result {
-            id: frame.id.ok_or(SessionError::Protocol)?,
-            value: frame.result.unwrap_or(Value::Null),
-        }),
-        NativeFrameKind::Notification => Ok(NativeResponse::Notification {
-            sequence: frame.sequence,
-        }),
-        NativeFrameKind::ServerRequest => Ok(NativeResponse::ServerRequest {
-            id: frame.id.ok_or(SessionError::Protocol)?,
-            method: frame.method.ok_or(SessionError::Protocol)?,
-        }),
-        NativeFrameKind::Error => Ok(NativeResponse::Error {
-            id: frame.id,
-            error: frame.error.ok_or(SessionError::Protocol)?,
-        }),
-        NativeFrameKind::Request => Err(SessionError::Protocol),
-    }
-}
-
-fn validate_frame(frame: &NativeFrame) -> Result<(), SessionError> {
-    if frame.schema != NATIVE_FRAME_SCHEMA {
-        return Err(SessionError::Protocol);
-    }
-    match frame.kind {
-        NativeFrameKind::Request => {
-            if frame.id.is_none()
-                || frame
-                    .method
-                    .as_ref()
-                    .is_none_or(|m| m.is_empty() || m.len() > MAX_METHOD_BYTES || !valid_method(m))
-                || frame.result.is_none()
-                || frame.error.is_some()
-                || frame.sequence.is_some()
-            {
-                return Err(SessionError::Protocol);
-            }
-        }
-        NativeFrameKind::Response => {
-            if frame.id.is_none()
-                || frame.result.is_none()
-                || frame.method.is_some()
-                || frame.error.is_some()
-                || frame.sequence.is_some()
-            {
-                return Err(SessionError::Protocol);
-            }
-        }
-        NativeFrameKind::Notification => {
-            if frame.id.is_some()
-                || frame.result.is_none()
-                || frame.method.is_some()
-                || frame.error.is_some()
-                || frame.sequence.is_none()
-            {
-                return Err(SessionError::Protocol);
-            }
-        }
-        NativeFrameKind::ServerRequest => {
-            if frame.id.is_none()
-                || frame
-                    .method
-                    .as_ref()
-                    .is_none_or(|m| m.is_empty() || m.len() > MAX_METHOD_BYTES || !valid_method(m))
-                || frame.result.is_some()
-                || frame.error.is_some()
-                || frame.sequence.is_some()
-            {
-                return Err(SessionError::Protocol);
-            }
-        }
-        NativeFrameKind::Error => {
-            if frame.error.is_none()
-                || frame.method.is_some()
-                || frame.result.is_some()
-                || frame.sequence.is_some()
-            {
-                return Err(SessionError::Protocol);
-            }
-        }
-    }
-    if frame.error.as_ref().is_some_and(|error| {
-        error.message.is_empty() || error.message.len() > 512 || error.message.contains('\n')
-    }) {
-        return Err(SessionError::Protocol);
-    }
-    Ok(())
-}
-
-fn valid_method(value: &str) -> bool {
-    value
-        .bytes()
-        .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
 }

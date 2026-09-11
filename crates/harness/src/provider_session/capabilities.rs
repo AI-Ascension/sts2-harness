@@ -63,8 +63,7 @@ impl NativeCapabilities {
             "turn/start",
             "turn/interrupt",
             "thread/fork",
-            "thread/compact",
-            "thread/retire",
+            "thread/compact/start",
         ]
         .into_iter()
         .map(str::to_owned)
@@ -130,7 +129,6 @@ fn allowlisted_method(value: &str) -> bool {
             | "turn/start"
             | "turn/interrupt"
             | "thread/fork"
-            | "thread/compact"
-            | "thread/retire"
+            | "thread/compact/start"
     )
 }

@@ -17,7 +17,7 @@ impl ProviderSessionBroker {
             .capabilities
             .enabled_methods
             .iter()
-            .any(|method| method == "thread/compact")
+            .any(|method| method == "thread/compact/start")
         {
             return Err(SessionError::Unsupported);
         }

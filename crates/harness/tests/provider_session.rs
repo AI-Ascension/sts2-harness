@@ -283,9 +283,27 @@ fn retirement_and_recovery_prevent_resurrection() {
 
 #[test]
 fn strict_frames_reject_duplicates_and_peer_runs_as_owned_stdio() {
-    let duplicate = br#"{"schema":"ascension.provider-session.native-frame.v1","kind":"response","id":1,"id":2,"method":null,"result":{},"error":null,"sequence":null}
+    let duplicate = br#"{"jsonrpc":"2.0","id":1,"id":2,"result":{}}
 "#;
     assert_eq!(parse_native_frame(duplicate), Err(SessionError::Protocol));
+    let encoded = NativeFrame::response(1, serde_json::json!({"ok":true}))
+        .encode_line()
+        .expect("json-rpc frame");
+    assert!(
+        encoded
+            .windows(br#""jsonrpc":"2.0""#.len())
+            .any(|window| { window == br#""jsonrpc":"2.0""# })
+    );
+    assert!(matches!(
+        parse_native_frame(&encoded),
+        Ok(NativeResponse::Result { id: 1, .. })
+    ));
+    let unknown = br#"{"jsonrpc":"2.0","id":1,"result":{},"untrusted":true}
+"#;
+    assert_eq!(parse_native_frame(unknown), Err(SessionError::Protocol));
+    let ambiguous = br#"{"jsonrpc":"2.0","id":1,"result":{},"error":{"code":-1,"message":"both"}}
+"#;
+    assert_eq!(parse_native_frame(ambiguous), Err(SessionError::Protocol));
     let server = NativeFrame::server_request(4, "shell/execute")
         .encode_line()
         .expect("frame");

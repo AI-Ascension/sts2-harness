@@ -15,7 +15,8 @@ pub const SESSION_PREPARED_SCHEMA: &str = "ascension.provider-session.prepared.v
 pub const SESSION_RECONCILIATION_SCHEMA: &str = "ascension.provider-session.reconciliation.v1";
 pub const SESSION_RETIREMENT_SCHEMA: &str = "ascension.provider-session.retirement.v1";
 pub const SESSION_USAGE_SCHEMA: &str = "ascension.provider-session.usage.v1";
-pub const NATIVE_FRAME_SCHEMA: &str = "ascension.provider-session.native-frame.v1";
+/// Version-pinned wire identity for the JSON-RPC 2.0 App Server envelope.
+pub const NATIVE_FRAME_SCHEMA: &str = "codex-app-server-jsonrpc.v2";
 
 pub const MAX_SESSION_ITEMS: usize = 512;
 pub const MAX_DEPENDENCIES: usize = 128;
