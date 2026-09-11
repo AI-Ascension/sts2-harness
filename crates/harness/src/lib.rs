@@ -39,6 +39,7 @@ mod exo_process;
 mod identity;
 pub mod management;
 mod memory;
+pub mod phase3_adapter_demo;
 mod poc;
 mod protocol_artifact;
 mod protocol_artifact_coop_receipt_query;
