@@ -14,7 +14,9 @@ fn run(operation: &str, body: serde_json::Value) -> serde_json::Value {
         .spawn()
         .expect("spawn memory cli");
     let mut stdin = child.stdin.take().expect("stdin");
-    write!(stdin, "{body}").expect("request");
+    if !body.is_null() {
+        write!(stdin, "{body}").expect("request");
+    }
     drop(stdin);
     let output = child.wait_with_output().expect("cli output");
     assert!(output.status.success());

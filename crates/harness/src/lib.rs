@@ -45,6 +45,7 @@ mod poc;
 mod protocol_artifact;
 mod protocol_artifact_coop_receipt_query;
 mod provider;
+pub mod provider_session;
 #[cfg(unix)]
 pub mod recorded_run;
 mod records;
