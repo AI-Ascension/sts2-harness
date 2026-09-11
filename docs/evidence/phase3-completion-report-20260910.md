@@ -59,6 +59,8 @@ production WAL/temp/backup operations, provider quality, native action effects, 
 The remaining mandatory unavailable lane is an independent native three-level reviewer. The current
 target browser audits passed with the
 documented Chromium library environment at target revision `f22296225c9e6b5a36004d1d689f9e27384920ba`,
-recording zero external/provider/game effects and no browser persistence. Harness PRs #68 and #69
-merged externally during the handoff; the current follow-up is draft PR #70. No merge was initiated by this
-work, and no release, deployment, provider call, game launch, or unrelated write was performed.
+recording zero external/provider/game effects and no browser persistence. Harness PR #70 was merged
+after its `policy` and `Rust quality gates` checks passed; its merge commit is
+`8d771f128bc0ba13071063425c9a852bac2c40c1`. Target PR #3 was also merged externally with merge
+commit `114b3e5ae28cd60d9dafc421711dee859b602c4d`. No release, deployment, provider call, game
+launch, or unrelated write was performed.
