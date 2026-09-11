@@ -168,6 +168,20 @@ fn mismatched_action_digest_fails_before_gateway_mcp_or_provider_calls() -> Resu
     assert_hostile_startup_is_bounded(&fixture)
 }
 
+#[test]
+fn missing_episode_resume_fails_before_gateway_mcp_or_provider_calls() -> Result<(), String> {
+    let fixture = Fixture::new()?;
+    let output = run_child(fixture.command())?;
+    assert_failure_contains(&output, "resume requested but no durable episode exists")?;
+    fixture.assert_no_gateway_connection()?;
+    if fixture.counter.exists() {
+        return Err(String::from(
+            "missing-state resume invoked an MCP or provider boundary",
+        ));
+    }
+    Ok(())
+}
+
 fn write_probe(path: &Path, marker: &str, counter: &Path) -> Result<(), String> {
     let body = format!(
         "#!/bin/sh\nprintf '{marker}' >> '{}'\nexit 17\n",

@@ -196,7 +196,7 @@ impl TempDir {
             .duration_since(UNIX_EPOCH)
             .map_err(io::Error::other)?
             .as_nanos();
-        let path = Path::new("/tmp").join(format!(
+        let path = env::temp_dir().join(format!(
             "sts2-astra-bridge-test-{}-{nonce}",
             std::process::id()
         ));

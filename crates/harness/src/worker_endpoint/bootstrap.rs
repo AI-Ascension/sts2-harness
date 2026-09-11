@@ -188,7 +188,6 @@
         watchdog_boot_id: String,
         component_id: String,
         peer: LinuxPeer,
-        peer_proof: Option<Arc<PeerProofState>>,
     }
 
     #[derive(Clone)]

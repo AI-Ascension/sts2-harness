@@ -28,9 +28,7 @@
         let mut payload = vec![0_u8; payload_len];
         read_exact_deadline(reader, &mut payload, deadline, "worker bootstrap")?;
         read_until_eof_deadline(reader, deadline)?;
-        let mut bootstrap = parse_bootstrap_payload(&payload)?;
-        bootstrap.peer_proof = Some(spawn_peer_image_proof(&bootstrap.peer)?);
-        Ok(bootstrap)
+        parse_bootstrap_payload(&payload)
     }
 
     fn read_until_eof_deadline(reader: &mut File, deadline: Instant) -> Result<(), String> {
@@ -118,6 +116,5 @@
                 uid,
                 gid,
             },
-            peer_proof: None,
         })
     }

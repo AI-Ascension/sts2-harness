@@ -1056,9 +1056,19 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "sts2-harness-windows-boundary",
  "sts2-protocol",
  "tokio",
  "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "sts2-harness-windows-boundary"
+version = "0.0.0"
+dependencies = [
+ "sha2",
+ "windows-sys",
  "zeroize",
 ]
 

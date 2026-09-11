@@ -35,7 +35,7 @@ pub(super) struct McpProcess {
 }
 
 impl McpProcess {
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(super) const fn is_closed(&self) -> bool {
         self.closed
     }

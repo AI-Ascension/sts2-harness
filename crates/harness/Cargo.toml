@@ -24,6 +24,9 @@ uuid = { version = "=1.23.5", features = ["v4"] }
 zeroize.workspace = true
 ryu-js = "=1.0.2"
 
+[target.'cfg(windows)'.dependencies]
+sts2-harness-windows-boundary = { path = "../windows-worker-boundary" }
+
 [dev-dependencies]
 jsonschema = { version = "=0.55.0", default-features = false }
 
