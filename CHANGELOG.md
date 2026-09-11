@@ -22,6 +22,12 @@ claim a released harness version or runtime compatibility.
   mappings remain access-controlled local run evidence; collector/backend and live evidence remain
   unverified.
 
+- Tighten optional seeded-receipt replay admission before `EpisodeRunner` construction. A receipt
+  preamble now requires exact current seed configuration and original operation/fence/context
+  equivalence, a fresh canonical-seed run-start witness, and a closed MCP wrapper/result chain.
+  This is deterministic source/component validation only; it does not execute replay or invoke a
+  provider, MCP server, gateway, or host.
+
 - Persist validated Runtime-v3 action-wait settlement against its original durable operation
   before admitting another model decision. Previously the host could settle the action while
   the durable store retained `unknown`, causing the next decision to fail with a misleading
