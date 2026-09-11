@@ -382,8 +382,7 @@ fn artifact_metadata_is_lineage_bound() -> Result<(), Box<dyn Error>> {
     let mut harness = harness(FakeProvider::with_failures(0));
     let (run_id, episode) = run_and_episode(&mut harness)?;
     let schema_version = SchemaVersion::new(1).ok_or("schema version cannot be zero")?;
-    use sha2::{Digest as _, Sha256};
-    let digest = sts2_harness::Digest::new(format!("{:x}", Sha256::digest(b"trajectory-bytes")))?;
+    let digest = sts2_harness::Digest::new(sts2_harness::sha256_hex(b"trajectory-bytes"))?;
     let lineage = ArtifactLineage::new(run_id, Some(episode.trajectory_id()), Vec::new())?;
     let request = ArtifactPublicationRequest::new(
         ArtifactKind::Trajectory,

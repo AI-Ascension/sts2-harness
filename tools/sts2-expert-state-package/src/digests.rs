@@ -40,10 +40,7 @@ pub(crate) fn validate_digests(root: &Path) -> Result<()> {
             Path::new(path).file_name().and_then(|name| name.to_str()) == Some(path),
             "unsafe artifact path",
         )?;
-        let actual = format!(
-            "{:x}",
-            Sha256::digest(fs::read(root.join("data").join(path))?)
-        );
+        let actual = sha256_hex(fs::read(root.join("data").join(path))?);
         require(expected == &actual, "inventory artifact digest mismatch")?;
     }
     validate_supporting_digests(root, &manifest)?;
@@ -65,12 +62,12 @@ pub(crate) fn validate_digests(root: &Path) -> Result<()> {
             "unsafe renderer path",
         )?;
         records.push_str(&format!(
-            "{:x}  {path}\n",
-            Sha256::digest(fs::read(repo.join(path))?)
+            "{}  {path}\n",
+            sha256_hex(fs::read(repo.join(path))?)
         ));
     }
     require(
-        renderer["source_code_digest"] == format!("{:x}", Sha256::digest(records.as_bytes())),
+        renderer["source_code_digest"] == sha256_hex(records.as_bytes()),
         "renderer source digest mismatch",
     )?;
     Ok(())
@@ -111,8 +108,20 @@ fn validate_supporting_digests(root: &Path, manifest: &serde_json::Value) -> Res
         "schema and fixture digest coverage drift",
     )?;
     for (path, expected) in digests {
-        let actual = format!("{:x}", Sha256::digest(fs::read(root.join(path))?));
+        let actual = sha256_hex(fs::read(root.join(path))?);
         require(expected == &actual, "schema or fixture digest mismatch")?;
     }
     Ok(())
+}
+
+fn sha256_hex(bytes: impl AsRef<[u8]>) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let digest = Sha256::digest(bytes);
+    let mut output = String::with_capacity(digest.len() * 2);
+    let digest_bytes: &[u8] = digest.as_ref();
+    for &byte in digest_bytes {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
 }

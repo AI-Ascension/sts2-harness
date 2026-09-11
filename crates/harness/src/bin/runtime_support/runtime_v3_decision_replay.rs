@@ -3,7 +3,6 @@
 //! Bounded, canonical decision bytes used when a durable provider result is replayed.
 
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use sts2_harness::{Decision, parse_decision};
 
 const MAX_DECISION_RESULT_BYTES: usize = 8 * 1024;
@@ -68,7 +67,7 @@ pub(super) fn encode(decision: &Decision) -> Result<(Vec<u8>, String), String> {
     // can become durable replay data.
     parse_decision(&bytes)
         .map_err(|error| format!("runtime-v3 decision result is not replayable: {error}"))?;
-    let digest = format!("{:x}", Sha256::digest(&bytes));
+    let digest = sts2_harness::sha256_hex(&bytes);
     Ok((bytes, digest))
 }
 
@@ -82,7 +81,7 @@ pub(super) fn decode(payload: &[u8], digest: &str) -> Result<Decision, String> {
         || !digest
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        || format!("{:x}", Sha256::digest(payload)) != digest
+        || sts2_harness::sha256_hex(payload) != digest
     {
         return Err(String::from(
             "stored runtime-v3 decision result digest does not match its bytes",
@@ -137,10 +136,7 @@ mod tests {
         assert!(
             decode(
                 br#"{"decision":"wait","rationale":"wait","extra":1}"#,
-                &format!(
-                    "{:x}",
-                    Sha256::digest(br#"{"decision":"wait","rationale":"wait","extra":1}"#)
-                ),
+                &sts2_harness::sha256_hex(br#"{"decision":"wait","rationale":"wait","extra":1}"#,),
             )
             .is_err()
         );

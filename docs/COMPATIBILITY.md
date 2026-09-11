@@ -73,7 +73,9 @@ See `experiments/live-combat/README.md` for the exact scope.
 | Direct game access | Outside the harness boundary; requests use MCP/gateway | No direct host authority; bounded indirect runtime-v1 probe only |
 | Replay/artifact lineage | Offline seams and fresh-process combat action replay | Confirmed visible-state comparison for the demo; broader replay unverified |
 | Runtime-v2 coordinator | Four-lane bounded pure scheduler with explicit lineage, fairness, overload, cancellation, and shutdown seams | Confirmed by offline component tests; live supervisor/profile/host isolation unverified |
+| Seeded-run transport | Opt-in bounded plan, context digest, durable reservation, and same-operation MCP recovery | Source/component and artifact checks confirmed; native seed settlement, profile/save isolation, gameplay, deployment, and release unverified |
 | Runtime map context | Opt-in host-authored map projection carried to the Exo provider | Source/component evidence only; target-build map production, provider behavior, and live compatibility unverified |
+| `coop-native-v1` harness consumer | Strict parser and coordinator for the accepted native co-op artifact | Source/component tests cover all seventeen goldens, peer-token uniqueness, generation fences, effects/receipts, and same-operation recovery; MCP/HTTP transport, native settlement, checksum convergence, deployment, and release unverified |
 | Evaluation | Library aggregation over supplied samples; not wired into the Runtime-v3 runner | Synthetic tests, not game parity or experimental performance evidence |
 
 ## Compatibility classifications
@@ -116,17 +118,46 @@ seams. Target-build and live provider behavior remain `unverified`.
 ### Runtime-v4 expert source/component row
 
 At current harness main
-[`b8c50c87db0275f0e08d69892f1ebce275f4acb6`](https://github.com/AI-Ascension/sts2-harness/commit/b8c50c87db0275f0e08d69892f1ebce275f4acb6),
+[`3926e5a30ab569612e67d2dfdc6542f1391e95d7`](https://github.com/AI-Ascension/sts2-harness/commit/3926e5a30ab569612e67d2dfdc6542f1391e95d7),
 the coordinator consumes the copied `runtime-v4-expert` and `runtime-v4-expert-action` artifacts,
 maps the expert MCP catalog, validates the fair-play observation and legal-action bindings, and
 exercises bounded executable composition and recovery checks. Their schema digests are
 `0ee034d5da83f34e9fa0ba23038738d56ef8cfccb1c6e752af3ab63d212c8e42` and
 `393318bda8c3522c0ecbacc78b95471a9f4dc3f825169d2048f4c74a7b7f2929`; the copied protocol source
-is aligned with protocol main `f2dac90529f584a6511c1760adce9da28f7f910a`. The separate
+was admitted from protocol main `f2dac90529f584a6511c1760adce9da28f7f910a`; current protocol main
+is `d3ab5fca7d9d74bb31eeb3e5b343d8024ee44404`. The separate
 `runtime-v4-expert-rest-action` artifact remains a candidate at digest
 `bb3555fae28eb1f79d08a15e9884696a579e4c20836f5016509f17e0f4c36fbd`. This is source/component
 and bounded synthetic composition evidence; native host legality, settled effects, provider-run
 compatibility, deployment, release, and live end-to-end behavior remain unverified.
+
+### Seeded-run transport source/component row
+
+At current harness main
+[`3926e5a30ab569612e67d2dfdc6542f1391e95d7`](https://github.com/AI-Ascension/sts2-harness/commit/3926e5a30ab569612e67d2dfdc6542f1391e95d7),
+the opt-in transport validates a contiguous seed plan and a concrete standard Ironclad context,
+establishes a generation fence with one read-only observation, and creates a durable reservation
+before the single `start_seeded_run` mutation. The `seeded-run-v1` MCP profile is used for start and
+bodyless reconciliation; `unknown` or disconnected starts retain the original operation ID and
+never issue a new seed mutation. Settlement requires canonical seed readback, a fresh observation,
+and the `run_started` witness. The copied protocol artifact is
+`sts2-protocol/seeded-run-v1` at schema digest
+`5c659f344be78f84e8d783986925d462714f933cac95d18943358992f7d3e2b8`, aligned with protocol main
+`d3ab5fca7d9d74bb31eeb3e5b343d8024ee44404`. These checks confirm the source/component boundary and
+artifact integrity; native host settlement, profile/save isolation, gameplay, provider execution,
+deployment, and release compatibility remain unverified.
+
+### Native co-op source/component row
+
+The harness consumes `sts2-protocol/coop-native-v1` as a component artifact with schema digest
+`2f3bc99e53080fa11b39592b64fb0ab964a16f568719a2622d0b2caf766ab629`. The parser preserves the
+producer's closed envelope and seventeen goldens, accepts bodyful same-operation recovery requests,
+uses peer-token identity for roster uniqueness, and enforces the producer/gateway generation rules:
+settled effects advance `before < after == observation.host_generation`, while non-settled effects
+remain at the observation generation; recovery outcomes retain their status-specific receipt
+relations. The coordinator records unknown operations and reconciles them with the original
+operation identity. This confirms a transport-free consumer component; native peer admission,
+host legality, settled effects/votes, checksums, rejoin, deployment, and release remain unverified.
 
 ### Runtime map context
 
@@ -193,9 +224,10 @@ checks, cleanup, replay, rollback, and all repository gates are available.
 
 ### Runtime-v3 canonical artifact provenance
 
-The [Runtime-v3 bundle](../protocol-artifact/runtime-v3-gameplay/README.md) is copied byte-for-byte
-from the current `AI-Ascension/sts2-protocol` main
-`f2dac90529f584a6511c1760adce9da28f7f910a` (MIT). The canonical
+The [Runtime-v3 bundle](../protocol-artifact/runtime-v3-gameplay/README.md) was copied byte-for-byte
+from `AI-Ascension/sts2-protocol` main
+`f2dac90529f584a6511c1760adce9da28f7f910a` (MIT) at artifact admission; current protocol main is
+`d3ab5fca7d9d74bb31eeb3e5b343d8024ee44404`. The canonical
 `SHA256SUMS`, README, manifest, schema and seven goldens retain upstream bytes; the
 [source schema](../schemas/runtime-v3-gameplay.schema.json) and
 [conformance case](../conformance/cases/runtime-v3-gameplay.json) preserve the inventory's relative

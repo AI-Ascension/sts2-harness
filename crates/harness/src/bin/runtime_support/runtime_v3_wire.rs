@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Value, json};
-use sha2::Digest;
 use sts2_harness::ActionKind;
 
 use super::mcp::McpProcess;
@@ -290,7 +289,7 @@ pub(super) fn canonical_action_bytes(action_id: &str, payload: &Value) -> Result
 
 pub(super) fn canonical_action_digest(action_id: &str, payload: &Value) -> Result<String, String> {
     let bytes = canonical_action_bytes(action_id, payload)?;
-    Ok(format!("{:x}", sha2::Sha256::digest(bytes)))
+    Ok(sts2_harness::sha256_hex(bytes))
 }
 
 include!("runtime_v3_wire_stage.rs");

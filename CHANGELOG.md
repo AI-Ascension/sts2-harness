@@ -7,6 +7,28 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- 2026-09-10: Add the additive `seeded-run-v1` transport handoff at harness main
+  `3926e5a30ab569612e67d2dfdc6542f1391e95d7`. It validates a bounded contiguous seed plan and
+  context-digest-bound standard Ironclad selection, establishes a generation fence, creates one
+  durable reservation before `start_seeded_run`, and reconciles unknown starts with the same
+  operation ID. The copied `sts2-protocol/seeded-run-v1` artifact has schema digest
+  `5c659f344be78f84e8d783986925d462714f933cac95d18943358992f7d3e2b8`, aligned with protocol main
+  `d3ab5fca7d9d74bb31eeb3e5b343d8024ee44404`. Source/component and artifact checks do not establish
+  native seed settlement, profile/save isolation, gameplay, deployment, or release compatibility.
+
+- 2026-09-10: Add the `coop-native-v1` consumer boundary as a source/component integration. The
+  strict parser consumes the copied accepted artifact, recognizes recovery requests that use the
+  bodyful `recovery_response` shape, enforces peer-token uniqueness and host-generation relations,
+  and retains unknown mutations for same-operation reconciliation. Deterministic tests cover all
+  seventeen producer goldens and malformed peer, effect, receipt, and recovery mutations. This
+  does not add MCP/HTTP/gateway transport or claim a live native multiplayer session; peer admission,
+  host legality, settlement, checksum convergence, rejoin, deployment, and release compatibility
+  remain `unverified`.
+
+- 2026-09-10: Fence unknown recovery receipts to the observed host generation. The accepted
+  same-generation receipt exception is limited to pending rejoin recovery; reconcile and unresolved
+  receipts retain a null after-generation until a settled response.
+
 - Record visible Astra-controlled v0.107.1 campaigns and fresh process replays through the full
   harness → MCP → gateway → mod path: Windows reached Defeat with 333 settled actions; Linux
   reached Defeat with 431 after one controller restart following a catalog-read failure. These

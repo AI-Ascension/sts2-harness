@@ -52,13 +52,7 @@ impl RuntimeV3Port {
         } else {
             wire::rpc_call(
                 self.expert_mcp_mut()
-                    .map_err(|error| {
-                        if catalog_read {
-                            RuntimeV3ToolError::Transient(error.to_string())
-                        } else {
-                            RuntimeV3ToolError::Terminal(error.to_string())
-                        }
-                    })?,
+                    .map_err(|error| RuntimeV3ToolError::Terminal(error.to_string()))?,
                 id,
                 "tools/call",
                 request,
@@ -89,15 +83,6 @@ impl RuntimeV3Port {
             )));
         }
         Ok((id, value))
-    }
-
-    pub(super) fn call_expert_tool(
-        &mut self,
-        name: &str,
-        arguments: Value,
-    ) -> Result<(u64, Value), String> {
-        self.call_expert_tool_classified(name, arguments)
-            .map_err(|error| error.message().to_owned())
     }
 
     fn expert_state_classified(
@@ -156,8 +141,15 @@ impl RuntimeV3Port {
         let normal_payloads = self.payloads.clone();
         let (actions, payloads) = merge_actions(&normal_actions, &normal_payloads, &expert)
             .map_err(RuntimeV3ToolError::Terminal)?;
+        let catalog = composed_catalog_from_actions(&actions, &payloads)
+            .map_err(RuntimeV3ToolError::Terminal)?;
+        let catalog_raw = serde_json::to_vec(&catalog).map_err(|error| {
+            RuntimeV3ToolError::Terminal(format!("expert catalog is not encodable: {error}"))
+        })?;
         self.current_actions = Some(actions);
         self.payloads = payloads;
+        self.catalog = Some(catalog);
+        self.catalog_raw = Some(catalog_raw);
         Ok(())
     }
 
@@ -311,3 +303,5 @@ impl RuntimeV3Port {
 include!("runtime_v4_expert_port_transport_receipt.rs");
 include!("runtime_v4_expert_port_transport_composition.rs");
 include!("runtime_v4_expert_port_transport_observation.rs");
+include!("runtime_v4_expert_port_catalog.rs");
+include!("runtime_v4_expert_port_tool.rs");

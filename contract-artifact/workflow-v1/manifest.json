@@ -1,0 +1,20 @@
+{
+  "artifact": "sts2-harness/workflow-v1",
+  "contract_version": "ascension.workflow/v1",
+  "schema": "../../schemas/workflow-v1.schema.json",
+  "producer": "sts2-harness",
+  "provenance": {
+    "source": "crates/harness/src/workflow",
+    "generator": "hand-authored-rust-contract",
+    "license": "MIT"
+  },
+  "consumers": ["sts2-harness"],
+  "conformance": ["conformance/cases/workflow-v1.json"],
+  "canonical_vectors": ["canonical-vectors.json"],
+  "semantic_hash": {
+    "algorithm": "sha-256",
+    "object_keys": "lexicographic",
+    "array_order": "preserved",
+    "excluded_fields": ["annotations"]
+  }
+}

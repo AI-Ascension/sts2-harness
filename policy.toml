@@ -122,3 +122,13 @@ markdown_max = 700
 
 # Exact repository-relative paths only. Every exception needs a durable reason.
 [exemptions]
+"crates/harness/src/execution/store_ops.rs" = "The operation ledger is a single transaction-state module; its 334-line implementation is below the hard limit and is covered by the durable operation fault matrix."
+"crates/harness/src/execution/store_provider.rs" = "The provider reservation ledger is a single transaction-state module; its 336-line implementation is below the hard limit and keeps reservation transitions reviewable together."
+"crates/harness/src/execution/types_records.rs" = "The durable record/error vocabulary is kept together to preserve cross-record invariants; its 331-line implementation is below the hard limit."
+"crates/harness/tests/execution_store.rs" = "The store integration fixture exercises the complete legacy recovery matrix in one deterministic suite; its 442-line test remains below the hard limit."
+"crates/harness/src/workflow/runtime.rs" = "The strict reducer keeps cursor, guard, loop, and terminal transitions together for one auditable state machine; its 314-line implementation remains below the hard limit."
+"crates/harness/src/workflow/dynamic.rs" = "The dynamic plan registry, validator, and deterministic pure executor are reviewed as one bounded planning boundary; its 314-line implementation remains below the hard limit."
+"crates/harness/src/workflow/provider.rs" = "The provider registry, typed context projection, and reservation ledger share one budget boundary; its 315-line implementation remains below the hard limit."
+"crates/harness/src/management/workflow_ports.rs" = "The synthetic management adapter keeps definition admission, runtime control, replay, and capability wiring together so the process driver exercises one shared boundary; its 385-line implementation remains below the hard limit."
+"crates/harness/src/bin/sts2-astra-bridge.rs" = "The Astra bridge keeps bounded process execution, capture sideband emission, and decision validation together so the executable remains one auditable provider boundary; its 321-line implementation remains below the hard limit."
+"crates/harness/src/exo/protocol.rs" = "The Exo protocol adapter keeps request bounds, transport lifecycle, and capture sideband transitions together so provider admission remains reviewable as one boundary; its 337-line implementation remains below the hard limit."

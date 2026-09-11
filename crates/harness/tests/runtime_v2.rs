@@ -3,7 +3,6 @@
 use std::error::Error;
 
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use sts2_harness::{
     RUNTIME_V2_SCHEMA_DIGEST, RuntimeV2EventKind, RuntimeV2Kind, RuntimeV2Message, RuntimeV2Status,
     run_runtime_v2_fake_trace, runtime_v2_schema_bytes, verify_runtime_v2_artifact,
@@ -13,7 +12,7 @@ use sts2_harness::{
 fn copied_runtime_v2_artifact_matches_the_protocol_handoff() -> Result<(), Box<dyn Error>> {
     verify_runtime_v2_artifact()?;
     assert_eq!(
-        format!("{:x}", Sha256::digest(runtime_v2_schema_bytes())),
+        sts2_harness::sha256_hex(runtime_v2_schema_bytes()),
         RUNTIME_V2_SCHEMA_DIGEST
     );
     Ok(())

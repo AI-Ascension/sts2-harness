@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use rusqlite::params;
-use sha2::{Digest, Sha256};
 
 use super::schema;
 use super::store_core::{ExecutionStore, append_event};
@@ -127,11 +126,32 @@ impl ExecutionStore {
                 && current.actual_units == actual_units
                 && current.failure == failure
             {
+                let stored_result = tx
+                    .query_row(
+                        "SELECT result_ref, result_digest FROM provider_reservations
+                         WHERE reservation_id = ?1",
+                        [reservation_id],
+                        |row| {
+                            Ok((
+                                row.get::<_, Option<String>>(0)?,
+                                row.get::<_, Option<String>>(1)?,
+                            ))
+                        },
+                    )
+                    .map_err(schema::map_sqlite)?;
+                if stored_result.0.as_deref() != Some(result_ref)
+                    || stored_result.1.as_deref() != Some(result_digest)
+                {
+                    return Err(super::types::ExecutionStoreError::Conflict);
+                }
                 let query = decision_query("WHERE execution_id = ?1");
                 let existing = tx
                     .query_row(&query, [current.execution_id.as_str()], read_decision)
                     .map_err(schema::map_sqlite)?;
-                if existing.result_payload.as_deref() != result_payload {
+                if existing.reference.result_ref.as_deref() != Some(result_ref)
+                    || existing.reference.result_digest.as_deref() != Some(result_digest)
+                    || existing.result_payload.as_deref() != result_payload
+                {
                     return Err(super::types::ExecutionStoreError::Conflict);
                 }
                 tx.commit().map_err(schema::map_sqlite)?;
@@ -207,94 +227,5 @@ fn valid_result_payload(payload: &[u8], digest: &str) -> bool {
         && digest
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        && format!("{:x}", Sha256::digest(payload)) == digest
-}
-
-#[cfg(test)]
-#[allow(clippy::expect_used, clippy::panic)]
-mod tests {
-    use rusqlite::params;
-    use sha2::{Digest, Sha256};
-
-    use super::super::store_core::ExecutionStore;
-    use super::super::types::{
-        DecisionReference, ExecutionFingerprint, ExecutionLineage, ExecutionStoreError,
-        ProviderReservation,
-    };
-
-    #[test]
-    fn result_payload_is_bounded_digest_bound_and_tamper_evident() {
-        let mut store = ExecutionStore::open_in_memory().expect("store opens");
-        let lineage = ExecutionLineage::new("run-1", "episode-1", "attempt-1", "trajectory-1")
-            .expect("lineage is valid");
-        let fingerprint =
-            ExecutionFingerprint::new("seed-1", "build-1", "state-1", "config-1", "provider-1")
-                .expect("fingerprint is valid");
-        store
-            .start_episode(&lineage, &fingerprint)
-            .expect("episode starts");
-        let reference = DecisionReference::new(
-            lineage.clone(),
-            "execution-1",
-            "input-1",
-            "model-1",
-            "config-1",
-        )
-        .expect("decision reference is valid");
-        store.record_decision(&reference).expect("decision records");
-        let reservation = ProviderReservation::new(
-            lineage,
-            "reservation-1",
-            "execution-1",
-            "provider-execution-1",
-            1,
-        )
-        .expect("reservation is valid");
-        store
-            .reserve_provider(&reservation)
-            .expect("reservation records");
-
-        let oversized = vec![b'x'; super::MAX_DECISION_RESULT_BYTES + 1];
-        assert_eq!(
-            store.complete_provider_with_result(
-                "reservation-1",
-                "result-1",
-                &format!("{:x}", Sha256::digest(&oversized)),
-                &oversized,
-                1,
-            ),
-            Err(ExecutionStoreError::InvalidProviderReservation)
-        );
-        assert_eq!(
-            store.complete_provider_with_result(
-                "reservation-1",
-                "result-1",
-                &"0".repeat(64),
-                b"{}",
-                1,
-            ),
-            Err(ExecutionStoreError::InvalidProviderReservation)
-        );
-        let payload = br#"{"decision":"wait","rationale":"safe"}"#;
-        store
-            .complete_provider_with_result(
-                "reservation-1",
-                "result-1",
-                &format!("{:x}", Sha256::digest(payload)),
-                payload,
-                1,
-            )
-            .expect("valid result records");
-        store
-            .connection
-            .execute(
-                "UPDATE decisions SET result_payload = ?1 WHERE execution_id = ?2",
-                params![b"tampered".as_slice(), "execution-1"],
-            )
-            .expect("test tamper writes directly");
-        assert_eq!(
-            store.decision("execution-1"),
-            Err(ExecutionStoreError::Corrupt)
-        );
-    }
+        && crate::sha256_hex(payload) == digest
 }

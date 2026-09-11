@@ -3,7 +3,6 @@
 use std::collections::BTreeSet;
 
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 
 use super::legal_actions::{ActionKind, EpisodeLegalActionSet};
 
@@ -125,7 +124,7 @@ impl MapDecisionContext {
             .get("generation")
             .and_then(Value::as_u64)
             .ok_or(MapError::InvalidGeneration)?;
-        let snapshot_digest = format!("{:x}", Sha256::digest(&canonical_bytes));
+        let snapshot_digest = crate::sha256_hex(&canonical_bytes);
         Ok(Self {
             snapshot: canonical,
             snapshot_digest,

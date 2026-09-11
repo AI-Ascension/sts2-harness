@@ -6,10 +6,47 @@ use super::super::observation::ObservationError;
 use super::super::policy_router::PolicyError;
 use super::super::postconditions::PostconditionError;
 use super::super::recovery::RecoveryError;
-use super::super::shutdown::ShutdownError;
+use super::super::shutdown::{EpisodeCleanupReport, ShutdownError};
 use super::super::stability_barrier::BarrierError;
 use super::super::state_machine::EpisodeMachineError;
 use crate::error::PortError;
+
+/// Primary execution failure plus cleanup evidence retained by `EpisodeRunner::run`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EpisodeRunFailure {
+    primary: Box<EpisodeRunnerError>,
+    cleanup: EpisodeCleanupReport,
+    pending_operation_id: Option<String>,
+}
+
+impl EpisodeRunFailure {
+    pub(super) fn new(
+        primary: EpisodeRunnerError,
+        cleanup: EpisodeCleanupReport,
+        pending_operation_id: Option<String>,
+    ) -> Self {
+        Self {
+            primary: Box::new(primary),
+            cleanup,
+            pending_operation_id,
+        }
+    }
+
+    #[must_use]
+    pub fn primary(&self) -> &EpisodeRunnerError {
+        &self.primary
+    }
+
+    #[must_use]
+    pub fn cleanup(&self) -> &EpisodeCleanupReport {
+        &self.cleanup
+    }
+
+    #[must_use]
+    pub fn pending_operation_id(&self) -> Option<&str> {
+        self.pending_operation_id.as_deref()
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EpisodeRunnerError {
@@ -19,6 +56,11 @@ pub enum EpisodeRunnerError {
     Observe(PortError),
     LegalActions(PortError),
     Dispatch(PortError),
+    DispatchRecovery {
+        operation_id: String,
+        dispatch: PortError,
+        recovery: Box<EpisodeRunnerError>,
+    },
     Barrier(BarrierError),
     Recovery(RecoveryError),
     Shutdown(ShutdownError),
@@ -28,6 +70,7 @@ pub enum EpisodeRunnerError {
     Policy(PolicyError),
     Ledger(IdempotencyError),
     Postcondition(PostconditionError),
+    Cleanup(EpisodeRunFailure),
     ActionNotCurrent,
     DuplicateOperation,
     ConflictingOperation,
@@ -49,6 +92,12 @@ impl std::fmt::Display for EpisodeRunnerError {
             Self::Observe(_) => "episode observation failed",
             Self::LegalActions(_) => "episode legal-action request failed",
             Self::Dispatch(_) => "episode action dispatch failed",
+            Self::DispatchRecovery { operation_id, .. } => {
+                return write!(
+                    formatter,
+                    "episode operation {operation_id} failed during dispatch and recovery"
+                );
+            }
             Self::Barrier(error) => {
                 return write!(formatter, "episode transition barrier failed: {error}");
             }
@@ -62,6 +111,14 @@ impl std::fmt::Display for EpisodeRunnerError {
             }
             Self::Ledger(_) => "episode action ledger failed",
             Self::Postcondition(_) => "episode postcondition was not independently verified",
+            Self::Cleanup(failure) => {
+                return write!(
+                    formatter,
+                    "episode failed: {}; cleanup: {}",
+                    failure.primary(),
+                    failure.cleanup()
+                );
+            }
             Self::ActionNotCurrent => "provider action is not in the current host catalog",
             Self::DuplicateOperation => "episode operation was already admitted",
             Self::ConflictingOperation => "episode operation identity conflicts",

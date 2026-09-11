@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Value, json};
-use sha2::{Digest as _, Sha256};
 
 use super::super::super::config::RuntimeConfig;
 use super::{ALLOCATION_SCHEMA_DIGEST, validate};
@@ -182,12 +181,9 @@ fn imported_schema_manifest_and_fixture_digests_stay_consistent() -> Result<(), 
     let manifest_digest = manifest["schema_digest"]
         .as_str()
         .ok_or_else(|| String::from("allocation manifest omitted schema_digest"))?;
-    let schema_digest = format!(
-        "{:x}",
-        Sha256::digest(include_bytes!(
-            "../../../../../contract-artifact/runtime-allocation-v1/frame.schema.json"
-        ))
-    );
+    let schema_digest = sts2_harness::sha256_hex(include_bytes!(
+        "../../../../../contract-artifact/runtime-allocation-v1/frame.schema.json"
+    ));
     assert_eq!(manifest_digest, schema_digest);
     assert_eq!(manifest_digest, ALLOCATION_SCHEMA_DIGEST);
     for value in [

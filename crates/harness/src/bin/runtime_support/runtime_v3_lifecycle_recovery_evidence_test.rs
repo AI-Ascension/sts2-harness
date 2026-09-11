@@ -10,7 +10,7 @@ use super::reconnect_support::*;
 use super::*;
 
 struct RecoveryCase {
-    fixture: Fixture,
+    fixture: reconnect_support::Fixture,
     durable: DurableHandle,
     lookup: Value,
     reconcile: Value,
@@ -18,7 +18,7 @@ struct RecoveryCase {
 
 impl RecoveryCase {
     fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let fixture = Fixture::new()?;
+        let fixture = reconnect_support::Fixture::new()?;
         let lineage = ExecutionLineage::new("run-1", "episode-1", "attempt-1", "trajectory-1")?;
         let fingerprint =
             ExecutionFingerprint::new("seed", "build", "state", "config", "provider")?;

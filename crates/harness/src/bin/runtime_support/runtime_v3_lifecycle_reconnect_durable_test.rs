@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-use sha2::Digest;
 use sts2_harness::{
     ActionIdentity, ActionKind, Decision, DecisionInput, DecisionSource, EpisodeLegalAction,
     ExecutionFingerprint, ExecutionLineage, ExecutionStore, ModelExecutionId,
@@ -13,7 +12,7 @@ use super::*;
 #[test]
 fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_restart()
 -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = Fixture::new()?;
+    let fixture = reconnect_support::Fixture::new()?;
     let mut runtime_config = config("127.0.0.1:15525".into());
     runtime_config.mcp_binary = dispatch_script(&fixture)?;
     let lineage = ExecutionLineage::new(
@@ -154,10 +153,7 @@ fn durable_runtime_lifecycle_checkpoints_accounts_provider_and_reconciles_after_
     let canonical_action =
         wire::canonical_action_bytes(pending_action.action_id(), &json!({"kind":"end_turn"}))?;
     let canonical_json_b64 = encode_base64(&canonical_action);
-    let catalog_digest = format!(
-        "{:x}",
-        sha2::Sha256::digest(serde_json::to_vec(&pending_catalog)?)
-    );
+    let catalog_digest = sts2_harness::sha256_hex(serde_json::to_vec(&pending_catalog)?);
     durable.operation_dispatched(PENDING_OPERATION_ID, &pending_digest)?;
     drop(port);
 

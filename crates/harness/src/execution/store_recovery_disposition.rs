@@ -40,12 +40,12 @@ impl ExecutionStore {
         if disposition == RecoveryDisposition::InterruptedUnknown {
             tx.execute(
                 "UPDATE attempts SET state = ?2, updated_at = ?3 WHERE attempt_id = ?1",
-                params![attempt_id, state, now],
+                params![&attempt_id, &state, now],
             )
             .map_err(schema::map_sqlite)?;
             tx.execute(
                 "UPDATE episodes SET state = ?2, updated_at = ?3 WHERE episode_id = ?1",
-                params![episode_id, state, now],
+                params![&episode_id, &state, now],
             )
             .map_err(schema::map_sqlite)?;
         }
