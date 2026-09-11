@@ -31,6 +31,13 @@ the file, and requires exact scope/policy/profile matching on restore. It contai
 bytes and does not encrypt, redirect or attest to native Codex state, rollout files, WAL/log files
 or temporary files.
 
+The owned stdio transport clears the parent environment and binds conventional home/config/cache,
+Codex and temporary roots to the approved private state directory. The inherited-environment list
+cannot override those names; native instruction precedence, OS containment and quota observation
+still require an independent native capability review. Startup also scans the complete private tree
+against the 256 MiB bound and fails closed on symlinks, special files, unsafe child roots or
+over-limit bytes; active-worker growth remains a separate observation requirement.
+
 The native Codex App Server profile, provider authentication, encrypted OS state, native binary
 compatibility and remote erasure require a later capability review; the fixture evidence does not
 claim any of them.

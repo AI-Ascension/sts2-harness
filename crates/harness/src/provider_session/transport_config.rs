@@ -3,11 +3,26 @@
 use super::super::types::MAX_FRAME_BYTES;
 use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
 
 const MAX_ARGUMENTS: usize = 32;
 const MAX_ARGUMENT_BYTES: usize = 2048;
 const MAX_ENVIRONMENT_NAMES: usize = 32;
 const MAX_ENVIRONMENT_NAME_BYTES: usize = 128;
+const ISOLATED_ENVIRONMENT_NAMES: &[&str] = &[
+    "HOME",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "CODEX_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_RUNTIME_DIR",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct NativeProcessConfig {
@@ -75,6 +90,20 @@ impl NativeProcessConfig {
     pub(super) fn inherited_environment(&self) -> &[String] {
         &self.inherited_environment
     }
+
+    /// Clear the parent environment and bind every conventional home/config/cache/temp root to
+    /// the broker-owned state directory before adding explicitly approved secret names.
+    pub(super) fn apply_isolated_environment(&self, command: &mut Command) {
+        command.env_clear();
+        for name in ISOLATED_ENVIRONMENT_NAMES {
+            command.env(name, &self.state_root);
+        }
+        for name in self.inherited_environment() {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -123,7 +152,21 @@ fn valid_environment_names(names: &[String]) -> bool {
             })
             && !matches!(
                 name.as_str(),
-                "LD_PRELOAD" | "LD_LIBRARY_PATH" | "DYLD_INSERT_LIBRARIES"
+                "LD_PRELOAD"
+                    | "LD_LIBRARY_PATH"
+                    | "DYLD_INSERT_LIBRARIES"
+                    | "HOME"
+                    | "USERPROFILE"
+                    | "APPDATA"
+                    | "LOCALAPPDATA"
+                    | "CODEX_HOME"
+                    | "XDG_CONFIG_HOME"
+                    | "XDG_DATA_HOME"
+                    | "XDG_CACHE_HOME"
+                    | "XDG_RUNTIME_DIR"
+                    | "TMPDIR"
+                    | "TMP"
+                    | "TEMP"
             )
             && unique.insert(name)
     })
@@ -131,15 +174,61 @@ fn valid_environment_names(names: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{valid_executable, valid_root_path};
+    use super::{NativeProcessConfig, valid_environment_names, valid_executable, valid_root_path};
+    use std::ffi::{OsStr, OsString};
+    use std::process::Command;
 
     #[test]
     fn process_paths_require_absolute_roots_and_executable() {
         assert!(valid_executable("/opt/codex/bin/codex"));
         assert!(!valid_executable("codex"));
         assert!(!valid_executable("../codex"));
+        assert!(!valid_environment_names(&["HOME".to_owned()]));
+        assert!(!valid_environment_names(&["CODEX_HOME".to_owned()]));
         assert!(valid_root_path(std::path::Path::new("/tmp/provider-root")));
         assert!(!valid_root_path(std::path::Path::new("relative-root")));
         assert!(!valid_root_path(std::path::Path::new("/tmp/../escape")));
+    }
+
+    #[test]
+    fn process_environment_is_bound_to_state_root() {
+        let config = NativeProcessConfig::new(
+            "/opt/codex/bin/codex",
+            Vec::new(),
+            "/tmp/provider-work",
+            Vec::new(),
+            "/tmp/provider-state",
+        );
+        assert!(config.is_ok());
+        let Some(config) = config.ok() else {
+            return;
+        };
+        let mut command = Command::new("/bin/true");
+        config.apply_isolated_environment(&mut command);
+        let value = |name: &str| {
+            command
+                .get_envs()
+                .find_map(|(key, value)| {
+                    (key == OsStr::new(name)).then(|| value.map(OsString::from))
+                })
+                .flatten()
+        };
+        for name in [
+            "HOME",
+            "USERPROFILE",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "CODEX_HOME",
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_CACHE_HOME",
+            "XDG_RUNTIME_DIR",
+            "TMPDIR",
+            "TMP",
+            "TEMP",
+        ] {
+            assert_eq!(value(name), Some(OsString::from("/tmp/provider-state")));
+        }
+        assert!(value("PATH").is_none());
     }
 }

@@ -46,7 +46,7 @@ fn run() -> Result<(), String> {
         let response = match method.as_str() {
             "initialize" if !initialized => {
                 initialized = true;
-                json!({"profile_id":"codex-app-server-fixture-v1","tools":false,"ambient_history":false})
+                json!({"profile_id":"codex-app-server-fixture-v1","tools":false,"ambient_history":false,"isolated_roots_bound":isolated_roots_bound()})
             }
             "initialize" => {
                 write_frame(
@@ -92,6 +92,27 @@ fn run() -> Result<(), String> {
         write_frame(&mut stdout, &NativeFrame::response(id, response))?;
     }
     Ok(())
+}
+
+fn isolated_roots_bound() -> bool {
+    let Some(home) = std::env::var_os("HOME") else {
+        return false;
+    };
+    [
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "CODEX_HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_RUNTIME_DIR",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+    ]
+    .into_iter()
+    .all(|name| std::env::var_os(name).is_some_and(|value| value == home))
 }
 
 fn write_frame(stdout: &mut impl Write, frame: &NativeFrame) -> Result<(), String> {

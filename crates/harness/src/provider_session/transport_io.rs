@@ -91,6 +91,51 @@ pub(super) fn safe_executable(path: &std::path::Path) -> bool {
     })
 }
 
+/// Bound the complete private state tree before starting a worker. Any symlink, special file,
+/// unsafe child directory/file or unreadable entry fails closed; callers must re-check while a
+/// worker is active if they need a stronger runtime quota guarantee.
+pub(super) fn state_within_quota(path: &std::path::Path, quota_bytes: u64) -> bool {
+    if quota_bytes == 0 || !safe_directory(path) {
+        return false;
+    }
+    let mut directories = vec![path.to_owned()];
+    let mut total = 0_u64;
+    while let Some(directory) = directories.pop() {
+        let Ok(entries) = std::fs::read_dir(&directory) else {
+            return false;
+        };
+        for entry in entries {
+            let Ok(entry) = entry else {
+                return false;
+            };
+            let child = entry.path();
+            let Ok(metadata) = std::fs::symlink_metadata(&child) else {
+                return false;
+            };
+            if metadata.file_type().is_symlink() {
+                return false;
+            }
+            if metadata.is_dir() {
+                if !safe_directory(&child) {
+                    return false;
+                }
+                directories.push(child);
+            } else if metadata.is_file() {
+                if !restricted_metadata(&metadata) {
+                    return false;
+                }
+                total = total.saturating_add(metadata.len());
+                if total > quota_bytes {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 #[cfg(unix)]
 fn restricted_metadata(metadata: &std::fs::Metadata) -> bool {
     use rustix::process::geteuid;
@@ -128,4 +173,26 @@ pub(super) fn has_symlink_component(path: &std::path::Path) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::state_within_quota;
+    use std::path::Path;
+
+    #[test]
+    fn state_quota_scan_is_bounded_and_fail_closed() {
+        assert!(!state_within_quota(
+            Path::new("/path/that/does/not/exist"),
+            1
+        ));
+        assert!(!state_within_quota(
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+            0
+        ));
+        assert!(state_within_quota(
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+            256 * 1024 * 1024
+        ));
+    }
 }

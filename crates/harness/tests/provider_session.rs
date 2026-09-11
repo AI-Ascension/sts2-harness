@@ -361,6 +361,7 @@ fn strict_frames_reject_duplicates_and_peer_runs_as_owned_stdio() {
     transport.start().expect("start");
     let initialized = transport.initialize().expect("initialize");
     assert_eq!(initialized["tools"], false);
+    assert_eq!(initialized["isolated_roots_bound"], true);
     assert_eq!(
         transport.start_thread().expect("thread")["thread_id"],
         "native-thread-1"

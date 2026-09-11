@@ -17,6 +17,7 @@ mod io;
 use config::NativeProcessConfig;
 
 const MAX_OUTSTANDING: usize = 16;
+pub(super) const MAX_NATIVE_STATE_BYTES: u64 = 256 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeTransportError {
@@ -148,6 +149,7 @@ impl OwnedNativeTransport {
         if !io::safe_executable(PathBuf::from(self.config.executable()).as_path())
             || !io::safe_directory(self.config.working_directory())
             || !io::safe_directory(self.config.state_root())
+            || !io::state_within_quota(self.config.state_root(), MAX_NATIVE_STATE_BYTES)
         {
             return Err(NativeTransportError::Unavailable);
         }
@@ -157,13 +159,8 @@ impl OwnedNativeTransport {
             .current_dir(self.config.working_directory())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .env_clear();
-        for name in self.config.inherited_environment() {
-            if let Some(value) = std::env::var_os(name) {
-                command.env(name, value);
-            }
-        }
+            .stderr(Stdio::null());
+        self.config.apply_isolated_environment(&mut command);
         let mut child = command
             .spawn()
             .map_err(|_| NativeTransportError::Unavailable)?;
