@@ -162,13 +162,31 @@ impl ProviderSessionBroker {
             .get(prepared_id)
             .ok_or(SessionError::NotFound)?;
         self.ensure_not_expired(&prepared.expires_at)?;
+        if matches!(binding.state, BindingState::Retired | BindingState::Closed) {
+            return Err(SessionError::Retired);
+        }
+        if binding.state == BindingState::Quarantined {
+            return Err(SessionError::Fenced);
+        }
         if binding.state != BindingState::Active || !binding.game_dispatch_capability {
             return Err(SessionError::HeldRequired);
         }
+        // The approval dependency vector is revalidated at the first resumed submission, not only
+        // when the preview was prepared.  Any profile/continuity/history/compaction/authorization
+        // drift, dependency change or tampered record invalidates the exact approved bytes.
+        if prepared.validate().is_err() {
+            return Err(SessionError::InvalidPrepared);
+        }
         if prepared.binding_id != binding_id
             || prepared.owner_epoch != self.owner_epoch
+            || prepared.auth_epoch != self.owner_epoch
             || prepared.session_epoch != binding.session_epoch
+            || prepared.history_epoch != binding.history_epoch
+            || prepared.compaction_epoch != binding.compaction_epoch
             || prepared.revocation_epoch != self.revocation_epoch
+            || prepared.profile_sha256 != binding.profile_sha256
+            || prepared.continuity_sha256 != binding.continuity_sha256
+            || prepared.dependency_ids != binding.dependency_ids
         {
             return Err(SessionError::Stale);
         }

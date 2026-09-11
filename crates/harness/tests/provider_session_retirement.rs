@@ -169,6 +169,68 @@ fn late_maintenance_completions_cannot_resurrect_retired_bindings() {
 }
 
 #[test]
+fn completed_compaction_result_stays_observable_but_never_readopts() {
+    let mut broker = broker();
+    let binding = held_binding(&mut broker);
+    let job = broker
+        .plan_compaction(
+            "owner-fixture",
+            &binding.binding_id,
+            "observable-compaction",
+            Some("observable-budget".to_owned()),
+            true,
+        )
+        .expect("compaction plan");
+    broker
+        .send_compaction("owner-fixture", &job.job_id)
+        .expect("send");
+    broker
+        .acknowledge_compaction("owner-fixture", &job.job_id)
+        .expect("ack");
+    let completed = broker
+        .complete_compaction("owner-fixture", &job.job_id, "observable-evidence")
+        .expect("complete");
+    assert_eq!(completed.state, CompactionState::Completed);
+    assert_eq!(
+        completed.representation,
+        CompactionRepresentation::OpaqueNative
+    );
+    assert!(!completed.automatic_adoption);
+    assert_eq!(completed.scheduler_after, "held");
+
+    broker
+        .retire(
+            "owner-fixture",
+            &binding.binding_id,
+            "retire-after-compaction",
+            Vec::new(),
+        )
+        .expect("retire");
+
+    // The completed native result remains inspectable in the metadata journal, but the retired
+    // binding cannot be re-adopted and a repeated completion cannot rewrite history.
+    let snapshot = broker.snapshot();
+    let retained = snapshot
+        .compaction_jobs
+        .iter()
+        .find(|candidate| candidate.job_id == job.job_id)
+        .expect("retained compaction job");
+    assert_eq!(retained.state, CompactionState::Completed);
+    assert_eq!(
+        retained.terminal_evidence_ref.as_deref(),
+        Some("observable-evidence")
+    );
+    assert_eq!(
+        broker.binding(&binding.binding_id).expect("binding").state,
+        BindingState::Retired
+    );
+    assert_eq!(
+        broker.complete_compaction("owner-fixture", &job.job_id, "observable-evidence"),
+        Err(SessionError::Retired)
+    );
+}
+
+#[test]
 fn owner_rotation_fences_pending_maintenance() {
     let mut broker = broker();
     let binding = held_binding(&mut broker);

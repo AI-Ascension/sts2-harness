@@ -14,7 +14,7 @@ use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
 use getrandom::fill as fill_random;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use zeroize::Zeroizing;
@@ -175,7 +175,10 @@ impl ProviderSessionMetadataStore {
             .as_deref()
             .ok_or(ProviderSessionMetadataStoreError::Unsupported)?;
         validate_store_path(path)?;
-        let envelope = fs::read(path).map_err(|_| ProviderSessionMetadataStoreError::Io)?;
+        // Read through a no-follow descriptor and re-check the resulting file metadata on that
+        // descriptor, so a symlink or permission swap between path validation and read cannot
+        // redirect the load to attacker-selected bytes.
+        let envelope = read_restricted_file(path)?;
         if envelope.len() > MAX_ENVELOPE_BYTES {
             return Err(ProviderSessionMetadataStoreError::Capacity);
         }
@@ -244,6 +247,38 @@ impl ProviderSessionMetadataStore {
         aad.extend_from_slice(super::digest_scope(&self.scope).as_bytes());
         aad
     }
+}
+
+#[cfg(unix)]
+fn read_restricted_file(path: &Path) -> Result<Vec<u8>, ProviderSessionMetadataStoreError> {
+    use rustix::fs::{Mode, OFlags, open};
+
+    let descriptor = open(
+        path,
+        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+        Mode::empty(),
+    )
+    .map_err(|_| ProviderSessionMetadataStoreError::InvalidPath)?;
+    let mut file = File::from(descriptor);
+    let metadata = file
+        .metadata()
+        .map_err(|_| ProviderSessionMetadataStoreError::Io)?;
+    if !metadata.file_type().is_file() || !restricted_file(&metadata) {
+        return Err(ProviderSessionMetadataStoreError::InvalidPath);
+    }
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|_| ProviderSessionMetadataStoreError::Io)?;
+    Ok(bytes)
+}
+
+#[cfg(not(unix))]
+fn read_restricted_file(path: &Path) -> Result<Vec<u8>, ProviderSessionMetadataStoreError> {
+    let metadata = fs::symlink_metadata(path).map_err(|_| ProviderSessionMetadataStoreError::Io)?;
+    if !metadata.file_type().is_file() {
+        return Err(ProviderSessionMetadataStoreError::InvalidPath);
+    }
+    fs::read(path).map_err(|_| ProviderSessionMetadataStoreError::Io)
 }
 
 fn validate_store_path(path: &Path) -> Result<(), ProviderSessionMetadataStoreError> {

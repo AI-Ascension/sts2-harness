@@ -129,6 +129,27 @@ fn encrypted_store_round_trips_metadata_and_authenticates_bytes() {
     fs::remove_dir_all(directory).expect("cleanup");
 }
 
+#[cfg(unix)]
+#[test]
+fn encrypted_store_load_rejects_symlink_redirection() {
+    let directory = private_test_directory();
+    let real = directory.join("metadata.bin");
+    let moved = directory.join("moved.bin");
+    let broker = broker();
+    let policy = broker.policy().clone();
+    let capabilities = broker.capabilities().clone();
+    let store = ProviderSessionMetadataStore::encrypted(&real, [7_u8; 32], scope())
+        .expect("encrypted store");
+    store.save(&broker).expect("save");
+    fs::rename(&real, &moved).expect("move envelope");
+    std::os::unix::fs::symlink(&moved, &real).expect("symlink redirect");
+    assert!(matches!(
+        store.load("replacement-owner", &policy, &capabilities),
+        Err(ProviderSessionMetadataStoreError::InvalidPath)
+    ));
+    fs::remove_dir_all(directory).expect("cleanup");
+}
+
 #[test]
 fn encrypted_store_rejects_relative_or_unsafe_paths() {
     assert!(matches!(

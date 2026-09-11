@@ -18,6 +18,8 @@ mod maintenance;
 mod retirement;
 #[path = "broker_snapshot.rs"]
 mod snapshot;
+#[path = "broker_transforms.rs"]
+mod transforms;
 #[path = "broker_turn_lifecycle.rs"]
 mod turn_lifecycle;
 #[path = "broker_turns.rs"]
