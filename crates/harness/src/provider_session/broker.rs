@@ -177,6 +177,8 @@ impl ProviderSessionBroker {
             Err(SessionError::InvalidRequest)
         } else if timestamp_expired(expires_at) {
             Err(SessionError::Expired)
+        } else if !timestamp_within_future(expires_at, self.policy.history_ttl_seconds) {
+            Err(SessionError::InvalidRequest)
         } else {
             Ok(())
         }
@@ -193,38 +195,6 @@ impl ProviderSessionBroker {
             .clone();
         self.ensure_not_expired(&binding.expires_at)?;
         Ok(binding)
-    }
-
-    pub(super) fn projected_history_bytes(
-        &self,
-        binding_id: &str,
-        items: &[HistoryItem],
-    ) -> Result<usize, SessionError> {
-        let existing = self
-            .histories
-            .iter()
-            .filter(|(current_id, _)| current_id.as_str() != binding_id)
-            .try_fold(0_usize, |total, (_, current)| {
-                let bytes = serde_json::to_vec(current).map_err(|_| SessionError::Protocol)?;
-                total.checked_add(bytes.len()).ok_or(SessionError::Capacity)
-            })?;
-        let replacement = serde_json::to_vec(items).map_err(|_| SessionError::Protocol)?;
-        existing
-            .checked_add(replacement.len())
-            .filter(|size| *size <= MAX_HISTORY_BYTES)
-            .ok_or(SessionError::Capacity)
-    }
-
-    pub(super) fn prepared_bytes(&self) -> Result<usize, SessionError> {
-        self.prepared.values().try_fold(0_usize, |total, prepared| {
-            let size = prepared
-                .suffix
-                .len()
-                .checked_add(prepared.output_schema.len())
-                .and_then(|value| value.checked_add(prepared.protected.len()))
-                .ok_or(SessionError::Capacity)?;
-            total.checked_add(size).ok_or(SessionError::Capacity)
-        })
     }
 
     fn existing_idempotent(

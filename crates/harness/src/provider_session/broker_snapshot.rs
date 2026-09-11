@@ -107,6 +107,20 @@ impl ProviderSessionBroker {
 
 impl ProviderSessionBroker {
     fn restore_bindings(&mut self, bindings: Vec<SessionBinding>) -> Result<(), SessionError> {
+        let bounded_candidates = bindings
+            .iter()
+            .filter(|binding| {
+                matches!(binding.state, BindingState::Candidate)
+                    || binding.purpose == SessionPurpose::Evaluation
+            })
+            .count();
+        let active_executable = bindings
+            .iter()
+            .filter(|binding| binding.executable())
+            .count();
+        if bounded_candidates > MAX_CANDIDATES || active_executable > 1 {
+            return Err(SessionError::Capacity);
+        }
         for binding in bindings {
             if binding.scope != self.scope
                 || self
@@ -119,6 +133,7 @@ impl ProviderSessionBroker {
         }
         for binding in self.bindings.values() {
             binding.validate()?;
+            self.ensure_not_expired(&binding.expires_at)?;
         }
         for binding in self.bindings.values_mut() {
             binding.owner_epoch = self.owner_epoch;
@@ -215,6 +230,15 @@ impl ProviderSessionBroker {
             for item in &items {
                 item.validate()?;
             }
+            if items
+                .iter()
+                .filter(|item| item.kind == HistoryItemKind::ValidatedDecision)
+                .count()
+                > self.policy.max_completed_turns
+            {
+                return Err(SessionError::Capacity);
+            }
+            self.projected_history_bytes(&binding_id, &items)?;
             self.histories.insert(binding_id, items);
         }
         Ok(())
@@ -225,6 +249,13 @@ impl ProviderSessionBroker {
         compaction_jobs: Vec<CompactionJob>,
         fork_plans: Vec<ForkPlan>,
     ) -> Result<(), SessionError> {
+        if compaction_jobs
+            .len()
+            .checked_add(fork_plans.len())
+            .is_none_or(|count| count > MAX_MAINTENANCE_JOBS)
+        {
+            return Err(SessionError::Capacity);
+        }
         for job in compaction_jobs {
             if job.scope != self.scope || !self.bindings.contains_key(&job.binding_id) {
                 return Err(SessionError::InvalidRequest);

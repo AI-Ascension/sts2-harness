@@ -32,18 +32,19 @@ impl ProviderSessionBroker {
         if budget_ref.is_none()
             || self.compaction_jobs.values().any(|job| {
                 job.binding_id == binding_id
-                    && matches!(
-                        job.state,
-                        CompactionState::Planned
-                            | CompactionState::Sent
-                            | CompactionState::Acknowledged
-                            | CompactionState::Transforming
-                    )
+                    && job.state != CompactionState::Cancelled
+                    && job.state != CompactionState::Failed
+                    && job.state != CompactionState::Unknown
             })
         {
             return Err(SessionError::Conflict);
         }
-        if self.compaction_jobs.len() >= MAX_MAINTENANCE_JOBS {
+        if self
+            .compaction_jobs
+            .len()
+            .checked_add(self.fork_plans.len())
+            .is_none_or(|count| count >= MAX_MAINTENANCE_JOBS)
+        {
             return Err(SessionError::Capacity);
         }
         let job = CompactionJob {

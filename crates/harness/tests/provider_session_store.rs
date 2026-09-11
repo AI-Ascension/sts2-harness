@@ -8,6 +8,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use sts2_harness::provider_session::*;
 
+#[path = "support/provider_session.rs"]
+mod support;
+
 static TEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 fn scope() -> SessionScope {
@@ -76,7 +79,7 @@ fn encrypted_store_round_trips_metadata_and_authenticates_bytes() {
             "persisted-candidate",
             "branch-a",
             SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         )
         .expect("candidate");
     let policy = broker.policy().clone();

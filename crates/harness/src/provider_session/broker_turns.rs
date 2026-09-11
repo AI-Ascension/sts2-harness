@@ -5,6 +5,18 @@ use super::ProviderSessionBroker;
 use serde_json::json;
 
 impl ProviderSessionBroker {
+    pub(super) fn prepared_bytes(&self) -> Result<usize, SessionError> {
+        self.prepared.values().try_fold(0_usize, |total, prepared| {
+            let size = prepared
+                .suffix
+                .len()
+                .checked_add(prepared.output_schema.len())
+                .and_then(|value| value.checked_add(prepared.protected.len()))
+                .ok_or(SessionError::Capacity)?;
+            total.checked_add(size).ok_or(SessionError::Capacity)
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn prepare_turn(
         &mut self,

@@ -4,6 +4,33 @@ use super::super::types::*;
 use super::ProviderSessionBroker;
 
 impl ProviderSessionBroker {
+    fn projected_turn_history(
+        &self,
+        binding_id: &str,
+        item: &HistoryItem,
+    ) -> Result<Vec<HistoryItem>, SessionError> {
+        let mut items = self.histories.get(binding_id).cloned().unwrap_or_default();
+        if items.len() >= MAX_SESSION_ITEMS {
+            return Err(SessionError::Capacity);
+        }
+        if let Some(previous) = items.last()
+            && previous.sequence >= item.sequence
+        {
+            return Err(SessionError::InvalidRequest);
+        }
+        items.push(item.clone());
+        if items
+            .iter()
+            .filter(|history_item| history_item.kind == HistoryItemKind::ValidatedDecision)
+            .count()
+            > self.policy.max_completed_turns
+        {
+            return Err(SessionError::Capacity);
+        }
+        self.projected_history_bytes(binding_id, &items)?;
+        Ok(items)
+    }
+
     pub fn mark_sent(&mut self, owner_token: &str, operation_id: &str) -> Result<(), SessionError> {
         self.authorize_owner(owner_token)?;
         let operation = self
@@ -65,6 +92,7 @@ impl ProviderSessionBroker {
             .ok_or(SessionError::NotFound)?
             .binding_id
             .clone();
+        self.ensure_binding_not_expired(&binding_id)?;
         if let Some(existing) = self.operations.get(operation_id)
             && existing.state == NativeOperationState::Completed
         {
@@ -74,15 +102,7 @@ impl ProviderSessionBroker {
             let _ = self.quarantine_operation(owner_token, operation_id, native_turn_ref)?;
             return Err(SessionError::Conflict);
         }
-        let completed_turns = self.histories.get(&binding_id).map_or(0, |items| {
-            items
-                .iter()
-                .filter(|item| item.kind == HistoryItemKind::ValidatedDecision)
-                .count()
-        });
-        if completed_turns >= self.policy.max_completed_turns {
-            return Err(SessionError::Capacity);
-        }
+        let projected_items = self.projected_turn_history(&binding_id, &item)?;
         let operation = self
             .operations
             .get_mut(operation_id)
@@ -100,7 +120,7 @@ impl ProviderSessionBroker {
         }
         operation.state = NativeOperationState::Completed;
         operation.terminal_evidence_ref = Some(native_turn_ref.to_owned());
-        self.histories.entry(binding_id).or_default().push(item);
+        self.histories.insert(binding_id, projected_items);
         self.inflight_turn = None;
         Ok(operation.clone())
     }

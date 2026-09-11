@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use super::common::{SESSION_POLICY_SCHEMA, SessionError, digest, valid_digest, valid_id};
+use super::common::{
+    MAX_COMPLETED_TURNS, MAX_HISTORY_TTL_SECONDS, SESSION_POLICY_SCHEMA, SessionError, digest,
+    valid_digest, valid_id,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
@@ -118,8 +121,8 @@ impl ProviderSessionPolicy {
             || self.cross_scope_fork
             || self.reconnect_resumes_gameplay
             || !self.compaction_generation_permission_required
-            || !(1..=1024).contains(&self.max_completed_turns)
-            || !(1..=604_800).contains(&self.history_ttl_seconds)
+            || !(1..=MAX_COMPLETED_TURNS).contains(&self.max_completed_turns)
+            || !(1..=MAX_HISTORY_TTL_SECONDS).contains(&self.history_ttl_seconds)
             || self.epoch == 0
         {
             return Err(SessionError::InvalidPolicy);

@@ -26,6 +26,8 @@ pub const MAX_OPERATIONS: usize = 1024;
 pub const MAX_PREPARED: usize = 1024;
 pub const MAX_CANDIDATES: usize = 4;
 pub const MAX_MAINTENANCE_JOBS: usize = 2;
+pub const MAX_COMPLETED_TURNS: usize = 128;
+pub const MAX_HISTORY_TTL_SECONDS: u64 = 86_400;
 pub const MAX_FRAME_BYTES: usize = 256 * 1024;
 pub const MAX_HISTORY_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_PREPARED_BYTES: usize = 4 * 1024 * 1024;
@@ -238,6 +240,23 @@ pub(crate) fn timestamp_expired(value: &str) -> bool {
     now >= expiry
 }
 
+pub(crate) fn timestamp_within_future(value: &str, maximum_seconds: u64) -> bool {
+    let Some(expiry) = timestamp_epoch_seconds(value) else {
+        return false;
+    };
+    let Some(now) = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_secs()).ok())
+    else {
+        return false;
+    };
+    let Ok(maximum) = i64::try_from(maximum_seconds) else {
+        return false;
+    };
+    expiry >= now && expiry.saturating_sub(now) <= maximum
+}
+
 fn days_from_civil(year: i64, month: i64, day: i64) -> Option<i64> {
     // Proleptic Gregorian conversion from Howard Hinnant's public-domain algorithm.
     let adjusted_year = year.checked_sub(i64::from(month <= 2))?;
@@ -299,7 +318,9 @@ pub(crate) fn digest(bytes: impl AsRef<[u8]>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{timestamp_epoch_seconds, timestamp_expired, valid_timestamp};
+    use super::{
+        timestamp_epoch_seconds, timestamp_expired, timestamp_within_future, valid_timestamp,
+    };
 
     #[test]
     fn timestamps_are_calendar_and_zone_checked() {
@@ -324,5 +345,10 @@ mod tests {
         );
         assert!(timestamp_expired("2000-01-01T00:00:00Z"));
         assert!(!timestamp_expired("2099-01-01T00:00:00Z"));
+        assert!(timestamp_within_future(
+            "2099-01-01T00:00:00Z",
+            i64::MAX as u64
+        ));
+        assert!(!timestamp_within_future("2099-01-01T00:00:00Z", 86_400));
     }
 }

@@ -4,6 +4,9 @@
 
 use sts2_harness::provider_session::*;
 
+#[path = "support/provider_session.rs"]
+mod support;
+
 fn scope() -> SessionScope {
     SessionScope::new(
         "project-fixture",
@@ -38,7 +41,7 @@ fn snapshot_is_metadata_only_and_idempotency_conflicts() {
             "same-key",
             "branch-a",
             SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         )
         .expect("candidate");
     let same = broker
@@ -47,7 +50,7 @@ fn snapshot_is_metadata_only_and_idempotency_conflicts() {
             "same-key",
             "branch-a",
             SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         )
         .expect("same candidate");
     assert_eq!(first.operation_id, same.operation_id);
@@ -57,7 +60,7 @@ fn snapshot_is_metadata_only_and_idempotency_conflicts() {
             "same-key",
             "branch-b",
             SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z"
+            support::expiry()
         ),
         Err(SessionError::Conflict)
     );
@@ -81,7 +84,7 @@ fn snapshot_restore_rehydrates_metadata_and_rotates_owner() {
             "persisted-key",
             "branch-a",
             SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         )
         .expect("candidate");
     let binding = broker
@@ -127,7 +130,7 @@ fn snapshot_restore_rehydrates_metadata_and_rotates_owner() {
                 "persisted-key",
                 "branch-a",
                 SessionPurpose::Executable,
-                "2099-01-01T00:00:00Z",
+                support::expiry(),
             )
             .expect("idempotent candidate")
             .operation_id,
@@ -139,7 +142,7 @@ fn snapshot_restore_rehydrates_metadata_and_rotates_owner() {
             "new-key",
             "branch-b",
             SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         ),
         Err(SessionError::Unauthorized)
     );
@@ -149,7 +152,7 @@ fn snapshot_restore_rehydrates_metadata_and_rotates_owner() {
             "new-key",
             "branch-b",
             SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         )
         .expect("new candidate");
     assert_ne!(next.operation_id, first.operation_id);
@@ -165,7 +168,7 @@ fn restore_applies_a_newer_retirement_tombstone_before_publication() {
             "tombstone-candidate",
             "branch-a",
             SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         )
         .expect("candidate");
     let binding = broker
@@ -210,7 +213,7 @@ fn restore_preserves_inflight_turn_as_unknown_and_held() {
             "unknown-candidate",
             "branch-a",
             SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         )
         .expect("candidate");
     let binding = broker
@@ -233,7 +236,7 @@ fn restore_preserves_inflight_turn_as_unknown_and_held() {
             br#"{"type":"object"}"#.to_vec(),
             Vec::new(),
             Vec::new(),
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         )
         .expect("prepared");
     broker
@@ -278,7 +281,7 @@ fn checked_restore_rejects_profile_or_policy_drift() {
             "checked-restore-candidate",
             "branch-a",
             SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         )
         .expect("candidate");
     let bytes = broker.snapshot_json().expect("snapshot");
@@ -322,5 +325,53 @@ fn checked_restore_rejects_profile_or_policy_drift() {
             &capabilities,
         ),
         Err(SessionError::Unsupported)
+    ));
+}
+
+#[test]
+fn restore_rejects_history_turn_quota_bypass() {
+    let mut broker = broker();
+    let operation = broker
+        .create_candidate(
+            "owner-fixture",
+            "restore-quota-candidate",
+            "branch-a",
+            SessionPurpose::Executable,
+            support::expiry(),
+        )
+        .expect("candidate");
+    let binding = broker
+        .complete_candidate(
+            "owner-fixture",
+            &operation.operation_id,
+            "native-quota-thread",
+        )
+        .expect("binding");
+    let mut snapshot = broker.snapshot();
+    snapshot.histories.insert(
+        binding.binding_id.clone(),
+        vec![
+            HistoryItem {
+                item_ref: "restore-decision-a".to_owned(),
+                turn_ref: "restore-turn-a".to_owned(),
+                sequence: 1,
+                kind: HistoryItemKind::ValidatedDecision,
+                content_ref: None,
+                redacted: true,
+            },
+            HistoryItem {
+                item_ref: "restore-decision-b".to_owned(),
+                turn_ref: "restore-turn-b".to_owned(),
+                sequence: 2,
+                kind: HistoryItemKind::ValidatedDecision,
+                content_ref: None,
+                redacted: true,
+            },
+        ],
+    );
+    let bytes = serde_json::to_vec(&snapshot).expect("snapshot bytes");
+    assert!(matches!(
+        ProviderSessionBroker::from_snapshot_json(&bytes, "replacement-owner"),
+        Err(SessionError::Capacity)
     ));
 }

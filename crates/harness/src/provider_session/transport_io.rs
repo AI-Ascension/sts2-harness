@@ -94,9 +94,9 @@ pub(super) fn safe_executable(path: &std::path::Path) -> bool {
     })
 }
 
-/// Bound the complete private state tree before starting a worker. Any symlink, special file,
-/// unsafe child directory/file or unreadable entry fails closed; callers must re-check while a
-/// worker is active if they need a stronger runtime quota guarantee.
+/// Bound the complete private state tree. Any symlink, special file, unsafe child directory/file
+/// or unreadable entry fails closed; the owned transport invokes this before each request and after
+/// each response while a worker is active.
 pub(super) fn state_within_quota(path: &std::path::Path, quota_bytes: u64) -> bool {
     if quota_bytes == 0 || !safe_directory(path) {
         return false;

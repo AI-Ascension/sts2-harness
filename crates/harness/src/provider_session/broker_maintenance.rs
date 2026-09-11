@@ -53,6 +53,26 @@ impl ProviderSessionBroker {
         if self.fork_plans.contains_key(fork_plan_id) {
             return Err(SessionError::Conflict);
         }
+        if self
+            .compaction_jobs
+            .len()
+            .checked_add(self.fork_plans.len())
+            .is_none_or(|count| count >= MAX_MAINTENANCE_JOBS)
+        {
+            return Err(SessionError::Capacity);
+        }
+        if self
+            .bindings
+            .values()
+            .filter(|binding| {
+                matches!(binding.state, BindingState::Candidate)
+                    || binding.purpose == SessionPurpose::Evaluation
+            })
+            .count()
+            >= MAX_CANDIDATES
+        {
+            return Err(SessionError::Capacity);
+        }
         let mut dependency_ids = source.dependency_ids.clone();
         for dependency in dependencies {
             if !dependency_ids.contains(&dependency) {

@@ -4,6 +4,9 @@
 
 use sts2_harness::provider_session::*;
 
+#[path = "support/provider_session.rs"]
+mod support;
+
 fn scope() -> SessionScope {
     SessionScope::new(
         "project-fixture",
@@ -36,7 +39,7 @@ fn held_binding(broker: &mut ProviderSessionBroker) -> SessionBinding {
             "create-1",
             "branch-a",
             SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         )
         .expect("candidate");
     broker
@@ -103,7 +106,7 @@ fn dependency_revocation_reaches_fork_and_interrupt_fences_late_result() {
             br#"{"type":"object"}"#.to_vec(),
             Vec::new(),
             Vec::new(),
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         )
         .expect("prepared");
     interrupting
@@ -186,7 +189,7 @@ fn conflicting_terminal_evidence_quarantines_the_attempt() {
             br#"{"type":"object"}"#.to_vec(),
             Vec::new(),
             Vec::new(),
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         )
         .expect("prepared");
     broker
@@ -247,4 +250,115 @@ fn conflicting_terminal_evidence_quarantines_the_attempt() {
         broker.binding(&binding.binding_id).expect("binding").state,
         BindingState::Quarantined
     );
+}
+
+#[test]
+fn finite_turn_candidate_and_maintenance_quotas_cannot_be_bypassed() {
+    let mut broker = broker();
+    let binding = held_binding(&mut broker);
+    for index in 0..3 {
+        let operation = broker
+            .create_candidate(
+                "owner-fixture",
+                &format!("candidate-{index}"),
+                &format!("branch-{index}"),
+                SessionPurpose::Evaluation,
+                support::expiry(),
+            )
+            .expect("candidate quota setup");
+        assert_eq!(operation.state, NativeOperationState::IntentPersisted);
+    }
+    let fork = broker
+        .plan_fork(
+            "owner-fixture",
+            &binding.binding_id,
+            "fork-quota-1",
+            "turn-0",
+            0,
+            ForkOperation::NativeFork,
+            Vec::new(),
+        )
+        .expect("fourth candidate through fork");
+    assert_eq!(
+        broker.plan_fork(
+            "owner-fixture",
+            &binding.binding_id,
+            "fork-quota-2",
+            "turn-0",
+            0,
+            ForkOperation::NativeFork,
+            Vec::new(),
+        ),
+        Err(SessionError::Capacity)
+    );
+    broker
+        .complete_fork("owner-fixture", &fork.fork_plan_id, "native-fork-quota")
+        .expect("complete fork");
+    let forked_binding = fork.target_binding_id.clone();
+    let job = broker
+        .plan_compaction(
+            "owner-fixture",
+            &binding.binding_id,
+            "compact-quota-1",
+            Some("budget-quota-1".to_owned()),
+            true,
+        )
+        .expect("maintenance quota setup");
+    assert_eq!(job.state, CompactionState::Planned);
+    assert_eq!(
+        broker.plan_compaction(
+            "owner-fixture",
+            &forked_binding,
+            "compact-quota-2",
+            Some("budget-quota-2".to_owned()),
+            true,
+        ),
+        Err(SessionError::Capacity)
+    );
+}
+
+#[test]
+fn history_refresh_enforces_policy_turn_quota() {
+    let mut broker = broker();
+    let binding = held_binding(&mut broker);
+    let items = vec![
+        HistoryItem {
+            item_ref: "decision-a".to_owned(),
+            turn_ref: "turn-a".to_owned(),
+            sequence: 1,
+            kind: HistoryItemKind::ValidatedDecision,
+            content_ref: None,
+            redacted: true,
+        },
+        HistoryItem {
+            item_ref: "decision-b".to_owned(),
+            turn_ref: "turn-b".to_owned(),
+            sequence: 2,
+            kind: HistoryItemKind::ValidatedDecision,
+            content_ref: None,
+            redacted: true,
+        },
+    ];
+    assert_eq!(
+        broker.refresh_history(
+            "owner-fixture",
+            &binding.binding_id,
+            "refresh-over-turn-limit",
+            items,
+            2,
+            false,
+        ),
+        Err(SessionError::Capacity)
+    );
+}
+
+#[test]
+fn policy_rejects_retention_limits_above_declared_bounds() {
+    let scope = scope();
+    let mut policy = ProviderSessionPolicy::disabled(scope.clone());
+    policy.max_completed_turns = MAX_COMPLETED_TURNS + 1;
+    assert_eq!(policy.validate(), Err(SessionError::InvalidPolicy));
+    policy.max_completed_turns = MAX_COMPLETED_TURNS;
+    policy.history_ttl_seconds = MAX_HISTORY_TTL_SECONDS + 1;
+    assert_eq!(policy.validate(), Err(SessionError::InvalidPolicy));
 }

@@ -5,6 +5,26 @@ use super::ProviderSessionBroker;
 use serde_json::json;
 
 impl ProviderSessionBroker {
+    pub(super) fn projected_history_bytes(
+        &self,
+        binding_id: &str,
+        items: &[HistoryItem],
+    ) -> Result<usize, SessionError> {
+        let existing = self
+            .histories
+            .iter()
+            .filter(|(current_id, _)| current_id.as_str() != binding_id)
+            .try_fold(0_usize, |total, (_, current)| {
+                let bytes = serde_json::to_vec(current).map_err(|_| SessionError::Protocol)?;
+                total.checked_add(bytes.len()).ok_or(SessionError::Capacity)
+            })?;
+        let replacement = serde_json::to_vec(items).map_err(|_| SessionError::Protocol)?;
+        existing
+            .checked_add(replacement.len())
+            .filter(|size| *size <= MAX_HISTORY_BYTES)
+            .ok_or(SessionError::Capacity)
+    }
+
     pub fn refresh_history(
         &mut self,
         owner_token: &str,
@@ -36,6 +56,14 @@ impl ProviderSessionBroker {
         }
         if binding.state == BindingState::Candidate {
             return Err(SessionError::HeldRequired);
+        }
+        if items
+            .iter()
+            .filter(|item| item.kind == HistoryItemKind::ValidatedDecision)
+            .count()
+            > self.policy.max_completed_turns
+        {
+            return Err(SessionError::Capacity);
         }
         if !valid_id(idempotency_key) {
             return Err(SessionError::InvalidRequest);

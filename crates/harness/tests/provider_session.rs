@@ -4,6 +4,9 @@
 
 use sts2_harness::provider_session::*;
 
+#[path = "support/provider_session.rs"]
+mod support;
+
 fn scope() -> SessionScope {
     SessionScope::new(
         "project-fixture",
@@ -36,7 +39,7 @@ fn held_binding(broker: &mut ProviderSessionBroker) -> SessionBinding {
             "create-1",
             "branch-a",
             SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         )
         .expect("candidate");
     broker
@@ -60,7 +63,7 @@ fn feature_off_is_explicit_and_does_not_create_a_worker() {
             "create-1",
             "branch-a",
             SessionPurpose::Executable,
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         ),
         Err(SessionError::Forbidden)
     );
@@ -121,6 +124,16 @@ fn expired_candidate_is_rejected_before_any_binding_is_created() {
             "branch-a",
             SessionPurpose::Executable,
             "not-a-timestamp",
+        ),
+        Err(SessionError::InvalidRequest)
+    );
+    assert_eq!(
+        broker.create_candidate(
+            "owner-fixture",
+            "far-future",
+            "branch-a",
+            SessionPurpose::Executable,
+            "2099-01-01T00:00:00Z",
         ),
         Err(SessionError::InvalidRequest)
     );
@@ -185,7 +198,7 @@ fn prepared_suffix_requires_explicit_resume_and_fences_unknown_turn() {
             br#"{"type":"object"}"#.to_vec(),
             b"protected".to_vec(),
             Vec::new(),
-            "2099-01-01T00:00:00Z",
+            support::expiry(),
         )
         .expect("prepared");
     assert_eq!(
