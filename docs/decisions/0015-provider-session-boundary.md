@@ -36,7 +36,7 @@ Codex and temporary roots to the approved private state directory. The inherited
 cannot override those names; native instruction precedence, OS containment and quota observation
 still require an independent native capability review. Startup also scans the complete private tree
 against the 256 MiB bound and fails closed on symlinks, special files, unsafe child roots or
-over-limit bytes; active-worker growth remains a separate observation requirement. Configuration
+over-limit bytes, with explicit entry and depth bounds; active-worker growth remains a separate observation requirement. Configuration
 allows only the approved `OPENAI_API_KEY` secret name through that boundary and rejects unrelated
 credential, endpoint and path variables.
 

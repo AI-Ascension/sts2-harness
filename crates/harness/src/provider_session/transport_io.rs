@@ -4,6 +4,9 @@ use super::super::protocol::{NativeResponse, parse_native_frame};
 use super::{NativeFrame, NativeTransportError, OwnedNativeTransport};
 use std::io::{BufRead, Write};
 
+const MAX_NATIVE_STATE_ENTRIES: usize = 65_536;
+const MAX_NATIVE_STATE_DEPTH: usize = 32;
+
 impl OwnedNativeTransport {
     pub(super) fn write_frame(&mut self, frame: &NativeFrame) -> Result<(), NativeTransportError> {
         let bytes = frame
@@ -98,13 +101,18 @@ pub(super) fn state_within_quota(path: &std::path::Path, quota_bytes: u64) -> bo
     if quota_bytes == 0 || !safe_directory(path) {
         return false;
     }
-    let mut directories = vec![path.to_owned()];
+    let mut directories = vec![(path.to_owned(), 0_usize)];
+    let mut entries_seen = 0_usize;
     let mut total = 0_u64;
-    while let Some(directory) = directories.pop() {
+    while let Some((directory, depth)) = directories.pop() {
         let Ok(entries) = std::fs::read_dir(&directory) else {
             return false;
         };
         for entry in entries {
+            entries_seen = entries_seen.saturating_add(1);
+            if entries_seen > MAX_NATIVE_STATE_ENTRIES {
+                return false;
+            }
             let Ok(entry) = entry else {
                 return false;
             };
@@ -116,10 +124,13 @@ pub(super) fn state_within_quota(path: &std::path::Path, quota_bytes: u64) -> bo
                 return false;
             }
             if metadata.is_dir() {
+                if depth >= MAX_NATIVE_STATE_DEPTH {
+                    return false;
+                }
                 if !safe_directory(&child) {
                     return false;
                 }
-                directories.push(child);
+                directories.push((child, depth.saturating_add(1)));
             } else if metadata.is_file() {
                 if !restricted_metadata(&metadata) {
                     return false;
