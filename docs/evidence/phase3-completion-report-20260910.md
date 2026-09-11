@@ -69,4 +69,5 @@ observed parentage, but that lead exposed no native child-spawn, reservation, or
 No depth-2 coordinator or depth-3 leaf was created; the root and lead were completed and archived.
 The earlier `0.153.4` command-center and standalone probes remain in the preflight artifact for
 comparison. A second 0.154.0 probe using the catalog's Astra `ultra` automatic-delegation mode
-produced the same depth-1-only result.
+produced the same depth-1-only result. Enabling `multi_agent_v2` in the daemon configuration
+itself produced the same depth-1-only result and was restored after the probe.
