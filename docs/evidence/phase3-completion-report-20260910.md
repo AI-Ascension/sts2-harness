@@ -21,9 +21,9 @@ Independent hand-labelled oracle tests cover causal membership, tie order, Unico
 stopwords, bounded terms, and held-out label isolation. The process tests use only synthetic bytes
 and loopback stdin/stdout. They are not evidence of the unavailable target↔harness Phase 2 adapter.
 
-The synchronized 90-row matrix records 77 `executed_synthetic`, 7 `unverified`, and 6 `blocked`
-rows. The unverified rows retain the missing rebuild-adapter, map-authority, browser, CLI-adapter,
-and disabled-shadow limits; the blocked rows are the unavailable cross-repository, real-process,
+The synchronized 90-row matrix records 80 `executed_synthetic`, 4 `unverified`, and 6 `blocked`
+rows. The unverified rows retain the missing rebuild-adapter, map-authority, CLI-adapter and
+disabled-shadow limits; the blocked rows are the unavailable cross-repository, real-process,
 end-to-end, and native-review lanes.
 
 ## Gates
@@ -54,7 +54,8 @@ production WAL/temp/backup operations, provider quality, native action effects, 
 
 The remaining mandatory unavailable lanes are the atomic cross-repository Phase 2 binding, a real
 summary process/tool tripwire, target↔harness end-to-end process/network tripwires, and an
-independent native three-level reviewer. Browser/current target evidence is also unavailable in the
-present environment because Chromium cannot start without `libglib-2.0.so.0`. The draft PR remains
-open and draft; no merge, release, deployment, provider call, game launch, or unrelated write was
+independent native three-level reviewer. The current target browser audits passed with the
+documented Chromium library environment at target revision `58a283930b30348f34b9c19a0ccb432112521184`,
+recording zero external/provider/game effects and no browser persistence. The draft PR remains open
+and draft; no merge, release, deployment, provider call, game launch, or unrelated write was
 performed.
