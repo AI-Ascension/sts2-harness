@@ -74,6 +74,32 @@ contains the 131-state requirements baseline, typed inventories, JSON schemas, s
 per-state Markdown requirements, and Mermaid source diagrams. It is generated research material,
 not a game adapter or target-build certification.
 
+## Phase 2 context-control seam
+
+The companion now exposes `context_control` beside the existing provider ports. Its renderer has a
+legacy profile that preserves existing input bytes and an enabled profile that emits bounded,
+attributed managed context with a pinned adapter revision. Immutable prepared bytes can be sent
+through `ExoSession::decide_prepared`; the Ollama bridge uses the same managed-context projection
+while preserving its legacy body when the profile is absent. `ControlAuthority` keeps pause,
+commit, resume, stop, idempotent receipts, plan fencing, and a bounded recovery journal. The module
+never owns game state or direct game actions. Contract artifacts and the cross-repository source
+pin are in `contracts/context-control`.
+
+## Phase 3 context-memory seam
+
+The additive `context-memory.v1` contracts are pinned in [`contracts/context-memory`](contracts/context-memory).
+This harness module owns the bounded memory policy: source admission and provenance, causal and
+revocation fences, deterministic lexical retrieval, exact extracts, explicit fake summary jobs,
+independent review/admission, whole-input selection, approval binding and map/telemetry records.
+Content remains private to the module; wire metadata is closed and digest-bound. The target console
+consumes this policy through its permissioned facade and does not create a second corpus or scheduler.
+
+Memory is disabled by default at the target boundary. The fake summary peer records bounded source
+identities and bytes for offline tests only; it has no game, management, shell, or arbitrary-network
+capability. Selection and admission never resume a run, and commit-held approvals require the
+existing explicit Phase 2 resume. Revocation denies dependent entries before cleanup. See
+[`docs/MEMORY.md`](docs/MEMORY.md) and [`docs/decisions/0014-context-memory-phase3.md`](docs/decisions/0014-context-memory-phase3.md).
+
 ## Owner and consumers
 
 The target owner is the harness maintainers. The harness owns the experiment control plane and the

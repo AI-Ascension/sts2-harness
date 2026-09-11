@@ -1,0 +1,2394 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Proposed Ascension Context Memory API",
+    "version": "0.1.0-proposed",
+    "description": "Phase 3 extension. Actual Phase 2 resume remains in its existing API; no direct game dispatch or provider-session controls."
+  },
+  "paths": {
+    "/v3/runs/{run_id}/context-memory/capabilities": {
+      "get": {
+        "operationId": "getMemoryCapabilities",
+        "summary": "getMemoryCapabilities",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.read",
+        "x-effect-class": "read",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./capabilities.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/entries": {
+      "get": {
+        "operationId": "listMemoryEntries",
+        "summary": "listMemoryEntries",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.read",
+        "x-effect-class": "read",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                          },
+                          "status": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status"
+                        ]
+                      },
+                      "minItems": 0,
+                      "maxItems": 100
+                    },
+                    "next_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "items",
+                    "next_cursor"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/entries/{entry_id}": {
+      "get": {
+        "operationId": "getMemoryEntry",
+        "summary": "getMemoryEntry",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.read",
+        "x-effect-class": "read",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "entry_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./entry.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/search": {
+      "post": {
+        "operationId": "searchMemory",
+        "summary": "searchMemory",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.search",
+        "x-effect-class": "local_read",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./retrieval.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "branch_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "cutoff": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "corpus_generation": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 16
+                  }
+                },
+                "required": [
+                  "query",
+                  "branch_id",
+                  "cutoff",
+                  "corpus_generation",
+                  "limit"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/extractions": {
+      "post": {
+        "operationId": "createExtract",
+        "summary": "createExtract",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.select",
+        "x-effect-class": "local_mutation",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./proposal.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "command_window_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "expected_revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "sources": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "entry_id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "sha256": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{64}$"
+                        }
+                      },
+                      "required": [
+                        "entry_id",
+                        "version",
+                        "sha256"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 16,
+                    "uniqueItems": true
+                  },
+                  "cutoff": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "corpus_generation": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "command_window_id",
+                  "expected_revision",
+                  "sources",
+                  "cutoff",
+                  "corpus_generation"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/summary-jobs": {
+      "post": {
+        "operationId": "createSummaryJob",
+        "summary": "createSummaryJob",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.generate",
+        "x-effect-class": "summary_generation",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./summary-job.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "command_window_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "expected_revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "sources": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "entry_id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "sha256": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{64}$"
+                        }
+                      },
+                      "required": [
+                        "entry_id",
+                        "version",
+                        "sha256"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 16,
+                    "uniqueItems": true
+                  },
+                  "cutoff": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "corpus_generation": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "generator_profile": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "max_output_bytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 8192
+                  }
+                },
+                "required": [
+                  "command_window_id",
+                  "expected_revision",
+                  "sources",
+                  "cutoff",
+                  "corpus_generation",
+                  "generator_profile",
+                  "max_output_bytes"
+                ]
+              }
+            }
+          }
+        },
+        "x-additional-permissions": [
+          "source.processing.egress",
+          "provider.summary.spend"
+        ]
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/summary-jobs/{job_id}": {
+      "get": {
+        "operationId": "getSummaryJob",
+        "summary": "getSummaryJob",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.read",
+        "x-effect-class": "read",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./summary-job.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/summary-jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancelSummaryJob",
+        "summary": "cancelSummaryJob",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.generate",
+        "x-effect-class": "local_mutation",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./summary-job.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "command_window_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "expected_revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  }
+                },
+                "required": [
+                  "command_window_id",
+                  "expected_revision"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/proposals/{proposal_id}": {
+      "get": {
+        "operationId": "getProposal",
+        "summary": "getProposal",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.read",
+        "x-effect-class": "read",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./proposal.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/reviews": {
+      "post": {
+        "operationId": "reviewProposal",
+        "summary": "reviewProposal",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.review",
+        "x-effect-class": "local_mutation",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./review.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "command_window_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "expected_revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "proposal_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "proposal_version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "proposal_sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "decision": {
+                    "enum": [
+                      "admit",
+                      "reject"
+                    ]
+                  },
+                  "reason_codes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 16,
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "command_window_id",
+                  "expected_revision",
+                  "proposal_id",
+                  "proposal_version",
+                  "proposal_sha256",
+                  "decision",
+                  "reason_codes"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/policies/drafts": {
+      "post": {
+        "operationId": "draftMemoryPolicy",
+        "summary": "draftMemoryPolicy",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.policy.activate",
+        "x-effect-class": "local_mutation",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./policy.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "command_window_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "expected_revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "policy": {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "$id": "urn:ascension:context-memory:policy:v1",
+                    "title": "Proposed Phase 3 policy contract",
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "schema": {
+                        "const": "ascension.context-memory.policy.v1"
+                      },
+                      "policy_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                      },
+                      "version": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      },
+                      "scope": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "project_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                          },
+                          "run_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                          },
+                          "episode_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                          },
+                          "agent_id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                          }
+                        },
+                        "required": [
+                          "project_id",
+                          "run_id",
+                          "episode_id",
+                          "agent_id"
+                        ]
+                      },
+                      "mode": {
+                        "enum": [
+                          "manual_snapshot",
+                          "bounded_per_decision"
+                        ]
+                      },
+                      "status": {
+                        "const": "draft"
+                      },
+                      "phase2_revision_id": {
+                        "type": "null"
+                      },
+                      "corpus_generation": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      },
+                      "rolling_same_episode_sources": {
+                        "type": "boolean"
+                      },
+                      "cross_scope": {
+                        "const": false
+                      },
+                      "approved_summary_catalog": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "entry_id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                            },
+                            "version": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 9007199254740991
+                            },
+                            "sha256": {
+                              "type": "string",
+                              "pattern": "^[0-9a-f]{64}$"
+                            }
+                          },
+                          "required": [
+                            "entry_id",
+                            "version",
+                            "sha256"
+                          ]
+                        },
+                        "minItems": 0,
+                        "maxItems": 32,
+                        "uniqueItems": true
+                      },
+                      "ranker_version": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                      },
+                      "query_derivation_version": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                      },
+                      "max_candidates": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 64
+                      },
+                      "max_results": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 16
+                      },
+                      "max_selected": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 32
+                      },
+                      "optional_byte_budget": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 65536
+                      },
+                      "fallback": {
+                        "enum": [
+                          "block",
+                          "protected_only"
+                        ]
+                      },
+                      "automatic_summary_activation": {
+                        "const": false
+                      },
+                      "generate_during_selection": {
+                        "const": false
+                      },
+                      "authorization_policy_version": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                      }
+                    },
+                    "required": [
+                      "schema",
+                      "policy_id",
+                      "version",
+                      "scope",
+                      "mode",
+                      "status",
+                      "phase2_revision_id",
+                      "corpus_generation",
+                      "rolling_same_episode_sources",
+                      "cross_scope",
+                      "approved_summary_catalog",
+                      "ranker_version",
+                      "query_derivation_version",
+                      "max_candidates",
+                      "max_results",
+                      "max_selected",
+                      "optional_byte_budget",
+                      "fallback",
+                      "automatic_summary_activation",
+                      "generate_during_selection",
+                      "authorization_policy_version"
+                    ],
+                    "allOf": [
+                      {
+                        "if": {
+                          "properties": {
+                            "status": {
+                              "const": "approved"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "phase2_revision_id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128,
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "mode": {
+                              "const": "manual_snapshot"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "rolling_same_episode_sources": {
+                              "const": false
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "command_window_id",
+                  "expected_revision",
+                  "policy"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/selections": {
+      "post": {
+        "operationId": "prepareSelection",
+        "summary": "prepareSelection",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.select",
+        "x-effect-class": "local_mutation",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./selection.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "command_window_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "expected_revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "policy_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "policy_version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "selected_sources": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "entry_id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "sha256": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{64}$"
+                        }
+                      },
+                      "required": [
+                        "entry_id",
+                        "version",
+                        "sha256"
+                      ]
+                    },
+                    "minItems": 0,
+                    "maxItems": 32,
+                    "uniqueItems": true
+                  },
+                  "cutoff": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "corpus_generation": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "command_window_id",
+                  "expected_revision",
+                  "policy_id",
+                  "policy_version",
+                  "selected_sources",
+                  "cutoff",
+                  "corpus_generation"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/adoptions/previews": {
+      "post": {
+        "operationId": "previewMemoryAdoption",
+        "summary": "previewMemoryAdoption",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "context.preview",
+        "x-effect-class": "local_mutation",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./approval.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "command_window_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "expected_revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "selection_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "selection_sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "policy_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "policy_version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "command_window_id",
+                  "expected_revision",
+                  "selection_id",
+                  "selection_sha256",
+                  "policy_id",
+                  "policy_version"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/adoptions/commits": {
+      "post": {
+        "operationId": "commitMemoryAdoption",
+        "summary": "commitMemoryAdoption",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "context.commit",
+        "x-effect-class": "local_control_commit",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./approval.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "command_window_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "expected_revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "approval_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "phase2_preview_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "prepared_manifest_sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                },
+                "required": [
+                  "command_window_id",
+                  "expected_revision",
+                  "approval_id",
+                  "phase2_preview_id",
+                  "prepared_manifest_sha256"
+                ]
+              }
+            }
+          }
+        },
+        "x-authority": "delegates to existing Phase2 serializer; atomic revision/policy/audit; remains paused"
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/revocations": {
+      "post": {
+        "operationId": "revokeMemorySources",
+        "summary": "revokeMemorySources",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.revoke",
+        "x-effect-class": "local_revocation",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./revocation.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "command_window_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "expected_revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "roots": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "entry_id": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "sha256": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{64}$"
+                        }
+                      },
+                      "required": [
+                        "entry_id",
+                        "version",
+                        "sha256"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 16,
+                    "uniqueItems": true
+                  },
+                  "reason_code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  }
+                },
+                "required": [
+                  "command_window_id",
+                  "expected_revision",
+                  "roots",
+                  "reason_code"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/evaluations": {
+      "post": {
+        "operationId": "createLocalEvaluation",
+        "summary": "createLocalEvaluation",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.evaluate",
+        "x-effect-class": "local_mutation",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                          },
+                          "status": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status"
+                        ]
+                      },
+                      "minItems": 0,
+                      "maxItems": 100
+                    },
+                    "next_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "items",
+                    "next_cursor"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "command_window_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "expected_revision": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "dataset_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  },
+                  "lane_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "uniqueItems": true
+                  },
+                  "cutoff_profile": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                  }
+                },
+                "required": [
+                  "command_window_id",
+                  "expected_revision",
+                  "dataset_id",
+                  "lane_ids",
+                  "cutoff_profile"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/evaluations/{evaluation_id}": {
+      "get": {
+        "operationId": "getLocalEvaluation",
+        "summary": "getLocalEvaluation",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.evaluate",
+        "x-effect-class": "read",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "evaluation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                          },
+                          "status": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status"
+                        ]
+                      },
+                      "minItems": 0,
+                      "maxItems": 100
+                    },
+                    "next_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "items",
+                    "next_cursor"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        }
+      }
+    },
+    "/v3/runs/{run_id}/context-memory/events": {
+      "get": {
+        "operationId": "getMemoryEvents",
+        "summary": "getMemoryEvents",
+        "security": [
+          {
+            "inheritedSession": []
+          }
+        ],
+        "x-required-permission": "memory.read",
+        "x-effect-class": "read",
+        "x-gameplay-inference-calls": 0,
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded result; job success is not admission/application.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                          },
+                          "status": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status"
+                        ]
+                      },
+                      "minItems": 0,
+                      "maxItems": 100
+                    },
+                    "next_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "items",
+                    "next_cursor"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Scope/permission denied"
+          },
+          "409": {
+            "description": "Stale identity, source, policy or control conflict"
+          },
+          "413": {
+            "description": "Resource/body bound exceeded"
+          },
+          "429": {
+            "description": "Quota exhausted"
+          },
+          "503": {
+            "description": "Capability/store unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "inheritedSession": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Reconcile to implemented authentication; this seed does not grant access."
+      }
+    }
+  }
+}

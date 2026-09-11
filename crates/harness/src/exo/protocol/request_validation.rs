@@ -61,6 +61,12 @@ pub(super) fn validate_request(request: &ExoDecisionRequest) -> Result<(), ExoEr
             .any(|value| !valid_text(value))
         || request.max_response_bytes == 0
         || request.max_response_bytes > 8 * 1024
+        || (request.management_profile.is_some()
+            && request.management_profile.as_deref() != Some("management-enabled"))
+        || (request.management_profile.is_some() != request.management_context.is_some())
+        || request.management_context.as_ref().is_some_and(|context| {
+            serde_json::to_vec(context).map_or(true, |bytes| bytes.len() > 128 * 1024)
+        })
     {
         return Err(ExoError::InvalidRequest);
     }

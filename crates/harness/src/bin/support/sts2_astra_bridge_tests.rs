@@ -108,6 +108,8 @@ fn actual_fake_codex_receives_the_same_prepared_components_as_capture()
     let request = json!({
         "model_execution_id":"oracle-execution-1",
         "legal_action_ids":["combat.end-turn"],
+        "management_profile":"management-enabled",
+        "management_context":{"notes":[{"attributed_to":"operator-1","content":"operator note"}]}
     });
     let request_bytes = serde_json::to_vec(&request)?;
     let ids = request["legal_action_ids"]
@@ -134,6 +136,8 @@ fn actual_fake_codex_receives_the_same_prepared_components_as_capture()
         records[0].content.as_deref(),
         Some(std::fs::read(oracle_directory.0.join("stdin.bin"))?.as_slice())
     );
+    let stdin = std::fs::read_to_string(oracle_directory.0.join("stdin.bin"))?;
+    assert!(stdin.contains("operator note"));
     assert_eq!(
         records[1].content.as_deref(),
         Some(std::fs::read(oracle_directory.0.join("schema.json"))?.as_slice())

@@ -1,0 +1,265 @@
+{
+  "clock": "2026-09-10T12:00:00Z",
+  "revocation_epoch": 2,
+  "scope": {
+    "project_id": "project-fixture",
+    "run_id": "run-fixture",
+    "episode_id": "episode-fixture",
+    "agent_id": "agent-fixture"
+  },
+  "branch_id": "branch-a",
+  "cutoff": 10,
+  "corpus_generation": 10,
+  "sources": [
+    {
+      "ref": {
+        "entry_id": "hist-1",
+        "version": 1,
+        "sha256": "ce08b83db41f079414c5ccec002eb00c1cfb2a550ca263089437a2fb444bf1a3"
+      },
+      "scope": {
+        "project_id": "project-fixture",
+        "run_id": "run-fixture",
+        "episode_id": "episode-fixture",
+        "agent_id": "agent-fixture"
+      },
+      "branch_id": "branch-a",
+      "observed_seq": 4,
+      "admitted_seq": 5,
+      "corpus_generation": 5,
+      "protected": false,
+      "revoked": false,
+      "expires_at": "2026-09-11T12:00:00Z",
+      "path": "fixtures/blobs/hist-1.txt",
+      "text": "HP loss was 2, and the action settled.",
+      "kind": "historical_observation",
+      "parents": [],
+      "lineage_depth": 0
+    },
+    {
+      "ref": {
+        "entry_id": "hist-2",
+        "version": 1,
+        "sha256": "f2426618c5f5257aa779a7191f54e39f04d51b855f0279f75c1803c34b22ac04"
+      },
+      "scope": {
+        "project_id": "project-fixture",
+        "run_id": "run-fixture",
+        "episode_id": "episode-fixture",
+        "agent_id": "agent-fixture"
+      },
+      "branch_id": "branch-a",
+      "observed_seq": 6,
+      "admitted_seq": 7,
+      "corpus_generation": 7,
+      "protected": false,
+      "revoked": false,
+      "expires_at": "2026-09-11T12:00:00Z",
+      "path": "fixtures/blobs/hist-2.txt",
+      "text": "The next room reward is unknown.",
+      "kind": "historical_observation",
+      "parents": [],
+      "lineage_depth": 0
+    },
+    {
+      "ref": {
+        "entry_id": "hist-3",
+        "version": 1,
+        "sha256": "3ffefce4415e6bf06154ef595654c6bdb315a6f80427f0446d195cfd08eeaabd"
+      },
+      "scope": {
+        "project_id": "project-fixture",
+        "run_id": "run-fixture",
+        "episode_id": "episode-fixture",
+        "agent_id": "agent-fixture"
+      },
+      "branch_id": "branch-a",
+      "observed_seq": 8,
+      "admitted_seq": 9,
+      "corpus_generation": 9,
+      "protected": false,
+      "revoked": false,
+      "expires_at": "2026-09-11T12:00:00Z",
+      "path": "fixtures/blobs/hist-3.txt",
+      "text": "The map has two visible routes.",
+      "kind": "historical_observation",
+      "parents": [],
+      "lineage_depth": 0
+    },
+    {
+      "ref": {
+        "entry_id": "future-1",
+        "version": 1,
+        "sha256": "67bf232dc48868571cb6dde90ff1125377c1133697f6eac5e645539a7c83feec"
+      },
+      "scope": {
+        "project_id": "project-fixture",
+        "run_id": "run-fixture",
+        "episode_id": "episode-fixture",
+        "agent_id": "agent-fixture"
+      },
+      "branch_id": "branch-a",
+      "observed_seq": 12,
+      "admitted_seq": 12,
+      "corpus_generation": 12,
+      "protected": false,
+      "revoked": false,
+      "expires_at": "2026-09-11T12:00:00Z",
+      "path": "fixtures/blobs/future-1.txt",
+      "text": "Future outcome: a reward is revealed.",
+      "kind": "historical_observation",
+      "parents": [],
+      "lineage_depth": 0
+    },
+    {
+      "ref": {
+        "entry_id": "late-1",
+        "version": 1,
+        "sha256": "83f51d7e709850ea13c93e4d3f8e148da64486c426a0d9bbcb06a96fc243e894"
+      },
+      "scope": {
+        "project_id": "project-fixture",
+        "run_id": "run-fixture",
+        "episode_id": "episode-fixture",
+        "agent_id": "agent-fixture"
+      },
+      "branch_id": "branch-a",
+      "observed_seq": 3,
+      "admitted_seq": 11,
+      "corpus_generation": 11,
+      "protected": false,
+      "revoked": false,
+      "expires_at": "2026-09-11T12:00:00Z",
+      "path": "fixtures/blobs/late-1.txt",
+      "text": "Earlier event arrived after the frozen corpus.",
+      "kind": "historical_observation",
+      "parents": [],
+      "lineage_depth": 0
+    },
+    {
+      "ref": {
+        "entry_id": "revoked-1",
+        "version": 1,
+        "sha256": "971287b6a9d8208d5a9c0fc915933a96125631d10fd66fbfb5016b9f072c4697"
+      },
+      "scope": {
+        "project_id": "project-fixture",
+        "run_id": "run-fixture",
+        "episode_id": "episode-fixture",
+        "agent_id": "agent-fixture"
+      },
+      "branch_id": "branch-a",
+      "observed_seq": 4,
+      "admitted_seq": 5,
+      "corpus_generation": 5,
+      "protected": false,
+      "revoked": true,
+      "expires_at": "2026-09-11T12:00:00Z",
+      "path": "fixtures/blobs/revoked-1.txt",
+      "text": "Revoked historical source.",
+      "kind": "historical_observation",
+      "parents": [],
+      "lineage_depth": 0
+    },
+    {
+      "ref": {
+        "entry_id": "protected-1",
+        "version": 1,
+        "sha256": "dd946702fb0e712d83c4e22fa2719a86b217721b4a90d018d1584913d2e4cfde"
+      },
+      "scope": {
+        "project_id": "project-fixture",
+        "run_id": "run-fixture",
+        "episode_id": "episode-fixture",
+        "agent_id": "agent-fixture"
+      },
+      "branch_id": "branch-a",
+      "observed_seq": 10,
+      "admitted_seq": 10,
+      "corpus_generation": 10,
+      "protected": true,
+      "revoked": false,
+      "expires_at": "2026-09-11T12:00:00Z",
+      "path": "fixtures/blobs/protected-1.txt",
+      "text": "Current legal catalog must remain complete.",
+      "kind": "historical_observation",
+      "parents": [],
+      "lineage_depth": 0
+    },
+    {
+      "ref": {
+        "entry_id": "sibling-1",
+        "version": 1,
+        "sha256": "b0fbf01afa2c19076f2de5a393080315286f8973879f0480daf07bdb994d186e"
+      },
+      "scope": {
+        "project_id": "project-fixture",
+        "run_id": "run-fixture",
+        "episode_id": "episode-fixture",
+        "agent_id": "agent-fixture"
+      },
+      "branch_id": "branch-b",
+      "observed_seq": 4,
+      "admitted_seq": 5,
+      "corpus_generation": 5,
+      "protected": false,
+      "revoked": false,
+      "expires_at": "2026-09-11T12:00:00Z",
+      "path": "fixtures/blobs/sibling-1.txt",
+      "text": "Sibling branch has a different outcome.",
+      "kind": "historical_observation",
+      "parents": [],
+      "lineage_depth": 0
+    },
+    {
+      "ref": {
+        "entry_id": "private-1",
+        "version": 1,
+        "sha256": "f7317098425ff7c01580f7f0607d08ffedf650e3c92b6e9c4963f896467808c5"
+      },
+      "scope": {
+        "project_id": "project-fixture",
+        "run_id": "run-fixture",
+        "episode_id": "episode-fixture",
+        "agent_id": "other-agent"
+      },
+      "branch_id": "branch-a",
+      "observed_seq": 4,
+      "admitted_seq": 5,
+      "corpus_generation": 5,
+      "protected": false,
+      "revoked": false,
+      "expires_at": "2026-09-11T12:00:00Z",
+      "path": "fixtures/blobs/private-1.txt",
+      "text": "Other agent private reward.",
+      "kind": "historical_observation",
+      "parents": [],
+      "lineage_depth": 0
+    },
+    {
+      "ref": {
+        "entry_id": "expired-1",
+        "version": 1,
+        "sha256": "3e8ba84f83c02d10c6aa6581534a27390852896a53205a7e5395d8e412bf3d3c"
+      },
+      "scope": {
+        "project_id": "project-fixture",
+        "run_id": "run-fixture",
+        "episode_id": "episode-fixture",
+        "agent_id": "agent-fixture"
+      },
+      "branch_id": "branch-a",
+      "observed_seq": 4,
+      "admitted_seq": 5,
+      "corpus_generation": 5,
+      "protected": false,
+      "revoked": false,
+      "expires_at": "2026-09-10T11:00:00Z",
+      "path": "fixtures/blobs/expired-1.txt",
+      "text": "Expired source bytes.",
+      "kind": "historical_observation",
+      "parents": [],
+      "lineage_depth": 0
+    }
+  ]
+}

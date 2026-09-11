@@ -28,6 +28,10 @@ pub struct ExoDecisionRequest {
     pub max_response_bytes: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub map_context: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub management_profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub management_context: Option<serde_json::Value>,
 }
 
 impl ExoDecisionRequest {
@@ -86,6 +90,35 @@ impl ExoDecisionRequest {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_with_management(
+        execution_id: ModelExecutionId,
+        provider_revision: impl Into<String>,
+        state_id: impl Into<String>,
+        generation: u64,
+        observation: SanitizedObservation,
+        legal_action_ids: Vec<String>,
+        objective: impl Into<String>,
+        hard_constraints: Vec<String>,
+        max_response_bytes: usize,
+        management_context: serde_json::Value,
+    ) -> Result<Self, ExoError> {
+        Self::new_inner_with_management(
+            execution_id,
+            provider_revision,
+            state_id,
+            generation,
+            observation,
+            legal_action_ids,
+            objective,
+            hard_constraints,
+            max_response_bytes,
+            None,
+            Some("management-enabled".to_owned()),
+            Some(management_context),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn new_inner(
         execution_id: ModelExecutionId,
         provider_revision: impl Into<String>,
@@ -97,6 +130,37 @@ impl ExoDecisionRequest {
         hard_constraints: Vec<String>,
         max_response_bytes: usize,
         map_context: Option<serde_json::Value>,
+    ) -> Result<Self, ExoError> {
+        Self::new_inner_with_management(
+            execution_id,
+            provider_revision,
+            state_id,
+            generation,
+            observation,
+            legal_action_ids,
+            objective,
+            hard_constraints,
+            max_response_bytes,
+            map_context,
+            None,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn new_inner_with_management(
+        execution_id: ModelExecutionId,
+        provider_revision: impl Into<String>,
+        state_id: impl Into<String>,
+        generation: u64,
+        observation: SanitizedObservation,
+        legal_action_ids: Vec<String>,
+        objective: impl Into<String>,
+        hard_constraints: Vec<String>,
+        max_response_bytes: usize,
+        map_context: Option<serde_json::Value>,
+        management_profile: Option<String>,
+        management_context: Option<serde_json::Value>,
     ) -> Result<Self, ExoError> {
         let state_id = state_id.into();
         let provider_revision = provider_revision.into();
@@ -134,6 +198,8 @@ impl ExoDecisionRequest {
             hard_constraints,
             max_response_bytes: max_response_bytes as u32,
             map_context,
+            management_profile,
+            management_context,
         };
         validation::validate_request(&request)?;
         Ok(request)
@@ -178,7 +244,7 @@ pub(super) fn request_from_prompt(
     let value: serde_json::Value =
         serde_json::from_str(prompt).map_err(|_| ExoError::MalformedResponse)?;
     let object = value.as_object().ok_or(ExoError::InvalidRequest)?;
-    const ALLOWED: [&str; 7] = [
+    const ALLOWED: [&str; 9] = [
         "observation",
         "state_id",
         "generation",
@@ -186,6 +252,8 @@ pub(super) fn request_from_prompt(
         "objective",
         "hard_constraints",
         "map_context",
+        "management_profile",
+        "management_context",
     ];
     if object.keys().any(|key| !ALLOWED.contains(&key.as_str())) {
         return Err(ExoError::InvalidRequest);
@@ -220,6 +288,11 @@ pub(super) fn request_from_prompt(
         objective,
         hard_constraints,
         object.get("map_context").cloned(),
+        object
+            .get("management_profile")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+        object.get("management_context").cloned(),
     )
 }
 
@@ -235,8 +308,10 @@ impl ExoDecisionRequest {
         objective: &str,
         hard_constraints: Vec<String>,
         map_context: Option<serde_json::Value>,
+        management_profile: Option<String>,
+        management_context: Option<serde_json::Value>,
     ) -> Result<Self, ExoError> {
-        Self::new_inner(
+        Self::new_inner_with_management(
             execution_id,
             config.revision.as_str(),
             state_id,
@@ -247,6 +322,8 @@ impl ExoDecisionRequest {
             hard_constraints,
             config.max_response_bytes,
             map_context,
+            management_profile,
+            management_context,
         )
     }
 }

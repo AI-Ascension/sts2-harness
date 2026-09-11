@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ascension:context-memory:policy:v1",
+  "title": "Proposed Phase 3 policy contract",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "ascension.context-memory.policy.v1"
+    },
+    "policy_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "episode_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "agent_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        }
+      },
+      "required": [
+        "project_id",
+        "run_id",
+        "episode_id",
+        "agent_id"
+      ]
+    },
+    "mode": {
+      "enum": [
+        "manual_snapshot",
+        "bounded_per_decision"
+      ]
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "approved",
+        "revoked"
+      ]
+    },
+    "phase2_revision_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "corpus_generation": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "rolling_same_episode_sources": {
+      "type": "boolean"
+    },
+    "cross_scope": {
+      "const": false
+    },
+    "approved_summary_catalog": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "entry_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "entry_id",
+          "version",
+          "sha256"
+        ]
+      },
+      "minItems": 0,
+      "maxItems": 32,
+      "uniqueItems": true
+    },
+    "ranker_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "query_derivation_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "max_candidates": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64
+    },
+    "max_results": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16
+    },
+    "max_selected": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 32
+    },
+    "optional_byte_budget": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65536
+    },
+    "fallback": {
+      "enum": [
+        "block",
+        "protected_only"
+      ]
+    },
+    "automatic_summary_activation": {
+      "const": false
+    },
+    "generate_during_selection": {
+      "const": false
+    },
+    "authorization_policy_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    }
+  },
+  "required": [
+    "schema",
+    "policy_id",
+    "version",
+    "scope",
+    "mode",
+    "status",
+    "phase2_revision_id",
+    "corpus_generation",
+    "rolling_same_episode_sources",
+    "cross_scope",
+    "approved_summary_catalog",
+    "ranker_version",
+    "query_derivation_version",
+    "max_candidates",
+    "max_results",
+    "max_selected",
+    "optional_byte_budget",
+    "fallback",
+    "automatic_summary_activation",
+    "generate_during_selection",
+    "authorization_policy_version"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "approved"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "phase2_revision_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "manual_snapshot"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "rolling_same_episode_sources": {
+            "const": false
+          }
+        }
+      }
+    }
+  ]
+}

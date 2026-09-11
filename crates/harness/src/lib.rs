@@ -24,6 +24,8 @@ pub fn sha256_hex(bytes: impl AsRef<[u8]>) -> String {
 
 mod artifact;
 mod context_capture;
+pub mod context_control;
+pub mod context_memory;
 mod coop_native;
 mod coordinator;
 mod decision_records;
@@ -70,6 +72,7 @@ pub use context_capture::{
     NoopCapture, PreparedAstraInput, PreparedInput, PreparedOllamaInput, TransportState,
     generated_capture_attempt_id,
 };
+pub use context_control::*;
 pub use coop_native::*;
 pub use coordinator::{EpisodeHandle, Harness, HarnessParts};
 pub use decision_records::{DecisionPayload, DecisionRecord, DecisionRecordKind, EvidenceStatus};

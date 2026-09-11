@@ -112,6 +112,64 @@ impl<T> ExoSession<T> {
         super::decision::parse_decision(&response).map_err(ExoError::from)
     }
 
+    /// Dispatches the exact immutable bytes approved by the management preview. The renderer
+    /// has already bound the execution identity, adapter revision and selected content; this
+    /// method refuses a different session identity before touching the transport.
+    pub fn decide_prepared(
+        &mut self,
+        execution_id: ModelExecutionId,
+        prepared: &crate::context_control::PreparedContext,
+    ) -> Result<Decision, ExoError>
+    where
+        T: ExoTransport,
+    {
+        if self.closed {
+            return Err(ExoError::Closed);
+        }
+        self.provider.config().validate()?;
+        let expected_execution_id = execution_id.to_string();
+        if prepared.provider_revision() != self.provider.config().revision
+            || prepared.reserved_execution_id() != Some(expected_execution_id.as_str())
+        {
+            return Err(ExoError::InvalidRequest);
+        }
+        let bytes = prepared.provider_bytes();
+        if bytes.is_empty() || bytes.len() > self.provider.config().max_request_bytes {
+            return Err(ExoError::RequestTooLarge);
+        }
+        let attempt_id = self
+            .provider
+            .capture_attempt_id()
+            .map(str::to_owned)
+            .unwrap_or_else(|| crate::context_capture::generated_capture_attempt_id("exo"));
+        self.provider.capture_prepared_with_attempt(
+            &execution_id.to_string(),
+            Some(attempt_id.as_str()),
+            crate::context_capture::CaptureBoundary::ExoSessionRequest,
+            bytes,
+        );
+        let response = match self.provider.transport_exchange_for_session(bytes) {
+            Ok(response) => {
+                self.provider.capture_write_completed(
+                    &execution_id.to_string(),
+                    Some(attempt_id.as_str()),
+                    crate::context_capture::CaptureBoundary::ExoSessionRequest,
+                );
+                response
+            }
+            Err(error) => {
+                self.provider.capture_write_unknown(
+                    &execution_id.to_string(),
+                    Some(attempt_id.as_str()),
+                    "prepared_transport_unknown",
+                    crate::context_capture::CaptureBoundary::ExoSessionRequest,
+                );
+                return Err(ExoError::from(error));
+            }
+        };
+        super::decision::parse_decision(&response).map_err(ExoError::from)
+    }
+
     /// Sends the same bounded decision request with a validated current map projection.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn decide_with_map(
