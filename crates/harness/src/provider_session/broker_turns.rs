@@ -1,0 +1,182 @@
+// SPDX-License-Identifier: MIT
+
+use super::super::types::*;
+use super::ProviderSessionBroker;
+use serde_json::json;
+
+impl ProviderSessionBroker {
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_turn(
+        &mut self,
+        owner_token: &str,
+        binding_id: &str,
+        prepared_id: &str,
+        phase2_preview_id: &str,
+        phase2_revision_id: &str,
+        phase3_selection_id: &str,
+        held_boundary_ref: &str,
+        suffix: Vec<u8>,
+        output_schema: Vec<u8>,
+        protected: Vec<u8>,
+        dependencies: Vec<String>,
+        expires_at: &str,
+    ) -> Result<PreparedSessionTurn, SessionError> {
+        self.authorize_owner(owner_token)?;
+        if !self
+            .capabilities
+            .enabled_methods
+            .iter()
+            .any(|method| method == "turn/start")
+        {
+            return Err(SessionError::Unsupported);
+        }
+        let binding = self
+            .bindings
+            .get(binding_id)
+            .ok_or(SessionError::NotFound)?
+            .clone();
+        if binding.state != BindingState::Held || !self.policy.allows_execution() {
+            return Err(SessionError::HeldRequired);
+        }
+        if self.prepared.contains_key(prepared_id) {
+            return Err(SessionError::Conflict);
+        }
+        if self.prepared.len() >= MAX_PREPARED {
+            return Err(SessionError::Capacity);
+        }
+        if dependencies
+            .iter()
+            .any(|id| !binding.dependency_ids.contains(id))
+            || binding
+                .dependency_ids
+                .iter()
+                .any(|id| !dependencies.contains(id))
+        {
+            return Err(SessionError::Stale);
+        }
+        let prepared = PreparedSessionTurn::new(
+            prepared_id,
+            self.scope.clone(),
+            &binding,
+            phase2_preview_id,
+            phase2_revision_id,
+            phase3_selection_id,
+            held_boundary_ref,
+            suffix,
+            output_schema,
+            protected,
+            dependencies,
+            self.policy.continuity,
+            expires_at,
+        )?;
+        self.prepared
+            .insert(prepared.prepared_id.clone(), prepared.clone());
+        Ok(prepared)
+    }
+
+    /// Explicit Phase 2 resume handoff.  No native operation is started here; the scheduler must
+    /// call this method only after its own commit/permission transaction succeeds.
+    pub fn explicit_resume(
+        &mut self,
+        owner_token: &str,
+        binding_id: &str,
+    ) -> Result<SessionBinding, SessionError> {
+        self.authorize_owner(owner_token)?;
+        if !self
+            .capabilities
+            .enabled_methods
+            .iter()
+            .any(|method| method == "turn/start")
+        {
+            return Err(SessionError::Unsupported);
+        }
+        if !self.bindings.contains_key(binding_id) {
+            return Err(SessionError::NotFound);
+        }
+        if self
+            .bindings
+            .values()
+            .any(|candidate| candidate.binding_id != binding_id && candidate.executable())
+        {
+            return Err(SessionError::Conflict);
+        }
+        let binding = self
+            .bindings
+            .get_mut(binding_id)
+            .ok_or(SessionError::NotFound)?;
+        if binding.executable() {
+            return Ok(binding.clone());
+        }
+        if binding.state != BindingState::Held
+            || matches!(binding.purpose, SessionPurpose::Evaluation)
+            || !self.policy.allows_execution()
+        {
+            return Err(SessionError::HeldRequired);
+        }
+        binding.state = BindingState::Active;
+        binding.game_dispatch_capability = true;
+        Ok(binding.clone())
+    }
+
+    pub fn admit_turn(
+        &mut self,
+        owner_token: &str,
+        binding_id: &str,
+        prepared_id: &str,
+        idempotency_key: &str,
+    ) -> Result<NativeOperation, SessionError> {
+        self.authorize_owner(owner_token)?;
+        if !self
+            .capabilities
+            .enabled_methods
+            .iter()
+            .any(|method| method == "turn/start")
+        {
+            return Err(SessionError::Unsupported);
+        }
+        let binding = self
+            .bindings
+            .get(binding_id)
+            .ok_or(SessionError::NotFound)?;
+        let prepared = self
+            .prepared
+            .get(prepared_id)
+            .ok_or(SessionError::NotFound)?;
+        if binding.state != BindingState::Active || !binding.game_dispatch_capability {
+            return Err(SessionError::HeldRequired);
+        }
+        if prepared.binding_id != binding_id
+            || prepared.owner_epoch != self.owner_epoch
+            || prepared.session_epoch != binding.session_epoch
+            || prepared.revocation_epoch != self.revocation_epoch
+        {
+            return Err(SessionError::Stale);
+        }
+        if !valid_id(idempotency_key) {
+            return Err(SessionError::InvalidRequest);
+        }
+        let request = json!({"prepared_id": prepared_id, "suffix_sha256": prepared.suffix_sha256});
+        if let Some(existing) = self.existing_idempotent(idempotency_key, &request)? {
+            return Ok(existing);
+        }
+        if self.inflight_turn.is_some() {
+            return Err(SessionError::Conflict);
+        }
+        let operation = self.new_operation(
+            binding_id,
+            NativeOperationKind::Turn,
+            idempotency_key,
+            &request,
+            true,
+        )?;
+        self.inflight_turn = Some(operation.operation_id.clone());
+        self.idempotency.insert(
+            idempotency_key.to_owned(),
+            (
+                operation.request_sha256.clone(),
+                operation.operation_id.clone(),
+            ),
+        );
+        Ok(operation)
+    }
+}
