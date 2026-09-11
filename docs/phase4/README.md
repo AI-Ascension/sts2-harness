@@ -16,3 +16,5 @@ The lane is synthetic and offline. It does not certify an installed Codex binary
 authentication, native persistence, gameplay settlement, or provider-side deletion. Snapshot
 restore only covers the bounded local metadata journal; prepared turns require explicit
 reconciliation after restart.
+The fixture capability advertises native encrypted persistence as unverified, and the broker rejects
+an `enabled` profile until an encrypted boundary is independently verified.

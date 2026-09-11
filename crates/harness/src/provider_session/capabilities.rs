@@ -81,7 +81,7 @@ impl NativeCapabilities {
             hardening: CapabilityHardening {
                 tools_enabled: false,
                 ambient_history: false,
-                encrypted_state: true,
+                encrypted_state: false,
                 configuration_verified: true,
                 transform_handling: TransformHandling::DetectAndFence,
             },
@@ -110,7 +110,6 @@ impl NativeCapabilities {
                 != self.enabled_methods.len()
             || self.hardening.tools_enabled
             || self.hardening.ambient_history
-            || !self.hardening.encrypted_state
             || self.unknown_methods != "deny"
             || self.raw_rpc
         {

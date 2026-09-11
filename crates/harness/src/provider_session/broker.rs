@@ -86,6 +86,11 @@ impl ProviderSessionBroker {
         if matches!(policy.mode, ProviderSessionMode::Enabled) && !capabilities.strict_executable {
             return Err(SessionError::Unsupported);
         }
+        if matches!(policy.mode, ProviderSessionMode::Enabled)
+            && !capabilities.hardening.encrypted_state
+        {
+            return Err(SessionError::Unsupported);
+        }
         let owner_token = owner_token.into();
         if policy.scope != scope || owner_token.is_empty() {
             return Err(SessionError::InvalidScope);

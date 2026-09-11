@@ -82,6 +82,25 @@ fn feature_off_is_explicit_and_does_not_create_a_worker() {
 }
 
 #[test]
+fn fixture_capabilities_do_not_claim_native_encrypted_persistence() {
+    let capabilities = NativeCapabilities::fixture();
+    assert!(!capabilities.hardening.encrypted_state);
+    assert!(capabilities.validate().is_ok());
+
+    let scope = scope();
+    let mut policy = ProviderSessionPolicy::disabled(scope.clone());
+    policy.mode = ProviderSessionMode::Enabled;
+    policy.credential_realm_ref = "approved-realm".to_owned();
+    policy.profile_sha256 = sha256_hex("codex-app-server-fixture-v1");
+    let mut enabled_capabilities = capabilities;
+    enabled_capabilities.strict_executable = true;
+    assert!(matches!(
+        ProviderSessionBroker::new(scope, policy, enabled_capabilities, "owner-fixture",),
+        Err(SessionError::Unsupported)
+    ));
+}
+
+#[test]
 fn candidate_reconnect_and_history_remain_held() {
     let mut broker = broker();
     let binding = held_binding(&mut broker);
