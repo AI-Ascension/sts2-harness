@@ -49,7 +49,12 @@ impl ProviderSessionBroker {
             }
         };
         if unknown {
-            if let Some(binding) = self.bindings.get_mut(&binding_id) {
+            if let Some(binding) = self.bindings.get_mut(&binding_id)
+                && !matches!(
+                    binding.state,
+                    BindingState::Retired | BindingState::Closed | BindingState::Quarantined
+                )
+            {
                 binding.state = BindingState::Recovering;
                 binding.game_dispatch_capability = false;
             }
@@ -98,7 +103,9 @@ impl ProviderSessionBroker {
             operation.terminal_evidence_ref = Some(evidence_ref.to_owned());
             operation.binding_id.clone()
         };
-        if let Some(binding) = self.bindings.get_mut(&binding_id) {
+        if let Some(binding) = self.bindings.get_mut(&binding_id)
+            && !matches!(binding.state, BindingState::Retired | BindingState::Closed)
+        {
             binding.state = BindingState::Quarantined;
             binding.game_dispatch_capability = false;
         }

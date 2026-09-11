@@ -82,7 +82,7 @@ impl ProviderSessionBroker {
             .ok_or(SessionError::NotFound)?
             .binding_id
             .clone();
-        self.ensure_binding_not_expired(&binding_id)?;
+        self.ensure_binding_completion_allowed(&binding_id)?;
         let job = self
             .compaction_jobs
             .get_mut(job_id)
@@ -106,7 +106,7 @@ impl ProviderSessionBroker {
             .ok_or(SessionError::NotFound)?
             .binding_id
             .clone();
-        self.ensure_binding_not_expired(&binding_id)?;
+        self.ensure_binding_completion_allowed(&binding_id)?;
         let job = self
             .compaction_jobs
             .get_mut(job_id)
@@ -138,7 +138,7 @@ impl ProviderSessionBroker {
             .ok_or(SessionError::NotFound)?
             .binding_id
             .clone();
-        self.ensure_binding_not_expired(&binding_id)?;
+        let binding_snapshot = self.ensure_binding_completion_allowed(&binding_id)?;
         let job = self
             .compaction_jobs
             .get_mut(job_id)
@@ -161,8 +161,8 @@ impl ProviderSessionBroker {
             .bindings
             .get_mut(&binding_id)
             .ok_or(SessionError::NotFound)?;
-        if binding.history_epoch != job.source_history_epoch
-            || binding.continuity_sha256 != job.source_continuity_sha256
+        if binding_snapshot.history_epoch != job.source_history_epoch
+            || binding_snapshot.continuity_sha256 != job.source_continuity_sha256
         {
             job.state = CompactionState::Failed;
             return Err(SessionError::Stale);
@@ -198,7 +198,7 @@ impl ProviderSessionBroker {
             .ok_or(SessionError::NotFound)?
             .binding_id
             .clone();
-        self.ensure_binding_not_expired(&binding_id)?;
+        self.ensure_binding_completion_allowed(&binding_id)?;
         let job = self
             .compaction_jobs
             .get_mut(job_id)

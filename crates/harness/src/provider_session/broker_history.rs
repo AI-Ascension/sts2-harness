@@ -54,6 +54,9 @@ impl ProviderSessionBroker {
         {
             return Err(SessionError::InvalidRequest);
         }
+        if binding.state == BindingState::Quarantined {
+            return Err(SessionError::Fenced);
+        }
         if binding.state == BindingState::Candidate {
             return Err(SessionError::HeldRequired);
         }

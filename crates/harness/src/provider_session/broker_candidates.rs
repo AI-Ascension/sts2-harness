@@ -95,16 +95,17 @@ impl ProviderSessionBroker {
         {
             return Err(SessionError::Unsupported);
         }
-        let operation = self
+        let operation_snapshot = self
             .operations
-            .get_mut(operation_id)
-            .ok_or(SessionError::NotFound)?;
-        if operation.kind == NativeOperationKind::CreateCandidate
-            && operation.state == NativeOperationState::Completed
+            .get(operation_id)
+            .ok_or(SessionError::NotFound)?
+            .clone();
+        if operation_snapshot.kind == NativeOperationKind::CreateCandidate
+            && operation_snapshot.state == NativeOperationState::Completed
         {
             let binding = self
                 .bindings
-                .get(&operation.binding_id)
+                .get(&operation_snapshot.binding_id)
                 .ok_or(SessionError::NotFound)?;
             return if binding.native_thread_ref == native_thread_ref {
                 Ok(binding.clone())
@@ -112,14 +113,18 @@ impl ProviderSessionBroker {
                 Err(SessionError::Conflict)
             };
         }
-        if operation.kind != NativeOperationKind::CreateCandidate
-            || operation.state != NativeOperationState::IntentPersisted
-            || operation.owner_epoch != self.owner_epoch
+        if operation_snapshot.kind != NativeOperationKind::CreateCandidate
+            || operation_snapshot.state != NativeOperationState::IntentPersisted
+            || operation_snapshot.owner_epoch != self.owner_epoch
             || !valid_id(native_thread_ref)
         {
             return Err(SessionError::Conflict);
         }
-        let binding_id = operation.binding_id.clone();
+        let binding_id = operation_snapshot.binding_id.clone();
+        let binding_snapshot = self.ensure_binding_completion_allowed(&binding_id)?;
+        if binding_snapshot.state != BindingState::Candidate {
+            return Err(SessionError::Conflict);
+        }
         let binding = self
             .bindings
             .get_mut(&binding_id)
@@ -127,6 +132,10 @@ impl ProviderSessionBroker {
         binding.native_thread_ref = native_thread_ref.to_owned();
         binding.state = BindingState::Held;
         binding.history_coverage = HistoryCoverage::Unknown;
+        let operation = self
+            .operations
+            .get_mut(operation_id)
+            .ok_or(SessionError::NotFound)?;
         operation.state = NativeOperationState::Completed;
         operation.terminal_evidence_ref = Some(format!("native-create-{operation_id}"));
         let value = binding.clone();
@@ -205,16 +214,17 @@ impl ProviderSessionBroker {
         if !valid_digest(continuity_sha256) {
             return Err(SessionError::InvalidRequest);
         }
-        let operation = self
+        let operation_snapshot = self
             .operations
-            .get_mut(operation_id)
-            .ok_or(SessionError::NotFound)?;
-        if operation.kind == NativeOperationKind::Reconnect
-            && operation.state == NativeOperationState::Completed
+            .get(operation_id)
+            .ok_or(SessionError::NotFound)?
+            .clone();
+        if operation_snapshot.kind == NativeOperationKind::Reconnect
+            && operation_snapshot.state == NativeOperationState::Completed
         {
             let binding = self
                 .bindings
-                .get(&operation.binding_id)
+                .get(&operation_snapshot.binding_id)
                 .ok_or(SessionError::NotFound)?;
             return if binding.continuity_sha256 == continuity_sha256 {
                 Ok(binding.clone())
@@ -222,21 +232,33 @@ impl ProviderSessionBroker {
                 Err(SessionError::Conflict)
             };
         }
-        if operation.kind != NativeOperationKind::Reconnect
-            || operation.state != NativeOperationState::IntentPersisted
-            || operation.owner_epoch != self.owner_epoch
+        if operation_snapshot.kind != NativeOperationKind::Reconnect
+            || operation_snapshot.state != NativeOperationState::IntentPersisted
+            || operation_snapshot.owner_epoch != self.owner_epoch
         {
+            return Err(SessionError::Conflict);
+        }
+        let binding_id = operation_snapshot.binding_id.clone();
+        let binding_snapshot = self.ensure_binding_completion_allowed(&binding_id)?;
+        if !matches!(
+            binding_snapshot.state,
+            BindingState::Held | BindingState::Active | BindingState::Recovering
+        ) {
             return Err(SessionError::Conflict);
         }
         let binding = self
             .bindings
-            .get_mut(&operation.binding_id)
+            .get_mut(&binding_id)
             .ok_or(SessionError::NotFound)?;
         binding.state = BindingState::Held;
         binding.session_epoch = binding.session_epoch.saturating_add(1);
         binding.owner_epoch = self.owner_epoch;
         binding.continuity_sha256 = continuity_sha256.to_owned();
         binding.history_coverage = coverage;
+        let operation = self
+            .operations
+            .get_mut(operation_id)
+            .ok_or(SessionError::NotFound)?;
         operation.state = NativeOperationState::Completed;
         operation.terminal_evidence_ref = Some(format!("reconnect-{operation_id}"));
         let value = binding.clone();

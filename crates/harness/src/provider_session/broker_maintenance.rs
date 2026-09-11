@@ -4,6 +4,51 @@ use super::super::types::*;
 use super::ProviderSessionBroker;
 
 impl ProviderSessionBroker {
+    /// Returns a binding that is still eligible for a pending native completion. Retired,
+    /// closed, and quarantined bindings remain inspectable, but a late result must never
+    /// transition any of them back into an executable or held state.
+    pub(super) fn ensure_binding_completion_allowed(
+        &self,
+        binding_id: &str,
+    ) -> Result<SessionBinding, SessionError> {
+        let binding = self.ensure_binding_not_expired(binding_id)?;
+        match binding.state {
+            BindingState::Retired | BindingState::Closed => Err(SessionError::Retired),
+            BindingState::Quarantined => Err(SessionError::Fenced),
+            _ => Ok(binding),
+        }
+    }
+
+    /// Owner rotation and crash recovery invalidate maintenance work that was authorized by the
+    /// previous controller. A stale compaction acknowledgement must not rewrite history, and a
+    /// stale fork completion must not publish a new candidate under the replacement owner.
+    pub(super) fn fence_pending_maintenance(&mut self) {
+        for job in self.compaction_jobs.values_mut() {
+            if !matches!(
+                job.state,
+                CompactionState::Completed
+                    | CompactionState::Failed
+                    | CompactionState::Unknown
+                    | CompactionState::Cancelled
+            ) {
+                job.state = CompactionState::Unknown;
+            }
+        }
+        let fork_targets: Vec<String> = self
+            .fork_plans
+            .values()
+            .map(|plan| plan.target_binding_id.clone())
+            .collect();
+        for binding_id in fork_targets {
+            if let Some(binding) = self.bindings.get_mut(&binding_id)
+                && binding.state == BindingState::Candidate
+            {
+                binding.state = BindingState::Quarantined;
+                binding.game_dispatch_capability = false;
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn plan_fork(
         &mut self,

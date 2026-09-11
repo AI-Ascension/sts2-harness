@@ -33,6 +33,13 @@ impl ProviderSessionBroker {
 
     pub fn mark_sent(&mut self, owner_token: &str, operation_id: &str) -> Result<(), SessionError> {
         self.authorize_owner(owner_token)?;
+        let binding_id = self
+            .operations
+            .get(operation_id)
+            .ok_or(SessionError::NotFound)?
+            .binding_id
+            .clone();
+        self.ensure_binding_completion_allowed(&binding_id)?;
         let operation = self
             .operations
             .get_mut(operation_id)
@@ -57,6 +64,13 @@ impl ProviderSessionBroker {
         if !valid_id(native_turn_ref) {
             return Err(SessionError::InvalidRequest);
         }
+        let binding_id = self
+            .operations
+            .get(operation_id)
+            .ok_or(SessionError::NotFound)?
+            .binding_id
+            .clone();
+        self.ensure_binding_completion_allowed(&binding_id)?;
         let operation = self
             .operations
             .get_mut(operation_id)
@@ -92,7 +106,7 @@ impl ProviderSessionBroker {
             .ok_or(SessionError::NotFound)?
             .binding_id
             .clone();
-        self.ensure_binding_not_expired(&binding_id)?;
+        let binding_snapshot = self.ensure_binding_not_expired(&binding_id)?;
         if let Some(existing) = self.operations.get(operation_id)
             && existing.state == NativeOperationState::Completed
         {
@@ -101,6 +115,15 @@ impl ProviderSessionBroker {
             }
             let _ = self.quarantine_operation(owner_token, operation_id, native_turn_ref)?;
             return Err(SessionError::Conflict);
+        }
+        if matches!(
+            binding_snapshot.state,
+            BindingState::Retired | BindingState::Closed
+        ) {
+            return Err(SessionError::Retired);
+        }
+        if binding_snapshot.state == BindingState::Quarantined {
+            return Err(SessionError::Fenced);
         }
         let projected_items = self.projected_turn_history(&binding_id, &item)?;
         let operation = self
@@ -145,7 +168,12 @@ impl ProviderSessionBroker {
         }
         operation.state = NativeOperationState::Unknown;
         let binding_id = operation.binding_id.clone();
-        if let Some(binding) = self.bindings.get_mut(&binding_id) {
+        if let Some(binding) = self.bindings.get_mut(&binding_id)
+            && !matches!(
+                binding.state,
+                BindingState::Retired | BindingState::Closed | BindingState::Quarantined
+            )
+        {
             binding.state = BindingState::Recovering;
             binding.game_dispatch_capability = false;
         }
