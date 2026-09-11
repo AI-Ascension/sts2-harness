@@ -373,6 +373,7 @@ fn strict_frames_reject_duplicates_and_peer_runs_as_owned_stdio() {
     ));
 
     let mut transport = OwnedNativeTransport::fixture_peer().expect("fixture peer");
+    let state_root = transport.state_root().to_owned();
     transport.start().expect("start");
     let initialized = transport.initialize().expect("initialize");
     assert_eq!(initialized["tools"], false);
@@ -383,6 +384,7 @@ fn strict_frames_reject_duplicates_and_peer_runs_as_owned_stdio() {
     );
     assert!(transport.notification_count() <= 1);
     transport.close().expect("close");
+    let _ = std::fs::remove_dir_all(state_root);
 }
 
 fn sha256_hex(value: impl AsRef<[u8]>) -> String {

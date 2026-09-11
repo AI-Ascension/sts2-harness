@@ -189,7 +189,24 @@ pub(super) fn has_symlink_component(path: &std::path::Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::state_within_quota;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+    fn test_root() -> PathBuf {
+        let counter = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "ascension-provider-quota-scan-{}-{counter}",
+            std::process::id()
+        ))
+    }
+
+    #[cfg(unix)]
+    fn restrict(path: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+        assert!(std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).is_ok());
+    }
 
     #[test]
     fn state_quota_scan_is_bounded_and_fail_closed() {
@@ -197,13 +214,26 @@ mod tests {
             Path::new("/path/that/does/not/exist"),
             1
         ));
-        assert!(!state_within_quota(
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-            0
-        ));
-        assert!(state_within_quota(
-            Path::new(env!("CARGO_MANIFEST_DIR")),
-            256 * 1024 * 1024
-        ));
+
+        let root = test_root();
+        assert!(std::fs::create_dir_all(&root).is_ok());
+        #[cfg(unix)]
+        restrict(&root);
+        // A private root passes within quota but fails a zero quota.
+        assert!(state_within_quota(&root, 256 * 1024 * 1024));
+        assert!(!state_within_quota(&root, 0));
+
+        // A group/other-accessible directory is rejected regardless of quota.
+        let public = root.join("public");
+        assert!(std::fs::create_dir(&public).is_ok());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert!(
+                std::fs::set_permissions(&public, std::fs::Permissions::from_mode(0o755)).is_ok()
+            );
+            assert!(!state_within_quota(&public, 256 * 1024 * 1024));
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

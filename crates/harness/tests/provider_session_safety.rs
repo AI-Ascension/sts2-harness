@@ -155,11 +155,13 @@ fn dependency_revocation_reaches_fork_and_interrupt_fences_late_result() {
 #[test]
 fn transport_allowlist_and_json_depth_fail_closed() {
     let mut transport = OwnedNativeTransport::fixture_peer().expect("fixture peer");
+    let state_root = transport.state_root().to_owned();
     transport.start().expect("start");
     transport.initialize().expect("initialize");
     let turn = transport.start_turn().expect("turn");
     assert_eq!(turn["turn_ref"], "turn-1");
     transport.close().expect("close");
+    let _ = std::fs::remove_dir_all(state_root);
 
     let nested = format!(
         "{}0{}\n",
