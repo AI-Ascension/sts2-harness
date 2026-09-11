@@ -68,6 +68,10 @@
         fn command_path(&self) -> PathBuf {
             PathBuf::from(format!("/proc/self/fd/{}", self.image.as_raw_fd()))
         }
+
+        fn verify_before_launch(&self) -> Result<(), String> {
+            Ok(())
+        }
     }
 
     fn verify_executable(

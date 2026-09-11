@@ -4,13 +4,16 @@
 
 use serde_json::{Value, json};
 
-use super::{
-    EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES, ExoDecisionRequest, ExoError,
-};
+#[cfg(unix)]
+use super::{EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES};
+use super::{ExoDecisionRequest, ExoError};
 use crate::episode::map::{MapDecisionContext, RUNTIME_MAP_PROFILE, RUNTIME_MAP_SCHEMA_DIGEST};
+#[cfg(unix)]
+use crate::exo::Decision;
 use crate::exo::SanitizedObservation;
-use crate::exo::{Decision, ExoConfig, ExoProvider, ExoSession, ExoTransport, ExoTransportError};
+use crate::exo::{ExoConfig, ExoProvider, ExoSession, ExoTransport, ExoTransportError};
 use crate::identity::ModelExecutionId;
+#[cfg(unix)]
 use crate::{ExoProcessConfig, ExoProcessTransport};
 
 const REQUEST_BOUND: usize = 128 * 1024;

@@ -1,5 +1,11 @@
 [workspace]
-members = ["tools/repo-policy", "tools/patch-diff", "crates/harness", "tools/sts2-expert-state-package"]
+members = [
+    "tools/repo-policy",
+    "tools/patch-diff",
+    "crates/harness",
+    "crates/windows-worker-boundary",
+    "tools/sts2-expert-state-package",
+]
 resolver = "3"
 
 [workspace.package]
@@ -22,6 +28,7 @@ png = "=0.18.1"
 sts2-protocol = { git = "https://github.com/AI-Ascension/sts2-protocol.git", rev = "0bc689eabc5542ede2b09b030d9ea32daa8a73e7" }
 tokio = { version = "=1.53.1", default-features = false, features = ["io-util", "macros", "process", "rt", "time"] }
 zeroize = "=1.9.0"
+windows-sys = "=0.61.2"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

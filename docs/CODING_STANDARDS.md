@@ -14,7 +14,8 @@ workspace tools and do not depend on undeclared globally installed tools for ord
 
 Clippy warnings are errors in CI. Unsafe Rust is forbidden unless a separately approved boundary
 requires it and documents pointer, ownership, lifetime, thread, and unload invariants. The harness
-has no approved host/FFI boundary.
+has no approved host/game or process-memory FFI boundary; its narrow Windows worker IPC boundary
+is the separately reviewed exception in [ADR 0015](decisions/0015-windows-worker-endpoint-boundary.md).
 
 ## Modularity and budgets
 
