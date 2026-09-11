@@ -70,6 +70,13 @@ fn revoke_and_dependent_publication_race_leaves_no_eligible_derivative() {
     let publish_result = publisher.join().expect("publisher");
     assert!(revoke_result.is_ok());
     assert!(matches!(publish_result, Ok(_) | Err(MemoryError::Revoked)));
+    // The two operations may commit in either order.  Pin the read to the
+    // generation that actually won the race: if revocation wins first the
+    // derived admission is rejected and the corpus remains at generation 1;
+    // if admission wins first, revocation fences both entries at generation 2.
+    let corpus_generation = shared
+        .with_corpus(MemoryCorpus::generation)
+        .expect("read generation");
     let query = MemoryQuery {
         schema: MEMORY_QUERY_SCHEMA.to_owned(),
         query_id: "race-query".to_owned(),
@@ -77,7 +84,7 @@ fn revoke_and_dependent_publication_race_leaves_no_eligible_derivative() {
         branch_id: "branch-a".to_owned(),
         query: "settled".to_owned(),
         cutoff: 10,
-        corpus_generation: 2,
+        corpus_generation,
         ranker_version: "lexical-v1".to_owned(),
         limit: 8,
         max_candidates: 64,
