@@ -63,6 +63,7 @@ recording zero external/provider/game effects and no browser persistence. Harnes
 after its `policy` and `Rust quality gates` checks passed; its merge commit is
 `8d771f128bc0ba13071063425c9a852bac2c40c1`. Target PR #3 was also merged externally with merge
 commit `114b3e5ae28cd60d9dafc421711dee859b602c4d`. No release, deployment, provider call, game
-launch, or unrelated write was performed. The latest native recheck observed Codex `0.153.4`, but
-`codex1 agents --no-alt-screen` failed because the managed standalone binary is absent and the
-read-only Herdr `agent.start` surface exposes no model, parent, depth, or reservation fields.
+launch, or unrelated write was performed. The latest native recheck opened the Codex `0.153.4`
+agent command center, but it showed only existing finished tasks; `multi_agent_v2` is disabled and
+neither the command center nor the read-only Herdr `agent.start` surface exposes reservation, parent,
+depth, model, or ancestry controls.
