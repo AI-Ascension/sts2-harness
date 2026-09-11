@@ -2,81 +2,181 @@
 
 use serde_json::json;
 use sts2_harness::{
-    Decision, DecisionInput, DecisionSource, EpisodeRunReport, PolicyError, TransitionReceipt,
-    WaitOutcome, WaitSample,
+    Decision, DecisionInput, DecisionSource, DispatchStatus, EpisodeObservation, EpisodeRunReport,
+    EpisodeRunnerError, PolicyError, TransitionReceipt, WaitOutcome, WaitSample,
 };
 
-fn enabled() -> bool {
-    std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true")
+use super::super::runtime_v3_telemetry::{
+    DecisionKind, FailureCode, GameOutcome, ObservationSource, TelemetryHandle,
+};
+use super::decision_admission::DecisionAdmission;
+use super::durable::{DurableHandle, ProviderReservationToken};
+
+include!("runtime_v3_recording_stream.rs");
+
+pub(super) struct DecisionRecorder<'a, S> {
+    source: &'a mut S,
+    telemetry: TelemetryHandle,
+    durable: Option<DurableHandle>,
 }
 
-pub(super) struct DecisionRecorder<'a, S>(pub(super) &'a mut S);
+impl<'a, S> DecisionRecorder<'a, S> {
+    #[cfg(test)]
+    pub(super) fn new(source: &'a mut S, telemetry: TelemetryHandle) -> Self {
+        Self {
+            source,
+            telemetry,
+            durable: None,
+        }
+    }
+
+    pub(super) fn with_durable(
+        source: &'a mut S,
+        telemetry: TelemetryHandle,
+        durable: DurableHandle,
+    ) -> Self {
+        Self {
+            source,
+            telemetry,
+            durable: Some(durable),
+        }
+    }
+}
 
 impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
     fn model_execution_id(&self) -> Option<sts2_harness::ModelExecutionId> {
-        self.0.model_execution_id()
+        self.source.model_execution_id()
     }
+
     fn action_completed(&mut self, settled: bool) {
-        self.0.action_completed(settled);
+        self.source.action_completed(settled);
     }
 
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError> {
-        let decision = self.0.decide(input)?;
-        let execution_id = self.0.model_execution_id().unwrap_or(input.execution_id);
-        if enabled()
-            && let Decision::Action {
-                action_id,
-                rationale,
-                ..
-            } = &decision
+        let mut reservation: Option<ProviderReservationToken> = None;
+        let decision = if let Some(durable) = &self.durable {
+            let admission = durable
+                .decision_admission_with_reuse(input)
+                .map_err(|_| PolicyError::ProviderMalformed)?;
+            match admission {
+                DecisionAdmission::Reused(decision) => decision,
+                DecisionAdmission::Fresh(token) => {
+                    reservation = Some(token);
+                    match self.source.decide(input) {
+                        Ok(decision) => decision,
+                        Err(error) => {
+                            if let Some(token) = reservation.as_ref() {
+                                let failure = provider_failure(&error);
+                                let result = if matches!(
+                                    error,
+                                    PolicyError::ProviderUnavailable | PolicyError::ProviderClosed
+                                ) {
+                                    durable.unknown_decision(token, failure)
+                                } else {
+                                    durable.fail_decision(token, failure)
+                                };
+                                if result.is_err() {
+                                    return Err(PolicyError::ProviderMalformed);
+                                }
+                            }
+                            let execution_id = self
+                                .source
+                                .model_execution_id()
+                                .unwrap_or(input.execution_id);
+                            let _ = self
+                                .telemetry
+                                .model_failure(execution_id.get(), FailureCode::from(&error));
+                            return Err(error);
+                        }
+                    }
+                }
+            }
+        } else {
+            match self.source.decide(input) {
+                Ok(decision) => decision,
+                Err(error) => {
+                    let execution_id = self
+                        .source
+                        .model_execution_id()
+                        .unwrap_or(input.execution_id);
+                    let _ = self
+                        .telemetry
+                        .model_failure(execution_id.get(), FailureCode::from(&error));
+                    return Err(error);
+                }
+            }
+        };
+        if let Some(token) = reservation
+            && let Some(durable) = &self.durable
+            && durable.complete_decision(&token, &decision).is_err()
         {
-            println!(
-                "{}",
-                json!({"event":"model_decision",
-                    "model_execution_id":execution_id.get(), "action_id":action_id,
-                    "reused_model_execution":execution_id != input.execution_id,
-                    "rationale":rationale, "observation":input.observation.fair_play().as_value()})
-            );
+            return Err(PolicyError::ProviderMalformed);
         }
+        let execution_id = self
+            .source
+            .model_execution_id()
+            .unwrap_or(input.execution_id);
+        // ExoDecisionSource expands a supported provider Plan into one Action at a time while
+        // retaining its originating execution ID. Recording the post-expansion choice here
+        // gives replay one correspondence row per dispatch, including reused plan executions.
+        if let Decision::Action { action_id, .. } = &decision {
+            emit_replay_event(json!({
+                "event": "model_decision",
+                "model_execution_id": execution_id.get(),
+                "reused_model_execution": execution_id != input.execution_id,
+                "action_id": action_id,
+                "observation": input.observation.fair_play().as_value()
+            }));
+        }
+        let (kind, action_id, operation_id, confidence) = match &decision {
+            Decision::Plan { action_ids, .. } => (
+                DecisionKind::Plan,
+                action_ids.first().map(String::as_str),
+                None,
+                None,
+            ),
+            Decision::Action {
+                action_id,
+                confidence,
+                ..
+            } => (
+                DecisionKind::Action,
+                Some(action_id.as_str()),
+                None,
+                *confidence,
+            ),
+            Decision::Wait { .. } => (DecisionKind::Wait, None, None, None),
+            Decision::Reobserve { .. } => (DecisionKind::Reobserve, None, None, None),
+            Decision::Recovery { operation_id, .. } => {
+                (DecisionKind::Recovery, None, operation_id.as_deref(), None)
+            }
+        };
+        let _ = self.telemetry.model_decision(
+            execution_id.get(),
+            kind,
+            action_id,
+            operation_id,
+            confidence,
+        );
         Ok(decision)
     }
 }
 
-pub(super) fn receipt(receipt: &TransitionReceipt) {
-    if enabled() {
-        println!(
-            "{}",
-            json!({"event":"action_receipt", "operation_id":receipt.operation_id(),
-            "action_id":receipt.action().action_id(), "status":format!("{:?}",receipt.status()),
-            "effect":receipt.effect_kind(),
-            "observation":receipt.after().map(|after| after.fair_play().as_value())})
-        );
+fn provider_failure(error: &PolicyError) -> sts2_harness::ProviderFailureClass {
+    match error {
+        PolicyError::ProviderUnavailable => sts2_harness::ProviderFailureClass::Outage,
+        PolicyError::ProviderClosed => sts2_harness::ProviderFailureClass::Cancelled,
+        PolicyError::ProviderMalformed | PolicyError::MalformedDecision => {
+            sts2_harness::ProviderFailureClass::IncompatibleOutput
+        }
+        _ => sts2_harness::ProviderFailureClass::IncompatibleOutput,
     }
 }
 
-pub(super) fn wait(operation_id: &str, sample: &WaitSample) {
-    if enabled()
-        && matches!(
-            sample.outcome(),
-            WaitOutcome::Successor | WaitOutcome::SameStateMutation
-        )
-    {
-        println!(
-            "{}",
-            json!({"event":"operation_wait_completed", "operation_id":operation_id,
-            "effect":sample.effect_kind(),
-            "observation":sample.observation().map(|after| after.fair_play().as_value())})
-        );
-    }
-}
+include!("runtime_v3_recording_events.rs");
 
-pub(super) fn complete(report: &EpisodeRunReport) {
-    if enabled() {
-        println!(
-            "{}",
-            json!({"event":"episode_complete", "steps":report.steps(),
-            "transitions":report.transitions(), "recoveries":report.recoveries(),
-            "observation":report.final_observation().fair_play().as_value()})
-        );
-    }
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod tests {
+    include!("runtime_v3_recording_tests.rs");
 }

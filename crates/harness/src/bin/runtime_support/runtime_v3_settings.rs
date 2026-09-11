@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: MIT
 
 use sts2_harness::{
-    EpisodeRunnerConfig, ExoConfig, ExoProcessConfig, RecoveryController, StabilityBarrier,
+    EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES, EpisodeRunnerConfig, ExoConfig,
+    ExoProcessConfig, RecoveryController, StabilityBarrier,
 };
 
+use super::config::RuntimeConfig;
+
 const REVIEWED_EXO_REVISION: &str = "7801005e6a1ab77008a05dbba80e0a2a7a56e35d";
-const DEFAULT_MAX_REQUEST_BYTES: usize = 128 * 1024;
+const DEFAULT_MAX_REQUEST_BYTES: usize = EXO_MAX_STANDARD_REQUEST_BYTES;
+const DEFAULT_MAP_MAX_REQUEST_BYTES: usize = EXO_MAX_MAP_REQUEST_BYTES;
 const DEFAULT_MAX_RESPONSE_BYTES: usize = 8 * 1024;
 const DEFAULT_TIMEOUT_MILLIS: u32 = 120_000;
 
@@ -16,8 +20,8 @@ pub(super) struct RuntimeV3Settings {
 }
 
 impl RuntimeV3Settings {
-    pub(super) fn from_environment() -> Result<Self, String> {
-        let exo = exo_from_environment()?;
+    pub(super) fn from_environment(config: &RuntimeConfig) -> Result<Self, String> {
+        let exo = exo_from_environment(config.map_context_enabled)?;
         let process = ExoProcessConfig::new(
             required("STS2_EXO_BRIDGE_BINARY")?,
             string_list("STS2_EXO_BRIDGE_ARGS_JSON")?,
@@ -25,7 +29,7 @@ impl RuntimeV3Settings {
             string_list("STS2_EXO_INHERITED_ENV_JSON")?,
         )
         .map_err(|error| format!("Exo bridge process configuration is invalid: {error}"))?;
-        let runner = runner_from_environment()?;
+        let runner = runner_from_environment(config.map_context_enabled)?;
         Ok(Self {
             runner,
             exo,
@@ -52,7 +56,6 @@ fn verify_revision(revision: &str) -> Result<(), String> {
         ));
     }
     if local_bridge {
-        use sha2::{Digest, Sha256};
         use std::io::Read;
         let file = std::fs::File::open(required("STS2_EXO_BRIDGE_BINARY")?)
             .map_err(|_| String::from("cannot open provider bridge for digest verification"))?;
@@ -61,7 +64,7 @@ fn verify_revision(revision: &str) -> Result<(), String> {
             .read_to_end(&mut bytes)
             .map_err(|_| String::from("cannot hash provider bridge"))?;
         if bytes.len() > 128 * 1024 * 1024
-            || format!("{:x}", Sha256::digest(&bytes)) != revision
+            || sts2_harness::sha256_hex(&bytes) != revision
             || !string_list("STS2_EXO_BRIDGE_ARGS_JSON")?.is_empty()
         {
             return Err(String::from(
@@ -77,18 +80,20 @@ fn verify_revision(revision: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn exo_from_environment() -> Result<ExoConfig, String> {
+fn exo_from_environment(map_context_enabled: bool) -> Result<ExoConfig, String> {
     let revision = required("STS2_EXO_REVISION")?;
     verify_revision(&revision)?;
     let forward_visible_seed = flag("STS2_EXO_FORWARD_VISIBLE_SEED")?;
+    let default_max_request_bytes = if map_context_enabled {
+        DEFAULT_MAP_MAX_REQUEST_BYTES
+    } else {
+        DEFAULT_MAX_REQUEST_BYTES
+    };
+    let max_request_bytes = number("STS2_EXO_MAX_REQUEST_BYTES", default_max_request_bytes)?;
+    validate_request_bound(map_context_enabled, max_request_bytes)?;
     ExoConfig::new(
         revision,
-        number(
-            "STS2_EXO_MAX_REQUEST_BYTES",
-            DEFAULT_MAX_REQUEST_BYTES as u64,
-        )?
-        .try_into()
-        .map_err(|_| String::from("STS2_EXO_MAX_REQUEST_BYTES is too large"))?,
+        max_request_bytes,
         number(
             "STS2_EXO_MAX_RESPONSE_BYTES",
             DEFAULT_MAX_RESPONSE_BYTES as u64,
@@ -103,7 +108,29 @@ fn exo_from_environment() -> Result<ExoConfig, String> {
     .map_err(|error| format!("Exo configuration is invalid: {error}"))
 }
 
-fn runner_from_environment() -> Result<EpisodeRunnerConfig, String> {
+fn validate_request_bound(
+    map_context_enabled: bool,
+    max_request_bytes: usize,
+) -> Result<(), String> {
+    let maximum = if map_context_enabled {
+        EXO_MAX_MAP_REQUEST_BYTES
+    } else {
+        EXO_MAX_STANDARD_REQUEST_BYTES
+    };
+    if max_request_bytes == 0 || max_request_bytes > maximum {
+        return Err(format!(
+            "STS2_EXO_MAX_REQUEST_BYTES must be between 1 and {maximum}"
+        ));
+    }
+    if map_context_enabled && max_request_bytes < EXO_MAX_MAP_REQUEST_BYTES {
+        return Err(format!(
+            "STS2_EXO_MAX_REQUEST_BYTES must be {EXO_MAX_MAP_REQUEST_BYTES} when STS2_ENABLE_MAP_CONTEXT is true"
+        ));
+    }
+    Ok(())
+}
+
+fn runner_from_environment(map_context_enabled: bool) -> Result<EpisodeRunnerConfig, String> {
     let barrier = StabilityBarrier::new(
         number("STS2_BARRIER_MAX_POLLS", 8)?
             .try_into()
@@ -128,6 +155,7 @@ fn runner_from_environment() -> Result<EpisodeRunnerConfig, String> {
         required("STS2_OBJECTIVE")?,
         string_list("STS2_HARD_CONSTRAINTS_JSON")?,
     )
+    .map(|config| config.with_map_context_enabled(map_context_enabled))
     .map_err(|error| format!("episode runner configuration is invalid: {error}"))
 }
 
@@ -197,7 +225,10 @@ fn string_list(name: &str) -> Result<Vec<String>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_flag;
+    use super::{
+        EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES, parse_flag,
+        validate_request_bound,
+    };
 
     #[test]
     fn seed_forwarding_flag_accepts_only_exact_booleans() {
@@ -209,5 +240,15 @@ mod tests {
                 "{value:?} must be rejected"
             );
         }
+    }
+
+    #[test]
+    fn map_opt_in_selects_derived_full_snapshot_request_bound() {
+        assert_eq!(EXO_MAX_STANDARD_REQUEST_BYTES, 128 * 1024);
+        assert_eq!(EXO_MAX_MAP_REQUEST_BYTES, 393_443);
+        assert!(validate_request_bound(false, EXO_MAX_STANDARD_REQUEST_BYTES).is_ok());
+        assert!(validate_request_bound(false, EXO_MAX_STANDARD_REQUEST_BYTES + 1).is_err());
+        assert!(validate_request_bound(true, EXO_MAX_MAP_REQUEST_BYTES).is_ok());
+        assert!(validate_request_bound(true, EXO_MAX_STANDARD_REQUEST_BYTES).is_err());
     }
 }

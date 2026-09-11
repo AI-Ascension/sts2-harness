@@ -6,14 +6,17 @@ const MAX_ACTIONS: usize = 256;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ActionKind {
     StartRun,
+    SelectCharacter,
     SelectMapNode,
     PlayCard,
+    UsePotion,
     EndTurn,
     ChooseReward,
     SkipReward,
     ShopPurchase,
     ShopRemove,
     Rest,
+    RestOption,
     Smith,
     EventChoice,
     SelectCard,
@@ -22,6 +25,7 @@ pub enum ActionKind {
     Proceed,
     ConfirmSelection,
     CancelSelection,
+    SelectPlayer,
 }
 
 /// One host-generated legal action reference. The action payload remains owned by the host/MCP

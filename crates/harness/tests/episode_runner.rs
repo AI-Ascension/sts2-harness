@@ -39,9 +39,17 @@ struct FakeRuntime {
     released: bool,
     mcp_closed: bool,
     gateway_closed: bool,
+    dispatched_operation_ids: Vec<String>,
+    reconciled_operation_ids: Vec<String>,
+    dispatched_state_ids: Vec<String>,
     catalog_errors: Vec<PortError>,
     catalog_calls: usize,
+    catalog_requests: Vec<(String, u64)>,
     advance_catalog: bool,
+    idle_waits: usize,
+    reobserve_calls: usize,
+    reobserve_errors: Vec<RecoveryError>,
+    observe_after_reobserve: Option<Result<EpisodeObservation, PortError>>,
 }
 
 impl FakeRuntime {
@@ -62,9 +70,17 @@ impl FakeRuntime {
             released: false,
             mcp_closed: false,
             gateway_closed: false,
+            dispatched_operation_ids: Vec::new(),
+            reconciled_operation_ids: Vec::new(),
+            dispatched_state_ids: Vec::new(),
             catalog_errors: Vec::new(),
             catalog_calls: 0,
+            catalog_requests: Vec::new(),
             advance_catalog: false,
+            idle_waits: 0,
+            reobserve_calls: 0,
+            reobserve_errors: Vec::new(),
+            observe_after_reobserve: None,
         }
     }
 
@@ -86,6 +102,11 @@ impl EpisodeRuntimePort for FakeRuntime {
     }
 
     fn observe(&mut self) -> Result<EpisodeObservation, PortError> {
+        if self.reobserve_calls > 0
+            && let Some(result) = self.observe_after_reobserve.take()
+        {
+            return result;
+        }
         Ok(self.current().observation.clone())
     }
 
@@ -95,6 +116,8 @@ impl EpisodeRuntimePort for FakeRuntime {
         generation: u64,
     ) -> Result<EpisodeLegalActionSet, PortError> {
         self.catalog_calls += 1;
+        self.catalog_requests
+            .push((state_id.to_owned(), generation));
         if !self.catalog_errors.is_empty() {
             if self.advance_catalog {
                 self.index += 1;
@@ -118,6 +141,15 @@ impl EpisodeRuntimePort for FakeRuntime {
         identity: &ActionIdentity,
         action: &EpisodeLegalAction,
     ) -> Result<TransitionReceipt, PortError> {
+        if identity.state_id != self.current().observation.state_id()
+            || identity.generation != self.current().observation.generation()
+        {
+            return Err(PortError::new(
+                "wrong_state_identity",
+                "fake runtime received a non-authoritative state identity",
+                false,
+            ));
+        }
         if self.pending.is_some() {
             return Err(PortError::new(
                 "pending_transition",
@@ -133,6 +165,9 @@ impl EpisodeRuntimePort for FakeRuntime {
             action: action.clone(),
             after,
         });
+        self.dispatched_operation_ids
+            .push(identity.operation_id.clone());
+        self.dispatched_state_ids.push(identity.state_id.clone());
         self.dispatches += 1;
         if self.fail_first_dispatch && self.dispatches == 1 {
             return Err(PortError::new(
@@ -172,6 +207,7 @@ impl BarrierPort for FakeRuntime {
             && operation_id.starts_with("episode-idle-")
             && let Some(after) = self.next_observation()
         {
+            self.idle_waits += 1;
             self.index += 1;
             return Ok(WaitSample::new(WaitOutcome::Successor, Some(after)));
         }
@@ -189,10 +225,15 @@ impl BarrierPort for FakeRuntime {
 
 impl RecoveryPort for FakeRuntime {
     fn reobserve(&mut self) -> Result<EpisodeObservation, RecoveryError> {
+        self.reobserve_calls += 1;
+        if !self.reobserve_errors.is_empty() {
+            return Err(self.reobserve_errors.remove(0));
+        }
         Ok(self.current().observation.clone())
     }
 
     fn reconcile(&mut self, operation_id: &str) -> Result<TransitionReceipt, RecoveryError> {
+        self.reconciled_operation_ids.push(operation_id.to_owned());
         if self.unknown_first_reconcile && self.reconciles == 0 {
             self.reconciles += 1;
             let pending = self
@@ -261,6 +302,7 @@ struct FakeModel {
     calls: usize,
     unavailable: bool,
     completions: Vec<bool>,
+    input_generations: Vec<u64>,
 }
 
 impl DecisionSource for FakeModel {
@@ -270,6 +312,7 @@ impl DecisionSource for FakeModel {
 
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError> {
         self.calls += 1;
+        self.input_generations.push(input.observation.generation());
         if self.unavailable {
             return Err(PolicyError::ProviderUnavailable);
         }
@@ -283,85 +326,6 @@ impl DecisionSource for FakeModel {
             rationale: String::from("bounded fake provider decision"),
             confidence: Some(75),
         })
-    }
-}
-
-fn state(stage: EpisodeStage, generation: u64) -> State {
-    let state_id = format!("{}-{generation}", stage_name(stage));
-    let action_id = format!("{}-action", stage_name(stage));
-    let kind = match stage {
-        EpisodeStage::Setup => ActionKind::StartRun,
-        EpisodeStage::Map => ActionKind::SelectMapNode,
-        EpisodeStage::Combat => ActionKind::EndTurn,
-        EpisodeStage::Reward => ActionKind::ChooseReward,
-        EpisodeStage::Shop => ActionKind::ShopPurchase,
-        EpisodeStage::Event => ActionKind::EventChoice,
-        EpisodeStage::Rest => ActionKind::Rest,
-        EpisodeStage::Selection => ActionKind::SelectCard,
-        EpisodeStage::Victory | EpisodeStage::Defeat => ActionKind::SaveQuit,
-        EpisodeStage::Unknown | EpisodeStage::Recovery => ActionKind::SaveQuit,
-    };
-    let observation = EpisodeObservation::new(
-        state_id.clone(),
-        generation,
-        stage,
-        !stage.is_terminal(),
-        false,
-        !stage.is_terminal(),
-        projection(&state_id, generation, stage),
-    )
-    .expect("state projection is valid");
-    let action = EpisodeLegalAction::new(action_id, kind).expect("action is valid");
-    let actions = EpisodeLegalActionSet::new(state_id, generation, vec![action])
-        .expect("action set is valid");
-    State {
-        observation,
-        actions,
-    }
-}
-
-fn projection(state_id: &str, generation: u64, stage: EpisodeStage) -> Value {
-    let state = match stage {
-        EpisodeStage::Setup => json!({"state":"setup","characters":[]}),
-        EpisodeStage::Map => json!({"state":"map","node_id":"node-1","options":[]}),
-        EpisodeStage::Combat => json!({"state":"combat","turn_index":1,"enemies":[]}),
-        EpisodeStage::Reward | EpisodeStage::Rest => {
-            json!({"state":stage_name(stage),"options":[]})
-        }
-        EpisodeStage::Shop => json!({"state":"shop","items":[]}),
-        EpisodeStage::Event | EpisodeStage::Selection => {
-            json!({"state":stage_name(stage),"choices":[]})
-        }
-        EpisodeStage::Victory => json!({"state":"victory"}),
-        EpisodeStage::Defeat => json!({"state":"defeat","reason":"test"}),
-        EpisodeStage::Unknown | EpisodeStage::Recovery => {
-            json!({"state":"recovery","code":"test"})
-        }
-    };
-    json!({
-        "state_id": state_id,
-        "generation": generation,
-        "visible_seed": "visible-seed-only",
-        "player": {"hp":50,"max_hp":50,"energy":3,"gold":99,"hand":[],"deck":[],"discard":[],"exhaust":[]},
-        "state": state,
-        "legal_actions": [{"action_id": format!("{}-action", stage_name(stage)), "action": {"kind":"end_turn"}}]
-    })
-}
-
-fn stage_name(stage: EpisodeStage) -> &'static str {
-    match stage {
-        EpisodeStage::Setup => "setup",
-        EpisodeStage::Map => "map",
-        EpisodeStage::Combat => "combat",
-        EpisodeStage::Reward => "reward",
-        EpisodeStage::Shop => "shop",
-        EpisodeStage::Event => "event",
-        EpisodeStage::Rest => "rest",
-        EpisodeStage::Selection => "selection",
-        EpisodeStage::Victory => "victory",
-        EpisodeStage::Defeat => "defeat",
-        EpisodeStage::Recovery => "recovery",
-        EpisodeStage::Unknown => "unknown",
     }
 }
 
@@ -380,23 +344,7 @@ fn runner() -> EpisodeRunner {
     )
 }
 
-fn complete_states() -> Vec<State> {
-    [
-        EpisodeStage::Setup,
-        EpisodeStage::Map,
-        EpisodeStage::Combat,
-        EpisodeStage::Reward,
-        EpisodeStage::Shop,
-        EpisodeStage::Event,
-        EpisodeStage::Rest,
-        EpisodeStage::Selection,
-        EpisodeStage::Victory,
-    ]
-    .into_iter()
-    .enumerate()
-    .map(|(index, stage)| state(stage, index as u64))
-    .collect()
-}
+include!("episode_runner/fixtures.rs");
 
 #[path = "episode_runner/scenarios.rs"]
 mod scenarios;

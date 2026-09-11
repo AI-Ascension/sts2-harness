@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 pub(crate) struct RuntimeConfig {
+    #[allow(dead_code)]
+    pub(crate) seed_transport: Option<super::seed_transport::SeedTransportConfig>,
     pub(crate) gateway_address: String,
     pub(crate) gateway_token: String,
     pub(crate) mcp_binary: String,
@@ -14,27 +16,44 @@ pub(crate) struct RuntimeConfig {
     pub(crate) run_id: String,
     pub(crate) episode_id: String,
     pub(crate) trajectory_id: String,
+    pub(crate) trace_id: String,
     pub(crate) artifact_id: String,
     pub(crate) wait_for_combat_seconds: u64,
     pub(crate) settlement_timeout_seconds: u64,
+    pub(crate) map_context_enabled: bool,
+    /// Recovery credentials and identity are captured before child environments are scrubbed.
+    pub(crate) recovery_environment: Vec<(String, String)>,
 }
 
 impl RuntimeConfig {
+    pub(crate) fn recovery_value(&self, name: &str) -> Option<&str> {
+        self.recovery_environment
+            .iter()
+            .find_map(|(key, value)| (key == name).then_some(value.as_str()))
+    }
+
     pub(crate) fn from_environment() -> Result<Self, String> {
         let runtime_profile = env_or_default("STS2_RUNTIME_PROFILE", "runtime-v1")?;
         if !matches!(
             runtime_profile.as_str(),
-            "runtime-v1" | "runtime-v2" | "runtime-v3-gameplay"
+            "runtime-v1"
+                | "runtime-v2"
+                | "runtime-v3-gameplay"
+                | "runtime-v4-expert"
+                | "runtime-v4-expert-rest-action"
         ) {
             return Err(String::from(
-                "STS2_RUNTIME_PROFILE must be runtime-v1, runtime-v2, or runtime-v3-gameplay",
+                "STS2_RUNTIME_PROFILE must be runtime-v1, runtime-v2, runtime-v3-gameplay, runtime-v4-expert, or runtime-v4-expert-rest-action",
             ));
         }
         let session_id = env_or_default("STS2_SESSION_ID", "session-1")?;
+        let seed_transport = super::seed_transport::SeedTransportConfig::from_environment()?;
         let wait_for_combat_seconds = bounded_seconds("STS2_RUNTIME_WAIT_FOR_COMBAT_SECONDS", "0")?;
         let settlement_timeout_seconds =
             bounded_seconds("STS2_RUNTIME_SETTLEMENT_TIMEOUT_SECONDS", "30")?;
+        let map_context_enabled = flag_with_default("STS2_ENABLE_MAP_CONTEXT", false)?;
         let config = Self {
+            seed_transport,
             gateway_address: env_or_default("STS2_GATEWAY_ADDR", "127.0.0.1:15525")?,
             gateway_token: required("STS2_GATEWAY_TOKEN")?,
             mcp_binary: env_or_default("STS2_MCP_BINARY", "sts2-mcp-server")?,
@@ -50,9 +69,32 @@ impl RuntimeConfig {
             run_id: env_or_default("STS2_RUN_ID", "run-runtime-0001")?,
             episode_id: env_or_default("STS2_EPISODE_ID", "episode-runtime-0001")?,
             trajectory_id: env_or_default("STS2_TRAJECTORY_ID", "trajectory-runtime-0001")?,
+            trace_id: env_or_default("STS2_TRACE_ID", "trace-runtime-0001")?,
             artifact_id: env_or_default("STS2_ARTIFACT_ID", "artifact-runtime-0001")?,
             wait_for_combat_seconds,
             settlement_timeout_seconds,
+            map_context_enabled,
+            recovery_environment: [
+                "STS2_RECOVERY_TOKEN",
+                "STS2_RECOVERY_PRINCIPAL_ID",
+                "STS2_RECOVERY_ROLE",
+                "STS2_RECOVERY_PROOF",
+                "STS2_RECOVERY_DEPLOYMENT_ID",
+                "STS2_RECOVERY_INSTANCE_ID",
+                "STS2_RECOVERY_INSTANCE_INCAR",
+                "STS2_RECOVERY_BOOT_ID",
+                "STS2_RECOVERY_LEASE_ID",
+                "STS2_RECOVERY_AUTHORITY_GENERATION",
+                "STS2_RECOVERY_LEASE_EPOCH",
+                "STS2_RECOVERY_CURRENT_FENCE_JSON",
+            ]
+            .into_iter()
+            .filter_map(|name| {
+                std::env::var(name)
+                    .ok()
+                    .map(|value| (name.to_owned(), value))
+            })
+            .collect(),
         };
         config.validate()?;
         Ok(config)
@@ -69,6 +111,7 @@ impl RuntimeConfig {
             ("STS2_RUN_ID", &config.run_id),
             ("STS2_EPISODE_ID", &config.episode_id),
             ("STS2_TRAJECTORY_ID", &config.trajectory_id),
+            ("STS2_TRACE_ID", &config.trace_id),
             ("STS2_ARTIFACT_ID", &config.artifact_id),
         ] {
             if !safe_identity(value) {
@@ -95,12 +138,13 @@ impl RuntimeConfig {
             &config.run_id,
             &config.episode_id,
             &config.trajectory_id,
+            &config.trace_id,
             &config.artifact_id,
         ];
         for (index, value) in lineage_ids.iter().enumerate() {
             if lineage_ids[..index].contains(value) {
                 return Err(String::from(
-                    "STS2 run, episode, trajectory, and artifact identities must be distinct",
+                    "STS2 run, episode, trajectory, trace, and artifact identities must be distinct",
                 ));
             }
         }
@@ -140,13 +184,42 @@ fn safe_identity(value: &str) -> bool {
         })
 }
 
+fn flag_with_default(name: &str, default: bool) -> Result<bool, String> {
+    match std::env::var(name) {
+        Ok(value) => parse_flag(name, &value),
+        Err(std::env::VarError::NotPresent) => Ok(default),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!("{name} is not valid UTF-8")),
+    }
+}
+
+fn parse_flag(name: &str, value: &str) -> Result<bool, String> {
+    match value {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(format!("{name} must be exactly true or false")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::RuntimeConfig;
+    use super::{RuntimeConfig, parse_flag};
+
+    #[test]
+    fn map_context_flag_defaults_off_and_accepts_only_exact_booleans() {
+        assert_eq!(parse_flag("X", "false"), Ok(false));
+        assert_eq!(parse_flag("X", "true"), Ok(true));
+        for value in ["", "1", "0", "yes", "TRUE", "True", " true"] {
+            assert!(
+                parse_flag("X", value).is_err(),
+                "{value:?} must be rejected"
+            );
+        }
+    }
 
     #[test]
     fn runtime_sessions_are_validated_independently() {
         let mut config = RuntimeConfig {
+            seed_transport: None,
             gateway_address: String::from("127.0.0.1:15525"),
             gateway_token: String::from("synthetic-token"),
             mcp_binary: String::from("mcp"),
@@ -160,9 +233,12 @@ mod tests {
             run_id: "run-1".into(),
             episode_id: "episode-1".into(),
             trajectory_id: "trajectory-1".into(),
+            trace_id: "trace-1".into(),
             artifact_id: "artifact-1".into(),
             wait_for_combat_seconds: 0,
             settlement_timeout_seconds: 30,
+            map_context_enabled: false,
+            recovery_environment: Vec::new(),
         };
         assert!(config.validate().is_ok());
         config.mcp_session_id = String::from("unsafe session");

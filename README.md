@@ -44,7 +44,7 @@ and licensing details follow below.
 
 > **AI-Ascension · flagship · tier 4: experiment coordinator** — Experiment coordinator for AI runs: episodes, a pluggable model-provider interface, replay of recorded records, and artifact lineage.
 >
-> **Status:** deterministic tests, the bounded `runtime-v1` host trace, and native runtime-v3 Windows/Linux campaign and fresh-replay evidence are `confirmed` for the recorded STS2 v0.107.1 fixtures · model-played Victory, complete campaign coverage, and broader compatibility `unverified`.
+> **Status:** deterministic tests, the bounded `runtime-v1` host trace, native runtime-v3 Windows/Linux campaign and fresh-replay evidence, and the additive `seeded-run-v1` source/component transport are `confirmed` for the recorded STS2 v0.107.1 fixtures · model-played Victory, live seeded-run settlement, complete campaign coverage, and broader compatibility `unverified`.
 > **Proof:** [45-second browser replay](https://ai-ascension.github.io/proof.html) · [Evidence ledger](https://ai-ascension.github.io/evidence.html) · [This repository on the map](https://ai-ascension.github.io/repositories.html#sts2-harness)
 > **Start here:** the harness is the flagship entry point for the organization; the public proof currently lives in [sts2-gateway](https://github.com/AI-Ascension/sts2-gateway) because that is where the first fenced boundary is tested.
 > **Owner:** The harness maintainers own the experiment control plane and its records: coordination, provider ports, runs and episodes, trajectories, replay, and artifact lineage.
@@ -57,6 +57,9 @@ package contains pure coordinator ports and deterministic fake-boundary tests; a
 `runtime-v1` trace confirms the coordinator-to-host path for one exact disposable STS2 profile.
 Dated runtime-v3 evidence additionally confirms visible Astra-controlled Windows and Linux
 setup-to-Defeat campaigns and fresh-process replays through harness, MCP, gateway, and mod. This
+target also contains the additive seeded-run-v1 startup handoff: a bounded, context-digest-bound
+plan and one durable reservation before the single start mutation. Its source/component checks do
+not establish native seeded-run settlement, profile/save isolation, or release compatibility. This
 target is distinct from any legacy or reference checkout and contains no game files, model weights,
 datasets, provider credentials, or generated product artifacts.
 
@@ -173,6 +176,7 @@ The local read-only validation entrypoint is:
 ```bash
 cargo run --locked --package repo-policy -- --strict
 cargo metadata --locked --no-deps --format-version 1
+(cd protocol-artifact/seeded-run-v1 && sha256sum -c SHA256SUMS)
 ```
 
 For Rust changes, also run `cargo fmt --all --check`,
@@ -210,7 +214,11 @@ and harness environments; use the same `STS2_RUNTIME_PROFILE=runtime-v3-gameplay
 for both processes. Gateway and MCP session identities remain separate namespaces. The harness
 passes both identities and the profile to its MCP child. Harness, gateway, and MCP default to the
 independent MCP session `mcp-session-1`; a shared explicit override also keeps custom session names
-consistent across processes.
+consistent across processes. The native watchdog worker adapter is documented in
+[`docs/worker-endpoint-v1.md`](docs/worker-endpoint-v1.md). It is a Linux-only, owner-local
+authenticated endpoint around the harness worker runtime; its bootstrap, peer-image proof,
+credential prelude, bounded framing, durable admission, and child resume behavior remain distinct
+from gameplay settlement and live-host evidence.
 The current runtime-v3 handoff has been exercised on the named Windows and Linux v0.107.1 fixtures.
 The Windows campaign reached Defeat without a controller restart; the Linux campaign reached
 Defeat after one controller restart following a catalog-read failure. Both had fresh-process
@@ -229,6 +237,42 @@ successful checkpoint verification releases the runner lease and does not report
 The default remains complete replay. See [the replay decision](docs/decisions/0009-seeded-episode-replay.md)
 for comparison rules and evidence limits.
 
+## Seeded-run transport handoff
+
+When `STS2_SEED_PLAN_JSON` is set, `sts2-harness-runtime` validates one bounded plan entry and a
+concrete selected context before it starts an MCP process. The context is standard Ironclad with
+ascension 0 through 20, ordered acts and modifiers, a profile baseline, save policy, and game/mod
+compatibility identities. `STS2_SEED_PLAN_DIGEST` and `STS2_SEED_CONTEXT_DIGEST` may pin the
+canonical SHA-256 values; `STS2_SEED_ENTRY_ORDINAL` selects a contiguous plan entry, while
+`STS2_SEED_OPERATION_ID`, `STS2_SEED_RUN_MODE`, and `STS2_SEED_CONTEXT_JSON` identify the request.
+The optional `STS2_SEED_VERIFY_IDEMPOTENCY=true` performs an exact duplicate check after settlement.
+
+The runner first observes the allocated host to establish the generation fence, then atomically
+writes `STS2_SEED_RESERVATION_PATH`. A new reservation allows exactly one `start_seeded_run` call
+through the `seeded-run-v1` MCP profile. A matching `start_pending`, `unknown`, or `settled`
+reservation enters reconcile-only recovery; timeout or disconnect keeps the same operation ID and
+never retries the seed mutation. Settlement requires the canonical seed, a fresh advanced host
+observation, and the `run_started` effect witness. The copied artifact is schema digest
+`5c659f344be78f84e8d783986925d462714f933cac95d18943358992f7d3e2b8`, aligned with protocol main
+`d3ab5fca7d9d74bb31eeb3e5b343d8024ee44404`. These checks are source/component and artifact
+evidence; they do not establish a native run, profile/save isolation, gameplay, deployment, or
+release support.
+
+## Native co-op consumer boundary
+
+The harness now consumes the accepted `sts2-protocol/coop-native-v1` component artifact. The
+transport-free consumer validates its closed envelope, provenance and schema digest, strict
+request/response direction (including bodyful same-operation recovery requests), opaque peer-token
+uniqueness, host-generation fences, legal-catalog identity, effect/receipt generation relations,
+and recovery state transitions. Its coordinator records requested, accepted, settled, rejected,
+unknown, duplicate and reconciled outcomes and never blindly retries an unknown mutation.
+
+This is source and deterministic component evidence only. The consumer has no MCP process, HTTP
+client, gateway lease, provider, game access, or live native session. The accepted component artifact
+and its seventeen goldens do not prove native peer admission, host legality, settled shared effects,
+checksum convergence, disconnect/rejoin behavior, deployment, or release compatibility; those remain
+`unverified` until an authorized disposable two-peer host run records each witness.
+
 ## Runtime-v2 deterministic fake lane
 
 The separate `sts2-harness-runtime-v2-fake` binary consumes the copied `runtime-v2` release-like
@@ -239,3 +283,19 @@ Runtime-v1 coordinator or contact a live host, game, provider, model, profile, s
 Live host settlement, gameplay mutation, provider/model execution, and Runtime-v2 compatibility
 remain `unverified`; see
 [`docs/evidence/runtime-v2-fake-20260902.md`](docs/evidence/runtime-v2-fake-20260902.md).
+
+## Runtime-v4 expert coordinator boundary
+
+At current harness main
+[`3926e5a30ab569612e67d2dfdc6542f1391e95d7`](https://github.com/AI-Ascension/sts2-harness/commit/3926e5a30ab569612e67d2dfdc6542f1391e95d7),
+the coordinator consumes the copied `runtime-v4-expert` state and `runtime-v4-expert-action`
+artifacts, validates the fair-play observation and host-generated legal-action catalog, and runs
+bounded executable composition and recovery checks through the expert MCP profile. Their schema
+digests are `0ee034d5da83f34e9fa0ba23038738d56ef8cfccb1c6e752af3ab63d212c8e42` and
+`393318bda8c3522c0ecbacc78b95471a9f4dc3f825169d2048f4c74a7b7f2929`, aligned with the protocol
+artifact admitted from protocol main `f2dac90529f584a6511c1760adce9da28f7f910a`; current protocol
+main is `d3ab5fca7d9d74bb31eeb3e5b343d8024ee44404`. The separate REST-action artifact remains a candidate
+at digest `bb3555fae28eb1f79d08a15e9884696a579e4c20836f5016509f17e0f4c36fbd`. These are
+source/component and bounded synthetic composition checks; the harness has no direct host access,
+so native host legality, settled effects, provider-run compatibility, deployment, release, and live
+end-to-end behavior remain unverified.

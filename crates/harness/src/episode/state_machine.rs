@@ -45,6 +45,18 @@ impl EpisodeMachine {
         &self.phase
     }
 
+    /// Returns the operation that must remain visible while dispatch or settlement is unresolved.
+    #[must_use]
+    pub fn pending_operation_id(&self) -> Option<&str> {
+        match &self.phase {
+            EpisodePhase::AwaitingTransition { operation_id, .. }
+            | EpisodePhase::Recovering {
+                operation_id: Some(operation_id),
+            } => Some(operation_id),
+            _ => None,
+        }
+    }
+
     pub fn observe(&mut self, observation: EpisodeObservation) -> Result<(), EpisodeMachineError> {
         if self
             .last_generation

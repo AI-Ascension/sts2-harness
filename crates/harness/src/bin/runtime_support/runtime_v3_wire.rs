@@ -4,25 +4,62 @@ use serde_json::{Value, json};
 use sts2_harness::ActionKind;
 
 use super::mcp::McpProcess;
+use super::mcp_process::McpProcessError;
+
+#[path = "runtime_v3_wire_recovery.rs"]
+mod recovery;
+pub(super) use recovery::{initialize_recovery_mcp, recovery_call};
+#[path = "runtime_v3_recovery_base64.rs"]
+mod recovery_encoding;
+pub(super) use recovery_encoding::decode as decode_recovery_action;
+
+pub(super) const RUNTIME_V3_SCHEMA_DIGEST: &str =
+    "8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63";
 
 const CATALOG_REVISION: &str = "runtime-v3-gameplay-mcp";
+const EXPERT_CATALOG_REVISION: &str = "runtime-v4-expert-mcp";
+const EXPERT_REST_ACTION_CATALOG_REVISION: &str = "runtime-v4-expert-rest-action-mcp";
+const RECEIPT_QUERY_CATALOG_REVISION: &str = "coop-receipt-query-v1-mcp";
+const SEEDED_RUN_CATALOG_REVISION: &str = "seeded-run-v1-mcp";
 
+include!("runtime_v3_wire_failure.rs");
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RpcReadKind {
+    None,
+    Catalog,
+    Recovery,
+}
+
+pub(super) fn initialize_mcp_profile(mcp: &mut McpProcess, profile: &str) -> Result<(), String> {
+    initialize_mcp_profile_classified(mcp, profile).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
 pub(super) fn initialize_mcp(mcp: &mut McpProcess) -> Result<(), String> {
-    let initialize = rpc_call(
+    initialize_mcp_profile(mcp, "runtime-v3-gameplay")
+}
+
+pub(super) fn initialize_mcp_profile_classified(
+    mcp: &mut McpProcess,
+    profile: &str,
+) -> Result<(), RpcFailure> {
+    let initialize = rpc_call_recovery_read(
         mcp,
         1,
         "initialize",
         json!({
             "protocolVersion": "2025-06-18",
             "capabilities": {},
-            "clientInfo": {"name": "sts2-harness-runtime-v3", "version": "0.0.0"}
+            "clientInfo": {"name": "sts2-harness-runtime", "version": profile}
         }),
     )?;
     if initialize.get("result").is_none() {
-        return Err(String::from("MCP initialize omitted result"));
+        return Err(RpcFailure::terminal("MCP initialize omitted result"));
     }
-    let catalog = rpc_call(mcp, 2, "tools/list", json!({}))?;
-    validate_catalog(&catalog)
+    let catalog = rpc_call_recovery_read(mcp, 2, "tools/list", json!({}))?;
+    validate_catalog(&catalog, profile).map_err(RpcFailure::terminal)
 }
 
 pub(super) fn rpc_call(
@@ -30,14 +67,54 @@ pub(super) fn rpc_call(
     id: u64,
     method: &str,
     params: Value,
-) -> Result<Value, String> {
-    let timeout = request_timeout(method, &params)?;
+) -> Result<Value, RpcFailure> {
     let catalog_read = method == "tools/call" && params["name"] == "sts2.legal_actions";
-    let response = mcp.call_with_timeout(id, method, params, timeout)?;
+    rpc_call_with_read_kind(
+        mcp,
+        id,
+        method,
+        params,
+        if catalog_read {
+            RpcReadKind::Catalog
+        } else {
+            RpcReadKind::None
+        },
+    )
+}
+
+pub(super) fn rpc_call_catalog_read(
+    mcp: &mut McpProcess,
+    id: u64,
+    method: &str,
+    params: Value,
+) -> Result<Value, RpcFailure> {
+    rpc_call_with_read_kind(mcp, id, method, params, RpcReadKind::Catalog)
+}
+
+pub(super) fn rpc_call_recovery_read(
+    mcp: &mut McpProcess,
+    id: u64,
+    method: &str,
+    params: Value,
+) -> Result<Value, RpcFailure> {
+    rpc_call_with_read_kind(mcp, id, method, params, RpcReadKind::Recovery)
+}
+
+fn rpc_call_with_read_kind(
+    mcp: &mut McpProcess,
+    id: u64,
+    method: &str,
+    params: Value,
+    read_kind: RpcReadKind,
+) -> Result<Value, RpcFailure> {
+    let timeout = request_timeout(method, &params).map_err(RpcFailure::terminal)?;
+    let response = mcp
+        .call_with_timeout_classified(id, method, params, timeout)
+        .map_err(RpcFailure::from_mcp)?;
     if response.get("id").and_then(Value::as_u64) != Some(id) {
-        return Err(format!(
+        return Err(RpcFailure::terminal(format!(
             "MCP {method} response identity does not match request"
-        ));
+        )));
     }
     if response.get("error").is_some() {
         if std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true") {
@@ -47,7 +124,14 @@ pub(super) fn rpc_call(
                 response["error"]["code"].as_i64()
             );
         }
-        return Err(format!("MCP {method} returned an RPC error"));
+        if read_kind != RpcReadKind::None && is_transient_gateway_rpc_error(&response) {
+            return Err(RpcFailure::transient(
+                "MCP recovery read was temporarily unavailable",
+            ));
+        }
+        return Err(RpcFailure::terminal(format!(
+            "MCP {method} returned an RPC error"
+        )));
     }
     if response
         .get("result")
@@ -59,12 +143,40 @@ pub(super) fn rpc_call(
         // envelope for the caller's full identity/schema validation and reconciliation.
         if method != "tools/call"
             || !(has_gameplay_envelope(&response)
-                || (catalog_read && has_catalog_reobserve(&response, id)))
+                || has_expert_action_envelope(&response)
+                || has_expert_rest_action_envelope(&response)
+                || has_receipt_query_envelope(&response)
+                || (read_kind == RpcReadKind::Recovery && has_recovery_envelope(&response))
+                || (read_kind == RpcReadKind::Catalog && has_catalog_reobserve(&response, id)))
         {
-            return Err(format!("MCP {method} returned a tool error"));
+            if read_kind != RpcReadKind::None && is_transient_gateway_tool_error(&response) {
+                return Err(RpcFailure::transient(
+                    "MCP recovery read was temporarily unavailable",
+                ));
+            }
+            return Err(RpcFailure::terminal(format!(
+                "MCP {method} returned a tool error"
+            )));
         }
     }
     Ok(response)
+}
+
+fn is_transient_gateway_rpc_error(response: &Value) -> bool {
+    matches!(response["error"]["code"].as_i64(), Some(-32003 | -32008))
+}
+
+fn is_transient_gateway_tool_error(response: &Value) -> bool {
+    response["result"]["content"]
+        .as_array()
+        .is_some_and(|content| content.len() == 1)
+        && matches!(
+            response["result"]["content"][0]["text"].as_str(),
+            Some(
+                "gateway error -32003: gateway is unavailable"
+                    | "gateway error -32008: gateway request timed out"
+            )
+        )
 }
 
 fn has_catalog_reobserve(response: &Value, id: u64) -> bool {
@@ -89,44 +201,54 @@ pub(super) fn catalog_reobserve(value: &Value) -> bool {
         )
 }
 
-fn has_gameplay_envelope(response: &Value) -> bool {
-    response["result"]["content"][0]["text"]
-        .as_str()
-        .and_then(|text| serde_json::from_str::<Value>(text).ok())
-        .is_some_and(|value| value["protocol_version"] == "runtime-v3-gameplay")
-}
+include!("runtime_v3_wire_validation.rs");
 
-fn request_timeout(method: &str, params: &Value) -> Result<std::time::Duration, String> {
-    let wait = if method == "tools/call" && params["name"] == "sts2.wait_for_transition" {
-        params["arguments"]["wait_for_millis"]
-            .as_u64()
-            .filter(|value| *value <= 120_000)
-            .ok_or_else(|| String::from("MCP transition wait is outside its bound"))?
-    } else {
-        0
-    };
-    Ok(std::time::Duration::from_millis(wait + 5_000))
-}
-
-fn validate_catalog(response: &Value) -> Result<(), String> {
+fn validate_catalog(response: &Value, profile: &str) -> Result<(), String> {
     let result = response
         .get("result")
         .ok_or_else(|| String::from("MCP tools/list omitted result"))?;
-    if result.get("revision").and_then(Value::as_str) != Some(CATALOG_REVISION) {
+    let (revision, expected): (&str, &[&str]) = match profile {
+        "runtime-v3-gameplay" => (
+            CATALOG_REVISION,
+            &[
+                "sts2.observe",
+                "sts2.legal_actions",
+                "sts2.dispatch_action",
+                "sts2.wait_for_transition",
+                "sts2.reobserve",
+                "sts2.recover",
+            ],
+        ),
+        "runtime-v4-expert" => (
+            EXPERT_CATALOG_REVISION,
+            &[
+                "sts2.expert_state",
+                "sts2.expert_action",
+                "sts2.expert_reconcile",
+            ],
+        ),
+        "runtime-v4-expert-rest-action" => (
+            EXPERT_REST_ACTION_CATALOG_REVISION,
+            &[
+                "sts2.expert_state",
+                "sts2.expert_rest_action",
+                "sts2.expert_rest_reconcile",
+            ],
+        ),
+        "coop-receipt-query-v1" => (RECEIPT_QUERY_CATALOG_REVISION, &["sts2.coop_receipt_query"]),
+        "seeded-run-v1" => (
+            SEEDED_RUN_CATALOG_REVISION,
+            &["start_seeded_run", "reconcile_seeded_run"],
+        ),
+        _ => return Err(String::from("MCP profile is unsupported")),
+    };
+    if result.get("revision").and_then(Value::as_str) != Some(revision) {
         return Err(String::from("MCP catalog is not runtime-v3-gameplay-mcp"));
     }
     let tools = result
         .get("tools")
         .and_then(Value::as_array)
         .ok_or_else(|| String::from("MCP catalog omitted tools"))?;
-    let expected = [
-        "sts2.observe",
-        "sts2.legal_actions",
-        "sts2.dispatch_action",
-        "sts2.wait_for_transition",
-        "sts2.reobserve",
-        "sts2.recover",
-    ];
     if tools.len() != expected.len()
         || tools
             .iter()
@@ -134,7 +256,7 @@ fn validate_catalog(response: &Value) -> Result<(), String> {
             .any(|(tool, expected)| tool.get("name").and_then(Value::as_str) != Some(expected))
     {
         return Err(String::from(
-            "MCP catalog does not expose the exact six-tool surface",
+            "MCP catalog does not expose the exact profile tool surface",
         ));
     }
     Ok(())
@@ -155,44 +277,22 @@ pub(super) fn combine_cleanup(
     message
 }
 
-pub(super) const fn action_kind_name(kind: ActionKind) -> &'static str {
-    match kind {
-        ActionKind::StartRun => "start_run",
-        ActionKind::SelectMapNode => "select_map_node",
-        ActionKind::PlayCard => "play_card",
-        ActionKind::EndTurn => "end_turn",
-        ActionKind::ChooseReward => "choose_reward",
-        ActionKind::SkipReward => "skip_reward",
-        ActionKind::Proceed => "proceed",
-        ActionKind::ConfirmSelection => "confirm_selection",
-        ActionKind::CancelSelection => "cancel_selection",
-        ActionKind::ShopPurchase => "shop_purchase",
-        ActionKind::ShopRemove => "shop_remove",
-        ActionKind::Rest => "rest",
-        ActionKind::Smith => "smith",
-        ActionKind::EventChoice => "event_choice",
-        ActionKind::SelectCard => "select_card",
-        ActionKind::ConfirmVictory => "confirm_victory",
-        ActionKind::SaveQuit => "save_quit",
-    }
+include!("runtime_v3_wire_action_kind.rs");
+
+/// The canonical recovery action is the complete legal-action envelope, not merely the inner
+/// payload sent to the frozen gameplay tool. Its bytes are retained before dispatch and are the
+/// only bytes accepted for historical recovery.
+pub(super) fn canonical_action_bytes(action_id: &str, payload: &Value) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(&json!({"action": payload, "action_id": action_id}))
+        .map_err(|error| format!("cannot encode canonical runtime-v3 action: {error}"))
 }
 
-pub(super) const fn stage_name(stage: sts2_harness::EpisodeStage) -> &'static str {
-    match stage {
-        sts2_harness::EpisodeStage::Setup => "setup",
-        sts2_harness::EpisodeStage::Map => "map",
-        sts2_harness::EpisodeStage::Combat => "combat",
-        sts2_harness::EpisodeStage::Reward => "reward",
-        sts2_harness::EpisodeStage::Shop => "shop",
-        sts2_harness::EpisodeStage::Event => "event",
-        sts2_harness::EpisodeStage::Rest => "rest",
-        sts2_harness::EpisodeStage::Selection => "selection",
-        sts2_harness::EpisodeStage::Victory => "victory",
-        sts2_harness::EpisodeStage::Defeat => "defeat",
-        sts2_harness::EpisodeStage::Recovery => "recovery",
-        sts2_harness::EpisodeStage::Unknown => "unknown",
-    }
+pub(super) fn canonical_action_digest(action_id: &str, payload: &Value) -> Result<String, String> {
+    let bytes = canonical_action_bytes(action_id, payload)?;
+    Ok(sts2_harness::sha256_hex(bytes))
 }
+
+include!("runtime_v3_wire_stage.rs");
 
 pub(super) fn port_error(
     code: &'static str,
@@ -204,50 +304,5 @@ pub(super) fn port_error(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    #[test]
-    fn catalog_recovery_requires_exact_shape_and_correlation() {
-        for code in [
-            "stale_generation",
-            "host_not_configured",
-            "host_observation_unavailable",
-        ] {
-            let mut body =
-                json!({"correlation_id":"42", "error_code":code, "recovery":"reobserve"});
-            let response = |body: &Value| json!({"result":{"isError":true,"content":[{"text":body.to_string()}]}});
-            assert!(has_catalog_reobserve(&response(&body), 42));
-            assert!(!has_catalog_reobserve(&response(&body), 43));
-            body["private"] = json!("extra");
-            assert!(!has_catalog_reobserve(&response(&body), 42));
-        }
-        for code in ["unauthorized", "timeout", "unknown"] {
-            assert!(!catalog_reobserve(
-                &json!({"correlation_id":"42","error_code":code,"recovery":"reobserve"})
-            ));
-        }
-    }
-    #[test]
-    fn gameplay_unknown_remains_available_for_receipt_validation() {
-        let envelope = json!({"protocol_version":"runtime-v3-gameplay", "status":"unknown",
-            "error_code":"settlement_unproven"});
-        let mut response = json!({"result":{"isError":true,
-            "content":[{"text":envelope.to_string()}]}});
-        assert!(has_gameplay_envelope(&response));
-        response["result"]["content"][0]["text"] = json!("gateway error -32005: rejected");
-        assert!(!has_gameplay_envelope(&response));
-        response["result"]["content"][0]["text"] = json!("{}");
-        assert!(!has_gameplay_envelope(&response));
-    }
-    #[test]
-    fn transition_wait_budget_includes_requested_semantic_wait() -> Result<(), String> {
-        let mut params =
-            json!({"name":"sts2.wait_for_transition","arguments":{"wait_for_millis":120_000}});
-        assert_eq!(request_timeout("tools/call", &params)?.as_millis(), 125_000);
-        assert_eq!(request_timeout("initialize", &params)?.as_millis(), 5_000);
-        params["arguments"]["wait_for_millis"] = json!(120_001);
-        assert!(request_timeout("tools/call", &params).is_err());
-        params["arguments"]["wait_for_millis"] = Value::Null;
-        assert!(request_timeout("tools/call", &params).is_err());
-        Ok(())
-    }
+    include!("runtime_v3_wire_tests.rs");
 }

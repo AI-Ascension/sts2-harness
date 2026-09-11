@@ -5,9 +5,30 @@ mod request;
 pub use request::ExoDecisionRequest;
 use request::{request_from_prompt, valid_revision};
 
+use crate::context_capture::{
+    CaptureBoundary, CaptureInput, CapturePort, generated_capture_attempt_id,
+};
+use crate::episode::map::{MAP_CONTEXT_WIRE_FIXED_BYTES, MAX_SNAPSHOT_BYTES};
 use crate::exo::decision::{DecisionError, parse_decision};
 use crate::exo::sandbox::{SandboxError, SanitizedObservation};
-use crate::provider::{ModelRequest, ModelResponse, ProviderPort};
+use provider_impl::error_code;
+
+/// Maximum serialized request for the ordinary Exo schema.
+pub const EXO_MAX_STANDARD_REQUEST_BYTES: usize = 128 * 1024;
+
+// A map request consists of one ordinary request, the schema-name delta, the map_context field,
+// and the fixed map wrapper around the schema-bounded snapshot. These are the exact serialized
+// bytes added by serde_json for the current wire shape.
+const MAP_SCHEMA_DELTA_BYTES: usize =
+    "sts2.exo-decision-map-v1".len() - "sts2.exo-decision-v1".len();
+const MAP_CONTEXT_FIELD_BYTES: usize = ",\"map_context\":".len();
+/// Serialized bytes added by the map schema and wrapper around the ordinary request body.
+pub const EXO_MAP_REQUEST_OVERHEAD_BYTES: usize =
+    MAP_SCHEMA_DELTA_BYTES + MAP_CONTEXT_FIELD_BYTES + MAP_CONTEXT_WIRE_FIXED_BYTES;
+
+/// Maximum serialized request that can carry a schema-bounded complete map.
+pub const EXO_MAX_MAP_REQUEST_BYTES: usize =
+    EXO_MAX_STANDARD_REQUEST_BYTES + MAX_SNAPSHOT_BYTES + EXO_MAP_REQUEST_OVERHEAD_BYTES;
 
 /// External Exo transport failure; no gameplay fallback is attached to it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -80,7 +101,7 @@ impl ExoConfig {
     pub(super) fn validate(&self) -> Result<(), ExoError> {
         if !valid_revision(&self.revision)
             || self.max_request_bytes == 0
-            || self.max_request_bytes > 128 * 1024
+            || self.max_request_bytes > EXO_MAX_MAP_REQUEST_BYTES
             || self.max_response_bytes == 0
             || self.max_response_bytes > 8 * 1024
             || self.timeout_millis == 0
@@ -155,6 +176,8 @@ pub struct ExoProvider<T> {
     transport: T,
     config: ExoConfig,
     closed: bool,
+    capture: Option<Box<dyn CapturePort>>,
+    attempt_id: Option<String>,
 }
 
 impl<T> ExoProvider<T> {
@@ -163,7 +186,26 @@ impl<T> ExoProvider<T> {
             transport,
             config,
             closed: false,
+            capture: None,
+            attempt_id: None,
         }
+    }
+
+    /// Attaches an optional inspection sink. The sink is sideband-only and receives the same
+    /// encoded bytes that the existing transport receives. Sink failures are ignored by design.
+    #[must_use]
+    pub fn with_capture(mut self, capture: Box<dyn CapturePort>) -> Self {
+        self.capture = Some(capture);
+        self
+    }
+
+    /// Records a trusted process-side attempt identifier without changing the provider payload.
+    pub fn set_capture_attempt_id(&mut self, attempt_id: Option<String>) {
+        self.attempt_id = attempt_id;
+    }
+
+    pub(super) fn capture_attempt_id(&self) -> Option<&str> {
+        self.attempt_id.as_deref()
     }
 
     #[must_use]
@@ -184,7 +226,76 @@ impl<T> ExoProvider<T> {
         }
         self.config.validate()?;
         let bytes = request.encode(self.config.max_request_bytes)?;
-        self.transport_exchange(&bytes).map_err(ExoError::from)
+        let attempt_id = self
+            .attempt_id
+            .clone()
+            .unwrap_or_else(|| generated_capture_attempt_id("exo"));
+        self.capture_prepared_with_attempt(
+            request.model_execution_id.as_str(),
+            Some(attempt_id.as_str()),
+            CaptureBoundary::ExoSessionRequest,
+            &bytes,
+        );
+        let response = self.transport_exchange(&bytes);
+        match response {
+            Ok(response) => {
+                self.capture_write_completed(
+                    request.model_execution_id.as_str(),
+                    Some(attempt_id.as_str()),
+                    CaptureBoundary::ExoSessionRequest,
+                );
+                Ok(response)
+            }
+            Err(error) => {
+                self.capture_write_unknown(
+                    request.model_execution_id.as_str(),
+                    Some(attempt_id.as_str()),
+                    error_code(ExoError::from(error)),
+                    CaptureBoundary::ExoSessionRequest,
+                );
+                Err(ExoError::from(error))
+            }
+        }
+    }
+
+    pub(super) fn capture_prepared_with_attempt(
+        &mut self,
+        execution_id: &str,
+        attempt_id: Option<&str>,
+        boundary: CaptureBoundary,
+        bytes: &[u8],
+    ) {
+        if let Some(capture) = self.capture.as_mut() {
+            let _ = capture.prepared(CaptureInput {
+                execution_id,
+                attempt_id,
+                boundary,
+                bytes,
+            });
+        }
+    }
+
+    pub(super) fn capture_write_completed(
+        &mut self,
+        execution_id: &str,
+        attempt_id: Option<&str>,
+        boundary: CaptureBoundary,
+    ) {
+        if let Some(capture) = self.capture.as_mut() {
+            let _ = capture.write_completed_at(execution_id, attempt_id, boundary);
+        }
+    }
+
+    pub(super) fn capture_write_unknown(
+        &mut self,
+        execution_id: &str,
+        attempt_id: Option<&str>,
+        code: &str,
+        boundary: CaptureBoundary,
+    ) {
+        if let Some(capture) = self.capture.as_mut() {
+            let _ = capture.write_unknown(execution_id, attempt_id, code, boundary);
+        }
     }
 }
 
@@ -222,80 +333,5 @@ impl<T: ExoTransport> ExoProvider<T> {
     }
 }
 
-impl<T: ExoTransport> ProviderPort for ExoProvider<T> {
-    fn execute(
-        &mut self,
-        request: &ModelRequest,
-    ) -> Result<ModelResponse, crate::error::ProviderError> {
-        let decision_request = request_from_prompt(
-            request.execution_id(),
-            &self.config,
-            request.prompt().as_str(),
-        )
-        .map_err(|error| provider_error(error_code(error), false))?;
-        let output = self
-            .execute_request(decision_request)
-            .map_err(|error| provider_error(error_code(error), is_retryable(error)))?;
-        parse_decision(&output)
-            .map_err(|error| provider_error(decision_error_code(error), false))?;
-        let output = String::from_utf8(output)
-            .map_err(|_| provider_error("exo_malformed_response", false))?;
-        let output = crate::provider::ModelOutput::new(output)
-            .map_err(|_| provider_error("exo_oversized_response", false))?;
-        ModelResponse::new(
-            request.execution_id(),
-            request.correlation().clone(),
-            output,
-        )
-    }
-
-    fn close(&mut self) -> Result<(), crate::error::PortError> {
-        if !self.closed {
-            self.transport_close().map_err(|_| {
-                crate::error::PortError::new(
-                    "exo_close_failed",
-                    "Exo transport close failed",
-                    false,
-                )
-            })?;
-        }
-        Ok(())
-    }
-}
-
-fn provider_error(code: &'static str, retryable: bool) -> crate::error::ProviderError {
-    crate::error::ProviderError::new(
-        code,
-        "Exo adapter rejected or could not complete the request",
-        retryable,
-    )
-}
-
-fn error_code(error: ExoError) -> &'static str {
-    match error {
-        ExoError::Unavailable => "exo_unavailable",
-        ExoError::Timeout => "exo_timeout",
-        ExoError::OversizedResponse => "exo_oversized_response",
-        ExoError::MalformedResponse | ExoError::Decision(_) => "exo_malformed_response",
-        ExoError::Closed => "exo_closed",
-        ExoError::InvalidConfig
-        | ExoError::InvalidRequest
-        | ExoError::RequestTooLarge
-        | ExoError::Sandbox(_) => "exo_invalid_request",
-    }
-}
-
-fn is_retryable(error: ExoError) -> bool {
-    matches!(error, ExoError::Unavailable | ExoError::Timeout)
-}
-
-fn decision_error_code(error: DecisionError) -> &'static str {
-    match error {
-        DecisionError::TooLarge => "exo_oversized_response",
-        DecisionError::InvalidJson
-        | DecisionError::UnknownField
-        | DecisionError::MissingField
-        | DecisionError::InvalidValue
-        | DecisionError::IllegalAction => "exo_malformed_response",
-    }
-}
+#[path = "protocol_provider.rs"]
+mod provider_impl;

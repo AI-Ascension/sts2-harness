@@ -3,6 +3,7 @@
 use super::decision::{BoundDecision, Decision, DecisionError};
 use super::protocol::{ExoDecisionRequest, ExoError, ExoProvider, ExoTransport};
 use super::sandbox::SanitizedObservation;
+use crate::episode::map::MapDecisionContext;
 use crate::identity::ModelExecutionId;
 
 /// One bounded Exo decision session. It has no heuristic action path.
@@ -23,6 +24,17 @@ impl<T> ExoSession<T> {
 
     pub fn into_transport(self) -> T {
         self.provider.into_transport()
+    }
+
+    /// Adds the optional read-only capture sideband while leaving the provider payload unchanged.
+    #[must_use]
+    pub fn with_capture(mut self, capture: Box<dyn crate::context_capture::CapturePort>) -> Self {
+        self.provider = self.provider.with_capture(capture);
+        self
+    }
+
+    pub fn set_capture_attempt_id(&mut self, attempt_id: Option<String>) {
+        self.provider.set_capture_attempt_id(attempt_id);
     }
 
     /// Sends only a sanitized observation and the complete current action ID set. The host
@@ -56,6 +68,82 @@ impl<T> ExoSession<T> {
             objective,
             constraints,
             self.provider.config().max_response_bytes,
+        )?;
+        let bytes = request.encode(self.provider.config().max_request_bytes)?;
+        let attempt_id = self
+            .provider
+            .capture_attempt_id()
+            .map(str::to_owned)
+            .unwrap_or_else(|| crate::context_capture::generated_capture_attempt_id("exo"));
+        self.provider.capture_prepared_with_attempt(
+            &execution_id.to_string(),
+            Some(attempt_id.as_str()),
+            crate::context_capture::CaptureBoundary::ExoSessionRequest,
+            &bytes,
+        );
+        let response = match self.provider.transport_exchange_for_session(&bytes) {
+            Ok(response) => {
+                self.provider.capture_write_completed(
+                    &execution_id.to_string(),
+                    Some(attempt_id.as_str()),
+                    crate::context_capture::CaptureBoundary::ExoSessionRequest,
+                );
+                response
+            }
+            Err(error) => {
+                self.provider.capture_write_unknown(
+                    &execution_id.to_string(),
+                    Some(attempt_id.as_str()),
+                    match error {
+                        super::protocol::ExoTransportError::Unavailable => "transport_unavailable",
+                        super::protocol::ExoTransportError::Timeout => "transport_timeout",
+                        super::protocol::ExoTransportError::OversizedResponse => {
+                            "response_oversized"
+                        }
+                        super::protocol::ExoTransportError::MalformedResponse => {
+                            "transport_malformed"
+                        }
+                    },
+                    crate::context_capture::CaptureBoundary::ExoSessionRequest,
+                );
+                return Err(ExoError::from(error));
+            }
+        };
+        super::decision::parse_decision(&response).map_err(ExoError::from)
+    }
+
+    /// Sends the same bounded decision request with a validated current map projection.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn decide_with_map(
+        &mut self,
+        execution_id: ModelExecutionId,
+        state_id: impl Into<String>,
+        generation: u64,
+        observation: SanitizedObservation,
+        legal_action_ids: Vec<String>,
+        objective: impl Into<String>,
+        constraints: Vec<String>,
+        map_context: MapDecisionContext,
+    ) -> Result<Decision, ExoError>
+    where
+        T: ExoTransport,
+    {
+        if self.closed {
+            return Err(ExoError::Closed);
+        }
+        self.provider.config().validate()?;
+        let observation = self.provider.config().project(observation);
+        let request = super::protocol::ExoDecisionRequest::new_with_map(
+            execution_id,
+            self.provider.config().revision.clone(),
+            state_id,
+            generation,
+            observation,
+            legal_action_ids,
+            objective,
+            constraints,
+            self.provider.config().max_response_bytes,
+            map_context,
         )?;
         let bytes = request.encode(self.provider.config().max_request_bytes)?;
         let response = self

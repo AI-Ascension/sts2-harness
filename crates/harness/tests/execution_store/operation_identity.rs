@@ -1,0 +1,311 @@
+// SPDX-License-Identifier: MIT
+
+use super::*;
+use sts2_harness::{OperationIntent, OperationState};
+
+#[test]
+fn operation_intent_is_durable_idempotent_and_unknown_is_reconciled_without_redispatch() {
+    let mut store = ExecutionStore::open_in_memory().expect("store opens");
+    let current = lineage("attempt-1", "trajectory-1");
+    store
+        .start_episode(&current, &fingerprint())
+        .expect("episode starts");
+    let intent = OperationIntent::new(
+        current.clone(),
+        "operation-1",
+        "state-1",
+        4,
+        "end_turn",
+        "payload-digest",
+        "input-digest",
+    )
+    .expect("operation intent is valid");
+    let first = store
+        .record_operation_intent(&intent)
+        .expect("intent is persisted");
+    assert_eq!(first.state, OperationState::IntentRecorded);
+    assert_eq!(store.record_operation_intent(&intent), Ok(first.clone()));
+    assert_eq!(
+        store
+            .mark_operation_dispatched("operation-1", "payload-digest")
+            .expect("dispatch uncertainty is persisted")
+            .state,
+        OperationState::MayHaveBeenDispatched
+    );
+    assert_eq!(
+        store
+            .record_operation_result(
+                "operation-1",
+                "payload-digest",
+                OperationState::Unknown,
+                Some("unknown-receipt"),
+                Some("unknown-digest"),
+            )
+            .expect("unknown outcome is retained")
+            .state,
+        OperationState::Unknown
+    );
+    assert_eq!(
+        store.pending_operations("episode-1").expect("pending list"),
+        vec![store.operation("operation-1").expect("operation remains")]
+    );
+    let reconciled = store
+        .reconcile_operation(
+            "operation-1",
+            "payload-digest",
+            OperationState::Settled,
+            "receipt-1",
+            "receipt-digest",
+        )
+        .expect("reconciliation uses the same operation identity");
+    assert_eq!(reconciled.state, OperationState::Reconciled);
+    assert!(
+        store
+            .pending_operations("episode-1")
+            .expect("pending list")
+            .is_empty()
+    );
+    assert_eq!(
+        store.reconcile_operation(
+            "operation-1",
+            "payload-digest",
+            OperationState::Settled,
+            "receipt-1",
+            "receipt-digest",
+        ),
+        Ok(reconciled.clone())
+    );
+    assert!(matches!(
+        store.mark_operation_dispatched("operation-1", "payload-digest"),
+        Err(sts2_harness::ExecutionStoreError::Conflict)
+    ));
+}
+
+#[test]
+fn complete_action_identity_survives_file_store_reopen() {
+    let database = path("action-identity");
+    let canonical = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}"#;
+    let payload_digest = result_digest(canonical);
+    let catalog_raw = br#"[ {"action_id":"combat.end-turn","action":{"kind":"end_turn"}} ]"#;
+    let catalog_digest = result_digest(catalog_raw);
+    let current = lineage("attempt-action", "trajectory-action");
+    let original_context = serde_json::to_vec(&serde_json::json!({
+        "deployment_id": "33333333-3333-3333-8333-333333333333",
+        "instance_id": "44444444-4444-4444-8444-444444444444",
+        "instance_incarnation": "55555555-5555-4555-8555-555555555555",
+        "boot_id": "66666666-6666-4666-8666-666666666666",
+        "authority_generation": 1,
+        "lease_id": "77777777-7777-4777-8777-777777777777",
+        "lease_epoch": 1
+    }))
+    .expect("original context bytes");
+    let intent = OperationIntent::new_with_action_and_catalog(
+        current.clone(),
+        "11111111-1111-4111-8111-111111111111",
+        "state-action",
+        1,
+        "combat.end-turn",
+        "end_turn",
+        canonical.to_vec(),
+        payload_digest.clone(),
+        "input-action",
+        Some(catalog_digest.clone()),
+        Some(catalog_raw.to_vec()),
+    )
+    .expect("complete action intent is valid")
+    .with_original_context(original_context.clone())
+    .expect("original context is valid");
+    let mut store =
+        ExecutionStore::open(ExecutionStoreConfig::new(&database)).expect("store opens");
+    store
+        .start_episode(&current, &fingerprint())
+        .expect("episode starts");
+    let recorded = store
+        .record_operation_intent(&intent)
+        .expect("intent is persisted");
+    assert_eq!(recorded.intent.action_kind.as_deref(), Some("end_turn"));
+    assert_eq!(
+        recorded.intent.action_payload.as_deref(),
+        Some(canonical.as_slice())
+    );
+    assert_eq!(recorded.intent.payload_digest, payload_digest);
+    assert_eq!(
+        recorded.intent.catalog_digest.as_deref(),
+        Some(catalog_digest.as_str())
+    );
+    assert_eq!(
+        recorded.intent.catalog_raw.as_deref(),
+        Some(catalog_raw.as_slice())
+    );
+    assert_eq!(
+        recorded.intent.original_context.as_deref(),
+        Some(original_context.as_slice())
+    );
+    store.close().expect("store closes");
+    drop(store);
+
+    let reopened =
+        ExecutionStore::open(ExecutionStoreConfig::new(&database)).expect("state reopens");
+    assert_eq!(
+        reopened
+            .operation("11111111-1111-4111-8111-111111111111")
+            .expect("operation remains")
+            .intent,
+        intent
+    );
+    drop(reopened);
+    remove_database(&database);
+}
+
+#[test]
+fn pending_action_survives_file_store_restart_for_recovery_admission() {
+    let database = path("pending-action-restart");
+    let canonical = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}"#;
+    let payload_digest = result_digest(canonical);
+    let catalog_raw = br#"[{"action_id":"combat.end-turn","action":{"kind":"end_turn"}}]"#;
+    let catalog_digest = result_digest(catalog_raw);
+    let current = lineage("attempt-pending", "trajectory-pending");
+    let intent = OperationIntent::new_with_action_and_catalog(
+        current.clone(),
+        "22222222-2222-4222-8222-222222222222",
+        "state-pending",
+        7,
+        "combat.end-turn",
+        "end_turn",
+        canonical.to_vec(),
+        payload_digest.clone(),
+        "input-pending",
+        Some(catalog_digest),
+        Some(catalog_raw.to_vec()),
+    )
+    .expect("pending action intent is valid");
+
+    let mut store = ExecutionStore::open(ExecutionStoreConfig::new(&database))
+        .expect("store opens before the simulated restart");
+    store
+        .start_episode(&current, &fingerprint())
+        .expect("episode starts");
+    store
+        .record_operation_intent(&intent)
+        .expect("operation intent is durable");
+    assert_eq!(
+        store
+            .mark_operation_dispatched(&intent.operation_id, &payload_digest)
+            .expect("dispatch uncertainty is durable")
+            .state,
+        OperationState::MayHaveBeenDispatched
+    );
+    store
+        .close()
+        .expect("store closes before the simulated restart");
+    drop(store);
+
+    let mut reopened =
+        ExecutionStore::open_read_only(&database).expect("state reopens without migration");
+    let ResumeState::Ready {
+        checkpoint,
+        pending_operations,
+        pending_decisions,
+    } = reopened
+        .resume_episode("episode-1", &fingerprint())
+        .expect("restart admission reads durable state")
+    else {
+        panic!("pending episode must reopen as ready");
+    };
+    assert!(checkpoint.is_none());
+    assert!(pending_decisions.is_empty());
+    assert_eq!(pending_operations.len(), 1);
+    assert_eq!(pending_operations[0].intent, intent);
+    assert_eq!(
+        pending_operations[0].state,
+        OperationState::MayHaveBeenDispatched
+    );
+    reopened.close().expect("read-only store closes");
+    drop(reopened);
+    remove_database(&database);
+}
+
+#[test]
+fn action_identity_rejects_digest_size_and_catalog_mismatches() {
+    let canonical = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}"#;
+    let digest = result_digest(canonical);
+    let current = lineage("attempt-action", "trajectory-action");
+    assert!(
+        OperationIntent::new_with_action(
+            current.clone(),
+            "operation-digest-mismatch",
+            "state-action",
+            1,
+            "combat.end-turn",
+            "end_turn",
+            canonical.to_vec(),
+            "0".repeat(64),
+            "input-action",
+            Some("a".repeat(64)),
+        )
+        .is_err()
+    );
+    assert!(
+        OperationIntent::new_with_action(
+            current.clone(),
+            "operation-catalog-mismatch",
+            "state-action",
+            1,
+            "combat.end-turn",
+            "end_turn",
+            canonical.to_vec(),
+            digest.clone(),
+            "input-action",
+            Some("A".repeat(64)),
+        )
+        .is_err()
+    );
+    assert!(
+        OperationIntent::new_with_action(
+            current,
+            "operation-too-large",
+            "state-action",
+            1,
+            "combat.end-turn",
+            "end_turn",
+            vec![b'x'; sts2_harness::MAX_OPERATION_ACTION_BYTES + 1],
+            digest,
+            "input-action",
+            Some("a".repeat(64)),
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn action_identity_requires_a_bounded_canonical_unique_envelope() {
+    let current = lineage("attempt-envelope", "trajectory-envelope");
+    let cases: &[&[u8]] = &[
+        br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn""#,
+        br#"{"action":{"kind":"end_turn","kind":"end_turn"},"action_id":"combat.end-turn"}"#,
+        br#"{"action":{"kind":"end_turn"},"action_id":"combat.other"}"#,
+        br#"{ "action": {"kind":"end_turn"}, "action_id":"combat.end-turn" }"#,
+    ];
+    for (index, payload) in cases.iter().enumerate() {
+        let digest = result_digest(payload);
+        assert!(
+            OperationIntent::new_with_action(
+                current.clone(),
+                format!("operation-envelope-{index}"),
+                "state-envelope",
+                1,
+                "combat.end-turn",
+                "end_turn",
+                payload.to_vec(),
+                digest,
+                "input-envelope",
+                None,
+            )
+            .is_err(),
+            "hostile action envelope case {index} must be rejected",
+        );
+    }
+}
+
+#[path = "operation_identity_catalog.rs"]
+mod catalog;

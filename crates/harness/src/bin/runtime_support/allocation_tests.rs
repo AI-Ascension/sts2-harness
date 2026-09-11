@@ -5,6 +5,7 @@ use super::*;
 
 fn config() -> RuntimeConfig {
     RuntimeConfig {
+        seed_transport: None,
         gateway_address: "127.0.0.1:1".into(),
         gateway_token: "synthetic-token".into(),
         mcp_binary: "unused".into(),
@@ -18,9 +19,12 @@ fn config() -> RuntimeConfig {
         run_id: "run-1".into(),
         episode_id: "episode-1".into(),
         trajectory_id: "trajectory-1".into(),
+        trace_id: "trace-1".into(),
         artifact_id: "artifact-1".into(),
         wait_for_combat_seconds: 0,
         settlement_timeout_seconds: 30,
+        map_context_enabled: false,
+        recovery_environment: Vec::new(),
     }
 }
 

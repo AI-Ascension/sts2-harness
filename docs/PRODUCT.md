@@ -48,6 +48,15 @@ release-like copy for this POC and does not duplicate the protocol implementatio
 
 ## Contract development
 
+### Provider profile registration
+
+Workflow provider profiles are selected by registry ID, semantic version, and digest, with required
+capabilities checked at resolution. Registering an existing ID/version returns `Duplicate` and must
+leave the original profile, digest, capabilities, and resource limits unchanged. Changing a profile
+requires a distinct version; a rejected registration never silently changes the selected provider
+configuration. The deterministic duplicate-registration regression verifies this local contract;
+it does not establish compatibility or execution for any hosted or local model.
+
 Before adding a route, field, action reference, event, error, lifecycle state, provider operation,
 replay rule, score, artifact, or CLI surface, define its owner, namespace, version, bounds,
 optionality, ordering, error behavior, security impact, provenance, and deterministic acceptance test.
@@ -82,3 +91,16 @@ The synthetic lane proves coordinator/MCP/gateway interaction in isolation. The 
 has now confirmed the managed mod, Godot main-thread behavior, bounded STS2 host effect, and
 disposable-profile cleanup for the safe probe. Game-rule mutation, provider execution, and broader
 host/platform compatibility remain `unverified`.
+
+## Native co-op consumer
+
+The harness product boundary includes a read/record consumer for the accepted
+`sts2-protocol/coop-native-v1` component artifact. It validates closed envelopes, exact provenance,
+request/response direction, session-scoped opaque peer tokens, legal-catalog identity, host
+generation fences, effect/receipt relations, and same-operation recovery. Unknown mutation outcomes
+stay explicit and cannot be retried as a new action.
+
+This product surface is a source/component parser and coordinator. It does not own native peer
+authentication, game legality, MCP framing, gateway routing or leases, provider execution, host
+mutation, or a live multiplayer session. Component acceptance therefore does not advertise native
+co-op support, checksum convergence, rejoin, deployment, or release compatibility.

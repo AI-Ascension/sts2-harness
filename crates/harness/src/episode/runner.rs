@@ -14,13 +14,16 @@ mod runner_steps;
 use super::idempotency::ActionIdentity;
 use super::legal_actions::{EpisodeLegalAction, EpisodeLegalActionSet};
 use super::observation::{EpisodeObservation, EpisodeStage};
+use super::protected::ProtectedEpisodePort;
 use super::recovery::{RecoveryController, RecoveryPort};
 use super::shutdown::{EpisodeShutdown, ShutdownPort};
 use super::stability_barrier::{BarrierPort, StabilityBarrier};
 use super::transition::TransitionReceipt;
 use crate::error::PortError;
+use crate::identity::ModelExecutionId;
+use serde_json::Value;
 
-pub use runner_error::EpisodeRunnerError;
+pub use runner_error::{EpisodeRunFailure, EpisodeRunnerError};
 
 const MAX_STEPS: u32 = 4_096;
 const MAX_OBJECTIVE_BYTES: usize = 512;
@@ -42,6 +45,17 @@ pub trait EpisodeRuntimePort: BarrierPort + RecoveryPort + ShutdownPort {
         generation: u64,
     ) -> Result<EpisodeLegalActionSet, PortError>;
 
+    /// Reads one generation-bound map projection through the runtime MCP boundary.
+    /// Implementations may return `None` when the active runtime does not expose map visibility.
+    fn map_snapshot(
+        &mut self,
+        _state_id: &str,
+        _generation: u64,
+        _execution_id: ModelExecutionId,
+    ) -> Result<Option<Value>, PortError> {
+        Ok(None)
+    }
+
     fn dispatch_action(
         &mut self,
         identity: &ActionIdentity,
@@ -57,6 +71,7 @@ pub struct EpisodeRunnerConfig {
     recovery: RecoveryController,
     objective: String,
     hard_constraints: Vec<String>,
+    map_context_enabled: bool,
 }
 
 impl EpisodeRunnerConfig {
@@ -84,7 +99,22 @@ impl EpisodeRunnerConfig {
             recovery,
             objective,
             hard_constraints,
+            map_context_enabled: false,
         })
+    }
+
+    /// Enables the negotiated map projection for this runner. When enabled, a map-stage
+    /// observation must receive a validated map snapshot; the runner never falls back to the
+    /// ordinary decision schema after this opt-in.
+    #[must_use]
+    pub fn with_map_context_enabled(mut self, enabled: bool) -> Self {
+        self.map_context_enabled = enabled;
+        self
+    }
+
+    #[must_use]
+    pub const fn map_context_enabled(&self) -> bool {
+        self.map_context_enabled
     }
 
     #[must_use]
@@ -159,16 +189,23 @@ impl EpisodeRunner {
 
     /// Launches through the runtime port, runs until victory/defeat or a bounded failure, and
     /// always attempts lease, MCP, and gateway cleanup after launch succeeds.
-    pub fn run<P: EpisodeRuntimePort, S: super::policy_router::DecisionSource>(
+    pub fn run<P: ProtectedEpisodePort, S: super::policy_router::DecisionSource>(
         &self,
         port: &mut P,
         source: &mut S,
     ) -> Result<EpisodeRunReport, EpisodeRunnerError> {
         port.launch().map_err(EpisodeRunnerError::Launch)?;
         let outcome = self.run_inner(port, source);
-        match EpisodeShutdown.close(port) {
-            Ok(()) => outcome,
-            Err(error) => Err(EpisodeRunnerError::Shutdown(error)),
+        let cleanup = EpisodeShutdown.close_report(port);
+        match (outcome, cleanup.first_failure()) {
+            (Ok(report), None) => Ok(report),
+            (Ok(_), Some(error)) => Err(EpisodeRunnerError::Shutdown(error)),
+            (Err(failure), None) => Err(failure.error),
+            (Err(failure), Some(_)) => Err(EpisodeRunnerError::Cleanup(EpisodeRunFailure::new(
+                failure.error,
+                cleanup,
+                failure.pending_operation_id,
+            ))),
         }
     }
 }

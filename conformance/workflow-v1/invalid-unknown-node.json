@@ -1,0 +1,31 @@
+{
+  "schema_version": "ascension.workflow/v1",
+  "workflow_id": "fixture.invalid",
+  "version": "0.1.0",
+  "mode": "strict",
+  "game_profile": "synthetic",
+  "policy_ref": "policy.synthetic.v1",
+  "capabilities": {"required": [], "optional": []},
+  "limits": {
+    "max_steps": 1,
+    "max_subworkflow_depth": 1,
+    "max_provider_calls": 0,
+    "max_parallel_analyses": 1,
+    "max_output_tokens": 0
+  },
+  "entry_graph": "main",
+  "graphs": [
+    {
+      "id": "main",
+      "entry_node": "script",
+      "nodes": [
+        {
+          "id": "script",
+          "kind": "arbitrary_script",
+          "config": {}
+        }
+      ],
+      "edges": []
+    }
+  ]
+}

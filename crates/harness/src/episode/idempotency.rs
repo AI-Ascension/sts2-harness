@@ -37,6 +37,23 @@ impl ActionIdentity {
         }
         Ok(identity)
     }
+
+    /// Constructs an identity suitable for durable recovery sidebands. Runtime mutation
+    /// operation IDs are UUIDv4 so a caller cannot smuggle a human-readable alias into a
+    /// historical lookup that requires a globally unique operation fence.
+    pub fn new_v4(
+        operation_id: impl Into<String>,
+        state_id: impl Into<String>,
+        generation: u64,
+        action_id: impl Into<String>,
+    ) -> Result<Self, IdempotencyError> {
+        let identity = Self::new(operation_id, state_id, generation, action_id)?;
+        if valid_uuid_v4(&identity.operation_id) {
+            Ok(identity)
+        } else {
+            Err(IdempotencyError::InvalidIdentity)
+        }
+    }
 }
 
 /// Result of admitting one operation identity to the local ledger.
@@ -112,4 +129,15 @@ fn valid_identity(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
+}
+
+fn valid_uuid_v4(value: &str) -> bool {
+    value.len() == 36
+        && value.as_bytes().iter().enumerate().all(|(index, byte)| {
+            matches!(index, 8 | 13 | 18 | 23) && *byte == b'-'
+                || !matches!(index, 8 | 13 | 18 | 23)
+                    && (byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+        })
+        && value.as_bytes().get(14) == Some(&b'4')
+        && matches!(value.as_bytes().get(19), Some(b'8' | b'9' | b'a' | b'b'))
 }

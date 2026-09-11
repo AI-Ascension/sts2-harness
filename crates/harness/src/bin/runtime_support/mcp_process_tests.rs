@@ -48,8 +48,23 @@ fn child_environment_preserves_distinct_gateway_and_mcp_sessions() {
     }
 }
 
+#[test]
+#[cfg(unix)]
+fn map_profile_has_a_wider_response_bound_without_widening_gameplay() -> Result<(), String> {
+    let mut config = session_config();
+    config.mcp_binary = "/bin/true".into();
+    let mut gameplay = McpProcess::spawn(&config)?;
+    assert_eq!(gameplay.max_response_bytes, MAX_RESPONSE_BYTES);
+    gameplay.close()?;
+
+    let mut map = McpProcess::spawn_profile(&config, "runtime-map-v1")?;
+    assert_eq!(map.max_response_bytes, 512 * 1024);
+    map.close()
+}
+
 fn session_config() -> RuntimeConfig {
     RuntimeConfig {
+        seed_transport: None,
         gateway_address: "127.0.0.1:15525".into(),
         gateway_token: "synthetic-token".into(),
         mcp_binary: "unused-test-binary".into(),
@@ -63,9 +78,12 @@ fn session_config() -> RuntimeConfig {
         run_id: "run-1".into(),
         episode_id: "episode-1".into(),
         trajectory_id: "trajectory-1".into(),
+        trace_id: "trace-1".into(),
         artifact_id: "artifact-1".into(),
         wait_for_combat_seconds: 0,
         settlement_timeout_seconds: 30,
+        map_context_enabled: false,
+        recovery_environment: Vec::new(),
     }
 }
 
@@ -183,6 +201,13 @@ fn shutdown_and_drop_are_bounded_for_stalled_children() -> Result<(), String> {
     drop(process);
     assert!(start.elapsed() < Duration::from_secs(2));
     Ok(())
+}
+
+#[test]
+#[cfg(unix)]
+fn graceful_close_budget_allows_a_child_to_finish_after_the_reap_budget() -> Result<(), String> {
+    let mut process = shell("exec /bin/sleep 0.35")?;
+    process.close()
 }
 
 #[test]

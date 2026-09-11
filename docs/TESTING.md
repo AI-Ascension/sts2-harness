@@ -33,6 +33,7 @@ cargo run --locked --package repo-policy -- --strict
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --all-targets --all-features --locked
+(cd protocol-artifact/seeded-run-v1 && sha256sum -c SHA256SUMS)
 ```
 
 These commands are the local/CI entrypoint for the current workspace. They do not launch a game,
@@ -42,6 +43,24 @@ The POC parses the copied source/package schema, five goldens, invalid fixture, 
 checks their exact release checksums, and records the actual ordered fake-hop ledger. The report
 records the exact trace and labels each claim as `confirmed` (deterministic fake only),
 `source-derived`, `proposed`, or `unverified`: [`MINIMAL_POC_REPORT.md`](../MINIMAL_POC_REPORT.md).
+
+## Context capture bridge fidelity
+
+The Astra and Ollama bridge binaries were built from the accepted baseline and successor commits
+and run against isolated synthetic downstreams. The fake Codex process recorded stdin, output
+schema, argv and bounded JSONL accounting; the fake Ollama server recorded the complete loopback
+HTTP request. The successor retained the same bytes, decisions, invocation count and failure
+outcomes after normalization of generated temporary paths and peer ports. The prepared-input unit
+tests also compare the actual fake downstream bytes with the `MemoryCapture` component records.
+Machine-readable results and the exact executable digests are in
+[`context-capture-fidelity-20260910.json`](evidence/context-capture-fidelity-20260910.json), with
+scope and limitations in the accompanying
+[`context-capture-fidelity-20260910.md`](evidence/context-capture-fidelity-20260910.md).
+
+Private capture is deliberately rejected by the in-memory capture ring until an approved encrypted
+vault is supplied. Lifecycle tests keep prepared, completed, and indeterminate write outcomes
+distinct, including response, malformed-response, and timeout failures after the request body was
+sent.
 
 ## Coordinator and lifecycle tests
 
@@ -206,6 +225,37 @@ The dated [Windows](evidence/seeded-astra-campaign-20260906.md) and
 [Linux](evidence/linux-seeded-campaign-20260906.md) records provide separate fresh seeded
 Setup-to-Defeat replay evidence. Linux's original model campaign required one controller
 restart; its final replay ran from fresh Setup without a continuation.
+
+The seeded-run transport tests are separate from those native campaign records. The
+`seed_transport_tests` module checks the canonical standard Ironclad context digest, exact MCP
+start argument shape, contiguous plan ordinals, bounded seeds, and durable reservation recovery.
+`runtime_v3_seeded_validation_tests` checks protocol identity, context/generation/lease fences,
+canonical seed readback, fresh observation advancement, and the `run_started` witness. The
+`seeded-run-v1` artifact checksum inventory is verified byte-for-byte. These source/component and
+artifact checks do not launch a host, call a provider, or prove native seed settlement, profile/save
+isolation, gameplay, deployment, or release compatibility.
+
+### Native co-op consumer checks
+
+The `coop_native` library tests verify the copied `coop-native-v1` artifact, all seventeen producer
+goldens in their declared direction, strict duplicate-key and closed-shape rejection, peer-token
+uniqueness, legal-catalog identity, and status-specific effect/receipt generation relations. They
+also cover the bodyful `recovery_response` request shape, unknown mutation retention, duplicate
+replay, and same-operation recovery without a blind retry. Settled effects require
+`before < after == observation.host_generation`; accepted, rejected, and unknown effects retain a
+null `after_host_generation` at the observation generation. A pending rejoin recovery may carry an
+accepted receipt at the same generation, as captured by the producer golden.
+
+These are deterministic source/component checks. They do not start an MCP process, make an HTTP
+request, acquire a gateway lease, call a provider, load a game, authenticate native peers, or prove
+live host legality, effect settlement, checksum convergence, disconnect/rejoin behavior,
+deployment, or release support. A separate authorized two-peer runtime run is required for those
+claims.
+
+The transport's live boundary remains explicit: a pre-start observation establishes the generation
+fence, one reservation permits one start mutation, and an unknown or disconnected start can only be
+reconciled with the original operation ID. `STS2_SEED_VERIFY_IDEMPOTENCY=true` adds an exact
+post-settlement duplicate check; it does not authorize another run admission.
 The patch-diff utility
 is source-only and compares bounded manifests; it cannot promote a build or replace package hashes.
 Its workspace tests check bounded consumption even from an endless reader, exact-size admission,
@@ -224,6 +274,16 @@ tests does not supply licensed-host, live Exo/provider, full-run, or co-op evide
 `unverified` until their own evidence exists, never passed by omission.
 
 ## MCP and gateway adapter failure probes
+
+Historical recovery tests invoke the real harness recovery adapter and its owned stdio subprocess
+against synthetic sideband replies. They exercise unresolved lookup followed by reconciliation,
+retained terminal states, gateway-style unpadded action bytes, missing records, mismatched witnesses
+and original authority. Recorded requests must contain only historical lookup/reconcile, preserve
+the same operation reference, and never invoke gameplay poll or dispatch. Unit tests cover exact
+ticket/witness bindings, malformed raw JSON, redacted parser errors and the frame byte limit.
+These are synthetic consumer/subprocess tests, not real gateway, host, service, reboot or provider
+evidence. Schema-v6 operation tests and the recovery-context regression cover durable original
+authority retention and generic Runtime-v3 state IDs; a live gateway/host reboot remains unverified.
 
 Synthetic process tests cover unread stdin, simultaneous full pipes, oversized unterminated output,
 slow trickles, inherited descendant handles, malformed/miscorrelated replies, bounded close/drop,
