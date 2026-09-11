@@ -1057,7 +1057,7 @@
       "evidence_ref": "docs/evidence/phase3-completion-report-20260910.md; target companion browser evidence",
       "command": "harness repo-policy/fmt/clippy and locked workspace tests serially; target companion gates and browser audits",
       "exit_status": "0",
-      "reason": "harness serial gate passed at b9a7283ef905005dfd7d34b2be2ff611c859b5cc; target final gates passed at b59f10823e5f99de4012b0aa097efd62a9260a01"
+      "reason": "harness serial gate passed at 40554ebe04ca268376e405fce413dc2281727c63; target final gates passed at 7423d78b8a603278d25eb08851c8eee6447469ca; browser artifacts ran at 28222e5115b041a430003f9ede4293ca8780f756"
     },
     {
       "failure_id": "P3-F089",

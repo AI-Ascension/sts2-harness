@@ -2,9 +2,10 @@
 
 Date: 2026-09-10. This is the harness-side bounded policy record for the additive
 `ascension.context-memory.*.v1` namespace. The implementation commit is `b923192`; its target
-consumer commit is `9b69951`. The evidence refreshes are pinned to harness head
-`b9a7283ef905005dfd7d34b2be2ff611c859b5cc` and target head
-`b59f10823e5f99de4012b0aa097efd62a9260a01`. It does not claim a live provider, native game, deployment, or
+consumer commit is `9b69951`. The final post-commit harness gate is pinned to revision
+`40554ebe04ca268376e405fce413dc2281727c63`; its target companion gate is pinned to
+`7423d78b8a603278d25eb08851c8eee6447469ca`, with browser artifacts run at target parent revision
+`28222e5115b041a430003f9ede4293ca8780f756`. It does not claim a live provider, native game, deployment, or
 three-level native development hierarchy.
 
 The implementation is in `crates/harness/src/context_memory/` with the public include wrapper at
