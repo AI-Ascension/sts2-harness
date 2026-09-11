@@ -48,6 +48,15 @@ release-like copy for this POC and does not duplicate the protocol implementatio
 
 ## Contract development
 
+### Provider profile registration
+
+Workflow provider profiles are selected by registry ID, semantic version, and digest, with required
+capabilities checked at resolution. Registering an existing ID/version returns `Duplicate` and must
+leave the original profile, digest, capabilities, and resource limits unchanged. Changing a profile
+requires a distinct version; a rejected registration never silently changes the selected provider
+configuration. The deterministic duplicate-registration regression verifies this local contract;
+it does not establish compatibility or execution for any hosted or local model.
+
 Before adding a route, field, action reference, event, error, lifecycle state, provider operation,
 replay rule, score, artifact, or CLI surface, define its owner, namespace, version, bounds,
 optionality, ordering, error behavior, security impact, provenance, and deterministic acceptance test.

@@ -56,10 +56,15 @@ impl ProviderRegistry {
             return Err(ProviderRegistryError::InvalidLimit);
         }
         let key = (profile.id.clone(), profile.version.clone());
-        if self.profiles.insert(key, profile).is_some() {
-            return Err(ProviderRegistryError::Duplicate);
+        match self.profiles.entry(key) {
+            std::collections::btree_map::Entry::Occupied(_) => {
+                Err(ProviderRegistryError::Duplicate)
+            }
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(profile);
+                Ok(())
+            }
         }
-        Ok(())
     }
 
     pub fn resolve(
@@ -314,6 +319,43 @@ mod tests {
         assert_eq!(
             registry.register(profile),
             Err(ProviderRegistryError::Duplicate)
+        );
+    }
+
+    #[test]
+    fn rejected_duplicate_preserves_the_selected_profile() {
+        let original = profile();
+        let mut registry = ProviderRegistry::default();
+        registry
+            .register(original.clone())
+            .expect("register original");
+        let mut replacement = original.clone();
+        replacement.digest = Digest::sha256(b"different model configuration");
+        replacement.capabilities = BTreeSet::new();
+        replacement.max_input_bytes = 8192;
+        replacement.max_output_tokens = 1024;
+
+        assert_eq!(
+            registry.register(replacement.clone()),
+            Err(ProviderRegistryError::Duplicate)
+        );
+        assert_eq!(
+            registry.resolve(
+                &original.id,
+                &original.version,
+                &original.digest,
+                &original.capabilities,
+            ),
+            Ok(&original)
+        );
+        assert_eq!(
+            registry.resolve(
+                &replacement.id,
+                &replacement.version,
+                &replacement.digest,
+                &replacement.capabilities,
+            ),
+            Err(ProviderRegistryError::CapabilityDenied)
         );
     }
 
