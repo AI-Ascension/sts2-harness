@@ -1,8 +1,9 @@
 # Phase 3 harness completion report
 
 Date: 2026-09-10. This is the harness-side bounded policy record for the additive
-`ascension.context-memory.*.v1` namespace. It does not claim a live provider, native game,
-deployment, or three-level native development hierarchy.
+`ascension.context-memory.*.v1` namespace. The implementation commit is `b923192`; its target
+consumer commit is `9b69951`. It does not claim a live provider, native game, deployment, or
+three-level native development hierarchy.
 
 The implementation is in `crates/harness/src/context_memory/` with the public include wrapper at
 `crates/harness/src/context_memory.rs`. It covers scoped/digest-bound source admission, bounded
@@ -19,10 +20,12 @@ telemetry boundaries. The full 90-row requirement and failure mappings live in t
 companion artifacts; this repository records the same matrix once generated for the draft handoff.
 
 Strict policy, formatting, Clippy, Phase 3 tests, and the locked workspace test suite are required
-gates. The fake peer is synthetic external-boundary evidence only: it has no process, game,
-management, shell, arbitrary-network, credential, or hidden-reasoning capability. Durable encrypted
-index/WAL/backup storage, restore/downgrade, live adapter fidelity, native game/action lineage,
-evaluation metrics and resource tradeoffs are unverified and remain separate adapter work.
+gates. They passed for this implementation: policy, formatting, Clippy, 6 Phase 3 tests, and 171
+workspace tests with 1 ignored. The fake peer is synthetic external-boundary evidence only: it has
+no process, game, management, shell, arbitrary-network, credential, or hidden-reasoning capability.
+Durable encrypted index/WAL/backup storage, restore/downgrade, live adapter fidelity, native
+game/action lineage, evaluation metrics and resource tradeoffs are unverified and remain separate
+adapter work.
 
 The existing Phase 2 control authority remains the only revision/commit/resume owner. Summary
 generation cannot approve itself; review/admission cannot activate a revision; selection cannot

@@ -11,5 +11,5 @@ always prepared and approved through the existing Phase 2 authority; commit rema
 an explicit resume may release a gameplay attempt. The fake summary peer is an external-boundary
 test adapter and does not establish live provider quality.
 
-Artifact source: Phase 3 package, consumed against target `0c1f402b0b6c7f0ab79eb369a649286a46482e3a`
-and companion `8674874feccfbf995ed0aa5a8ec8390d9dac137b`. The current branch is draft-only.
+Artifact source: Phase 3 package, consumed against target implementation `9b69951` and companion
+implementation `b923192`. The current branch is draft-only.
