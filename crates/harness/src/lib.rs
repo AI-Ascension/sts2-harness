@@ -25,6 +25,7 @@ pub fn sha256_hex(bytes: impl AsRef<[u8]>) -> String {
 mod artifact;
 mod context_capture;
 pub mod context_control;
+pub mod context_memory;
 mod coop_native;
 mod coordinator;
 mod decision_records;

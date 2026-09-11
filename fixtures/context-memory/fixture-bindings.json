@@ -1,0 +1,9 @@
+{
+  "source_manifest_sha256": "c466563953256d06c377e2922d23358bd11d38048a59e1fa070d01080edc5d10",
+  "proposal_sha256": "8fa5622759818431e9944c65a1db03c26b3fbaf2f4437192986bc2b1cca74912",
+  "selection_sha256": "eb53d941c6624b687e8199599d8b1397025e72764c90d7ce32a338522a739e5f",
+  "prepared_sha256": "3f06244c489b670bc8e729ac5e766dddf077790e6956250d60f5ccc2e1535ef3",
+  "proposal_id": "proposal-1",
+  "selection_id": "selection-1",
+  "phase2_revision_id": "revision-phase2-1"
+}

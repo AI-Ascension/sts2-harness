@@ -1,0 +1,563 @@
+{
+  "schema": "phase3.fixture-cases.v1",
+  "cases": [
+    {
+      "id": "entry-valid",
+      "kind": "entry",
+      "file": "fixtures/valid/entry-valid.json",
+      "schema": "contracts/entry.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "query-valid",
+      "kind": "query",
+      "file": "fixtures/valid/query-valid.json",
+      "schema": "contracts/query.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "retrieval-valid",
+      "kind": "retrieval",
+      "file": "fixtures/valid/retrieval-valid.json",
+      "schema": "contracts/retrieval.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "summary-job-valid",
+      "kind": "summary-job",
+      "file": "fixtures/valid/summary-job-valid.json",
+      "schema": "contracts/summary-job.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "proposal-valid",
+      "kind": "proposal",
+      "file": "fixtures/valid/proposal-valid.json",
+      "schema": "contracts/proposal.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "review-valid",
+      "kind": "review",
+      "file": "fixtures/valid/review-valid.json",
+      "schema": "contracts/review.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "policy-valid",
+      "kind": "policy",
+      "file": "fixtures/valid/policy-valid.json",
+      "schema": "contracts/policy.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "selection-valid",
+      "kind": "selection",
+      "file": "fixtures/valid/selection-valid.json",
+      "schema": "contracts/selection.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "approval-valid",
+      "kind": "approval",
+      "file": "fixtures/valid/approval-valid.json",
+      "schema": "contracts/approval.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "revocation-valid",
+      "kind": "revocation",
+      "file": "fixtures/valid/revocation-valid.json",
+      "schema": "contracts/revocation.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "capabilities-valid",
+      "kind": "capabilities",
+      "file": "fixtures/valid/capabilities-valid.json",
+      "schema": "contracts/capabilities.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "policy-rolling-approved",
+      "kind": "policy",
+      "file": "fixtures/valid/policy-rolling-approved.json",
+      "schema": "contracts/policy.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "capabilities-disabled",
+      "kind": "capabilities",
+      "file": "fixtures/valid/capabilities-disabled.json",
+      "schema": "contracts/capabilities.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "job-unknown-no-retry",
+      "kind": "summary-job",
+      "file": "fixtures/valid/job-unknown-no-retry.json",
+      "schema": "contracts/summary-job.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "approval-committed-still-held",
+      "kind": "approval",
+      "file": "fixtures/valid/approval-committed-still-held.json",
+      "schema": "contracts/approval.schema.json",
+      "valid": true,
+      "stage": "all",
+      "expected_error": null
+    },
+    {
+      "id": "entry-digest-mismatch",
+      "kind": "entry",
+      "file": "fixtures/invalid/entry-digest-mismatch.json",
+      "schema": "contracts/entry.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "ENTRY_BYTES"
+    },
+    {
+      "id": "entry-promotes-authority",
+      "kind": "entry",
+      "file": "fixtures/invalid/entry-promotes-authority.json",
+      "schema": "contracts/entry.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "entry-too-deep",
+      "kind": "entry",
+      "file": "fixtures/invalid/entry-too-deep.json",
+      "schema": "contracts/entry.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "query-unknown-field",
+      "kind": "query",
+      "file": "fixtures/invalid/query-unknown-field.json",
+      "schema": "contracts/query.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "query-oversize",
+      "kind": "query",
+      "file": "fixtures/invalid/query-oversize.json",
+      "schema": "contracts/query.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "query-utf8-byte-limit",
+      "kind": "query",
+      "file": "fixtures/invalid/query-utf8-byte-limit.json",
+      "schema": "contracts/query.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "QUERY_BYTES"
+    },
+    {
+      "id": "retrieval-inference",
+      "kind": "retrieval",
+      "file": "fixtures/invalid/retrieval-inference.json",
+      "schema": "contracts/retrieval.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "retrieval-stale-revocation",
+      "kind": "retrieval",
+      "file": "fixtures/invalid/retrieval-stale-revocation.json",
+      "schema": "contracts/retrieval.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "REVOCATION_EPOCH"
+    },
+    {
+      "id": "retrieval-false-coverage",
+      "kind": "retrieval",
+      "file": "fixtures/invalid/retrieval-false-coverage.json",
+      "schema": "contracts/retrieval.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "PROJECTION_COVERAGE"
+    },
+    {
+      "id": "job-auto-applies",
+      "kind": "summary-job",
+      "file": "fixtures/invalid/job-auto-applies.json",
+      "schema": "contracts/summary-job.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "job-wrong-source-set",
+      "kind": "summary-job",
+      "file": "fixtures/invalid/job-wrong-source-set.json",
+      "schema": "contracts/summary-job.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "SOURCE_MANIFEST"
+    },
+    {
+      "id": "job-expired",
+      "kind": "summary-job",
+      "file": "fixtures/invalid/job-expired.json",
+      "schema": "contracts/summary-job.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "EXPIRED"
+    },
+    {
+      "id": "proposal-auto-applies",
+      "kind": "proposal",
+      "file": "fixtures/invalid/proposal-auto-applies.json",
+      "schema": "contracts/proposal.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "proposal-lifetime-broadens",
+      "kind": "proposal",
+      "file": "fixtures/invalid/proposal-lifetime-broadens.json",
+      "schema": "contracts/proposal.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "DERIVED_EXPIRY"
+    },
+    {
+      "id": "proposal-digest-mismatch",
+      "kind": "proposal",
+      "file": "fixtures/invalid/proposal-digest-mismatch.json",
+      "schema": "contracts/proposal.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "PROPOSAL_BYTES"
+    },
+    {
+      "id": "review-creates-revision",
+      "kind": "review",
+      "file": "fixtures/invalid/review-creates-revision.json",
+      "schema": "contracts/review.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "review-wrong-proposal",
+      "kind": "review",
+      "file": "fixtures/invalid/review-wrong-proposal.json",
+      "schema": "contracts/review.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "REVIEW_BINDING"
+    },
+    {
+      "id": "policy-cross-scope",
+      "kind": "policy",
+      "file": "fixtures/invalid/policy-cross-scope.json",
+      "schema": "contracts/policy.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "policy-silent-summary-growth",
+      "kind": "policy",
+      "file": "fixtures/invalid/policy-silent-summary-growth.json",
+      "schema": "contracts/policy.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "policy-generates-in-preview",
+      "kind": "policy",
+      "file": "fixtures/invalid/policy-generates-in-preview.json",
+      "schema": "contracts/policy.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "policy-missing-revision",
+      "kind": "policy",
+      "file": "fixtures/invalid/policy-missing-revision.json",
+      "schema": "contracts/policy.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "policy-manual-rolls",
+      "kind": "policy",
+      "file": "fixtures/invalid/policy-manual-rolls.json",
+      "schema": "contracts/policy.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "selection-unselected-pin",
+      "kind": "selection",
+      "file": "fixtures/invalid/selection-unselected-pin.json",
+      "schema": "contracts/selection.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "PIN_SELECTION"
+    },
+    {
+      "id": "selection-budget-too-small",
+      "kind": "selection",
+      "file": "fixtures/invalid/selection-budget-too-small.json",
+      "schema": "contracts/selection.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "OPTIONAL_BUDGET"
+    },
+    {
+      "id": "selection-unknown-is-zero",
+      "kind": "selection",
+      "file": "fixtures/invalid/selection-unknown-is-zero.json",
+      "schema": "contracts/selection.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "UNKNOWN_TOKEN_COUNT"
+    },
+    {
+      "id": "selection-prepared-digest",
+      "kind": "selection",
+      "file": "fixtures/invalid/selection-prepared-digest.json",
+      "schema": "contracts/selection.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "PREPARED_BYTES"
+    },
+    {
+      "id": "selection-expired",
+      "kind": "selection",
+      "file": "fixtures/invalid/selection-expired.json",
+      "schema": "contracts/selection.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "EXPIRED"
+    },
+    {
+      "id": "approval-auto-resume",
+      "kind": "approval",
+      "file": "fixtures/invalid/approval-auto-resume.json",
+      "schema": "contracts/approval.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "approval-restarts-inference",
+      "kind": "approval",
+      "file": "fixtures/invalid/approval-restarts-inference.json",
+      "schema": "contracts/approval.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "approval-changed-input",
+      "kind": "approval",
+      "file": "fixtures/invalid/approval-changed-input.json",
+      "schema": "contracts/approval.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "APPROVAL_BINDING"
+    },
+    {
+      "id": "revocation-before-denial",
+      "kind": "revocation",
+      "file": "fixtures/invalid/revocation-before-denial.json",
+      "schema": "contracts/revocation.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "revocation-rewrites-history",
+      "kind": "revocation",
+      "file": "fixtures/invalid/revocation-rewrites-history.json",
+      "schema": "contracts/revocation.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "capabilities-provider-session",
+      "kind": "capabilities",
+      "file": "fixtures/invalid/capabilities-provider-session.json",
+      "schema": "contracts/capabilities.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "capabilities-hidden-reasoning",
+      "kind": "capabilities",
+      "file": "fixtures/invalid/capabilities-hidden-reasoning.json",
+      "schema": "contracts/capabilities.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    },
+    {
+      "id": "retrieval-future-1",
+      "kind": "retrieval",
+      "file": "fixtures/invalid/retrieval-future-1.json",
+      "schema": "contracts/retrieval.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "FUTURE_SOURCE"
+    },
+    {
+      "id": "retrieval-late-1",
+      "kind": "retrieval",
+      "file": "fixtures/invalid/retrieval-late-1.json",
+      "schema": "contracts/retrieval.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "LATE_SOURCE"
+    },
+    {
+      "id": "retrieval-private-1",
+      "kind": "retrieval",
+      "file": "fixtures/invalid/retrieval-private-1.json",
+      "schema": "contracts/retrieval.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "SOURCE_SCOPE"
+    },
+    {
+      "id": "retrieval-sibling-1",
+      "kind": "retrieval",
+      "file": "fixtures/invalid/retrieval-sibling-1.json",
+      "schema": "contracts/retrieval.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "SOURCE_BRANCH"
+    },
+    {
+      "id": "retrieval-revoked-1",
+      "kind": "retrieval",
+      "file": "fixtures/invalid/retrieval-revoked-1.json",
+      "schema": "contracts/retrieval.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "REVOKED_SOURCE"
+    },
+    {
+      "id": "retrieval-protected-1",
+      "kind": "retrieval",
+      "file": "fixtures/invalid/retrieval-protected-1.json",
+      "schema": "contracts/retrieval.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "PROTECTED_SOURCE"
+    },
+    {
+      "id": "retrieval-expired-1",
+      "kind": "retrieval",
+      "file": "fixtures/invalid/retrieval-expired-1.json",
+      "schema": "contracts/retrieval.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "EXPIRED_SOURCE"
+    },
+    {
+      "id": "proposal-numeric-drift",
+      "kind": "proposal",
+      "file": "fixtures/invalid/proposal-numeric-drift.json",
+      "schema": "contracts/proposal.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "EXTRACT_MISMATCH"
+    },
+    {
+      "id": "proposal-uncertainty-drift",
+      "kind": "proposal",
+      "file": "fixtures/invalid/proposal-uncertainty-drift.json",
+      "schema": "contracts/proposal.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "EXTRACT_MISMATCH"
+    },
+    {
+      "id": "proposal-invalid-span",
+      "kind": "proposal",
+      "file": "fixtures/invalid/proposal-invalid-span.json",
+      "schema": "contracts/proposal.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "CITATION_RANGE"
+    },
+    {
+      "id": "proposal-citation-outside-source-set",
+      "kind": "proposal",
+      "file": "fixtures/invalid/proposal-citation-outside-source-set.json",
+      "schema": "contracts/proposal.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "CITATION_SOURCE_SET"
+    },
+    {
+      "id": "entry-self-cycle",
+      "kind": "entry",
+      "file": "fixtures/invalid/entry-self-cycle.json",
+      "schema": "contracts/entry.schema.json",
+      "valid": false,
+      "stage": "semantic",
+      "expected_error": "LINEAGE_CYCLE"
+    },
+    {
+      "id": "selection-duplicate-ref",
+      "kind": "selection",
+      "file": "fixtures/invalid/selection-duplicate-ref.json",
+      "schema": "contracts/selection.schema.json",
+      "valid": false,
+      "stage": "schema",
+      "expected_error": null
+    }
+  ]
+}

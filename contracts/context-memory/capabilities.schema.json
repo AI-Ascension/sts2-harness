@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ascension:context-memory:capabilities:v1",
+  "title": "Proposed Phase 3 capabilities contract",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "ascension.context-memory.capabilities.v1"
+    },
+    "product_phase": {
+      "const": 3
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "episode_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "agent_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        }
+      },
+      "required": [
+        "project_id",
+        "run_id",
+        "episode_id",
+        "agent_id"
+      ]
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "local_lexical_retrieval": {
+      "enum": [
+        "supported",
+        "unsupported",
+        "unverified"
+      ]
+    },
+    "extractive_compaction": {
+      "enum": [
+        "supported",
+        "unsupported",
+        "unverified"
+      ]
+    },
+    "abstractive_adapter": {
+      "enum": [
+        "supported",
+        "unsupported",
+        "unverified"
+      ]
+    },
+    "abstractive_live_verified": {
+      "type": "boolean"
+    },
+    "per_decision_policy": {
+      "enum": [
+        "supported",
+        "unsupported",
+        "unverified"
+      ]
+    },
+    "phase2_approval_required": {
+      "const": true
+    },
+    "persistent_provider_sessions": {
+      "const": false
+    },
+    "provider_side_compaction": {
+      "const": false
+    },
+    "semantic_vector_retrieval": {
+      "const": "unsupported"
+    },
+    "hidden_reasoning_access": {
+      "const": false
+    },
+    "direct_game_dispatch": {
+      "const": false
+    },
+    "supported_operations": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "search",
+          "extract",
+          "generate",
+          "review",
+          "select",
+          "policy",
+          "adopt",
+          "revoke",
+          "evaluate"
+        ]
+      },
+      "minItems": 0,
+      "maxItems": 9,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "schema",
+    "product_phase",
+    "scope",
+    "enabled",
+    "local_lexical_retrieval",
+    "extractive_compaction",
+    "abstractive_adapter",
+    "abstractive_live_verified",
+    "per_decision_policy",
+    "phase2_approval_required",
+    "persistent_provider_sessions",
+    "provider_side_compaction",
+    "semantic_vector_retrieval",
+    "hidden_reasoning_access",
+    "direct_game_dispatch",
+    "supported_operations"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "enabled": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "supported_operations": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

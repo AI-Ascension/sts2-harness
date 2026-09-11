@@ -1,0 +1,55 @@
+{
+  "schema": "original.synthetic-map.v1",
+  "bundle_id": "map-bundle-1",
+  "generation": 10,
+  "scope": {
+    "project_id": "project-fixture",
+    "run_id": "run-fixture",
+    "episode_id": "episode-fixture",
+    "agent_id": "agent-fixture"
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "visible": true,
+      "kind": "current"
+    },
+    {
+      "id": "left",
+      "visible": true,
+      "kind": "combat",
+      "outcome": "unknown"
+    },
+    {
+      "id": "right",
+      "visible": true,
+      "kind": "rest",
+      "outcome": "unknown"
+    },
+    {
+      "id": "hidden",
+      "visible": false,
+      "kind": "unknown",
+      "outcome": "unknown"
+    }
+  ],
+  "edges": [
+    [
+      "start",
+      "left"
+    ],
+    [
+      "start",
+      "right"
+    ],
+    [
+      "left",
+      "hidden"
+    ]
+  ],
+  "legal_next_nodes": [
+    "left",
+    "right"
+  ],
+  "provenance": "original synthetic fixture; no game assets; not a game protocol payload"
+}

@@ -1,0 +1,15 @@
+{
+  "hist-1": "fixtures/blobs/hist-1.txt",
+  "hist-2": "fixtures/blobs/hist-2.txt",
+  "hist-3": "fixtures/blobs/hist-3.txt",
+  "future-1": "fixtures/blobs/future-1.txt",
+  "late-1": "fixtures/blobs/late-1.txt",
+  "revoked-1": "fixtures/blobs/revoked-1.txt",
+  "protected-1": "fixtures/blobs/protected-1.txt",
+  "sibling-1": "fixtures/blobs/sibling-1.txt",
+  "private-1": "fixtures/blobs/private-1.txt",
+  "expired-1": "fixtures/blobs/expired-1.txt",
+  "summary-1": "fixtures/blobs/summary-1.txt",
+  "protected-prefix": "fixtures/blobs/protected-prefix.txt",
+  "prepared-1": "fixtures/blobs/prepared-1.txt"
+}
