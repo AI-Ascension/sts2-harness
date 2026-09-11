@@ -1021,7 +1021,7 @@
       "evidence_ref": "../phase2-target/docs/evidence/phase2-native-preflight-20260910.json",
       "command": "codex1 exec --enable multi_agent_v2 (Codex 0.154.0 daemon)",
       "exit_status": "",
-      "reason": "daemon-backed recheck verified one real depth-1 lead with requested model/effort and parentage, but the lead exposed no child-spawn, reservation, or messaging controls; depth-2/depth-3 native review remains unavailable"
+      "reason": "0.154.0 Luna/max and Astra/ultra daemon rechecks verified only a real depth-1 lead; the lead exposed no child-spawn, reservation, or messaging controls, so depth-2/depth-3 native review remains unavailable"
     },
     {
       "failure_id": "P3-F086",
