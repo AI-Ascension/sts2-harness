@@ -265,6 +265,13 @@ successful checkpoint verification releases the runner lease and does not report
 The default remains complete replay. See [the replay decision](docs/decisions/0009-seeded-episode-replay.md)
 for comparison rules and evidence limits.
 
+A replay source with a `seeded_run_receipt` preamble is admitted only when its complete MCP receipt
+chain and the current seed plan, ordinal, mode, requested seed, selected context, context digest,
+profile, and game/mod compatibility agree exactly. The receipt must prove the original fence,
+advanced map observation, canonical seed, and `run_started` witness before replay can allocate its
+runner path; malformed wrappers and non-settled error results fail closed. This is local
+source/component replay admission, not proof that a seed replay or provider call ran.
+
 ## Seeded-run transport handoff
 
 When `STS2_SEED_PLAN_JSON` is set, `sts2-harness-runtime` validates one bounded plan entry and a

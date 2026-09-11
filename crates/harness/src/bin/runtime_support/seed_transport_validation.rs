@@ -93,6 +93,24 @@ pub(super) fn validate_context(context: &SelectedContext) -> Result<(), String> 
     digest(&context.context_digest, "context_digest")
 }
 
+pub(super) fn validate_recorded_context(
+    value: &serde_json::Value,
+    claimed_digest: &str,
+) -> Result<(), String> {
+    let context: SelectedContext = serde_json::from_value(value.clone())
+        .map_err(|_| String::from("seeded receipt selected context is invalid"))?;
+    validate_context(&context)
+        .map_err(|_| String::from("seeded receipt selected context is invalid"))?;
+    let computed = context_digest(&context)
+        .map_err(|_| String::from("seeded receipt selected context is invalid"))?;
+    if computed != context.context_digest || computed != claimed_digest {
+        return Err(String::from(
+            "seeded receipt selected context digest does not match its fields",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_seed(value: &str) -> Result<(), String> {
     if value.is_empty() || value.len() > MAX_SEED_BYTES || value.chars().any(char::is_control) {
         return Err(String::from(

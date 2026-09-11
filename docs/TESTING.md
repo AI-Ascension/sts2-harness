@@ -244,6 +244,13 @@ canonical seed readback, fresh observation advancement, and the `run_started` wi
 artifact checks do not launch a host, call a provider, or prove native seed settlement, profile/save
 isolation, gameplay, deployment, or release compatibility.
 
+`runtime_v3_episode_replay_seeded_receipt_tests` additionally treats a `seeded_run_receipt` as a
+strict replay preamble. It exercises malformed MCP wrappers; all plan, ordinal, mode, seed, context,
+profile, compatibility, and context-digest mismatch paths; same-operation receipt fences; and an
+`isError` wrapper accepted only for `unknown` recovery, never settlement. The private-source parser
+check reads its existing local input only. None of these tests invokes replay, provider, MCP, gateway,
+or a host.
+
 ### Native co-op consumer checks
 
 The `coop_native` library tests verify the copied `coop-native-v1` artifact, all seventeen producer
