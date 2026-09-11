@@ -2,7 +2,7 @@
 
 Date: 2026-09-11. This is the harness-side bounded policy record for the additive
 `ascension.context-memory.*.v1` namespace. Harness implementation code is pinned to
-`f8213e90388a77f5d893a40b37498aaf5eb78265`; the companion target implementation is pinned to
+`f801ee8a005d6df12a3ddc901f71a4d97eebb8cb`; the companion target implementation is pinned to
 `b21083719fb825be83088c9a6ab09531463a1a72`. The record is an implementation handoff, not a live
 provider, native game, deployment, or three-level orchestration claim.
 
