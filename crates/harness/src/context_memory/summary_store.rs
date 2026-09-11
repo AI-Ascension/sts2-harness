@@ -75,6 +75,9 @@ impl SummaryJobStore {
         if !allow_generation {
             return Err(MemoryError::PermissionDenied);
         }
+        if !valid_timestamp(now) {
+            return Err(MemoryError::InvalidQuery);
+        }
         let job = self.jobs.get_mut(job_id).ok_or(MemoryError::JobUnknown)?;
         if job.state != JobState::Queued || job.deadline_at.as_str() <= now {
             job.state = if job.deadline_at.as_str() <= now {
@@ -149,7 +152,8 @@ impl SummaryJobStore {
                 return Err(error);
             }
         };
-        if generated.output.len() > job.max_output_bytes
+        if generated.output.is_empty()
+            || generated.output.len() > job.max_output_bytes
             || sha256_hex(&generated.output) != generated.output_sha256
         {
             job.state = JobState::Rejected;

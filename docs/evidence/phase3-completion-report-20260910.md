@@ -1,39 +1,61 @@
 # Phase 3 harness completion report
 
-Date: 2026-09-10. This is the harness-side bounded policy record for the additive
-`ascension.context-memory.*.v1` namespace. The implementation commit is `b923192`; its target
-consumer commit is `9b69951`. The final post-commit harness gate is pinned to revision
-`40554ebe04ca268376e405fce413dc2281727c63`; its target companion gate is pinned to
-`7423d78b8a603278d25eb08851c8eee6447469ca`, with browser artifacts run at target parent revision
-`28222e5115b041a430003f9ede4293ca8780f756`. It does not claim a live provider, native game, deployment, or
-three-level native development hierarchy.
+Date: 2026-09-11. This is the harness-side bounded policy record for the additive
+`ascension.context-memory.*.v1` namespace. Harness implementation code is pinned to
+`f801ee8a005d6df12a3ddc901f71a4d97eebb8cb`; the companion target implementation is pinned to
+`b21083719fb825be83088c9a6ab09531463a1a72`. The record is an implementation handoff, not a live
+provider, native game, deployment, or three-level orchestration claim.
 
-The implementation is in `crates/harness/src/context_memory/` with the public include wrapper at
-`crates/harness/src/context_memory.rs`. It covers scoped/digest-bound source admission, bounded
-provenance, causal cutoffs, deterministic Unicode lexical ranking, exact citation spans, explicit
-fake summary jobs, independent review/admission, whole rendered-input selection, Phase 2 prepared
-manifest binding, held approvals, revocation fences, map generation checks, role ACLs, and aggregate
-telemetry redaction. The target console consumes these outputs through its own `/v3/memory` facade;
-the harness does not add a second target store or scheduler.
+The include-based `context_memory` module owns scoped source admission, occurrence identity,
+bounded provenance, causal cutoffs, deterministic Unicode lexical retrieval, exact and explicitly
+lossy extracts, review-required summary jobs, immutable review revisions, critical-fact checks,
+whole rendered-input selection, Phase 2 prepared-manifest binding, held approvals, revocation
+fences, generation-aware cache invalidation, and redacted aggregate telemetry. New deterministic
+component lanes add encrypted SQLite metadata/ciphertext separation, revocation-first backup/restore,
+finite retention accounting, resumable migration checkpoints, downgrade fences, atomic map-bundle
+swaps, immutable per-attempt usage, a private held-out evaluation partition, scoped role checks,
+concurrency/race coverage, and one-shot exact resume. The compiled `context-memory-cli`,
+`context-memory-peer`, and `context-memory-bench` binaries exercise bounded synthetic boundaries.
 
-The synthetic test `crates/harness/tests/phase3_memory.rs` exercises six cases: late/future/sibling/
-private/protected filtering, exact extract/review/admission, bounded fake summary input and unknown
-outcome, held approval/explicit resume/revocation, closed query/projection lag, and map/ACL/
-telemetry boundaries. The full 90-row requirement and failure mappings live in the target report's
-companion artifacts; this repository records the same matrix for the draft handoff. Its final matrix
-has 44 `executed_synthetic`, 40 `unverified`, and 6 `blocked` rows.
+Independent hand-labelled oracle tests cover causal membership, tie order, Unicode normalization,
+stopwords, bounded terms, and held-out label isolation. The process tests use only synthetic bytes
+and loopback stdin/stdout. They are not evidence of the unavailable target↔harness Phase 2 adapter.
 
-Strict policy, formatting, Clippy, Phase 3 tests, and the locked workspace test suite are required
-gates. They passed for this implementation: policy, formatting, Clippy, 6 Phase 3 tests, and the
-deterministic serial workspace run (`-- --test-threads=1`) with 171 tests passed and 1 ignored. The
-fake peer is synthetic external-boundary evidence only: it has
-no process, game, management, shell, arbitrary-network, credential, or hidden-reasoning capability.
-Durable encrypted index/WAL/backup storage, restore/downgrade, live adapter fidelity, native
-game/action lineage, evaluation metrics and resource tradeoffs are unverified and remain separate
-adapter work.
+The synchronized 90-row matrix records 80 `executed_synthetic`, 4 `unverified`, and 6 `blocked`
+rows. The unverified rows retain the missing rebuild-adapter, map-authority, CLI-adapter and
+disabled-shadow limits; the blocked rows are the unavailable cross-repository, real-process,
+end-to-end, and native-review lanes.
 
-The existing Phase 2 control authority remains the only revision/commit/resume owner. Summary
-generation cannot approve itself; review/admission cannot activate a revision; selection cannot
-resume a run; and revocation denies derived dependents before cleanup. These seams are intentionally
-pure and transport/provider independent so the next adapter can be tested with process/network
-tripwires without weakening the legacy contracts.
+## Gates
+
+The following locked commands passed with exit status 0 on the harness implementation revision:
+
+```text
+cargo run --locked --package repo-policy -- --strict
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo test --workspace --all-targets --all-features --locked -- --test-threads=1
+```
+
+The Phase 3 tests include lifecycle, persistence, oracle, mutation, race, peer, CLI, resume, and
+held-out evaluation lanes. The workspace run includes the repository's existing suites and passed
+serially; no ignored test was promoted to evidence. The measurement binary reports a synthetic
+baseline and local lexical retrieval only, with `summary_calls` and `summary_maintenance_bytes`
+explicitly zero and provider class `none_local_lexical_only`; it makes no quality, cache-benefit,
+or trajectory claim. The current run emitted `samples=32`, `corpus_entries=64`,
+`corpus_bytes=1782`, `baseline_p50_us=19`, and `memory_retrieval_p50_us=443`.
+
+## Limits and blockers
+
+The harness has no game or host access, provider credentials, arbitrary process/network path, or
+browser storage. The fake peer reports a bounded source manifest and output digest but never returns
+raw source bytes or invokes management tools. Durable local persistence and policy tests do not prove
+production WAL/temp/backup operations, provider quality, native action effects, or deployment.
+
+The remaining mandatory unavailable lanes are the atomic cross-repository Phase 2 binding, a real
+summary process/tool tripwire, target↔harness end-to-end process/network tripwires, and an
+independent native three-level reviewer. The current target browser audits passed with the
+documented Chromium library environment at target revision `58a283930b30348f34b9c19a0ccb432112521184`,
+recording zero external/provider/game effects and no browser persistence. The draft PR remains open
+and draft; no merge, release, deployment, provider call, game launch, or unrelated write was
+performed.

@@ -46,6 +46,7 @@ impl MemoryCorpus {
             self.total_bytes = 0;
             self.generation = 0;
             self.projection_generation = 0;
+            self.revocation_epoch = 0;
         }
     }
 
@@ -93,6 +94,15 @@ impl MemoryCorpus {
         corpus_generation: u64,
         now: &str,
     ) -> Result<&[u8], MemoryError> {
+        if !self.enabled {
+            return Err(MemoryError::Disabled);
+        }
+        if !valid_timestamp(now) {
+            return Err(MemoryError::InvalidQuery);
+        }
+        if self.revoked.contains(reference) {
+            return Err(MemoryError::Revoked);
+        }
         let entry = self
             .entries
             .get(reference)
@@ -109,8 +119,14 @@ impl MemoryCorpus {
         if entry.scope != self.scope {
             return Err(MemoryError::InvalidScope);
         }
+        if self.revoked.contains(&entry.reference()) {
+            return Err(MemoryError::Revoked);
+        }
         for parent in &entry.parents {
             let parent_ref = parent.reference();
+            if self.is_revoked(&parent_ref, &mut BTreeSet::new()) {
+                return Err(MemoryError::Revoked);
+            }
             let parent_entry = self
                 .entries
                 .get(&parent_ref)
@@ -126,6 +142,9 @@ impl MemoryCorpus {
             if parent_entry.lineage_depth.saturating_add(1) != entry.lineage_depth {
                 return Err(MemoryError::LineageTooDeep);
             }
+        }
+        if !valid_lineage_depth(&entry, &self.entries) {
+            return Err(MemoryError::LineageTooDeep);
         }
         let reference = entry.reference();
         if let Some(existing) = self.entries.values().find(|existing| {
@@ -175,6 +194,13 @@ impl MemoryCorpus {
         now: &str,
         include_protected: bool,
     ) -> Result<(), MemoryError> {
+        if !valid_id(branch_id)
+            || cutoff > 9_007_199_254_740_991
+            || corpus_generation == 0
+            || corpus_generation > 9_007_199_254_740_991
+        {
+            return Err(MemoryError::InvalidQuery);
+        }
         if entry.scope != self.scope || entry.branch_id != branch_id {
             return Err(MemoryError::PermissionDenied);
         }
@@ -205,12 +231,17 @@ impl MemoryCorpus {
         roots: &[MemoryRef],
         created_at: impl Into<String>,
     ) -> Result<RevocationRecord, MemoryError> {
+        let created_at = created_at.into();
         if roots.is_empty()
             || roots.len() > 16
             || roots.iter().collect::<BTreeSet<_>>().len() != roots.len()
             || roots.iter().any(|root| !self.entries.contains_key(root))
+            || !valid_timestamp(&created_at)
         {
             return Err(MemoryError::InvalidEntry);
+        }
+        if self.revoked.union(&roots.iter().cloned().collect()).count() > MAX_REVOKED_REFS {
+            return Err(MemoryError::Capacity);
         }
         self.revocation_epoch = self.revocation_epoch.saturating_add(1);
         for root in roots {
@@ -221,7 +252,7 @@ impl MemoryCorpus {
             .values()
             .filter(|entry| self.is_revoked(&entry.reference(), &mut BTreeSet::new()))
             .count();
-        Ok(RevocationRecord {
+        let record = RevocationRecord {
             schema: MEMORY_REVOCATION_SCHEMA.to_owned(),
             revocation_id: format!("revoke-{}", self.revocation_epoch),
             scope: self.scope.clone(),
@@ -231,8 +262,10 @@ impl MemoryCorpus {
             cleanup_status: CleanupStatus::Pending,
             affected_derivatives,
             historical_manifests_rewritten: false,
-            created_at: created_at.into(),
-        })
+            created_at,
+        };
+        record.validate()?;
+        Ok(record)
     }
 
     pub fn cleanup_revoked(&mut self) -> usize {

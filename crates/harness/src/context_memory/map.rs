@@ -63,6 +63,109 @@ impl MapBundle {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MapBundleFailpoint {
+    BeforeSwap,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AtomicMapBundleStore {
+    current: Option<MapBundle>,
+    failpoint: Option<MapBundleFailpoint>,
+}
+
+impl AtomicMapBundleStore {
+    pub fn set_failpoint(&mut self, failpoint: Option<MapBundleFailpoint>) {
+        self.failpoint = failpoint;
+    }
+
+    pub fn commit(
+        &mut self,
+        bundle: MapBundle,
+        scope: &MemoryScope,
+        generation: u64,
+    ) -> Result<(), MemoryError> {
+        bundle.validate(scope, generation)?;
+        if self.current.as_ref() == Some(&bundle) {
+            return Ok(());
+        }
+        if self.failpoint.take().is_some() {
+            return Err(MemoryError::PublicationFailed);
+        }
+        self.current = Some(bundle);
+        Ok(())
+    }
+
+    pub fn current(&self) -> Option<&MapBundle> {
+        self.current.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MapMemoryCandidate {
+    pub scope: MemoryScope,
+    pub node_id: String,
+    pub generation: u64,
+    pub visible: bool,
+    pub actor_id: Option<String>,
+    pub legal_id: Option<String>,
+    pub private_actor: bool,
+    pub current_authority: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MapMemoryGate {
+    scope: MemoryScope,
+    generation: u64,
+    current_legal_ids: BTreeSet<String>,
+}
+
+impl MapMemoryGate {
+    pub fn new(
+        scope: MemoryScope,
+        generation: u64,
+        current_legal_ids: impl IntoIterator<Item = String>,
+    ) -> Result<Self, MemoryError> {
+        if !scope.valid() || generation == 0 {
+            return Err(MemoryError::InvalidScope);
+        }
+        let current_legal_ids = current_legal_ids.into_iter().collect::<BTreeSet<_>>();
+        if current_legal_ids.iter().any(|id| !valid_id(id)) {
+            return Err(MemoryError::InvalidEntry);
+        }
+        Ok(Self {
+            scope,
+            generation,
+            current_legal_ids,
+        })
+    }
+
+    pub fn accept(&self, candidate: MapMemoryCandidate) -> Result<MapMemoryCandidate, MemoryError> {
+        if candidate.scope != self.scope
+            || candidate.generation != self.generation
+            || !valid_id(&candidate.node_id)
+            || candidate
+                .actor_id
+                .as_deref()
+                .is_some_and(|actor_id| !valid_id(actor_id))
+        {
+            return Err(MemoryError::InvalidEntry);
+        }
+        if !candidate.visible || candidate.private_actor {
+            return Err(MemoryError::PermissionDenied);
+        }
+        let legal_id = candidate.legal_id.as_deref().ok_or(MemoryError::PermissionDenied)?;
+        if !candidate.current_authority
+            || !valid_id(legal_id)
+            || !self.current_legal_ids.contains(legal_id)
+        {
+            return Err(MemoryError::PermissionDenied);
+        }
+        Ok(candidate)
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct MemoryTelemetry {
     pub admitted_sources: u64,

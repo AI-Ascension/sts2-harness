@@ -1,14 +1,33 @@
 // SPDX-License-Identifier: MIT
 
 impl MemoryCorpus {
-pub fn retrieve(
+    pub fn retrieve(
         &self,
         query: &MemoryQuery,
         now: &str,
     ) -> Result<RetrievalResponse, MemoryError> {
+        self.retrieve_with_scan_budget(query, now, self.max_entries)
+            .map(|(response, _)| response)
+    }
+
+    /// Execute a bounded lexical scan and return the response together with an explicit outcome.
+    /// A caller that supplies a finite scan budget can therefore distinguish a timeout from a
+    /// complete no-match result; neither condition is silently converted to success.
+    pub fn retrieve_with_scan_budget(
+        &self,
+        query: &MemoryQuery,
+        now: &str,
+        scan_budget: usize,
+    ) -> Result<(RetrievalResponse, RetrievalOutcome), MemoryError> {
         query.validate()?;
+        if query.ranker_version != "lexical-v1" {
+            return Err(MemoryError::InvalidQuery);
+        }
         if !self.enabled {
             return Err(MemoryError::Disabled);
+        }
+        if !valid_timestamp(now) {
+            return Err(MemoryError::InvalidQuery);
         }
         if query.scope != self.scope {
             return Err(MemoryError::PermissionDenied);
@@ -22,18 +41,33 @@ pub fn retrieve(
         let terms = normalize_terms(&query.query)?;
         let mut ranked = Vec::new();
         let mut excluded = Vec::new();
+        let mut scanned = 0_usize;
+        let mut scan_limited = false;
         for entry in self.entries.values() {
-            if self
-                .eligible_entry(
-                    entry,
-                    &query.branch_id,
-                    query.cutoff,
-                    query.corpus_generation,
-                    now,
-                    false,
-                )
-                .is_err()
-            {
+            if scanned >= scan_budget {
+                scan_limited = true;
+                break;
+            }
+            scanned = scanned.saturating_add(1);
+            if let Err(error) = self.eligible_entry(
+                entry,
+                &query.branch_id,
+                query.cutoff,
+                query.corpus_generation,
+                now,
+                false,
+            ) {
+                let reason = match error {
+                    MemoryError::FutureParent => "causal_cutoff_or_generation",
+                    MemoryError::PermissionDenied => "scope_branch_or_protected",
+                    MemoryError::Revoked => "revoked_dependency",
+                    MemoryError::Expired => "expired_source",
+                    _ => "ineligible_source",
+                };
+                excluded.push(ExclusionReason {
+                    entry_id: entry.entry_id.clone(),
+                    reason: reason.to_owned(),
+                });
                 continue;
             }
             let text =
@@ -71,7 +105,11 @@ pub fn retrieve(
             .map(|(score, _, _, entry)| RetrievalResult {
                 source: entry.reference(),
                 score,
-                reasons: vec!["lexical_match".to_owned(), "historical_source".to_owned()],
+                reasons: vec![
+                    "lexical_match".to_owned(),
+                    "historical_source".to_owned(),
+                    "relevance_signal_not_confidence".to_owned(),
+                ],
                 snippet: bounded_snippet(&entry.content),
             })
             .collect();
@@ -80,7 +118,7 @@ pub fn retrieve(
         } else {
             format!("query-{}", &sha256_hex(query.query.as_bytes())[..16])
         };
-        Ok(RetrievalResponse {
+        let response = RetrievalResponse {
             schema: MEMORY_RETRIEVAL_SCHEMA.to_owned(),
             query_id,
             scope: query.scope.clone(),
@@ -92,14 +130,22 @@ pub fn retrieve(
             revocation_epoch: self.revocation_epoch,
             ranker_version: query.ranker_version.clone(),
             results,
-            coverage: if truncated {
+            coverage: if scan_limited {
+                RetrievalCoverage::TimeLimited
+            } else if truncated {
                 RetrievalCoverage::CandidateLimited
             } else {
                 RetrievalCoverage::CompleteWithinScope
             },
             inference_calls: 0,
             excluded,
-        })
+        };
+        let outcome = if scan_limited {
+            RetrievalOutcome::TimeLimited
+        } else {
+            retrieval_outcome(&response)
+        };
+        Ok((response, outcome))
     }
 
     /// Build a deterministic extract from immutable source bytes.  Every claim cites the exact

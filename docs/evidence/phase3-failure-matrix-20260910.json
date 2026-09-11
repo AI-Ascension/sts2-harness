@@ -1,6 +1,6 @@
 {
   "schema": "ascension.phase3-failure-matrix-evidence.v1",
-  "date": "2026-09-10",
+  "date": "2026-09-11",
   "source_matrix": "ascension-context-console-phase3-meta-prompt-package/tests/failure-matrix.csv",
   "rows": [
     {
@@ -13,7 +13,7 @@
       "evidence_ref": "docs/phase3/IMPLEMENTED_HANDOFF.md",
       "command": "source-backed handoff in worktree",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F002",
@@ -25,7 +25,7 @@
       "evidence_ref": "docs/phase3/IMPLEMENTED_HANDOFF.md",
       "command": "target/harness worktrees extend Phase 2 heads",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F003",
@@ -37,7 +37,7 @@
       "evidence_ref": "docs/evidence/phase3-completion-report-20260910.md",
       "command": "scope ledger and external-action limits",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F004",
@@ -46,10 +46,10 @@
       "stimulus": "New field inserted into strict Phase 2 capability response",
       "expected_oracle": "Existing Phase 1/2 fixture bytes and strict capability meanings remain valid unchanged.",
       "status": "executed_synthetic",
-      "evidence_ref": "cargo test --workspace --all-targets --all-features --locked",
-      "command": "Phase 1/2 tests passed",
+      "evidence_ref": "docs/evidence/phase3-completion-report-20260910.md",
+      "command": "cargo test --workspace --all-targets --all-features --locked",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F005",
@@ -59,9 +59,9 @@
       "expected_oracle": "Every new payload has a separately versioned bounded closed shape and an accepted canonical owner.",
       "status": "executed_synthetic",
       "evidence_ref": "contracts/context-memory/*; tests/phase3_memory.rs",
-      "command": "closed v1 contracts and route tests",
+      "command": "contracts/context-memory/*; phase3 tests",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F006",
@@ -82,10 +82,10 @@
       "stimulus": "Future outcome has an earlier wall-clock timestamp",
       "expected_oracle": "Fixtures include late admission, future outcomes, branch siblings, revoked sources and co-op private observations with exact expected eligibility.",
       "status": "executed_synthetic",
-      "evidence_ref": "fixtures/context-memory/*; crates/harness/tests/phase3_memory.rs",
-      "command": "synthetic causal fixture and scope test",
+      "evidence_ref": "crates/harness/tests/phase3_oracle.rs; crates/harness/tests/phase3_memory.rs",
+      "command": "phase3_oracle.rs; phase3_memory.rs",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F008",
@@ -94,10 +94,10 @@
       "stimulus": "Expected result imports production filter function",
       "expected_oracle": "Expected source membership/ranking and critical facts do not call the production implementation being tested.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/tests/phase3_memory.rs",
-      "command": "independent fixture assertions",
+      "evidence_ref": "crates/harness/tests/phase3_oracle.rs",
+      "command": "phase3_oracle.rs",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F009",
@@ -105,11 +105,11 @@
       "requirement_id": "P3-R009",
       "stimulus": "Evaluator answer artifact is searchable by product principal",
       "expected_oracle": "Held-out/evaluator labels are in an inaccessible scope and every lane enforces the same cutoff.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_oracle.rs; crates/harness/src/context_memory/evaluation.rs",
+      "command": "held_out_labels_are_private_and_cutoff_scope_is_rechecked",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F010",
@@ -118,10 +118,10 @@
       "stimulus": "Inferred summary becomes observed fact during serialization",
       "expected_oracle": "Observed, reported, derived, inferred and unresolved facts remain distinct through serialization and rendering.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/src/context_memory/retrieval_types.rs",
-      "command": "epistemic enums and closed wire types",
+      "evidence_ref": "crates/harness/src/context_memory/retrieval_types.rs; crates/harness/tests/phase3_memory.rs",
+      "command": "retrieval types and serialization tests",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F011",
@@ -129,11 +129,11 @@
       "requirement_id": "P3-R011",
       "stimulus": "Equal bytes from two distinct failed operations collapse",
       "expected_oracle": "Repeated equal content may share storage while separate event/settlement occurrences remain addressable.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "equal_content_reuses_one_blob_but_preserves_occurrence_identity",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F012",
@@ -142,10 +142,10 @@
       "stimulus": "Summary cites itself through a two-node lineage cycle",
       "expected_oracle": "Self-cycles, cross-scope parents, future roots, excessive depth and missing source identities are rejected.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/src/context_memory/core.rs",
+      "evidence_ref": "crates/harness/src/context_memory/core.rs; crates/harness/tests/phase3_memory.rs",
       "command": "parent/lineage validation",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F013",
@@ -154,10 +154,10 @@
       "stimulus": "Same source identity arrives with changed bytes",
       "expected_oracle": "Same identity/version/digest admission is idempotent; changed bytes conflict without overwrite.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/tests/phase3_memory.rs",
-      "command": "idempotent/conflict admission test",
+      "evidence_ref": "crates/harness/src/context_memory/tests.rs",
+      "command": "changed identity conflicts and publication is atomic",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F014",
@@ -166,10 +166,10 @@
       "stimulus": "Process dies after blob write before membership commit",
       "expected_oracle": "Readers never see eligible metadata with unverified/missing content after any injected publication crash.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/tests/phase3_memory.rs",
+      "evidence_ref": "crates/harness/src/context_memory/tests.rs",
       "command": "publication failpoint test",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F015",
@@ -178,10 +178,10 @@
       "stimulus": "Memory-only source creates a persistent lexical index",
       "expected_oracle": "Memory disabled creates no corpus; memory-only sources never spill to durable index or job storage.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/src/context_memory/corpus.rs; tests/phase3_memory.rs",
+      "evidence_ref": "crates/harness/src/context_memory/corpus.rs; crates/harness/tests/phase3_memory.rs",
       "command": "disabled and no-corpus path",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F016",
@@ -190,10 +190,10 @@
       "stimulus": "Revoke acknowledgement returned while derived row still eligible",
       "expected_oracle": "A revoked root and all dependent candidates are unusable before deletion acknowledgement even while cleanup lags.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/tests/phase3_memory.rs",
+      "evidence_ref": "crates/harness/src/context_memory/tests.rs; crates/harness/tests/phase3_lifecycle.rs",
       "command": "revocation denial before cleanup",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F017",
@@ -201,11 +201,11 @@
       "requirement_id": "P3-R017",
       "stimulus": "Search snippet cache retains deleted source body",
       "expected_oracle": "Cleanup accounts for source bodies, summaries, snippets, indices, caches, jobs and permitted tombstone metadata.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "retention cleanup accounts bodies/indexes/caches/tombstones",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F018",
@@ -213,11 +213,11 @@
       "requirement_id": "P3-R018",
       "stimulus": "Backup restore loads pre-revocation corpus first",
       "expected_oracle": "A restored older corpus cannot expose revoked content or make an old approval/plan eligible.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle.rs; crates/harness/tests/phase3_persistence.rs",
+      "command": "restore and durable reload revocation tests",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F019",
@@ -226,10 +226,10 @@
       "stimulus": "Unicode and tie-order differ across repeated runs",
       "expected_oracle": "Unicode, punctuation, empty/all-stopword cases and deterministic tie order have frozen conformance vectors.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/src/context_memory/retrieval_helpers.rs; tests/phase3_memory.rs",
-      "command": "normalization and deterministic ties",
+      "evidence_ref": "crates/harness/tests/phase3_oracle.rs",
+      "command": "normalization vectors and deterministic ties",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F020",
@@ -241,7 +241,7 @@
       "evidence_ref": "crates/harness/src/context_memory/retrieval_helpers.rs; target tests",
       "command": "query byte/term bounds",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F021",
@@ -249,11 +249,11 @@
       "requirement_id": "P3-R021",
       "stimulus": "UI labels rank score as a factual probability",
       "expected_oracle": "Ranking scores are explained as relevance signals and never mislabeled calibrated confidence.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "web/index.html; docs/MEMORY.md; crates/harness/tests/phase3_lifecycle.rs",
+      "command": "score disclosure source and UI",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F022",
@@ -262,10 +262,10 @@
       "stimulus": "Index generation lags frozen corpus generation",
       "expected_oracle": "Projection coverage for a pinned corpus is verified or returns a typed degraded/unavailable result.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/tests/phase3_memory.rs",
-      "command": "projection lag typed unavailable",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle.rs; tests/phase3_memory.rs",
+      "command": "projection cache and unavailable outcome",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F023",
@@ -273,11 +273,11 @@
       "requirement_id": "P3-R023",
       "stimulus": "Encrypted bodies have plaintext WAL/index copies",
       "expected_oracle": "Indices/temp/WAL/backups follow approved confidentiality policy; no plaintext searchable side store is created.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "durable_store_encrypts_bodies_and_rejects_changed_identity",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F024",
@@ -286,10 +286,10 @@
       "stimulus": "Crash occurs during atomic projection swap",
       "expected_oracle": "Interrupted rebuild, corrupt index and outbox replay cannot publish forbidden rows or alter source truth.",
       "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
+      "evidence_ref": "UNVERIFIED: no corrupt-index/outbox rebuild adapter proof",
       "command": "not run",
       "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "reason": "no corrupt-index/outbox rebuild adapter proof"
     },
     {
       "failure_id": "P3-F025",
@@ -301,7 +301,7 @@
       "evidence_ref": "crates/harness/tests/phase3_memory.rs",
       "command": "prefiltered scope/cutoff retrieval",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F026",
@@ -310,10 +310,10 @@
       "stimulus": "Late-admitted future record passes sequence-only test",
       "expected_oracle": "Future/late/sibling/private sources are excluded by the frozen query membership and cutoff rules.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/tests/phase3_memory.rs",
+      "evidence_ref": "crates/harness/tests/phase3_memory.rs; crates/harness/tests/phase3_oracle.rs",
       "command": "late/future/sibling/private filtering",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F027",
@@ -321,11 +321,11 @@
       "requirement_id": "P3-R027",
       "stimulus": "Timed-out search returns empty exhaustive success",
       "expected_oracle": "Timeout, truncation, no match, unavailable index and cache invalidation are distinct observable outcomes.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle.rs",
+      "command": "timeout, no-match, unavailable and cache invalidation",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F028",
@@ -337,7 +337,7 @@
       "evidence_ref": "crates/harness/tests/phase3_memory.rs",
       "command": "exact extract and citation bytes",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F029",
@@ -345,11 +345,11 @@
       "requirement_id": "P3-R029",
       "stimulus": "Selective omission is labeled lossless",
       "expected_oracle": "Lossy extraction is labeled and omitted facts remain inspectable; no unsupported lossless-equivalence claim.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "bounded extract labels loss and preserves retained span",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F030",
@@ -358,10 +358,10 @@
       "stimulus": "Pinned history is replaced without deliberate approval",
       "expected_oracle": "Current/protected/unknown-operation blocks and optional pins cannot be silently replaced to satisfy size targets.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/src/context_memory/selection.rs; tests/phase3_memory.rs",
-      "command": "pin and mandatory whole budget",
+      "evidence_ref": "crates/harness/src/context_memory/selection.rs; crates/harness/src/context_memory/tests.rs",
+      "command": "mandatory bytes and whole-render budget",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F031",
@@ -382,10 +382,10 @@
       "stimulus": "Summary adapter omits a selected source from actual stdin",
       "expected_oracle": "Fake CLI/HTTP capture sees the exact authorized bounded sources and generator/output-schema configuration.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/tests/phase3_memory.rs",
-      "command": "fake peer source capture",
+      "evidence_ref": "crates/harness/tests/phase3_peer.rs",
+      "command": "exact bounded source manifest capture",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F033",
@@ -394,10 +394,10 @@
       "stimulus": "Opening proposal page starts model generation",
       "expected_oracle": "Only an authorized explicit summary job or approved proposal-only policy can start summary inference.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/src/context_memory/summary_store.rs; target tests",
-      "command": "explicit generation permission",
+      "evidence_ref": "crates/harness/tests/phase3_memory.rs; crates/harness/src/context_memory/jobs.rs",
+      "command": "summary job explicit permission and review state",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F034",
@@ -405,11 +405,11 @@
       "requirement_id": "P3-R034",
       "stimulus": "Summary changes 2 HP loss into 20 HP loss",
       "expected_oracle": "Poisoned fixtures changing numbers, units, negations, settlement or visibility fail admission.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle.rs",
+      "command": "critical facts and poisoned edit rejection",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F035",
@@ -421,7 +421,7 @@
       "evidence_ref": "crates/harness/tests/phase3_memory.rs",
       "command": "independent review binding",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F036",
@@ -429,11 +429,11 @@
       "requirement_id": "P3-R036",
       "stimulus": "Reviewed proposal bytes change under same identity",
       "expected_oracle": "Editing, source revocation or digest changes invalidates the previous review and creates a new version.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle.rs",
+      "command": "critical facts and review versions fence edits",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F037",
@@ -441,11 +441,11 @@
       "requirement_id": "P3-R037",
       "stimulus": "Client resends generation with same key but changed body",
       "expected_oracle": "Same command is applied once logically; changed body conflicts and expired command windows cannot restart work.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_additional.rs",
+      "command": "summary idempotency and expiry",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F038",
@@ -454,10 +454,10 @@
       "stimulus": "Worker dies after possible remote write and new worker retries",
       "expected_oracle": "Crash after possible external write cannot trigger an automatic duplicate generation or accept stale worker output.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/tests/phase3_memory.rs",
+      "evidence_ref": "crates/harness/tests/phase3_memory.rs; crates/harness/src/context_memory/tests.rs",
       "command": "unknown summary outcome retained/no retry",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F039",
@@ -465,11 +465,11 @@
       "requirement_id": "P3-R039",
       "stimulus": "Unknown jobs are excluded from concurrency/spend budget",
       "expected_oracle": "Per-run/global concurrency, queue, byte/token/spend/deadline reservations include in-flight and unknown work.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle.rs",
+      "command": "unknown summary reservation remains in global budget",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F040",
@@ -478,10 +478,10 @@
       "stimulus": "Optional memories push required catalog beyond bound",
       "expected_oracle": "Protected observation/catalog/constraints and pinned obligations cannot be truncated for optional memory.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/src/context_memory/selection.rs",
+      "evidence_ref": "crates/harness/src/context_memory/selection.rs; crates/harness/src/context_memory/tests.rs",
       "command": "mandatory bytes are never trimmed",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F041",
@@ -490,10 +490,10 @@
       "stimulus": "Token sums ignore serialized wrapper/schema overhead",
       "expected_oracle": "Admission measures/checks the rendered whole including schema/wrappers/attachments, not a misleading component sum.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/tests/phase3_memory.rs",
+      "evidence_ref": "crates/harness/src/context_memory/tests.rs",
       "command": "whole rendered byte measurement",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F042",
@@ -501,11 +501,11 @@
       "requirement_id": "P3-R042",
       "stimulus": "Nonstable map iteration changes selected order",
       "expected_oracle": "Repeated identical inputs yield identical selection/bytes and every omitted candidate has a bounded reason.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_additional.rs",
+      "command": "identical selection inputs have identical bytes/exclusions",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F043",
@@ -513,11 +513,11 @@
       "requirement_id": "P3-R043",
       "stimulus": "Policy row commits separately from Phase 2 revision",
       "expected_oracle": "No failure can commit a context revision without its policy/audit or activate a policy without the revision.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle.rs; crates/harness/tests/phase3_mutations.rs",
+      "command": "binding transaction is all-or-nothing",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F044",
@@ -526,10 +526,10 @@
       "stimulus": "Policy quietly enables cross-episode rolling sources",
       "expected_oracle": "Manual/rolling/per-decision modes, source classes, summary catalog and fallback permissions are reviewable and immutable when approved.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/src/context_memory/manifest.rs",
-      "command": "approved policy bounds/modes",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle.rs",
+      "command": "approved policy bounds/modes and generation pins",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F045",
@@ -537,11 +537,11 @@
       "requirement_id": "P3-R045",
       "stimulus": "Older client drops active memory binding",
       "expected_oracle": "Old control clients cannot erase an active memory binding or reinterpret unsupported memory profile semantics.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "downgrade reader/resume fence",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F046",
@@ -549,11 +549,11 @@
       "requirement_id": "P3-R046",
       "stimulus": "Retrieval reruns after preview with changed corpus",
       "expected_oracle": "The first submitted request consumes the same prepared bytes/attachments and reserved model-visible identities approved in preview.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_resume.rs",
+      "command": "first resume consumes exact prepared bytes once",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F047",
@@ -565,7 +565,7 @@
       "evidence_ref": "crates/harness/src/context_memory/selection.rs; target tests",
       "command": "read/selection paths have no inference",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F048",
@@ -573,11 +573,11 @@
       "requirement_id": "P3-R048",
       "stimulus": "Late old response dispatches after dependency revocation",
       "expected_oracle": "Obsolete plans, late provider results and revoked dependencies cannot dispatch remaining actions; already-admitted operations reconcile normally.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_memory.rs; crates/harness/tests/phase3_races.rs",
+      "command": "approval revocation and stale lineage fences",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F049",
@@ -585,11 +585,11 @@
       "requirement_id": "P3-R049",
       "stimulus": "First resumed input is reranked after new source admission",
       "expected_oracle": "Policy activation does not rerun retrieval between applicable preview and first resumed submission.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_resume.rs",
+      "command": "one-shot resume ledger",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F050",
@@ -597,11 +597,11 @@
       "requirement_id": "P3-R050",
       "stimulus": "Newly admitted unapproved summary enters active catalog",
       "expected_oracle": "Later retrieval follows exact approved source/cutoff/catalog rules; newly admitted summaries or wider scopes do not silently enter.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle.rs",
+      "command": "generation-aware policy realization",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F051",
@@ -609,11 +609,11 @@
       "requirement_id": "P3-R051",
       "stimulus": "A retained plan step records new retrieval and token usage",
       "expected_oracle": "Each new provider attempt references its immutable realized selection and retained actions preserve original lineage without duplicate usage.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "lineage and immutable usage ledger",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F052",
@@ -622,10 +622,10 @@
       "stimulus": "Graph and image point to different generations",
       "expected_oracle": "Mismatched graph/analysis/image generations or digests are rejected rather than combined by filename.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/tests/phase3_memory.rs",
-      "command": "map generation fence",
+      "evidence_ref": "crates/harness/tests/phase3_mutations.rs",
+      "command": "map bundle swap is atomic and generation bound",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F053",
@@ -633,11 +633,11 @@
       "requirement_id": "P3-R053",
       "stimulus": "Map summarization reveals unknown reward outcomes",
       "expected_oracle": "Unknown future nodes, private actor data and historical legal IDs cannot gain current authority.",
-      "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/src/context_memory/map.rs; tests/phase3_memory.rs",
-      "command": "visible legal-node validation",
-      "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "status": "unverified",
+      "evidence_ref": "UNVERIFIED: map policy does not model private actor or historical legal-ID authority",
+      "command": "not run",
+      "exit_status": "",
+      "reason": "map policy does not model private actor or historical legal-ID authority"
     },
     {
       "failure_id": "P3-F054",
@@ -645,11 +645,11 @@
       "requirement_id": "P3-R054",
       "stimulus": "Adapter silently drops a requested map image",
       "expected_oracle": "Requested unsupported images block; approved graph-only mode discloses the limitation and claimed delivery has executable byte evidence.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_additional.rs",
+      "command": "requested image versus graph-only bundle",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F055",
@@ -658,10 +658,10 @@
       "stimulus": "Search credential is used to approve and resume",
       "expected_oracle": "Read/search/review/generate/select/policy/revoke/control roles and source scopes are independently enforced.",
       "status": "executed_synthetic",
-      "evidence_ref": "crates/harness/tests/phase3_memory.rs",
-      "command": "least privilege role check",
+      "evidence_ref": "crates/harness/tests/phase3_memory.rs; crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "role checks",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F056",
@@ -669,11 +669,11 @@
       "requirement_id": "P3-R056",
       "stimulus": "Summary embeds trusted-role delimiters and settings",
       "expected_oracle": "Retrieved text/claims cannot impersonate system roles, grant review, alter scope or execute a management tool.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "scoped roles cannot launder source text authority",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F057",
@@ -682,10 +682,10 @@
       "stimulus": "Malicious source link resolves an arbitrary host path",
       "expected_oracle": "Origin/CSRF, inert text, no arbitrary URL/path/SQL and no sensitive browser persistence are verified.",
       "status": "executed_synthetic",
-      "evidence_ref": "tools/integrated_browser_audit.cjs; tools/phase2_browser_audit.cjs",
-      "command": "same-origin, inert text, persistence audit",
+      "evidence_ref": "target/docs/evidence/integrated-browser-ui-20260910.json; target/docs/evidence/phase2-browser-ui-20260910.json",
+      "command": "FONTCONFIG_PATH=/tmp/chromium-libs/etc/fonts FONTCONFIG_FILE=/tmp/chromium-libs/etc/fonts/fonts.conf XDG_DATA_DIRS=/tmp/chromium-libs/usr/share:/usr/share LD_LIBRARY_PATH=/tmp/chromium-libs/usr/lib/x86_64-linux-gnu:/tmp/chromium-libs/lib/x86_64-linux-gnu:/tmp/chromium-libs/usr/lib PLAYWRIGHT_MODULE=/tmp/phase3-playwright/node_modules/playwright node tools/integrated_browser_audit.cjs; FONTCONFIG_PATH=/tmp/chromium-libs/etc/fonts FONTCONFIG_FILE=/tmp/chromium-libs/etc/fonts/fonts.conf XDG_DATA_DIRS=/tmp/chromium-libs/usr/share:/usr/share LD_LIBRARY_PATH=/tmp/chromium-libs/usr/lib/x86_64-linux-gnu:/tmp/chromium-libs/lib/x86_64-linux-gnu:/tmp/chromium-libs/usr/lib PLAYWRIGHT_MODULE=/tmp/phase3-playwright/node_modules/playwright node tools/phase2_browser_audit.cjs",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "current Playwright/Chromium target browser audits passed; synthetic loopback only"
     },
     {
       "failure_id": "P3-F058",
@@ -695,9 +695,9 @@
       "expected_oracle": "Each route has explicit permission/effect/idempotency semantics and closed bounded schemas.",
       "status": "executed_synthetic",
       "evidence_ref": "tests/phase3_memory.rs",
-      "command": "route closed shape/effect permissions",
+      "command": "closed shape/effect permissions",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F059",
@@ -706,10 +706,10 @@
       "stimulus": "CLI writes store directly bypassing auth checks",
       "expected_oracle": "CLI and browser cannot bypass validation by calling a separate store or scheduler.",
       "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
+      "evidence_ref": "UNVERIFIED: target facade and harness CLI are not connected through one adapter",
       "command": "not run",
       "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "reason": "target facade and harness CLI are not connected through one adapter"
     },
     {
       "failure_id": "P3-F060",
@@ -717,11 +717,11 @@
       "requirement_id": "P3-R060",
       "stimulus": "Browser refresh retransmits generation as new command",
       "expected_oracle": "Polling/refresh/lost acknowledgements do not repeat generation, commit, resume or game actions.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_resume.rs; tests/phase3_memory.rs",
+      "command": "one-shot resume and read-only status",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F061",
@@ -733,7 +733,7 @@
       "evidence_ref": "web/index.html; docs/MEMORY.md",
       "command": "distinct lifecycle labels in UI source",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F062",
@@ -741,11 +741,11 @@
       "requirement_id": "P3-R062",
       "stimulus": "Source panel hides omitted negative statements",
       "expected_oracle": "Claims link to source spans, critical facts, omissions and contradictions before admission.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "web/index.html",
+      "command": "source spans, critical facts, omissions, contradictions",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F063",
@@ -754,10 +754,10 @@
       "stimulus": "Large adversarial text breaks keyboard focus or executes markup",
       "expected_oracle": "Keyboard flow, focus, narrow/large inputs, inert adversarial text and two-client changes pass browser tests.",
       "status": "executed_synthetic",
-      "evidence_ref": "tools/phase2_browser_audit.cjs; tools/integrated_browser_audit.cjs",
-      "command": "keyboard/narrow/inert text regression audit",
+      "evidence_ref": "target/docs/evidence/integrated-browser-ui-20260910.json; target/docs/evidence/phase2-browser-ui-20260910.json",
+      "command": "FONTCONFIG_PATH=/tmp/chromium-libs/etc/fonts FONTCONFIG_FILE=/tmp/chromium-libs/etc/fonts/fonts.conf XDG_DATA_DIRS=/tmp/chromium-libs/usr/share:/usr/share LD_LIBRARY_PATH=/tmp/chromium-libs/usr/lib/x86_64-linux-gnu:/tmp/chromium-libs/lib/x86_64-linux-gnu:/tmp/chromium-libs/usr/lib PLAYWRIGHT_MODULE=/tmp/phase3-playwright/node_modules/playwright node tools/integrated_browser_audit.cjs; FONTCONFIG_PATH=/tmp/chromium-libs/etc/fonts FONTCONFIG_FILE=/tmp/chromium-libs/etc/fonts/fonts.conf XDG_DATA_DIRS=/tmp/chromium-libs/usr/share:/usr/share LD_LIBRARY_PATH=/tmp/chromium-libs/usr/lib/x86_64-linux-gnu:/tmp/chromium-libs/lib/x86_64-linux-gnu:/tmp/chromium-libs/usr/lib PLAYWRIGHT_MODULE=/tmp/phase3-playwright/node_modules/playwright node tools/phase2_browser_audit.cjs",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "current target desktop/narrow/reduced-motion/keyboard audits passed; synthetic loopback only"
     },
     {
       "failure_id": "P3-F064",
@@ -765,11 +765,11 @@
       "requirement_id": "P3-R064",
       "stimulus": "Provider ID is reused as action/summary/revision ID",
       "expected_oracle": "Selection and derived roots connect to revision, snapshot, provider attempt, originating plan and action without ID collapse.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "lineage usage and evaluation records",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F065",
@@ -781,7 +781,7 @@
       "evidence_ref": "crates/harness/tests/phase3_memory.rs",
       "command": "aggregate telemetry null raw fields",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F066",
@@ -789,11 +789,11 @@
       "requirement_id": "P3-R066",
       "stimulus": "Same request usage charged for every plan action",
       "expected_oracle": "Unknown counts remain absent; cached-input and summary costs are not misreported or duplicated per action.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "immutable per-attempt usage",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F067",
@@ -801,11 +801,11 @@
       "requirement_id": "P3-R067",
       "stimulus": "Summary built from full episode enters earlier-case evaluation",
       "expected_oracle": "All lanes share authorized observations/config/cutoff and held-out labels never enter memory.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_oracle.rs; crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "held-out labels and cutoff scope",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F068",
@@ -813,11 +813,11 @@
       "requirement_id": "P3-R068",
       "stimulus": "Quality report omits hard cases from denominator",
       "expected_oracle": "Critical safety gates and declared relevance/support metrics report actual denominators, misses and review limits.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "evaluation report denominator/miss/review bounds",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F069",
@@ -825,11 +825,11 @@
       "requirement_id": "P3-R069",
       "stimulus": "Fake-provider baseline reports real cost savings",
       "expected_oracle": "Fake-peer runs do not claim real model quality, cache savings or alternate trajectory victory; costs include summary maintenance.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "target/debug/context-memory-bench",
+      "command": "synthetic benchmark declares no provider/cache benefit",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F070",
@@ -837,11 +837,11 @@
       "requirement_id": "P3-R070",
       "stimulus": "Interrupted migration marks unsupported old reader compatible",
       "expected_oracle": "New memory artifacts coexist with unchanged earlier profiles and interrupted migrations are resumable.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "interrupted migration resumes from durable checkpoint",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F071",
@@ -849,11 +849,11 @@
       "requirement_id": "P3-R071",
       "stimulus": "Revoked rows exposed before restore rechecks",
       "expected_oracle": "Readers/attempts remain fenced until revocations and source dependencies are validated after restore.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_persistence.rs",
+      "command": "revocations load before dependents",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F072",
@@ -861,11 +861,11 @@
       "requirement_id": "P3-R072",
       "stimulus": "Downgrade clears durable pause and policy latch",
       "expected_oracle": "An incompatible older binary cannot drop active policy or resume a held run.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "downgrade fence refuses old reader and wrong revision",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F073",
@@ -898,10 +898,10 @@
       "stimulus": "Fixture accidentally resolves real provider binary",
       "expected_oracle": "Network/process tripwires prove no real provider, game, production service or unauthorized endpoint was contacted.",
       "status": "blocked",
-      "evidence_ref": "BLOCKED: Phase3 end-to-end process/network tripwires not available",
+      "evidence_ref": "BLOCKED: Phase3 end-to-end process/network tripwires are not available",
       "command": "not run",
       "exit_status": "",
-      "reason": "Phase3 end-to-end process/network tripwires not available"
+      "reason": "Phase3 end-to-end process/network tripwires are not available"
     },
     {
       "failure_id": "P3-F076",
@@ -909,11 +909,11 @@
       "requirement_id": "P3-R076",
       "stimulus": "Two reviewers race a revoke versus publication",
       "expected_oracle": "Two editors/reviewers, lost responses, stale revisions and simultaneous revoke/submit have deterministic tested outcomes.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_races.rs",
+      "command": "revoke and dependent publication race",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F077",
@@ -921,11 +921,11 @@
       "requirement_id": "P3-R077",
       "stimulus": "Controller crashes after commit before acknowledgement",
       "expected_oracle": "Publication, index swap, worker completion, policy commit and resume crash points preserve authority and unknown effects.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle.rs; crates/harness/tests/phase3_mutations.rs; crates/harness/tests/phase3_resume.rs",
+      "command": "publication/map/binding/unknown/resume/migration failpoints",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F078",
@@ -933,11 +933,11 @@
       "requirement_id": "P3-R078",
       "stimulus": "Mutation test removes causal filter but suite still passes",
       "expected_oracle": "Removing causal/ACL/revocation/exact-input checks causes the corresponding mandatory tests to fail.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_mutations.rs",
+      "command": "causal, revocation, binding and map mutation tests",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F079",
@@ -945,11 +945,11 @@
       "requirement_id": "P3-R079",
       "stimulus": "No cap exists for index temp files or unknown job reservations",
       "expected_oracle": "Corpus/index/cache/queue/temp/backup/maintenance resources have tested finite limits and cleanup behavior.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/tests/phase3_lifecycle_extra.rs",
+      "command": "retention and bounded inventories",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F080",
@@ -958,10 +958,10 @@
       "stimulus": "Shadow mode changes protected provider prefix",
       "expected_oracle": "Memory disabled and no-effect shadow preserve earlier provider bytes and make no unauthorized inference calls.",
       "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
+      "evidence_ref": "UNVERIFIED: disabled shadow parity through the integrated adapter is unverified",
       "command": "not run",
       "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "reason": "disabled shadow parity through the integrated adapter is unverified"
     },
     {
       "failure_id": "P3-F081",
@@ -969,11 +969,11 @@
       "requirement_id": "P3-R081",
       "stimulus": "Threshold lowered after observing latency/quality failure",
       "expected_oracle": "Latency/input/cache/storage results include baseline, config, sample sizes and all known summary/maintenance costs.",
-      "status": "unverified",
-      "evidence_ref": "UNVERIFIED: no corresponding product proof in this bounded draft",
-      "command": "not run",
-      "exit_status": "",
-      "reason": "requires adapter, storage, evaluation, live/native, or additional fault coverage"
+      "status": "executed_synthetic",
+      "evidence_ref": "crates/harness/src/bin/context-memory-bench.rs",
+      "command": "context-memory-bench",
+      "exit_status": "0",
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F082",
@@ -982,10 +982,10 @@
       "stimulus": "Documented CLI flag does not exist in built binary",
       "expected_oracle": "Documented offline commands and expected statuses are exercised against the built product.",
       "status": "executed_synthetic",
-      "evidence_ref": "docs/DEMO.md; phase3-cli tests",
-      "command": "documented CLI commands",
+      "evidence_ref": "docs/DEMO.md; crates/harness/tests/phase3_cli.rs; tests/phase3_memory.rs",
+      "command": "CLI/demo commands and process tests",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F083",
@@ -995,9 +995,9 @@
       "expected_oracle": "Unsupported adapters, unknown provider context, optional live checks and retention/deletion guarantees are explicit.",
       "status": "executed_synthetic",
       "evidence_ref": "docs/MEMORY.md; docs/API.md",
-      "command": "unsupported/default/live limits explicit",
+      "command": "unsupported/default/live limits",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F084",
@@ -1006,10 +1006,10 @@
       "stimulus": "Report contains a real secret or invented PR number",
       "expected_oracle": "Evidence matrix, companion pins, ADRs, PR templates and operator rollback steps are complete and sanitized.",
       "status": "executed_synthetic",
-      "evidence_ref": "docs/phase3/IMPLEMENTED_HANDOFF.md; ADR; matrices",
-      "command": "reviewable delivery artifacts",
+      "evidence_ref": "docs/phase3/IMPLEMENTED_HANDOFF.md; docs/evidence/*",
+      "command": "handoff, ADR, matrices and rollback docs",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F085",
@@ -1031,9 +1031,9 @@
       "expected_oracle": "Every mandatory requirement/failure case has a test and exact result or an explicit blocker; no silent skips.",
       "status": "executed_synthetic",
       "evidence_ref": "docs/evidence/phase3-requirement-evidence.csv",
-      "command": "all 90 rows mapped explicitly",
+      "command": "all 90 rows mapped",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "all 90 mandatory rows are explicit; statuses include executed_synthetic, unverified and blocked"
     },
     {
       "failure_id": "P3-F087",
@@ -1045,7 +1045,7 @@
       "evidence_ref": "docs/evidence/phase3-completion-report-20260910.md",
       "command": "no unearned completion claim",
       "exit_status": "0",
-      "reason": "bounded source/synthetic evidence"
+      "reason": "bounded deterministic/source-backed evidence; does not prove live/native integration"
     },
     {
       "failure_id": "P3-F088",
@@ -1054,10 +1054,10 @@
       "stimulus": "Final patch lands after last integrated test run",
       "expected_oracle": "Strict policy, fmt, Clippy, locked tests, compatibility, process/browser/fault suites run on final delivered revisions.",
       "status": "executed_synthetic",
-      "evidence_ref": "docs/evidence/phase3-completion-report-20260910.md; target companion browser evidence",
-      "command": "harness repo-policy/fmt/clippy and locked workspace tests serially; target companion gates and browser audits",
+      "evidence_ref": "docs/evidence/phase3-completion-report-20260910.md; target/docs/evidence/integrated-browser-ui-20260910.json; target/docs/evidence/phase2-browser-ui-20260910.json",
+      "command": "repo-policy --strict; cargo fmt --all -- --check; cargo clippy --workspace --all-targets --all-features --locked -- -D warnings; cargo test --workspace --all-targets --all-features --locked -- --test-threads=1; FONTCONFIG_PATH=/tmp/chromium-libs/etc/fonts FONTCONFIG_FILE=/tmp/chromium-libs/etc/fonts/fonts.conf XDG_DATA_DIRS=/tmp/chromium-libs/usr/share:/usr/share LD_LIBRARY_PATH=/tmp/chromium-libs/usr/lib/x86_64-linux-gnu:/tmp/chromium-libs/lib/x86_64-linux-gnu:/tmp/chromium-libs/usr/lib PLAYWRIGHT_MODULE=/tmp/phase3-playwright/node_modules/playwright node tools/integrated_browser_audit.cjs; FONTCONFIG_PATH=/tmp/chromium-libs/etc/fonts FONTCONFIG_FILE=/tmp/chromium-libs/etc/fonts/fonts.conf XDG_DATA_DIRS=/tmp/chromium-libs/usr/share:/usr/share LD_LIBRARY_PATH=/tmp/chromium-libs/usr/lib/x86_64-linux-gnu:/tmp/chromium-libs/lib/x86_64-linux-gnu:/tmp/chromium-libs/usr/lib PLAYWRIGHT_MODULE=/tmp/phase3-playwright/node_modules/playwright node tools/phase2_browser_audit.cjs",
       "exit_status": "0",
-      "reason": "harness serial gate passed at 40554ebe04ca268376e405fce413dc2281727c63; target final gates passed at 7423d78b8a603278d25eb08851c8eee6447469ca; browser artifacts ran at 28222e5115b041a430003f9ede4293ca8780f756"
+      "reason": "target/harness Rust gates and current browser audits passed; adapter/native lanes remain explicit"
     },
     {
       "failure_id": "P3-F089",
@@ -1066,10 +1066,11 @@
       "stimulus": "Publishing workflow enables auto-merge",
       "expected_oracle": "Draft PRs use actual authenticated self-assignment and exact companion pins; no unrelated writes, merges or releases.",
       "status": "executed_synthetic",
-      "evidence_ref": "https://github.com/AI-Ascension/sts2-harness/pull/60; https://github.com/AI-Ascension/ascension-context-console/pull/3",
-      "command": "gh api PATCH on draft PR #60 and draft PR #3",
+      "evidence_ref": "https://github.com/AI-Ascension/ascension-context-console/pull/3; https://github.com/AI-Ascension/sts2-harness/pull/68",
+      "command": "gh api PATCH /repos/AI-Ascension/ascension-context-console/pulls/3; gh pr create /repos/AI-Ascension/sts2-harness --draft",
       "exit_status": "0",
-      "reason": "drafts retain exact companion pins; no merge, release, deployment or unrelated write"
+      "reason": "target PR #3 remains draft/open; harness PR #60 was already merged remotely, so current follow-up is draft PR #68; no merge/release/deployment performed",
+      "test_id": "draft PR #3 updated with companion #68"
     },
     {
       "failure_id": "P3-F090",
@@ -1078,15 +1079,15 @@
       "stimulus": "Completion report omits failed native depth handshake",
       "expected_oracle": "Report completed work, tests, native hierarchy evidence, external actions and precisely unverified/blocked gates.",
       "status": "executed_synthetic",
-      "evidence_ref": "docs/evidence/phase3-completion-report-20260910.md; docs/evidence/phase2-native-preflight-20260910.json; docs/evidence/phase3-requirement-evidence.csv",
-      "command": "completion report, native preflight, requirement matrix and failure matrix review",
+      "evidence_ref": "docs/evidence/phase3-completion-report-20260910.md",
+      "command": "completion report and explicit limits",
       "exit_status": "0",
-      "reason": "final handoff records completed bounded work, exact revisions, external-action limits and remaining 40 unverified/6 blocked rows"
+      "reason": "truthful handoff; no completion claim while 7 rows are unverified and 6 are blocked"
     }
   ],
   "counts": {
-    "executed_synthetic": 44,
-    "unverified": 40,
+    "executed_synthetic": 80,
+    "unverified": 4,
     "blocked": 6
   }
 }

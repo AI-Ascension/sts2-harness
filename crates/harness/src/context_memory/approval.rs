@@ -75,6 +75,7 @@ impl ApprovalStore {
             || sha256_hex(&selection.rendered_bytes) != selection.prepared_manifest_sha256
             || !valid_digest(&selection.phase2_prepared_manifest_sha256)
             || !valid_id(&approval.planned_phase2_revision_id)
+            || !valid_timestamp(&approval.expires_at)
             || approval.source_manifest_sha256 != source_manifest_digest(&selection.selected_sources)
         {
             return Err(MemoryError::InvalidQuery);
@@ -97,6 +98,9 @@ impl ApprovalStore {
         current_revocation_epoch: u64,
         now: &str,
     ) -> Result<MemoryApproval, MemoryError> {
+        if !valid_timestamp(now) {
+            return Err(MemoryError::InvalidQuery);
+        }
         let approval = self
             .approvals
             .get_mut(approval_id)
@@ -119,6 +123,9 @@ impl ApprovalStore {
         current_revocation_epoch: u64,
         now: &str,
     ) -> Result<MemoryApproval, MemoryError> {
+        if !valid_timestamp(now) {
+            return Err(MemoryError::InvalidQuery);
+        }
         let approval = self
             .approvals
             .get_mut(approval_id)
@@ -176,4 +183,23 @@ pub struct RevocationRecord {
     pub affected_derivatives: usize,
     pub historical_manifests_rewritten: bool,
     pub created_at: String,
+}
+
+impl RevocationRecord {
+    pub fn validate(&self) -> Result<(), MemoryError> {
+        if self.schema != MEMORY_REVOCATION_SCHEMA
+            || !valid_id(&self.revocation_id)
+            || !self.scope.valid()
+            || self.roots.is_empty()
+            || self.roots.len() > 16
+            || self.roots.iter().any(|root| !root.valid())
+            || self.roots.iter().collect::<BTreeSet<_>>().len() != self.roots.len()
+            || self.revocation_epoch == 0
+            || !self.denial_committed
+            || !valid_timestamp(&self.created_at)
+        {
+            return Err(MemoryError::InvalidEntry);
+        }
+        Ok(())
+    }
 }

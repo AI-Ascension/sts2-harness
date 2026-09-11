@@ -197,12 +197,16 @@ impl MemoryProposal {
             || self.corpus_generation == 0
             || self.corpus_generation > 9_007_199_254_740_991
             || !valid_id(&self.content_ref)
-            || self.created_at.is_empty()
+            || !valid_timestamp(&self.created_at)
+            || !valid_timestamp(&self.expires_at)
+            || self.created_at.as_str() > now
+            || self.expires_at.as_str() <= self.created_at.as_str()
             || self.applied
             || self.byte_length > MAX_SUMMARY_OUTPUT_BYTES
             || self.content.len() != self.byte_length
             || sha256_hex(&self.content) != self.sha256
             || !valid_digest(&self.sha256)
+            || !valid_timestamp(now)
             || self.expires_at.as_str() <= now
         {
             return Err(MemoryError::InvalidProposal);
