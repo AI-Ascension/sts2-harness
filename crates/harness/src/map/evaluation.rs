@@ -299,7 +299,7 @@ impl SyntheticEvaluationRunner {
 pub(crate) fn bundle_for_task(
     task: &SyntheticGraphTask,
 ) -> Result<MapViewBundle, MapEvaluationError> {
-    let action_catalog_digest = format!("{:x}", Sha256::digest(task.task_id.as_bytes()));
+    let action_catalog_digest = crate::hex_bytes(Sha256::digest(task.task_id.as_bytes()));
     MapViewBundle::from_runtime_snapshot(
         task.snapshot.clone(),
         RuntimeMapBundleIdentity {
