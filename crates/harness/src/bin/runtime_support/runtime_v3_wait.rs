@@ -3,7 +3,9 @@
 use super::{RuntimeV3Port, parse, recording};
 use serde_json::json;
 use std::time::{Duration, Instant};
-use sts2_harness::{BarrierError, BarrierPort, WaitOutcome, WaitSample};
+use sts2_harness::{
+    BarrierError, BarrierPort, DispatchStatus, TransitionReceipt, WaitOutcome, WaitSample,
+};
 
 impl BarrierPort for RuntimeV3Port {
     fn wait_for_transition(
@@ -128,6 +130,8 @@ impl RuntimeV3Port {
         } else {
             sample
         };
+        self.record_durable_wait(operation_id, &sample, &value)
+            .map_err(|_| BarrierError::PortFailure)?;
         recording::wait(
             operation_id,
             &action_id,
@@ -136,5 +140,38 @@ impl RuntimeV3Port {
             &self.telemetry,
         );
         Ok(sample)
+    }
+
+    fn record_durable_wait(
+        &self,
+        operation_id: &str,
+        sample: &WaitSample,
+        response: &serde_json::Value,
+    ) -> Result<(), String> {
+        if self.durable.is_none()
+            || !matches!(
+                sample.outcome(),
+                WaitOutcome::Successor | WaitOutcome::SameStateMutation
+            )
+        {
+            return Ok(());
+        }
+        let record = self
+            .operations
+            .get(operation_id)
+            .ok_or_else(|| String::from("settled wait has no original operation"))?;
+        let payload_digest =
+            super::wire::canonical_action_digest(record.action.action_id(), &record.payload)?;
+        // Only a parsed, validated action-wait witness reaches this boundary. Idle observation
+        // and unresolved waits cannot close durable uncertainty or admit a new provider call.
+        let receipt = TransitionReceipt::new(
+            operation_id,
+            record.action.clone(),
+            DispatchStatus::Settled,
+            sample.observation().cloned(),
+            sample.effect_kind().map(str::to_owned),
+            None,
+        );
+        self.record_reconciled_durable_receipt(operation_id, &payload_digest, &receipt, response)
     }
 }
