@@ -101,6 +101,16 @@ fn encrypted_store_round_trips_metadata_and_authenticates_bytes() {
     assert_eq!(restored.owner_epoch(), 2);
     assert!(restored.operation(&candidate.operation_id).is_ok());
 
+    let mut incompatible_capabilities = capabilities.clone();
+    incompatible_capabilities.native_schema_sha256 =
+        sts2_harness::sha256_hex("incompatible-native-schema");
+    assert!(matches!(
+        store.load("replacement-owner", &policy, &incompatible_capabilities),
+        Err(ProviderSessionMetadataStoreError::Session(
+            SessionError::Unsupported
+        ))
+    ));
+
     let wrong_key = ProviderSessionMetadataStore::encrypted(&path, [8_u8; 32], scope())
         .expect("wrong-key store");
     assert!(matches!(

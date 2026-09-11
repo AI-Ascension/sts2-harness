@@ -18,6 +18,21 @@ fn method_allowlist_is_closed() {
     assert!(!allowlisted_method("thread/start/../shell"));
 }
 
+#[test]
+fn forbidden_native_method_is_rejected_before_write() {
+    let Some(mut transport) = OwnedNativeTransport::fixture_peer().ok() else {
+        return;
+    };
+    assert!(transport.start().is_ok());
+    assert!(transport.initialize().is_ok());
+    assert_eq!(
+        transport.request("shell/execute", serde_json::json!({})),
+        Err(super::NativeTransportError::Unsupported)
+    );
+    assert!(!transport.fenced());
+    assert!(transport.close().is_ok());
+}
+
 #[cfg(unix)]
 #[test]
 fn runtime_state_growth_fences_and_stops_owned_peer() {
