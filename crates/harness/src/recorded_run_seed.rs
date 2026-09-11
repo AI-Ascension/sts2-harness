@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-use super::recorded_run_support::token;
 use serde_json::{Value, json};
 
 // Source-owned envelope generation is the request fence, not the resulting generation.
@@ -31,7 +30,7 @@ pub(super) fn valid(receipt: &Value) -> bool {
         "operation_id",
         "correlation_id",
     ] {
-        if !v[field].as_str().is_some_and(|s| token(s, 128)) {
+        if !v[field].as_str().is_some_and(source_identity) {
             return false;
         }
     }
@@ -69,5 +68,15 @@ pub(super) fn valid(receipt: &Value) -> bool {
         && o["phase_before"] != o["phase_after"]
         && ["phase_before", "phase_after", "compatibility_identity"]
             .iter()
-            .all(|field| o[field].as_str().is_some_and(|s| token(s, 128)))
+            .all(|field| o[field].as_str().is_some_and(source_identity))
+}
+
+// Pinned seeded-run-v1 $defs.identity. This source-only grammar is independent
+// of recorded-run output identities and public profile/label tokens.
+fn source_identity(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_.:/-".contains(&b))
 }

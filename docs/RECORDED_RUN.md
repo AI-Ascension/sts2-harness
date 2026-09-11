@@ -92,6 +92,14 @@ They launch shell fakes only, never a game or provider.
 
 ## Verification
 
+Seed receipt validation uses the pinned seeded-run-v1 source identity grammar
+`^[A-Za-z0-9_.:/-]{1,128}$`, including slash in private compatibility identities.
+It does not substitute the narrower portable recording identity grammar or the
+public-label grammar. Compatibility text is never exported. Generation advance,
+matching witness/observation, context, provenance and settlement checks still apply.
+Raw-seed omission counts include observation.visible_seed as well as seed receipts;
+each affected source row counts once per rule, alongside raw-observation omissions.
+
 The exporter module is available on Unix targets, where descriptor-relative
 no-follow snapshot reads are implemented. Other targets receive an explicit
 unsupported-platform CLI error; no new runtime platform support is claimed.

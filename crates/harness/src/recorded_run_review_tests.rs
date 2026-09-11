@@ -210,12 +210,41 @@ fn jcs_vectors_and_duplicate_keys() -> Result<(), String> {
 }
 #[test]
 fn seed_requires_context_provenance_and_generation_advance() -> Result<(), String> {
+    let schema: Value = serde_json::from_str(include_str!(
+        "../../../protocol-artifact/seeded-run-v1/schema.json"
+    ))
+    .map_err(|e| e.to_string())?;
+    let oracle = jsonschema::validator_for(&schema).map_err(|e| e.to_string())?;
     let golden: Value = serde_json::from_str(include_str!(
         "../../../protocol-artifact/seeded-run-v1/golden/start-settled.json"
     ))
     .map_err(|e| e.to_string())?;
     let receipt = json!({"settled":golden});
     assert!(recorded_run_seed::valid(&receipt));
+    for identity in ["native/package-v1", "_compatibility", "/native"] {
+        let mut changed = receipt.clone();
+        changed["settled"]["observation"]["compatibility_identity"] = json!(identity);
+        assert!(oracle.is_valid(&changed["settled"]));
+        assert!(recorded_run_seed::valid(&changed));
+        let row = json!({"event":"seeded_run_receipt","receipt":changed});
+        let record = trajectory_record(&row, 0)?.ok_or("missing seed record")?;
+        assert_eq!(record["payload"]["value"]["status"], "settled");
+        assert_eq!(record["evidence"]["request"], "accepted");
+        assert_eq!(record["evidence"]["action"], "settled");
+        assert_eq!(record["evidence"]["outcome"], "observed");
+    }
+    for invalid in [
+        "",
+        "native package",
+        "native+package",
+        "é",
+        &"a".repeat(129),
+    ] {
+        let mut changed = receipt.clone();
+        changed["settled"]["observation"]["compatibility_identity"] = json!(invalid);
+        assert!(!oracle.is_valid(&changed["settled"]));
+        assert!(!recorded_run_seed::valid(&changed));
+    }
     for pointer in [
         "/settled/schema_digest",
         "/settled/observation/generation",
@@ -229,5 +258,27 @@ fn seed_requires_context_provenance_and_generation_advance() -> Result<(), Strin
             .ok_or_else(|| String::from("test_pointer"))? = Value::Null;
         assert!(!recorded_run_seed::valid(&mutated));
     }
+    Ok(())
+}
+
+#[test]
+fn nested_visible_seeds_count_each_affected_row_once() -> Result<(), String> {
+    let bytes = [
+        json!({"event":"model_decision","model_execution_id":1,"action_id":"a",
+            "observation":{"generation":1,"state_id":"s","legal_actions":[],"visible_seed":"private"}}),
+        json!({"event":"operation_wait_completed","operation_id":"op",
+            "observation":{"visible_seed":"private"}}),
+    ].iter().map(|v| serde_json::to_string(v).map_err(|e| e.to_string()))
+        .collect::<Result<Vec<_>,_>>()?.join("\n");
+    let p = project("trajectory", Some(bytes.as_bytes()), trajectory_record)?;
+    assert_eq!(p.records.len(), 2);
+    let rules = p.report["field_omissions"].as_array().ok_or("rules")?;
+    assert!(rules.contains(&json!({"rule":"raw_seed_disallowed","affected_rows":2})));
+    assert!(rules.contains(&json!({"rule":"raw_observation_disallowed","affected_rows":2})));
+    assert!(
+        !serde_json::to_string(&p.records)
+            .map_err(|e| e.to_string())?
+            .contains("private")
+    );
     Ok(())
 }

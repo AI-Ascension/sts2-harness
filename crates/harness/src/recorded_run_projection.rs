@@ -138,7 +138,9 @@ fn field_rules(stream: &str, row: &Value) -> Vec<&'static str> {
     if row.get("action_id").is_some() || row.pointer("/decision/action_ids").is_some() {
         rules.push("identity_digest_transformation");
     }
-    if row.pointer("/receipt/settled").is_some() {
+    if row.pointer("/receipt/settled").is_some()
+        || row.pointer("/observation/visible_seed").is_some()
+    {
         rules.push("raw_seed_disallowed");
     }
     if row.get("observation").is_some_and(|v| !v.is_null())
