@@ -2,6 +2,7 @@
 
 use sha2::{Digest as _, Sha256};
 use std::collections::BTreeSet;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const SESSION_BINDING_SCHEMA: &str = "ascension.provider-session.binding.v1";
 pub const SESSION_CAPABILITIES_SCHEMA: &str = "ascension.provider-session.capabilities.v1";
@@ -27,6 +28,7 @@ pub const MAX_CANDIDATES: usize = 4;
 pub const MAX_MAINTENANCE_JOBS: usize = 2;
 pub const MAX_FRAME_BYTES: usize = 256 * 1024;
 pub const MAX_HISTORY_BYTES: usize = 4 * 1024 * 1024;
+pub const MAX_PREPARED_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_SUFFIX_BYTES: usize = 128 * 1024;
 pub const MAX_OUTPUT_SCHEMA_BYTES: usize = 64 * 1024;
 pub const MAX_METHOD_BYTES: usize = 128;
@@ -50,6 +52,7 @@ pub enum SessionError {
     HeldRequired,
     Retired,
     Capacity,
+    Expired,
     Unsupported,
     Ambiguous,
     Fenced,
@@ -77,6 +80,7 @@ impl std::fmt::Display for SessionError {
             Self::HeldRequired => "provider session must remain held",
             Self::Retired => "provider session is retired",
             Self::Capacity => "provider session capacity exceeded",
+            Self::Expired => "provider session record has expired",
             Self::Unsupported => "provider session capability is unsupported",
             Self::Ambiguous => "provider operation outcome is ambiguous",
             Self::Fenced => "provider session is fenced",
@@ -180,6 +184,81 @@ pub(crate) fn valid_timestamp(value: &str) -> bool {
     offset_hour <= 23 && offset_minute <= 59
 }
 
+/// Converts a validated RFC 3339 timestamp to UTC epoch seconds. Fractional seconds are ignored
+/// for retention comparisons, while the explicit timezone offset is applied before comparison.
+pub(crate) fn timestamp_epoch_seconds(value: &str) -> Option<i64> {
+    if !valid_timestamp(value) {
+        return None;
+    }
+    let bytes = value.as_bytes();
+    let year = i64::from(parse_decimal(&bytes[0..4]));
+    let month = i64::from(parse_decimal(&bytes[5..7]));
+    let day = i64::from(parse_decimal(&bytes[8..10]));
+    let hour = i64::from(parse_decimal(&bytes[11..13]));
+    let minute = i64::from(parse_decimal(&bytes[14..16]));
+    let second = i64::from(parse_decimal(&bytes[17..19]).min(59));
+    let days = days_from_civil(year, month, day)?;
+    let local = days
+        .checked_mul(86_400)?
+        .checked_add(hour.checked_mul(3_600)?)?
+        .checked_add(minute.checked_mul(60)?)?
+        .checked_add(second)?;
+    let suffix = &bytes[19..];
+    let offset = if suffix == b"Z" {
+        0_i64
+    } else {
+        let sign_index = suffix
+            .iter()
+            .position(|byte| matches!(*byte, b'+' | b'-'))?;
+        let offset = &suffix[sign_index..];
+        if offset.len() != 6 {
+            return None;
+        }
+        let hours = i64::from(parse_decimal(&offset[1..3]));
+        let minutes = i64::from(parse_decimal(&offset[4..6]));
+        let seconds = hours
+            .checked_mul(3_600)?
+            .checked_add(minutes.checked_mul(60)?)?;
+        if offset[0] == b'-' { -seconds } else { seconds }
+    };
+    local.checked_sub(offset)
+}
+
+pub(crate) fn timestamp_expired(value: &str) -> bool {
+    let Some(expiry) = timestamp_epoch_seconds(value) else {
+        return true;
+    };
+    let Some(now) = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_secs()).ok())
+    else {
+        return false;
+    };
+    now >= expiry
+}
+
+fn days_from_civil(year: i64, month: i64, day: i64) -> Option<i64> {
+    // Proleptic Gregorian conversion from Howard Hinnant's public-domain algorithm.
+    let adjusted_year = year.checked_sub(i64::from(month <= 2))?;
+    let era = if adjusted_year >= 0 {
+        adjusted_year / 400
+    } else {
+        (adjusted_year - 399) / 400
+    };
+    let year_of_era = adjusted_year.checked_sub(era.checked_mul(400)?)?;
+    let month_prime = month + if month > 2 { -3 } else { 9 };
+    let day_of_year = (153_i64.checked_mul(month_prime)? + 2) / 5 + day - 1;
+    let day_of_era = year_of_era
+        .checked_mul(365)?
+        .checked_add(year_of_era / 4)?
+        .checked_sub(year_of_era / 100)?
+        .checked_add(day_of_year)?;
+    era.checked_mul(146_097)?
+        .checked_add(day_of_era)?
+        .checked_sub(719_468)
+}
+
 fn parse_decimal(bytes: &[u8]) -> u32 {
     bytes
         .iter()
@@ -220,7 +299,7 @@ pub(crate) fn digest(bytes: impl AsRef<[u8]>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::valid_timestamp;
+    use super::{timestamp_epoch_seconds, timestamp_expired, valid_timestamp};
 
     #[test]
     fn timestamps_are_calendar_and_zone_checked() {
@@ -230,5 +309,20 @@ mod tests {
         assert!(!valid_timestamp("2099-13-01T00:00:00Z"));
         assert!(!valid_timestamp("2099-01-01T24:00:00Z"));
         assert!(!valid_timestamp("2099-01-01T00:00:00.1"));
+    }
+
+    #[test]
+    fn timestamps_convert_offsets_for_retention() {
+        assert_eq!(timestamp_epoch_seconds("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(
+            timestamp_epoch_seconds("1970-01-01T01:00:00+01:00"),
+            Some(0)
+        );
+        assert!(
+            timestamp_epoch_seconds("1970-01-01T00:00:01Z")
+                > timestamp_epoch_seconds("1970-01-01T00:00:00Z")
+        );
+        assert!(timestamp_expired("2000-01-01T00:00:00Z"));
+        assert!(!timestamp_expired("2099-01-01T00:00:00Z"));
     }
 }

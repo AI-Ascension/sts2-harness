@@ -30,11 +30,7 @@ impl ProviderSessionBroker {
         {
             return Err(SessionError::Unsupported);
         }
-        let binding = self
-            .bindings
-            .get(binding_id)
-            .ok_or(SessionError::NotFound)?
-            .clone();
+        let binding = self.ensure_binding_not_expired(binding_id)?;
         if binding.state != BindingState::Held || !self.policy.allows_execution() {
             return Err(SessionError::HeldRequired);
         }
@@ -42,6 +38,18 @@ impl ProviderSessionBroker {
             return Err(SessionError::Conflict);
         }
         if self.prepared.len() >= MAX_PREPARED {
+            return Err(SessionError::Capacity);
+        }
+        let new_prepared_bytes = suffix
+            .len()
+            .checked_add(output_schema.len())
+            .and_then(|value| value.checked_add(protected.len()))
+            .ok_or(SessionError::Capacity)?;
+        let total_prepared_bytes = self
+            .prepared_bytes()?
+            .checked_add(new_prepared_bytes)
+            .ok_or(SessionError::Capacity)?;
+        if total_prepared_bytes > MAX_PREPARED_BYTES {
             return Err(SessionError::Capacity);
         }
         if dependencies
@@ -54,6 +62,7 @@ impl ProviderSessionBroker {
         {
             return Err(SessionError::Stale);
         }
+        self.ensure_not_expired(expires_at)?;
         let prepared = PreparedSessionTurn::new(
             prepared_id,
             self.scope.clone(),
@@ -90,9 +99,7 @@ impl ProviderSessionBroker {
         {
             return Err(SessionError::Unsupported);
         }
-        if !self.bindings.contains_key(binding_id) {
-            return Err(SessionError::NotFound);
-        }
+        self.ensure_binding_not_expired(binding_id)?;
         if self
             .bindings
             .values()
@@ -134,14 +141,12 @@ impl ProviderSessionBroker {
         {
             return Err(SessionError::Unsupported);
         }
-        let binding = self
-            .bindings
-            .get(binding_id)
-            .ok_or(SessionError::NotFound)?;
+        let binding = self.ensure_binding_not_expired(binding_id)?;
         let prepared = self
             .prepared
             .get(prepared_id)
             .ok_or(SessionError::NotFound)?;
+        self.ensure_not_expired(&prepared.expires_at)?;
         if binding.state != BindingState::Active || !binding.game_dispatch_capability {
             return Err(SessionError::HeldRequired);
         }

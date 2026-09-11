@@ -14,6 +14,7 @@ impl ProviderSessionBroker {
         if dependencies.len() > MAX_DEPENDENCIES || !unique_ids(&dependencies) {
             return Err(SessionError::Capacity);
         }
+        self.ensure_binding_not_expired(binding_id)?;
         let binding = self
             .bindings
             .get_mut(binding_id)

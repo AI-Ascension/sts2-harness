@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MIT
 
+use super::common::{
+    MAX_DEPENDENCIES, SESSION_COMPACTION_SCHEMA, SESSION_FORK_SCHEMA, SESSION_RETIREMENT_SCHEMA,
+    unique_ids, valid_digest, valid_id,
+};
 use super::scope_policy::SessionScope;
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +27,34 @@ pub struct CompactionJob {
     pub automatic_adoption: bool,
     pub game_effects: u64,
     pub scheduler_after: String,
+}
+
+impl CompactionJob {
+    pub fn validate(&self) -> Result<(), super::common::SessionError> {
+        if self.schema != SESSION_COMPACTION_SCHEMA
+            || !valid_id(&self.job_id)
+            || !self.scope.valid()
+            || !valid_id(&self.binding_id)
+            || !valid_digest(&self.source_continuity_sha256)
+            || self.dependency_ids.len() > MAX_DEPENDENCIES
+            || !unique_ids(&self.dependency_ids)
+            || self
+                .budget_reservation_ref
+                .as_ref()
+                .is_some_and(|value| !valid_id(value))
+            || self
+                .terminal_evidence_ref
+                .as_ref()
+                .is_some_and(|value| !valid_id(value))
+            || self.history_epoch_after.is_some_and(|epoch| epoch == 0)
+            || self.automatic_adoption
+            || self.game_effects != 0
+            || self.scheduler_after != "held"
+        {
+            return Err(super::common::SessionError::InvalidRequest);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -65,6 +97,31 @@ pub struct ForkPlan {
     pub game_dispatch_capability: bool,
 }
 
+impl ForkPlan {
+    pub fn validate(&self) -> Result<(), super::common::SessionError> {
+        if self.schema != SESSION_FORK_SCHEMA
+            || !valid_id(&self.fork_plan_id)
+            || !self.scope.valid()
+            || !valid_id(&self.source_binding_id)
+            || !valid_digest(&self.source_continuity_sha256)
+            || !valid_id(&self.cutoff_turn_ref)
+            || !valid_id(&self.target_binding_id)
+            || self.purpose != "evaluation"
+            || self.dependency_ids.len() > MAX_DEPENDENCIES
+            || !unique_ids(&self.dependency_ids)
+            || self.automatic_inference
+            || self.game_dispatch_capability
+            || (matches!(self.operation, ForkOperation::CleanRehydration)
+                && (self.native_cutoff_verified || self.copies_native_history))
+            || (matches!(self.operation, ForkOperation::NativeFork)
+                && (!self.native_cutoff_verified || !self.copies_native_history))
+        {
+            return Err(super::common::SessionError::InvalidRequest);
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ForkOperation {
@@ -86,6 +143,26 @@ pub struct Retirement {
     pub cascade_verified: bool,
     pub affected_native_binding_ids: Vec<String>,
     pub auto_resume: bool,
+}
+
+impl Retirement {
+    pub fn validate(&self) -> Result<(), super::common::SessionError> {
+        if self.schema != SESSION_RETIREMENT_SCHEMA
+            || !valid_id(&self.retirement_id)
+            || !self.scope.valid()
+            || self.binding_ids.len() > MAX_DEPENDENCIES
+            || !unique_ids(&self.binding_ids)
+            || self.revoked_source_ids.len() > MAX_DEPENDENCIES
+            || !unique_ids(&self.revoked_source_ids)
+            || self.affected_native_binding_ids.len() > MAX_DEPENDENCIES
+            || !unique_ids(&self.affected_native_binding_ids)
+            || !self.admission_denied
+            || self.auto_resume
+        {
+            return Err(super::common::SessionError::InvalidRequest);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

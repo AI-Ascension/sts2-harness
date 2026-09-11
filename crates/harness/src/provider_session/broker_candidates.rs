@@ -28,6 +28,7 @@ impl ProviderSessionBroker {
         if !valid_id(idempotency_key) {
             return Err(SessionError::InvalidRequest);
         }
+        self.ensure_not_expired(expires_at)?;
         let request = json!({"branch_id": branch_id, "purpose": purpose, "expires_at": expires_at});
         if let Some(existing) = self.existing_idempotent(idempotency_key, &request)? {
             return Ok(existing);
@@ -154,10 +155,7 @@ impl ProviderSessionBroker {
         {
             return Err(SessionError::Unsupported);
         }
-        let binding = self
-            .bindings
-            .get(binding_id)
-            .ok_or(SessionError::NotFound)?;
+        let binding = self.ensure_binding_not_expired(binding_id)?;
         if matches!(binding.state, BindingState::Retired | BindingState::Closed) {
             return Err(SessionError::Retired);
         }

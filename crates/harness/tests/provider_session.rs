@@ -101,6 +101,32 @@ fn fixture_capabilities_do_not_claim_native_encrypted_persistence() {
 }
 
 #[test]
+fn expired_candidate_is_rejected_before_any_binding_is_created() {
+    let mut broker = broker();
+    assert_eq!(
+        broker.create_candidate(
+            "owner-fixture",
+            "expired-candidate",
+            "branch-a",
+            SessionPurpose::Executable,
+            "1970-01-01T01:00:00+01:00",
+        ),
+        Err(SessionError::Expired)
+    );
+    assert!(broker.bindings().next().is_none());
+    assert_eq!(
+        broker.create_candidate(
+            "owner-fixture",
+            "invalid-expiry",
+            "branch-a",
+            SessionPurpose::Executable,
+            "not-a-timestamp",
+        ),
+        Err(SessionError::InvalidRequest)
+    );
+}
+
+#[test]
 fn candidate_reconnect_and_history_remain_held() {
     let mut broker = broker();
     let binding = held_binding(&mut broker);

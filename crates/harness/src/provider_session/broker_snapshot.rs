@@ -15,17 +15,7 @@ impl ProviderSessionBroker {
             policy: self.policy.clone(),
             capabilities: self.capabilities.clone(),
             bindings: self.bindings.values().cloned().collect(),
-            operations: self
-                .operations
-                .values()
-                .filter(|operation| {
-                    !matches!(
-                        operation.kind,
-                        NativeOperationKind::Turn | NativeOperationKind::Interrupt
-                    )
-                })
-                .cloned()
-                .collect(),
+            operations: self.operations.values().cloned().collect(),
             events: self.events.clone(),
             histories: self.histories.clone(),
             compaction_jobs: self.compaction_jobs.values().cloned().collect(),
@@ -51,6 +41,40 @@ impl ProviderSessionBroker {
         owner_token: impl Into<String>,
     ) -> Result<Self, SessionError> {
         let snapshot = parse_snapshot(bytes)?;
+        Self::restore_snapshot(snapshot, owner_token)
+    }
+
+    /// Restores only when the caller supplies the currently approved scope, policy and native
+    /// capability profile. This prevents a snapshot from silently selecting a different binary,
+    /// schema or credential realm during an upgrade.
+    pub fn from_snapshot_json_checked(
+        bytes: &[u8],
+        owner_token: impl Into<String>,
+        expected_scope: &SessionScope,
+        expected_policy: &ProviderSessionPolicy,
+        expected_capabilities: &NativeCapabilities,
+    ) -> Result<Self, SessionError> {
+        expected_policy.validate()?;
+        expected_capabilities.validate()?;
+        if expected_policy.scope != *expected_scope
+            || expected_policy.profile_sha256 != expected_capabilities.profile_sha256
+        {
+            return Err(SessionError::InvalidPolicy);
+        }
+        let snapshot = parse_snapshot(bytes)?;
+        if snapshot.scope != *expected_scope
+            || snapshot.policy != *expected_policy
+            || snapshot.capabilities != *expected_capabilities
+        {
+            return Err(SessionError::Unsupported);
+        }
+        Self::restore_snapshot(snapshot, owner_token)
+    }
+
+    fn restore_snapshot(
+        snapshot: BrokerSnapshot,
+        owner_token: impl Into<String>,
+    ) -> Result<Self, SessionError> {
         let owner_token = owner_token.into();
         let mut broker = Self::new(
             snapshot.scope.clone(),
@@ -58,17 +82,17 @@ impl ProviderSessionBroker {
             snapshot.capabilities.clone(),
             owner_token,
         )?;
-        broker.owner_epoch = snapshot.owner_epoch;
+        broker.owner_epoch = snapshot
+            .owner_epoch
+            .checked_add(1)
+            .ok_or(SessionError::Capacity)?;
         broker.revocation_epoch = snapshot.revocation_epoch;
         broker.restore_bindings(snapshot.bindings)?;
+        broker.restore_retirements(snapshot.retirements)?;
         broker.restore_operations(snapshot.operations)?;
         broker.restore_events(snapshot.events)?;
         broker.restore_histories(snapshot.histories)?;
-        broker.restore_maintenance(
-            snapshot.compaction_jobs,
-            snapshot.fork_plans,
-            snapshot.retirements,
-        )?;
+        broker.restore_maintenance(snapshot.compaction_jobs, snapshot.fork_plans)?;
         broker.next_id = next_id_after_restore(&broker)?;
         broker.next_sequence = broker
             .events
@@ -96,32 +120,63 @@ impl ProviderSessionBroker {
         for binding in self.bindings.values() {
             binding.validate()?;
         }
+        for binding in self.bindings.values_mut() {
+            binding.owner_epoch = self.owner_epoch;
+            if binding.state == BindingState::Active {
+                binding.state = BindingState::Recovering;
+            }
+            binding.game_dispatch_capability = false;
+        }
         Ok(())
     }
 
     fn restore_operations(&mut self, operations: Vec<NativeOperation>) -> Result<(), SessionError> {
         for operation in operations {
-            if operation.scope != self.scope
-                || matches!(
-                    operation.kind,
-                    NativeOperationKind::Turn | NativeOperationKind::Interrupt
-                )
-                || !self.bindings.contains_key(&operation.binding_id)
-                || self
-                    .operations
-                    .insert(operation.operation_id.clone(), operation.clone())
-                    .is_some()
+            if operation.scope != self.scope || !self.bindings.contains_key(&operation.binding_id) {
+                return Err(SessionError::InvalidOperation);
+            }
+            let binding_retired = self
+                .bindings
+                .get(&operation.binding_id)
+                .is_some_and(|binding| {
+                    matches!(binding.state, BindingState::Retired | BindingState::Closed)
+                });
+            let mut restored = operation;
+            let nonterminal = !matches!(
+                restored.state,
+                NativeOperationState::Completed
+                    | NativeOperationState::Rejected
+                    | NativeOperationState::Cancelled
+                    | NativeOperationState::Quarantined
+            );
+            if binding_retired && nonterminal {
+                restored.state = NativeOperationState::Quarantined;
+            } else if matches!(
+                restored.kind,
+                NativeOperationKind::Turn | NativeOperationKind::Interrupt
+            ) && nonterminal
+            {
+                restored.state = NativeOperationState::Unknown;
+                if let Some(binding) = self.bindings.get_mut(&restored.binding_id) {
+                    binding.state = BindingState::Recovering;
+                    binding.game_dispatch_capability = false;
+                }
+            }
+            if self
+                .operations
+                .insert(restored.operation_id.clone(), restored.clone())
+                .is_some()
             {
                 return Err(SessionError::InvalidOperation);
             }
-            operation.validate()?;
+            restored.validate()?;
             if self
                 .idempotency
                 .insert(
-                    operation.idempotency_key.clone(),
+                    restored.idempotency_key.clone(),
                     (
-                        operation.request_sha256.clone(),
-                        operation.operation_id.clone(),
+                        restored.request_sha256.clone(),
+                        restored.operation_id.clone(),
                     ),
                 )
                 .is_some()
@@ -169,13 +224,19 @@ impl ProviderSessionBroker {
         &mut self,
         compaction_jobs: Vec<CompactionJob>,
         fork_plans: Vec<ForkPlan>,
-        retirements: Vec<Retirement>,
     ) -> Result<(), SessionError> {
         for job in compaction_jobs {
             if job.scope != self.scope || !self.bindings.contains_key(&job.binding_id) {
                 return Err(SessionError::InvalidRequest);
             }
-            self.compaction_jobs.insert(job.job_id.clone(), job);
+            job.validate()?;
+            if self
+                .compaction_jobs
+                .insert(job.job_id.clone(), job)
+                .is_some()
+            {
+                return Err(SessionError::Conflict);
+            }
         }
         for plan in fork_plans {
             if plan.scope != self.scope
@@ -184,8 +245,19 @@ impl ProviderSessionBroker {
             {
                 return Err(SessionError::InvalidRequest);
             }
-            self.fork_plans.insert(plan.fork_plan_id.clone(), plan);
+            plan.validate()?;
+            if self
+                .fork_plans
+                .insert(plan.fork_plan_id.clone(), plan)
+                .is_some()
+            {
+                return Err(SessionError::Conflict);
+            }
         }
+        Ok(())
+    }
+
+    fn restore_retirements(&mut self, retirements: Vec<Retirement>) -> Result<(), SessionError> {
         for retirement in retirements {
             if retirement.scope != self.scope
                 || retirement
@@ -195,8 +267,25 @@ impl ProviderSessionBroker {
             {
                 return Err(SessionError::InvalidRequest);
             }
-            self.retirements
-                .insert(retirement.retirement_id.clone(), retirement);
+            retirement.validate()?;
+            if self
+                .retirements
+                .insert(retirement.retirement_id.clone(), retirement)
+                .is_some()
+            {
+                return Err(SessionError::Conflict);
+            }
+        }
+        let tombstoned: Vec<String> = self
+            .retirements
+            .values()
+            .flat_map(|retirement| retirement.binding_ids.iter().cloned())
+            .collect();
+        for binding_id in tombstoned {
+            if let Some(binding) = self.bindings.get_mut(&binding_id) {
+                binding.state = BindingState::Retired;
+                binding.game_dispatch_capability = false;
+            }
         }
         Ok(())
     }

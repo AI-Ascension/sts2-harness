@@ -28,11 +28,7 @@ impl ProviderSessionBroker {
         {
             return Err(SessionError::Unsupported);
         }
-        let source = self
-            .bindings
-            .get(source_binding_id)
-            .ok_or(SessionError::NotFound)?
-            .clone();
+        let source = self.ensure_binding_not_expired(source_binding_id)?;
         let watermark = self
             .histories
             .get(source_binding_id)
@@ -117,10 +113,7 @@ impl ProviderSessionBroker {
             .get(fork_plan_id)
             .ok_or(SessionError::NotFound)?
             .clone();
-        let source = self
-            .bindings
-            .get(&plan.source_binding_id)
-            .ok_or(SessionError::NotFound)?;
+        let source = self.ensure_binding_not_expired(&plan.source_binding_id)?;
         if matches!(source.state, BindingState::Retired | BindingState::Closed)
             || source.history_epoch != plan.source_history_epoch
             || source.continuity_sha256 != plan.source_continuity_sha256

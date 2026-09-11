@@ -23,10 +23,7 @@ impl ProviderSessionBroker {
         {
             return Err(SessionError::Unsupported);
         }
-        let binding = self
-            .bindings
-            .get(binding_id)
-            .ok_or(SessionError::NotFound)?;
+        let binding = self.ensure_binding_not_expired(binding_id)?;
         if matches!(binding.state, BindingState::Retired | BindingState::Closed)
             || items.len() > MAX_SESSION_ITEMS
             || items.iter().any(|item| item.validate().is_err())
@@ -49,6 +46,7 @@ impl ProviderSessionBroker {
         {
             return Err(SessionError::Stale);
         }
+        self.projected_history_bytes(binding_id, &items)?;
         let request = json!({"binding_id": binding_id, "watermark": watermark, "items": items, "complete_at_watermark": complete_at_watermark});
         if let Some(existing) = self.existing_idempotent(idempotency_key, &request)? {
             return Ok(existing);
@@ -90,10 +88,7 @@ impl ProviderSessionBroker {
         cursor: Option<&str>,
         limit: usize,
     ) -> Result<HistoryView, SessionError> {
-        let binding = self
-            .bindings
-            .get(binding_id)
-            .ok_or(SessionError::NotFound)?;
+        let binding = self.ensure_binding_not_expired(binding_id)?;
         if limit == 0 || limit > 128 {
             return Err(SessionError::Capacity);
         }

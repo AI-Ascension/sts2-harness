@@ -21,10 +21,7 @@ impl ProviderSessionBroker {
         {
             return Err(SessionError::Unsupported);
         }
-        let binding = self
-            .bindings
-            .get(binding_id)
-            .ok_or(SessionError::NotFound)?;
+        let binding = self.ensure_binding_not_expired(binding_id)?;
         if binding.state != BindingState::Held || !generation_permission || !valid_id(job_id) {
             return Err(SessionError::Forbidden);
         }
@@ -78,6 +75,13 @@ impl ProviderSessionBroker {
         job_id: &str,
     ) -> Result<CompactionJob, SessionError> {
         self.authorize_owner(owner_token)?;
+        let binding_id = self
+            .compaction_jobs
+            .get(job_id)
+            .ok_or(SessionError::NotFound)?
+            .binding_id
+            .clone();
+        self.ensure_binding_not_expired(&binding_id)?;
         let job = self
             .compaction_jobs
             .get_mut(job_id)
@@ -95,6 +99,13 @@ impl ProviderSessionBroker {
         job_id: &str,
     ) -> Result<CompactionJob, SessionError> {
         self.authorize_owner(owner_token)?;
+        let binding_id = self
+            .compaction_jobs
+            .get(job_id)
+            .ok_or(SessionError::NotFound)?
+            .binding_id
+            .clone();
+        self.ensure_binding_not_expired(&binding_id)?;
         let job = self
             .compaction_jobs
             .get_mut(job_id)
@@ -120,6 +131,13 @@ impl ProviderSessionBroker {
         if !valid_id(evidence_ref) {
             return Err(SessionError::InvalidRequest);
         }
+        let binding_id = self
+            .compaction_jobs
+            .get(job_id)
+            .ok_or(SessionError::NotFound)?
+            .binding_id
+            .clone();
+        self.ensure_binding_not_expired(&binding_id)?;
         let job = self
             .compaction_jobs
             .get_mut(job_id)
@@ -173,6 +191,13 @@ impl ProviderSessionBroker {
         job_id: &str,
     ) -> Result<CompactionJob, SessionError> {
         self.authorize_owner(owner_token)?;
+        let binding_id = self
+            .compaction_jobs
+            .get(job_id)
+            .ok_or(SessionError::NotFound)?
+            .binding_id
+            .clone();
+        self.ensure_binding_not_expired(&binding_id)?;
         let job = self
             .compaction_jobs
             .get_mut(job_id)
