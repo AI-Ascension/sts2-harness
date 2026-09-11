@@ -1066,11 +1066,11 @@
       "stimulus": "Publishing workflow enables auto-merge",
       "expected_oracle": "Draft PRs use actual authenticated self-assignment and exact companion pins; no unrelated writes, merges or releases.",
       "status": "executed_synthetic",
-      "evidence_ref": "https://github.com/AI-Ascension/ascension-context-console/pull/3; https://github.com/AI-Ascension/sts2-harness/pull/69",
-      "command": "gh api PATCH /repos/AI-Ascension/ascension-context-console/pulls/3; gh pr create /repos/AI-Ascension/sts2-harness --draft",
+      "evidence_ref": "https://github.com/AI-Ascension/ascension-context-console/pull/3; https://github.com/AI-Ascension/sts2-harness/pull/70",
+      "command": "gh pr view 3 --json statusCheckRollup; gh pr merge 3 --squash --delete-branch=false",
       "exit_status": "0",
-      "reason": "target PR #3 remains draft/open; harness PR #68 merged externally, and current follow-up is draft PR #69; no merge/release/deployment was initiated by this work",
-      "test_id": "draft PR #3 updated with companion #69"
+      "reason": "target PR #3 and companion PR #70 were merged after green policy and Rust quality checks under explicit user authorization; no release, deployment, live provider/game action, or unrelated write occurred",
+      "test_id": "green target PR #3 merged with companion PR #70"
     },
     {
       "failure_id": "P3-F090",
