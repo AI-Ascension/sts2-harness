@@ -23,6 +23,7 @@ const ISOLATED_ENVIRONMENT_NAMES: &[&str] = &[
     "TMP",
     "TEMP",
 ];
+const APPROVED_INHERITED_ENVIRONMENT_NAMES: &[&str] = &["OPENAI_API_KEY"];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct NativeProcessConfig {
@@ -168,6 +169,7 @@ fn valid_environment_names(names: &[String]) -> bool {
                     | "TMP"
                     | "TEMP"
             )
+            && APPROVED_INHERITED_ENVIRONMENT_NAMES.contains(&name.as_str())
             && unique.insert(name)
     })
 }
@@ -185,6 +187,9 @@ mod tests {
         assert!(!valid_executable("../codex"));
         assert!(!valid_environment_names(&["HOME".to_owned()]));
         assert!(!valid_environment_names(&["CODEX_HOME".to_owned()]));
+        assert!(valid_environment_names(&["OPENAI_API_KEY".to_owned()]));
+        assert!(!valid_environment_names(&["PATH".to_owned()]));
+        assert!(!valid_environment_names(&["AWS_ACCESS_KEY_ID".to_owned()]));
         assert!(valid_root_path(std::path::Path::new("/tmp/provider-root")));
         assert!(!valid_root_path(std::path::Path::new("relative-root")));
         assert!(!valid_root_path(std::path::Path::new("/tmp/../escape")));
