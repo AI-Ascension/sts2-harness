@@ -149,6 +149,8 @@ reported as unverified rather than converted into a pass.
 
 ## Runtime slice coordinator
 
+For user-selected Ollama models, see [Ollama model selection](docs/OLLAMA_MODEL_SELECTION.md).
+
 The standalone `sts2-harness-runtime` binary is the explicit coordinator for the first
 `runtime-v1` trace. It allocates one configured gateway lease, starts the MCP process, performs
 initialize/list/state/action/stale-action/fresh-state calls, checks the effect witness and stable

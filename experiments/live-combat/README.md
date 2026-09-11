@@ -9,7 +9,7 @@ disabled, a strict legal-action JSON schema, and a 90-second execution deadline 
 5-second termination grace. Temporary schema/output files are removed after each decision.
 No user Codex configuration or repository instructions are loaded into the game decision.
 
-Both bridges support `--describe` with provider/model identity. The mod-owned session launcher
+Both bridges support `--describe` with requested provider/model configuration. The mod-owned session launcher
 uses that identity for its manifest and environment instead of assuming Ollama. Gemini and
 Claude adapters are future work; adding them is outside the current Astra change.
 
@@ -20,10 +20,14 @@ unknown outcomes reconcile under the same operation ID. An MCP error flag on a g
 receipt does not bypass receipt validation or make that receipt a transport failure.
 
 Build `sts2-harness-runtime` and `sts2-ollama-bridge` with locked Cargo dependencies.
-The bridge uses a bounded HTTP request to the local Ollama endpoint on port 11434 and model
-`gemma4:31b-cloud`. It uses the existing structured Exo transport seam; it does not run Exo.
+The bridge uses a bounded HTTP request to the local Ollama endpoint on port 11434. Its legacy default
+model is `gemma4:31b-cloud`; `--model MODEL` selects another model without fallback. It uses the
+existing structured Exo transport seam; it does not run Exo.
 Set `STS2_PROVIDER_KIND=ollama`, `STS2_EXO_BRIDGE_BINARY` to its executable, and
-`STS2_EXO_REVISION` to that executable's SHA-256. Arguments must be empty. The harness
+`STS2_EXO_REVISION` to that executable's SHA-256. Leave arguments empty for the default, or set
+`STS2_EXO_BRIDGE_ARGS_JSON` to `["--model","your-model:tag"]`. When inspecting the bridge, pass
+the same model option to `--describe` so requested-configuration metadata agrees with execution.
+See [Ollama model selection](../../docs/OLLAMA_MODEL_SELECTION.md) for validation and scope. The harness
 verifies the digest before starting. Normal Exo runs retain their reviewed revision gate.
 
 Visible seeds are forwarded by default. Set `STS2_EXO_FORWARD_VISIBLE_SEED=false` only

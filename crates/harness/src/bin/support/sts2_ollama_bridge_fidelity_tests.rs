@@ -84,7 +84,13 @@ fn actual_loopback_server_receives_the_same_serialized_body_as_capture()
     let request_bytes = serde_json::to_vec(&request)?;
     let mut capture =
         sts2_harness::MemoryCapture::new(sts2_harness::CaptureMode::Memory, 4, LIMIT)?;
-    run_with_capture_bytes(&request_bytes, &mut capture, address)?;
+    run_with_model(
+        &request_bytes,
+        &mut capture,
+        address,
+        Duration::from_secs(2),
+        "team/user-selected-model:7b",
+    )?;
     let body = server
         .join()
         .map_err(|_| "server panicked")?
@@ -96,6 +102,8 @@ fn actual_loopback_server_receives_the_same_serialized_body_as_capture()
     assert_eq!(record.boundary, sts2_harness::CaptureBoundary::HttpBody);
     assert!(record.attempt_id.is_some());
     assert_eq!(record.content.as_deref(), Some(body.as_slice()));
+    let sent: Value = serde_json::from_slice(&body)?;
+    assert_eq!(sent["model"], "team/user-selected-model:7b");
     assert_eq!(record.observed_bytes, body.len());
     let lifecycle = capture
         .records()
