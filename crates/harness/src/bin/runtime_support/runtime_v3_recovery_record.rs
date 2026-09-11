@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Map, Value};
-use sha2::Digest;
 
 use super::super::wire;
 
@@ -108,7 +107,7 @@ fn validate_action(
         .as_deref()
         .ok_or("durable operation has no canonical action bytes for recovery")?;
     if decoded.as_slice() != retained
-        || format!("{:x}", sha2::Sha256::digest(&decoded)) != operation.intent.payload_digest
+        || sts2_harness::sha256_hex(&decoded) != operation.intent.payload_digest
     {
         return Err(String::from(
             "recovery operation record canonical action bytes do not match the original digest",

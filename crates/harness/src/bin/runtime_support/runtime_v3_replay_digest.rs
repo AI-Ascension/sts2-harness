@@ -8,7 +8,7 @@ pub(super) fn digest_value(domain: &str, value: &Value) -> String {
     hasher.update(domain.as_bytes());
     hasher.update([0]);
     hasher.update(canonical_json(value));
-    format!("{:x}", hasher.finalize())
+    sts2_harness::hex_bytes(hasher.finalize())
 }
 
 fn canonical_json(value: &Value) -> Vec<u8> {

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use rusqlite::params;
-use sha2::{Digest, Sha256};
 
 use super::schema;
 use super::store_core::{ExecutionStore, append_event};
@@ -228,5 +227,5 @@ fn valid_result_payload(payload: &[u8], digest: &str) -> bool {
         && digest
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        && format!("{:x}", Sha256::digest(payload)) == digest
+        && crate::sha256_hex(payload) == digest
 }

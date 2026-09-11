@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 
 pub const RUNTIME_V4_EXPERT_REST_ACTION_PROTOCOL_VERSION: &str = "runtime-v4-expert-rest-action-v1";
 pub const RUNTIME_V4_EXPERT_REST_ACTION_ARTIFACT: &str =
@@ -115,7 +114,7 @@ fn checksums_match() -> bool {
         if seen[index]
             || digest.len() != 64
             || !digest.bytes().all(|byte| byte.is_ascii_hexdigit())
-            || format!("{:x}", Sha256::digest(CHECKSUM_FILES[index].1)) != digest
+            || crate::sha256_hex(CHECKSUM_FILES[index].1) != digest
         {
             return false;
         }

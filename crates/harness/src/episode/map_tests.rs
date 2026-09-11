@@ -25,10 +25,7 @@ fn snapshot() -> Value {
 }
 
 fn wrapper(snapshot: &Value) -> Value {
-    let digest = format!(
-        "{:x}",
-        Sha256::digest(serde_json::to_vec(snapshot).unwrap())
-    );
+    let digest = crate::sha256_hex(serde_json::to_vec(snapshot).unwrap());
     json!({
         "profile":RUNTIME_MAP_PROFILE,
         "schema_digest":RUNTIME_MAP_SCHEMA_DIGEST,

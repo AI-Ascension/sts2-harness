@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -180,5 +179,5 @@ fn accounting_path() -> Result<Option<PathBuf>, Box<dyn std::error::Error>> {
 }
 
 pub(super) fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    sts2_harness::sha256_hex(bytes)
 }
