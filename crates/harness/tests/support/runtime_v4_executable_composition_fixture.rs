@@ -54,7 +54,16 @@ pub(crate) struct ModServer {
 
 impl ModServer {
     pub(crate) fn new(mode: FixtureMode) -> Result<Self, Box<dyn std::error::Error>> {
-        let listener = TcpListener::bind("127.0.0.1:0")?;
+        Self::bind("127.0.0.1:0", mode)
+    }
+
+    /// Bind the synthetic downstream to an explicit address so an operator can
+    /// run it as a long-lived service for a soak campaign.
+    pub(crate) fn bind(
+        address: &str,
+        mode: FixtureMode,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let listener = TcpListener::bind(address)?;
         listener.set_nonblocking(true)?;
         let address = listener.local_addr()?;
         let stop = Arc::new(AtomicBool::new(false));
