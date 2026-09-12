@@ -23,7 +23,12 @@ pub fn sha256_hex(bytes: impl AsRef<[u8]>) -> String {
 }
 
 mod artifact;
+mod checkpoint_projection;
 mod context_capture;
+pub use checkpoint_projection::{
+    HANDLE_DOMAIN, HANDLE_PREFIX, MIN_HANDLE_KEY_BYTES, ProjectionError, ProjectionKey,
+    PublicCheckpointSummary,
+};
 pub mod context_control;
 pub mod context_memory;
 mod coop_native;
