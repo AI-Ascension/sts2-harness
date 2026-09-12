@@ -9,8 +9,8 @@ mod process;
 
 use fixture::FixtureMode;
 use process::{
-    TempDir, assert_foreign_state_rejected, assert_success, executable, run_scenario,
-    write_evidence,
+    TempDir, assert_foreign_state_rejected, assert_malformed_envelope_rejected, assert_success,
+    executable, run_scenario, write_evidence,
 };
 
 #[test]
@@ -33,5 +33,13 @@ fn executable_runtime_v4_composes_unknown_reconcile_and_foreign_state_fence()
         FixtureMode::ForeignExpertState,
     )?;
     assert_foreign_state_rejected(&foreign)?;
+    let malformed = run_scenario(
+        &gateway,
+        &mcp,
+        &harness,
+        &bridge,
+        FixtureMode::MalformedExpertState,
+    )?;
+    assert_malformed_envelope_rejected(&malformed)?;
     write_evidence(&success, &foreign, &operation)
 }

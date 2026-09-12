@@ -23,6 +23,10 @@ pub(crate) const REVIEWED_EXO_REVISION: &str = "7801005e6a1ab77008a05dbba80e0a2a
 pub(crate) enum FixtureMode {
     Success,
     ForeignExpertState,
+    /// Deliberately violates the closed expert-state envelope after the real
+    /// gateway has selected its fixed route.  This is a synthetic downstream
+    /// fault, not a replacement for either the gateway or MCP peer.
+    MalformedExpertState,
 }
 
 #[derive(Clone, Debug)]
@@ -176,22 +180,20 @@ fn fixture_response(
         "/api/v3/runtime/legal-actions" => {
             Ok((200, v3_response("legal_actions_response", &request.headers)))
         }
-        "/api/v4/runtime/expert-state" => Ok((
-            200,
-            expert_observation(
-                match mode {
-                    FixtureMode::Success => "live:7",
-                    FixtureMode::ForeignExpertState => "foreign-state",
-                },
-                7,
-                false,
-            ),
-        )),
+        "/api/v4/runtime/expert-state" => expert_state_response(mode),
         "/api/v4/runtime/expert-action" => unknown_action(&request.body),
         path if path.starts_with("/api/v4/runtime/expert-actions/") => {
             settled_action(path, &request.headers)
         }
         _ => Err(format!("unexpected downstream path: {}", request.path)),
+    }
+}
+
+fn expert_state_response(mode: FixtureMode) -> Result<(u16, Value), String> {
+    match mode {
+        FixtureMode::Success => Ok((200, expert_observation("live:7", 7, false))),
+        FixtureMode::ForeignExpertState => Ok((200, expert_observation("foreign-state", 7, false))),
+        FixtureMode::MalformedExpertState => Ok((200, json!({"kind":"expert_observation"}))),
     }
 }
 

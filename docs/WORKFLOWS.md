@@ -20,6 +20,44 @@ Do not create empty success jobs for future game, provider, replay, or release l
 only when its command, inputs, outputs, and evidence semantics are real and make it a required check
 only after branch protection is configured externally.
 
+## Studio consumer contract
+
+`studio-contract.yml` tests the candidate harness against the immutable Studio
+consumer revision recorded in its checkout step. It builds from the harness
+directory to select the candidate's pinned Rust toolchain, installs the consumer's
+locked Node dependencies, and runs its authenticated live-owner browser tests
+against a disposable loopback service. The service uses only synthetic test
+credentials and a temporary SQLite store and is stopped on exit.
+
+This producer-side check detects owner API drift before Studio adopts a new
+harness pin. It complements Studio's consumer-side test of its pinned owner.
+Changes to the Studio revision require reviewed consumer regression evidence;
+new incompatible APIs require a coordinated rollout, not silently moving the pin
+to bypass a failure. It does not exercise a game, provider, or deployment.
+Maintain the stable job name when configuring required branch checks externally.
+
+## Runtime peer contract
+
+`runtime-peer-contract.yml` builds the candidate harness with the exact gateway and
+MCP revisions in `contracts/runtime-peer-lane.json`, then executes the real
+harness → MCP → gateway process chain. The only synthetic component is a bounded
+game-mod HTTP endpoint owned by the harness test fixture; it is downstream of the
+real peers and has no game, provider, or host authority.
+
+The executable test proves the fixed route/catalog sequence, distinct identities,
+lease epoch forwarding, unknown-operation reconciliation, and owned-process
+teardown. It deliberately sends a foreign identity envelope and a malformed
+expert-state envelope; both must fail before an action is forwarded. Separate
+persisted-startup and cancellation-cleanup regressions remain required in the
+same lane. This is synthetic process-composition evidence, not native-host or
+game-effect evidence.
+
+The ordinary pull-request and `main` paths use the immutable default peers. A
+coordinated candidate pair is permitted only through `workflow_dispatch` with
+full 40-hex gateway and/or MCP revisions; the checkout HEADs are compared to
+those inputs. Review the resulting positive and negative evidence before editing
+the default pins. Never substitute a branch name, moving default, or dirty tree.
+
 ## Authoring rules
 
 - Keep each workflow focused and under 200 nonblank lines, preferably under 160.

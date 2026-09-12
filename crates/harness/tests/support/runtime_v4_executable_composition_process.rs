@@ -148,6 +148,7 @@ pub(crate) fn run_scenario(
             path.join(match mode {
                 FixtureMode::Success => "execution-success.sqlite3",
                 FixtureMode::ForeignExpertState => "execution-foreign.sqlite3",
+                FixtureMode::MalformedExpertState => "execution-malformed.sqlite3",
             })
         })
         .ok_or("synthetic bridge has no parent directory")?;
@@ -346,6 +347,8 @@ pub(crate) fn assert_foreign_state_rejected(
     }
     Ok(())
 }
+
+include!("runtime_v4_executable_composition_malformed.rs");
 
 pub(crate) fn write_evidence(
     success: &ScenarioResult,

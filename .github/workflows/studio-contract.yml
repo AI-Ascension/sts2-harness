@@ -1,0 +1,93 @@
+name: Studio consumer contract
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: studio-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  studio:
+    name: Pinned Studio against candidate harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out candidate harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: harness
+          persist-credentials: false
+
+      - name: Check out reviewed Studio consumer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AI-Ascension/ascension-workflow-studio
+          ref: c68d4f3837c5e11d966fea6bd5ec6182251b9f7f
+          path: studio
+          persist-credentials: false
+
+      - name: Install candidate Rust toolchain
+        working-directory: harness
+        run: rustup show active-toolchain
+
+      - name: Build candidate owner
+        working-directory: harness
+        run: cargo build --locked --bin sts2-workflow
+
+      - name: Install consumer Node runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.16.0'
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+
+      - name: Install locked consumer and browser
+        working-directory: studio
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run build
+
+      - name: Exercise authenticated consumer against candidate owner
+        working-directory: studio
+        env:
+          # Synthetic test credential, scoped to this disposable loopback process.
+          STS2_WORKFLOW_TOKEN_STUDIO_LIVE: studio-live-ci-token
+        run: |
+          ../harness/target/debug/sts2-workflow serve --listen 127.0.0.1:4185 \
+            --store "$RUNNER_TEMP/studio-contract.sqlite" --auth-profile studio-live \
+            > "$RUNNER_TEMP/studio-contract.log" 2>&1 &
+          owner_pid=$!
+          cleanup() {
+            if kill -0 "$owner_pid" 2>/dev/null; then kill "$owner_pid"; fi
+          }
+          trap cleanup EXIT
+          ready=false
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error \
+              -H 'Authorization: Bearer studio-live-ci-token' http://127.0.0.1:4185/v1/health; then
+              ready=true
+              break
+            fi
+            kill -0 "$owner_pid"
+            sleep 1
+          done
+          if test "$ready" != true; then
+            cat "$RUNNER_TEMP/studio-contract.log"
+            exit 1
+          fi
+          npx playwright test --config playwright.live-owner.config.ts --workers=1
+
+      - name: Show synthetic owner diagnostics
+        if: failure()
+        run: |
+          if test -f "$RUNNER_TEMP/studio-contract.log"; then
+            cat "$RUNNER_TEMP/studio-contract.log"
+          fi

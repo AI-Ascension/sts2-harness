@@ -1,0 +1,117 @@
+name: Runtime peer contract
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      gateway_revision:
+        description: Exact 40-hex gateway candidate revision (optional coordinated-pair override)
+        required: false
+        type: string
+      mcp_revision:
+        description: Exact 40-hex MCP candidate revision (optional coordinated-pair override)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-peer-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  runtime-peer-contract:
+    name: Candidate harness against pinned runtime peers
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      DEFAULT_GATEWAY_REVISION: 8940fba823a0893b31d1a96301831c182d37ed32
+      DEFAULT_MCP_REVISION: f3b6eaa8bcf2241b8d6c47587c958388a8fe1031
+    steps:
+      - name: Check out candidate harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: harness
+          persist-credentials: false
+
+      - name: Resolve explicit immutable peer revisions
+        id: peers
+        env:
+          INPUT_GATEWAY_REVISION: ${{ inputs.gateway_revision }}
+          INPUT_MCP_REVISION: ${{ inputs.mcp_revision }}
+        run: |
+          choose_revision() {
+            supplied="$1"
+            fallback="$2"
+            if test -z "$supplied"; then
+              printf '%s' "$fallback"
+              return
+            fi
+            printf '%s' "$supplied" | grep -Eq '^[0-9a-f]{40}$'
+            printf '%s' "$supplied"
+          }
+          gateway_revision=$(choose_revision "$INPUT_GATEWAY_REVISION" "$DEFAULT_GATEWAY_REVISION")
+          mcp_revision=$(choose_revision "$INPUT_MCP_REVISION" "$DEFAULT_MCP_REVISION")
+          printf 'gateway_revision=%s\n' "$gateway_revision" >> "$GITHUB_OUTPUT"
+          printf 'mcp_revision=%s\n' "$mcp_revision" >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact gateway peer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AI-Ascension/sts2-gateway
+          ref: ${{ steps.peers.outputs.gateway_revision }}
+          path: gateway
+          persist-credentials: false
+
+      - name: Check out exact MCP peer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AI-Ascension/sts2-mcp-server
+          ref: ${{ steps.peers.outputs.mcp_revision }}
+          path: mcp
+          persist-credentials: false
+
+      - name: Verify peer revisions and lane declaration
+        working-directory: harness
+        env:
+          GATEWAY_REVISION: ${{ steps.peers.outputs.gateway_revision }}
+          MCP_REVISION: ${{ steps.peers.outputs.mcp_revision }}
+        run: |
+          test "$(git -C ../gateway rev-parse HEAD)" = "$GATEWAY_REVISION"
+          test "$(git -C ../mcp rev-parse HEAD)" = "$MCP_REVISION"
+          test -f contracts/runtime-peer-lane.json
+          grep -Fq 'active_runtime_dependency' contracts/runtime-peer-lane.json
+
+      - name: Build candidate and immutable runtime peers
+        run: |
+          cargo build --locked -j 2 --manifest-path harness/Cargo.toml --bin sts2-harness-runtime
+          cargo build --locked -j 2 --manifest-path gateway/Cargo.toml --bin sts2-gateway-runtime
+          cargo build --locked -j 2 --manifest-path mcp/Cargo.toml --bin sts2-mcp-server
+
+      - name: Exercise real process chain and deliberate envelope mismatch
+        working-directory: harness
+        env:
+          STS2_GATEWAY_BINARY: ${{ github.workspace }}/gateway/target/debug/sts2-gateway-runtime
+          STS2_MCP_BINARY: ${{ github.workspace }}/mcp/target/debug/sts2-mcp-server
+          STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
+          STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR: ${{ runner.temp }}/runtime-peer-contract
+        run: cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact executable_runtime_v4_composes_unknown_reconcile_and_foreign_state_fence
+
+      - name: Exercise hostile startup and cancellation cleanup regressions
+        working-directory: harness
+        run: |
+          cargo test --locked -j 2 --package sts2-harness --test runtime_startup
+          cargo test --locked -j 2 --package sts2-harness --test exo_cleanup
+
+      - name: Show owned-process diagnostics
+        if: failure()
+        run: |
+          if test -d "$RUNNER_TEMP/runtime-peer-contract"; then
+            find "$RUNNER_TEMP/runtime-peer-contract" -type f -maxdepth 1 -print -exec sed -n '1,160p' {} \;
+          fi

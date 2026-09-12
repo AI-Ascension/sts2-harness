@@ -7,6 +7,13 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Add a pinned runtime-peer CI lane. It builds the candidate harness against
+  immutable gateway and MCP executable peers, uses a bounded synthetic mod HTTP
+  endpoint only as downstream, and runs positive plus foreign-identity and
+  malformed-envelope rejection cases. Startup and cancellation cleanup
+  regressions run in the same lane. This is source-derived synthetic process
+  composition evidence, not game-host, provider, or release qualification.
+
 - Add the bounded `coop-native-v1` cohort coordinator and canonical-peer attribution safety
   correction. A returned observation can be attributed only when its sole local peer equals the
   originally scheduled canonical actor and its instance/session/lease/epoch fence matches the
