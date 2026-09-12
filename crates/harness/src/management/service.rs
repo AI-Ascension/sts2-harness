@@ -31,8 +31,10 @@ mod ops;
 mod read;
 #[path = "service_support.rs"]
 mod support;
+#[path = "service_unavailable.rs"]
+mod unavailable;
 
-pub use support::{
+pub use unavailable::{
     UnavailableAuthoringStore, UnavailableCapabilityPort, UnavailableContextInspectionPort,
     UnavailableDefinitionPort, UnavailableExecutionPort, UnavailableReplayPort,
 };
@@ -260,11 +262,11 @@ impl ManagementService {
         Self {
             store,
             authoring: Arc::new(UnavailableAuthoringStore),
-            definitions: Arc::new(support::UnavailableDefinitionPort),
-            execution: Arc::new(support::UnavailableExecutionPort),
-            replay: Arc::new(support::UnavailableReplayPort),
-            capabilities: Arc::new(support::UnavailableCapabilityPort),
-            context_inspection: Arc::new(support::UnavailableContextInspectionPort),
+            definitions: Arc::new(UnavailableDefinitionPort),
+            execution: Arc::new(UnavailableExecutionPort),
+            replay: Arc::new(UnavailableReplayPort),
+            capabilities: Arc::new(UnavailableCapabilityPort),
+            context_inspection: Arc::new(UnavailableContextInspectionPort),
         }
     }
 
