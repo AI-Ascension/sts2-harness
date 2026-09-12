@@ -10,7 +10,7 @@
 
 use std::fmt;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::execution::{ExactAssurance, ExactCheckpointId, ExactStateDigest};
@@ -52,7 +52,8 @@ impl fmt::Display for ProjectionError {
 impl std::error::Error for ProjectionError {}
 
 /// Public summary safe to hand to an ordinary agent or public transcript.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PublicCheckpointSummary {
     /// Shared reference envelope schema identifier.
     pub schema: String,
@@ -70,6 +71,57 @@ pub struct PublicCheckpointSummary {
     pub assurance: String,
     /// Whether a destination actually recaptured the expected state.
     pub restore_verified: bool,
+}
+
+impl PublicCheckpointSummary {
+    /// Validates the closed public envelope and its assurance consistency.
+    /// Schema validity does not establish trusted issuance or restore evidence.
+    pub fn validate(&self) -> Result<(), ProjectionError> {
+        let hex = self
+            .handle
+            .strip_prefix(HANDLE_PREFIX)
+            .ok_or(ProjectionError::InvalidHandle)?;
+        if hex.len() != 64
+            || !hex
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(ProjectionError::InvalidHandle);
+        }
+        let restored = matches!(
+            self.assurance.as_str(),
+            "restore_verified" | "continuation_certified"
+        );
+        if self.schema != REFERENCE_SCHEMA
+            || self.reference_version != REFERENCE_VERSION
+            || OccurrenceId::parse(&self.occurrence).is_err()
+            || !valid_label(&self.boundary_kind)
+            || !valid_label(&self.boundary_phase)
+            || !matches!(
+                self.assurance.as_str(),
+                "public_observation_only"
+                    | "capture_only"
+                    | "restore_supported"
+                    | "restore_verified"
+                    | "continuation_certified"
+            )
+            || self.restore_verified != restored
+        {
+            return Err(ProjectionError::InvalidInput);
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn deserialize_optional_reference<'de, D>(
+    deserializer: D,
+) -> Result<Option<PublicCheckpointSummary>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let reference = PublicCheckpointSummary::deserialize(deserializer)?;
+    reference.validate().map_err(serde::de::Error::custom)?;
+    Ok(Some(reference))
 }
 
 /// Trusted projection key that issues and checks public checkpoint handles.

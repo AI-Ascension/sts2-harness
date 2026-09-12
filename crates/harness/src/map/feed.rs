@@ -10,11 +10,19 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const MAP_FEED_VERSION: &str = "sts2.map-feed-v1";
+const MAP_CHECKPOINT_FEED_VERSION: &str = "sts2.map-feed-v2";
 pub const MAP_FEED_FILE: &str = "feed.json";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapFeedEntry {
+    /// Public checkpoint reference copied exactly from its v2 bundle, absent for legacy bundles.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::checkpoint_projection::deserialize_optional_reference"
+    )]
+    pub checkpoint_reference: Option<crate::PublicCheckpointSummary>,
     pub sequence: u64,
     pub bundle_digest: String,
     pub source_state_id: String,
@@ -49,7 +57,8 @@ impl Default for MapFeed {
 
 impl MapFeed {
     pub(crate) fn validate(&self) -> Result<(), MapBundleError> {
-        if self.feed_version != MAP_FEED_VERSION {
+        if self.feed_version != MAP_FEED_VERSION && self.feed_version != MAP_CHECKPOINT_FEED_VERSION
+        {
             return Err(MapBundleError::UnsupportedVersion(
                 self.feed_version.clone(),
             ));
@@ -60,6 +69,14 @@ impl MapFeed {
         let mut previous = None;
         let mut seen = std::collections::BTreeSet::new();
         for entry in &self.entries {
+            if let Some(reference) = &entry.checkpoint_reference {
+                if self.feed_version != MAP_CHECKPOINT_FEED_VERSION {
+                    return Err(MapBundleError::InvalidField("checkpoint_reference"));
+                }
+                reference
+                    .validate()
+                    .map_err(|_| MapBundleError::InvalidField("checkpoint_reference"))?;
+            }
             if !is_digest(&entry.bundle_digest)
                 || entry.source_state_id.is_empty()
                 || entry.source_state_id.len() > 512
@@ -155,7 +172,11 @@ pub(crate) fn append(
         .sequence
         .checked_add(1)
         .ok_or(MapBundleError::TooLarge("feed sequence"))?;
+    if bundle.manifest.checkpoint_reference.is_some() {
+        feed.feed_version = MAP_CHECKPOINT_FEED_VERSION.to_owned();
+    }
     feed.entries.push(MapFeedEntry {
+        checkpoint_reference: bundle.manifest.checkpoint_reference.clone(),
         sequence,
         bundle_digest: digest.to_owned(),
         source_state_id: bundle.manifest.history.source_state_id.clone(),
@@ -175,7 +196,7 @@ pub(crate) fn append(
     write_atomic(root, &feed, operation_id)
 }
 
-fn validate_entry_bundle(
+pub(super) fn validate_entry_bundle(
     entry: &MapFeedEntry,
     bundle: &MapViewBundle,
 ) -> Result<(), MapBundleError> {
@@ -184,6 +205,7 @@ fn validate_entry_bundle(
         || entry.run_id != bundle.manifest.run_id
         || entry.episode_id != bundle.manifest.episode_id
         || entry.trajectory_id != bundle.manifest.trajectory_id
+        || entry.checkpoint_reference != bundle.manifest.checkpoint_reference
     {
         return Err(MapBundleError::IdentityMismatch);
     }

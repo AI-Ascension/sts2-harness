@@ -16,8 +16,8 @@ use sts2_harness::{
 };
 
 const USAGE: &str = "usage: exact-checkpoint-cli <list|inspect|verify> --root DIR [options]\n\
-  inspect --reviewed-checkpoint ID\n\
-  verify --reviewed-checkpoint ID --state-digest DIGEST --compatibility DIGEST --coverage DIGEST\n\
+  inspect --checkpoint ID\n\
+  verify --checkpoint ID --state-digest DIGEST --compatibility DIGEST --coverage DIGEST\n\
          [--boundary-kind KIND] [--boundary-phase PHASE]";
 
 enum Failure {
@@ -110,6 +110,18 @@ fn verify(store: &ExactArtifactStore, options: &Options) -> Result<(), Failure> 
         .coverage
         .as_deref()
         .ok_or_else(|| Failure::Usage(USAGE.to_owned()))?;
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &store
+            .read_manifest(&identifier)
+            .map_err(|error| Failure::Domain(error.to_string()))?,
+    )
+    .map_err(|_| Failure::Domain("malformed_manifest".to_owned()))?;
+    let boundary = |field: &str| {
+        manifest["boundary"][field]
+            .as_str()
+            .unwrap_or("unspecified")
+            .to_owned()
+    };
     let reference = ExactCheckpointReference {
         exact_state_digest: ExactStateDigest::parse(state)
             .map_err(|error| Failure::Usage(error.to_string()))?,
@@ -117,11 +129,11 @@ fn verify(store: &ExactArtifactStore, options: &Options) -> Result<(), Failure> 
         boundary_kind: options
             .boundary_kind
             .clone()
-            .unwrap_or_else(|| "unspecified".to_owned()),
+            .unwrap_or_else(|| boundary("kind")),
         boundary_phase: options
             .boundary_phase
             .clone()
-            .unwrap_or_else(|| "unspecified".to_owned()),
+            .unwrap_or_else(|| boundary("phase")),
         assurance: ExactAssurance::CaptureOnly,
     };
     match verify_checkpoint(store, &reference, compatibility, coverage) {

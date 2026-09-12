@@ -14,6 +14,7 @@ pub use super::bundle_types::{
 pub use super::bundle_validation::MapBundleError;
 
 pub const MAP_BUNDLE_VERSION: &str = "sts2.map-view-bundle-v1";
+pub(crate) const MAP_CHECKPOINT_BUNDLE_VERSION: &str = "sts2.map-view-bundle-v2";
 pub const RUNTIME_MAP_SCHEMA_DIGEST: &str =
     "ceab0d2dfc471d1ec36d12edaf4654b8c7fdced06548bf47265e11c63f98115b";
 pub const MAP_MAX_SNAPSHOT_BYTES: usize = 256 * 1024;
@@ -50,6 +51,7 @@ impl MapViewBundle {
         let viewer = b"{}".to_vec();
         let manifest = BundleManifest {
             bundle_version: MAP_BUNDLE_VERSION.to_owned(),
+            checkpoint_reference: None,
             bundle_digest: String::new(),
             snapshot_digest: graph.snapshot_digest().to_owned(),
             analysis_digest: analysis.content_digest.clone(),
@@ -134,6 +136,23 @@ impl MapViewBundle {
         Ok(())
     }
 
+    /// Attaches a trusted public checkpoint reference, promoting the manifest to v2.
+    /// The public reference participates in the immutable bundle digest.
+    pub fn with_checkpoint_reference(
+        mut self,
+        reference: crate::PublicCheckpointSummary,
+    ) -> Result<Self, MapBundleError> {
+        self.validate()?;
+        reference
+            .validate()
+            .map_err(|_| MapBundleError::InvalidField("checkpoint_reference"))?;
+        self.manifest.bundle_version = MAP_CHECKPOINT_BUNDLE_VERSION.to_owned();
+        self.manifest.checkpoint_reference = Some(reference);
+        self.manifest.bundle_digest = self.compute_digest()?;
+        self.validate()?;
+        Ok(self)
+    }
+
     fn compute_digest(&self) -> Result<String, MapBundleError> {
         let mut manifest = self.manifest.clone();
         manifest.bundle_digest.clear();
@@ -149,9 +168,7 @@ impl MapViewBundle {
         reject_duplicate_keys(bytes).map_err(MapBundleError::Canonical)?;
         let manifest: BundleManifest =
             serde_json::from_slice(bytes).map_err(|_| MapBundleError::Serialization)?;
-        if manifest.bundle_version != MAP_BUNDLE_VERSION {
-            return Err(MapBundleError::UnsupportedVersion(manifest.bundle_version));
-        }
+        super::bundle_validation_checks::validate_checkpoint_reference(&manifest)?;
         Ok(manifest)
     }
 

@@ -56,6 +56,13 @@ pub struct BundlePresentation {
 #[serde(deny_unknown_fields)]
 pub struct BundleManifest {
     pub bundle_version: String,
+    /// Optional public reference; present only in the explicitly versioned v2 bundle.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::checkpoint_projection::deserialize_optional_reference"
+    )]
+    pub checkpoint_reference: Option<crate::PublicCheckpointSummary>,
     pub bundle_digest: String,
     pub snapshot_digest: String,
     pub analysis_digest: String,

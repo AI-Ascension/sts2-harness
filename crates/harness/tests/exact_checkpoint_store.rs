@@ -48,6 +48,32 @@ fn manifest_bytes(digest: &ExactStateDigest) -> Vec<u8> {
 }
 
 #[test]
+fn oversized_stored_blobs_are_refused_before_allocation_or_deduplication() {
+    let store = ExactArtifactStore::new(workspace("oversized-read"));
+    let digest = store.stage_blob(b"bounded").expect("stage");
+    let hex = digest.as_str().trim_start_matches("sha256:");
+    let path = store
+        .root_directory()
+        .join("exact/blobs")
+        .join(&hex[..2])
+        .join(hex);
+    fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .expect("open")
+        .set_len(MAX_EXACT_BLOB_BYTES as u64 + 1)
+        .expect("sparse oversize");
+    assert_eq!(
+        store.read_blob(&digest),
+        Err(ExactCheckpointError::Oversized)
+    );
+    assert_eq!(
+        store.stage_blob(b"bounded"),
+        Err(ExactCheckpointError::Oversized)
+    );
+}
+
+#[test]
 fn staged_blobs_round_trip_by_content_identity() {
     let store = ExactArtifactStore::new(workspace("round-trip"));
     let digest = store

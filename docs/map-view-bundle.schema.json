@@ -1,70 +1,358 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ai-ascension.github.io/sts2-harness/schemas/sts2.map-view-bundle-v1.json",
+  "$id": "https://ai-ascension.github.io/sts2-harness/schemas/sts2.map-view-bundle.json",
   "title": "Harness owned map view bundle manifest",
   "type": "object",
   "additionalProperties": false,
-  "required": ["bundle_version", "bundle_digest", "snapshot_digest", "analysis_digest", "map_instance", "act", "run_id", "episode_id", "trajectory_id", "model_execution_id", "schema_profile", "schema_digest", "analysis_version", "renderer_version", "presentation", "origin", "contents", "history"],
+  "required": [
+    "bundle_version",
+    "bundle_digest",
+    "snapshot_digest",
+    "analysis_digest",
+    "map_instance",
+    "act",
+    "run_id",
+    "episode_id",
+    "trajectory_id",
+    "model_execution_id",
+    "schema_profile",
+    "schema_digest",
+    "analysis_version",
+    "renderer_version",
+    "presentation",
+    "origin",
+    "contents",
+    "history"
+  ],
   "properties": {
-    "bundle_version": {"const": "sts2.map-view-bundle-v1"},
-    "bundle_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "SHA-256 of this canonical sorted-key manifest with bundle_digest empty."},
-    "snapshot_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Exact SHA-256 of visible-map.json bytes."},
-    "analysis_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Exact content_digest recorded by analysis.json."},
-    "map_instance": {"type": "string", "minLength": 1, "maxLength": 512},
-    "act": {"type": "string", "minLength": 1, "maxLength": 512},
-    "run_id": {"type": "string", "minLength": 1, "maxLength": 512},
-    "episode_id": {"type": "string", "minLength": 1, "maxLength": 512},
-    "trajectory_id": {"type": "string", "minLength": 1, "maxLength": 512},
-    "model_execution_id": {"type": ["string", "null"], "maxLength": 512},
-    "schema_profile": {"type": "string", "minLength": 1, "maxLength": 512},
-    "schema_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "analysis_version": {"const": "sts2.map-analysis-v1"},
-    "renderer_version": {"type": "string", "minLength": 1, "maxLength": 512},
+    "bundle_version": {
+      "enum": [
+        "sts2.map-view-bundle-v1",
+        "sts2.map-view-bundle-v2"
+      ]
+    },
+    "bundle_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of this canonical sorted-key manifest with bundle_digest empty."
+    },
+    "snapshot_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Exact SHA-256 of visible-map.json bytes."
+    },
+    "analysis_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Exact content_digest recorded by analysis.json."
+    },
+    "map_instance": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "act": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "episode_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "trajectory_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "model_execution_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 512
+    },
+    "schema_profile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "schema_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "analysis_version": {
+      "const": "sts2.map-analysis-v1"
+    },
+    "renderer_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
     "presentation": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Rendered presentation uses width 320..8192, height 320..16384, and at most 33554432 pixels; the harness validates the cross-field pixel limit.",
       "additionalProperties": false,
-      "required": ["width", "height", "layout_version"],
+      "required": [
+        "width",
+        "height",
+        "layout_version"
+      ],
       "properties": {
-        "width": {"type": "integer", "minimum": 320, "maximum": 8192},
-        "height": {"type": "integer", "minimum": 320, "maximum": 16384},
-        "layout_version": {"type": "string", "minLength": 1, "maxLength": 512}
+        "width": {
+          "type": "integer",
+          "minimum": 320,
+          "maximum": 8192
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 320,
+          "maximum": 16384
+        },
+        "layout_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
       }
     },
     "origin": {
-      "type": "object", "additionalProperties": false,
-      "required": ["owner", "source", "generator", "license"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "source",
+        "generator",
+        "license"
+      ],
       "properties": {
-        "owner": {"type": "string", "minLength": 1, "maxLength": 512},
-        "source": {"type": "string", "minLength": 1, "maxLength": 512},
-        "generator": {"type": "string", "minLength": 1, "maxLength": 512},
-        "license": {"type": "string", "minLength": 1, "maxLength": 512}
+        "owner": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "generator": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
       }
     },
     "contents": {
-      "type": "object", "additionalProperties": false,
-      "required": ["snapshot_ref", "analysis_ref", "decision_ref", "viewer_ref", "svg_ref", "png_ref", "svg_digest", "png_digest", "decision_digest", "viewer_digest"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshot_ref",
+        "analysis_ref",
+        "decision_ref",
+        "viewer_ref",
+        "svg_ref",
+        "png_ref",
+        "svg_digest",
+        "png_digest",
+        "decision_digest",
+        "viewer_digest"
+      ],
       "properties": {
-        "snapshot_ref": {"const": "visible-map.json"},
-        "analysis_ref": {"const": "analysis.json"},
-        "decision_ref": {"const": "decision.json"},
-        "viewer_ref": {"const": "viewer.json"},
-        "svg_ref": {"enum": [null, "overview.svg"]},
-        "png_ref": {"enum": [null, "overview.png"], "description": "When present, the referenced PNG is at most 16777216 bytes; the loader checks the external file."},
-        "svg_digest": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
-        "png_digest": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
-        "decision_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "viewer_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        "snapshot_ref": {
+          "const": "visible-map.json"
+        },
+        "analysis_ref": {
+          "const": "analysis.json"
+        },
+        "decision_ref": {
+          "const": "decision.json"
+        },
+        "viewer_ref": {
+          "const": "viewer.json"
+        },
+        "svg_ref": {
+          "enum": [
+            null,
+            "overview.svg"
+          ]
+        },
+        "png_ref": {
+          "enum": [
+            null,
+            "overview.png"
+          ],
+          "description": "When present, the referenced PNG is at most 16777216 bytes; the loader checks the external file."
+        },
+        "svg_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "png_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "decision_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "viewer_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
       }
     },
     "history": {
-      "type": "object", "additionalProperties": false,
-      "required": ["source_state_id", "generation", "action_catalog_digest"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_state_id",
+        "generation",
+        "action_catalog_digest"
+      ],
       "properties": {
-        "source_state_id": {"type": "string", "minLength": 1, "maxLength": 512},
-        "generation": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
-        "action_catalog_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        "source_state_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "action_catalog_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "checkpoint_reference": {
+      "$ref": "#/$defs/checkpoint_reference"
+    }
+  },
+  "$defs": {
+    "checkpoint_reference": {
+      "type": "object",
+      "description": "Public, digest-free checkpoint reference for ordinary agents, transcripts, and dashboards. It carries a keyed opaque handle and permitted boundary/assurance summaries only; by construction there is no member for an exact-state, checkpoint, blob, or compatibility digest, and additional properties are rejected. Schema validity does not prove coverage, restorability, or that the handle was honestly issued.",
+      "properties": {
+        "schema": {
+          "const": "ascension.exact_checkpoint_reference.v1"
+        },
+        "reference_version": {
+          "const": "exact-checkpoint-reference-v1"
+        },
+        "handle": {
+          "type": "string",
+          "pattern": "^ckpt-h1:[0-9a-f]{64}$"
+        },
+        "occurrence": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,256}$"
+        },
+        "boundary_kind": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "boundary_phase": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "assurance": {
+          "enum": [
+            "public_observation_only",
+            "capture_only",
+            "restore_supported",
+            "restore_verified",
+            "continuation_certified"
+          ]
+        },
+        "restore_verified": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schema",
+        "reference_version",
+        "handle",
+        "occurrence",
+        "boundary_kind",
+        "boundary_phase",
+        "assurance",
+        "restore_verified"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "assurance": {
+                "enum": [
+                  "restore_verified",
+                  "continuation_certified"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "restore_verified": {
+                "const": true
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "restore_verified": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "bundle_version": {
+            "const": "sts2.map-view-bundle-v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "checkpoint_reference": false
+        }
+      },
+      "else": {
+        "required": [
+          "checkpoint_reference"
+        ]
       }
     }
-  }
+  ]
 }

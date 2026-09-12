@@ -8,10 +8,8 @@
 //! legacy public `Checkpoint` so a public-only record cannot masquerade as an exact one.
 
 use std::fmt;
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use sha2::{Digest, Sha256};
 
@@ -28,7 +26,8 @@ pub const MAX_EXACT_BLOB_BYTES: usize = 16 * 1024 * 1024;
 /// Maximum accepted length of a boundary kind or phase label.
 pub const MAX_BOUNDARY_LABEL_BYTES: usize = 128;
 
-static NEXT_TEMPORARY: AtomicU64 = AtomicU64::new(0);
+#[path = "exact_checkpoint_io.rs"]
+mod io_store;
 
 /// Rejection reasons for exact artifact storage.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -260,29 +259,6 @@ impl ExactArtifactStore {
             return Err(ExactCheckpointError::DigestMismatch);
         }
         Ok(())
-    }
-
-    fn read_verified(&self, path: &Path) -> Result<Vec<u8>, ExactCheckpointError> {
-        if !path.is_file() {
-            return Err(ExactCheckpointError::Missing);
-        }
-        fs::read(path).map_err(persistence)
-    }
-
-    fn write_atomic(&self, path: &Path, bytes: &[u8]) -> Result<(), ExactCheckpointError> {
-        if path.is_file() {
-            return if fs::read(path).map_err(persistence)? == bytes {
-                Ok(())
-            } else {
-                Err(ExactCheckpointError::DigestMismatch)
-            };
-        }
-        let directory = path.parent().ok_or(ExactCheckpointError::InvalidDigest)?;
-        fs::create_dir_all(directory).map_err(persistence)?;
-        let nonce = NEXT_TEMPORARY.fetch_add(1, Ordering::Relaxed);
-        let temporary = directory.join(format!(".tmp-{}-{nonce}", std::process::id()));
-        fs::write(&temporary, bytes).map_err(persistence)?;
-        fs::rename(&temporary, path).map_err(persistence)
     }
 
     fn blob_path(&self, hex: &str) -> PathBuf {

@@ -178,9 +178,17 @@ impl MapBundleFeed for BundleFileStore {
         let png = read_optional(&directory, manifest.contents.png_ref.as_deref())?;
         let decision = read_optional(&directory, Some(&manifest.contents.decision_ref))?;
         let viewer = read_optional(&directory, Some(&manifest.contents.viewer_ref))?;
-        MapViewBundle::from_manifest_and_files(
+        let bundle = MapViewBundle::from_manifest_and_files(
             manifest, snapshot, &analysis, svg, png, decision, viewer,
-        )
+        )?;
+        if let Some(entry) = feed::read(&self.root)?
+            .entries
+            .iter()
+            .find(|entry| entry.bundle_digest == bundle_digest)
+        {
+            feed::validate_entry_bundle(entry, &bundle)?;
+        }
+        Ok(bundle)
     }
 
     fn list(&self) -> Result<Vec<String>, MapBundleError> {

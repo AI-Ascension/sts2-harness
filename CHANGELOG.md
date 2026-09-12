@@ -14,6 +14,11 @@ claim a released harness version or runtime compatibility.
   regressions run in the same lane. This is source-derived synthetic process
   composition evidence, not game-host, provider, or release qualification.
 
+- Reject incomplete exact checkpoint manifests, inconsistent dependency sizes and payload
+ identities, and source/destination profile mismatches before session admission. Bound reads of
+ persisted exact artifacts to 16 MiB. These checks establish component integrity, not live restore
+ certification; see ADR 0016.
+
 - Add the bounded `coop-native-v1` cohort coordinator and canonical-peer attribution safety
   correction. A returned observation can be attributed only when its sole local peer equals the
   originally scheduled canonical actor and its instance/session/lease/epoch fence matches the

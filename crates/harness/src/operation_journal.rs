@@ -159,6 +159,14 @@ pub struct OperationJournal {
     poisoned: bool,
 }
 
+impl Drop for OperationJournal {
+    fn drop(&mut self) {
+        // Explicitly release before `File` closes so a replacement owner can acquire
+        // the journal immediately on platforms where close alone is delayed.
+        let _ = self.file.unlock();
+    }
+}
+
 impl OperationJournal {
     /// Opens or creates a journal at `path`, replaying every durable record.
     pub fn open(path: impl Into<PathBuf>) -> Result<Self, JournalError> {

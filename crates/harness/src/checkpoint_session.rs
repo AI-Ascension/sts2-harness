@@ -83,6 +83,13 @@ pub fn admit_session(
             return Err(SessionError::Verification(failure));
         }
     };
+    // Bind the independently verified source profile to the destination receipt before
+    // the gate can advance. A separately configured gate is not proof of this relation.
+    if receipt.compatibility_digest != expected_compatibility
+        || receipt.coverage_contract_digest != expected_coverage_contract
+    {
+        return Err(SessionError::Gate(GateError::Incompatible));
+    }
     let admission = gate.admit(reference, receipt)?;
     let evidence = CheckpointEvidence {
         captured: verified_evidence.captured,

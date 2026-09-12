@@ -23,11 +23,7 @@ pub(super) fn validate_without_bundle_digest(bundle: &MapViewBundle) -> Result<(
     {
         return Err(MapBundleError::TooLarge("png"));
     }
-    if bundle.manifest.bundle_version != super::bundle::MAP_BUNDLE_VERSION {
-        return Err(MapBundleError::UnsupportedVersion(
-            bundle.manifest.bundle_version.clone(),
-        ));
-    }
+    validate_checkpoint_reference(&bundle.manifest)?;
     validate_manifest(&bundle.manifest)?;
     bundle
         .analysis
@@ -142,6 +138,26 @@ pub(super) fn validate_without_bundle_digest(bundle: &MapViewBundle) -> Result<(
         return Err(MapBundleError::TooLarge("manifest"));
     }
     Ok(())
+}
+
+pub(super) fn validate_checkpoint_reference(
+    manifest: &BundleManifest,
+) -> Result<(), MapBundleError> {
+    match (
+        manifest.bundle_version.as_str(),
+        &manifest.checkpoint_reference,
+    ) {
+        (super::bundle::MAP_BUNDLE_VERSION, None) => Ok(()),
+        (super::bundle::MAP_CHECKPOINT_BUNDLE_VERSION, Some(reference)) => reference
+            .validate()
+            .map_err(|_| MapBundleError::InvalidField("checkpoint_reference")),
+        (super::bundle::MAP_BUNDLE_VERSION | super::bundle::MAP_CHECKPOINT_BUNDLE_VERSION, _) => {
+            Err(MapBundleError::InvalidField("checkpoint_reference"))
+        }
+        _ => Err(MapBundleError::UnsupportedVersion(
+            manifest.bundle_version.clone(),
+        )),
+    }
 }
 
 pub(super) fn validate_manifest(manifest: &BundleManifest) -> Result<(), MapBundleError> {

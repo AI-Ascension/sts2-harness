@@ -1,30 +1,199 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ai-ascension.github.io/sts2-harness/schemas/sts2.map-feed-v1.json",
+  "$id": "https://ai-ascension.github.io/sts2-harness/schemas/sts2.map-feed.json",
   "title": "Harness map bundle operational feed",
   "type": "object",
   "additionalProperties": false,
-  "required": ["feed_version", "sequence", "head", "entries"],
+  "required": [
+    "feed_version",
+    "sequence",
+    "head",
+    "entries"
+  ],
   "properties": {
-    "feed_version": {"const": "sts2.map-feed-v1"},
-    "sequence": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
-    "head": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "feed_version": {
+      "enum": [
+        "sts2.map-feed-v1",
+        "sts2.map-feed-v2"
+      ]
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "head": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$"
+    },
     "entries": {
-      "type": "array", "maxItems": 4096,
+      "type": "array",
+      "maxItems": 4096,
       "items": {
-        "type": "object", "additionalProperties": false,
-        "required": ["sequence", "bundle_digest", "source_state_id", "generation", "run_id", "episode_id", "trajectory_id", "observed_at_unix_ms"],
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sequence",
+          "bundle_digest",
+          "source_state_id",
+          "generation",
+          "run_id",
+          "episode_id",
+          "trajectory_id",
+          "observed_at_unix_ms"
+        ],
         "properties": {
-          "sequence": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
-          "bundle_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-          "source_state_id": {"type": "string", "minLength": 1, "maxLength": 512},
-          "generation": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
-          "run_id": {"type": "string", "minLength": 1, "maxLength": 512},
-          "episode_id": {"type": "string", "minLength": 1, "maxLength": 512},
-          "trajectory_id": {"type": "string", "minLength": 1, "maxLength": 512},
-          "observed_at_unix_ms": {"type": "integer", "minimum": 0}
+          "sequence": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "bundle_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "source_state_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "run_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "episode_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "trajectory_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "observed_at_unix_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "checkpoint_reference": {
+            "$ref": "#/$defs/checkpoint_reference"
+          }
         }
       }
     }
-  }
+  },
+  "$defs": {
+    "checkpoint_reference": {
+      "type": "object",
+      "description": "Public, digest-free checkpoint reference for ordinary agents, transcripts, and dashboards. It carries a keyed opaque handle and permitted boundary/assurance summaries only; by construction there is no member for an exact-state, checkpoint, blob, or compatibility digest, and additional properties are rejected. Schema validity does not prove coverage, restorability, or that the handle was honestly issued.",
+      "properties": {
+        "schema": {
+          "const": "ascension.exact_checkpoint_reference.v1"
+        },
+        "reference_version": {
+          "const": "exact-checkpoint-reference-v1"
+        },
+        "handle": {
+          "type": "string",
+          "pattern": "^ckpt-h1:[0-9a-f]{64}$"
+        },
+        "occurrence": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,256}$"
+        },
+        "boundary_kind": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "boundary_phase": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "assurance": {
+          "enum": [
+            "public_observation_only",
+            "capture_only",
+            "restore_supported",
+            "restore_verified",
+            "continuation_certified"
+          ]
+        },
+        "restore_verified": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schema",
+        "reference_version",
+        "handle",
+        "occurrence",
+        "boundary_kind",
+        "boundary_phase",
+        "assurance",
+        "restore_verified"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "assurance": {
+                "enum": [
+                  "restore_verified",
+                  "continuation_certified"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "restore_verified": {
+                "const": true
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "restore_verified": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "feed_version": {
+            "const": "sts2.map-feed-v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "entries": {
+            "items": {
+              "properties": {
+                "checkpoint_reference": false
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

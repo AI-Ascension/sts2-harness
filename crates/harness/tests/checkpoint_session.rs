@@ -2,6 +2,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -10,6 +11,9 @@ use sts2_harness::{
     ExactArtifactStore, ExactAssurance, ExactCheckpointReference, ExactStateDigest, GateError,
     RestoreEvidence, RestoreGate, RestoreReceipt, SessionError, admit_session,
 };
+
+const PAYLOAD: &[u8] =
+    include_bytes!("../../../protocol-artifact/exact-state-v1/golden/state.canonical");
 
 fn workspace(name: &str) -> PathBuf {
     let nonce = SystemTime::now()
@@ -25,10 +29,30 @@ fn workspace(name: &str) -> PathBuf {
 }
 
 fn blob(seed: char) -> String {
+    if seed == 'c' {
+        return "sha256:95c56e287c1e000c70b33fc0180caf7c58f1da0606681e18a67c43bfc6ab8974"
+            .to_owned();
+    }
+    if seed == 'd' {
+        return "sha256:2fa9e73895d97193dc0153eae157f93da76c3292a526a4bbe2486e755e93b82b"
+            .to_owned();
+    }
     format!("sha256:{}", seed.to_string().repeat(64))
 }
 
 fn state(seed: char) -> ExactStateDigest {
+    if seed == 'a' {
+        let mut hash = Sha256::new();
+        hash.update(b"AI-ASCENSION/EXACT-STATE/v1\0");
+        hash.update(PAYLOAD);
+        let hex: String = hash
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let digest = format!("asc-state:v1:sha256:{hex}");
+        return ExactStateDigest::parse(&digest).expect("synthetic payload digest");
+    }
     ExactStateDigest::parse(&format!(
         "asc-state:v1:sha256:{}",
         seed.to_string().repeat(64)
@@ -43,13 +67,17 @@ struct Fixture {
 
 fn fixture(name: &str, state_seed: char) -> Fixture {
     let store = ExactArtifactStore::new(workspace(name));
-    let payload = store.stage_blob(b"payload").expect("payload stages");
+    let payload = store.stage_blob(PAYLOAD).expect("payload stages");
     let restore = store.stage_blob(b"restore").expect("restore stages");
     let manifest = serde_json::to_vec(&serde_json::json!({
         "schema": "ascension.checkpoint_manifest.v1",
+        "canonical_profile": "asc-jcs-state-v1",
+        "boundary": {"kind":"decision", "phase":"CONTRACT_FIXTURE"},
+        "origin": {"run_id":"synthetic", "generation":0},
+        "parent_checkpoint_id": null,
         "exact_state_digest": state(state_seed).as_str(),
-        "canonical_payload": {"digest": payload.as_str()},
-        "restore_artifacts": [{"digest": restore.as_str()}],
+        "canonical_payload": {"digest": payload.as_str(), "role":"exact_state_payload", "codec":"asc-jcs-state-v1", "size_bytes":PAYLOAD.len()},
+        "restore_artifacts": [{"digest": restore.as_str(), "role":"snapshot", "codec":"test-raw-v1", "size_bytes":7}],
         "compatibility_digest": blob('c'),
         "coverage_contract_digest": blob('d'),
     }))
@@ -61,7 +89,7 @@ fn fixture(name: &str, state_seed: char) -> Fixture {
         exact_state_digest: state(state_seed),
         exact_checkpoint_id: identifier,
         boundary_kind: "decision".to_owned(),
-        boundary_phase: "COMBAT".to_owned(),
+        boundary_phase: "CONTRACT_FIXTURE".to_owned(),
         assurance: ExactAssurance::RestoreSupported,
     };
     Fixture { store, reference }
@@ -206,4 +234,28 @@ fn incompatible_contracts_are_rejected_before_the_gate_opens() {
     .expect_err("compatibility mismatch blocks admission");
     assert!(matches!(refused, SessionError::Verification(_)));
     assert_eq!(gate.current_epoch(), 0);
+}
+
+#[test]
+fn source_and_destination_contracts_must_agree_before_epoch_advance() {
+    let fixture = fixture("profile-binding", 'a');
+    for (compatibility, coverage) in [(blob('e'), blob('d')), (blob('c'), blob('e'))] {
+        let mut destination_gate = RestoreGate::new(&compatibility, &coverage).expect("gate");
+        let mut destination = receipt(&fixture, 1, RestoreEvidence::RestoreVerified);
+        destination.compatibility_digest = compatibility;
+        destination.coverage_contract_digest = coverage;
+        assert_eq!(
+            admit_session(
+                &fixture.store,
+                &mut destination_gate,
+                &fixture.reference,
+                &destination,
+                &blob('c'),
+                &blob('d')
+            ),
+            Err(SessionError::Gate(GateError::Incompatible))
+        );
+        assert_eq!(destination_gate.current_epoch(), 0);
+        assert!(destination_gate.admission().is_none());
+    }
 }

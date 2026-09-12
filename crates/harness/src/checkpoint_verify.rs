@@ -8,11 +8,17 @@
 //! because nothing was restored into a destination.
 
 use std::fmt;
+use std::sync::OnceLock;
+
+use sha2::{Digest, Sha256};
 
 use crate::checkpoint_capability::CheckpointEvidence;
 use crate::execution::{
     BlobDigest, ExactArtifactStore, ExactCheckpointError, ExactCheckpointReference,
 };
+
+#[path = "checkpoint_payload.rs"]
+mod payload;
 
 /// Why a checkpoint failed independent verification.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -90,10 +96,18 @@ pub fn verify_checkpoint(
         Ok(manifest) => manifest,
         Err(_) => return VerificationOutcome::Rejected(VerificationFailure::MalformedManifest),
     };
+    if !valid_manifest(&manifest) || !payload::is_canonical(&manifest, &bytes) {
+        return VerificationOutcome::Rejected(VerificationFailure::MalformedManifest);
+    }
     if manifest
         .get("exact_state_digest")
         .and_then(serde_json::Value::as_str)
         != Some(reference.exact_state_digest.as_str())
+    {
+        return VerificationOutcome::Rejected(VerificationFailure::IntegrityFailure);
+    }
+    if manifest["boundary"]["kind"].as_str() != Some(reference.boundary_kind.as_str())
+        || manifest["boundary"]["phase"].as_str() != Some(reference.boundary_phase.as_str())
     {
         return VerificationOutcome::Rejected(VerificationFailure::IntegrityFailure);
     }
@@ -131,42 +145,63 @@ fn verify_dependencies(
     store: &ExactArtifactStore,
     manifest: &serde_json::Value,
 ) -> Result<(), VerificationFailure> {
-    for digest in referenced_digests(manifest)? {
-        match store.read_blob(&digest) {
-            Ok(_) => {}
+    let payload = &manifest["canonical_payload"];
+    if payload["codec"] != "asc-jcs-state-v1" {
+        return Err(VerificationFailure::MalformedManifest);
+    }
+    let entries = std::iter::once(payload).chain(
+        manifest["restore_artifacts"]
+            .as_array()
+            .ok_or(VerificationFailure::MalformedManifest)?
+            .iter(),
+    );
+    for entry in entries {
+        let digest = parse_digest(
+            entry["digest"]
+                .as_str()
+                .ok_or(VerificationFailure::MalformedManifest)?,
+        )?;
+        let bytes = match store.read_blob(&digest) {
+            Ok(bytes) => bytes,
             Err(ExactCheckpointError::Missing) => {
                 return Err(VerificationFailure::MissingDependency);
             }
             Err(_) => return Err(VerificationFailure::IntegrityFailure),
+        };
+        if entry["size_bytes"].as_u64() != Some(bytes.len() as u64) {
+            return Err(VerificationFailure::IntegrityFailure);
+        }
+        if std::ptr::eq(entry, payload) {
+            self::payload::verify(&bytes, manifest)?;
+            let mut hash = Sha256::new();
+            hash.update(b"AI-ASCENSION/EXACT-STATE/v1\0");
+            hash.update(&bytes);
+            let hex: String = hash
+                .finalize()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+            let identity = format!("asc-state:v1:sha256:{hex}");
+            if manifest["exact_state_digest"].as_str() != Some(identity.as_str()) {
+                return Err(VerificationFailure::IntegrityFailure);
+            }
         }
     }
     Ok(())
 }
 
-fn referenced_digests(
-    manifest: &serde_json::Value,
-) -> Result<Vec<BlobDigest>, VerificationFailure> {
-    let mut digests = Vec::new();
-    if let Some(digest) = manifest
-        .get("canonical_payload")
-        .and_then(|payload| payload.get("digest"))
-        .and_then(serde_json::Value::as_str)
-    {
-        digests.push(parse_digest(digest)?);
-    }
-    if let Some(entries) = manifest
-        .get("restore_artifacts")
-        .and_then(serde_json::Value::as_array)
-    {
-        for entry in entries {
-            let digest = entry
-                .get("digest")
-                .and_then(serde_json::Value::as_str)
-                .ok_or(VerificationFailure::MalformedManifest)?;
-            digests.push(parse_digest(digest)?);
-        }
-    }
-    Ok(digests)
+fn valid_manifest(manifest: &serde_json::Value) -> bool {
+    static VALIDATOR: OnceLock<Result<jsonschema::Validator, String>> = OnceLock::new();
+    VALIDATOR
+        .get_or_init(|| {
+            let schema: serde_json::Value = serde_json::from_str(include_str!(
+                "../../../protocol-artifact/exact-state-v1/checkpoint-manifest.schema.json"
+            ))
+            .map_err(|error| error.to_string())?;
+            jsonschema::validator_for(&schema).map_err(|error| error.to_string())
+        })
+        .as_ref()
+        .is_ok_and(|validator| validator.is_valid(manifest))
 }
 
 fn parse_digest(value: &str) -> Result<BlobDigest, VerificationFailure> {
