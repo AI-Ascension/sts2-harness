@@ -19,6 +19,7 @@ pub const STATUS_SCHEMA_VERSION: &str = "ascension.workflow-status/v1";
 pub const REPLAY_SCHEMA_VERSION: &str = "ascension.workflow-replay/v1";
 pub const EXPORT_SCHEMA_VERSION: &str = "ascension.workflow-export/v1";
 pub const CAPABILITIES_SCHEMA_VERSION: &str = "ascension.capabilities/v1";
+pub const CONTEXT_ASSOCIATION_SCHEMA_VERSION: &str = "ascension.workflow-context-association/v1";
 
 pub const MAX_JSON_BYTES: usize = 1024 * 1024;
 pub const MAX_HEADER_BYTES: usize = 8 * 1024;

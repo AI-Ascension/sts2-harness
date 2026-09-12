@@ -38,6 +38,13 @@ CREATE TABLE IF NOT EXISTS management_runtime (
     cancelled INTEGER NOT NULL CHECK (cancelled IN (0, 1))
 );
 
+-- A restart without this Harness-owned journal must not manufacture a new
+-- authority for a previously admitted workflow run.
+CREATE TABLE IF NOT EXISTS management_runtime_control (
+    workflow_run_id TEXT PRIMARY KEY NOT NULL REFERENCES management_runtime(workflow_run_id),
+    journal BLOB NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS management_events_run_sequence
     ON management_events(workflow_run_id, sequence);
 

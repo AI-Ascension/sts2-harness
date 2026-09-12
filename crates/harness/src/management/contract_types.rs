@@ -105,6 +105,94 @@ pub struct RunSnapshot {
     pub cleanup: CleanupState,
 }
 
+/// A scoped, redacted association between the current workflow cursor and its
+/// context evidence. Content bytes, provider credentials, and raw provider
+/// payloads are intentionally absent from this management contract.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ContextAssociation {
+    pub schema_version: String,
+    pub workflow: ContextWorkflowIdentity,
+    pub context: ContextAssociationContext,
+    pub capture: ContextCaptureEvidence,
+    pub capabilities: ContextInspectionCapabilities,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ContextWorkflowIdentity {
+    pub workflow_run_id: String,
+    pub definition_digest: String,
+    pub graph_id: String,
+    pub node_id: String,
+    pub node_execution_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextAvailability {
+    Available,
+    Unavailable,
+    NotApplicable,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ContextAssociationContext {
+    pub availability: ContextAvailability,
+    pub context_ref: Option<String>,
+    pub run_id: Option<String>,
+    pub episode_id: Option<String>,
+    pub agent_id: Option<String>,
+    pub snapshot_id: Option<String>,
+    pub approved_revision_id: Option<String>,
+    pub plan_epoch: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason_code: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextCaptureMode {
+    Off,
+    Metadata,
+    Memory,
+    Private,
+    Unavailable,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextCaptureState {
+    NotCaptured,
+    Prepared,
+    InputWriteCompleted,
+    ProviderReceiptReported,
+    Unknown,
+    Unavailable,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ContextCaptureEvidence {
+    pub mode: ContextCaptureMode,
+    pub state: ContextCaptureState,
+    pub attempt_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason_code: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ContextInspectionCapabilities {
+    pub inspect_metadata: bool,
+    pub read_retained_content: bool,
+    pub edit_context: bool,
+    pub control_context: bool,
+    pub memory_search: bool,
+    pub provider_session_inspect: bool,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum EventType {

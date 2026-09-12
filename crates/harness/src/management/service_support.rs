@@ -244,6 +244,21 @@ pub(super) fn recovery_admission(snapshot: &RunSnapshot) -> RecoveryAdmission {
 
 pub struct UnavailableDefinitionPort;
 
+pub struct UnavailableContextInspectionPort;
+
+impl ContextInspectionPort for UnavailableContextInspectionPort {
+    fn inspect(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+    ) -> Result<ContextInspectionResult, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_inspection_port_unavailable",
+            "context inspection is not attached to this workflow owner",
+        ))
+    }
+}
+
 impl DefinitionPort for UnavailableDefinitionPort {
     fn validate(
         &self,

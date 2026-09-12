@@ -198,6 +198,131 @@ fn persistent_synthetic_runtime_restores_after_service_restart()
 }
 
 #[test]
+fn persistent_synthetic_pause_and_resume_recover_the_same_harness_control_gate()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = std::env::temp_dir().join(format!(
+        "sts2-management-control-recovery-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&directory)?;
+    let path = directory.join("control-recovery.sqlite3");
+    let actor = AuthContext::new("operator", ["workflow:*".to_owned()])?;
+    let definition: serde_json::Value = serde_json::from_slice(include_bytes!(
+        "../../../conformance/workflow-v1/valid-strict.json"
+    ))?;
+    let request = RunRequest {
+        schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
+        request_id: "request-control-recovery".to_owned(),
+        definition: Some(definition),
+        artifact_id: None,
+        instance_id: "instance-control-recovery".to_owned(),
+        profile: "synthetic".to_owned(),
+    };
+    let store = std::sync::Arc::new(SqliteWorkflowStore::open(&path)?);
+    let service = synthetic_sqlite_store(std::sync::Arc::clone(&store));
+    let admitted = service.submit_run(&actor, request)?;
+    service.command(
+        &actor,
+        CommandRequest {
+            schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
+            command_id: "pause-before-restart".to_owned(),
+            run_id: admitted.workflow_run_id.clone(),
+            expected_revision: admitted.run_revision,
+            actor_scope: "operator".to_owned(),
+            kind: CommandKind::Pause,
+            parameters: CommandParameters::default(),
+        },
+    )?;
+    assert_eq!(
+        service
+            .status(&actor, &admitted.workflow_run_id)?
+            .run
+            .status,
+        WorkflowRunStatus::Paused
+    );
+    drop(service);
+    drop(store);
+
+    let restarted = synthetic_sqlite_store(std::sync::Arc::new(SqliteWorkflowStore::open(&path)?));
+    let status = restarted.status(&actor, &admitted.workflow_run_id)?;
+    restarted.command(
+        &actor,
+        CommandRequest {
+            schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
+            command_id: "resume-after-restart".to_owned(),
+            run_id: admitted.workflow_run_id.clone(),
+            expected_revision: status.run.run_revision,
+            actor_scope: "operator".to_owned(),
+            kind: CommandKind::Resume,
+            parameters: CommandParameters::default(),
+        },
+    )?;
+    assert_eq!(
+        restarted
+            .status(&actor, &admitted.workflow_run_id)?
+            .run
+            .status,
+        WorkflowRunStatus::Running
+    );
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn persistent_synthetic_legacy_run_without_control_journal_fails_closed()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = std::env::temp_dir().join(format!(
+        "sts2-management-control-legacy-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&directory)?;
+    let path = directory.join("control-legacy.sqlite3");
+    let actor = AuthContext::new("operator", ["workflow:*".to_owned()])?;
+    let definition: serde_json::Value = serde_json::from_slice(include_bytes!(
+        "../../../conformance/workflow-v1/valid-strict.json"
+    ))?;
+    let store = std::sync::Arc::new(SqliteWorkflowStore::open(&path)?);
+    let service = synthetic_sqlite_store(std::sync::Arc::clone(&store));
+    let admitted = service.submit_run(
+        &actor,
+        RunRequest {
+            schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
+            request_id: "request-control-legacy".to_owned(),
+            definition: Some(definition),
+            artifact_id: None,
+            instance_id: "instance-control-legacy".to_owned(),
+            profile: "synthetic".to_owned(),
+        },
+    )?;
+    drop(service);
+    drop(store);
+    rusqlite::Connection::open(&path)?.execute(
+        "DELETE FROM management_runtime_control WHERE workflow_run_id = ?1",
+        [&admitted.workflow_run_id],
+    )?;
+
+    let restarted = synthetic_sqlite_store(std::sync::Arc::new(SqliteWorkflowStore::open(&path)?));
+    let error = match restarted.command(
+        &actor,
+        CommandRequest {
+            schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
+            command_id: "pause-legacy".to_owned(),
+            run_id: admitted.workflow_run_id.clone(),
+            expected_revision: admitted.run_revision,
+            actor_scope: "operator".to_owned(),
+            kind: CommandKind::Pause,
+            parameters: CommandParameters::default(),
+        },
+    ) {
+        Ok(_) => return Err("missing durable control journal was replaced".into()),
+        Err(error) => error,
+    };
+    assert_eq!(error.code, "context_control_recovery_unavailable");
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
 fn offline_replay_rejects_a_tampered_persisted_event() -> Result<(), Box<dyn std::error::Error>> {
     let directory =
         std::env::temp_dir().join(format!("sts2-management-replay-{}", std::process::id()));

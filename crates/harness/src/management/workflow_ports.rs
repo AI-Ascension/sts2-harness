@@ -7,19 +7,22 @@ use serde_json::{Value, json};
 
 use super::auth::AuthContext;
 use super::contract::{
-    Budget, CleanupState, CommandKind, Cursor, Diagnostic, DiagnosticSeverity, EventClassification,
-    EventPayload, EventType, GameOutcome, RunEvent, RunRequest, RunSnapshot, WorkflowRunStatus,
+    Budget, CleanupState, CommandKind, ContextAssociationContext, ContextAvailability,
+    ContextCaptureEvidence, ContextCaptureMode, ContextCaptureState, ContextInspectionCapabilities,
+    Cursor, Diagnostic, DiagnosticSeverity, EventClassification, EventPayload, EventType,
+    GameOutcome, RunEvent, RunRequest, RunSnapshot, WorkflowRunStatus, validate_identifier,
 };
 use super::service::{
-    CapabilityPort, CommandApplication, CommandContext, DefinitionPort, DiffResult,
-    InspectionResult, ManagementError, ReplayResult, RunAdmission, ValidationResult,
-    WorkflowExecutionPort, WorkflowReplayPort,
+    CapabilityPort, CommandApplication, CommandContext, ContextInspectionPort,
+    ContextInspectionResult, DefinitionPort, DiffResult, InspectionResult, ManagementError,
+    ReplayResult, RunAdmission, ValidationResult, WorkflowExecutionPort, WorkflowReplayPort,
 };
 use crate::workflow::{
     CompiledWorkflow, DecodeError, NodeExecutor, NodeOutcome, RuntimeContext, RuntimeFault,
     RuntimeStatus, StrictRuntime, TypedValue, WorkflowDefinition, decode_strict, semantic_diff,
     validate_definition,
 };
+use crate::{ContextBoundary, ControlAuthority, GateStatus};
 
 /// Builds the authenticated synthetic service used by the CLI and process driver.
 /// The adapter owns no gameplay authority and returns only deterministic fixture
@@ -38,6 +41,7 @@ pub fn synthetic_store(
         .with_execution_port(Arc::new(SyntheticExecutionPort::default()))
         .with_replay_port(Arc::new(SyntheticReplayPort))
         .with_capability_port(Arc::new(SyntheticCapabilityPort))
+        .with_context_inspection_port(Arc::new(SyntheticContextInspectionPort))
 }
 
 pub fn synthetic_sqlite_store(
@@ -50,6 +54,41 @@ pub fn synthetic_sqlite_store(
         .with_execution_port(Arc::new(PersistentSyntheticExecutionPort::new(store)))
         .with_replay_port(Arc::new(SyntheticReplayPort))
         .with_capability_port(Arc::new(SyntheticCapabilityPort))
+        .with_context_inspection_port(Arc::new(SyntheticContextInspectionPort))
+}
+
+struct SyntheticContextInspectionPort;
+
+impl ContextInspectionPort for SyntheticContextInspectionPort {
+    fn inspect(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+    ) -> Result<ContextInspectionResult, ManagementError> {
+        Ok(ContextInspectionResult {
+            context: ContextAssociationContext {
+                availability: ContextAvailability::Unavailable,
+                context_ref: None,
+                run_id: None,
+                episode_id: None,
+                agent_id: None,
+                snapshot_id: None,
+                approved_revision_id: None,
+                plan_epoch: None,
+                reason_code: Some("synthetic_context_adapter_unavailable".to_owned()),
+            },
+            capture: ContextCaptureEvidence {
+                mode: ContextCaptureMode::Unavailable,
+                state: ContextCaptureState::Unavailable,
+                attempt_id: None,
+                reason_code: Some("synthetic_context_adapter_unavailable".to_owned()),
+            },
+            capabilities: ContextInspectionCapabilities {
+                inspect_metadata: true,
+                ..ContextInspectionCapabilities::default()
+            },
+        })
+    }
 }
 
 struct SyntheticDefinitionPort;
@@ -64,6 +103,7 @@ impl DefinitionPort for SyntheticDefinitionPort {
         let digest = raw_digest(definition)?;
         let mut diagnostics = Vec::new();
         diagnostics.extend(capability_diagnostics(&parsed, capabilities)?);
+        diagnostics.extend(context_reference_diagnostics(&parsed, capabilities)?);
         Ok(ValidationResult {
             definition_digest: digest,
             compiler: crate::workflow::WORKFLOW_COMPILER_ID.to_owned(),
@@ -168,6 +208,123 @@ fn capability_diagnostics(
         .collect())
 }
 
+/// Validates context references only when the owner has disclosed its bounded
+/// binding catalog. An absent catalog preserves compatibility with owners that
+/// have not yet installed the integration adapter; a malformed disclosed
+/// catalog fails closed rather than silently accepting an unresolvable ref.
+fn context_reference_diagnostics(
+    definition: &WorkflowDefinition,
+    manifest: &Value,
+) -> Result<Vec<Diagnostic>, ManagementError> {
+    let Some(entries) = manifest.get("context_bindings") else {
+        return Ok(Vec::new());
+    };
+    let entries = entries.as_array().ok_or_else(|| {
+        ManagementError::invalid(
+            "context_binding_manifest",
+            "context_bindings must be an array when disclosed",
+        )
+    })?;
+    let mut bindings = BTreeMap::<String, BTreeSet<String>>::new();
+    for entry in entries {
+        let object = entry.as_object().ok_or_else(|| {
+            ManagementError::invalid(
+                "context_binding_manifest",
+                "each context binding must be an object",
+            )
+        })?;
+        if object.len() != 2 {
+            return Err(ManagementError::invalid(
+                "context_binding_manifest",
+                "each context binding must contain context_ref and node_kinds only",
+            ));
+        }
+        let context_ref = object
+            .get("context_ref")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                ManagementError::invalid(
+                    "context_binding_manifest",
+                    "each context binding needs a context_ref",
+                )
+            })?;
+        validate_identifier("context_ref", context_ref)?;
+        let kinds = object
+            .get("node_kinds")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                ManagementError::invalid(
+                    "context_binding_manifest",
+                    "each context binding needs node_kinds",
+                )
+            })?;
+        if kinds.is_empty() {
+            return Err(ManagementError::invalid(
+                "context_binding_manifest",
+                "each context binding needs at least one supported node kind",
+            ));
+        }
+        let mut supported = BTreeSet::new();
+        for kind in kinds {
+            let kind = kind.as_str().ok_or_else(|| {
+                ManagementError::invalid(
+                    "context_binding_manifest",
+                    "context binding node kinds must be strings",
+                )
+            })?;
+            if !matches!(kind, "analyze" | "decide") {
+                return Err(ManagementError::invalid(
+                    "context_binding_manifest",
+                    "context binding node kind is unsupported",
+                ));
+            }
+            supported.insert(kind.to_owned());
+        }
+        if bindings.insert(context_ref.to_owned(), supported).is_some() {
+            return Err(ManagementError::invalid(
+                "context_binding_manifest",
+                "context binding references must be unique",
+            ));
+        }
+    }
+
+    let mut diagnostics = Vec::new();
+    for graph in &definition.graphs {
+        for node in &graph.nodes {
+            let (kind, context_ref) = match node {
+                crate::workflow::NodeDefinition::Analyze { config, .. } => {
+                    ("analyze", config.context_ref.as_str())
+                }
+                crate::workflow::NodeDefinition::Decide { config, .. } => {
+                    ("decide", config.context_ref.as_str())
+                }
+                _ => continue,
+            };
+            let supported = bindings.get(context_ref);
+            let code = if supported.is_none() {
+                "context_ref_unresolved"
+            } else if !supported.is_some_and(|kinds| kinds.contains(kind)) {
+                "context_ref_incompatible"
+            } else {
+                continue;
+            };
+            diagnostics.push(Diagnostic {
+                code: code.to_owned(),
+                severity: DiagnosticSeverity::Error,
+                path: format!(
+                    "$.graphs.{}.nodes.{}.config.context_ref",
+                    graph.id,
+                    node.id()
+                ),
+                message: format!(
+                    "context reference {context_ref} is not available for {kind} nodes"
+                ),
+            });
+        }
+    }
+    Ok(diagnostics)
+}
+
 #[derive(Default)]
 struct SyntheticExecutionPort {
     runs: Mutex<BTreeMap<String, SyntheticRun>>,
@@ -179,6 +336,10 @@ struct SyntheticRun {
     definition: Value,
     definition_digest: String,
     cancelled: bool,
+    /// Present only for the in-memory synthetic execution path. It is the same
+    /// Harness control authority that fences its pause/resume commands; the
+    /// Context Console reducer is never consulted here.
+    control: Option<ControlAuthority>,
 }
 
 #[derive(Default)]
@@ -240,13 +401,17 @@ impl WorkflowExecutionPort for SyntheticExecutionPort {
             integrity_digest: None,
         };
         self.runs.lock().map_err(lock_error)?.insert(
-            run_id,
+            run_id.clone(),
             SyntheticRun {
                 runtime,
                 executor: FixtureExecutor,
                 definition: definition.clone(),
                 definition_digest: definition_digest.to_owned(),
                 cancelled: false,
+                control: Some(ControlAuthority::new(
+                    synthetic_control_boundary(&run_id),
+                    "revision-1",
+                )),
             },
         );
         Ok(RunAdmission {
@@ -266,24 +431,11 @@ impl WorkflowExecutionPort for SyntheticExecutionPort {
                 "synthetic runtime state is unavailable after service restart",
             )
         })?;
-        let status = match context.request.kind {
-            CommandKind::Pause => {
-                run.runtime.pause().map_err(runtime_error)?;
-                WorkflowRunStatus::Paused
-            }
-            CommandKind::Resume => {
-                run.runtime.resume().map_err(runtime_error)?;
-                WorkflowRunStatus::Running
-            }
-            CommandKind::Step => {
-                run.runtime.step(&mut run.executor).map_err(runtime_error)?;
-                management_status(run.runtime.status(), run.cancelled)
-            }
-            CommandKind::Cancel => {
-                run.cancelled = true;
-                WorkflowRunStatus::Cancelled
-            }
-        };
+        let status = apply_controlled_runtime_command(
+            run,
+            &context.request.kind,
+            &context.request.command_id,
+        )?;
         let revision = context
             .snapshot
             .run_revision
@@ -338,16 +490,29 @@ impl PersistentSyntheticExecutionPort {
             .map_err(|error| ManagementError::invalid("definition_compile", error.to_string()))?;
         let runtime =
             StrictRuntime::from_snapshot(compiled, record.snapshot).map_err(runtime_error)?;
+        let control = record
+            .control_journal
+            .as_deref()
+            .map(ControlAuthority::recover)
+            .transpose()
+            .map_err(control_error)?;
         Ok(SyntheticRun {
             runtime,
             executor: FixtureExecutor,
             definition: record.definition,
             definition_digest: record.definition_digest,
             cancelled: record.cancelled,
+            control,
         })
     }
 
     fn persist_run(&self, run_id: &str, run: &SyntheticRun) -> Result<(), ManagementError> {
+        let control_journal = run
+            .control
+            .as_ref()
+            .map(ControlAuthority::export_journal)
+            .transpose()
+            .map_err(control_error)?;
         self.store
             .save_runtime(
                 run_id,
@@ -355,6 +520,7 @@ impl PersistentSyntheticExecutionPort {
                 &run.definition,
                 &run.runtime.snapshot(),
                 run.cancelled,
+                control_journal.as_deref(),
             )
             .map_err(runtime_store_error)
     }
@@ -392,6 +558,10 @@ impl WorkflowExecutionPort for PersistentSyntheticExecutionPort {
             definition: definition.clone(),
             definition_digest: definition_digest.to_owned(),
             cancelled: false,
+            control: Some(ControlAuthority::new(
+                synthetic_control_boundary(&run_id),
+                "revision-1",
+            )),
         };
         self.persist_run(&run_id, &run)?;
         let snapshot = snapshot_from_runtime(&run_id, definition_digest, &run.runtime, 1, false);
@@ -418,7 +588,16 @@ impl WorkflowExecutionPort for PersistentSyntheticExecutionPort {
                 "durable runtime checkpoint is unavailable after service restart",
             )
         })?;
-        let status = apply_runtime_command(run, &context.request.kind)?;
+        let status = match context.request.kind {
+            CommandKind::Pause | CommandKind::Resume => apply_controlled_runtime_command(
+                run,
+                &context.request.kind,
+                &context.request.command_id,
+            )?,
+            CommandKind::Step | CommandKind::Cancel => {
+                apply_runtime_command(run, &context.request.kind)?
+            }
+        };
         let revision = context
             .snapshot
             .run_revision
@@ -441,6 +620,49 @@ impl WorkflowExecutionPort for PersistentSyntheticExecutionPort {
     }
 }
 
+fn apply_controlled_runtime_command(
+    run: &mut SyntheticRun,
+    kind: &CommandKind,
+    command_id: &str,
+) -> Result<WorkflowRunStatus, ManagementError> {
+    match kind {
+        CommandKind::Pause => {
+            let authority = run.control.as_mut().ok_or_else(|| {
+                ManagementError::unavailable(
+                    "context_control_recovery_unavailable",
+                    "durable control journal is unavailable for this legacy run",
+                )
+            })?;
+            authority
+                .request_pause(command_id, authority.state().control_version)
+                .map_err(control_error)?;
+            if authority.state().status != GateStatus::PausedReady {
+                return Err(ManagementError::unresolved(
+                    "context_pause_not_ready",
+                    "context authority has unresolved operations",
+                ));
+            }
+            run.runtime.pause().map_err(runtime_error)?;
+            Ok(WorkflowRunStatus::Paused)
+        }
+        CommandKind::Resume => {
+            let authority = run.control.as_mut().ok_or_else(|| {
+                ManagementError::unavailable(
+                    "context_control_recovery_unavailable",
+                    "durable control journal is unavailable for this legacy run",
+                )
+            })?;
+            let boundary = authority.state().boundary.clone();
+            authority
+                .resume(command_id, authority.state().control_version, &boundary)
+                .map_err(control_error)?;
+            run.runtime.resume().map_err(runtime_error)?;
+            Ok(WorkflowRunStatus::Running)
+        }
+        CommandKind::Step | CommandKind::Cancel => apply_runtime_command(run, kind),
+    }
+}
+
 fn apply_runtime_command(
     run: &mut SyntheticRun,
     kind: &CommandKind,
@@ -458,6 +680,37 @@ fn apply_runtime_command(
         CommandKind::Cancel => run.cancelled = true,
     }
     Ok(management_status(run.runtime.status(), run.cancelled))
+}
+
+fn synthetic_control_boundary(run_id: &str) -> ContextBoundary {
+    ContextBoundary {
+        run_id: run_id.to_owned(),
+        episode_id: format!("{run_id}.episode"),
+        agent_id: "synthetic.agent".to_owned(),
+        state_id: "synthetic.workflow.state".to_owned(),
+        generation: 1,
+        observation_sha256: "a".repeat(64),
+        catalog_sha256: "b".repeat(64),
+        adapter_revision: "synthetic.workflow.adapter.v1".to_owned(),
+        model_revision: "synthetic.workflow.model.v1".to_owned(),
+        configuration_sha256: "c".repeat(64),
+        output_schema_sha256: "d".repeat(64),
+        controller_epoch: 1,
+        gate_epoch: 0,
+        control_version: 0,
+    }
+}
+
+fn control_error(code: String) -> ManagementError {
+    match code.as_str() {
+        "stale_control_version" | "already_paused" | "not_ready" | "preview_stale" => {
+            ManagementError::conflict("context_control_conflict", code)
+        }
+        "obsolete_plan" | "run_not_ready" => {
+            ManagementError::unresolved("context_control_unresolved", code)
+        }
+        _ => ManagementError::invalid("context_control_invalid", code),
+    }
 }
 
 fn admission_event(run_id: &str, definition_digest: &str) -> RunEvent {
@@ -533,6 +786,18 @@ impl CapabilityPort for SyntheticCapabilityPort {
                 "actions.shop.v1", "actions.event.v1", "actions.rest.v1",
                 "actions.selection.v1", "operations.reconcile.v1", "terminal.observation.v1",
                 "analysis.combat.v1", "analysis.map.v1"
+            ],
+            "context_bindings": [
+                {"context_ref": "context.synthetic.v1", "node_kinds": ["analyze", "decide"]},
+                {"context_ref": "sts2.setup.context.v1", "node_kinds": ["decide"]},
+                {"context_ref": "sts2.map.context.v1", "node_kinds": ["decide"]},
+                {"context_ref": "sts2.combat.context.v1", "node_kinds": ["decide"]},
+                {"context_ref": "sts2.reward.context.v1", "node_kinds": ["decide"]},
+                {"context_ref": "sts2.shop.context.v1", "node_kinds": ["decide"]},
+                {"context_ref": "sts2.event.context.v1", "node_kinds": ["decide"]},
+                {"context_ref": "sts2.rest.context.v1", "node_kinds": ["decide"]},
+                {"context_ref": "sts2.selection.context.v1", "node_kinds": ["decide"]},
+                {"context_ref": "sts2.campaign.context.v1", "node_kinds": ["decide"]}
             ],
             "evidence_scope": "synthetic"
         }))

@@ -72,4 +72,89 @@ impl ManagementService {
             changed_paths: result.changed_paths,
         })
     }
+
+    /// Returns redacted context evidence for the current workflow cursor. This
+    /// read does not construct provider input or grant control authority.
+    pub fn context_association(
+        &self,
+        actor: &AuthContext,
+        run_id: &str,
+    ) -> Result<ContextAssociation, ManagementError> {
+        validate_identifier("run_id", run_id)?;
+        authorize(actor, "workflow:read", Some(run_id))?;
+        let snapshot = self.store.get_run(run_id)?.ok_or_else(|| {
+            ManagementError::invalid("run_not_found", "workflow run was not found")
+        })?;
+        let result = self.context_inspection.inspect(actor, &snapshot)?;
+        validate_context_association_result(&result)?;
+        Ok(ContextAssociation {
+            schema_version: CONTEXT_ASSOCIATION_SCHEMA_VERSION.to_owned(),
+            workflow: ContextWorkflowIdentity {
+                workflow_run_id: snapshot.workflow_run_id,
+                definition_digest: snapshot.definition_digest,
+                graph_id: snapshot.cursor.graph_id,
+                node_id: snapshot.cursor.node_id,
+                node_execution_id: snapshot.cursor.node_execution_id,
+            },
+            context: result.context,
+            capture: result.capture,
+            capabilities: result.capabilities,
+        })
+    }
+}
+
+fn validate_context_association_result(
+    result: &ContextInspectionResult,
+) -> Result<(), ManagementError> {
+    let context = &result.context;
+    match context.availability {
+        ContextAvailability::Available => {
+            for (field, value) in [
+                ("context_ref", context.context_ref.as_deref()),
+                ("context_run_id", context.run_id.as_deref()),
+                ("episode_id", context.episode_id.as_deref()),
+                ("agent_id", context.agent_id.as_deref()),
+                ("snapshot_id", context.snapshot_id.as_deref()),
+                (
+                    "approved_revision_id",
+                    context.approved_revision_id.as_deref(),
+                ),
+            ] {
+                validate_identifier(
+                    field,
+                    value.ok_or_else(|| {
+                        ManagementError::invalid(
+                            "context_association_incomplete",
+                            "available context association is missing a required identity",
+                        )
+                    })?,
+                )?;
+            }
+            if context.plan_epoch.unwrap_or_default() == 0 {
+                return Err(ManagementError::invalid(
+                    "context_association_incomplete",
+                    "available context association is missing a positive plan epoch",
+                ));
+            }
+        }
+        ContextAvailability::Unavailable | ContextAvailability::NotApplicable => {
+            if context.context_ref.is_some()
+                || context.run_id.is_some()
+                || context.episode_id.is_some()
+                || context.agent_id.is_some()
+                || context.snapshot_id.is_some()
+                || context.approved_revision_id.is_some()
+                || context.plan_epoch.is_some()
+            {
+                return Err(ManagementError::invalid(
+                    "context_association_incomplete",
+                    "unavailable context association must not invent identities",
+                ));
+            }
+        }
+    }
+    if let Some(attempt_id) = &result.capture.attempt_id {
+        validate_identifier("capture_attempt_id", attempt_id)?;
+    }
+    Ok(())
 }

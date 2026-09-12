@@ -7,14 +7,16 @@ use serde_json::{Value, json};
 use super::auth::AuthContext;
 use super::authoring::{AuthoringStore, MemoryAuthoringStore};
 use super::contract::{
-    AuthoritySummary, CapabilityResponse, CleanupState, CommandRequest, CommandResponse,
-    ContractError, Diagnostic, DiffRequest, DiffResponse, ErrorBody, ErrorClass, ErrorResponse,
-    EventPage, ExportRequest, ExportResponse, HealthResponse, InspectRequest, InspectResponse,
-    MANAGEMENT_SCHEMA_VERSION, OutputFormat, REPLAY_SCHEMA_VERSION, RUN_SCHEMA_VERSION,
-    RecoveryAdmission, ReplayDivergence, ReplayRequest, ReplayResponse, RunEvent, RunRequest,
-    RunSnapshot, RunSubmissionResponse, STATUS_SCHEMA_VERSION, StatusResponse, ValidateRequest,
-    ValidateResponse, WorkflowRunStatus, digest_value, schema_is, validate_digest,
-    validate_identifier,
+    AuthoritySummary, CONTEXT_ASSOCIATION_SCHEMA_VERSION, CapabilityResponse, CleanupState,
+    CommandRequest, CommandResponse, ContextAssociation, ContextAssociationContext,
+    ContextAvailability, ContextCaptureEvidence, ContextInspectionCapabilities,
+    ContextWorkflowIdentity, ContractError, Diagnostic, DiffRequest, DiffResponse, ErrorBody,
+    ErrorClass, ErrorResponse, EventPage, ExportRequest, ExportResponse, HealthResponse,
+    InspectRequest, InspectResponse, MANAGEMENT_SCHEMA_VERSION, OutputFormat,
+    REPLAY_SCHEMA_VERSION, RUN_SCHEMA_VERSION, RecoveryAdmission, ReplayDivergence, ReplayRequest,
+    ReplayResponse, RunEvent, RunRequest, RunSnapshot, RunSubmissionResponse,
+    STATUS_SCHEMA_VERSION, StatusResponse, ValidateRequest, ValidateResponse, WorkflowRunStatus,
+    digest_value, schema_is, validate_digest, validate_identifier,
 };
 use super::store::{
     CommandAcceptance, CommandApplication as StoredCommandApplication, FileWorkflowStore,
@@ -31,8 +33,8 @@ mod read;
 mod support;
 
 pub use support::{
-    UnavailableAuthoringStore, UnavailableCapabilityPort, UnavailableDefinitionPort,
-    UnavailableExecutionPort, UnavailableReplayPort,
+    UnavailableAuthoringStore, UnavailableCapabilityPort, UnavailableContextInspectionPort,
+    UnavailableDefinitionPort, UnavailableExecutionPort, UnavailableReplayPort,
 };
 
 /// A stable management error. The HTTP and CLI adapters map `class` to their
@@ -225,6 +227,24 @@ pub trait CapabilityPort: Send + Sync {
     fn capabilities(&self) -> Result<Value, ManagementError>;
 }
 
+/// The harness-owned integration boundary for context evidence. Implementations
+/// receive only the authoritative workflow snapshot and return redacted,
+/// scope-bound metadata. They cannot execute a provider or mutate a run.
+pub trait ContextInspectionPort: Send + Sync {
+    fn inspect(
+        &self,
+        actor: &AuthContext,
+        snapshot: &RunSnapshot,
+    ) -> Result<ContextInspectionResult, ManagementError>;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ContextInspectionResult {
+    pub context: ContextAssociationContext,
+    pub capture: ContextCaptureEvidence,
+    pub capabilities: ContextInspectionCapabilities,
+}
+
 pub struct ManagementService {
     store: Arc<dyn WorkflowStore>,
     authoring: Arc<dyn AuthoringStore>,
@@ -232,6 +252,7 @@ pub struct ManagementService {
     execution: Arc<dyn WorkflowExecutionPort>,
     replay: Arc<dyn WorkflowReplayPort>,
     capabilities: Arc<dyn CapabilityPort>,
+    context_inspection: Arc<dyn ContextInspectionPort>,
 }
 
 impl ManagementService {
@@ -243,6 +264,7 @@ impl ManagementService {
             execution: Arc::new(support::UnavailableExecutionPort),
             replay: Arc::new(support::UnavailableReplayPort),
             capabilities: Arc::new(support::UnavailableCapabilityPort),
+            context_inspection: Arc::new(support::UnavailableContextInspectionPort),
         }
     }
 
@@ -277,6 +299,11 @@ impl ManagementService {
 
     pub fn with_capability_port(mut self, port: Arc<dyn CapabilityPort>) -> Self {
         self.capabilities = port;
+        self
+    }
+
+    pub fn with_context_inspection_port(mut self, port: Arc<dyn ContextInspectionPort>) -> Self {
+        self.context_inspection = port;
         self
     }
 }

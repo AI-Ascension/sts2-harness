@@ -14,6 +14,7 @@ pub(crate) struct DurableRuntimeRecord {
     pub definition: Value,
     pub snapshot: RuntimeSnapshot,
     pub cancelled: bool,
+    pub control_journal: Option<Vec<u8>>,
 }
 
 impl SqliteWorkflowStore {
@@ -24,6 +25,7 @@ impl SqliteWorkflowStore {
         definition: &Value,
         snapshot: &RuntimeSnapshot,
         cancelled: bool,
+        control_journal: Option<&[u8]>,
     ) -> Result<(), StoreError> {
         let definition_bytes = encode(definition)?;
         let snapshot_bytes = encode(snapshot)?;
@@ -63,6 +65,22 @@ impl SqliteWorkflowStore {
                 ],
             )
             .map_err(sqlite_error)?;
+        match control_journal {
+            Some(journal) => transaction
+                .execute(
+                    "INSERT INTO management_runtime_control(workflow_run_id, journal)
+                 VALUES (?1, ?2)
+                 ON CONFLICT(workflow_run_id) DO UPDATE SET journal = excluded.journal",
+                    rusqlite::params![run_id, journal],
+                )
+                .map_err(sqlite_error)?,
+            None => transaction
+                .execute(
+                    "DELETE FROM management_runtime_control WHERE workflow_run_id = ?1",
+                    [run_id],
+                )
+                .map_err(sqlite_error)?,
+        };
         transaction.commit().map_err(sqlite_error)
     }
 
@@ -73,8 +91,12 @@ impl SqliteWorkflowStore {
         let connection = connection(self)?;
         connection
             .query_row(
-                "SELECT definition_digest, definition, runtime_snapshot, cancelled
-                 FROM management_runtime WHERE workflow_run_id = ?1",
+                "SELECT runtime.definition_digest, runtime.definition, runtime.runtime_snapshot,
+                        runtime.cancelled, control.journal
+                 FROM management_runtime AS runtime
+                 LEFT JOIN management_runtime_control AS control
+                   ON control.workflow_run_id = runtime.workflow_run_id
+                 WHERE runtime.workflow_run_id = ?1",
                 [run_id],
                 |row| {
                     Ok(DurableRuntimeRecord {
@@ -84,6 +106,7 @@ impl SqliteWorkflowStore {
                         snapshot: decode(&row.get::<_, Vec<u8>>(2)?)
                             .map_err(|_| rusqlite::Error::InvalidQuery)?,
                         cancelled: row.get::<_, i64>(3)? != 0,
+                        control_journal: row.get(4)?,
                     })
                 },
             )

@@ -18,20 +18,23 @@ pub use auth::{
 pub use authoring::{AuthoringStore, MemoryAuthoringStore, PublishResult};
 pub use contract::ReplayRequest as ManagementReplayRequest;
 pub use contract::{
-    AuthoritySummary, Budget, CAPABILITIES_SCHEMA_VERSION, CapabilityResponse, CleanupState,
-    CommandKind, CommandOutcome, CommandParameters, CommandRequest, CommandResponse, ContractError,
-    Cursor, Diagnostic, DiagnosticSeverity, DiffRequest, DiffResponse, EVENT_SCHEMA_VERSION,
-    EXPORT_SCHEMA_VERSION, ErrorBody, ErrorClass, ErrorResponse, EventClassification, EventGap,
-    EventPage, EventPayload, EventType, ExportRequest, ExportResponse, GameOutcome, HealthResponse,
-    InspectRequest, InspectResponse, MANAGEMENT_SCHEMA_VERSION, MAX_CONNECTIONS,
-    MAX_EVENTS_PER_PAGE, MAX_HEADER_BYTES, MAX_IDENTIFIER_BYTES, MAX_JSON_BYTES, MAX_JSON_DEPTH,
-    MAX_JSON_ITEMS, MAX_PATH_BYTES, MAX_RESPONSE_BYTES, MAX_STORE_BYTES, MAX_STRING_BYTES,
-    OutputFormat, PendingOperation, PendingOperationState, PersistedCommand, PersistedRun,
-    PersistedStore, REPLAY_SCHEMA_VERSION, REQUEST_DEADLINE_MILLIS, RUN_SCHEMA_VERSION,
-    RecoveryAdmission, ReplayDivergence, ReplayResponse, RunEvent, RunRequest, RunSnapshot,
-    RunSubmissionResponse, STATUS_SCHEMA_VERSION, StatusResponse, SubmissionIndex, ValidateRequest,
-    ValidateResponse, WorkflowRunStatus, decode_strict, decode_value, digest_value,
-    validate_digest, validate_identifier,
+    AuthoritySummary, Budget, CAPABILITIES_SCHEMA_VERSION, CONTEXT_ASSOCIATION_SCHEMA_VERSION,
+    CapabilityResponse, CleanupState, CommandKind, CommandOutcome, CommandParameters,
+    CommandRequest, CommandResponse, ContextAssociation, ContextAssociationContext,
+    ContextAvailability, ContextCaptureEvidence, ContextCaptureMode, ContextCaptureState,
+    ContextInspectionCapabilities, ContextWorkflowIdentity, ContractError, Cursor, Diagnostic,
+    DiagnosticSeverity, DiffRequest, DiffResponse, EVENT_SCHEMA_VERSION, EXPORT_SCHEMA_VERSION,
+    ErrorBody, ErrorClass, ErrorResponse, EventClassification, EventGap, EventPage, EventPayload,
+    EventType, ExportRequest, ExportResponse, GameOutcome, HealthResponse, InspectRequest,
+    InspectResponse, MANAGEMENT_SCHEMA_VERSION, MAX_CONNECTIONS, MAX_EVENTS_PER_PAGE,
+    MAX_HEADER_BYTES, MAX_IDENTIFIER_BYTES, MAX_JSON_BYTES, MAX_JSON_DEPTH, MAX_JSON_ITEMS,
+    MAX_PATH_BYTES, MAX_RESPONSE_BYTES, MAX_STORE_BYTES, MAX_STRING_BYTES, OutputFormat,
+    PendingOperation, PendingOperationState, PersistedCommand, PersistedRun, PersistedStore,
+    REPLAY_SCHEMA_VERSION, REQUEST_DEADLINE_MILLIS, RUN_SCHEMA_VERSION, RecoveryAdmission,
+    ReplayDivergence, ReplayResponse, RunEvent, RunRequest, RunSnapshot, RunSubmissionResponse,
+    STATUS_SCHEMA_VERSION, StatusResponse, SubmissionIndex, ValidateRequest, ValidateResponse,
+    WorkflowRunStatus, decode_strict, decode_value, digest_value, validate_digest,
+    validate_identifier,
 };
 pub use contract_authoring::{
     STUDIO_SCHEMA_VERSION, StudioCreateDraftRequest, StudioDefinitionRecord,
@@ -43,9 +46,10 @@ pub use http::{
     ServerHandle,
 };
 pub use service::{
-    CapabilityPort, CommandApplication, CommandContext, DefinitionPort, DiffResult,
-    InspectionResult, ManagementError, ManagementService, ReplayResult, RunAdmission,
-    UnavailableAuthoringStore, UnavailableCapabilityPort, UnavailableDefinitionPort,
+    CapabilityPort, CommandApplication, CommandContext, ContextInspectionPort,
+    ContextInspectionResult, DefinitionPort, DiffResult, InspectionResult, ManagementError,
+    ManagementService, ReplayResult, RunAdmission, UnavailableAuthoringStore,
+    UnavailableCapabilityPort, UnavailableContextInspectionPort, UnavailableDefinitionPort,
     UnavailableExecutionPort, UnavailableReplayPort, ValidationResult, WorkflowExecutionPort,
     WorkflowReplayPort,
 };
