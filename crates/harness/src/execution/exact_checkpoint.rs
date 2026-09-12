@@ -185,7 +185,7 @@ impl ExactCheckpointReference {
 /// Content-addressed store for exact payloads, manifests, and restore blobs.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExactArtifactStore {
-    root: PathBuf,
+    pub(crate) root: PathBuf,
 }
 
 impl ExactArtifactStore {

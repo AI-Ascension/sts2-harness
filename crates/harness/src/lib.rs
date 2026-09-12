@@ -105,8 +105,8 @@ pub use execution::{
     AttemptKind, AttemptState, BLOB_DIGEST_PREFIX, BlobDigest, CHECKPOINT_MANIFEST_DOMAIN,
     CatalogEvidence, Checkpoint, CompletionRecord, CompletionStatus, DecisionReference,
     EXACT_CHECKPOINT_ID_PREFIX, EXACT_STATE_DIGEST_PREFIX, ExactArtifactStore, ExactAssurance,
-    ExactCheckpointError, ExactCheckpointId, ExactCheckpointReference, ExactStateDigest,
-    ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig,
+    ExactCheckpointError, ExactCheckpointId, ExactCheckpointReference, ExactRetentionPlan,
+    ExactStateDigest, ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig,
     ExecutionStoreError, GameOperationId, InvocationOutcome, InvocationState, JobClaim,
     JobClaimOutcome, JobState, MAX_BOUNDARY_LABEL_BYTES, MAX_CATALOG_BYTES, MAX_EXACT_BLOB_BYTES,
     MAX_OPERATION_ACTION_BYTES, MAX_ORIGINAL_CONTEXT_BYTES, MAX_WORKFLOW_BYTES,
@@ -123,7 +123,7 @@ pub use execution::{
     WorkerReservationState, WorkerTerminalReceipt, WorkerTuple, WorkflowCommandId,
     WorkflowDefinition, WorkflowDefinitionId, WorkflowEpisodeId, WorkflowEvent, WorkflowEventId,
     WorkflowEventPayload, WorkflowInvocation, WorkflowInvocationId, WorkflowPlan, WorkflowPlanId,
-    WorkflowRunId, WorkflowRunSnapshot, WorkflowRunStart,
+    WorkflowRunId, WorkflowRunSnapshot, WorkflowRunStart, plan_retention, sweep,
 };
 pub use execution_cancellation::ExecutionCancellation;
 pub use exo::{
