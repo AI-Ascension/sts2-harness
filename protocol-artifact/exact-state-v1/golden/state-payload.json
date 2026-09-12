@@ -1,0 +1,63 @@
+{
+  "schema": "ascension.exact_state.v1",
+  "canonical_profile": "asc-jcs-state-v1",
+  "compatibility": {
+    "game_id": "fixture.exact_state.contract",
+    "game_build_digest": "sha256:b9927882b4aec1884506fea2857dc120237f6a59ff7c4533dbfd1440de8de3f9",
+    "content_digest": "sha256:2b0651992ab2137dafbfbf37f6d5358419c0917b9833465a89bba63b49e2fe51",
+    "engine_profile": "fixture-engine",
+    "numeric_profile": "integer-and-tagged-bits-v1",
+    "mods": [],
+    "adapter_id": "fixture.exact_state.contract",
+    "adapter_version": "0.0.0-fixture",
+    "adapter_implementation_digest": "sha256:4943a547ebf4bbf2a15d23fdd3273a10d757d0be128341a607f1f4fea1090b80",
+    "restore_codec": "fixture-restore-codec-v1",
+    "rules_digest": "sha256:952e99e141cba0f70d883bfebb85b0bf8448623fc4532999322759e42e86c936",
+    "semantic_action_schema": "fixture.semantic_action.v1",
+    "semantic_action_schema_digest": "sha256:f071ef1bf6528211e1f0c4c2b5d84aaf3ba4656602dc66b8f591022f9017e7c7",
+    "coverage_contract_digest": "sha256:2fa9e73895d97193dc0153eae157f93da76c3292a526a4bbe2486e755e93b82b",
+    "external_input_mode": "fixture-no-external-input"
+  },
+  "boundary": {
+    "kind": "decision",
+    "phase": "CONTRACT_FIXTURE"
+  },
+  "state": {
+    "rng": [
+      {
+        "stream_id": "fixture",
+        "algorithm": "fixture-xorshift-v1",
+        "state_words": [
+          {
+            "kind": "uint64",
+            "value": "18446744073709551615"
+          }
+        ],
+        "position": {
+          "kind": "uint64",
+          "value": "0"
+        },
+        "cached_value": null
+      }
+    ],
+    "gameplay": {
+      "fixture_marker": {
+        "kind": "uint64",
+        "value": "7"
+      },
+      "fixture_order": [
+        "b",
+        "a",
+        "b"
+      ]
+    },
+    "execution": {},
+    "legal_actions": [
+      {
+        "action_key": "fixture.noop",
+        "schema": "fixture.semantic_action.v1"
+      }
+    ],
+    "extensions": []
+  }
+}

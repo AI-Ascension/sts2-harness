@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod action_envelope;
+mod exact_checkpoint;
 mod schema;
 mod schema_worker;
 mod schema_workflow;
@@ -26,6 +27,12 @@ mod store_workflow;
 mod types;
 mod workflow_types;
 
+pub use exact_checkpoint::{
+    BLOB_DIGEST_PREFIX, BlobDigest, CHECKPOINT_MANIFEST_DOMAIN, EXACT_CHECKPOINT_ID_PREFIX,
+    EXACT_STATE_DIGEST_PREFIX, ExactArtifactStore, ExactAssurance, ExactCheckpointError,
+    ExactCheckpointId, ExactCheckpointReference, ExactStateDigest, MAX_BOUNDARY_LABEL_BYTES,
+    MAX_EXACT_BLOB_BYTES,
+};
 pub use store_core::ExecutionStore;
 pub use types::{
     AttemptKind, AttemptState, CatalogEvidence, Checkpoint, CompletionRecord, CompletionStatus,

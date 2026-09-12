@@ -1,0 +1,7 @@
+{
+  "note": "Computed identifiers live outside the hashed objects. Synthetic contract fixture, not a game checkpoint.",
+  "exact_state_digest": "asc-state:v1:sha256:41583642ddc819c963b4a9500f58de3d472e3d20dc0dcebd0eef8f4f18f600c8",
+  "exact_checkpoint_id": "asc-checkpoint:v1:sha256:e64d4b9eb2fd555f50a1fde40454ae1f036484adfe48bd8ccadb46bb7e708b1f",
+  "canonical_payload_digest": "sha256:4e461e0062187d04dd294296618fc58443e32901fbfcdd271ffc0133d6963ab6",
+  "canonical_payload_size_bytes": 1505
+}

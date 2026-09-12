@@ -1,0 +1,17 @@
+{
+  "case_id": "CT-EXACT-STATE-V1-001",
+  "case": "../../conformance/cases/exact-state-v1.json",
+  "profile": "asc-jcs-state-v1",
+  "deterministic": true,
+  "requires_live_runtime": false,
+  "checks": [
+    "source schema bytes equal the artifact schema bytes",
+    "every listed checksum matches its file bytes",
+    "the golden payload validates against the exact-state envelope schema",
+    "the golden manifest validates against the checkpoint-manifest schema",
+    "the coverage fixture validates against the coverage-contract schema",
+    "canonical bytes of the golden payload equal golden/state.canonical",
+    "the computed exact-state digest equals golden/receipt.json",
+    "the computed checkpoint identifier equals golden/receipt.json"
+  ]
+}

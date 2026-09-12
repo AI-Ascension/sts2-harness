@@ -1,0 +1,227 @@
+{
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "ascension.exact_state.v1"
+    },
+    "canonical_profile": {
+      "const": "asc-jcs-state-v1"
+    },
+    "compatibility": {
+      "type": "object",
+      "properties": {
+        "game_id": {
+          "type": "string"
+        },
+        "game_build_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "content_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "engine_profile": {
+          "type": "string"
+        },
+        "numeric_profile": {
+          "type": "string"
+        },
+        "mods": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "content_digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "configuration_digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "id",
+              "version",
+              "content_digest",
+              "configuration_digest"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "adapter_id": {
+          "type": "string"
+        },
+        "adapter_version": {
+          "type": "string"
+        },
+        "adapter_implementation_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "restore_codec": {
+          "type": "string"
+        },
+        "rules_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "semantic_action_schema": {
+          "type": "string"
+        },
+        "semantic_action_schema_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "coverage_contract_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "external_input_mode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "game_id",
+        "game_build_digest",
+        "content_digest",
+        "engine_profile",
+        "numeric_profile",
+        "mods",
+        "adapter_id",
+        "adapter_version",
+        "adapter_implementation_digest",
+        "restore_codec",
+        "rules_digest",
+        "semantic_action_schema",
+        "semantic_action_schema_digest",
+        "coverage_contract_digest",
+        "external_input_mode"
+      ],
+      "additionalProperties": false
+    },
+    "boundary": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "game_tick": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "kind",
+        "phase"
+      ],
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "object",
+      "properties": {
+        "rng": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/value"
+          }
+        },
+        "gameplay": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/value"
+          }
+        },
+        "execution": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/value"
+          }
+        },
+        "legal_actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/value"
+          }
+        },
+        "extensions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/value"
+          }
+        }
+      },
+      "required": [
+        "rng",
+        "gameplay",
+        "execution",
+        "legal_actions",
+        "extensions"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "canonical_profile",
+    "compatibility",
+    "boundary",
+    "state"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sts2-exact-state-v1",
+  "$defs": {
+    "value": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/value"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/value"
+          }
+        }
+      ]
+    }
+  },
+  "description": "Generic exact-state envelope for asc-jcs-state-v1. Per-game and per-phase payload schemas MUST be completed from audited engine field inventory; schema validity alone never proves coverage, restorability, or integrity."
+}

@@ -1,0 +1,32 @@
+{
+  "artifact": "sts2-protocol/exact-state-v1",
+  "protocol_version": "exact-state-v1",
+  "canonical_profile": "asc-jcs-state-v1",
+  "schema": "schema.json",
+  "schema_digest": "3777ce521bbee30c68b9e25ee188e880cec22f7cdb15350936093b02c2471ab9",
+  "schemas": {
+    "exact_state": "schema.json",
+    "checkpoint_manifest": "checkpoint-manifest.schema.json",
+    "coverage_contract": "coverage-contract.schema.json"
+  },
+  "provenance": {
+    "source": "schemas/exact-state-v1.schema.json, schemas/checkpoint-manifest-v1.schema.json, schemas/coverage-contract-v1.schema.json",
+    "generator": "hand-authored from the ascension-checkpoint-state-identity-metaprompt package contract",
+    "license": "MIT"
+  },
+  "consumers": [
+    "sts2-game-mod",
+    "sts2-harness",
+    "sts2-gateway"
+  ],
+  "goldens": [
+    "golden/state-payload.json",
+    "golden/state.canonical",
+    "golden/manifest.json",
+    "golden/receipt.json"
+  ],
+  "fixtures": [
+    "coverage-contract.json"
+  ],
+  "checksums": "SHA256SUMS"
+}

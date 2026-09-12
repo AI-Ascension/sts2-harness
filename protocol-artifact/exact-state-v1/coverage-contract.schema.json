@@ -1,0 +1,90 @@
+{
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "ascension.coverage_contract.v1"
+    },
+    "adapter_id": {
+      "type": "string"
+    },
+    "profile_id": {
+      "type": "string"
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "field_group": {
+            "type": "string"
+          },
+          "source_symbol": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "public",
+              "privileged"
+            ]
+          },
+          "status": {
+            "enum": [
+              "captured",
+              "certified_derivable",
+              "excluded_nonsemantic",
+              "not_applicable",
+              "unknown",
+              "unsupported"
+            ]
+          },
+          "capture_method": {
+            "type": "string"
+          },
+          "restore_method": {
+            "type": "string"
+          },
+          "ordering": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "acceptance_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^CK-[0-9]{3}$"
+            }
+          }
+        },
+        "required": [
+          "field_group",
+          "source_symbol",
+          "phase",
+          "visibility",
+          "status",
+          "capture_method",
+          "restore_method",
+          "ordering",
+          "rationale",
+          "acceptance_ids"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "adapter_id",
+    "profile_id",
+    "rows"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sts2-coverage-contract-v1",
+  "description": "Starting coverage inventory shape. Certification needs separate trusted implementation and build evidence and cannot be self-asserted by schema validity."
+}

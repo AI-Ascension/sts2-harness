@@ -1,0 +1,147 @@
+{
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "ascension.checkpoint_manifest.v1"
+    },
+    "canonical_profile": {
+      "const": "asc-jcs-state-v1"
+    },
+    "exact_state_digest": {
+      "type": "string",
+      "pattern": "^asc-state:v1:sha256:[0-9a-f]{64}$"
+    },
+    "canonical_payload": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "codec": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "digest",
+        "size_bytes",
+        "codec"
+      ],
+      "additionalProperties": false
+    },
+    "restore_artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "codec": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "digest",
+          "size_bytes",
+          "codec"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "compatibility_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "coverage_contract_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "boundary": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "game_tick": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "kind",
+        "phase"
+      ],
+      "additionalProperties": false
+    },
+    "origin": {
+      "type": "object",
+      "properties": {
+        "run_id": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "run_id",
+        "generation"
+      ],
+      "additionalProperties": false
+    },
+    "parent_checkpoint_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^asc-checkpoint:v1:sha256:[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "canonical_profile",
+    "exact_state_digest",
+    "canonical_payload",
+    "restore_artifacts",
+    "compatibility_digest",
+    "coverage_contract_digest",
+    "boundary",
+    "origin",
+    "parent_checkpoint_id"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sts2-checkpoint-manifest-v1",
+  "description": "Immutable checkpoint manifest. The manifest identifier and mutable storage locator are external. Every reference must be verified; JSON Schema alone does not establish coverage or integrity."
+}
