@@ -23,11 +23,16 @@ pub fn sha256_hex(bytes: impl AsRef<[u8]>) -> String {
 }
 
 mod artifact;
+mod catalog_identity;
 mod checkpoint_capability;
 mod checkpoint_projection;
 mod checkpoint_session;
 mod checkpoint_verify;
 mod context_capture;
+pub use catalog_identity::{
+    CatalogError, CatalogIdentity, MAX_CATALOG_SCHEMA_BYTES, RAW_CATALOG_PREFIX, RawCatalogDigest,
+    SEMANTIC_CATALOG_PREFIX, SemanticCatalogDigest,
+};
 pub use checkpoint_capability::{
     CapabilityError, CapabilityReport, CaptureFailure, CheckpointEvidence, CheckpointMode,
     PublicEvidenceSummary, RestoreFailure, UnsupportedPhase,
