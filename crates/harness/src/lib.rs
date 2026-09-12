@@ -42,6 +42,7 @@ pub mod context_control;
 pub mod context_memory;
 mod coop_native;
 mod coordinator;
+mod decision_fence;
 mod decision_records;
 mod episode;
 mod error;
@@ -102,6 +103,7 @@ pub use context_capture::{
 pub use context_control::*;
 pub use coop_native::*;
 pub use coordinator::{EpisodeHandle, Harness, HarnessParts};
+pub use decision_fence::{DecisionFence, DecisionToken, FenceError, MAX_OUTSTANDING_DECISIONS};
 pub use decision_records::{DecisionPayload, DecisionRecord, DecisionRecordKind, EvidenceStatus};
 pub use episode::{
     ActionAdmission, ActionIdentity, ActionKind, ActionLedger, ActionSetError, BarrierError,
