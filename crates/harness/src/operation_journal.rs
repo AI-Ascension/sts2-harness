@@ -10,11 +10,12 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::fs::File;
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
+
+mod persistence;
 
 /// Maximum entries retained in one journal.
 pub const MAX_JOURNAL_ENTRIES: usize = 4096;
@@ -23,6 +24,7 @@ pub const MAX_JOURNAL_FIELD_BYTES: usize = 256;
 
 /// Identity of one mutating attempt.
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct JournalKey {
     /// Authenticated principal that made the request.
     pub principal: String,
@@ -83,6 +85,7 @@ impl JournalOutcome {
 
 /// One durable journal record.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct JournalEntry {
     /// Attempt identity.
     pub key: JournalKey,
@@ -106,6 +109,12 @@ pub enum JournalDecision {
 /// Rejection reasons for the idempotency journal.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum JournalError {
+    /// Another owner holds the journal's exclusive operating-system lock.
+    Locked,
+    /// A previous write was uncertain; reopen and reconcile before further mutations.
+    Poisoned,
+    /// A completion would replace a terminal outcome or reset an attempt to pending.
+    InvalidTransition,
     /// A scoping field is empty, too long, or contains a NUL separator.
     InvalidKey,
     /// The request digest is not `sha256:` followed by 64 lowercase hex characters.
@@ -125,6 +134,9 @@ pub enum JournalError {
 impl fmt::Display for JournalError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
+            Self::Locked => "journal already has an owner",
+            Self::Poisoned => "journal must be reopened after an uncertain write",
+            Self::InvalidTransition => "journal outcome transition is invalid",
             Self::InvalidKey => "journal key is invalid",
             Self::InvalidDigest => "journal request digest is invalid",
             Self::Conflict => "idempotency key was reused with different input",
@@ -141,23 +153,23 @@ impl std::error::Error for JournalError {}
 /// Append-only, crash-tolerant idempotency journal.
 #[derive(Debug)]
 pub struct OperationJournal {
-    path: PathBuf,
     entries: BTreeMap<JournalKey, JournalEntry>,
     next_sequence: u64,
-    file: Option<File>,
+    file: File,
+    poisoned: bool,
 }
 
 impl OperationJournal {
     /// Opens or creates a journal at `path`, replaying every durable record.
     pub fn open(path: impl Into<PathBuf>) -> Result<Self, JournalError> {
-        let path = path.into();
+        let file = persistence::open(&path.into())?;
         let mut journal = Self {
-            path,
             entries: BTreeMap::new(),
             next_sequence: 1,
-            file: None,
+            file,
+            poisoned: false,
         };
-        journal.replay()?;
+        persistence::replay(&mut journal)?;
         Ok(journal)
     }
 
@@ -173,7 +185,9 @@ impl OperationJournal {
         self.entries.is_empty()
     }
 
-    /// Returns a recorded entry, if present.
+    /// Returns the last acknowledged entry, if present.
+    ///
+    /// After an uncertain persistence error, reopen before using entries to reconcile an operation.
     #[must_use]
     pub fn entry(&self, key: &JournalKey) -> Option<&JournalEntry> {
         self.entries.get(key)
@@ -185,6 +199,7 @@ impl OperationJournal {
         key: JournalKey,
         request_digest: &str,
     ) -> Result<JournalDecision, JournalError> {
+        self.ensure_healthy()?;
         key.validate()?;
         validate_digest(request_digest)?;
         if let Some(existing) = self.entries.get(&key) {
@@ -216,13 +231,16 @@ impl OperationJournal {
         key: &JournalKey,
         outcome: JournalOutcome,
     ) -> Result<(), JournalError> {
-        let sequence = self.entries.get(key).ok_or(JournalError::Missing)?.sequence;
-        let request_digest = self
-            .entries
-            .get(key)
-            .ok_or(JournalError::Missing)?
-            .request_digest
-            .clone();
+        self.ensure_healthy()?;
+        let previous = self.entries.get(key).ok_or(JournalError::Missing)?;
+        if previous.outcome == outcome {
+            return Ok(());
+        }
+        if !valid_transition(previous.outcome, outcome) {
+            return Err(JournalError::InvalidTransition);
+        }
+        let sequence = previous.sequence;
+        let request_digest = previous.request_digest.clone();
         let entry = JournalEntry {
             key: key.clone(),
             request_digest,
@@ -234,50 +252,36 @@ impl OperationJournal {
         Ok(())
     }
 
-    fn replay(&mut self) -> Result<(), JournalError> {
-        if !self.path.is_file() {
-            return Ok(());
+    fn ensure_healthy(&self) -> Result<(), JournalError> {
+        if self.poisoned {
+            Err(JournalError::Poisoned)
+        } else {
+            Ok(())
         }
-        let reader = BufReader::new(File::open(&self.path).map_err(persistence)?);
-        let lines: Vec<String> = reader
-            .lines()
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(persistence)?;
-        for (index, line) in lines.iter().enumerate() {
-            if line.trim().is_empty() {
-                continue;
-            }
-            match serde_json::from_str::<JournalEntry>(line) {
-                Ok(entry) => {
-                    self.next_sequence = self.next_sequence.max(entry.sequence + 1);
-                    self.entries.insert(entry.key.clone(), entry);
-                }
-                Err(_) if index + 1 == lines.len() => break,
-                Err(_) => return Err(JournalError::Corrupt),
-            }
-        }
-        Ok(())
     }
 
     fn write(&mut self, entry: &JournalEntry) -> Result<(), JournalError> {
         let line = serde_json::to_string(entry).map_err(|_| JournalError::Corrupt)?;
-        let file = match self.file.as_mut() {
-            Some(file) => file,
-            None => self
-                .file
-                .insert(open_append(&self.path).map_err(persistence)?),
-        };
-        file.write_all(line.as_bytes()).map_err(persistence)?;
-        file.write_all(b"\n").map_err(persistence)?;
-        file.flush().map_err(persistence)
+        if let Err(error) = persistence::append(&mut self.file, &line) {
+            self.poisoned = true;
+            return Err(error);
+        }
+        Ok(())
     }
 }
 
-fn open_append(path: &Path) -> std::io::Result<File> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    OpenOptions::new().create(true).append(true).open(path)
+fn valid_transition(previous: JournalOutcome, next: JournalOutcome) -> bool {
+    previous == next
+        || matches!(
+            (previous, next),
+            (
+                JournalOutcome::Pending,
+                JournalOutcome::Accepted | JournalOutcome::Rejected | JournalOutcome::Unknown
+            ) | (
+                JournalOutcome::Unknown,
+                JournalOutcome::Accepted | JournalOutcome::Rejected
+            )
+        )
 }
 
 fn validate_digest(value: &str) -> Result<(), JournalError> {
@@ -293,6 +297,5 @@ fn validate_digest(value: &str) -> Result<(), JournalError> {
     Ok(())
 }
 
-fn persistence(error: std::io::Error) -> JournalError {
-    JournalError::Persistence(error.to_string())
-}
+#[cfg(all(test, target_os = "linux"))]
+mod failure_tests;
