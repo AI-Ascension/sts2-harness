@@ -2,20 +2,23 @@
 
 //! Semantic transition records and earliest-divergence comparison.
 //!
-//! A transition record commits to one committed boundary's exact state before and after, its
-//! logical action and schema, the controlled external input, and the previous commitment. Provider
-//! names, wall-clock times, transport operation identifiers, and branch occurrence identifiers stay
-//! outside the semantic comparison. Comparison is a linear aligned scan: matching endpoints never
-//! prove that earlier states matched, because trajectories can diverge and reconverge.
+//! A record commits to a boundary's exact state before and after, its logical action and schema, the
+//! controlled external input, and the previous commitment; provenance and branch identifiers stay
+//! outside comparison. Comparison is a linear aligned scan, not endpoint equality.
 
 use sha2::{Digest, Sha256};
 
 use crate::execution::{BlobDigest, ExactStateDigest};
 
 mod error;
+mod experiment;
 mod lineage;
 
 pub use error::TransitionError;
+pub use experiment::{
+    AncestrySplit, BranchPolicy, Experiment, ExperimentBranch, ExperimentError, MAX_BRANCHES,
+    split_by_ancestry,
+};
 pub use lineage::{LineageError, MAX_OCCURRENCES, OccurrenceGraph, OccurrenceId, OccurrenceRecord};
 
 /// Version bound into every transition commitment.

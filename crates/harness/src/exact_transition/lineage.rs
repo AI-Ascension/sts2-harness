@@ -164,6 +164,11 @@ impl OccurrenceGraph {
             .ok_or(LineageError::UnknownOccurrence)
     }
 
+    /// Returns the exact state identity recorded at an occurrence.
+    pub fn state_digest(&self, id: &OccurrenceId) -> Result<&ExactStateDigest, LineageError> {
+        Ok(&self.record(id)?.state_digest)
+    }
+
     /// Returns every occurrence observed with the given exact state identity.
     #[must_use]
     pub fn occurrences_with_state(&self, state_digest: &ExactStateDigest) -> Vec<OccurrenceId> {

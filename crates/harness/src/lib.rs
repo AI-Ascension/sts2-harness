@@ -103,10 +103,11 @@ pub use evaluation::{
     EvaluationError, EvaluationReport, EvaluationSample, Evaluator, TerminalOutcome,
 };
 pub use exact_transition::{
-    LineageError, MAX_OCCURRENCES, MAX_TRANSITION_LABEL_BYTES, MAX_TRANSITION_RECORDS,
+    AncestrySplit, BranchPolicy, Experiment, ExperimentBranch, ExperimentError, LineageError,
+    MAX_BRANCHES, MAX_OCCURRENCES, MAX_TRANSITION_LABEL_BYTES, MAX_TRANSITION_RECORDS,
     OccurrenceGraph, OccurrenceId, OccurrenceRecord, TRANSITION_COMMITMENT_PREFIX,
     TRANSITION_COMMITMENT_VERSION, TRANSITION_DOMAIN, TraceComparison, TraceOutcome,
-    TransitionError, TransitionRecord, TransitionTrace, compare_traces,
+    TransitionError, TransitionRecord, TransitionTrace, compare_traces, split_by_ancestry,
 };
 pub use execution::{
     AttemptKind, AttemptState, BLOB_DIGEST_PREFIX, BlobDigest, CHECKPOINT_MANIFEST_DOMAIN,
