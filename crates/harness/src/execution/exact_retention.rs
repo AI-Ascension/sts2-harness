@@ -23,6 +23,33 @@ const HEX_DIGITS: usize = 64;
 /// Prefix of a staging file created before an atomic rename.
 const TEMPORARY_PREFIX: &str = ".tmp-";
 
+/// Retention failures, including publication that raced the plan.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RetentionError {
+    /// The artifact store failed.
+    Store(ExactCheckpointError),
+    /// A manifest was published after the plan was computed; the sweep is refused.
+    ConcurrentPublication,
+}
+
+impl std::fmt::Display for RetentionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Store(error) => error.fmt(formatter),
+            Self::ConcurrentPublication => formatter
+                .write_str("a manifest was published after the retention plan was computed"),
+        }
+    }
+}
+
+impl std::error::Error for RetentionError {}
+
+impl From<ExactCheckpointError> for RetentionError {
+    fn from(error: ExactCheckpointError) -> Self {
+        Self::Store(error)
+    }
+}
+
 impl ExactArtifactStore {
     /// Returns the configured store root.
     #[must_use]
@@ -100,13 +127,15 @@ pub struct ExactRetentionPlan {
     pub collectable_blobs: Vec<BlobDigest>,
     /// Dependencies a pinned manifest requires but the store does not hold.
     pub missing_blobs: Vec<BlobDigest>,
+    /// Manifest set observed while planning; a sweep refuses if it changed.
+    pub manifests: Vec<ExactCheckpointId>,
 }
 
 /// Computes a retention plan from pinned checkpoint identifiers.
 pub fn plan_retention(
     store: &ExactArtifactStore,
     pinned: &[ExactCheckpointId],
-) -> Result<ExactRetentionPlan, ExactCheckpointError> {
+) -> Result<ExactRetentionPlan, RetentionError> {
     let mut retained = BTreeSet::new();
     let mut missing = BTreeSet::new();
     for identifier in pinned {
@@ -121,7 +150,7 @@ pub fn plan_retention(
                 Err(ExactCheckpointError::Missing) => {
                     missing.insert(digest);
                 }
-                Err(error) => return Err(error),
+                Err(error) => return Err(error.into()),
             }
         }
     }
@@ -135,6 +164,7 @@ pub fn plan_retention(
         retained_blobs: retained.into_iter().collect(),
         collectable_blobs: collectable,
         missing_blobs: missing.into_iter().collect(),
+        manifests: store.stored_manifests()?,
     })
 }
 
@@ -142,9 +172,12 @@ pub fn plan_retention(
 pub fn sweep(
     store: &ExactArtifactStore,
     plan: &ExactRetentionPlan,
-) -> Result<usize, ExactCheckpointError> {
+) -> Result<usize, RetentionError> {
     if !plan.missing_blobs.is_empty() {
-        return Err(ExactCheckpointError::Missing);
+        return Err(ExactCheckpointError::Missing.into());
+    }
+    if store.stored_manifests()? != plan.manifests {
+        return Err(RetentionError::ConcurrentPublication);
     }
     let mut removed = 0;
     for digest in &plan.collectable_blobs {

@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use sts2_harness::{
     BlobDigest, ExactArtifactStore, ExactCheckpointError, ExactCheckpointId, ExactStateDigest,
-    plan_retention, sweep,
+    OccurrenceGraph, OccurrenceId, OccurrenceRecord, RetentionError, plan_retention, sweep,
 };
 
 fn workspace(name: &str) -> PathBuf {
@@ -88,7 +88,7 @@ fn missing_pinned_dependency_fails_closed() {
     assert_eq!(plan.missing_blobs, vec![absent]);
     assert_eq!(
         sweep(&store, &plan).expect_err("sweep refuses"),
-        ExactCheckpointError::Missing
+        RetentionError::Store(ExactCheckpointError::Missing)
     );
     assert!(store.read_blob(&payload).is_ok());
 }
@@ -128,4 +128,73 @@ fn stored_manifests_are_ordered_and_parseable() {
     let listed = store.stored_manifests().expect("manifests list");
     assert_eq!(listed, expected);
     assert!(ExactCheckpointId::parse(second.as_str()).is_ok());
+}
+
+fn checkpoint(seed: char) -> ExactCheckpointId {
+    ExactCheckpointId::parse(&format!(
+        "asc-checkpoint:v1:sha256:{}",
+        seed.to_string().repeat(64)
+    ))
+    .expect("checkpoint id is valid")
+}
+
+#[test]
+fn publication_after_planning_refuses_the_sweep() {
+    let store = ExactArtifactStore::new(workspace("concurrent"));
+    let payload = store.stage_blob(b"payload").expect("payload stages");
+    let other = store.stage_blob(b"other").expect("other stages");
+    let pinned = store
+        .publish_manifest(&manifest(&payload, &payload))
+        .expect("first manifest");
+    let plan = plan_retention(&store, std::slice::from_ref(&pinned)).expect("plan builds");
+    store
+        .publish_manifest(&manifest(&other, &other))
+        .expect("racing manifest publishes");
+
+    assert_eq!(
+        sweep(&store, &plan).expect_err("sweep refuses"),
+        RetentionError::ConcurrentPublication
+    );
+    assert!(store.read_blob(&payload).is_ok());
+    assert!(store.read_blob(&other).is_ok());
+}
+
+#[test]
+fn ancestor_checkpoints_cover_only_the_requested_roots() {
+    let mut graph = OccurrenceGraph::new();
+    let mut restore = |id: &str, parent: Option<&str>, checkpoint: bool| {
+        let record = OccurrenceRecord {
+            occurrence_id: OccurrenceId::parse(id).expect("identifier"),
+            parent: parent.map(|value| OccurrenceId::parse(value).expect("identifier")),
+            parent_checkpoint: checkpoint.then(|| self::checkpoint('a')),
+            action_key: parent.map(|_| "restore".to_owned()),
+            state_digest: ExactStateDigest::parse(&format!(
+                "asc-state:v1:sha256:{}",
+                "c".repeat(64)
+            ))
+            .expect("state digest"),
+            experiment_id: None,
+        };
+        graph.insert(record).expect("record inserts");
+    };
+    restore("root:one", None, false);
+    restore("child:one", Some("root:one"), true);
+    restore("root:two", None, false);
+    let mut other = OccurrenceRecord {
+        occurrence_id: OccurrenceId::parse("child:two").expect("identifier"),
+        parent: Some(OccurrenceId::parse("root:two").expect("identifier")),
+        parent_checkpoint: Some(checkpoint('b')),
+        action_key: Some("restore".to_owned()),
+        state_digest: ExactStateDigest::parse(&format!("asc-state:v1:sha256:{}", "d".repeat(64)))
+            .expect("state digest"),
+        experiment_id: None,
+    };
+    graph.insert(other.clone()).expect("record inserts");
+    other.parent = None;
+    other.parent_checkpoint = None;
+
+    let roots = [OccurrenceId::parse("root:one").expect("identifier")];
+    let checkpoints = graph.ancestor_checkpoints(&roots).expect("checkpoints");
+    assert_eq!(checkpoints, vec![checkpoint('a')]);
+    assert!(!checkpoints.contains(&checkpoint('b')));
 }

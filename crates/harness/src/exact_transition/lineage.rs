@@ -179,6 +179,24 @@ impl OccurrenceGraph {
             .collect()
     }
 
+    /// Returns the distinct restored checkpoints referenced under the given ancestry roots.
+    pub fn ancestor_checkpoints(
+        &self,
+        roots: &[OccurrenceId],
+    ) -> Result<Vec<ExactCheckpointId>, LineageError> {
+        let wanted: std::collections::BTreeSet<&OccurrenceId> = roots.iter().collect();
+        let mut checkpoints = std::collections::BTreeSet::new();
+        for record in &self.records {
+            if !wanted.contains(&self.root(&record.occurrence_id)?) {
+                continue;
+            }
+            if let Some(checkpoint) = &record.parent_checkpoint {
+                checkpoints.insert(checkpoint.clone());
+            }
+        }
+        Ok(checkpoints.into_iter().collect())
+    }
+
     /// Groups occurrence identifiers by ancestry root, which keeps duplicates in one split.
     pub fn group_by_root(&self) -> Result<BTreeMap<OccurrenceId, Vec<OccurrenceId>>, LineageError> {
         let mut groups: BTreeMap<OccurrenceId, Vec<OccurrenceId>> = BTreeMap::new();

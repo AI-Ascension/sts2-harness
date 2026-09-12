@@ -34,7 +34,7 @@ pub use exact_checkpoint::{
     ExactCheckpointId, ExactCheckpointReference, ExactStateDigest, MAX_BOUNDARY_LABEL_BYTES,
     MAX_EXACT_BLOB_BYTES,
 };
-pub use exact_retention::{ExactRetentionPlan, plan_retention, sweep};
+pub use exact_retention::{ExactRetentionPlan, RetentionError, plan_retention, sweep};
 pub use store_core::ExecutionStore;
 pub use types::{
     AttemptKind, AttemptState, CatalogEvidence, Checkpoint, CompletionRecord, CompletionStatus,
