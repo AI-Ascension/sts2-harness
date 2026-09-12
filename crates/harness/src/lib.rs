@@ -32,6 +32,7 @@ mod decision_records;
 mod episode;
 mod error;
 mod evaluation;
+mod exact_transition;
 mod execution;
 mod execution_cancellation;
 mod exo;
@@ -100,6 +101,11 @@ pub use episode::{
 pub use error::{CloseFailure, CloseReport, Component, HarnessError, PortError, ProviderError};
 pub use evaluation::{
     EvaluationError, EvaluationReport, EvaluationSample, Evaluator, TerminalOutcome,
+};
+pub use exact_transition::{
+    MAX_TRANSITION_LABEL_BYTES, MAX_TRANSITION_RECORDS, TRANSITION_COMMITMENT_PREFIX,
+    TRANSITION_COMMITMENT_VERSION, TRANSITION_DOMAIN, TraceComparison, TraceOutcome,
+    TransitionError, TransitionRecord, TransitionTrace, compare_traces,
 };
 pub use execution::{
     AttemptKind, AttemptState, BLOB_DIGEST_PREFIX, BlobDigest, CHECKPOINT_MANIFEST_DOMAIN,
