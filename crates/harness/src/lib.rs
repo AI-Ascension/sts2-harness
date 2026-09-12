@@ -80,6 +80,7 @@ mod runtime_v4_expert_action_artifact;
 mod runtime_v4_expert_artifact;
 mod runtime_v4_expert_rest_action;
 mod runtime_v4_expert_rest_action_artifact;
+mod trace_diagnosis;
 
 pub mod worker_endpoint;
 pub mod worker_handoff;
@@ -259,3 +260,4 @@ pub use runtime_v4_expert_rest_action_artifact::{
     RUNTIME_V4_EXPERT_REST_ACTION_SCHEMA_SOURCE, RuntimeV4ExpertRestActionArtifactError,
     verify_runtime_v4_expert_rest_action_artifact,
 };
+pub use trace_diagnosis::{PublicDivergenceStatus, TraceDiagnosis, diagnose_traces};
