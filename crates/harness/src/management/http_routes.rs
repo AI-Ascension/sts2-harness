@@ -141,6 +141,13 @@ fn dispatch_run_route(
         ("GET", ["", "v1", "workflow-runs", _, "context"]) if request.query.is_empty() => service
             .context_association(actor, run_id)
             .and_then(|value| json_value(&value)),
+        ("GET", ["", "v1", "workflow-runs", _, "provider-sessions"])
+            if request.query.is_empty() =>
+        {
+            service
+                .provider_sessions(actor, run_id)
+                .and_then(|value| json_value(&value))
+        }
         ("GET", ["", "v1", "workflow-runs", _, "events"]) => {
             let after = query_u64(&request.query, "after_sequence", 0)?;
             let limit = query_u64(

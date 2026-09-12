@@ -13,6 +13,8 @@ use super::contract::{
     ContextWorkflowIdentity, ContractError, Diagnostic, DiffRequest, DiffResponse, ErrorBody,
     ErrorClass, ErrorResponse, EventPage, ExportRequest, ExportResponse, HealthResponse,
     InspectRequest, InspectResponse, MANAGEMENT_SCHEMA_VERSION, OutputFormat,
+    PROVIDER_SESSION_LIST_SCHEMA_VERSION, ProviderSessionBindingSummary,
+    ProviderSessionListResponse, ProviderSessionListValue, ProviderSessionOperationSummary,
     REPLAY_SCHEMA_VERSION, RUN_SCHEMA_VERSION, RecoveryAdmission, ReplayDivergence, ReplayRequest,
     ReplayResponse, RunEvent, RunRequest, RunSnapshot, RunSubmissionResponse,
     STATUS_SCHEMA_VERSION, StatusResponse, ValidateRequest, ValidateResponse, WorkflowRunStatus,
@@ -27,6 +29,8 @@ use super::store::{
 mod authoring_ops;
 #[path = "service_ops.rs"]
 mod ops;
+#[path = "service_provider_session.rs"]
+mod provider_session_support;
 #[path = "service_read.rs"]
 mod read;
 #[path = "service_support.rs"]
@@ -34,6 +38,7 @@ mod support;
 #[path = "service_unavailable.rs"]
 mod unavailable;
 
+pub use provider_session_support::UnavailableProviderSessionInspectionPort;
 pub use unavailable::{
     UnavailableAuthoringStore, UnavailableCapabilityPort, UnavailableContextInspectionPort,
     UnavailableDefinitionPort, UnavailableExecutionPort, UnavailableReplayPort,
@@ -247,6 +252,26 @@ pub struct ContextInspectionResult {
     pub capabilities: ContextInspectionCapabilities,
 }
 
+/// The harness-owned boundary for provider-session metadata. Implementations
+/// receive an already-authorized workflow snapshot and may return only the
+/// bounded summaries below. They cannot accept native IDs, issue provider
+/// commands, or make a browser-controlled cross-namespace lookup.
+pub trait ProviderSessionInspectionPort: Send + Sync {
+    fn list(
+        &self,
+        actor: &AuthContext,
+        snapshot: &RunSnapshot,
+    ) -> Result<ProviderSessionInspectionResult, ManagementError>;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProviderSessionInspectionResult {
+    pub workflow_run_id: String,
+    pub bindings: Vec<ProviderSessionBindingSummary>,
+    pub operations: Vec<ProviderSessionOperationSummary>,
+    pub next_cursor: Option<String>,
+}
+
 pub struct ManagementService {
     store: Arc<dyn WorkflowStore>,
     authoring: Arc<dyn AuthoringStore>,
@@ -255,6 +280,7 @@ pub struct ManagementService {
     replay: Arc<dyn WorkflowReplayPort>,
     capabilities: Arc<dyn CapabilityPort>,
     context_inspection: Arc<dyn ContextInspectionPort>,
+    provider_session_inspection: Arc<dyn ProviderSessionInspectionPort>,
 }
 
 impl ManagementService {
@@ -267,6 +293,9 @@ impl ManagementService {
             replay: Arc::new(UnavailableReplayPort),
             capabilities: Arc::new(UnavailableCapabilityPort),
             context_inspection: Arc::new(UnavailableContextInspectionPort),
+            provider_session_inspection: Arc::new(
+                provider_session_support::UnavailableProviderSessionInspectionPort,
+            ),
         }
     }
 
@@ -306,6 +335,14 @@ impl ManagementService {
 
     pub fn with_context_inspection_port(mut self, port: Arc<dyn ContextInspectionPort>) -> Self {
         self.context_inspection = port;
+        self
+    }
+
+    pub fn with_provider_session_inspection_port(
+        mut self,
+        port: Arc<dyn ProviderSessionInspectionPort>,
+    ) -> Self {
+        self.provider_session_inspection = port;
         self
     }
 }

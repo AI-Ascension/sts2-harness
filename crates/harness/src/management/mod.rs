@@ -6,6 +6,7 @@ mod cli;
 mod contract;
 mod contract_authoring;
 mod http;
+mod provider_session_inspection;
 mod service;
 mod store;
 mod workflow_ports;
@@ -29,7 +30,9 @@ pub use contract::{
     InspectResponse, MANAGEMENT_SCHEMA_VERSION, MAX_CONNECTIONS, MAX_EVENTS_PER_PAGE,
     MAX_HEADER_BYTES, MAX_IDENTIFIER_BYTES, MAX_JSON_BYTES, MAX_JSON_DEPTH, MAX_JSON_ITEMS,
     MAX_PATH_BYTES, MAX_RESPONSE_BYTES, MAX_STORE_BYTES, MAX_STRING_BYTES, OutputFormat,
-    PendingOperation, PendingOperationState, PersistedCommand, PersistedRun, PersistedStore,
+    PROVIDER_SESSION_LIST_SCHEMA_VERSION, PendingOperation, PendingOperationState,
+    PersistedCommand, PersistedRun, PersistedStore, ProviderSessionBindingSummary,
+    ProviderSessionListResponse, ProviderSessionListValue, ProviderSessionOperationSummary,
     REPLAY_SCHEMA_VERSION, REQUEST_DEADLINE_MILLIS, RUN_SCHEMA_VERSION, RecoveryAdmission,
     ReplayDivergence, ReplayResponse, RunEvent, RunRequest, RunSnapshot, RunSubmissionResponse,
     STATUS_SCHEMA_VERSION, StatusResponse, SubmissionIndex, ValidateRequest, ValidateResponse,
@@ -45,13 +48,15 @@ pub use http::{
     ClientResponse, HttpError, HttpLimits, ManagementClient, ManagementServer, ServerConfig,
     ServerHandle,
 };
+pub use provider_session_inspection::ProviderSessionBrokerInspectionPort;
 pub use service::{
     CapabilityPort, CommandApplication, CommandContext, ContextInspectionPort,
     ContextInspectionResult, DefinitionPort, DiffResult, InspectionResult, ManagementError,
-    ManagementService, ReplayResult, RunAdmission, UnavailableAuthoringStore,
-    UnavailableCapabilityPort, UnavailableContextInspectionPort, UnavailableDefinitionPort,
-    UnavailableExecutionPort, UnavailableReplayPort, ValidationResult, WorkflowExecutionPort,
-    WorkflowReplayPort,
+    ManagementService, ProviderSessionInspectionPort, ProviderSessionInspectionResult,
+    ReplayResult, RunAdmission, UnavailableAuthoringStore, UnavailableCapabilityPort,
+    UnavailableContextInspectionPort, UnavailableDefinitionPort, UnavailableExecutionPort,
+    UnavailableProviderSessionInspectionPort, UnavailableReplayPort, ValidationResult,
+    WorkflowExecutionPort, WorkflowReplayPort,
 };
 pub use store::{
     CommandAcceptance, FileWorkflowStore, MemoryWorkflowStore, SqliteWorkflowStore, StoreError,

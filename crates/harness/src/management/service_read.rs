@@ -101,6 +101,36 @@ impl ManagementService {
             capabilities: result.capabilities,
         })
     }
+
+    /// Returns a read-only, redacted provider-session projection for one
+    /// workflow run. This is intentionally separate from context inspection:
+    /// the adapter must establish any cross-owner binding explicitly.
+    pub fn provider_sessions(
+        &self,
+        actor: &AuthContext,
+        run_id: &str,
+    ) -> Result<ProviderSessionListResponse, ManagementError> {
+        validate_identifier("run_id", run_id)?;
+        authorize(actor, "workflow:read", Some(run_id))?;
+        let snapshot = self.store.get_run(run_id)?.ok_or_else(|| {
+            ManagementError::invalid("run_not_found", "workflow run was not found")
+        })?;
+        let result = self.provider_session_inspection.list(actor, &snapshot)?;
+        validate_provider_session_inspection_result(&result, &snapshot)?;
+        Ok(ProviderSessionListResponse {
+            schema: PROVIDER_SESSION_LIST_SCHEMA_VERSION.to_owned(),
+            operation: "list".to_owned(),
+            value: ProviderSessionListValue {
+                run_id: snapshot.workflow_run_id,
+                bindings: result.bindings,
+                operations: result.operations,
+                next_cursor: result.next_cursor,
+            },
+            effect_class: "local_metadata_only".to_owned(),
+            inference_calls: 0,
+            game_effects: 0,
+        })
+    }
 }
 
 fn validate_context_association_result(
@@ -155,6 +185,46 @@ fn validate_context_association_result(
     }
     if let Some(attempt_id) = &result.capture.attempt_id {
         validate_identifier("capture_attempt_id", attempt_id)?;
+    }
+    Ok(())
+}
+
+fn validate_provider_session_inspection_result(
+    result: &ProviderSessionInspectionResult,
+    snapshot: &RunSnapshot,
+) -> Result<(), ManagementError> {
+    if result.workflow_run_id != snapshot.workflow_run_id {
+        return Err(ManagementError::conflict(
+            "provider_session_run_mismatch",
+            "provider-session adapter returned a different workflow run identity",
+        ));
+    }
+    if result.bindings.len() > 128 || result.operations.len() > 128 {
+        return Err(ManagementError::invalid(
+            "provider_session_projection_capacity",
+            "provider-session adapter exceeded the bounded management projection",
+        ));
+    }
+    for binding in &result.bindings {
+        validate_identifier("provider_session_binding_id", &binding.binding_id)?;
+        validate_identifier("provider_session_binding_state", &binding.state)?;
+        validate_identifier(
+            "provider_session_history_coverage",
+            &binding.history_coverage,
+        )?;
+    }
+    for operation in &result.operations {
+        validate_identifier("provider_session_operation_id", &operation.operation_id)?;
+        validate_identifier("provider_session_operation_state", &operation.state)?;
+        if operation.game_effects != 0 || operation.auto_resume {
+            return Err(ManagementError::invalid(
+                "provider_session_projection_effectful",
+                "provider-session inspection must remain metadata-only",
+            ));
+        }
+    }
+    if let Some(cursor) = &result.next_cursor {
+        validate_identifier("provider_session_next_cursor", cursor)?;
     }
     Ok(())
 }
