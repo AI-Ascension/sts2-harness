@@ -13,7 +13,7 @@ use std::fmt;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::execution::{ExactCheckpointId, ExactStateDigest};
+use crate::execution::{ExactAssurance, ExactCheckpointId, ExactStateDigest};
 
 use crate::exact_transition::OccurrenceId;
 
@@ -23,6 +23,10 @@ pub const HANDLE_PREFIX: &str = "ckpt-h1:";
 pub const HANDLE_DOMAIN: &[u8] = b"AI-ASCENSION/PUBLIC-CHECKPOINT-HANDLE/v1\0";
 /// Minimum accepted projection key length in bytes.
 pub const MIN_HANDLE_KEY_BYTES: usize = 32;
+/// Schema identifier of the shared public reference envelope.
+pub const REFERENCE_SCHEMA: &str = "ascension.exact_checkpoint_reference.v1";
+/// Reference envelope version emitted by this projection.
+pub const REFERENCE_VERSION: &str = "exact-checkpoint-reference-v1";
 
 /// Rejection reasons for the public projection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -50,6 +54,10 @@ impl std::error::Error for ProjectionError {}
 /// Public summary safe to hand to an ordinary agent or public transcript.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PublicCheckpointSummary {
+    /// Shared reference envelope schema identifier.
+    pub schema: String,
+    /// Reference envelope version.
+    pub reference_version: String,
     /// Keyed opaque handle; never the exact digest.
     pub handle: String,
     /// Occurrence this summary describes.
@@ -58,7 +66,9 @@ pub struct PublicCheckpointSummary {
     pub boundary_kind: String,
     /// Game phase at capture.
     pub boundary_phase: String,
-    /// Assurance label; whether a restore was actually verified.
+    /// Assurance label proven for this reference.
+    pub assurance: String,
+    /// Whether a destination actually recaptured the expected state.
     pub restore_verified: bool,
 }
 
@@ -109,16 +119,26 @@ impl ProjectionKey {
         occurrence: &OccurrenceId,
         boundary_kind: &str,
         boundary_phase: &str,
-        restore_verified: bool,
+        assurance: ExactAssurance,
     ) -> Result<PublicCheckpointSummary, ProjectionError> {
         if !valid_label(boundary_kind) || !valid_label(boundary_phase) {
             return Err(ProjectionError::InvalidInput);
         }
+        if !assurance.is_exact() {
+            return Err(ProjectionError::InvalidInput);
+        }
+        let restore_verified = matches!(
+            assurance,
+            ExactAssurance::RestoreVerified | ExactAssurance::ContinuationCertified
+        );
         Ok(PublicCheckpointSummary {
+            schema: REFERENCE_SCHEMA.to_owned(),
+            reference_version: REFERENCE_VERSION.to_owned(),
             handle: self.handle(checkpoint, state, occurrence)?,
             occurrence: occurrence.as_str().to_owned(),
             boundary_kind: boundary_kind.to_owned(),
             boundary_phase: boundary_phase.to_owned(),
+            assurance: assurance.as_str().to_owned(),
             restore_verified,
         })
     }

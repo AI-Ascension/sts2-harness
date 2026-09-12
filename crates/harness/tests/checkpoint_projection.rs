@@ -3,8 +3,8 @@
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
 use sts2_harness::{
-    ExactCheckpointId, ExactStateDigest, HANDLE_PREFIX, MIN_HANDLE_KEY_BYTES, OccurrenceId,
-    ProjectionError, ProjectionKey,
+    ExactAssurance, ExactCheckpointId, ExactStateDigest, HANDLE_PREFIX, MIN_HANDLE_KEY_BYTES,
+    OccurrenceId, ProjectionError, ProjectionKey,
 };
 
 fn checkpoint(seed: char) -> ExactCheckpointId {
@@ -41,13 +41,16 @@ fn public_summary_carries_no_privileged_values() {
             &occurrence("run:one"),
             "decision",
             "COMBAT",
-            true,
+            ExactAssurance::RestoreVerified,
         )
         .expect("summary builds");
     let json = serde_json::to_string(&summary).expect("summary serializes");
     assert!(summary.handle.starts_with(HANDLE_PREFIX));
     assert!(json.contains("\"restore_verified\":true"));
     assert!(json.contains("\"boundary_phase\":\"COMBAT\""));
+    assert!(json.contains("\"schema\":\"ascension.exact_checkpoint_reference.v1\""));
+    assert!(json.contains("\"reference_version\":\"exact-checkpoint-reference-v1\""));
+    assert!(json.contains("\"assurance\":\"restore_verified\""));
     for secret in [
         "a".repeat(64),
         "b".repeat(64),
@@ -137,7 +140,7 @@ fn weak_keys_and_invalid_inputs_are_rejected() {
                 &occurrence("run:one"),
                 "",
                 "COMBAT",
-                false
+                ExactAssurance::CaptureOnly
             )
             .expect_err("empty boundary"),
         ProjectionError::InvalidInput
