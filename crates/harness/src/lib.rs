@@ -103,7 +103,8 @@ pub use evaluation::{
     EvaluationError, EvaluationReport, EvaluationSample, Evaluator, TerminalOutcome,
 };
 pub use exact_transition::{
-    MAX_TRANSITION_LABEL_BYTES, MAX_TRANSITION_RECORDS, TRANSITION_COMMITMENT_PREFIX,
+    LineageError, MAX_OCCURRENCES, MAX_TRANSITION_LABEL_BYTES, MAX_TRANSITION_RECORDS,
+    OccurrenceGraph, OccurrenceId, OccurrenceRecord, TRANSITION_COMMITMENT_PREFIX,
     TRANSITION_COMMITMENT_VERSION, TRANSITION_DOMAIN, TraceComparison, TraceOutcome,
     TransitionError, TransitionRecord, TransitionTrace, compare_traces,
 };

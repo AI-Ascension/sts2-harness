@@ -13,8 +13,10 @@ use sha2::{Digest, Sha256};
 use crate::execution::{BlobDigest, ExactStateDigest};
 
 mod error;
+mod lineage;
 
 pub use error::TransitionError;
+pub use lineage::{LineageError, MAX_OCCURRENCES, OccurrenceGraph, OccurrenceId, OccurrenceRecord};
 
 /// Version bound into every transition commitment.
 pub const TRANSITION_COMMITMENT_VERSION: &str = "asc-transition:v1";
