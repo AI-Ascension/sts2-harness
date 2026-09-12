@@ -51,6 +51,7 @@ pub mod provider_session;
 pub mod recorded_run;
 mod records;
 mod replay;
+mod restore_gate;
 mod routing;
 mod runtime_v2;
 mod runtime_v2_artifact;
@@ -192,6 +193,7 @@ pub use replay::{
     DecisionReplay, DecisionReplayDivergence, DecisionReplayReport, DecisionReplayRequest,
     DeterministicReplay, Divergence, ReplayPort, ReplayReport, ReplayRequest,
 };
+pub use restore_gate::{GateAdmission, GateError, RestoreEvidence, RestoreGate, RestoreReceipt};
 pub use routing::{InstanceRouter, RouteBinding, RouteRequest, RouteToken};
 pub use runtime_v2::{
     RUNTIME_V2_MAX_INSTANCES, RUNTIME_V2_MAX_QUEUE_CAPACITY, RUNTIME_V2_MAX_RETAINED_OPERATIONS,
