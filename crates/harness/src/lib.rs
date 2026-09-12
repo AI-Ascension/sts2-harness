@@ -23,8 +23,13 @@ pub fn sha256_hex(bytes: impl AsRef<[u8]>) -> String {
 }
 
 mod artifact;
+mod checkpoint_capability;
 mod checkpoint_projection;
 mod context_capture;
+pub use checkpoint_capability::{
+    CapabilityError, CapabilityReport, CaptureFailure, CheckpointEvidence, CheckpointMode,
+    PublicEvidenceSummary, RestoreFailure, UnsupportedPhase,
+};
 pub use checkpoint_projection::{
     HANDLE_DOMAIN, HANDLE_PREFIX, MIN_HANDLE_KEY_BYTES, ProjectionError, ProjectionKey,
     PublicCheckpointSummary,
