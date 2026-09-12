@@ -41,6 +41,7 @@ mod identity;
 pub mod management;
 mod map;
 mod memory;
+mod operation_journal;
 pub mod phase3_adapter_demo;
 mod poc;
 mod protocol_artifact;
@@ -48,6 +49,10 @@ mod protocol_artifact_coop_receipt_query;
 mod provider;
 pub mod provider_session;
 #[cfg(unix)]
+pub use operation_journal::{
+    JournalDecision, JournalEntry, JournalError, JournalKey, JournalOutcome, MAX_JOURNAL_ENTRIES,
+    MAX_JOURNAL_FIELD_BYTES, OperationJournal,
+};
 pub mod recorded_run;
 mod records;
 mod replay;
