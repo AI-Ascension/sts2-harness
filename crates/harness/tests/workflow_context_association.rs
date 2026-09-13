@@ -28,6 +28,7 @@ fn request() -> RunRequest {
         artifact_id: None,
         instance_id: "integration-instance".to_owned(),
         profile: "synthetic".to_owned(),
+        admission: None,
     }
 }
 

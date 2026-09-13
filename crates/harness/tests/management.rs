@@ -168,6 +168,7 @@ fn snapshot(
         pending_operation: None,
         budget: Budget::default(),
         cleanup: CleanupState::NotStarted,
+        admission: None,
     }
 }
 
@@ -207,6 +208,7 @@ fn run_request() -> RunRequest {
         artifact_id: None,
         instance_id: "instance-1".to_owned(),
         profile: "synthetic".to_owned(),
+        admission: None,
     }
 }
 

@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use super::super::auth::AuthContext;
 use super::super::contract::{
     EventClassification, EventPayload, EventType, PendingOperation, RunEvent, RunRequest,
+    TargetAdmissionBinding,
 };
 use super::super::service::{
     CommandApplication, CommandContext, ManagementError, RunAdmission, WorkflowExecutionPort,
@@ -29,6 +30,7 @@ pub(super) struct LiveRun {
     pub(super) state: LiveNodeState,
     pub(super) cancelled: bool,
     pub(super) cleanup: super::super::contract::CleanupState,
+    pub(super) admission: Option<TargetAdmissionBinding>,
 }
 
 pub(super) struct LiveNodeState {
@@ -82,6 +84,13 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
         actor: &AuthContext,
         definition_digest: &str,
     ) -> Result<RunAdmission, ManagementError> {
+        let admission = request.admission.as_ref().ok_or_else(|| {
+            ManagementError::conflict(
+                "target_admission_required",
+                "live execution requires an exact target admission binding",
+            )
+        })?;
+        validate_live_admission(request, definition_digest, admission)?;
         let value = request.definition.as_ref().ok_or_else(|| {
             ManagementError::unavailable(
                 "artifact_port_unavailable",
@@ -137,7 +146,10 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
             &run_id,
             definition_digest,
             &runtime,
-            SnapshotState::default(),
+            SnapshotState {
+                admission: request.admission.clone(),
+                ..SnapshotState::default()
+            },
             1,
         );
         let event = RunEvent {
@@ -172,6 +184,7 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
             },
             cancelled: false,
             cleanup: super::super::contract::CleanupState::NotStarted,
+            admission: request.admission.clone(),
         };
         let mut runs = self.runs.lock().map_err(lock_error)?;
         match runs.entry(run_id) {
@@ -193,6 +206,28 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
         })
     }
 
+    fn submit_admitted(
+        &self,
+        request: &RunRequest,
+        actor: &AuthContext,
+        definition_digest: &str,
+        admission: Option<&TargetAdmissionBinding>,
+    ) -> Result<RunAdmission, ManagementError> {
+        let admission = admission.ok_or_else(|| {
+            ManagementError::conflict(
+                "target_admission_required",
+                "live execution requires an exact target admission binding",
+            )
+        })?;
+        if request.admission.as_ref() != Some(admission) {
+            return Err(ManagementError::conflict(
+                "target_admission_mismatch",
+                "execution admission does not match the submitted request",
+            ));
+        }
+        self.submit(request, actor, definition_digest)
+    }
+
     fn apply_command(
         &self,
         context: CommandContext,
@@ -207,4 +242,61 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
     ) -> Result<CommandApplication, ManagementError> {
         super::execution_commands::apply_command(self, context, Some(record_intent))
     }
+}
+
+fn validate_live_admission(
+    request: &RunRequest,
+    definition_digest: &str,
+    admission: &TargetAdmissionBinding,
+) -> Result<(), ManagementError> {
+    admission.validate().map_err(ManagementError::from)?;
+    if admission.workflow_definition_digest != definition_digest {
+        return Err(ManagementError::conflict(
+            "target_admission_digest_mismatch",
+            "target admission is bound to a different workflow definition",
+        ));
+    }
+    if admission.request_id != request.request_id {
+        return Err(ManagementError::conflict(
+            "target_request_mismatch",
+            "target admission request identity does not match the run request",
+        ));
+    }
+    if admission.target.instance_id != request.instance_id {
+        return Err(ManagementError::conflict(
+            "target_instance_mismatch",
+            "target admission instance does not match the run request",
+        ));
+    }
+    if admission.target.execution_profile != request.profile
+        || !matches!(
+            admission.target.execution_mode,
+            super::super::contract::ExecutionMode::Live
+        )
+    {
+        return Err(ManagementError::conflict(
+            "target_mode_mismatch",
+            "target admission execution mode does not match the live run request",
+        ));
+    }
+    let definition = request.definition.as_ref().ok_or_else(|| {
+        ManagementError::unavailable(
+            "artifact_port_unavailable",
+            "live execution requires an admitted workflow definition",
+        )
+    })?;
+    let parsed = super::super::workflow_ports::parse_definition(definition)?;
+    if admission.target.workflow_revision != parsed.version.as_str() {
+        return Err(ManagementError::conflict(
+            "target_admission_stale",
+            "target admission workflow revision is stale",
+        ));
+    }
+    if admission.target.game_profile != parsed.game_profile.as_str() {
+        return Err(ManagementError::conflict(
+            "target_game_profile_mismatch",
+            "target admission game profile does not match the workflow",
+        ));
+    }
+    Ok(())
 }

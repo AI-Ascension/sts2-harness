@@ -6,22 +6,21 @@ use std::sync::Arc;
 
 use self::support::{
     CliFailure, CliOutput, client_for, new_id, parse_address, parse_options, parse_u64_option,
-    read_json_file, request_and_render, required_option, response_failure, usage,
-    validate_output_path,
+    read_json_file, request_and_render, required_option, usage,
 };
 use super::{
     CommandKind, CommandParameters, CommandRequest, DiffRequest, EnvironmentAuthenticator,
-    ExportRequest, ExportResponse, InspectRequest, MANAGEMENT_SCHEMA_VERSION,
-    ManagementReplayRequest, ManagementServer, OutputFormat, RunRequest, ServerConfig,
-    SqliteWorkflowStore, ValidateRequest, validate_identifier,
+    InspectRequest, MANAGEMENT_SCHEMA_VERSION, ManagementServer, OutputFormat, RunRequest,
+    ServerConfig, SqliteWorkflowStore, TargetAdmissionBinding, ValidateRequest,
+    validate_identifier,
 };
-
-const DEFAULT_LISTEN: &str = "127.0.0.1:8787";
 
 #[path = "cli_control.rs"]
 mod control;
 #[path = "cli_support.rs"]
 mod support;
+#[path = "cli_target_admission.rs"]
+mod target_admission;
 
 pub fn run_cli(args: Vec<String>) {
     let result = run(args);
@@ -79,7 +78,7 @@ fn serve(args: &[String]) -> Result<CliOutput, CliFailure> {
             "serve does not accept positional arguments or flags",
         ));
     }
-    let listen = parse_address(options.get("listen"), DEFAULT_LISTEN)?;
+    let listen = parse_address(options.get("listen"), "127.0.0.1:8787")?;
     let store_path = required_option(&options, "store")?;
     let auth_profile = required_option(&options, "auth-profile")?;
     let authenticator =
@@ -172,32 +171,60 @@ fn run_command(args: &[String]) -> Result<CliOutput, CliFailure> {
     let (positionals, options, flags) = parse_options(
         args,
         &[],
-        &["instance", "profile", "format", "listen", "auth-profile"],
+        &[
+            "instance",
+            "profile",
+            "admission",
+            "format",
+            "listen",
+            "auth-profile",
+        ],
         &[],
     )?;
     if positionals.len() != 1 || !flags.is_empty() {
         return Err(CliFailure::invalid(
-            "run requires <definition.json> --instance <id> --profile <name>",
+            "run requires <definition.json> --instance <id> --profile <name> [--admission <binding.json>]",
         ));
     }
     let instance_id = required_option(&options, "instance")?;
     let profile = required_option(&options, "profile")?;
+    let definition = read_json_file(&positionals[0])?;
+    let client = client_for(&options)?;
+    let supplied_admission = options
+        .get("admission")
+        .map(|path| {
+            let value = read_json_file(path)?;
+            serde_json::from_value::<TargetAdmissionBinding>(value).map_err(CliFailure::local)
+        })
+        .transpose()?;
+    let request_id = supplied_admission
+        .as_ref()
+        .map(|admission| admission.request_id.clone())
+        .unwrap_or_else(|| new_id("submission"));
+    let admission = match supplied_admission {
+        Some(admission) => Some(admission),
+        None if target_admission::is_live_profile(profile) => {
+            Some(target_admission::preflight_for_run(
+                &client,
+                &definition,
+                instance_id,
+                profile,
+                &request_id,
+            )?)
+        }
+        None => None,
+    };
     let body = serde_json::to_vec(&RunRequest {
         schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
-        request_id: new_id("submission"),
-        definition: Some(read_json_file(&positionals[0])?),
+        request_id,
+        definition: Some(definition),
         artifact_id: None,
         instance_id: instance_id.to_owned(),
         profile: profile.to_owned(),
+        admission,
     })
     .map_err(CliFailure::local)?;
-    request_and_render(
-        &options,
-        "POST",
-        "/v1/workflow-runs",
-        Some(body),
-        client_for(&options)?,
-    )
+    request_and_render(&options, "POST", "/v1/workflow-runs", Some(body), client)
 }
 
 fn status_command(args: &[String]) -> Result<CliOutput, CliFailure> {

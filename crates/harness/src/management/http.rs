@@ -30,7 +30,7 @@ use super::auth::Authenticator;
 use super::contract::{
     CommandRequest, DiffRequest, ExportRequest, InspectRequest, MAX_CONNECTIONS, MAX_HEADER_BYTES,
     MAX_JSON_BYTES, MAX_PATH_BYTES, MAX_RESPONSE_BYTES, REQUEST_DEADLINE_MILLIS, ReplayRequest,
-    RunRequest, ValidateRequest, decode_strict, validate_identifier,
+    RunRequest, TargetAdmissionRequest, ValidateRequest, decode_strict, validate_identifier,
 };
 use super::service::{ManagementError, ManagementService};
 

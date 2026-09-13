@@ -14,7 +14,6 @@ use super::super::{
     ClientResponse, ErrorClass, ErrorResponse, MAX_JSON_BYTES, ManagementClient, decode_strict,
     validate_identifier,
 };
-use super::DEFAULT_LISTEN;
 
 pub(super) struct CliOutput(pub(super) Option<Vec<u8>>);
 
@@ -77,7 +76,7 @@ pub(super) fn client_for(
     options: &BTreeMap<String, String>,
 ) -> Result<ManagementClient, CliFailure> {
     let default_listen =
-        env::var("STS2_WORKFLOW_LISTEN").unwrap_or_else(|_| DEFAULT_LISTEN.to_owned());
+        env::var("STS2_WORKFLOW_LISTEN").unwrap_or_else(|_| "127.0.0.1:8787".to_owned());
     let address = parse_address(options.get("listen"), &default_listen)?;
     let profile = options
         .get("auth-profile")
@@ -289,6 +288,6 @@ pub(super) fn readable_summary(value: &Value) -> String {
 }
 
 pub(super) fn usage() -> String {
-    "sts2-workflow commands:\n  serve --listen <loopback> --store <path> --auth-profile <name>\n  validate <definition.json> --capabilities <manifest.json>\n  inspect <definition.json>\n  diff <old.json> <new.json>\n  run <definition.json> --instance <id> --profile <name>\n  status <run-id>\n  events <run-id> --after-sequence <n> --limit <n>\n  pause|resume|step|cancel <run-id> --expected-revision <n>\n  replay <run-id> --offline\n  export <run-id> --redacted --output <approved-path>\n\nClient commands read STS2_WORKFLOW_TOKEN_<AUTH_PROFILE>; default profile is default.\n"
+    "sts2-workflow commands:\n  serve --listen <loopback> --store <path> --auth-profile <name>\n  validate <definition.json> --capabilities <manifest.json>\n  inspect <definition.json>\n  diff <old.json> <new.json>\n  run <definition.json> --instance <id> --profile <name> [--admission <binding.json>]\n  status <run-id>\n  events <run-id> --after-sequence <n> --limit <n>\n  pause|resume|step|cancel <run-id> --expected-revision <n>\n  replay <run-id> --offline\n  export <run-id> --redacted --output <approved-path>\n\nLive run commands preflight an exact actor-scoped target admission before submission.\nClient commands read STS2_WORKFLOW_TOKEN_<AUTH_PROFILE>; default profile is default.\n"
         .to_owned()
 }

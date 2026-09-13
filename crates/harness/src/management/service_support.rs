@@ -110,6 +110,15 @@ pub(super) fn verify_admission(
             "execution port returned a different definition digest",
         ));
     }
+    if let Some(admission) = &snapshot.admission {
+        admission.validate().map_err(ManagementError::from)?;
+        if admission.workflow_definition_digest != definition_digest {
+            return Err(ManagementError::conflict(
+                "port_admission_mismatch",
+                "execution port returned an admission for a different workflow",
+            ));
+        }
+    }
     if snapshot.run_revision == 0 || admission.initial_events.is_empty() {
         return Err(ManagementError::invalid(
             "invalid_admission",

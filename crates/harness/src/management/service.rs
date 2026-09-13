@@ -17,8 +17,10 @@ use super::contract::{
     ProviderSessionListResponse, ProviderSessionListValue, ProviderSessionOperationSummary,
     REPLAY_SCHEMA_VERSION, RUN_SCHEMA_VERSION, RecoveryAdmission, ReplayDivergence, ReplayRequest,
     ReplayResponse, RunEvent, RunRequest, RunSnapshot, RunSubmissionResponse,
-    STATUS_SCHEMA_VERSION, StatusResponse, ValidateRequest, ValidateResponse, WorkflowRunStatus,
-    digest_value, schema_is, validate_digest, validate_identifier,
+    RunTargetConfiguration, STATUS_SCHEMA_VERSION, StatusResponse, TARGET_ADMISSION_SCHEMA_VERSION,
+    TargetAdmissionBinding, TargetAdmissionRequest, TargetAvailability, TargetCatalogResponse,
+    TargetDescriptor, TargetPreflightResponse, ValidateRequest, ValidateResponse,
+    WorkflowRunStatus, digest_value, schema_is, validate_digest, validate_identifier,
 };
 use super::store::{
     CommandAcceptance, CommandApplication as StoredCommandApplication, FileWorkflowStore,
@@ -39,6 +41,8 @@ mod provider_session_support;
 mod read;
 #[path = "service_support.rs"]
 mod support;
+#[path = "service_target_admission.rs"]
+mod target_admission;
 #[path = "service_unavailable.rs"]
 mod unavailable;
 
@@ -208,6 +212,19 @@ pub struct ReplayResult {
 
 pub trait CapabilityPort: Send + Sync {
     fn capabilities(&self) -> Result<Value, ManagementError>;
+
+    /// Returns the caller-scoped run-target catalog. This is separate from
+    /// the capability value because instance identity and availability are
+    /// authority-owned metadata, not workflow JSON.
+    fn target_catalog(
+        &self,
+        _actor: &AuthContext,
+    ) -> Result<super::contract::TargetCatalogResponse, ManagementError> {
+        Err(ManagementError::unavailable(
+            "target_catalog_unavailable",
+            "target discovery is not attached to this workflow owner",
+        ))
+    }
 }
 
 /// The harness-owned integration boundary for context evidence. Implementations

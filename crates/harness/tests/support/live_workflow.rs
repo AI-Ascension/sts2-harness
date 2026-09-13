@@ -8,13 +8,18 @@ use std::sync::{Arc, Mutex};
 use serde_json::{Value, json};
 use sts2_harness::management::{
     AuthContext, CommandKind, CommandParameters, CommandRequest, LiveWorkflowSession,
-    LiveWorkflowSessionFactory, MANAGEMENT_SCHEMA_VERSION, RunRequest,
+    LiveWorkflowSessionFactory, MANAGEMENT_SCHEMA_VERSION, RunRequest, TargetCatalogResponse,
 };
 use sts2_harness::{
     ActionIdentity, ActionKind, Decision, DecisionInput, DispatchStatus, EpisodeLegalAction,
     EpisodeLegalActionSet, EpisodeObservation, EpisodeStage, TransitionReceipt, WaitOutcome,
     WaitSample,
 };
+
+#[path = "live_workflow_admission.rs"]
+mod admission;
+
+pub(crate) use admission::request;
 
 pub(crate) const LIVE_CAPABILITIES: &[&str] = &[
     "workflow.live",
@@ -60,17 +65,6 @@ pub(crate) fn capabilities() -> Value {
             "node_kinds": ["decide"]
         }]
     })
-}
-
-pub(crate) fn request(id: &str, definition: Value) -> RunRequest {
-    RunRequest {
-        schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
-        request_id: id.to_owned(),
-        definition: Some(definition),
-        artifact_id: None,
-        instance_id: "instance-1".to_owned(),
-        profile: "live.workflow.v1".to_owned(),
-    }
 }
 
 pub(crate) fn command(run_id: &str, id: &str, revision: u64, kind: CommandKind) -> CommandRequest {
@@ -188,6 +182,13 @@ impl FakeFactory {
 impl LiveWorkflowSessionFactory for FakeFactory {
     fn capabilities(&self) -> Value {
         capabilities()
+    }
+
+    fn target_catalog(
+        &self,
+        _actor: &AuthContext,
+    ) -> Result<TargetCatalogResponse, sts2_harness::management::ManagementError> {
+        Ok(admission::target_catalog())
     }
 
     fn open(

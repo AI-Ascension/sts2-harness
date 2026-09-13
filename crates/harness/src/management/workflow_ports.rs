@@ -10,7 +10,8 @@ use super::contract::{
     Budget, CleanupState, CommandKind, ContextAssociationContext, ContextAvailability,
     ContextCaptureEvidence, ContextCaptureMode, ContextCaptureState, ContextInspectionCapabilities,
     Cursor, Diagnostic, DiagnosticSeverity, EventClassification, EventPayload, EventType,
-    GameOutcome, RunEvent, RunRequest, RunSnapshot, WorkflowRunStatus, validate_identifier,
+    GameOutcome, RunEvent, RunRequest, RunSnapshot, TargetAdmissionBinding, WorkflowRunStatus,
+    validate_identifier,
 };
 use super::service::{
     CapabilityPort, CommandApplication, CommandContext, ContextInspectionPort,
@@ -384,7 +385,14 @@ impl WorkflowExecutionPort for SyntheticExecutionPort {
                 "definition_digest": definition_digest,
             }))?[..32]
         );
-        let snapshot = snapshot_from_runtime(&run_id, definition_digest, &runtime, 1, false);
+        let snapshot = snapshot_from_runtime(
+            &run_id,
+            definition_digest,
+            &runtime,
+            1,
+            false,
+            request.admission.clone(),
+        );
         let event = RunEvent {
             schema_version: super::contract::EVENT_SCHEMA_VERSION.to_owned(),
             workflow_run_id: run_id.clone(),
@@ -449,6 +457,7 @@ impl WorkflowExecutionPort for SyntheticExecutionPort {
             &run.runtime,
             revision,
             run.cancelled,
+            context.snapshot.admission.clone(),
         )
         .with_status(status);
         Ok(CommandApplication {
@@ -564,7 +573,14 @@ impl WorkflowExecutionPort for PersistentSyntheticExecutionPort {
             )),
         };
         self.persist_run(&run_id, &run)?;
-        let snapshot = snapshot_from_runtime(&run_id, definition_digest, &run.runtime, 1, false);
+        let snapshot = snapshot_from_runtime(
+            &run_id,
+            definition_digest,
+            &run.runtime,
+            1,
+            false,
+            request.admission.clone(),
+        );
         let event = admission_event(&run_id, definition_digest);
         self.runs.lock().map_err(lock_error)?.insert(run_id, run);
         Ok(RunAdmission {
@@ -610,6 +626,7 @@ impl WorkflowExecutionPort for PersistentSyntheticExecutionPort {
             &run.runtime,
             revision,
             run.cancelled,
+            context.snapshot.admission.clone(),
         )
         .with_status(status);
         Ok(CommandApplication {
@@ -810,6 +827,7 @@ fn snapshot_from_runtime(
     runtime: &StrictRuntime,
     revision: u64,
     cancelled: bool,
+    admission: Option<TargetAdmissionBinding>,
 ) -> RunSnapshot {
     let runtime_snapshot = runtime.snapshot();
     RunSnapshot {
@@ -830,6 +848,7 @@ fn snapshot_from_runtime(
             ..Budget::default()
         },
         cleanup: CleanupState::NotStarted,
+        admission,
     }
 }
 

@@ -48,6 +48,15 @@ pub(super) fn dispatch(
                     .submit_run(&actor, body)
                     .and_then(|value| json_value(&value))
             }
+            ("GET", "/v1/workflow-targets") if request.query.is_empty() => service
+                .target_catalog(&actor)
+                .and_then(|value| json_value(&value)),
+            ("POST", "/v1/workflow-targets/preflight") if request.query.is_empty() => {
+                let body: TargetAdmissionRequest = decode_body_management(&request.body)?;
+                service
+                    .preflight_target(&actor, body)
+                    .and_then(|value| json_value(&value))
+            }
             ("GET", "/v1/capabilities") if request.query.is_empty() => service
                 .capabilities(&actor)
                 .and_then(|value| json_value(&value)),

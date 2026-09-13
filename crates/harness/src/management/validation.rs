@@ -4,11 +4,14 @@ use std::collections::BTreeSet;
 
 use serde_json::Value;
 
-use super::super::contract::{Diagnostic, DiagnosticSeverity};
+use super::super::contract::{Diagnostic, DiagnosticSeverity, TargetCatalogResponse};
 use super::super::service::{
     CapabilityPort, DefinitionPort, DiffResult, InspectionResult, ManagementError, ValidationResult,
 };
+use super::session::LiveWorkflowSessionFactory;
+use crate::management::AuthContext;
 use crate::workflow::{NodeDefinition, NodeKind, WorkflowDefinition};
+use std::sync::Arc;
 
 /// Capability advertised by an authoritative live session factory.
 pub const LIVE_WORKFLOW_CAPABILITY: &str = "workflow.live";
@@ -208,10 +211,18 @@ fn node_kind_name(kind: NodeKind) -> &'static str {
 
 pub(super) struct LiveCapabilityPort {
     pub(super) capabilities: Value,
+    pub(super) factory: Arc<dyn LiveWorkflowSessionFactory>,
 }
 
 impl CapabilityPort for LiveCapabilityPort {
     fn capabilities(&self) -> Result<Value, ManagementError> {
         Ok(self.capabilities.clone())
+    }
+
+    fn target_catalog(
+        &self,
+        actor: &AuthContext,
+    ) -> Result<TargetCatalogResponse, ManagementError> {
+        self.factory.target_catalog(actor)
     }
 }

@@ -45,5 +45,8 @@ pub fn live_store(
     Ok(ManagementService::new(store)
         .with_definition_port(Arc::new(definitions))
         .with_execution_port(Arc::new(execution))
-        .with_capability_port(Arc::new(validation::LiveCapabilityPort { capabilities })))
+        .with_capability_port(Arc::new(validation::LiveCapabilityPort {
+            capabilities,
+            factory,
+        })))
 }
