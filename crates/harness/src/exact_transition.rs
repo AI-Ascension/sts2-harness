@@ -10,10 +10,12 @@ use sha2::{Digest, Sha256};
 
 use crate::execution::{BlobDigest, ExactStateDigest};
 
+mod branch_tree;
 mod error;
 mod experiment;
 mod lineage;
 
+pub use branch_tree::{BranchRecord, BranchStatus, BranchStrategy, BranchTree, BranchTreeError};
 pub use error::TransitionError;
 pub use experiment::{
     AncestrySplit, BranchPolicy, Experiment, ExperimentBranch, ExperimentError, MAX_BRANCHES,
@@ -27,9 +29,7 @@ pub const TRANSITION_COMMITMENT_VERSION: &str = "asc-transition:v1";
 pub const TRANSITION_COMMITMENT_PREFIX: &str = "asc-transition:v1:sha256:";
 /// Domain separator for the transition commitment.
 pub const TRANSITION_DOMAIN: &[u8] = b"AI-ASCENSION/TRANSITION/v1\0";
-/// Maximum records accepted in one trace.
 pub const MAX_TRANSITION_RECORDS: usize = 100_000;
-/// Maximum length of a boundary, action, or profile label.
 pub const MAX_TRANSITION_LABEL_BYTES: usize = 256;
 
 /// One committed boundary in a deterministic run.
