@@ -110,6 +110,26 @@ impl StrictRuntime {
         Ok(())
     }
 
+    /// Re-opens a runtime blocked by an unresolved effect after the caller has
+    /// reconciled the same operation identity. No new action is authorized by
+    /// this transition; the node remains at the blocked cursor.
+    pub fn resume_after_unknown_effect(&mut self) -> Result<(), RuntimeFault> {
+        if self.snapshot.status != RuntimeStatus::NeedsOperator {
+            return Err(RuntimeFault::InvalidState);
+        }
+        self.snapshot.status = RuntimeStatus::Running;
+        Ok(())
+    }
+
+    /// Permanently marks the runtime failed after a non-recoverable executor error.
+    ///
+    /// Keeping this transition explicit prevents a management snapshot that reports
+    /// `Failed` from retaining an in-memory `Running` cursor that could accept another
+    /// step after the failed command is persisted.
+    pub fn fail(&mut self) {
+        self.snapshot.status = RuntimeStatus::Failed;
+    }
+
     pub fn step<E: NodeExecutor>(
         &mut self,
         executor: &mut E,

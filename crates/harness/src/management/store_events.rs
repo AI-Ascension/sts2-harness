@@ -86,9 +86,16 @@ pub(super) fn management_event(
         run_revision: snapshot.run_revision,
         event_type,
         definition_digest: snapshot.definition_digest.clone(),
-        node_execution_id: "management".to_owned(),
+        // The execution port owns the cursor identity. Keeping that identity on
+        // the command event lets live consumers distinguish a scheduler command
+        // from the node that was actually admitted, while retaining the legacy
+        // "management" value for ports that use it in their snapshot.
+        node_execution_id: snapshot.cursor.node_execution_id.clone(),
         payload: EventPayload {
-            operation_id: None,
+            operation_id: snapshot
+                .pending_operation
+                .as_ref()
+                .map(|operation| operation.operation_id.clone()),
             classification: Some(classification),
             reason_code,
         },

@@ -2,9 +2,9 @@
 
 use super::{
     CommandAcceptance, CommandApplication, CommandRequest, CommandResponse, EventPage,
-    ExportResponse, FileWorkflowStore, RunEvent, RunSnapshot, StoreError, SubmissionLookup,
-    WorkflowStore, accept_command, apply_command, create_run, events, export, get_run,
-    lookup_submission, release_command,
+    ExportResponse, FileWorkflowStore, PendingOperation, RunEvent, RunSnapshot, StoreError,
+    SubmissionLookup, WorkflowStore, accept_command, apply_command, create_run, events, export,
+    get_run, lookup_submission, record_operation_intent, release_command,
 };
 
 impl WorkflowStore for FileWorkflowStore {
@@ -60,6 +60,15 @@ impl WorkflowStore for FileWorkflowStore {
         application: CommandApplication,
     ) -> Result<CommandResponse, StoreError> {
         apply_command(&self.core, request, request_digest, application)
+    }
+
+    fn record_operation_intent(
+        &self,
+        run_id: &str,
+        expected_revision: u64,
+        pending: PendingOperation,
+    ) -> Result<(), StoreError> {
+        record_operation_intent(&self.core, run_id, expected_revision, pending)
     }
 
     fn release_command(

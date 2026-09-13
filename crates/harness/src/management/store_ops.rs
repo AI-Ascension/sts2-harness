@@ -13,10 +13,13 @@ mod event_ops;
 pub(crate) use event_ops::validate_initial_run;
 use event_ops::{append_event, classification_for_outcome, management_event, next_sequence};
 
+#[path = "store_ops_intent.rs"]
+mod intent;
 #[path = "store_persist.rs"]
 mod persistence;
 #[path = "store_ops_run.rs"]
 mod run;
+pub(super) use intent::record_operation_intent;
 
 pub(super) use persistence::{io_store_error, persist};
 pub(crate) use run::create_run;

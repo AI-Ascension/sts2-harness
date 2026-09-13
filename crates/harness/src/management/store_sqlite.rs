@@ -8,7 +8,8 @@ use std::time::Duration;
 use rusqlite::Connection;
 
 use super::super::contract::{
-    CommandRequest, CommandResponse, EventPage, ExportResponse, RunEvent, RunSnapshot,
+    CommandRequest, CommandResponse, EventPage, ExportResponse, PendingOperation, RunEvent,
+    RunSnapshot,
 };
 use super::{CommandAcceptance, CommandApplication, StoreError, SubmissionLookup, WorkflowStore};
 
@@ -125,6 +126,15 @@ impl WorkflowStore for SqliteWorkflowStore {
         application: CommandApplication,
     ) -> Result<CommandResponse, StoreError> {
         ops::apply_command(self, request, request_digest, application)
+    }
+
+    fn record_operation_intent(
+        &self,
+        run_id: &str,
+        expected_revision: u64,
+        pending: PendingOperation,
+    ) -> Result<(), StoreError> {
+        ops::record_operation_intent(self, run_id, expected_revision, pending)
     }
 
     fn release_command(

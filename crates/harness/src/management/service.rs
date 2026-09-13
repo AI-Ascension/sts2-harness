@@ -27,6 +27,10 @@ use super::store::{
 
 #[path = "service_authoring.rs"]
 mod authoring_ops;
+#[path = "service_execution.rs"]
+mod execution_types;
+#[path = "service_ops_lifecycle.rs"]
+mod lifecycle_ops;
 #[path = "service_ops.rs"]
 mod ops;
 #[path = "service_provider_session.rs"]
@@ -182,37 +186,9 @@ pub struct DiffResult {
     pub changed_paths: Vec<String>,
 }
 
-pub trait WorkflowExecutionPort: Send + Sync {
-    fn submit(
-        &self,
-        request: &RunRequest,
-        actor: &AuthContext,
-        definition_digest: &str,
-    ) -> Result<RunAdmission, ManagementError>;
-
-    fn apply_command(&self, context: CommandContext)
-    -> Result<CommandApplication, ManagementError>;
-}
-
-#[derive(Clone, Debug)]
-pub struct RunAdmission {
-    pub snapshot: RunSnapshot,
-    pub initial_events: Vec<RunEvent>,
-}
-
-#[derive(Clone, Debug)]
-pub struct CommandContext {
-    pub request: CommandRequest,
-    pub snapshot: RunSnapshot,
-    pub actor: AuthContext,
-}
-
-#[derive(Clone, Debug)]
-pub struct CommandApplication {
-    pub snapshot: RunSnapshot,
-    pub outcome: super::contract::CommandOutcome,
-    pub reason_code: String,
-}
+pub use execution_types::{
+    CommandApplication, CommandContext, RunAdmission, WorkflowExecutionPort,
+};
 
 pub trait WorkflowReplayPort: Send + Sync {
     fn replay(

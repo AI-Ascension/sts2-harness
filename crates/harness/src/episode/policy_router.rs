@@ -52,6 +52,18 @@ impl DecisionInput {
 pub trait DecisionSource {
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError>;
 
+    /// Routes an authored decision-profile/context binding to the provider
+    /// boundary. Legacy sources inherit `decide`; bound providers can override
+    /// this method to enforce or select the requested profile and context.
+    fn decide_for(
+        &mut self,
+        _input: &DecisionInput,
+        _decision_profile_ref: &str,
+        _context_ref: &str,
+    ) -> Result<Decision, PolicyError> {
+        Err(PolicyError::ProviderUnavailable)
+    }
+
     /// Reports whether the selected action passed settlement verification, including recovery.
     /// False includes rejection, cancellation and unresolved failure; it never authorizes retry.
     fn action_completed(&mut self, _settled: bool) {}
