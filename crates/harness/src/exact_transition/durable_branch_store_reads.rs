@@ -91,7 +91,8 @@ impl SqliteBranchStore {
             branches.push(build_branch(value, artifacts, fork)?);
         }
         let next_cursor = if branches.len() > bounded as usize {
-            branches.pop().map(|branch| branch.branch_id)
+            branches.pop();
+            branches.last().map(|branch| branch.branch_id.clone())
         } else {
             None
         };

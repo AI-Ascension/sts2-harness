@@ -3,9 +3,10 @@
 use rusqlite::{OptionalExtension, params};
 
 use super::store::{
-    EventInput, SqliteBranchStore, existing_operation, now_millis, record_operation,
+    EventInput, SqliteBranchStore, begin_write_transaction, existing_operation, now_millis,
+    record_operation,
 };
-use super::validation::{to_i64, validate_label};
+use super::validation::{ensure_not_tombstoned, to_i64, validate_label};
 use super::{
     BranchArtifactReference, BranchStoreError, DurableBranch, MAX_BRANCH_ARTIFACTS,
     MAX_TRANSITION_LABEL_BYTES,
@@ -42,9 +43,7 @@ impl SqliteBranchStore {
             reference.role.as_str(),
         ]);
         let mut connection = self.lock()?;
-        let transaction = connection
-            .transaction()
-            .map_err(BranchStoreError::persistence)?;
+        let transaction = begin_write_transaction(&mut connection)?;
         if let Some(existing) = existing_operation(&transaction, operation_id, &digest)? {
             transaction
                 .commit()
@@ -54,6 +53,7 @@ impl SqliteBranchStore {
         }
         let branch = super::store_reads::load_branch_tx(&transaction, experiment_id, branch_id)?
             .ok_or(BranchStoreError::UnknownBranch)?;
+        ensure_not_tombstoned(&transaction, experiment_id, branch_id)?;
         if branch.metadata_revision != expected_revision {
             return Err(BranchStoreError::StaleRevision);
         }

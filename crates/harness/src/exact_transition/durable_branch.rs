@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Durable branch records and the SQLite owner-side store.
-//!
-//! The store persists branch metadata and lineage edges only. Strategy adapters still own native
-//! restore/replay effects; this module records their bounded evidence and never starts gameplay.
-
 use super::{BranchStrategy, MAX_BRANCHES, MAX_TRANSITION_LABEL_BYTES, OccurrenceId};
 use crate::execution::ExactStateDigest;
 
@@ -22,6 +17,10 @@ mod store_error;
 mod store_migration;
 #[path = "durable_branch_store_mutations.rs"]
 mod store_mutations;
+#[path = "durable_branch_store_prune_plan.rs"]
+mod store_prune_plan;
+#[path = "durable_branch_store_reachability.rs"]
+mod store_reachability;
 #[path = "durable_branch_store_read_helpers.rs"]
 mod store_read_helpers;
 #[path = "durable_branch_store_reads.rs"]

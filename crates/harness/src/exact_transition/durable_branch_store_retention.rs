@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use rusqlite::{Transaction, params};
 
 use super::store::{
-    EventInput, SqliteBranchStore, append_event, digest_fields, existing_operation, now_millis,
+    EventInput, SqliteBranchStore, append_event, begin_write_transaction, digest_fields,
+    existing_operation, now_millis,
 };
+use super::store_prune_plan::{insert_prune_plan, load_prune_plan};
+use super::store_reachability::{from_connection, from_transaction};
 use super::validation::validate_label;
 use super::{
     BranchArtifactReference, BranchStoreError, DurableBranch, DurableBranchStatus, MAX_BRANCH_PAGE,
@@ -63,7 +66,7 @@ impl SqliteBranchStore {
         let connection = self.lock()?;
         let branches = super::store_reads::all_branches(&connection, &request.experiment_id)?;
         let selected = eligible_branches(&branches, request)?;
-        let refs = artifact_reachability(&branches, &selected);
+        let refs = from_connection(&connection, &request.experiment_id, &selected)?;
         Ok(BranchPrunePlan {
             branch_ids: selected,
             retained_artifacts: refs.retained,
@@ -80,23 +83,19 @@ impl SqliteBranchStore {
         validate_label(operation_id, MAX_TRANSITION_LABEL_BYTES)?;
         validate_request(request)?;
         let mut connection = self.lock()?;
-        let transaction = connection
-            .transaction()
-            .map_err(BranchStoreError::persistence)?;
+        let transaction = begin_write_transaction(&mut connection)?;
         let digest = digest_prune(request);
-        if let Some(existing) = existing_operation(&transaction, operation_id, &digest)? {
+        if existing_operation(&transaction, operation_id, &digest)?.is_some() {
+            let plan =
+                load_prune_plan(&transaction, operation_id)?.ok_or(BranchStoreError::Corrupt)?;
             transaction
                 .commit()
                 .map_err(BranchStoreError::persistence)?;
-            return Ok(BranchPrunePlan {
-                branch_ids: vec![existing.branch_id],
-                retained_artifacts: Vec::new(),
-                collectable_artifacts: Vec::new(),
-            });
+            return Ok(plan);
         }
         let branches = super::store_reads::all_branches_tx(&transaction, &request.experiment_id)?;
         let selected = eligible_branches(&branches, request)?;
-        let refs = artifact_reachability(&branches, &selected);
+        let refs = from_transaction(&transaction, &request.experiment_id, &selected)?;
         let now = now_millis()?;
         let operation_branch = selected.first().ok_or(BranchStoreError::InvalidInput)?;
         for branch_id in &selected {
@@ -143,22 +142,14 @@ impl SqliteBranchStore {
                         ],
                     )
                     .map_err(BranchStoreError::persistence)?;
-                if collectable {
-                    transaction
-                        .execute(
-                            "UPDATE branch_artifacts SET tombstoned = 1
-                             WHERE experiment_id = ?1 AND branch_id = ?2
-                               AND artifact_id = ?3 AND role = ?4",
-                            params![
-                                request.experiment_id,
-                                branch_id,
-                                reference.artifact_id,
-                                reference.role.as_str()
-                            ],
-                        )
-                        .map_err(BranchStoreError::persistence)?;
-                }
             }
+            transaction
+                .execute(
+                    "UPDATE branch_artifacts SET tombstoned = 1
+                     WHERE experiment_id = ?1 AND branch_id = ?2",
+                    params![request.experiment_id, branch_id],
+                )
+                .map_err(BranchStoreError::persistence)?;
             let branch = branches
                 .iter()
                 .find(|value| value.branch_id == *branch_id)
@@ -184,14 +175,16 @@ impl SqliteBranchStore {
             operation_branch,
             now,
         )?;
-        transaction
-            .commit()
-            .map_err(BranchStoreError::persistence)?;
-        Ok(BranchPrunePlan {
+        let plan = BranchPrunePlan {
             branch_ids: selected,
             retained_artifacts: refs.retained,
             collectable_artifacts: refs.collectable,
-        })
+        };
+        insert_prune_plan(&transaction, operation_id, &request.experiment_id, &plan)?;
+        transaction
+            .commit()
+            .map_err(BranchStoreError::persistence)?;
+        Ok(plan)
     }
 }
 
@@ -235,47 +228,6 @@ fn eligible_branches(
     }
     selected.sort();
     Ok(selected)
-}
-
-struct Reachability {
-    retained: Vec<BranchArtifactReference>,
-    collectable: Vec<BranchArtifactReference>,
-}
-
-fn artifact_reachability(branches: &[DurableBranch], selected: &[String]) -> Reachability {
-    let selected_set: BTreeSet<&str> = selected.iter().map(String::as_str).collect();
-    let mut outside: BTreeSet<BranchArtifactReference> = BTreeSet::new();
-    let mut inside: BTreeMap<BranchArtifactReference, usize> = BTreeMap::new();
-    for branch in branches {
-        let target = if selected_set.contains(branch.branch_id.as_str()) {
-            &mut inside
-        } else {
-            for reference in &branch.artifacts {
-                outside.insert(reference.clone());
-            }
-            continue;
-        };
-        for reference in &branch.artifacts {
-            *target.entry(reference.clone()).or_insert(0) += 1;
-        }
-    }
-    let mut retained = outside.iter().cloned().collect::<Vec<_>>();
-    let mut collectable = Vec::new();
-    for (reference, _) in inside {
-        if outside.contains(&reference) {
-            retained.push(reference);
-        } else {
-            collectable.push(reference);
-        }
-    }
-    retained.sort();
-    retained.dedup();
-    collectable.sort();
-    collectable.dedup();
-    Reachability {
-        retained,
-        collectable,
-    }
 }
 
 fn digest_prune(request: &BranchPruneRequest) -> String {

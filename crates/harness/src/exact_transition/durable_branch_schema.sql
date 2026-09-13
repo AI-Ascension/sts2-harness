@@ -67,6 +67,14 @@ CREATE TABLE IF NOT EXISTS branch_operations (
         REFERENCES durable_branches(experiment_id, branch_id)
 );
 
+CREATE TABLE IF NOT EXISTS branch_prune_plans (
+    operation_id TEXT PRIMARY KEY NOT NULL REFERENCES branch_operations(operation_id),
+    experiment_id TEXT NOT NULL,
+    branch_ids TEXT NOT NULL,
+    retained_artifacts TEXT NOT NULL,
+    collectable_artifacts TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS branch_artifacts (
     experiment_id TEXT NOT NULL,
     branch_id TEXT NOT NULL,

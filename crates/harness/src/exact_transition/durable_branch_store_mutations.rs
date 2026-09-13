@@ -3,23 +3,14 @@
 use rusqlite::params;
 
 use super::store::{
-    EventInput, SqliteBranchStore, existing_operation, now_millis, record_operation,
+    EventInput, SqliteBranchStore, begin_write_transaction, existing_operation, now_millis,
+    record_operation,
 };
-use super::validation::{readiness_assured, to_i64, transition_allowed, validate_label};
-use super::{
-    BranchAssurance, BranchStoreError, DurableBranch, DurableBranchStatus,
-    MAX_TRANSITION_LABEL_BYTES,
+use super::validation::{
+    ensure_not_tombstoned, readiness_assured, to_i64, transition_allowed, validate_label,
+    validate_operation_labels,
 };
-
-fn validate_operation_labels(
-    operation_id: &str,
-    experiment_id: &str,
-    branch_id: &str,
-) -> Result<(), BranchStoreError> {
-    validate_label(operation_id, MAX_TRANSITION_LABEL_BYTES)?;
-    validate_label(experiment_id, MAX_TRANSITION_LABEL_BYTES)?;
-    validate_label(branch_id, MAX_TRANSITION_LABEL_BYTES)
-}
+use super::{BranchAssurance, BranchStoreError, DurableBranch, DurableBranchStatus};
 
 impl SqliteBranchStore {
     /// Applies a lifecycle transition with an expected metadata revision.
@@ -40,9 +31,7 @@ impl SqliteBranchStore {
             status.as_str(),
         ]);
         let mut connection = self.lock()?;
-        let transaction = connection
-            .transaction()
-            .map_err(BranchStoreError::persistence)?;
+        let transaction = begin_write_transaction(&mut connection)?;
         if let Some(existing) = existing_operation(&transaction, operation_id, &digest)? {
             transaction
                 .commit()
@@ -52,6 +41,7 @@ impl SqliteBranchStore {
         }
         let branch = super::store_reads::load_branch_tx(&transaction, experiment_id, branch_id)?
             .ok_or(BranchStoreError::UnknownBranch)?;
+        ensure_not_tombstoned(&transaction, experiment_id, branch_id)?;
         if branch.metadata_revision != expected_revision {
             return Err(BranchStoreError::StaleRevision);
         }
@@ -78,17 +68,27 @@ impl SqliteBranchStore {
             .checked_add(1)
             .ok_or(BranchStoreError::InvalidInput)?;
         let now = now_millis()?;
+        let reset_assurance = matches!(
+            status,
+            DurableBranchStatus::Pending
+                | DurableBranchStatus::Restoring
+                | DurableBranchStatus::Replaying
+        );
         transaction
             .execute(
                 "UPDATE durable_branches
-                 SET status = ?3, metadata_revision = ?4, updated_at = ?5
+                 SET status = ?3,
+                     assurance = CASE WHEN ?6 != 0 THEN 'unverified' ELSE assurance END,
+                     metadata_revision = ?4,
+                     updated_at = ?5
                  WHERE experiment_id = ?1 AND branch_id = ?2",
                 params![
                     experiment_id,
                     branch_id,
                     status.as_str(),
                     to_i64(revision)?,
-                    now
+                    now,
+                    if reset_assurance { 1_i64 } else { 0_i64 }
                 ],
             )
             .map_err(BranchStoreError::persistence)?;
@@ -139,9 +139,7 @@ impl SqliteBranchStore {
             assurance.as_str(),
         ]);
         let mut connection = self.lock()?;
-        let transaction = connection
-            .transaction()
-            .map_err(BranchStoreError::persistence)?;
+        let transaction = begin_write_transaction(&mut connection)?;
         if let Some(existing) = existing_operation(&transaction, operation_id, &digest)? {
             transaction
                 .commit()
@@ -151,6 +149,7 @@ impl SqliteBranchStore {
         }
         let branch = super::store_reads::load_branch_tx(&transaction, experiment_id, branch_id)?
             .ok_or(BranchStoreError::UnknownBranch)?;
+        ensure_not_tombstoned(&transaction, experiment_id, branch_id)?;
         if branch.metadata_revision != expected_revision {
             return Err(BranchStoreError::StaleRevision);
         }
@@ -234,9 +233,7 @@ impl SqliteBranchStore {
             name,
         ]);
         let mut connection = self.lock()?;
-        let transaction = connection
-            .transaction()
-            .map_err(BranchStoreError::persistence)?;
+        let transaction = begin_write_transaction(&mut connection)?;
         if let Some(existing) = existing_operation(&transaction, operation_id, &digest)? {
             transaction
                 .commit()
@@ -246,6 +243,7 @@ impl SqliteBranchStore {
         }
         let branch = super::store_reads::load_branch_tx(&transaction, experiment_id, branch_id)?
             .ok_or(BranchStoreError::UnknownBranch)?;
+        ensure_not_tombstoned(&transaction, experiment_id, branch_id)?;
         if branch.metadata_revision != expected_revision {
             return Err(BranchStoreError::StaleRevision);
         }

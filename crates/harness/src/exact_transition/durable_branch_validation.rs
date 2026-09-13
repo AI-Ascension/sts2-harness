@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use rusqlite::{Transaction, params};
+
 use super::{
     BranchArtifactRole, BranchAssurance, BranchStoreError, BranchStrategy, DurableBranchDraft,
     DurableBranchStatus, MAX_BRANCH_ARTIFACTS, MAX_BRANCH_NAME_BYTES, MAX_BRANCH_NOTES_BYTES,
@@ -16,6 +18,38 @@ pub(crate) fn validate_label(value: &str, max: usize) -> Result<(), BranchStoreE
         })
     {
         return Err(BranchStoreError::InvalidInput);
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_operation_labels(
+    operation_id: &str,
+    experiment_id: &str,
+    branch_id: &str,
+) -> Result<(), BranchStoreError> {
+    validate_label(operation_id, MAX_TRANSITION_LABEL_BYTES)?;
+    validate_label(experiment_id, MAX_TRANSITION_LABEL_BYTES)?;
+    validate_label(branch_id, MAX_TRANSITION_LABEL_BYTES)
+}
+
+pub(crate) fn ensure_not_tombstoned(
+    transaction: &Transaction<'_>,
+    experiment_id: &str,
+    branch_id: &str,
+) -> Result<(), BranchStoreError> {
+    let tombstoned: bool = transaction
+        .query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM branch_tombstones
+                WHERE experiment_id = ?1 AND branch_id = ?2
+            )",
+            params![experiment_id, branch_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(BranchStoreError::persistence)?
+        != 0;
+    if tombstoned {
+        return Err(BranchStoreError::InvalidTransition);
     }
     Ok(())
 }

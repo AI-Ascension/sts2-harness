@@ -126,6 +126,11 @@ pub(super) fn load_artifacts(
         .prepare(
             "SELECT artifact_id, role FROM branch_artifacts
              WHERE experiment_id = ?1 AND branch_id = ?2 AND tombstoned = 0
+               AND NOT EXISTS (
+                   SELECT 1 FROM branch_tombstones t
+                   WHERE t.experiment_id = branch_artifacts.experiment_id
+                     AND t.branch_id = branch_artifacts.branch_id
+               )
              ORDER BY artifact_id, role",
         )
         .map_err(BranchStoreError::persistence)?;
@@ -171,6 +176,11 @@ pub(super) fn load_artifacts_tx(
         .prepare(
             "SELECT artifact_id, role FROM branch_artifacts
              WHERE experiment_id = ?1 AND branch_id = ?2 AND tombstoned = 0
+               AND NOT EXISTS (
+                   SELECT 1 FROM branch_tombstones t
+                   WHERE t.experiment_id = branch_artifacts.experiment_id
+                     AND t.branch_id = branch_artifacts.branch_id
+               )
              ORDER BY artifact_id, role",
         )
         .map_err(BranchStoreError::persistence)?;

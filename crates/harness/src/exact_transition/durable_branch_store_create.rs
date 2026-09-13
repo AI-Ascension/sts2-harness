@@ -3,8 +3,8 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use super::store::{
-    EventInput, SqliteBranchStore, append_event, digest_create, existing_operation,
-    insert_artifacts, now_millis, record_operation,
+    EventInput, SqliteBranchStore, append_event, begin_write_transaction, digest_create,
+    existing_operation, insert_artifacts, now_millis, record_operation,
 };
 use super::validation::validate_label;
 use super::{
@@ -136,9 +136,7 @@ impl SqliteBranchStore {
         draft.validate()?;
         let digest = digest_create(&draft);
         let mut connection = self.lock()?;
-        let transaction = connection
-            .transaction()
-            .map_err(BranchStoreError::persistence)?;
+        let transaction = begin_write_transaction(&mut connection)?;
         if let Some(existing) = existing_operation(&transaction, operation_id, &digest)? {
             transaction
                 .commit()

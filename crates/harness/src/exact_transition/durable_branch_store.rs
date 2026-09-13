@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 
 use super::validation::to_i64;
 use super::{
@@ -268,7 +268,19 @@ pub(super) fn now_millis() -> Result<i64, BranchStoreError> {
 
 pub(super) fn map_insert_error(error: rusqlite::Error) -> BranchStoreError {
     match error {
-        rusqlite::Error::SqliteFailure(_, _) => BranchStoreError::Duplicate,
+        rusqlite::Error::SqliteFailure(details, _)
+            if details.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
+            BranchStoreError::Duplicate
+        }
         other => BranchStoreError::persistence(other),
     }
+}
+
+pub(super) fn begin_write_transaction(
+    connection: &mut Connection,
+) -> Result<Transaction<'_>, BranchStoreError> {
+    connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(BranchStoreError::persistence)
 }

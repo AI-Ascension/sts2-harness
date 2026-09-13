@@ -47,12 +47,13 @@ operation and must be planned separately.
 
 ## Persistence and migration
 
-Revision 1 creates the branch tables transactionally and records both SQLite `user_version` and a
-`branch_schema_meta` row. Opening a newer revision fails closed with `UnsupportedSchema`; opening an
-older or empty database applies only forward, idempotent creation. There is no automatic downgrade:
-operators must retain a backup and restore it through the owning deployment procedure. The branch
-database may share a local SQLite file with other harness stores, but its table names and contract
-revision are isolated.
+Revision 1 creates the branch tables transactionally and records a namespaced `branch_schema_meta`
+row. It deliberately leaves SQLite's global `user_version` untouched so the branch tables can share
+a file with other harness stores. Opening a newer revision fails closed with `UnsupportedSchema`;
+opening an older or empty database applies only forward, idempotent creation. There is no automatic
+downgrade: operators must retain a backup and restore it through the owning deployment procedure.
+The branch database may share a local SQLite file with other harness stores, but its table names and
+contract revision are isolated.
 
 ## Compatibility and evidence
 

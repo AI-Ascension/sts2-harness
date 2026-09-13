@@ -9,11 +9,11 @@ impl SqliteBranchStore {
         &self,
         experiment_id: &str,
     ) -> Result<Vec<DurableBranch>, BranchStoreError> {
-        let page = self.list(experiment_id, None, MAX_BRANCH_PAGE)?;
-        Ok(page
-            .branches
-            .into_iter()
-            .filter(|branch| {
+        let mut cursor = None;
+        let mut candidates = Vec::new();
+        loop {
+            let page = self.list(experiment_id, cursor.as_deref(), MAX_BRANCH_PAGE)?;
+            candidates.extend(page.branches.into_iter().filter(|branch| {
                 matches!(
                     branch.status,
                     DurableBranchStatus::Pending
@@ -21,7 +21,15 @@ impl SqliteBranchStore {
                         | DurableBranchStatus::Replaying
                         | DurableBranchStatus::Unknown
                 )
-            })
-            .collect())
+            }));
+            let Some(next_cursor) = page.next_cursor else {
+                break;
+            };
+            if cursor.as_deref() == Some(next_cursor.as_str()) {
+                return Err(BranchStoreError::Corrupt);
+            }
+            cursor = Some(next_cursor);
+        }
+        Ok(candidates)
     }
 }
