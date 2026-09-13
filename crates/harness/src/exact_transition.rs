@@ -11,16 +11,15 @@ use sha2::{Digest, Sha256};
 use crate::execution::{BlobDigest, ExactStateDigest};
 
 mod branch_tree;
+mod durable_branch;
 mod error;
 mod experiment;
 mod lineage;
 
 pub use branch_tree::{BranchRecord, BranchStatus, BranchStrategy, BranchTree, BranchTreeError};
+pub use durable_branch::*;
 pub use error::TransitionError;
-pub use experiment::{
-    AncestrySplit, BranchPolicy, Experiment, ExperimentBranch, ExperimentError, MAX_BRANCHES,
-    split_by_ancestry,
-};
+pub use experiment::*;
 pub use lineage::{LineageError, MAX_OCCURRENCES, OccurrenceGraph, OccurrenceId, OccurrenceRecord};
 
 /// Version bound into every transition commitment.
