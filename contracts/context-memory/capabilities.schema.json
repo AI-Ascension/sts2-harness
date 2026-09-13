@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ascension:context-memory:capabilities:v1",
-  "title": "Proposed Phase 3 capabilities contract",
+  "$id": "urn:ascension:context-memory:capabilities:v2",
+  "title": "Proposed Phase 3 effective-limit capabilities contract",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "schema": {
-      "const": "ascension.context-memory.capabilities.v1"
+      "const": "ascension.context-memory.capabilities.v2"
     },
     "product_phase": {
       "const": 3
@@ -99,6 +99,54 @@
     "direct_game_dispatch": {
       "const": false
     },
+    "effective_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy_schema": {
+          "const": "ascension.context-memory.policy.v1"
+        },
+        "max_candidates": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "max_selected": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "optional_byte_budget": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "max_entries_per_run": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "max_corpus_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 268435456
+        }
+      },
+      "required": [
+        "policy_schema",
+        "max_candidates",
+        "max_results",
+        "max_selected",
+        "optional_byte_budget",
+        "max_entries_per_run",
+        "max_corpus_bytes"
+      ]
+    },
     "supported_operations": {
       "type": "array",
       "items": {
@@ -135,6 +183,7 @@
     "semantic_vector_retrieval",
     "hidden_reasoning_access",
     "direct_game_dispatch",
+    "effective_limits",
     "supported_operations"
   ],
   "allOf": [

@@ -15,7 +15,7 @@ pub const MEMORY_SELECTION_SCHEMA: &str = "ascension.context-memory.selection.v1
 pub const MEMORY_APPROVAL_SCHEMA: &str = "ascension.context-memory.approval.v1";
 pub const MEMORY_POLICY_SCHEMA: &str = "ascension.context-memory.policy.v1";
 pub const MEMORY_REVOCATION_SCHEMA: &str = "ascension.context-memory.revocation.v1";
-pub const MEMORY_CAPABILITIES_SCHEMA: &str = "ascension.context-memory.capabilities.v1";
+pub const MEMORY_CAPABILITIES_SCHEMA: &str = "ascension.context-memory.capabilities.v2";
 
 pub const MAX_ENTRIES_PER_RUN: usize = 10_000;
 pub const MAX_SOURCE_BYTES: usize = 64 * 1024;

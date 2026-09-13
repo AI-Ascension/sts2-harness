@@ -32,6 +32,24 @@ fn broker() -> ProviderSessionBroker {
     .expect("broker")
 }
 
+#[test]
+fn native_capabilities_bind_effective_session_limits() {
+    let capabilities = NativeCapabilities::fixture();
+    assert_eq!(
+        capabilities.effective_limits.policy_schema,
+        SESSION_POLICY_SCHEMA
+    );
+    assert_eq!(
+        capabilities.effective_limits.max_completed_turns,
+        MAX_COMPLETED_TURNS
+    );
+    assert_eq!(
+        capabilities.effective_limits.max_history_ttl_seconds,
+        MAX_HISTORY_TTL_SECONDS
+    );
+    assert!(capabilities.validate().is_ok());
+}
+
 fn held_binding(broker: &mut ProviderSessionBroker) -> SessionBinding {
     let operation = broker
         .create_candidate(
@@ -363,4 +381,21 @@ fn policy_rejects_retention_limits_above_declared_bounds() {
     policy.max_completed_turns = MAX_COMPLETED_TURNS;
     policy.history_ttl_seconds = MAX_HISTORY_TTL_SECONDS + 1;
     assert_eq!(policy.validate(), Err(SessionError::InvalidPolicy));
+}
+
+#[test]
+fn broker_rejects_a_policy_above_the_selected_profile_limit_before_admission() {
+    let scope = scope();
+    let mut policy = ProviderSessionPolicy::disabled(scope.clone());
+    policy.mode = ProviderSessionMode::FixtureOnly;
+    policy.credential_realm_ref = "fixture-realm".to_owned();
+    policy.profile_sha256 = sts2_harness::sha256_hex("codex-app-server-fixture-v1");
+    policy.max_completed_turns = MAX_COMPLETED_TURNS;
+    let mut capabilities = NativeCapabilities::fixture();
+    capabilities.effective_limits.max_completed_turns = MAX_COMPLETED_TURNS - 1;
+
+    assert!(matches!(
+        ProviderSessionBroker::new(scope, policy, capabilities, "owner-fixture"),
+        Err(SessionError::Unsupported)
+    ));
 }

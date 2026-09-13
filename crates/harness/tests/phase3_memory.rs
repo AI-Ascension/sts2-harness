@@ -75,6 +75,32 @@ fn fixture_scope_filters_late_future_sibling_private_and_protected_sources() {
 }
 
 #[test]
+fn capabilities_publish_the_effective_policy_limits() {
+    let corpus = MemoryCorpus::with_limits(scope(), 16, 4096).expect("corpus");
+    let capabilities = corpus.capabilities();
+
+    assert_eq!(
+        capabilities.effective_limits.policy_schema,
+        MEMORY_POLICY_SCHEMA
+    );
+    assert_eq!(capabilities.effective_limits.max_candidates, MAX_CANDIDATES);
+    assert_eq!(capabilities.effective_limits.max_results, MAX_RESULTS);
+    assert_eq!(capabilities.effective_limits.max_selected, MAX_SELECTED);
+    assert_eq!(
+        capabilities.effective_limits.optional_byte_budget,
+        MAX_OPTIONAL_BYTES
+    );
+    assert_eq!(
+        capabilities.effective_limits.max_entries_per_run,
+        MAX_ENTRIES_PER_RUN
+    );
+    assert_eq!(
+        capabilities.effective_limits.max_corpus_bytes,
+        MAX_CORPUS_BYTES
+    );
+}
+
+#[test]
 fn exact_extract_review_and_admission_keep_lifecycle_separate() {
     let mut corpus = MemoryCorpus::with_limits(scope(), 16, 4096).expect("corpus");
     let item = source(

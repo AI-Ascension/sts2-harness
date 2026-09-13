@@ -80,6 +80,11 @@ impl ProviderSessionBroker {
     ) -> Result<Self, SessionError> {
         policy.validate()?;
         capabilities.validate()?;
+        if policy.max_completed_turns > capabilities.effective_limits.max_completed_turns
+            || policy.history_ttl_seconds > capabilities.effective_limits.max_history_ttl_seconds
+        {
+            return Err(SessionError::Unsupported);
+        }
         if !matches!(policy.mode, ProviderSessionMode::Disabled)
             && policy.profile_sha256 != capabilities.profile_sha256
         {
