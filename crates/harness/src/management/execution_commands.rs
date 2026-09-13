@@ -63,18 +63,27 @@ pub(super) fn apply_command(
             }
         }
         CommandKind::Cancel => {
-            if let Err(error) = reconcile_pending(&mut run.state)
+            let reconcile_error = reconcile_pending(&mut run.state).err();
+            let cleanup_error = cleanup_session(run, true).err();
+            run.cancelled = true;
+            if let Some(error) = reconcile_error
                 && error.class != super::super::contract::ErrorClass::Unresolved
             {
                 return Err(error);
             }
-            let _cleanup_failed = cleanup_session(run, true).is_err();
-            run.cancelled = true;
-            (
-                WorkflowRunStatus::Cancelled,
-                CommandOutcome::Applied,
-                "cancel",
-            )
+            if cleanup_error.is_some() {
+                (
+                    WorkflowRunStatus::NeedsOperator,
+                    CommandOutcome::Applied,
+                    "live_cleanup_failed",
+                )
+            } else {
+                (
+                    WorkflowRunStatus::Cancelled,
+                    CommandOutcome::Applied,
+                    "cancel",
+                )
+            }
         }
         CommandKind::Step => {
             if run.cancelled {

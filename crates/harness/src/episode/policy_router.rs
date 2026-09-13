@@ -57,11 +57,11 @@ pub trait DecisionSource {
     /// this method to enforce or select the requested profile and context.
     fn decide_for(
         &mut self,
-        input: &DecisionInput,
+        _input: &DecisionInput,
         _decision_profile_ref: &str,
         _context_ref: &str,
     ) -> Result<Decision, PolicyError> {
-        self.decide(input)
+        Err(PolicyError::ProviderUnavailable)
     }
 
     /// Reports whether the selected action passed settlement verification, including recovery.

@@ -56,7 +56,8 @@ fn authored_graph_calls_live_ports_in_order_and_settles_before_terminal() {
             "legal_actions",
             "decide",
             "dispatch",
-            "wait"
+            "wait",
+            "release"
         ]
     );
 }
@@ -104,7 +105,8 @@ fn unknown_receipt_is_persisted_and_reconciled_without_redispatch() {
             "legal_actions",
             "decide",
             "dispatch",
-            "reconcile"
+            "reconcile",
+            "release"
         ]
     );
 }

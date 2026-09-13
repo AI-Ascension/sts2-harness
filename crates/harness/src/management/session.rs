@@ -18,9 +18,12 @@ pub trait LiveWorkflowSession: Send {
     fn observe(&mut self) -> Result<EpisodeObservation, ManagementError>;
     fn observe_projection(
         &mut self,
-        _projection_ref: &str,
+        projection_ref: &str,
     ) -> Result<EpisodeObservation, ManagementError> {
-        self.observe()
+        Err(ManagementError::capability(
+            "live_projection_binding_unavailable",
+            format!("live session does not support authored projection {projection_ref}"),
+        ))
     }
     fn legal_actions(
         &mut self,
@@ -30,11 +33,16 @@ pub trait LiveWorkflowSession: Send {
     fn decide(&mut self, input: &DecisionInput) -> Result<crate::Decision, ManagementError>;
     fn decide_for(
         &mut self,
-        input: &DecisionInput,
-        _decision_profile_ref: &str,
-        _context_ref: &str,
+        _input: &DecisionInput,
+        decision_profile_ref: &str,
+        context_ref: &str,
     ) -> Result<crate::Decision, ManagementError> {
-        self.decide(input)
+        Err(ManagementError::capability(
+            "live_decision_binding_unavailable",
+            format!(
+                "live session does not support profile {decision_profile_ref} with context {context_ref}"
+            ),
+        ))
     }
     fn dispatch_action(
         &mut self,

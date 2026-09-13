@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #![allow(clippy::expect_used)]
+#![allow(dead_code)]
 
 use std::sync::{Arc, Mutex};
 
@@ -109,6 +110,11 @@ pub(crate) struct FakeFactory {
     log: Arc<Mutex<Vec<String>>>,
     unknown: bool,
     dispatch_error: bool,
+    mismatched_receipt: bool,
+    reconcile_conflict: bool,
+    launch_error: bool,
+    stop_error: bool,
+    release_error: bool,
 }
 
 impl FakeFactory {
@@ -117,6 +123,11 @@ impl FakeFactory {
             log: Arc::new(Mutex::new(Vec::new())),
             unknown,
             dispatch_error: false,
+            mismatched_receipt: false,
+            reconcile_conflict: false,
+            launch_error: false,
+            stop_error: false,
+            release_error: false,
         }
     }
 
@@ -125,7 +136,48 @@ impl FakeFactory {
             log: Arc::new(Mutex::new(Vec::new())),
             unknown: false,
             dispatch_error: true,
+            mismatched_receipt: false,
+            reconcile_conflict: false,
+            launch_error: false,
+            stop_error: false,
+            release_error: false,
         }
+    }
+
+    pub(crate) fn mismatched_receipt() -> Self {
+        Self::new(false).with_mismatched_receipt()
+    }
+
+    pub(crate) fn reconcile_conflict() -> Self {
+        Self::new(true).with_reconcile_conflict()
+    }
+
+    pub(crate) fn launch_error() -> Self {
+        Self::new(false).with_launch_error()
+    }
+
+    pub(crate) fn cleanup_error() -> Self {
+        Self::new(false).with_release_error()
+    }
+
+    fn with_mismatched_receipt(mut self) -> Self {
+        self.mismatched_receipt = true;
+        self
+    }
+
+    fn with_reconcile_conflict(mut self) -> Self {
+        self.reconcile_conflict = true;
+        self
+    }
+
+    fn with_launch_error(mut self) -> Self {
+        self.launch_error = true;
+        self
+    }
+
+    fn with_release_error(mut self) -> Self {
+        self.release_error = true;
+        self
     }
 
     pub(crate) fn entries(&self) -> Vec<String> {
@@ -149,6 +201,11 @@ impl LiveWorkflowSessionFactory for FakeFactory {
             log: Arc::clone(&self.log),
             unknown: self.unknown,
             dispatch_error: self.dispatch_error,
+            mismatched_receipt: self.mismatched_receipt,
+            reconcile_conflict: self.reconcile_conflict,
+            launch_error: self.launch_error,
+            stop_error: self.stop_error,
+            release_error: self.release_error,
             identity: None,
             action: None,
         }))
@@ -159,6 +216,11 @@ struct FakeSession {
     log: Arc<Mutex<Vec<String>>>,
     unknown: bool,
     dispatch_error: bool,
+    mismatched_receipt: bool,
+    reconcile_conflict: bool,
+    launch_error: bool,
+    stop_error: bool,
+    release_error: bool,
     identity: Option<String>,
     action: Option<EpisodeLegalAction>,
 }
@@ -172,12 +234,26 @@ impl FakeSession {
 impl LiveWorkflowSession for FakeSession {
     fn launch(&mut self) -> Result<(), sts2_harness::management::ManagementError> {
         self.record("launch");
+        if self.launch_error {
+            return Err(sts2_harness::management::ManagementError::unavailable(
+                "fake_launch",
+                "fixture launch failed",
+            ));
+        }
         Ok(())
     }
 
     fn observe(&mut self) -> Result<EpisodeObservation, sts2_harness::management::ManagementError> {
         self.record("observe");
         Ok(observation("state-0", 0))
+    }
+
+    fn observe_projection(
+        &mut self,
+        projection_ref: &str,
+    ) -> Result<EpisodeObservation, sts2_harness::management::ManagementError> {
+        assert_eq!(projection_ref, "fair-play.live.v1");
+        self.observe()
     }
 
     fn legal_actions(
@@ -208,6 +284,17 @@ impl LiveWorkflowSession for FakeSession {
         })
     }
 
+    fn decide_for(
+        &mut self,
+        input: &DecisionInput,
+        decision_profile_ref: &str,
+        context_ref: &str,
+    ) -> Result<Decision, sts2_harness::management::ManagementError> {
+        assert_eq!(decision_profile_ref, "decision.live.v1");
+        assert_eq!(context_ref, "context.live.v1");
+        self.decide(input)
+    }
+
     fn dispatch_action(
         &mut self,
         identity: &ActionIdentity,
@@ -220,6 +307,16 @@ impl LiveWorkflowSession for FakeSession {
             return Err(sts2_harness::management::ManagementError::unresolved(
                 "fake_transport",
                 "dispatch response was lost",
+            ));
+        }
+        if self.mismatched_receipt {
+            return Ok(TransitionReceipt::new(
+                format!("{}-other", identity.operation_id),
+                action.clone(),
+                DispatchStatus::Settled,
+                Some(observation("state-1", 1)),
+                Some("host.semantic.mismatched".to_owned()),
+                None,
             ));
         }
         let status = if self.unknown {
@@ -266,6 +363,16 @@ impl LiveWorkflowSession for FakeSession {
                 "operation identity mismatch",
             ));
         }
+        if self.reconcile_conflict {
+            return Ok(TransitionReceipt::new(
+                format!("{operation_id}-other"),
+                action,
+                DispatchStatus::Settled,
+                Some(observation("state-1", 1)),
+                Some("host.semantic.reconcile-conflict".to_owned()),
+                None,
+            ));
+        }
         Ok(TransitionReceipt::new(
             operation_id,
             action,
@@ -277,11 +384,24 @@ impl LiveWorkflowSession for FakeSession {
     }
 
     fn release_lease(&mut self) -> Result<(), sts2_harness::management::ManagementError> {
+        self.record("release");
+        if self.release_error {
+            return Err(sts2_harness::management::ManagementError::unavailable(
+                "fake_release",
+                "fixture lease release failed",
+            ));
+        }
         Ok(())
     }
 
     fn stop_episode(&mut self) -> Result<(), sts2_harness::management::ManagementError> {
         self.record("stop");
+        if self.stop_error {
+            return Err(sts2_harness::management::ManagementError::unavailable(
+                "fake_stop",
+                "fixture stop failed",
+            ));
+        }
         Ok(())
     }
 }

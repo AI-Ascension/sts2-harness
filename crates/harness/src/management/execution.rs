@@ -121,7 +121,17 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
             .open(request, actor, &definition, definition_digest)?;
         let runtime = StrictRuntime::new(compiled)
             .map_err(|error| ManagementError::invalid("runtime_admission", error.to_string()))?;
-        session.launch()?;
+        if let Err(error) = session.launch() {
+            let stop_error = session.stop_episode().err();
+            let release_error = session.release_lease().err();
+            if let Some(cleanup_error) = stop_error.or(release_error) {
+                return Err(ManagementError::unavailable(
+                    "live_launch_cleanup_failed",
+                    format!("live launch failed ({error}); cleanup failed ({cleanup_error})"),
+                ));
+            }
+            return Err(error);
+        }
         let run_id = live_run_id(request, definition_digest)?;
         let snapshot = snapshot_from_runtime(
             &run_id,

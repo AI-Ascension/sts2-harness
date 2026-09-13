@@ -45,9 +45,13 @@ pub trait EpisodeRuntimePort: BarrierPort + RecoveryPort + ShutdownPort {
     /// newer adapters can route the reference to a negotiated projection.
     fn observe_projection(
         &mut self,
-        _projection_ref: &str,
+        projection_ref: &str,
     ) -> Result<EpisodeObservation, PortError> {
-        self.observe()
+        Err(PortError::new(
+            "projection_binding_unavailable",
+            format!("runtime does not support authored projection {projection_ref}"),
+            false,
+        ))
     }
 
     fn legal_actions(
