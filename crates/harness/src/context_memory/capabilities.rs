@@ -18,7 +18,27 @@ pub struct MemoryCapabilities {
     pub semantic_vector_retrieval: String,
     pub hidden_reasoning_access: bool,
     pub direct_game_dispatch: bool,
+    /// Limits enforced by this owner for the advertised policy revision. These are deliberately
+    /// separate from the broader JSON Schema ceilings, which only establish portable syntax.
+    pub effective_limits: EffectiveMemoryLimits,
     pub supported_operations: Vec<String>,
+}
+
+/// Owner-enforced policy limits bound to a capability response.
+///
+/// A policy can be valid against the public schema while exceeding one of these values. Callers
+/// must use this descriptor for admission and preserve an over-limit policy for inspection rather
+/// than clamping it.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EffectiveMemoryLimits {
+    pub policy_schema: String,
+    pub max_candidates: usize,
+    pub max_results: usize,
+    pub max_selected: usize,
+    pub optional_byte_budget: usize,
+    pub max_entries_per_run: usize,
+    pub max_corpus_bytes: usize,
 }
 
 impl MemoryCorpus {
@@ -39,6 +59,15 @@ impl MemoryCorpus {
             semantic_vector_retrieval: "unsupported".to_owned(),
             hidden_reasoning_access: false,
             direct_game_dispatch: false,
+            effective_limits: EffectiveMemoryLimits {
+                policy_schema: MEMORY_POLICY_SCHEMA.to_owned(),
+                max_candidates: MAX_CANDIDATES,
+                max_results: MAX_RESULTS,
+                max_selected: MAX_SELECTED,
+                optional_byte_budget: MAX_OPTIONAL_BYTES,
+                max_entries_per_run: MAX_ENTRIES_PER_RUN,
+                max_corpus_bytes: MAX_CORPUS_BYTES,
+            },
             supported_operations: if self.enabled {
                 vec![
                     "search", "extract", "generate", "review", "select", "policy", "adopt",

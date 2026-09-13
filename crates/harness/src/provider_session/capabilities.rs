@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::common::{
-    NATIVE_FRAME_SCHEMA, SESSION_CAPABILITIES_SCHEMA, SessionError, digest, valid_digest, valid_id,
-    valid_method,
+    MAX_COMPLETED_TURNS, MAX_HISTORY_TTL_SECONDS, NATIVE_FRAME_SCHEMA, SESSION_CAPABILITIES_SCHEMA,
+    SESSION_POLICY_SCHEMA, SessionError, digest, valid_digest, valid_id, valid_method,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -30,10 +30,21 @@ pub struct NativeCapabilities {
     pub transport: String,
     pub enabled_methods: Vec<String>,
     pub hardening: CapabilityHardening,
+    /// Limits the selected native profile can execute. They bind this capability descriptor to the
+    /// policy revision and must be checked before a session is admitted.
+    pub effective_limits: EffectiveSessionLimits,
     pub strict_executable: bool,
     pub experimental_api: bool,
     pub unknown_methods: String,
     pub raw_rpc: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EffectiveSessionLimits {
+    pub policy_schema: String,
+    pub max_completed_turns: usize,
+    pub max_history_ttl_seconds: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -85,6 +96,11 @@ impl NativeCapabilities {
                 configuration_verified: true,
                 transform_handling: TransformHandling::DetectAndFence,
             },
+            effective_limits: EffectiveSessionLimits {
+                policy_schema: SESSION_POLICY_SCHEMA.to_owned(),
+                max_completed_turns: MAX_COMPLETED_TURNS,
+                max_history_ttl_seconds: MAX_HISTORY_TTL_SECONDS,
+            },
             strict_executable: false,
             experimental_api: false,
             unknown_methods: "deny".to_owned(),
@@ -110,6 +126,11 @@ impl NativeCapabilities {
                 != self.enabled_methods.len()
             || self.hardening.tools_enabled
             || self.hardening.ambient_history
+            || self.effective_limits.policy_schema != SESSION_POLICY_SCHEMA
+            || self.effective_limits.max_completed_turns == 0
+            || self.effective_limits.max_completed_turns > MAX_COMPLETED_TURNS
+            || self.effective_limits.max_history_ttl_seconds == 0
+            || self.effective_limits.max_history_ttl_seconds > MAX_HISTORY_TTL_SECONDS
             || self.unknown_methods != "deny"
             || self.raw_rpc
         {

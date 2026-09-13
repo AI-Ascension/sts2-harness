@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const SESSION_BINDING_SCHEMA: &str = "ascension.provider-session.binding.v1";
-pub const SESSION_CAPABILITIES_SCHEMA: &str = "ascension.provider-session.capabilities.v1";
+pub const SESSION_CAPABILITIES_SCHEMA: &str = "ascension.provider-session.capabilities.v2";
 pub const SESSION_COMPACTION_SCHEMA: &str = "ascension.provider-session.compaction.v1";
 pub const SESSION_EVENT_SCHEMA: &str = "ascension.provider-session.event.v1";
 pub const SESSION_FORK_SCHEMA: &str = "ascension.provider-session.fork.v1";
