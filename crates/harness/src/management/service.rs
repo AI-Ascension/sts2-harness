@@ -191,7 +191,7 @@ pub struct DiffResult {
 }
 
 pub use execution_types::{
-    CommandApplication, CommandContext, RunAdmission, WorkflowExecutionPort,
+    CommandApplication, CommandContext, RunAdmission, RunReservation, WorkflowExecutionPort,
 };
 
 pub trait WorkflowReplayPort: Send + Sync {

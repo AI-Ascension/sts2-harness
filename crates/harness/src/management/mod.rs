@@ -61,10 +61,10 @@ pub use service::{
     CapabilityPort, CommandApplication, CommandContext, ContextInspectionPort,
     ContextInspectionResult, DefinitionPort, DiffResult, InspectionResult, ManagementError,
     ManagementService, ProviderSessionInspectionPort, ProviderSessionInspectionResult,
-    ReplayResult, RunAdmission, UnavailableAuthoringStore, UnavailableCapabilityPort,
-    UnavailableContextInspectionPort, UnavailableDefinitionPort, UnavailableExecutionPort,
-    UnavailableProviderSessionInspectionPort, UnavailableReplayPort, ValidationResult,
-    WorkflowExecutionPort, WorkflowReplayPort,
+    ReplayResult, RunAdmission, RunReservation, UnavailableAuthoringStore,
+    UnavailableCapabilityPort, UnavailableContextInspectionPort, UnavailableDefinitionPort,
+    UnavailableExecutionPort, UnavailableProviderSessionInspectionPort, UnavailableReplayPort,
+    ValidationResult, WorkflowExecutionPort, WorkflowReplayPort,
 };
 pub use store::{
     CommandAcceptance, FileWorkflowStore, MemoryWorkflowStore, SqliteWorkflowStore, StoreError,

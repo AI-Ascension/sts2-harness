@@ -71,20 +71,33 @@ impl ManagementService {
             digest_value(&json!({ "artifact_id": request.artifact_id }))?
         };
         let binding = self.revalidate_target_admission(actor, &request, &definition_digest)?;
-        let mut admission = self.execution.submit_admitted(
+        let reservation_binding = binding.clone();
+        let reservation_store = Arc::clone(&self.store);
+        let reservation_request_id = request.request_id.clone();
+        let reservation_request_digest = request_digest.clone();
+        let reservation_definition_digest = definition_digest.clone();
+        let reserve = move |candidate: &RunAdmission| {
+            let mut durable = candidate.clone();
+            durable.snapshot =
+                bind_snapshot_admission(durable.snapshot, reservation_binding.as_ref())?;
+            verify_admission(&durable, &reservation_definition_digest)?;
+            reservation_store.create_run(
+                &reservation_request_id,
+                &reservation_request_digest,
+                durable.snapshot,
+                durable.initial_events,
+            )?;
+            Ok(())
+        };
+        let mut admission = self.execution.submit_admitted_with_reservation(
             &request,
             actor,
             &definition_digest,
             binding.as_ref(),
+            &reserve,
         )?;
         admission.snapshot = bind_snapshot_admission(admission.snapshot, binding.as_ref())?;
         verify_admission(&admission, &definition_digest)?;
-        self.store.create_run(
-            &request.request_id,
-            &request_digest,
-            admission.snapshot.clone(),
-            admission.initial_events,
-        )?;
         Ok(run_submission_response(&admission.snapshot))
     }
 

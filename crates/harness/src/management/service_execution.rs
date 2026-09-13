@@ -6,6 +6,8 @@ use super::super::contract::{
 };
 use super::ManagementError;
 
+pub type RunReservation<'a> = dyn Fn(&RunAdmission) -> Result<(), ManagementError> + 'a;
+
 pub trait WorkflowExecutionPort: Send + Sync {
     fn submit(
         &self,
@@ -37,6 +39,25 @@ pub trait WorkflowExecutionPort: Send + Sync {
             }
             result.snapshot.admission = Some(binding.clone());
         }
+        Ok(result)
+    }
+
+    /// Submit while giving the execution adapter a durable reservation hook.
+    ///
+    /// Live adapters override this method and invoke `reserve` before opening
+    /// a session or launching an episode. The default keeps compatibility with
+    /// existing adapters; those adapters still receive the exact binding and
+    /// must not cross a mutating boundary from the callback itself.
+    fn submit_admitted_with_reservation(
+        &self,
+        request: &RunRequest,
+        actor: &AuthContext,
+        definition_digest: &str,
+        admission: Option<&TargetAdmissionBinding>,
+        reserve: &RunReservation<'_>,
+    ) -> Result<RunAdmission, ManagementError> {
+        let result = self.submit_admitted(request, actor, definition_digest, admission)?;
+        reserve(&result)?;
         Ok(result)
     }
 
