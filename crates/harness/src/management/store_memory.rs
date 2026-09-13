@@ -1,25 +1,21 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::contract::{
-    CommandRequest, CommandResponse, EventPage, ExportResponse, PendingOperation, RunEvent,
-    RunSnapshot,
+    CommandRequest, CommandResponse, EventPage, ExportResponse, PendingOperation,
 };
-use super::ops::{
-    accept_command, apply_command, create_run, events, export, get_run, lookup_submission,
-    record_operation_intent, release_command, update_run_snapshot,
-};
+use super::ops;
 use super::{
-    CommandAcceptance, CommandApplication, FileWorkflowStore, StoreError, SubmissionLookup,
-    WorkflowStore,
+    CommandAcceptance, CommandApplication, MemoryWorkflowStore, RunEvent, RunSnapshot, StoreError,
+    SubmissionLookup, WorkflowStore,
 };
 
-impl WorkflowStore for FileWorkflowStore {
+impl WorkflowStore for MemoryWorkflowStore {
     fn lookup_submission(
         &self,
         request_id: &str,
         request_digest: &str,
     ) -> Result<SubmissionLookup, StoreError> {
-        lookup_submission(&self.core, request_id, request_digest)
+        ops::lookup_submission(&self.core, request_id, request_digest)
     }
 
     fn create_run(
@@ -29,7 +25,7 @@ impl WorkflowStore for FileWorkflowStore {
         snapshot: RunSnapshot,
         initial_events: Vec<RunEvent>,
     ) -> Result<(), StoreError> {
-        create_run(
+        ops::create_run(
             &self.core,
             request_id,
             request_digest,
@@ -44,11 +40,11 @@ impl WorkflowStore for FileWorkflowStore {
         request_digest: &str,
         snapshot: RunSnapshot,
     ) -> Result<(), StoreError> {
-        update_run_snapshot(&self.core, request_id, request_digest, snapshot)
+        ops::update_run_snapshot(&self.core, request_id, request_digest, snapshot)
     }
 
     fn get_run(&self, run_id: &str) -> Result<Option<RunSnapshot>, StoreError> {
-        get_run(&self.core, run_id)
+        ops::get_run(&self.core, run_id)
     }
 
     fn events(
@@ -57,7 +53,7 @@ impl WorkflowStore for FileWorkflowStore {
         after_sequence: u64,
         limit: u64,
     ) -> Result<EventPage, StoreError> {
-        events(&self.core, run_id, after_sequence, limit)
+        ops::events(&self.core, run_id, after_sequence, limit)
     }
 
     fn accept_command(
@@ -65,7 +61,7 @@ impl WorkflowStore for FileWorkflowStore {
         request: &CommandRequest,
         request_digest: &str,
     ) -> Result<CommandAcceptance, StoreError> {
-        accept_command(&self.core, request, request_digest)
+        ops::accept_command(&self.core, request, request_digest)
     }
 
     fn apply_command(
@@ -74,7 +70,7 @@ impl WorkflowStore for FileWorkflowStore {
         request_digest: &str,
         application: CommandApplication,
     ) -> Result<CommandResponse, StoreError> {
-        apply_command(&self.core, request, request_digest, application)
+        ops::apply_command(&self.core, request, request_digest, application)
     }
 
     fn record_operation_intent(
@@ -83,7 +79,7 @@ impl WorkflowStore for FileWorkflowStore {
         expected_revision: u64,
         pending: PendingOperation,
     ) -> Result<(), StoreError> {
-        record_operation_intent(&self.core, run_id, expected_revision, pending)
+        ops::record_operation_intent(&self.core, run_id, expected_revision, pending)
     }
 
     fn release_command(
@@ -91,10 +87,10 @@ impl WorkflowStore for FileWorkflowStore {
         request: &CommandRequest,
         request_digest: &str,
     ) -> Result<(), StoreError> {
-        release_command(&self.core, request, request_digest)
+        ops::release_command(&self.core, request, request_digest)
     }
 
     fn export(&self, run_id: &str, redacted: bool) -> Result<ExportResponse, StoreError> {
-        export(&self.core, run_id, redacted)
+        ops::export(&self.core, run_id, redacted)
     }
 }

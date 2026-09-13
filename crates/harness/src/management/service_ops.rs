@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 
+use super::submission;
 use super::support::{
     authorize, enforce_live_profile, recovery_admission, run_submission_response, validate_profile,
-    verify_admission, verify_digest, waiting_reason,
+    verify_digest, waiting_reason,
 };
-use super::target_admission::{bind_snapshot_admission, validate_run_target_admission};
+use super::target_admission::{
+    bind_snapshot_admission, is_live_profile, validate_run_target_admission,
+};
 use super::*;
 
 impl ManagementService {
@@ -37,6 +40,17 @@ impl ManagementService {
             .lookup_submission(&request.request_id, &request_digest)?
         {
             SubmissionLookup::Existing(snapshot) => {
+                if is_live_profile(&request.profile)
+                    && matches!(
+                        snapshot.status,
+                        WorkflowRunStatus::Created | WorkflowRunStatus::NeedsOperator
+                    )
+                {
+                    return Err(ManagementError::unresolved(
+                        "live_submission_recovery_required",
+                        "a reserved live submission requires reconciliation before retry",
+                    ));
+                }
                 return Ok(run_submission_response(&snapshot));
             }
             SubmissionLookup::Conflict => {
@@ -70,35 +84,7 @@ impl ManagementService {
         } else {
             digest_value(&json!({ "artifact_id": request.artifact_id }))?
         };
-        let binding = self.revalidate_target_admission(actor, &request, &definition_digest)?;
-        let reservation_binding = binding.clone();
-        let reservation_store = Arc::clone(&self.store);
-        let reservation_request_id = request.request_id.clone();
-        let reservation_request_digest = request_digest.clone();
-        let reservation_definition_digest = definition_digest.clone();
-        let reserve = move |candidate: &RunAdmission| {
-            let mut durable = candidate.clone();
-            durable.snapshot =
-                bind_snapshot_admission(durable.snapshot, reservation_binding.as_ref())?;
-            verify_admission(&durable, &reservation_definition_digest)?;
-            reservation_store.create_run(
-                &reservation_request_id,
-                &reservation_request_digest,
-                durable.snapshot,
-                durable.initial_events,
-            )?;
-            Ok(())
-        };
-        let mut admission = self.execution.submit_admitted_with_reservation(
-            &request,
-            actor,
-            &definition_digest,
-            binding.as_ref(),
-            &reserve,
-        )?;
-        admission.snapshot = bind_snapshot_admission(admission.snapshot, binding.as_ref())?;
-        verify_admission(&admission, &definition_digest)?;
-        Ok(run_submission_response(&admission.snapshot))
+        submission::submit_run(self, actor, request, request_digest, definition_digest)
     }
 
     pub fn status(

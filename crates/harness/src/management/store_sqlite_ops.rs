@@ -19,6 +19,9 @@ pub(super) use export::export;
 #[path = "store_sqlite_create.rs"]
 mod create;
 pub(crate) use create::create_run;
+#[path = "store_sqlite_submission.rs"]
+mod submission;
+pub(crate) use submission::update_run_snapshot;
 #[path = "store_sqlite_release.rs"]
 mod release;
 pub(crate) use release::release_command;

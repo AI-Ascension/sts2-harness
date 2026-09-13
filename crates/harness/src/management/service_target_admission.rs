@@ -212,6 +212,6 @@ pub(super) fn bind_snapshot_admission(
     Ok(snapshot)
 }
 
-fn is_live_profile(profile: &str) -> bool {
+pub(super) fn is_live_profile(profile: &str) -> bool {
     profile == "live" || profile.starts_with("live.")
 }

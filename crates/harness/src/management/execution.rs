@@ -84,33 +84,21 @@ impl LiveWorkflowExecutionPort {
 impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
     fn submit(
         &self,
-        request: &RunRequest,
-        actor: &AuthContext,
-        definition_digest: &str,
+        _request: &RunRequest,
+        _actor: &AuthContext,
+        _definition_digest: &str,
     ) -> Result<RunAdmission, ManagementError> {
-        self.submit_inner(request, actor, definition_digest, None)
+        Err(Self::unreserved_submission_error())
     }
 
     fn submit_admitted(
         &self,
-        request: &RunRequest,
-        actor: &AuthContext,
-        definition_digest: &str,
-        admission: Option<&TargetAdmissionBinding>,
+        _request: &RunRequest,
+        _actor: &AuthContext,
+        _definition_digest: &str,
+        _admission: Option<&TargetAdmissionBinding>,
     ) -> Result<RunAdmission, ManagementError> {
-        let expected = admission.ok_or_else(|| {
-            ManagementError::conflict(
-                "target_admission_required",
-                "live execution requires an exact target admission binding",
-            )
-        })?;
-        if request.admission.as_ref() != Some(expected) {
-            return Err(ManagementError::conflict(
-                "target_admission_mismatch",
-                "execution admission does not match the submitted request",
-            ));
-        }
-        self.submit_inner(request, actor, definition_digest, None)
+        Err(Self::unreserved_submission_error())
     }
 
     fn submit_admitted_with_reservation(
@@ -133,7 +121,7 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
                 "execution admission does not match the submitted request",
             ));
         }
-        self.submit_inner(request, actor, definition_digest, Some(reserve))
+        self.submit_inner(request, actor, definition_digest, reserve)
     }
 
     fn apply_command(
@@ -153,12 +141,19 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
 }
 
 impl LiveWorkflowExecutionPort {
+    fn unreserved_submission_error() -> ManagementError {
+        ManagementError::conflict(
+            "live_reservation_required",
+            "live execution requires the durable reservation submission path",
+        )
+    }
+
     fn submit_inner(
         &self,
         request: &RunRequest,
         actor: &AuthContext,
         definition_digest: &str,
-        reserve: Option<&RunReservation<'_>>,
+        reserve: &RunReservation<'_>,
     ) -> Result<RunAdmission, ManagementError> {
         let admission = request.admission.as_ref().ok_or_else(|| {
             ManagementError::conflict(
@@ -205,7 +200,7 @@ impl LiveWorkflowExecutionPort {
         let runtime = StrictRuntime::new(compiled)
             .map_err(|error| ManagementError::invalid("runtime_admission", error.to_string()))?;
         let run_id = live_run_id(request, definition_digest)?;
-        let snapshot = snapshot_from_runtime(
+        let mut snapshot = snapshot_from_runtime(
             &run_id,
             definition_digest,
             &runtime,
@@ -215,6 +210,7 @@ impl LiveWorkflowExecutionPort {
             },
             1,
         );
+        snapshot.status = super::super::contract::WorkflowRunStatus::Created;
         let event = RunEvent {
             schema_version: super::super::contract::EVENT_SCHEMA_VERSION.to_owned(),
             workflow_run_id: run_id.clone(),
@@ -234,11 +230,7 @@ impl LiveWorkflowExecutionPort {
             snapshot: snapshot.clone(),
             initial_events: vec![event.clone()],
         };
-        if let Some(reserve) = reserve
-            && let Err(error) = reserve(&admission_result)
-        {
-            return Err(error);
-        }
+        reserve(&admission_result)?;
         admission::validate_live_catalog(self.factory.as_ref(), actor, admission)?;
         let mut session = self
             .factory
@@ -287,6 +279,8 @@ impl LiveWorkflowExecutionPort {
                 ));
             }
         }
+        let mut admission_result = admission_result;
+        admission_result.snapshot.status = super::super::contract::WorkflowRunStatus::Running;
         Ok(admission_result)
     }
 }

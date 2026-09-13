@@ -98,6 +98,15 @@ impl WorkflowStore for SqliteWorkflowStore {
         ops::create_run(self, request_id, request_digest, snapshot, initial_events)
     }
 
+    fn update_run_snapshot(
+        &self,
+        request_id: &str,
+        request_digest: &str,
+        snapshot: RunSnapshot,
+    ) -> Result<(), StoreError> {
+        ops::update_run_snapshot(self, request_id, request_digest, snapshot)
+    }
+
     fn get_run(&self, run_id: &str) -> Result<Option<RunSnapshot>, StoreError> {
         ops::get_run(self, run_id)
     }

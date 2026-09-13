@@ -39,6 +39,8 @@ mod ops;
 mod provider_session_support;
 #[path = "service_read.rs"]
 mod read;
+#[path = "service_submission.rs"]
+mod submission;
 #[path = "service_support.rs"]
 mod support;
 #[path = "service_target_admission.rs"]

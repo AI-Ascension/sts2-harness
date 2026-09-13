@@ -20,6 +20,9 @@ mod persistence;
 #[path = "store_ops_run.rs"]
 mod run;
 pub(super) use intent::record_operation_intent;
+#[path = "store_ops_submission.rs"]
+mod submission;
+pub(crate) use submission::update_run_snapshot;
 
 pub(super) use persistence::{io_store_error, persist};
 pub(crate) use run::create_run;

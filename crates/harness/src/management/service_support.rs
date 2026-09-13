@@ -173,6 +173,9 @@ pub(super) fn recovery_admission(snapshot: &RunSnapshot) -> RecoveryAdmission {
     }
 
     match (&snapshot.status, &snapshot.cleanup) {
+        (WorkflowRunStatus::Created, _) if snapshot.admission.is_some() => {
+            RecoveryAdmission::NeedsOperator
+        }
         (WorkflowRunStatus::Created | WorkflowRunStatus::Validated, _) => {
             RecoveryAdmission::NoPendingEffects
         }
