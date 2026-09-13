@@ -8,10 +8,13 @@ mod json;
 mod provider_session;
 #[path = "contract_store_types.rs"]
 mod store_types;
+#[path = "contract_target_admission.rs"]
+mod target_admission;
 #[path = "contract_types.rs"]
 mod types;
 
 pub use json::*;
 pub use provider_session::*;
 pub use store_types::*;
+pub use target_admission::*;
 pub use types::*;

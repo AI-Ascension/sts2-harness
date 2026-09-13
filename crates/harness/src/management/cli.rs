@@ -189,6 +189,7 @@ fn run_command(args: &[String]) -> Result<CliOutput, CliFailure> {
         artifact_id: None,
         instance_id: instance_id.to_owned(),
         profile: profile.to_owned(),
+        admission: None,
     })
     .map_err(CliFailure::local)?;
     request_and_render(

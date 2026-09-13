@@ -9,13 +9,13 @@ use serde_json::{Value, json};
 use sts2_harness::management::{
     AuthContext, Budget, CleanupState, CommandApplication, CommandKind, CommandParameters,
     CommandRequest, Cursor, DefinitionPort, DiffRequest, DiffResult, EVENT_SCHEMA_VERSION,
-    ErrorClass, EventClassification, EventPayload, EventType, FileWorkflowStore, GameOutcome,
-    InspectRequest, InspectionResult, MANAGEMENT_SCHEMA_VERSION, ManagementClient, ManagementError,
-    ManagementReplayRequest, ManagementServer, ManagementService, MemoryWorkflowStore,
-    OutputFormat, RUN_SCHEMA_VERSION, RecoveryAdmission, ReplayResult, RunAdmission, RunEvent,
-    RunRequest, RunSnapshot, ServerConfig, StaticAuthenticator, ValidateRequest, ValidationResult,
-    WorkflowExecutionPort, WorkflowReplayPort, WorkflowRunStatus, WorkflowStore, decode_strict,
-    digest_value,
+    ErrorClass, EventClassification, EventPayload, EventType, ExecutionMode, FileWorkflowStore,
+    GameOutcome, InspectRequest, InspectionResult, MANAGEMENT_SCHEMA_VERSION, ManagementClient,
+    ManagementError, ManagementReplayRequest, ManagementServer, ManagementService,
+    MemoryWorkflowStore, OutputFormat, RUN_SCHEMA_VERSION, RecoveryAdmission, ReplayResult,
+    RunAdmission, RunEvent, RunRequest, RunSnapshot, RunTargetConfiguration, ServerConfig,
+    StaticAuthenticator, ValidateRequest, ValidationResult, WorkflowExecutionPort,
+    WorkflowReplayPort, WorkflowRunStatus, WorkflowStore, decode_strict, digest_value,
 };
 
 struct DefinitionDouble;
@@ -168,6 +168,7 @@ fn snapshot(
         pending_operation: None,
         budget: Budget::default(),
         cleanup: CleanupState::NotStarted,
+        admission: None,
     }
 }
 
@@ -207,6 +208,7 @@ fn run_request() -> RunRequest {
         artifact_id: None,
         instance_id: "instance-1".to_owned(),
         profile: "synthetic".to_owned(),
+        admission: None,
     }
 }
 
@@ -217,6 +219,46 @@ fn strict_management_json_rejects_duplicate_and_unknown_fields() {
 
     let unknown = br#"{"schema_version":"ascension.management/v1","definition":{},"capabilities":{},"extra":true}"#;
     assert!(decode_strict::<ValidateRequest>(unknown).is_err());
+}
+
+#[test]
+fn target_admission_is_required_for_live_and_rejects_stale_workflow_revision() {
+    let execution = Arc::new(ExecutionDouble::new());
+    let replay = Arc::new(ReplayDouble::new());
+    let service = service_with_doubles(Arc::clone(&execution), replay);
+    let actor = actor().expect("actor");
+
+    let mut missing = run_request();
+    missing.profile = "live.workflow.v1".to_owned();
+    let error = service
+        .submit_run(&actor, missing)
+        .expect_err("live submission without admission must fail closed");
+    assert_eq!(error.code, "target_admission_required");
+
+    let definition: Value = serde_json::from_slice(include_bytes!(
+        "../../../conformance/workflow-v1/valid-strict.json"
+    ))
+    .expect("valid workflow fixture");
+    let mut stale = run_request();
+    stale.definition = Some(definition);
+    stale.admission = Some(RunTargetConfiguration {
+        instance_id: stale.instance_id.clone(),
+        execution_profile: stale.profile.clone(),
+        execution_mode: ExecutionMode::Synthetic,
+        workflow_revision: "9.9.9".to_owned(),
+        compatibility_revision: "synthetic.compatibility.v1".to_owned(),
+        capability_revision: "synthetic.capabilities.v1".to_owned(),
+        game_profile: "synthetic-sts2-v1".to_owned(),
+        save_profile: None,
+        inference_profile: None,
+        context_capability: None,
+        provider_capability: None,
+    });
+    let error = service
+        .submit_run(&actor, stale)
+        .expect_err("stale admission must fail before execution");
+    assert_eq!(error.code, "target_admission_stale");
+    assert_eq!(execution.submissions.load(Ordering::SeqCst), 0);
 }
 
 #[test]

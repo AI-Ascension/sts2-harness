@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use super::target_admission::TargetAdmissionBinding;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowRunStatus {
@@ -103,6 +105,8 @@ pub struct RunSnapshot {
     pub pending_operation: Option<PendingOperation>,
     pub budget: Budget,
     pub cleanup: CleanupState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub admission: Option<TargetAdmissionBinding>,
 }
 
 /// A scoped, redacted association between the current workflow cursor and its

@@ -2,7 +2,7 @@
 
 use super::support::{
     authorize, enforce_live_profile, recovery_admission, run_submission_response, validate_profile,
-    verify_admission, verify_digest, waiting_reason,
+    validate_run_target_admission, verify_admission, verify_digest, waiting_reason,
 };
 use super::*;
 
@@ -17,6 +17,7 @@ impl ManagementService {
         validate_identifier("request_id", &request.request_id)?;
         validate_identifier("instance_id", &request.instance_id)?;
         validate_profile(&request.profile)?;
+        validate_run_target_admission(&request)?;
         if request.definition.is_some() == request.artifact_id.is_some() {
             return Err(ManagementError::invalid(
                 "run_source_count",

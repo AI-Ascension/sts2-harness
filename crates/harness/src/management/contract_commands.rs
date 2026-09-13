@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::super::target_admission::RunTargetConfiguration;
 use super::{RecoveryAdmission, RunEvent, RunSnapshot, WorkflowRunStatus};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -101,6 +102,8 @@ pub struct RunRequest {
     pub artifact_id: Option<String>,
     pub instance_id: String,
     pub profile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub admission: Option<RunTargetConfiguration>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

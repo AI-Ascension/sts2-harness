@@ -163,6 +163,7 @@ fn persistent_synthetic_runtime_restores_after_service_restart()
         artifact_id: None,
         instance_id: "instance-runtime".to_owned(),
         profile: "synthetic".to_owned(),
+        admission: None,
     };
     let store = std::sync::Arc::new(SqliteWorkflowStore::open(&path)?);
     let service = synthetic_sqlite_store(std::sync::Arc::clone(&store));
@@ -217,6 +218,7 @@ fn persistent_synthetic_pause_and_resume_recover_the_same_harness_control_gate()
         artifact_id: None,
         instance_id: "instance-control-recovery".to_owned(),
         profile: "synthetic".to_owned(),
+        admission: None,
     };
     let store = std::sync::Arc::new(SqliteWorkflowStore::open(&path)?);
     let service = synthetic_sqlite_store(std::sync::Arc::clone(&store));
@@ -292,6 +294,7 @@ fn persistent_synthetic_legacy_run_without_control_journal_fails_closed()
             artifact_id: None,
             instance_id: "instance-control-legacy".to_owned(),
             profile: "synthetic".to_owned(),
+            admission: None,
         },
     )?;
     drop(service);
@@ -343,6 +346,7 @@ fn offline_replay_rejects_a_tampered_persisted_event() -> Result<(), Box<dyn std
             artifact_id: None,
             instance_id: "instance-replay".to_owned(),
             profile: "synthetic".to_owned(),
+            admission: None,
         },
     )?;
     let connection = rusqlite::Connection::open(&path)?;
