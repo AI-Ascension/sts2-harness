@@ -117,6 +117,7 @@ pub(crate) struct FakeFactory {
     launch_error: bool,
     stop_error: bool,
     release_error: bool,
+    reconcile_unknown: bool,
 }
 
 impl FakeFactory {
@@ -131,6 +132,7 @@ impl FakeFactory {
             launch_error: false,
             stop_error: false,
             release_error: false,
+            reconcile_unknown: false,
         }
     }
 
@@ -145,6 +147,7 @@ impl FakeFactory {
             launch_error: false,
             stop_error: false,
             release_error: false,
+            reconcile_unknown: false,
         }
     }
 
@@ -164,6 +167,10 @@ impl FakeFactory {
         Self::new(false).with_release_error()
     }
 
+    pub(crate) fn unresolved_reconcile() -> Self {
+        Self::new(true).with_reconcile_unknown()
+    }
+
     fn with_mismatched_receipt(mut self) -> Self {
         self.mismatched_receipt = true;
         self
@@ -181,6 +188,11 @@ impl FakeFactory {
 
     fn with_release_error(mut self) -> Self {
         self.release_error = true;
+        self
+    }
+
+    fn with_reconcile_unknown(mut self) -> Self {
+        self.reconcile_unknown = true;
         self
     }
 
@@ -235,6 +247,7 @@ impl LiveWorkflowSessionFactory for FakeFactory {
             launch_error: self.launch_error,
             stop_error: self.stop_error,
             release_error: self.release_error,
+            reconcile_unknown: self.reconcile_unknown,
             identity: None,
             action: None,
         }))
@@ -250,6 +263,7 @@ struct FakeSession {
     launch_error: bool,
     stop_error: bool,
     release_error: bool,
+    reconcile_unknown: bool,
     identity: Option<String>,
     action: Option<EpisodeLegalAction>,
 }
@@ -399,6 +413,16 @@ impl LiveWorkflowSession for FakeSession {
                 DispatchStatus::Settled,
                 Some(observation("state-1", 1)),
                 Some("host.semantic.reconcile-conflict".to_owned()),
+                None,
+            ));
+        }
+        if self.reconcile_unknown {
+            return Ok(TransitionReceipt::new(
+                operation_id,
+                action,
+                DispatchStatus::Accepted,
+                None,
+                None,
                 None,
             ));
         }

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use serde_json::json;
 use sts2_harness::management::{
     CommandKind, LiveWorkflowOptions, LiveWorkflowSessionFactory, MemoryWorkflowStore,
-    WorkflowRunStatus, live_store,
+    WorkflowRunStatus, WorkflowStore, live_store,
 };
 
 #[path = "support/live_workflow.rs"]
@@ -61,6 +61,73 @@ fn restart_with_durable_intent_fails_closed_without_redispatch() {
             .expect("durable intent")
             .classification,
         sts2_harness::management::PendingOperationState::Intent
+    );
+}
+
+#[test]
+fn store_failure_after_live_launch_rolls_back_admission_without_a_leaked_run() {
+    let seed_store = Arc::new(MemoryWorkflowStore::new());
+    let seed_factory = Arc::new(FakeFactory::new(false));
+    let seed_service = live_store(
+        Arc::clone(&seed_store) as Arc<dyn WorkflowStore>,
+        Arc::clone(&seed_factory) as Arc<dyn LiveWorkflowSessionFactory>,
+        LiveWorkflowOptions::default(),
+    )
+    .expect("seed service");
+    let actor = actor();
+    let request = request("request-live-store-failure", definition(false));
+    let seeded = seed_service
+        .submit_run(&actor, request.clone())
+        .expect("seed admission");
+    let seeded_snapshot = seed_service
+        .status(&actor, &seeded.workflow_run_id)
+        .expect("seed status")
+        .run;
+    let seeded_events = seed_store
+        .events(&seeded.workflow_run_id, 0, 128)
+        .expect("seed events")
+        .events;
+    seed_service
+        .command(
+            &actor,
+            command(
+                &seeded.workflow_run_id,
+                "seed-cleanup",
+                seeded.run_revision,
+                CommandKind::Cancel,
+            ),
+        )
+        .expect("seed cleanup");
+
+    let store = Arc::new(MemoryWorkflowStore::new());
+    store
+        .create_run(
+            "request-live-store-conflict",
+            "fixture-store-conflict",
+            seeded_snapshot,
+            seeded_events,
+        )
+        .expect("seed duplicate run");
+    let factory = Arc::new(FakeFactory::new(false));
+    let service = live_store(
+        Arc::clone(&store) as Arc<dyn WorkflowStore>,
+        Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
+        LiveWorkflowOptions::default(),
+    )
+    .expect("service");
+    let error = service
+        .submit_run(&actor, request.clone())
+        .expect_err("store failure");
+    assert_eq!(error.code, "duplicate_run");
+    assert_eq!(factory.entries(), ["launch", "stop", "release"]);
+
+    let retry_error = service
+        .submit_run(&actor, request)
+        .expect_err("store failure remains deterministic");
+    assert_eq!(retry_error.code, "duplicate_run");
+    assert_eq!(
+        factory.entries(),
+        ["launch", "stop", "release", "launch", "stop", "release"]
     );
 }
 
@@ -156,6 +223,73 @@ fn cancel_attempts_cleanup_after_reconciliation_conflict() {
     assert_eq!(error.code, "live_reconcile_identity");
     assert!(factory.entries().contains(&"stop".to_owned()));
     assert!(factory.entries().contains(&"release".to_owned()));
+}
+
+#[test]
+fn unresolved_cancel_keeps_pending_identity_and_live_session() {
+    let factory = Arc::new(FakeFactory::unresolved_reconcile());
+    let service = live_store(
+        Arc::new(MemoryWorkflowStore::new()),
+        Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
+        LiveWorkflowOptions::default(),
+    )
+    .expect("service");
+    let actor = actor();
+    let submitted = service
+        .submit_run(
+            &actor,
+            request("request-live-cancel-unknown", definition(false)),
+        )
+        .expect("submit");
+    let run_id = submitted.workflow_run_id;
+    for (id, revision) in [("step-1", 1), ("step-2", 2)] {
+        service
+            .command(&actor, command(&run_id, id, revision, CommandKind::Step))
+            .expect("step");
+    }
+    service
+        .command(&actor, command(&run_id, "step-3", 3, CommandKind::Step))
+        .expect("unknown");
+    let before = service.status(&actor, &run_id).expect("status").run;
+    let operation_id = before
+        .pending_operation
+        .as_ref()
+        .expect("pending operation")
+        .operation_id
+        .clone();
+
+    let cancelled = service
+        .command(&actor, command(&run_id, "cancel", 4, CommandKind::Cancel))
+        .expect("cancel remains pending");
+    assert_eq!(
+        cancelled.outcome,
+        sts2_harness::management::CommandOutcome::Pending
+    );
+    let after = service.status(&actor, &run_id).expect("status").run;
+    assert_eq!(after.status, WorkflowRunStatus::NeedsOperator);
+    assert_eq!(
+        after
+            .pending_operation
+            .as_ref()
+            .expect("pending operation retained")
+            .operation_id,
+        operation_id
+    );
+    assert_eq!(
+        after.cleanup,
+        sts2_harness::management::CleanupState::NotStarted
+    );
+    assert_eq!(
+        factory.entries(),
+        [
+            "launch",
+            "observe",
+            "legal_actions",
+            "decide",
+            "dispatch",
+            "reconcile"
+        ]
+    );
 }
 
 #[test]
