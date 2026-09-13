@@ -26,7 +26,7 @@ impl ProviderSessionBroker {
 
     pub fn snapshot_json(&self) -> Result<Vec<u8>, SessionError> {
         let bytes = serde_json::to_vec(&self.snapshot()).map_err(|_| SessionError::Protocol)?;
-        if bytes.len() > MAX_HISTORY_BYTES {
+        if bytes.len() > self.capabilities.effective_limits.max_history_bytes {
             return Err(SessionError::Capacity);
         }
         Ok(bytes)
@@ -54,19 +54,19 @@ impl ProviderSessionBroker {
         expected_policy: &ProviderSessionPolicy,
         expected_capabilities: &NativeCapabilities,
     ) -> Result<Self, SessionError> {
-        expected_policy.validate()?;
-        expected_capabilities.validate()?;
-        if expected_policy.scope != *expected_scope
-            || expected_policy.profile_sha256 != expected_capabilities.profile_sha256
-        {
-            return Err(SessionError::InvalidPolicy);
-        }
         let snapshot = parse_snapshot(bytes)?;
         if snapshot.scope != *expected_scope
             || snapshot.policy != *expected_policy
             || snapshot.capabilities != *expected_capabilities
         {
             return Err(SessionError::Unsupported);
+        }
+        expected_policy.validate_schema()?;
+        expected_capabilities.validate()?;
+        if expected_policy.scope != *expected_scope
+            || expected_policy.profile_sha256 != expected_capabilities.profile_sha256
+        {
+            return Err(SessionError::InvalidPolicy);
         }
         Self::restore_snapshot(snapshot, owner_token)
     }
@@ -119,7 +119,9 @@ impl ProviderSessionBroker {
             .iter()
             .filter(|binding| binding.executable())
             .count();
-        if bounded_candidates > MAX_CANDIDATES || active_executable > 1 {
+        if bounded_candidates > self.capabilities.effective_limits.max_candidates
+            || active_executable > 1
+        {
             return Err(SessionError::Capacity);
         }
         for binding in bindings {
@@ -147,6 +149,9 @@ impl ProviderSessionBroker {
     }
 
     fn restore_operations(&mut self, operations: Vec<NativeOperation>) -> Result<(), SessionError> {
+        if operations.len() > self.capabilities.effective_limits.max_operations {
+            return Err(SessionError::Capacity);
+        }
         for operation in operations {
             if operation.scope != self.scope || !self.bindings.contains_key(&operation.binding_id) {
                 return Err(SessionError::InvalidOperation);
@@ -204,6 +209,9 @@ impl ProviderSessionBroker {
     }
 
     fn restore_events(&mut self, events: Vec<SessionEvent>) -> Result<(), SessionError> {
+        if events.len() > self.capabilities.effective_limits.max_events {
+            return Err(SessionError::Capacity);
+        }
         for event in events {
             if event.schema != SESSION_EVENT_SCHEMA
                 || event.scope != self.scope
@@ -225,7 +233,9 @@ impl ProviderSessionBroker {
         histories: std::collections::BTreeMap<String, Vec<HistoryItem>>,
     ) -> Result<(), SessionError> {
         for (binding_id, items) in histories {
-            if !self.bindings.contains_key(&binding_id) || items.len() > MAX_SESSION_ITEMS {
+            if !self.bindings.contains_key(&binding_id)
+                || items.len() > self.capabilities.effective_limits.max_session_items
+            {
                 return Err(SessionError::Capacity);
             }
             for item in &items {
@@ -253,7 +263,7 @@ impl ProviderSessionBroker {
         if compaction_jobs
             .len()
             .checked_add(fork_plans.len())
-            .is_none_or(|count| count > MAX_MAINTENANCE_JOBS)
+            .is_none_or(|count| count > self.capabilities.effective_limits.max_maintenance_jobs)
         {
             return Err(SessionError::Capacity);
         }

@@ -5,13 +5,19 @@ use std::collections::BTreeSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const SESSION_BINDING_SCHEMA: &str = "ascension.provider-session.binding.v1";
-pub const SESSION_CAPABILITIES_SCHEMA: &str = "ascension.provider-session.capabilities.v2";
+pub const SESSION_CAPABILITIES_SCHEMA: &str = "ascension.provider-session.capabilities.v3";
+pub const SESSION_CAPABILITIES_OWNER: &str = "sts2-harness";
+pub const SESSION_CAPABILITIES_REVISION: &str = "harness-provider-session-v3";
 pub const SESSION_COMPACTION_SCHEMA: &str = "ascension.provider-session.compaction.v1";
 pub const SESSION_EVENT_SCHEMA: &str = "ascension.provider-session.event.v1";
 pub const SESSION_FORK_SCHEMA: &str = "ascension.provider-session.fork.v1";
 pub const SESSION_HISTORY_SCHEMA: &str = "ascension.provider-session.history.v1";
 pub const SESSION_OPERATION_SCHEMA: &str = "ascension.provider-session.operation.v1";
 pub const SESSION_POLICY_SCHEMA: &str = "ascension.provider-session.policy.v1";
+/// Portable provider policy ceilings. Runtime/profile admission is checked separately against
+/// the effective limits in the integrity-checked capability descriptor.
+pub const SESSION_POLICY_SCHEMA_MAX_COMPLETED_TURNS: usize = 1_024;
+pub const SESSION_POLICY_SCHEMA_MAX_HISTORY_TTL_SECONDS: u64 = 604_800;
 pub const SESSION_PREPARED_SCHEMA: &str = "ascension.provider-session.prepared.v1";
 pub const SESSION_RECONCILIATION_SCHEMA: &str = "ascension.provider-session.reconciliation.v1";
 pub const SESSION_RETIREMENT_SCHEMA: &str = "ascension.provider-session.retirement.v1";

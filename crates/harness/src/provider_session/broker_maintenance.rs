@@ -90,7 +90,7 @@ impl ProviderSessionBroker {
             || !cutoff_verified
             || !valid_id(fork_plan_id)
             || !valid_id(cutoff_turn_ref)
-            || dependencies.len() > MAX_DEPENDENCIES
+            || dependencies.len() > self.capabilities.effective_limits.max_dependencies
             || !unique_ids(&dependencies)
         {
             return Err(SessionError::InvalidRequest);
@@ -102,7 +102,7 @@ impl ProviderSessionBroker {
             .compaction_jobs
             .len()
             .checked_add(self.fork_plans.len())
-            .is_none_or(|count| count >= MAX_MAINTENANCE_JOBS)
+            .is_none_or(|count| count >= self.capabilities.effective_limits.max_maintenance_jobs)
         {
             return Err(SessionError::Capacity);
         }
@@ -114,7 +114,7 @@ impl ProviderSessionBroker {
                     || binding.purpose == SessionPurpose::Evaluation
             })
             .count()
-            >= MAX_CANDIDATES
+            >= self.capabilities.effective_limits.max_candidates
         {
             return Err(SessionError::Capacity);
         }
@@ -124,7 +124,9 @@ impl ProviderSessionBroker {
                 dependency_ids.push(dependency);
             }
         }
-        if dependency_ids.len() > MAX_DEPENDENCIES || !unique_ids(&dependency_ids) {
+        if dependency_ids.len() > self.capabilities.effective_limits.max_dependencies
+            || !unique_ids(&dependency_ids)
+        {
             return Err(SessionError::Capacity);
         }
         let target_binding_id = self.allocate_id("binding");

@@ -15,7 +15,13 @@ pub const MEMORY_SELECTION_SCHEMA: &str = "ascension.context-memory.selection.v1
 pub const MEMORY_APPROVAL_SCHEMA: &str = "ascension.context-memory.approval.v1";
 pub const MEMORY_POLICY_SCHEMA: &str = "ascension.context-memory.policy.v1";
 pub const MEMORY_REVOCATION_SCHEMA: &str = "ascension.context-memory.revocation.v1";
-pub const MEMORY_CAPABILITIES_SCHEMA: &str = "ascension.context-memory.capabilities.v2";
+pub const MEMORY_CAPABILITIES_SCHEMA: &str = "ascension.context-memory.capabilities.v3";
+/// Stable owner identity for the harness-owned context-memory capability descriptor.
+pub const MEMORY_CAPABILITIES_OWNER: &str = "sts2-harness";
+/// Revision bound into every descriptor.  A producer change must update this value and the
+/// consumer contract together; it is intentionally independent of the policy schema version.
+pub const MEMORY_CAPABILITIES_REVISION: &str = "harness-context-memory-v3";
+pub const MEMORY_POLICY_SCHEMA_MAX_OPTIONAL_BYTES: usize = 65_536;
 
 pub const MAX_ENTRIES_PER_RUN: usize = 10_000;
 pub const MAX_SOURCE_BYTES: usize = 64 * 1024;

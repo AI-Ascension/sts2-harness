@@ -33,21 +33,30 @@ fn broker() -> ProviderSessionBroker {
 }
 
 #[test]
-fn native_capabilities_bind_effective_session_limits() {
-    let capabilities = NativeCapabilities::fixture();
+fn capability_descriptor_integrity_and_schema_profile_split_fail_closed() {
+    let mut capabilities = NativeCapabilities::fixture();
+    capabilities.effective_limits.max_completed_turns += 1;
     assert_eq!(
-        capabilities.effective_limits.policy_schema,
-        SESSION_POLICY_SCHEMA
+        capabilities.validate(),
+        Err(SessionError::InvalidCapabilities)
     );
-    assert_eq!(
-        capabilities.effective_limits.max_completed_turns,
-        MAX_COMPLETED_TURNS
-    );
-    assert_eq!(
-        capabilities.effective_limits.max_history_ttl_seconds,
-        MAX_HISTORY_TTL_SECONDS
-    );
-    assert!(capabilities.validate().is_ok());
+
+    let scope = scope();
+    let mut policy = ProviderSessionPolicy::disabled(scope.clone());
+    policy.mode = ProviderSessionMode::FixtureOnly;
+    policy.credential_realm_ref = "fixture-realm".to_owned();
+    policy.profile_sha256 = sts2_harness::sha256_hex("codex-app-server-fixture-v1");
+    policy.max_completed_turns = MAX_COMPLETED_TURNS + 1;
+    assert!(policy.validate_schema().is_ok());
+    assert!(matches!(
+        ProviderSessionBroker::new(
+            scope,
+            policy,
+            NativeCapabilities::fixture(),
+            "owner-fixture"
+        ),
+        Err(SessionError::Unsupported)
+    ));
 }
 
 fn held_binding(broker: &mut ProviderSessionBroker) -> SessionBinding {

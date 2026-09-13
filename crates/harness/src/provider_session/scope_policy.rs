@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 use super::common::{
-    MAX_COMPLETED_TURNS, MAX_HISTORY_TTL_SECONDS, SESSION_POLICY_SCHEMA, SessionError, digest,
-    valid_digest, valid_id,
+    MAX_COMPLETED_TURNS, MAX_HISTORY_TTL_SECONDS, SESSION_POLICY_SCHEMA,
+    SESSION_POLICY_SCHEMA_MAX_COMPLETED_TURNS, SESSION_POLICY_SCHEMA_MAX_HISTORY_TTL_SECONDS,
+    SessionError, digest, valid_digest, valid_id,
 };
 use serde::{Deserialize, Serialize};
 
@@ -109,7 +110,9 @@ impl ProviderSessionPolicy {
         }
     }
 
-    pub fn validate(&self) -> Result<(), SessionError> {
+    /// Validate the portable policy contract. The profile-specific runtime ceiling is checked
+    /// separately against the selected capability descriptor.
+    pub fn validate_schema(&self) -> Result<(), SessionError> {
         if self.schema != SESSION_POLICY_SCHEMA
             || !valid_id(&self.policy_id)
             || !self.scope.valid()
@@ -121,9 +124,20 @@ impl ProviderSessionPolicy {
             || self.cross_scope_fork
             || self.reconnect_resumes_gameplay
             || !self.compaction_generation_permission_required
-            || !(1..=MAX_COMPLETED_TURNS).contains(&self.max_completed_turns)
-            || !(1..=MAX_HISTORY_TTL_SECONDS).contains(&self.history_ttl_seconds)
+            || !(1..=SESSION_POLICY_SCHEMA_MAX_COMPLETED_TURNS).contains(&self.max_completed_turns)
+            || !(1..=SESSION_POLICY_SCHEMA_MAX_HISTORY_TTL_SECONDS)
+                .contains(&self.history_ttl_seconds)
             || self.epoch == 0
+        {
+            return Err(SessionError::InvalidPolicy);
+        }
+        Ok(())
+    }
+
+    pub fn validate(&self) -> Result<(), SessionError> {
+        self.validate_schema()?;
+        if self.max_completed_turns > MAX_COMPLETED_TURNS
+            || self.history_ttl_seconds > MAX_HISTORY_TTL_SECONDS
         {
             return Err(SessionError::InvalidPolicy);
         }

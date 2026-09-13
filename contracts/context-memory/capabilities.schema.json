@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ascension:context-memory:capabilities:v2",
-  "title": "Proposed Phase 3 effective-limit capabilities contract",
+  "$id": "urn:ascension:context-memory:capabilities:v3",
+  "title": "Harness Phase 3 effective-limit capabilities contract",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "schema": {
-      "const": "ascension.context-memory.capabilities.v2"
+      "const": "ascension.context-memory.capabilities.v3"
     },
     "product_phase": {
       "const": 3
@@ -135,6 +135,76 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 268435456
+        },
+        "max_source_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "max_sources_per_job": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "max_job_input_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "max_summary_output_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "max_query_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "max_lineage_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "max_global_memory_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 262144
+        },
+        "max_global_memory_jobs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
+        },
+        "max_retention_resources": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 512
+        },
+        "max_retention_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 268435456
+        },
+        "max_cache_entries": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "max_review_records": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 512
+        },
+        "max_memory_bindings": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "max_usage_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
         }
       },
       "required": [
@@ -144,7 +214,60 @@
         "max_selected",
         "optional_byte_budget",
         "max_entries_per_run",
-        "max_corpus_bytes"
+        "max_corpus_bytes",
+        "max_source_bytes",
+        "max_sources_per_job",
+        "max_job_input_bytes",
+        "max_summary_output_bytes",
+        "max_query_bytes",
+        "max_lineage_depth",
+        "max_global_memory_bytes",
+        "max_global_memory_jobs",
+        "max_retention_resources",
+        "max_retention_bytes",
+        "max_cache_entries",
+        "max_review_records",
+        "max_memory_bindings",
+        "max_usage_attempts"
+      ]
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "owner": {
+          "const": "sts2-harness"
+        },
+        "owner_revision": {
+          "const": "harness-context-memory-v3"
+        },
+        "policy_schema_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "model_revision": {
+          "const": "not-applicable"
+        },
+        "adapter_revision": {
+          "const": "harness-context-memory-v3"
+        },
+        "adapter_revision_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "descriptor_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "owner",
+        "owner_revision",
+        "policy_schema_sha256",
+        "model_revision",
+        "adapter_revision",
+        "adapter_revision_sha256",
+        "descriptor_sha256"
       ]
     },
     "supported_operations": {
@@ -184,6 +307,7 @@
     "hidden_reasoning_access",
     "direct_game_dispatch",
     "effective_limits",
+    "binding",
     "supported_operations"
   ],
   "allOf": [

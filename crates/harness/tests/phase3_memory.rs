@@ -90,14 +90,87 @@ fn capabilities_publish_the_effective_policy_limits() {
         capabilities.effective_limits.optional_byte_budget,
         MAX_OPTIONAL_BYTES
     );
+    assert_eq!(capabilities.effective_limits.max_entries_per_run, 16);
+    assert_eq!(capabilities.effective_limits.max_corpus_bytes, 4096);
+    capabilities.validate().expect("capability descriptor");
+}
+
+#[test]
+fn schema_valid_policy_above_effective_limit_is_rejected_and_migrated_explicitly() {
+    let corpus = MemoryCorpus::with_limits(scope(), 16, 4096).expect("corpus");
+    let capabilities = corpus.capabilities();
+    let policy = MemoryPolicy {
+        schema: MEMORY_POLICY_SCHEMA.to_owned(),
+        policy_id: "policy-migration".to_owned(),
+        version: 1,
+        scope: scope(),
+        mode: PolicyMode::ManualSnapshot,
+        status: PolicyStatus::Approved,
+        phase2_revision_id: Some("revision-1".to_owned()),
+        corpus_generation: 1,
+        rolling_same_episode_sources: false,
+        cross_scope: false,
+        approved_summary_catalog: Vec::new(),
+        ranker_version: "lexical-v1".to_owned(),
+        query_derivation_version: "derive-v1".to_owned(),
+        max_candidates: MAX_CANDIDATES,
+        max_results: MAX_RESULTS,
+        max_selected: MAX_SELECTED,
+        optional_byte_budget: MEMORY_POLICY_SCHEMA_MAX_OPTIONAL_BYTES,
+        fallback: SelectionFallback::Block,
+        automatic_summary_activation: false,
+        generate_during_selection: false,
+        authorization_policy_version: "auth-v1".to_owned(),
+    };
+    policy.validate_schema().expect("portable schema");
     assert_eq!(
-        capabilities.effective_limits.max_entries_per_run,
-        MAX_ENTRIES_PER_RUN
+        policy.validate_against_capabilities(&corpus, &capabilities),
+        Err(MemoryError::CapabilityLimitExceeded {
+            limit: "optional_byte_budget".to_owned(),
+            requested: MEMORY_POLICY_SCHEMA_MAX_OPTIONAL_BYTES,
+            effective: MAX_OPTIONAL_BYTES,
+        })
     );
+
+    let canonical = serde_json::to_vec(&policy).expect("policy bytes");
+    let original = format!(" \n{}\n", String::from_utf8(canonical).expect("utf8")).into_bytes();
+    let mut proposal =
+        PolicyMigrationProposal::new_from_bytes(&original, &capabilities, "migration-1")
+            .expect("proposal");
+    assert_eq!(proposal.original_policy_bytes(), original.as_slice());
+    proposal.approve("approval-1").expect("approve");
+    let mut target = policy.clone();
+    target.version = 2;
+    target.optional_byte_budget = MAX_OPTIONAL_BYTES;
+    let adopted = proposal
+        .adopt(&target, &capabilities, "approval-1")
+        .expect("adopt");
+    assert_eq!(adopted, target);
+    assert_eq!(proposal.original_policy_bytes(), original.as_slice());
+    assert_eq!(proposal.state, PolicyMigrationState::Adopted);
+}
+
+#[test]
+fn capability_limit_tampering_fails_closed() {
+    let corpus = MemoryCorpus::with_limits(scope(), 16, 4096).expect("corpus");
+    let mut capabilities = corpus.capabilities();
+    capabilities.effective_limits.optional_byte_budget = MAX_OPTIONAL_BYTES + 1;
     assert_eq!(
-        capabilities.effective_limits.max_corpus_bytes,
-        MAX_CORPUS_BYTES
+        capabilities.validate(),
+        Err(MemoryError::InvalidCapabilities)
     );
+}
+
+#[test]
+fn capability_descriptor_matches_closed_consumer_schema() {
+    let corpus = MemoryCorpus::with_limits(scope(), 16, 4096).expect("corpus");
+    let schema: serde_json::Value = serde_json::from_slice(include_bytes!(
+        "../../../contracts/context-memory/capabilities.schema.json"
+    ))
+    .expect("schema");
+    let validator = jsonschema::validator_for(&schema).expect("validator");
+    let value = serde_json::to_value(corpus.capabilities()).expect("capabilities");
+    assert!(validator.is_valid(&value), "{value}");
 }
 
 #[test]
