@@ -149,6 +149,9 @@ impl ProviderSessionBroker {
     }
 
     fn restore_operations(&mut self, operations: Vec<NativeOperation>) -> Result<(), SessionError> {
+        if operations.len() > self.capabilities.effective_limits.max_operations {
+            return Err(SessionError::Capacity);
+        }
         for operation in operations {
             if operation.scope != self.scope || !self.bindings.contains_key(&operation.binding_id) {
                 return Err(SessionError::InvalidOperation);
@@ -206,6 +209,9 @@ impl ProviderSessionBroker {
     }
 
     fn restore_events(&mut self, events: Vec<SessionEvent>) -> Result<(), SessionError> {
+        if events.len() > self.capabilities.effective_limits.max_events {
+            return Err(SessionError::Capacity);
+        }
         for event in events {
             if event.schema != SESSION_EVENT_SCHEMA
                 || event.scope != self.scope

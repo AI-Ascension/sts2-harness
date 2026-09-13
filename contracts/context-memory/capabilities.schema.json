@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:ascension:context-memory:capabilities:v3",
-  "title": "Harness Phase 3 authenticated effective-limit capabilities contract",
+  "title": "Harness Phase 3 effective-limit capabilities contract",
   "type": "object",
   "additionalProperties": false,
   "properties": {

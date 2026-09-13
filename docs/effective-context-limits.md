@@ -40,9 +40,9 @@ Context-memory capabilities use
 `ascension.context-memory.capabilities.v3`; provider capabilities use
 `ascension.provider-session.capabilities.v3`. Each descriptor contains an owner, owner revision,
 exact policy-schema digest, model/adapter revision and a descriptor SHA-256 over the complete
-payload with that digest field cleared. Unknown, disabled, unattached, and stale descriptors are
-not treated as unlimited. A changed limit, profile, adapter revision, or copied schema fails
-descriptor validation.
+payload with that digest field cleared. Unknown, disabled, unattached, and descriptors stale
+relative to trusted pins are not treated as unlimited. A changed limit, profile, adapter revision,
+or copied schema fails descriptor validation.
 
 The digest is an integrity marker, not a signing key. A consumer that receives a descriptor across
 an owner boundary must additionally pin the expected owner/model/adapter revisions with
@@ -62,7 +62,7 @@ For each bounded value, evaluate the portable schema and selected profile indepe
 | exactly at schema and effective ceiling | valid | admissible | available |
 | one above effective but at/below schema ceiling | valid | rejected with an effective-limit error before inference/retention | unavailable; retain for inspection |
 | one above the schema ceiling | invalid | not evaluated | unavailable |
-| descriptor missing, malformed, stale, or wrong profile/adapter | descriptor invalid | rejected before admission | unavailable; absent is not unlimited |
+| descriptor missing, malformed, stale relative to trusted pins, or wrong profile/adapter | descriptor invalid | rejected before admission | unavailable; absent is not unlimited |
 
 ## Explicit policy migration
 
