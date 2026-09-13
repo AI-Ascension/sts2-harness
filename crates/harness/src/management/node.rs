@@ -2,43 +2,48 @@
 
 use uuid::Uuid;
 
-use super::super::contract::PendingOperationState;
+use super::super::contract::{PendingOperation, PendingOperationState};
 use super::execution::{LiveNodeState, PendingDispatch};
 use super::node_projection::{catalog_digest, observation_value};
 use crate::episode::{
-    ActionIdentity, DecisionInput, DispatchStatus, TransitionReceipt, WaitOutcome, WaitSample,
-    verify_settlement,
+    ActionIdentity, DecisionInput, DispatchStatus, TransitionReceipt, verify_settlement,
 };
 use crate::workflow::{
     ActionId, BoundedText, DecisionProposal, EdgeOutcome, Generation, NodeDefinition, NodeExecutor,
     NodeOutcome, ProviderExecutionId, RuntimeContext, RuntimeFault, TypedValue,
 };
 
-pub(super) struct LiveNodeExecutor<'a> {
-    pub(super) state: &'a mut LiveNodeState,
+pub(super) struct LiveNodeExecutor<'state, 'intent> {
+    pub(super) state: &'state mut LiveNodeState,
+    pub(super) intent_recorder: Option<
+        &'intent dyn Fn(PendingOperation) -> Result<(), super::super::service::ManagementError>,
+    >,
 }
 
-impl NodeExecutor for LiveNodeExecutor<'_> {
+impl NodeExecutor for LiveNodeExecutor<'_, '_> {
     fn execute(
         &mut self,
         node: &NodeDefinition,
         context: &RuntimeContext,
     ) -> Result<NodeOutcome, RuntimeFault> {
         match node {
-            NodeDefinition::Observe { .. } => self.observe(),
-            NodeDefinition::Decide { .. } => self.decide(),
+            NodeDefinition::Observe { config, .. } => self.observe(config.projection_ref.as_str()),
+            NodeDefinition::Decide { config, .. } => self.decide(
+                config.decision_profile_ref.as_str(),
+                config.context_ref.as_str(),
+            ),
             NodeDefinition::ExecuteAction { config, .. } => self.execute_action(config, context),
             _ => Err(RuntimeFault::ExecutorUnavailable),
         }
     }
 }
 
-impl LiveNodeExecutor<'_> {
-    fn observe(&mut self) -> Result<NodeOutcome, RuntimeFault> {
+impl LiveNodeExecutor<'_, '_> {
+    fn observe(&mut self, projection_ref: &str) -> Result<NodeOutcome, RuntimeFault> {
         let observation = self
             .state
             .session
-            .observe()
+            .observe_projection(projection_ref)
             .map_err(|_| RuntimeFault::ExecutorUnavailable)?;
         let value = observation_value(&observation)?;
         self.state.observation = Some(observation);
@@ -49,7 +54,11 @@ impl LiveNodeExecutor<'_> {
         ))
     }
 
-    fn decide(&mut self) -> Result<NodeOutcome, RuntimeFault> {
+    fn decide(
+        &mut self,
+        decision_profile_ref: &str,
+        context_ref: &str,
+    ) -> Result<NodeOutcome, RuntimeFault> {
         let observation = self
             .state
             .observation
@@ -78,7 +87,7 @@ impl LiveNodeExecutor<'_> {
         let decision = self
             .state
             .session
-            .decide(&input)
+            .decide_for(&input, decision_profile_ref, context_ref)
             .map_err(|_| RuntimeFault::ExecutorUnavailable)?;
         self.state.provider_calls = self.state.provider_calls.saturating_add(1);
         self.state.actions = Some(actions.clone());
@@ -175,32 +184,51 @@ impl LiveNodeExecutor<'_> {
             action.action_id().to_owned(),
         )
         .map_err(|_| RuntimeFault::InvalidState)?;
+        // Install the intent before crossing the mutating boundary. Any
+        // transport error therefore retains this exact identity for recovery.
+        self.state.pending = Some(PendingDispatch {
+            identity: identity.clone(),
+            action: action.clone(),
+            state: PendingOperationState::Intent,
+            resolved: None,
+        });
+        if let Some(recorder) = self.intent_recorder {
+            let pending = PendingOperation {
+                operation_id: identity.operation_id.clone(),
+                classification: PendingOperationState::Intent,
+                instance_id: self.state.instance_id.clone(),
+                original_generation: identity.generation,
+                payload_digest: crate::sha256_hex(action.action_id()),
+            };
+            if recorder(pending).is_err() {
+                self.state.pending = None;
+                return Err(RuntimeFault::ExecutorUnavailable);
+            }
+        }
         let receipt = self
             .state
             .session
             .dispatch_action(&identity, &action)
             .map_err(|_| RuntimeFault::UnknownEffect)?;
+        if receipt.operation_id() != identity.operation_id || receipt.action() != &action {
+            return Err(RuntimeFault::UnknownEffect);
+        }
         match receipt.status() {
             DispatchStatus::Rejected | DispatchStatus::Cancelled => {
+                self.state.pending = None;
                 self.state.session.action_completed(false);
                 Ok(NodeOutcome::new(EdgeOutcome::Error, TypedValue::Null))
             }
             DispatchStatus::Unknown => {
-                self.state.pending = Some(PendingDispatch {
-                    identity,
-                    action,
-                    state: PendingOperationState::Unknown,
-                    resolved: None,
-                });
+                if let Some(pending) = self.state.pending.as_mut() {
+                    pending.state = PendingOperationState::Unknown;
+                }
                 Err(RuntimeFault::UnknownEffect)
             }
             DispatchStatus::Accepted => {
-                self.state.pending = Some(PendingDispatch {
-                    identity,
-                    action,
-                    state: PendingOperationState::Accepted,
-                    resolved: None,
-                });
+                if let Some(pending) = self.state.pending.as_mut() {
+                    pending.state = PendingOperationState::Accepted;
+                }
                 let pending = self
                     .state
                     .pending
@@ -214,11 +242,14 @@ impl LiveNodeExecutor<'_> {
                         self.state.options.transition_wait_millis,
                     )
                     .map_err(|_| RuntimeFault::UnknownEffect)?;
-                let settled = settled_receipt(pending, sample)?;
+                let settled = super::node_recovery::settled_receipt(pending, sample)?;
                 self.state.pending = None;
                 self.finish_receipt(settled)
             }
-            DispatchStatus::Settled => self.finish_receipt(receipt),
+            DispatchStatus::Settled => {
+                self.state.pending = None;
+                self.finish_receipt(receipt)
+            }
         }
     }
 
@@ -245,61 +276,4 @@ impl LiveNodeExecutor<'_> {
         self.state.session.action_completed(true);
         Ok(NodeOutcome::new(EdgeOutcome::Ok, TypedValue::Null))
     }
-}
-
-pub(super) fn reconcile_pending(
-    state: &mut LiveNodeState,
-) -> Result<(), super::super::service::ManagementError> {
-    let Some(pending) = state.pending.as_mut() else {
-        return Ok(());
-    };
-    let receipt = state
-        .session
-        .reconcile(pending.identity.operation_id.as_str())?;
-    if receipt.operation_id() != pending.identity.operation_id
-        || receipt.action() != &pending.action
-    {
-        return Err(super::super::service::ManagementError::conflict(
-            "live_reconcile_identity",
-            "reconciliation returned a different operation or action",
-        ));
-    }
-    match receipt.status() {
-        DispatchStatus::Settled | DispatchStatus::Rejected | DispatchStatus::Cancelled => {
-            pending.resolved = Some(receipt);
-            Ok(())
-        }
-        DispatchStatus::Accepted | DispatchStatus::Unknown => {
-            pending.state = PendingOperationState::Unknown;
-            Err(super::super::service::ManagementError::unresolved(
-                "live_operation_unknown",
-                "accepted mutation remains unresolved; no replacement action is permitted",
-            ))
-        }
-    }
-}
-
-fn settled_receipt(
-    pending: &PendingDispatch,
-    sample: WaitSample,
-) -> Result<TransitionReceipt, RuntimeFault> {
-    if !matches!(
-        sample.outcome(),
-        WaitOutcome::Successor | WaitOutcome::SameStateMutation
-    ) {
-        return Err(RuntimeFault::UnknownEffect);
-    }
-    let after = sample
-        .observation()
-        .cloned()
-        .ok_or(RuntimeFault::UnknownEffect)?;
-    let effect = sample.effect_kind().ok_or(RuntimeFault::UnknownEffect)?;
-    Ok(TransitionReceipt::new(
-        pending.identity.operation_id.clone(),
-        pending.action.clone(),
-        DispatchStatus::Settled,
-        Some(after),
-        Some(effect.to_owned()),
-        None,
-    ))
 }

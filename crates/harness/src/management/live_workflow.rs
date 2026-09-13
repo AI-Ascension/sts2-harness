@@ -5,12 +5,16 @@
 
 #[path = "execution.rs"]
 mod execution;
+#[path = "execution_commands.rs"]
+mod execution_commands;
 #[path = "execution_records.rs"]
 mod execution_records;
 #[path = "node.rs"]
 mod node;
 #[path = "node_projection.rs"]
 mod node_projection;
+#[path = "node_recovery.rs"]
+mod node_recovery;
 #[path = "session.rs"]
 mod session;
 #[path = "validation.rs"]

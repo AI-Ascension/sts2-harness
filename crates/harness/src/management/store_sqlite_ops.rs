@@ -22,6 +22,9 @@ pub(crate) use create::create_run;
 #[path = "store_sqlite_release.rs"]
 mod release;
 pub(crate) use release::release_command;
+#[path = "store_sqlite_intent.rs"]
+mod intent;
+pub(super) use intent::record_operation_intent;
 
 pub(super) fn lookup_submission(
     store: &SqliteWorkflowStore,
@@ -252,7 +255,10 @@ fn classification_for_outcome(outcome: &CommandOutcome) -> EventClassification {
     }
 }
 
-fn next_sequence(transaction: &rusqlite::Transaction<'_>, run_id: &str) -> Result<u64, StoreError> {
+pub(super) fn next_sequence(
+    transaction: &rusqlite::Transaction<'_>,
+    run_id: &str,
+) -> Result<u64, StoreError> {
     let sequence = transaction
         .query_row(
             "SELECT COALESCE(MAX(sequence), 0) + 1 FROM management_events

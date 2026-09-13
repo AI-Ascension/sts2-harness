@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, btree_map::Entry};
 use std::sync::{Arc, Mutex};
 
 use super::super::auth::AuthContext;
 use super::super::contract::{
-    CommandKind, CommandOutcome, EventClassification, EventPayload, EventType, RunEvent,
-    RunRequest, WorkflowRunStatus,
+    EventClassification, EventPayload, EventType, PendingOperation, RunEvent, RunRequest,
 };
 use super::super::service::{
     CommandApplication, CommandContext, ManagementError, RunAdmission, WorkflowExecutionPort,
@@ -16,12 +15,11 @@ use crate::episode::{
     ActionIdentity, EpisodeLegalAction, EpisodeLegalActionSet, EpisodeObservation,
     TransitionReceipt,
 };
-use crate::workflow::{CompiledWorkflow, RuntimeFault, RuntimeStatus, StrictRuntime};
+use crate::workflow::{CompiledWorkflow, StrictRuntime};
 
 use super::execution_records::{
-    application, live_run_id, lock_error, management_status, runtime_error, snapshot_from_runtime,
+    SnapshotState, cleanup_session, live_run_id, lock_error, snapshot_from_runtime,
 };
-use super::node::{LiveNodeExecutor, reconcile_pending};
 
 pub(super) struct LiveRun {
     pub(super) runtime: StrictRuntime,
@@ -30,10 +28,12 @@ pub(super) struct LiveRun {
     pub(super) instance_id: String,
     pub(super) state: LiveNodeState,
     pub(super) cancelled: bool,
+    pub(super) cleanup: super::super::contract::CleanupState,
 }
 
 pub(super) struct LiveNodeState {
     pub(super) session: Box<dyn LiveWorkflowSession>,
+    pub(super) instance_id: String,
     pub(super) observation: Option<EpisodeObservation>,
     pub(super) actions: Option<EpisodeLegalActionSet>,
     pub(super) pending: Option<PendingDispatch>,
@@ -69,6 +69,10 @@ impl LiveWorkflowExecutionPort {
             runs: Mutex::new(BTreeMap::new()),
         })
     }
+
+    pub(super) fn runs(&self) -> &Mutex<BTreeMap<String, LiveRun>> {
+        &self.runs
+    }
 }
 
 impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
@@ -84,11 +88,19 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
                 "live execution requires an admitted workflow definition",
             )
         })?;
+        if request.profile != "live" && !request.profile.starts_with("live.") {
+            return Err(ManagementError::capability(
+                "live_profile_required",
+                "live execution requires an explicit live.* workflow profile",
+            ));
+        }
         let definition = super::super::workflow_ports::parse_definition(value)?;
         if definition
             .annotations
             .as_ref()
             .is_some_and(|item| item.synthetic)
+            || definition.game_profile.as_str().contains("synthetic")
+            || definition.policy_ref.as_str().contains("synthetic")
         {
             return Err(ManagementError::capability(
                 "synthetic_definition_not_live",
@@ -113,11 +125,9 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
         let run_id = live_run_id(request, definition_digest)?;
         let snapshot = snapshot_from_runtime(
             &run_id,
-            &request.instance_id,
             definition_digest,
             &runtime,
-            false,
-            None,
+            SnapshotState::default(),
             1,
         );
         let event = RunEvent {
@@ -142,6 +152,7 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
             instance_id: request.instance_id.clone(),
             state: LiveNodeState {
                 session,
+                instance_id: request.instance_id.clone(),
                 observation: None,
                 actions: None,
                 pending: None,
@@ -150,13 +161,21 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
                 options: self.options.clone(),
             },
             cancelled: false,
+            cleanup: super::super::contract::CleanupState::NotStarted,
         };
         let mut runs = self.runs.lock().map_err(lock_error)?;
-        if runs.insert(run_id, run).is_some() {
-            return Err(ManagementError::conflict(
-                "live_duplicate_run",
-                "live run identity was already admitted",
-            ));
+        match runs.entry(run_id) {
+            Entry::Vacant(entry) => {
+                entry.insert(run);
+            }
+            Entry::Occupied(_) => {
+                let mut run = run;
+                let _ = cleanup_session(&mut run, true);
+                return Err(ManagementError::conflict(
+                    "live_duplicate_run",
+                    "live run identity was already admitted",
+                ));
+            }
         }
         Ok(RunAdmission {
             snapshot,
@@ -168,109 +187,14 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
         &self,
         context: CommandContext,
     ) -> Result<CommandApplication, ManagementError> {
-        let mut runs = self.runs.lock().map_err(lock_error)?;
-        let run = runs.get_mut(&context.request.run_id).ok_or_else(|| {
-            ManagementError::unresolved(
-                "live_runtime_after_restart",
-                "live session is unavailable after service restart",
-            )
-        })?;
-        if run.definition_digest != context.snapshot.definition_digest {
-            return Err(ManagementError::conflict(
-                "live_identity_mismatch",
-                "live command is bound to a different workflow definition",
-            ));
-        }
-        let revision = context.snapshot.run_revision.saturating_add(1);
-        let (status, outcome, reason) = match context.request.kind {
-            CommandKind::Pause => {
-                if run.cancelled {
-                    return Ok(application(
-                        run,
-                        WorkflowRunStatus::Cancelled,
-                        CommandOutcome::Applied,
-                        "cancel_dominates",
-                        revision,
-                    ));
-                }
-                run.state.session.pause()?;
-                run.runtime.pause().map_err(runtime_error)?;
-                (WorkflowRunStatus::Paused, CommandOutcome::Applied, "pause")
-            }
-            CommandKind::Resume => {
-                if run.cancelled {
-                    (
-                        WorkflowRunStatus::Cancelled,
-                        CommandOutcome::Applied,
-                        "cancel_dominates",
-                    )
-                } else {
-                    run.state.session.resume()?;
-                    run.runtime.resume().map_err(runtime_error)?;
-                    (
-                        WorkflowRunStatus::Running,
-                        CommandOutcome::Applied,
-                        "resume",
-                    )
-                }
-            }
-            CommandKind::Cancel => {
-                if let Err(error) = reconcile_pending(&mut run.state)
-                    && error.class != super::super::contract::ErrorClass::Unresolved
-                {
-                    return Err(error);
-                }
-                run.state.session.stop_episode()?;
-                run.cancelled = true;
-                (
-                    WorkflowRunStatus::Cancelled,
-                    CommandOutcome::Applied,
-                    "cancel",
-                )
-            }
-            CommandKind::Step => {
-                if run.cancelled {
-                    (
-                        WorkflowRunStatus::Cancelled,
-                        CommandOutcome::Applied,
-                        "cancel_dominates",
-                    )
-                } else if run.runtime.status() == RuntimeStatus::Paused {
-                    return Err(ManagementError::conflict(
-                        "live_run_paused",
-                        "step requires a resumed workflow",
-                    ));
-                } else {
-                    reconcile_pending(&mut run.state)?;
-                    if run.runtime.status() == RuntimeStatus::NeedsOperator {
-                        run.runtime
-                            .resume_after_unknown_effect()
-                            .map_err(runtime_error)?;
-                    }
-                    let mut executor = LiveNodeExecutor {
-                        state: &mut run.state,
-                    };
-                    match run.runtime.step(&mut executor) {
-                        Ok(status) => (
-                            management_status(status, false),
-                            CommandOutcome::Applied,
-                            "step",
-                        ),
-                        Err(RuntimeFault::UnknownEffect) => {
-                            let application = application(
-                                run,
-                                WorkflowRunStatus::NeedsOperator,
-                                CommandOutcome::Pending,
-                                "live_operation_unknown",
-                                revision,
-                            );
-                            return Ok(application);
-                        }
-                        Err(error) => return Err(runtime_error(error)),
-                    }
-                }
-            }
-        };
-        Ok(application(run, status, outcome, reason, revision))
+        super::execution_commands::apply_command(self, context, None)
+    }
+
+    fn apply_command_with_intent(
+        &self,
+        context: CommandContext,
+        record_intent: &dyn Fn(PendingOperation) -> Result<(), ManagementError>,
+    ) -> Result<CommandApplication, ManagementError> {
+        super::execution_commands::apply_command(self, context, Some(record_intent))
     }
 }

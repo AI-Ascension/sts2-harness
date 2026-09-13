@@ -121,6 +121,15 @@ impl StrictRuntime {
         Ok(())
     }
 
+    /// Permanently marks the runtime failed after a non-recoverable executor error.
+    ///
+    /// Keeping this transition explicit prevents a management snapshot that reports
+    /// `Failed` from retaining an in-memory `Running` cursor that could accept another
+    /// step after the failed command is persisted.
+    pub fn fail(&mut self) {
+        self.snapshot.status = RuntimeStatus::Failed;
+    }
+
     pub fn step<E: NodeExecutor>(
         &mut self,
         executor: &mut E,

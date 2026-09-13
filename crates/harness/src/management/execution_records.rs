@@ -3,12 +3,30 @@
 use serde_json::json;
 
 use super::super::contract::{
-    Budget, CleanupState, CommandOutcome, Cursor, GameOutcome, RunRequest, RunSnapshot,
-    WorkflowRunStatus,
+    Budget, CleanupState, CommandOutcome, Cursor, GameOutcome, PendingOperation, RunRequest,
+    RunSnapshot, WorkflowRunStatus,
 };
 use super::super::service::{CommandApplication, ManagementError};
-use super::execution::{LiveRun, PendingDispatch};
+use super::execution::LiveRun;
 use crate::workflow::{RuntimeFault, RuntimeStatus, StrictRuntime};
+
+pub(super) struct SnapshotState {
+    pub(super) cancelled: bool,
+    pub(super) pending: Option<PendingOperation>,
+    pub(super) provider_calls: u64,
+    pub(super) cleanup: CleanupState,
+}
+
+impl Default for SnapshotState {
+    fn default() -> Self {
+        Self {
+            cancelled: false,
+            pending: None,
+            provider_calls: 0,
+            cleanup: CleanupState::NotStarted,
+        }
+    }
+}
 
 pub(super) fn application(
     run: &LiveRun,
@@ -19,11 +37,20 @@ pub(super) fn application(
 ) -> CommandApplication {
     let mut snapshot = snapshot_from_runtime(
         &run.run_id,
-        &run.instance_id,
         &run.definition_digest,
         &run.runtime,
-        run.cancelled,
-        run.state.pending.as_ref(),
+        SnapshotState {
+            cancelled: run.cancelled,
+            pending: run.state.pending.as_ref().map(|pending| PendingOperation {
+                operation_id: pending.identity.operation_id.clone(),
+                classification: pending.state.clone(),
+                instance_id: run.instance_id.clone(),
+                original_generation: pending.identity.generation,
+                payload_digest: crate::sha256_hex(pending.action.action_id()),
+            }),
+            provider_calls: run.state.provider_calls,
+            cleanup: run.cleanup.clone(),
+        },
         revision,
     );
     snapshot.status = status;
@@ -34,13 +61,30 @@ pub(super) fn application(
     }
 }
 
+pub(super) fn cleanup_session(run: &mut LiveRun, stop: bool) -> Result<(), ManagementError> {
+    run.cleanup = CleanupState::Pending;
+    let mut failure = None;
+    if stop && let Err(error) = run.state.session.stop_episode() {
+        failure = Some(error);
+    }
+    if let Err(error) = run.state.session.release_lease()
+        && failure.is_none()
+    {
+        failure = Some(error);
+    }
+    run.cleanup = if failure.is_some() {
+        CleanupState::NeedsOperator
+    } else {
+        CleanupState::Complete
+    };
+    failure.map_or(Ok(()), Err)
+}
+
 pub(super) fn snapshot_from_runtime(
     run_id: &str,
-    instance_id: &str,
     definition_digest: &str,
     runtime: &StrictRuntime,
-    cancelled: bool,
-    pending: Option<&PendingDispatch>,
+    state: SnapshotState,
     revision: u64,
 ) -> RunSnapshot {
     let current = runtime.snapshot();
@@ -49,25 +93,20 @@ pub(super) fn snapshot_from_runtime(
         workflow_run_id: run_id.to_owned(),
         definition_digest: definition_digest.to_owned(),
         run_revision: revision,
-        status: management_status(runtime.status(), cancelled),
+        status: management_status(runtime.status(), state.cancelled),
         game_outcome: GameOutcome::NotTerminal,
         cursor: Cursor {
             graph_id: current.graph_id.as_str().to_owned(),
             node_id: current.node_id.as_str().to_owned(),
             node_execution_id: format!("live.node.{}", current.event_sequence.saturating_add(1)),
         },
-        pending_operation: pending.map(|item| super::super::contract::PendingOperation {
-            operation_id: item.identity.operation_id.clone(),
-            classification: item.state.clone(),
-            instance_id: instance_id.to_owned(),
-            original_generation: item.identity.generation,
-            payload_digest: crate::sha256_hex(item.action.action_id()),
-        }),
+        pending_operation: state.pending,
         budget: Budget {
+            provider_calls_consumed: state.provider_calls,
             node_steps_consumed: current.steps,
             ..Budget::default()
         },
-        cleanup: CleanupState::NotStarted,
+        cleanup: state.cleanup,
     }
 }
 

@@ -16,12 +16,26 @@ use crate::episode::{
 pub trait LiveWorkflowSession: Send {
     fn launch(&mut self) -> Result<(), ManagementError>;
     fn observe(&mut self) -> Result<EpisodeObservation, ManagementError>;
+    fn observe_projection(
+        &mut self,
+        _projection_ref: &str,
+    ) -> Result<EpisodeObservation, ManagementError> {
+        self.observe()
+    }
     fn legal_actions(
         &mut self,
         state_id: &str,
         generation: u64,
     ) -> Result<EpisodeLegalActionSet, ManagementError>;
     fn decide(&mut self, input: &DecisionInput) -> Result<crate::Decision, ManagementError>;
+    fn decide_for(
+        &mut self,
+        input: &DecisionInput,
+        _decision_profile_ref: &str,
+        _context_ref: &str,
+    ) -> Result<crate::Decision, ManagementError> {
+        self.decide(input)
+    }
     fn dispatch_action(
         &mut self,
         identity: &ActionIdentity,
@@ -81,6 +95,21 @@ where
             .map_err(|error| port_error("live_observe_failed", error))
     }
 
+    fn observe_projection(
+        &mut self,
+        projection_ref: &str,
+    ) -> Result<EpisodeObservation, ManagementError> {
+        if projection_ref.is_empty() {
+            return Err(ManagementError::invalid(
+                "live_projection_ref",
+                "observe projection reference is empty",
+            ));
+        }
+        self.runtime
+            .observe_projection(projection_ref)
+            .map_err(|error| port_error("live_observe_failed", error))
+    }
+
     fn legal_actions(
         &mut self,
         state_id: &str,
@@ -95,6 +124,25 @@ where
         self.source.decide(input).map_err(|error| {
             ManagementError::unavailable("provider_decision_failed", error.to_string())
         })
+    }
+
+    fn decide_for(
+        &mut self,
+        input: &DecisionInput,
+        decision_profile_ref: &str,
+        context_ref: &str,
+    ) -> Result<crate::Decision, ManagementError> {
+        if decision_profile_ref.is_empty() || context_ref.is_empty() {
+            return Err(ManagementError::invalid(
+                "live_decision_binding",
+                "decision profile and context references are required",
+            ));
+        }
+        self.source
+            .decide_for(input, decision_profile_ref, context_ref)
+            .map_err(|error| {
+                ManagementError::unavailable("provider_decision_failed", error.to_string())
+            })
     }
 
     fn dispatch_action(

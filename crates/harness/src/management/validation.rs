@@ -8,7 +8,7 @@ use super::super::contract::{Diagnostic, DiagnosticSeverity};
 use super::super::service::{
     CapabilityPort, DefinitionPort, DiffResult, InspectionResult, ManagementError, ValidationResult,
 };
-use crate::workflow::{NodeKind, WorkflowDefinition};
+use crate::workflow::{NodeDefinition, NodeKind, WorkflowDefinition};
 
 /// Capability advertised by an authoritative live session factory.
 pub const LIVE_WORKFLOW_CAPABILITY: &str = "workflow.live";
@@ -100,39 +100,92 @@ fn node_diagnostics(definition: &WorkflowDefinition, capabilities: &Value) -> Ve
         .flatten()
         .filter_map(Value::as_str)
         .collect::<BTreeSet<_>>();
-    definition
-        .graphs
-        .iter()
-        .flat_map(|graph| graph.nodes.iter().map(move |node| (graph, node)))
-        .filter_map(|(graph, node)| {
+    let mut diagnostics = Vec::new();
+    for graph in &definition.graphs {
+        for node in &graph.nodes {
             let kind = node_kind_name(node.kind());
-            let required = NODE_CAPABILITIES
+            let Some(required) = NODE_CAPABILITIES
                 .iter()
-                .find_map(|(name, capability)| (*name == kind).then_some(*capability))?;
-            (!available.contains(required)).then_some(Diagnostic {
-                code: "node_capability_unavailable".to_owned(),
-                severity: DiagnosticSeverity::Error,
-                path: format!("$.graphs.{}.nodes.{}", graph.id, node.id()),
-                message: format!("required live node capability {required} is unavailable"),
-            })
-        })
-        .chain(definition.graphs.iter().flat_map(|graph| {
-            graph.nodes.iter().filter_map(move |node| {
-                let supported = NODE_CAPABILITIES
-                    .iter()
-                    .any(|(name, _)| *name == node_kind_name(node.kind()));
-                (!supported).then_some(Diagnostic {
+                .find_map(|(name, capability)| (*name == kind).then_some(*capability))
+            else {
+                diagnostics.push(Diagnostic {
                     code: "node_capability_unavailable".to_owned(),
                     severity: DiagnosticSeverity::Error,
                     path: format!("$.graphs.{}.nodes.{}", graph.id, node.id()),
-                    message: format!(
-                        "live execution does not support {} nodes",
-                        node_kind_name(node.kind())
-                    ),
-                })
-            })
-        }))
-        .collect()
+                    message: format!("live execution does not support {kind} nodes"),
+                });
+                continue;
+            };
+            if !available.contains(required) {
+                diagnostics.push(Diagnostic {
+                    code: "node_capability_unavailable".to_owned(),
+                    severity: DiagnosticSeverity::Error,
+                    path: format!("$.graphs.{}.nodes.{}", graph.id, node.id()),
+                    message: format!("required live node capability {required} is unavailable"),
+                });
+            }
+            let path = format!("$.graphs.{}.nodes.{}.config", graph.id, node.id());
+            match node {
+                NodeDefinition::Observe { config, .. } => {
+                    binding_diagnostic(
+                        &mut diagnostics,
+                        &available,
+                        "workflow.projection.",
+                        config.projection_ref.as_str(),
+                        &format!("{path}.projection_ref"),
+                    );
+                }
+                NodeDefinition::Decide { config, .. } => {
+                    binding_diagnostic(
+                        &mut diagnostics,
+                        &available,
+                        "workflow.provider.",
+                        config.decision_profile_ref.as_str(),
+                        &format!("{path}.decision_profile_ref"),
+                    );
+                    binding_diagnostic(
+                        &mut diagnostics,
+                        &available,
+                        "workflow.context.",
+                        config.context_ref.as_str(),
+                        &format!("{path}.context_ref"),
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+    if definition.game_profile.as_str().contains("synthetic")
+        || definition.policy_ref.as_str().contains("synthetic")
+    {
+        diagnostics.push(Diagnostic {
+            code: "live_binding_unavailable".to_owned(),
+            severity: DiagnosticSeverity::Error,
+            path: "$.game_profile".to_owned(),
+            message: "live execution cannot use synthetic profile or policy bindings".to_owned(),
+        });
+    }
+    diagnostics
+}
+
+fn binding_diagnostic(
+    diagnostics: &mut Vec<Diagnostic>,
+    available: &BTreeSet<&str>,
+    prefix: &str,
+    reference: &str,
+    path: &str,
+) {
+    let capability = format!("{prefix}{reference}");
+    if reference.contains("synthetic")
+        || (!available.contains(capability.as_str()) && !available.contains(reference))
+    {
+        diagnostics.push(Diagnostic {
+            code: "live_binding_unavailable".to_owned(),
+            severity: DiagnosticSeverity::Error,
+            path: path.to_owned(),
+            message: format!("live binding {reference} is unavailable"),
+        });
+    }
 }
 
 fn node_kind_name(kind: NodeKind) -> &'static str {

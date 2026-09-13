@@ -6,7 +6,7 @@ use std::sync::Mutex;
 
 use super::contract::{
     CommandRequest, CommandResponse, EventPage, ExportResponse, MANAGEMENT_SCHEMA_VERSION,
-    MAX_STORE_BYTES, PersistedStore, RunEvent, RunSnapshot,
+    MAX_STORE_BYTES, PendingOperation, PersistedStore, RunEvent, RunSnapshot,
 };
 
 #[path = "store_file.rs"]
@@ -18,7 +18,7 @@ mod sqlite;
 
 use ops::{
     accept_command, apply_command, create_run, events, export, get_run, io_store_error,
-    lookup_submission, persist, release_command,
+    lookup_submission, persist, record_operation_intent, release_command,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -108,6 +108,23 @@ pub trait WorkflowStore: Send + Sync {
         request_digest: &str,
         application: CommandApplication,
     ) -> Result<CommandResponse, StoreError>;
+
+    /// Persist an operation intent while its command remains in flight.
+    ///
+    /// The run revision is intentionally unchanged: command application still
+    /// commits the next revision atomically after the effect settles or becomes
+    /// explicitly unresolved.
+    fn record_operation_intent(
+        &self,
+        _run_id: &str,
+        _expected_revision: u64,
+        _pending: PendingOperation,
+    ) -> Result<(), StoreError> {
+        Err(StoreError::new(
+            "intent_persistence_unavailable",
+            "workflow store does not support durable operation intents",
+        ))
+    }
 
     fn release_command(
         &self,
@@ -298,6 +315,15 @@ impl WorkflowStore for MemoryWorkflowStore {
         application: CommandApplication,
     ) -> Result<CommandResponse, StoreError> {
         ops::apply_command(&self.core, request, request_digest, application)
+    }
+
+    fn record_operation_intent(
+        &self,
+        run_id: &str,
+        expected_revision: u64,
+        pending: super::contract::PendingOperation,
+    ) -> Result<(), StoreError> {
+        ops::record_operation_intent(&self.core, run_id, expected_revision, pending)
     }
 
     fn release_command(
