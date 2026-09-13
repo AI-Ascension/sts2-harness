@@ -89,7 +89,7 @@ fn serve(args: &[String]) -> Result<CliOutput, CliFailure> {
     let config = ServerConfig::new(listen, authenticator).map_err(CliFailure::local)?;
     let server = ManagementServer::start(config, service).map_err(CliFailure::local)?;
     eprintln!(
-        "sts2-workflow serving authenticated loopback management API at {}",
+        "sts2-workflow serving authenticated loopback management API at {} mode=synthetic",
         server.address()
     );
     server.wait().map_err(CliFailure::local)?;

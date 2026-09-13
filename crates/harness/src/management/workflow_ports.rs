@@ -91,7 +91,7 @@ impl ContextInspectionPort for SyntheticContextInspectionPort {
     }
 }
 
-struct SyntheticDefinitionPort;
+pub(super) struct SyntheticDefinitionPort;
 
 impl DefinitionPort for SyntheticDefinitionPort {
     fn validate(
@@ -157,7 +157,7 @@ impl DefinitionPort for SyntheticDefinitionPort {
     }
 }
 
-fn parse_definition(value: &Value) -> Result<WorkflowDefinition, ManagementError> {
+pub(super) fn parse_definition(value: &Value) -> Result<WorkflowDefinition, ManagementError> {
     let bytes = serde_json::to_vec(value)
         .map_err(|error| ManagementError::invalid("definition_encode", error.to_string()))?;
     let definition: WorkflowDefinition = decode_strict(&bytes).map_err(decode_management_error)?;
@@ -174,7 +174,7 @@ fn decode_management_error(error: DecodeError) -> ManagementError {
     ManagementError::invalid("definition_decode", error.to_string())
 }
 
-fn raw_digest(value: &Value) -> Result<String, ManagementError> {
+pub(super) fn raw_digest(value: &Value) -> Result<String, ManagementError> {
     super::contract::digest_value(value).map_err(ManagementError::from)
 }
 

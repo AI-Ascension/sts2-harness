@@ -6,6 +6,7 @@ mod cli;
 mod contract;
 mod contract_authoring;
 mod http;
+mod live_workflow;
 mod provider_session_inspection;
 mod service;
 mod store;
@@ -47,6 +48,11 @@ pub use contract_authoring::{
 pub use http::{
     ClientResponse, HttpError, HttpLimits, ManagementClient, ManagementServer, ServerConfig,
     ServerHandle,
+};
+pub use live_workflow::{
+    EpisodeRuntimeSession, LIVE_WORKFLOW_CAPABILITY, LIVE_WORKFLOW_PROFILE,
+    LiveWorkflowExecutionPort, LiveWorkflowFactory, LiveWorkflowOptions, LiveWorkflowSession,
+    LiveWorkflowSessionFactory, live_store,
 };
 pub use provider_session_inspection::ProviderSessionBrokerInspectionPort;
 pub use service::{

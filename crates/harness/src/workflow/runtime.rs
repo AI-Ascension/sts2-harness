@@ -110,6 +110,17 @@ impl StrictRuntime {
         Ok(())
     }
 
+    /// Re-opens a runtime blocked by an unresolved effect after the caller has
+    /// reconciled the same operation identity. No new action is authorized by
+    /// this transition; the node remains at the blocked cursor.
+    pub fn resume_after_unknown_effect(&mut self) -> Result<(), RuntimeFault> {
+        if self.snapshot.status != RuntimeStatus::NeedsOperator {
+            return Err(RuntimeFault::InvalidState);
+        }
+        self.snapshot.status = RuntimeStatus::Running;
+        Ok(())
+    }
+
     pub fn step<E: NodeExecutor>(
         &mut self,
         executor: &mut E,
