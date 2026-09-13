@@ -4,6 +4,11 @@
 
 pub const MEMORY_POLICY_MIGRATION_SCHEMA: &str =
     "ascension.context-memory.policy-migration.v1";
+/// Maximum retained source-policy bytes in a migration record. This keeps exact-byte audit
+/// history bounded even when a caller supplies formatting-heavy JSON.
+pub const MEMORY_POLICY_MIGRATION_MAX_BYTES: usize = MAX_JOB_INPUT_BYTES;
+/// The migration contract has four independently bounded policy limit fields.
+pub const MEMORY_POLICY_MIGRATION_MAX_VIOLATIONS: usize = 4;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -52,6 +57,11 @@ impl PolicyMigrationProposal {
         proposal_id: impl Into<String>,
     ) -> Result<Self, MemoryError> {
         let original_policy_bytes = original_policy_bytes.as_ref().to_vec();
+        if original_policy_bytes.is_empty()
+            || original_policy_bytes.len() > MEMORY_POLICY_MIGRATION_MAX_BYTES
+        {
+            return Err(MemoryError::InvalidProposal);
+        }
         let policy: MemoryPolicy = serde_json::from_slice(&original_policy_bytes)
             .map_err(|_| MemoryError::InvalidProposal)?;
         policy.validate_schema()?;
@@ -85,9 +95,18 @@ impl PolicyMigrationProposal {
             || self.source_policy_version == 0
             || !valid_digest(&self.source_policy_sha256)
             || self.original_policy_bytes.is_empty()
+            || self.original_policy_bytes.len() > MEMORY_POLICY_MIGRATION_MAX_BYTES
             || sha256_hex(&self.original_policy_bytes) != self.source_policy_sha256
             || !valid_digest(&self.target_capabilities_sha256)
             || self.violations.is_empty()
+            || self.violations.len() > MEMORY_POLICY_MIGRATION_MAX_VIOLATIONS
+            || self
+                .violations
+                .iter()
+                .map(|violation| violation.limit.as_str())
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                != self.violations.len()
             || self
                 .violations
                 .iter()
