@@ -26,7 +26,7 @@ impl ProviderSessionBroker {
 
     pub fn snapshot_json(&self) -> Result<Vec<u8>, SessionError> {
         let bytes = serde_json::to_vec(&self.snapshot()).map_err(|_| SessionError::Protocol)?;
-        if bytes.len() > MAX_HISTORY_BYTES {
+        if bytes.len() > self.capabilities.effective_limits.max_history_bytes {
             return Err(SessionError::Capacity);
         }
         Ok(bytes)
@@ -119,7 +119,9 @@ impl ProviderSessionBroker {
             .iter()
             .filter(|binding| binding.executable())
             .count();
-        if bounded_candidates > MAX_CANDIDATES || active_executable > 1 {
+        if bounded_candidates > self.capabilities.effective_limits.max_candidates
+            || active_executable > 1
+        {
             return Err(SessionError::Capacity);
         }
         for binding in bindings {
@@ -225,7 +227,9 @@ impl ProviderSessionBroker {
         histories: std::collections::BTreeMap<String, Vec<HistoryItem>>,
     ) -> Result<(), SessionError> {
         for (binding_id, items) in histories {
-            if !self.bindings.contains_key(&binding_id) || items.len() > MAX_SESSION_ITEMS {
+            if !self.bindings.contains_key(&binding_id)
+                || items.len() > self.capabilities.effective_limits.max_session_items
+            {
                 return Err(SessionError::Capacity);
             }
             for item in &items {
@@ -253,7 +257,7 @@ impl ProviderSessionBroker {
         if compaction_jobs
             .len()
             .checked_add(fork_plans.len())
-            .is_none_or(|count| count > MAX_MAINTENANCE_JOBS)
+            .is_none_or(|count| count > self.capabilities.effective_limits.max_maintenance_jobs)
         {
             return Err(SessionError::Capacity);
         }

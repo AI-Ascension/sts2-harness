@@ -132,9 +132,11 @@ fn schema_valid_policy_above_effective_limit_is_rejected_and_migrated_explicitly
         })
     );
 
-    let original = serde_json::to_vec(&policy).expect("policy bytes");
+    let canonical = serde_json::to_vec(&policy).expect("policy bytes");
+    let original = format!(" \n{}\n", String::from_utf8(canonical).expect("utf8")).into_bytes();
     let mut proposal =
-        PolicyMigrationProposal::new(&policy, &capabilities, "migration-1").expect("proposal");
+        PolicyMigrationProposal::new_from_bytes(&original, &capabilities, "migration-1")
+            .expect("proposal");
     assert_eq!(proposal.original_policy_bytes(), original.as_slice());
     proposal.approve("approval-1").expect("approve");
     let mut target = policy.clone();

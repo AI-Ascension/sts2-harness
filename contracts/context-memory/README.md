@@ -18,7 +18,10 @@ publishes the selected policy revision's effective limits in `capabilities.schem
 current harness profile limits the optional budget to 8,192 bytes and reports selected corpus
 limits rather than global defaults. A schema-valid policy above an effective limit remains
 inspectable but is rejected at admission and must be replaced through an explicit
-`policy-migration.v1` proposal/approval rather than silently clamped.
+`policy-migration.v1` proposal/approval rather than silently clamped. Store callers should use
+`PolicyMigrationProposal::new_from_bytes` so formatting and byte history are retained exactly.
+The descriptor digest detects payload drift; consumers crossing an owner boundary must also pin
+trusted revisions with `MemoryCapabilities::validate_against_trusted`.
 
 The complete producer inventory and lower/exact/one-over conformance matrix live in
 `docs/effective-context-limits.md`. Provider-session policy and capabilities contracts are

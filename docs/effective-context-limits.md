@@ -44,10 +44,13 @@ payload with that digest field cleared. Unknown, disabled, unattached, and stale
 not treated as unlimited. A changed limit, profile, adapter revision, or copied schema fails
 descriptor validation.
 
-The producer must update the schema, revision, and digest together. Consumers should forward the
-descriptor unchanged and validate the digest before using any effective value. A schema version
-change is additive only when a consumer has explicitly negotiated that version; otherwise the
-older descriptor is rejected.
+The digest is an integrity marker, not a signing key. A consumer that receives a descriptor across
+an owner boundary must additionally pin the expected owner/model/adapter revisions with
+`validate_against_trusted`; those pins must come from trusted configuration, never from the
+descriptor itself. The producer must update the schema, revision, and digest together. Consumers
+should forward the descriptor unchanged and validate the digest before using any effective value.
+A schema version change is additive only when a consumer has explicitly negotiated that version;
+otherwise the older descriptor is rejected.
 
 ## Boundary matrix
 
@@ -64,8 +67,9 @@ For each bounded value, evaluate the portable schema and selected profile indepe
 ## Explicit policy migration
 
 A schema-valid policy above the selected effective limit remains immutable and inspectable. The
-harness emits a `PolicyMigrationProposal` containing the exact original serialized bytes, their
-digest, the target capability digest, and each requested/effective mismatch. Creating a proposal
-does not clamp values, activate a policy, or alter history. An operator must call `approve` and
-then provide an independently authored, bounded target policy to `adopt`; adoption requires a
-new policy version and leaves the original bytes and audit record intact.
+store-facing `PolicyMigrationProposal::new_from_bytes` constructor records the exact original
+serialized bytes, their digest, the target capability digest, and each requested/effective
+mismatch. Creating a proposal does not clamp values, activate a policy, or alter history. An
+operator must call `approve` and then provide an independently authored, bounded target policy to
+`adopt`; adoption requires a new policy version and leaves the original bytes and audit record
+intact.

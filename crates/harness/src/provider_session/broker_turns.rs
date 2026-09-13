@@ -49,7 +49,15 @@ impl ProviderSessionBroker {
         if self.prepared.contains_key(prepared_id) {
             return Err(SessionError::Conflict);
         }
-        if self.prepared.len() >= MAX_PREPARED {
+        let limits = &self.capabilities.effective_limits;
+        if self.prepared.len() >= limits.max_prepared {
+            return Err(SessionError::Capacity);
+        }
+        if suffix.len() > limits.max_suffix_bytes
+            || output_schema.len() > limits.max_output_schema_bytes
+            || protected.len() > limits.max_suffix_bytes
+            || dependencies.len() > limits.max_dependencies
+        {
             return Err(SessionError::Capacity);
         }
         let new_prepared_bytes = suffix
@@ -61,7 +69,7 @@ impl ProviderSessionBroker {
             .prepared_bytes()?
             .checked_add(new_prepared_bytes)
             .ok_or(SessionError::Capacity)?;
-        if total_prepared_bytes > MAX_PREPARED_BYTES {
+        if total_prepared_bytes > limits.max_prepared_bytes {
             return Err(SessionError::Capacity);
         }
         if dependencies

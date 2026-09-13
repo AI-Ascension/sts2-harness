@@ -11,7 +11,9 @@ impl ProviderSessionBroker {
         dependencies: Vec<String>,
     ) -> Result<SessionBinding, SessionError> {
         self.authorize_owner(owner_token)?;
-        if dependencies.len() > MAX_DEPENDENCIES || !unique_ids(&dependencies) {
+        if dependencies.len() > self.capabilities.effective_limits.max_dependencies
+            || !unique_ids(&dependencies)
+        {
             return Err(SessionError::Capacity);
         }
         self.ensure_binding_not_expired(binding_id)?;
@@ -34,7 +36,9 @@ impl ProviderSessionBroker {
         source_ids: Vec<String>,
     ) -> Result<Vec<Retirement>, SessionError> {
         self.authorize_owner(owner_token)?;
-        if source_ids.is_empty() || source_ids.len() > MAX_DEPENDENCIES || !unique_ids(&source_ids)
+        if source_ids.is_empty()
+            || source_ids.len() > self.capabilities.effective_limits.max_dependencies
+            || !unique_ids(&source_ids)
         {
             return Err(SessionError::InvalidRequest);
         }
@@ -103,7 +107,7 @@ impl ProviderSessionBroker {
     ) -> Result<Retirement, SessionError> {
         self.authorize_owner(owner_token)?;
         if !valid_id(retirement_id)
-            || revoked_sources.len() > MAX_DEPENDENCIES
+            || revoked_sources.len() > self.capabilities.effective_limits.max_dependencies
             || !unique_ids(&revoked_sources)
         {
             return Err(SessionError::InvalidRequest);

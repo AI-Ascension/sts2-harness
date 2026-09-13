@@ -229,7 +229,10 @@ impl ProviderSessionBroker {
         request: &serde_json::Value,
         generation_class: bool,
     ) -> Result<NativeOperation, SessionError> {
-        if !valid_id(binding_id) || !valid_id(key) || self.operations.len() >= MAX_OPERATIONS {
+        if !valid_id(binding_id)
+            || !valid_id(key)
+            || self.operations.len() >= self.capabilities.effective_limits.max_operations
+        {
             return Err(SessionError::Capacity);
         }
         let operation = NativeOperation {
@@ -270,7 +273,7 @@ impl ProviderSessionBroker {
         status: SessionEventStatus,
         count: usize,
     ) {
-        if self.events.len() >= MAX_EVENTS {
+        if self.events.len() >= self.capabilities.effective_limits.max_events {
             self.events.remove(0);
         }
         let event = SessionEvent {

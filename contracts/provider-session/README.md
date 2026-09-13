@@ -9,4 +9,5 @@ and descriptor digest.
 Portable validity and profile admission are separate checks. A policy within the schema ceiling
 but above `effective_limits` is retained for inspection and rejected before a candidate/session
 is admitted. Missing, malformed, stale, or mismatched capability metadata is never interpreted as
-unlimited.
+unlimited. The descriptor digest is an integrity marker; cross-owner consumers must also pin the
+expected revisions through `validate_against_trusted`.

@@ -10,7 +10,7 @@ impl ProviderSessionBroker {
         item: &HistoryItem,
     ) -> Result<Vec<HistoryItem>, SessionError> {
         let mut items = self.histories.get(binding_id).cloned().unwrap_or_default();
-        if items.len() >= MAX_SESSION_ITEMS {
+        if items.len() >= self.capabilities.effective_limits.max_session_items {
             return Err(SessionError::Capacity);
         }
         if let Some(previous) = items.last()

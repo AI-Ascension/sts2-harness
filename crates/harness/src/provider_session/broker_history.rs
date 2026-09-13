@@ -21,7 +21,7 @@ impl ProviderSessionBroker {
         let replacement = serde_json::to_vec(items).map_err(|_| SessionError::Protocol)?;
         existing
             .checked_add(replacement.len())
-            .filter(|size| *size <= MAX_HISTORY_BYTES)
+            .filter(|size| *size <= self.capabilities.effective_limits.max_history_bytes)
             .ok_or(SessionError::Capacity)
     }
 
@@ -45,7 +45,7 @@ impl ProviderSessionBroker {
         }
         let binding = self.ensure_binding_not_expired(binding_id)?;
         if matches!(binding.state, BindingState::Retired | BindingState::Closed)
-            || items.len() > MAX_SESSION_ITEMS
+            || items.len() > self.capabilities.effective_limits.max_session_items
             || items.iter().any(|item| item.validate().is_err())
             || items.iter().any(|item| item.sequence > watermark)
             || items
@@ -120,7 +120,7 @@ impl ProviderSessionBroker {
         limit: usize,
     ) -> Result<HistoryView, SessionError> {
         let binding = self.ensure_binding_not_expired(binding_id)?;
-        if limit == 0 || limit > 128 {
+        if limit == 0 || limit > self.capabilities.effective_limits.max_session_items {
             return Err(SessionError::Capacity);
         }
         let start = match cursor {

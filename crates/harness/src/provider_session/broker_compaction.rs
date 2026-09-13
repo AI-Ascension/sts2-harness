@@ -43,7 +43,7 @@ impl ProviderSessionBroker {
             .compaction_jobs
             .len()
             .checked_add(self.fork_plans.len())
-            .is_none_or(|count| count >= MAX_MAINTENANCE_JOBS)
+            .is_none_or(|count| count >= self.capabilities.effective_limits.max_maintenance_jobs)
         {
             return Err(SessionError::Capacity);
         }

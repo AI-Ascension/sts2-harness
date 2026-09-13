@@ -14,7 +14,7 @@ pub enum PolicyMigrationState {
 }
 
 /// A bounded, reviewable migration proposal for a policy that is portable-schema valid but above
-/// the selected owner/profile's effective limits. The original serialized policy is retained
+/// the selected owner/profile's effective limits. `new_from_bytes` retains the original policy
 /// byte-for-byte; no value is clamped and no target policy is activated by this record.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -38,11 +38,25 @@ impl PolicyMigrationProposal {
         capabilities: &MemoryCapabilities,
         proposal_id: impl Into<String>,
     ) -> Result<Self, MemoryError> {
+        let original_policy_bytes =
+            serde_json::to_vec(policy).map_err(|_| MemoryError::InvalidProposal)?;
+        Self::new_from_bytes(original_policy_bytes, capabilities, proposal_id)
+    }
+
+    /// Build a proposal from the exact bytes read from the policy store. This is the persistence
+    /// path: formatting, field order, and unknown-but-schema-valid byte history are preserved
+    /// instead of being regenerated from a Rust value.
+    pub fn new_from_bytes(
+        original_policy_bytes: impl AsRef<[u8]>,
+        capabilities: &MemoryCapabilities,
+        proposal_id: impl Into<String>,
+    ) -> Result<Self, MemoryError> {
+        let original_policy_bytes = original_policy_bytes.as_ref().to_vec();
+        let policy: MemoryPolicy = serde_json::from_slice(&original_policy_bytes)
+            .map_err(|_| MemoryError::InvalidProposal)?;
         policy.validate_schema()?;
         capabilities.validate()?;
         let proposal_id = proposal_id.into();
-        let original_policy_bytes =
-            serde_json::to_vec(policy).map_err(|_| MemoryError::InvalidProposal)?;
         let violations = policy.capability_limit_violations(capabilities);
         if !valid_id(&proposal_id) || violations.is_empty() {
             return Err(MemoryError::InvalidProposal);
@@ -78,7 +92,7 @@ impl PolicyMigrationProposal {
                 .violations
                 .iter()
                 .any(|violation| {
-                    !valid_id(&violation.limit)
+                    !valid_memory_violation(violation)
                         || violation.requested <= violation.effective
                         || violation.requested == 0
                         || violation.effective == 0
@@ -89,6 +103,8 @@ impl PolicyMigrationProposal {
                 && self.approval_ref.as_deref().is_none_or(|value| !valid_id(value))
             || matches!(self.state, PolicyMigrationState::Proposed | PolicyMigrationState::Approved)
                 && self.adopted_policy_sha256.is_some()
+            || self.state == PolicyMigrationState::Adopted
+                && self.adopted_policy_sha256.is_none()
             || self
                 .adopted_policy_sha256
                 .as_deref()
@@ -163,6 +179,25 @@ impl PolicyMigrationProposal {
     #[must_use]
     pub fn original_policy_bytes(&self) -> &[u8] {
         &self.original_policy_bytes
+    }
+}
+
+fn valid_memory_violation(violation: &MemoryLimitViolation) -> bool {
+    match violation.limit.as_str() {
+        "max_candidates" => {
+            violation.requested <= MAX_CANDIDATES && violation.effective <= MAX_CANDIDATES
+        }
+        "max_results" => {
+            violation.requested <= MAX_RESULTS && violation.effective <= MAX_RESULTS
+        }
+        "max_selected" => {
+            violation.requested <= MAX_SELECTED && violation.effective <= MAX_SELECTED
+        }
+        "optional_byte_budget" => {
+            violation.requested <= MEMORY_POLICY_SCHEMA_MAX_OPTIONAL_BYTES
+                && violation.effective <= MAX_OPTIONAL_BYTES
+        }
+        _ => false,
     }
 }
 

@@ -41,7 +41,7 @@ impl ProviderSessionBroker {
                     || binding.purpose == SessionPurpose::Evaluation
             })
             .count()
-            >= MAX_CANDIDATES
+            >= self.capabilities.effective_limits.max_candidates
         {
             return Err(SessionError::Capacity);
         }

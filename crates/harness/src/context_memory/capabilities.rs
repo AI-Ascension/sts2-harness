@@ -245,6 +245,25 @@ impl MemoryCapabilities {
         Ok(())
     }
 
+    /// Validate the descriptor against revisions supplied by a trusted consumer configuration.
+    /// `validate` checks the harness defaults; this method is for forwarded descriptors selected
+    /// by another owner/profile and must not be called with values copied from the descriptor.
+    pub fn validate_against_trusted(
+        &self,
+        owner_revision: &str,
+        adapter_revision: &str,
+        policy_schema_sha256: &str,
+    ) -> Result<(), MemoryError> {
+        self.validate()?;
+        if self.binding.owner_revision != owner_revision
+            || self.binding.adapter_revision != adapter_revision
+            || self.binding.policy_schema_sha256 != policy_schema_sha256
+        {
+            return Err(MemoryError::InvalidCapabilities);
+        }
+        Ok(())
+    }
+
     #[must_use]
     pub fn descriptor_digest(&self) -> String {
         let mut unsigned = self.clone();
@@ -256,60 +275,4 @@ impl MemoryCapabilities {
 #[must_use]
 pub fn memory_policy_schema_sha256() -> String {
     sha256_hex(include_bytes!("../../../../contracts/context-memory/policy.schema.json"))
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub enum MemoryRole {
-    Read,
-    Search,
-    Generate,
-    Review,
-    Select,
-    Policy,
-    Revoke,
-    Control,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MemoryAuthorizer {
-    grants: BTreeMap<String, BTreeSet<MemoryRole>>,
-}
-
-impl MemoryAuthorizer {
-    pub fn new() -> Self {
-        Self {
-            grants: BTreeMap::new(),
-        }
-    }
-
-    pub fn grant(
-        &mut self,
-        principal: impl Into<String>,
-        role: MemoryRole,
-    ) -> Result<(), MemoryError> {
-        let principal = principal.into();
-        if !valid_id(&principal) {
-            return Err(MemoryError::PermissionDenied);
-        }
-        self.grants.entry(principal).or_default().insert(role);
-        Ok(())
-    }
-
-    pub fn check(&self, principal: &str, role: MemoryRole) -> Result<(), MemoryError> {
-        if self
-            .grants
-            .get(principal)
-            .is_some_and(|roles| roles.contains(&role))
-        {
-            Ok(())
-        } else {
-            Err(MemoryError::PermissionDenied)
-        }
-    }
-}
-
-impl Default for MemoryAuthorizer {
-    fn default() -> Self {
-        Self::new()
-    }
 }

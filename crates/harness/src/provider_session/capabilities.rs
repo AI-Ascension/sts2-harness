@@ -262,6 +262,24 @@ impl NativeCapabilities {
         Ok(())
     }
 
+    /// Validate against provenance pins supplied by trusted configuration. Callers must not copy
+    /// these values from the untrusted descriptor being checked.
+    pub fn validate_against_trusted(
+        &self,
+        owner_revision: &str,
+        model_revision: &str,
+        adapter_revision: &str,
+    ) -> Result<(), SessionError> {
+        self.validate()?;
+        if self.binding.owner_revision != owner_revision
+            || self.binding.model_revision != model_revision
+            || self.binding.adapter_revision != adapter_revision
+        {
+            return Err(SessionError::InvalidCapabilities);
+        }
+        Ok(())
+    }
+
     #[must_use]
     pub fn descriptor_digest(&self) -> String {
         let mut unsigned = self.clone();

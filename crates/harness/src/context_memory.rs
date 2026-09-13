@@ -25,6 +25,7 @@ mod context_memory_impl {
     include!("context_memory/selection.rs");
     include!("context_memory/approval.rs");
     include!("context_memory/capabilities.rs");
+    include!("context_memory/authorizer.rs");
     include!("context_memory/map.rs");
     include!("context_memory/projection.rs");
     include!("context_memory/lifecycle.rs");
