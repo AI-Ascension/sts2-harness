@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::super::super::contract::ExecutionMode;
 use super::super::*;
 
 pub(super) fn validate_target_selection(
@@ -47,6 +48,17 @@ pub(super) fn validate_target_selection(
         return Err(ManagementError::capability(
             "target_profile_unavailable",
             "requested execution profile is not available on the target",
+        ));
+    }
+    if matches!(selection.execution_mode, ExecutionMode::Live)
+        && !descriptor
+            .supported_operations
+            .iter()
+            .any(|operation| operation == "workflow:live")
+    {
+        return Err(ManagementError::capability(
+            "target_operation_unavailable",
+            "target does not support live workflow execution",
         ));
     }
     if descriptor.compatibility_revision != selection.compatibility_revision {

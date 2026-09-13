@@ -70,6 +70,13 @@ fn request(definition: Value) -> RunRequest {
 }
 
 fn target_descriptor() -> TargetDescriptor {
+    target_descriptor_with_operations(vec![
+        "workflow:control".to_owned(),
+        "workflow:live".to_owned(),
+    ])
+}
+
+fn target_descriptor_with_operations(supported_operations: Vec<String>) -> TargetDescriptor {
     TargetDescriptor {
         instance_id: "instance-1".to_owned(),
         execution_profiles: vec!["live.workflow.v1".to_owned()],
@@ -77,7 +84,7 @@ fn target_descriptor() -> TargetDescriptor {
         compatibility_revision: "live.compatibility.v1".to_owned(),
         capability_revision: "live.capabilities.v1".to_owned(),
         availability: TargetAvailability::Available,
-        supported_operations: vec!["workflow:control".to_owned()],
+        supported_operations,
         capabilities: vec!["workflow.live".to_owned()],
         game_profiles: vec!["sts2-live-v1".to_owned()],
         save_profiles: Vec::new(),
@@ -85,7 +92,9 @@ fn target_descriptor() -> TargetDescriptor {
     }
 }
 
-struct ScopedCapabilityDouble;
+struct ScopedCapabilityDouble {
+    supported_operations: Vec<String>,
+}
 
 impl CapabilityPort for ScopedCapabilityDouble {
     fn capabilities(&self) -> Result<Value, ManagementError> {
@@ -105,10 +114,12 @@ impl CapabilityPort for ScopedCapabilityDouble {
                 "target discovery is not available to this actor",
             ));
         }
+        let mut descriptor = target_descriptor();
+        descriptor.supported_operations = self.supported_operations.clone();
         Ok(TargetCatalogResponse {
             schema_version: "ascension.workflow-targets/v1".to_owned(),
             catalog_revision: "live.catalog.v1".to_owned(),
-            targets: vec![target_descriptor()],
+            targets: vec![descriptor],
         })
     }
 }
@@ -234,13 +245,82 @@ fn live_requires_binding_and_stale_binding_is_rejected_before_execution()
 }
 
 #[test]
+fn live_target_admission_requires_live_operation_support() -> Result<(), Box<dyn std::error::Error>>
+{
+    let submissions = Arc::new(SubmissionDouble::new());
+    let service = ManagementService::in_memory()
+        .with_capability_port(Arc::new(ScopedCapabilityDouble {
+            supported_operations: vec!["workflow:read".to_owned()],
+        }))
+        .with_execution_port(submissions.clone());
+    let actor = actor()?;
+    let target = RunTargetConfiguration {
+        instance_id: "instance-1".to_owned(),
+        execution_profile: "live.workflow.v1".to_owned(),
+        execution_mode: ExecutionMode::Live,
+        workflow_revision: "1.0.0".to_owned(),
+        compatibility_revision: "live.compatibility.v1".to_owned(),
+        capability_revision: "live.capabilities.v1".to_owned(),
+        game_profile: "sts2-live-v1".to_owned(),
+        save_profile: None,
+        inference_profile: None,
+        context_capability: None,
+        provider_capability: None,
+    };
+    let workflow_definition_digest = live_artifact_digest()?;
+    let preflight_error = service
+        .preflight_target(
+            &actor,
+            TargetAdmissionRequest {
+                schema_version: "ascension.workflow-admission/v1".to_owned(),
+                request_id: "request-operation-support".to_owned(),
+                workflow_definition_digest: workflow_definition_digest.clone(),
+                target: target.clone(),
+            },
+        )
+        .expect_err("live preflight without workflow:live support unexpectedly succeeded");
+    assert_eq!(preflight_error.code, "target_operation_unavailable");
+
+    let descriptor = target_descriptor_with_operations(vec!["workflow:read".to_owned()]);
+    let submit_error = service
+        .submit_run(
+            &actor,
+            RunRequest {
+                schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
+                request_id: "request-operation-support".to_owned(),
+                definition: None,
+                artifact_id: Some("artifact-http-target".to_owned()),
+                instance_id: "instance-1".to_owned(),
+                profile: "live.workflow.v1".to_owned(),
+                admission: Some(TargetAdmissionBinding {
+                    schema_version: "ascension.workflow-admission/v1".to_owned(),
+                    request_id: "request-operation-support".to_owned(),
+                    workflow_definition_digest,
+                    target,
+                    descriptor_digest: descriptor.digest()?,
+                    catalog_revision: "live.catalog.v1".to_owned(),
+                }),
+            },
+        )
+        .expect_err("live submission without workflow:live support unexpectedly succeeded");
+    assert_eq!(submit_error.code, "target_operation_unavailable");
+    assert_eq!(submissions.submissions.load(Ordering::SeqCst), 0);
+    Ok(())
+}
+
+#[test]
 fn authenticated_scoped_catalog_preflight_and_submission_are_actor_bound()
 -> Result<(), Box<dyn std::error::Error>> {
     let submissions = Arc::new(SubmissionDouble::new());
     let execution: Arc<dyn WorkflowExecutionPort> = submissions.clone();
     let service = Arc::new(
         ManagementService::in_memory()
-            .with_capability_port(Arc::new(ScopedCapabilityDouble))
+            .with_capability_port(Arc::new(ScopedCapabilityDouble {
+                supported_operations: vec![
+                    "workflow:control".to_owned(),
+                    "workflow:live".to_owned(),
+                ],
+            }))
             .with_execution_port(execution),
     );
     let operator = AuthContext::new("operator", ["workflow:*".to_owned()])?;
