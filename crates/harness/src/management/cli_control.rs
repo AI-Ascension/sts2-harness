@@ -4,11 +4,13 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
 
-use super::super::decode_strict;
-use super::{
-    CliFailure, CliOutput, ExportRequest, ExportResponse, MANAGEMENT_SCHEMA_VERSION,
-    ManagementReplayRequest, client_for, parse_options, request_and_render, required_option,
-    response_failure, validate_identifier, validate_output_path,
+use super::super::{
+    ExportRequest, ExportResponse, MANAGEMENT_SCHEMA_VERSION, ManagementReplayRequest,
+    decode_strict, validate_identifier,
+};
+use super::support::{
+    CliFailure, CliOutput, client_for, parse_options, request_and_render, required_option,
+    response_failure, validate_output_path,
 };
 
 pub(super) fn replay_command(args: &[String]) -> Result<CliOutput, CliFailure> {
