@@ -50,58 +50,6 @@ pub(super) fn validate_profile(profile: &str) -> Result<(), ManagementError> {
     }
 }
 
-pub(super) fn validate_run_target_admission(request: &RunRequest) -> Result<(), ManagementError> {
-    let live = request.profile == "live" || request.profile.starts_with("live.");
-    let Some(admission) = request.admission.as_ref() else {
-        if live {
-            return Err(ManagementError::conflict(
-                "target_admission_required",
-                "live workflow submission requires an exact target admission binding",
-            ));
-        }
-        return Ok(());
-    };
-    admission.validate().map_err(ManagementError::from)?;
-    if admission.instance_id != request.instance_id {
-        return Err(ManagementError::conflict(
-            "target_instance_mismatch",
-            "target admission instance does not match the run request",
-        ));
-    }
-    if admission.execution_profile != request.profile {
-        return Err(ManagementError::conflict(
-            "target_profile_mismatch",
-            "target admission execution profile does not match the run request",
-        ));
-    }
-    let admission_is_live = matches!(
-        admission.execution_mode,
-        super::super::contract::ExecutionMode::Live
-    );
-    if admission_is_live != live {
-        return Err(ManagementError::conflict(
-            "target_mode_mismatch",
-            "target admission execution mode does not match the run profile",
-        ));
-    }
-    if let Some(definition) = request.definition.as_ref() {
-        let parsed = super::super::workflow_ports::parse_definition(definition)?;
-        if admission.workflow_revision != parsed.version.as_str() {
-            return Err(ManagementError::conflict(
-                "target_admission_stale",
-                "target admission workflow revision is stale",
-            ));
-        }
-        if admission.game_profile != parsed.game_profile.as_str() {
-            return Err(ManagementError::conflict(
-                "target_game_profile_mismatch",
-                "target admission game profile does not match the workflow",
-            ));
-        }
-    }
-    Ok(())
-}
-
 pub(super) fn enforce_live_profile(
     capabilities: &Arc<dyn CapabilityPort>,
     actor: &AuthContext,
@@ -161,6 +109,15 @@ pub(super) fn verify_admission(
             "port_digest_mismatch",
             "execution port returned a different definition digest",
         ));
+    }
+    if let Some(admission) = &snapshot.admission {
+        admission.validate().map_err(ManagementError::from)?;
+        if admission.workflow_definition_digest != definition_digest {
+            return Err(ManagementError::conflict(
+                "port_admission_mismatch",
+                "execution port returned an admission for a different workflow",
+            ));
+        }
     }
     if snapshot.run_revision == 0 || admission.initial_events.is_empty() {
         return Err(ManagementError::invalid(

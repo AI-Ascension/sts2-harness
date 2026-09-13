@@ -4,7 +4,7 @@ use serde_json::json;
 
 use super::super::contract::{
     Budget, CleanupState, CommandOutcome, Cursor, GameOutcome, PendingOperation, RunRequest,
-    RunSnapshot, WorkflowRunStatus,
+    RunSnapshot, TargetAdmissionBinding, WorkflowRunStatus,
 };
 use super::super::service::{CommandApplication, ManagementError};
 use super::execution::LiveRun;
@@ -15,6 +15,7 @@ pub(super) struct SnapshotState {
     pub(super) pending: Option<PendingOperation>,
     pub(super) provider_calls: u64,
     pub(super) cleanup: CleanupState,
+    pub(super) admission: Option<TargetAdmissionBinding>,
 }
 
 impl Default for SnapshotState {
@@ -24,6 +25,7 @@ impl Default for SnapshotState {
             pending: None,
             provider_calls: 0,
             cleanup: CleanupState::NotStarted,
+            admission: None,
         }
     }
 }
@@ -50,6 +52,7 @@ pub(super) fn application(
             }),
             provider_calls: run.state.provider_calls,
             cleanup: run.cleanup.clone(),
+            admission: run.admission.clone(),
         },
         revision,
     );
@@ -107,7 +110,7 @@ pub(super) fn snapshot_from_runtime(
             ..Budget::default()
         },
         cleanup: state.cleanup,
-        admission: None,
+        admission: state.admission,
     }
 }
 

@@ -41,6 +41,8 @@ mod provider_session_support;
 mod read;
 #[path = "service_support.rs"]
 mod support;
+#[path = "service_target_admission.rs"]
+mod target_admission;
 #[path = "service_unavailable.rs"]
 mod unavailable;
 

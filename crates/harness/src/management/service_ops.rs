@@ -2,8 +2,9 @@
 
 use super::support::{
     authorize, enforce_live_profile, recovery_admission, run_submission_response, validate_profile,
-    validate_run_target_admission, verify_admission, verify_digest, waiting_reason,
+    verify_admission, verify_digest, waiting_reason,
 };
+use super::target_admission::{bind_snapshot_admission, validate_run_target_admission};
 use super::*;
 
 impl ManagementService {
@@ -69,7 +70,14 @@ impl ManagementService {
         } else {
             digest_value(&json!({ "artifact_id": request.artifact_id }))?
         };
-        let admission = self.execution.submit(&request, actor, &definition_digest)?;
+        let binding = self.revalidate_target_admission(actor, &request, &definition_digest)?;
+        let mut admission = self.execution.submit_admitted(
+            &request,
+            actor,
+            &definition_digest,
+            binding.as_ref(),
+        )?;
+        admission.snapshot = bind_snapshot_admission(admission.snapshot, binding.as_ref())?;
         verify_admission(&admission, &definition_digest)?;
         self.store.create_run(
             &request.request_id,
@@ -199,7 +207,7 @@ impl ManagementService {
                 .record_operation_intent(&run_id, expected_revision, pending)
                 .map_err(ManagementError::from)
         };
-        let application = match self.execution.apply_command_with_intent(
+        let mut application = match self.execution.apply_command_with_intent(
             CommandContext {
                 request: request.clone(),
                 snapshot: snapshot.clone(),
@@ -215,6 +223,8 @@ impl ManagementService {
                 return Err(error);
             }
         };
+        application.snapshot =
+            bind_snapshot_admission(application.snapshot, snapshot.admission.as_ref())?;
         let response = self.store.apply_command(
             &request,
             &request_digest,

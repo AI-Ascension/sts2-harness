@@ -3,7 +3,7 @@
 use serde_json::Value;
 
 use super::super::auth::AuthContext;
-use super::super::contract::RunRequest;
+use super::super::contract::{RunRequest, TargetCatalogResponse};
 use super::super::service::ManagementError;
 use crate::episode::{
     ActionIdentity, DecisionInput, DecisionSource, EpisodeLegalAction, EpisodeLegalActionSet,
@@ -203,6 +203,19 @@ where
 /// A factory opens one session for each admitted workflow run.
 pub trait LiveWorkflowSessionFactory: Send + Sync {
     fn capabilities(&self) -> Value;
+
+    /// Returns the actor-scoped catalog used to mint and revalidate live
+    /// admission bindings. Factories that cannot provide authoritative target
+    /// metadata fail closed rather than allowing client-supplied descriptors.
+    fn target_catalog(
+        &self,
+        _actor: &AuthContext,
+    ) -> Result<TargetCatalogResponse, ManagementError> {
+        Err(ManagementError::unavailable(
+            "target_catalog_unavailable",
+            "live target discovery is not attached to this workflow owner",
+        ))
+    }
 
     fn open(
         &self,

@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::super::target_admission::RunTargetConfiguration;
+use super::super::target_admission::TargetAdmissionBinding;
 use super::{RecoveryAdmission, RunEvent, RunSnapshot, WorkflowRunStatus};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -102,8 +102,11 @@ pub struct RunRequest {
     pub artifact_id: Option<String>,
     pub instance_id: String,
     pub profile: String,
+    /// The exact server-issued preflight binding. Live callers must obtain
+    /// this value from the target-admission preflight endpoint; a caller may
+    /// not replace it with an unverified target configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub admission: Option<RunTargetConfiguration>,
+    pub admission: Option<TargetAdmissionBinding>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
