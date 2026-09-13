@@ -278,7 +278,12 @@ fn live_target_admission_requires_live_operation_support() -> Result<(), Box<dyn
                 target: target.clone(),
             },
         )
-        .expect_err("live preflight without workflow:live support unexpectedly succeeded");
+        .err()
+        .ok_or_else(|| {
+            std::io::Error::other(
+                "live preflight without workflow:live support unexpectedly succeeded",
+            )
+        })?;
     assert_eq!(preflight_error.code, "target_operation_unavailable");
 
     let descriptor = target_descriptor_with_operations(vec!["workflow:read".to_owned()]);
@@ -302,7 +307,12 @@ fn live_target_admission_requires_live_operation_support() -> Result<(), Box<dyn
                 }),
             },
         )
-        .expect_err("live submission without workflow:live support unexpectedly succeeded");
+        .err()
+        .ok_or_else(|| {
+            std::io::Error::other(
+                "live submission without workflow:live support unexpectedly succeeded",
+            )
+        })?;
     assert_eq!(submit_error.code, "target_operation_unavailable");
     assert_eq!(submissions.submissions.load(Ordering::SeqCst), 0);
     Ok(())
