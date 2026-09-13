@@ -1,0 +1,66 @@
+# ADR 0016: Durable Checkpoint Branch Metadata Store
+
+## Status
+
+Accepted for the harness component boundary. This decision authorizes durable branch metadata,
+immutable ancestry, and retention references in a local SQLite store. It does not authorize native
+checkpoint restoration, replay execution, gateway lease allocation, or game-process access.
+
+## Context
+
+The in-memory `BranchTree` foundation keeps sibling identities, parent edges, and writable scopes
+distinct, but it cannot survive an owner restart. Issue #116 also needs a durable fork occurrence,
+strategy descriptor, independent run associations, lifecycle evidence, event cursor, and artifact
+reachability record. The harness owns those records; the game-mod owns native state and effects, the
+gateway owns destinations and leases, and the artifact store owns blob deletion.
+
+## Decision
+
+`SqliteBranchStore` owns the versioned `ascension.durable-branch/v1` model. A branch record keeps
+experiment/root identity, immutable parent and fork occurrence, exact state digest, selected
+`exact_restore` or `prefix_replay` strategy, source handle/trajectory prefix, effective seed/setup,
+boundary, assurance, run/episode/trajectory/context associations, policy/config revisions, operator
+metadata, lifecycle status, timestamps, and artifact references. Gameplay state identity is never
+used as a branch key; equal state digests remain separate occurrences.
+
+Creation is metadata-only and starts at `pending`. One SQLite transaction inserts the experiment
+root or an existing-parent child, its append-only occurrence projection, immutable branch row,
+operation receipt, artifact edges, and `created` event. A repeated operation ID and identical
+payload returns the existing branch; a changed payload fails with `IdempotencyConflict`. Parent,
+run, branch, scope, occurrence, label, branch-count, and artifact-count checks happen before
+commit. SQLite foreign keys enforce experiment, parent-branch, occurrence-parent, and artifact
+ownership relationships.
+
+The lifecycle is `pending`, `restoring`, `replaying`, `ready`, `running`, `held`, `completed`,
+`failed`, `unknown`, and `archived`. Readiness requires strategy-specific evidence:
+`exact_restore` requires `exact_restore_receipt`, while `prefix_replay` requires
+`prefix_replay_boundary`. These labels are not interchangeable. Startup reconciliation only lists
+pending/preparing/unknown rows; it never retries an uncertain effect or allocates a destination.
+
+Reads provide stable branch-ID pagination, root-first ancestry, and append-only event cursors. Rename,
+assurance, lifecycle, and artifact mutations use operation IDs plus a metadata CAS revision.
+Archiving is reversible through `archived -> pending` and does not remove dependencies. Explicit
+pruning requires archived (or policy-eligible completed) branch IDs, writes branch and artifact
+tombstones, and reports retained versus collectable artifact references. A collectable reference is
+only one with no remaining non-pruned branch root; actual blob deletion remains an artifact-owner
+operation and must be planned separately.
+
+## Persistence and migration
+
+Revision 1 creates the branch tables transactionally and records both SQLite `user_version` and a
+`branch_schema_meta` row. Opening a newer revision fails closed with `UnsupportedSchema`; opening an
+older or empty database applies only forward, idempotent creation. There is no automatic downgrade:
+operators must retain a backup and restore it through the owning deployment procedure. The branch
+database may share a local SQLite file with other harness stores, but its table names and contract
+revision are isolated.
+
+## Compatibility and evidence
+
+This is an additive, owner-local component contract. Future serialized consumers must pin the
+contract version and fixture digest before claiming compatibility. The fixture in
+`conformance/durable-branch-v1/valid.json` records the bounded vocabulary and synthetic provenance.
+`durable_branch_store.rs` tests cover restart recovery, equal-state siblings, operation idempotency,
+unknown parents, strategy assurance, metadata CAS, shared-artifact retention, tombstones, event
+cursors, and future-schema rejection. These are deterministic source/component checks only.
+Native receipt production, replay boundaries, host/profile isolation, leases, live effects, and
+release compatibility remain unverified.

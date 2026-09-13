@@ -1,0 +1,32 @@
+{
+  "schema_version": "ascension.durable-branch/v1",
+  "status_values": [
+    "pending",
+    "restoring",
+    "replaying",
+    "ready",
+    "running",
+    "held",
+    "completed",
+    "failed",
+    "unknown",
+    "archived"
+  ],
+  "strategies": [
+    {
+      "strategy": "exact_restore",
+      "assurance": "exact_restore_receipt"
+    },
+    {
+      "strategy": "prefix_replay",
+      "assurance": "prefix_replay_boundary"
+    }
+  ],
+  "provenance": {
+    "source": "AI-Ascension/sts2-harness",
+    "revision": "codex/issue-116-durable-20260913",
+    "license": "MIT",
+    "kind": "synthetic-test-fixture",
+    "native_evidence": false
+  }
+}
