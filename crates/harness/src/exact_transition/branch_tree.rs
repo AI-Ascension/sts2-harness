@@ -60,7 +60,7 @@ pub enum BranchTreeError {
     InvalidLabel,
     /// The requested parent does not exist.
     UnknownParent,
-    /// A branch or write scope is already allocated.
+    /// A branch, run identity, or write scope is already allocated.
     Duplicate,
     /// Retrying an operation changed its immutable request payload.
     IdempotencyConflict,
@@ -131,16 +131,17 @@ impl BranchTree {
         if self.branches.len() >= MAX_BRANCHES {
             return Err(BranchTreeError::Capacity);
         }
-        if let Some(parent) = &record.parent_branch_id
-            && !self.branches.contains_key(parent)
-        {
-            return Err(BranchTreeError::UnknownParent);
+        match &record.parent_branch_id {
+            Some(parent) if !self.branches.contains_key(parent) => {
+                return Err(BranchTreeError::UnknownParent);
+            }
+            None if !self.branches.is_empty() => return Err(BranchTreeError::Duplicate),
+            _ => {}
         }
         if self.branches.contains_key(&record.branch_id)
-            || self
-                .branches
-                .values()
-                .any(|branch| branch.write_scope == record.write_scope)
+            || self.branches.values().any(|branch| {
+                branch.run_id == record.run_id || branch.write_scope == record.write_scope
+            })
         {
             return Err(BranchTreeError::Duplicate);
         }
@@ -179,6 +180,9 @@ fn validate_record(record: &BranchRecord) -> Result<(), BranchTreeError> {
         if parent == &record.branch_id {
             return Err(BranchTreeError::InvalidLabel);
         }
+    }
+    if record.status != BranchStatus::Pending {
+        return Err(BranchTreeError::InvalidTransition);
     }
     Ok(())
 }

@@ -72,11 +72,33 @@ fn unknown_parent_and_shared_writable_scope_are_rejected() {
         .expect_err("scope repeats"),
         BranchTreeError::Duplicate
     );
+    let mut duplicate_run = branch("branch:other", Some("branch:root"), "scope:other");
+    duplicate_run.run_id = "run:branch:root".to_owned();
+    assert_eq!(
+        tree.create("operation:other", duplicate_run)
+            .expect_err("run identity repeats"),
+        BranchTreeError::Duplicate
+    );
+    assert_eq!(
+        tree.create(
+            "operation:second-root",
+            branch("branch:second-root", None, "scope:second-root")
+        )
+        .expect_err("tree has one root"),
+        BranchTreeError::Duplicate
+    );
 }
 
 #[test]
 fn lifecycle_never_promotes_unprepared_or_archived_work() {
     let mut tree = BranchTree::new();
+    let mut directly_ready = branch("branch:direct", None, "scope:direct");
+    directly_ready.status = BranchStatus::Ready;
+    assert_eq!(
+        tree.create("operation:direct", directly_ready)
+            .expect_err("creation starts pending"),
+        BranchTreeError::InvalidTransition
+    );
     tree.create("operation:root", branch("branch:root", None, "scope:root"))
         .expect("root");
     assert_eq!(

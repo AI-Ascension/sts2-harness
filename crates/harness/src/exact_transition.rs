@@ -29,9 +29,7 @@ pub const TRANSITION_COMMITMENT_VERSION: &str = "asc-transition:v1";
 pub const TRANSITION_COMMITMENT_PREFIX: &str = "asc-transition:v1:sha256:";
 /// Domain separator for the transition commitment.
 pub const TRANSITION_DOMAIN: &[u8] = b"AI-ASCENSION/TRANSITION/v1\0";
-/// Maximum records accepted in one trace.
 pub const MAX_TRANSITION_RECORDS: usize = 100_000;
-/// Maximum length of a boundary, action, or profile label.
 pub const MAX_TRANSITION_LABEL_BYTES: usize = 256;
 
 /// One committed boundary in a deterministic run.
