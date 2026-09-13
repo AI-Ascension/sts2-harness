@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use super::super::contract::{CommandKind, CommandOutcome, PendingOperation, WorkflowRunStatus};
+use super::super::contract::{
+    CommandKind, CommandOutcome, ErrorClass, PendingOperation, WorkflowRunStatus,
+};
 use super::super::service::{CommandApplication, CommandContext, ManagementError};
 use crate::workflow::{RuntimeFault, RuntimeStatus};
 
@@ -64,11 +66,21 @@ pub(super) fn apply_command(
         }
         CommandKind::Cancel => {
             let reconcile_error = reconcile_pending(&mut run.state).err();
+            if reconcile_error
+                .as_ref()
+                .is_some_and(|error| error.class == ErrorClass::Unresolved)
+            {
+                return Ok(application(
+                    run,
+                    WorkflowRunStatus::NeedsOperator,
+                    CommandOutcome::Pending,
+                    "live_operation_unknown",
+                    revision,
+                ));
+            }
             let cleanup_error = cleanup_session(run, true).err();
             run.cancelled = true;
-            if let Some(error) = reconcile_error
-                && error.class != super::super::contract::ErrorClass::Unresolved
-            {
+            if let Some(error) = reconcile_error {
                 return Err(error);
             }
             if cleanup_error.is_some() {
