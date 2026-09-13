@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ascension:provider-session:policy:v1",
+  "title": "Harness provider-session policy contract",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "ascension.provider-session.policy.v1"
+    },
+    "policy_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "episode_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "agent_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        }
+      },
+      "required": [
+        "project_id",
+        "run_id",
+        "episode_id",
+        "agent_id"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "mode": {
+      "enum": [
+        "disabled",
+        "fixture_only",
+        "inspect_only",
+        "enabled"
+      ]
+    },
+    "continuity": {
+      "enum": [
+        "strict_reviewed",
+        "observed_persistent"
+      ]
+    },
+    "credential_realm_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "profile_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "cross_scope_fork": {
+      "const": false
+    },
+    "reconnect_resumes_gameplay": {
+      "const": false
+    },
+    "compaction_generation_permission_required": {
+      "const": true
+    },
+    "max_completed_turns": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1024
+    },
+    "history_ttl_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 604800
+    },
+    "automatic_transform_policy": {
+      "enum": [
+        "deny_and_fence",
+        "explicit_bounded_observed"
+      ]
+    },
+    "epoch": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    }
+  },
+  "required": [
+    "schema",
+    "policy_id",
+    "scope",
+    "version",
+    "mode",
+    "continuity",
+    "credential_realm_ref",
+    "profile_sha256",
+    "cross_scope_fork",
+    "reconnect_resumes_gameplay",
+    "compaction_generation_permission_required",
+    "max_completed_turns",
+    "history_ttl_seconds",
+    "automatic_transform_policy",
+    "epoch"
+  ]
+}

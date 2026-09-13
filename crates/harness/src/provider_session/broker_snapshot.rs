@@ -54,19 +54,19 @@ impl ProviderSessionBroker {
         expected_policy: &ProviderSessionPolicy,
         expected_capabilities: &NativeCapabilities,
     ) -> Result<Self, SessionError> {
-        expected_policy.validate()?;
-        expected_capabilities.validate()?;
-        if expected_policy.scope != *expected_scope
-            || expected_policy.profile_sha256 != expected_capabilities.profile_sha256
-        {
-            return Err(SessionError::InvalidPolicy);
-        }
         let snapshot = parse_snapshot(bytes)?;
         if snapshot.scope != *expected_scope
             || snapshot.policy != *expected_policy
             || snapshot.capabilities != *expected_capabilities
         {
             return Err(SessionError::Unsupported);
+        }
+        expected_policy.validate_schema()?;
+        expected_capabilities.validate()?;
+        if expected_policy.scope != *expected_scope
+            || expected_policy.profile_sha256 != expected_capabilities.profile_sha256
+        {
+            return Err(SessionError::InvalidPolicy);
         }
         Self::restore_snapshot(snapshot, owner_token)
     }

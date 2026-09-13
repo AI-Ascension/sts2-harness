@@ -22,6 +22,12 @@ pub enum MemoryError {
     TooManyTerms,
     PermissionDenied,
     InvalidProposal,
+    InvalidCapabilities,
+    CapabilityLimitExceeded {
+        limit: String,
+        requested: usize,
+        effective: usize,
+    },
     ReviewBinding,
     JobConflict,
     JobUnknown,
@@ -55,6 +61,17 @@ impl std::fmt::Display for MemoryError {
             Self::TooManyTerms => "memory query expands beyond its term bound",
             Self::PermissionDenied => "memory permission is denied",
             Self::InvalidProposal => "summary proposal is invalid",
+            Self::InvalidCapabilities => "memory capability descriptor is invalid",
+            Self::CapabilityLimitExceeded {
+                limit,
+                requested,
+                effective,
+            } => {
+                return write!(
+                    formatter,
+                    "memory policy limit {limit} requests {requested}, effective limit is {effective}"
+                );
+            }
             Self::ReviewBinding => "summary review binding is invalid",
             Self::JobConflict => "summary job idempotency key conflicts",
             Self::JobUnknown => "summary job outcome is unknown",

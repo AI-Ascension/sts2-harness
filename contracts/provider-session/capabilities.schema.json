@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ascension:provider-session:capabilities:v3",
+  "title": "Harness provider-session effective-limit capabilities contract",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "ascension.provider-session.capabilities.v3"
+    },
+    "profile_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "profile_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "native_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "native_binary_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "native_schema_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evidence": {
+      "enum": [
+        "schema_only",
+        "compiled_peer",
+        "native_binary_fake_upstream",
+        "live_provider"
+      ]
+    },
+    "transport": {
+      "const": "owned_stdio"
+    },
+    "enabled_methods": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9._:/-]+$"
+      },
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true
+    },
+    "hardening": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tools_enabled": {
+          "const": false
+        },
+        "ambient_history": {
+          "const": false
+        },
+        "encrypted_state": {
+          "type": "boolean"
+        },
+        "configuration_verified": {
+          "type": "boolean"
+        },
+        "transform_handling": {
+          "enum": [
+            "verified_suppressed",
+            "detect_and_fence",
+            "opaque_approved"
+          ]
+        }
+      },
+      "required": [
+        "tools_enabled",
+        "ambient_history",
+        "encrypted_state",
+        "configuration_verified",
+        "transform_handling"
+      ]
+    },
+    "effective_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy_schema": {
+          "const": "ascension.provider-session.policy.v1"
+        },
+        "max_session_items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 512
+        },
+        "max_dependencies": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "max_events": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "max_operations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "max_prepared": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "max_candidates": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "max_maintenance_jobs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "max_completed_turns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "max_history_ttl_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400
+        },
+        "max_frame_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 262144
+        },
+        "max_history_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4194304
+        },
+        "max_prepared_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4194304
+        },
+        "max_suffix_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 131072
+        },
+        "max_output_schema_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "max_method_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "max_json_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        }
+      },
+      "required": [
+        "policy_schema",
+        "max_session_items",
+        "max_dependencies",
+        "max_events",
+        "max_operations",
+        "max_prepared",
+        "max_candidates",
+        "max_maintenance_jobs",
+        "max_completed_turns",
+        "max_history_ttl_seconds",
+        "max_frame_bytes",
+        "max_history_bytes",
+        "max_prepared_bytes",
+        "max_suffix_bytes",
+        "max_output_schema_bytes",
+        "max_method_bytes",
+        "max_json_depth"
+      ]
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "owner": {
+          "const": "sts2-harness"
+        },
+        "owner_revision": {
+          "const": "harness-provider-session-v3"
+        },
+        "policy_schema_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "model_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "adapter_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "adapter_revision_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "descriptor_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "owner",
+        "owner_revision",
+        "policy_schema_sha256",
+        "model_revision",
+        "adapter_revision",
+        "adapter_revision_sha256",
+        "descriptor_sha256"
+      ]
+    },
+    "strict_executable": {
+      "type": "boolean"
+    },
+    "experimental_api": {
+      "type": "boolean"
+    },
+    "unknown_methods": {
+      "const": "deny"
+    },
+    "raw_rpc": {
+      "const": false
+    }
+  },
+  "required": [
+    "schema",
+    "profile_id",
+    "profile_sha256",
+    "native_version",
+    "native_binary_sha256",
+    "native_schema_sha256",
+    "evidence",
+    "transport",
+    "enabled_methods",
+    "hardening",
+    "effective_limits",
+    "binding",
+    "strict_executable",
+    "experimental_api",
+    "unknown_methods",
+    "raw_rpc"
+  ]
+}

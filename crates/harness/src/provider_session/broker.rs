@@ -78,8 +78,9 @@ impl ProviderSessionBroker {
         capabilities: NativeCapabilities,
         owner_token: impl Into<String>,
     ) -> Result<Self, SessionError> {
-        policy.validate()?;
-        capabilities.validate()?;
+        // Keep portable schema validity separate from selected-profile admission. A policy may
+        // be inspectable at the schema ceiling while remaining unsupported by this profile.
+        policy.validate_schema()?;
         if policy.max_completed_turns > capabilities.effective_limits.max_completed_turns
             || policy.history_ttl_seconds > capabilities.effective_limits.max_history_ttl_seconds
         {
@@ -100,6 +101,7 @@ impl ProviderSessionBroker {
         {
             return Err(SessionError::Unsupported);
         }
+        capabilities.validate()?;
         let owner_token = owner_token.into();
         if policy.scope != scope || owner_token.is_empty() {
             return Err(SessionError::InvalidScope);

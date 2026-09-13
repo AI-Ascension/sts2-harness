@@ -70,16 +70,14 @@ pub struct MemoryPolicy {
 }
 
 impl MemoryPolicy {
-    pub fn validate(&self, corpus: &MemoryCorpus) -> Result<(), MemoryError> {
+    /// Validate only the portable policy contract.  The public schema intentionally has a
+    /// broader optional-byte ceiling than this harness profile, so this method does not claim
+    /// that a policy can execute on a selected owner/profile.
+    pub fn validate_schema(&self) -> Result<(), MemoryError> {
         if self.schema != MEMORY_POLICY_SCHEMA
             || !valid_id(&self.policy_id)
             || self.version == 0
-            || self.scope != *corpus.scope()
-            || self.phase2_revision_id.is_none()
-            || self.corpus_generation == 0
-            || self.corpus_generation > corpus.generation()
-            || self.cross_scope
-            || self.status != PolicyStatus::Approved
+            || !self.scope.valid()
             || self.max_candidates == 0
             || self.max_candidates > MAX_CANDIDATES
             || self.max_results == 0
@@ -87,15 +85,15 @@ impl MemoryPolicy {
             || self.max_selected == 0
             || self.max_selected > MAX_SELECTED
             || self.optional_byte_budget == 0
-            || self.optional_byte_budget > MAX_OPTIONAL_BYTES
+            || self.optional_byte_budget > MEMORY_POLICY_SCHEMA_MAX_OPTIONAL_BYTES
+            || self.max_results > self.max_candidates
+            || self.cross_scope
             || self.automatic_summary_activation
             || self.generate_during_selection
             || !valid_id(&self.ranker_version)
             || !valid_id(&self.query_derivation_version)
             || !valid_id(&self.authorization_policy_version)
             || (self.mode == PolicyMode::ManualSnapshot && self.rolling_same_episode_sources)
-            || self.status == PolicyStatus::Revoked
-            || self.max_results > self.max_candidates
         {
             return Err(MemoryError::InvalidQuery);
         }
@@ -106,6 +104,77 @@ impl MemoryPolicy {
                 .any(|reference| !reference.valid())
             || self.approved_summary_catalog.iter().collect::<BTreeSet<_>>().len()
                 != self.approved_summary_catalog.len()
+        {
+            return Err(MemoryError::InvalidQuery);
+        }
+        Ok(())
+    }
+
+    /// Return profile-limit violations without mutating or normalizing the saved policy.  This is
+    /// used by migration tooling to produce a bounded proposal while retaining the original
+    /// policy bytes for inspection and audit.
+    #[must_use]
+    pub fn capability_limit_violations(
+        &self,
+        capabilities: &MemoryCapabilities,
+    ) -> Vec<MemoryLimitViolation> {
+        let limits = &capabilities.effective_limits;
+        [
+            ("max_candidates", self.max_candidates, limits.max_candidates),
+            ("max_results", self.max_results, limits.max_results),
+            ("max_selected", self.max_selected, limits.max_selected),
+            (
+                "optional_byte_budget",
+                self.optional_byte_budget,
+                limits.optional_byte_budget,
+            ),
+        ]
+        .into_iter()
+        .filter(|(_, requested, effective)| requested > effective)
+        .map(|(limit, requested, effective)| MemoryLimitViolation {
+            limit: limit.to_owned(),
+            requested,
+            effective,
+        })
+        .collect()
+    }
+
+    pub fn validate(&self, corpus: &MemoryCorpus) -> Result<(), MemoryError> {
+        let capabilities = corpus.capabilities();
+        self.validate_against_capabilities(corpus, &capabilities)
+    }
+
+    /// Validate a policy against the exact owner descriptor selected by the caller.  Portable
+    /// schema validity and executable profile admission are deliberately separate outcomes.
+    pub fn validate_against_capabilities(
+        &self,
+        corpus: &MemoryCorpus,
+        capabilities: &MemoryCapabilities,
+    ) -> Result<(), MemoryError> {
+        self.validate_schema()?;
+        capabilities.validate()?;
+        if !corpus.enabled() {
+            return Err(MemoryError::Disabled);
+        }
+        if capabilities.scope != *corpus.scope()
+            || capabilities.effective_limits.max_entries_per_run != corpus.max_entries
+            || capabilities.effective_limits.max_corpus_bytes != corpus.max_bytes
+        {
+            return Err(MemoryError::InvalidCapabilities);
+        }
+        if let Some(violation) = self.capability_limit_violations(capabilities).first() {
+            return Err(MemoryError::CapabilityLimitExceeded {
+                limit: violation.limit.clone(),
+                requested: violation.requested,
+                effective: violation.effective,
+            });
+        }
+        if self.scope != *corpus.scope()
+            || self.phase2_revision_id.is_none()
+            || self.corpus_generation == 0
+            || self.corpus_generation > corpus.generation()
+            || self.status != PolicyStatus::Approved
+            || self.status == PolicyStatus::Revoked
         {
             return Err(MemoryError::InvalidQuery);
         }

@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ascension:context-memory:policy-migration:v1",
+  "title": "Harness context-memory explicit policy migration proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "ascension.context-memory.policy-migration.v1"
+    },
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "source_policy_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "source_policy_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "source_policy_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "original_policy_bytes": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 255
+      },
+      "minItems": 1
+    },
+    "target_capabilities_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "violations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "requested": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "effective": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "limit",
+          "requested",
+          "effective"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 4
+    },
+    "state": {
+      "enum": [
+        "proposed",
+        "approved",
+        "adopted"
+      ]
+    },
+    "approval_ref": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "adopted_policy_sha256": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "proposal_id",
+    "source_policy_id",
+    "source_policy_version",
+    "source_policy_sha256",
+    "original_policy_bytes",
+    "target_capabilities_sha256",
+    "violations",
+    "state",
+    "approval_ref",
+    "adopted_policy_sha256"
+  ]
+}
