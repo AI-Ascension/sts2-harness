@@ -4,7 +4,7 @@
   "contract_version": "sts2-exo-bridge-v1",
   "capability_schema": "sts2.exo-capability-v1",
   "schema": "schema.json",
-  "schema_sha256": "0a0d3546b401b8f9d26e4c729a4071515b3f467602e62f806e2d0276b0584bf2",
+  "schema_sha256": "9120cf874af6d111c5979c2d5071749e1afb30a63c721f670a76c33b844f4b85",
   "license": "MIT",
   "evidence": "source-derived",
   "native_spike": "unverified",
@@ -109,7 +109,7 @@
     "compatibility_classification": {
       "runtime_and_routing_fields": "breaking",
       "expert_schema_closure_and_constraints": "safety-correction",
-      "schema_parser_semantics": "schema rejects identical complete expert action objects and validates closed shape, digest, and non-empty actions; parser additionally rejects duplicate action_id values, expert text over 512 UTF-8 bytes, and hp > max_hp; these schema-valid/parser-rejected cases are executable conformance vectors",
+      "schema_parser_semantics": "schema rejects identical complete expert action objects and validates the closed standard, expert, and harness projection shapes, digest, and non-empty actions; parser additionally rejects duplicate action_id values, expert text over 512 UTF-8 bytes, hp > max_hp, and marked projections containing out-of-union action forms; these schema-valid/parser-rejected cases are executable conformance vectors",
       "old_readers": "fail closed when runtime/provider/endpoint axes or tightened expert shapes are absent or unknown",
       "new_readers": "read the contract version, validate all identity axes and route before any provider/gateway/game effect"
     },

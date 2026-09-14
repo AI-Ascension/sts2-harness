@@ -31,6 +31,9 @@ mod exo_contract_schema;
 #[path = "support/exo_contract_schema_vectors.rs"]
 mod exo_contract_schema_vectors;
 
+#[path = "support/exo_contract_projection.rs"]
+mod exo_contract_projection;
+
 #[path = "support/exo_contract_conformance.rs"]
 mod exo_contract_conformance;
 

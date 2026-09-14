@@ -360,7 +360,10 @@ fn empty_legal_actions_are_rejected_by_schema_and_parser() {
     );
 }
 
-fn definition_validator(schema: &serde_json::Value, name: &str) -> jsonschema::Validator {
+pub(super) fn definition_validator(
+    schema: &serde_json::Value,
+    name: &str,
+) -> jsonschema::Validator {
     let wrapper = json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$defs": schema["$defs"].clone(),

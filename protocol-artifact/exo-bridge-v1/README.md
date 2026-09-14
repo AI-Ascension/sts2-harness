@@ -117,6 +117,14 @@ distinct payloads, and multibyte text over the parser byte bound, alongside stan
 boundaries, every semantic decision, wrong schema/wire, swapped package identity, failed outcomes,
 and capability downgrades.
 
+The same observation union also closes `harness_projection_observation`: the Runtime-v4 expert
+shape plus the pinned `harness_projection` marker and the REST selector's projected `select_card`,
+`select_player`, `confirm_selection`, and `cancel_selection` legal actions. This matches
+`SanitizedObservation::new` / `RuntimeV4ExpertObservation::validate_fair_play_value`; once the
+marker is present, an expert-only action or any other projected shape is rejected by both schema
+and parser. The `exo_contract` production test exercises positive request and envelope vectors,
+out-of-union action negatives, and a wrong-marker negative.
+
 The ordinary request limit is 131072 bytes, the complete map request limit is 393443 bytes, the
 response limit is 8192 bytes, and the supervised turn timeout is 120000 milliseconds. Process
 bridges receive one request, then stdin is explicitly shut down (EOF); stdout is bounded and
@@ -138,14 +146,14 @@ package/executable digest and is not native compatibility evidence.
 The old `provider_revision` setting remains a source revision input for legacy request validation,
 but new deployment records must not overload it as a package, bridge, model, route, or configuration
 identity. Adding required `runtime`, `provider`, and `endpoint` axes is classified as a `breaking`
-required-configuration correction. Closing the expert schema (digest and non-empty actions) and
-retaining parser-only semantic checks for duplicate action IDs, UTF-8 byte bounds, and
-`hp <= max_hp` are classified as a `safety-correction`; schema-valid/parser-rejected cases are
-listed as executable conformance vectors rather than claimed as schema parity. Consumers migrate
-to the separate axes listed above and bind the contract version. Readers that cannot understand
-the new contract or identity fields, or that see tightened expert shapes they cannot validate,
-reject the deployment rather than guessing. Historical records may retain the old audit revision
-as source-derived history.
+required-configuration correction. Closing the expert schema (digest and non-empty actions),
+including the supported harness projection union, and retaining parser-only semantic checks for
+duplicate action IDs, UTF-8 byte bounds, and `hp <= max_hp` are classified as a
+`safety-correction`; schema-valid/parser-rejected cases are listed as executable conformance
+vectors rather than claimed as schema parity. Consumers migrate to the separate axes listed above
+and bind the contract version. Readers that cannot understand the new contract or identity fields,
+or that see tightened expert shapes they cannot validate, reject the deployment rather than
+guessing. Historical records may retain the old audit revision as source-derived history.
 
 Old stores migrate by backup → atomic additive identity/contract migration → reviewed-pin, route,
 schema, and minimum-capability preflight before any effect. The original store remains untouched

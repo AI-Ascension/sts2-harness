@@ -235,6 +235,13 @@ authoritative for semantic checks that JSON Schema cannot express exactly:
   `crates/harness/src/runtime_v4_expert_parse.rs` (`shape_is_closed`/`WireObservation`). This
   requires the pinned expert `schema_digest`, at least one legal action, and rejects both
   `{"protocol_version":"x"}` and unknown privileged fields.
+- `harness_projection_observation` is a third closed observation variant for the supported
+  provider-facing fair-play expert projection: it carries the Runtime-v4 expert fields, the pinned
+  `harness_projection` marker, and only the REST selector's `select_card`, `select_player`,
+  `confirm_selection`, and `cancel_selection` legal-action forms. The parser applies the same
+  closed restriction in `RuntimeV4ExpertObservation::validate_fair_play_value`, so a marked
+  projection with an expert-only action, an extra projected field, or a wrong marker is rejected
+  by both schema and parser rather than being parser-accepted and schema-rejected.
 - `expert_observation.legal_actions` uses `uniqueItems` to reject identical complete action objects.
   The parser additionally requires unique `action_id` values, so distinct payloads sharing an
   action ID are intentionally schema-valid/parser-rejected.
@@ -254,8 +261,8 @@ parser (omission is rejected), and the divergence is documented in the `hash`/`i
 descriptions. The bridge schema now also requires at least one expert `legal_actions` entry, while
 the canonical Runtime-v4 expert schema remains looser and may accept an empty array. The bridge
 schema and parser reject empty actions (and parser additionally requires IDs to match the outer
-catalog); parser-only duplicate-ID, UTF-8 byte-bound, and numeric-range checks are intentional
-safety corrections, not a claim of reverse parity.
+catalog); parser-only duplicate-ID, UTF-8 byte-bound, numeric-range, and projected-action checks
+are intentional safety corrections, not a claim of reverse parity.
 
 ### Source-referenced executor and lifecycle mapping
 
