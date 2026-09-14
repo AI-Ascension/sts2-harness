@@ -164,14 +164,20 @@ by code; they must be reconciled when the production bridge lands.
 
 - Source-derived: selected executor API, rejected interfaces, routing behavior, and pin inventory
   above, cited to upstream `b06869a` and harness `4ddcfd5`.
-- Confirmed: upstream HEAD equals the tracked candidate; no production Exo bridge exists.
-- Unverified: real pinned Exo execution against a synthetic model; live provider; native gameplay;
-  Windows/macOS behavior.
+- Confirmed: upstream HEAD equals the tracked candidate; no production Exo bridge exists; the
+  pinned Exo binary executes one real executor turn against an original synthetic model on both the
+  Rust `Basic` path (`POST /responses`) and the TypeScript `exo/harness.ts` path
+  (`POST /chat/completions`), with a correlated `turn_id`, usage, and exactly one model call
+  ([evidence](../evidence/exo-contract-spike-20260914.md)).
+- Unverified: STS2 semantic decision production, the production bridge, live provider, native
+  gameplay, and Windows/macOS behavior.
 
 ## Open items gating issue closure
 
-- Run the bounded real-Exo + synthetic-model spike and record exact source/package/extension
-  identities (acceptance criterion 2).
-- Add contract schema files/goldens and contract vectors covering all semantic decisions, ordinary/
-  map bounds, wrong correlation, incompatible schema versions, and unavailable capabilities.
-- Implement preflight negative tests for malformed/unknown/swapped/wrong-revision inputs.
+- [x] Run the bounded real-Exo + synthetic-model spike and record exact source/package/extension
+  identities (acceptance criterion 2). See
+  [exo-contract-spike-20260914](../evidence/exo-contract-spike-20260914.md).
+- [ ] Add contract schema files/goldens and contract vectors covering all semantic decisions,
+  ordinary/map bounds, wrong correlation, incompatible schema versions, and unavailable
+  capabilities.
+- [ ] Implement preflight negative tests for malformed/unknown/swapped/wrong-revision inputs.
