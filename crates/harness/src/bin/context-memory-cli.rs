@@ -108,11 +108,15 @@ fn main() {
     let operation = std::env::args().nth(1).unwrap_or_else(|| "help".to_owned());
     let result = match operation.as_str() {
         "help" | "--help" | "-h" => {
-            println!("context-memory-cli capabilities|status|list|search|extract|policy-preview");
+            println!(
+                "context-memory-cli capabilities|limits|status|list|search|extract|policy-preview"
+            );
             println!("  search/extract/policy-preview read strict JSON from stdin");
             Ok(())
         }
         "capabilities" => open_corpus().and_then(|corpus| print_json(corpus.capabilities())),
+        "limits" => open_corpus()
+            .and_then(|corpus| print_json(corpus.capabilities().effective_limit_record())),
         "status" => open_corpus().and_then(|corpus| {
             print_json(serde_json::json!({
                 "schema": "ascension.context-memory.status.v1",

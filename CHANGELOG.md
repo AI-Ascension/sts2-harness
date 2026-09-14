@@ -7,6 +7,16 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Publish the machine-readable `ascension.harness.effective-limits.v1` classification record so every
+  advertised context-memory and provider-session value is classified as schema-valid versus
+  executable for the selected profile, with machine-readable unavailable reasons. Add a
+  producer/consumer pin and digest conformance matrix (`contracts/effective-limits-pins.json`) that
+  recomputes producer digests and fails closed on drift, tampering, a stale adoption label, an
+  unrecorded surface, or a consumer that still validates a `v1` capability schema. Both recorded
+  consumers (Context Console, Studio) remain `pending`, so neither can present a value the runtime
+  rejects. Deterministic offline tests only; consumer adoption, native, and provider evidence remain
+  `unverified`.
+
 - Define the harness-owned `sts2-exo-bridge-v1` contract and freeze the candidate Exo source
   manifest. The closed capability/preflight and request/turn envelopes enforce independent
   identity, bounds, UTF-8/framing, correlation, terminal-decision, cancellation, and EOF rules;
