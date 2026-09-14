@@ -14,6 +14,13 @@ claim a released harness version or runtime compatibility.
   machine executor hook, so package, model, extension, native connectivity, and gameplay evidence
   remain `unverified`; see ADR 0017.
 
+- Require a closed `ExoRestrictedProfile` in the trusted Exo configuration for issue #140.
+  Admission now fails closed before inference on any non-empty/unreviewed model tool, duplicate or
+  invalid tool names, unsafe or overlapping private state/cache/temp roots, unbounded
+  quota/retention, or permissions other than `0o700`, with canonical catalog and profile digests.
+  The reviewed model tool allowlist is intentionally empty; TypeScript dispatch, OS containment, and
+  native private-state enforcement remain follow-up work.
+
 - Add a pinned runtime-peer CI lane. It builds the candidate harness against
   immutable gateway and MCP executable peers, uses a bounded synthetic mod HTTP
   endpoint only as downstream, and runs positive plus foreign-identity and

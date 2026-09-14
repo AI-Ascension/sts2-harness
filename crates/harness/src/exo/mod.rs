@@ -16,16 +16,20 @@ pub use codex_accounting::{
 pub use contract::{
     DigestKind, EXO_BRIDGE_WIRE_VERSION, EXO_CAPABILITY_SCHEMA, EXO_CONTRACT_VERSION,
     EXO_DECISION_SCHEMA, EXO_MANIFEST_SCHEMA, EXO_MAP_DECISION_SCHEMA, EXO_MAX_EVENT_BYTES,
-    EXO_MAX_RESPONSE_BYTES, EXO_MAX_TURN_TIME_MILLIS, EXO_SOURCE_BASE_REVISION,
+    EXO_MAX_RESPONSE_BYTES, EXO_MAX_TURN_TIME_MILLIS, EXO_RESTRICTED_DEFAULT_QUOTA_BYTES,
+    EXO_RESTRICTED_DEFAULT_RETENTION_DAYS, EXO_RESTRICTED_MAX_QUOTA_BYTES,
+    EXO_RESTRICTED_MAX_RETENTION_DAYS, EXO_RESTRICTED_PERMISSIONS_OCTAL, EXO_SOURCE_BASE_REVISION,
     EXO_SOURCE_REVISION, ExoArtifactError, ExoBridgeDecisionEnvelope, ExoBridgeRequestEnvelope,
     ExoBridgeTurn, ExoCapabilityDescriptor, ExoCapabilityState, ExoContextMode, ExoControlIdentity,
     ExoDecisionKind, ExoDescriptorError, ExoEvidenceCapabilities, ExoIdentity, ExoIdentityError,
     ExoLifecycleCapabilities, ExoLimits, ExoPlatform, ExoPreflightError, ExoPreflightReport,
-    ExoProfile, ExoProfileSupport, ExoRuntime, ExoTerminalOutcome, ExoTrustedConfiguration,
-    ExoWireError, ExoWireOutcome, encode_bridge_request, encode_bridge_response,
-    exo_bridge_manifest, parse_bridge_decision, parse_bridge_decision_envelope,
-    parse_bridge_request, parse_bridge_request_envelope, preflight, responses_capable,
-    responses_routing_capable, verify_control_identity, verify_exo_bridge_artifact,
+    ExoPrivateStateError, ExoPrivateStatePolicy, ExoProfile, ExoProfileSupport, ExoRestrictedError,
+    ExoRestrictedProfile, ExoRuntime, ExoTerminalOutcome, ExoToolCatalog, ExoToolCatalogError,
+    ExoTrustedConfiguration, ExoWireError, ExoWireOutcome, PrivateRootKind, REVIEWED_MODEL_TOOLS,
+    encode_bridge_request, encode_bridge_response, exo_bridge_manifest, parse_bridge_decision,
+    parse_bridge_decision_envelope, parse_bridge_request, parse_bridge_request_envelope, preflight,
+    responses_capable, responses_routing_capable, verify_control_identity,
+    verify_exo_bridge_artifact,
 };
 pub use decision::{BoundDecision, Decision, DecisionError, parse_decision};
 pub use protocol::{

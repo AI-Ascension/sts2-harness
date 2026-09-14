@@ -43,3 +43,11 @@ gameplay effect.
 The current Rust runtime still uses its legacy request/process seam and does not copy this module,
 run these commands, or invoke preflight. Wiring this loader to the Rust envelope is a future
 integration requirement.
+
+Issue #140 adds a closed, operator-side `ExoRestrictedProfile` contract in the Rust trusted
+configuration (`ExoToolCatalog` plus `ExoPrivateStatePolicy`). Admission validates it before
+inference, and the reviewed model tool allowlist is intentionally empty until separately admitted
+read-only query adapters exist. That contract describes the required boundary; it does not yet
+enforce tool registration or data access inside this TypeScript extension. Actual dispatch
+rejection in the extension/loader, reviewed OS/service containment, and native private-state wiring
+remain follow-up work and are not implemented or claimed here.

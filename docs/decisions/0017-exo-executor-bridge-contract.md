@@ -158,6 +158,44 @@ identity axes, selected platform/profile/context, the reviewed provider endpoint
 independent limit before an executable deployment is admitted. The route is checked before the
 model predicate to mirror upstream's OpenRouter override.
 
+## Restricted profile trusted configuration (issue #140, first increment)
+
+Admission now requires a closed `restricted: ExoRestrictedProfile` field on
+`ExoTrustedConfiguration`. `ExoTrustedConfiguration::validate`, and therefore `preflight`, validates
+it before any transport exchange, model call, or game effect, so an invalid restricted profile fails
+closed before inference with `ExoPreflightError::InvalidRestrictedProfile`.
+
+`ExoToolCatalog` is an explicit, closed, model-facing allowlist. `REVIEWED_MODEL_TOOLS` is
+intentionally empty: this contract returns one terminal `sts2.exo-decision-v1` object in the
+assistant message, and no read-only query adapters from issue #127 are admitted yet. `validate`
+rejects any non-empty or otherwise unreviewed declared tool, duplicate entries, empty names, and
+names that are not plain identifiers. `catalog_digest` hashes a canonical, length-prefixed encoding
+of the catalog so a changed catalog is detectable.
+
+`ExoPrivateStatePolicy` declares `state_root`, `cache_root`, `temp_root`, `quota_bytes`,
+`max_retention_days`, and `permissions_octal`. `validate` fails closed on non-absolute paths,
+`..` components, duplicate or nested (overlapping) roots, any component named `home`/`root`/`Users`
+(so `/var/home/<user>` and `/mnt/home/<user>` are rejected, not only top-level spellings), a first
+component in the forbidden system set (`/etc`, `/usr`, `/boot`, `/dev`, `/proc`, `/sys`, `/run`,
+`/media`, `/mnt`), roots containing a game-install marker substring, zero or over-maximum quota or
+retention, and any permissions value other than `0o700`. All path checks are component-based, not
+string-prefix tests.
+
+Validation is lexical: it does not resolve symlinks or reparse points and does not read the
+filesystem. Materialization must canonicalize each root and open with symlink-refusing semantics
+(`O_NOFOLLOW`/`openat2`) so a symlink target cannot escape the reviewed root; path comparison is
+byte-exact and case-sensitive. `ExoRestrictedProfile::profile_digest` binds the catalog and state
+digests together, and `ExoRestrictedProfile::reviewed_private` builds the reviewed profile for one
+base.
+
+This is operator-side trusted configuration only. It does not change `contract_version`,
+`wire_version`, or the wire schema. Enforcement inside the Exo TypeScript dispatch path, reviewed
+OS/service containment, native private state materialization, Exo durable event/store/WAL/log/temp
+retention and deletion, provider credential and egress separation, and installed-module or
+changed-registry-digest rejection remain follow-up work for issue #140 and its dependencies. No live
+Exo run or TypeScript dispatch enforcement is claimed by this increment; the contract code and its
+rejection tests are `source-derived`.
+
 ## Bounded wire and lifecycle
 
 The selected outer wire is `sts2.exo-bridge-wire-v1`. Both envelopes are one bounded UTF-8 JSON
