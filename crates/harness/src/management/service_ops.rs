@@ -40,16 +40,20 @@ impl ManagementService {
             .lookup_submission(&request.request_id, &request_digest)?
         {
             SubmissionLookup::Existing(snapshot) => {
-                if is_live_profile(&request.profile)
-                    && matches!(
-                        snapshot.status,
-                        WorkflowRunStatus::Created | WorkflowRunStatus::NeedsOperator
-                    )
-                {
-                    return Err(ManagementError::unresolved(
-                        "live_submission_recovery_required",
-                        "a reserved live submission requires reconciliation before retry",
-                    ));
+                if is_live_profile(&request.profile) {
+                    let recovery = self
+                        .execution
+                        .recovery_admission(&snapshot)
+                        .unwrap_or_else(|| recovery_admission(&snapshot));
+                    if matches!(
+                        recovery,
+                        RecoveryAdmission::NeedsOperator | RecoveryAdmission::Reconciling
+                    ) {
+                        return Err(ManagementError::unresolved(
+                            "live_submission_recovery_required",
+                            "a reserved live submission requires reconciliation before retry",
+                        ));
+                    }
                 }
                 return Ok(run_submission_response(&snapshot));
             }

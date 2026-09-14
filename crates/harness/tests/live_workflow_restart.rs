@@ -64,6 +64,10 @@ fn durable_unknown_intent_precedes_live_resume_after_apply_failure_and_restart()
             .recovery_admission,
         RecoveryAdmission::Reconciling
     );
+    let retry = restarted
+        .submit_run(&actor(), request.clone())
+        .expect_err("restarted unresolved submission must require recovery");
+    assert_eq!(retry.code, "live_submission_recovery_required");
     let response = restarted
         .command(&actor(), command(&run_id, "step-4", 4, CommandKind::Step))
         .expect("restarted unresolved effect remains pending");
@@ -179,7 +183,9 @@ fn successful_live_snapshot_after_memory_restart_requires_operator() {
     )
     .expect("service");
     let request = request("request-live-restart-running-memory", definition(false));
-    let submitted = service.submit_run(&actor(), request).expect("submit");
+    let submitted = service
+        .submit_run(&actor(), request.clone())
+        .expect("submit");
     assert_eq!(submitted.status, WorkflowRunStatus::Running);
     assert_eq!(
         service
@@ -203,6 +209,10 @@ fn successful_live_snapshot_after_memory_restart_requires_operator() {
     let status = restarted.status(&actor(), &run_id).expect("status");
     assert_eq!(status.run.status, WorkflowRunStatus::Running);
     assert_eq!(status.recovery_admission, RecoveryAdmission::NeedsOperator);
+    let retry = restarted
+        .submit_run(&actor(), request)
+        .expect_err("restarted live submission must require recovery");
+    assert_eq!(retry.code, "live_submission_recovery_required");
     let error = restarted
         .command(
             &actor(),
@@ -228,7 +238,7 @@ fn successful_live_snapshot_after_sqlite_restart_requires_operator()
         LiveWorkflowOptions::default(),
     )?;
     let request = request("request-live-restart-running-sqlite", definition(false));
-    let submitted = service.submit_run(&actor(), request)?;
+    let submitted = service.submit_run(&actor(), request.clone())?;
     assert_eq!(submitted.status, WorkflowRunStatus::Running);
     assert_eq!(
         service
@@ -252,6 +262,10 @@ fn successful_live_snapshot_after_sqlite_restart_requires_operator()
     let status = restarted.status(&actor(), &run_id)?;
     assert_eq!(status.run.status, WorkflowRunStatus::Running);
     assert_eq!(status.recovery_admission, RecoveryAdmission::NeedsOperator);
+    let retry = restarted
+        .submit_run(&actor(), request)
+        .expect_err("restarted live submission must require recovery");
+    assert_eq!(retry.code, "live_submission_recovery_required");
     let error = restarted
         .command(
             &actor(),
