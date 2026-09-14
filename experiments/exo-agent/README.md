@@ -9,10 +9,18 @@ Map-stage decisions; it never becomes a second action authority.
 ## Configuration
 
 Copy `config.example.toml` to an operator-owned location and set an exact reviewed Exo revision and
-endpoint outside the repository. Do not commit the copy. The checked-in revision is the public
-audit revision reviewed on 2026-09-02; a deployment using another revision must replace it with a
-separately reviewed 40- or 64-character lowercase commit hash. Empty, floating, placeholder, and
-all-zero revisions are rejected by `ExoConfig`.
+endpoint outside the repository. Do not commit the copy. The checked-in revision is the candidate
+frozen by [ADR 0017](../../docs/decisions/0017-exo-executor-bridge-contract.md); the source/package
+manifest is [`protocol-artifact/exo-bridge-v1`](../../protocol-artifact/exo-bridge-v1/README.md).
+A deployment using another revision must replace it with a separately reviewed 40- or
+64-character lowercase commit hash. Empty, floating, placeholder, and all-zero revisions are
+rejected by `ExoConfig`.
+
+The selected executor path is one dedicated operator-owned TypeScript module loaded through
+`agent.typescript.module_path`: `defineHarness.runTurn` → `runResponsesHarnessTurn` →
+`ResponsesRuntime.complete`. The harness does not fall back to Exo `/health`, substrate
+`/request`, or the human-facing CLI. The module and process bridge must use the closed
+`sts2.exo-bridge-wire-v1` request/turn envelope when they are admitted by a trusted preflight.
 
 The harness supplies `ExoProcessTransport` for an operator-owned bridge when a direct process is
 appropriate. It passes configured arguments directly, clears the environment except for an
@@ -75,5 +83,6 @@ experiment can set `STS2_EXO_FORWARD_VISIBLE_SEED=false`. Model responses are pa
 into a small decision enum; verbatim output is not a trajectory artifact.
 
 Live Exo connectivity, the selected revision, licensed STS2 build, and gameplay compatibility are
-`unverified` until a separately recorded runtime handoff supplies exact build/configuration
-lineage.
+`unverified` until a separately recorded runtime handoff supplies exact package, extension, bridge,
+model, prompt, tool, configuration, and native-instance lineage. The source-derived artifact and
+offline preflight do not constitute a real executor spike.

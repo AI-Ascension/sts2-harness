@@ -1,0 +1,74 @@
+{
+  "artifact": "sts2-harness/exo-bridge-v1",
+  "manifest_schema": "sts2.exo-manifest-v1",
+  "contract_version": "sts2-exo-bridge-v1",
+  "capability_schema": "sts2.exo-capability-v1",
+  "schema": "schema.json",
+  "schema_sha256": "b0339b28f0f260d1d378e3c0394fbbc3be6ac6b4ac1262f1bf23e2b2e9300440",
+  "license": "MIT",
+  "evidence": "source-derived",
+  "native_spike": "unverified",
+  "source": {
+    "repository": "https://github.com/exoharness/exo",
+    "base_revision": "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
+    "candidate_revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
+    "candidate_tree": "f1c155c8b9b1c2ee83a34a04189e64203536b3ab",
+    "reviewed_commits": [
+      {"revision": "83975441699c2b4c5f508499e24723b140b0ba07", "effect": "adds Firecracker reset API", "scope": "sandbox backend"},
+      {"revision": "36b2b810dda0f6dcd8be2d4880c8587d3998ff6d", "effect": "adds persistent Firecracker terminals", "scope": "sandbox process bridge"},
+      {"revision": "d76bd0134d331328b915959d2cd1caeea49b01c2", "effect": "bounds and safely deletes Firecracker snapshots", "scope": "sandbox storage"},
+      {"revision": "cc4461e2ff27786eab7d122c391db8bb21e663fb", "effect": "reconnects ExoChat after WebSocket drops", "scope": "website chat"},
+      {"revision": "29ebbcd959c27b3cf2539ba80e8cf912f0a5d3fb", "effect": "reduces Firecracker network setup and termination latency", "scope": "sandbox backend"},
+      {"revision": "a153bf662ad7428602c6d1499a942e6f5d2685fd", "effect": "separates sandbox identity from owner scope and traces lifecycle", "scope": "sandbox/provider tracing"},
+      {"revision": "87bfc53d2de72c4a4930115aa609d8987ce20b78", "effect": "preserves Firecracker image configuration and speeds materialization", "scope": "workflow and images"},
+      {"revision": "c5c1963a3445417e64938c139da88edd9154075d", "effect": "captures sparse Firecracker snapshots with cumulative bases", "scope": "sandbox snapshots"},
+      {"revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859", "effect": "corrects the DEFERRED_SCRIPT guardian-tools path", "scope": "guardian tooling"}
+    ]
+  },
+  "deployment_axes": {
+    "package_digest": {"value": null, "evidence": "unverified"},
+    "extension_digest": {"value": null, "evidence": "unverified"},
+    "bridge_digest": {"value": null, "evidence": "unverified"},
+    "model_binding": {"value": null, "evidence": "unverified"},
+    "prompt_digest": {"value": null, "evidence": "unverified"},
+    "tool_digest": {"value": null, "evidence": "unverified"},
+    "config_digest": {"value": null, "evidence": "unverified"},
+    "native_instance_id": {"value": null, "evidence": "unverified"}
+  },
+  "extension": {
+    "placement": "operator-owned TypeScript module loaded through agent.typescript.module_path",
+    "selected_path": "defineHarness.runTurn -> runResponsesHarnessTurn -> ResponsesRuntime.complete",
+    "fallbacks": []
+  },
+  "pin_locations": [
+    "crates/harness/src/exo/contract/mod.rs",
+    "crates/harness/src/bin/runtime_support/runtime_v3_settings.rs",
+    "crates/harness/src/bin/sts2-harness-exo.rs",
+    "experiments/exo-agent/config.example.toml",
+    "crates/harness/tests/context_capture.rs",
+    "crates/harness/tests/completed_resume_process.rs",
+    "crates/harness/tests/exo_adapter.rs",
+    "crates/harness/tests/context_control.rs",
+    "crates/harness/tests/exo_episode.rs",
+    "crates/harness/tests/support/runtime_v4_executable_composition_fixture.rs",
+    "crates/harness/tests/action_plans.rs",
+    "crates/harness/tests/runtime_v4_expert_artifact.rs",
+    "crates/harness/tests/runtime_startup.rs",
+    "crates/harness/tests/context_control_races.rs",
+    "crates/harness/tests/provider_redaction.rs",
+    "crates/harness/src/bin/runtime_support/runtime_v3_telemetry_identity_privacy_tests.rs",
+    "crates/harness/src/bin/runtime_support/runtime_v3_telemetry_tests.rs"
+  ],
+  "migration": {
+    "old_revision": "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
+    "new_revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
+    "old_readers": "fail closed on contract or source mismatch",
+    "fingerprints": "record each deployment axis independently; do not overload provider_revision"
+  },
+  "consumers": [
+    "sts2-harness ExoTransport",
+    "runtime-v3 settings and durable fingerprint",
+    "operator-owned TypeScript extension",
+    "future sts2-protocol artifact consumer"
+  ]
+}

@@ -38,7 +38,7 @@ fn source(ids: &[&str]) -> (ExoDecisionSource<Provider>, Rc<Cell<usize>>) {
         ]),
     };
     let config = ExoConfig::new(
-        "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
+        "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
         65536,
         8192,
         2000,

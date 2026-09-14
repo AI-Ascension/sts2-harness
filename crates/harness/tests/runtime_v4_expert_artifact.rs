@@ -54,7 +54,7 @@ fn serialized_expert_observation_reaches_the_provider_firewall()
     assert!(SanitizedObservation::new(seed_blind.as_value().clone()).is_ok());
     let request = ExoDecisionRequest::new(
         ModelExecutionId::new(1).ok_or("invalid model execution ID")?,
-        "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
+        "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
         observation.state_id(),
         observation.generation(),
         seed_blind,

@@ -22,7 +22,7 @@ mod tests {
             instance_id: "instance-test",
             session_id: "session-test",
             runtime_profile: "runtime-v3-gameplay",
-            provider_revision: "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
+            provider_revision: "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
         })
     }
 

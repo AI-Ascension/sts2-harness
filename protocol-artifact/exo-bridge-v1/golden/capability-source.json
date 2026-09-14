@@ -1,0 +1,42 @@
+{
+  "schema_version": "sts2.exo-capability-v1",
+  "contract_version": "sts2-exo-bridge-v1",
+  "identity": {
+    "source_revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
+    "package_digest": null,
+    "extension_digest": null,
+    "bridge_digest": null,
+    "model_binding": "unbound",
+    "prompt_digest": null,
+    "tool_digest": null,
+    "config_digest": null,
+    "contract_version": "sts2-exo-bridge-v1",
+    "native_instance_id": null
+  },
+  "decision_kinds": ["plan", "action", "wait", "reobserve", "recovery"],
+  "profile_support": {"standard": "supported", "map": "unverified", "expert": "unverified"},
+  "context_modes": ["fresh"],
+  "platforms": ["linux_x86_64"],
+  "limits": {
+    "max_standard_request_bytes": 131072,
+    "max_map_request_bytes": 393443,
+    "max_response_bytes": 8192,
+    "max_event_bytes": 8192,
+    "max_turns": 1,
+    "max_turn_time_millis": 120000,
+    "max_concurrency": 1,
+    "max_tool_round_trips": 0
+  },
+  "lifecycle": {
+    "cancellation": "unverified",
+    "recovery": "unverified",
+    "idempotency": "supported",
+    "graceful_eof": "supported"
+  },
+  "evidence": {
+    "terminal_decision": "supported",
+    "turn_identity": "unverified",
+    "event_usage": "unverified",
+    "replay": "unverified"
+  }
+}

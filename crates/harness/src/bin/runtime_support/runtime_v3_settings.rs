@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use sts2_harness::{
-    EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES, EpisodeRunnerConfig, ExoConfig,
-    ExoProcessConfig, RecoveryController, StabilityBarrier,
+    EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES, EXO_SOURCE_REVISION,
+    EpisodeRunnerConfig, ExoConfig, ExoProcessConfig, RecoveryController, StabilityBarrier,
 };
 
 use super::config::RuntimeConfig;
@@ -10,7 +10,7 @@ use super::config::RuntimeConfig;
 #[path = "../support/ollama_options.rs"]
 mod ollama_options;
 
-const REVIEWED_EXO_REVISION: &str = "7801005e6a1ab77008a05dbba80e0a2a7a56e35d";
+const REVIEWED_EXO_REVISION: &str = EXO_SOURCE_REVISION;
 const DEFAULT_MAX_REQUEST_BYTES: usize = EXO_MAX_STANDARD_REQUEST_BYTES;
 const DEFAULT_MAP_MAX_REQUEST_BYTES: usize = EXO_MAX_MAP_REQUEST_BYTES;
 const DEFAULT_MAX_RESPONSE_BYTES: usize = 8 * 1024;

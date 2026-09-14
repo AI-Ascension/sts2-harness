@@ -57,6 +57,23 @@ this confirms artifact integrity only, not host compatibility.
 
 The harness does not inherit source or behavioral compatibility from a reference implementation.
 
+### Pinned Exo executor bridge
+
+The harness-owned `sts2-exo-bridge-v1` contract is documented in
+[ADR 0017](decisions/0017-exo-executor-bridge-contract.md) and frozen in
+[`protocol-artifact/exo-bridge-v1`](../protocol-artifact/exo-bridge-v1/README.md). Its source
+revision, package/executable, dedicated TypeScript extension, bounded bridge, model binding,
+prompt/tool/configuration digests, contract version, and native instance identity are separate
+compatibility axes. The selected executor path is the extension's
+`defineHarness.runTurn` → `runResponsesHarnessTurn` → `ResponsesRuntime.complete` chain; HTTP
+substrate requests, `/health`, and the human-facing CLI are not fallback executors.
+
+The closed capability/preflight descriptor and request/turn envelope are source/component
+contracts. Standard/fresh/Linux x86_64 and strict terminal decision parsing are source-derived;
+map/expert, continuity, cancellation/recovery, event/usage, replay, native package/model
+identity, live Exo connectivity, and STS2 gameplay remain `unverified` until the real pinned
+executor spike records them. Old readers fail closed on the new contract or identity fields.
+
 ## Current evidence baseline
 
 This target includes bounded live-host integration and an opt-in runtime-v3 combat demo.

@@ -1,0 +1,18 @@
+{
+  "contract_version": "sts2-exo-bridge-v1",
+  "wire_version": "sts2.exo-bridge-wire-v1",
+  "positive": [
+    "golden/capability-source.json",
+    "golden/request.json",
+    "golden/decision-action.json"
+  ],
+  "negative": [
+    "fixtures/invalid-unknown.json",
+    "duplicate_field",
+    "trailing_bytes",
+    "invalid_utf8",
+    "wrong_request_id",
+    "cancelled_without_terminal_decision"
+  ],
+  "evidence": "source-derived; native executor and model integration unverified"
+}

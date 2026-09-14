@@ -207,6 +207,10 @@ async fn exchange_pipes(
         input
             .write_all(request)
             .await
+            .map_err(|_| ExoTransportError::Unavailable)?;
+        input
+            .shutdown()
+            .await
             .map_err(|_| ExoTransportError::Unavailable)
     };
     let wait = async {

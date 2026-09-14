@@ -5,9 +5,9 @@
 //! Network/provider execution is deliberately supplied by an operator-owned transport and is not
 //! performed by this probe. A successful configuration parse is not live Exo evidence.
 
-use sts2_harness::ExoConfig;
+use sts2_harness::{EXO_SOURCE_REVISION, ExoConfig};
 
-const REVIEWED_EXO_REVISION: &str = "7801005e6a1ab77008a05dbba80e0a2a7a56e35d";
+const REVIEWED_EXO_REVISION: &str = EXO_SOURCE_REVISION;
 
 fn main() {
     let result = ExoConfig::new(REVIEWED_EXO_REVISION, 128 * 1024, 8 * 1024, 120_000);
