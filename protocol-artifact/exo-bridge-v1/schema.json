@@ -1396,7 +1396,9 @@
         "harness_projection": {"const": "sts2-harness/runtime-v4-expert-fair-play-v1"},
         "legal_actions": {
           "type": "array",
+          "minItems": 1,
           "maxItems": 256,
+          "uniqueItems": true,
           "items": {"$ref": "#/$defs/harness_projection_legal_action"}
         }
       }

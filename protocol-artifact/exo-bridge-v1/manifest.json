@@ -4,7 +4,7 @@
   "contract_version": "sts2-exo-bridge-v1",
   "capability_schema": "sts2.exo-capability-v1",
   "schema": "schema.json",
-  "schema_sha256": "993cdf96ab63c4bb570458cfa22c2f0131d7d115f2a16004dac2456f3c70c6c8",
+  "schema_sha256": "9120cf874af6d111c5979c2d5071749e1afb30a63c721f670a76c33b844f4b85",
   "license": "MIT",
   "evidence": "source-derived",
   "native_spike": "unverified",

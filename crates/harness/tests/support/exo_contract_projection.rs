@@ -157,6 +157,52 @@ fn harness_projection_request_and_envelope_have_schema_parser_parity() {
         );
     }
 
+    // Empty and duplicate projected action catalogs are rejected by the schema and the parser, in
+    // both the bare request and its envelope.
+    for (label, actions, ids) in [
+        ("empty", json!([]), json!(["select:7:card:1"])),
+        (
+            "duplicate",
+            json!([
+                {"action_id": "confirm:7", "action": {"kind": "confirm_selection"}},
+                {"action_id": "confirm:7", "action": {"kind": "confirm_selection"}}
+            ]),
+            json!(["confirm:7", "confirm:7"]),
+        ),
+    ] {
+        let mut invalid = projected_expert_request();
+        invalid["observation"]["legal_actions"] = actions;
+        invalid["legal_action_ids"] = ids;
+        assert!(
+            !projection_validator.is_valid(&invalid["observation"]),
+            "projected observation schema accepted a {label} legal_actions catalog"
+        );
+        assert!(
+            !request_validator.is_valid(&invalid),
+            "request schema accepted a {label} legal_actions catalog"
+        );
+        let invalid_bytes = serde_json::to_vec(&invalid).expect("invalid projection serializes");
+        assert_eq!(
+            parse_bridge_request(&invalid_bytes, EXO_MAX_STANDARD_REQUEST_BYTES),
+            Err(ExoWireError::InvalidRequest),
+            "parser accepted a {label} legal_actions catalog"
+        );
+        let invalid_envelope = json!({
+            "wire_version": "sts2.exo-bridge-wire-v1",
+            "request_id": "request-projection",
+            "turn_id": "turn-projection",
+            "request": invalid
+        });
+        assert!(!envelope_validator.is_valid(&invalid_envelope));
+        let invalid_envelope_bytes =
+            serde_json::to_vec(&invalid_envelope).expect("invalid envelope serializes");
+        assert_eq!(
+            parse_bridge_request_envelope(&invalid_envelope_bytes, EXO_MAX_STANDARD_REQUEST_BYTES),
+            Err(ExoWireError::InvalidRequest),
+            "parser accepted a {label} legal_actions catalog envelope"
+        );
+    }
+
     // A marker that is not the pinned projection value is rejected by the schema and the parser.
     let mut wrong_marker = projected_expert_request();
     wrong_marker["observation"]["harness_projection"] = json!("sts2-harness/other-projection");
