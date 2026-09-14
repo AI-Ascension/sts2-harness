@@ -2,14 +2,15 @@
 
 #![allow(clippy::expect_used)]
 
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use sts2_harness::management::{
-    AuthContext, CommandKind, CommandOutcome, LiveWorkflowOptions, LiveWorkflowSession,
-    LiveWorkflowSessionFactory, ManagementError, MemoryWorkflowStore, RunRequest,
-    TargetCatalogResponse, WorkflowRunStatus,
+    AuthContext, CommandKind, CommandOutcome, CommandRequest, CommandResponse, LiveWorkflowOptions,
+    LiveWorkflowSession, LiveWorkflowSessionFactory, ManagementError, MemoryWorkflowStore,
+    RunRequest, TargetCatalogResponse, WorkflowRunStatus,
 };
 use sts2_harness::{
     ActionIdentity, Decision, DecisionInput, EpisodeLegalAction, EpisodeLegalActionSet,
@@ -58,11 +59,24 @@ impl SessionGate {
         }
     }
 
-    fn wait_entered(&self) {
+    fn wait_entered(&self, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
         let mut entered = self.entered.lock().expect("gate entered");
         while !*entered {
-            entered = self.entered_cv.wait(entered).expect("gate wait");
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            let (guard, result) = self
+                .entered_cv
+                .wait_timeout(entered, remaining)
+                .expect("gate wait");
+            entered = guard;
+            if result.timed_out() && !*entered {
+                return false;
+            }
         }
+        true
     }
 
     fn release(&self) {
@@ -70,6 +84,33 @@ impl SessionGate {
         *release = true;
         self.release_cv.notify_all();
     }
+}
+
+/// Releases the gate when a test leaves the protected region, including on a
+/// failed assertion, so a gated worker can never be stranded.
+struct GateRelease(Arc<SessionGate>);
+
+impl Drop for GateRelease {
+    fn drop(&mut self) {
+        self.0.release();
+    }
+}
+
+fn command_with_timeout(
+    service: &Arc<sts2_harness::management::ManagementService>,
+    actor: &AuthContext,
+    request: CommandRequest,
+    timeout: Duration,
+) -> Result<CommandResponse, ManagementError> {
+    let (sender, receiver) = mpsc::channel();
+    let service = Arc::clone(service);
+    let actor = actor.clone();
+    thread::spawn(move || {
+        let _ = sender.send(service.command(&actor, request));
+    });
+    receiver
+        .recv_timeout(timeout)
+        .expect("command did not return before the bounded deadline")
 }
 
 /// Wraps the recording fake so the `observe` node of the authored graph can be
@@ -182,6 +223,22 @@ impl LiveWorkflowSession for GatedSession {
     fn stop_episode(&mut self) -> Result<(), ManagementError> {
         self.inner.stop_episode()
     }
+
+    fn pause(&mut self) -> Result<(), ManagementError> {
+        self.inner.pause()
+    }
+
+    fn resume(&mut self) -> Result<(), ManagementError> {
+        self.inner.resume()
+    }
+
+    fn action_completed(&mut self, settled: bool) {
+        self.inner.action_completed(settled);
+    }
+
+    fn model_execution_id(&self) -> Option<sts2_harness::ModelExecutionId> {
+        self.inner.model_execution_id()
+    }
 }
 
 fn gated_service(
@@ -226,16 +283,21 @@ fn concurrent_command_at_the_same_revision_is_deferred_and_applied_once() {
             service.command(&actor, command(&run_id, "race-first", 1, CommandKind::Step))
         })
     };
-    gate.wait_entered();
+    let _release = GateRelease(Arc::clone(&gate));
+    assert!(
+        gate.wait_entered(Duration::from_secs(10)),
+        "worker did not reach the gated observe port"
+    );
 
-    // A second command at the same expected revision cannot double-apply; it
-    // is deferred while the first command is durably in flight.
-    let deferred = service
-        .command(
-            &actor,
-            command(&run_id, "race-second", 1, CommandKind::Step),
-        )
-        .expect("concurrent command");
+    // A distinct command at the same expected revision cannot double-apply; it
+    // is deferred (not queued) while the first command is durably in flight.
+    let deferred = command_with_timeout(
+        &service,
+        &actor,
+        command(&run_id, "race-second", 1, CommandKind::Step),
+        Duration::from_secs(10),
+    )
+    .expect("concurrent command");
     assert_eq!(deferred.outcome, CommandOutcome::Pending);
     assert_eq!(deferred.run_revision, 1);
 
@@ -244,6 +306,7 @@ fn concurrent_command_at_the_same_revision_is_deferred_and_applied_once() {
     assert_eq!(applied.outcome, CommandOutcome::Applied);
     assert_eq!(applied.run_revision, 2);
 
+    // Exactly one node executed and the durable revision advanced once.
     let snapshot = service.status(&actor, &run_id).expect("status").run;
     assert_eq!(snapshot.run_revision, 2);
     assert_eq!(snapshot.status, WorkflowRunStatus::Running);
@@ -281,16 +344,22 @@ fn cancellation_during_an_in_flight_step_is_deferred_then_dominates() {
             )
         })
     };
-    gate.wait_entered();
+    let _release = GateRelease(Arc::clone(&gate));
+    assert!(
+        gate.wait_entered(Duration::from_secs(10)),
+        "worker did not reach the gated observe port"
+    );
 
     // Cancellation does not race an operation that is already durably in
-    // flight; it is acknowledged as pending at the pre-step revision.
-    let deferred = service
-        .command(
-            &actor,
-            command(&run_id, "cancel-in-flight", 1, CommandKind::Cancel),
-        )
-        .expect("cancel while in flight");
+    // flight; it is acknowledged as pending at the pre-step revision and is not
+    // persisted (the store returns Pending without queueing the competitor).
+    let deferred = command_with_timeout(
+        &service,
+        &actor,
+        command(&run_id, "cancel-in-flight", 1, CommandKind::Cancel),
+        Duration::from_secs(10),
+    )
+    .expect("cancel while in flight");
     assert_eq!(deferred.outcome, CommandOutcome::Pending);
     assert_eq!(deferred.run_revision, 1);
 
@@ -300,13 +369,21 @@ fn cancellation_during_an_in_flight_step_is_deferred_then_dominates() {
     assert_eq!(stepped.run_revision, 2);
 
     // The deferred cancellation did not silently take effect: the run is still
-    // Running once the in-flight step settles.
+    // Running and no cleanup was performed once the in-flight step settled.
     assert_eq!(
         service.status(&actor, &run_id).expect("status").run.status,
         WorkflowRunStatus::Running
     );
+    let settled = factory.entries();
+    assert!(
+        !settled
+            .iter()
+            .any(|entry| entry == "stop" || entry == "release"),
+        "no cleanup may run before an explicit cancellation: {settled:?}"
+    );
 
-    // The deferred cancellation now applies and stops the live session.
+    // A fresh cancellation at the refreshed revision applies and stops the
+    // live session. (The earlier competing request was never persisted.)
     let cancelled = service
         .command(
             &actor,
@@ -321,7 +398,9 @@ fn cancellation_during_an_in_flight_step_is_deferred_then_dominates() {
     );
     assert!(factory.entries().contains(&"stop".to_owned()));
 
-    // Cancellation dominates a later step: no further node executes.
+    // Cancellation dominates a later step: the complete port log is unchanged,
+    // so no further node body or cleanup effect executes.
+    let before_dominated = factory.entries();
     let dominated = service
         .command(
             &actor,
@@ -332,6 +411,11 @@ fn cancellation_during_an_in_flight_step_is_deferred_then_dominates() {
     assert_eq!(
         service.status(&actor, &run_id).expect("status").run.status,
         WorkflowRunStatus::Cancelled
+    );
+    assert_eq!(
+        factory.entries(),
+        before_dominated,
+        "a cancelled run must not execute any further port effect"
     );
     assert_eq!(
         factory
