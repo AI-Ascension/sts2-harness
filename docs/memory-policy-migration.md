@@ -35,6 +35,12 @@ uses `MemoryPolicy::validate_against_capabilities` with the actual corpus, then 
 current revision and corpus generation. Missing/revoked catalog entries are not hidden by scalar
 ceiling checks. Byte counts do not become token estimates.
 
+Import validates the duplicate-rejected original JSON against the complete embedded policy schema
+before typed deserialization, then applies portable semantic and exact-scope checks. Recovery repeats
+the same checks on authenticated saved bytes. Missing required fields cannot be supplied by typed
+defaults. Schema-valid floating/exponent integer encodings that the typed contract cannot represent
+return `UnsupportedNumericRepresentation`; they are neither rounded nor labeled schema-invalid.
+
 ## Fences and recovery
 
 Reviews bind source/target identity and raw hashes, target execution hash, selected descriptor digest,
@@ -82,6 +88,12 @@ The store uses rollback-journal mode rather than WAL; transaction journal overhe
 is bounded by the database being changed. There is no automatic history deletion, cleanup or
 resource-ceiling increase. Capacity errors roll back attempted changes.
 
+The store accepts only its exact original v1 table definitions and rejects unexpected schema
+objects, including triggers, views and indexes. Schema text is byte-bounded before retrieval, and
+checks repeat inside each transaction. Each journal write must affect exactly one row and read back
+the exact candidate epoch and ciphertext before success; suppressed or altered writes cannot
+acknowledge an adoption or receipt. Existing legitimate v1 databases keep their layout.
+
 Raw bytes and credentials are not included in Debug output or receipts. Policy source/target bytes
 are encrypted before SQLite writes. Metadata-only reads expose identities and hashes, not raw
 policy encodings. Synthetic test authorization does not establish permission to retain private data.
@@ -97,6 +109,8 @@ cargo test --locked -p sts2-harness \
   --test context_memory_policy_races \
   --test context_memory_policy_limits \
   --test context_memory_policy_maintenance \
+  --test context_memory_policy_wire \
+  --test context_memory_policy_sqlite \
   --test context_memory_policy_history
 cargo test --locked -p sts2-harness --lib \
   context_memory::policy_owner
@@ -106,6 +120,9 @@ Tests exercise actual corpus validation/selection and encrypted SQLite, with syn
 policies and clocks. Cases include exact-byte preservation, distinct raw/typed hashes, schema/profile
 rejection, missing catalog entries, target-bound approval, restart/revalidation, no downgrade,
 idempotency, lost reply, wrong key/corruption, quota/physical limits and serialized revocation.
+Wire regressions cover required-field omission and approved/revision/generation constraints at import
+and authenticated reopen. SQLite regressions cover incompatible schema rejection before claim or
+adoption, original v1 compatibility, and private write-verification rollback.
 These are component tests, not a provider/native/browser-production acceptance claim.
 
 Run repository policy, locked format/clippy/build/workspace gates before review. The approved

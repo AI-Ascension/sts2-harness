@@ -6,13 +6,17 @@ use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
     aead::{Aead, KeyInit, Payload},
 };
-use rusqlite::{Connection, TransactionBehavior, params};
+use rusqlite::{Connection, TransactionBehavior};
 use std::path::{Path, PathBuf};
 use zeroize::Zeroize;
 
 #[cfg(test)]
 #[path = "policy_store_quota.rs"]
 mod quota;
+
+#[cfg(test)]
+#[path = "policy_store_write_tests.rs"]
+mod write_tests;
 
 /// Construction-time retention choice; not a request field or a grant to collect private data.
 pub enum PolicyStoreConsent {
@@ -98,6 +102,7 @@ impl PolicyStore {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| PolicyOwnerError::Unavailable)?;
         let mut journal = if existing {
+            check_schema(&transaction)?;
             let (epoch, envelope) = read_envelope(&transaction)?;
             let journal = decrypt(&self.key, &self.scope, &envelope)?;
             if journal.store_epoch != epoch {
@@ -105,6 +110,9 @@ impl PolicyStore {
             }
             journal
         } else {
+            if has_schema(&transaction)? {
+                return Err(PolicyOwnerError::StoreIncompatible);
+            }
             transaction
                 .execute_batch(SCHEMA)
                 .map_err(|_| PolicyOwnerError::Unavailable)?;
@@ -119,6 +127,7 @@ impl PolicyStore {
         }
         let envelope = encrypt(&self.key, &self.scope, &journal)?;
         write_envelope(&transaction, journal.store_epoch, &envelope)?;
+        check_schema(&transaction)?;
         transaction
             .commit()
             .map_err(|_| PolicyOwnerError::Unavailable)?;
@@ -128,13 +137,20 @@ impl PolicyStore {
 
     fn load_unfenced(&self) -> Result<PolicyJournal, PolicyOwnerError> {
         check_file(&self.path)?;
-        check_pages(&self.connection)?;
-        check_schema(&self.connection)?;
-        let (epoch, envelope) = read_envelope(&self.connection)?;
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(|_| PolicyOwnerError::Unavailable)?;
+        check_pages(&transaction)?;
+        check_schema(&transaction)?;
+        let (epoch, envelope) = read_envelope(&transaction)?;
         let journal = decrypt(&self.key, &self.scope, &envelope)?;
         if epoch != journal.store_epoch {
             return Err(PolicyOwnerError::Corrupt);
         }
+        transaction
+            .commit()
+            .map_err(|_| PolicyOwnerError::Unavailable)?;
         Ok(journal)
     }
 
@@ -158,6 +174,7 @@ impl PolicyStore {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| PolicyOwnerError::Unavailable)?;
+        check_schema(&transaction)?;
         let (epoch, envelope) = read_envelope(&transaction)?;
         if epoch != self.epoch {
             return Err(PolicyOwnerError::OwnerFenced);
@@ -169,6 +186,7 @@ impl PolicyStore {
         let result = change(&mut journal)?;
         let envelope = encrypt(&self.key, &self.scope, &journal)?;
         write_envelope(&transaction, self.epoch, &envelope)?;
+        check_schema(&transaction)?;
         let failpoint = self.failpoint.take();
         if failpoint == Some(PolicyStoreFailpoint::BeforeCommit) {
             return Err(PolicyOwnerError::PersistenceFailure);
@@ -195,6 +213,7 @@ impl PolicyStore {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| PolicyOwnerError::Unavailable)?;
+        check_schema(&transaction)?;
         let (epoch, envelope) = read_envelope(&transaction)?;
         if epoch != self.epoch {
             return Err(PolicyOwnerError::OwnerFenced);
@@ -272,22 +291,4 @@ fn decrypt(
         return Err(PolicyOwnerError::ScopeMismatch);
     }
     Ok(journal)
-}
-
-fn write_envelope(
-    connection: &Connection,
-    epoch: u64,
-    envelope: &[u8],
-) -> Result<(), PolicyOwnerError> {
-    connection
-        .execute(
-            "INSERT INTO policy_journal(id, epoch, envelope) VALUES(1, ?1, ?2)
-         ON CONFLICT(id) DO UPDATE SET epoch=excluded.epoch, envelope=excluded.envelope",
-            params![
-                i64::try_from(epoch).map_err(|_| PolicyOwnerError::Capacity)?,
-                envelope
-            ],
-        )
-        .map_err(|_| PolicyOwnerError::Unavailable)?;
-    Ok(())
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::{TrustedPolicyState, authority::AuthorizedActor, types::*};
+use super::{TrustedPolicyState, authority::AuthorizedActor, original::parse_original, types::*};
 use crate::context_memory::*;
 use serde::{Deserialize, Serialize};
 
@@ -38,15 +38,7 @@ impl SavedPolicy {
         &self.raw
     }
     pub(super) fn new(raw: &[u8], scope: &MemoryScope) -> Result<Self, PolicyOwnerError> {
-        check_raw(raw)?;
-        let policy: MemoryPolicy =
-            parse_strict_json(raw).map_err(|_| PolicyOwnerError::SchemaInvalid)?;
-        policy
-            .validate_schema()
-            .map_err(|_| PolicyOwnerError::SchemaInvalid)?;
-        if policy.scope != *scope {
-            return Err(PolicyOwnerError::ScopeMismatch);
-        }
+        let policy = parse_original(raw, scope)?;
         let value = Self {
             reference: SavedPolicyRef {
                 policy_id: policy.policy_id.clone(),

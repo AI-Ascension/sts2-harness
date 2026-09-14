@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::types::*;
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 use serde::Serialize;
 use std::io::Write;
 use std::path::Path;
@@ -45,12 +45,18 @@ pub(super) fn check_pages(connection: &Connection) -> Result<(), PolicyOwnerErro
 }
 
 pub(super) fn has_schema(connection: &Connection) -> Result<bool, PolicyOwnerError> {
+    let temporary: u64 = connection
+        .query_row("SELECT count(*) FROM sqlite_temp_master", [], |row| {
+            unsigned(row, 0)
+        })
+        .map_err(|_| PolicyOwnerError::StoreIncompatible)?;
+    if temporary != 0 {
+        return Err(PolicyOwnerError::StoreIncompatible);
+    }
     let count: u64 = connection
-        .query_row(
-            "SELECT count(*) FROM sqlite_master WHERE type='table'",
-            [],
-            |row| unsigned(row, 0),
-        )
+        .query_row("SELECT count(*) FROM sqlite_master", [], |row| {
+            unsigned(row, 0)
+        })
         .map_err(|_| PolicyOwnerError::Corrupt)?;
     if count == 0 {
         return Ok(false);
@@ -58,7 +64,9 @@ pub(super) fn has_schema(connection: &Connection) -> Result<bool, PolicyOwnerErr
     let recognized: u64 = connection
         .query_row(
             "SELECT count(*) FROM sqlite_master WHERE type='table'
-         AND name IN ('policy_store_meta', 'policy_journal')",
+         AND name IN ('policy_store_meta', 'policy_journal')
+         AND typeof(sql)='text' AND length(CAST(sql AS BLOB))<=2048
+         AND typeof(tbl_name)='text' AND length(CAST(tbl_name AS BLOB))<=128",
             [],
             |row| unsigned(row, 0),
         )
@@ -73,6 +81,31 @@ pub(super) fn check_schema(connection: &Connection) -> Result<(), PolicyOwnerErr
     if !has_schema(connection)? {
         return Err(PolicyOwnerError::StoreIncompatible);
     }
+    // Preserve the exact v1 creation layout while rejecting altered columns, constraints,
+    // indexes, views and triggers. Fetch text only after has_schema bounds it.
+    for statement in SCHEMA
+        .split(';')
+        .map(str::trim)
+        .filter(|sql| sql.starts_with("CREATE TABLE"))
+    {
+        let name = if statement.starts_with("CREATE TABLE policy_store_meta(") {
+            "policy_store_meta"
+        } else {
+            "policy_journal"
+        };
+        let (table, sql): (String, String) = connection
+            .query_row(
+                "SELECT tbl_name, sql FROM sqlite_master WHERE name=?1
+                 AND typeof(sql)='text' AND length(CAST(sql AS BLOB))<=2048
+                 AND typeof(tbl_name)='text' AND length(CAST(tbl_name AS BLOB))<=128",
+                [name],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|_| PolicyOwnerError::StoreIncompatible)?;
+        if table != name || sql != statement {
+            return Err(PolicyOwnerError::StoreIncompatible);
+        }
+    }
     let count: u64 = connection
         .query_row("SELECT count(*) FROM policy_store_meta", [], |row| {
             unsigned(row, 0)
@@ -82,9 +115,11 @@ pub(super) fn check_schema(connection: &Connection) -> Result<(), PolicyOwnerErr
         return Err(PolicyOwnerError::StoreIncompatible);
     }
     let version: u64 = connection
-        .query_row("SELECT version FROM policy_store_meta", [], |row| {
-            unsigned(row, 0)
-        })
+        .query_row(
+            "SELECT version FROM policy_store_meta WHERE typeof(version)='integer'",
+            [],
+            |row| unsigned(row, 0),
+        )
         .map_err(|_| PolicyOwnerError::StoreIncompatible)?;
     if version != 1 {
         return Err(PolicyOwnerError::StoreIncompatible);
@@ -125,6 +160,31 @@ pub(super) fn read_envelope(connection: &Connection) -> Result<(u64, Vec<u8>), P
 fn unsigned(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<u64> {
     let value: i64 = row.get(index)?;
     u64::try_from(value).map_err(|_| rusqlite::Error::IntegralValueOutOfRange(index, value))
+}
+
+pub(super) fn write_envelope(
+    connection: &Connection,
+    epoch: u64,
+    envelope: &[u8],
+) -> Result<(), PolicyOwnerError> {
+    let changed = connection
+        .execute(
+            "INSERT INTO policy_journal(id, epoch, envelope) VALUES(1, ?1, ?2)
+         ON CONFLICT(id) DO UPDATE SET epoch=excluded.epoch, envelope=excluded.envelope",
+            params![
+                i64::try_from(epoch).map_err(|_| PolicyOwnerError::Capacity)?,
+                envelope
+            ],
+        )
+        .map_err(|_| PolicyOwnerError::Unavailable)?;
+    if changed != 1 {
+        return Err(PolicyOwnerError::PersistenceFailure);
+    }
+    let (stored_epoch, stored_envelope) = read_envelope(connection)?;
+    if stored_epoch != epoch || stored_envelope != envelope {
+        return Err(PolicyOwnerError::PersistenceFailure);
+    }
+    Ok(())
 }
 
 pub(super) fn encode_bounded(value: &impl Serialize) -> Result<Vec<u8>, PolicyOwnerError> {

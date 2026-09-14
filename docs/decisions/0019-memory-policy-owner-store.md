@@ -45,6 +45,11 @@ internal review kind: it requires a previously adopted active identity and permi
 bytes/version or a strictly newer independently authored target. It never fabricates a migration
 violation, rewrites old bytes or silently downgrades a policy.
 
+The original duplicate-rejected JSON must pass the complete embedded wire schema before typed
+deserialization can supply optional defaults. Portable semantic and scope checks remain additional
+requirements, including on authenticated recovery. Schema-valid but unsupported numeric encodings
+fail explicitly without coercion; stored bytes and existing contract schemas remain unchanged.
+
 Explicit approval binds the reviewed source/target hashes, current state fences and authenticated
 subject/grant epoch. Adoption requires that same subject and grant with both approve/adopt
 permissions. It revalidates the target against the actual corpus and selected descriptor, including
@@ -71,6 +76,12 @@ encrypted blob. Typed decoding bounds record counts. Key/history validation prec
 claim and is repeated inside the claim transaction. Replacement increments a persistent epoch;
 stale handles cannot reclaim it. Restart preserves inspection but fences preparation until explicit
 revalidation, approval and adoption. A wrong-key or corrupt-history open cannot take ownership.
+
+Exact original v1 table definitions and the complete set of SQLite schema objects are checked before
+claim and within journal transactions. Unexpected triggers, views, indexes and altered definitions
+are incompatible, regardless of ciphertext validity. Metadata text is bounded in bytes before
+retrieval. Writes require one affected row and exact candidate epoch/ciphertext read-back before
+acknowledgment; this defense does not authorize otherwise incompatible schema behavior.
 
 Same subject/idempotency key with the same request recovers the original receipt, including after a
 lost reply. A changed request conflicts. Recovery does not reactivate a fenced policy.

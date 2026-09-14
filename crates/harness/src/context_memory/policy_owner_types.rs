@@ -53,6 +53,7 @@ pub enum PolicyOwnerError {
     GrantRevoked,
     ScopeMismatch,
     SchemaInvalid,
+    UnsupportedNumericRepresentation,
     StaleReview,
     OwnerFenced,
     Conflict,

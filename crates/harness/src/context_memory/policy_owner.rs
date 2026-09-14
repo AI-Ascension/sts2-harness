@@ -13,6 +13,8 @@ mod authority;
 mod commands;
 #[path = "policy_owner_integrity.rs"]
 mod integrity;
+#[path = "policy_owner_original.rs"]
+mod original;
 #[path = "policy_owner_prepare.rs"]
 mod prepare;
 #[path = "policy_owner_records.rs"]
