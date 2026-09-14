@@ -17,10 +17,12 @@ A deployment using another revision must replace it with a separately reviewed 4
 rejected by `ExoConfig`.
 
 The selected executor path is one dedicated operator-owned TypeScript module loaded through
-`agent.typescript.module_path`: `defineHarness.runTurn` → `runResponsesHarnessTurn` →
-`ResponsesRuntime.complete`. The harness does not fall back to Exo `/health`, substrate
-`/request`, or the human-facing CLI. The module and process bridge must use the closed
-`sts2.exo-bridge-wire-v1` request/turn envelope when they are admitted by a trusted preflight.
+`agent.typescript.module_path`: `experiments/exo-agent/extension/src/index.ts` →
+`defineHarness.runTurn` → `runResponsesHarnessTurn` → `ResponsesRuntime.complete`. Its package
+manifest freezes the approved `@exo/harness` and `@exo/model-runtime` dependency boundary. The
+harness does not fall back to Exo `/health`, substrate `/request`, or the human-facing CLI. The
+module and process bridge must use the closed `sts2.exo-bridge-wire-v1` request/turn envelope
+when they are admitted by a trusted preflight.
 
 The harness supplies `ExoProcessTransport` for an operator-owned bridge when a direct process is
 appropriate. It passes configured arguments directly, clears the environment except for an

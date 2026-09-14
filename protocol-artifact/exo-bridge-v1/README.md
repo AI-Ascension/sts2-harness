@@ -23,6 +23,15 @@ The extension owns the narrow STS2 prompt/tool projection and returns one termin
 harness-owned bounded bridge. The extension does not expose raw game objects, host reflection,
 private prompts, credentials, saves, shell commands, hidden RNG state, or unrevealed outcomes.
 
+The owned package placement is frozen at
+`experiments/exo-agent/extension/package.json` with entry
+`experiments/exo-agent/extension/src/index.ts`. It may depend only on the candidate
+`@exo/harness` and `@exo/model-runtime` workspace packages (plus bounded Node built-ins). The
+repository-owned bridge placement is `crates/harness/src/exo_process.rs` and
+`crates/harness/src/exo/contract/`; its external executable is operator-owned and identified by
+`bridge_digest`. Direct OpenAI SDK, Exo CLI, substrate HTTP, shell, game-host, and private-state
+dependencies are outside this contract.
+
 The upstream `/health` endpoint is a service probe and is not an executor contract. The upstream
 `/request` endpoint carries low-level substrate protocol messages and has no STS2 executor-turn
 operation. The CLI `conversation send` command is a human-facing prompt path. Neither endpoint nor
@@ -74,6 +83,11 @@ are bounded control-plane identities and are compared before a response is accep
 agent, conversation, session, and idempotency identities remain in a host-only control receipt;
 they are never model-visible.
 
+`schema.json` includes closed `$defs` for `decision_request`, `request_envelope`, `decision`, and
+`decision_envelope`; `conformance.json` names executable vectors for standard/map boundaries,
+every semantic decision, wrong schema/wire, swapped package identity, failed outcomes, and
+capability downgrades. The Rust `exo_contract` production test executes those vectors.
+
 The ordinary request limit is 131072 bytes, the complete map request limit is 393443 bytes, the
 response limit is 8192 bytes, and the supervised turn timeout is 120000 milliseconds. Process
 bridges receive one request, then stdin is explicitly shut down (EOF); stdout is bounded and
@@ -97,6 +111,12 @@ but new deployment records must not overload it as a package, bridge, model, or 
 identity. Consumers migrate to the separate axes listed above and bind the contract version.
 Readers that cannot understand the new contract or identity fields reject the deployment rather than
 guessing. Historical records may retain the old audit revision as source-derived history.
+
+Old stores migrate by backup → atomic additive identity/contract migration → reviewed-pin and
+minimum-capability preflight before any effect. The original store remains untouched until the
+new record is admitted; a failed migration removes only staging bytes and restores the backup.
+Mixed-version or missing-axis rows are rejected, and rollback never reinterprets a new record as
+the legacy `provider_revision`-only identity.
 
 ## Evidence and completion
 

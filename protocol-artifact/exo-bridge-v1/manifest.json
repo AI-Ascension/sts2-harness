@@ -4,7 +4,7 @@
   "contract_version": "sts2-exo-bridge-v1",
   "capability_schema": "sts2.exo-capability-v1",
   "schema": "schema.json",
-  "schema_sha256": "b0339b28f0f260d1d378e3c0394fbbc3be6ac6b4ac1262f1bf23e2b2e9300440",
+  "schema_sha256": "148130cf00ac1837fd4e47aa9892c660ddbf022935937b101aa14ce1eedcd66f",
   "license": "MIT",
   "evidence": "source-derived",
   "native_spike": "unverified",
@@ -36,8 +36,17 @@
     "native_instance_id": {"value": null, "evidence": "unverified"}
   },
   "extension": {
-    "placement": "operator-owned TypeScript module loaded through agent.typescript.module_path",
+    "package_manifest": "experiments/exo-agent/extension/package.json",
+    "placement": "experiments/exo-agent/extension/src/index.ts loaded through agent.typescript.module_path",
     "selected_path": "defineHarness.runTurn -> runResponsesHarnessTurn -> ResponsesRuntime.complete",
+    "approved_dependencies": ["@exo/harness", "@exo/model-runtime"],
+    "fallbacks": []
+  },
+  "bridge": {
+    "placement": "crates/harness/src/exo_process.rs",
+    "wire_types": "crates/harness/src/exo/contract/",
+    "executable": "operator-owned external package supplied to ExoProcessTransport",
+    "approved_dependencies": ["sts2_harness::ExoProcessTransport", "sts2-exo-bridge-v1"],
     "fallbacks": []
   },
   "pin_locations": [
@@ -57,7 +66,9 @@
     "crates/harness/tests/context_control_races.rs",
     "crates/harness/tests/provider_redaction.rs",
     "crates/harness/src/bin/runtime_support/runtime_v3_telemetry_identity_privacy_tests.rs",
-    "crates/harness/src/bin/runtime_support/runtime_v3_telemetry_tests.rs"
+    "crates/harness/src/bin/runtime_support/runtime_v3_telemetry_tests.rs",
+    "experiments/exo-agent/extension/package.json",
+    "experiments/exo-agent/extension/src/index.ts"
   ],
   "migration": {
     "old_revision": "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",

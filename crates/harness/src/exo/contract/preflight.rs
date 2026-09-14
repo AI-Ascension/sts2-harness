@@ -2,12 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::EXO_CONTRACT_VERSION;
 use super::descriptor::{
     ExoCapabilityDescriptor, ExoCapabilityState, ExoContextMode, ExoDescriptorError, ExoLimits,
     ExoPlatform, ExoProfile,
 };
 use super::identity::{ExoIdentity, ExoIdentityError};
+use super::{EXO_CONTRACT_VERSION, EXO_SOURCE_REVISION};
 
 /// Operator-trusted values required to admit one executable profile.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -25,6 +25,9 @@ impl ExoTrustedConfiguration {
         self.identity
             .validate()
             .map_err(ExoPreflightError::InvalidIdentity)?;
+        if self.identity.source_revision != EXO_SOURCE_REVISION {
+            return Err(ExoPreflightError::UnreviewedSourceRevision);
+        }
         if !self.identity.is_complete() {
             return Err(ExoPreflightError::MissingIdentity);
         }
@@ -55,12 +58,18 @@ pub fn preflight(
         .validate()
         .map_err(ExoPreflightError::InvalidDescriptor)?;
     trusted.validate()?;
+    if descriptor.identity.source_revision != EXO_SOURCE_REVISION
+        || trusted.identity.source_revision != EXO_SOURCE_REVISION
+    {
+        return Err(ExoPreflightError::UnreviewedSourceRevision);
+    }
     if descriptor.identity.source_revision != trusted.identity.source_revision {
         return Err(ExoPreflightError::IdentityMismatch("source_revision"));
     }
     if descriptor.identity.contract_version != trusted.identity.contract_version {
         return Err(ExoPreflightError::ContractMismatch);
     }
+    require_minimum_capabilities(descriptor)?;
     compare_optional_identity(descriptor, trusted)?;
     if !descriptor.platforms.contains(&trusted.platform) {
         return Err(ExoPreflightError::PlatformUnsupported);
@@ -90,6 +99,25 @@ pub fn preflight(
         limits: trusted.limits.clone(),
         model_calls: 0,
     })
+}
+
+fn require_minimum_capabilities(
+    descriptor: &ExoCapabilityDescriptor,
+) -> Result<(), ExoPreflightError> {
+    let required = [
+        (
+            "evidence.terminal_decision",
+            descriptor.evidence.terminal_decision,
+        ),
+        ("lifecycle.graceful_eof", descriptor.lifecycle.graceful_eof),
+        ("lifecycle.idempotency", descriptor.lifecycle.idempotency),
+    ];
+    required
+        .into_iter()
+        .find(|(_, state)| *state != ExoCapabilityState::Supported)
+        .map_or(Ok(()), |(name, _)| {
+            Err(ExoPreflightError::RequiredCapability(name))
+        })
 }
 
 fn compare_limits(advertised: &ExoLimits, trusted: &ExoLimits) -> Result<(), ExoPreflightError> {
@@ -199,8 +227,10 @@ pub enum ExoPreflightError {
     InvalidIdentity(ExoIdentityError),
     InvalidLimits(ExoDescriptorError),
     MissingIdentity,
+    UnreviewedSourceRevision,
     ContractMismatch,
     IdentityMismatch(&'static str),
+    RequiredCapability(&'static str),
     PlatformUnsupported,
     ProfileUnsupported,
     ContextUnsupported,
@@ -214,8 +244,12 @@ impl std::fmt::Display for ExoPreflightError {
             Self::InvalidIdentity(_) => "trusted Exo identity failed validation",
             Self::InvalidLimits(_) => "trusted Exo limits failed validation",
             Self::MissingIdentity => "trusted Exo identity is incomplete",
+            Self::UnreviewedSourceRevision => {
+                "Exo source revision is not the reviewed candidate manifest pin"
+            }
             Self::ContractMismatch => "Exo contract versions do not match",
             Self::IdentityMismatch(_) => "advertised and trusted Exo identities differ",
+            Self::RequiredCapability(_) => "Exo minimum admission capability is not supported",
             Self::PlatformUnsupported => "requested Exo platform is unsupported",
             Self::ProfileUnsupported => "requested Exo profile is not supported",
             Self::ContextUnsupported => "requested Exo context mode is unsupported",

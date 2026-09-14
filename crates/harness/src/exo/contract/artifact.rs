@@ -75,9 +75,39 @@ pub fn verify_exo_bridge_artifact() -> Result<(), ExoArtifactError> {
     if schema.get("$id").and_then(Value::as_str) != Some("sts2-harness/exo-bridge/v1") {
         return Err(ExoArtifactError::Schema);
     }
+    let defs = schema
+        .get("$defs")
+        .and_then(Value::as_object)
+        .ok_or(ExoArtifactError::Schema)?;
+    if [
+        "request_envelope",
+        "decision_envelope",
+        "decision_request",
+        "decision",
+    ]
+    .iter()
+    .any(|name| !defs.contains_key(*name))
+    {
+        return Err(ExoArtifactError::Schema);
+    }
     let conformance: Value =
         serde_json::from_str(CONFORMANCE).map_err(|_| ExoArtifactError::Fixture)?;
     if conformance.get("wire_version").and_then(Value::as_str) != Some(EXO_BRIDGE_WIRE_VERSION) {
+        return Err(ExoArtifactError::Fixture);
+    }
+    if [
+        "request_vectors",
+        "decision_vectors",
+        "envelope_vectors",
+        "capability_vectors",
+    ]
+    .iter()
+    .any(|name| {
+        conformance
+            .get(*name)
+            .and_then(Value::as_array)
+            .is_none_or(|vectors| vectors.is_empty())
+    }) {
         return Err(ExoArtifactError::Fixture);
     }
     let checksums = [
@@ -93,19 +123,19 @@ pub fn verify_exo_bridge_artifact() -> Result<(), ExoArtifactError> {
     let sums = [
         (
             checksums[0].0,
-            "1f7cac88a958ace4c7a98b23ee00a237c0a44c39cdfc959e9d970cb508b7ac09",
+            "a47049530c158084d6c52aba6871c42401637852464e489dedac0e92ce4dcdab",
         ),
         (
             checksums[1].0,
-            "f03d7729d05164a5868759fb8eca7d1a7c97cdda602179f0df66c2040218da38",
+            "54b2e2a90dece15f5213594b85031e4916dc1ec3d8710eee7af9ec46470ccd04",
         ),
         (
             checksums[2].0,
-            "b0339b28f0f260d1d378e3c0394fbbc3be6ac6b4ac1262f1bf23e2b2e9300440",
+            "148130cf00ac1837fd4e47aa9892c660ddbf022935937b101aa14ce1eedcd66f",
         ),
         (
             checksums[3].0,
-            "fcade72c8771aedf04b34efc83c5cf65c00df7c5bddb380cd2a88bbfe7700e4d",
+            "ba9473bef4f2ecc15b347faf9223613ee3657e830140d0dcee221c3019a545ef",
         ),
         (
             checksums[4].0,

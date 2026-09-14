@@ -36,6 +36,27 @@ The extension must return one terminal `sts2.exo-decision-v1` object. The existi
 remains authoritative for decision variants and fields; correlation is carried by the outer
 bridge envelope and host control receipt, not appended to model JSON.
 
+### Owned package placement and dependency boundary
+
+The owned extension package placement is frozen at
+`experiments/exo-agent/extension/package.json` with entry
+`experiments/exo-agent/extension/src/index.ts`; deployment sets
+`agent.typescript.module_path` to that entry. Its only approved runtime dependencies are the
+candidate `@exo/harness` and `@exo/model-runtime` workspace packages, both resolved from source
+revision `b06869ab789dee3f80ca474b5fa89dbe47ccb859`. The extension may use Node built-ins for
+bounded static inputs. It must not import an OpenAI SDK directly, call Exo HTTP/CLI surfaces,
+invoke a shell, or read game/host/loader/mod/save state.
+
+The owned bridge package placement is the Rust `ExoProcessTransport` implementation at
+`crates/harness/src/exo_process.rs`, with the contract types at
+`crates/harness/src/exo/contract/`. The executable supplied to that transport remains an
+operator-owned package outside this repository and is identified by `bridge_digest`; it is not a
+second repository implementation. Its only approved dependency boundary is the harness process
+transport plus the closed `sts2-exo-bridge-wire-v1` envelope. It cannot use `/health`, `/request`,
+`conversation send`, a shell, or a gameplay/host side channel as an executor fallback. The
+placement and dependency manifest are deterministic source fixtures; package installation and
+native execution remain `unverified`.
+
 ## Upstream source review
 
 The immutable source record is
@@ -130,6 +151,26 @@ request then explicitly shuts down stdin (EOF), bounds stdout, and maps timeout,
 oversize, unavailable, and malformed outcomes to fail-closed errors. No retry or gameplay fallback
 is implied.
 
+### Source-referenced executor and lifecycle mapping
+
+The selected upstream source and the repository-owned Rust seam are mapped explicitly:
+
+| Contract record | Candidate source reference | Harness-owned Rust reference |
+| --- | --- | --- |
+| extension/executor entry | `exo/harness.ts`: `defineHarness({ runTurn })` | `experiments/exo-agent/extension/src/index.ts` reproducer |
+| conversation/model turn | `exoharness/typescript/model-runtime/turn-loop.ts`: `runResponsesHarnessTurn` → `runtime.runTurn` | `crates/harness/src/exo/session.rs`: one prepared request/response attempt |
+| model completion | `exoharness/typescript/model-runtime/responses.ts`: `ResponsesRuntime.complete` / `completeStream` | `crates/harness/src/exo_process.rs`: bounded stdin/stdout process exchange |
+| turn identity | `exoharness/typescript/harness/index.ts`: `Turn` (`agentId`, `conversationId`, `sessionId`, `turnId`) and `turnMetadata` | `crates/harness/src/exo/contract/wire_types.rs`: `ExoControlIdentity` and `ExoBridgeTurn` |
+| event/usage evidence | `exoharness/typescript/model-runtime/responses.ts`: `responseToLinguaEvents` and `usageRecord` | `crates/harness/src/exo/contract/descriptor.rs`: `event_usage`; sideband bytes are bounded and independently labeled |
+| terminal decision | candidate runtime response after `complete*` | `crates/harness/src/exo/decision.rs`: `parse_decision`; `contract/wire.rs`: outer response envelope |
+| cancellation/failure/EOF | candidate APIs expose no bounded STS2 cancellation hook in the reviewed range | `crates/harness/src/exo_process.rs`: timeout/non-zero/EOF mappings; `contract/wire.rs`: `cancelled`/`failed` outcomes |
+
+The source references describe available upstream records, not a claim that they already implement
+the STS2 terminal bridge. In particular, `responseToLinguaEvents` and `Turn.addEvents` are
+conversation evidence paths; they do not prove a game effect or terminal decision. The Rust
+mapping is therefore admitted only after the outer envelope, identity, capability, and preflight
+checks pass.
+
 ## Run, turn, replay, and private-state mapping
 
 | Harness record | Exo record | Rule |
@@ -167,6 +208,16 @@ generic `ExecutionFingerprint` storage remains compatible while Runtime-v3 confi
 records the separate Exo identity object; a later durable-schema migration may promote those axes
 to first-class columns.
 
+The old-store migration is explicit and reversible: (1) stop admission and copy the old store
+and its immutable fingerprint evidence to an operator-owned backup; (2) read the old
+`ExecutionFingerprint` without rewriting it and append the new contract/identity object through
+an atomic schema migration; (3) reopen the migrated store and require the reviewed source pin,
+all identity axes, and the minimum capability set before any provider, gateway, or game call; and
+(4) retain the old copy until a separately recorded handoff succeeds. If any step fails, remove
+only the incomplete staging store and restore the backup before retrying. Mixed-version rows,
+missing identity axes, or an unrecognized source pin remain non-admissible; rollback never
+silently downgrades a new record to the legacy provider-revision-only meaning.
+
 ## Platform matrix and live completion
 
 | Platform/profile | Source contract | Native evidence | Admission |
@@ -176,14 +227,16 @@ to first-class columns.
 | Windows, macOS, other architectures | no declared capability | `unsupported` | rejected |
 | continuity, compaction, branch, co-op | no declared capability | `unverified` | rejected |
 
-The missing real spike is a concrete blocker, not a design claim. The minimal reproducer is an
-operator-owned `defineHarness` module loaded by `agent.typescript.module_path` that receives one
-synthetic STS2 observation, invokes the selected `runResponsesHarnessTurn` path against the
-original synthetic model endpoint, and attempts to emit one correlated bridge envelope. The
-candidate Exo source exposes `runTurn`/`complete` and substrate conversation events, but the
-reviewed range has no bounded machine terminal-decision/EOF/cancellation hook. The harness cannot
-verify this reproducer without the actual candidate package, extension build, bridge executable,
-model endpoint, and native credentials. Therefore this ADR does not call the design executable.
+The missing real spike is a concrete blocker, not a design claim. The concrete minimal reproducer
+is `experiments/exo-agent/extension/src/index.ts`: it is an operator-loaded `defineHarness` module
+that receives one synthetic turn and invokes the selected `runResponsesHarnessTurn` path. It is
+intentionally not built by this Rust workspace. Running it with the exact candidate package and
+model binding is the prerequisite for observing one terminal decision and handing it to the Rust
+bridge. The candidate Exo source exposes `runTurn`/`complete` and substrate conversation events,
+but the reviewed range has no bounded machine terminal-decision/EOF/cancellation hook. The harness
+cannot verify this reproducer without the actual candidate package, extension build, bridge
+executable, model endpoint, and native credentials. Therefore this ADR does not call the design
+executable.
 
 Live completion requires the exact package/extension/bridge/model/prompt/tool/config/native
 digests, a correlated structured decision and turn identity, event/usage evidence, cancellation

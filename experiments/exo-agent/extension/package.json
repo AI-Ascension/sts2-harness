@@ -1,0 +1,13 @@
+{
+  "name": "@sts2-harness/exo-agent-extension",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "x-reviewed-source-revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
+  "dependencies": {
+    "@exo/harness": "workspace:*",
+    "@exo/model-runtime": "workspace:*"
+  }
+}
