@@ -46,8 +46,14 @@ against Cargo's exact candidate library artifacts. Candidate output must equal b
 goldens before their unchanged admission tests run. The tool records actual compilation
 provenance separately from the golden's historical origin label.
 
-The matrix validator recognizes only the named repository/workflow pairs and exact adjacent
-checkout repository/ref lines. Aligned consumers require the same revision in their matrix and
+The matrix validator recognizes only the named repository/workflow pairs. It parses YAML and
+requires an immutable `actions/checkout` step with exact `with.repository`/`with.ref` values
+in an unconditional static job. Shell bodies and unrelated actions cannot supply a checkout.
+Conditional/dependent/matrix jobs, conditional steps, mixed run/action steps and tolerated
+checkout failures cannot establish the pin. The bounded parser rejects ambiguous duplicate keys,
+aliases/anchors/merges/tags and multiple documents before loading the tree; this deliberately
+supports the current static lanes rather than evaluating GitHub expressions.
+Aligned consumers require the same revision in their matrix and
 CI pin. Wrong repositories, unknown workflow labels, stale refs and absent pins fail closed.
 The four Console copied-artifact hashes and Studio adapter/fixture inventory are checked in the
 actual pinned checkouts. This lane establishes synthetic producer/consumer conformance only.

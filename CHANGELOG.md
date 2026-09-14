@@ -17,7 +17,9 @@ claim a released harness version or runtime compatibility.
 
 - Align the reviewed Console and Studio v3 effective-limit consumer pins, require exact
   repository-owned CI references, and verify candidate producer-library bytes against both
-  unchanged consumer fixtures before admission tests. Preserve the separate Studio workflow-owner
+  unchanged consumer fixtures before admission tests. Validate actual static YAML checkout
+  steps with pinned `yaml-rust2` 0.13.0; shell text, ambiguous mappings and conditional/inert
+  steps cannot establish a consumer pin. Preserve the separate Studio workflow-owner
   regression; effective-limit evidence remains synthetic only.
 
 - Publish the machine-readable `ascension.harness.effective-limits.v1` classification record so every

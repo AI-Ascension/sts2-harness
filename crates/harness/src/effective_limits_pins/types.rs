@@ -2,6 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
+#[path = "workflow_checkout.rs"]
+mod workflow_checkout;
+use workflow_checkout::checkout_pin_matches;
+
 /// Schema of the committed producer/consumer pin and digest conformance matrix.
 pub const EFFECTIVE_LIMIT_PIN_MATRIX_SCHEMA: &str =
     "ascension.harness.effective-limit-pin-matrix.v1";
@@ -157,15 +161,6 @@ pub(super) fn workflow_pin_matches(repository: &str, workflow: &str, revision: &
     checkout_pin_matches(source, repository, revision)
 }
 
-fn checkout_pin_matches(source: &str, repository: &str, revision: &str) -> bool {
-    let lines = source.lines().map(str::trim).collect::<Vec<_>>();
-    let repository_line = format!("repository: {repository}");
-    let revision_line = format!("ref: {revision}");
-    lines
-        .windows(2)
-        .any(|pair| pair[0] == repository_line && pair[1] == revision_line)
-}
-
 pub(super) fn valid_date(value: &str) -> bool {
     let bytes = value.as_bytes();
     bytes.len() == 10
@@ -186,25 +181,4 @@ pub(super) fn valid_sha256(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::checkout_pin_matches;
-
-    #[test]
-    fn checkout_reference_must_be_exact_and_adjacent_to_the_correct_repository() {
-        let repository = "AI-Ascension/ascension-context-console";
-        let revision = "d".repeat(40);
-        let valid = format!("  repository: {repository}\n  ref: {revision}\n  path: console");
-        assert!(checkout_pin_matches(&valid, repository, &revision));
-        for invalid in [
-            format!("# repository: {repository}\n# ref: {revision}"),
-            format!("repository: other\nref: {revision}"),
-            format!("repository: {repository}\nref: {revision}0"),
-            format!("repository: {repository}\npath: console\n# ref: {revision}"),
-        ] {
-            assert!(!checkout_pin_matches(&invalid, repository, &revision));
-        }
-    }
 }

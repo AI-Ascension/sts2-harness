@@ -13,6 +13,10 @@ resource ceilings or public matrix shape. Console retains explicit v1 rollback; 
 remain unavailable. The new requirement that aligned entries have a matching repository-owned
 CI pin is a fail-closed correction to the unreleased pin validator. See the
 [candidate conformance contract](../tools/consumer-conformance/README.md).
+The checkout validator parses the existing static YAML lanes with exact `yaml-rust2` 0.13.0
+(default features disabled); conditional/ambiguous workflow shapes cannot establish alignment.
+This adds a package dependency and root lockfile entries, without changing workflow bytes or
+public schemas. Static checkout validation does not replace terminal hosted conformance results.
 
 Evidence remains synthetic for effective-limit publication/admission. Context owner transport,
 native/provider integration and the broader harness #95 / Studio #119 feature gates remain

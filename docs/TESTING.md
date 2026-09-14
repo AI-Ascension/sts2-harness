@@ -41,6 +41,9 @@ Effective-limit consumer pins additionally have `effective_limits_workflow_pins`
 for absent, wrong-repository, unknown-workflow and stale/mismatched revision pins. The committed
 matrix tests exercise aligned admission and explicit unavailable rollback. Candidate producer
 bytes are compared with both exact consumers before their tests in `console-contract.yml`.
+`cargo test --locked --package sts2-harness --lib workflow_checkout` exercises actual YAML
+checkout structure, shell-heredoc impersonation, unrelated actions, conditional/inert jobs and
+steps, duplicate/ambiguous mappings and parser resource bounds against the committed workflows.
 The standalone tool has its own locked format/Clippy/test/build gates, described in
 [`tools/consumer-conformance`](../tools/consumer-conformance/README.md); root workspace commands
 do not include that deliberately separate tool workspace.
