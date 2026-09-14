@@ -3,6 +3,7 @@
 mod auth;
 mod authoring;
 mod cli;
+mod context_owner;
 mod contract;
 mod contract_authoring;
 mod http;
@@ -18,6 +19,15 @@ pub use auth::{
     AuthContext, AuthError, Authenticator, EnvironmentAuthenticator, StaticAuthenticator,
 };
 pub use authoring::{AuthoringStore, MemoryAuthoringStore, PublishResult};
+pub use context_owner::{
+    CONTEXT_OWNER_BINDING_SCHEMA_VERSION, CONTEXT_OWNER_CATALOG_SCHEMA_VERSION,
+    CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION, ContextBindingCatalog, ContextBindingContinuity,
+    ContextBindingDescriptor, ContextBindingGrants, ContextBindingOperation, ContextBindingRequest,
+    ContextBindingSource, ContextBindingState, ContextControlCommand, ContextControlReceipt,
+    ContextEffectiveLimits, ContextOwnerBinding, ContextOwnerPort, MAX_CONTEXT_BINDINGS,
+    MAX_CONTEXT_NODE_KINDS, MAX_CONTEXT_OPERATIONS, MAX_CONTEXT_SOURCES,
+    UnavailableContextOwnerPort,
+};
 pub use contract::ReplayRequest as ManagementReplayRequest;
 pub use contract::{
     AuthoritySummary, Budget, CAPABILITIES_SCHEMA_VERSION, CONTEXT_ASSOCIATION_SCHEMA_VERSION,

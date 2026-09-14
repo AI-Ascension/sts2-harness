@@ -2,6 +2,7 @@
 
 #![allow(clippy::expect_used)]
 #![allow(dead_code)]
+#![allow(unused_imports)]
 
 use std::sync::{Arc, Mutex};
 
@@ -406,3 +407,8 @@ impl LiveWorkflowSession for FakeSession {
         Ok(())
     }
 }
+
+#[path = "live_workflow_context_owner.rs"]
+mod context_owner;
+
+pub(crate) use context_owner::live_service;

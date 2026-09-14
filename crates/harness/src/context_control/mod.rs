@@ -25,5 +25,6 @@ pub use store_types::{
     LegacyOpenError, StoreMode, StoreSnapshot,
 };
 pub use types::{
-    ContextBoundary, ContextDraft, ContextItem, ContextItemRef, ContextNote, ManagementProfile,
+    ContextBoundary, ContextDraft, ContextItem, ContextItemRef, ContextNote, MAX_CONTEXT_BYTES,
+    MAX_CONTEXT_ITEMS, MAX_CONTEXT_NOTES, MAX_OBJECTIVE_BYTES, ManagementProfile,
 };

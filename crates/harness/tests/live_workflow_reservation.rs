@@ -13,7 +13,6 @@ use sts2_harness::management::{
     LiveWorkflowSession, LiveWorkflowSessionFactory, ManagementError, MemoryWorkflowStore,
     RUN_SCHEMA_VERSION, RecoveryAdmission, RunRequest, RunSnapshot, TargetCatalogResponse,
     WorkflowExecutionPort, WorkflowRunStatus, WorkflowStore, decode_strict, digest_value,
-    live_store,
 };
 
 #[path = "support/live_workflow.rs"]
@@ -134,7 +133,7 @@ fn direct_live_submit_paths_fail_closed_without_a_reservation() {
 fn launch_failure_marks_the_reserved_run_for_recovery_and_retries_fail_closed() {
     let store = Arc::new(MemoryWorkflowStore::new());
     let factory = Arc::new(support::FakeFactory::launch_error());
-    let service = live_store(
+    let service = live_service(
         Arc::clone(&store) as Arc<dyn WorkflowStore>,
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -172,7 +171,7 @@ fn launch_failure_marks_the_reserved_run_for_recovery_and_retries_fail_closed() 
 fn open_failure_marks_the_reserved_run_and_restart_keeps_recovery_required() {
     let store = Arc::new(MemoryWorkflowStore::new());
     let factory = Arc::new(OpenErrorFactory::new());
-    let service = live_store(
+    let service = live_service(
         Arc::clone(&store) as Arc<dyn WorkflowStore>,
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -195,7 +194,7 @@ fn open_failure_marks_the_reserved_run_and_restart_keeps_recovery_required() {
 
     drop(service);
     let restarted_factory = Arc::new(support::FakeFactory::new(false));
-    let restarted = live_store(
+    let restarted = live_service(
         Arc::clone(&store) as Arc<dyn WorkflowStore>,
         Arc::clone(&restarted_factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -219,7 +218,7 @@ fn open_failure_marks_the_reserved_run_and_restart_keeps_recovery_required() {
 fn final_catalog_failure_after_reservation_is_durable_and_not_idempotent_success() {
     let store = Arc::new(MemoryWorkflowStore::new());
     let factory = Arc::new(FinalCatalogFailureFactory::new(3));
-    let service = live_store(
+    let service = live_service(
         Arc::clone(&store) as Arc<dyn WorkflowStore>,
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -252,7 +251,7 @@ fn exact_admission_binding_is_durable_before_factory_open() {
     let (factory, opens) =
         ReservationObservingFactory::new(Arc::clone(&store) as Arc<dyn WorkflowStore>);
     let factory = Arc::new(factory);
-    let service = live_store(
+    let service = live_service(
         Arc::clone(&store) as Arc<dyn WorkflowStore>,
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
