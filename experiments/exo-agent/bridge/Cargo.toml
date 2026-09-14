@@ -1,0 +1,33 @@
+[package]
+name = "sts2-exo-executor"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+license = "MIT"
+publish = false
+
+# This isolated adapter is intentionally not a dependency of the harness workspace.
+[workspace]
+resolver = "3"
+
+[dependencies]
+executor = { git = "https://github.com/exoharness/exo", rev = "b06869ab789dee3f80ca474b5fa89dbe47ccb859" }
+exoharness = { git = "https://github.com/exoharness/exo", rev = "b06869ab789dee3f80ca474b5fa89dbe47ccb859", features = ["basic-backend"] }
+lingua = { git = "https://github.com/braintrustdata/lingua.git", rev = "3ab9bcc9b58688be37216e9ab0b3d8362d185cfb" }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+tokio = { version = "=1.53.1", features = ["io-std", "io-util", "macros", "rt-multi-thread", "time"] }
+getrandom = "=0.3.4"
+
+[lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[profile.dev]
+debug = 0

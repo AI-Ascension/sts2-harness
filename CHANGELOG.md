@@ -7,6 +7,14 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Add the owned `sts2-exo-bridge` single-turn process entrypoint and an isolated, exact-pinned
+  real Exo embedding package. Strict standard/fresh requests retain their complete catalog and
+  constraints; correlated output is independently parsed with no fallback. The tool-free extension
+  forwards at most one model request and records denied upstream SDK retry attempts. Add
+  `ExoAdmittedTransport` for full-preflight envelope handoff with explicit host identities.
+  Compatibility: additive opt-in source/process path; full runtime admission, map/expert/recovery,
+  durable lifecycle, actual provider/game execution and replay remain separately gated. Refs #141.
+
 - Publish the machine-readable `ascension.harness.effective-limits.v1` classification record so every
   advertised context-memory and provider-session value is classified as schema-valid versus
   executable for the selected profile, with machine-readable unavailable reasons. Add a

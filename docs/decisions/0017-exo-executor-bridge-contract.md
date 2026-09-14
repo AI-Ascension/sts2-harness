@@ -2,6 +2,10 @@
 
 ## Status
 
+[ADR 0018](0018-exo-one-shot-executor-package.md) supersedes the external-executable placement
+below with an owned, separately built single-turn embedding package. It records the current
+source/process entrypoint and leaves this ADR's full-runtime lifecycle admission gates intact.
+
 Accepted as the harness-owned source/contract design for issue [#139](https://github.com/AI-Ascension/sts2-harness/issues/139).
 The source review and deterministic wire/capability fixtures are `source-derived`. A real pinned
 Exo executor run, native instance, package digest, model binding, and STS2 gameplay compatibility

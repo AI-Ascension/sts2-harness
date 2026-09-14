@@ -306,6 +306,15 @@ the response envelope remains bound to the gateway session.
 
 ## Exo projection safety correction
 
+The source-local `sts2-exo-bridge` and separately built `sts2-exo-executor` add a Linux,
+standard/fresh single-turn lane under [ADR 0018](decisions/0018-exo-one-shot-executor-package.md).
+They preserve the existing closed wire schema and expose a distinct one-shot descriptor with
+`full_runtime_admission: false`. Map, expert, management/recovery, continuity and full episode
+admission remain unsupported by this executable. Existing full preflight is unchanged.
+Rollback removes the opt-in executable/configuration; no stored record migration is introduced.
+The exact build and synthetic real-Exo lane are in the
+[bridge README](../experiments/exo-agent/bridge/README.md).
+
 The default Exo decision request preserves the host `visible_seed`, following the owner's
 requirement for repeatable invocation and replay. `ExoConfig::forward_visible_seed` defaults
 to `true`; `with_visible_seed_forwarding(false)` or `STS2_EXO_FORWARD_VISIBLE_SEED=false`

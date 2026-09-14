@@ -1,5 +1,10 @@
 # Exo-backed STS2 agent adapter
 
+The current owned standard/fresh single-turn machine entrypoint is
+[`sts2-exo-bridge`](bridge/README.md), with a separately built real Exo embedding executable.
+It is source/process support, not full episode admission or native/provider compatibility.
+The legacy configuration and broader future-integration descriptions below retain their own gates.
+
 This experiment is the harness-owned configuration and adapter seam for a reviewed Exo
 deployment. It does not contain an Exo checkout, model weights, credentials, game files, saves, or
 provider output. The checked-in Rust adapter accepts only a sanitized fair-play projection and the

@@ -1,8 +1,11 @@
 # Candidate-root TypeScript loader
 
-This directory is source-only evidence. It is not an npm workspace package and does not publish
+This directory contains the owned tool-free single-turn module and its boundary tests. It is not
+an npm workspace package and does not publish
 `@exo/harness` or `@exo/model-runtime`: the pinned Exo revision has one root package named `exo`.
-Those specifiers are TypeScript `tsconfig.json` path aliases into that root checkout.
+Those specifiers are TypeScript `tsconfig.json` path aliases into that root checkout. Use the
+[owned bridge build/process instructions](../bridge/README.md) for the current machine entrypoint.
+The historical CLI loader instructions below remain a source spike, not the production bridge.
 
 To run the synthetic loader against the reviewed candidate, use an operator-owned checkout and
 keep this repository's source tree separate:
@@ -40,14 +43,16 @@ agent creation is an operator spike only; it needs `EXO_MODEL` plus a
 model binding/credential and does not prove an STS2 terminal decision, bridge correlation, or
 gameplay effect.
 
-The current Rust runtime still uses its legacy request/process seam and does not copy this module,
-run these commands, or invoke preflight. Wiring this loader to the Rust envelope is a future
-integration requirement.
+The owned single-turn bridge validates immutable configuration and strict envelopes before using
+this module through the real executor embedding API. `ExoAdmittedTransport` separately supplies
+full-preflight envelope handoff; the single-turn package does not claim the lifecycle guarantees
+required to enable full episode admission. See ADR 0018 for that distinction.
 
 Issue #140 adds a closed, operator-side `ExoRestrictedProfile` contract in the Rust trusted
 configuration (`ExoToolCatalog` plus `ExoPrivateStatePolicy`). Admission validates it before
 inference, and the reviewed model tool allowlist is intentionally empty until separately admitted
-read-only query adapters exist. That contract describes the required boundary; it does not yet
-enforce tool registration or data access inside this TypeScript extension. Actual dispatch
-rejection in the extension/loader, reviewed OS/service containment, and native private-state wiring
-remain follow-up work and are not implemented or claimed here.
+read-only query adapters exist. The extension rejects agent-tool creation and non-empty
+library-module configuration, registers no model tools, and guards the actual fetch boundary to
+forward at most one bounded request. Attempted/forwarded/denied counts include upstream SDK retry
+attempts. Reviewed OS/service containment, hard state quotas and durable recovery remain separate
+gates; this module is not a sandbox for arbitrary untrusted JavaScript.
