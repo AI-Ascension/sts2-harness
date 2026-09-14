@@ -11,6 +11,9 @@ pub(super) fn admission(
     owner: &LiveWorkflowExecutionPort,
     snapshot: &RunSnapshot,
 ) -> Option<RecoveryAdmission> {
+    if snapshot.pending_operation.is_some() {
+        return Some(RecoveryAdmission::Reconciling);
+    }
     if snapshot.admission.is_none()
         || !matches!(
             snapshot.status,
