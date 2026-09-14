@@ -25,7 +25,7 @@ pub use contract::{
     ExoWireError, ExoWireOutcome, encode_bridge_request, encode_bridge_response,
     exo_bridge_manifest, parse_bridge_decision, parse_bridge_decision_envelope,
     parse_bridge_request, parse_bridge_request_envelope, preflight, responses_capable,
-    verify_control_identity, verify_exo_bridge_artifact,
+    responses_routing_capable, verify_control_identity, verify_exo_bridge_artifact,
 };
 pub use decision::{BoundDecision, Decision, DecisionError, parse_decision};
 pub use protocol::{

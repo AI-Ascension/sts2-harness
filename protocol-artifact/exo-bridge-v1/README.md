@@ -3,8 +3,8 @@
 This is the harness-owned source and contract record for the pinned STS2-to-Exo executor seam.
 It is a review artifact, not an Exo distribution, model package, game adapter, or proof of a
 native run. The artifact keeps source revision, package/executable digest, STS2 extension digest,
-bridge digest, model binding, prompt/tool/configuration digests, contract version, and native
-instance identity as independent axes.
+bridge digest, model binding, provider, provider endpoint, prompt/tool/configuration digests,
+contract version, and native instance identity as independent axes.
 
 ## Selected executor path
 
@@ -19,15 +19,16 @@ defineHarness.runTurn
   -> ResponsesRuntime.complete / completeStream
 ```
 
-The runtime is model-dependent, not unconditional. The pinned upstream `runtimeFromModelBinding`
-selects `AnthropicRuntime` for `claude*` bindings, `ChatCompletionsRuntime` by default, and
-`ResponsesRuntime` only when upstream `modelRequiresResponsesApi` is true. That predicate is true
-only for a lowercased binding starting with `o1-pro`, `o3-pro`, or `gpt-5-pro`, carrying a
-`gpt-5.N` minor version of 3 or greater, or starting with `gpt-5` and containing `-codex`. The
-harness mirrors this in `crates/harness/src/exo/contract/preflight.rs::responses_capable`. Trusted
-preflight rejects any `runtime` other than `responses` and any approved `model_binding` that is not
-Responses-capable, so a `gpt-4o` binding fails closed instead of silently selecting
-`ChatCompletionsRuntime`. There is no unconditional forced runtime path.
+The runtime is model- and route-dependent, not unconditional. The pinned upstream
+`runtimeFromModelBinding` selects `AnthropicRuntime` for `claude*` bindings,
+`ChatCompletionsRuntime` by default, and `ResponsesRuntime` only when the model predicate is true.
+An `openrouter.ai` base URL selects `ChatCompletionsRuntime` before that model predicate, so the
+harness records provider and endpoint explicitly and checks the route first. Only
+`provider = openai` with the reviewed HTTPS endpoint host `api.openai.com` is admitted; OpenRouter,
+unknown hosts, and other providers fail closed. The model predicate is mirrored in
+`crates/harness/src/exo/contract/preflight.rs::responses_capable`, and trusted preflight rejects
+any `runtime` other than `responses` or any approved `model_binding` that is not Responses-capable.
+There is no unconditional forced runtime path.
 
 The extension owns the narrow STS2 prompt/tool projection and returns one terminal decision to the
 harness-owned bounded bridge. The extension does not expose raw game objects, host reflection,
@@ -68,9 +69,10 @@ the corresponding evidence. A preflight with a source-only descriptor therefore 
 inference deployment.
 
 Preflight is pure. It compares the descriptor to operator-trusted complete identities, profile,
-context mode, runtime, platform, and limits without contacting Exo, a model, an HTTP endpoint, or a
-game host. It requires `runtime = responses` and a Responses-capable `model_binding`; missing or
-mismatched package, extension, bridge, model, prompt, tool, config, or native instance values fail
+context mode, runtime, platform, route, and limits without contacting Exo, a model, an HTTP
+endpoint, or a game host. It requires `runtime = responses`, `provider = openai`, an HTTPS
+`api.openai.com` endpoint, and a Responses-capable `model_binding`; missing or mismatched package,
+extension, bridge, model, provider, endpoint, prompt, tool, config, or native instance values fail
 closed.
 
 ## Bounded bridge wire
@@ -102,12 +104,18 @@ they are never model-visible.
 `schema.json` includes closed `$defs` for `decision_request`, `request_envelope`, `decision`, and
 `decision_envelope`. Its `observation` union closes `standard_observation` (with
 `legal_actions` requiring at least one entry) and closes `expert_observation` to the full
-Runtime-v4 expert shape, requiring `protocol_version: "runtime-v4-expert"` and rejecting unknown
-privileged fields. The `hash` definition rejects the all-zero digest. `conformance.json` names
-executable vectors for standard/map boundaries, every semantic decision (including each
-`recovery_kind`: `reobserve`, `reconcile`, `release_lease`, and `stop_episode`), wrong
-schema/wire, swapped package identity, failed outcomes, and capability downgrades. The Rust
-`exo_contract` production test executes those vectors.
+Runtime-v4 expert shape, requiring `protocol_version: "runtime-v4-expert"`, the pinned
+`schema_digest`, and rejecting unknown privileged fields. Schema `uniqueItems` rejects
+byte-identical expert action objects; the Rust parser additionally requires unique `action_id`
+values, bounds expert text at 512 UTF-8 bytes (schema `maxLength` counts code points), and
+enforces semantic ranges such as `hp <= max_hp`, which JSON Schema cannot compare. These
+schema-valid/parser-rejected semantic cases are deliberate fail-closed behavior, not an
+unverified parity claim. `conformance.json` names executable whole-expert request vectors; the
+Rust tests run each vector through both the JSON Schema validator and the strict parser, covering
+accepted input, wrong digest, empty actions, semantic `hp > max_hp`, duplicate action IDs with
+distinct payloads, and multibyte text over the parser byte bound, alongside standard/map
+boundaries, every semantic decision, wrong schema/wire, swapped package identity, failed outcomes,
+and capability downgrades.
 
 The ordinary request limit is 131072 bytes, the complete map request limit is 393443 bytes, the
 response limit is 8192 bytes, and the supervised turn timeout is 120000 milliseconds. Process
@@ -125,19 +133,26 @@ None adds an STS2 executor-turn machine operation or a bounded terminal decision
 candidate tree is recorded separately from the source commit. This source review is not a
 package/executable digest and is not native compatibility evidence.
 
-## Identity migration
+## Identity migration and compatibility classification
 
 The old `provider_revision` setting remains a source revision input for legacy request validation,
-but new deployment records must not overload it as a package, bridge, model, or configuration
-identity. Consumers migrate to the separate axes listed above and bind the contract version.
-Readers that cannot understand the new contract or identity fields reject the deployment rather than
-guessing. Historical records may retain the old audit revision as source-derived history.
+but new deployment records must not overload it as a package, bridge, model, route, or configuration
+identity. Adding required `runtime`, `provider`, and `endpoint` axes is classified as a `breaking`
+required-configuration correction. Closing the expert schema (digest and non-empty actions) and
+retaining parser-only semantic checks for duplicate action IDs, UTF-8 byte bounds, and
+`hp <= max_hp` are classified as a `safety-correction`; schema-valid/parser-rejected cases are
+listed as executable conformance vectors rather than claimed as schema parity. Consumers migrate
+to the separate axes listed above and bind the contract version. Readers that cannot understand
+the new contract or identity fields, or that see tightened expert shapes they cannot validate,
+reject the deployment rather than guessing. Historical records may retain the old audit revision
+as source-derived history.
 
-Old stores migrate by backup → atomic additive identity/contract migration → reviewed-pin and
-minimum-capability preflight before any effect. The original store remains untouched until the
-new record is admitted; a failed migration removes only staging bytes and restores the backup.
-Mixed-version or missing-axis rows are rejected, and rollback never reinterprets a new record as
-the legacy `provider_revision`-only identity.
+Old stores migrate by backup → atomic additive identity/contract migration → reviewed-pin, route,
+schema, and minimum-capability preflight before any effect. The original store remains untouched
+until the new record is admitted; a failed migration removes only staging bytes and restores the
+backup. Mixed-version or missing-axis rows are rejected by old and new readers (old readers must
+not silently drop the new axes), and rollback restores the backup without reinterpreting a new
+record as the legacy `provider_revision`-only identity.
 
 ## Evidence and completion
 

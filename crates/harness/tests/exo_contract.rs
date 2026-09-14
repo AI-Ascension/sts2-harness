@@ -10,12 +10,15 @@ use sts2_harness::{
     ExoProfile, ExoRuntime, ExoTerminalOutcome, ExoTrustedConfiguration, ExoWireError,
     ExoWireOutcome, encode_bridge_request, encode_bridge_response, exo_bridge_manifest,
     parse_bridge_decision, parse_bridge_decision_envelope, parse_bridge_request,
-    parse_bridge_request_envelope, preflight, responses_capable, verify_control_identity,
-    verify_exo_bridge_artifact,
+    parse_bridge_request_envelope, preflight, responses_capable, responses_routing_capable,
+    verify_control_identity, verify_exo_bridge_artifact,
 };
 
 #[path = "support/exo_contract_map.rs"]
 mod exo_contract_map;
+
+#[path = "support/exo_contract_expert.rs"]
+mod exo_contract_expert;
 
 #[path = "support/exo_contract_preflight.rs"]
 mod exo_contract_preflight;
@@ -39,6 +42,7 @@ const DECISION: &[u8] =
 const CONFORMANCE: &[u8] =
     include_bytes!("../../../protocol-artifact/exo-bridge-v1/conformance.json");
 const SCHEMA: &[u8] = include_bytes!("../../../protocol-artifact/exo-bridge-v1/schema.json");
+use exo_contract_expert::expert_request_variant;
 
 #[test]
 fn frozen_artifact_and_source_descriptor_verify() {
@@ -375,6 +379,8 @@ fn complete_identity() -> ExoIdentity {
         extension_digest: Some(String::from("b").repeat(64)),
         bridge_digest: Some(String::from("c").repeat(64)),
         model_binding: Some(String::from("gpt-5-pro")),
+        provider: Some(String::from("openai")),
+        endpoint: Some(String::from("https://api.openai.com/v1")),
         prompt_digest: Some(String::from("d").repeat(64)),
         tool_digest: Some(String::from("e").repeat(64)),
         config_digest: Some(String::from("f").repeat(64)),

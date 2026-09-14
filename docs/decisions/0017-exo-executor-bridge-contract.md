@@ -25,27 +25,30 @@ defineHarness.runTurn
   -> ResponsesRuntime.complete / completeStream
 ```
 
-The runtime is model-dependent, not unconditional. The pinned upstream
+The runtime is model- and route-dependent, not unconditional. The pinned upstream
 `runtimeFromModelBinding` (`exoharness/typescript/model-runtime/responses.ts`) selects
 `AnthropicRuntime` for `claude*` bindings and `ChatCompletionsRuntime` by default; only upstream
-`modelRequiresResponsesApi` selects `ResponsesRuntime`. That predicate is true only for a
-lowercased binding that starts with `o1-pro`, `o3-pro`, or `gpt-5-pro`, carries a `gpt-5.N` minor
-version of 3 or greater, or starts with `gpt-5` and contains `-codex`. The harness mirrors this in
-`crates/harness/src/exo/contract/preflight.rs::responses_capable` and fails closed on both axes:
-`ExoTrustedConfiguration.runtime` must be `ExoRuntime::Responses`, and the approved
-`identity.model_binding` must be Responses-capable. A `gpt-4o` binding is therefore rejected by
-preflight instead of silently reaching `ChatCompletionsRuntime`. There is no unconditional forced
-runtime path.
+`modelRequiresResponsesApi` selects `ResponsesRuntime`. An `openrouter.ai` base URL selects
+`ChatCompletionsRuntime` before that model predicate, so the harness records provider and endpoint
+as independent identity axes and checks the route first. Only `provider = openai` with the reviewed
+HTTPS endpoint host `api.openai.com` is admitted; OpenRouter, unknown hosts, and other providers
+fail closed. The model predicate is mirrored in
+`crates/harness/src/exo/contract/preflight.rs::responses_capable` and fails closed on all axes:
+`ExoTrustedConfiguration.runtime` must be `ExoRuntime::Responses`, the route must be Responses
+capable, and the approved `identity.model_binding` must be Responses-capable. A `gpt-4o` binding
+is therefore rejected by preflight instead of silently reaching `ChatCompletionsRuntime`. There
+is no unconditional forced runtime path.
 
-Upstream also selects `ChatCompletionsRuntime` for any binding whose base URL contains
-`openrouter.ai`, before the model predicate is applied. The admitted contract carries no base-URL
-axis, so an OpenRouter binding is outside this contract: operators must not point the approved
-`model_binding` at an OpenRouter base URL. This limitation is documented rather than modeled because
-the bridge does not own provider transport selection.
+The provider and base-URL axes are modeled explicitly in the admitted identity. Upstream selects
+`ChatCompletionsRuntime` for any binding whose base URL contains `openrouter.ai`, before the model
+predicate is applied; trusted preflight therefore rejects that route before evaluating the model
+predicate. The bridge does not own provider transport, but it records the routing inputs needed to
+prove that the selected route is the reviewed Responses path.
 
 The extension is the owner of the STS2 prompt/tool registration and terminal-decision projection.
-Its source/package/extension/bridge/model/prompt/tool/config/native identities are separate
-fields in the manifest and trusted preflight. There is no CLI fallback and no HTTP executor path.
+Its source/package/extension/bridge/model/provider/endpoint/prompt/tool/config/native identities are
+separate fields in the manifest and trusted preflight. There is no CLI fallback and no HTTP
+executor path.
 `GET /health` is only a service probe. Upstream `POST /request` exposes substrate protocol
 primitives but no executor-turn operation. CLI `conversation send` is a human-facing prompt path;
 none can satisfy this contract.
@@ -64,8 +67,9 @@ The owned extension package placement is frozen at
 path aliases into that root, not published packages or `workspace:*` dependencies. The loader
 arrangement, pinned Node `22.14.0`, pnpm `10.26.2`, frozen install, typecheck, lint, and test
 commands are recorded in `experiments/exo-agent/extension/README.md`. The reviewed candidate
-`mise.toml` pins `nodejs = "22.15.0"`; the extension declares `22.14.0` and the synthetic loader
-was verified under both versions, so the divergence is documented rather than silently re-pinned.
+`mise.toml` pins `nodejs = "22.15.0"`; the extension declares `22.14.0`. The recorded synthetic
+loader spike exercised only Node `22.14.0`; compatibility with the candidate's `22.15.0` remains
+unverified and must be rerun before a cross-version claim.
 The candidate Rust workspace
 builds `target/debug/exo` and loads the module only through
 `--harness typescript agent create NAME --module ABSOLUTE_MODULE_PATH --model MODEL`. The extension may use Node
@@ -118,6 +122,8 @@ a cancellation/recovery hook. No upstream implementation is copied into this rep
 | `extension_digest` | dedicated STS2 TypeScript extension | operator hash of source/package |
 | `bridge_digest` | bounded process/transport bridge | operator hash of executable |
 | `model_binding` | provider/model binding | trusted operator configuration |
+| `provider` | upstream provider selected for the model binding | trusted operator configuration |
+| `endpoint` | non-secret HTTPS provider base URL used for routing | trusted operator configuration |
 | `prompt_digest` | exact extension/system prompt inputs | trusted operator configuration |
 | `tool_digest` | exact registered tool catalog | trusted operator configuration |
 | `config_digest` | runtime/bridge configuration | trusted operator configuration |
@@ -126,8 +132,8 @@ a cancellation/recovery hook. No upstream implementation is copied into this rep
 
 Self-reported Exo metadata is descriptive only. A complete trusted preflight requires every
 deployment axis, including the native instance identity, to be supplied independently. The
-source-only checked-in descriptor intentionally leaves package, extension, bridge, model,
-prompt, tool, config, and native values absent.
+source-only checked-in descriptor intentionally leaves package, extension, bridge, model, provider,
+endpoint, prompt, tool, config, and native values absent.
 
 ## Capability and preflight contract
 
@@ -148,8 +154,9 @@ schemas remain named; they are not admitted by standard preflight.
 
 `preflight` is a pure function. It performs no transport exchange, model call, `/health` probe,
 filesystem read, or game-host action and returns `model_calls = 0` on success. It compares all
-identity axes, selected platform/profile/context, and each independent limit before an executable
-deployment is admitted.
+identity axes, selected platform/profile/context, the reviewed provider endpoint route, and each
+independent limit before an executable deployment is admitted. The route is checked before the
+model predicate to mirror upstream's OpenRouter override.
 
 ## Bounded wire and lifecycle
 
@@ -176,9 +183,10 @@ request then explicitly shuts down stdin (EOF), bounds stdout, and maps timeout,
 oversize, unavailable, and malformed outcomes to fail-closed errors. No retry or gameplay fallback
 is implied.
 
-### Schema and parser parity
+### Schema shape and parser semantic contract
 
-`schema.json` is kept in parity with the Rust parser for the observation and identity shapes:
+`schema.json` closes the expressible observation and identity shape; the Rust parser remains
+authoritative for semantic checks that JSON Schema cannot express exactly:
 
 - `standard_observation.legal_actions` requires `minItems: 1`, matching
   `legal_action_ids_match`/`valid_action_ids` in
@@ -187,18 +195,29 @@ is implied.
   `protocol_version: "runtime-v4-expert"`, and carries the full Runtime-v4 expert field set copied
   from `protocol-artifact/runtime-v4-expert/schema.json` and
   `crates/harness/src/runtime_v4_expert_parse.rs` (`shape_is_closed`/`WireObservation`). This
-  rejects both `{"protocol_version":"x"}` and unknown privileged fields.
-- The `hash` definition rejects the all-zero digest (`not: {"pattern": "^0+$"}`), matching
-  `valid_digest` in `crates/harness/src/exo/contract/identity.rs`.
+  requires the pinned expert `schema_digest`, at least one legal action, and rejects both
+  `{"protocol_version":"x"}` and unknown privileged fields.
+- `expert_observation.legal_actions` uses `uniqueItems` to reject byte-identical action objects.
+  The parser additionally requires unique `action_id` values, so distinct payloads sharing an
+  action ID are intentionally schema-valid/parser-rejected.
+- The `hash` definition rejects the all-zero digest (`not: {"pattern": "^0+$"}`), while the expert
+  `schema_digest` is pinned to the canonical Runtime-v4 value, matching `valid_digest` and the
+  parser's schema check in `crates/harness/src/runtime_v4_expert_parse.rs`.
+- Expert text has `maxLength: 512`, which JSON Schema counts in code points; the parser bounds it
+  at 512 UTF-8 bytes. Multi-byte text over the byte bound is therefore schema-valid/parser-rejected.
+- The parser additionally enforces semantic ranges such as `hp <= max_hp`, which JSON Schema
+  cannot compare. Whole expert request vectors, including these schema-valid/parser-rejected
+  cases, are executed through both validators in the Rust conformance tests.
 
-One intentional, fail-closed divergence remains. `identity` marks every digest key as required
-while the Rust `ExoIdentity` stores each digest as `Option<String>`; serde therefore accepts an
-omitted key and treats it the same as an explicit null. The schema is stricter than the parser
-(omission is rejected), and the divergence is documented in the `hash`/`identity` schema
-descriptions. The Runtime-v4 expert `legal_actions` array also has no schema `minItems` because the
-canonical `protocol-artifact/runtime-v4-expert/schema.json` does not; an empty expert
-`legal_actions` is still rejected by the parser because `legal_action_ids` must be non-empty and
-must match the observation. Both directions fail closed.
+One intentional, fail-closed identity divergence remains. `identity` marks every digest key as
+required while the Rust `ExoIdentity` stores each digest as `Option<String>`; serde therefore
+accepts an omitted key and treats it the same as an explicit null. The schema is stricter than the
+parser (omission is rejected), and the divergence is documented in the `hash`/`identity` schema
+descriptions. The bridge schema now also requires at least one expert `legal_actions` entry, while
+the canonical Runtime-v4 expert schema remains looser and may accept an empty array. The bridge
+schema and parser reject empty actions (and parser additionally requires IDs to match the outer
+catalog); parser-only duplicate-ID, UTF-8 byte-bound, and numeric-range checks are intentional
+safety corrections, not a claim of reverse parity.
 
 ### Source-referenced executor and lifecycle mapping
 
@@ -257,22 +276,26 @@ history in the artifact and this ADR. `runtime_v3_settings.rs`, `sts2-harness-ex
 tests, and the example config are migration consumers.
 
 Legacy `provider_revision` continues to validate an exact source revision for the old request
-shape. New durable/config records add the separate identity axes and contract version; they must
-not use `provider_revision` as a package, bridge, model, or prompt identity. Old readers that
-cannot understand the closed descriptor, envelope version, or identity axes fail closed. Existing
-generic `ExecutionFingerprint` storage remains compatible while Runtime-v3 config digest material
-records the separate Exo identity object; a later durable-schema migration may promote those axes
-to first-class columns.
+shape. Adding required `runtime`, `provider`, and `endpoint` axes is classified as a `breaking`
+required-configuration correction; closing the expert digest and legal-action shapes is classified
+as a `safety-correction`. New durable/config records add the separate identity axes and contract
+version; they must not use `provider_revision` as a package, bridge, model, route, or prompt
+identity. Old readers that cannot understand the closed descriptor, envelope version, runtime,
+provider, endpoint, or tightened expert shapes fail closed. Existing generic
+`ExecutionFingerprint` storage remains compatible while Runtime-v3 config digest material records
+the separate Exo identity object; a later durable-schema migration may promote those axes to
+first-class columns.
 
 The old-store migration is explicit and reversible: (1) stop admission and copy the old store
 and its immutable fingerprint evidence to an operator-owned backup; (2) read the old
 `ExecutionFingerprint` without rewriting it and append the new contract/identity object through
 an atomic schema migration; (3) reopen the migrated store and require the reviewed source pin,
-all identity axes, and the minimum capability set before any provider, gateway, or game call; and
-(4) retain the old copy until a separately recorded handoff succeeds. If any step fails, remove
-only the incomplete staging store and restore the backup before retrying. Mixed-version rows,
-missing identity axes, or an unrecognized source pin remain non-admissible; rollback never
-silently downgrades a new record to the legacy provider-revision-only meaning.
+all identity axes, the reviewed provider endpoint route, the tightened schema, and the minimum
+capability set before any provider, gateway, or game call; and (4) retain the old copy until a
+separately recorded handoff succeeds. If any step fails, remove only the incomplete staging store
+and restore the backup before retrying. Mixed-version rows, missing identity axes, an unrecognized
+source pin, or an expert request accepted only by a legacy schema remain non-admissible; rollback
+never silently downgrades a new record to the legacy provider-revision-only meaning.
 
 ## Platform matrix and live completion
 

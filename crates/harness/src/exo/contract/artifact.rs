@@ -123,23 +123,23 @@ pub fn verify_exo_bridge_artifact() -> Result<(), ExoArtifactError> {
     let sums = [
         (
             checksums[0].0,
-            "97231cc3dab254eb1eabbcb1a4e934f778e9b904d2227e182060ab9837860997",
+            "1ddc52402af52f111facadaaf8fc83eba698b9b67a9d2c62cff1ac849f84eb7a",
         ),
         (
             checksums[1].0,
-            "65c0b381716d4a79c41ebf7534257869914102ffeaeac7034eff468faa9feeeb",
+            "a74bd50686f5e8cd941bff151eaa7b448605f6e72ccfd29c75fd3edae27fc172",
         ),
         (
             checksums[2].0,
-            "4beb8d8760ce5442e3ef01748b08913d652b34c254ca6ca362f8322be517e26d",
+            "3e046f7d18d8024ef3991e94dea8cdfeb4be86403cba580300b92c1c45686eef",
         ),
         (
             checksums[3].0,
-            "24a82a5d673564d247fc0889cf50902d712c2c87614042961db66dd6040efdfe",
+            "2b1aeb5021c8db1dd1a3ec47d96debdadb30db8253a24f0f70c40fc9974b79a0",
         ),
         (
             checksums[4].0,
-            "ec0c05534de7fb9c3757dbb22fc987c0a5786f3319a51b28f3b0d6c17249979e",
+            "6f31c1180f3189c5117e9eeb33e494fc0798fbc103c98b3045dc482e9b81cc95",
         ),
         (
             checksums[5].0,
