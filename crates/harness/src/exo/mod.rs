@@ -9,9 +9,9 @@ mod sandbox;
 mod session;
 
 pub use capability::{
-    EXO_CAPABILITY_SCHEMA, EXO_CONTRACT_VERSION, EXO_MAX_TURN_MILLIS, ExoCapabilityDescriptor,
-    ExoCapabilityLimits, ExoLifecycleSupport, ExoPreflightError, ExoPreflightExpectation,
-    preflight,
+    EXO_CAPABILITY_SCHEMA, EXO_CONTRACT_VERSION, EXO_MAX_CONCURRENCY, EXO_MAX_TURN_MILLIS,
+    ExoCapabilityDescriptor, ExoCapabilityLimits, ExoLifecycleSupport, ExoPreflightError,
+    ExoPreflightExpectation, preflight,
 };
 pub use client::ExoClient;
 pub use codex_accounting::{

@@ -187,3 +187,23 @@ fn requires_the_requested_map_projection() {
     );
     assert!(preflight(&bytes(&descriptor()), &map_expectation).is_ok());
 }
+
+#[test]
+fn rejects_duplicate_keys_and_unbounded_concurrency() {
+    let serialized = bytes(&descriptor());
+    let mut duplicated = Vec::with_capacity(serialized.len() + 16);
+    duplicated.push(b'{');
+    duplicated.extend_from_slice(br#""schema":"x","#);
+    duplicated.extend_from_slice(&serialized[1..]);
+    assert_eq!(
+        preflight(&duplicated, &expectation()),
+        Err(ExoPreflightError::Malformed)
+    );
+
+    let mut concurrent = descriptor();
+    concurrent["limits"]["max_concurrency"] = serde_json::json!(u64::MAX);
+    assert_eq!(
+        preflight(&bytes(&concurrent), &expectation()),
+        Err(ExoPreflightError::LimitExceeded)
+    );
+}

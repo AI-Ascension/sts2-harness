@@ -8,8 +8,9 @@
 #   SPIKE_PORT    first local port (default 47811)
 #   NODE_BIN_DIR  directory containing `node` (optional; added to PATH)
 #
-# Runs one turn per harness against experiments/exo-agent/spike/synthetic_model.rs
-# and writes a report plus raw event JSON. No real provider or game is contacted.
+# For each harness it runs one turn against experiments/exo-agent/spike/synthetic_model.rs
+# and asserts exactly one model call with a correlated turn record. No real provider or
+# game is contacted.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,9 +26,13 @@ mkdir -p "$SPIKE_OUT"
 SYNTH_BIN="$SPIKE_OUT/synthetic_model"
 "${RUSTC:-rustc}" -O "$SCRIPT_DIR/synthetic_model.rs" -o "$SYNTH_BIN"
 
+SYNTH_PID=""
+cleanup() { [[ -n "$SYNTH_PID" ]] && kill "$SYNTH_PID" 2>/dev/null || true; }
+trap cleanup EXIT
+
 run_path() {
   local mode="$1" port="$2"
-  local root xdg reqlog report synth_pid
+  local root xdg reqlog report events
   local -a global_flags=() agent_flags=()
   if [[ "$mode" == "exo" ]]; then
     global_flags=(--harness exo)
@@ -38,11 +43,12 @@ run_path() {
   xdg="$(mktemp -d "$SPIKE_OUT/${mode}-xdg.XXXXXX")"
   reqlog="$SPIKE_OUT/${mode}-requests.jsonl"
   report="$SPIKE_OUT/${mode}-report.txt"
+  events="$SPIKE_OUT/${mode}-events.json"
   : > "$reqlog"
 
   "$SYNTH_BIN" "$port" "$reqlog" "synthetic decision" \
     > "$SPIKE_OUT/${mode}-synth.out" 2>&1 &
-  synth_pid=$!
+  SYNTH_PID=$!
   sleep 1
 
   cd "$EXO_SRC_ROOT"
@@ -56,24 +62,34 @@ run_path() {
     echo "node_version=$(node --version 2>/dev/null || echo unavailable)"
   } > "$report"
 
-  set +e
-  "$EXO_BIN" --root "$root" --secret-backend file "${global_flags[@]}" \
-    secret set test-key --env OPENAI_API_KEY >> "$report" 2>&1
-  "$EXO_BIN" --root "$root" --secret-backend file "${global_flags[@]}" \
-    model register gpt-test --secret test-key --base-url "http://127.0.0.1:$port" >> "$report" 2>&1
-  "$EXO_BIN" --root "$root" --secret-backend file "${global_flags[@]}" \
-    agent create --slug spike-agent --model gpt-test --provider local-process \
+  local -a exo=("$EXO_BIN" --root "$root" --secret-backend file "${global_flags[@]}")
+  "${exo[@]}" secret set test-key --env OPENAI_API_KEY >> "$report" 2>&1
+  "${exo[@]}" model register gpt-test --secret test-key --base-url "http://127.0.0.1:$port" >> "$report" 2>&1
+  "${exo[@]}" agent create --slug spike-agent --model gpt-test --provider local-process \
     --max-tool-round-trips 0 "${agent_flags[@]}" "Spike Agent" >> "$report" 2>&1
-  "$EXO_BIN" --root "$root" --secret-backend file "${global_flags[@]}" \
-    conversation create spike-agent first >> "$report" 2>&1
-  timeout 150 "$EXO_BIN" --root "$root" --secret-backend file "${global_flags[@]}" \
-    conversation send spike-agent first "hello from the sts2 spike" >> "$report" 2>&1
-  "$EXO_BIN" --root "$root" --secret-backend file "${global_flags[@]}" \
-    conversation events spike-agent first > "$SPIKE_OUT/${mode}-events.json" 2>> "$report"
-  echo "model_calls=$(wc -l < "$reqlog")" >> "$report"
-  set -e
+  "${exo[@]}" conversation create spike-agent first >> "$report" 2>&1
+  timeout 150 "${exo[@]}" conversation send spike-agent first "hello from the sts2 spike" >> "$report" 2>&1
+  "${exo[@]}" conversation events spike-agent first > "$events" 2>> "$report"
 
-  kill "$synth_pid" 2>/dev/null || true
+  # Count only the two model-execution endpoints, not any health/liveness probe.
+  local model_calls
+  model_calls=$(grep -c -e '"path":"/responses"' -e '"path":"/chat/completions"' "$reqlog" || true)
+  echo "model_calls=$model_calls" >> "$report"
+  if [[ "$model_calls" != "1" ]]; then
+    echo "ASSERT FAILED ($mode): expected exactly one model call, got $model_calls" >&2
+    exit 1
+  fi
+  if ! grep -q '"turn_id"' "$events"; then
+    echo "ASSERT FAILED ($mode): no correlated turn_id in events" >&2
+    exit 1
+  fi
+  if ! grep -q "synthetic decision" "$events"; then
+    echo "ASSERT FAILED ($mode): assistant text missing from events" >&2
+    exit 1
+  fi
+
+  cleanup
+  SYNTH_PID=""
   echo "wrote $report"
 }
 

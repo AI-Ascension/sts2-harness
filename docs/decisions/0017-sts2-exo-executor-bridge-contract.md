@@ -124,6 +124,10 @@ from broader Victory/full-run promotion and from optional compaction/branch/co-o
 
 ## Pin and migration inventory
 
+The nine-commit delta from the old audit pin to the candidate is reviewed per-commit, with the
+frozen source/package manifest, in
+[exo-upstream-review-20260914](../evidence/exo-upstream-review-20260914.md).
+
 All pin/schema consumers were inventoried at `4ddcfd5`. Files that must change together on a pin or
 schema bump:
 
@@ -132,9 +136,10 @@ schema bump:
   `experiments/exo-agent/config.example.toml:3`, and the test fixtures
   (`tests/support/runtime_v4_executable_composition_fixture.rs:20`, `tests/runtime_startup.rs:19`,
   `tests/completed_resume_process.rs:19`, `tests/exo_adapter.rs:110,137,203`,
-  `tests/exo_episode.rs:112`, `tests/action_plans.rs:41`, `tests/context_capture.rs:124`,
+  `tests/exo_episode.rs:112,208`, `tests/action_plans.rs:41`, `tests/context_capture.rs:124`,
   `tests/context_control.rs:14`, `tests/context_control_races.rs:7`, `tests/provider_redaction.rs:13`,
-  `runtime_v3_telemetry_tests.rs:25`, `runtime_v3_telemetry_identity_privacy_tests.rs:51,114`).
+  `tests/runtime_v4_expert_artifact.rs:57`, `runtime_v3_telemetry_tests.rs:25`,
+  `runtime_v3_telemetry_identity_privacy_tests.rs:51,114`).
 - Schema: `crates/harness/src/exo/protocol.rs:22-31`,
   `crates/harness/src/exo/protocol/request.rs:168-172`,
   `crates/harness/src/exo/protocol/request_validation.rs:47-49`,
@@ -162,8 +167,10 @@ by code; they must be reconciled when the production bridge lands.
 
 ## Evidence
 
-- Source-derived: selected executor API, rejected interfaces, routing behavior, and pin inventory
-  above, cited to upstream `b06869a` and harness `4ddcfd5`.
+- Source-derived: selected executor API, rejected interfaces, routing behavior, pin inventory, and
+  the per-commit review of the nine-commit upstream delta
+  ([exo-upstream-review-20260914](../evidence/exo-upstream-review-20260914.md)), cited to upstream
+  `b06869a` and harness `4ddcfd5`.
 - Confirmed: upstream HEAD equals the tracked candidate; no production Exo bridge exists; the
   pinned Exo binary executes one real executor turn against an original synthetic model on both the
   Rust `Basic` path (`POST /responses`) and the TypeScript `exo/harness.ts` path
@@ -177,10 +184,13 @@ by code; they must be reconciled when the production bridge lands.
 - [x] Run the bounded real-Exo + synthetic-model spike and record exact source/package/extension
   identities (acceptance criterion 2). See
   [exo-contract-spike-20260914](../evidence/exo-contract-spike-20260914.md).
-- [x] Implement the closed capability/preflight descriptor and negative tests for
+- [x] Implement the closed capability/preflight descriptor and unit-level negative vectors for
   malformed/unknown/missing/wrong schema/wrong contract/wrong platform/wrong revision/swapped
   package/unsupported decision kind/unsupported projection/unsupported context mode/unsupported
-  evidence/out-of-bound limits (`crates/harness/src/exo/capability.rs`, acceptance criterion 3).
+  evidence/out-of-bound limits/duplicate keys (`crates/harness/src/exo/capability.rs`).
+  Enforcement at the transport/bridge boundary (so a rejected descriptor fails before any
+  model/game effect) lands with the production bridge in #141; this PR does not yet call `preflight`
+  from a production path.
 - [ ] Add explicit protocol schema/golden files and a consolidated contract-vector test; map the
   existing decision-variant, ordinary/map bound, and wrong-correlation tests to each vector required
   by acceptance criterion 4.

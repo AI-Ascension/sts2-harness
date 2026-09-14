@@ -15,6 +15,8 @@ pub const EXO_CAPABILITY_SCHEMA: &str = "sts2.exo-capability-v1";
 pub const EXO_CONTRACT_VERSION: &str = "sts2.exo-bridge-v1";
 /// Absolute exchange deadline bound, mirrored from the runtime settings.
 pub const EXO_MAX_TURN_MILLIS: u32 = 120_000;
+/// Absolute concurrent-invocation bound for one bridge instance.
+pub const EXO_MAX_CONCURRENCY: u64 = 64;
 /// Absolute decision size bound, mirrored from the strict decision parser.
 const EXO_MAX_DECISION_BYTES: usize = 8 * 1024;
 
@@ -50,7 +52,11 @@ const LIFECYCLE_KEYS: [&str; 3] = ["cancellation", "restart_recovery", "idempote
 #[path = "capability_error.rs"]
 mod error;
 
+#[path = "capability_parse.rs"]
+mod parse;
+
 pub use error::ExoPreflightError;
+use parse::{parse_unique_object, string_field, string_list, valid_digest, valid_revision};
 
 /// Trusted operator expectations. Derived from approved configuration, not from the bridge.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -102,9 +108,7 @@ pub fn preflight(
     if bytes.len() > 256 * 1024 {
         return Err(ExoPreflightError::Malformed);
     }
-    let value: serde_json::Value =
-        serde_json::from_slice(bytes).map_err(|_| ExoPreflightError::Malformed)?;
-    let object = value.as_object().ok_or(ExoPreflightError::Malformed)?;
+    let object = parse_unique_object(bytes)?;
 
     for key in object.keys() {
         if !TOP_LEVEL_KEYS.contains(&key.as_str()) {
@@ -117,16 +121,16 @@ pub fn preflight(
         }
     }
 
-    let schema = string_field(object, "schema")?;
+    let schema = string_field(&object, "schema")?;
     if schema != EXO_CAPABILITY_SCHEMA {
         return Err(ExoPreflightError::UnsupportedSchema);
     }
-    let contract_version = string_field(object, "contract_version")?;
+    let contract_version = string_field(&object, "contract_version")?;
     if contract_version != EXO_CONTRACT_VERSION {
         return Err(ExoPreflightError::UnsupportedContract);
     }
 
-    let provider_revision = string_field(object, "provider_revision")?;
+    let provider_revision = string_field(&object, "provider_revision")?;
     if !valid_revision(provider_revision) {
         return Err(ExoPreflightError::UnsupportedValue);
     }
@@ -134,7 +138,7 @@ pub fn preflight(
         return Err(ExoPreflightError::WrongRevision);
     }
 
-    let package_digest = string_field(object, "package_digest")?;
+    let package_digest = string_field(&object, "package_digest")?;
     if !valid_digest(package_digest) {
         return Err(ExoPreflightError::UnsupportedValue);
     }
@@ -142,12 +146,12 @@ pub fn preflight(
         return Err(ExoPreflightError::SwappedPackage);
     }
 
-    let platform = string_field(object, "platform")?;
+    let platform = string_field(&object, "platform")?;
     if !PLATFORMS.contains(&platform) || platform != expectation.platform {
         return Err(ExoPreflightError::UnsupportedPlatform);
     }
 
-    let decision_kinds = string_list(object, "decision_kinds")?;
+    let decision_kinds = string_list(&object, "decision_kinds")?;
     if decision_kinds
         .iter()
         .any(|kind| !DECISION_KINDS.contains(&kind.as_str()))
@@ -161,7 +165,7 @@ pub fn preflight(
         return Err(ExoPreflightError::UnsupportedDecisionKind);
     }
 
-    let projections = string_list(object, "projections")?;
+    let projections = string_list(&object, "projections")?;
     if projections
         .iter()
         .any(|projection| !PROJECTIONS.contains(&projection.as_str()))
@@ -175,7 +179,7 @@ pub fn preflight(
         return Err(ExoPreflightError::UnsupportedProjection);
     }
 
-    let context_modes = string_list(object, "context_modes")?;
+    let context_modes = string_list(&object, "context_modes")?;
     if context_modes.is_empty()
         || context_modes
             .iter()
@@ -185,7 +189,7 @@ pub fn preflight(
         return Err(ExoPreflightError::UnsupportedContextMode);
     }
 
-    let evidence = string_field(object, "evidence")?;
+    let evidence = string_field(&object, "evidence")?;
     if !EVIDENCE_STATES.contains(&evidence) {
         return Err(ExoPreflightError::UnsupportedEvidence);
     }
@@ -200,6 +204,7 @@ pub fn preflight(
         || limits.max_turn_millis == 0
         || limits.max_turn_millis > EXO_MAX_TURN_MILLIS as u64
         || limits.max_concurrency == 0
+        || limits.max_concurrency > EXO_MAX_CONCURRENCY
     {
         return Err(ExoPreflightError::LimitExceeded);
     }
@@ -218,32 +223,6 @@ pub fn preflight(
         lifecycle,
         evidence: evidence.to_owned(),
     })
-}
-
-fn string_field<'a>(
-    object: &'a serde_json::Map<String, serde_json::Value>,
-    key: &str,
-) -> Result<&'a str, ExoPreflightError> {
-    object
-        .get(key)
-        .and_then(serde_json::Value::as_str)
-        .ok_or(ExoPreflightError::UnsupportedValue)
-}
-
-fn string_list(
-    object: &serde_json::Map<String, serde_json::Value>,
-    key: &str,
-) -> Result<Vec<String>, ExoPreflightError> {
-    let values = object
-        .get(key)
-        .and_then(serde_json::Value::as_array)
-        .ok_or(ExoPreflightError::UnsupportedValue)?;
-    let mut out = Vec::with_capacity(values.len());
-    for value in values {
-        let text = value.as_str().ok_or(ExoPreflightError::UnsupportedValue)?;
-        out.push(text.to_owned());
-    }
-    Ok(out)
 }
 
 fn limits(value: Option<&serde_json::Value>) -> Result<ExoCapabilityLimits, ExoPreflightError> {
@@ -269,16 +248,6 @@ fn limits(value: Option<&serde_json::Value>) -> Result<ExoCapabilityLimits, ExoP
     })
 }
 
-fn u64_field(
-    object: &serde_json::Map<String, serde_json::Value>,
-    key: &str,
-) -> Result<u64, ExoPreflightError> {
-    object
-        .get(key)
-        .and_then(serde_json::Value::as_u64)
-        .ok_or(ExoPreflightError::UnsupportedValue)
-}
-
 fn lifecycle(value: Option<&serde_json::Value>) -> Result<ExoLifecycleSupport, ExoPreflightError> {
     let object = value
         .and_then(serde_json::Value::as_object)
@@ -300,6 +269,16 @@ fn lifecycle(value: Option<&serde_json::Value>) -> Result<ExoLifecycleSupport, E
     })
 }
 
+fn u64_field(
+    object: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<u64, ExoPreflightError> {
+    object
+        .get(key)
+        .and_then(serde_json::Value::as_u64)
+        .ok_or(ExoPreflightError::UnsupportedValue)
+}
+
 fn bool_field(
     object: &serde_json::Map<String, serde_json::Value>,
     key: &str,
@@ -308,18 +287,6 @@ fn bool_field(
         .get(key)
         .and_then(serde_json::Value::as_bool)
         .ok_or(ExoPreflightError::UnsupportedValue)
-}
-
-fn valid_digest(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
-}
-
-fn valid_revision(value: &str) -> bool {
-    (value.len() == 40 || value.len() == 64)
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        && value.bytes().any(|byte| byte != b'0')
 }
 
 #[cfg(test)]

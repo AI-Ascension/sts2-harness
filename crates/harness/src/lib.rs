@@ -171,11 +171,12 @@ pub use execution_cancellation::ExecutionCancellation;
 pub use exo::{
     BoundDecision, CodexEventAccounting, CodexEventError, CodexStreamStatus, CodexTokenUsage,
     CodexUsageStatus, Decision, DecisionError, EXO_CAPABILITY_SCHEMA, EXO_CONTRACT_VERSION,
-    EXO_MAP_REQUEST_OVERHEAD_BYTES, EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES,
-    EXO_MAX_TURN_MILLIS, ExoCapabilityDescriptor, ExoCapabilityLimits, ExoClient, ExoConfig,
-    ExoDecisionRequest, ExoError, ExoLifecycleSupport, ExoPreflightError, ExoPreflightExpectation,
-    ExoProvider, ExoSession, ExoTransport, ExoTransportError, SandboxError, SanitizedObservation,
-    parse_codex_events, parse_decision, preflight,
+    EXO_MAP_REQUEST_OVERHEAD_BYTES, EXO_MAX_CONCURRENCY, EXO_MAX_MAP_REQUEST_BYTES,
+    EXO_MAX_STANDARD_REQUEST_BYTES, EXO_MAX_TURN_MILLIS, ExoCapabilityDescriptor,
+    ExoCapabilityLimits, ExoClient, ExoConfig, ExoDecisionRequest, ExoError, ExoLifecycleSupport,
+    ExoPreflightError, ExoPreflightExpectation, ExoProvider, ExoSession, ExoTransport,
+    ExoTransportError, SandboxError, SanitizedObservation, parse_codex_events, parse_decision,
+    preflight,
 };
 pub use exo_process::{ExoProcessConfig, ExoProcessConfigError, ExoProcessTransport};
 pub use identity::{

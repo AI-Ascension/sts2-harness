@@ -77,10 +77,10 @@ fn handle(
     let body_start = header_end.min(buffer.len());
     let body_end = (header_end + content_length).min(buffer.len());
     let body = String::from_utf8_lossy(&buffer[body_start..body_end]).into_owned();
-    record(log_path, index, &body)?;
-
     let request_line = headers.lines().next().unwrap_or_default();
     let path = request_line.split_whitespace().nth(1).unwrap_or("/");
+    record(log_path, index, path, &body)?;
+
     let payload = if path.ends_with("/chat/completions") {
         chat_body(text)
     } else if request_line.starts_with("GET ") {
@@ -97,8 +97,12 @@ fn handle(
     stream.flush()
 }
 
-fn record(log_path: &str, index: u64, body: &str) -> std::io::Result<()> {
-    let entry = format!("{{\"index\":{index},\"body\":{}}}\n", json_string(body));
+fn record(log_path: &str, index: u64, path: &str, body: &str) -> std::io::Result<()> {
+    let entry = format!(
+        "{{\"index\":{index},\"path\":{},\"body\":{}}}\n",
+        json_string(path),
+        json_string(body)
+    );
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -145,7 +149,11 @@ fn json_string(value: &str) -> String {
     out
 }
 
-fn usage_json() -> &'static str {
+fn responses_usage_json() -> &'static str {
+    "\"usage\":{\"input_tokens\":11,\"output_tokens\":5,\"total_tokens\":16}"
+}
+
+fn chat_usage_json() -> &'static str {
     "\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":5,\"total_tokens\":16}"
 }
 
@@ -153,7 +161,7 @@ fn responses_body(text: &str) -> String {
     format!(
         "{{\"id\":\"resp_synthetic_0001\",\"object\":\"response\",\"status\":\"completed\",\"created_at\":1700000000,\"model\":\"synthetic-model\",\"output\":[{{\"type\":\"message\",\"id\":\"msg_synthetic_0001\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{{\"type\":\"output_text\",\"text\":{},\"annotations\":[]}}]}}],{}}}",
         json_string(text),
-        usage_json()
+        responses_usage_json()
     )
 }
 
@@ -161,6 +169,6 @@ fn chat_body(text: &str) -> String {
     format!(
         "{{\"id\":\"chatcmpl_synthetic_0001\",\"object\":\"chat.completion\",\"created\":1700000000,\"model\":\"synthetic-model\",\"choices\":[{{\"index\":0,\"message\":{{\"role\":\"assistant\",\"content\":{}}},\"finish_reason\":\"stop\"}}],{}}}",
         json_string(text),
-        usage_json()
+        chat_usage_json()
     )
 }
