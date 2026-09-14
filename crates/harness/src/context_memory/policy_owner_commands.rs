@@ -161,13 +161,12 @@ fn validate_lineage(
     review_id: &str,
     kind: ReviewKind,
 ) -> Result<Vec<MemoryLimitViolation>, PolicyOwnerError> {
-    if let Some(active) = &journal.active {
-        if active.target.policy_id != target.reference.policy_id
+    if let Some(active) = &journal.active
+        && (active.target.policy_id != target.reference.policy_id
             || target.reference.version < active.target.version
-            || (kind == ReviewKind::Migration && target.reference.version == active.target.version)
-        {
-            return Err(PolicyOwnerError::Conflict);
-        }
+            || (kind == ReviewKind::Migration && target.reference.version == active.target.version))
+    {
+        return Err(PolicyOwnerError::Conflict);
     }
     match kind {
         ReviewKind::Migration => {

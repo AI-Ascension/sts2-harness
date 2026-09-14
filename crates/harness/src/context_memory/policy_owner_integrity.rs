@@ -94,14 +94,13 @@ impl PolicyJournal {
             {
                 return Err(PolicyOwnerError::Corrupt);
             }
-            if let Some(previous) = prior {
-                if binding.target.policy_id != previous.target.policy_id
+            if let Some(previous) = prior
+                && (binding.target.policy_id != previous.target.policy_id
                     || binding.target.version < previous.target.version
                     || (binding.target.version == previous.target.version
-                        && binding.target != previous.target)
-                {
-                    return Err(PolicyOwnerError::Corrupt);
-                }
+                        && binding.target != previous.target))
+            {
+                return Err(PolicyOwnerError::Corrupt);
             }
             prior = Some(binding);
         }

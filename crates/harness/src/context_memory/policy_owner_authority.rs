@@ -149,16 +149,15 @@ impl MemoryPolicyAuthority {
             return Err(PolicyOwnerError::StaleReview);
         }
         for (key, old) in &state.grants {
-            if let Some(new) = next.grants.get(key) {
-                if new.epoch < old.epoch
+            if let Some(new) = next.grants.get(key)
+                && (new.epoch < old.epoch
                     || (new.epoch == old.epoch
                         && (new.subject != old.subject
                             || new.permissions != old.permissions
                             || new.revoked != old.revoked
-                            || new.expires_at != old.expires_at))
-                {
-                    return Err(PolicyOwnerError::StaleReview);
-                }
+                            || new.expires_at != old.expires_at)))
+            {
+                return Err(PolicyOwnerError::StaleReview);
             }
         }
         *state = next;
