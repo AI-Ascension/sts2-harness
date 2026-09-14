@@ -5,13 +5,16 @@
 use serde_json::json;
 use sts2_harness::{
     EXO_BRIDGE_WIRE_VERSION, EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES,
-    EXO_SOURCE_REVISION, ExoCapabilityDescriptor, ExoCapabilityState, ExoContextMode,
-    ExoControlIdentity, ExoDecisionRequest, ExoIdentity, ExoLimits, ExoPlatform, ExoPreflightError,
-    ExoProfile, ExoRuntime, ExoTerminalOutcome, ExoTrustedConfiguration, ExoWireError,
-    ExoWireOutcome, encode_bridge_request, encode_bridge_response, exo_bridge_manifest,
-    parse_bridge_decision, parse_bridge_decision_envelope, parse_bridge_request,
-    parse_bridge_request_envelope, preflight, responses_capable, responses_routing_capable,
-    verify_control_identity, verify_exo_bridge_artifact,
+    EXO_RESTRICTED_MAX_QUOTA_BYTES, EXO_RESTRICTED_MAX_RETENTION_DAYS, EXO_SOURCE_REVISION,
+    ExoCapabilityDescriptor, ExoCapabilityState, ExoContextMode, ExoControlIdentity,
+    ExoDecisionRequest, ExoIdentity, ExoLimits, ExoPlatform, ExoPreflightError,
+    ExoPrivateStateError, ExoPrivateStatePolicy, ExoProfile, ExoRestrictedError,
+    ExoRestrictedProfile, ExoRuntime, ExoTerminalOutcome, ExoToolCatalog, ExoToolCatalogError,
+    ExoTrustedConfiguration, ExoWireError, ExoWireOutcome, PrivateRootKind, REVIEWED_MODEL_TOOLS,
+    encode_bridge_request, encode_bridge_response, exo_bridge_manifest, parse_bridge_decision,
+    parse_bridge_decision_envelope, parse_bridge_request, parse_bridge_request_envelope, preflight,
+    responses_capable, responses_routing_capable, verify_control_identity,
+    verify_exo_bridge_artifact,
 };
 
 #[path = "support/exo_contract_map.rs"]
@@ -31,6 +34,9 @@ mod exo_contract_schema_vectors;
 
 #[path = "support/exo_contract_conformance.rs"]
 mod exo_contract_conformance;
+
+#[path = "support/exo_contract_restricted.rs"]
+mod exo_contract_restricted;
 
 #[path = "support/exo_contract_wire.rs"]
 mod exo_contract_wire;
@@ -79,6 +85,7 @@ fn preflight_is_pure_and_requires_every_deployment_identity() {
         context_mode: ExoContextMode::Fresh,
         runtime: ExoRuntime::Responses,
         limits: ExoLimits::reviewed(),
+        restricted: restricted_profile(),
     };
     let report = preflight(&descriptor, &trusted).expect("matching source/config admits");
     assert_eq!(report.model_calls, 0);
@@ -112,6 +119,7 @@ fn preflight_downgrades_every_minimum_capability_and_rejects_unreviewed_pin() {
         context_mode: ExoContextMode::Fresh,
         runtime: ExoRuntime::Responses,
         limits: ExoLimits::reviewed(),
+        restricted: restricted_profile(),
     };
 
     let mut no_terminal = base.clone();
@@ -181,6 +189,7 @@ fn preflight_downgrades_every_minimum_capability_and_rejects_unreviewed_pin() {
         context_mode: ExoContextMode::Fresh,
         runtime: ExoRuntime::Responses,
         limits: ExoLimits::reviewed(),
+        restricted: restricted_profile(),
     };
     swapped_package.identity.package_digest = Some(String::from("9").repeat(64));
     let mut package_descriptor =
@@ -370,6 +379,10 @@ fn every_terminal_decision_and_lifecycle_outcome_is_executable() {
         parse_bridge_request(&wrong_schema, EXO_MAX_STANDARD_REQUEST_BYTES),
         Err(ExoWireError::InvalidRequest)
     );
+}
+
+fn restricted_profile() -> ExoRestrictedProfile {
+    ExoRestrictedProfile::reviewed_private("/var/lib/sts2-harness/exo-contract-140")
 }
 
 fn complete_identity() -> ExoIdentity {

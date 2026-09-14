@@ -4,6 +4,7 @@ mod artifact;
 mod descriptor;
 mod identity;
 mod preflight;
+mod restricted;
 mod strict;
 mod wire;
 mod wire_types;
@@ -18,6 +19,13 @@ pub use identity::{DigestKind, ExoIdentity, ExoIdentityError};
 pub use preflight::{
     ExoPreflightError, ExoPreflightReport, ExoTrustedConfiguration, preflight, responses_capable,
     responses_routing_capable,
+};
+pub use restricted::{
+    EXO_RESTRICTED_DEFAULT_QUOTA_BYTES, EXO_RESTRICTED_DEFAULT_RETENTION_DAYS,
+    EXO_RESTRICTED_MAX_QUOTA_BYTES, EXO_RESTRICTED_MAX_RETENTION_DAYS,
+    EXO_RESTRICTED_PERMISSIONS_OCTAL, ExoPrivateStateError, ExoPrivateStatePolicy,
+    ExoRestrictedError, ExoRestrictedProfile, ExoToolCatalog, ExoToolCatalogError, PrivateRootKind,
+    REVIEWED_MODEL_TOOLS,
 };
 pub use wire::{
     ExoBridgeDecisionEnvelope, ExoBridgeRequestEnvelope, ExoBridgeTurn, ExoControlIdentity,

@@ -7,6 +7,7 @@ use super::descriptor::{
     ExoPlatform, ExoProfile, ExoRuntime,
 };
 use super::identity::{ExoIdentity, ExoIdentityError};
+use super::restricted::{ExoRestrictedError, ExoRestrictedProfile};
 use super::{EXO_CONTRACT_VERSION, EXO_SOURCE_REVISION};
 
 #[path = "preflight_checks.rs"]
@@ -23,16 +24,13 @@ pub struct ExoTrustedConfiguration {
     pub context_mode: ExoContextMode,
     pub runtime: ExoRuntime,
     pub limits: ExoLimits,
+    pub restricted: ExoRestrictedProfile,
 }
 
-/// Reports whether the pinned upstream routing would select the Responses runtime for a binding.
-///
-/// This mirrors upstream `modelRequiresResponsesApi`
+/// Reports whether pinned upstream `modelRequiresResponsesApi`
 /// (`exoharness/typescript/model-runtime/responses.ts`, candidate
-/// `b06869ab789dee3f80ca474b5fa89dbe47ccb859`): the Responses runtime is selected only for a
-/// lowercased model binding that starts with `o1-pro`, `o3-pro`, or `gpt-5-pro`, carries a
-/// `gpt-5.N` minor version of 3 or greater, or starts with `gpt-5` and contains `-codex`. Every
-/// other model name selects `ChatCompletionsRuntime` (or `AnthropicRuntime` for `claude*`).
+/// `b06869ab789dee3f80ca474b5fa89dbe47ccb859`) would select the Responses runtime for a binding:
+/// `o1-pro`/`o3-pro`/`gpt-5-pro`, `gpt-5.N` minor >= 3, or a `gpt-5*` binding containing `-codex`.
 #[must_use]
 pub fn responses_capable(model_binding: &str) -> bool {
     let lower = model_binding.to_ascii_lowercase();
@@ -83,6 +81,9 @@ impl ExoTrustedConfiguration {
         if !self.identity.is_complete() {
             return Err(ExoPreflightError::MissingIdentity);
         }
+        self.restricted
+            .validate()
+            .map_err(ExoPreflightError::InvalidRestrictedProfile)?;
         self.limits
             .validate()
             .map_err(ExoPreflightError::InvalidLimits)
@@ -187,6 +188,7 @@ pub enum ExoPreflightError {
     InvalidDescriptor(ExoDescriptorError),
     InvalidIdentity(ExoIdentityError),
     InvalidLimits(ExoDescriptorError),
+    InvalidRestrictedProfile(ExoRestrictedError),
     MissingIdentity,
     UnreviewedSourceRevision,
     ContractMismatch,
@@ -207,6 +209,7 @@ impl std::fmt::Display for ExoPreflightError {
             Self::InvalidDescriptor(_) => "Exo capability descriptor failed validation",
             Self::InvalidIdentity(_) => "trusted Exo identity failed validation",
             Self::InvalidLimits(_) => "trusted Exo limits failed validation",
+            Self::InvalidRestrictedProfile(_) => "trusted Exo restricted profile failed validation",
             Self::MissingIdentity => "trusted Exo identity is incomplete",
             Self::UnreviewedSourceRevision => {
                 "Exo source revision is not the reviewed candidate manifest pin"

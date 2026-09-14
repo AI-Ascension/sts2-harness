@@ -31,6 +31,7 @@ fn responses_runtime_precondition_is_enforced() {
         context_mode: ExoContextMode::Fresh,
         runtime: ExoRuntime::Responses,
         limits: ExoLimits::reviewed(),
+        restricted: restricted_profile(),
     };
     assert!(preflight(&descriptor, &trusted).is_ok());
 

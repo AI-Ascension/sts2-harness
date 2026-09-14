@@ -103,6 +103,7 @@ fn execute_request_vectors(vectors: &[Value]) {
                     context_mode: ExoContextMode::Fresh,
                     runtime: ExoRuntime::Responses,
                     limits: ExoLimits::reviewed(),
+                    restricted: restricted_profile(),
                 };
                 trusted.identity.package_digest = Some(String::from("9").repeat(64));
                 let mut descriptor =
@@ -325,6 +326,7 @@ fn execute_capability_vectors(vectors: &[Value]) {
         context_mode: ExoContextMode::Fresh,
         runtime: ExoRuntime::Responses,
         limits: ExoLimits::reviewed(),
+        restricted: restricted_profile(),
     };
     for vector in vectors {
         let field = vector["field"].as_str().expect("capability vector field");
