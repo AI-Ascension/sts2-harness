@@ -200,6 +200,14 @@ fn rejects_duplicate_keys_and_unbounded_concurrency() {
         Err(ExoPreflightError::Malformed)
     );
 
+    let serialized = String::from_utf8(bytes(&descriptor())).expect("utf8 descriptor");
+    let nested = serialized.replacen("\"limits\":{", "\"limits\":{\"max_concurrency\":9,", 1);
+    assert_ne!(nested, serialized, "nested insert point must exist");
+    assert_eq!(
+        preflight(nested.as_bytes(), &expectation()),
+        Err(ExoPreflightError::Malformed)
+    );
+
     let mut concurrent = descriptor();
     concurrent["limits"]["max_concurrency"] = serde_json::json!(u64::MAX);
     assert_eq!(
