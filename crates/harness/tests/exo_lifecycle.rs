@@ -5,6 +5,8 @@
 
 use sts2_harness as harness_api;
 
+#[path = "support/exo_lifecycle_filesystem.rs"]
+mod filesystem;
 #[path = "support/exo_lifecycle.rs"]
 mod fixture;
 #[path = "support/exo_lifecycle_migration.rs"]
