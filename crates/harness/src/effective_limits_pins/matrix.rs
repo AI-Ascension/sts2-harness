@@ -179,6 +179,8 @@ impl PinMatrix {
         field: &str,
         requested: u64,
     ) -> Result<(), UnavailableReason> {
+        self.validate()
+            .map_err(|_| UnavailableReason::ConsumerPinNotAdopted)?;
         let consumer = self
             .consumers
             .iter()
@@ -208,6 +210,7 @@ fn validate_producer_surface(surface: &ProducerSurface) -> Result<(), PinMatrixE
     if surface.surface.is_empty() || surface.capability_schema.is_empty() {
         return Err(PinMatrixError::InvalidMatrix);
     }
+    let mut paths = BTreeSet::new();
     for artifact in &surface.artifacts {
         let Some(bytes) = producer_artifact_bytes(&artifact.path) else {
             return Err(PinMatrixError::MissingProducerArtifact);
@@ -215,7 +218,12 @@ fn validate_producer_surface(surface: &ProducerSurface) -> Result<(), PinMatrixE
         if !valid_sha256(&artifact.sha256) || crate::sha256_hex(bytes) != artifact.sha256 {
             return Err(PinMatrixError::ProducerArtifactDrift);
         }
-        if artifact.kind != "policy_schema" && artifact.kind != "capabilities_schema" {
+        let expected_suffix = match artifact.kind.as_str() {
+            "policy_schema" => "policy.schema.json",
+            "capabilities_schema" => "capabilities.schema.json",
+            _ => return Err(PinMatrixError::InvalidMatrix),
+        };
+        if !artifact.path.ends_with(expected_suffix) || !paths.insert(artifact.path.as_str()) {
             return Err(PinMatrixError::InvalidMatrix);
         }
     }
