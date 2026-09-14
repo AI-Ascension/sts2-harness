@@ -45,9 +45,11 @@ The owned extension package placement is frozen at
 `exo`; `@exo/harness` and `@exo/model-runtime/turn-loop` are approved TypeScript `tsconfig.json`
 path aliases into that root, not published packages or `workspace:*` dependencies. The loader
 arrangement, pinned Node `22.14.0`, pnpm `10.26.2`, frozen install, typecheck, lint, and test
-commands are recorded in `experiments/exo-agent/extension/README.md`. The extension may use Node
+commands are recorded in `experiments/exo-agent/extension/README.md`; the candidate Rust workspace
+builds `target/debug/exo` and loads the module only through
+`--harness typescript agent create NAME --module ABSOLUTE_MODULE_PATH --model MODEL`. The extension may use Node
 built-ins for bounded static inputs. It must not import an OpenAI SDK directly, call Exo HTTP/CLI
-surfaces, invoke a shell, or read game/host/loader/mod/save state.
+surfaces from the module, invoke a shell, or read game/host/loader/mod/save state.
 
 The owned bridge package placement is the Rust `ExoProcessTransport` implementation at
 `crates/harness/src/exo_process.rs`, with the contract types at

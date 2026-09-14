@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use serde_json::json;
+use serde_json::{Value, json};
 
 #[test]
 fn schema_and_conformance_vectors_are_closed_and_executable() {
@@ -251,4 +251,84 @@ fn exact_request_bounds_and_envelope_overhead_are_enforced() {
             Err(ExoWireError::TooLarge)
         );
     }
+}
+
+#[test]
+fn schema_nested_nulls_and_rust_request_validation_have_parity() {
+    let schema: serde_json::Value =
+        serde_json::from_slice(SCHEMA).expect("wire schema is valid JSON");
+    let defs = schema["$defs"]
+        .as_object()
+        .expect("wire schema definitions");
+    assert_eq!(
+        defs["standard_observation"]["additionalProperties"],
+        json!(false)
+    );
+    assert_eq!(defs["map_snapshot"]["additionalProperties"], json!(false));
+    assert_eq!(
+        defs["map_node"]["additionalProperties"],
+        json!(false),
+        "map node fields stay constrained by the production validator"
+    );
+    assert!(
+        defs["map_snapshot"]["properties"]["map_instance_id"]["$ref"]
+            .as_str()
+            .is_some(),
+        "map identity null is rejected by both schema and parser"
+    );
+    assert!(
+        defs["decision_request"]["properties"]["map_context"]["anyOf"]
+            .as_array()
+            .expect("map context alternatives")
+            .iter()
+            .any(|item| item == &json!({"type": "null"})),
+        "explicit null map context is the Rust Option::None shape"
+    );
+    assert!(
+        defs["decision_request"]["properties"]["management_profile"]["anyOf"]
+            .as_array()
+            .expect("management profile alternatives")
+            .iter()
+            .any(|item| item == &json!({"type": "null"})),
+        "explicit null management profile is the Rust Option::None shape"
+    );
+
+    let mut standard: serde_json::Value =
+        serde_json::from_slice(REQUEST).expect("golden request is JSON");
+    standard["map_context"] = Value::Null;
+    standard["management_profile"] = Value::Null;
+    standard["management_context"] = Value::Null;
+    let standard = serde_json::to_vec(&standard).expect("null optionals serialize");
+    assert!(parse_bridge_request(&standard, EXO_MAX_STANDARD_REQUEST_BYTES).is_ok());
+
+    let mut invalid_observation: serde_json::Value =
+        serde_json::from_slice(REQUEST).expect("golden request is JSON");
+    invalid_observation["observation"]["player"]["unexpected"] = json!(true);
+    let invalid_observation =
+        serde_json::to_vec(&invalid_observation).expect("invalid observation serializes");
+    assert_eq!(
+        parse_bridge_request(&invalid_observation, EXO_MAX_STANDARD_REQUEST_BYTES),
+        Err(ExoWireError::InvalidRequest)
+    );
+
+    let mut invalid_map: serde_json::Value =
+        serde_json::from_slice(&exo_contract_map::map_request_bytes())
+            .expect("generated map request is JSON");
+    invalid_map["map_context"]["snapshot"]["nodes"][0]["unexpected"] = json!(true);
+    let invalid_map = serde_json::to_vec(&invalid_map).expect("invalid map serializes");
+    assert_eq!(
+        parse_bridge_request(&invalid_map, EXO_MAX_MAP_REQUEST_BYTES),
+        Err(ExoWireError::InvalidRequest)
+    );
+
+    let mut null_map_identity: serde_json::Value =
+        serde_json::from_slice(&exo_contract_map::map_request_bytes())
+            .expect("generated map request is JSON");
+    null_map_identity["map_context"]["snapshot"]["map_instance_id"] = Value::Null;
+    let null_map_identity =
+        serde_json::to_vec(&null_map_identity).expect("null map identity serializes");
+    assert_eq!(
+        parse_bridge_request(&null_map_identity, EXO_MAX_MAP_REQUEST_BYTES),
+        Err(ExoWireError::InvalidRequest)
+    );
 }

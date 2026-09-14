@@ -127,11 +127,11 @@ pub fn verify_exo_bridge_artifact() -> Result<(), ExoArtifactError> {
         ),
         (
             checksums[1].0,
-            "a2e41321b9563d8c960766f5d58855c2392c67606e6ec854d163b84e741b59e8",
+            "45b9deb3e7062a6ac745f9b51190e62592d50f7d8398c6f3d6f3828b69beb5e9",
         ),
         (
             checksums[2].0,
-            "046336e4c436ea0a073f2f8ee46e7b5f214f479af911d378c0839431edcf271a",
+            "7f7339010668298001041538a8bfcc4a7686e9618fb0ee21dc5a95c8fbf0dad5",
         ),
         (
             checksums[3].0,

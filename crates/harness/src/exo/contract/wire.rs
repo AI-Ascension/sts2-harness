@@ -5,7 +5,7 @@ use serde_json::Value;
 use super::strict::parse_strict_value;
 use super::wire_types::MAX_CONTROL_ID_BYTES;
 use super::{EXO_BRIDGE_WIRE_VERSION, EXO_DECISION_SCHEMA, EXO_MAX_RESPONSE_BYTES};
-use crate::exo::protocol::EXO_MAX_MAP_REQUEST_BYTES;
+use crate::exo::protocol::{EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES};
 use crate::exo::{Decision, ExoDecisionRequest};
 
 pub use super::wire_types::{
@@ -47,8 +47,12 @@ pub fn parse_bridge_request(
     }
     let request = serde_json::from_value::<ExoDecisionRequest>(value)
         .map_err(|_| ExoWireError::InvalidRequest)?;
+    let profile_limit = request_profile_limit(&request, maximum);
+    if bytes.len() > profile_limit {
+        return Err(ExoWireError::TooLarge);
+    }
     request
-        .encode(maximum)
+        .encode(profile_limit)
         .map_err(|_| ExoWireError::InvalidRequest)?;
     Ok(request)
 }
@@ -82,7 +86,8 @@ pub fn parse_bridge_request_envelope(
     bytes: &[u8],
     max_request_bytes: usize,
 ) -> Result<ExoBridgeRequestEnvelope, ExoWireError> {
-    if bytes.is_empty() || bytes.len() > max_request_bytes.min(EXO_MAX_MAP_REQUEST_BYTES) {
+    let maximum = max_request_bytes.min(EXO_MAX_MAP_REQUEST_BYTES);
+    if bytes.is_empty() || bytes.len() > maximum {
         return Err(ExoWireError::TooLarge);
     }
     if std::str::from_utf8(bytes).is_err() {
@@ -95,9 +100,13 @@ pub fn parse_bridge_request_envelope(
         return Err(ExoWireError::VersionMismatch);
     }
     validate_control_pair(&envelope.request_id, &envelope.turn_id)?;
+    let profile_limit = request_profile_limit(&envelope.request, maximum);
+    if bytes.len() > profile_limit {
+        return Err(ExoWireError::TooLarge);
+    }
     envelope
         .request
-        .encode(max_request_bytes.min(EXO_MAX_MAP_REQUEST_BYTES))
+        .encode(profile_limit)
         .map_err(|_| ExoWireError::InvalidRequest)?;
     Ok(envelope)
 }
@@ -243,6 +252,15 @@ fn validate_control_pair(request_id: &str, turn_id: &str) -> Result<(), ExoWireE
     } else {
         Err(ExoWireError::InvalidIdentity)
     }
+}
+
+fn request_profile_limit(request: &ExoDecisionRequest, maximum: usize) -> usize {
+    let profile_limit = if request.map_context.is_some() {
+        EXO_MAX_MAP_REQUEST_BYTES
+    } else {
+        EXO_MAX_STANDARD_REQUEST_BYTES
+    };
+    maximum.min(profile_limit)
 }
 
 fn valid_error_code(value: &str) -> bool {

@@ -4,7 +4,7 @@
   "contract_version": "sts2-exo-bridge-v1",
   "capability_schema": "sts2.exo-capability-v1",
   "schema": "schema.json",
-  "schema_sha256": "046336e4c436ea0a073f2f8ee46e7b5f214f479af911d378c0839431edcf271a",
+  "schema_sha256": "7f7339010668298001041538a8bfcc4a7686e9618fb0ee21dc5a95c8fbf0dad5",
   "license": "MIT",
   "evidence": "source-derived",
   "native_spike": "unverified",
@@ -50,7 +50,9 @@
       "corepack pnpm@10.26.2 install --frozen-lockfile",
       "corepack pnpm@10.26.2 exec tsgo --noEmit -p tsconfig.json",
       "corepack pnpm@10.26.2 exec oxlint --deny-warnings experiments/exo-agent/extension/src/index.ts",
-      "corepack pnpm@10.26.2 exec vitest run"
+      "corepack pnpm@10.26.2 exec vitest run",
+      "cargo build --locked --package exo",
+      "./target/debug/exo --harness typescript agent create sts2-exo --module ABSOLUTE_MODULE_PATH --model MODEL"
     ],
     "fallbacks": []
   },

@@ -51,6 +51,10 @@ fn execute_request_vectors(vectors: &[Value]) {
                     parse_bridge_request(&frame, EXO_MAX_STANDARD_REQUEST_BYTES),
                     Err(ExoWireError::TooLarge)
                 );
+                assert_eq!(
+                    parse_bridge_request(&frame, EXO_MAX_MAP_REQUEST_BYTES),
+                    Err(ExoWireError::TooLarge)
+                );
             }
             "map_at_bound" => {
                 assert_eq!(expected, "accepted");
@@ -77,7 +81,17 @@ fn execute_request_vectors(vectors: &[Value]) {
             "envelope_overhead_standard" => {
                 assert_eq!(expected, "too_large");
                 let frame = pad_frame(REQUEST, EXO_MAX_STANDARD_REQUEST_BYTES);
-                assert_envelope_over_bound(frame, EXO_MAX_STANDARD_REQUEST_BYTES);
+                assert_envelope_over_bound(
+                    frame,
+                    EXO_MAX_STANDARD_REQUEST_BYTES,
+                    EXO_MAX_STANDARD_REQUEST_BYTES,
+                );
+                let frame = pad_frame(REQUEST, EXO_MAX_STANDARD_REQUEST_BYTES);
+                assert_envelope_over_bound(
+                    frame,
+                    EXO_MAX_STANDARD_REQUEST_BYTES,
+                    EXO_MAX_MAP_REQUEST_BYTES,
+                );
             }
             "envelope_overhead_map" => {
                 assert_eq!(expected, "too_large");
@@ -85,7 +99,11 @@ fn execute_request_vectors(vectors: &[Value]) {
                     &exo_contract_map::map_request_bytes(),
                     EXO_MAX_MAP_REQUEST_BYTES,
                 );
-                assert_envelope_over_bound(frame, EXO_MAX_MAP_REQUEST_BYTES);
+                assert_envelope_over_bound(
+                    frame,
+                    EXO_MAX_MAP_REQUEST_BYTES,
+                    EXO_MAX_MAP_REQUEST_BYTES,
+                );
             }
             "wrong_schema" => {
                 assert_eq!(expected, "invalid_request");
@@ -118,7 +136,7 @@ fn execute_request_vectors(vectors: &[Value]) {
                     Err(ExoPreflightError::IdentityMismatch("package_digest"))
                 );
             }
-            other => panic!("unhandled request conformance vector {other}"),
+            other => unreachable!("unhandled request conformance vector {other}"),
         }
     }
 }
@@ -141,7 +159,7 @@ fn execute_decision_vectors(vectors: &[Value]) {
                 br#"{"decision":"recovery","recovery_kind":"reobserve","rationale":"recover"}"#
                     .to_vec()
             }
-            other => panic!("unhandled decision conformance vector {other}"),
+            other => unreachable!("unhandled decision conformance vector {other}"),
         };
         assert!(
             parse_bridge_decision(&decision).is_ok(),
@@ -257,7 +275,7 @@ fn execute_envelope_vectors(vectors: &[Value]) {
                     Err(ExoWireError::InvalidUtf8)
                 );
             }
-            other => panic!("unhandled envelope conformance vector {other}"),
+            other => unreachable!("unhandled envelope conformance vector {other}"),
         }
     }
 }
@@ -306,7 +324,7 @@ fn execute_capability_vectors(vectors: &[Value]) {
                 descriptor.lifecycle.recovery = ExoCapabilityState::Unsupported;
                 "lifecycle.recovery"
             }
-            other => panic!("unhandled capability conformance vector {other}"),
+            other => unreachable!("unhandled capability conformance vector {other}"),
         };
         assert_eq!(
             preflight_with_identity(descriptor, &trusted),
@@ -315,15 +333,15 @@ fn execute_capability_vectors(vectors: &[Value]) {
     }
 }
 
-fn assert_envelope_over_bound(frame: Vec<u8>, limit: usize) {
+fn assert_envelope_over_bound(frame: Vec<u8>, profile_limit: usize, caller_limit: usize) {
     let mut envelope =
         br#"{"wire_version":"sts2.exo-bridge-wire-v1","request_id":"request-1","turn_id":"turn-1","request":"#
             .to_vec();
     envelope.extend_from_slice(&frame);
     envelope.push(b'}');
-    assert!(envelope.len() > limit);
+    assert!(envelope.len() > profile_limit);
     assert_eq!(
-        parse_bridge_request_envelope(&envelope, limit),
+        parse_bridge_request_envelope(&envelope, caller_limit),
         Err(ExoWireError::TooLarge)
     );
 }

@@ -20,16 +20,21 @@ corepack pnpm@10.26.2 exec tsgo --noEmit -p tsconfig.json
 corepack pnpm@10.26.2 exec oxlint --deny-warnings \
   experiments/exo-agent/extension/src/index.ts
 corepack pnpm@10.26.2 exec vitest run
-corepack pnpm@10.26.2 exec exo --harness typescript \
-  --module experiments/exo-agent/extension/src/index.ts
+cargo build --locked --package exo
+./target/debug/exo --harness typescript agent create sts2-exo \
+  --module "$EXO_ROOT/experiments/exo-agent/extension/src/index.ts" \
+  --model "$EXO_MODEL"
 ```
 
 The commands are deliberately rooted at the candidate checkout: `pnpm install --frozen-lockfile`
 uses its checked-in lockfile, while `tsgo`, `oxlint`, `vitest`, and the TypeScript loader resolve
-the aliases in the candidate root `tsconfig.json`. Node `22.14.0` and pnpm `10.26.2` are pinned by
-the adjacent `package.json`. The final `exo` command is an operator spike only; it needs a model
-binding/credential and does not prove an STS2 terminal decision, bridge correlation, or gameplay
-effect.
+the aliases in the candidate root `tsconfig.json`. The Rust `exo` CLI is built from the candidate
+Cargo workspace; `cargo build --locked --package exo` produces `target/debug/exo`, and
+`--harness typescript agent create NAME --module ABSOLUTE_MODULE_PATH --model MODEL` is the exact
+module-loading command. Node `22.14.0` and pnpm `10.26.2` are pinned by the adjacent
+`package.json`. The final agent creation is an operator spike only; it needs `EXO_MODEL` plus a
+model binding/credential and does not prove an STS2 terminal decision, bridge correlation, or
+gameplay effect.
 
 The current Rust runtime still uses its legacy request/process seam and does not copy this module,
 run these commands, or invoke preflight. Wiring this loader to the Rust envelope is a future

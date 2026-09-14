@@ -15,6 +15,8 @@
     "resolution": "candidate-root-tsconfig-path-alias",
     "source_root": "candidate Exo checkout root",
     "module_path": "experiments/exo-agent/extension/src/index.ts",
+    "executable_build": "cargo build --locked --package exo",
+    "agent_create": "./target/debug/exo --harness typescript agent create sts2-exo --module ABSOLUTE_MODULE_PATH --model MODEL",
     "aliases": {
       "@exo/harness": "./exoharness/typescript/harness/index.ts",
       "@exo/model-runtime/turn-loop": "./exoharness/typescript/model-runtime/turn-loop.ts"
