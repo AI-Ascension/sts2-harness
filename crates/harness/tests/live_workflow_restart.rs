@@ -9,7 +9,7 @@ use sts2_harness::management::{
     LiveWorkflowExecutionPort, LiveWorkflowOptions, LiveWorkflowSessionFactory, ManagementError,
     MemoryWorkflowStore, PendingOperation, PendingOperationState, RecoveryAdmission, RunAdmission,
     RunRequest, RunReservation, SqliteWorkflowStore, TargetAdmissionBinding, WorkflowExecutionPort,
-    WorkflowRunStatus, WorkflowStore, live_store,
+    WorkflowRunStatus, WorkflowStore,
 };
 
 #[path = "support/live_workflow.rs"]
@@ -84,7 +84,7 @@ fn apply_failure_service(
     let store_port: Arc<dyn WorkflowStore> = Arc::clone(&store) as Arc<dyn WorkflowStore>;
     let factory_port: Arc<dyn LiveWorkflowSessionFactory> =
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>;
-    let service = live_store(
+    let service = live_service(
         Arc::clone(&store_port),
         Arc::clone(&factory_port),
         LiveWorkflowOptions::default(),
@@ -176,7 +176,7 @@ impl WorkflowExecutionPort for ApplyFailureExecution {
 fn successful_live_snapshot_after_memory_restart_requires_operator() {
     let store = Arc::new(MemoryWorkflowStore::new());
     let factory = Arc::new(support::FakeFactory::new(false));
-    let service = live_store(
+    let service = live_service(
         Arc::clone(&store) as Arc<dyn WorkflowStore>,
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -200,7 +200,7 @@ fn successful_live_snapshot_after_memory_restart_requires_operator() {
     drop(service);
 
     let restarted_factory = Arc::new(support::FakeFactory::new(false));
-    let restarted = live_store(
+    let restarted = live_service(
         Arc::clone(&store) as Arc<dyn WorkflowStore>,
         Arc::clone(&restarted_factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -232,7 +232,7 @@ fn successful_live_snapshot_after_sqlite_restart_requires_operator()
     let path = directory.join("live.sqlite3");
     let store = Arc::new(SqliteWorkflowStore::open(&path)?);
     let factory = Arc::new(support::FakeFactory::new(false));
-    let service = live_store(
+    let service = live_service(
         Arc::clone(&store) as Arc<dyn WorkflowStore>,
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -254,7 +254,7 @@ fn successful_live_snapshot_after_sqlite_restart_requires_operator()
 
     let restarted_store = Arc::new(SqliteWorkflowStore::open(&path)?);
     let restarted_factory = Arc::new(support::FakeFactory::new(false));
-    let restarted = live_store(
+    let restarted = live_service(
         Arc::clone(&restarted_store) as Arc<dyn WorkflowStore>,
         Arc::clone(&restarted_factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),

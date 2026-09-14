@@ -13,6 +13,14 @@ pub(super) fn submit_run(
     request_digest: String,
     definition_digest: String,
 ) -> Result<RunSubmissionResponse, ManagementError> {
+    // A live invocation must be bound to the authoritative context owner before
+    // any reservation, session open, or launch. Fail closed when it is absent.
+    if is_live_profile(&request.profile) && !service.context_owner_port().is_available() {
+        return Err(ManagementError::unavailable(
+            "context_owner_unavailable",
+            "live workflow admission requires an attached authoritative context owner",
+        ));
+    }
     let binding = service.revalidate_target_admission(actor, &request, &definition_digest)?;
     let reservation = RunReservation::new(
         std::sync::Arc::clone(&service.store),

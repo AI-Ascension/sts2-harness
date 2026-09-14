@@ -7,7 +7,7 @@ use std::sync::Arc;
 use serde_json::json;
 use sts2_harness::management::{
     CommandKind, EventType, LiveWorkflowOptions, LiveWorkflowSessionFactory, MemoryWorkflowStore,
-    WorkflowRunStatus, live_store,
+    WorkflowRunStatus,
 };
 
 #[path = "support/live_workflow.rs"]
@@ -18,7 +18,7 @@ use support::*;
 #[test]
 fn authored_graph_calls_live_ports_in_order_and_settles_before_terminal() {
     let factory = Arc::new(FakeFactory::new(false));
-    let service = live_store(
+    let service = live_service(
         Arc::new(MemoryWorkflowStore::new()),
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -65,7 +65,7 @@ fn authored_graph_calls_live_ports_in_order_and_settles_before_terminal() {
 #[test]
 fn unknown_receipt_is_persisted_and_reconciled_without_redispatch() {
     let factory = Arc::new(FakeFactory::new(true));
-    let service = live_store(
+    let service = live_service(
         Arc::new(MemoryWorkflowStore::new()),
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -114,7 +114,7 @@ fn unknown_receipt_is_persisted_and_reconciled_without_redispatch() {
 #[test]
 fn dispatch_error_keeps_pre_effect_intent_for_same_operation_reconciliation() {
     let factory = Arc::new(FakeFactory::dispatch_error());
-    let service = live_store(
+    let service = live_service(
         Arc::new(MemoryWorkflowStore::new()),
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -182,7 +182,7 @@ fn dispatch_error_keeps_pre_effect_intent_for_same_operation_reconciliation() {
 #[test]
 fn unsupported_node_is_rejected_before_live_launch() {
     let factory = Arc::new(FakeFactory::new(false));
-    let service = live_store(
+    let service = live_service(
         Arc::new(MemoryWorkflowStore::new()),
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -207,7 +207,7 @@ fn unsupported_node_is_rejected_before_live_launch() {
 #[test]
 fn cancellation_dominates_pause_and_stops_the_live_session() {
     let factory = Arc::new(FakeFactory::new(false));
-    let service = live_store(
+    let service = live_service(
         Arc::new(MemoryWorkflowStore::new()),
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),

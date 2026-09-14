@@ -16,6 +16,11 @@ use sts2_harness::management::{
     decode_strict, digest_value,
 };
 
+#[path = "support/live_workflow_context_owner.rs"]
+mod context_owner_double;
+
+use context_owner_double::FakeContextOwner;
+
 struct DefinitionDouble;
 
 impl DefinitionPort for DefinitionDouble {
@@ -252,6 +257,7 @@ fn live_target_admission_requires_live_operation_support() -> Result<(), Box<dyn
         .with_capability_port(Arc::new(ScopedCapabilityDouble {
             supported_operations: vec!["workflow:read".to_owned()],
         }))
+        .with_context_owner_port(Arc::new(FakeContextOwner))
         .with_execution_port(submissions.clone());
     let actor = actor()?;
     let target = RunTargetConfiguration {
@@ -331,6 +337,7 @@ fn authenticated_scoped_catalog_preflight_and_submission_are_actor_bound()
                     "workflow:live".to_owned(),
                 ],
             }))
+            .with_context_owner_port(Arc::new(FakeContextOwner))
             .with_execution_port(execution),
     );
     let operator = AuthContext::new("operator", ["workflow:*".to_owned()])?;

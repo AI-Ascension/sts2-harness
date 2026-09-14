@@ -19,7 +19,7 @@ use support::*;
 fn restart_with_durable_intent_fails_closed_without_redispatch() {
     let store = Arc::new(MemoryWorkflowStore::new());
     let factory = Arc::new(FakeFactory::dispatch_error());
-    let service = live_store(
+    let service = live_service(
         Arc::clone(&store) as Arc<dyn sts2_harness::management::WorkflowStore>,
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -41,7 +41,7 @@ fn restart_with_durable_intent_fails_closed_without_redispatch() {
     drop(service);
 
     let restarted_factory = Arc::new(FakeFactory::new(false));
-    let restarted = live_store(
+    let restarted = live_service(
         Arc::clone(&store) as Arc<dyn sts2_harness::management::WorkflowStore>,
         Arc::clone(&restarted_factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -67,7 +67,7 @@ fn restart_with_durable_intent_fails_closed_without_redispatch() {
 #[test]
 fn unavailable_authored_binding_is_rejected_before_live_launch() {
     let factory = Arc::new(FakeFactory::new(false));
-    let service = live_store(
+    let service = live_service(
         Arc::new(MemoryWorkflowStore::new()),
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -86,7 +86,7 @@ fn unavailable_authored_binding_is_rejected_before_live_launch() {
 #[test]
 fn mismatched_settled_receipt_remains_unknown_with_original_identity() {
     let factory = Arc::new(FakeFactory::mismatched_receipt());
-    let service = live_store(
+    let service = live_service(
         Arc::new(MemoryWorkflowStore::new()),
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -128,7 +128,7 @@ fn mismatched_settled_receipt_remains_unknown_with_original_identity() {
 #[test]
 fn cancel_attempts_cleanup_after_reconciliation_conflict() {
     let factory = Arc::new(FakeFactory::reconcile_conflict());
-    let service = live_store(
+    let service = live_service(
         Arc::new(MemoryWorkflowStore::new()),
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -161,7 +161,7 @@ fn cancel_attempts_cleanup_after_reconciliation_conflict() {
 #[test]
 fn launch_failure_releases_partial_session() {
     let factory = Arc::new(FakeFactory::launch_error());
-    let service = live_store(
+    let service = live_service(
         Arc::new(MemoryWorkflowStore::new()),
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -180,7 +180,7 @@ fn launch_failure_releases_partial_session() {
 #[test]
 fn cleanup_failure_is_visible_after_cancel() {
     let factory = Arc::new(FakeFactory::cleanup_error());
-    let service = live_store(
+    let service = live_service(
         Arc::new(MemoryWorkflowStore::new()),
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -202,4 +202,25 @@ fn cleanup_failure_is_visible_after_cancel() {
     );
     assert!(factory.entries().contains(&"stop".to_owned()));
     assert!(factory.entries().contains(&"release".to_owned()));
+}
+
+#[test]
+fn unavailable_context_owner_fails_live_admission_before_launch() {
+    let store = Arc::new(MemoryWorkflowStore::new());
+    let factory = Arc::new(FakeFactory::new(false));
+    let service = live_store(
+        Arc::clone(&store) as Arc<dyn sts2_harness::management::WorkflowStore>,
+        Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
+        LiveWorkflowOptions::default(),
+    )
+    .expect("service");
+    assert!(!service.context_owner_port().is_available());
+    let error = service
+        .submit_run(
+            &actor(),
+            request("request-live-owner-missing", definition(false)),
+        )
+        .expect_err("missing owner must fail closed");
+    assert_eq!(error.code, "context_owner_unavailable");
+    assert!(factory.entries().is_empty());
 }

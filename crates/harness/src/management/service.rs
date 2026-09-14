@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 
 use super::auth::AuthContext;
 use super::authoring::{AuthoringStore, MemoryAuthoringStore};
+use super::context_owner::ContextOwnerPort;
 use super::contract::{
     AuthoritySummary, CONTEXT_ASSOCIATION_SCHEMA_VERSION, CapabilityResponse, CleanupState,
     CommandRequest, CommandResponse, ContextAssociation, ContextAssociationContext,
@@ -29,6 +30,8 @@ use super::store::{
 
 #[path = "service_authoring.rs"]
 mod authoring_ops;
+#[path = "service_context_owner.rs"]
+mod context_owner_port;
 #[path = "service_execution.rs"]
 mod execution_types;
 #[path = "service_ops_lifecycle.rs"]
@@ -275,6 +278,7 @@ pub struct ManagementService {
     replay: Arc<dyn WorkflowReplayPort>,
     capabilities: Arc<dyn CapabilityPort>,
     context_inspection: Arc<dyn ContextInspectionPort>,
+    context_owner: Arc<dyn ContextOwnerPort>,
     provider_session_inspection: Arc<dyn ProviderSessionInspectionPort>,
 }
 
@@ -288,6 +292,7 @@ impl ManagementService {
             replay: Arc::new(UnavailableReplayPort),
             capabilities: Arc::new(UnavailableCapabilityPort),
             context_inspection: Arc::new(UnavailableContextInspectionPort),
+            context_owner: Arc::new(super::context_owner::UnavailableContextOwnerPort),
             provider_session_inspection: Arc::new(
                 provider_session_support::UnavailableProviderSessionInspectionPort,
             ),
