@@ -17,6 +17,15 @@ claim a released harness version or runtime compatibility.
   rejects. Deterministic offline tests only; consumer adoption, native, and provider evidence remain
   `unverified`.
 
+- Bind the authoritative context owner at the live invocation the runtime actually executes.
+  Live admission now performs a fail-closed owner/catalog/support check only; each context-bound
+  node is bound when the runtime cursor reaches it, using the runtime-allocated `node_execution_id`
+  and validating the owner response against the persisted run cursor. Compatibility: no serialized
+  snapshot/event schema change and no `WorkflowExecutionPort` trait change; the management-internal
+  `CommandContext` gains the actor-scoped owner. Owner `bind` denials/escalations now surface at the
+  first context-node dispatch instead of submission, while missing/denied/unavailable/ambiguous
+  catalogs still fail closed before any target or execution effect. Refs #100.
+
 - Define the harness-owned `sts2-exo-bridge-v1` contract and freeze the candidate Exo source
   manifest. The closed capability/preflight and request/turn envelopes enforce independent
   identity, bounds, UTF-8/framing, correlation, terminal-decision, cancellation, and EOF rules;

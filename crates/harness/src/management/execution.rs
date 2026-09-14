@@ -4,9 +4,7 @@ use std::collections::{BTreeMap, btree_map::Entry};
 use std::sync::{Arc, Mutex};
 
 use super::super::auth::AuthContext;
-use super::super::context_owner::{
-    ContextOwnerBinding, ContextOwnerPort, UnavailableContextOwnerPort,
-};
+use super::super::context_owner::ContextOwnerBinding;
 use super::super::contract::{
     EventClassification, EventPayload, EventType, PendingOperation, RecoveryAdmission, RunEvent,
     RunRequest, RunSnapshot, TargetAdmissionBinding,
@@ -71,7 +69,6 @@ pub(super) struct PendingDispatch {
 pub struct LiveWorkflowExecutionPort {
     factory: Arc<dyn LiveWorkflowSessionFactory>,
     options: LiveWorkflowOptions,
-    pub(super) context_owner: Mutex<Arc<dyn ContextOwnerPort>>,
     runs: Mutex<BTreeMap<String, LiveRun>>,
 }
 
@@ -84,7 +81,6 @@ impl LiveWorkflowExecutionPort {
         Ok(Self {
             factory,
             options,
-            context_owner: Mutex::new(Arc::new(UnavailableContextOwnerPort)),
             runs: Mutex::new(BTreeMap::new()),
         })
     }
@@ -158,12 +154,6 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
 
     fn abort_submission(&self, run_id: &str) -> Result<(), ManagementError> {
         recovery::abort(self, run_id)
-    }
-
-    fn attach_context_owner(&self, port: Arc<dyn ContextOwnerPort>) {
-        if let Ok(mut owner) = self.context_owner.lock() {
-            *owner = port;
-        }
     }
 }
 

@@ -5,9 +5,10 @@
 use std::sync::{Arc, Mutex};
 
 use sts2_harness::management::{
-    AuthContext, CommandKind, ContextBindingCatalog, ContextBindingRequest, ContextOwnerBinding,
-    ContextOwnerPort, LiveWorkflowOptions, LiveWorkflowSessionFactory, ManagementError,
-    MemoryWorkflowStore,
+    AuthContext, CommandContext, CommandKind, ContextBindingCatalog, ContextBindingRequest,
+    ContextOwnerBinding, ContextOwnerPort, LiveWorkflowExecutionPort, LiveWorkflowOptions,
+    LiveWorkflowSessionFactory, ManagementError, MemoryWorkflowStore, WorkflowExecutionPort,
+    WorkflowStore, live_store,
 };
 
 #[allow(clippy::duplicate_mod)]
@@ -172,5 +173,56 @@ fn context_owner_rejects_a_dispatch_binding_that_escalates_grants()
     let error = observe_then_decide(&service, &run_id)
         .expect_err("a dispatch binding that escalates grants must fail closed");
     assert_eq!(error.code, "context_owner_binding_grant_escalation");
+    Ok(())
+}
+
+#[test]
+fn context_owner_rejects_a_binding_that_does_not_match_the_persisted_cursor()
+-> Result<(), Box<dyn std::error::Error>> {
+    // A response that is internally consistent with the dispatch request but is
+    // not attached to the persisted run cursor must fail closed. This is the
+    // guard that the admission-time fabricated identity could never satisfy.
+    let factory = Arc::new(FakeFactory::new(false));
+    let store = Arc::new(MemoryWorkflowStore::new());
+    let owner = Arc::new(RecordingOwner::new());
+    let execution = Arc::new(LiveWorkflowExecutionPort::new(
+        Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
+        LiveWorkflowOptions::default(),
+    )?);
+    let service = live_store(
+        Arc::clone(&store) as Arc<dyn WorkflowStore>,
+        Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
+        LiveWorkflowOptions::default(),
+    )?
+    .with_execution_port(Arc::clone(&execution) as Arc<dyn WorkflowExecutionPort>)
+    .with_context_owner_port(Arc::clone(&owner) as Arc<dyn ContextOwnerPort>);
+
+    let actor = actor();
+    let submitted = service.submit_run(
+        &actor,
+        request("request-dispatch-cursor", definition(false)),
+    )?;
+    let run_id = submitted.workflow_run_id;
+    service.command(&actor, command(&run_id, "step-1", 1, CommandKind::Step))?;
+
+    let mut snapshot = store
+        .get_run(&run_id)
+        .expect("run lookup")
+        .expect("persisted run");
+    snapshot.cursor.node_execution_id = "live.node.99".to_owned();
+
+    let error = execution
+        .apply_command(CommandContext {
+            request: command(&run_id, "step-2", 2, CommandKind::Step),
+            snapshot,
+            actor,
+            context_owner: Arc::clone(&owner) as Arc<dyn ContextOwnerPort>,
+        })
+        .expect_err("a binding that does not match the persisted cursor must fail closed");
+    assert_eq!(error.code, "context_owner_cursor_mismatch");
+    assert!(
+        !factory.entries().iter().any(|entry| entry == "decide"),
+        "a rejected binding must not execute the context node"
+    );
     Ok(())
 }
