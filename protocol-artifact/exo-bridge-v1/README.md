@@ -105,8 +105,8 @@ they are never model-visible.
 `decision_envelope`. Its `observation` union closes `standard_observation` (with
 `legal_actions` requiring at least one entry) and closes `expert_observation` to the full
 Runtime-v4 expert shape, requiring `protocol_version: "runtime-v4-expert"`, the pinned
-`schema_digest`, and rejecting unknown privileged fields. Schema `uniqueItems` rejects
-byte-identical expert action objects; the Rust parser additionally requires unique `action_id`
+`schema_digest`, and rejecting unknown privileged fields. Schema `uniqueItems` rejects identical
+complete expert action objects; the Rust parser additionally requires unique `action_id`
 values, bounds expert text at 512 UTF-8 bytes (schema `maxLength` counts code points), and
 enforces semantic ranges such as `hp <= max_hp`, which JSON Schema cannot compare. These
 schema-valid/parser-rejected semantic cases are deliberate fail-closed behavior, not an

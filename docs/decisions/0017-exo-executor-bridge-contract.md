@@ -197,7 +197,7 @@ authoritative for semantic checks that JSON Schema cannot express exactly:
   `crates/harness/src/runtime_v4_expert_parse.rs` (`shape_is_closed`/`WireObservation`). This
   requires the pinned expert `schema_digest`, at least one legal action, and rejects both
   `{"protocol_version":"x"}` and unknown privileged fields.
-- `expert_observation.legal_actions` uses `uniqueItems` to reject byte-identical action objects.
+- `expert_observation.legal_actions` uses `uniqueItems` to reject identical complete action objects.
   The parser additionally requires unique `action_id` values, so distinct payloads sharing an
   action ID are intentionally schema-valid/parser-rejected.
 - The `hash` definition rejects the all-zero digest (`not: {"pattern": "^0+$"}`), while the expert
