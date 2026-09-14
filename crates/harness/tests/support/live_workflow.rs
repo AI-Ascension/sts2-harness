@@ -101,8 +101,15 @@ pub(crate) fn observation(state_id: &str, generation: u64) -> EpisodeObservation
     .expect("observation")
 }
 
+#[derive(Clone)]
+pub(crate) struct LaunchRecord {
+    pub(crate) definition_digest: String,
+    pub(crate) node_order: Vec<String>,
+}
+
 pub(crate) struct FakeFactory {
     log: Arc<Mutex<Vec<String>>>,
+    launches: Arc<Mutex<Vec<LaunchRecord>>>,
     unknown: bool,
     dispatch_error: bool,
     mismatched_receipt: bool,
@@ -116,6 +123,7 @@ impl FakeFactory {
     pub(crate) fn new(unknown: bool) -> Self {
         Self {
             log: Arc::new(Mutex::new(Vec::new())),
+            launches: Arc::new(Mutex::new(Vec::new())),
             unknown,
             dispatch_error: false,
             mismatched_receipt: false,
@@ -129,6 +137,7 @@ impl FakeFactory {
     pub(crate) fn dispatch_error() -> Self {
         Self {
             log: Arc::new(Mutex::new(Vec::new())),
+            launches: Arc::new(Mutex::new(Vec::new())),
             unknown: false,
             dispatch_error: true,
             mismatched_receipt: false,
@@ -178,6 +187,11 @@ impl FakeFactory {
     pub(crate) fn entries(&self) -> Vec<String> {
         self.log.lock().expect("log").clone()
     }
+
+    /// Records, for every opened live session, the validated definition digest and node order.
+    pub(crate) fn launches(&self) -> Vec<LaunchRecord> {
+        self.launches.lock().expect("launch log").clone()
+    }
 }
 
 impl LiveWorkflowSessionFactory for FakeFactory {
@@ -196,9 +210,22 @@ impl LiveWorkflowSessionFactory for FakeFactory {
         &self,
         _request: &RunRequest,
         _actor: &AuthContext,
-        _definition: &sts2_harness::workflow::WorkflowDefinition,
-        _definition_digest: &str,
+        definition: &sts2_harness::workflow::WorkflowDefinition,
+        definition_digest: &str,
     ) -> Result<Box<dyn LiveWorkflowSession>, sts2_harness::management::ManagementError> {
+        let nodes = definition
+            .graphs
+            .iter()
+            .flat_map(|graph| graph.nodes.iter())
+            .map(|node| node.id().to_string())
+            .collect();
+        self.launches
+            .lock()
+            .expect("launch log")
+            .push(LaunchRecord {
+                definition_digest: definition_digest.to_owned(),
+                node_order: nodes,
+            });
         Ok(Box::new(FakeSession {
             log: Arc::clone(&self.log),
             unknown: self.unknown,
