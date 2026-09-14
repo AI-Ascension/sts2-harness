@@ -174,6 +174,7 @@ fn admit_context_owner(
         )
     })?;
     let parsed = super::super::workflow_ports::parse_definition(definition)?;
+    validate_context_nodes(&parsed, &catalog)?;
     let (graph_id, node_id, node_kind, context_ref) = first_context_node(&parsed)?;
     let descriptor = catalog.descriptor_for(context_ref, node_kind)?;
     if !descriptor.grants.metadata_read {
@@ -204,14 +205,34 @@ fn admit_context_owner(
             "context owner binding was issued by a different catalog owner",
         ));
     }
-    if binding.binding_id != descriptor.binding_id
-        || binding.binding_version != descriptor.version
-        || binding.binding_digest != descriptor.digest
-        || binding.context_ref != descriptor.context_ref
-    {
-        return Err(ManagementError::conflict(
-            "context_owner_binding_descriptor_mismatch",
-            "context owner binding does not match the actor-scoped catalog descriptor",
+    descriptor.validate_binding(&binding)?;
+    Ok(())
+}
+
+fn validate_context_nodes(
+    definition: &WorkflowDefinition,
+    catalog: &super::super::context_owner::ContextBindingCatalog,
+) -> Result<(), ManagementError> {
+    let mut found = false;
+    for graph in &definition.graphs {
+        for node in &graph.nodes {
+            let Some((_, node_kind, context_ref)) = context_node_parts(node) else {
+                continue;
+            };
+            found = true;
+            let descriptor = catalog.descriptor_for(context_ref, node_kind)?;
+            if !descriptor.grants.metadata_read {
+                return Err(ManagementError::capability(
+                    "context_binding_metadata_unavailable",
+                    "context owner catalog does not grant metadata access for this node",
+                ));
+            }
+        }
+    }
+    if !found {
+        return Err(ManagementError::capability(
+            "context_binding_unsupported",
+            "live workflow has no supported context-bound node",
         ));
     }
     Ok(())
@@ -220,40 +241,44 @@ fn admit_context_owner(
 fn first_context_node(
     definition: &WorkflowDefinition,
 ) -> Result<(&str, &str, &str, &str), ManagementError> {
-    let graph = definition
+    if !definition
         .graphs
         .iter()
-        .find(|graph| graph.id == definition.entry_graph)
-        .ok_or_else(|| {
-            ManagementError::invalid(
-                "context_owner_graph_missing",
-                "workflow entry graph is missing from the admitted definition",
-            )
-        })?;
-    graph
-        .nodes
+        .any(|graph| graph.id == definition.entry_graph)
+    {
+        return Err(ManagementError::invalid(
+            "context_owner_graph_missing",
+            "workflow entry graph is missing from the admitted definition",
+        ));
+    }
+    definition
+        .graphs
         .iter()
-        .find_map(|node| match node {
-            NodeDefinition::Analyze { id, config } => Some((
-                graph.id.as_str(),
-                id.as_str(),
-                "analyze",
-                config.context_ref.as_str(),
-            )),
-            NodeDefinition::Decide { id, config } => Some((
-                graph.id.as_str(),
-                id.as_str(),
-                "decide",
-                config.context_ref.as_str(),
-            )),
-            _ => None,
+        .find_map(|graph| {
+            graph.nodes.iter().find_map(|node| {
+                context_node_parts(node).map(|(node_id, node_kind, context_ref)| {
+                    (graph.id.as_str(), node_id, node_kind, context_ref)
+                })
+            })
         })
         .ok_or_else(|| {
-            ManagementError::capability(
+            ManagementError::invalid(
                 "context_binding_unsupported",
                 "live workflow has no supported context-bound node",
             )
         })
+}
+
+fn context_node_parts(node: &NodeDefinition) -> Option<(&str, &str, &str)> {
+    match node {
+        NodeDefinition::Analyze { id, config } => {
+            Some((id.as_str(), "analyze", config.context_ref.as_str()))
+        }
+        NodeDefinition::Decide { id, config } => {
+            Some((id.as_str(), "decide", config.context_ref.as_str()))
+        }
+        _ => None,
+    }
 }
 
 fn live_run_id(request: &RunRequest, definition_digest: &str) -> Result<String, ManagementError> {

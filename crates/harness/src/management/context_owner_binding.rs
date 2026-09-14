@@ -243,3 +243,45 @@ impl ContextOwnerBinding {
         Ok(())
     }
 }
+
+impl ContextBindingDescriptor {
+    /// Validates an owner-issued binding against the immutable descriptor that
+    /// admitted it. Returned authority may narrow the descriptor, but it may
+    /// never add grants or continuity guarantees the catalog did not publish.
+    pub fn validate_binding(&self, binding: &ContextOwnerBinding) -> Result<(), ManagementError> {
+        self.validate()?;
+        binding.validate(None)?;
+        if !self.supports(&binding.context_ref, &binding.node_kind)
+            || self.binding_id != binding.binding_id
+            || self.version != binding.binding_version
+            || self.digest != binding.binding_digest
+        {
+            return Err(ManagementError::conflict(
+                "context_owner_binding_descriptor_mismatch",
+                "context owner binding does not match its catalog descriptor",
+            ));
+        }
+        if (binding.grants.metadata_read && !self.grants.metadata_read)
+            || (binding.grants.content_read && !self.grants.content_read)
+            || (binding.grants.edit && !self.grants.edit)
+            || (binding.grants.control && !self.grants.control)
+        {
+            return Err(ManagementError::capability(
+                "context_owner_binding_grant_escalation",
+                "context owner binding grants exceed its catalog descriptor",
+            ));
+        }
+        if (binding.continuity.survives_controller_restart
+            && !self.continuity.survives_controller_restart)
+            || (binding.continuity.receipt_recovery && !self.continuity.receipt_recovery)
+            || (binding.continuity.provider_session_continuity
+                && !self.continuity.provider_session_continuity)
+        {
+            return Err(ManagementError::capability(
+                "context_owner_binding_continuity_escalation",
+                "context owner binding continuity exceeds its catalog descriptor",
+            ));
+        }
+        Ok(())
+    }
+}

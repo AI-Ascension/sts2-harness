@@ -217,6 +217,8 @@ enum OwnerGate {
     Unavailable,
     Ambiguous,
     BindDenied,
+    BindGrantEscalated,
+    BindContinuityEscalated,
 }
 
 struct CatalogGateOwner {
@@ -248,7 +250,10 @@ impl ContextOwnerPort for CatalogGateOwner {
                 duplicate.digest.clear();
                 catalog.descriptors.push(duplicate.seal()?);
             }
-            OwnerGate::Unavailable | OwnerGate::BindDenied => {}
+            OwnerGate::Unavailable
+            | OwnerGate::BindDenied
+            | OwnerGate::BindGrantEscalated
+            | OwnerGate::BindContinuityEscalated => {}
         }
         let owner_id = catalog.owner_id.clone();
         let owner_version = catalog.owner_version.clone();
@@ -263,10 +268,23 @@ impl ContextOwnerPort for CatalogGateOwner {
 
     fn bind(
         &self,
-        _actor: &AuthContext,
-        _request: &ContextBindingRequest,
+        actor: &AuthContext,
+        request: &ContextBindingRequest,
     ) -> Result<ContextOwnerBinding, ManagementError> {
         self.bind_calls.fetch_add(1, Ordering::SeqCst);
+        if matches!(
+            self.gate,
+            OwnerGate::BindGrantEscalated | OwnerGate::BindContinuityEscalated
+        ) {
+            let mut binding =
+                <FakeContextOwner as ContextOwnerPort>::bind(&FakeContextOwner, actor, request)?;
+            if matches!(self.gate, OwnerGate::BindGrantEscalated) {
+                binding.grants.control = true;
+            } else {
+                binding.continuity.provider_session_continuity = true;
+            }
+            return Ok(binding);
+        }
         Err(ManagementError::capability(
             "context_binding_denied",
             "owner denied this invocation binding",
@@ -287,6 +305,14 @@ fn context_owner_catalog_and_bind_gate_live_effects_before_target_or_execution()
         (OwnerGate::Unavailable, "context_owner_catalog_unavailable"),
         (OwnerGate::Ambiguous, "context_binding_ambiguous"),
         (OwnerGate::BindDenied, "context_binding_denied"),
+        (
+            OwnerGate::BindGrantEscalated,
+            "context_owner_binding_grant_escalation",
+        ),
+        (
+            OwnerGate::BindContinuityEscalated,
+            "context_owner_binding_continuity_escalation",
+        ),
     ];
     for (index, (gate, expected_code)) in expected.into_iter().enumerate() {
         let submissions = Arc::new(SubmissionDouble::new());
@@ -313,7 +339,12 @@ fn context_owner_catalog_and_bind_gate_live_effects_before_target_or_execution()
         assert_eq!(submissions.submissions.load(Ordering::SeqCst), 0);
         assert_eq!(
             bind_calls.load(Ordering::SeqCst),
-            if matches!(gate, OwnerGate::BindDenied) {
+            if matches!(
+                gate,
+                OwnerGate::BindDenied
+                    | OwnerGate::BindGrantEscalated
+                    | OwnerGate::BindContinuityEscalated
+            ) {
                 1
             } else {
                 0
