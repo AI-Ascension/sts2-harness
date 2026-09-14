@@ -58,6 +58,7 @@ mod exact_transition;
 mod execution;
 mod execution_cancellation;
 mod exo;
+mod exo_admitted_transport;
 mod exo_process;
 mod identity;
 pub mod management;
@@ -193,6 +194,7 @@ pub use exo::{
     parse_codex_events, parse_decision, preflight, responses_capable, responses_routing_capable,
     verify_control_identity, verify_exo_bridge_artifact,
 };
+pub use exo_admitted_transport::{ExoAdmissionError, ExoAdmittedTransport};
 pub use exo_process::{ExoProcessConfig, ExoProcessConfigError, ExoProcessTransport};
 pub use identity::{
     ActionId, ArtifactId, Digest, EpisodeId, GatewaySessionId, IdempotencyKey, InstanceId,

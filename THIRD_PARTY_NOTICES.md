@@ -1,5 +1,20 @@
 # Third-Party Notices
 
+## Isolated Exo embedding package
+
+`experiments/exo-agent/bridge/` is an original MIT-licensed adapter with its own Cargo workspace.
+It depends on the MIT-licensed Exo `executor` and `exoharness` packages at source
+`b06869ab789dee3f80ca474b5fa89dbe47ccb859` and Lingua at
+`3ab9bcc9b58688be37216e9ab0b3d8362d185cfb`. These dependencies do not enter the harness crate.
+Its lockfile was seeded from Exo's pinned lockfile and resolved for the original adapter; it
+records all transitive sources and registry checksums, including upstream's compatible prerelease
+keyring graph. No upstream implementation was copied into this repository.
+
+The paired TypeScript module loads through the exact Exo source checkout and its frozen pnpm
+lockfile. Node `22.14.0` and pnpm `10.26.2` are external build/runtime inputs, not vendored assets.
+Source/process verification is not redistribution approval; a release still requires the complete
+transitive license/advisory and packaged-artifact review.
+
 Operation identity creation uses `uuid` exactly `1.23.5` (Apache-2.0 OR MIT;
 https://github.com/uuid-rs/uuid), with UUIDv4 generation backed by `getrandom`.
 The dependency change locks `getrandom` 0.4.3 (MIT OR Apache-2.0), `r-efi` 6.0.0

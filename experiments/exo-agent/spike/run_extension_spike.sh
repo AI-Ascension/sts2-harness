@@ -56,6 +56,7 @@ export XDG_CACHE_HOME="$SPIKE_OUT/cache"
 # Suppress the model-runtime pricing fetch; no network is expected in this spike.
 export EXO_LITELLM_PRICES_PATH="$SPIKE_OUT/no-pricing-table.json"
 export OPENAI_API_KEY="sk-synthetic-key"
+export STS2_EXO_ALLOWED_ENDPOINT="http://127.0.0.1:$PORT"
 EXO=("$EXO_BIN" --root "$ROOT" --secret-backend file --harness typescript)
 
 {
