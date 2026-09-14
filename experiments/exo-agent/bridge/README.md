@@ -12,10 +12,11 @@ by `sts2_harness`. It must not import the Exo CLI, call `/health` or `/request`,
 HTTP executor path, invoke a shell, access game/host/loader/mod/save state, or add model/provider
 credentials to the wire. The executable/package digest is a required independent preflight axis.
 
-The paired extension package is fixed at
-`experiments/exo-agent/extension/package.json` with entry
-`experiments/exo-agent/extension/src/index.ts`. Its approved runtime dependencies are the
-candidate `@exo/harness` and `@exo/model-runtime` packages only; Node built-ins may be used for
-bounded static inputs. Direct OpenAI SDK, Exo CLI, substrate HTTP, shell, game-host, and private
-state dependencies are outside the contract. The package manifest is a placement/dependency
-boundary fixture, not evidence that the candidate package is installed or executable here.
+The paired extension source is fixed at `experiments/exo-agent/extension/package.json` with entry
+`experiments/exo-agent/extension/src/index.ts`. The candidate has one root `exo` package:
+`@exo/harness` and `@exo/model-runtime/turn-loop` resolve only through the candidate root's
+`tsconfig.json` path aliases. Node `22.14.0`, pnpm `10.26.2`, the frozen install, and executable
+typecheck/lint/test commands are recorded in the extension README. Direct OpenAI SDK, Exo CLI,
+substrate HTTP, shell, game-host, and private state dependencies are outside the contract. The
+manifest is a source/loader boundary fixture, not evidence that the candidate package is
+installed or executable here.

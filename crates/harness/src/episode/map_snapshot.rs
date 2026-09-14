@@ -173,7 +173,10 @@ fn required_text(object: &Map<String, Value>, key: &str, maximum: usize) -> Resu
         .get(key)
         .and_then(Value::as_str)
         .ok_or(MapError::InvalidSnapshot)?;
-    if value.is_empty() || value.len() > maximum || value.chars().any(char::is_control) {
+    if value.is_empty()
+        || value.len() > maximum
+        || !value.bytes().all(|byte| (0x20..=0x7e).contains(&byte))
+    {
         return Err(MapError::InvalidSnapshot);
     }
     Ok(())

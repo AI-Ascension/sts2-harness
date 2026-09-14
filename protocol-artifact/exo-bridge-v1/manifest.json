@@ -4,7 +4,7 @@
   "contract_version": "sts2-exo-bridge-v1",
   "capability_schema": "sts2.exo-capability-v1",
   "schema": "schema.json",
-  "schema_sha256": "148130cf00ac1837fd4e47aa9892c660ddbf022935937b101aa14ce1eedcd66f",
+  "schema_sha256": "046336e4c436ea0a073f2f8ee46e7b5f214f479af911d378c0839431edcf271a",
   "license": "MIT",
   "evidence": "source-derived",
   "native_spike": "unverified",
@@ -39,7 +39,19 @@
     "package_manifest": "experiments/exo-agent/extension/package.json",
     "placement": "experiments/exo-agent/extension/src/index.ts loaded through agent.typescript.module_path",
     "selected_path": "defineHarness.runTurn -> runResponsesHarnessTurn -> ResponsesRuntime.complete",
-    "approved_dependencies": ["@exo/harness", "@exo/model-runtime"],
+    "resolution": "candidate root exo package plus tsconfig path aliases; no nested workspace package",
+    "node_version": "22.14.0",
+    "package_manager": "pnpm@10.26.2",
+    "approved_dependencies": [
+      {"specifier": "@exo/harness", "resolution": "candidate-root-tsconfig-path-alias"},
+      {"specifier": "@exo/model-runtime/turn-loop", "resolution": "candidate-root-tsconfig-path-alias"}
+    ],
+    "locked_commands": [
+      "corepack pnpm@10.26.2 install --frozen-lockfile",
+      "corepack pnpm@10.26.2 exec tsgo --noEmit -p tsconfig.json",
+      "corepack pnpm@10.26.2 exec oxlint --deny-warnings experiments/exo-agent/extension/src/index.ts",
+      "corepack pnpm@10.26.2 exec vitest run"
+    ],
     "fallbacks": []
   },
   "bridge": {

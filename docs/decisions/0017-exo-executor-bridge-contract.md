@@ -41,11 +41,13 @@ bridge envelope and host control receipt, not appended to model JSON.
 The owned extension package placement is frozen at
 `experiments/exo-agent/extension/package.json` with entry
 `experiments/exo-agent/extension/src/index.ts`; deployment sets
-`agent.typescript.module_path` to that entry. Its only approved runtime dependencies are the
-candidate `@exo/harness` and `@exo/model-runtime` workspace packages, both resolved from source
-revision `b06869ab789dee3f80ca474b5fa89dbe47ccb859`. The extension may use Node built-ins for
-bounded static inputs. It must not import an OpenAI SDK directly, call Exo HTTP/CLI surfaces,
-invoke a shell, or read game/host/loader/mod/save state.
+`agent.typescript.module_path` to that entry. The pinned revision has one root package named
+`exo`; `@exo/harness` and `@exo/model-runtime/turn-loop` are approved TypeScript `tsconfig.json`
+path aliases into that root, not published packages or `workspace:*` dependencies. The loader
+arrangement, pinned Node `22.14.0`, pnpm `10.26.2`, frozen install, typecheck, lint, and test
+commands are recorded in `experiments/exo-agent/extension/README.md`. The extension may use Node
+built-ins for bounded static inputs. It must not import an OpenAI SDK directly, call Exo HTTP/CLI
+surfaces, invoke a shell, or read game/host/loader/mod/save state.
 
 The owned bridge package placement is the Rust `ExoProcessTransport` implementation at
 `crates/harness/src/exo_process.rs`, with the contract types at
@@ -171,6 +173,13 @@ conversation evidence paths; they do not prove a game effect or terminal decisio
 mapping is therefore admitted only after the outer envelope, identity, capability, and preflight
 checks pass.
 
+The current Rust runtime has not wired this future loader to `ExoTransport`: it still emits the
+legacy request shape through its configured process seam and does not invoke this preflight or
+outer envelope. A later integration must copy the extension into the candidate checkout, run the
+locked commands above, invoke preflight before any effect, and add the correlated envelope handoff.
+Until that work and the real spike land, the mapping is a contract requirement rather than an
+operational claim.
+
 ## Run, turn, replay, and private-state mapping
 
 | Harness record | Exo record | Rule |
@@ -228,15 +237,17 @@ silently downgrades a new record to the legacy provider-revision-only meaning.
 | continuity, compaction, branch, co-op | no declared capability | `unverified` | rejected |
 
 The missing real spike is a concrete blocker, not a design claim. The concrete minimal reproducer
-is `experiments/exo-agent/extension/src/index.ts`: it is an operator-loaded `defineHarness` module
-that receives one synthetic turn and invokes the selected `runResponsesHarnessTurn` path. It is
-intentionally not built by this Rust workspace. Running it with the exact candidate package and
-model binding is the prerequisite for observing one terminal decision and handing it to the Rust
-bridge. The candidate Exo source exposes `runTurn`/`complete` and substrate conversation events,
-but the reviewed range has no bounded machine terminal-decision/EOF/cancellation hook. The harness
-cannot verify this reproducer without the actual candidate package, extension build, bridge
-executable, model endpoint, and native credentials. Therefore this ADR does not call the design
-executable.
+is `experiments/exo-agent/extension/src/index.ts`, loaded from a candidate-root checkout with the
+locked commands in its README. The Rust repository intentionally does not build it. The upstream
+reference implementation is
+[`exoharness/examples/typescript/basic-harness.ts`](https://github.com/exoharness/exo/blob/b06869ab789dee3f80ca474b5fa89dbe47ccb859/exoharness/examples/typescript/basic-harness.ts);
+it proves only the generic `runTurn`/`runResponsesHarnessTurn` loader seam, not an STS2 terminal
+decision or bridge envelope. A synthetic bridge driver is runnable with
+`cargo test --package sts2-harness --test astra_bridge_map --all-features --locked`, while the
+candidate package/model/credential/native spike remains unavailable. The candidate Exo source
+exposes `runTurn`/`complete` and substrate conversation events, but the reviewed range has no
+bounded machine terminal-decision/EOF/cancellation hook. Therefore this ADR does not call the
+design executable.
 
 Live completion requires the exact package/extension/bridge/model/prompt/tool/config/native
 digests, a correlated structured decision and turn identity, event/usage evidence, cancellation

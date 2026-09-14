@@ -16,13 +16,16 @@ A deployment using another revision must replace it with a separately reviewed 4
 64-character lowercase commit hash. Empty, floating, placeholder, and all-zero revisions are
 rejected by `ExoConfig`.
 
-The selected executor path is one dedicated operator-owned TypeScript module loaded through
+The future selected executor path is one dedicated operator-owned TypeScript module loaded through
 `agent.typescript.module_path`: `experiments/exo-agent/extension/src/index.ts` →
-`defineHarness.runTurn` → `runResponsesHarnessTurn` → `ResponsesRuntime.complete`. Its package
-manifest freezes the approved `@exo/harness` and `@exo/model-runtime` dependency boundary. The
-harness does not fall back to Exo `/health`, substrate `/request`, or the human-facing CLI. The
-module and process bridge must use the closed `sts2.exo-bridge-wire-v1` request/turn envelope
-when they are admitted by a trusted preflight.
+`defineHarness.runTurn` → `runResponsesHarnessTurn` → `ResponsesRuntime.complete`. The pinned
+candidate has one root `exo` package; `@exo/harness` and `@exo/model-runtime/turn-loop` are
+`tsconfig.json` path aliases, not installable workspace packages. The candidate-root loader,
+Node/pnpm pins, and locked install/typecheck/lint/test commands are in the extension README. The
+current Rust runtime still uses its legacy request/process seam and does not load this module,
+invoke preflight, or emit the outer envelope; those are future integration requirements. Once
+integrated, the harness must not fall back to Exo `/health`, substrate `/request`, or the
+human-facing CLI.
 
 The harness supplies `ExoProcessTransport` for an operator-owned bridge when a direct process is
 appropriate. It passes configured arguments directly, clears the environment except for an
@@ -87,4 +90,6 @@ into a small decision enum; verbatim output is not a trajectory artifact.
 Live Exo connectivity, the selected revision, licensed STS2 build, and gameplay compatibility are
 `unverified` until a separately recorded runtime handoff supplies exact package, extension, bridge,
 model, prompt, tool, configuration, and native-instance lineage. The source-derived artifact and
-offline preflight do not constitute a real executor spike.
+offline preflight do not constitute a real executor spike. The existing runtime has no preflight
+admission or envelope handoff yet; implementing those gates is required before this extension can
+be called operational.

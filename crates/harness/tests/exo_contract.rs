@@ -16,6 +16,12 @@ use sts2_harness::{
 #[path = "support/exo_contract_map.rs"]
 mod exo_contract_map;
 
+#[path = "support/exo_contract_schema.rs"]
+mod exo_contract_schema;
+
+#[path = "support/exo_contract_wire.rs"]
+mod exo_contract_wire;
+
 const REQUEST: &[u8] =
     include_bytes!("../../../protocol-artifact/exo-bridge-v1/golden/request.json");
 const DECISION: &[u8] =
@@ -46,75 +52,10 @@ fn frozen_artifact_and_source_descriptor_verify() {
 }
 
 #[test]
-fn schema_and_conformance_vectors_are_closed_and_executable() {
-    let schema: serde_json::Value =
-        serde_json::from_slice(SCHEMA).expect("wire schema is valid JSON");
-    let defs = schema
-        .get("$defs")
-        .and_then(serde_json::Value::as_object)
-        .expect("wire schema has definitions");
-    for name in [
-        "request_envelope",
-        "decision_envelope",
-        "decision_request",
-        "decision",
-    ] {
-        assert!(defs.contains_key(name), "missing schema definition {name}");
-    }
-    let conformance: serde_json::Value =
-        serde_json::from_slice(CONFORMANCE).expect("conformance vectors are valid JSON");
-    for (section, required) in [
-        (
-            "request_vectors",
-            [
-                "standard_at_bound",
-                "standard_over_bound",
-                "map_at_bound",
-                "map_over_bound",
-                "wrong_schema",
-                "swapped_package",
-            ]
-            .as_slice(),
-        ),
-        (
-            "decision_vectors",
-            ["plan", "action", "wait", "reobserve", "recovery"].as_slice(),
-        ),
-        (
-            "envelope_vectors",
-            [
-                "wrong_wire_version",
-                "wrong_request_id",
-                "cancelled",
-                "failed",
-                "duplicate_field",
-                "trailing_bytes",
-                "invalid_utf8",
-            ]
-            .as_slice(),
-        ),
-        (
-            "capability_vectors",
-            ["terminal_decision", "graceful_eof", "idempotency"].as_slice(),
-        ),
-    ] {
-        let names = conformance
-            .get(section)
-            .and_then(serde_json::Value::as_array)
-            .expect("conformance section is an array")
-            .iter()
-            .filter_map(|vector| vector.get("name").and_then(serde_json::Value::as_str))
-            .collect::<Vec<_>>();
-        for name in required {
-            assert!(names.contains(name), "{section} omitted {name}");
-        }
-    }
-}
-
-#[test]
 fn preflight_is_pure_and_requires_every_deployment_identity() {
     let mut descriptor =
         ExoCapabilityDescriptor::source_review().expect("source descriptor is valid");
+    enable_minimum_capabilities(&mut descriptor);
     let complete = complete_identity();
     descriptor.identity = complete.clone();
     let trusted = ExoTrustedConfiguration {
@@ -146,6 +87,8 @@ fn preflight_is_pure_and_requires_every_deployment_identity() {
 #[test]
 fn preflight_downgrades_every_minimum_capability_and_rejects_unreviewed_pin() {
     let base = ExoCapabilityDescriptor::source_review().expect("source descriptor is valid");
+    let mut base = base;
+    enable_minimum_capabilities(&mut base);
     let identity = complete_identity();
     let trusted = ExoTrustedConfiguration {
         identity,
@@ -164,6 +107,15 @@ fn preflight_downgrades_every_minimum_capability_and_rejects_unreviewed_pin() {
         ))
     );
 
+    let mut no_turn_identity = base.clone();
+    no_turn_identity.evidence.turn_identity = ExoCapabilityState::Unsupported;
+    assert_eq!(
+        preflight_with_identity(no_turn_identity, &trusted),
+        Err(ExoPreflightError::RequiredCapability(
+            "evidence.turn_identity"
+        ))
+    );
+
     let mut no_eof = base.clone();
     no_eof.lifecycle.graceful_eof = ExoCapabilityState::Unsupported;
     assert_eq!(
@@ -173,13 +125,29 @@ fn preflight_downgrades_every_minimum_capability_and_rejects_unreviewed_pin() {
         ))
     );
 
-    let mut no_idempotency = base;
+    let mut no_idempotency = base.clone();
     no_idempotency.lifecycle.idempotency = ExoCapabilityState::Unsupported;
     assert_eq!(
         preflight_with_identity(no_idempotency, &trusted),
         Err(ExoPreflightError::RequiredCapability(
             "lifecycle.idempotency"
         ))
+    );
+
+    let mut no_cancellation = base.clone();
+    no_cancellation.lifecycle.cancellation = ExoCapabilityState::Unsupported;
+    assert_eq!(
+        preflight_with_identity(no_cancellation, &trusted),
+        Err(ExoPreflightError::RequiredCapability(
+            "lifecycle.cancellation"
+        ))
+    );
+
+    let mut no_recovery = base.clone();
+    no_recovery.lifecycle.recovery = ExoCapabilityState::Unsupported;
+    assert_eq!(
+        preflight_with_identity(no_recovery, &trusted),
+        Err(ExoPreflightError::RequiredCapability("lifecycle.recovery"))
     );
 
     let mut wrong_pin = trusted;
@@ -200,6 +168,7 @@ fn preflight_downgrades_every_minimum_capability_and_rejects_unreviewed_pin() {
     swapped_package.identity.package_digest = Some(String::from("9").repeat(64));
     let mut package_descriptor =
         ExoCapabilityDescriptor::source_review().expect("source descriptor is valid");
+    enable_minimum_capabilities(&mut package_descriptor);
     package_descriptor.identity = complete_identity();
     assert_eq!(
         preflight(&package_descriptor, &swapped_package),
@@ -268,6 +237,35 @@ fn strict_request_and_response_framing_rejects_bad_bytes() {
     assert_eq!(
         parse_bridge_decision_envelope(&response, "other", "turn-1"),
         Err(ExoWireError::IdentityMismatch)
+    );
+    assert_eq!(
+        parse_bridge_decision_envelope(&response, "request-1", "other"),
+        Err(ExoWireError::IdentityMismatch)
+    );
+    let nested_duplicate = br#"{"wire_version":"sts2.exo-bridge-wire-v1","request_id":"request-1","turn_id":"turn-1","request":{"schema":"sts2.exo-decision-v1","schema":"sts2.exo-decision-v1"}}"#;
+    assert_eq!(
+        parse_bridge_request_envelope(nested_duplicate, EXO_MAX_STANDARD_REQUEST_BYTES),
+        Err(ExoWireError::DuplicateField)
+    );
+    let nested_unknown = br#"{"wire_version":"sts2.exo-bridge-wire-v1","request_id":"request-1","turn_id":"turn-1","request":{"schema":"sts2.exo-decision-v1","unknown":true}}"#;
+    assert_eq!(
+        parse_bridge_request_envelope(nested_unknown, EXO_MAX_STANDARD_REQUEST_BYTES),
+        Err(ExoWireError::InvalidShape)
+    );
+    let unicode_id = encode_bridge_request(
+        "request-é",
+        "turn-1",
+        &request,
+        EXO_MAX_STANDARD_REQUEST_BYTES,
+    );
+    assert_eq!(unicode_id, Err(ExoWireError::InvalidIdentity));
+    let mut unicode_request: serde_json::Value =
+        serde_json::from_slice(REQUEST).expect("golden request is JSON");
+    unicode_request["objective"] = json!("survive-é");
+    let unicode_request = serde_json::to_vec(&unicode_request).expect("unicode request serializes");
+    assert_eq!(
+        parse_bridge_request(&unicode_request, EXO_MAX_STANDARD_REQUEST_BYTES),
+        Err(ExoWireError::InvalidRequest)
     );
     assert_eq!(
         parse_bridge_decision_envelope(
@@ -371,24 +369,6 @@ fn every_terminal_decision_and_lifecycle_outcome_is_executable() {
     );
 }
 
-#[test]
-fn control_receipts_bind_run_episode_and_turn_without_model_fields() {
-    let identity = control_identity("run-1");
-    let mut expected = identity.clone();
-    expected.run_id = String::from("run-2");
-    assert_eq!(
-        verify_control_identity(&identity, &expected),
-        Err(ExoWireError::IdentityMismatch)
-    );
-    let receipt = sts2_harness::ExoBridgeTurn {
-        identity,
-        outcome: ExoTerminalOutcome::Decision,
-    };
-    receipt
-        .validate()
-        .expect("control receipt identity is valid");
-}
-
 fn complete_identity() -> ExoIdentity {
     ExoIdentity {
         source_revision: EXO_SOURCE_REVISION.to_owned(),
@@ -424,4 +404,20 @@ fn preflight_with_identity(
     let mut descriptor = descriptor;
     descriptor.identity = trusted.identity.clone();
     preflight(&descriptor, trusted)
+}
+
+fn pad_frame(frame: &[u8], limit: usize) -> Vec<u8> {
+    assert!(frame.len() < limit);
+    let mut padded = frame.to_vec();
+    padded.resize(limit, b' ');
+    padded
+}
+
+fn enable_minimum_capabilities(descriptor: &mut ExoCapabilityDescriptor) {
+    descriptor.evidence.terminal_decision = ExoCapabilityState::Supported;
+    descriptor.evidence.turn_identity = ExoCapabilityState::Supported;
+    descriptor.lifecycle.graceful_eof = ExoCapabilityState::Supported;
+    descriptor.lifecycle.idempotency = ExoCapabilityState::Supported;
+    descriptor.lifecycle.cancellation = ExoCapabilityState::Supported;
+    descriptor.lifecycle.recovery = ExoCapabilityState::Supported;
 }

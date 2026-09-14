@@ -1,13 +1,29 @@
 {
-  "name": "@sts2-harness/exo-agent-extension",
+  "name": "sts2-exo-agent-extension-source",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
+  "engines": {
+    "node": "22.14.0"
+  },
+  "packageManager": "pnpm@10.26.2",
   "x-reviewed-source-revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
-  "dependencies": {
-    "@exo/harness": "workspace:*",
-    "@exo/model-runtime": "workspace:*"
+  "x-upstream-loader": {
+    "repository": "https://github.com/exoharness/exo",
+    "resolution": "candidate-root-tsconfig-path-alias",
+    "source_root": "candidate Exo checkout root",
+    "module_path": "experiments/exo-agent/extension/src/index.ts",
+    "aliases": {
+      "@exo/harness": "./exoharness/typescript/harness/index.ts",
+      "@exo/model-runtime/turn-loop": "./exoharness/typescript/model-runtime/turn-loop.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "pnpm --dir ../../.. exec tsgo --noEmit -p tsconfig.json",
+    "lint": "pnpm --dir ../../.. exec oxlint --deny-warnings experiments/exo-agent/extension/src/index.ts",
+    "test": "pnpm --dir ../../.. exec vitest run",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test"
   }
 }

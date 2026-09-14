@@ -109,8 +109,11 @@ fn require_minimum_capabilities(
             "evidence.terminal_decision",
             descriptor.evidence.terminal_decision,
         ),
+        ("evidence.turn_identity", descriptor.evidence.turn_identity),
         ("lifecycle.graceful_eof", descriptor.lifecycle.graceful_eof),
         ("lifecycle.idempotency", descriptor.lifecycle.idempotency),
+        ("lifecycle.cancellation", descriptor.lifecycle.cancellation),
+        ("lifecycle.recovery", descriptor.lifecycle.recovery),
     ];
     required
         .into_iter()

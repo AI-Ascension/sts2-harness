@@ -23,14 +23,19 @@ The extension owns the narrow STS2 prompt/tool projection and returns one termin
 harness-owned bounded bridge. The extension does not expose raw game objects, host reflection,
 private prompts, credentials, saves, shell commands, hidden RNG state, or unrevealed outcomes.
 
-The owned package placement is frozen at
+The owned source placement is frozen at
 `experiments/exo-agent/extension/package.json` with entry
-`experiments/exo-agent/extension/src/index.ts`. It may depend only on the candidate
-`@exo/harness` and `@exo/model-runtime` workspace packages (plus bounded Node built-ins). The
-repository-owned bridge placement is `crates/harness/src/exo_process.rs` and
+`experiments/exo-agent/extension/src/index.ts`. The candidate has one root `exo` package; its
+`@exo/harness` and `@exo/model-runtime/turn-loop` specifiers resolve through root `tsconfig.json`
+path aliases, not `workspace:*` dependencies. The extension README pins Node `22.14.0`, pnpm
+`10.26.2`, and locked install/typecheck/lint/test commands. The repository-owned bridge placement is `crates/harness/src/exo_process.rs` and
 `crates/harness/src/exo/contract/`; its external executable is operator-owned and identified by
 `bridge_digest`. Direct OpenAI SDK, Exo CLI, substrate HTTP, shell, game-host, and private-state
 dependencies are outside this contract.
+
+The future module and process bridge must use the closed
+`sts2.exo-bridge-wire-v1` envelope after trusted preflight integration. The current Rust runtime
+still uses its legacy request/process seam and does not claim this admission or envelope handoff.
 
 The upstream `/health` endpoint is a service probe and is not an executor contract. The upstream
 `/request` endpoint carries low-level substrate protocol messages and has no STS2 executor-turn
