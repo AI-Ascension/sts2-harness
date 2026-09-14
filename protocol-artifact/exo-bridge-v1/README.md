@@ -105,13 +105,17 @@ they are never model-visible.
 `decision_envelope`. Its `observation` union closes `standard_observation` (with
 `legal_actions` requiring at least one entry) and closes `expert_observation` to the full
 Runtime-v4 expert shape, requiring `protocol_version: "runtime-v4-expert"`, the pinned
-`schema_digest`, at least one unique legal action, and rejecting unknown privileged fields. The
-expert parser additionally enforces semantic ranges such as `hp <= max_hp`, which JSON Schema
-cannot compare. `conformance.json` names executable whole-expert request vectors; the Rust tests
-run each vector through both the JSON Schema validator and the strict parser, covering accepted
-input, wrong digest, empty actions, and semantic `hp > max_hp`, alongside standard/map boundaries,
-every semantic decision, wrong schema/wire, swapped package identity, failed outcomes, and
-capability downgrades.
+`schema_digest`, and rejecting unknown privileged fields. Schema `uniqueItems` rejects identical
+complete expert action objects; the Rust parser additionally requires unique `action_id`
+values, bounds expert text at 512 UTF-8 bytes (schema `maxLength` counts code points), and
+enforces semantic ranges such as `hp <= max_hp`, which JSON Schema cannot compare. These
+schema-valid/parser-rejected semantic cases are deliberate fail-closed behavior, not an
+unverified parity claim. `conformance.json` names executable whole-expert request vectors; the
+Rust tests run each vector through both the JSON Schema validator and the strict parser, covering
+accepted input, wrong digest, empty actions, semantic `hp > max_hp`, duplicate action IDs with
+distinct payloads, and multibyte text over the parser byte bound, alongside standard/map
+boundaries, every semantic decision, wrong schema/wire, swapped package identity, failed outcomes,
+and capability downgrades.
 
 The ordinary request limit is 131072 bytes, the complete map request limit is 393443 bytes, the
 response limit is 8192 bytes, and the supervised turn timeout is 120000 milliseconds. Process
@@ -134,12 +138,14 @@ package/executable digest and is not native compatibility evidence.
 The old `provider_revision` setting remains a source revision input for legacy request validation,
 but new deployment records must not overload it as a package, bridge, model, route, or configuration
 identity. Adding required `runtime`, `provider`, and `endpoint` axes is classified as a `breaking`
-required-configuration correction. Closing the expert schema (digest and non-empty unique actions)
-is classified as a `safety-correction`; the parser's `hp <= max_hp` semantic check remains required.
-Consumers migrate to the separate axes listed above and bind the contract version. Readers that
-cannot understand the new contract or identity fields, or that see tightened expert shapes they
-cannot validate, reject the deployment rather than guessing. Historical records may retain the old
-audit revision as source-derived history.
+required-configuration correction. Closing the expert schema (digest and non-empty actions) and
+retaining parser-only semantic checks for duplicate action IDs, UTF-8 byte bounds, and
+`hp <= max_hp` are classified as a `safety-correction`; schema-valid/parser-rejected cases are
+listed as executable conformance vectors rather than claimed as schema parity. Consumers migrate
+to the separate axes listed above and bind the contract version. Readers that cannot understand
+the new contract or identity fields, or that see tightened expert shapes they cannot validate,
+reject the deployment rather than guessing. Historical records may retain the old audit revision
+as source-derived history.
 
 Old stores migrate by backup → atomic additive identity/contract migration → reviewed-pin, route,
 schema, and minimum-capability preflight before any effect. The original store remains untouched

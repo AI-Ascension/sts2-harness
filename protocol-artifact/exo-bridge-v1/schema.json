@@ -290,7 +290,7 @@
     "expert_observation": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Closed Runtime-v4 expert observation. Faithful to protocol-artifact/runtime-v4-expert/schema.json and crates/harness/src/runtime_v4_expert_parse.rs (`shape_is_closed`/`WireObservation`). The bridge tightens legal_actions to at least one entry; hp<=max_hp remains semantic validation performed by the Rust parser because JSON Schema cannot compare two instance values.",
+      "description": "Closed Runtime-v4 expert observation. Faithful to protocol-artifact/runtime-v4-expert/schema.json and crates/harness/src/runtime_v4_expert_parse.rs (`shape_is_closed`/`WireObservation`). The bridge tightens legal_actions to at least one entry and uses uniqueItems to reject identical complete action objects. The Rust parser additionally requires unique action_id values (distinct payloads can be schema-valid but parser-rejected), bounds expert text at 512 UTF-8 bytes (JSON Schema maxLength counts code points), and enforces hp<=max_hp; these semantic checks are fail-closed and exercised by whole-request conformance vectors.",
       "required": [
         "protocol_version",
         "schema_digest",
@@ -319,6 +319,7 @@
           "type": "array",
           "minItems": 1,
           "maxItems": 256,
+          "description": "Schema uniqueItems rejects identical complete action objects. Semantic uniqueness of action_id values is enforced by the Rust parser; distinct payloads sharing an action_id are intentionally schema-valid/parser-rejected.",
           "uniqueItems": true,
           "items": {"$ref": "#/$defs/expert_legal_action"}
         }

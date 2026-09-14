@@ -74,11 +74,12 @@ map/expert, continuity, cancellation/recovery, event/usage, replay, native packa
 identity, live Exo connectivity, and STS2 gameplay remain `unverified` until the real pinned
 executor spike records them. The required `runtime`, `provider`, and `endpoint` identity axes are
 classified as a `breaking` required-configuration correction; readers that cannot validate them
-fail closed. The tightened expert digest and non-empty legal-action schema is a
-`safety-correction`, with `hp <= max_hp` still enforced semantically by the parser. Migrations
-must stage additive records, run schema and trusted preflight checks, retain a backup until
-handoff, and restore that backup on failure without reinterpreting new records as legacy
-`provider_revision`-only identities.
+fail closed. The tightened expert digest and non-empty legal-action schema, plus parser-only
+checks for duplicate action IDs, UTF-8 byte bounds, and `hp <= max_hp`, are a
+`safety-correction`. Schema-valid/parser-rejected semantic cases are executable conformance
+vectors. Migrations must stage additive records, run schema and trusted preflight checks, retain a
+backup until handoff, and restore that backup on failure without reinterpreting new records as
+legacy `provider_revision`-only identities.
 
 ## Current evidence baseline
 

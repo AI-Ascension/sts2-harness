@@ -39,11 +39,11 @@ capable, and the approved `identity.model_binding` must be Responses-capable. A 
 is therefore rejected by preflight instead of silently reaching `ChatCompletionsRuntime`. There
 is no unconditional forced runtime path.
 
-Upstream also selects `ChatCompletionsRuntime` for any binding whose base URL contains
-`openrouter.ai`, before the model predicate is applied. The admitted contract carries no base-URL
-axis, so an OpenRouter binding is outside this contract: operators must not point the approved
-`model_binding` at an OpenRouter base URL. This limitation is documented rather than modeled because
-the bridge does not own provider transport selection.
+The provider and base-URL axes are modeled explicitly in the admitted identity. Upstream selects
+`ChatCompletionsRuntime` for any binding whose base URL contains `openrouter.ai`, before the model
+predicate is applied; trusted preflight therefore rejects that route before evaluating the model
+predicate. The bridge does not own provider transport, but it records the routing inputs needed to
+prove that the selected route is the reviewed Responses path.
 
 The extension is the owner of the STS2 prompt/tool registration and terminal-decision projection.
 Its source/package/extension/bridge/model/provider/endpoint/prompt/tool/config/native identities are
@@ -183,9 +183,10 @@ request then explicitly shuts down stdin (EOF), bounds stdout, and maps timeout,
 oversize, unavailable, and malformed outcomes to fail-closed errors. No retry or gameplay fallback
 is implied.
 
-### Schema and parser parity
+### Schema shape and parser semantic contract
 
-`schema.json` is kept in parity with the Rust parser for the observation and identity shapes:
+`schema.json` closes the expressible observation and identity shape; the Rust parser remains
+authoritative for semantic checks that JSON Schema cannot express exactly:
 
 - `standard_observation.legal_actions` requires `minItems: 1`, matching
   `legal_action_ids_match`/`valid_action_ids` in
@@ -194,23 +195,29 @@ is implied.
   `protocol_version: "runtime-v4-expert"`, and carries the full Runtime-v4 expert field set copied
   from `protocol-artifact/runtime-v4-expert/schema.json` and
   `crates/harness/src/runtime_v4_expert_parse.rs` (`shape_is_closed`/`WireObservation`). This
-  requires the pinned expert `schema_digest`, at least one unique legal action, and rejects both
+  requires the pinned expert `schema_digest`, at least one legal action, and rejects both
   `{"protocol_version":"x"}` and unknown privileged fields.
+- `expert_observation.legal_actions` uses `uniqueItems` to reject identical complete action objects.
+  The parser additionally requires unique `action_id` values, so distinct payloads sharing an
+  action ID are intentionally schema-valid/parser-rejected.
 - The `hash` definition rejects the all-zero digest (`not: {"pattern": "^0+$"}`), while the expert
   `schema_digest` is pinned to the canonical Runtime-v4 value, matching `valid_digest` and the
   parser's schema check in `crates/harness/src/runtime_v4_expert_parse.rs`.
+- Expert text has `maxLength: 512`, which JSON Schema counts in code points; the parser bounds it
+  at 512 UTF-8 bytes. Multi-byte text over the byte bound is therefore schema-valid/parser-rejected.
 - The parser additionally enforces semantic ranges such as `hp <= max_hp`, which JSON Schema
-  cannot compare. Whole expert request vectors are executed through both validators in the Rust
-  conformance tests.
+  cannot compare. Whole expert request vectors, including these schema-valid/parser-rejected
+  cases, are executed through both validators in the Rust conformance tests.
 
 One intentional, fail-closed identity divergence remains. `identity` marks every digest key as
 required while the Rust `ExoIdentity` stores each digest as `Option<String>`; serde therefore
 accepts an omitted key and treats it the same as an explicit null. The schema is stricter than the
 parser (omission is rejected), and the divergence is documented in the `hash`/`identity` schema
-descriptions. The bridge schema now also requires at least one unique expert `legal_actions` entry,
-while the canonical Runtime-v4 expert schema remains looser and may accept an empty array. The
-bridge schema and parser reject empty actions (and parser additionally requires IDs to match the
-outer catalog); this is an intentional safety correction, not a claim of reverse parity.
+descriptions. The bridge schema now also requires at least one expert `legal_actions` entry, while
+the canonical Runtime-v4 expert schema remains looser and may accept an empty array. The bridge
+schema and parser reject empty actions (and parser additionally requires IDs to match the outer
+catalog); parser-only duplicate-ID, UTF-8 byte-bound, and numeric-range checks are intentional
+safety corrections, not a claim of reverse parity.
 
 ### Source-referenced executor and lifecycle mapping
 
