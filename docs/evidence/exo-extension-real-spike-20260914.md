@@ -9,7 +9,8 @@ production Rust bridge remain `unverified`.
 
 `experiments/exo-agent/extension/src/index.ts` loaded through `agent.typescript.module_path`, the
 single executor path frozen by ADR 0017: `defineHarness.runTurn` → `runResponsesHarnessTurn` →
-`ResponsesRuntime`.
+`ResponsesRuntime.complete`. The binding uses model `o3-pro` so `runtimeFromModelBinding` selects
+the Responses runtime rather than the chat-completions runtime.
 
 ## Identities
 
@@ -19,35 +20,38 @@ single executor path frozen by ADR 0017: `defineHarness.runTurn` → `runRespons
 | `exo_executable_digest` | `eef56bfb39f67f7c616284547ad7a8acf364f897a95ce91065e7174b966c46f8` |
 | `extension_sha256` | `8321d446aba3860d3a80e26c6e176c15487fd011629f87311b6e5f30eac0945b` |
 | `sts2_fixture_sha256` | `119daeaefad4897463afa2e83d238154d317f4781371fa23e34e7bf513900b41` |
-| `sts2_driver_sha256` | `ab07ee8ce2df258ff35cdcd420963bc55fb85441b94c38e02514f8d8204c8abe` |
-| Exo toolchain | Node `v22.15.0`, pnpm `10.26.2` |
-| `model_binding` | `gpt-test` → bounded local synthetic endpoint (no real credential) |
+| `sts2_driver_sha256` | `ff71d2d7246bf4664d6492d91bf1b41fc40657a3568074c1af0850a797c1eb02` |
+| `model_binding` | `o3-pro` → bounded local synthetic endpoint (no real credential) |
+| Toolchain | Node `v22.14.0` (matches the extension pin); the loader runs `node --import tsx` |
 | Sandbox | `local-process`, `--max-tool-round-trips 0` |
 
 ## Result
 
 | Metric | Value |
 |---|---|
-| Model calls to the synthetic endpoint | 1 |
-| Correlated `turn_id` | `01a09de4-c5fe-78b2-955b-975990fbc418` |
-| Persisted terminal decision text | `{"decision":"wait","rationale":"synthetic spike decision"}` |
+| `/responses` calls to the synthetic endpoint | 1 |
+| `/chat/completions` calls | 0 |
+| Correlated `turn_id` | `01a09df3-7a43-7483-b48b-1f2dae7cb6ad` |
+| Persisted assistant decision text | `{"decision":"wait","rationale":"synthetic spike decision"}` |
 | Usage (prompt / completion) | 11 / 5 |
 
 The model request carried the extension's `syntheticInstructions` system message. The driver asserts
-exactly one model call, a correlated turn, and the decision text, and fails otherwise.
+exactly one `/responses` call, zero chat-completions calls, a correlated non-null turn id, and the
+decision text, and fails otherwise.
 
 ## What this establishes
 
-The real pinned Exo TypeScript harness loads the selected extension, executes one turn through
-`ResponsesRuntime`, and returns a correlated turn record with truthful usage and the terminal
-decision text. This satisfies the synthetic-process half of #139 criterion 2 for the selected
-extension.
+The real pinned Exo TypeScript harness loads the selected extension, executes one turn through the
+`ResponsesRuntime` path selected by ADR 0017, and returns a correlated turn record with truthful
+usage and the assistant decision text. This is the synthetic-process half of #139 criterion 2 for the
+selected extension.
 
 ## What this does not establish
 
-Terminal `sts2.exo-decision-v1` admission, the `sts2-exo-bridge-wire-v1` envelope/correlation, a
-native instance/package identity, a real provider, gameplay settlement, the production Rust bridge,
-and non-Linux behavior. Those remain `unverified`.
+The persisted text is the raw assistant message; it has **not** been admitted through
+`parse_decision` / `sts2.exo-decision-v1`. This spike also does not establish the
+`sts2-exo-bridge-wire-v1` envelope/correlation, a native instance/package identity, a real provider,
+gameplay settlement, the production Rust bridge, or non-Linux behavior. Those remain `unverified`.
 
 ## Reproduction
 
