@@ -11,15 +11,14 @@ use super::contract::{
 
 #[path = "store_file.rs"]
 mod file;
+#[path = "store_memory.rs"]
+mod memory;
 #[path = "store_ops.rs"]
 mod ops;
 #[path = "store_sqlite.rs"]
 mod sqlite;
 
-use ops::{
-    accept_command, apply_command, create_run, events, export, get_run, io_store_error,
-    lookup_submission, persist, record_operation_intent, release_command,
-};
+use ops::{io_store_error, persist};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StoreError {
@@ -86,6 +85,25 @@ pub trait WorkflowStore: Send + Sync {
         snapshot: RunSnapshot,
         initial_events: Vec<RunEvent>,
     ) -> Result<(), StoreError>;
+
+    /// Atomically replace the durable submission snapshot after the execution
+    /// boundary settles. Implementations must preserve the request identity,
+    /// definition digest, and exact target admission binding established by
+    /// `create_run`.
+    ///
+    /// Stores that cannot update a reserved submission fail closed. Live
+    /// execution callers must not treat an unsupported update as success.
+    fn update_run_snapshot(
+        &self,
+        _request_id: &str,
+        _request_digest: &str,
+        _snapshot: RunSnapshot,
+    ) -> Result<(), StoreError> {
+        Err(StoreError::new(
+            "snapshot_update_unavailable",
+            "workflow store does not support reserved snapshot updates",
+        ))
+    }
 
     fn get_run(&self, run_id: &str) -> Result<Option<RunSnapshot>, StoreError>;
 
@@ -259,82 +277,5 @@ impl FileWorkflowStore {
         Ok(Self {
             core: StoreCore::file(path, state),
         })
-    }
-}
-
-impl WorkflowStore for MemoryWorkflowStore {
-    fn lookup_submission(
-        &self,
-        request_id: &str,
-        request_digest: &str,
-    ) -> Result<SubmissionLookup, StoreError> {
-        ops::lookup_submission(&self.core, request_id, request_digest)
-    }
-
-    fn create_run(
-        &self,
-        request_id: &str,
-        request_digest: &str,
-        snapshot: RunSnapshot,
-        initial_events: Vec<RunEvent>,
-    ) -> Result<(), StoreError> {
-        ops::create_run(
-            &self.core,
-            request_id,
-            request_digest,
-            snapshot,
-            initial_events,
-        )
-    }
-
-    fn get_run(&self, run_id: &str) -> Result<Option<RunSnapshot>, StoreError> {
-        ops::get_run(&self.core, run_id)
-    }
-
-    fn events(
-        &self,
-        run_id: &str,
-        after_sequence: u64,
-        limit: u64,
-    ) -> Result<EventPage, StoreError> {
-        ops::events(&self.core, run_id, after_sequence, limit)
-    }
-
-    fn accept_command(
-        &self,
-        request: &CommandRequest,
-        request_digest: &str,
-    ) -> Result<CommandAcceptance, StoreError> {
-        ops::accept_command(&self.core, request, request_digest)
-    }
-
-    fn apply_command(
-        &self,
-        request: &CommandRequest,
-        request_digest: &str,
-        application: CommandApplication,
-    ) -> Result<CommandResponse, StoreError> {
-        ops::apply_command(&self.core, request, request_digest, application)
-    }
-
-    fn record_operation_intent(
-        &self,
-        run_id: &str,
-        expected_revision: u64,
-        pending: super::contract::PendingOperation,
-    ) -> Result<(), StoreError> {
-        ops::record_operation_intent(&self.core, run_id, expected_revision, pending)
-    }
-
-    fn release_command(
-        &self,
-        request: &CommandRequest,
-        request_digest: &str,
-    ) -> Result<(), StoreError> {
-        ops::release_command(&self.core, request, request_digest)
-    }
-
-    fn export(&self, run_id: &str, redacted: bool) -> Result<ExportResponse, StoreError> {
-        ops::export(&self.core, run_id, redacted)
     }
 }
