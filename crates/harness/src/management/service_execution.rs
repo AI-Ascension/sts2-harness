@@ -160,6 +160,14 @@ pub trait WorkflowExecutionPort: Send + Sync {
     ) -> Result<CommandApplication, ManagementError> {
         self.apply_command(context)
     }
+
+    /// Attaches the actor-scoped context owner used to bind each context-bound
+    /// node to the invocation the runtime actually executes.
+    ///
+    /// The owner is consumed at dispatch time, not at submission, so a binding
+    /// can never be fabricated for a node the run does not execute. Adapters
+    /// without live context binding inherit a no-op.
+    fn attach_context_owner(&self, _port: Arc<dyn super::super::context_owner::ContextOwnerPort>) {}
 }
 
 #[derive(Clone, Debug)]

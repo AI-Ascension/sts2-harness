@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::auth::AuthContext;
-use super::super::context_owner::{ContextBindingRequest, ContextOwnerPort};
-use super::super::contract::{
-    CleanupState, RunRequest, RunSubmissionResponse, WorkflowRunStatus, digest_value,
-};
+use super::super::context_owner::ContextOwnerPort;
+use super::super::contract::{CleanupState, RunRequest, RunSubmissionResponse, WorkflowRunStatus};
 use super::support::{run_submission_response, verify_admission};
 use super::target_admission::{bind_snapshot_admission, is_live_profile};
 use super::{ManagementError, ManagementService, RunReservation};
@@ -155,15 +153,19 @@ fn persist_reserved_failure(
     }
 }
 
-/// Consults and binds the actor-scoped context owner before the target
-/// authority or execution port can cross an effect boundary. The binding is
-/// intentionally a bounded admission fact; the owner remains authoritative
-/// for context bytes and subsequent control receipts.
+/// Gates live admission on the authoritative context owner.
+///
+/// This is a bounded pre-effect support check: the owner must be available and
+/// its catalog must advertise a usable, metadata-readable binding for every
+/// context-bound node in the definition. The per-invocation binding itself is
+/// established at dispatch (`bind_dispatch_context`), where the runtime-allocated
+/// `node_execution_id` is known, so admission can never accept a binding for an
+/// invocation the run does not execute.
 fn admit_context_owner(
     owner: &dyn ContextOwnerPort,
     actor: &AuthContext,
     request: &RunRequest,
-    definition_digest: &str,
+    _definition_digest: &str,
 ) -> Result<(), ManagementError> {
     let catalog = owner.catalog(actor)?;
     catalog.validate()?;
@@ -175,37 +177,6 @@ fn admit_context_owner(
     })?;
     let parsed = super::super::workflow_ports::parse_definition(definition)?;
     validate_context_nodes(&parsed, &catalog)?;
-    let (graph_id, node_id, node_kind, context_ref) = first_context_node(&parsed)?;
-    let descriptor = catalog.descriptor_for(context_ref, node_kind)?;
-    if !descriptor.grants.metadata_read {
-        return Err(ManagementError::capability(
-            "context_binding_metadata_unavailable",
-            "context owner catalog does not grant metadata access for this node",
-        ));
-    }
-    let binding_request = ContextBindingRequest {
-        workflow_run_id: live_run_id(request, definition_digest)?,
-        definition_digest: definition_digest.to_owned(),
-        instance_id: request.instance_id.clone(),
-        graph_id: graph_id.to_owned(),
-        node_id: node_id.to_owned(),
-        node_execution_id: "live.node.1".to_owned(),
-        node_kind: node_kind.to_owned(),
-        context_ref: context_ref.to_owned(),
-        binding_id: descriptor.binding_id.clone(),
-        binding_version: descriptor.version,
-        binding_digest: descriptor.digest.clone(),
-    };
-    binding_request.validate()?;
-    let binding = owner.bind(actor, &binding_request)?;
-    binding.validate_for_request(&binding_request)?;
-    if binding.owner_id != catalog.owner_id || binding.owner_version != catalog.owner_version {
-        return Err(ManagementError::conflict(
-            "context_owner_binding_foreign",
-            "context owner binding was issued by a different catalog owner",
-        ));
-    }
-    descriptor.validate_binding(&binding)?;
     Ok(())
 }
 
@@ -238,37 +209,6 @@ fn validate_context_nodes(
     Ok(())
 }
 
-fn first_context_node(
-    definition: &WorkflowDefinition,
-) -> Result<(&str, &str, &str, &str), ManagementError> {
-    if !definition
-        .graphs
-        .iter()
-        .any(|graph| graph.id == definition.entry_graph)
-    {
-        return Err(ManagementError::invalid(
-            "context_owner_graph_missing",
-            "workflow entry graph is missing from the admitted definition",
-        ));
-    }
-    definition
-        .graphs
-        .iter()
-        .find_map(|graph| {
-            graph.nodes.iter().find_map(|node| {
-                context_node_parts(node).map(|(node_id, node_kind, context_ref)| {
-                    (graph.id.as_str(), node_id, node_kind, context_ref)
-                })
-            })
-        })
-        .ok_or_else(|| {
-            ManagementError::invalid(
-                "context_binding_unsupported",
-                "live workflow has no supported context-bound node",
-            )
-        })
-}
-
 fn context_node_parts(node: &NodeDefinition) -> Option<(&str, &str, &str)> {
     match node {
         NodeDefinition::Analyze { id, config } => {
@@ -279,13 +219,4 @@ fn context_node_parts(node: &NodeDefinition) -> Option<(&str, &str, &str)> {
         }
         _ => None,
     }
-}
-
-fn live_run_id(request: &RunRequest, definition_digest: &str) -> Result<String, ManagementError> {
-    let digest = digest_value(&serde_json::json!({
-        "request_id": request.request_id,
-        "instance_id": request.instance_id,
-        "definition_digest": definition_digest,
-    }))?;
-    Ok(format!("run.live.{}", &digest[..32]))
 }

@@ -7,6 +7,8 @@
 mod execution;
 #[path = "execution_commands.rs"]
 mod execution_commands;
+#[path = "execution_context.rs"]
+mod execution_context;
 #[path = "execution_records.rs"]
 mod execution_records;
 #[path = "node.rs"]
