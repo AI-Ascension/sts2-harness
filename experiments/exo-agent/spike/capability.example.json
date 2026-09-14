@@ -1,0 +1,23 @@
+{
+  "schema": "sts2.exo-capability-v1",
+  "contract_version": "sts2.exo-bridge-v1",
+  "provider_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "package_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "decision_kinds": ["action", "plan", "wait", "reobserve", "recovery"],
+  "projections": ["standard", "map"],
+  "context_modes": ["fresh", "managed"],
+  "platform": "linux",
+  "limits": {
+    "max_request_bytes": 131072,
+    "max_map_request_bytes": 393443,
+    "max_decision_bytes": 8192,
+    "max_turn_millis": 120000,
+    "max_concurrency": 1
+  },
+  "lifecycle": {
+    "cancellation": true,
+    "restart_recovery": true,
+    "idempotent_replay": true
+  },
+  "evidence": "synthetic"
+}

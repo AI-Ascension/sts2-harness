@@ -122,6 +122,37 @@ Integration completion requires one terminal gameplay episode with truthful Exo 
 replay with zero model calls. A terminal Defeat is a valid integration outcome. This is distinct
 from broader Victory/full-run promotion and from optional compaction/branch/co-op capabilities.
 
+### 9. Field mapping and error/lifecycle table
+
+Object mapping (identifiers stay in their owning namespaces):
+
+| Contract concept | Exo source | Bridge field |
+|---|---|---|
+| Harness run | harness `run_id` | `run_id` |
+| Episode | harness `episode_id` | `episode_id` |
+| Model execution | harness `model_execution_id` | `model_execution_id` |
+| Exo agent | `CreateAgentRequest.slug` | `exo_agent_id` |
+| Conversation/thread | `ConversationRecord.id` / `thread_id` | `exo_conversation_id` |
+| Session | `SendResult.session_id` | `exo_session_id` |
+| Turn | `SendResult.turn_id` | `exo_turn_id` |
+| Terminal decision | last assistant `EventData::Messages.messages[*]` | `decision` |
+| Usage | same event `UsageRecord` | `usage` |
+| Cancellation | `close_session` + direct-child termination | `cancel` |
+
+Error/lifecycle behavior:
+
+| Condition | Outcome | Model/game effect |
+|---|---|---|
+| Missing/malformed/unknown/duplicate capability | `ExoPreflightError` | none |
+| Unsupported schema/contract/platform | `ExoPreflightError::Unsupported*` | none |
+| Wrong revision / swapped package bytes | `ExoPreflightError::{WrongRevision,SwappedPackage}` | none |
+| Unsupported decision kind/projection/context mode | `ExoPreflightError::Unsupported*` | none |
+| Exchange deadline exceeded | `ExoError::Timeout` | fail closed, no fallback action |
+| Transport unavailable | `ExoError::Unavailable` | fail closed |
+| Oversized/malformed decision | `ExoError::{OversizedResponse,MalformedResponse}` | fail closed |
+| Cancellation | `close_session` + direct-child kill | descendants are operator-owned |
+| Restart with unknown outcome | durable reconciliation | no strategic retry |
+
 ## Pin and migration inventory
 
 The nine-commit delta from the old audit pin to the candidate is reviewed per-commit, with the
@@ -191,8 +222,10 @@ by code; they must be reconciled when the production bridge lands.
   Enforcement at the transport/bridge boundary (so a rejected descriptor fails before any
   model/game effect) lands with the production bridge in #141; this PR does not yet call `preflight`
   from a production path.
-- [ ] Add explicit protocol schema/golden files and a consolidated contract-vector test; map the
-  existing decision-variant, ordinary/map bound, and wrong-correlation tests to each vector required
-  by acceptance criterion 4.
+- [x] Add protocol schema/golden files (`experiments/exo-agent/spike/capability.example.json`) and a
+  consolidated contract-vector test (`crates/harness/tests/exo_contract_vectors.rs`) covering every
+  semantic decision variant, ordinary/map request bounds, wrong correlation, and incompatible request
+  schemas; capability schema-version and unavailable-capability vectors are in
+  `crates/harness/src/exo/capability_tests.rs`.
 - [ ] Reconcile the currently unparsed `decision_schema`/`endpoint` keys in
   `experiments/exo-agent/config.example.toml` when the production bridge lands.

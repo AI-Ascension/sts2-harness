@@ -215,3 +215,21 @@ fn rejects_duplicate_keys_and_unbounded_concurrency() {
         Err(ExoPreflightError::LimitExceeded)
     );
 }
+
+#[test]
+fn committed_capability_golden_passes_preflight() {
+    let golden = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../experiments/exo-agent/spike/capability.example.json"
+    ));
+    let golden_expectation = ExoPreflightExpectation {
+        provider_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        package_digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        platform: "linux",
+        required_projection: "map",
+    };
+    let descriptor =
+        preflight(golden.as_bytes(), &golden_expectation).expect("golden descriptor must pass");
+    assert_eq!(descriptor.limits.max_map_request_bytes, 393_443);
+    assert!(descriptor.lifecycle.idempotent_replay);
+}
