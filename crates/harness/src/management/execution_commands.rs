@@ -105,7 +105,7 @@ pub(super) fn apply_command(
                         .resume_after_unknown_effect()
                         .map_err(runtime_error)?;
                 }
-                bind_dispatch_context(owner, run, &context)?;
+                bind_dispatch_context(run, &context)?;
                 let result = {
                     let mut executor = LiveNodeExecutor {
                         state: &mut run.state,
@@ -177,7 +177,6 @@ pub(super) fn apply_command(
 /// for a different invocation therefore fails closed instead of being accepted
 /// while the run may never execute it.
 fn bind_dispatch_context(
-    port: &super::execution::LiveWorkflowExecutionPort,
     run: &mut super::execution::LiveRun,
     context: &CommandContext,
 ) -> Result<(), ManagementError> {
@@ -196,7 +195,7 @@ fn bind_dispatch_context(
         "live.node.{}",
         runtime_snapshot.event_sequence.saturating_add(1)
     );
-    let owner = port.context_owner()?;
+    let owner = &context.context_owner;
     if !owner.is_available() {
         return Err(ManagementError::unavailable(
             "context_owner_unavailable",

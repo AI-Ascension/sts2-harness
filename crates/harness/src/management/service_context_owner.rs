@@ -6,22 +6,10 @@ use super::super::context_owner::{
     ContextBindingCatalog, ContextBindingRequest, ContextOwnerBinding, ContextOwnerPort,
 };
 use super::support::authorize;
-use super::{AuthContext, ManagementError, ManagementService, WorkflowExecutionPort};
+use super::{AuthContext, ManagementError, ManagementService};
 
 impl ManagementService {
-    /// Sets the execution adapter and attaches the current dispatch-time context
-    /// owner, so composition order cannot drop the binding.
-    pub fn with_execution_port(mut self, port: Arc<dyn WorkflowExecutionPort>) -> Self {
-        port.attach_context_owner(Arc::clone(&self.context_owner));
-        self.execution = port;
-        self
-    }
-
     pub fn with_context_owner_port(mut self, port: Arc<dyn ContextOwnerPort>) -> Self {
-        // Live execution binds each context-bound node at dispatch, so the same
-        // owner must also reach the execution adapter. The default trait method
-        // is a no-op for adapters that do not bind live context.
-        self.execution.attach_context_owner(Arc::clone(&port));
         self.context_owner = port;
         self
     }

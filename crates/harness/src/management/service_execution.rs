@@ -160,14 +160,6 @@ pub trait WorkflowExecutionPort: Send + Sync {
     ) -> Result<CommandApplication, ManagementError> {
         self.apply_command(context)
     }
-
-    /// Attaches the actor-scoped context owner used to bind each context-bound
-    /// node to the invocation the runtime actually executes.
-    ///
-    /// The owner is consumed at dispatch time, not at submission, so a binding
-    /// can never be fabricated for a node the run does not execute. Adapters
-    /// without live context binding inherit a no-op.
-    fn attach_context_owner(&self, _port: Arc<dyn super::super::context_owner::ContextOwnerPort>) {}
 }
 
 #[derive(Clone, Debug)]
@@ -176,11 +168,25 @@ pub struct RunAdmission {
     pub initial_events: Vec<RunEvent>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct CommandContext {
     pub request: CommandRequest,
     pub snapshot: RunSnapshot,
     pub actor: AuthContext,
+    /// Actor-scoped context owner used at dispatch time. It travels with the
+    /// command so a shared execution adapter never stores or replaces it.
+    pub context_owner: Arc<dyn super::super::context_owner::ContextOwnerPort>,
+}
+
+impl std::fmt::Debug for CommandContext {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CommandContext")
+            .field("request", &self.request)
+            .field("snapshot", &self.snapshot)
+            .field("actor", &self.actor)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Clone, Debug)]
