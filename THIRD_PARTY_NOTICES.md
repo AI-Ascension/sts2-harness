@@ -1,5 +1,14 @@
 # Third-Party Notices
 
+Effective-limit CI pin validation uses `yaml-rust2` exactly `0.13.0` with default features
+disabled. This adds locked `arraydeque` 0.5.1 and `hashlink` 0.12.2; all three offer MIT or
+Apache-2.0 licensing. Optional encoding support is not enabled. Package metadata and the
+registry integrity checksum were checked on 2026-09-14; the parser declares Rust 1.85.0 and
+is built with this repository's pinned toolchain. No source is vendored. The dependency reads
+bounded, embedded workflow configuration, not provider/game data, and replaces textual
+checkout matching with YAML structure validation. A current advisory audit remains a separate
+release gate; the earlier lockfile audit below does not cover this addition.
+
 ## Isolated Exo embedding package
 
 `experiments/exo-agent/bridge/` is an original MIT-licensed adapter with its own Cargo workspace.
@@ -44,6 +53,12 @@ The target-local repository policy tool uses the Cargo dependency `toml`; the de
 Their upstream licenses and transitive notices are resolved from the pinned Cargo package metadata
 and must be rechecked by release tooling before distribution. Dependencies are not vendored into
 this repository.
+
+The CI-only standalone `tools/consumer-conformance` tool uses the same exact `serde_json` 1.0.151
+and `sha2` 0.11.0 versions in its separate lockfile. It links an unchanged, MIT-licensed Console
+fixture generator from the pinned external checkout against candidate harness library artifacts;
+that generator source is not copied or distributed here. This is synthetic conformance tooling,
+not a product dependency or runtime integration.
 
 The Runtime-v1 MCP process adapter uses MIT-licensed Tokio exactly1.53.1 with default features
 disabled and only rt/process/io-util/time/macros enabled. Its locked process/I/O dependencies are

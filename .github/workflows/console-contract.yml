@@ -1,0 +1,76 @@
+name: Effective limit consumer contract
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: console-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  console:
+    name: Pinned effective limit consumers against candidate harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out candidate harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: harness
+          persist-credentials: false
+      - name: Check out reviewed Console consumer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AI-Ascension/ascension-context-console
+          ref: df36452adcfa1b1c3a7f968be243cd25a02433c3
+          path: console
+          persist-credentials: false
+      - name: Check out reviewed Studio consumer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AI-Ascension/ascension-workflow-studio
+          ref: 31c5e5f407ab17fb0363374dd1d926c25e6350ea
+          path: studio
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        working-directory: harness
+        run: rustup show active-toolchain
+      - name: Validate candidate producer and exact consumer inputs
+        working-directory: harness
+        run: |
+          cargo run --locked --package repo-policy -- --strict
+          cargo test --locked --package sts2-harness --test effective_limits_consumer_pins --test effective_limits_workflow_pins
+          cargo fmt --manifest-path tools/consumer-conformance/Cargo.toml -- --check
+          cargo clippy --locked --manifest-path tools/consumer-conformance/Cargo.toml --all-targets -- -D warnings
+          cargo test --locked --manifest-path tools/consumer-conformance/Cargo.toml
+          cargo run --locked --manifest-path tools/consumer-conformance/Cargo.toml -- \
+            "$GITHUB_WORKSPACE/harness" "$GITHUB_WORKSPACE/console" "$GITHUB_WORKSPACE/studio"
+      - name: Exercise unchanged Console admission against equal candidate records
+        working-directory: console
+        run: |
+          cargo test --locked --package context-service --test producer_conformance --test capability_routes
+      - name: Install pinned Studio Node runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.16.0'
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - name: Exercise unchanged Studio admission against equal candidate records
+        working-directory: studio
+        run: |
+          npm ci
+          npm test -- packages/contracts/src/effective-limits.test.ts
+      - name: Upload synthetic candidate provenance
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: effective-limit-consumer-${{ github.sha }}
+          path: harness/target/consumer-conformance/evidence.json
+          if-no-files-found: error
+          retention-days: 14

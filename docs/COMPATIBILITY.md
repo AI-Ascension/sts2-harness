@@ -1,5 +1,27 @@
 # Compatibility Policy and Matrix
 
+## Effective-limit consumer alignment
+
+The matrix records Console `df36452adcfa1b1c3a7f968be243cd25a02433c3` and Studio
+`31c5e5f407ab17fb0363374dd1d926c25e6350ea` as v3 aligned consumers for context-memory and
+provider-session. Console copies all four unchanged producer schemas; Studio uses a versioned
+adapter. Each revision is enforced by a real harness CI checkout and candidate conformance lane.
+The existing Studio workflow-owner browser regression is repinned deliberately and retained.
+
+This completes a coordinated consumer schema migration, without changing producer schema bytes,
+resource ceilings or public matrix shape. Console retains explicit v1 rollback; pending consumers
+remain unavailable. The new requirement that aligned entries have a matching repository-owned
+CI pin is a fail-closed correction to the unreleased pin validator. See the
+[candidate conformance contract](../tools/consumer-conformance/README.md).
+The checkout validator parses the existing static YAML lanes with exact `yaml-rust2` 0.13.0
+(default features disabled); conditional/ambiguous workflow shapes cannot establish alignment.
+This adds a package dependency and root lockfile entries, without changing workflow bytes or
+public schemas. Static checkout validation does not replace terminal hosted conformance results.
+
+Evidence remains synthetic for effective-limit publication/admission. Context owner transport,
+native/provider integration and the broader harness #95 / Studio #119 feature gates remain
+unverified; this matrix does not imply their completion or activate saved policies.
+
 ## Historical recovery consumer candidate
 
 The additive `watchdog-recovery-v1` consumer accepts the schema-permitted standard/URL-safe

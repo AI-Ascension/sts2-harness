@@ -2,6 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
+#[path = "workflow_checkout.rs"]
+mod workflow_checkout;
+use workflow_checkout::checkout_pin_matches;
+
 /// Schema of the committed producer/consumer pin and digest conformance matrix.
 pub const EFFECTIVE_LIMIT_PIN_MATRIX_SCHEMA: &str =
     "ascension.harness.effective-limit-pin-matrix.v1";
@@ -13,6 +17,7 @@ pub const SESSION_POLICY_SCHEMA_PATH: &str = "contracts/provider-session/policy.
 pub const SESSION_CAPABILITIES_SCHEMA_PATH: &str =
     "contracts/provider-session/capabilities.schema.json";
 pub const STUDIO_CONTRACT_WORKFLOW_PATH: &str = ".github/workflows/studio-contract.yml";
+pub const CONSOLE_CONTRACT_WORKFLOW_PATH: &str = ".github/workflows/console-contract.yml";
 
 const MATRIX_JSON: &str = include_str!("../../../../contracts/effective-limits-pins.json");
 const MEMORY_POLICY_SCHEMA_BYTES: &[u8] =
@@ -25,6 +30,8 @@ const SESSION_CAPABILITIES_SCHEMA_BYTES: &[u8] =
     include_bytes!("../../../../contracts/provider-session/capabilities.schema.json");
 const STUDIO_CONTRACT_WORKFLOW: &str =
     include_str!("../../../../.github/workflows/studio-contract.yml");
+const CONSOLE_CONTRACT_WORKFLOW: &str =
+    include_str!("../../../../.github/workflows/console-contract.yml");
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -141,13 +148,17 @@ pub(super) fn producer_artifact_bytes(path: &str) -> Option<&'static [u8]> {
     }
 }
 
-pub(super) fn workflow_pin_matches(workflow: &str, revision: &str) -> bool {
-    match workflow {
-        STUDIO_CONTRACT_WORKFLOW_PATH => {
-            STUDIO_CONTRACT_WORKFLOW.contains(&format!("ref: {revision}"))
+pub(super) fn workflow_pin_matches(repository: &str, workflow: &str, revision: &str) -> bool {
+    let source = match (repository, workflow) {
+        ("AI-Ascension/ascension-workflow-studio", STUDIO_CONTRACT_WORKFLOW_PATH) => {
+            STUDIO_CONTRACT_WORKFLOW
         }
-        _ => false,
-    }
+        ("AI-Ascension/ascension-context-console", CONSOLE_CONTRACT_WORKFLOW_PATH) => {
+            CONSOLE_CONTRACT_WORKFLOW
+        }
+        _ => return false,
+    };
+    checkout_pin_matches(source, repository, revision)
 }
 
 pub(super) fn valid_date(value: &str) -> bool {
