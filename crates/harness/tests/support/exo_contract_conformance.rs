@@ -36,6 +36,10 @@ fn execute_request_vectors(vectors: &[Value]) {
             .as_str()
             .expect("request vector expected");
         let fixture = vector["fixture"].as_str().expect("request vector fixture");
+        if fixture == "generated:exo_contract_expert" {
+            execute_expert_request_vector(vector);
+            continue;
+        }
         let source = fixture_bytes(fixture);
         if let Some(padding) = vector["padding"].as_str() {
             let bound = vector["bound"]
@@ -114,6 +118,23 @@ fn execute_request_vectors(vectors: &[Value]) {
             other => unreachable!("unhandled request result {other}"),
         }
     }
+}
+
+fn execute_expert_request_vector(vector: &Value) {
+    let name = vector["name"].as_str().expect("expert request vector name");
+    let mutation = vector["mutation"]
+        .as_str()
+        .expect("expert request vector mutation");
+    let parser_expected = vector["parser_expected"]
+        .as_str()
+        .expect("expert request parser expectation");
+    let request = expert_request_variant(mutation);
+    let bytes = serde_json::to_vec(&request).expect("expert request serializes");
+    assert_eq!(
+        parse_bridge_request(&bytes, EXO_MAX_STANDARD_REQUEST_BYTES).is_ok(),
+        parser_expected == "accepted",
+        "{name} parser expectation was not met"
+    );
 }
 
 fn fixture_bytes(fixture: &str) -> Vec<u8> {

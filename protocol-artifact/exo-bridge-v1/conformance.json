@@ -15,7 +15,11 @@
     {"name": "envelope_overhead_standard", "fixture": "golden/request.json", "bound": 131072, "expected": "too_large"},
     {"name": "envelope_overhead_map", "fixture": "generated:exo_contract_map", "bound": 393443, "expected": "too_large"},
     {"name": "wrong_schema", "fixture": "golden/request.json", "expected": "invalid_request"},
-    {"name": "swapped_package", "fixture": "golden/capability-source.json", "expected": "identity_mismatch"}
+    {"name": "swapped_package", "fixture": "golden/capability-source.json", "expected": "identity_mismatch"},
+    {"name": "expert_request_valid", "fixture": "generated:exo_contract_expert", "mutation": "none", "schema_expected": "accepted", "parser_expected": "accepted", "expected": "accepted"},
+    {"name": "expert_request_schema_digest_zero", "fixture": "generated:exo_contract_expert", "mutation": "schema_digest_zero", "schema_expected": "rejected", "parser_expected": "rejected", "expected": "invalid_request"},
+    {"name": "expert_request_empty_legal_actions", "fixture": "generated:exo_contract_expert", "mutation": "empty_legal_actions", "schema_expected": "rejected", "parser_expected": "rejected", "expected": "invalid_request"},
+    {"name": "expert_request_player_hp_above_max", "fixture": "generated:exo_contract_expert", "mutation": "player_hp_above_max", "schema_expected": "accepted", "parser_expected": "rejected", "expected": "semantic_invalid"}
   ],
   "decision_vectors": [
     {"name": "plan", "decision": "plan", "expected": "accepted"},
@@ -51,7 +55,8 @@
     "golden/capability-source.json",
     "golden/request.json",
     "golden/decision-action.json",
-    "fixtures/invalid-unknown.json"
+    "fixtures/invalid-unknown.json",
+    "generated:exo_contract_expert"
   ],
   "evidence": "source-derived; native executor and model integration unverified"
 }

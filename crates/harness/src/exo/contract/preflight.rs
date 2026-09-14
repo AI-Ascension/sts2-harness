@@ -9,6 +9,10 @@ use super::descriptor::{
 use super::identity::{ExoIdentity, ExoIdentityError};
 use super::{EXO_CONTRACT_VERSION, EXO_SOURCE_REVISION};
 
+#[path = "preflight_checks.rs"]
+mod checks;
+use checks::{compare_limits, compare_optional_identity, require_minimum_capabilities};
+
 /// Operator-trusted values required to admit one executable profile.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -45,6 +49,27 @@ pub fn responses_capable(model_binding: &str) -> bool {
         || lower.starts_with("gpt-5-pro")
         || gpt5_minor.is_some_and(|minor| minor >= 3)
         || (lower.starts_with("gpt-5") && lower.contains("-codex"))
+}
+
+/// Reports whether the pinned upstream provider route can reach the Responses API.
+///
+/// The upstream binding carries a model and optional `baseUrl`; when that URL contains
+/// `openrouter.ai`, `runtimeFromModelBinding` selects `ChatCompletionsRuntime` before it evaluates
+/// the model predicate. The harness also requires the explicit provider and a reviewed OpenAI
+/// endpoint so an unknown or provider-compatible route cannot be mistaken for Responses support.
+#[must_use]
+pub fn responses_routing_capable(provider: &str, endpoint: &str) -> bool {
+    let provider = provider.to_ascii_lowercase();
+    let endpoint = endpoint.to_ascii_lowercase();
+    if provider != "openai" || endpoint.contains("openrouter.ai") {
+        return false;
+    }
+    let Some(rest) = endpoint.strip_prefix("https://") else {
+        return false;
+    };
+    rest.split('/')
+        .next()
+        .is_some_and(|host| host == "api.openai.com")
 }
 
 impl ExoTrustedConfiguration {
@@ -89,6 +114,22 @@ pub fn preflight(
     if trusted.runtime != ExoRuntime::Responses {
         return Err(ExoPreflightError::RuntimeUnsupported);
     }
+    let provider = trusted
+        .identity
+        .provider
+        .as_deref()
+        .ok_or(ExoPreflightError::MissingIdentity)?;
+    let endpoint = trusted
+        .identity
+        .endpoint
+        .as_deref()
+        .ok_or(ExoPreflightError::MissingIdentity)?;
+    if !responses_routing_capable(provider, endpoint) {
+        return Err(ExoPreflightError::RoutingNotResponsesCapable);
+    }
+    // Check the route before the model predicate: upstream resolves OpenRouter (and other
+    // non-Responses routes) to ChatCompletions regardless of whether the model name itself would
+    // otherwise satisfy `modelRequiresResponsesApi`.
     let model_binding = trusted
         .identity
         .model_binding
@@ -141,129 +182,6 @@ pub fn preflight(
     })
 }
 
-fn require_minimum_capabilities(
-    descriptor: &ExoCapabilityDescriptor,
-) -> Result<(), ExoPreflightError> {
-    let required = [
-        (
-            "evidence.terminal_decision",
-            descriptor.evidence.terminal_decision,
-        ),
-        ("evidence.turn_identity", descriptor.evidence.turn_identity),
-        ("lifecycle.graceful_eof", descriptor.lifecycle.graceful_eof),
-        ("lifecycle.idempotency", descriptor.lifecycle.idempotency),
-        ("lifecycle.cancellation", descriptor.lifecycle.cancellation),
-        ("lifecycle.recovery", descriptor.lifecycle.recovery),
-    ];
-    required
-        .into_iter()
-        .find(|(_, state)| *state != ExoCapabilityState::Supported)
-        .map_or(Ok(()), |(name, _)| {
-            Err(ExoPreflightError::RequiredCapability(name))
-        })
-}
-
-fn compare_limits(advertised: &ExoLimits, trusted: &ExoLimits) -> Result<(), ExoPreflightError> {
-    let limits = [
-        (
-            "max_standard_request_bytes",
-            trusted.max_standard_request_bytes,
-            advertised.max_standard_request_bytes,
-        ),
-        (
-            "max_map_request_bytes",
-            trusted.max_map_request_bytes,
-            advertised.max_map_request_bytes,
-        ),
-        (
-            "max_response_bytes",
-            trusted.max_response_bytes,
-            advertised.max_response_bytes,
-        ),
-        (
-            "max_event_bytes",
-            trusted.max_event_bytes,
-            advertised.max_event_bytes,
-        ),
-        ("max_turns", trusted.max_turns, advertised.max_turns),
-        (
-            "max_turn_time_millis",
-            trusted.max_turn_time_millis,
-            advertised.max_turn_time_millis,
-        ),
-        (
-            "max_concurrency",
-            u32::from(trusted.max_concurrency),
-            u32::from(advertised.max_concurrency),
-        ),
-        (
-            "max_tool_round_trips",
-            u32::from(trusted.max_tool_round_trips),
-            u32::from(advertised.max_tool_round_trips),
-        ),
-    ];
-    limits
-        .into_iter()
-        .find(|(_, requested, maximum)| requested > maximum)
-        .map_or(Ok(()), |(name, _, _)| {
-            Err(ExoPreflightError::LimitExceeded(name))
-        })
-}
-
-fn compare_optional_identity(
-    descriptor: &ExoCapabilityDescriptor,
-    trusted: &ExoTrustedConfiguration,
-) -> Result<(), ExoPreflightError> {
-    let pairs = [
-        (
-            "package_digest",
-            descriptor.identity.package_digest.as_ref(),
-            trusted.identity.package_digest.as_ref(),
-        ),
-        (
-            "extension_digest",
-            descriptor.identity.extension_digest.as_ref(),
-            trusted.identity.extension_digest.as_ref(),
-        ),
-        (
-            "bridge_digest",
-            descriptor.identity.bridge_digest.as_ref(),
-            trusted.identity.bridge_digest.as_ref(),
-        ),
-        (
-            "model_binding",
-            descriptor.identity.model_binding.as_ref(),
-            trusted.identity.model_binding.as_ref(),
-        ),
-        (
-            "prompt_digest",
-            descriptor.identity.prompt_digest.as_ref(),
-            trusted.identity.prompt_digest.as_ref(),
-        ),
-        (
-            "tool_digest",
-            descriptor.identity.tool_digest.as_ref(),
-            trusted.identity.tool_digest.as_ref(),
-        ),
-        (
-            "config_digest",
-            descriptor.identity.config_digest.as_ref(),
-            trusted.identity.config_digest.as_ref(),
-        ),
-        (
-            "native_instance_id",
-            descriptor.identity.native_instance_id.as_ref(),
-            trusted.identity.native_instance_id.as_ref(),
-        ),
-    ];
-    for (name, advertised, expected) in pairs {
-        if advertised != expected {
-            return Err(ExoPreflightError::IdentityMismatch(name));
-        }
-    }
-    Ok(())
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ExoPreflightError {
     InvalidDescriptor(ExoDescriptorError),
@@ -276,6 +194,7 @@ pub enum ExoPreflightError {
     RequiredCapability(&'static str),
     RuntimeUnsupported,
     ModelBindingNotResponsesCapable,
+    RoutingNotResponsesCapable,
     PlatformUnsupported,
     ProfileUnsupported,
     ContextUnsupported,
@@ -298,6 +217,9 @@ impl std::fmt::Display for ExoPreflightError {
             Self::RuntimeUnsupported => "trusted Exo runtime is not the reviewed Responses runtime",
             Self::ModelBindingNotResponsesCapable => {
                 "trusted Exo model binding cannot select the Responses runtime"
+            }
+            Self::RoutingNotResponsesCapable => {
+                "trusted Exo provider endpoint cannot select the Responses runtime"
             }
             Self::PlatformUnsupported => "requested Exo platform is unsupported",
             Self::ProfileUnsupported => "requested Exo profile is not supported",

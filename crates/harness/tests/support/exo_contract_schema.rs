@@ -34,6 +34,10 @@ fn schema_and_conformance_vectors_are_closed_and_executable() {
                 "envelope_overhead_map",
                 "wrong_schema",
                 "swapped_package",
+                "expert_request_valid",
+                "expert_request_schema_digest_zero",
+                "expert_request_empty_legal_actions",
+                "expert_request_player_hp_above_max",
             ]
             .as_slice(),
         ),

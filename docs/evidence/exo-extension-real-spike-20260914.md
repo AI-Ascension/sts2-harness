@@ -5,6 +5,9 @@ Issue: AI-Ascension/sts2-harness#139. Tracker: #138. Stacks on the contract PR (
 Status: synthetic-process spike. A real provider, native instance, gameplay settlement, and the
 production Rust bridge remain `unverified`.
 
+The recorded loader run exercised Node `22.14.0` only. Compatibility with the candidate checkout's
+Node `22.15.0` pin is unverified and requires a separate rerun.
+
 ## Selected path under test
 
 `experiments/exo-agent/extension/src/index.ts` loaded through `agent.typescript.module_path`, the

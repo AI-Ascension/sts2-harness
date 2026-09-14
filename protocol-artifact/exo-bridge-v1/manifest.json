@@ -4,7 +4,7 @@
   "contract_version": "sts2-exo-bridge-v1",
   "capability_schema": "sts2.exo-capability-v1",
   "schema": "schema.json",
-  "schema_sha256": "4beb8d8760ce5442e3ef01748b08913d652b34c254ca6ca362f8322be517e26d",
+  "schema_sha256": "a61e5c6e0895cc73aadbf18422a449405b8dfd7b0106fcaaf71b9a9505641442",
   "license": "MIT",
   "evidence": "source-derived",
   "native_spike": "unverified",
@@ -30,6 +30,8 @@
     "extension_digest": {"value": null, "evidence": "unverified"},
     "bridge_digest": {"value": null, "evidence": "unverified"},
     "model_binding": {"value": null, "evidence": "unverified"},
+    "provider": {"value": null, "evidence": "unverified"},
+    "endpoint": {"value": null, "evidence": "unverified"},
     "prompt_digest": {"value": null, "evidence": "unverified"},
     "tool_digest": {"value": null, "evidence": "unverified"},
     "config_digest": {"value": null, "evidence": "unverified"},
@@ -40,15 +42,18 @@
     "state": "model-dependent",
     "requirement": "the approved model_binding MUST be Responses-capable",
     "model_binding_capability": "crates/harness/src/exo/contract/preflight.rs::responses_capable",
+    "routing_capability": "crates/harness/src/exo/contract/preflight.rs::responses_routing_capable",
+    "routing_requirement": "provider=openai and endpoint host=api.openai.com over HTTPS; openrouter.ai and unknown routes are rejected",
     "enforced_by": "crates/harness/src/exo/contract/preflight.rs::preflight",
     "evidence": "source-derived"
   },
   "extension": {
     "package_manifest": "experiments/exo-agent/extension/package.json",
     "placement": "experiments/exo-agent/extension/src/index.ts loaded through agent.typescript.module_path",
-    "selected_path": "defineHarness.runTurn -> runResponsesHarnessTurn -> responses_capable(model_binding) -> ResponsesRuntime.complete (Anthropic/Chat Completions bindings are rejected by preflight)",
+    "selected_path": "defineHarness.runTurn -> runResponsesHarnessTurn -> responses_routing_capable(provider, endpoint) -> responses_capable(model_binding) -> ResponsesRuntime.complete (OpenRouter, unknown, Anthropic, and Chat Completions routes are rejected by preflight)",
     "resolution": "candidate root exo package plus tsconfig path aliases; no nested workspace package",
     "node_version": "22.14.0",
+    "node_version_evidence": "unverified: the recorded synthetic loader spike exercised Node 22.14.0 only; candidate mise.toml pins 22.15.0",
     "package_manager": "pnpm@10.26.2",
     "approved_dependencies": [
       {"specifier": "@exo/harness", "resolution": "candidate-root-tsconfig-path-alias"},
@@ -73,6 +78,8 @@
   },
   "pin_locations": [
     "crates/harness/src/exo/contract/mod.rs",
+    "crates/harness/src/exo/contract/identity.rs",
+    "crates/harness/src/exo/contract/preflight.rs",
     "crates/harness/src/bin/runtime_support/runtime_v3_settings.rs",
     "crates/harness/src/bin/runtime_support/runtime_v3_durable.rs",
     "crates/harness/src/bin/runtime_support/runtime_v3_durable_support.rs",
@@ -98,7 +105,20 @@
     "old_revision": "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
     "new_revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
     "old_readers": "fail closed on contract or source mismatch",
-    "fingerprints": "record each deployment axis independently; do not overload provider_revision"
+    "fingerprints": "record each deployment axis independently; do not overload provider_revision",
+    "compatibility_classification": {
+      "runtime_and_routing_fields": "breaking",
+      "expert_schema_closure_and_constraints": "safety-correction",
+      "old_readers": "fail closed when runtime/provider/endpoint axes or tightened expert shapes are absent or unknown",
+      "new_readers": "read the contract version, validate all identity axes and route before any provider/gateway/game effect"
+    },
+    "readers": [
+      "crates/harness/src/exo/contract/preflight.rs::ExoTrustedConfiguration",
+      "crates/harness/src/exo/contract/descriptor.rs::ExoCapabilityDescriptor",
+      "protocol-artifact/exo-bridge-v1/schema.json consumers",
+      "experiments/exo-agent/config.example.toml"
+    ],
+    "rollback": "backup the legacy configuration/descriptor, stage an additive migration, run schema and trusted preflight checks, and delete only failed staging; restore the backup without reinterpreting new records as provider_revision-only"
   },
   "consumers": [
     "sts2-harness ExoTransport",
