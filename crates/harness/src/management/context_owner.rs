@@ -228,6 +228,14 @@ pub struct ContextBindingCatalog {
 }
 
 impl ContextBindingCatalog {
+    /// Seals the existing v1 catalog encoding without changing its descriptors.
+    /// Call `validate` separately; a self-consistent digest is not owner authority.
+    pub fn seal(mut self) -> Result<Self, ManagementError> {
+        self.catalog_digest =
+            catalog_digest(&self.owner_id, &self.owner_version, &self.descriptors)?;
+        Ok(self)
+    }
+
     pub fn validate(&self) -> Result<(), ManagementError> {
         if self.schema_version != CONTEXT_OWNER_CATALOG_SCHEMA_VERSION
             || self.descriptors.len() > MAX_CONTEXT_BINDINGS

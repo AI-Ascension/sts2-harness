@@ -7,6 +7,10 @@ inference, retention, or provider admission.
 
 ## Machine-readable classification record
 
+The management context-control catalog is a separate existing surface, not covered by the
+memory/session records below. Its current descriptor validation and fixture inventory are
+documented in [context-control catalog limits](context-control-catalog-limits.md).
+
 Each surface publishes an `ascension.harness.effective-limits.v1` record
 ([schema](../contracts/effective-limits.schema.json)) beside its capability descriptor. The record
 classifies every advertised value and states the executable ceiling for the selected owner/profile:

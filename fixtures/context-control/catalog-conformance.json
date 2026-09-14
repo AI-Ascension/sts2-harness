@@ -1,0 +1,336 @@
+{
+  "catalogs": [
+    {
+      "binding_usable": true,
+      "catalog": {
+        "catalog_digest": "9de15cc68cd87c5b7585349ff838be2620ad0edb014a254c5d631e46cfddb3f5",
+        "descriptors": [
+          {
+            "binding_id": "fixture.context.binding.v1",
+            "context_ref": "context.fixture.v1",
+            "continuity": {
+              "provider_session_continuity": false,
+              "receipt_recovery": false,
+              "survives_controller_restart": false
+            },
+            "digest": "886ec3fec08559310172306974935605537b0332c3bb04b4b4da00adbbbfc661",
+            "effective_limits": {
+              "max_context_bytes": 131072,
+              "max_control_events": 4096,
+              "max_items": 64,
+              "max_notes": 16,
+              "max_objective_bytes": 512
+            },
+            "grants": {
+              "content_read": false,
+              "control": false,
+              "edit": false,
+              "metadata_read": true
+            },
+            "node_kinds": [
+              "analyze",
+              "decide"
+            ],
+            "operations": [],
+            "schema_version": "ascension.context-control.owner-binding.v1",
+            "sources": [],
+            "state": "available",
+            "version": 1
+          }
+        ],
+        "owner_id": "fixture.context-owner",
+        "owner_version": "1.0.0",
+        "schema_version": "ascension.context-control.owner-catalog.v1"
+      },
+      "name": "default"
+    },
+    {
+      "binding_usable": true,
+      "catalog": {
+        "catalog_digest": "ef5fe1f9b3a9881394bbb1d5fcf52a9819bf7a9ec558027601b4527fbf6e66eb",
+        "descriptors": [
+          {
+            "binding_id": "fixture.context.binding.v1",
+            "context_ref": "context.fixture.v1",
+            "continuity": {
+              "provider_session_continuity": false,
+              "receipt_recovery": false,
+              "survives_controller_restart": false
+            },
+            "digest": "e6d38907ec53a585b4ff69a9680bce0becb96e9a7e091b529809ed55e35e1f53",
+            "effective_limits": {
+              "max_context_bytes": 16384,
+              "max_control_events": 128,
+              "max_items": 8,
+              "max_notes": 4,
+              "max_objective_bytes": 128
+            },
+            "grants": {
+              "content_read": false,
+              "control": false,
+              "edit": false,
+              "metadata_read": true
+            },
+            "node_kinds": [
+              "analyze",
+              "decide"
+            ],
+            "operations": [],
+            "schema_version": "ascension.context-control.owner-binding.v1",
+            "sources": [],
+            "state": "available",
+            "version": 1
+          }
+        ],
+        "owner_id": "fixture.context-owner",
+        "owner_version": "1.0.0",
+        "schema_version": "ascension.context-control.owner-catalog.v1"
+      },
+      "name": "restricted"
+    },
+    {
+      "binding_usable": true,
+      "catalog": {
+        "catalog_digest": "89e09143ea91966187861f0881586aecc46d2268de3d1bbf85b94603a99721ae",
+        "descriptors": [
+          {
+            "binding_id": "fixture.context.binding.v1",
+            "context_ref": "context.fixture.v1",
+            "continuity": {
+              "provider_session_continuity": false,
+              "receipt_recovery": false,
+              "survives_controller_restart": false
+            },
+            "digest": "b64a0434eccafd152ac7168fd2d0f0d2b5748e91a4cbd28ddc348299206c6326",
+            "effective_limits": {
+              "max_context_bytes": 131072,
+              "max_control_events": 4096,
+              "max_items": 64,
+              "max_notes": 0,
+              "max_objective_bytes": 512
+            },
+            "grants": {
+              "content_read": false,
+              "control": false,
+              "edit": false,
+              "metadata_read": true
+            },
+            "node_kinds": [
+              "analyze",
+              "decide"
+            ],
+            "operations": [],
+            "schema_version": "ascension.context-control.owner-binding.v1",
+            "sources": [],
+            "state": "available",
+            "version": 1
+          }
+        ],
+        "owner_id": "fixture.context-owner",
+        "owner_version": "1.0.0",
+        "schema_version": "ascension.context-control.owner-catalog.v1"
+      },
+      "name": "zero_notes"
+    },
+    {
+      "binding_usable": false,
+      "catalog": {
+        "catalog_digest": "623127e13a34b158d8a49cb59b4aa5d7cc116f8fe75cc93fbb8c09261690dbde",
+        "descriptors": [
+          {
+            "binding_id": "fixture.context.binding.v1",
+            "context_ref": "context.fixture.v1",
+            "continuity": {
+              "provider_session_continuity": false,
+              "receipt_recovery": false,
+              "survives_controller_restart": false
+            },
+            "digest": "71f1f79cff71d19a6f61fc9108364aca7b3fa673779b3e5de0a28191096e476f",
+            "effective_limits": {
+              "max_context_bytes": 131072,
+              "max_control_events": 4096,
+              "max_items": 64,
+              "max_notes": 16,
+              "max_objective_bytes": 512
+            },
+            "grants": {
+              "content_read": false,
+              "control": false,
+              "edit": false,
+              "metadata_read": true
+            },
+            "node_kinds": [
+              "analyze",
+              "decide"
+            ],
+            "operations": [],
+            "schema_version": "ascension.context-control.owner-binding.v1",
+            "sources": [],
+            "state": "disabled",
+            "version": 1
+          }
+        ],
+        "owner_id": "fixture.context-owner",
+        "owner_version": "1.0.0",
+        "schema_version": "ascension.context-control.owner-catalog.v1"
+      },
+      "name": "disabled"
+    }
+  ],
+  "descriptor_boundaries": [
+    {
+      "case": "below_minimum",
+      "descriptor_result": "context_effective_limits_invalid",
+      "field": "max_items",
+      "value": 0
+    },
+    {
+      "case": "minimum",
+      "descriptor_result": "valid",
+      "field": "max_items",
+      "value": 1
+    },
+    {
+      "case": "selected",
+      "descriptor_result": "valid",
+      "field": "max_items",
+      "value": 8
+    },
+    {
+      "case": "global_maximum",
+      "descriptor_result": "valid",
+      "field": "max_items",
+      "value": 64
+    },
+    {
+      "case": "one_over_global",
+      "descriptor_result": "context_effective_limits_invalid",
+      "field": "max_items",
+      "value": 65
+    },
+    {
+      "case": "below_minimum",
+      "descriptor_result": "wire_decode_rejected",
+      "field": "max_notes",
+      "value": -1
+    },
+    {
+      "case": "minimum",
+      "descriptor_result": "valid",
+      "field": "max_notes",
+      "value": 0
+    },
+    {
+      "case": "selected",
+      "descriptor_result": "valid",
+      "field": "max_notes",
+      "value": 4
+    },
+    {
+      "case": "global_maximum",
+      "descriptor_result": "valid",
+      "field": "max_notes",
+      "value": 16
+    },
+    {
+      "case": "one_over_global",
+      "descriptor_result": "context_effective_limits_invalid",
+      "field": "max_notes",
+      "value": 17
+    },
+    {
+      "case": "below_minimum",
+      "descriptor_result": "context_effective_limits_invalid",
+      "field": "max_context_bytes",
+      "value": 0
+    },
+    {
+      "case": "minimum",
+      "descriptor_result": "valid",
+      "field": "max_context_bytes",
+      "value": 1
+    },
+    {
+      "case": "selected",
+      "descriptor_result": "valid",
+      "field": "max_context_bytes",
+      "value": 16384
+    },
+    {
+      "case": "global_maximum",
+      "descriptor_result": "valid",
+      "field": "max_context_bytes",
+      "value": 131072
+    },
+    {
+      "case": "one_over_global",
+      "descriptor_result": "context_effective_limits_invalid",
+      "field": "max_context_bytes",
+      "value": 131073
+    },
+    {
+      "case": "below_minimum",
+      "descriptor_result": "context_effective_limits_invalid",
+      "field": "max_objective_bytes",
+      "value": 0
+    },
+    {
+      "case": "minimum",
+      "descriptor_result": "valid",
+      "field": "max_objective_bytes",
+      "value": 1
+    },
+    {
+      "case": "selected",
+      "descriptor_result": "valid",
+      "field": "max_objective_bytes",
+      "value": 128
+    },
+    {
+      "case": "global_maximum",
+      "descriptor_result": "valid",
+      "field": "max_objective_bytes",
+      "value": 512
+    },
+    {
+      "case": "one_over_global",
+      "descriptor_result": "context_effective_limits_invalid",
+      "field": "max_objective_bytes",
+      "value": 513
+    },
+    {
+      "case": "below_minimum",
+      "descriptor_result": "context_effective_limits_invalid",
+      "field": "max_control_events",
+      "value": 0
+    },
+    {
+      "case": "minimum",
+      "descriptor_result": "valid",
+      "field": "max_control_events",
+      "value": 1
+    },
+    {
+      "case": "selected",
+      "descriptor_result": "valid",
+      "field": "max_control_events",
+      "value": 128
+    },
+    {
+      "case": "global_maximum",
+      "descriptor_result": "valid",
+      "field": "max_control_events",
+      "value": 4096
+    },
+    {
+      "case": "one_over_global",
+      "descriptor_result": "context_effective_limits_invalid",
+      "field": "max_control_events",
+      "value": 4097
+    }
+  ],
+  "evidence": "synthetic_descriptor_validation_only",
+  "fixture_schema": "ascension.context-control.catalog-conformance.fixture.v1",
+  "license": "MIT",
+  "origin_revision": "997821420db5a32d40cd2f07ad8f0ebcafcda96c"
+}
