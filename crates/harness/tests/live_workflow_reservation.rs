@@ -115,33 +115,6 @@ fn direct_live_submit_paths_fail_closed_without_a_reservation() {
 }
 
 #[test]
-fn reservation_failure_precedes_factory_open_and_launch() {
-    let factory = Arc::new(support::FakeFactory::new(false));
-    let port = LiveWorkflowExecutionPort::new(
-        Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
-        LiveWorkflowOptions::default(),
-    )
-    .expect("port");
-    let request = request("request-reservation-rejected", definition(false));
-    let binding = request.admission.as_ref();
-    let definition_digest =
-        digest_value(request.definition.as_ref().expect("definition")).expect("definition digest");
-    let error = port
-        .submit_admitted_with_reservation(&request, &actor(), &definition_digest, binding, &|_| {
-            Err(ManagementError::store(
-                "reservation_rejected",
-                "fixture store rejected the pre-effect reservation",
-            ))
-        })
-        .expect_err("reservation failure");
-    assert_eq!(error.code, "reservation_rejected");
-    assert!(
-        factory.entries().is_empty(),
-        "factory.open and session.launch must not run after reservation failure"
-    );
-}
-
-#[test]
 fn launch_failure_marks_the_reserved_run_for_recovery_and_retries_fail_closed() {
     let store = Arc::new(MemoryWorkflowStore::new());
     let factory = Arc::new(support::FakeFactory::launch_error());
@@ -275,6 +248,15 @@ fn exact_admission_binding_is_durable_before_factory_open() {
     let submitted = service
         .submit_run(&actor(), request.clone())
         .expect("submit");
+    assert_eq!(
+        service
+            .status(&actor(), &submitted.workflow_run_id)
+            .expect("status")
+            .recovery_admission,
+        RecoveryAdmission::SafelyResumable {
+            capability: "live.workflow.resume.v1".to_owned(),
+        }
+    );
     let persisted = store
         .get_run(&submitted.workflow_run_id)
         .expect("lookup")

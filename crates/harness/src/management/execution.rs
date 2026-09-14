@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use super::super::auth::AuthContext;
 use super::super::contract::{
-    EventClassification, EventPayload, EventType, PendingOperation, RunEvent, RunRequest,
-    TargetAdmissionBinding,
+    EventClassification, EventPayload, EventType, PendingOperation, RecoveryAdmission, RunEvent,
+    RunRequest, RunSnapshot, TargetAdmissionBinding,
 };
 use super::super::service::{
     CommandApplication, CommandContext, ManagementError, RunAdmission, RunReservation,
@@ -25,6 +25,8 @@ use super::execution_records::{
 
 #[path = "execution_admission.rs"]
 mod admission;
+#[path = "execution_recovery.rs"]
+mod recovery;
 
 pub(super) struct LiveRun {
     pub(super) runtime: StrictRuntime,
@@ -107,7 +109,7 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
         actor: &AuthContext,
         definition_digest: &str,
         admission: Option<&TargetAdmissionBinding>,
-        reserve: &RunReservation<'_>,
+        reserve: &RunReservation,
     ) -> Result<RunAdmission, ManagementError> {
         let admission = admission.ok_or_else(|| {
             ManagementError::conflict(
@@ -138,6 +140,14 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
     ) -> Result<CommandApplication, ManagementError> {
         super::execution_commands::apply_command(self, context, Some(record_intent))
     }
+
+    fn recovery_admission(&self, snapshot: &RunSnapshot) -> Option<RecoveryAdmission> {
+        recovery::admission(self, snapshot)
+    }
+
+    fn abort_submission(&self, run_id: &str) -> Result<(), ManagementError> {
+        recovery::abort(self, run_id)
+    }
 }
 
 impl LiveWorkflowExecutionPort {
@@ -153,7 +163,7 @@ impl LiveWorkflowExecutionPort {
         request: &RunRequest,
         actor: &AuthContext,
         definition_digest: &str,
-        reserve: &RunReservation<'_>,
+        reserve: &RunReservation,
     ) -> Result<RunAdmission, ManagementError> {
         let admission = request.admission.as_ref().ok_or_else(|| {
             ManagementError::conflict(
@@ -230,7 +240,7 @@ impl LiveWorkflowExecutionPort {
             snapshot: snapshot.clone(),
             initial_events: vec![event.clone()],
         };
-        reserve(&admission_result)?;
+        reserve.reserve(&admission_result)?;
         admission::validate_live_catalog(self.factory.as_ref(), actor, admission)?;
         let mut session = self
             .factory

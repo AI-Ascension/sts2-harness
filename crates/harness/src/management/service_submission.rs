@@ -1,16 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use std::sync::{Arc, Mutex};
-
 use super::super::auth::AuthContext;
-use super::super::contract::{
-    CleanupState, RunRequest, RunSnapshot, RunSubmissionResponse, WorkflowRunStatus,
-};
+use super::super::contract::{CleanupState, RunRequest, RunSubmissionResponse, WorkflowRunStatus};
 use super::support::{run_submission_response, verify_admission};
 use super::target_admission::{bind_snapshot_admission, is_live_profile};
-use super::{ManagementError, ManagementService, RunAdmission};
-
-type ReservationState = Arc<Mutex<Option<RunSnapshot>>>;
+use super::{ManagementError, ManagementService, RunReservation};
 
 pub(super) fn submit_run(
     service: &ManagementService,
@@ -20,45 +14,26 @@ pub(super) fn submit_run(
     definition_digest: String,
 ) -> Result<RunSubmissionResponse, ManagementError> {
     let binding = service.revalidate_target_admission(actor, &request, &definition_digest)?;
-    let reservation_binding = binding.clone();
-    let reservation_store = Arc::clone(&service.store);
-    let reservation_request_id = request.request_id.clone();
-    let reservation_request_digest = request_digest.clone();
-    let reservation_definition_digest = definition_digest.clone();
-    let reservation_state: ReservationState = Arc::new(Mutex::new(None));
-    let reservation_state_for_closure = Arc::clone(&reservation_state);
-    let reserve = move |candidate: &RunAdmission| {
-        let mut durable = candidate.clone();
-        durable.snapshot = bind_snapshot_admission(durable.snapshot, reservation_binding.as_ref())?;
-        verify_admission(&durable, &reservation_definition_digest)?;
-        let persisted_snapshot = durable.snapshot.clone();
-        reservation_store.create_run(
-            &reservation_request_id,
-            &reservation_request_digest,
-            durable.snapshot,
-            durable.initial_events,
-        )?;
-        *reservation_state_for_closure.lock().map_err(|_| {
-            ManagementError::store(
-                "reservation_state_lock",
-                "live reservation state lock is poisoned",
-            )
-        })? = Some(persisted_snapshot);
-        Ok(())
-    };
+    let reservation = RunReservation::new(
+        std::sync::Arc::clone(&service.store),
+        request.request_id.clone(),
+        request_digest.clone(),
+        definition_digest.clone(),
+        binding.clone(),
+    );
     let execution_result = service.execution.submit_admitted_with_reservation(
         &request,
         actor,
         &definition_digest,
         binding.as_ref(),
-        &reserve,
+        &reservation,
     );
     let mut admission = match execution_result {
         Ok(admission) => admission,
         Err(error) => {
             return Err(persist_reserved_failure(
                 service,
-                &reservation_state,
+                &reservation,
                 &request,
                 &request_digest,
                 error,
@@ -71,7 +46,7 @@ pub(super) fn submit_run(
         Err(error) => {
             return Err(persist_reserved_failure(
                 service,
-                &reservation_state,
+                &reservation,
                 &request,
                 &request_digest,
                 error,
@@ -82,7 +57,7 @@ pub(super) fn submit_run(
     if let Err(error) = verify_admission(&admission, &definition_digest) {
         return Err(persist_reserved_failure(
             service,
-            &reservation_state,
+            &reservation,
             &request,
             &request_digest,
             error,
@@ -97,7 +72,7 @@ pub(super) fn submit_run(
     {
         return Err(persist_reserved_failure(
             service,
-            &reservation_state,
+            &reservation,
             &request,
             &request_digest,
             error.into(),
@@ -108,13 +83,13 @@ pub(super) fn submit_run(
 
 fn persist_reserved_failure(
     service: &ManagementService,
-    state: &ReservationState,
+    reservation: &RunReservation,
     request: &RunRequest,
     request_digest: &str,
     original: ManagementError,
 ) -> ManagementError {
-    let snapshot = match state.lock() {
-        Ok(mut state) => state.take(),
+    let snapshot = match reservation.take_snapshot() {
+        Ok(snapshot) => snapshot,
         Err(_) => {
             return ManagementError::store(
                 "reservation_failure_persist",
@@ -128,18 +103,37 @@ fn persist_reserved_failure(
     let Some(mut snapshot) = snapshot else {
         return original;
     };
+    let cleanup_error = service
+        .execution
+        .abort_submission(&snapshot.workflow_run_id)
+        .err();
     snapshot.status = WorkflowRunStatus::NeedsOperator;
     snapshot.cleanup = CleanupState::NeedsOperator;
     match service
         .store
         .update_run_snapshot(&request.request_id, request_digest, snapshot)
     {
-        Ok(()) => original,
+        Ok(()) => cleanup_error.map_or(original.clone(), |error| {
+            ManagementError::unavailable(
+                "live_submission_cleanup_failed",
+                format!(
+                    "submission failed ({}), and live cleanup failed ({})",
+                    original.code, error.code
+                ),
+            )
+        }),
         Err(persist_error) => ManagementError::store(
             "reservation_failure_persist",
             format!(
-                "submission failed ({}), and its reservation could not be marked for recovery ({})",
-                original.code, persist_error.code
+                "submission failed ({}), and its reservation could not be marked for recovery ({}{})",
+                original.code,
+                persist_error.code,
+                cleanup_error
+                    .as_ref()
+                    .map_or(String::new(), |error| format!(
+                        ", cleanup failed ({})",
+                        error.code
+                    ))
             ),
         ),
     }

@@ -97,6 +97,10 @@ impl ManagementService {
         let snapshot = self.store.get_run(run_id)?.ok_or_else(|| {
             ManagementError::invalid("run_not_found", "workflow run was not found")
         })?;
+        let recovery = self
+            .execution
+            .recovery_admission(&snapshot)
+            .unwrap_or_else(|| recovery_admission(&snapshot));
         Ok(StatusResponse {
             schema_version: STATUS_SCHEMA_VERSION.to_owned(),
             accepted_plan_revision: None,
@@ -109,7 +113,7 @@ impl ManagementService {
                     "none".to_owned()
                 },
             },
-            recovery_admission: recovery_admission(&snapshot),
+            recovery_admission: recovery,
             last_progress_sequence: snapshot.run_revision,
             run: snapshot,
         })

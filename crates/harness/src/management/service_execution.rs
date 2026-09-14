@@ -1,12 +1,81 @@
 // SPDX-License-Identifier: MIT
 
+use std::sync::{Arc, Mutex};
+
 use super::super::auth::AuthContext;
 use super::super::contract::{
-    CommandRequest, PendingOperation, RunEvent, RunRequest, RunSnapshot, TargetAdmissionBinding,
+    CommandRequest, PendingOperation, RecoveryAdmission, RunEvent, RunRequest, RunSnapshot,
+    TargetAdmissionBinding,
 };
+use super::super::store::WorkflowStore;
 use super::ManagementError;
 
-pub type RunReservation<'a> = dyn Fn(&RunAdmission) -> Result<(), ManagementError> + 'a;
+/// A service-owned capability for crossing the live submission effect
+/// boundary. Its constructor and operation are crate-private so callers
+/// cannot provide a no-op or otherwise unverified callback to the live
+/// execution port.
+pub struct RunReservation {
+    store: Arc<dyn WorkflowStore>,
+    request_id: String,
+    request_digest: String,
+    definition_digest: String,
+    binding: Option<TargetAdmissionBinding>,
+    snapshot: Mutex<Option<RunSnapshot>>,
+}
+
+impl RunReservation {
+    pub(crate) fn new(
+        store: Arc<dyn WorkflowStore>,
+        request_id: String,
+        request_digest: String,
+        definition_digest: String,
+        binding: Option<TargetAdmissionBinding>,
+    ) -> Self {
+        Self {
+            store,
+            request_id,
+            request_digest,
+            definition_digest,
+            binding,
+            snapshot: Mutex::new(None),
+        }
+    }
+
+    pub(crate) fn reserve(&self, candidate: &RunAdmission) -> Result<(), ManagementError> {
+        let mut durable = candidate.clone();
+        durable.snapshot = super::target_admission::bind_snapshot_admission(
+            durable.snapshot,
+            self.binding.as_ref(),
+        )?;
+        super::support::verify_admission(&durable, &self.definition_digest)?;
+        let persisted_snapshot = durable.snapshot.clone();
+        self.store.create_run(
+            &self.request_id,
+            &self.request_digest,
+            durable.snapshot,
+            durable.initial_events,
+        )?;
+        *self.snapshot.lock().map_err(|_| {
+            ManagementError::store(
+                "reservation_state_lock",
+                "live reservation state lock is poisoned",
+            )
+        })? = Some(persisted_snapshot);
+        Ok(())
+    }
+
+    pub(crate) fn take_snapshot(&self) -> Result<Option<RunSnapshot>, ManagementError> {
+        self.snapshot
+            .lock()
+            .map(|mut snapshot| snapshot.take())
+            .map_err(|_| {
+                ManagementError::store(
+                    "reservation_state_lock",
+                    "live reservation state lock is poisoned",
+                )
+            })
+    }
+}
 
 pub trait WorkflowExecutionPort: Send + Sync {
     fn submit(
@@ -54,11 +123,26 @@ pub trait WorkflowExecutionPort: Send + Sync {
         actor: &AuthContext,
         definition_digest: &str,
         admission: Option<&TargetAdmissionBinding>,
-        reserve: &RunReservation<'_>,
+        reserve: &RunReservation,
     ) -> Result<RunAdmission, ManagementError> {
         let result = self.submit_admitted(request, actor, definition_digest, admission)?;
-        reserve(&result)?;
+        reserve.reserve(&result)?;
         Ok(result)
+    }
+
+    /// Returns an execution-adapter-specific recovery admission when the
+    /// durable snapshot alone cannot distinguish same-process liveness from a
+    /// restarted coordinator. `None` keeps the generic synthetic policy.
+    fn recovery_admission(&self, _snapshot: &RunSnapshot) -> Option<RecoveryAdmission> {
+        None
+    }
+
+    /// Aborts a live submission whose durable finalization failed. Adapters
+    /// without an external session have nothing to clean up; live adapters
+    /// remove the in-memory session and attempt stop/release before the
+    /// service records the reserved run as needing operator recovery.
+    fn abort_submission(&self, _run_id: &str) -> Result<(), ManagementError> {
+        Ok(())
     }
 
     fn apply_command(&self, context: CommandContext)
