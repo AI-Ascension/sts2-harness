@@ -43,7 +43,9 @@ impl SqliteBranchStore {
     /// later through the reversible `archived -> pending` transition. A strategy that started but
     /// never reached `ready` (`restoring`/`replaying`) or whose effect is `unknown` fails closed as
     /// `failed` without replaying an uncertain effect. Each resolution uses the idempotent
-    /// transition journal, so a retried reconciliation is a no-op and no branch is resolved twice.
+    /// transition journal with a bounded, deterministic operation id derived from the prefix,
+    /// experiment, and branch, so a retried reconciliation is a no-op and no branch is resolved
+    /// twice even when a branch id is at its maximum length.
     ///
     /// # Errors
     ///
@@ -63,7 +65,14 @@ impl SqliteBranchStore {
                 | DurableBranchStatus::Unknown => DurableBranchStatus::Failed,
                 _ => continue,
             };
-            let operation_id = format!("{operation_prefix}.{}", branch.branch_id);
+            let operation_id = format!(
+                "reconcile:{}",
+                super::store::digest_fields([
+                    operation_prefix,
+                    experiment_id,
+                    branch.branch_id.as_str(),
+                ])
+            );
             reconciled.push(self.transition(
                 &operation_id,
                 experiment_id,

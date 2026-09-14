@@ -60,6 +60,25 @@ fn root_draft() -> DurableBranchDraft {
     root
 }
 
+/// A child whose branch id may exceed the bounded occurrence-id length, so the occurrence id is
+/// supplied explicitly and separately.
+fn long_child_draft(branch_id: &str) -> DurableBranchDraft {
+    let mut child = draft(
+        "branch:template",
+        Some("branch:root"),
+        BranchStrategy::ExactRestore,
+    );
+    child.branch_id = branch_id.to_owned();
+    child.fork.occurrence_id = occurrence("occurrence:long");
+    child.source_handle = Some("source:long".to_owned());
+    child.run_id = "run:long".to_owned();
+    child.episode_id = Some("episode:long".to_owned());
+    child.trajectory_id = Some("trajectory:long".to_owned());
+    child.context_id = Some("context:long".to_owned());
+    child.name = "long".to_owned();
+    child
+}
+
 #[test]
 fn startup_reconciliation_resolves_half_created_branches_deterministically()
 -> Result<(), BranchStoreError> {
@@ -178,5 +197,31 @@ fn startup_reconciliation_resolves_half_created_branches_deterministically()
             .reconciliation_candidates("experiment:durable")?
             .is_empty()
     );
+    Ok(())
+}
+
+#[test]
+fn reconciliation_handles_a_maximum_length_branch_id() -> Result<(), BranchStoreError> {
+    let store = SqliteBranchStore::open_in_memory()?;
+    store.create("operation:root", root_draft())?;
+    let long_id = format!("branch:{}", "x".repeat(249));
+    assert_eq!(long_id.len(), 256, "branch id is at the label bound");
+    store.create("operation:long-create", long_child_draft(&long_id))?;
+    store.transition(
+        "operation:long-restoring",
+        "experiment:durable",
+        &long_id,
+        0,
+        DurableBranchStatus::Restoring,
+    )?;
+
+    let resolved = store.reconcile_startup("reconcile:startup", "experiment:durable")?;
+    assert_eq!(resolved.len(), 2);
+    assert!(resolved.iter().any(|branch| {
+        branch.branch_id == long_id && branch.status == DurableBranchStatus::Failed
+    }));
+    assert!(resolved.iter().any(|branch| {
+        branch.branch_id == "branch:root" && branch.status == DurableBranchStatus::Archived
+    }));
     Ok(())
 }
