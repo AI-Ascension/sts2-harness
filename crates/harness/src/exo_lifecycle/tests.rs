@@ -221,3 +221,82 @@ fn revoked_before_admission_mutates_no_journal_or_store_and_calls_no_effect() {
     ));
     assert_eq!(effect.calls, 0);
 }
+
+#[test]
+fn prepared_intent_with_pending_decision_and_missing_reservation_stays_held() {
+    let mut fixture = Fixture::new();
+    let mut owner = fixture.owner();
+    owner.snapshot.entries.push(LifecycleEntry::prepared(
+        fixture.manifest.clone(),
+        owner.claim_epoch(),
+    ));
+    owner.persist().expect("prepared intent");
+    fixture
+        .store
+        .record_decision(&fixture.manifest.decision().expect("reference"))
+        .expect("pending decision");
+    drop(owner);
+    let mut reopened = fixture.reopen().expect("restart");
+    let mut effect = Effect::default();
+    assert!(
+        reopened
+            .start(
+                fixture.manifest.clone(),
+                &fixture.input,
+                &mut fixture.store,
+                &fixture.fingerprint,
+                &mut effect
+            )
+            .is_err()
+    );
+    assert_eq!(reopened.entries()[0].phase, LifecyclePhase::Prepared);
+    assert!(matches!(
+        fixture
+            .store
+            .provider_reservation(&fixture.manifest.reservation_id),
+        Err(crate::ExecutionStoreError::Missing)
+    ));
+    assert_eq!(effect.calls, 0);
+}
+
+#[test]
+fn pending_game_operation_blocks_provider_admission_without_redispatch() {
+    let mut fixture = Fixture::new();
+    let mut owner = fixture.owner();
+    let intent = crate::OperationIntent::new(
+        fixture.manifest.lineage().expect("lineage"),
+        "game-operation",
+        &fixture.manifest.authority.state_id,
+        fixture.manifest.authority.generation,
+        "combat.end-turn",
+        "payload-digest",
+        "input-digest",
+    )
+    .expect("game intent");
+    fixture
+        .store
+        .record_operation_intent(&intent)
+        .expect("pending game operation");
+    let mut effect = Effect::default();
+    assert!(
+        owner
+            .start(
+                fixture.manifest.clone(),
+                &fixture.input,
+                &mut fixture.store,
+                &fixture.fingerprint,
+                &mut effect
+            )
+            .is_err()
+    );
+    assert!(owner.entries().is_empty());
+    assert_eq!(
+        fixture
+            .store
+            .pending_operations(&fixture.manifest.scope.episode_id)
+            .expect("pending operation")
+            .len(),
+        1
+    );
+    assert_eq!(effect.calls, 0);
+}
