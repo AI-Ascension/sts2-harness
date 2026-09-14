@@ -5,7 +5,7 @@ mod turn;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 const INPUT_LIMIT: u64 = 160 * 1024;
 const OUTPUT_LIMIT: usize = 16 * 1024;
@@ -84,8 +84,18 @@ async fn run() -> Result<(), &'static str> {
     if output.len() > OUTPUT_LIMIT {
         return Err("exo_executor_receipt_bound");
     }
-    tokio::io::stdout()
-        .write_all(&output)
-        .await
-        .map_err(|_| "exo_executor_output")
+    let mut stdout = tokio::io::stdout();
+    publish(&mut stdout, &output).await
 }
+
+async fn publish(writer: &mut (impl AsyncWrite + Unpin), bytes: &[u8]) -> Result<(), &'static str> {
+    writer
+        .write_all(bytes)
+        .await
+        .map_err(|_| "exo_executor_output")?;
+    // Tokio can accept bytes before its blocking stdout write completes. Keep and flush this handle.
+    writer.flush().await.map_err(|_| "exo_executor_output")
+}
+
+#[cfg(test)]
+mod output_tests;

@@ -44,9 +44,7 @@ fn execute() -> Result<(), &'static str> {
         }
         let bytes =
             serde_json::to_vec(&loaded.description()?).map_err(|_| "exo_bridge_description")?;
-        return std::io::stdout()
-            .write_all(&bytes)
-            .map_err(|_| "exo_bridge_output");
+        return write_output(&bytes);
     }
     if rest.len() != 1 || rest[0] != loaded.digest {
         return Err("exo_bridge_config_identity");
@@ -64,8 +62,15 @@ fn execute() -> Result<(), &'static str> {
         return Err("exo_bridge_unsupported_profile");
     }
     let response = run::execute(&loaded, envelope, mode == "--synthetic")?;
-    std::io::stdout()
-        .write_all(&response)
+    write_output(&response)
+}
+
+#[cfg(target_os = "linux")]
+fn write_output(bytes: &[u8]) -> Result<(), &'static str> {
+    let mut output = std::io::stdout();
+    output
+        .write_all(bytes)
+        .and_then(|()| output.flush())
         .map_err(|_| "exo_bridge_output")
 }
 
