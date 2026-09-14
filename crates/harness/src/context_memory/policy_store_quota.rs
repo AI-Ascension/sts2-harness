@@ -3,7 +3,10 @@
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
 use super::*;
-use crate::context_memory::{policy_owner::SavedPolicy, *};
+use crate::context_memory::{
+    policy_owner::{PolicyReceipt, SavedPolicy},
+    *,
+};
 
 fn saved(version: u64, padding: bool) -> SavedPolicy {
     let policy = MemoryPolicy {
@@ -36,6 +39,30 @@ fn saved(version: u64, padding: bool) -> SavedPolicy {
     SavedPolicy::new(&raw, &policy.scope).unwrap()
 }
 
+fn insert_import(journal: &mut PolicyJournal, policy: SavedPolicy) -> Result<(), PolicyOwnerError> {
+    let key = format!("quota-import-{}", policy.reference.version);
+    let command = PolicyCommand::Import {
+        key: key.clone(),
+        raw: policy.raw_bytes().to_vec(),
+    };
+    let result_id = format!(
+        "{}:{}",
+        policy.reference.policy_id, policy.reference.version
+    );
+    journal.insert_policy(policy)?;
+    let sequence = journal.receipts.len() as u64 + 1;
+    journal.receipts.push(PolicyReceipt {
+        operation_id: format!("policy-operation-{sequence}"),
+        idempotency_key: key,
+        request_sha256: command.fingerprint()?,
+        subject: "quota-operator".to_owned(),
+        operation: "import".to_owned(),
+        result_id,
+        sequence,
+    });
+    Ok(())
+}
+
 #[test]
 fn aggregate_serialized_quota_rolls_back_staged_valid_records() {
     let directory = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -53,14 +80,14 @@ fn aggregate_serialized_quota_rolls_back_staged_valid_records() {
     let first = saved(1, false);
     let reference = first.reference.clone();
     store
-        .change(|journal| journal.insert_policy(first.clone()), || Ok(()))
+        .change(|journal| insert_import(journal, first.clone()), || Ok(()))
         .unwrap();
     // Stage one bounded transaction rather than repeatedly re-encrypting progressively larger
     // histories. Every policy is individually valid and the count is exactly at its own cap.
     let result = store.change(
         |journal| {
             for version in 2..=MAX_POLICY_VERSIONS as u64 {
-                journal.insert_policy(saved(version, true))?;
+                insert_import(journal, saved(version, true))?;
             }
             Ok(())
         },

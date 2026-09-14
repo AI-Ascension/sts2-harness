@@ -17,6 +17,8 @@ mod integrity;
 mod original;
 #[path = "policy_owner_prepare.rs"]
 mod prepare;
+#[path = "policy_owner_receipt_integrity.rs"]
+mod receipt_integrity;
 #[path = "policy_owner_records.rs"]
 mod records;
 #[path = "policy_store.rs"]

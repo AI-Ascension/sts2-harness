@@ -67,6 +67,15 @@ owner epoch. Wrong-key/corrupt opens do not fence the healthy owner; a legitimat
 Old handles cannot reclaim ownership. Restart requires explicit revalidation/approval/adoption
 before preparation and never silently resumes execution.
 
+Authenticated recovery also validates the receipt/history relationships before claiming ownership.
+Canonical operation, approval and binding IDs, creation order, prerequisite coverage and available
+subject relationships must agree. Each receipt's result resolves to its retained operation-specific
+record, and reconstructing the internal command from its key, exact raw bytes and stored review
+fields must reproduce its request fingerprint. This does not reconstruct credentials or historical
+grant configuration. Repeated exact imports may belong to different subjects; old adoption receipts
+continue to name their historical binding after a newer adoption, without changing the active one.
+Contradictory or unreceipted history fails closed instead of being repaired automatically.
+
 ## Fixed storage bounds
 
 | Resource | Bound |
@@ -111,6 +120,8 @@ cargo test --locked -p sts2-harness \
   --test context_memory_policy_maintenance \
   --test context_memory_policy_wire \
   --test context_memory_policy_sqlite \
+  --test context_memory_policy_receipts \
+  --test context_memory_policy_receipt_recovery \
   --test context_memory_policy_history
 cargo test --locked -p sts2-harness --lib \
   context_memory::policy_owner

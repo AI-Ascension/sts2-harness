@@ -86,6 +86,14 @@ acknowledgment; this defense does not authorize otherwise incompatible schema be
 Same subject/idempotency key with the same request recovers the original receipt, including after a
 lost reply. A changed request conflicts. Recovery does not reactivate a fenced policy.
 
+Successful decryption is insufficient evidence of a completed operation. Pure journal validation
+resolves receipts to retained policy/review/approval/adoption records, validates canonical generated
+IDs and ordered prerequisite/creation coverage, and checks the reconstructed internal command
+fingerprint and available subject lineage. It does not reconstruct historical credentials or grant
+configuration. A historical adoption receipt remains bound to its own recorded binding rather than
+the final active pointer. Contradictory or incomplete histories reject before claim or recovery;
+there is no automatic receipt synthesis and no v1 format change.
+
 See [memory-policy-migration.md](../memory-policy-migration.md) for bounds, operations and component
 verification. Future Console/Studio migration capabilities, commands/routes and authenticated
 principal mapping need a separate coordinated contract. Existing capability sidecars remain the

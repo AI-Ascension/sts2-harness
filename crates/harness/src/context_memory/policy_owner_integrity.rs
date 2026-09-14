@@ -46,6 +46,8 @@ impl PolicyJournal {
                 || (review.kind == ReviewKind::Revalidation && !review.violations.is_empty())
                 || review.source.policy_id != review.target.policy_id
                 || review.target.version < review.source.version
+                || (review.kind == ReviewKind::Migration
+                    && review.target.version == review.source.version)
                 || !review.fence.valid()
                 || review.target_execution_sha256 != self.policy(&review.target)?.execution_sha256
             {
@@ -59,8 +61,8 @@ impl PolicyJournal {
     fn validate_approvals(&self) -> Result<(), PolicyOwnerError> {
         let mut approvals = BTreeSet::new();
         let mut approved_reviews = BTreeSet::new();
-        for approval in &self.approvals {
-            if !valid_id(&approval.approval_id)
+        for (index, approval) in self.approvals.iter().enumerate() {
+            if approval.approval_id != format!("policy-approval-{}", index + 1)
                 || !valid_id(&approval.subject)
                 || !approvals.insert(&approval.approval_id)
                 || !approved_reviews.insert(&approval.review_id)
@@ -81,7 +83,7 @@ impl PolicyJournal {
         for (index, binding) in self.adoptions.iter().enumerate() {
             let review = self.review(&binding.review_id)?;
             if binding.version != index as u64 + 1
-                || !valid_id(&binding.binding_id)
+                || binding.binding_id != format!("policy-binding-{}", binding.version)
                 || binding.fence != review.fence
                 || binding.target != review.target
                 || binding.target_execution_sha256 != self.policy(&binding.target)?.execution_sha256
@@ -106,27 +108,6 @@ impl PolicyJournal {
         }
         if self.active.as_ref() != self.adoptions.last() {
             return Err(PolicyOwnerError::Corrupt);
-        }
-        Ok(())
-    }
-
-    fn validate_receipts(&self) -> Result<(), PolicyOwnerError> {
-        let mut receipt_keys = BTreeSet::new();
-        for (index, receipt) in self.receipts.iter().enumerate() {
-            if receipt.sequence != index as u64 + 1
-                || !valid_id(&receipt.operation_id)
-                || !valid_id(&receipt.idempotency_key)
-                || !valid_id(&receipt.subject)
-                || !valid_digest(&receipt.request_sha256)
-                || receipt.result_id.len() > 256
-                || !receipt_keys.insert((&receipt.subject, &receipt.idempotency_key))
-                || !matches!(
-                    receipt.operation.as_str(),
-                    "import" | "propose_migration" | "propose_revalidation" | "approve" | "adopt"
-                )
-            {
-                return Err(PolicyOwnerError::Corrupt);
-            }
         }
         Ok(())
     }
