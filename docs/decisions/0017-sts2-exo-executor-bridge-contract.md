@@ -177,7 +177,12 @@ by code; they must be reconciled when the production bridge lands.
 - [x] Run the bounded real-Exo + synthetic-model spike and record exact source/package/extension
   identities (acceptance criterion 2). See
   [exo-contract-spike-20260914](../evidence/exo-contract-spike-20260914.md).
-- [ ] Add contract schema files/goldens and contract vectors covering all semantic decisions,
-  ordinary/map bounds, wrong correlation, incompatible schema versions, and unavailable
-  capabilities.
-- [ ] Implement preflight negative tests for malformed/unknown/swapped/wrong-revision inputs.
+- [x] Implement the closed capability/preflight descriptor and negative tests for
+  malformed/unknown/missing/wrong schema/wrong contract/wrong platform/wrong revision/swapped
+  package/unsupported decision kind/unsupported projection/unsupported context mode/unsupported
+  evidence/out-of-bound limits (`crates/harness/src/exo/capability.rs`, acceptance criterion 3).
+- [ ] Add explicit protocol schema/golden files and a consolidated contract-vector test; map the
+  existing decision-variant, ordinary/map bound, and wrong-correlation tests to each vector required
+  by acceptance criterion 4.
+- [ ] Reconcile the currently unparsed `decision_schema`/`endpoint` keys in
+  `experiments/exo-agent/config.example.toml` when the production bridge lands.
