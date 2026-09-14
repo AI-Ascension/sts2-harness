@@ -6,10 +6,9 @@ use serde_json::json;
 use sts2_harness::{
     EXO_BRIDGE_WIRE_VERSION, EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES,
     EXO_RESTRICTED_MAX_QUOTA_BYTES, EXO_RESTRICTED_MAX_RETENTION_DAYS, EXO_SOURCE_REVISION,
-    ExoCapabilityDescriptor, ExoCapabilityState, ExoContextMode, ExoControlIdentity,
-    ExoDecisionRequest, ExoIdentity, ExoLimits, ExoPlatform, ExoPreflightError,
-    ExoPrivateStateError, ExoPrivateStatePolicy, ExoProfile, ExoRestrictedError,
-    ExoRestrictedProfile, ExoRuntime, ExoTerminalOutcome, ExoToolCatalog, ExoToolCatalogError,
+    ExoCapabilityDescriptor, ExoCapabilityState, ExoContextMode, ExoDecisionRequest, ExoLimits,
+    ExoPlatform, ExoPreflightError, ExoPrivateStateError, ExoPrivateStatePolicy, ExoProfile,
+    ExoRestrictedError, ExoRuntime, ExoTerminalOutcome, ExoToolCatalog, ExoToolCatalogError,
     ExoTrustedConfiguration, ExoWireError, ExoWireOutcome, PrivateRootKind, REVIEWED_MODEL_TOOLS,
     encode_bridge_request, encode_bridge_response, exo_bridge_manifest, parse_bridge_decision,
     parse_bridge_decision_envelope, parse_bridge_request, parse_bridge_request_envelope, preflight,
@@ -40,6 +39,14 @@ mod exo_contract_restricted;
 
 #[path = "support/exo_contract_wire.rs"]
 mod exo_contract_wire;
+
+#[path = "support/exo_contract_helpers.rs"]
+mod exo_contract_helpers;
+
+use exo_contract_helpers::{
+    complete_identity, control_identity, enable_minimum_capabilities, pad_frame,
+    preflight_with_identity, restricted_profile,
+};
 
 const REQUEST: &[u8] =
     include_bytes!("../../../protocol-artifact/exo-bridge-v1/golden/request.json");
@@ -379,63 +386,4 @@ fn every_terminal_decision_and_lifecycle_outcome_is_executable() {
         parse_bridge_request(&wrong_schema, EXO_MAX_STANDARD_REQUEST_BYTES),
         Err(ExoWireError::InvalidRequest)
     );
-}
-
-fn restricted_profile() -> ExoRestrictedProfile {
-    ExoRestrictedProfile::reviewed_private("/var/lib/sts2-harness/exo-contract-140")
-}
-
-fn complete_identity() -> ExoIdentity {
-    ExoIdentity {
-        source_revision: EXO_SOURCE_REVISION.to_owned(),
-        package_digest: Some(String::from("a").repeat(64)),
-        extension_digest: Some(String::from("b").repeat(64)),
-        bridge_digest: Some(String::from("c").repeat(64)),
-        model_binding: Some(String::from("gpt-5-pro")),
-        provider: Some(String::from("openai")),
-        endpoint: Some(String::from("https://api.openai.com/v1")),
-        prompt_digest: Some(String::from("d").repeat(64)),
-        tool_digest: Some(String::from("e").repeat(64)),
-        config_digest: Some(String::from("f").repeat(64)),
-        contract_version: String::from("sts2-exo-bridge-v1"),
-        native_instance_id: Some(String::from("native-1")),
-    }
-}
-
-fn control_identity(run_id: &str) -> ExoControlIdentity {
-    ExoControlIdentity {
-        run_id: run_id.to_owned(),
-        episode_id: String::from("episode-1"),
-        model_execution_id: String::from("execution-1"),
-        agent_id: String::from("agent-1"),
-        conversation_id: String::from("conversation-1"),
-        session_id: String::from("session-1"),
-        turn_id: String::from("turn-1"),
-        idempotency_key: String::from("idem-1"),
-    }
-}
-
-fn preflight_with_identity(
-    descriptor: ExoCapabilityDescriptor,
-    trusted: &ExoTrustedConfiguration,
-) -> Result<sts2_harness::ExoPreflightReport, ExoPreflightError> {
-    let mut descriptor = descriptor;
-    descriptor.identity = trusted.identity.clone();
-    preflight(&descriptor, trusted)
-}
-
-fn pad_frame(frame: &[u8], limit: usize) -> Vec<u8> {
-    assert!(frame.len() < limit);
-    let mut padded = frame.to_vec();
-    padded.resize(limit, b' ');
-    padded
-}
-
-fn enable_minimum_capabilities(descriptor: &mut ExoCapabilityDescriptor) {
-    descriptor.evidence.terminal_decision = ExoCapabilityState::Supported;
-    descriptor.evidence.turn_identity = ExoCapabilityState::Supported;
-    descriptor.lifecycle.graceful_eof = ExoCapabilityState::Supported;
-    descriptor.lifecycle.idempotency = ExoCapabilityState::Supported;
-    descriptor.lifecycle.cancellation = ExoCapabilityState::Supported;
-    descriptor.lifecycle.recovery = ExoCapabilityState::Supported;
 }

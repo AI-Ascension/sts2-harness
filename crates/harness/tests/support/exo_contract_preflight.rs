@@ -71,6 +71,7 @@ fn responses_preflight_rejects_openrouter_override_before_model_predicate() {
         context_mode: ExoContextMode::Fresh,
         runtime: ExoRuntime::Responses,
         limits: ExoLimits::reviewed(),
+        restricted: restricted_profile(),
     };
 
     let mut openrouter = trusted.clone();
