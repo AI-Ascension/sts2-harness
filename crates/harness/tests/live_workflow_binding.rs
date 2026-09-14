@@ -201,3 +201,47 @@ fn a_changed_graph_changes_the_launched_digest_and_execution() {
         WorkflowRunStatus::Completed
     );
 }
+
+/// The service-side preflight rejects the tampered admission before any live effect. The
+/// execution-boundary duplicate of these checks is covered by the unit tests in
+/// `management::execution_admission` (the service preflight masks them end-to-end).
+#[test]
+fn service_target_admission_fails_closed_before_any_live_effect() {
+    type Tamper = fn(&mut sts2_harness::management::TargetAdmissionBinding);
+    let cases: [(&str, Tamper, &str); 4] = [
+        (
+            "instance",
+            |admission| admission.target.instance_id = "instance-2".to_owned(),
+            "target_instance_mismatch",
+        ),
+        (
+            "stale_revision",
+            |admission| admission.target.workflow_revision = "9.9.9".to_owned(),
+            "target_admission_stale",
+        ),
+        (
+            "definition_digest",
+            |admission| admission.workflow_definition_digest = "0".repeat(64),
+            "target_admission_digest_mismatch",
+        ),
+        (
+            "request_identity",
+            |admission| admission.request_id = "other-request".to_owned(),
+            "target_request_mismatch",
+        ),
+    ];
+    for (label, tamper, expected_code) in cases {
+        let factory = Arc::new(FakeFactory::new(false));
+        let service = live_service_with(&factory);
+        let mut request = request("request-admission", definition(false));
+        tamper(request.admission.as_mut().expect("live admission binding"));
+        let error = service
+            .submit_run(&actor(), request)
+            .expect_err("a mismatched target admission must fail closed");
+        assert_eq!(error.code, expected_code, "case {label}");
+        assert!(
+            factory.entries().is_empty(),
+            "no live effect may occur for case {label}"
+        );
+    }
+}
