@@ -122,6 +122,8 @@ impl MemoryPolicyAuthority {
     }
 
     /// Privileged composition port, not an operator command. Failed updates publish nothing.
+    /// Every successful publication, including a no-op, advances the authority-owned epoch.
+    /// Old reviews and active bindings require explicit revalidation after maintenance.
     pub fn update(
         &self,
         update: impl FnOnce(&mut TrustedPolicyState) -> Result<(), PolicyOwnerError>,
@@ -160,6 +162,15 @@ impl MemoryPolicyAuthority {
                 return Err(PolicyOwnerError::StaleReview);
             }
         }
+        // Corpus disable/reset and reconstruction can reuse generation/revocation values.
+        // A separate monotonic fence prevents any maintenance A -> B -> A from restoring
+        // an old approval. Preserve an explicitly supplied larger trusted epoch.
+        let successor = state
+            .owner_epoch
+            .checked_add(1)
+            .filter(|epoch| *epoch <= 9_007_199_254_740_991)
+            .ok_or(PolicyOwnerError::Capacity)?;
+        next.owner_epoch = next.owner_epoch.max(successor);
         *state = next;
         Ok(())
     }

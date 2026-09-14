@@ -47,6 +47,13 @@ occurs immediately before commit; wall time can advance while the lease is held.
 before admission prevents activation; revocation ordered after commit preserves history but fences
 subsequent preparation. Preparation checks both selector and original approval grants.
 
+Every successfully published trusted maintenance update advances the authority-owned owner epoch,
+including a no-op. An explicit larger epoch is preserved; rollback, overflow and failed updates
+publish nothing. This prevents corpus reconstruction, disable/reset or descriptor/revision
+A-to-B-to-A changes from restoring an old approval. Corpus disable may still reset its own counters.
+After any successful maintenance, old reviews and active bindings require explicit revalidation,
+approval and adoption; do not call `update` as a read-only health check.
+
 Accepted effects and receipts share one transaction. A before-commit failure leaves neither;
 after-commit lost reply leaves both. Recover by original subject/idempotency key. Reusing that key
 with changed content conflicts. Reopening authenticates history before incrementing the persistent
@@ -89,6 +96,7 @@ cargo test --locked -p sts2-harness \
   --test context_memory_policy_store \
   --test context_memory_policy_races \
   --test context_memory_policy_limits \
+  --test context_memory_policy_maintenance \
   --test context_memory_policy_history
 cargo test --locked -p sts2-harness --lib \
   context_memory::policy_owner

@@ -16,6 +16,12 @@ The selected descriptor and its independent pins, actual corpus, phase2 revision
 scoped grants come from trusted composition, never the command. Authentication precedes the state
 lease; current grants are checked inside it. A workflow scope alone grants no policy permission.
 The concrete authority's maintenance update port serializes all relevant mutations.
+Every successfully published update, including a no-op, advances its authority-owned owner epoch
+with a checked safe-integer increment, preserving a supplied larger trusted epoch. Failed updates,
+epoch rollback and exhaustion publish nothing. Old reviews/active bindings remain stale even when
+corpus reconstruction, legitimate disable/reset or descriptor/revision changes return other fence
+values to an earlier state. Maintenance therefore requires explicit revalidation/approval/adoption
+before further preparation; callers must use inspection for read-only health checks.
 
 The approved atomicity boundary holds the owner-state lease through a bounded SQLite immediate
 transaction. This is a deliberate local persistence exception to the general rule against blocking

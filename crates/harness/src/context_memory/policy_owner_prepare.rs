@@ -89,13 +89,14 @@ fn admitted_active(
         grant_id: approval.grant_id.clone(),
         grant_epoch: approval.grant_epoch,
     };
+    // Continued approval authority is required even when maintenance also made the binding stale.
+    check_prepare_grants(state, actor, &approver, approval, now)?;
     let mut expected = PolicyFence::current(state, &approver, journal);
     // Adoption replaced the reviewed prior pointer; every other fence must remain current.
     expected.expected_active_version = review.fence.expected_active_version;
     if binding.fence != expected {
         return Err(PolicyOwnerError::StaleReview);
     }
-    check_prepare_grants(state, actor, &approver, approval, now)?;
     let policy = journal.policy(&binding.target)?.typed()?;
     state.validate_target(&policy)?;
     Ok(AdmittedPolicy {
