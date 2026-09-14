@@ -231,3 +231,71 @@ fn cancellation_dominates_pause_and_stops_the_live_session() {
     );
     assert!(factory.entries().contains(&"stop".to_owned()));
 }
+
+#[test]
+fn pause_resume_and_continue_match_durable_scheduler_state() {
+    let factory = Arc::new(FakeFactory::new(false));
+    let service = live_service(
+        Arc::new(MemoryWorkflowStore::new()),
+        Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
+        LiveWorkflowOptions::default(),
+    )
+    .expect("service");
+    let actor = actor();
+    let submitted = service
+        .submit_run(
+            &actor,
+            request("request-live-pause-resume", definition(false)),
+        )
+        .expect("submit");
+    let run_id = submitted.workflow_run_id;
+
+    // Observe, then pause the running run.
+    service
+        .command(&actor, command(&run_id, "step-1", 1, CommandKind::Step))
+        .expect("observe");
+    let paused = service
+        .command(&actor, command(&run_id, "pause", 2, CommandKind::Pause))
+        .expect("pause");
+    assert_eq!(paused.run_revision, 3);
+    assert_eq!(
+        service.status(&actor, &run_id).expect("status").run.status,
+        WorkflowRunStatus::Paused
+    );
+
+    // Stepping while paused fails closed without advancing the durable revision.
+    let error = service
+        .command(
+            &actor,
+            command(&run_id, "step-while-paused", 3, CommandKind::Step),
+        )
+        .expect_err("step while paused must fail closed");
+    assert_eq!(error.code, "live_run_paused");
+    let paused_snapshot = service.status(&actor, &run_id).expect("status").run;
+    assert_eq!(paused_snapshot.status, WorkflowRunStatus::Paused);
+    assert_eq!(paused_snapshot.run_revision, 3);
+
+    // Resume and finish the authored graph at the correct durable revisions.
+    let resumed = service
+        .command(&actor, command(&run_id, "resume", 3, CommandKind::Resume))
+        .expect("resume");
+    assert_eq!(resumed.run_revision, 4);
+    assert_eq!(
+        service.status(&actor, &run_id).expect("status").run.status,
+        WorkflowRunStatus::Running
+    );
+    service
+        .command(&actor, command(&run_id, "step-2", 4, CommandKind::Step))
+        .expect("decide");
+    service
+        .command(&actor, command(&run_id, "step-3", 5, CommandKind::Step))
+        .expect("execute");
+    let terminal = service
+        .command(&actor, command(&run_id, "step-4", 6, CommandKind::Step))
+        .expect("terminal");
+    assert_eq!(terminal.run_revision, 7);
+    assert_eq!(
+        service.status(&actor, &run_id).expect("status").run.status,
+        WorkflowRunStatus::Completed
+    );
+}
