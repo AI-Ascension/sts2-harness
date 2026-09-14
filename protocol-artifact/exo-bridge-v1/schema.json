@@ -61,16 +61,30 @@
       "maxLength": 512,
       "pattern": "^[A-Za-z0-9._:/-]+$"
     },
+    "provider_identity": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:/-]+$"
+    },
+    "provider_endpoint": {
+      "type": "string",
+      "minLength": 9,
+      "maxLength": 512,
+      "pattern": "^https://[A-Za-z0-9._:-]+(/[A-Za-z0-9._:/-]*)?$"
+    },
     "identity": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Every digest and identity key must be present in this schema and is either a lowercase SHA-256 or null. The Rust `ExoIdentity` stores each digest as `Option<String>`, so an omitted key and an explicit null are equivalent there; this schema is intentionally stricter (fail-closed) and requires the explicit key.",
+      "description": "Every digest, model, provider, endpoint, and identity key must be present in this schema and is either a bounded value or null. The Rust `ExoIdentity` stores optional deployment axes, so an omitted key and an explicit null are equivalent there; this schema is intentionally stricter (fail-closed) and requires the explicit key. Executable preflight requires provider=openai and a reviewed https://api.openai.com endpoint; OpenRouter and unknown routes are rejected.",
       "required": [
         "source_revision",
         "package_digest",
         "extension_digest",
         "bridge_digest",
         "model_binding",
+        "provider",
+        "endpoint",
         "prompt_digest",
         "tool_digest",
         "config_digest",
@@ -83,6 +97,8 @@
         "extension_digest": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
         "bridge_digest": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
         "model_binding": {"anyOf": [{"$ref": "#/$defs/identity_text"}, {"type": "null"}]},
+        "provider": {"anyOf": [{"$ref": "#/$defs/provider_identity"}, {"type": "null"}]},
+        "endpoint": {"anyOf": [{"$ref": "#/$defs/provider_endpoint"}, {"type": "null"}]},
         "prompt_digest": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
         "tool_digest": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
         "config_digest": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
@@ -274,7 +290,7 @@
     "expert_observation": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Closed Runtime-v4 expert observation. Faithful to protocol-artifact/runtime-v4-expert/schema.json and crates/harness/src/runtime_v4_expert_parse.rs (`shape_is_closed`/`WireObservation`).",
+      "description": "Closed Runtime-v4 expert observation. Faithful to protocol-artifact/runtime-v4-expert/schema.json and crates/harness/src/runtime_v4_expert_parse.rs (`shape_is_closed`/`WireObservation`). The bridge tightens legal_actions to at least one entry; hp<=max_hp remains semantic validation performed by the Rust parser because JSON Schema cannot compare two instance values.",
       "required": [
         "protocol_version",
         "schema_digest",
@@ -301,7 +317,9 @@
         "state": {"$ref": "#/$defs/expert_state"},
         "legal_actions": {
           "type": "array",
+          "minItems": 1,
           "maxItems": 256,
+          "uniqueItems": true,
           "items": {"$ref": "#/$defs/expert_legal_action"}
         }
       }

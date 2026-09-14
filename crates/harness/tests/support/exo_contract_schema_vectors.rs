@@ -307,6 +307,44 @@ fn golden_expert_observation_is_accepted_by_schema_and_parser() {
 }
 
 #[test]
+fn whole_expert_request_vectors_execute_against_schema_and_parser() {
+    let schema: serde_json::Value =
+        serde_json::from_slice(SCHEMA).expect("wire schema is valid JSON");
+    let request_validator = definition_validator(&schema, "decision_request");
+    let conformance: Value =
+        serde_json::from_slice(CONFORMANCE).expect("conformance vectors are valid JSON");
+    let expert_vectors = conformance["request_vectors"]
+        .as_array()
+        .expect("request vectors")
+        .iter()
+        .filter(|vector| vector["fixture"] == "generated:exo_contract_expert")
+        .collect::<Vec<_>>();
+    assert_eq!(expert_vectors.len(), 4, "expert request vector set drifted");
+    for vector in expert_vectors {
+        let name = vector["name"].as_str().expect("expert vector name");
+        let mutation = vector["mutation"].as_str().expect("expert vector mutation");
+        let request = expert_request_variant(mutation);
+        let schema_expected = vector["schema_expected"]
+            .as_str()
+            .expect("expert schema expectation");
+        let parser_expected = vector["parser_expected"]
+            .as_str()
+            .expect("expert parser expectation");
+        assert_eq!(
+            request_validator.is_valid(&request),
+            schema_expected == "accepted",
+            "{name} schema expectation was not met"
+        );
+        let bytes = serde_json::to_vec(&request).expect("expert request serializes");
+        assert_eq!(
+            parse_bridge_request(&bytes, EXO_MAX_STANDARD_REQUEST_BYTES).is_ok(),
+            parser_expected == "accepted",
+            "{name} parser expectation was not met"
+        );
+    }
+}
+
+#[test]
 fn empty_legal_actions_are_rejected_by_schema_and_parser() {
     let schema: serde_json::Value =
         serde_json::from_slice(SCHEMA).expect("wire schema is valid JSON");

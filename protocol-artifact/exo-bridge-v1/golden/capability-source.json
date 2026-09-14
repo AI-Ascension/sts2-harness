@@ -7,6 +7,8 @@
     "extension_digest": null,
     "bridge_digest": null,
     "model_binding": "unbound",
+    "provider": null,
+    "endpoint": null,
     "prompt_digest": null,
     "tool_digest": null,
     "config_digest": null,

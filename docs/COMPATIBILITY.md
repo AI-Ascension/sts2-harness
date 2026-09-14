@@ -72,7 +72,13 @@ The closed capability/preflight descriptor and request/turn envelope are source/
 contracts. Standard/fresh/Linux x86_64 and strict terminal decision parsing are source-derived;
 map/expert, continuity, cancellation/recovery, event/usage, replay, native package/model
 identity, live Exo connectivity, and STS2 gameplay remain `unverified` until the real pinned
-executor spike records them. Old readers fail closed on the new contract or identity fields.
+executor spike records them. The required `runtime`, `provider`, and `endpoint` identity axes are
+classified as a `breaking` required-configuration correction; readers that cannot validate them
+fail closed. The tightened expert digest and non-empty legal-action schema is a
+`safety-correction`, with `hp <= max_hp` still enforced semantically by the parser. Migrations
+must stage additive records, run schema and trusted preflight checks, retain a backup until
+handoff, and restore that backup on failure without reinterpreting new records as legacy
+`provider_revision`-only identities.
 
 ## Current evidence baseline
 

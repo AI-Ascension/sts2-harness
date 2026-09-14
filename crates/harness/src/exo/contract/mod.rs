@@ -17,6 +17,7 @@ pub use descriptor::{
 pub use identity::{DigestKind, ExoIdentity, ExoIdentityError};
 pub use preflight::{
     ExoPreflightError, ExoPreflightReport, ExoTrustedConfiguration, preflight, responses_capable,
+    responses_routing_capable,
 };
 pub use wire::{
     ExoBridgeDecisionEnvelope, ExoBridgeRequestEnvelope, ExoBridgeTurn, ExoControlIdentity,
