@@ -77,7 +77,7 @@ fn with_consumer(matrix: &PinMatrix, consumer: ConsumerPin) -> PinMatrix {
 }
 
 #[test]
-fn committed_matrix_records_pending_consumers_and_never_treats_absent_as_unlimited() {
+fn committed_matrix_records_aligned_consumers_and_rollback_remains_unavailable() {
     let matrix = matrix();
     assert_eq!(matrix.producer.surfaces.len(), 2);
     for repository in [CONSOLE, STUDIO] {
@@ -86,13 +86,19 @@ fn committed_matrix_records_pending_consumers_and_never_treats_absent_as_unlimit
             .iter()
             .find(|entry| entry.repository == repository)
             .expect("recorded consumer");
-        assert_eq!(consumer.adoption, Adoption::Pending);
-        assert!(!matrix.alignment_holds(consumer));
+        assert_eq!(consumer.adoption, Adoption::Aligned);
+        assert!(matrix.alignment_holds(consumer));
         for surface in &consumer.surfaces {
-            assert!(!surface.effective_limits_advertised);
+            assert!(surface.effective_limits_advertised);
         }
+        let mut pending = consumer.clone();
+        pending.adoption = Adoption::Pending;
+        for surface in &mut pending.surfaces {
+            surface.effective_limits_advertised = false;
+        }
+        let rollback = with_consumer(&matrix, pending);
         assert_eq!(
-            matrix.admit_consumer(
+            rollback.admit_consumer(
                 repository,
                 "context-memory",
                 &memory_record(),
@@ -278,6 +284,7 @@ fn tampered_or_stale_pins_and_records_cannot_authorize_a_larger_limit() {
                 .expect("console")
                 .clone();
             consumer.adoption = Adoption::Aligned;
+            consumer.artifacts[0].sha256 = "0".repeat(64);
             consumer
         })
         .validate(),

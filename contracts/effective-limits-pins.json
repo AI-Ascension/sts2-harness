@@ -44,71 +44,98 @@
   "consumers": [
     {
       "repository": "AI-Ascension/ascension-context-console",
-      "revision": "10122f38efce29d6c4a6f08ab572af7e75ef9fea",
-      "revision_source": "observed_head",
+      "revision": "df36452adcfa1b1c3a7f968be243cd25a02433c3",
+      "revision_source": "harness_ci_pin",
       "artifact_mode": "copied_contracts",
       "role": "Bounded context inspection facade that forwards owner truth to Studio",
-      "adoption": "pending",
+      "adoption": "aligned",
       "artifacts": [
         {
           "path": "contracts/context-memory/capabilities.schema.json",
-          "sha256": "c55585781678117cd6647770882066598a4eb69dd50be3959ac460a63906d057"
+          "sha256": "2b980bbdcdd886398c1e590303b82afee174e4569164e79b210ab35f6669bd22"
+        },
+        {
+          "path": "contracts/context-memory/policy.schema.json",
+          "sha256": "55c9bba8ec71ae00b1a6c6bec07b1ca85ec9df0de0d7a0bfa2b5cd663f9aa416"
         },
         {
           "path": "contracts/provider-session/capabilities.schema.json",
-          "sha256": "745040537ba73ca0148d799ac66f2ddfc1828a81494c35d68b716feaa7adc678"
+          "sha256": "de1348ec7434703722b00a2ddb4bcef7cec02b3788ff14af018cf7b7efaf21f0"
         },
         {
           "path": "contracts/provider-session/policy.schema.json",
-          "sha256": "678ce51743f179e0723a72b4a987aa27da8e04280c571aedea5b1ff83126e621"
+          "sha256": "48d6dc1c75504983c3d5e6a1152c0447874eeb512e45b276ab440962e52781a5"
         }
       ],
       "surfaces": [
         {
           "surface": "context-memory",
-          "advertised_capability_schema": "ascension.context-memory.capabilities.v1",
-          "effective_limits_advertised": false
+          "advertised_capability_schema": "ascension.context-memory.capabilities.v3",
+          "effective_limits_advertised": true
         },
         {
           "surface": "provider-session",
-          "advertised_capability_schema": "ascension.provider-session.capabilities.v1",
-          "effective_limits_advertised": false
+          "advertised_capability_schema": "ascension.provider-session.capabilities.v3",
+          "effective_limits_advertised": true
         }
       ],
-      "harness_ci_pin": null
+      "harness_ci_pin": {
+        "workflow": ".github/workflows/console-contract.yml",
+        "revision": "df36452adcfa1b1c3a7f968be243cd25a02433c3"
+      }
     },
     {
       "repository": "AI-Ascension/ascension-workflow-studio",
-      "revision": "766c1d54afe10eeb5d91ee6f9af408226650a0db",
-      "revision_source": "observed_head",
+      "revision": "31c5e5f407ab17fb0363374dd1d926c25e6350ea",
+      "revision_source": "harness_ci_pin",
       "artifact_mode": "schema_adapter",
       "role": "Authoring and presentation consumer that must not offer a value the runtime rejects",
-      "adoption": "pending",
+      "adoption": "aligned",
       "artifacts": [
         {
           "path": "packages/contracts/src/index.ts",
-          "sha256": "b657da38c4c1513bca35e5376a4a98724a6ee90006498242946cd305b8a444f7"
+          "sha256": "b362696258c2f26964711e86ab27408ee1d971b874fc2765c6629ce33d7f03fc"
         },
         {
           "path": "contracts/live-owner-ci.lock.json",
           "sha256": "210fe84e788a19cab24b092dfcfa49b1491c7c3078b548d4f799e112458782ca"
+        },
+        {
+          "path": "contracts/effective-limits.lock.json",
+          "sha256": "3f4c10f3831bdcd5bba005460f6fea584acbbaf32e37cd2fbbe053be2fdf9400"
+        },
+        {
+          "path": "packages/contracts/src/effective-limits.ts",
+          "sha256": "57778d3f50fc8e43ed5f45825550711c34950d21adb676a73b3f773a9b120d00"
+        },
+        {
+          "path": "packages/contracts/src/effective-limit-types.ts",
+          "sha256": "f165ecac5a41b9c42157c47c3f8ce7dbc29eb389eed4bb613cc445f5d36c7570"
+        },
+        {
+          "path": "packages/contracts/src/effective-limit-validators.js",
+          "sha256": "7f0feb81e9b69274906f65f951a8a541430ad6b2d6dcc0cba15a5fdcf828c39c"
+        },
+        {
+          "path": "contracts/accepted/effective-limits/producer.json",
+          "sha256": "ffed02d25dae8404145234bea2f8dd6f0a671f415a4ae68c7c388d8ac709e363"
         }
       ],
       "surfaces": [
         {
           "surface": "context-memory",
-          "advertised_capability_schema": "ascension.context-memory.capabilities.v1",
-          "effective_limits_advertised": false
+          "advertised_capability_schema": "ascension.context-memory.capabilities.v3",
+          "effective_limits_advertised": true
         },
         {
           "surface": "provider-session",
-          "advertised_capability_schema": null,
-          "effective_limits_advertised": false
+          "advertised_capability_schema": "ascension.provider-session.capabilities.v3",
+          "effective_limits_advertised": true
         }
       ],
       "harness_ci_pin": {
         "workflow": ".github/workflows/studio-contract.yml",
-        "revision": "c68d4f3837c5e11d966fea6bd5ec6182251b9f7f"
+        "revision": "31c5e5f407ab17fb0363374dd1d926c25e6350ea"
       }
     }
   ]

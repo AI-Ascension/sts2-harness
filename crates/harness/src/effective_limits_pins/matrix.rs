@@ -2,8 +2,8 @@
 
 use super::types::{
     Adoption, ArtifactMode, ConsumerPin, EFFECTIVE_LIMIT_PIN_MATRIX_SCHEMA, PinMatrix,
-    ProducerArtifact, ProducerSurface, matrix_json, producer_artifact_bytes, valid_date,
-    valid_revision, valid_sha256, workflow_pin_matches,
+    ProducerArtifact, ProducerSurface, RevisionSource, matrix_json, producer_artifact_bytes,
+    valid_date, valid_revision, valid_sha256, workflow_pin_matches,
 };
 use crate::effective_limits::{EffectiveLimitRecord, UnavailableReason};
 use std::collections::BTreeSet;
@@ -73,9 +73,19 @@ impl PinMatrix {
             if !valid_revision(&pin.revision) {
                 return Err(PinMatrixError::ConsumerRevisionMalformed);
             }
-            if !workflow_pin_matches(&pin.workflow, &pin.revision) {
+            if !workflow_pin_matches(&consumer.repository, &pin.workflow, &pin.revision)
+                || (consumer.revision_source == RevisionSource::HarnessCiPin
+                    && consumer.revision != pin.revision)
+            {
                 return Err(PinMatrixError::ConsumerPinDrift);
             }
+        }
+        if (consumer.adoption == Adoption::Aligned
+            || consumer.revision_source == RevisionSource::HarnessCiPin)
+            && (consumer.harness_ci_pin.is_none()
+                || consumer.revision_source != RevisionSource::HarnessCiPin)
+        {
+            return Err(PinMatrixError::ConsumerPinDrift);
         }
         match (consumer.adoption, self.alignment_holds(consumer)) {
             (Adoption::Aligned, true) | (Adoption::Pending, false) => Ok(()),

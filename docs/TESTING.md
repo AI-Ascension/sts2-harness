@@ -37,6 +37,14 @@ stand in for the unavailable target↔harness Phase 2 adapter.
 
 ## Baseline commands
 
+Effective-limit consumer pins additionally have `effective_limits_workflow_pins` negative tests
+for absent, wrong-repository, unknown-workflow and stale/mismatched revision pins. The committed
+matrix tests exercise aligned admission and explicit unavailable rollback. Candidate producer
+bytes are compared with both exact consumers before their tests in `console-contract.yml`.
+The standalone tool has its own locked format/Clippy/test/build gates, described in
+[`tools/consumer-conformance`](../tools/consumer-conformance/README.md); root workspace commands
+do not include that deliberately separate tool workspace.
+
 ```bash
 cargo run --locked --package repo-policy -- --strict
 cargo fmt --all --check

@@ -1,0 +1,22 @@
+[package]
+name = "harness-consumer-conformance"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+publish = false
+license = "MIT"
+
+# CI-only source/fixture verifier; no dependency enters the product workspace.
+[workspace]
+
+[dependencies]
+serde_json = "=1.0.151"
+sha2 = "=0.11.0"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+expect_used = "deny"
+unwrap_used = "deny"
+panic = "deny"

@@ -17,9 +17,9 @@ mod types;
 
 pub use matrix::PinMatrixError;
 pub use types::{
-    Adoption, ArtifactMode, ConsumerArtifact, ConsumerPin, ConsumerSurface,
-    EFFECTIVE_LIMIT_PIN_MATRIX_SCHEMA, HarnessCiPin, MEMORY_CAPABILITIES_SCHEMA_PATH,
-    MEMORY_POLICY_SCHEMA_PATH, PinMatrix, ProducerArtifact, ProducerPins, ProducerSurface,
-    RevisionSource, SESSION_CAPABILITIES_SCHEMA_PATH, SESSION_POLICY_SCHEMA_PATH,
-    STUDIO_CONTRACT_WORKFLOW_PATH,
+    Adoption, ArtifactMode, CONSOLE_CONTRACT_WORKFLOW_PATH, ConsumerArtifact, ConsumerPin,
+    ConsumerSurface, EFFECTIVE_LIMIT_PIN_MATRIX_SCHEMA, HarnessCiPin,
+    MEMORY_CAPABILITIES_SCHEMA_PATH, MEMORY_POLICY_SCHEMA_PATH, PinMatrix, ProducerArtifact,
+    ProducerPins, ProducerSurface, RevisionSource, SESSION_CAPABILITIES_SCHEMA_PATH,
+    SESSION_POLICY_SCHEMA_PATH, STUDIO_CONTRACT_WORKFLOW_PATH,
 };
