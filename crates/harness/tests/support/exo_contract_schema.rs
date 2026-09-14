@@ -301,6 +301,38 @@ fn schema_nested_nulls_and_rust_request_validation_have_parity() {
     let standard = serde_json::to_vec(&standard).expect("null optionals serialize");
     assert!(parse_bridge_request(&standard, EXO_MAX_STANDARD_REQUEST_BYTES).is_ok());
 
+    let mut mismatched_management: serde_json::Value =
+        serde_json::from_slice(REQUEST).expect("golden request is JSON");
+    mismatched_management["management_profile"] = Value::Null;
+    mismatched_management["management_context"] = json!({});
+    let mismatched_management =
+        serde_json::to_vec(&mismatched_management).expect("mismatched management serializes");
+    assert_eq!(
+        parse_bridge_request(&mismatched_management, EXO_MAX_STANDARD_REQUEST_BYTES),
+        Err(ExoWireError::InvalidRequest)
+    );
+
+    let mut profile_without_context: serde_json::Value =
+        serde_json::from_slice(REQUEST).expect("golden request is JSON");
+    profile_without_context["management_profile"] = json!("management-enabled");
+    profile_without_context["management_context"] = Value::Null;
+    let profile_without_context =
+        serde_json::to_vec(&profile_without_context).expect("profile without context serializes");
+    assert_eq!(
+        parse_bridge_request(&profile_without_context, EXO_MAX_STANDARD_REQUEST_BYTES),
+        Err(ExoWireError::InvalidRequest)
+    );
+
+    let mut context_without_profile: serde_json::Value =
+        serde_json::from_slice(REQUEST).expect("golden request is JSON");
+    context_without_profile["management_context"] = json!({"scope": "management"});
+    let context_without_profile =
+        serde_json::to_vec(&context_without_profile).expect("context without profile serializes");
+    assert_eq!(
+        parse_bridge_request(&context_without_profile, EXO_MAX_STANDARD_REQUEST_BYTES),
+        Err(ExoWireError::InvalidRequest)
+    );
+
     let mut invalid_observation: serde_json::Value =
         serde_json::from_slice(REQUEST).expect("golden request is JSON");
     invalid_observation["observation"]["player"]["unexpected"] = json!(true);

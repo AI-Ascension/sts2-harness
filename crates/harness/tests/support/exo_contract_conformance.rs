@@ -35,90 +35,63 @@ fn execute_request_vectors(vectors: &[Value]) {
         let expected = vector["expected"]
             .as_str()
             .expect("request vector expected");
-        match name {
-            "standard_at_bound" => {
-                assert_eq!(expected, "accepted");
-                assert_eq!(vector["bound"], json!(EXO_MAX_STANDARD_REQUEST_BYTES));
-                let frame = pad_frame(REQUEST, EXO_MAX_STANDARD_REQUEST_BYTES);
-                assert!(parse_bridge_request(&frame, EXO_MAX_STANDARD_REQUEST_BYTES).is_ok());
+        let fixture = vector["fixture"].as_str().expect("request vector fixture");
+        let source = fixture_bytes(fixture);
+        if let Some(padding) = vector["padding"].as_str() {
+            let bound = vector["bound"]
+                .as_u64()
+                .and_then(|value| usize::try_from(value).ok())
+                .expect("padded request vector bound");
+            let frame = apply_padding(&source, bound, padding);
+            match expected {
+                "accepted" => assert!(
+                    parse_bridge_request(&frame, bound).is_ok(),
+                    "{name} fixture rejected"
+                ),
+                "too_large" => {
+                    assert_eq!(
+                        parse_bridge_request(&frame, bound),
+                        Err(ExoWireError::TooLarge),
+                        "{name} fixture was not bounded"
+                    );
+                    if fixture == "golden/request.json" {
+                        assert_eq!(
+                            parse_bridge_request(&frame, EXO_MAX_MAP_REQUEST_BYTES),
+                            Err(ExoWireError::TooLarge),
+                            "{name} escaped its standard profile bound"
+                        );
+                    }
+                }
+                other => unreachable!("unhandled padded request result {other}"),
             }
-            "standard_over_bound" => {
-                assert_eq!(expected, "too_large");
-                assert_eq!(vector["bound"], json!(EXO_MAX_STANDARD_REQUEST_BYTES));
-                let mut frame = pad_frame(REQUEST, EXO_MAX_STANDARD_REQUEST_BYTES);
-                frame.push(b' ');
-                assert_eq!(
-                    parse_bridge_request(&frame, EXO_MAX_STANDARD_REQUEST_BYTES),
-                    Err(ExoWireError::TooLarge)
-                );
-                assert_eq!(
-                    parse_bridge_request(&frame, EXO_MAX_MAP_REQUEST_BYTES),
-                    Err(ExoWireError::TooLarge)
-                );
+            continue;
+        }
+        match expected {
+            "too_large" => {
+                let bound = vector["bound"]
+                    .as_u64()
+                    .and_then(|value| usize::try_from(value).ok())
+                    .expect("envelope vector bound");
+                let frame = pad_frame(&source, bound);
+                assert_envelope_over_bound(frame, bound, bound);
+                if fixture == "golden/request.json" {
+                    let frame = pad_frame(&source, bound);
+                    assert_envelope_over_bound(frame, bound, EXO_MAX_MAP_REQUEST_BYTES);
+                }
             }
-            "map_at_bound" => {
-                assert_eq!(expected, "accepted");
-                assert_eq!(vector["bound"], json!(EXO_MAX_MAP_REQUEST_BYTES));
-                let frame = pad_frame(
-                    &exo_contract_map::map_request_bytes(),
-                    EXO_MAX_MAP_REQUEST_BYTES,
-                );
-                assert!(parse_bridge_request(&frame, EXO_MAX_MAP_REQUEST_BYTES).is_ok());
-            }
-            "map_over_bound" => {
-                assert_eq!(expected, "too_large");
-                assert_eq!(vector["bound"], json!(EXO_MAX_MAP_REQUEST_BYTES));
-                let mut frame = pad_frame(
-                    &exo_contract_map::map_request_bytes(),
-                    EXO_MAX_MAP_REQUEST_BYTES,
-                );
-                frame.push(b' ');
-                assert_eq!(
-                    parse_bridge_request(&frame, EXO_MAX_MAP_REQUEST_BYTES),
-                    Err(ExoWireError::TooLarge)
-                );
-            }
-            "envelope_overhead_standard" => {
-                assert_eq!(expected, "too_large");
-                let frame = pad_frame(REQUEST, EXO_MAX_STANDARD_REQUEST_BYTES);
-                assert_envelope_over_bound(
-                    frame,
-                    EXO_MAX_STANDARD_REQUEST_BYTES,
-                    EXO_MAX_STANDARD_REQUEST_BYTES,
-                );
-                let frame = pad_frame(REQUEST, EXO_MAX_STANDARD_REQUEST_BYTES);
-                assert_envelope_over_bound(
-                    frame,
-                    EXO_MAX_STANDARD_REQUEST_BYTES,
-                    EXO_MAX_MAP_REQUEST_BYTES,
-                );
-            }
-            "envelope_overhead_map" => {
-                assert_eq!(expected, "too_large");
-                let frame = pad_frame(
-                    &exo_contract_map::map_request_bytes(),
-                    EXO_MAX_MAP_REQUEST_BYTES,
-                );
-                assert_envelope_over_bound(
-                    frame,
-                    EXO_MAX_MAP_REQUEST_BYTES,
-                    EXO_MAX_MAP_REQUEST_BYTES,
-                );
-            }
-            "wrong_schema" => {
-                assert_eq!(expected, "invalid_request");
+            "invalid_request" => {
                 let mut wrong_schema: Value =
-                    serde_json::from_slice(REQUEST).expect("golden request is JSON");
+                    serde_json::from_slice(&source).expect("request fixture is JSON");
                 wrong_schema["schema"] = json!("wrong-schema-v0");
                 let wrong_schema =
                     serde_json::to_vec(&wrong_schema).expect("wrong schema serializes");
                 assert_eq!(
                     parse_bridge_request(&wrong_schema, EXO_MAX_STANDARD_REQUEST_BYTES),
-                    Err(ExoWireError::InvalidRequest)
+                    Err(ExoWireError::InvalidRequest),
+                    "{name} expected invalid request"
                 );
             }
-            "swapped_package" => {
-                assert_eq!(expected, "identity_mismatch");
+            "identity_mismatch" => {
                 let mut trusted = ExoTrustedConfiguration {
                     identity: complete_identity(),
                     platform: ExoPlatform::LinuxX86_64,
@@ -133,11 +106,36 @@ fn execute_request_vectors(vectors: &[Value]) {
                 descriptor.identity = complete_identity();
                 assert_eq!(
                     preflight(&descriptor, &trusted),
-                    Err(ExoPreflightError::IdentityMismatch("package_digest"))
+                    Err(ExoPreflightError::IdentityMismatch("package_digest")),
+                    "{name} expected package identity mismatch"
                 );
             }
-            other => unreachable!("unhandled request conformance vector {other}"),
+            other => unreachable!("unhandled request result {other}"),
         }
+    }
+}
+
+fn fixture_bytes(fixture: &str) -> Vec<u8> {
+    match fixture {
+        "golden/request.json" => REQUEST.to_vec(),
+        "generated:exo_contract_map" => exo_contract_map::map_request_bytes(),
+        "golden/capability-source.json" => include_bytes!(
+            "../../../../protocol-artifact/exo-bridge-v1/golden/capability-source.json"
+        )
+        .to_vec(),
+        other => unreachable!("unhandled request fixture {other}"),
+    }
+}
+
+fn apply_padding(source: &[u8], bound: usize, padding: &str) -> Vec<u8> {
+    match padding {
+        "utf8_space" => pad_frame(source, bound),
+        "utf8_space_plus_one" => {
+            let mut frame = pad_frame(source, bound);
+            frame.push(b' ');
+            frame
+        }
+        other => unreachable!("unhandled request padding {other}"),
     }
 }
 

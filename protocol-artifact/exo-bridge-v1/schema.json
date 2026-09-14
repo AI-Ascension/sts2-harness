@@ -506,7 +506,7 @@
           "additionalProperties": false,
           "required": ["kind", "item_id"],
           "properties": {
-            "kind": {"enum": ["shop_purchase", "shop_remove"]},
+            "kind": {"const": "shop_purchase"},
             "item_id": {"$ref": "#/$defs/id"}
           }
         },
@@ -515,7 +515,7 @@
           "additionalProperties": false,
           "required": ["kind", "card_id"],
           "properties": {
-            "kind": {"enum": ["smith", "select_card"]},
+            "kind": {"enum": ["shop_remove", "smith", "select_card"]},
             "card_id": {"$ref": "#/$defs/id"}
           }
         },
@@ -779,14 +779,38 @@
             "required": ["management_profile"],
             "properties": {"management_profile": {"const": "management-enabled"}}
           },
-          "then": {"required": ["management_context"]}
+          "then": {
+            "required": ["management_context"],
+            "properties": {"management_context": {"not": {"type": "null"}}}
+          }
         },
         {
           "if": {
             "required": ["management_context"],
             "properties": {"management_context": {"not": {"type": "null"}}}
           },
-          "then": {"required": ["management_profile"]}
+          "then": {
+            "required": ["management_profile"],
+            "properties": {"management_profile": {"const": "management-enabled"}}
+          }
+        },
+        {
+          "if": {
+            "required": ["management_profile"],
+            "properties": {"management_profile": {"type": "null"}}
+          },
+          "then": {
+            "properties": {"management_context": {"type": "null"}}
+          }
+        },
+        {
+          "if": {
+            "required": ["management_context"],
+            "properties": {"management_context": {"type": "null"}}
+          },
+          "then": {
+            "properties": {"management_profile": {"type": "null"}}
+          }
         }
       ]
     },

@@ -65,8 +65,10 @@ pub fn encode_bridge_request(
     max_request_bytes: usize,
 ) -> Result<Vec<u8>, ExoWireError> {
     validate_control_pair(request_id, turn_id)?;
+    let maximum = max_request_bytes.min(EXO_MAX_MAP_REQUEST_BYTES);
+    let profile_limit = request_profile_limit(request, maximum);
     request
-        .encode(max_request_bytes.min(EXO_MAX_MAP_REQUEST_BYTES))
+        .encode(profile_limit)
         .map_err(|_| ExoWireError::InvalidRequest)?;
     let envelope = ExoBridgeRequestEnvelope {
         wire_version: EXO_BRIDGE_WIRE_VERSION.to_owned(),
@@ -75,7 +77,7 @@ pub fn encode_bridge_request(
         request: request.clone(),
     };
     let bytes = serde_json::to_vec(&envelope).map_err(|_| ExoWireError::InvalidRequest)?;
-    if bytes.len() > max_request_bytes.min(EXO_MAX_MAP_REQUEST_BYTES) {
+    if bytes.len() > profile_limit {
         return Err(ExoWireError::TooLarge);
     }
     Ok(bytes)

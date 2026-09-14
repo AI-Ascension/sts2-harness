@@ -19,6 +19,9 @@ mod exo_contract_map;
 #[path = "support/exo_contract_schema.rs"]
 mod exo_contract_schema;
 
+#[path = "support/exo_contract_schema_vectors.rs"]
+mod exo_contract_schema_vectors;
+
 #[path = "support/exo_contract_conformance.rs"]
 mod exo_contract_conformance;
 
