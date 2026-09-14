@@ -18,6 +18,8 @@ use sts2_harness::management::{
 
 #[path = "support/live_workflow_context_owner.rs"]
 mod context_owner_double;
+#[path = "support/live_workflow_definition.rs"]
+mod live_workflow_definition;
 
 use context_owner_double::FakeContextOwner;
 
@@ -197,12 +199,6 @@ impl WorkflowExecutionPort for SubmissionDouble {
     }
 }
 
-fn live_artifact_digest() -> Result<String, Box<dyn std::error::Error>> {
-    Ok(digest_value(
-        &json!({"artifact_id": "artifact-http-target"}),
-    )?)
-}
-
 #[test]
 fn live_requires_binding_and_stale_binding_is_rejected_before_execution()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -257,6 +253,7 @@ fn live_target_admission_requires_live_operation_support() -> Result<(), Box<dyn
         .with_capability_port(Arc::new(ScopedCapabilityDouble {
             supported_operations: vec!["workflow:read".to_owned()],
         }))
+        .with_definition_port(Arc::new(DefinitionDouble))
         .with_context_owner_port(Arc::new(FakeContextOwner))
         .with_execution_port(submissions.clone());
     let actor = actor()?;
@@ -264,7 +261,7 @@ fn live_target_admission_requires_live_operation_support() -> Result<(), Box<dyn
         instance_id: "instance-1".to_owned(),
         execution_profile: "live.workflow.v1".to_owned(),
         execution_mode: ExecutionMode::Live,
-        workflow_revision: "1.0.0".to_owned(),
+        workflow_revision: "0.1.0".to_owned(),
         compatibility_revision: "live.compatibility.v1".to_owned(),
         capability_revision: "live.capabilities.v1".to_owned(),
         game_profile: "sts2-live-v1".to_owned(),
@@ -273,7 +270,8 @@ fn live_target_admission_requires_live_operation_support() -> Result<(), Box<dyn
         context_capability: None,
         provider_capability: None,
     };
-    let workflow_definition_digest = live_artifact_digest()?;
+    let definition = live_workflow_definition::definition()?;
+    let workflow_definition_digest = digest_value(&definition)?;
     let preflight_error = service
         .preflight_target(
             &actor,
@@ -299,8 +297,8 @@ fn live_target_admission_requires_live_operation_support() -> Result<(), Box<dyn
             RunRequest {
                 schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
                 request_id: "request-operation-support".to_owned(),
-                definition: None,
-                artifact_id: Some("artifact-http-target".to_owned()),
+                definition: Some(definition),
+                artifact_id: None,
                 instance_id: "instance-1".to_owned(),
                 profile: "live.workflow.v1".to_owned(),
                 admission: Some(TargetAdmissionBinding {
@@ -337,6 +335,7 @@ fn authenticated_scoped_catalog_preflight_and_submission_are_actor_bound()
                     "workflow:live".to_owned(),
                 ],
             }))
+            .with_definition_port(Arc::new(DefinitionDouble))
             .with_context_owner_port(Arc::new(FakeContextOwner))
             .with_execution_port(execution),
     );
@@ -370,12 +369,13 @@ fn authenticated_scoped_catalog_preflight_and_submission_are_actor_bound()
     assert_eq!(unauthorized.status, 401);
 
     let request_id = "request-http-target";
-    let workflow_definition_digest = live_artifact_digest()?;
+    let definition = live_workflow_definition::definition()?;
+    let workflow_definition_digest = digest_value(&definition)?;
     let target = RunTargetConfiguration {
         instance_id: "instance-1".to_owned(),
         execution_profile: "live.workflow.v1".to_owned(),
         execution_mode: ExecutionMode::Live,
-        workflow_revision: "1.0.0".to_owned(),
+        workflow_revision: "0.1.0".to_owned(),
         compatibility_revision: "live.compatibility.v1".to_owned(),
         capability_revision: "live.capabilities.v1".to_owned(),
         game_profile: "sts2-live-v1".to_owned(),
@@ -405,8 +405,8 @@ fn authenticated_scoped_catalog_preflight_and_submission_are_actor_bound()
     let run_body = serde_json::to_vec(&RunRequest {
         schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
         request_id: request_id.to_owned(),
-        definition: None,
-        artifact_id: Some("artifact-http-target".to_owned()),
+        definition: Some(definition),
+        artifact_id: None,
         instance_id: "instance-1".to_owned(),
         profile: "live.workflow.v1".to_owned(),
         admission: Some(preflight.admission.clone()),

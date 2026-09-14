@@ -263,25 +263,34 @@ impl ContextBindingCatalog {
     ) -> Result<&ContextBindingDescriptor, ManagementError> {
         validate_identifier("context_ref", context_ref)?;
         validate_identifier("context_node_kind", node_kind)?;
-        self.descriptors
+        let mut matches = self
+            .descriptors
             .iter()
-            .find(|descriptor| descriptor.supports(context_ref, node_kind))
-            .ok_or_else(|| {
-                ManagementError::capability(
-                    "context_binding_unsupported",
-                    "context owner catalog does not advertise a usable binding for this node",
-                )
-            })
+            .filter(|descriptor| descriptor.supports(context_ref, node_kind));
+        let Some(descriptor) = matches.next() else {
+            return Err(ManagementError::capability(
+                "context_binding_unsupported",
+                "context owner catalog does not advertise a usable binding for this node",
+            ));
+        };
+        if matches.next().is_some() {
+            return Err(ManagementError::conflict(
+                "context_binding_ambiguous",
+                "context owner catalog advertises multiple bindings for this node",
+            ));
+        }
+        Ok(descriptor)
     }
 }
 
 #[path = "context_owner_binding.rs"]
 mod binding;
+#[path = "context_owner_receipt.rs"]
+mod receipt;
 #[path = "context_owner_support.rs"]
 mod support;
 
 pub use binding::{ContextBindingRequest, ContextOwnerBinding};
-pub use support::{
-    ContextControlCommand, ContextControlReceipt, ContextOwnerPort, UnavailableContextOwnerPort,
-};
+pub use receipt::{ContextControlCommand, ContextControlCommandKind, ContextControlReceipt};
+pub use support::{ContextOwnerPort, UnavailableContextOwnerPort};
 pub(crate) use support::{catalog_digest, validate_boundary, validate_grants, validate_limits};

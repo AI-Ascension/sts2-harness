@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::auth::AuthContext;
-use super::super::contract::{CleanupState, RunRequest, RunSubmissionResponse, WorkflowRunStatus};
+use super::super::context_owner::{ContextBindingRequest, ContextOwnerPort};
+use super::super::contract::{
+    CleanupState, RunRequest, RunSubmissionResponse, WorkflowRunStatus, digest_value,
+};
 use super::support::{run_submission_response, verify_admission};
 use super::target_admission::{bind_snapshot_admission, is_live_profile};
 use super::{ManagementError, ManagementService, RunReservation};
+use crate::workflow::{NodeDefinition, WorkflowDefinition};
 
 pub(super) fn submit_run(
     service: &ManagementService,
@@ -15,11 +19,15 @@ pub(super) fn submit_run(
 ) -> Result<RunSubmissionResponse, ManagementError> {
     // A live invocation must be bound to the authoritative context owner before
     // any reservation, session open, or launch. Fail closed when it is absent.
-    if is_live_profile(&request.profile) && !service.context_owner_port().is_available() {
-        return Err(ManagementError::unavailable(
-            "context_owner_unavailable",
-            "live workflow admission requires an attached authoritative context owner",
-        ));
+    if is_live_profile(&request.profile) {
+        let owner = service.context_owner_port();
+        if !owner.is_available() {
+            return Err(ManagementError::unavailable(
+                "context_owner_unavailable",
+                "live workflow admission requires an attached authoritative context owner",
+            ));
+        }
+        admit_context_owner(owner, actor, &request, &definition_digest)?;
     }
     let binding = service.revalidate_target_admission(actor, &request, &definition_digest)?;
     let reservation = RunReservation::new(
@@ -145,4 +153,114 @@ fn persist_reserved_failure(
             ),
         ),
     }
+}
+
+/// Consults and binds the actor-scoped context owner before the target
+/// authority or execution port can cross an effect boundary. The binding is
+/// intentionally a bounded admission fact; the owner remains authoritative
+/// for context bytes and subsequent control receipts.
+fn admit_context_owner(
+    owner: &dyn ContextOwnerPort,
+    actor: &AuthContext,
+    request: &RunRequest,
+    definition_digest: &str,
+) -> Result<(), ManagementError> {
+    let catalog = owner.catalog(actor)?;
+    catalog.validate()?;
+    let definition = request.definition.as_ref().ok_or_else(|| {
+        ManagementError::unavailable(
+            "context_owner_binding_unavailable",
+            "live context admission requires an inline workflow definition",
+        )
+    })?;
+    let parsed = super::super::workflow_ports::parse_definition(definition)?;
+    let (graph_id, node_id, node_kind, context_ref) = first_context_node(&parsed)?;
+    let descriptor = catalog.descriptor_for(context_ref, node_kind)?;
+    if !descriptor.grants.metadata_read {
+        return Err(ManagementError::capability(
+            "context_binding_metadata_unavailable",
+            "context owner catalog does not grant metadata access for this node",
+        ));
+    }
+    let binding_request = ContextBindingRequest {
+        workflow_run_id: live_run_id(request, definition_digest)?,
+        definition_digest: definition_digest.to_owned(),
+        instance_id: request.instance_id.clone(),
+        graph_id: graph_id.to_owned(),
+        node_id: node_id.to_owned(),
+        node_execution_id: "live.node.1".to_owned(),
+        node_kind: node_kind.to_owned(),
+        context_ref: context_ref.to_owned(),
+        binding_id: descriptor.binding_id.clone(),
+        binding_version: descriptor.version,
+        binding_digest: descriptor.digest.clone(),
+    };
+    binding_request.validate()?;
+    let binding = owner.bind(actor, &binding_request)?;
+    binding.validate_for_request(&binding_request)?;
+    if binding.owner_id != catalog.owner_id || binding.owner_version != catalog.owner_version {
+        return Err(ManagementError::conflict(
+            "context_owner_binding_foreign",
+            "context owner binding was issued by a different catalog owner",
+        ));
+    }
+    if binding.binding_id != descriptor.binding_id
+        || binding.binding_version != descriptor.version
+        || binding.binding_digest != descriptor.digest
+        || binding.context_ref != descriptor.context_ref
+    {
+        return Err(ManagementError::conflict(
+            "context_owner_binding_descriptor_mismatch",
+            "context owner binding does not match the actor-scoped catalog descriptor",
+        ));
+    }
+    Ok(())
+}
+
+fn first_context_node(
+    definition: &WorkflowDefinition,
+) -> Result<(&str, &str, &str, &str), ManagementError> {
+    let graph = definition
+        .graphs
+        .iter()
+        .find(|graph| graph.id == definition.entry_graph)
+        .ok_or_else(|| {
+            ManagementError::invalid(
+                "context_owner_graph_missing",
+                "workflow entry graph is missing from the admitted definition",
+            )
+        })?;
+    graph
+        .nodes
+        .iter()
+        .find_map(|node| match node {
+            NodeDefinition::Analyze { id, config } => Some((
+                graph.id.as_str(),
+                id.as_str(),
+                "analyze",
+                config.context_ref.as_str(),
+            )),
+            NodeDefinition::Decide { id, config } => Some((
+                graph.id.as_str(),
+                id.as_str(),
+                "decide",
+                config.context_ref.as_str(),
+            )),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            ManagementError::capability(
+                "context_binding_unsupported",
+                "live workflow has no supported context-bound node",
+            )
+        })
+}
+
+fn live_run_id(request: &RunRequest, definition_digest: &str) -> Result<String, ManagementError> {
+    let digest = digest_value(&serde_json::json!({
+        "request_id": request.request_id,
+        "instance_id": request.instance_id,
+        "definition_digest": definition_digest,
+    }))?;
+    Ok(format!("run.live.{}", &digest[..32]))
 }

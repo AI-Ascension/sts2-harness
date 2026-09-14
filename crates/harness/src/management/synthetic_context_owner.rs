@@ -128,6 +128,8 @@ impl ContextOwnerPort for SyntheticContextOwnerPort {
             binding_version: request.binding_version,
             binding_digest: request.binding_digest.clone(),
             context_ref: request.context_ref.clone(),
+            instance_id: request.instance_id.clone(),
+            node_kind: request.node_kind.clone(),
             state: ContextBindingState::Available,
             workflow_run_id: request.workflow_run_id.clone(),
             definition_digest: request.definition_digest.clone(),
