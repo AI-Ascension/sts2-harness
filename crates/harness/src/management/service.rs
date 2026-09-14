@@ -318,11 +318,6 @@ impl ManagementService {
         self
     }
 
-    pub fn with_execution_port(mut self, port: Arc<dyn WorkflowExecutionPort>) -> Self {
-        self.execution = port;
-        self
-    }
-
     pub fn with_replay_port(mut self, port: Arc<dyn WorkflowReplayPort>) -> Self {
         self.replay = port;
         self

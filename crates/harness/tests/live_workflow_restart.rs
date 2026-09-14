@@ -170,6 +170,10 @@ impl WorkflowExecutionPort for ApplyFailureExecution {
         }
         Ok(application)
     }
+
+    fn attach_context_owner(&self, port: Arc<dyn sts2_harness::management::ContextOwnerPort>) {
+        self.inner.attach_context_owner(port);
+    }
 }
 
 #[test]

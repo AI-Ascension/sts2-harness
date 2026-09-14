@@ -297,22 +297,13 @@ impl ContextOwnerPort for CatalogGateOwner {
 }
 
 #[test]
-fn context_owner_catalog_and_bind_gate_live_effects_before_target_or_execution()
+fn context_owner_catalog_gates_live_admission_before_effects()
 -> Result<(), Box<dyn std::error::Error>> {
     let expected = [
         (OwnerGate::Missing, "context_binding_unsupported"),
         (OwnerGate::Denied, "context_binding_unsupported"),
         (OwnerGate::Unavailable, "context_owner_catalog_unavailable"),
         (OwnerGate::Ambiguous, "context_binding_ambiguous"),
-        (OwnerGate::BindDenied, "context_binding_denied"),
-        (
-            OwnerGate::BindGrantEscalated,
-            "context_owner_binding_grant_escalation",
-        ),
-        (
-            OwnerGate::BindContinuityEscalated,
-            "context_owner_binding_continuity_escalation",
-        ),
     ];
     for (index, (gate, expected_code)) in expected.into_iter().enumerate() {
         let submissions = Arc::new(SubmissionDouble::new());
@@ -337,19 +328,49 @@ fn context_owner_catalog_and_bind_gate_live_effects_before_target_or_execution()
         assert_eq!(error.code, expected_code);
         assert_eq!(target_catalog_calls.load(Ordering::SeqCst), 0);
         assert_eq!(submissions.submissions.load(Ordering::SeqCst), 0);
-        assert_eq!(
-            bind_calls.load(Ordering::SeqCst),
-            if matches!(
+        // Admission performs a bounded catalog/support check only; it must not
+        // fabricate a per-invocation binding before the runtime allocates one.
+        assert_eq!(bind_calls.load(Ordering::SeqCst), 0);
+    }
+    Ok(())
+}
+
+#[test]
+fn context_owner_bind_failures_are_deferred_to_dispatch() -> Result<(), Box<dyn std::error::Error>>
+{
+    // Owner `bind` responses (denied or escalating) are resolved at dispatch,
+    // where the runtime-allocated invocation identity is known. Admission
+    // therefore still adopts the run and reaches the target/execution effects;
+    // the dispatch path is exercised by `context_owner_dispatch`.
+    for (index, gate) in [
+        OwnerGate::BindDenied,
+        OwnerGate::BindGrantEscalated,
+        OwnerGate::BindContinuityEscalated,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let submissions = Arc::new(SubmissionDouble::new());
+        let target_catalog_calls = Arc::new(AtomicUsize::new(0));
+        let bind_calls = Arc::new(AtomicUsize::new(0));
+        let service = ManagementService::in_memory()
+            .with_definition_port(Arc::new(DefinitionDouble))
+            .with_capability_port(Arc::new(OrderedCapabilityDouble {
+                target_catalog_calls: Arc::clone(&target_catalog_calls),
+            }))
+            .with_context_owner_port(Arc::new(CatalogGateOwner {
                 gate,
-                OwnerGate::BindDenied
-                    | OwnerGate::BindGrantEscalated
-                    | OwnerGate::BindContinuityEscalated
-            ) {
-                1
-            } else {
-                0
-            }
-        );
+                bind_calls: Arc::clone(&bind_calls),
+            }))
+            .with_execution_port(submissions.clone());
+        let request = admitted_live_request(
+            live_definition()?,
+            &format!("request-owner-dispatch-{index}"),
+        )?;
+        service.submit_run(&actor()?, request)?;
+        assert_eq!(bind_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(target_catalog_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(submissions.submissions.load(Ordering::SeqCst), 1);
     }
     Ok(())
 }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::super::context_owner::ContextBindingRequest;
 use super::super::contract::{CommandKind, CommandOutcome, PendingOperation, WorkflowRunStatus};
 use super::super::service::{CommandApplication, CommandContext, ManagementError};
 use crate::workflow::{RuntimeFault, RuntimeStatus};
@@ -104,6 +105,7 @@ pub(super) fn apply_command(
                         .resume_after_unknown_effect()
                         .map_err(runtime_error)?;
                 }
+                bind_dispatch_context(owner, run, &context)?;
                 let result = {
                     let mut executor = LiveNodeExecutor {
                         state: &mut run.state,
@@ -164,4 +166,76 @@ pub(super) fn apply_command(
         }
     };
     Ok(application(run, status, outcome, reason, revision))
+}
+
+/// Binds the authoritative context owner to the invocation the runtime is about
+/// to execute when the cursor is on a context-bound node.
+///
+/// The request identity is derived from the runtime's own cursor allocation
+/// (`live.node.{event_sequence + 1}`, matching `snapshot_from_runtime`), and the
+/// returned binding is validated against the persisted run snapshot. A binding
+/// for a different invocation therefore fails closed instead of being accepted
+/// while the run may never execute it.
+fn bind_dispatch_context(
+    port: &super::execution::LiveWorkflowExecutionPort,
+    run: &mut super::execution::LiveRun,
+    context: &CommandContext,
+) -> Result<(), ManagementError> {
+    let runtime_snapshot = run.runtime.snapshot();
+    let graph_id = runtime_snapshot.graph_id.as_str();
+    let node_id = runtime_snapshot.node_id.as_str();
+    let Some((node_kind, context_ref)) = run
+        .context_nodes
+        .iter()
+        .find(|node| node.graph_id == graph_id && node.node_id == node_id)
+        .map(|node| (node.node_kind.clone(), node.context_ref.clone()))
+    else {
+        return Ok(());
+    };
+    let node_execution_id = format!(
+        "live.node.{}",
+        runtime_snapshot.event_sequence.saturating_add(1)
+    );
+    let owner = port.context_owner()?;
+    if !owner.is_available() {
+        return Err(ManagementError::unavailable(
+            "context_owner_unavailable",
+            "live context binding requires an attached authoritative context owner",
+        ));
+    }
+    let catalog = owner.catalog(&context.actor)?;
+    catalog.validate()?;
+    let descriptor = catalog.descriptor_for(context_ref.as_str(), node_kind.as_str())?;
+    if !descriptor.grants.metadata_read {
+        return Err(ManagementError::capability(
+            "context_binding_metadata_unavailable",
+            "context owner catalog does not grant metadata access for this node",
+        ));
+    }
+    let request = ContextBindingRequest {
+        workflow_run_id: run.run_id.clone(),
+        definition_digest: run.definition_digest.clone(),
+        instance_id: run.instance_id.clone(),
+        graph_id: graph_id.to_owned(),
+        node_id: node_id.to_owned(),
+        node_execution_id,
+        node_kind,
+        context_ref,
+        binding_id: descriptor.binding_id.clone(),
+        binding_version: descriptor.version,
+        binding_digest: descriptor.digest.clone(),
+    };
+    request.validate()?;
+    let binding = owner.bind(&context.actor, &request)?;
+    binding.validate_for_request(&request)?;
+    if binding.owner_id != catalog.owner_id || binding.owner_version != catalog.owner_version {
+        return Err(ManagementError::conflict(
+            "context_owner_binding_foreign",
+            "context owner binding was issued by a different catalog owner",
+        ));
+    }
+    descriptor.validate_binding(&binding)?;
+    binding.validate(Some(&context.snapshot))?;
+    run.context_binding = Some(binding);
+    Ok(())
 }
