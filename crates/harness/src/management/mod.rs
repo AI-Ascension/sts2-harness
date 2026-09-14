@@ -23,11 +23,12 @@ pub use auth::{
 pub use authoring::{AuthoringStore, MemoryAuthoringStore, PublishResult};
 pub use context_owner::{
     CONTEXT_OWNER_BINDING_SCHEMA_VERSION, CONTEXT_OWNER_CATALOG_SCHEMA_VERSION,
-    CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION, ContextBindingCatalog, ContextBindingContinuity,
-    ContextBindingDescriptor, ContextBindingGrants, ContextBindingOperation, ContextBindingRequest,
-    ContextBindingSource, ContextBindingState, ContextControlCommand, ContextControlCommandKind,
-    ContextControlReceipt, ContextEffectiveLimits, ContextOwnerBinding, ContextOwnerPort,
-    MAX_CONTEXT_BINDINGS, MAX_CONTEXT_NODE_KINDS, MAX_CONTEXT_OPERATIONS, MAX_CONTEXT_SOURCES,
+    CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION, CONTEXT_OWNER_RECEIPT_V1_SCHEMA_VERSION,
+    ContextBindingCatalog, ContextBindingContinuity, ContextBindingDescriptor,
+    ContextBindingGrants, ContextBindingOperation, ContextBindingRequest, ContextBindingSource,
+    ContextBindingState, ContextControlCommand, ContextControlCommandKind, ContextControlReceipt,
+    ContextEffectiveLimits, ContextOwnerBinding, ContextOwnerPort, MAX_CONTEXT_BINDINGS,
+    MAX_CONTEXT_NODE_KINDS, MAX_CONTEXT_OPERATIONS, MAX_CONTEXT_SOURCES,
     UnavailableContextOwnerPort,
 };
 pub use contract::ReplayRequest as ManagementReplayRequest;

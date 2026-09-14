@@ -5,10 +5,10 @@ use std::error::Error;
 use sts2_harness::context_control::{ContextBoundary, ControlAuthority, ControlReceipt};
 use sts2_harness::management::{
     CONTEXT_OWNER_BINDING_SCHEMA_VERSION, CONTEXT_OWNER_CATALOG_SCHEMA_VERSION,
-    CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION, ContextBindingCatalog, ContextBindingContinuity,
-    ContextBindingDescriptor, ContextBindingGrants, ContextBindingRequest, ContextBindingState,
-    ContextControlCommand, ContextControlCommandKind, ContextControlReceipt,
-    ContextEffectiveLimits, ContextOwnerBinding,
+    CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION,
+    ContextBindingCatalog, ContextBindingContinuity, ContextBindingDescriptor,
+    ContextBindingGrants, ContextBindingRequest, ContextBindingState, ContextControlCommand,
+    ContextControlCommandKind, ContextControlReceipt, ContextEffectiveLimits, ContextOwnerBinding,
 };
 use sts2_harness::sha256_hex;
 

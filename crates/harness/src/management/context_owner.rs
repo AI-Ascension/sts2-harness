@@ -18,7 +18,11 @@ use crate::sha256_hex;
 
 pub const CONTEXT_OWNER_BINDING_SCHEMA_VERSION: &str = "ascension.context-control.owner-binding.v1";
 pub const CONTEXT_OWNER_CATALOG_SCHEMA_VERSION: &str = "ascension.context-control.owner-catalog.v1";
-pub const CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION: &str = "ascension.context-control.owner-receipt.v1";
+/// Receipt v2 binds command and post-transition boundary identity. The v1
+/// wire shape omitted those fields, so it cannot be safely upgraded.
+pub const CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION: &str = "ascension.context-control.owner-receipt.v2";
+pub const CONTEXT_OWNER_RECEIPT_V1_SCHEMA_VERSION: &str =
+    "ascension.context-control.owner-receipt.v1";
 pub const MAX_CONTEXT_BINDINGS: usize = 128;
 pub const MAX_CONTEXT_SOURCES: usize = 16;
 pub const MAX_CONTEXT_OPERATIONS: usize = 16;

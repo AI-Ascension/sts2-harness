@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MIT
 
 //! Exact command and receipt records for delegated context control.
+//!
+//! Receipt v2 is intentionally incompatible with v1: v1 did not carry the
+//! command variant or resulting boundary, so a reader cannot reconstruct the
+//! transition identity. V1 receipts are rejected with a schema error and must
+//! be reissued as v2. A rollback to a v1 reader is safe only after v2 receipts
+//! have been drained; no v2 receipt may be downgraded or replayed as v1.
 
 use super::*;
 
@@ -34,8 +40,7 @@ pub enum ContextControlCommand {
     },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct ContextControlReceipt {
     pub schema_version: String,
     pub owner_id: String,
@@ -68,14 +73,23 @@ impl ContextControlReceipt {
         binding: &ContextOwnerBinding,
         command: &ContextControlCommand,
     ) -> Result<(), ManagementError> {
+        if self.schema_version != CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION {
+            return Err(ManagementError::conflict(
+                "context_control_receipt_schema_unsupported",
+                format!(
+                    "context control receipt schema {} is unsupported; expected {}; \
+                     v1 receipts cannot be upgraded safely and must be reissued",
+                    self.schema_version, CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION
+                ),
+            ));
+        }
         binding.validate(None)?;
         validate_identifier("context_control_command_id", &self.command_id)?;
         validate_identifier("context_control_idempotency_key", &self.idempotency_key)?;
         validate_identifier("context_control_effect", &self.effect)?;
         validate_digest("context_binding_digest", &self.binding_digest)?;
         let expectation = CommandExpectation::from(binding, command)?;
-        if self.schema_version != CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION
-            || self.owner_id != binding.owner_id
+        if self.owner_id != binding.owner_id
             || self.invocation_id != binding.invocation_id
             || self.binding_id != binding.binding_id
             || self.binding_digest != binding.binding_digest
@@ -154,6 +168,9 @@ impl ContextControlReceipt {
         Ok(())
     }
 }
+
+#[path = "context_owner_receipt_decode.rs"]
+mod decode;
 
 struct CommandExpectation {
     kind: ContextControlCommandKind,
