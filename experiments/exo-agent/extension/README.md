@@ -33,8 +33,9 @@ Cargo workspace; `cargo build --locked --package exo` produces `target/debug/exo
 `--harness typescript agent create NAME --module ABSOLUTE_MODULE_PATH --model MODEL` is the exact
 module-loading command. Node `22.14.0` and pnpm `10.26.2` are pinned by the adjacent
 `package.json`. The reviewed upstream candidate `mise.toml` pins `nodejs = "22.15.0"` while this
-extension declares `22.14.0`; the synthetic loader spike was verified under both versions, and the
-recorded spike's Node version is intentionally left unchanged to preserve that evidence. The final
+extension declares `22.14.0`; this is a documented divergence. The recorded loader spike ran under
+`22.14.0`, and that record is intentionally left unchanged; no run under `22.15.0` has been
+recorded. The final
 agent creation is an operator spike only; it needs `EXO_MODEL` plus a
 model binding/credential and does not prove an STS2 terminal decision, bridge correlation, or
 gameplay effect.

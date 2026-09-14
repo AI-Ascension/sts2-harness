@@ -250,6 +250,17 @@ fn expert_observation_schema_is_closed_and_requires_the_pinned_version() {
         "protocol_version": "runtime-v4-expert",
         "unexpected_privileged": {"rng": 1}
     })));
+    let golden_expert: serde_json::Value = serde_json::from_slice(include_bytes!(
+        "../../../../protocol-artifact/runtime-v4-expert/golden/observation.json"
+    ))
+    .expect("golden expert observation is JSON");
+    assert!(observation_validator.is_valid(&golden_expert));
+    let mut wrong_digest = golden_expert.clone();
+    wrong_digest["schema_digest"] = json!("a".repeat(64));
+    assert!(
+        !observation_validator.is_valid(&wrong_digest),
+        "a non-pinned expert schema_digest must be rejected"
+    );
     let standard_observation = definition_validator(&schema, "standard_observation");
     let request: serde_json::Value =
         serde_json::from_slice(REQUEST).expect("golden request is JSON");

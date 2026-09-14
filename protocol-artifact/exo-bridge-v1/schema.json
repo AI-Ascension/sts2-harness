@@ -265,6 +265,7 @@
       }
     },
     "observation": {
+      "description": "Standard fair-play projection or the closed Runtime-v4 expert wire observation. The harness fair-play projection (harness_projection marker) is a separate provider-side form and is outside this bridge observation union.",
       "oneOf": [
         {"$ref": "#/$defs/standard_observation"},
         {"$ref": "#/$defs/expert_observation"}
@@ -289,7 +290,7 @@
       ],
       "properties": {
         "protocol_version": {"const": "runtime-v4-expert"},
-        "schema_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "schema_digest": {"const": "0ee034d5da83f34e9fa0ba23038738d56ef8cfccb1c6e752af3ab63d212c8e42"},
         "provenance": {"$ref": "#/$defs/expert_provenance"},
         "profile": {"const": "expert-state"},
         "state_id": {"$ref": "#/$defs/expert_identity"},
@@ -920,6 +921,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 512,
+      "description": "Runtime is stricter than JSON Schema: the parser bounds expert text at 512 UTF-8 bytes, while maxLength counts code points. Multi-byte text may be schema-valid and parser-rejected; that direction is fail-closed.",
       "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]*$"
     },
     "expert_provenance": {

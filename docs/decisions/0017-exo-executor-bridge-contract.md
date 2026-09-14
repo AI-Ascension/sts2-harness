@@ -37,6 +37,12 @@ version of 3 or greater, or starts with `gpt-5` and contains `-codex`. The harne
 preflight instead of silently reaching `ChatCompletionsRuntime`. There is no unconditional forced
 runtime path.
 
+Upstream also selects `ChatCompletionsRuntime` for any binding whose base URL contains
+`openrouter.ai`, before the model predicate is applied. The admitted contract carries no base-URL
+axis, so an OpenRouter binding is outside this contract: operators must not point the approved
+`model_binding` at an OpenRouter base URL. This limitation is documented rather than modeled because
+the bridge does not own provider transport selection.
+
 The extension is the owner of the STS2 prompt/tool registration and terminal-decision projection.
 Its source/package/extension/bridge/model/prompt/tool/config/native identities are separate
 fields in the manifest and trusted preflight. There is no CLI fallback and no HTTP executor path.
