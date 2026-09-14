@@ -11,6 +11,8 @@ mod live_workflow;
 mod provider_session_inspection;
 mod service;
 mod store;
+mod synthetic_context_owner;
+pub use synthetic_context_owner::SyntheticContextOwnerPort;
 mod workflow_ports;
 
 pub use cli::run_cli;
