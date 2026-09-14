@@ -9,10 +9,11 @@ use std::sync::{
 
 use serde_json::json;
 use sts2_harness::management::{
-    AuthContext, CleanupState, LiveWorkflowExecutionPort, LiveWorkflowOptions, LiveWorkflowSession,
-    LiveWorkflowSessionFactory, ManagementError, MemoryWorkflowStore, RUN_SCHEMA_VERSION,
-    RecoveryAdmission, RunRequest, RunSnapshot, TargetCatalogResponse, WorkflowExecutionPort,
-    WorkflowRunStatus, WorkflowStore, decode_strict, digest_value, live_store,
+    AuthContext, CleanupState, EventType, LiveWorkflowExecutionPort, LiveWorkflowOptions,
+    LiveWorkflowSession, LiveWorkflowSessionFactory, ManagementError, MemoryWorkflowStore,
+    RUN_SCHEMA_VERSION, RecoveryAdmission, RunRequest, RunSnapshot, TargetCatalogResponse,
+    WorkflowExecutionPort, WorkflowRunStatus, WorkflowStore, decode_strict, digest_value,
+    live_store,
 };
 
 #[path = "support/live_workflow.rs"]
@@ -77,6 +78,21 @@ impl LiveWorkflowSessionFactory for ReservationObservingFactory {
                     "live factory opened before the created reservation was persisted",
                 ));
             }
+        }
+        let events = self
+            .store
+            .events(&run_id, 0, 128)
+            .map_err(ManagementError::from)?
+            .events;
+        if !events.first().is_some_and(|event| {
+            event.event_type == EventType::RunStarted
+                && event.sequence == 1
+                && event.run_revision == 1
+        }) {
+            return Err(ManagementError::conflict(
+                "reservation_receipt_not_persisted",
+                "live factory opened before the RunStarted receipt was persisted",
+            ));
         }
         self.inner
             .open(request, actor, definition, definition_digest)
