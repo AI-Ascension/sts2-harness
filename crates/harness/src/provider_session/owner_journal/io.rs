@@ -6,7 +6,9 @@ use crate::exo_lifecycle::{JournalConfig, LifecycleError};
 use crate::provider_session::{MAX_HISTORY_BYTES, MAX_JSON_DEPTH};
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
+#[cfg(unix)]
 use std::fs::File;
+#[cfg(unix)]
 use std::io::{Read, Write};
 
 fn aad(config: &JournalConfig) -> Vec<u8> {
@@ -21,7 +23,7 @@ fn aad(config: &JournalConfig) -> Vec<u8> {
     aad
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(super) fn seal_test_plaintext(
     config: &JournalConfig,
     key: &[u8; 32],
@@ -127,6 +129,7 @@ pub fn read(lease: &Lease) -> Result<Vec<u8>, LifecycleError> {
     Ok(bytes)
 }
 
+#[cfg(unix)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CommitStage {
     BeforeWrite,
@@ -183,16 +186,17 @@ pub fn write(lease: &Lease, bytes: &[u8]) -> Result<(), LifecycleError> {
     result
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 thread_local! { pub(crate) static FAILURE: std::cell::Cell<Option<CommitStage>> = const {
     std::cell::Cell::new(None)
 }; }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 thread_local! { pub(crate) static FAILURE_SKIP: std::cell::Cell<usize> = const {
     std::cell::Cell::new(0)
 }; }
 
+#[cfg(unix)]
 fn checkpoint(_stage: CommitStage) -> Result<(), LifecycleError> {
     #[cfg(test)]
     if FAILURE.get() == Some(_stage) {

@@ -7,11 +7,12 @@ use sts2_harness as harness_api;
 
 #[path = "support/exo_lifecycle.rs"]
 mod fixture;
+#[path = "support/exo_lifecycle_migration.rs"]
+mod migration;
 #[path = "support/exo_lifecycle_recovery.rs"]
 mod recovery;
 use fixture::{Effect, Fixture};
 use sts2_harness::exo_lifecycle::*;
-use sts2_harness::provider_session::ProviderSessionMetadataStore;
 use sts2_harness::{ProviderReservationState, sha256_hex};
 
 #[test]
@@ -357,65 +358,4 @@ fn replaced_lock_inode_poison_is_sticky() {
         Err(LifecycleError::Poisoned)
     ));
     assert_eq!(effect.calls, 0);
-}
-
-#[test]
-fn v1_import_requires_quiesced_cutover_preserves_old_bytes_and_never_resends() {
-    let mut fixture = Fixture::new();
-    let path = fixture.root.join("legacy.enc");
-    let legacy =
-        ProviderSessionMetadataStore::encrypted(&path, [7; 32], fixture.config.scope.clone())
-            .expect("legacy");
-    legacy
-        .save(fixture.broker.as_ref().expect("broker"))
-        .expect("save");
-    let original = std::fs::read(&path).expect("legacy bytes");
-    fixture.config.legacy_path = Some(path.clone());
-    let import = |fixture: &Fixture| {
-        LifecycleOwner::import_legacy(
-            fixture.config.clone(),
-            [7; 32],
-            "migrated-owner".into(),
-            &fixture.policy,
-            &fixture.capabilities,
-            sha256_hex(&original),
-            "authenticated-cutover-fixture".into(),
-            fixture.authority.clone(),
-        )
-    };
-    assert!(matches!(
-        import(&fixture),
-        Err(LifecycleError::LegacyOwnerNotQuiesced)
-    ));
-    assert!(!fixture.config.directory.exists());
-    *fixture
-        .authority
-        .legacy_quiesced
-        .lock()
-        .expect("legacy authority") = true;
-    let mut owner = import(&fixture).expect("migration");
-    assert_eq!(std::fs::read(&path).expect("preserved"), original);
-    let mut effect = Effect::default();
-    assert!(
-        owner
-            .start(
-                fixture.manifest.clone(),
-                &fixture.input,
-                &mut fixture.store,
-                &fixture.fingerprint,
-                &mut effect
-            )
-            .is_err()
-    );
-    assert_eq!(effect.calls, 0);
-    assert!(import(&fixture).is_err());
-    let v2_before = std::fs::read(fixture.config.directory.join("journal.enc")).expect("v2");
-    legacy
-        .save(fixture.broker.as_ref().expect("old broker"))
-        .expect("old v1 writer");
-    assert_ne!(std::fs::read(&path).expect("fresh v1 nonce"), original);
-    assert_eq!(
-        std::fs::read(fixture.config.directory.join("journal.enc")).expect("isolated v2"),
-        v2_before
-    );
 }

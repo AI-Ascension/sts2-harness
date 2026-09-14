@@ -12,10 +12,10 @@ use crate::exo_lifecycle::{JournalConfig, LifecycleError};
 use lease::Lease;
 pub(crate) use types::JournalSnapshot;
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) use io::CommitStage;
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) fn inject_commit_failure(stage: Option<CommitStage>, skip: usize) {
     io::FAILURE.set(stage);
     io::FAILURE_SKIP.set(skip);

@@ -129,11 +129,11 @@ impl LifecycleOwner {
 
     pub(super) fn persist(&mut self) -> Result<(), LifecycleError> {
         self.snapshot.broker = self.broker.snapshot();
-        self.snapshot.revision = self
-            .snapshot
-            .revision
-            .checked_add(1)
-            .ok_or(LifecycleError::Capacity)?;
+        let Some(revision) = self.snapshot.revision.checked_add(1) else {
+            self.poisoned = true;
+            return Err(LifecycleError::Capacity);
+        };
+        self.snapshot.revision = revision;
         if let Err(error) = self.journal.commit(&self.snapshot) {
             self.poisoned = true;
             return Err(error);

@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MIT
 
 use crate::exo_lifecycle::{JournalConfig, LifecycleError};
+#[cfg(unix)]
 use std::fs::File;
+#[cfg(unix)]
 use std::path::{Component, Path};
 
 /// The lock descriptor is private, never cloned and never names the replaceable journal.
 pub(crate) struct Lease {
+    #[cfg(unix)]
     pub directory: File,
+    #[cfg(unix)]
     lock: File,
 }
 

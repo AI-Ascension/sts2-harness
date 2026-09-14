@@ -46,13 +46,25 @@ pub struct JournalConfig {
 impl JournalConfig {
     pub(crate) fn validate(&self) -> Result<(), LifecycleError> {
         if !self.directory.is_absolute()
+            || self.directory.components().any(|part| {
+                !matches!(
+                    part,
+                    std::path::Component::RootDir | std::path::Component::Normal(_)
+                )
+            })
             || !self.scope.valid()
             || !id(&self.store_id)
             || !digest(&self.owner_binding_digest)
-            || self
-                .legacy_path
-                .as_ref()
-                .is_some_and(|path| !path.is_absolute() || path.starts_with(&self.directory))
+            || self.legacy_path.as_ref().is_some_and(|path| {
+                !path.is_absolute()
+                    || path.starts_with(&self.directory)
+                    || path.components().any(|part| {
+                        !matches!(
+                            part,
+                            std::path::Component::RootDir | std::path::Component::Normal(_)
+                        )
+                    })
+            })
         {
             return Err(LifecycleError::Invalid);
         }
@@ -246,6 +258,7 @@ impl LifecycleEntry {
         self.manifest.validate()?;
         if self.schema != "sts2.exo-lifecycle-entry.v1"
             || self.claim_epoch == 0
+            || self.claim_epoch != self.manifest.authority.owner_epoch
             || self.possible_write != self.permit_revision.is_some()
             || self.permit_revision == Some(0)
             || self.native.as_ref().is_some_and(|v| !v.valid())

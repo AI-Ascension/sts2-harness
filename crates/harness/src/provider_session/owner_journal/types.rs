@@ -73,6 +73,9 @@ impl JournalSnapshot {
             entry.validate()?;
             if entry.manifest.scope != self.scope
                 || entry.claim_epoch > self.claim_epoch
+                || entry
+                    .permit_revision
+                    .is_some_and(|revision| revision > self.revision)
                 || !executions.insert(&entry.manifest.execution_id)
                 || !operations.insert(&entry.manifest.operation_id)
                 || !reservations.insert(&entry.manifest.reservation_id)
