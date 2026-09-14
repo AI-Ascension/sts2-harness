@@ -97,6 +97,7 @@ fn execute_request_vectors(vectors: &[Value]) {
                     platform: ExoPlatform::LinuxX86_64,
                     profile: ExoProfile::Standard,
                     context_mode: ExoContextMode::Fresh,
+                    runtime: ExoRuntime::Responses,
                     limits: ExoLimits::reviewed(),
                 };
                 trusted.identity.package_digest = Some(String::from("9").repeat(64));
@@ -153,10 +154,25 @@ fn execute_decision_vectors(vectors: &[Value]) {
             "action" => DECISION.to_vec(),
             "wait" => br#"{"decision":"wait","rationale":"wait"}"#.to_vec(),
             "reobserve" => br#"{"decision":"reobserve","rationale":"reobserve"}"#.to_vec(),
-            "recovery" => {
-                br#"{"decision":"recovery","recovery_kind":"reobserve","rationale":"recover"}"#
-                    .to_vec()
-            }
+            "recovery" => match vector["recovery_kind"].as_str() {
+                Some("reobserve") => {
+                    br#"{"decision":"recovery","recovery_kind":"reobserve","rationale":"recover"}"#
+                        .to_vec()
+                }
+                Some("reconcile") => {
+                    br#"{"decision":"recovery","recovery_kind":"reconcile","operation_id":"op-1","rationale":"recover"}"#
+                        .to_vec()
+                }
+                Some("release_lease") => {
+                    br#"{"decision":"recovery","recovery_kind":"release_lease","rationale":"recover"}"#
+                        .to_vec()
+                }
+                Some("stop_episode") => {
+                    br#"{"decision":"recovery","recovery_kind":"stop_episode","rationale":"recover"}"#
+                        .to_vec()
+                }
+                other => unreachable!("unhandled recovery conformance kind {other:?}"),
+            },
             other => unreachable!("unhandled decision conformance vector {other}"),
         };
         assert!(
@@ -286,6 +302,7 @@ fn execute_capability_vectors(vectors: &[Value]) {
         platform: ExoPlatform::LinuxX86_64,
         profile: ExoProfile::Standard,
         context_mode: ExoContextMode::Fresh,
+        runtime: ExoRuntime::Responses,
         limits: ExoLimits::reviewed(),
     };
     for vector in vectors {

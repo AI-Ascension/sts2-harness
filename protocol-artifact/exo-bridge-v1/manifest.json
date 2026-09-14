@@ -4,7 +4,7 @@
   "contract_version": "sts2-exo-bridge-v1",
   "capability_schema": "sts2.exo-capability-v1",
   "schema": "schema.json",
-  "schema_sha256": "44325328292c9d5392cea57abf57868af0990efca1564a532d5eb92c01ca9e20",
+  "schema_sha256": "4beb8d8760ce5442e3ef01748b08913d652b34c254ca6ca362f8322be517e26d",
   "license": "MIT",
   "evidence": "source-derived",
   "native_spike": "unverified",
@@ -35,10 +35,18 @@
     "config_digest": {"value": null, "evidence": "unverified"},
     "native_instance_id": {"value": null, "evidence": "unverified"}
   },
+  "runtime_precondition": {
+    "runtime": "responses",
+    "state": "model-dependent",
+    "requirement": "the approved model_binding MUST be Responses-capable",
+    "model_binding_capability": "crates/harness/src/exo/contract/preflight.rs::responses_capable",
+    "enforced_by": "crates/harness/src/exo/contract/preflight.rs::preflight",
+    "evidence": "source-derived"
+  },
   "extension": {
     "package_manifest": "experiments/exo-agent/extension/package.json",
     "placement": "experiments/exo-agent/extension/src/index.ts loaded through agent.typescript.module_path",
-    "selected_path": "defineHarness.runTurn -> runResponsesHarnessTurn -> ResponsesRuntime.complete",
+    "selected_path": "defineHarness.runTurn -> runResponsesHarnessTurn -> responses_capable(model_binding) -> ResponsesRuntime.complete (Anthropic/Chat Completions bindings are rejected by preflight)",
     "resolution": "candidate root exo package plus tsconfig path aliases; no nested workspace package",
     "node_version": "22.14.0",
     "package_manager": "pnpm@10.26.2",
@@ -66,6 +74,8 @@
   "pin_locations": [
     "crates/harness/src/exo/contract/mod.rs",
     "crates/harness/src/bin/runtime_support/runtime_v3_settings.rs",
+    "crates/harness/src/bin/runtime_support/runtime_v3_durable.rs",
+    "crates/harness/src/bin/runtime_support/runtime_v3_durable_support.rs",
     "crates/harness/src/bin/sts2-harness-exo.rs",
     "experiments/exo-agent/config.example.toml",
     "crates/harness/tests/context_capture.rs",

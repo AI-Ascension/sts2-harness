@@ -39,7 +39,17 @@ fn schema_and_conformance_vectors_are_closed_and_executable() {
         ),
         (
             "decision_vectors",
-            ["plan", "action", "wait", "reobserve", "recovery"].as_slice(),
+            [
+                "plan",
+                "action",
+                "wait",
+                "reobserve",
+                "recovery_reobserve",
+                "recovery_reconcile",
+                "recovery_release_lease",
+                "recovery_stop_episode",
+            ]
+            .as_slice(),
         ),
         (
             "envelope_vectors",
@@ -104,6 +114,9 @@ fn schema_and_conformance_vectors_are_closed_and_executable() {
         br#"{"decision":"wait","rationale":"wait"}"#.as_slice(),
         br#"{"decision":"reobserve","rationale":"reobserve"}"#.as_slice(),
         br#"{"decision":"recovery","recovery_kind":"reobserve","rationale":"recover"}"#.as_slice(),
+        br#"{"decision":"recovery","recovery_kind":"reconcile","operation_id":"op-1","rationale":"recover"}"#.as_slice(),
+        br#"{"decision":"recovery","recovery_kind":"release_lease","rationale":"recover"}"#.as_slice(),
+        br#"{"decision":"recovery","recovery_kind":"stop_episode","rationale":"recover"}"#.as_slice(),
     ] {
         assert!(parse_bridge_decision(decision).is_ok());
     }

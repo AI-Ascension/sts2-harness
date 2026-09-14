@@ -8,9 +8,9 @@ instance identity as independent axes.
 
 ## Selected executor path
 
-The only selected executor path is a dedicated operator-owned TypeScript STS2 extension loaded as
-`agent.typescript.module_path`. The extension is run by the harness TypeScript runner and must
-enter Exo through:
+The only admitted executor runtime is the Responses runtime, reached through a dedicated
+operator-owned TypeScript STS2 extension loaded as `agent.typescript.module_path`. The extension is
+run by the harness TypeScript runner and enters Exo through:
 
 ```text
 defineHarness.runTurn
@@ -18,6 +18,16 @@ defineHarness.runTurn
   -> ResponsesRuntime.runTurn
   -> ResponsesRuntime.complete / completeStream
 ```
+
+The runtime is model-dependent, not unconditional. The pinned upstream `runtimeFromModelBinding`
+selects `AnthropicRuntime` for `claude*` bindings, `ChatCompletionsRuntime` by default, and
+`ResponsesRuntime` only when upstream `modelRequiresResponsesApi` is true. That predicate is true
+only for a lowercased binding starting with `o1-pro`, `o3-pro`, or `gpt-5-pro`, carrying a
+`gpt-5.N` minor version of 3 or greater, or starting with `gpt-5` and containing `-codex`. The
+harness mirrors this in `crates/harness/src/exo/contract/preflight.rs::responses_capable`. Trusted
+preflight rejects any `runtime` other than `responses` and any approved `model_binding` that is not
+Responses-capable, so a `gpt-4o` binding fails closed instead of silently selecting
+`ChatCompletionsRuntime`. There is no unconditional forced runtime path.
 
 The extension owns the narrow STS2 prompt/tool projection and returns one terminal decision to the
 harness-owned bounded bridge. The extension does not expose raw game objects, host reflection,
@@ -58,9 +68,10 @@ the corresponding evidence. A preflight with a source-only descriptor therefore 
 inference deployment.
 
 Preflight is pure. It compares the descriptor to operator-trusted complete identities, profile,
-context mode, platform, and limits without contacting Exo, a model, an HTTP endpoint, or a game
-host. Missing or mismatched package, extension, bridge, model, prompt, tool, config, or native
-instance values fail closed.
+context mode, runtime, platform, and limits without contacting Exo, a model, an HTTP endpoint, or a
+game host. It requires `runtime = responses` and a Responses-capable `model_binding`; missing or
+mismatched package, extension, bridge, model, prompt, tool, config, or native instance values fail
+closed.
 
 ## Bounded bridge wire
 
@@ -89,9 +100,14 @@ agent, conversation, session, and idempotency identities remain in a host-only c
 they are never model-visible.
 
 `schema.json` includes closed `$defs` for `decision_request`, `request_envelope`, `decision`, and
-`decision_envelope`; `conformance.json` names executable vectors for standard/map boundaries,
-every semantic decision, wrong schema/wire, swapped package identity, failed outcomes, and
-capability downgrades. The Rust `exo_contract` production test executes those vectors.
+`decision_envelope`. Its `observation` union closes `standard_observation` (with
+`legal_actions` requiring at least one entry) and closes `expert_observation` to the full
+Runtime-v4 expert shape, requiring `protocol_version: "runtime-v4-expert"` and rejecting unknown
+privileged fields. The `hash` definition rejects the all-zero digest. `conformance.json` names
+executable vectors for standard/map boundaries, every semantic decision (including each
+`recovery_kind`: `reobserve`, `reconcile`, `release_lease`, and `stop_episode`), wrong
+schema/wire, swapped package identity, failed outcomes, and capability downgrades. The Rust
+`exo_contract` production test executes those vectors.
 
 The ordinary request limit is 131072 bytes, the complete map request limit is 393443 bytes, the
 response limit is 8192 bytes, and the supervised turn timeout is 120000 milliseconds. Process

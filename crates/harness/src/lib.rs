@@ -179,12 +179,13 @@ pub use exo::{
     ExoCapabilityState, ExoClient, ExoConfig, ExoContextMode, ExoControlIdentity, ExoDecisionKind,
     ExoDecisionRequest, ExoDescriptorError, ExoError, ExoEvidenceCapabilities, ExoIdentity,
     ExoIdentityError, ExoLifecycleCapabilities, ExoLimits, ExoPlatform, ExoPreflightError,
-    ExoPreflightReport, ExoProfile, ExoProfileSupport, ExoProvider, ExoSession, ExoTerminalOutcome,
-    ExoTransport, ExoTransportError, ExoTrustedConfiguration, ExoWireError, ExoWireOutcome,
-    SandboxError, SanitizedObservation, encode_bridge_request, encode_bridge_response,
-    exo_bridge_manifest, parse_bridge_decision, parse_bridge_decision_envelope,
-    parse_bridge_request, parse_bridge_request_envelope, parse_codex_events, parse_decision,
-    preflight, verify_control_identity, verify_exo_bridge_artifact,
+    ExoPreflightReport, ExoProfile, ExoProfileSupport, ExoProvider, ExoRuntime, ExoSession,
+    ExoTerminalOutcome, ExoTransport, ExoTransportError, ExoTrustedConfiguration, ExoWireError,
+    ExoWireOutcome, SandboxError, SanitizedObservation, encode_bridge_request,
+    encode_bridge_response, exo_bridge_manifest, parse_bridge_decision,
+    parse_bridge_decision_envelope, parse_bridge_request, parse_bridge_request_envelope,
+    parse_codex_events, parse_decision, preflight, responses_capable, verify_control_identity,
+    verify_exo_bridge_artifact,
 };
 pub use exo_process::{ExoProcessConfig, ExoProcessConfigError, ExoProcessTransport};
 pub use identity::{

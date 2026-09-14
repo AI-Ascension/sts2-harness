@@ -98,6 +98,9 @@ fn json_schema_validator_executes_request_decision_and_envelope_vectors() {
         json!({"decision": "wait", "rationale": "wait"}),
         json!({"decision": "reobserve", "rationale": "reobserve"}),
         json!({"decision": "recovery", "recovery_kind": "reobserve", "rationale": "recover"}),
+        json!({"decision": "recovery", "recovery_kind": "reconcile", "operation_id": "op-1", "rationale": "recover"}),
+        json!({"decision": "recovery", "recovery_kind": "release_lease", "rationale": "recover"}),
+        json!({"decision": "recovery", "recovery_kind": "stop_episode", "rationale": "recover"}),
     ] {
         assert!(
             decision_validator.is_valid(&decision),
@@ -231,6 +234,91 @@ fn encoding_uses_request_profile_limit_for_outer_envelope() {
         ),
         Err(ExoWireError::TooLarge),
         "outer envelope overhead must use the decoded standard profile ceiling"
+    );
+}
+
+#[test]
+fn expert_observation_schema_is_closed_and_requires_the_pinned_version() {
+    let schema: serde_json::Value =
+        serde_json::from_slice(SCHEMA).expect("wire schema is valid JSON");
+    let observation_validator = definition_validator(&schema, "observation");
+    assert!(!observation_validator.is_valid(&json!({"protocol_version": "x"})));
+    assert!(!observation_validator.is_valid(&json!({
+        "protocol_version": "runtime-v4-expert"
+    })));
+    assert!(!observation_validator.is_valid(&json!({
+        "protocol_version": "runtime-v4-expert",
+        "unexpected_privileged": {"rng": 1}
+    })));
+    let golden_expert: serde_json::Value = serde_json::from_slice(include_bytes!(
+        "../../../../protocol-artifact/runtime-v4-expert/golden/observation.json"
+    ))
+    .expect("golden expert observation is JSON");
+    assert!(observation_validator.is_valid(&golden_expert));
+    let mut wrong_digest = golden_expert.clone();
+    wrong_digest["schema_digest"] = json!("a".repeat(64));
+    assert!(
+        !observation_validator.is_valid(&wrong_digest),
+        "a non-pinned expert schema_digest must be rejected"
+    );
+    let standard_observation = definition_validator(&schema, "standard_observation");
+    let request: serde_json::Value =
+        serde_json::from_slice(REQUEST).expect("golden request is JSON");
+    assert!(standard_observation.is_valid(&request["observation"]));
+    let mut unknown_standard = request["observation"].clone();
+    unknown_standard["unexpected_privileged"] = json!({"rng": 1});
+    assert!(!standard_observation.is_valid(&unknown_standard));
+}
+
+#[test]
+fn golden_expert_observation_is_accepted_by_schema_and_parser() {
+    let schema: serde_json::Value =
+        serde_json::from_slice(SCHEMA).expect("wire schema is valid JSON");
+    let expert_validator = definition_validator(&schema, "expert_observation");
+    let expert: serde_json::Value = serde_json::from_slice(include_bytes!(
+        "../../../../protocol-artifact/runtime-v4-expert/golden/observation.json"
+    ))
+    .expect("golden expert observation is JSON");
+    assert!(
+        expert_validator.is_valid(&expert),
+        "closed expert observation schema rejected the canonical golden shape"
+    );
+    let request = json!({
+        "schema": "sts2.exo-decision-v1",
+        "provider_revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
+        "model_execution_id": "execution-expert",
+        "state_id": "live:7",
+        "generation": 7,
+        "observation": expert,
+        "legal_action_ids": [
+            "play:7:card:1:enemy:1",
+            "potion:7:potion:fire:enemy:1",
+            "end:7"
+        ],
+        "objective": "decide",
+        "hard_constraints": [],
+        "max_response_bytes": 8192
+    });
+    let bytes = serde_json::to_vec(&request).expect("expert request serializes");
+    assert!(
+        parse_bridge_request(&bytes, EXO_MAX_STANDARD_REQUEST_BYTES).is_ok(),
+        "Rust parser rejected the canonical golden expert observation"
+    );
+}
+
+#[test]
+fn empty_legal_actions_are_rejected_by_schema_and_parser() {
+    let schema: serde_json::Value =
+        serde_json::from_slice(SCHEMA).expect("wire schema is valid JSON");
+    let standard_observation = definition_validator(&schema, "standard_observation");
+    let mut empty_actions: serde_json::Value =
+        serde_json::from_slice(REQUEST).expect("golden request is JSON");
+    empty_actions["observation"]["legal_actions"] = json!([]);
+    assert!(!standard_observation.is_valid(&empty_actions["observation"]));
+    let bytes = serde_json::to_vec(&empty_actions).expect("empty-actions request serializes");
+    assert_eq!(
+        parse_bridge_request(&bytes, EXO_MAX_STANDARD_REQUEST_BYTES),
+        Err(ExoWireError::InvalidRequest)
     );
 }
 

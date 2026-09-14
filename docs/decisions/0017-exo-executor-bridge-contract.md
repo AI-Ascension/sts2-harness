@@ -15,8 +15,8 @@ manifest records, and evidence labels. It does not own Exo internals, a TypeScri
 model credentials, a game adapter, or a native host.
 
 The one selected executor path is a dedicated operator-owned TypeScript STS2 extension loaded at
-`agent.typescript.module_path` by the existing `TypeScriptHarness`. Its only allowed Exo executor
-path is:
+`agent.typescript.module_path` by the existing `TypeScriptHarness`. The approved executor path is
+the Responses runtime:
 
 ```text
 defineHarness.runTurn
@@ -24,6 +24,24 @@ defineHarness.runTurn
   -> ResponsesRuntime.runTurn
   -> ResponsesRuntime.complete / completeStream
 ```
+
+The runtime is model-dependent, not unconditional. The pinned upstream
+`runtimeFromModelBinding` (`exoharness/typescript/model-runtime/responses.ts`) selects
+`AnthropicRuntime` for `claude*` bindings and `ChatCompletionsRuntime` by default; only upstream
+`modelRequiresResponsesApi` selects `ResponsesRuntime`. That predicate is true only for a
+lowercased binding that starts with `o1-pro`, `o3-pro`, or `gpt-5-pro`, carries a `gpt-5.N` minor
+version of 3 or greater, or starts with `gpt-5` and contains `-codex`. The harness mirrors this in
+`crates/harness/src/exo/contract/preflight.rs::responses_capable` and fails closed on both axes:
+`ExoTrustedConfiguration.runtime` must be `ExoRuntime::Responses`, and the approved
+`identity.model_binding` must be Responses-capable. A `gpt-4o` binding is therefore rejected by
+preflight instead of silently reaching `ChatCompletionsRuntime`. There is no unconditional forced
+runtime path.
+
+Upstream also selects `ChatCompletionsRuntime` for any binding whose base URL contains
+`openrouter.ai`, before the model predicate is applied. The admitted contract carries no base-URL
+axis, so an OpenRouter binding is outside this contract: operators must not point the approved
+`model_binding` at an OpenRouter base URL. This limitation is documented rather than modeled because
+the bridge does not own provider transport selection.
 
 The extension is the owner of the STS2 prompt/tool registration and terminal-decision projection.
 Its source/package/extension/bridge/model/prompt/tool/config/native identities are separate
@@ -45,7 +63,10 @@ The owned extension package placement is frozen at
 `exo`; `@exo/harness` and `@exo/model-runtime/turn-loop` are approved TypeScript `tsconfig.json`
 path aliases into that root, not published packages or `workspace:*` dependencies. The loader
 arrangement, pinned Node `22.14.0`, pnpm `10.26.2`, frozen install, typecheck, lint, and test
-commands are recorded in `experiments/exo-agent/extension/README.md`; the candidate Rust workspace
+commands are recorded in `experiments/exo-agent/extension/README.md`. The reviewed candidate
+`mise.toml` pins `nodejs = "22.15.0"`; the extension declares `22.14.0` and the synthetic loader
+was verified under both versions, so the divergence is documented rather than silently re-pinned.
+The candidate Rust workspace
 builds `target/debug/exo` and loads the module only through
 `--harness typescript agent create NAME --module ABSOLUTE_MODULE_PATH --model MODEL`. The extension may use Node
 built-ins for bounded static inputs. It must not import an OpenAI SDK directly, call Exo HTTP/CLI
@@ -154,6 +175,30 @@ and failure are host lifecycle outcomes, not decision enum variants. Process tra
 request then explicitly shuts down stdin (EOF), bounds stdout, and maps timeout, non-zero exit,
 oversize, unavailable, and malformed outcomes to fail-closed errors. No retry or gameplay fallback
 is implied.
+
+### Schema and parser parity
+
+`schema.json` is kept in parity with the Rust parser for the observation and identity shapes:
+
+- `standard_observation.legal_actions` requires `minItems: 1`, matching
+  `legal_action_ids_match`/`valid_action_ids` in
+  `crates/harness/src/exo/protocol/request_validation.rs`.
+- `expert_observation` is closed (`additionalProperties: false`), requires
+  `protocol_version: "runtime-v4-expert"`, and carries the full Runtime-v4 expert field set copied
+  from `protocol-artifact/runtime-v4-expert/schema.json` and
+  `crates/harness/src/runtime_v4_expert_parse.rs` (`shape_is_closed`/`WireObservation`). This
+  rejects both `{"protocol_version":"x"}` and unknown privileged fields.
+- The `hash` definition rejects the all-zero digest (`not: {"pattern": "^0+$"}`), matching
+  `valid_digest` in `crates/harness/src/exo/contract/identity.rs`.
+
+One intentional, fail-closed divergence remains. `identity` marks every digest key as required
+while the Rust `ExoIdentity` stores each digest as `Option<String>`; serde therefore accepts an
+omitted key and treats it the same as an explicit null. The schema is stricter than the parser
+(omission is rejected), and the divergence is documented in the `hash`/`identity` schema
+descriptions. The Runtime-v4 expert `legal_actions` array also has no schema `minItems` because the
+canonical `protocol-artifact/runtime-v4-expert/schema.json` does not; an empty expert
+`legal_actions` is still rejected by the parser because `legal_action_ids` must be non-empty and
+must match the observation. Both directions fail closed.
 
 ### Source-referenced executor and lifecycle mapping
 
