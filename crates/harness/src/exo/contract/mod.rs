@@ -12,10 +12,12 @@ pub use artifact::{ExoArtifactError, exo_bridge_manifest, verify_exo_bridge_arti
 pub use descriptor::{
     ExoCapabilityDescriptor, ExoCapabilityState, ExoContextMode, ExoDecisionKind,
     ExoDescriptorError, ExoEvidenceCapabilities, ExoLifecycleCapabilities, ExoLimits, ExoPlatform,
-    ExoProfile, ExoProfileSupport,
+    ExoProfile, ExoProfileSupport, ExoRuntime,
 };
 pub use identity::{DigestKind, ExoIdentity, ExoIdentityError};
-pub use preflight::{ExoPreflightError, ExoPreflightReport, ExoTrustedConfiguration, preflight};
+pub use preflight::{
+    ExoPreflightError, ExoPreflightReport, ExoTrustedConfiguration, preflight, responses_capable,
+};
 pub use wire::{
     ExoBridgeDecisionEnvelope, ExoBridgeRequestEnvelope, ExoBridgeTurn, ExoControlIdentity,
     ExoTerminalOutcome, ExoWireError, ExoWireOutcome, encode_bridge_request,

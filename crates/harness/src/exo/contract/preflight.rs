@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::descriptor::{
     ExoCapabilityDescriptor, ExoCapabilityState, ExoContextMode, ExoDescriptorError, ExoLimits,
-    ExoPlatform, ExoProfile,
+    ExoPlatform, ExoProfile, ExoRuntime,
 };
 use super::identity::{ExoIdentity, ExoIdentityError};
 use super::{EXO_CONTRACT_VERSION, EXO_SOURCE_REVISION};
@@ -17,7 +17,34 @@ pub struct ExoTrustedConfiguration {
     pub platform: ExoPlatform,
     pub profile: ExoProfile,
     pub context_mode: ExoContextMode,
+    pub runtime: ExoRuntime,
     pub limits: ExoLimits,
+}
+
+/// Reports whether the pinned upstream routing would select the Responses runtime for a binding.
+///
+/// This mirrors upstream `modelRequiresResponsesApi`
+/// (`exoharness/typescript/model-runtime/responses.ts`, candidate
+/// `b06869ab789dee3f80ca474b5fa89dbe47ccb859`): the Responses runtime is selected only for a
+/// lowercased model binding that starts with `o1-pro`, `o3-pro`, or `gpt-5-pro`, carries a
+/// `gpt-5.N` minor version of 3 or greater, or starts with `gpt-5` and contains `-codex`. Every
+/// other model name selects `ChatCompletionsRuntime` (or `AnthropicRuntime` for `claude*`).
+#[must_use]
+pub fn responses_capable(model_binding: &str) -> bool {
+    let lower = model_binding.to_ascii_lowercase();
+    let gpt5_minor = lower
+        .strip_prefix("gpt-5.")
+        .map(|rest| {
+            rest.chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>()
+        })
+        .and_then(|digits| digits.parse::<u64>().ok());
+    lower.starts_with("o1-pro")
+        || lower.starts_with("o3-pro")
+        || lower.starts_with("gpt-5-pro")
+        || gpt5_minor.is_some_and(|minor| minor >= 3)
+        || (lower.starts_with("gpt-5") && lower.contains("-codex"))
 }
 
 impl ExoTrustedConfiguration {
@@ -45,6 +72,7 @@ pub struct ExoPreflightReport {
     pub platform: ExoPlatform,
     pub profile: ExoProfile,
     pub context_mode: ExoContextMode,
+    pub runtime: ExoRuntime,
     pub limits: ExoLimits,
     pub model_calls: u32,
 }
@@ -58,6 +86,17 @@ pub fn preflight(
         .validate()
         .map_err(ExoPreflightError::InvalidDescriptor)?;
     trusted.validate()?;
+    if trusted.runtime != ExoRuntime::Responses {
+        return Err(ExoPreflightError::RuntimeUnsupported);
+    }
+    let model_binding = trusted
+        .identity
+        .model_binding
+        .as_deref()
+        .ok_or(ExoPreflightError::MissingIdentity)?;
+    if !responses_capable(model_binding) {
+        return Err(ExoPreflightError::ModelBindingNotResponsesCapable);
+    }
     if descriptor.identity.source_revision != EXO_SOURCE_REVISION
         || trusted.identity.source_revision != EXO_SOURCE_REVISION
     {
@@ -96,6 +135,7 @@ pub fn preflight(
         platform: trusted.platform,
         profile: trusted.profile,
         context_mode: trusted.context_mode,
+        runtime: trusted.runtime,
         limits: trusted.limits.clone(),
         model_calls: 0,
     })
@@ -234,6 +274,8 @@ pub enum ExoPreflightError {
     ContractMismatch,
     IdentityMismatch(&'static str),
     RequiredCapability(&'static str),
+    RuntimeUnsupported,
+    ModelBindingNotResponsesCapable,
     PlatformUnsupported,
     ProfileUnsupported,
     ContextUnsupported,
@@ -253,6 +295,10 @@ impl std::fmt::Display for ExoPreflightError {
             Self::ContractMismatch => "Exo contract versions do not match",
             Self::IdentityMismatch(_) => "advertised and trusted Exo identities differ",
             Self::RequiredCapability(_) => "Exo minimum admission capability is not supported",
+            Self::RuntimeUnsupported => "trusted Exo runtime is not the reviewed Responses runtime",
+            Self::ModelBindingNotResponsesCapable => {
+                "trusted Exo model binding cannot select the Responses runtime"
+            }
             Self::PlatformUnsupported => "requested Exo platform is unsupported",
             Self::ProfileUnsupported => "requested Exo profile is not supported",
             Self::ContextUnsupported => "requested Exo context mode is unsupported",

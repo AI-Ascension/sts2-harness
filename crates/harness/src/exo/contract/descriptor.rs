@@ -29,6 +29,22 @@ pub enum ExoDecisionKind {
     Recovery,
 }
 
+/// The upstream model runtime selected for a bound model.
+///
+/// The pinned upstream `runtimeFromModelBinding`
+/// (`exoharness/typescript/model-runtime/responses.ts`, candidate
+/// `b06869ab789dee3f80ca474b5fa89dbe47ccb859`) selects `AnthropicRuntime` for `claude*` bindings,
+/// `ChatCompletionsRuntime` by default, and `ResponsesRuntime` only for the Responses-capable model
+/// names mirrored by `preflight::responses_capable`. This contract admits only the
+/// [`ExoRuntime::Responses`] runtime.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExoRuntime {
+    Anthropic,
+    ChatCompletions,
+    Responses,
+}
+
 /// The three reviewed profile names. `map` and `expert` remain independently advertised.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]

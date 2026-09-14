@@ -9,6 +9,7 @@
     "node": "22.14.0"
   },
   "packageManager": "pnpm@10.26.2",
+  "x-node-version-note": "The reviewed upstream candidate mise.toml pins nodejs 22.15.0 while this extension declares 22.14.0; the loader spike was verified under both. The recorded spike's Node version is intentionally unchanged.",
   "x-reviewed-source-revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
   "x-upstream-loader": {
     "repository": "https://github.com/exoharness/exo",

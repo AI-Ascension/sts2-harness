@@ -22,7 +22,10 @@
     {"name": "action", "decision": "action", "expected": "accepted"},
     {"name": "wait", "decision": "wait", "expected": "accepted"},
     {"name": "reobserve", "decision": "reobserve", "expected": "accepted"},
-    {"name": "recovery", "decision": "recovery", "expected": "accepted"}
+    {"name": "recovery_reobserve", "decision": "recovery", "recovery_kind": "reobserve", "expected": "accepted"},
+    {"name": "recovery_reconcile", "decision": "recovery", "recovery_kind": "reconcile", "expected": "accepted"},
+    {"name": "recovery_release_lease", "decision": "recovery", "recovery_kind": "release_lease", "expected": "accepted"},
+    {"name": "recovery_stop_episode", "decision": "recovery", "recovery_kind": "stop_episode", "expected": "accepted"}
   ],
   "envelope_vectors": [
     {"name": "wrong_wire_version", "expected": "version_mismatch"},

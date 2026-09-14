@@ -32,7 +32,10 @@ the aliases in the candidate root `tsconfig.json`. The Rust `exo` CLI is built f
 Cargo workspace; `cargo build --locked --package exo` produces `target/debug/exo`, and
 `--harness typescript agent create NAME --module ABSOLUTE_MODULE_PATH --model MODEL` is the exact
 module-loading command. Node `22.14.0` and pnpm `10.26.2` are pinned by the adjacent
-`package.json`. The final agent creation is an operator spike only; it needs `EXO_MODEL` plus a
+`package.json`. The reviewed upstream candidate `mise.toml` pins `nodejs = "22.15.0"` while this
+extension declares `22.14.0`; the synthetic loader spike was verified under both versions, and the
+recorded spike's Node version is intentionally left unchanged to preserve that evidence. The final
+agent creation is an operator spike only; it needs `EXO_MODEL` plus a
 model binding/credential and does not prove an STS2 terminal decision, bridge correlation, or
 gameplay effect.
 

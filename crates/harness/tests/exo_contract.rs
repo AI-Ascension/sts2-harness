@@ -7,14 +7,18 @@ use sts2_harness::{
     EXO_BRIDGE_WIRE_VERSION, EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES,
     EXO_SOURCE_REVISION, ExoCapabilityDescriptor, ExoCapabilityState, ExoContextMode,
     ExoControlIdentity, ExoDecisionRequest, ExoIdentity, ExoLimits, ExoPlatform, ExoPreflightError,
-    ExoProfile, ExoTerminalOutcome, ExoTrustedConfiguration, ExoWireError, ExoWireOutcome,
-    encode_bridge_request, encode_bridge_response, exo_bridge_manifest, parse_bridge_decision,
-    parse_bridge_decision_envelope, parse_bridge_request, parse_bridge_request_envelope, preflight,
-    verify_control_identity, verify_exo_bridge_artifact,
+    ExoProfile, ExoRuntime, ExoTerminalOutcome, ExoTrustedConfiguration, ExoWireError,
+    ExoWireOutcome, encode_bridge_request, encode_bridge_response, exo_bridge_manifest,
+    parse_bridge_decision, parse_bridge_decision_envelope, parse_bridge_request,
+    parse_bridge_request_envelope, preflight, responses_capable, verify_control_identity,
+    verify_exo_bridge_artifact,
 };
 
 #[path = "support/exo_contract_map.rs"]
 mod exo_contract_map;
+
+#[path = "support/exo_contract_preflight.rs"]
+mod exo_contract_preflight;
 
 #[path = "support/exo_contract_schema.rs"]
 mod exo_contract_schema;
@@ -69,6 +73,7 @@ fn preflight_is_pure_and_requires_every_deployment_identity() {
         platform: ExoPlatform::LinuxX86_64,
         profile: ExoProfile::Standard,
         context_mode: ExoContextMode::Fresh,
+        runtime: ExoRuntime::Responses,
         limits: ExoLimits::reviewed(),
     };
     let report = preflight(&descriptor, &trusted).expect("matching source/config admits");
@@ -101,6 +106,7 @@ fn preflight_downgrades_every_minimum_capability_and_rejects_unreviewed_pin() {
         platform: ExoPlatform::LinuxX86_64,
         profile: ExoProfile::Standard,
         context_mode: ExoContextMode::Fresh,
+        runtime: ExoRuntime::Responses,
         limits: ExoLimits::reviewed(),
     };
 
@@ -169,6 +175,7 @@ fn preflight_downgrades_every_minimum_capability_and_rejects_unreviewed_pin() {
         platform: ExoPlatform::LinuxX86_64,
         profile: ExoProfile::Standard,
         context_mode: ExoContextMode::Fresh,
+        runtime: ExoRuntime::Responses,
         limits: ExoLimits::reviewed(),
     };
     swapped_package.identity.package_digest = Some(String::from("9").repeat(64));
@@ -179,20 +186,6 @@ fn preflight_downgrades_every_minimum_capability_and_rejects_unreviewed_pin() {
     assert_eq!(
         preflight(&package_descriptor, &swapped_package),
         Err(ExoPreflightError::IdentityMismatch("package_digest"))
-    );
-}
-
-#[test]
-fn capability_descriptor_is_closed_and_identity_axes_are_distinct() {
-    let descriptor = ExoCapabilityDescriptor::source_review().expect("source descriptor is valid");
-    let mut value = serde_json::to_value(descriptor).expect("descriptor serializes");
-    value["unexpected"] = json!(true);
-    assert!(serde_json::from_value::<ExoCapabilityDescriptor>(value).is_err());
-    let mut identity = complete_identity();
-    identity.source_revision = String::from("a").repeat(40);
-    assert_ne!(
-        identity.source_revision,
-        identity.bridge_digest.expect("digest exists")
     );
 }
 
@@ -381,7 +374,7 @@ fn complete_identity() -> ExoIdentity {
         package_digest: Some(String::from("a").repeat(64)),
         extension_digest: Some(String::from("b").repeat(64)),
         bridge_digest: Some(String::from("c").repeat(64)),
-        model_binding: Some(String::from("openai/model")),
+        model_binding: Some(String::from("gpt-5-pro")),
         prompt_digest: Some(String::from("d").repeat(64)),
         tool_digest: Some(String::from("e").repeat(64)),
         config_digest: Some(String::from("f").repeat(64)),

@@ -21,10 +21,11 @@ pub use contract::{
     ExoBridgeTurn, ExoCapabilityDescriptor, ExoCapabilityState, ExoContextMode, ExoControlIdentity,
     ExoDecisionKind, ExoDescriptorError, ExoEvidenceCapabilities, ExoIdentity, ExoIdentityError,
     ExoLifecycleCapabilities, ExoLimits, ExoPlatform, ExoPreflightError, ExoPreflightReport,
-    ExoProfile, ExoProfileSupport, ExoTerminalOutcome, ExoTrustedConfiguration, ExoWireError,
-    ExoWireOutcome, encode_bridge_request, encode_bridge_response, exo_bridge_manifest,
-    parse_bridge_decision, parse_bridge_decision_envelope, parse_bridge_request,
-    parse_bridge_request_envelope, preflight, verify_control_identity, verify_exo_bridge_artifact,
+    ExoProfile, ExoProfileSupport, ExoRuntime, ExoTerminalOutcome, ExoTrustedConfiguration,
+    ExoWireError, ExoWireOutcome, encode_bridge_request, encode_bridge_response,
+    exo_bridge_manifest, parse_bridge_decision, parse_bridge_decision_envelope,
+    parse_bridge_request, parse_bridge_request_envelope, preflight, responses_capable,
+    verify_control_identity, verify_exo_bridge_artifact,
 };
 pub use decision::{BoundDecision, Decision, DecisionError, parse_decision};
 pub use protocol::{
