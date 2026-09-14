@@ -319,7 +319,7 @@ fn whole_expert_request_vectors_execute_against_schema_and_parser() {
         .iter()
         .filter(|vector| vector["fixture"] == "generated:exo_contract_expert")
         .collect::<Vec<_>>();
-    assert_eq!(expert_vectors.len(), 4, "expert request vector set drifted");
+    assert_eq!(expert_vectors.len(), 6, "expert request vector set drifted");
     for vector in expert_vectors {
         let name = vector["name"].as_str().expect("expert vector name");
         let mutation = vector["mutation"].as_str().expect("expert vector mutation");

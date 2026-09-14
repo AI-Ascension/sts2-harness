@@ -4,7 +4,7 @@
   "contract_version": "sts2-exo-bridge-v1",
   "capability_schema": "sts2.exo-capability-v1",
   "schema": "schema.json",
-  "schema_sha256": "a61e5c6e0895cc73aadbf18422a449405b8dfd7b0106fcaaf71b9a9505641442",
+  "schema_sha256": "3e046f7d18d8024ef3991e94dea8cdfeb4be86403cba580300b92c1c45686eef",
   "license": "MIT",
   "evidence": "source-derived",
   "native_spike": "unverified",
@@ -109,6 +109,7 @@
     "compatibility_classification": {
       "runtime_and_routing_fields": "breaking",
       "expert_schema_closure_and_constraints": "safety-correction",
+      "schema_parser_semantics": "schema rejects byte-identical expert action objects and validates closed shape, digest, and non-empty actions; parser additionally rejects duplicate action_id values, expert text over 512 UTF-8 bytes, and hp > max_hp; these schema-valid/parser-rejected cases are executable conformance vectors",
       "old_readers": "fail closed when runtime/provider/endpoint axes or tightened expert shapes are absent or unknown",
       "new_readers": "read the contract version, validate all identity axes and route before any provider/gateway/game effect"
     },

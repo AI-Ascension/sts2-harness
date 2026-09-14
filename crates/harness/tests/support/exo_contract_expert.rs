@@ -13,6 +13,13 @@ pub(super) fn expert_request_variant(mutation: &str) -> Value {
         "schema_digest_zero" => request["observation"]["schema_digest"] = json!("0".repeat(64)),
         "empty_legal_actions" => request["observation"]["legal_actions"] = json!([]),
         "player_hp_above_max" => request["observation"]["player"]["hp"] = json!(81),
+        "duplicate_action_id" => {
+            let first_id = request["observation"]["legal_actions"][0]["action_id"].clone();
+            request["observation"]["legal_actions"][1]["action_id"] = first_id;
+        }
+        "multibyte_text_over_utf8_bound" => {
+            request["observation"]["player"]["hand"][0]["name"] = json!("é".repeat(257));
+        }
         other => unreachable!("unhandled expert request mutation {other}"),
     }
     request
