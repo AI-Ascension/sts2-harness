@@ -6,7 +6,7 @@
 mod fixture;
 use fixture::*;
 use rusqlite::Connection;
-use sts2_harness::context_memory::{policy_owner::*, *};
+use sts2_harness::context_memory::policy_owner::*;
 
 fn stored(connection: &Connection) -> (i64, Vec<u8>) {
     connection
