@@ -35,14 +35,14 @@ impl LifecycleOwner {
         let result = effect.try_start(permit, input);
         drop(guard);
         match result {
-            Ok(handle) => Ok(StartOutcome::Started(InFlight {
+            Ok(handle) => Ok(StartOutcome::Started(Box::new(InFlight {
                 handle,
                 manifest,
                 owner_epoch: self.snapshot.claim_epoch,
                 input: input.to_vec(),
                 settled: false,
                 instance: self.instance.clone(),
-            })),
+            }))),
             Err(_) => {
                 self.hold(&manifest, store, LifecyclePhase::Unknown)?;
                 Err(LifecycleError::Unknown)

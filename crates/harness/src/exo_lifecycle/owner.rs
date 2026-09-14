@@ -26,7 +26,7 @@ pub struct InFlight<H> {
 }
 
 pub enum StartOutcome<H> {
-    Started(InFlight<H>),
+    Started(Box<InFlight<H>>),
     Stored(crate::BoundDecision),
 }
 
