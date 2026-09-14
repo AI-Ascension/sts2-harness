@@ -22,6 +22,11 @@ claim a released harness version or runtime compatibility.
   steps cannot establish a consumer pin. Preserve the separate Studio workflow-owner
   regression; effective-limit evidence remains synthetic only.
 
+- Add producer-generated context-control catalog fixtures for descriptor minima, restricted
+  values, global ceilings, disabled metadata and digest consistency. A catalog sealing helper
+  reuses the existing v1 encoding. No wire fields, limits or selected-limit execution behavior
+  change; consumer adoption and rendering/journal enforcement remain separate. Refs #95.
+
 - Publish the machine-readable `ascension.harness.effective-limits.v1` classification record so every
   advertised context-memory and provider-session value is classified as schema-valid versus
   executable for the selected profile, with machine-readable unavailable reasons. Add a
