@@ -11,8 +11,11 @@ repository's Rust runtime does not invoke it.
   body), and returns one canned assistant message plus usage. It is not a Cargo target; the driver
   compiles it with `rustc`.
 - `run_extension_spike.sh` — copies the extension into an operator-owned Exo candidate checkout,
-  runs one turn through `exo --harness typescript --module ... `, and asserts exactly one model call
-  with a correlated `turn_id` and the terminal decision text.
+  runs one turn through `exo --harness typescript --module ... `, and asserts exactly one
+  `/responses` model call with a correlated turn id and the decision text. The binding uses model
+  `o3-pro` so runtime selection reaches the Responses path (`ResponsesRuntime.complete`) selected by
+  ADR 0017. The driver also sets `EXO_LITELLM_PRICES_PATH` to a non-existent file to suppress the
+  model-runtime pricing fetch, so the spike makes no network calls.
 
 ## Run
 
