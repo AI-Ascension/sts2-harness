@@ -10,8 +10,9 @@ use super::contract::{
     Budget, CleanupState, CommandKind, ContextAssociationContext, ContextAvailability,
     ContextCaptureEvidence, ContextCaptureMode, ContextCaptureState, ContextInspectionCapabilities,
     Cursor, Diagnostic, DiagnosticSeverity, EventClassification, EventPayload, EventType,
-    GameOutcome, RunEvent, RunRequest, RunSnapshot, TargetAdmissionBinding, WorkflowRunStatus,
-    validate_identifier,
+    ExecutionMode, GameOutcome, RunEvent, RunRequest, RunSnapshot, TARGET_CATALOG_SCHEMA_VERSION,
+    TargetAdmissionBinding, TargetAvailability, TargetCatalogResponse, TargetDescriptor,
+    WorkflowRunStatus, validate_identifier,
 };
 use super::service::{
     CapabilityPort, CommandApplication, CommandContext, ContextInspectionPort,
@@ -787,6 +788,35 @@ impl WorkflowReplayPort for SyntheticReplayPort {
 
 struct SyntheticReplayPort;
 
+/// Capabilities advertised by the deterministic synthetic owner. This list is
+/// the single source for both the capability manifest and the run-target
+/// descriptor so the two projections cannot drift.
+const SYNTHETIC_CAPABILITY_IDS: &[&str] = &[
+    "observe.fair-play.v1",
+    "actions.catalog.v1",
+    "actions.settlement.v1",
+    "authority.generation-fence.v1",
+    "actions.setup.v1",
+    "actions.map.v1",
+    "observe.map.v1",
+    "actions.combat.v1",
+    "actions.reward.v1",
+    "actions.shop.v1",
+    "actions.event.v1",
+    "actions.rest.v1",
+    "actions.selection.v1",
+    "operations.reconcile.v1",
+    "terminal.observation.v1",
+    "analysis.combat.v1",
+    "analysis.map.v1",
+];
+
+const SYNTHETIC_TARGET_INSTANCE_ID: &str = "sts2-synthetic-1";
+const SYNTHETIC_TARGET_CATALOG_REVISION: &str = "synthetic.catalog.v1";
+const SYNTHETIC_TARGET_COMPATIBILITY_REVISION: &str = "synthetic.compatibility.v1";
+const SYNTHETIC_TARGET_CAPABILITY_REVISION: &str = "synthetic.capabilities.v1";
+const SYNTHETIC_TARGET_GAME_PROFILE: &str = "sts2-synthetic-v1";
+
 #[derive(Default)]
 struct SyntheticCapabilityPort;
 
@@ -795,15 +825,8 @@ impl CapabilityPort for SyntheticCapabilityPort {
         Ok(json!({
             "schema_version": "ascension.capabilities/v1",
             "producer": "sts2-harness.synthetic",
-            "profile": "sts2-synthetic-v1",
-            "capabilities": [
-                "observe.fair-play.v1", "actions.catalog.v1", "actions.settlement.v1",
-                "authority.generation-fence.v1", "actions.setup.v1", "actions.map.v1",
-                "observe.map.v1", "actions.combat.v1", "actions.reward.v1",
-                "actions.shop.v1", "actions.event.v1", "actions.rest.v1",
-                "actions.selection.v1", "operations.reconcile.v1", "terminal.observation.v1",
-                "analysis.combat.v1", "analysis.map.v1"
-            ],
+            "profile": SYNTHETIC_TARGET_GAME_PROFILE,
+            "capabilities": SYNTHETIC_CAPABILITY_IDS,
             "context_bindings": [
                 {"context_ref": "context.synthetic.v1", "node_kinds": ["analyze", "decide"]},
                 {"context_ref": "sts2.setup.context.v1", "node_kinds": ["decide"]},
@@ -818,6 +841,39 @@ impl CapabilityPort for SyntheticCapabilityPort {
             ],
             "evidence_scope": "synthetic"
         }))
+    }
+
+    /// The synthetic owner publishes exactly one clearly-labelled synthetic
+    /// target so authenticated consumers can preflight an exact admission
+    /// without any game, provider, or lease authority.
+    fn target_catalog(
+        &self,
+        _actor: &AuthContext,
+    ) -> Result<TargetCatalogResponse, ManagementError> {
+        Ok(TargetCatalogResponse {
+            schema_version: TARGET_CATALOG_SCHEMA_VERSION.to_owned(),
+            catalog_revision: SYNTHETIC_TARGET_CATALOG_REVISION.to_owned(),
+            targets: vec![TargetDescriptor {
+                instance_id: SYNTHETIC_TARGET_INSTANCE_ID.to_owned(),
+                execution_profiles: vec!["synthetic".to_owned()],
+                execution_mode: ExecutionMode::Synthetic,
+                compatibility_revision: SYNTHETIC_TARGET_COMPATIBILITY_REVISION.to_owned(),
+                capability_revision: SYNTHETIC_TARGET_CAPABILITY_REVISION.to_owned(),
+                availability: TargetAvailability::Available,
+                supported_operations: vec![
+                    "workflow:run".to_owned(),
+                    "workflow:read".to_owned(),
+                    "workflow:control".to_owned(),
+                ],
+                capabilities: SYNTHETIC_CAPABILITY_IDS
+                    .iter()
+                    .map(|capability| (*capability).to_owned())
+                    .collect(),
+                game_profiles: vec![SYNTHETIC_TARGET_GAME_PROFILE.to_owned()],
+                save_profiles: Vec::new(),
+                inference_profiles: Vec::new(),
+            }],
+        })
     }
 }
 
