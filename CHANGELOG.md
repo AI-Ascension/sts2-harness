@@ -27,6 +27,12 @@ claim a released harness version or runtime compatibility.
   reuses the existing v1 encoding. No wire fields, limits or selected-limit execution behavior
   change; consumer adoption and rendering/journal enforcement remain separate. Refs #95.
 
+- Add an opt-in authenticated durable memory-policy owner: retain exact saved encodings, require
+  target-bound approval for atomic adoption, and load the adopted policy for actual local memory
+  selection. Restart requires explicit revalidation; stale grants/profiles/revisions fail closed.
+  The separate encrypted bounded store preserves history and idempotent receipts. This is the
+  memory-only component slice of #95, not session migration, browser/production wiring or #119.
+
 - Publish the machine-readable `ascension.harness.effective-limits.v1` classification record so every
   advertised context-memory and provider-session value is classified as schema-valid versus
   executable for the selected profile, with machine-readable unavailable reasons. Add a
