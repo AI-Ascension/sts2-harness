@@ -55,7 +55,16 @@ mod fair_play_tests {
         );
         value["harness_projection"] =
             Value::String(crate::RUNTIME_V4_EXPERT_FAIR_PLAY_PROJECTION.to_owned());
-        assert!(crate::SanitizedObservation::new(value).is_ok());
+        assert!(crate::SanitizedObservation::new(value.clone()).is_ok());
+        // The projected legal-action union is closed: an expert-only action mixed into a marked
+        // projection fails the same restriction the schema's projected variant applies.
+        value["legal_actions"] = serde_json::json!([
+            {"action_id": "end:7", "action": {"kind": "end_turn"}}
+        ]);
+        assert_eq!(
+            crate::SanitizedObservation::new(value),
+            Err(crate::SandboxError::InvalidExpertObservation)
+        );
         Ok(())
     }
 }

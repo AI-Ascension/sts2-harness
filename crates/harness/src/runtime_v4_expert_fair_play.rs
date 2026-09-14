@@ -4,6 +4,11 @@ impl RuntimeV4ExpertObservation {
     /// Validates a provider-facing expert projection after its harness-only action forms are
     /// normalized to the frozen native Runtime-v4 expert wire shape. Native callers must use
     /// `from_value`, which continues to reject these projected forms.
+    ///
+    /// Once the `harness_projection` marker is present, the legal-action union is closed: only the
+    /// REST selector's projected forms are normalized here, and any other action shape fails
+    /// closed. This keeps the Rust parser aligned with the closed
+    /// `harness_projection_observation` variant in `protocol-artifact/exo-bridge-v1/schema.json`.
     pub(crate) fn validate_fair_play_value(
         mut value: Value,
     ) -> Result<(), RuntimeV4ExpertParseError> {
@@ -40,7 +45,7 @@ impl RuntimeV4ExpertObservation {
                         (String::from("card_id"), player_id),
                     ]);
                 }
-                _ => {}
+                _ => return Err(RuntimeV4ExpertParseError::InvalidShape),
             }
         }
         RuntimeV4ExpertObservation::from_value(value).map(|_| ())

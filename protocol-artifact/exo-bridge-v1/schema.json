@@ -281,10 +281,11 @@
       }
     },
     "observation": {
-      "description": "Standard fair-play projection or the closed Runtime-v4 expert wire observation. The harness fair-play projection (harness_projection marker) is a separate provider-side form and is outside this bridge observation union.",
+      "description": "Closed union of the standard fair-play projection, the Runtime-v4 expert wire observation, and the harness fair-play expert projection. The projected form carries the pinned harness_projection marker plus the REST selector's projected legal actions and is enforced by the same closed restriction in SanitizedObservation::new / RuntimeV4ExpertObservation::validate_fair_play_value.",
       "oneOf": [
         {"$ref": "#/$defs/standard_observation"},
-        {"$ref": "#/$defs/expert_observation"}
+        {"$ref": "#/$defs/expert_observation"},
+        {"$ref": "#/$defs/harness_projection_observation"}
       ]
     },
     "expert_observation": {
@@ -1362,6 +1363,90 @@
         "action_id": {"$ref": "#/$defs/expert_identity"},
         "action": {"$ref": "#/$defs/expert_action"}
       }
+    },
+    "harness_projection_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Closed harness fair-play expert projection: the Runtime-v4 expert observation fields plus the pinned harness_projection marker and the REST selector's projected legal actions. Faithful to SanitizedObservation::new and RuntimeV4ExpertObservation::validate_fair_play_value, which normalize only these projected action forms and reject every other action shape once the marker is present.",
+      "required": [
+        "protocol_version",
+        "schema_digest",
+        "provenance",
+        "profile",
+        "state_id",
+        "generation",
+        "visible_seed",
+        "run",
+        "player",
+        "state",
+        "legal_actions",
+        "harness_projection"
+      ],
+      "properties": {
+        "protocol_version": {"const": "runtime-v4-expert"},
+        "schema_digest": {"const": "0ee034d5da83f34e9fa0ba23038738d56ef8cfccb1c6e752af3ab63d212c8e42"},
+        "provenance": {"$ref": "#/$defs/expert_provenance"},
+        "profile": {"const": "expert-state"},
+        "state_id": {"$ref": "#/$defs/expert_identity"},
+        "generation": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "visible_seed": {"anyOf": [{"$ref": "#/$defs/expert_text"}, {"type": "null"}]},
+        "run": {"$ref": "#/$defs/expert_run"},
+        "player": {"$ref": "#/$defs/expert_player"},
+        "state": {"$ref": "#/$defs/expert_state"},
+        "harness_projection": {"const": "sts2-harness/runtime-v4-expert-fair-play-v1"},
+        "legal_actions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {"$ref": "#/$defs/harness_projection_legal_action"}
+        }
+      }
+    },
+    "harness_projection_legal_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action_id", "action"],
+      "properties": {
+        "action_id": {"$ref": "#/$defs/expert_identity"},
+        "action": {"$ref": "#/$defs/harness_projection_action"}
+      }
+    },
+    "harness_projection_action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "card_id"],
+          "properties": {
+            "kind": {"const": "select_card"},
+            "card_id": {"$ref": "#/$defs/expert_identity"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "player_id"],
+          "properties": {
+            "kind": {"const": "select_player"},
+            "player_id": {"$ref": "#/$defs/expert_identity"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {"const": "confirm_selection"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {"const": "cancel_selection"}
+          }
+        }
+      ]
     }
   }
 }
