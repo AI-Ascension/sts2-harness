@@ -126,6 +126,13 @@ fn json_schema_validator_executes_request_decision_and_envelope_vectors() {
     let cancelled_response: serde_json::Value =
         serde_json::from_slice(&cancelled_response).expect("cancelled response JSON");
     assert!(decision_envelope_validator.is_valid(&cancelled_response));
+    let cancelled_without_optional_fields = json!({
+        "wire_version": "sts2.exo-bridge-wire-v1",
+        "request_id": "request-schema",
+        "turn_id": "turn-schema",
+        "outcome": "cancelled"
+    });
+    assert!(decision_envelope_validator.is_valid(&cancelled_without_optional_fields));
     let failed_response = encode_bridge_response(
         "request-schema",
         "turn-schema",
@@ -137,6 +144,34 @@ fn json_schema_validator_executes_request_decision_and_envelope_vectors() {
     let failed_response: serde_json::Value =
         serde_json::from_slice(&failed_response).expect("failed response JSON");
     assert!(decision_envelope_validator.is_valid(&failed_response));
+    let failed_without_error = json!({
+        "wire_version": "sts2.exo-bridge-wire-v1",
+        "request_id": "request-schema",
+        "turn_id": "turn-schema",
+        "outcome": "failed"
+    });
+    assert!(!decision_envelope_validator.is_valid(&failed_without_error));
+
+    assert!(!decision_validator.is_valid(&json!({
+        "decision": "wait",
+        "action_id": "combat.end-turn",
+        "rationale": "unexpected action"
+    })));
+    assert!(!decision_validator.is_valid(&json!({
+        "decision": "recovery",
+        "recovery_kind": "reconcile",
+        "rationale": "missing operation"
+    })));
+    assert!(!decision_validator.is_valid(&json!({
+        "decision": "recovery",
+        "recovery_kind": "reobserve",
+        "operation_id": "op-1",
+        "rationale": "unexpected operation"
+    })));
+    assert!(!decision_validator.is_valid(&json!({
+        "decision": "wait",
+        "rationale": "é"
+    })));
 }
 
 #[test]
