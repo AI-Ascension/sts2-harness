@@ -11,7 +11,7 @@ become a second model call after an uncertain filesystem operation or restart.
 
 This increment addresses part of issue #142. It supplies no native Exo executor, managed process
 protocol, scheduler authority implementation, accounting adapter, cancellation implementation,
-or enabled runtime profile. Fixtures use synthetic identities and accounting receipts.
+or enabled runtime profile. Fixtures use synthetic identities and usage values.
 
 ## Decision
 
@@ -55,7 +55,9 @@ The authority guard spans admission through `EffectPort::try_start`. That method
 hand off and return a handle, without waiting for inference. Polling holds no authority guard,
 so cancellation or revocation can linearize after handoff. Every handoff or polling error is
 ambiguous. Before consuming a terminal result, the owner validates its correlated envelope,
-legal action, native identity, and positive qualified usage within the reservation. Current
+legal action, adapter-reported native identity shape, and positive usage within the reservation.
+Authenticating native identity and qualifying usage remain the admitted adapter's responsibility.
+Current
 authority is checked again. Result bytes commit in the execution store before journal terminal
 metadata; a failure in the latter cannot trigger another send.
 

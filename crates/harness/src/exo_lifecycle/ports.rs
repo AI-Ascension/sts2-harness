@@ -21,7 +21,9 @@ pub struct OwnerClaim<'a> {
 /// A short, linearizable owner authorization guard. No default implementation is provided.
 pub trait AuthorityGuard {}
 
-/// Supplied by the authenticated scheduler. This source slice provides no production adapter.
+/// Supplied by the authenticated scheduler and bound to the claimed store/scope/owner.
+/// Every manifest dependency must be checked against current authority, including historical
+/// result consumption after restart. This source slice provides no production adapter.
 pub trait LifecycleAuthorityPort: Send + Sync {
     fn claim<'a>(
         &'a self,
@@ -62,6 +64,8 @@ pub struct EffectCompletion {
     pub result_ref: String,
     /// Qualified owner units only. Missing/zero/over-reservation usage cannot complete.
     pub actual_units: Option<u64>,
+    /// Actual identities observed by the trusted adapter for this handle, never synthesized.
+    /// This source protocol checks shape; it does not authenticate a native provider receipt.
     pub native: Option<NativeIdentity>,
 }
 

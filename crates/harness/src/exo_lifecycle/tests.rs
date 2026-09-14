@@ -166,3 +166,58 @@ fn assert_private_schema(value: &serde_json::Value) {
         _ => (),
     }
 }
+
+#[test]
+fn real_request_and_response_parsers_accept_exact_limits_and_reject_one_extra_byte() {
+    let fixture = Fixture::new();
+    let mut input = fixture.input.clone();
+    input.resize(MAX_INPUT_BYTES, b' ');
+    let mut manifest = fixture.manifest.clone();
+    manifest.input_length = input.len();
+    manifest.input_digest = crate::sha256_hex(&input);
+    assert!(super::validation::input(&manifest, &input).is_ok());
+    input.push(b' ');
+    manifest.input_length = input.len();
+    manifest.input_digest = crate::sha256_hex(&input);
+    assert!(super::validation::input(&manifest, &input).is_err());
+    let completion = fixture::Handle {
+        ready: true,
+        units: Some(3),
+    }
+    .poll()
+    .expect("poll")
+    .expect("completion");
+    let mut response = completion.response;
+    response.resize(8192, b' ');
+    assert!(super::validation::response(&fixture.manifest, &fixture.input, &response).is_ok());
+    response.push(b' ');
+    assert!(super::validation::response(&fixture.manifest, &fixture.input, &response).is_err());
+}
+
+#[test]
+fn revoked_before_admission_mutates_no_journal_or_store_and_calls_no_effect() {
+    let mut fixture = Fixture::new();
+    let mut owner = fixture.owner();
+    let before = std::fs::read(fixture.config.directory.join("journal.enc")).expect("journal");
+    *fixture.authority.revoked.lock().expect("authority") = true;
+    let mut effect = Effect::default();
+    assert!(matches!(
+        owner.start(
+            fixture.manifest.clone(),
+            &fixture.input,
+            &mut fixture.store,
+            &fixture.fingerprint,
+            &mut effect
+        ),
+        Err(LifecycleError::Fenced)
+    ));
+    assert_eq!(
+        std::fs::read(fixture.config.directory.join("journal.enc")).expect("unchanged"),
+        before
+    );
+    assert!(matches!(
+        fixture.store.decision(&fixture.manifest.execution_id),
+        Err(crate::ExecutionStoreError::Missing)
+    ));
+    assert_eq!(effect.calls, 0);
+}
