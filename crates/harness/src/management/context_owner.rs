@@ -18,7 +18,11 @@ use crate::sha256_hex;
 
 pub const CONTEXT_OWNER_BINDING_SCHEMA_VERSION: &str = "ascension.context-control.owner-binding.v1";
 pub const CONTEXT_OWNER_CATALOG_SCHEMA_VERSION: &str = "ascension.context-control.owner-catalog.v1";
-pub const CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION: &str = "ascension.context-control.owner-receipt.v1";
+/// Receipt v2 binds command and post-transition boundary identity. The v1
+/// wire shape omitted those fields, so it cannot be safely upgraded.
+pub const CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION: &str = "ascension.context-control.owner-receipt.v2";
+pub const CONTEXT_OWNER_RECEIPT_V1_SCHEMA_VERSION: &str =
+    "ascension.context-control.owner-receipt.v1";
 pub const MAX_CONTEXT_BINDINGS: usize = 128;
 pub const MAX_CONTEXT_SOURCES: usize = 16;
 pub const MAX_CONTEXT_OPERATIONS: usize = 16;
@@ -263,25 +267,34 @@ impl ContextBindingCatalog {
     ) -> Result<&ContextBindingDescriptor, ManagementError> {
         validate_identifier("context_ref", context_ref)?;
         validate_identifier("context_node_kind", node_kind)?;
-        self.descriptors
+        let mut matches = self
+            .descriptors
             .iter()
-            .find(|descriptor| descriptor.supports(context_ref, node_kind))
-            .ok_or_else(|| {
-                ManagementError::capability(
-                    "context_binding_unsupported",
-                    "context owner catalog does not advertise a usable binding for this node",
-                )
-            })
+            .filter(|descriptor| descriptor.supports(context_ref, node_kind));
+        let Some(descriptor) = matches.next() else {
+            return Err(ManagementError::capability(
+                "context_binding_unsupported",
+                "context owner catalog does not advertise a usable binding for this node",
+            ));
+        };
+        if matches.next().is_some() {
+            return Err(ManagementError::conflict(
+                "context_binding_ambiguous",
+                "context owner catalog advertises multiple bindings for this node",
+            ));
+        }
+        Ok(descriptor)
     }
 }
 
 #[path = "context_owner_binding.rs"]
 mod binding;
+#[path = "context_owner_receipt.rs"]
+mod receipt;
 #[path = "context_owner_support.rs"]
 mod support;
 
 pub use binding::{ContextBindingRequest, ContextOwnerBinding};
-pub use support::{
-    ContextControlCommand, ContextControlReceipt, ContextOwnerPort, UnavailableContextOwnerPort,
-};
+pub use receipt::{ContextControlCommand, ContextControlCommandKind, ContextControlReceipt};
+pub use support::{ContextOwnerPort, UnavailableContextOwnerPort};
 pub(crate) use support::{catalog_digest, validate_boundary, validate_grants, validate_limits};
