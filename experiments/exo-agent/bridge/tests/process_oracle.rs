@@ -45,9 +45,9 @@ fn real_exo_process_matrix() -> Result {
     assert!(model.requests.lock().map_err(|_| "poisoned")?.is_empty());
     assert_eq!(model.request_count(), 0);
     cases.push(json!({"case": "describe", "passed": true, "model_requests": 0}));
-    decisions(&model, &binary, &config, &envelope, &mut cases)?;
     rejected_inputs(&model, &binary, &config, &envelope, &mut cases)?;
     failed_process_boundaries(&model, &binary, &config, &envelope, &mut cases)?;
+    decisions(&model, &binary, &config, &envelope, &mut cases)?;
     std::fs::remove_file(config)?;
     let report = json!({
         "schema": "sts2.exo-one-shot-process-evidence-v1",

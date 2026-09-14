@@ -25,8 +25,8 @@ pub fn ordinary_map(envelope: &Value) -> Result<Value> {
         "map_instance_id": "map-1", "act_id": 1, "scope_id": "scope-1",
         "availability": "available", "completeness": "complete", "freshness": "current", "reason": null,
         "nodes": [
-            {"id": "start", "row": 0, "column": 0, "category": "start", "visited": true},
-            {"id": "next", "row": 1, "column": 0, "category": "monster", "visited": false}
+            {"id": "next", "row": 1, "column": 0, "category": "monster", "visited": false},
+            {"id": "start", "row": 0, "column": 0, "category": "start", "visited": true}
         ],
         "edges": [{"from": "start", "to": "next"}],
         "position": {"kind": "current", "node_id": "start"}, "history": ["start"],
@@ -34,6 +34,7 @@ pub fn ordinary_map(envelope: &Value) -> Result<Value> {
         "bindings": [{"graph_node_id": "next", "host_action_id": "move-1",
             "action": {"kind": "select_map_node", "node_id": "next"}}]
     });
+    // Map snapshot digests require collection order canonicalized by node ID, not path order.
     let mut hash = Command::new("sha256sum")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
