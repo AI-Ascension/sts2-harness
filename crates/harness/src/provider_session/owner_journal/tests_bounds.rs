@@ -93,7 +93,7 @@ fn aggregate_plaintext_limit_is_exact_and_ciphertext_is_bounded() {
         MAX_HISTORY_BYTES
     );
     let encoded = io::encode(&fixture.config, &[7; 32], &fixture.snapshot).expect("exact bound");
-    assert_eq!(encoded.len(), types::MAX_ENVELOPE);
+    assert_eq!(encoded.len(), super::super::types::MAX_ENVELOPE);
     fixture
         .snapshot
         .broker
