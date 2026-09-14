@@ -57,6 +57,9 @@ pub(super) fn dispatch(
                     .preflight_target(&actor, body)
                     .and_then(|value| json_value(&value))
             }
+            ("GET", "/v1/context-bindings") if request.query.is_empty() => service
+                .context_owner_catalog(&actor)
+                .and_then(|value| json_value(&value)),
             ("GET", "/v1/capabilities") if request.query.is_empty() => service
                 .capabilities(&actor)
                 .and_then(|value| json_value(&value)),

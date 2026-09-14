@@ -44,6 +44,9 @@ pub fn synthetic_store(
         .with_replay_port(Arc::new(SyntheticReplayPort))
         .with_capability_port(Arc::new(SyntheticCapabilityPort))
         .with_context_inspection_port(Arc::new(SyntheticContextInspectionPort))
+        .with_context_owner_port(Arc::new(
+            super::synthetic_context_owner::SyntheticContextOwnerPort,
+        ))
 }
 
 pub fn synthetic_sqlite_store(
@@ -57,6 +60,9 @@ pub fn synthetic_sqlite_store(
         .with_replay_port(Arc::new(SyntheticReplayPort))
         .with_capability_port(Arc::new(SyntheticCapabilityPort))
         .with_context_inspection_port(Arc::new(SyntheticContextInspectionPort))
+        .with_context_owner_port(Arc::new(
+            super::synthetic_context_owner::SyntheticContextOwnerPort,
+        ))
 }
 
 struct SyntheticContextInspectionPort;
