@@ -27,5 +27,13 @@ The complete producer inventory and lower/exact/one-over conformance matrix live
 `docs/effective-context-limits.md`. Provider-session policy and capabilities contracts are
 published under `contracts/provider-session/` with the same owner/revision binding rules.
 
+`MemoryCapabilities::effective_limit_record()` publishes the machine-readable
+`ascension.harness.effective-limits.v1` record (`contracts/effective-limits.schema.json`) that
+classifies every advertised value as schema-valid versus executable and names the validator. The
+compiled `context-memory-cli limits` command prints it. Consumers must call
+`EffectiveLimitRecord::admit` (or `admit_authorized` with trusted pins) before presenting a value;
+`contracts/effective-limits-pins.json` records the producer digests and the consumer pins, and
+rejects drift, tampering, and stale adoption labels.
+
 Artifact source: Phase 3 package, consumed against target implementation `9b69951` and companion
 implementation `b923192`. The current branch is draft-only.

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ascension:harness:effective-limits:v1",
+  "title": "Harness effective-limit classification record",
+  "description": "Classifies every advertised context/provider value as schema-valid versus executable for the selected owner/profile. Consumed beside the matching capability descriptor; a field absent from the record is unavailable, never unlimited.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "ascension.harness.effective-limits.v1"
+    },
+    "surface": {
+      "enum": [
+        "context-memory",
+        "provider-session"
+      ]
+    },
+    "owner": {
+      "const": "sts2-harness"
+    },
+    "owner_revision": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "capability_schema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "capability_descriptor_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "class": {
+            "enum": [
+              "schema_executable_equal",
+              "schema_broader_than_executable",
+              "profile_selected",
+              "runtime_guard"
+            ]
+          },
+          "policy_schema_ceiling": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "capabilities_schema_ceiling": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "executable_ceiling": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "validator": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "field",
+          "class",
+          "policy_schema_ceiling",
+          "capabilities_schema_ceiling",
+          "executable_ceiling",
+          "validator"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "surface",
+    "owner",
+    "owner_revision",
+    "capability_schema",
+    "capability_descriptor_sha256",
+    "enabled",
+    "rows"
+  ]
+}

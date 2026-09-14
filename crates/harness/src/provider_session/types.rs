@@ -11,6 +11,8 @@ mod binding_operation;
 mod capabilities;
 #[path = "common.rs"]
 mod common;
+#[path = "effective_limits.rs"]
+mod effective_limits;
 #[path = "history_prepared.rs"]
 mod history_prepared;
 #[path = "maintenance.rs"]

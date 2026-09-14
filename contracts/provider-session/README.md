@@ -6,6 +6,10 @@ profile may expose lower executable limits. `capabilities.schema.json` publishes
 session/transport limit that consumers may rely on, plus the policy/model/adapter revision binding
 and descriptor digest.
 
+`NativeCapabilities::effective_limit_record()` publishes the same
+`ascension.harness.effective-limits.v1` classification record described in
+`docs/effective-context-limits.md`, including the tool that exposes it and the consumer pin matrix.
+
 Portable validity and profile admission are separate checks. A policy within the schema ceiling
 but above `effective_limits` is retained for inspection and rejected before a candidate/session
 is admitted. Missing, malformed, stale, or mismatched capability metadata is never interpreted as
