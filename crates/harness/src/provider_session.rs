@@ -9,6 +9,7 @@
 mod broker;
 mod protocol;
 mod state_store;
+pub(crate) mod owner_journal;
 mod transport;
 mod types;
 

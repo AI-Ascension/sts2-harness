@@ -60,6 +60,7 @@ mod execution_cancellation;
 mod exo;
 mod exo_admitted_transport;
 mod exo_process;
+pub mod exo_lifecycle;
 mod identity;
 pub mod management;
 mod map;
