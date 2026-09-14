@@ -12,7 +12,7 @@ use fixture::*;
 use serde_json::{Value, json};
 use sts2_harness::context_memory::{policy_owner::*, *};
 
-fn stored(fixture: &Fixture) -> (u64, Vec<u8>) {
+fn stored(fixture: &Fixture) -> (i64, Vec<u8>) {
     rusqlite::Connection::open(&fixture.path)
         .unwrap()
         .query_row("SELECT epoch, envelope FROM policy_journal", [], |row| {

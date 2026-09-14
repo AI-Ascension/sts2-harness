@@ -8,7 +8,7 @@ use fixture::*;
 use rusqlite::Connection;
 use sts2_harness::context_memory::{policy_owner::*, *};
 
-fn stored(connection: &Connection) -> (u64, Vec<u8>) {
+fn stored(connection: &Connection) -> (i64, Vec<u8>) {
     connection
         .query_row("SELECT epoch, envelope FROM policy_journal", [], |row| {
             Ok((row.get(0)?, row.get(1)?))
