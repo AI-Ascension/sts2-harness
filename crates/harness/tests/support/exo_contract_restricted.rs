@@ -94,6 +94,27 @@ fn private_state_policy_rejects_unsafe_roots() {
         ),
         (
             ExoPrivateStatePolicy {
+                state_root: "/var/home/analyst/state".to_owned(),
+                ..valid.clone()
+            },
+            ExoPrivateStateError::ForbiddenPath(PrivateRootKind::State),
+        ),
+        (
+            ExoPrivateStatePolicy {
+                state_root: "/etc/sts2/state".to_owned(),
+                ..valid.clone()
+            },
+            ExoPrivateStateError::ForbiddenPath(PrivateRootKind::State),
+        ),
+        (
+            ExoPrivateStatePolicy {
+                state_root: "/srv/sts2/SlayTheSpire2-1.2.3/state".to_owned(),
+                ..valid.clone()
+            },
+            ExoPrivateStateError::ForbiddenPath(PrivateRootKind::State),
+        ),
+        (
+            ExoPrivateStatePolicy {
                 state_root: "/srv/SteamLibrary/steamapps/common/SlayTheSpire2/saves".to_owned(),
                 ..valid.clone()
             },

@@ -16,7 +16,13 @@ pub const EXO_RESTRICTED_DEFAULT_RETENTION_DAYS: u32 = 7;
 pub const EXO_RESTRICTED_MAX_RETENTION_DAYS: u32 = 30;
 pub const EXO_RESTRICTED_PERMISSIONS_OCTAL: u16 = 0o700;
 
-const FORBIDDEN_ROOT_PREFIXES: [&[&str]; 3] = [&["home"], &["root"], &["Users"]];
+/// Any path component with one of these names is rejected regardless of position, so alternate
+/// home spellings such as `/var/home/<user>` or `/mnt/home/<user>` cannot slip through.
+const FORBIDDEN_ANY_COMPONENT: [&str; 3] = ["home", "root", "users"];
+/// A first path component with one of these system names is rejected.
+const FORBIDDEN_FIRST_COMPONENT: [&str; 9] = [
+    "etc", "usr", "boot", "dev", "proc", "sys", "run", "media", "mnt",
+];
 const FORBIDDEN_GAME_MARKERS: [&str; 8] = [
     "slaythespire",
     "slaythespire2",
@@ -89,6 +95,12 @@ pub struct ExoPrivateStatePolicy {
 
 impl ExoPrivateStatePolicy {
     /// Fails closed on unsafe roots, overlapping roots, unbounded quota/retention, or loose modes.
+    ///
+    /// Validation is lexical only: it does not resolve symlinks or reparse points and does not touch
+    /// the filesystem. Materialization must canonicalize each root and open with symlink-refusing
+    /// semantics (`O_NOFOLLOW`/`openat2`) so a symlink target cannot escape the reviewed root. Path
+    /// comparison is byte-exact and case-sensitive, so a case-insensitive filesystem may alias two
+    /// roots that pass validation.
     pub fn validate(&self) -> Result<(), ExoPrivateStateError> {
         let roots = [
             (PrivateRootKind::State, Path::new(&self.state_root)),
@@ -182,39 +194,10 @@ impl ExoRestrictedProfile {
     }
 }
 
-/// Which declared private root failed validation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PrivateRootKind {
-    State,
-    Cache,
-    Temp,
-}
+#[path = "restricted_error.rs"]
+mod error;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ExoToolCatalogError {
-    EmptyToolName,
-    InvalidToolName,
-    DuplicateTool,
-    UnknownTool,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ExoPrivateStateError {
-    PathNotAbsolute(PrivateRootKind),
-    PathEscapes(PrivateRootKind),
-    ForbiddenPath(PrivateRootKind),
-    DuplicateRoot,
-    NestedRoot,
-    InvalidQuota,
-    InvalidRetention,
-    UnsafePermissions,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ExoRestrictedError {
-    ToolCatalog(ExoToolCatalogError),
-    PrivateState(ExoPrivateStateError),
-}
+pub use error::{ExoPrivateStateError, ExoRestrictedError, ExoToolCatalogError, PrivateRootKind};
 
 fn validate_root(kind: PrivateRootKind, path: &Path) -> Result<(), ExoPrivateStateError> {
     if !path.is_absolute() {
@@ -240,21 +223,32 @@ fn normal_components(path: &Path) -> impl Iterator<Item = &str> {
 }
 
 fn has_forbidden_prefix(path: &Path) -> bool {
-    let Some(first) = normal_components(path).next() else {
+    let components: Vec<&str> = normal_components(path).collect();
+    let Some(first) = components.first() else {
         return true;
     };
-    FORBIDDEN_ROOT_PREFIXES.iter().any(|prefix| {
-        prefix
-            .first()
-            .is_some_and(|root| root.eq_ignore_ascii_case(first))
+    if FORBIDDEN_FIRST_COMPONENT
+        .iter()
+        .any(|name| first.eq_ignore_ascii_case(name))
+    {
+        return true;
+    }
+    components.iter().any(|component| {
+        FORBIDDEN_ANY_COMPONENT
+            .iter()
+            .any(|name| component.eq_ignore_ascii_case(name))
     })
 }
 
 fn has_game_marker(path: &Path) -> bool {
-    normal_components(path).any(|component| {
-        FORBIDDEN_GAME_MARKERS
+    let components: Vec<String> = normal_components(path)
+        .map(str::to_ascii_lowercase)
+        .collect();
+    FORBIDDEN_GAME_MARKERS.iter().any(|marker| {
+        let marker = marker.to_ascii_lowercase();
+        components
             .iter()
-            .any(|marker| component.eq_ignore_ascii_case(marker))
+            .any(|component| component.contains(marker.as_str()))
     })
 }
 
@@ -292,44 +286,3 @@ fn push_field(encoded: &mut String, value: &str) {
     encoded.push_str(value);
     encoded.push('\u{1f}');
 }
-
-impl std::fmt::Display for ExoToolCatalogError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(match self {
-            Self::EmptyToolName => "declared Exo tool name is empty",
-            Self::InvalidToolName => "declared Exo tool name is not a plain identifier",
-            Self::DuplicateTool => "declared Exo tool catalog contains a duplicate",
-            Self::UnknownTool => "declared Exo tool is not in the reviewed model allowlist",
-        })
-    }
-}
-
-impl std::error::Error for ExoToolCatalogError {}
-
-impl std::fmt::Display for ExoPrivateStateError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(match self {
-            Self::PathNotAbsolute(_) => "declared Exo private root is not absolute",
-            Self::PathEscapes(_) => "declared Exo private root contains a parent component",
-            Self::ForbiddenPath(_) => "declared Exo private root is forbidden",
-            Self::DuplicateRoot => "declared Exo private roots are duplicated",
-            Self::NestedRoot => "declared Exo private roots overlap",
-            Self::InvalidQuota => "declared Exo private-state quota is outside the reviewed bound",
-            Self::InvalidRetention => "declared Exo private-state retention is outside the bound",
-            Self::UnsafePermissions => "declared Exo private-state permissions are not 0o700",
-        })
-    }
-}
-
-impl std::error::Error for ExoPrivateStateError {}
-
-impl std::fmt::Display for ExoRestrictedError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(match self {
-            Self::ToolCatalog(_) => "restricted Exo tool catalog is not admissible",
-            Self::PrivateState(_) => "restricted Exo private-state policy is not admissible",
-        })
-    }
-}
-
-impl std::error::Error for ExoRestrictedError {}

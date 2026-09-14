@@ -174,11 +174,19 @@ of the catalog so a changed catalog is detectable.
 
 `ExoPrivateStatePolicy` declares `state_root`, `cache_root`, `temp_root`, `quota_bytes`,
 `max_retention_days`, and `permissions_octal`. `validate` fails closed on non-absolute paths,
-`..` components, duplicate or nested (overlapping) roots, roots under `/home`, `/root`, or `/Users`,
-roots containing a game-install marker from the explicit forbidden list, zero or over-maximum quota
-or retention, and any permissions value other than `0o700`. All path checks are component-based,
-not string-prefix tests. `ExoRestrictedProfile::profile_digest` binds the catalog and state digests
-together, and `ExoRestrictedProfile::reviewed_private` builds the reviewed profile for one base.
+`..` components, duplicate or nested (overlapping) roots, any component named `home`/`root`/`Users`
+(so `/var/home/<user>` and `/mnt/home/<user>` are rejected, not only top-level spellings), a first
+component in the forbidden system set (`/etc`, `/usr`, `/boot`, `/dev`, `/proc`, `/sys`, `/run`,
+`/media`, `/mnt`), roots containing a game-install marker substring, zero or over-maximum quota or
+retention, and any permissions value other than `0o700`. All path checks are component-based, not
+string-prefix tests.
+
+Validation is lexical: it does not resolve symlinks or reparse points and does not read the
+filesystem. Materialization must canonicalize each root and open with symlink-refusing semantics
+(`O_NOFOLLOW`/`openat2`) so a symlink target cannot escape the reviewed root; path comparison is
+byte-exact and case-sensitive. `ExoRestrictedProfile::profile_digest` binds the catalog and state
+digests together, and `ExoRestrictedProfile::reviewed_private` builds the reviewed profile for one
+base.
 
 This is operator-side trusted configuration only. It does not change `contract_version`,
 `wire_version`, or the wire schema. Enforcement inside the Exo TypeScript dispatch path, reviewed
