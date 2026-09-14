@@ -7,11 +7,6 @@
 //! so a binding is requested only for the invocation the runtime actually
 //! executes.
 
-use std::sync::Arc;
-
-use super::super::context_owner::ContextOwnerPort;
-use super::super::service::ManagementError;
-use super::execution::LiveWorkflowExecutionPort;
 use crate::workflow::{NodeDefinition, WorkflowDefinition};
 
 /// One context-bound node declared by the admitted definition.
@@ -54,21 +49,5 @@ fn context_node_parts(node: &NodeDefinition) -> Option<(&str, &str, &str)> {
             Some((id.as_str(), "decide", config.context_ref.as_str()))
         }
         _ => None,
-    }
-}
-
-impl LiveWorkflowExecutionPort {
-    /// Returns the actor-scoped context owner used at dispatch time. The owner
-    /// is a process-wide port, not per-run state.
-    pub(super) fn context_owner(&self) -> Result<Arc<dyn ContextOwnerPort>, ManagementError> {
-        self.context_owner
-            .lock()
-            .map(|owner| Arc::clone(&owner))
-            .map_err(|_| {
-                ManagementError::store(
-                    "live_context_owner_lock",
-                    "live context-owner lock is poisoned",
-                )
-            })
     }
 }

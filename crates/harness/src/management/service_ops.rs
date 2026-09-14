@@ -219,6 +219,7 @@ impl ManagementService {
                 request: request.clone(),
                 snapshot: snapshot.clone(),
                 actor: actor.clone(),
+                context_owner: Arc::clone(&self.context_owner),
             },
             &record_intent,
         ) {
