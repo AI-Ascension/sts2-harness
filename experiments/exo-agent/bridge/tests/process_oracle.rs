@@ -46,8 +46,8 @@ fn real_exo_process_matrix() -> Result {
     assert_eq!(model.request_count(), 0);
     cases.push(json!({"case": "describe", "passed": true, "model_requests": 0}));
     rejected_inputs(&model, &binary, &config, &envelope, &mut cases)?;
-    decisions(&model, &binary, &config, &envelope, &mut cases)?;
     failed_process_boundaries(&model, &binary, &config, &envelope, &mut cases)?;
+    decisions(&model, &binary, &config, &envelope, &mut cases)?;
     std::fs::remove_file(config)?;
     let report = json!({
         "schema": "sts2.exo-one-shot-process-evidence-v1",
@@ -88,7 +88,11 @@ fn failed_process_boundaries(
     envelope: &Value,
     cases: &mut Vec<Value>,
 ) -> Result {
-    let mut tampered: Value = serde_json::from_slice(&std::fs::read(config)?)?;
+    let original = std::fs::read(config)?;
+    let mut tampered: Value = serde_json::from_slice(&original)?;
+    let digest_config = config.with_file_name("exo-oracle-digest-config.json");
+    let nonzero_config = config.with_file_name("exo-oracle-nonzero-config.json");
+    let config = digest_config.as_path();
     tampered["executor_sha256"] = json!("0".repeat(64));
     std::fs::write(config, serde_json::to_vec(&tampered)?)?;
     model.set(200, response("{}", "message"))?;
@@ -97,6 +101,9 @@ fn failed_process_boundaries(
     assert!(model.requests.lock().map_err(|_| "poisoned")?.is_empty());
     assert_eq!(model.request_count(), 0);
     cases.push(json!({"case": "package_digest_mismatch", "passed": true, "model_requests": 0}));
+    std::fs::remove_file(config)?;
+    let config = nonzero_config.as_path();
+    let mut tampered: Value = serde_json::from_slice(&original)?;
     tampered["executor"] = json!("/usr/bin/false");
     tampered["executor_sha256"] = json!(digest(std::path::Path::new("/usr/bin/false"))?);
     std::fs::write(config, serde_json::to_vec(&tampered)?)?;
@@ -114,6 +121,7 @@ fn failed_process_boundaries(
         json!({"case": "executor_nonzero", "passed": true, "model_requests": 0,
         "evidence": "process-boundary-only"}),
     );
+    std::fs::remove_file(config)?;
     Ok(())
 }
 
