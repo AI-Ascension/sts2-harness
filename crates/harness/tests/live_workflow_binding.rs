@@ -202,8 +202,11 @@ fn a_changed_graph_changes_the_launched_digest_and_execution() {
     );
 }
 
+/// The service-side preflight rejects the tampered admission before any live effect. The
+/// execution-boundary duplicate of these checks is covered by the unit tests in
+/// `management::execution_admission` (the service preflight masks them end-to-end).
 #[test]
-fn mismatched_target_admission_fails_closed_before_any_live_effect() {
+fn service_target_admission_fails_closed_before_any_live_effect() {
     type Tamper = fn(&mut sts2_harness::management::TargetAdmissionBinding);
     let cases: [(&str, Tamper, &str); 4] = [
         (
