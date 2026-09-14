@@ -190,6 +190,7 @@ fn decisions(
             .map(str::to_owned)
             .unwrap_or_else(|| decision.to_string());
         model.set(status, response(&text, kind))?;
+        let started = std::time::Instant::now();
         let output = invoke(
             binary,
             config,
@@ -197,6 +198,11 @@ fn decisions(
             "--synthetic",
             true,
         )?;
+        eprintln!(
+            "case {name}: {:?}, status {}",
+            started.elapsed(),
+            output.status
+        );
         assert_eq!(
             output.status.success(),
             success,
@@ -207,12 +213,13 @@ fn decisions(
         assert_eq!(observed.len(), 1, "{name}");
         assert_eq!(model.request_count(), 1, "{name}");
         projection(&observed[0], envelope)?;
-        let evidence = String::from_utf8(output.stderr)?
+        let diagnostics = String::from_utf8(output.stderr)?;
+        let evidence = diagnostics
             .lines()
             .filter(|line| line.starts_with('{'))
             .map(serde_json::from_str::<Value>)
             .collect::<std::result::Result<Vec<_>, _>>()?;
-        assert_eq!(evidence.len(), 1, "{name}");
+        assert_eq!(evidence.len(), 1, "{name}: {diagnostics}");
         let row = &evidence[0];
         assert_eq!(row["forwarded_requests"], 1, "{name}");
         assert_eq!(
