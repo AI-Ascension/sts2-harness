@@ -28,8 +28,10 @@ Producers: `MemoryCapabilities::effective_limit_record()` and
 prints the record as JSON. Consumers must admit a value before presenting it:
 
 - `EffectiveLimitRecord::admit(field, requested)` answers selected-profile admissibility only.
-- `EffectiveLimitRecord::admit_authorized(...)` first validates the record and binds it to trusted
-  owner/revision/descriptor pins, then admits the value.
+- `EffectiveLimitRecord::admit_authorized(trusted, field, requested)` authenticates the complete
+  record against the record derived from the validated trusted capability descriptor (never from the
+  record under test), then admits the value. A record that keeps a trusted identity label but
+  changes any limit, class, ceiling, owner, or `enabled` flag fails closed.
 
 Unavailable reasons are machine-readable: `effective_limit_exceeded`, `disabled`,
 `field_not_advertised`, `descriptor_stale`, `descriptor_tampered`, `profile_mismatch`,
@@ -104,9 +106,11 @@ own pinned lane; this check detects harness-side drift, not a consumer that move
 Both recorded consumers are `pending`, because neither forwards the `v3` effective-limit record yet:
 `ascension-context-console` copies `ascension.*.capabilities.v1` schemas without `effective_limits`,
 and `ascension-workflow-studio` validates `ascension.context-memory.capabilities.v1` without
-disclosing effective limits. `PinMatrix::admit_consumer(...)` therefore fails closed with
-`consumer_pin_not_adopted` for both, so neither can present a value the runtime rejects. A consumer
-that declares an unrecorded surface also fails closed rather than defaulting to unlimited.
+disclosing effective limits. `PinMatrix::admit_consumer(...)` authenticates the record against the
+trusted derivation before admitting it, so a copied-contract consumer must record the complete
+producer artifact inventory; both recorded consumers fail closed with `consumer_pin_not_adopted`, so
+neither can present a value the runtime rejects. A consumer that declares an unrecorded surface also
+fails closed rather than defaulting to unlimited.
 
 ## Boundary matrix
 

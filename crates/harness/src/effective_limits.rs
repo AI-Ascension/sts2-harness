@@ -2,14 +2,9 @@
 
 //! Machine-readable effective-limit classification for harness-owned policy values.
 //!
-//! A portable JSON Schema ceiling is a syntax bound, not an execution promise. The owner publishes
-//! an [`EffectiveLimitRecord`] beside each capability descriptor that classifies every advertised
-//! value and states the executable ceiling for the selected profile. Consumers must admit a value
-//! through the record before presenting it; an absent field is never unlimited.
-//!
-//! Portable schema validity, selected-profile admissibility, and consumer availability are three
-//! distinct outcomes. [`EffectiveLimitRecord::admit_authorized`] additionally requires trusted
-//! owner pins, so a tampered or stale descriptor cannot authorize a larger limit.
+//! A portable JSON Schema ceiling is a syntax bound, not an execution promise; an absent field is
+//! never unlimited. [`EffectiveLimitRecord::admit_authorized`] authenticates the complete record
+//! against the derivation of the validated trusted capability descriptor.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -162,6 +157,7 @@ impl LimitRow {
     /// A runtime or transport guard with no portable policy field.
     pub fn runtime_guard(
         field: impl Into<String>,
+        capabilities_schema_ceiling: u64,
         executable_ceiling: u64,
         validator: impl Into<String>,
     ) -> Self {
@@ -169,7 +165,7 @@ impl LimitRow {
             field,
             LimitClass::RuntimeGuard,
             None,
-            executable_ceiling,
+            capabilities_schema_ceiling,
             executable_ceiling,
             validator,
         )
@@ -220,11 +216,8 @@ pub enum LimitRecordError {
 }
 
 impl EffectiveLimitRecord {
-    /// Validate the record before any value from it is trusted.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`LimitRecordError`] for a malformed record, row, or field set.
+    /// Validate the record before any value from it is trusted. Returns [`LimitRecordError`] for a
+    /// malformed record, row, or field set.
     pub fn validate(&self) -> Result<(), LimitRecordError> {
         if self.schema != EFFECTIVE_LIMIT_RECORD_SCHEMA
             || !valid_token(&self.surface)
@@ -260,13 +253,8 @@ impl EffectiveLimitRecord {
         self.row(field).map(|row| row.executable_ceiling)
     }
 
-    /// Selected-profile admissibility for an already-validated record. Portable schema validity is
-    /// checked by the owning validator; this answers only whether the profile can execute the value.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`UnavailableReason`] when the surface is disabled, the field is absent, or the value
-    /// exceeds the executable ceiling.
+    /// Selected-profile admissibility for an already-validated record. Returns
+    /// [`UnavailableReason`] when disabled, absent, or above the executable ceiling.
     pub fn admit(&self, field: &str, requested: u64) -> Result<(), UnavailableReason> {
         if !self.enabled {
             return Err(UnavailableReason::Disabled);
@@ -280,29 +268,41 @@ impl EffectiveLimitRecord {
         Ok(())
     }
 
-    /// Admit a value only after validating the record and binding it to trusted owner pins from
-    /// trusted configuration, never from the record being checked.
+    /// Authenticate the complete record against the record derived from the trusted capability
+    /// descriptor. `trusted` must never be derived from, or be a clone of, the record being checked.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnavailableReason`] on a malformed, mismatched, stale, or tampered record.
+    pub fn authenticate(&self, trusted: &EffectiveLimitRecord) -> Result<(), UnavailableReason> {
+        trusted
+            .validate()
+            .map_err(|_| UnavailableReason::DescriptorTampered)?;
+        if self.surface != trusted.surface || self.owner_revision != trusted.owner_revision {
+            return Err(UnavailableReason::ProfileMismatch);
+        }
+        if self.capability_descriptor_sha256 != trusted.capability_descriptor_sha256 {
+            return Err(UnavailableReason::DescriptorStale);
+        }
+        if self != trusted {
+            return Err(UnavailableReason::DescriptorTampered);
+        }
+        Ok(())
+    }
+
+    /// Admit a value only after authenticating the complete record against the trusted derivation.
     ///
     /// # Errors
     ///
     /// Returns [`UnavailableReason`] for an invalid, mismatched, stale, or oversized request.
     pub fn admit_authorized(
         &self,
-        expected_surface: &str,
-        expected_owner_revision: &str,
-        expected_descriptor_sha256: &str,
+        trusted: &EffectiveLimitRecord,
         field: &str,
         requested: u64,
     ) -> Result<(), UnavailableReason> {
-        self.validate()
-            .map_err(|_| UnavailableReason::DescriptorTampered)?;
-        if self.surface != expected_surface || self.owner_revision != expected_owner_revision {
-            return Err(UnavailableReason::ProfileMismatch);
-        }
-        if self.capability_descriptor_sha256 != expected_descriptor_sha256 {
-            return Err(UnavailableReason::DescriptorStale);
-        }
-        self.admit(field, requested)
+        self.authenticate(trusted)?;
+        trusted.admit(field, requested)
     }
 }
 

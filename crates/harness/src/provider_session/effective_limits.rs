@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    MAX_COMPLETED_TURNS, MAX_HISTORY_TTL_SECONDS, NativeCapabilities,
+    MAX_CANDIDATES, MAX_COMPLETED_TURNS, MAX_DEPENDENCIES, MAX_EVENTS, MAX_FRAME_BYTES,
+    MAX_HISTORY_BYTES, MAX_HISTORY_TTL_SECONDS, MAX_JSON_DEPTH, MAX_MAINTENANCE_JOBS,
+    MAX_METHOD_BYTES, MAX_OPERATIONS, MAX_OUTPUT_SCHEMA_BYTES, MAX_PREPARED, MAX_PREPARED_BYTES,
+    MAX_SESSION_ITEMS, MAX_SUFFIX_BYTES, NativeCapabilities,
     SESSION_POLICY_SCHEMA_MAX_COMPLETED_TURNS, SESSION_POLICY_SCHEMA_MAX_HISTORY_TTL_SECONDS,
 };
 use crate::effective_limits::{
@@ -37,71 +40,85 @@ impl NativeCapabilities {
             ),
             LimitRow::runtime_guard(
                 "max_session_items",
+                MAX_SESSION_ITEMS as u64,
                 limits.max_session_items as u64,
                 "ProviderSessionBroker",
             ),
             LimitRow::runtime_guard(
                 "max_dependencies",
+                MAX_DEPENDENCIES as u64,
                 limits.max_dependencies as u64,
                 "ProviderSessionBroker",
             ),
             LimitRow::runtime_guard(
                 "max_events",
+                MAX_EVENTS as u64,
                 limits.max_events as u64,
                 "ProviderSessionBroker",
             ),
             LimitRow::runtime_guard(
                 "max_operations",
+                MAX_OPERATIONS as u64,
                 limits.max_operations as u64,
                 "ProviderSessionBroker",
             ),
             LimitRow::runtime_guard(
                 "max_prepared",
+                MAX_PREPARED as u64,
                 limits.max_prepared as u64,
                 "ProviderSessionBroker",
             ),
             LimitRow::runtime_guard(
                 "max_candidates",
+                MAX_CANDIDATES as u64,
                 limits.max_candidates as u64,
                 "ProviderSessionBroker",
             ),
             LimitRow::runtime_guard(
                 "max_maintenance_jobs",
+                MAX_MAINTENANCE_JOBS as u64,
                 limits.max_maintenance_jobs as u64,
                 "ProviderSessionBroker",
             ),
             LimitRow::runtime_guard(
                 "max_frame_bytes",
+                MAX_FRAME_BYTES as u64,
                 limits.max_frame_bytes as u64,
                 "NativeTransport",
             ),
             LimitRow::runtime_guard(
                 "max_history_bytes",
+                MAX_HISTORY_BYTES as u64,
                 limits.max_history_bytes as u64,
                 "ProviderSessionBroker",
             ),
             LimitRow::runtime_guard(
                 "max_prepared_bytes",
+                MAX_PREPARED_BYTES as u64,
                 limits.max_prepared_bytes as u64,
                 "ProviderSessionBroker",
             ),
             LimitRow::runtime_guard(
                 "max_suffix_bytes",
+                MAX_SUFFIX_BYTES as u64,
                 limits.max_suffix_bytes as u64,
                 "NativeTransport",
             ),
             LimitRow::runtime_guard(
                 "max_output_schema_bytes",
+                MAX_OUTPUT_SCHEMA_BYTES as u64,
                 limits.max_output_schema_bytes as u64,
                 "NativeTransport",
             ),
             LimitRow::runtime_guard(
                 "max_method_bytes",
+                MAX_METHOD_BYTES as u64,
                 limits.max_method_bytes as u64,
                 "NativeFrame parse",
             ),
             LimitRow::runtime_guard(
                 "max_json_depth",
+                MAX_JSON_DEPTH as u64,
                 limits.max_json_depth as u64,
                 "NativeFrame parse",
             ),
@@ -128,5 +145,21 @@ impl NativeCapabilities {
     /// the value exceeds the executable ceiling.
     pub fn admit_policy_value(&self, field: &str, requested: u64) -> Result<(), UnavailableReason> {
         self.effective_limit_record().admit(field, requested)
+    }
+
+    /// Admit a value only after authenticating the record against the derivation of this trusted
+    /// capability descriptor.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnavailableReason`] when the record was tampered, is stale, targets another
+    /// surface, or the value exceeds the executable ceiling.
+    pub fn admit_authorized_record(
+        &self,
+        record: &EffectiveLimitRecord,
+        field: &str,
+        requested: u64,
+    ) -> Result<(), UnavailableReason> {
+        record.admit_authorized(&self.effective_limit_record(), field, requested)
     }
 }

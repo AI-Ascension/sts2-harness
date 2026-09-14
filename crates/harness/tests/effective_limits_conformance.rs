@@ -169,6 +169,37 @@ fn published_ceilings_agree_with_policy_capability_and_runtime_schemas() {
 }
 
 #[test]
+fn reduced_profile_keeps_the_capability_schema_ceiling() {
+    let mut capabilities = corpus().capabilities();
+    capabilities.effective_limits.max_source_bytes = 1_024;
+    capabilities.effective_limits.max_sources_per_job = 1;
+    let record = capabilities.effective_limit_record();
+    record.validate().expect("reduced record");
+    let capability: Value = serde_json::from_slice(include_bytes!(
+        "../../../contracts/context-memory/capabilities.schema.json"
+    ))
+    .expect("capability schema");
+    for (field, executable) in [
+        ("max_source_bytes", 1_024_u64),
+        ("max_sources_per_job", 1_u64),
+    ] {
+        let row = record.row(field).expect("row");
+        assert_eq!(row.executable_ceiling, executable);
+        assert_eq!(
+            Some(row.capabilities_schema_ceiling),
+            limit_maximum(&capability, field),
+            "{field} keeps the capability schema ceiling"
+        );
+        assert!(row.capabilities_schema_ceiling > row.executable_ceiling);
+        assert_eq!(record.admit(field, executable), Ok(()));
+        assert_eq!(
+            record.admit(field, executable + 1),
+            Err(UnavailableReason::EffectiveLimitExceeded)
+        );
+    }
+}
+
+#[test]
 fn every_limit_admits_lower_and_exact_and_rejects_one_over() {
     let records = [
         corpus().capabilities().effective_limit_record(),

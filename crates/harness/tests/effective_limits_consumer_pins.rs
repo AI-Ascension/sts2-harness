@@ -96,6 +96,7 @@ fn committed_matrix_records_pending_consumers_and_never_treats_absent_as_unlimit
                 repository,
                 "context-memory",
                 &memory_record(),
+                &memory_record(),
                 "max_candidates",
                 1
             ),
@@ -107,13 +108,21 @@ fn committed_matrix_records_pending_consumers_and_never_treats_absent_as_unlimit
             "AI-Ascension/unknown",
             "context-memory",
             &memory_record(),
+            &memory_record(),
             "max_candidates",
             1
         ),
         Err(UnavailableReason::ConsumerNotRecorded)
     );
     assert_eq!(
-        matrix.admit_consumer(CONSOLE, "runtime-v4", &memory_record(), "max_candidates", 1),
+        matrix.admit_consumer(
+            CONSOLE,
+            "runtime-v4",
+            &memory_record(),
+            &memory_record(),
+            "max_candidates",
+            1
+        ),
         Err(UnavailableReason::FieldNotAdvertised)
     );
 }
@@ -127,7 +136,14 @@ fn consumer_cannot_present_a_schema_valid_value_the_runtime_rejects() {
         for record in [memory_record(), session_record()] {
             for row in &record.rows {
                 assert_eq!(
-                    aligned.admit_consumer(repository, &record.surface, &record, &row.field, 1),
+                    aligned.admit_consumer(
+                        repository,
+                        &record.surface,
+                        &record,
+                        &record,
+                        &row.field,
+                        1
+                    ),
                     Ok(()),
                     "{}: {}",
                     repository,
@@ -137,6 +153,7 @@ fn consumer_cannot_present_a_schema_valid_value_the_runtime_rejects() {
                     aligned.admit_consumer(
                         repository,
                         &record.surface,
+                        &record,
                         &record,
                         &row.field,
                         row.executable_ceiling
@@ -150,6 +167,7 @@ fn consumer_cannot_present_a_schema_valid_value_the_runtime_rejects() {
                     aligned.admit_consumer(
                         repository,
                         &record.surface,
+                        &record,
                         &record,
                         &row.field,
                         row.executable_ceiling.saturating_add(1)
@@ -193,6 +211,7 @@ fn consumer_cannot_present_a_schema_valid_value_the_runtime_rejects() {
                 repository,
                 "context-memory",
                 &record,
+                &record,
                 "optional_byte_budget",
                 over_schema_valid.optional_byte_budget as u64
             ),
@@ -218,6 +237,13 @@ fn tampered_or_stale_pins_and_records_cannot_authorize_a_larger_limit() {
     assert_eq!(
         unknown.validate(),
         Err(PinMatrixError::MissingProducerArtifact)
+    );
+
+    let mut incomplete = matrix.clone();
+    incomplete.producer.surfaces[0].artifacts.pop();
+    assert_eq!(
+        incomplete.validate(),
+        Err(PinMatrixError::IncompleteProducerInventory)
     );
 
     let mut duplicated = matrix.clone();
@@ -273,6 +299,7 @@ fn tampered_or_stale_pins_and_records_cannot_authorize_a_larger_limit() {
             STUDIO,
             "context-memory",
             &legacy_record,
+            &memory_record(),
             "max_candidates",
             1
         ),
@@ -286,66 +313,87 @@ fn tampered_or_stale_pins_and_records_cannot_authorize_a_larger_limit() {
 
 #[test]
 fn tampered_record_ceilings_and_stale_descriptors_fail_closed() {
-    let record = memory_record();
-    let mut raised = record.clone();
+    let trusted = memory_record();
+
+    // A structurally valid tamper that keeps the trusted descriptor-digest label but raises a
+    // profile-selected ceiling above the selected corpus limit must still fail closed.
+    let mut raised = trusted.clone();
     raised
+        .rows
+        .iter_mut()
+        .find(|row| row.field == "max_entries_per_run")
+        .expect("row")
+        .executable_ceiling = 10_000;
+    assert_eq!(raised.validate(), Ok(()));
+    assert_eq!(
+        raised.admit_authorized(&trusted, "max_entries_per_run", 10_000),
+        Err(UnavailableReason::DescriptorTampered)
+    );
+
+    // The structurally invalid tamper is also rejected.
+    let mut invalid = trusted.clone();
+    invalid
         .rows
         .iter_mut()
         .find(|row| row.field == "optional_byte_budget")
         .expect("row")
         .executable_ceiling = MEMORY_POLICY_SCHEMA_MAX_OPTIONAL_BYTES as u64;
-    assert_eq!(raised.validate(), Err(LimitRecordError::InvalidRecord));
+    assert_eq!(invalid.validate(), Err(LimitRecordError::InvalidRecord));
     assert_eq!(
-        raised.admit_authorized(
-            "context-memory",
-            "harness-context-memory-v3",
-            &record.capability_descriptor_sha256,
-            "optional_byte_budget",
-            65_536
-        ),
+        invalid.admit_authorized(&trusted, "optional_byte_budget", 65_536),
         Err(UnavailableReason::DescriptorTampered)
     );
 
-    let trusted_digest = record.capability_descriptor_sha256.clone();
+    // The authentic record admits within its executable ceiling.
     assert_eq!(
-        record.admit_authorized(
-            "context-memory",
-            "harness-context-memory-v3",
-            &trusted_digest,
-            "optional_byte_budget",
-            8_192
-        ),
+        trusted.admit_authorized(&trusted, "optional_byte_budget", 8_192),
         Ok(())
     );
+
+    // A trusted record with a different descriptor pin is stale.
+    let mut stale = trusted.clone();
+    stale.capability_descriptor_sha256 = "0".repeat(64);
     assert_eq!(
-        record.admit_authorized(
-            "context-memory",
-            "harness-context-memory-v3",
-            &"0".repeat(64),
-            "optional_byte_budget",
-            8_192
-        ),
+        trusted.admit_authorized(&stale, "optional_byte_budget", 8_192),
         Err(UnavailableReason::DescriptorStale)
     );
+
+    // A different surface is a profile mismatch.
     assert_eq!(
-        record.admit_authorized(
-            "provider-session",
-            "harness-context-memory-v3",
-            &trusted_digest,
-            "optional_byte_budget",
-            8_192
-        ),
+        trusted.admit_authorized(&session_record(), "optional_byte_budget", 8_192),
         Err(UnavailableReason::ProfileMismatch)
     );
+
+    // An over-ceiling request is rejected.
     assert_eq!(
-        record.admit_authorized(
-            "context-memory",
-            "harness-context-memory-v3",
-            &trusted_digest,
-            "optional_byte_budget",
-            8_193
-        ),
+        trusted.admit_authorized(&trusted, "optional_byte_budget", 8_193),
         Err(UnavailableReason::EffectiveLimitExceeded)
+    );
+}
+
+#[test]
+fn structurally_valid_record_tamper_is_rejected_through_consumer_admission() {
+    let matrix = matrix();
+    let aligned = with_consumer(&matrix, aligned_consumer(&matrix, STUDIO));
+    let trusted = memory_record();
+    let mut raised = trusted.clone();
+    raised
+        .rows
+        .iter_mut()
+        .find(|row| row.field == "max_entries_per_run")
+        .expect("row")
+        .executable_ceiling = 10_000;
+    assert_eq!(raised.validate(), Ok(()));
+    assert_eq!(
+        aligned.admit_consumer(
+            STUDIO,
+            "context-memory",
+            &raised,
+            &trusted,
+            "max_entries_per_run",
+            10_000
+        ),
+        Err(UnavailableReason::DescriptorTampered)
     );
 }
 

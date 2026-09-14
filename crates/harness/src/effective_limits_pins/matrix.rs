@@ -19,6 +19,7 @@ pub enum PinMatrixError {
     ConsumerPinDrift,
     ConsumerAlignmentMismatch,
     AdoptionLabelStale,
+    IncompleteProducerInventory,
 }
 
 impl PinMatrix {
@@ -103,10 +104,25 @@ impl PinMatrix {
                 })
         });
         let artifacts_match = match consumer.artifact_mode {
-            ArtifactMode::CopiedContracts => consumer.artifacts.iter().all(|artifact| {
-                self.producer_artifact(&artifact.path)
-                    .is_some_and(|producer| producer.sha256 == artifact.sha256)
-            }),
+            ArtifactMode::CopiedContracts => {
+                let producer_paths = self
+                    .producer
+                    .surfaces
+                    .iter()
+                    .flat_map(|surface| &surface.artifacts)
+                    .map(|artifact| artifact.path.as_str())
+                    .collect::<BTreeSet<_>>();
+                let consumer_paths = consumer
+                    .artifacts
+                    .iter()
+                    .map(|artifact| artifact.path.as_str())
+                    .collect::<BTreeSet<_>>();
+                producer_paths == consumer_paths
+                    && consumer.artifacts.iter().all(|artifact| {
+                        self.producer_artifact(&artifact.path)
+                            .is_some_and(|producer| producer.sha256 == artifact.sha256)
+                    })
+            }
             ArtifactMode::SchemaAdapter => true,
         };
         surfaces_match && artifacts_match
@@ -159,6 +175,7 @@ impl PinMatrix {
         repository: &str,
         surface: &str,
         record: &EffectiveLimitRecord,
+        trusted: &EffectiveLimitRecord,
         field: &str,
         requested: u64,
     ) -> Result<(), UnavailableReason> {
@@ -181,10 +198,9 @@ impl PinMatrix {
             return Err(UnavailableReason::FieldNotAdvertised);
         }
         self.validate_record(record)?;
-        record
-            .validate()
-            .map_err(|_| UnavailableReason::DescriptorTampered)?;
-        record.admit(field, requested)
+        self.validate_record(trusted)?;
+        record.authenticate(trusted)?;
+        trusted.admit(field, requested)
     }
 }
 
@@ -202,6 +218,19 @@ fn validate_producer_surface(surface: &ProducerSurface) -> Result<(), PinMatrixE
         if artifact.kind != "policy_schema" && artifact.kind != "capabilities_schema" {
             return Err(PinMatrixError::InvalidMatrix);
         }
+    }
+    let policy = surface
+        .artifacts
+        .iter()
+        .filter(|artifact| artifact.kind == "policy_schema")
+        .count();
+    let capabilities = surface
+        .artifacts
+        .iter()
+        .filter(|artifact| artifact.kind == "capabilities_schema")
+        .count();
+    if policy != 1 || capabilities != 1 || surface.artifacts.len() != 2 {
+        return Err(PinMatrixError::IncompleteProducerInventory);
     }
     Ok(())
 }
