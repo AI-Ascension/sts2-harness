@@ -16,12 +16,14 @@ use sts2_harness::{
     ExecutionStore, ExecutionStoreConfig,
 };
 
-const EXO_REVISION: &str = "7801005e6a1ab77008a05dbba80e0a2a7a56e35d";
+const EXO_REVISION: &str = "b06869ab789dee3f80ca474b5fa89dbe47ccb859";
 const RUN_ID: &str = "run-completed-resume";
 const EPISODE_ID: &str = "episode-completed-resume";
 const ATTEMPT_ID: &str = "attempt-completed-resume";
 const TRAJECTORY_ID: &str = "trajectory-completed-resume";
 
+#[path = "support/completed_resume_fingerprint.rs"]
+mod fingerprint_support;
 #[path = "support/completed_resume_process_support.rs"]
 mod process_support;
 use process_support::{run_child, run_child_with_timeout};
@@ -178,7 +180,15 @@ impl Fixture {
         write_probe(&bridge, "provider", &counter)?;
         let lineage = ExecutionLineage::new(RUN_ID, EPISODE_ID, ATTEMPT_ID, TRAJECTORY_ID)
             .map_err(|error| format!("fixture lineage is invalid: {error}"))?;
-        let fingerprint = fingerprint(&mcp, &bridge, &gateway_address)?;
+        let fingerprint = fingerprint_support::fingerprint(
+            &mcp,
+            &bridge,
+            &gateway_address,
+            EXO_REVISION,
+            RUN_ID,
+            EPISODE_ID,
+            TRAJECTORY_ID,
+        )?;
         Ok(Self {
             root,
             store,
@@ -265,61 +275,6 @@ fn write_probe(path: &Path, marker: &str, counter: &Path) -> Result<(), String> 
     permissions.set_mode(0o755);
     fs::set_permissions(path, permissions)
         .map_err(|error| format!("cannot make probe executable: {error}"))
-}
-
-fn fingerprint(
-    mcp: &Path,
-    bridge: &Path,
-    gateway_address: &str,
-) -> Result<ExecutionFingerprint, String> {
-    let mcp_bytes = fs::read(mcp).map_err(|error| format!("cannot read MCP probe: {error}"))?;
-    let mcp_value = json!({
-        "path": mcp.display().to_string(),
-        "sha256": digest_bytes(&mcp_bytes),
-        "bytes": mcp_bytes.len(),
-    });
-    let config = json!({
-        "runtime_profile": "runtime-v3-gameplay",
-        "gateway_address": gateway_address,
-        "mcp_binary": mcp.display().to_string(),
-        "mcp_executable": mcp_value,
-        "instance_id": "instance-completed-resume",
-        "caller_id": "caller-completed-resume",
-        "session_id": "session-completed-resume",
-        "lease_id": "lease-completed-resume",
-        "lease_epoch": 1,
-        "mcp_session_id": "mcp-completed-resume",
-        "run_id": RUN_ID,
-        "episode_id": EPISODE_ID,
-        "trajectory_id": TRAJECTORY_ID,
-        "trace_id": "trace-completed-resume",
-        "artifact_id": "artifact-completed-resume",
-        "settlement_timeout_seconds": 30,
-        "exo_revision": EXO_REVISION,
-        "exo_max_request_bytes": 131072,
-        "exo_max_response_bytes": 8192,
-        "exo_timeout_millis": 120000,
-        "exo_forward_visible_seed": true,
-        "exo_bridge": {
-            "executable": bridge.display().to_string(),
-            "arguments": [],
-            "working_directory": null,
-            "inherited_environment": [],
-        },
-        "runner": {
-            "max_steps": 1024,
-            "objective": "complete the test episode",
-            "hard_constraints": [],
-        },
-    });
-    ExecutionFingerprint::new(
-        "seed-completed-resume",
-        "build-completed-resume",
-        "state-completed-resume",
-        digest_value(&config)?,
-        EXO_REVISION,
-    )
-    .map_err(|error| format!("fixture fingerprint is invalid: {error}"))
 }
 
 fn seed_completed(fixture: &Fixture) -> Result<CompletionRecord, String> {
@@ -414,14 +369,4 @@ fn assert_failure_contains(output: &Output, expected: &str) -> Result<(), String
             "runtime child error {stderr:?} omitted {expected:?}"
         ))
     }
-}
-
-fn digest_bytes(bytes: &[u8]) -> String {
-    sts2_harness::sha256_hex(bytes)
-}
-
-fn digest_value(value: &Value) -> Result<String, String> {
-    let bytes = serde_json::to_vec(value)
-        .map_err(|error| format!("cannot serialize fixture config: {error}"))?;
-    Ok(digest_bytes(&bytes))
 }

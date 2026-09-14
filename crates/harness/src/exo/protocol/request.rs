@@ -14,7 +14,8 @@ const MAX_CONSTRAINTS: usize = 32;
 const MAX_CONSTRAINT_BYTES: usize = 512;
 
 /// A structured fair-play decision request sent to Exo.
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExoDecisionRequest {
     pub schema: String,
     pub provider_revision: String,

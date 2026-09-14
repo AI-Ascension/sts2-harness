@@ -137,6 +137,9 @@ impl<T> ExoSession<T> {
         if bytes.is_empty() || bytes.len() > self.provider.config().max_request_bytes {
             return Err(ExoError::RequestTooLarge);
         }
+        if std::str::from_utf8(bytes).is_err() {
+            return Err(ExoError::InvalidRequest);
+        }
         let attempt_id = self
             .provider
             .capture_attempt_id()

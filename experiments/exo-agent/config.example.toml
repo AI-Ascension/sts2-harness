@@ -1,6 +1,6 @@
 # Operator-owned values only. Keep credentials and the copied file outside this repository.
 # Reviewed public Exo audit revision. Replace only with another exact reviewed commit hash.
-revision = "7801005e6a1ab77008a05dbba80e0a2a7a56e35d"
+revision = "b06869ab789dee3f80ca474b5fa89dbe47ccb859"
 endpoint = "REPLACE_WITH_OPERATOR_OWNED_EXO_ENDPOINT"
 request_timeout_millis = 120000
 max_request_bytes = 131072

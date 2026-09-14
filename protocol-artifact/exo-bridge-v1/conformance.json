@@ -1,0 +1,54 @@
+{
+  "contract_version": "sts2-exo-bridge-v1",
+  "wire_version": "sts2.exo-bridge-wire-v1",
+  "schema_defs": [
+    "request_envelope",
+    "decision_envelope",
+    "decision_request",
+    "decision"
+  ],
+  "request_vectors": [
+    {"name": "standard_at_bound", "fixture": "golden/request.json", "bound": 131072, "padding": "utf8_space", "expected": "accepted"},
+    {"name": "standard_over_bound", "fixture": "golden/request.json", "bound": 131072, "padding": "utf8_space_plus_one", "expected": "too_large"},
+    {"name": "map_at_bound", "fixture": "generated:exo_contract_map", "bound": 393443, "padding": "utf8_space", "expected": "accepted"},
+    {"name": "map_over_bound", "fixture": "generated:exo_contract_map", "bound": 393443, "padding": "utf8_space_plus_one", "expected": "too_large"},
+    {"name": "envelope_overhead_standard", "fixture": "golden/request.json", "bound": 131072, "expected": "too_large"},
+    {"name": "envelope_overhead_map", "fixture": "generated:exo_contract_map", "bound": 393443, "expected": "too_large"},
+    {"name": "wrong_schema", "fixture": "golden/request.json", "expected": "invalid_request"},
+    {"name": "swapped_package", "fixture": "golden/capability-source.json", "expected": "identity_mismatch"}
+  ],
+  "decision_vectors": [
+    {"name": "plan", "decision": "plan", "expected": "accepted"},
+    {"name": "action", "decision": "action", "expected": "accepted"},
+    {"name": "wait", "decision": "wait", "expected": "accepted"},
+    {"name": "reobserve", "decision": "reobserve", "expected": "accepted"},
+    {"name": "recovery", "decision": "recovery", "expected": "accepted"}
+  ],
+  "envelope_vectors": [
+    {"name": "wrong_wire_version", "expected": "version_mismatch"},
+    {"name": "wrong_request_id", "expected": "identity_mismatch"},
+    {"name": "wrong_turn_id", "expected": "identity_mismatch"},
+    {"name": "cancelled", "expected": "cancelled"},
+    {"name": "failed", "expected": "remote_failure"},
+    {"name": "duplicate_field", "expected": "duplicate_field"},
+    {"name": "nested_duplicate_field", "expected": "duplicate_field"},
+    {"name": "nested_unknown_field", "expected": "invalid_shape"},
+    {"name": "trailing_bytes", "expected": "trailing_bytes"},
+    {"name": "invalid_utf8", "expected": "invalid_utf8"}
+  ],
+  "capability_vectors": [
+    {"name": "terminal_decision", "field": "evidence.terminal_decision", "downgrade": "unsupported"},
+    {"name": "turn_identity", "field": "evidence.turn_identity", "downgrade": "unsupported"},
+    {"name": "graceful_eof", "field": "lifecycle.graceful_eof", "downgrade": "unsupported"},
+    {"name": "idempotency", "field": "lifecycle.idempotency", "downgrade": "unsupported"},
+    {"name": "cancellation", "field": "lifecycle.cancellation", "downgrade": "unsupported"},
+    {"name": "recovery", "field": "lifecycle.recovery", "downgrade": "unsupported"}
+  ],
+  "fixtures": [
+    "golden/capability-source.json",
+    "golden/request.json",
+    "golden/decision-action.json",
+    "fixtures/invalid-unknown.json"
+  ],
+  "evidence": "source-derived; native executor and model integration unverified"
+}

@@ -16,7 +16,7 @@ use sts2_harness::{
     ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig, OperationIntent,
 };
 
-const EXO_REVISION: &str = "7801005e6a1ab77008a05dbba80e0a2a7a56e35d";
+const EXO_REVISION: &str = "b06869ab789dee3f80ca474b5fa89dbe47ccb859";
 const RUN_ID: &str = "run-runtime-startup-hostile";
 const EPISODE_ID: &str = "episode-runtime-startup-hostile";
 const ATTEMPT_ID: &str = "attempt-runtime-startup-hostile";
@@ -225,6 +225,18 @@ fn fingerprint(
         "artifact_id": "artifact-runtime-startup-hostile",
         "settlement_timeout_seconds": 30,
         "exo_revision": EXO_REVISION,
+        "exo_identity": {
+            "contract_version": "sts2-exo-bridge-v1",
+            "source_revision": EXO_REVISION,
+            "package_digest": null,
+            "extension_digest": null,
+            "bridge_digest": null,
+            "model_binding": null,
+            "prompt_digest": null,
+            "tool_digest": null,
+            "config_digest": null,
+            "native_instance_id": null,
+        },
         "exo_max_request_bytes": 131072,
         "exo_max_response_bytes": 8192,
         "exo_timeout_millis": 120000,
@@ -241,12 +253,24 @@ fn fingerprint(
             "hard_constraints": [],
         },
     });
+    let provider_identity = json!({
+        "contract_version": "sts2-exo-bridge-v1",
+        "source_revision": EXO_REVISION,
+        "package_digest": null,
+        "extension_digest": null,
+        "bridge_digest": null,
+        "model_binding": null,
+        "prompt_digest": null,
+        "tool_digest": null,
+        "config_digest": null,
+        "native_instance_id": null,
+    });
     ExecutionFingerprint::new(
         "seed-runtime-startup-hostile",
         "build-runtime-startup-hostile",
         "state-runtime-startup-hostile",
         digest_value(&config)?,
-        EXO_REVISION,
+        digest_value(&provider_identity)?,
     )
     .map_err(|error| format!("fixture fingerprint is invalid: {error}"))
 }

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use sts2_harness::{DecisionInput, ExecutionFingerprint};
+use sts2_harness::{DecisionInput, EXO_CONTRACT_VERSION, ExecutionFingerprint};
 
 use super::super::super::config::RuntimeConfig;
 use super::super::super::runtime_v3_settings::RuntimeV3Settings;
@@ -41,7 +41,7 @@ pub(super) fn fingerprint(
     let build = fingerprint_component("STS2_BUILD_DIGEST", None, DEFAULT_BUILD, resume_requested)?;
     let state = fingerprint_component("STS2_STATE_DIGEST", None, DEFAULT_STATE, resume_requested)?;
     let config_digest = config_digest(config, settings)?;
-    let provider_digest = reference_or_digest(&settings.exo.revision);
+    let provider_digest = sha256_json(&exo_identity(config, settings)?)?;
     ExecutionFingerprint::new(seed, build, state, config_digest, provider_digest)
         .map_err(|error| format!("runtime-v3 execution fingerprint is invalid: {error}"))
 }
@@ -75,6 +75,7 @@ pub(super) fn config_digest(
         "artifact_id": config.artifact_id,
         "settlement_timeout_seconds": config.settlement_timeout_seconds,
         "exo_revision": settings.exo.revision,
+        "exo_identity": exo_identity(config, settings)?,
         "exo_max_request_bytes": settings.exo.max_request_bytes,
         "exo_max_response_bytes": settings.exo.max_response_bytes,
         "exo_timeout_millis": settings.exo.timeout_millis,
@@ -92,6 +93,21 @@ pub(super) fn config_digest(
         },
     });
     sha256_json(&value)
+}
+
+fn exo_identity(_config: &RuntimeConfig, settings: &RuntimeV3Settings) -> Result<Value, String> {
+    Ok(json!({
+        "contract_version": EXO_CONTRACT_VERSION,
+        "source_revision": settings.exo.revision,
+        "package_digest": identity_axis("STS2_EXO_PACKAGE_DIGEST")?,
+        "extension_digest": identity_axis("STS2_EXO_EXTENSION_DIGEST")?,
+        "bridge_digest": identity_axis("STS2_EXO_BRIDGE_DIGEST")?,
+        "model_binding": identity_axis("STS2_EXO_MODEL_BINDING")?,
+        "prompt_digest": identity_axis("STS2_EXO_PROMPT_DIGEST")?,
+        "tool_digest": identity_axis("STS2_EXO_TOOL_DIGEST")?,
+        "config_digest": identity_axis("STS2_EXO_CONFIG_DIGEST")?,
+        "native_instance_id": identity_axis("STS2_EXO_NATIVE_INSTANCE_ID")?,
+    }))
 }
 
 pub(super) fn decision_input_digest(input: &DecisionInput) -> Result<String, String> {
@@ -258,6 +274,23 @@ fn reference_or_digest(value: &str) -> String {
     } else {
         digest_text(value)
     }
+}
+
+fn identity_axis(name: &str) -> Result<Option<String>, String> {
+    let Some(value) = optional_env(name)? else {
+        return Ok(None);
+    };
+    Ok(Some(
+        if value.len() == 64
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            value
+        } else {
+            digest_text(&value)
+        },
+    ))
 }
 
 pub(super) fn optional_env(name: &str) -> Result<Option<String>, String> {

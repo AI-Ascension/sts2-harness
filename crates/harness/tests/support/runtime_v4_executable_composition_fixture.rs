@@ -17,7 +17,7 @@ pub(crate) const MCP_SESSION_ID: &str = "mcp-session-1";
 pub(crate) const LEASE_ID: &str = "lease-1";
 pub(crate) const LEASE_EPOCH: u64 = 1;
 pub(crate) const ACTION_ID: &str = "potion:7:potion:fire:enemy:1";
-pub(crate) const REVIEWED_EXO_REVISION: &str = "7801005e6a1ab77008a05dbba80e0a2a7a56e35d";
+pub(crate) const REVIEWED_EXO_REVISION: &str = "b06869ab789dee3f80ca474b5fa89dbe47ccb859";
 
 #[derive(Clone, Copy)]
 pub(crate) enum FixtureMode {

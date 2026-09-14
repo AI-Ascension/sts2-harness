@@ -107,7 +107,7 @@ fn provider(response: Result<Vec<u8>, ExoTransportError>) -> ExoProvider<FakeTra
     ExoProvider::new(
         FakeTransport::new(response),
         ExoConfig::new(
-            "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
+            "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
             64 * 1024,
             1024,
             1_000,
@@ -134,7 +134,7 @@ fn unconfigured_or_floating_revision_is_rejected() {
     }
     assert!(
         ExoConfig::new(
-            "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
+            "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
             64 * 1024,
             1024,
             1_000,
@@ -200,7 +200,7 @@ fn close_is_explicit_and_repeatable() {
 #[test]
 fn public_config_fields_cannot_bypass_transport_bounds() {
     let valid = ExoConfig::new(
-        "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",
+        "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
         64 * 1024,
         1024,
         1_000,

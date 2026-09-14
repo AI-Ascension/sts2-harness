@@ -89,10 +89,7 @@ pub fn parse_decision(bytes: &[u8]) -> Result<Decision, DecisionError> {
         .and_then(serde_json::Value::as_str)
         .ok_or(DecisionError::MissingField)?
         .to_owned();
-    if rationale.is_empty()
-        || rationale.len() > MAX_RATIONALE_BYTES
-        || rationale.chars().any(char::is_control)
-    {
+    if !valid_rationale(&rationale) {
         return Err(DecisionError::InvalidValue);
     }
     match decision {
@@ -260,6 +257,12 @@ fn valid_id(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
+}
+
+fn valid_rationale(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_RATIONALE_BYTES
+        && value.bytes().all(|byte| (0x20..=0x7e).contains(&byte))
 }
 
 fn parse_plan(

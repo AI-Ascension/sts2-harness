@@ -1,0 +1,882 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sts2-harness/exo-bridge/v1",
+  "title": "STS2 Exo bridge capability descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "contract_version",
+    "identity",
+    "decision_kinds",
+    "profile_support",
+    "context_modes",
+    "platforms",
+    "limits",
+    "lifecycle",
+    "evidence"
+  ],
+  "properties": {
+    "schema_version": {"const": "sts2.exo-capability-v1"},
+    "contract_version": {"const": "sts2-exo-bridge-v1"},
+    "identity": {"$ref": "#/$defs/identity"},
+    "decision_kinds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["plan", "action", "wait", "reobserve", "recovery"]}
+    },
+    "profile_support": {"$ref": "#/$defs/profile_support"},
+    "context_modes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["fresh", "continuity"]}
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"const": "linux_x86_64"}
+    },
+    "limits": {"$ref": "#/$defs/limits"},
+    "lifecycle": {"$ref": "#/$defs/lifecycle"},
+    "evidence": {"$ref": "#/$defs/evidence"}
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$",
+      "not": {"pattern": "^0+$"}
+    },
+    "identity_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9._:/-]+$"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_revision",
+        "package_digest",
+        "extension_digest",
+        "bridge_digest",
+        "model_binding",
+        "prompt_digest",
+        "tool_digest",
+        "config_digest",
+        "contract_version",
+        "native_instance_id"
+      ],
+      "properties": {
+        "source_revision": {"$ref": "#/$defs/revision"},
+        "package_digest": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+        "extension_digest": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+        "bridge_digest": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+        "model_binding": {"anyOf": [{"$ref": "#/$defs/identity_text"}, {"type": "null"}]},
+        "prompt_digest": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+        "tool_digest": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+        "config_digest": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+        "contract_version": {"const": "sts2-exo-bridge-v1"},
+        "native_instance_id": {"anyOf": [{"$ref": "#/$defs/identity_text"}, {"type": "null"}]}
+      }
+    },
+    "state": {"enum": ["supported", "unsupported", "unverified"]},
+    "profile_support": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["standard", "map", "expert"],
+      "properties": {
+        "standard": {"$ref": "#/$defs/state"},
+        "map": {"$ref": "#/$defs/state"},
+        "expert": {"$ref": "#/$defs/state"}
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_standard_request_bytes",
+        "max_map_request_bytes",
+        "max_response_bytes",
+        "max_event_bytes",
+        "max_turns",
+        "max_turn_time_millis",
+        "max_concurrency",
+        "max_tool_round_trips"
+      ],
+      "properties": {
+        "max_standard_request_bytes": {"type": "integer", "minimum": 1, "maximum": 131072},
+        "max_map_request_bytes": {"type": "integer", "minimum": 1, "maximum": 393443},
+        "max_response_bytes": {"type": "integer", "minimum": 1, "maximum": 8192},
+        "max_event_bytes": {"type": "integer", "minimum": 1, "maximum": 8192},
+        "max_turns": {"type": "integer", "const": 1},
+        "max_turn_time_millis": {"type": "integer", "minimum": 1, "maximum": 120000},
+        "max_concurrency": {"type": "integer", "const": 1},
+        "max_tool_round_trips": {"type": "integer", "const": 0}
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cancellation", "recovery", "idempotency", "graceful_eof"],
+      "properties": {
+        "cancellation": {"$ref": "#/$defs/state"},
+        "recovery": {"$ref": "#/$defs/state"},
+        "idempotency": {"$ref": "#/$defs/state"},
+        "graceful_eof": {"$ref": "#/$defs/state"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terminal_decision", "turn_identity", "event_usage", "replay"],
+      "properties": {
+        "terminal_decision": {"$ref": "#/$defs/state"},
+        "turn_identity": {"$ref": "#/$defs/state"},
+        "event_usage": {"$ref": "#/$defs/state"},
+        "replay": {"$ref": "#/$defs/state"}
+      }
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9._:/-]+$"
+    },
+    "control_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:/-]+$"
+    },
+    "error_code": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:/-]+$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[\\u0020-\\u007E]+$"
+    },
+    "map_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[\\u0020-\\u007E]+$"
+    },
+    "map_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:/-]+$"
+    },
+    "decision": {
+      "oneOf": [
+        {"$ref": "#/$defs/plan_decision"},
+        {"$ref": "#/$defs/action_decision"},
+        {"$ref": "#/$defs/wait_decision"},
+        {"$ref": "#/$defs/reobserve_decision"},
+        {"$ref": "#/$defs/recovery_decision"}
+      ]
+    },
+    "plan_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "action_ids", "rationale"],
+      "properties": {
+        "decision": {"const": "plan"},
+        "action_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/id"}
+        },
+        "rationale": {"$ref": "#/$defs/text"}
+      }
+    },
+    "action_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "action_id", "rationale"],
+      "properties": {
+        "decision": {"const": "action"},
+        "action_id": {"$ref": "#/$defs/id"},
+        "rationale": {"$ref": "#/$defs/text"},
+        "confidence": {"type": "integer", "minimum": 0, "maximum": 100}
+      }
+    },
+    "wait_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "rationale"],
+      "properties": {
+        "decision": {"const": "wait"},
+        "rationale": {"$ref": "#/$defs/text"}
+      }
+    },
+    "reobserve_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "rationale"],
+      "properties": {
+        "decision": {"const": "reobserve"},
+        "rationale": {"$ref": "#/$defs/text"}
+      }
+    },
+    "recovery_decision": {
+      "oneOf": [
+        {"$ref": "#/$defs/recovery_without_operation"},
+        {"$ref": "#/$defs/recovery_with_operation"}
+      ]
+    },
+    "recovery_without_operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "recovery_kind", "rationale"],
+      "properties": {
+        "decision": {"const": "recovery"},
+        "recovery_kind": {"enum": ["reobserve", "release_lease", "stop_episode"]},
+        "rationale": {"$ref": "#/$defs/text"}
+      }
+    },
+    "recovery_with_operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "recovery_kind", "operation_id", "rationale"],
+      "properties": {
+        "decision": {"const": "recovery"},
+        "recovery_kind": {"const": "reconcile"},
+        "operation_id": {"$ref": "#/$defs/id"},
+        "rationale": {"$ref": "#/$defs/text"}
+      }
+    },
+    "observation": {
+      "oneOf": [
+        {"$ref": "#/$defs/standard_observation"},
+        {"$ref": "#/$defs/expert_observation"}
+      ]
+    },
+    "expert_observation": {
+      "type": "object",
+      "required": ["protocol_version"],
+      "properties": {
+        "protocol_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "standard_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state_id", "generation", "player", "state", "legal_actions"],
+      "properties": {
+        "state_id": {"$ref": "#/$defs/id"},
+        "generation": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "visible_seed": {
+          "anyOf": [{"$ref": "#/$defs/observation_text"}, {"type": "null"}]
+        },
+        "player": {"$ref": "#/$defs/player"},
+        "state": {"$ref": "#/$defs/game_state"},
+        "legal_actions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {"$ref": "#/$defs/legal_action"}
+        }
+      }
+    },
+    "observation_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]+$"
+    },
+    "player": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hp", "max_hp", "energy", "gold", "hand", "deck", "discard", "exhaust"],
+      "properties": {
+        "hp": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "max_hp": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "energy": {"type": "integer", "minimum": 0, "maximum": 255},
+        "gold": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+        "hand": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/card"}},
+        "deck": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/card"}},
+        "discard": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/card"}},
+        "exhaust": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/card"}}
+      }
+    },
+    "card": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["card_id", "name", "cost", "upgraded"],
+      "properties": {
+        "card_id": {"$ref": "#/$defs/id"},
+        "name": {"$ref": "#/$defs/observation_text"},
+        "cost": {"type": "integer", "minimum": 0, "maximum": 255},
+        "upgraded": {"type": "boolean"}
+      }
+    },
+    "enemy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enemy_id", "name", "hp", "max_hp", "intent"],
+      "properties": {
+        "enemy_id": {"$ref": "#/$defs/id"},
+        "name": {"$ref": "#/$defs/observation_text"},
+        "hp": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "max_hp": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "intent": {"$ref": "#/$defs/intent"}
+      }
+    },
+    "intent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "damage", "hits"],
+          "properties": {
+            "kind": {"const": "attack"},
+            "damage": {"type": "integer", "minimum": 0, "maximum": 65535},
+            "hits": {"type": "integer", "minimum": 1, "maximum": 255}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {"enum": ["defend", "buff", "debuff", "unknown"]}
+          }
+        }
+      ]
+    },
+    "game_state": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "characters"],
+          "properties": {
+            "state": {"const": "setup"},
+            "characters": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/id"}}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "node_id", "options"],
+          "properties": {
+            "state": {"const": "map"},
+            "node_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+            "options": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/id"}}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "turn_index", "enemies"],
+          "properties": {
+            "state": {"const": "combat"},
+            "turn_index": {"type": "integer", "minimum": 0, "maximum": 65535},
+            "enemies": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/enemy"}}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "options"],
+          "properties": {
+            "state": {"enum": ["reward", "rest"]},
+            "options": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/id"}}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "items"],
+          "properties": {
+            "state": {"const": "shop"},
+            "items": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/shop_item"}}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "choices"],
+          "properties": {
+            "state": {"enum": ["event", "selection"]},
+            "choices": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/id"}}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state"],
+          "properties": {"state": {"const": "victory"}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "reason"],
+          "properties": {
+            "state": {"const": "defeat"},
+            "reason": {"anyOf": [{"$ref": "#/$defs/observation_text"}, {"type": "null"}]}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "code"],
+          "properties": {
+            "state": {"const": "recovery"},
+            "code": {"$ref": "#/$defs/id"}
+          }
+        }
+      ]
+    },
+    "shop_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_id", "name", "price"],
+      "properties": {
+        "item_id": {"$ref": "#/$defs/id"},
+        "name": {"$ref": "#/$defs/observation_text"},
+        "price": {"type": "integer", "minimum": 0, "maximum": 4294967295}
+      }
+    },
+    "legal_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action_id", "action"],
+      "properties": {
+        "action_id": {"$ref": "#/$defs/id"},
+        "action": {"$ref": "#/$defs/action"}
+      }
+    },
+    "action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "character_id"],
+          "properties": {
+            "kind": {"const": "start_run"},
+            "character_id": {"$ref": "#/$defs/id"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "node_id"],
+          "properties": {
+            "kind": {"const": "select_map_node"},
+            "node_id": {"$ref": "#/$defs/id"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "card_id", "target_id"],
+          "properties": {
+            "kind": {"const": "play_card"},
+            "card_id": {"$ref": "#/$defs/id"},
+            "target_id": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "reward_id"],
+          "properties": {
+            "kind": {"const": "choose_reward"},
+            "reward_id": {"$ref": "#/$defs/id"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "item_id"],
+          "properties": {
+            "kind": {"const": "shop_purchase"},
+            "item_id": {"$ref": "#/$defs/id"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "card_id"],
+          "properties": {
+            "kind": {"enum": ["shop_remove", "smith", "select_card"]},
+            "card_id": {"$ref": "#/$defs/id"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "player_id"],
+          "properties": {
+            "kind": {"const": "select_player"},
+            "player_id": {"$ref": "#/$defs/id"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "choice_id"],
+          "properties": {
+            "kind": {"const": "event_choice"},
+            "choice_id": {"$ref": "#/$defs/id"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "enum": [
+                "end_turn",
+                "skip_reward",
+                "rest",
+                "confirm_victory",
+                "save_quit",
+                "proceed",
+                "confirm_selection",
+                "cancel_selection"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "map_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state_id",
+        "generation",
+        "schema_version",
+        "projection_version",
+        "game_build",
+        "mod_version",
+        "map_instance_id",
+        "act_id",
+        "scope_id",
+        "availability",
+        "completeness",
+        "freshness",
+        "reason",
+        "nodes",
+        "edges",
+        "position",
+        "history",
+        "terminal_node_ids",
+        "bindings"
+      ],
+      "properties": {
+        "state_id": {"$ref": "#/$defs/map_id"},
+        "generation": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "schema_version": {"const": "visible-map-v1"},
+        "projection_version": {"const": "runtime-map-v1"},
+        "game_build": {"$ref": "#/$defs/map_text"},
+        "mod_version": {"$ref": "#/$defs/map_text"},
+        "map_instance_id": {"$ref": "#/$defs/map_id"},
+        "act_id": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+        "scope_id": {"$ref": "#/$defs/map_id"},
+        "availability": {"const": "available"},
+        "completeness": {"const": "complete"},
+        "freshness": {"const": "current"},
+        "reason": {"type": "null"},
+        "nodes": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {"$ref": "#/$defs/map_node"}
+        },
+        "edges": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {"$ref": "#/$defs/map_edge"}
+        },
+        "position": {"$ref": "#/$defs/map_position"},
+        "history": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/map_id"}
+        },
+        "terminal_node_ids": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/map_id"}
+        },
+        "bindings": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {"$ref": "#/$defs/map_binding"}
+        }
+      }
+    },
+    "map_node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "row", "column", "visited", "category"],
+      "properties": {
+        "id": {"$ref": "#/$defs/map_id"},
+        "row": {"type": "integer", "minimum": -32768, "maximum": 32767},
+        "column": {"type": "integer", "minimum": -32768, "maximum": 32767},
+        "visited": {"type": "boolean"},
+        "category": {
+          "enum": [
+            "unknown",
+            "start",
+            "monster",
+            "elite",
+            "rest",
+            "shop",
+            "event",
+            "treasure",
+            "boss",
+            "other"
+          ]
+        }
+      }
+    },
+    "map_edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": {"$ref": "#/$defs/map_id"},
+        "to": {"$ref": "#/$defs/map_id"}
+      }
+    },
+    "map_position": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {"kind": {"enum": ["pre_start", "unavailable"]}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "node_id"],
+          "properties": {
+            "kind": {"const": "current"},
+            "node_id": {"$ref": "#/$defs/map_id"}
+          }
+        }
+      ]
+    },
+    "map_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["graph_node_id", "host_action_id", "action"],
+      "properties": {
+        "graph_node_id": {"$ref": "#/$defs/map_id"},
+        "host_action_id": {"$ref": "#/$defs/id"},
+        "action": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "node_id"],
+          "properties": {
+            "kind": {"const": "select_map_node"},
+            "node_id": {"$ref": "#/$defs/map_id"}
+          }
+        }
+      }
+    },
+    "map_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "schema_digest", "snapshot_digest", "snapshot"],
+      "properties": {
+        "profile": {"const": "runtime-map-v1"},
+        "schema_digest": {"const": "ceab0d2dfc471d1ec36d12edaf4654b8c7fdced06548bf47265e11c63f98115b"},
+        "snapshot_digest": {"$ref": "#/$defs/hash"},
+        "snapshot": {"$ref": "#/$defs/map_snapshot"}
+      }
+    },
+    "decision_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "provider_revision",
+        "model_execution_id",
+        "state_id",
+        "generation",
+        "observation",
+        "legal_action_ids",
+        "objective",
+        "hard_constraints",
+        "max_response_bytes"
+      ],
+      "properties": {
+        "schema": {"enum": ["sts2.exo-decision-v1", "sts2.exo-decision-map-v1"]},
+        "provider_revision": {"$ref": "#/$defs/revision"},
+        "model_execution_id": {"$ref": "#/$defs/id"},
+        "state_id": {"$ref": "#/$defs/id"},
+        "generation": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "observation": {"$ref": "#/$defs/observation"},
+        "legal_action_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/id"}
+        },
+        "objective": {"$ref": "#/$defs/text"},
+        "hard_constraints": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {"$ref": "#/$defs/text"}
+        },
+        "max_response_bytes": {"type": "integer", "minimum": 1, "maximum": 8192},
+        "map_context": {
+          "anyOf": [{"$ref": "#/$defs/map_context"}, {"type": "null"}]
+        },
+        "management_profile": {
+          "anyOf": [{"const": "management-enabled"}, {"type": "null"}]
+        },
+        "management_context": {}
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["schema"],
+            "properties": {"schema": {"const": "sts2.exo-decision-v1"}}
+          },
+          "then": {
+            "properties": {
+              "map_context": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["schema"],
+            "properties": {"schema": {"const": "sts2.exo-decision-map-v1"}}
+          },
+          "then": {
+            "required": ["map_context"],
+            "properties": {"map_context": {"not": {"type": "null"}}}
+          }
+        },
+        {
+          "if": {
+            "required": ["management_profile"],
+            "properties": {"management_profile": {"const": "management-enabled"}}
+          },
+          "then": {
+            "required": ["management_context"],
+            "properties": {"management_context": {"not": {"type": "null"}}}
+          }
+        },
+        {
+          "if": {
+            "required": ["management_context"],
+            "properties": {"management_context": {"not": {"type": "null"}}}
+          },
+          "then": {
+            "required": ["management_profile"],
+            "properties": {"management_profile": {"const": "management-enabled"}}
+          }
+        },
+        {
+          "if": {
+            "required": ["management_profile"],
+            "properties": {"management_profile": {"type": "null"}}
+          },
+          "then": {
+            "properties": {"management_context": {"type": "null"}}
+          }
+        },
+        {
+          "if": {
+            "required": ["management_context"],
+            "properties": {"management_context": {"type": "null"}}
+          },
+          "then": {
+            "properties": {"management_profile": {"type": "null"}}
+          }
+        }
+      ]
+    },
+    "request_envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wire_version", "request_id", "turn_id", "request"],
+      "properties": {
+        "wire_version": {"const": "sts2.exo-bridge-wire-v1"},
+        "request_id": {"$ref": "#/$defs/control_id"},
+        "turn_id": {"$ref": "#/$defs/control_id"},
+        "request": {"$ref": "#/$defs/decision_request"}
+      }
+    },
+    "decision_envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wire_version", "request_id", "turn_id", "outcome"],
+      "properties": {
+        "wire_version": {"const": "sts2.exo-bridge-wire-v1"},
+        "request_id": {"$ref": "#/$defs/control_id"},
+        "turn_id": {"$ref": "#/$defs/control_id"},
+        "outcome": {"enum": ["decision", "cancelled", "failed"]},
+        "decision": {"anyOf": [{"$ref": "#/$defs/decision"}, {"type": "null"}]},
+        "error_code": {"anyOf": [{"$ref": "#/$defs/error_code"}, {"type": "null"}]}
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["outcome"],
+            "properties": {"outcome": {"const": "decision"}}
+          },
+          "then": {
+            "required": ["decision"],
+            "properties": {
+              "decision": {"$ref": "#/$defs/decision"},
+              "error_code": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["outcome"],
+            "properties": {"outcome": {"const": "cancelled"}}
+          },
+          "then": {
+            "properties": {
+              "decision": {"type": "null"},
+              "error_code": {"type": "null"}
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["outcome"],
+            "properties": {"outcome": {"const": "failed"}}
+          },
+          "then": {
+            "required": ["error_code"],
+            "properties": {
+              "decision": {"type": "null"},
+              "error_code": {"$ref": "#/$defs/error_code"}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

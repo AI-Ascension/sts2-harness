@@ -7,6 +7,13 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Define the harness-owned `sts2-exo-bridge-v1` contract and freeze the candidate Exo source
+  manifest. The closed capability/preflight and request/turn envelopes enforce independent
+  identity, bounds, UTF-8/framing, correlation, terminal-decision, cancellation, and EOF rules;
+  deterministic fixtures cover rejection vectors. The nine-commit upstream review found no native
+  machine executor hook, so package, model, extension, native connectivity, and gameplay evidence
+  remain `unverified`; see ADR 0017.
+
 - Add a pinned runtime-peer CI lane. It builds the candidate harness against
   immutable gateway and MCP executable peers, uses a bounded synthetic mod HTTP
   endpoint only as downstream, and runs positive plus foreign-identity and

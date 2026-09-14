@@ -40,7 +40,9 @@ pub(super) fn legal_action_ids_match(observation: &Value, requested: &[String]) 
 }
 
 pub(super) fn valid_text(value: &str) -> bool {
-    !value.is_empty() && value.len() <= MAX_CONSTRAINT_BYTES && !value.chars().any(char::is_control)
+    !value.is_empty()
+        && value.len() <= MAX_CONSTRAINT_BYTES
+        && value.bytes().all(|byte| (0x20..=0x7e).contains(&byte))
 }
 
 pub(super) fn validate_request(request: &ExoDecisionRequest) -> Result<(), ExoError> {
