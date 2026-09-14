@@ -5,10 +5,11 @@
 use std::sync::{Arc, Mutex};
 
 use sts2_harness::management::{
-    AuthContext, CommandContext, CommandKind, ContextBindingCatalog, ContextBindingRequest,
-    ContextOwnerBinding, ContextOwnerPort, LiveWorkflowExecutionPort, LiveWorkflowOptions,
-    LiveWorkflowSessionFactory, ManagementError, MemoryWorkflowStore, WorkflowExecutionPort,
-    WorkflowStore, live_store,
+    AuthContext, CommandApplication, CommandContext, CommandKind, ContextBindingCatalog,
+    ContextBindingRequest, ContextOwnerBinding, ContextOwnerPort, LiveWorkflowExecutionPort,
+    LiveWorkflowOptions, LiveWorkflowSessionFactory, ManagementError, MemoryWorkflowStore,
+    PendingOperation, RecoveryAdmission, RunAdmission, RunRequest, RunReservation, RunSnapshot,
+    TargetAdmissionBinding, WorkflowExecutionPort, WorkflowStore, live_store,
 };
 
 #[allow(clippy::duplicate_mod)]
@@ -282,5 +283,134 @@ fn dispatch_owner_is_isolated_between_services_sharing_one_execution_adapter()
             .all(|request| request.workflow_run_id == run_b),
         "owner B must only be used for service B's run"
     );
+    Ok(())
+}
+
+/// Forwards to an inner live execution port without storing an owner, so the owner must
+/// travel in the command context rather than the shared adapter.
+struct ForwardingExecution {
+    inner: Arc<LiveWorkflowExecutionPort>,
+}
+
+impl WorkflowExecutionPort for ForwardingExecution {
+    fn submit(
+        &self,
+        request: &RunRequest,
+        actor: &AuthContext,
+        definition_digest: &str,
+    ) -> Result<RunAdmission, ManagementError> {
+        self.inner.submit(request, actor, definition_digest)
+    }
+
+    fn submit_admitted(
+        &self,
+        request: &RunRequest,
+        actor: &AuthContext,
+        definition_digest: &str,
+        admission: Option<&TargetAdmissionBinding>,
+    ) -> Result<RunAdmission, ManagementError> {
+        self.inner
+            .submit_admitted(request, actor, definition_digest, admission)
+    }
+
+    fn submit_admitted_with_reservation(
+        &self,
+        request: &RunRequest,
+        actor: &AuthContext,
+        definition_digest: &str,
+        admission: Option<&TargetAdmissionBinding>,
+        reservation: &RunReservation,
+    ) -> Result<RunAdmission, ManagementError> {
+        self.inner.submit_admitted_with_reservation(
+            request,
+            actor,
+            definition_digest,
+            admission,
+            reservation,
+        )
+    }
+
+    fn recovery_admission(&self, snapshot: &RunSnapshot) -> Option<RecoveryAdmission> {
+        self.inner.recovery_admission(snapshot)
+    }
+
+    fn abort_submission(&self, run_id: &str) -> Result<(), ManagementError> {
+        self.inner.abort_submission(run_id)
+    }
+
+    fn apply_command(
+        &self,
+        context: CommandContext,
+    ) -> Result<CommandApplication, ManagementError> {
+        self.inner.apply_command(context)
+    }
+
+    fn apply_command_with_intent(
+        &self,
+        context: CommandContext,
+        record_intent: &dyn Fn(PendingOperation) -> Result<(), ManagementError>,
+    ) -> Result<CommandApplication, ManagementError> {
+        self.inner.apply_command_with_intent(context, record_intent)
+    }
+}
+
+#[test]
+fn forwarding_decorator_preserves_the_service_owner_and_unconfigured_services_fail_closed()
+-> Result<(), Box<dyn std::error::Error>> {
+    let factory = Arc::new(FakeFactory::new(false));
+    let execution: Arc<dyn WorkflowExecutionPort> = Arc::new(ForwardingExecution {
+        inner: Arc::new(LiveWorkflowExecutionPort::new(
+            Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
+            LiveWorkflowOptions::default(),
+        )?),
+    });
+    let owner_a = Arc::new(RecordingOwner::new());
+    let owner_b = Arc::new(RecordingOwner::new());
+    let service_a = live_store(
+        Arc::new(MemoryWorkflowStore::new()),
+        Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
+        LiveWorkflowOptions::default(),
+    )?
+    .with_context_owner_port(Arc::clone(&owner_a) as Arc<dyn ContextOwnerPort>)
+    .with_execution_port(Arc::clone(&execution));
+    let service_b = live_store(
+        Arc::new(MemoryWorkflowStore::new()),
+        Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
+        LiveWorkflowOptions::default(),
+    )?
+    .with_execution_port(Arc::clone(&execution))
+    .with_context_owner_port(Arc::clone(&owner_b) as Arc<dyn ContextOwnerPort>);
+
+    let actor = actor();
+    let run_a = service_a
+        .submit_run(&actor, request("request-forward-a", definition(false)))?
+        .workflow_run_id;
+    let run_b = service_b
+        .submit_run(&actor, request("request-forward-b", definition(false)))?
+        .workflow_run_id;
+    observe_then_decide(&service_a, &run_a)?;
+    observe_then_decide(&service_b, &run_b)?;
+    assert_eq!(owner_a.recorded().len(), 1, "service A uses owner A");
+    assert_eq!(owner_b.recorded().len(), 1, "service B uses owner B");
+
+    // The decorator must not carry an owner: a third service sharing it without a
+    // configured owner fails closed and never inherits A's or B's owner.
+    let service_c = live_store(
+        Arc::new(MemoryWorkflowStore::new()),
+        Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
+        LiveWorkflowOptions::default(),
+    )?
+    .with_execution_port(Arc::clone(&execution));
+    let failed = match service_c.submit_run(&actor, request("request-forward-c", definition(false)))
+    {
+        Ok(submitted) => observe_then_decide(&service_c, &submitted.workflow_run_id).is_err(),
+        Err(_) => true,
+    };
+    assert!(
+        failed,
+        "a service without a configured owner must fail closed"
+    );
+    assert_eq!(owner_a.recorded().len(), 1);
+    assert_eq!(owner_b.recorded().len(), 1);
     Ok(())
 }
