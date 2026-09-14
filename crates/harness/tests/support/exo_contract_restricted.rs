@@ -222,6 +222,63 @@ fn changed_catalog_and_profile_digests_are_detectable() {
 }
 
 #[test]
+fn policy_digest_binds_every_field_and_domain_separates_values() {
+    let reviewed = restricted_profile().state;
+    let original = reviewed.policy_digest();
+    let mutations = [
+        ExoPrivateStatePolicy {
+            state_root: String::from("/var/lib/sts2-harness/other-state"),
+            ..reviewed.clone()
+        },
+        ExoPrivateStatePolicy {
+            cache_root: String::from("/var/lib/sts2-harness/other-cache"),
+            ..reviewed.clone()
+        },
+        ExoPrivateStatePolicy {
+            temp_root: String::from("/var/lib/sts2-harness/other-temp"),
+            ..reviewed.clone()
+        },
+        ExoPrivateStatePolicy {
+            quota_bytes: reviewed.quota_bytes + 1,
+            ..reviewed.clone()
+        },
+        ExoPrivateStatePolicy {
+            max_retention_days: reviewed.max_retention_days + 1,
+            ..reviewed.clone()
+        },
+        ExoPrivateStatePolicy {
+            permissions_octal: reviewed.permissions_octal ^ 1,
+            ..reviewed.clone()
+        },
+    ];
+    for (index, mutation) in mutations.iter().enumerate() {
+        assert_ne!(
+            original,
+            mutation.policy_digest(),
+            "policy_digest must bind field index {index}"
+        );
+    }
+
+    // Values that would concatenate identically without a separator/length prefix stay distinct.
+    let left = ExoPrivateStatePolicy {
+        state_root: String::from("ab"),
+        cache_root: String::from("c"),
+        ..reviewed.clone()
+    };
+    let right = ExoPrivateStatePolicy {
+        state_root: String::from("a"),
+        cache_root: String::from("bc"),
+        ..reviewed.clone()
+    };
+    assert_ne!(left.policy_digest(), right.policy_digest());
+
+    // A Unicode field value contributes distinctly.
+    let mut unicode = reviewed;
+    unicode.state_root = String::from("/var/lib/sts2-harness/st\u{e9}te");
+    assert_ne!(original, unicode.policy_digest());
+}
+
+#[test]
 fn restricted_types_are_closed_and_required() {
     let mut catalog_value =
         serde_json::to_value(ExoToolCatalog::reviewed()).expect("catalog serializes");
@@ -232,6 +289,10 @@ fn restricted_types_are_closed_and_required() {
         serde_json::to_value(restricted_profile().state).expect("policy serializes");
     policy_value["unexpected"] = json!(true);
     assert!(serde_json::from_value::<ExoPrivateStatePolicy>(policy_value).is_err());
+
+    let mut profile_value = serde_json::to_value(restricted_profile()).expect("profile serializes");
+    profile_value["unexpected"] = json!(true);
+    assert!(serde_json::from_value::<sts2_harness::ExoRestrictedProfile>(profile_value).is_err());
 
     let mut trusted_value =
         serde_json::to_value(valid_trusted()).expect("trusted config serializes");
