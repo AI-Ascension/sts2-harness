@@ -38,6 +38,16 @@ The unreleased Rust `CommandApplication` gains `context_binding`; source constru
 set `None` or provide exact accepted binding evidence. Default `WorkflowStore` hooks remain
 unsupported, and existing default compositions do not retain this metadata.
 
+## Current context-owner association
+
+[ADR 0025](decisions/0025-context-owner-current-association.md) adds
+`GET /v1/workflow-runs/{run_id}/context-owner-association`, returning the owner's current
+`ContextOwnerBinding` as `ascension.harness.context-owner-association-view.v1`. This is
+`additive-compatible`: the existing `GET /v1/workflow-runs/{run_id}/context` `ContextAssociation`
+contract is unchanged, no record/schema/digest or bound changes, and unknown paths still fail closed.
+The projection is observation-only; projected grants and epochs are owner assertions and confer no
+harness-issued control authority.
+
 ## Recovered context-control receipts
 
 [ADR 0024](decisions/0024-context-control-receipt-recovery.md) adds

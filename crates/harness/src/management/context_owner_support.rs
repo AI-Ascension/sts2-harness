@@ -58,6 +58,23 @@ pub trait ContextOwnerPort: Send + Sync {
     }
 }
 
+/// HTTP-visible schema for the bounded current-association projection.
+pub const CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA: &str =
+    "ascension.harness.context-owner-association-view.v1";
+
+/// Bounded, versioned projection of the authoritative context owner's current
+/// binding for one workflow run.
+///
+/// Observation only. The projected grants, epochs and continuity flags are the
+/// owner's assertions about the current binding; they confer no harness-issued
+/// control authority and no current control or execution permission. The
+/// originating subject is not projected and no content bytes are included.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct ContextOwnerAssociationView {
+    pub schema_version: String,
+    pub binding: ContextOwnerBinding,
+}
+
 pub struct UnavailableContextOwnerPort;
 
 impl ContextOwnerPort for UnavailableContextOwnerPort {
