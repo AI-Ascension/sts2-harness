@@ -38,6 +38,17 @@ The unreleased Rust `CommandApplication` gains `context_binding`; source constru
 set `None` or provide exact accepted binding evidence. Default `WorkflowStore` hooks remain
 unsupported, and existing default compositions do not retain this metadata.
 
+## Recovered context-control receipts
+
+[ADR 0024](decisions/0024-context-control-receipt-recovery.md) adds
+`POST /v1/workflow-runs/{run_id}/context-control-receipts/lookup`, which returns the owner's already
+recorded `ascension.context-control.owner-receipt.v2` for a retained `pause`/`commit`/`resume`
+command. This is `additive-compatible`: the port method has a failing default, no existing owner,
+binding, receipt or digest changes, and nothing is re-issued, re-applied or inferred. Recovery
+requires the current association to advertise `receipt_recovery` and the receipt to match the exact
+owner/invocation/binding/command identity; unsupported, unrecorded, mismatched and unavailable
+outcomes stay distinct.
+
 ## Recorded context-binding HTTP projection
 
 [ADR 0023](decisions/0023-recorded-context-binding-http-projection.md) adds one read-only

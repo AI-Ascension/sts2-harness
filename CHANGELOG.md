@@ -7,6 +7,14 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Add read-only recovery of already-issued context-control receipts. A caller whose delegated
+  `pause`/`commit`/`resume` reply was lost can now look up the owner's recorded receipt by replaying
+  the exact command instead of re-issuing it, gated on the binding advertising `receipt_recovery`.
+  A recovered receipt must satisfy exact owner/invocation/binding/command identity before it is
+  returned. Compatibility: additive, read-only, failing default port method; no schema, record,
+  digest or resource bound changes. See
+  [ADR 0024](docs/decisions/0024-context-control-receipt-recovery.md). Refs #100.
+
 - Expose the recorded context-owner binding for one workflow invocation over the authenticated
   management HTTP surface as a separately versioned, read-only projection. Same-subject scoped
   `workflow:read` is required; an unrecorded invocation, another subject, a missing scope and

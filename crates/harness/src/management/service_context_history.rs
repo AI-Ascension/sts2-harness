@@ -75,4 +75,22 @@ impl ManagementService {
             .as_ref()
             .map(RecordedContextBindingView::from))
     }
+
+    /// HTTP-facing form of [`Self::recorded_context_binding_view`]: maps an
+    /// invocation with no recorded binding to a precise, non-leaking error so
+    /// callers cannot confuse "absent" with "unavailable" or another subject.
+    pub fn recorded_context_binding_projection(
+        &self,
+        actor: &AuthContext,
+        run_id: &str,
+        node_execution_id: &str,
+    ) -> Result<RecordedContextBindingView, ManagementError> {
+        self.recorded_context_binding_view(actor, run_id, node_execution_id)?
+            .ok_or_else(|| {
+                ManagementError::invalid(
+                    "context_binding_not_recorded",
+                    "no context binding history is recorded for this invocation",
+                )
+            })
+    }
 }

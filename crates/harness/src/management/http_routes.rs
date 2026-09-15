@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use super::super::context_owner::ContextBindingRequest;
+use super::super::context_owner::{ContextBindingRequest, ContextControlCommand};
 use super::super::contract_authoring::{
     StudioCreateDraftRequest, StudioPublishDraftRequest, StudioSaveDraftRequest,
 };
@@ -171,17 +171,24 @@ fn dispatch_run_route(
                 _,
                 "context-binding",
             ],
+        ) if request.query.is_empty() => service
+            .recorded_context_binding_projection(actor, run_id, segments[5])
+            .and_then(|value| json_value(&value)),
+        (
+            "POST",
+            [
+                "",
+                "v1",
+                "workflow-runs",
+                _,
+                "context-control-receipts",
+                "lookup",
+            ],
         ) if request.query.is_empty() => {
-            let node_execution_id = segments[5];
+            let command: ContextControlCommand = decode_body_management(&request.body)?;
             service
-                .recorded_context_binding_view(actor, run_id, node_execution_id)
-                .and_then(|value| match value {
-                    Some(view) => json_value(&view),
-                    None => Err(ManagementError::invalid(
-                        "context_binding_not_recorded",
-                        "no context binding history is recorded for this invocation",
-                    )),
-                })
+                .recover_context_control_receipt(actor, run_id, &command)
+                .and_then(|value| json_value(&value))
         }
         ("GET", ["", "v1", "workflow-runs", _, "provider-sessions"])
             if request.query.is_empty() =>
