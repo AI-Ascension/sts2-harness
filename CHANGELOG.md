@@ -15,6 +15,14 @@ claim a released harness version or runtime compatibility.
   reproducibility or hidden RNG verification. No runtime or legacy-record behavior changes.
   See [ADR 0021](docs/decisions/0021-benchmark-manifest-foundation.md). Refs #121.
 
+- Add opt-in bounded SQLite history for context-owner bindings, committed atomically with
+  command results and read by original invocation with current scoped, same-subject permission.
+  Historical grants and epochs never authorize current control or claim a restored owner.
+  Public JSON schemas and current-cursor association stay unchanged; Rust `CommandApplication`
+  constructors must supply the new optional `context_binding` field. See
+  [ADR 0022](docs/decisions/0022-recorded-context-binding-history.md). This library-only slice
+  does not implement HTTP history, owner receipt recovery or complete #100 acceptance.
+
 - Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
   and validate exact decision/reservation metadata before completion or uncertainty writes.
   Validate authenticated lifecycle-to-broker references and phase relationships before

@@ -30,6 +30,8 @@ use super::store::{
 
 #[path = "service_authoring.rs"]
 mod authoring_ops;
+#[path = "service_context_history.rs"]
+mod context_history;
 #[path = "service_context_owner.rs"]
 mod context_owner_port;
 #[path = "service_execution.rs"]
@@ -279,6 +281,7 @@ pub struct ManagementService {
     capabilities: Arc<dyn CapabilityPort>,
     context_inspection: Arc<dyn ContextInspectionPort>,
     context_owner: Arc<dyn ContextOwnerPort>,
+    context_binding_history: bool,
     provider_session_inspection: Arc<dyn ProviderSessionInspectionPort>,
 }
 
@@ -293,6 +296,7 @@ impl ManagementService {
             capabilities: Arc::new(UnavailableCapabilityPort),
             context_inspection: Arc::new(UnavailableContextInspectionPort),
             context_owner: Arc::new(super::context_owner::UnavailableContextOwnerPort),
+            context_binding_history: false,
             provider_session_inspection: Arc::new(
                 provider_session_support::UnavailableProviderSessionInspectionPort,
             ),
@@ -330,11 +334,6 @@ impl ManagementService {
 
     pub fn with_capability_port(mut self, port: Arc<dyn CapabilityPort>) -> Self {
         self.capabilities = port;
-        self
-    }
-
-    pub fn with_context_inspection_port(mut self, port: Arc<dyn ContextInspectionPort>) -> Self {
-        self.context_inspection = port;
         self
     }
 

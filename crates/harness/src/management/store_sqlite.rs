@@ -13,6 +13,8 @@ use super::super::contract::{
 };
 use super::{CommandAcceptance, CommandApplication, StoreError, SubmissionLookup, WorkflowStore};
 
+#[path = "store_sqlite_context_history.rs"]
+mod context_history;
 #[path = "store_sqlite_ops.rs"]
 mod ops;
 #[path = "store_sqlite_runtime.rs"]
@@ -80,6 +82,32 @@ impl SqliteWorkflowStore {
 }
 
 impl WorkflowStore for SqliteWorkflowStore {
+    fn supports_context_binding_history(&self) -> bool {
+        true
+    }
+
+    fn check_context_binding_history_capacity(&self, run_id: &str) -> Result<(), StoreError> {
+        context_history::check_capacity(self, run_id)
+    }
+
+    fn recorded_context_binding(
+        &self,
+        run_id: &str,
+        node_execution_id: &str,
+    ) -> Result<Option<super::super::RecordedContextBinding>, StoreError> {
+        context_history::read(self, run_id, node_execution_id)
+    }
+
+    fn apply_command_with_context_binding(
+        &self,
+        request: &CommandRequest,
+        request_digest: &str,
+        application: CommandApplication,
+        record: super::super::RecordedContextBinding,
+    ) -> Result<CommandResponse, StoreError> {
+        ops::apply_command(self, request, request_digest, application, Some(record))
+    }
+
     fn lookup_submission(
         &self,
         request_id: &str,
@@ -134,7 +162,7 @@ impl WorkflowStore for SqliteWorkflowStore {
         request_digest: &str,
         application: CommandApplication,
     ) -> Result<CommandResponse, StoreError> {
-        ops::apply_command(self, request, request_digest, application)
+        ops::apply_command(self, request, request_digest, application, None)
     }
 
     fn record_operation_intent(

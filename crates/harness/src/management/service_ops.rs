@@ -206,6 +206,15 @@ impl ManagementService {
                 "command revision is stale after acceptance",
             ));
         }
+        if self.context_binding_history
+            && matches!(request.kind, super::super::CommandKind::Step)
+            && let Err(error) = self
+                .store
+                .check_context_binding_history_capacity(&request.run_id)
+        {
+            let _ = self.store.release_command(&request, &request_digest);
+            return Err(error.into());
+        }
         let store = Arc::clone(&self.store);
         let run_id = request.run_id.clone();
         let expected_revision = request.expected_revision;
@@ -233,15 +242,34 @@ impl ManagementService {
         };
         application.snapshot =
             bind_snapshot_admission(application.snapshot, snapshot.admission.as_ref())?;
-        let response = self.store.apply_command(
-            &request,
-            &request_digest,
-            StoredCommandApplication {
-                snapshot: application.snapshot,
-                outcome: application.outcome,
-                reason_code: application.reason_code,
-            },
-        )?;
+        let binding = application.context_binding.take();
+        let stored = StoredCommandApplication {
+            snapshot: application.snapshot,
+            outcome: application.outcome,
+            reason_code: application.reason_code,
+        };
+        let response = if self.context_binding_history
+            && let Some(binding) = binding
+        {
+            binding.validate(Some(&snapshot))?;
+            self.store.apply_command_with_context_binding(
+                &request,
+                &request_digest,
+                stored.clone(),
+                super::super::RecordedContextBinding {
+                    schema_version:
+                        super::super::context_binding_history::CONTEXT_BINDING_HISTORY_SCHEMA
+                            .to_owned(),
+                    binding,
+                    command_id: request.command_id.clone(),
+                    run_revision: stored.snapshot.run_revision,
+                    subject: actor.subject.clone(),
+                },
+            )?
+        } else {
+            self.store
+                .apply_command(&request, &request_digest, stored)?
+        };
         Ok(response)
     }
 }

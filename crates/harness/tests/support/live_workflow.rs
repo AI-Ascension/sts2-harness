@@ -438,4 +438,4 @@ impl LiveWorkflowSession for FakeSession {
 #[path = "live_workflow_context_owner.rs"]
 mod context_owner;
 
-pub(crate) use context_owner::live_service;
+pub(crate) use context_owner::{FakeContextOwner, live_service};
