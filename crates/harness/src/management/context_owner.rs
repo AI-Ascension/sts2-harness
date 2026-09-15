@@ -299,6 +299,8 @@ impl ContextBindingCatalog {
 mod binding;
 #[path = "context_owner_receipt.rs"]
 mod receipt;
+pub use support::{CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, ContextOwnerAssociationView};
+
 #[path = "context_owner_support.rs"]
 mod support;
 

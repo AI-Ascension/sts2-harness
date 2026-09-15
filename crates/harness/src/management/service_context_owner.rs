@@ -3,11 +3,14 @@
 use std::sync::Arc;
 
 use super::super::context_owner::{
+    CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, ContextControlCommand, ContextControlReceipt,
+    ContextOwnerAssociationView,
+};
+use super::super::context_owner::{
     ContextBindingCatalog, ContextBindingRequest, ContextOwnerBinding, ContextOwnerPort,
 };
-use super::super::context_owner::{ContextControlCommand, ContextControlReceipt};
 use super::support::authorize;
-use super::{AuthContext, ManagementError, ManagementService, validate_identifier};
+use super::{AuthContext, ManagementError, ManagementService, RunSnapshot, validate_identifier};
 
 impl ManagementService {
     pub fn with_context_owner_port(mut self, port: Arc<dyn ContextOwnerPort>) -> Self {
@@ -83,14 +86,7 @@ impl ManagementService {
         let snapshot = self.store.get_run(run_id)?.ok_or_else(|| {
             ManagementError::invalid("run_not_found", "workflow run was not found")
         })?;
-        let binding = self.context_owner.association(actor, &snapshot)?;
-        binding.validate(None)?;
-        if binding.workflow_run_id != snapshot.workflow_run_id {
-            return Err(ManagementError::conflict(
-                "context_binding_mismatch",
-                "context owner returned a binding for a different workflow run",
-            ));
-        }
+        let binding = self.current_context_binding(actor, &snapshot)?;
         if !binding.continuity.receipt_recovery {
             return Err(ManagementError::unavailable(
                 "context_control_receipt_recovery_unsupported",
@@ -108,5 +104,47 @@ impl ManagementService {
             })?;
         receipt.validate_for(&binding, command)?;
         Ok(receipt)
+    }
+
+    /// Resolves the authoritative owner's current association for one run and
+    /// fails closed if the owner answers for a different run.
+    fn current_context_binding(
+        &self,
+        actor: &AuthContext,
+        snapshot: &RunSnapshot,
+    ) -> Result<ContextOwnerBinding, ManagementError> {
+        let binding = self.context_owner.association(actor, snapshot)?;
+        binding.validate(None)?;
+        if binding.workflow_run_id != snapshot.workflow_run_id {
+            return Err(ManagementError::conflict(
+                "context_binding_mismatch",
+                "context owner returned a binding for a different workflow run",
+            ));
+        }
+        Ok(binding)
+    }
+
+    /// The authoritative context owner's **current** association for one run, as
+    /// a versioned read-only projection. This is the current binding, not the
+    /// historical invocation history, and it confers no harness-issued control
+    /// authority: the projected grants and epochs are owner assertions.
+    ///
+    /// An unattached or unavailable owner stays explicitly unavailable rather
+    /// than being reported as "no association".
+    pub fn current_context_owner_association(
+        &self,
+        actor: &AuthContext,
+        run_id: &str,
+    ) -> Result<ContextOwnerAssociationView, ManagementError> {
+        validate_identifier("run_id", run_id)?;
+        authorize(actor, "workflow:read", Some(run_id))?;
+        let snapshot = self.store.get_run(run_id)?.ok_or_else(|| {
+            ManagementError::invalid("run_not_found", "workflow run was not found")
+        })?;
+        let binding = self.current_context_binding(actor, &snapshot)?;
+        Ok(ContextOwnerAssociationView {
+            schema_version: CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA.to_owned(),
+            binding,
+        })
     }
 }

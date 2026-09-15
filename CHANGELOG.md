@@ -7,6 +7,14 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Expose the authoritative context owner's **current** association for one workflow run as the
+  versioned read-only projection `ascension.harness.context-owner-association-view.v1` over
+  `GET /v1/workflow-runs/{run_id}/context-owner-association`. The projected grants and epochs are
+  owner assertions, not harness-issued authority; a binding for another run fails closed and an
+  unattached owner stays explicitly unavailable. Compatibility: additive read-only route; the
+  existing `ContextAssociation` route is unchanged. See
+  [ADR 0025](docs/decisions/0025-context-owner-current-association.md). Refs #100.
+
 - Add read-only recovery of already-issued context-control receipts. A caller whose delegated
   `pause`/`commit`/`resume` reply was lost can now look up the owner's recorded receipt by replaying
   the exact command instead of re-issuing it, gated on the binding advertising `receipt_recovery`.
