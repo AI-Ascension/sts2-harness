@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use super::super::context_owner::{
     CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, ContextControlCommand, ContextControlReceipt,
-    ContextOwnerAssociationView,
+    ContextOwnerAssociationView, ContextOwnerEffectiveLimitsView,
 };
 use super::super::context_owner::{
     ContextBindingCatalog, ContextBindingRequest, ContextOwnerBinding, ContextOwnerPort,
@@ -146,5 +146,35 @@ impl ManagementService {
             schema_version: CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA.to_owned(),
             binding,
         })
+    }
+
+    /// The effective context limits the authoritative owner currently admits
+    /// for one run, as a versioned read-only projection.
+    ///
+    /// This composes the owner's **current** binding with the catalog descriptor
+    /// that admits it, so the reported values are the ones published for this
+    /// binding and adapter/model revision rather than the portable schema maxima
+    /// or the harness maxima. The values are owner assertions and confer no
+    /// execution authority; an unattached owner stays explicitly unavailable.
+    pub fn current_context_effective_limits(
+        &self,
+        actor: &AuthContext,
+        run_id: &str,
+    ) -> Result<ContextOwnerEffectiveLimitsView, ManagementError> {
+        validate_identifier("run_id", run_id)?;
+        authorize(actor, "workflow:read", Some(run_id))?;
+        if !self.context_owner.is_available() {
+            return Err(ManagementError::unavailable(
+                "context_owner_unavailable",
+                "effective context limits require an attached authoritative context owner",
+            ));
+        }
+        let snapshot = self.store.get_run(run_id)?.ok_or_else(|| {
+            ManagementError::invalid("run_not_found", "workflow run was not found")
+        })?;
+        let binding = self.current_context_binding(actor, &snapshot)?;
+        let catalog = self.context_owner.catalog(actor)?;
+        catalog.validate()?;
+        ContextOwnerEffectiveLimitsView::compose(&catalog, &binding)
     }
 }

@@ -37,6 +37,18 @@ pub(super) fn dispatch_run_route(
                 .current_context_owner_association(actor, run_id)
                 .and_then(|value| json_value(&value))
         }
+        (
+            "GET",
+            [
+                "",
+                "v1",
+                "workflow-runs",
+                _,
+                "context-owner-effective-limits",
+            ],
+        ) if request.query.is_empty() => service
+            .current_context_effective_limits(actor, run_id)
+            .and_then(|value| json_value(&value)),
         ("GET", ["", "v1", "workflow-runs", _, "context"]) if request.query.is_empty() => service
             .context_association(actor, run_id)
             .and_then(|value| json_value(&value)),

@@ -17,11 +17,15 @@ ceilings. They are not minimum draft content counts.
 | `max_objective_bytes` | 1 | 512 | Renderer bounds explicit draft objective bytes. |
 | `max_control_events` | 1 | 4096 | Journal recovery bound and event recording saturation. |
 
-The source accepts restricted descriptor values but does not pass those selected values into
-the renderer or event journal. Catalog validation therefore does not establish selected-limit
-enforcement. Default values match current constant guards; no capacity was raised.
-Self-digests bind complete descriptor/catalog content but cannot authenticate a supplied owner.
-Disabled metadata is retained and cannot be selected by `descriptor_for`.
+The source accepts restricted descriptor values, and
+[ADR 0030](decisions/0030-context-owner-effective-limits-composition.md) now composes those selected
+values with the owner's current run binding and publishes them over
+`GET /v1/workflow-runs/{run_id}/context-owner-effective-limits` through the same fail-closed seam
+that live admission uses. Reading them does not pass them into the renderer or the event journal, so
+catalog validation and this projection together still do not establish selected-limit enforcement.
+Default values match current constant guards; no capacity was raised. Self-digests bind complete
+descriptor/catalog content but cannot authenticate a supplied owner. Disabled metadata is retained
+and cannot be selected by `descriptor_for`.
 
 [Producer fixtures](../fixtures/context-control/README.md) exercise all five descriptor
 minima/maxima and restricted values, valid default/restricted/zero-note/disabled catalogs, and
@@ -45,7 +49,8 @@ Other limits must not be collapsed into these five fields:
   are metadata resource guards rather than authorable content budgets.
 
 Compatibility: this increment adds only a catalog sealing convenience method and offline
-fixtures/tests; existing validation, public fields, schema versions and endpoints remain
-unchanged. Future publication of additional limits/provenance requires an explicitly reviewed
-versioned contract. Selected-limit rendering/event behavior, saved-policy migration, input
-token budgets and composed browser-to-owner execution remain unverified by these tests.
+fixtures/tests, and ADR 0030 adds one versioned read-only route plus a shared composition helper;
+existing validation, public fields, schema versions and endpoints remain unchanged. Future
+publication of additional limits/provenance requires an explicitly reviewed versioned contract.
+Selected-limit rendering/event behavior, saved-policy migration, input token budgets and composed
+browser-to-owner execution remain unverified by these tests.
