@@ -7,6 +7,19 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
+  and validate exact decision/reservation metadata before completion or uncertainty writes.
+  Validate authenticated lifecycle-to-broker references and phase relationships before
+  restart claim publication, retaining held recovery and historical completed entries.
+
+- Add opt-in Exo owner persistence with a separate encrypted broker journal, lifetime owner lock,
+  authenticated send/result fences, conservative restart handling, and explicit v1 cutover.
+  Existing execution-store reservations and result bytes retain their ownership. See
+  [ADR 0020](docs/decisions/0020-exo-owner-journal-and-single-use-send.md).
+  Focused source/recording-fixture and local process coverage passed 37 test functions at
+  `29d256c`; this is not native Exo or full-runtime acceptance. Cancellation, native
+  reconciliation, qualified accounting, containment and episode admission remain gated. Refs #142.
+
 - Add the owned `sts2-exo-bridge` single-turn process entrypoint and an isolated, exact-pinned
   real Exo embedding package. Strict standard/fresh requests retain their complete catalog and
   constraints; correlated output is independently parsed with no fallback. The tool-free extension

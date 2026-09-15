@@ -193,6 +193,28 @@ impl ProviderSessionMetadataStore {
         .map_err(ProviderSessionMetadataStoreError::from)
     }
 
+    /// Imports an already bounded, descriptor-read envelope without reopening its pathname.
+    pub(crate) fn load_envelope(
+        &self,
+        envelope: &[u8],
+        owner_token: impl Into<String>,
+        expected_policy: &ProviderSessionPolicy,
+        expected_capabilities: &NativeCapabilities,
+    ) -> Result<ProviderSessionBroker, ProviderSessionMetadataStoreError> {
+        if envelope.len() > MAX_ENVELOPE_BYTES {
+            return Err(ProviderSessionMetadataStoreError::Capacity);
+        }
+        let plaintext = self.decrypt(envelope)?;
+        ProviderSessionBroker::from_snapshot_json_checked(
+            &plaintext,
+            owner_token,
+            &self.scope,
+            expected_policy,
+            expected_capabilities,
+        )
+        .map_err(ProviderSessionMetadataStoreError::from)
+    }
+
     fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, ProviderSessionMetadataStoreError> {
         let key = self
             .key

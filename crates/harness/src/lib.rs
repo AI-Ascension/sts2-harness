@@ -59,6 +59,7 @@ mod execution;
 mod execution_cancellation;
 mod exo;
 mod exo_admitted_transport;
+pub mod exo_lifecycle;
 mod exo_process;
 mod identity;
 pub mod management;

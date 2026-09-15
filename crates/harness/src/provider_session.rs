@@ -7,6 +7,7 @@
 //! grants a provider game authority or exposes a raw RPC surface.
 
 mod broker;
+pub(crate) mod owner_journal;
 mod protocol;
 mod state_store;
 mod transport;
