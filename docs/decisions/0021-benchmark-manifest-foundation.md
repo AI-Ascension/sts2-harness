@@ -19,7 +19,8 @@ Required observable behavior:
 3. Require requested seed and expected effective seed separately. Preserve both byte-for-byte.
    Require a declared normalization/derivation contract; do not implement or infer normalization.
 4. Bind a planned occurrence to an existing settled seed receipt only when request fence, complete
-   available wire identity, requested/effective seeds and selected context match. This is
+   available wire identity, protocol version/schema digest, requested/effective seeds and
+   selected context match. This is
    `seed_receipt_bound`, never authenticated native or complete gameplay/RNG verification.
 5. Expose only a keyed opaque reference and fixed evidence labels publicly. Private seeds, profile
    references, exact digests, inference inputs and raw receipt bytes never enter that projection
@@ -68,6 +69,11 @@ Those remain with #103 and the existing seed reservation/runtime integration.
 
 Receipt structural checking reuses the accepted schema and legacy recorded-run seed consistency
 check, then adds exact planned identity/context matching. No offline parser authenticates a host.
+The manifest's `protocol_version` and `protocol_digest` identify the seeded-start protocol profile
+and its immutable schema digest, respectively. Binding compares these declarations to the
+receipt's `protocol_version` and `schema_digest`; disagreement yields `receipt_protocol_mismatch`.
+Other runtime protocol profiles require their own versioned input fields, not reinterpretation of
+this pair. This corrects the unreleased candidate's missing comparison without changing wire bytes.
 The legacy receipt wrapper requires `operation_id`, `requested_seed`, `plan_digest`,
 `entry_ordinal`, `settled`, `start` and `reconcile`; only optional `start_error` and
 `duplicate_start` are accepted additionally. Unknown wrapper semantics fail closed.

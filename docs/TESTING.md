@@ -5,7 +5,7 @@
 `cargo test --locked --package sts2-harness --test benchmark_manifest --test benchmark_manifest_receipt`
 exercises the production private parser, canonical identities, every controlled input axis,
 separate experiment/occurrence identity, nested duplicate/malformed/size boundaries,
-exact seed/context/fence receipt association, and public/debug privacy. The hand-authored MIT
+exact protocol/seed/context/fence receipt association, and public/debug privacy. The hand-authored MIT
 synthetic configuration uses the existing pinned MIT seeded-run-v1 golden. No fixture contains
 game files, real profiles or provider content.
 

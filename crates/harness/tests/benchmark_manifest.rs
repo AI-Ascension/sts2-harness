@@ -19,15 +19,15 @@ fn canonical_roundtrip_and_member_order_have_stable_domain_separated_identity() 
     let manifest = parse(&input);
     assert_eq!(
         manifest.configuration_digest_private(),
-        "871d1751d9aef2ccc2a21629b7612b524af664892dcc7a9324259ff234943c76"
+        "52e5bddf81d29c3591c9a8ec1aa062be2697580bc5eb40abc086545ab56fe604"
     );
     assert_eq!(
         manifest.experiment_digest_private(),
-        "cc1aff908b8d82c98c5338494b17a438a28a68e03d2e304686d932be4468f164"
+        "469022765fc7d692e9e5b23d0f4ef91d3d4fac2f0e1e28ecf99df976c2a5c2a6"
     );
     assert_eq!(
         manifest.artifact_digest_private(),
-        "b245f9f8f10c39851e12b38990077b1da4fab276289ade6cd6fa6f594d5371c8"
+        "933499cc1d40776b8c7ee185ee6c570e8ad85a1573cec88f2d40fa10515f323b"
     );
     assert_eq!(
         input["gameplay"]["selected_context"]["context_digest"],

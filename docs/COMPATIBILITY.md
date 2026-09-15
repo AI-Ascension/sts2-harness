@@ -7,6 +7,9 @@ an effect-free Rust API. This is `additive-compatible`: it changes no old record
 seed normalization, native wire artifact, database or runtime admission. Strict readers
 reject unknown versions/fields, duplicate members and incomplete required inputs.
 There are no compatibility relaxations; equal declarations do not establish runtime support.
+Receipt binding also requires the declared seeded-start protocol version and schema digest
+to match the receipt. `receipt_protocol_mismatch` corrects missing validation in the unreleased
+candidate; it changes no frozen wire schema or existing runtime receipt interpretation.
 See [ADR 0021](decisions/0021-benchmark-manifest-foundation.md) for exact identity and
 receipt evidence limits. The supported input context remains standard Ironclad,
 ascension 0..20, with a fresh baseline; other modes/characters remain unsupported here.

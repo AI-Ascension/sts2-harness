@@ -39,6 +39,7 @@ pub enum ManifestError {
     ReceiptIdentityMismatch,
     ReceiptSeedMismatch,
     ReceiptContextMismatch,
+    ReceiptProtocolMismatch,
     ReceiptConflict,
     InvalidProjectionKey,
 }

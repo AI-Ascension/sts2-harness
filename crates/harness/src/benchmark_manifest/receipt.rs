@@ -115,6 +115,9 @@ impl PlannedTrial {
     fn check_inputs(&self, receipt: &Value) -> Result<(), ManifestError> {
         let g = &self.manifest.document.gameplay;
         let v = &receipt["settled"];
+        if v["protocol_version"] != g.protocol_version || v["schema_digest"] != g.protocol_digest {
+            return Err(ManifestError::ReceiptProtocolMismatch);
+        }
         if receipt["requested_seed"] != g.requested_seed
             || v["requested_seed"] != g.requested_seed
             || v["canonical_seed"] != g.effective_seed

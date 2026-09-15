@@ -10,7 +10,8 @@ claim a released harness version or runtime compatibility.
 - Add the opt-in immutable benchmark manifest library: bounded strict v1 parsing,
   separate gameplay/experiment/occurrence identities, exact mismatch reasons and
   keyed public references. Existing seed receipts can be associated with an immutable
-  planned trial as `seed_receipt_bound`; this is offline consistency, not native
+  planned trial as `seed_receipt_bound` only when the declared protocol version and schema
+  digest also match; this is offline consistency, not native
   reproducibility or hidden RNG verification. No runtime or legacy-record behavior changes.
   See [ADR 0021](docs/decisions/0021-benchmark-manifest-foundation.md). Refs #121.
 

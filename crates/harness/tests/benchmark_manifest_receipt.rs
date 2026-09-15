@@ -46,6 +46,36 @@ fn binding_preserves_plan_and_manifest_and_is_idempotent_on_exact_receipt() {
 }
 
 #[test]
+fn receipt_protocol_must_match_the_manifest_declaration() {
+    let retained = receipt();
+    let mut declared = document();
+    declared["gameplay"]["protocol_version"] = retained["settled"]["protocol_version"].clone();
+    declared["gameplay"]["protocol_digest"] = retained["settled"]["schema_digest"].clone();
+    let matching = Manifest::parse_private(&bytes(&declared))
+        .unwrap()
+        .plan_trial(&bytes(&occurrence()))
+        .unwrap();
+    assert!(matching.bind_seed_receipt(&bytes(&retained)).is_ok());
+    for (field, replacement) in [
+        ("protocol_version", json!("seeded-run-v2")),
+        ("protocol_digest", json!("0".repeat(64))),
+    ] {
+        let mut foreign = declared.clone();
+        foreign["gameplay"][field] = replacement;
+        let plan = Manifest::parse_private(&bytes(&foreign))
+            .unwrap()
+            .plan_trial(&bytes(&occurrence()))
+            .unwrap();
+        assert_eq!(
+            plan.bind_seed_receipt(&bytes(&retained)).unwrap_err(),
+            ManifestError::ReceiptProtocolMismatch,
+            "receipt protocol disagrees with declared {field}",
+        );
+        assert_eq!(plan.status(), TrialStatus::Planned);
+    }
+}
+
+#[test]
 fn distinct_owner_operation_and_fence_substitution_is_rejected() {
     let plan = Manifest::parse_private(&bytes(&document()))
         .unwrap()

@@ -11,9 +11,9 @@ the [test fixture builder](../crates/harness/tests/benchmark_manifest/fixtures.r
 canonicalization, compatibility and remaining integration gates.
 
 The test fixture builder is original hand-authored MIT test data. Its production-canonical
-configuration digest is `871d1751d9aef2ccc2a21629b7612b524af664892dcc7a9324259ff234943c76`,
-experiment digest `cc1aff908b8d82c98c5338494b17a438a28a68e03d2e304686d932be4468f164`,
-and artifact digest `b245f9f8f10c39851e12b38990077b1da4fab276289ade6cd6fa6f594d5371c8`.
+configuration digest is `52e5bddf81d29c3591c9a8ec1aa062be2697580bc5eb40abc086545ab56fe604`,
+experiment digest `469022765fc7d692e9e5b23d0f4ef91d3d4fac2f0e1e28ecf99df976c2a5c2a6`,
+and artifact digest `933499cc1d40776b8c7ee185ee6c570e8ad85a1573cec88f2d40fa10515f323b`.
 These exact values are pinned in the canonical round-trip test. The unchanged seeded context
 comes from the existing protocol golden with context digest
 `d57563180f198b73970510427981504a9df10c62931577e601f9dcce6275fbe9`.
@@ -34,6 +34,8 @@ comes from the existing protocol golden with context digest
 5. Call `bind_seed_receipt` with a retained legacy seeded receipt. The result is a new
    `SeedReceiptBound` association only. Errors leave the original plan unchanged; identical
    canonical receipt bytes are idempotent, and changed bytes conflict with a bound record.
+   The declared `protocol_version` and `protocol_digest` must equal the receipt's seeded-start
+   profile version and schema digest; mismatch returns `receipt_protocol_mismatch`.
 6. For public/model payloads use only `public_projection`, with an owner-held secret key.
    The resulting reference is HMAC-SHA-256 with a distinct benchmark domain. The projection
    contains no settings, seed, profile reference, input digest or raw occurrence identifier.
