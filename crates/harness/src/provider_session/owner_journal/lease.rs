@@ -6,6 +6,21 @@ use std::fs::File;
 #[cfg(unix)]
 use std::path::{Component, Path};
 
+/// Non-blocking attempts made before a live owner is reported as `LifecycleError::Busy`.
+///
+/// An `flock` belongs to the open file description rather than to the process, and a spawn gives
+/// the child a copy of the parent descriptor table, so a descriptor this process has already
+/// closed keeps the lock alive until the child reaches `execve` and drops its `CLOEXEC` copy. In a
+/// binary whose other tests spawn children at the same time, an immediate non-blocking attempt can
+/// therefore observe `EWOULDBLOCK` while no owner holds the lease. Retrying tolerates that window
+/// and can never admit a second owner: a lock held by a live `Lease` or by another process is not
+/// released by waiting, so it still ends in `Busy`. `map/bundle_store_io.rs` holds the map
+/// publication lock the same way.
+#[cfg(unix)]
+const LEASE_ATTEMPTS: usize = 32;
+#[cfg(unix)]
+const LEASE_RETRY: std::time::Duration = std::time::Duration::from_millis(5);
+
 /// The lock descriptor is private, never cloned and never names the replaceable journal.
 pub(crate) struct Lease {
     #[cfg(unix)]
@@ -41,10 +56,19 @@ impl Lease {
         if !private(&lock.metadata().map_err(|_| LifecycleError::Io)?, false) {
             return Err(LifecycleError::Corrupt);
         }
-        match lock.try_lock() {
-            Ok(()) => (),
-            Err(std::fs::TryLockError::WouldBlock) => return Err(LifecycleError::Busy),
-            Err(std::fs::TryLockError::Error(_)) => return Err(LifecycleError::Unsupported),
+        let mut acquired = false;
+        for _ in 0..LEASE_ATTEMPTS {
+            match lock.try_lock() {
+                Ok(()) => {
+                    acquired = true;
+                    break;
+                }
+                Err(std::fs::TryLockError::WouldBlock) => std::thread::sleep(LEASE_RETRY),
+                Err(std::fs::TryLockError::Error(_)) => return Err(LifecycleError::Unsupported),
+            }
+        }
+        if !acquired {
+            return Err(LifecycleError::Busy);
         }
         if create {
             directory.sync_all().map_err(|_| LifecycleError::Io)?;

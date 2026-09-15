@@ -491,3 +491,17 @@ configuration. The gateway session independently defaults to `session-1`.
 Dispatch preserves the complete host legal-action reference (`action_id` plus typed `action` payload)
 across the MCP boundary. A bare payload is not a legal-action reference. Canonical schema regressions
 cover end-turn and card payloads, including explicit nullable card targets.
+
+## Owner lease acquisition under transient contention
+
+[ADR 0029](decisions/0029-owner-lease-transient-busy-retry.md) makes `Lease::acquire` retry the
+non-blocking `flock` attempt for a bounded interval (32 attempts, 5 ms apart) before reporting
+`Busy`. An `flock` belongs to the open file description, so a descriptor this process has already
+closed can still hold the lock while a spawned child has not yet reached `execve`. This is
+`additive-compatible`: the owner-lock file, the locking primitive, mutual exclusion and release on
+process death are unchanged, exhausting the attempts still fails closed with `Busy`, and no journal,
+schema, range or bound changes. Only the reporting latency under genuine contention changes, and it
+is now bounded by the same interval the map publication lock already uses: 32 attempts 5 ms apart,
+about 160 ms nominal and 162-172 ms as measured, after which a contended acquisition still fails
+closed with `Busy`. On the contended `create` path the caller's authority guard is held for the
+length of that wait before the call fails.
