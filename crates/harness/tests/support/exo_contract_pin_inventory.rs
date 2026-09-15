@@ -36,6 +36,8 @@ fn manifest_pin_inventory_lists_existing_required_consumers() {
         "docs/evidence/exo-extension-real-spike-20260914.md",
         "protocol-artifact/exo-bridge-v1/README.md",
         "experiments/exo-agent/extension/README.md",
+        "experiments/exo-agent/bridge/Cargo.toml",
+        "experiments/exo-agent/bridge/Cargo.lock",
         "experiments/exo-agent/bridge/README.md",
         "THIRD_PARTY_NOTICES.md",
     ] {

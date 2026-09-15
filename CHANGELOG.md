@@ -7,6 +7,12 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Complete the Exo pin-location inventory for #139 by recording the isolated
+  `experiments/exo-agent/bridge/Cargo.toml` and `Cargo.lock` git pins in the manifest and in the
+  enforced required list of the pin-location drift guard, and refreshing the manifest checksum in
+  `artifact.rs` and `SHA256SUMS`. Compatibility: inventory, guard, and checksum records only; no
+  schema, wire field, or runtime behavior changed.
+
 - Add the opt-in immutable benchmark manifest library: bounded strict v1 parsing,
   separate gameplay/experiment/occurrence identities, exact mismatch reasons and
   keyed public references. Existing seed receipts can be associated with an immutable
