@@ -11,6 +11,25 @@ use sts2_harness::*;
 #[path = "provider_session.rs"]
 mod expiry_support;
 
+/// A per-call nonce for the fixture root.
+///
+/// The clock alone is not an isolation primitive: its granularity on a loaded or virtualised host
+/// can exceed the interval between two tests, and two fixtures that resolve to the same root fail
+/// in `create_dir` rather than in the code under test. Pair the clock with the process id and with
+/// a process-wide counter, which no two calls in the same process can share.
+fn fixture_nonce() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos());
+    format!(
+        "{}-{nanos}-{}",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
 fn broker() -> ProviderSessionBroker {
     let scope = SessionScope::new(
         "project-fixture",
@@ -110,12 +129,7 @@ pub struct Fixture {
 
 impl Fixture {
     pub fn new() -> Self {
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("clock")
-            .as_nanos();
-        let root =
-            std::env::temp_dir().join(format!("sts2-lifecycle-{}-{nonce}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("sts2-lifecycle-{}", fixture_nonce()));
         std::fs::create_dir(&root).expect("private fixture root");
         #[cfg(unix)]
         {

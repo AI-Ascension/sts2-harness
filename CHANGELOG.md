@@ -7,6 +7,16 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Tolerate a **transiently held** owner lease instead of reporting it as busy. `Lease::acquire` now
+  retries the non-blocking lock attempt for a bounded interval, because an `flock` belongs to the
+  open file description: a descriptor this process has already closed can still be held by a spawned
+  child until it reaches `execve`, which can briefly outlive the owner that closed it. Exhausting the
+  attempts still returns `Busy`, and the lock primitive, its exclusivity and its release on process
+  death are unchanged. This removes the intermittent `restart: Busy` failure of the `exo_lifecycle`
+  tests under parallel execution. Compatibility: no file-format, schema, range or bound change; a
+  genuinely busy lease is now reported after up to 160 ms instead of immediately. See
+  [ADR 0029](docs/decisions/0029-owner-lease-transient-busy-retry.md). Refs #188.
+
 - Enforce the **selected** context-control limits that a binding advertises instead of only the
   harness maxima: `ContextRenderer::enabled_at_with_limits` refuses a draft that exceeds the
   advertised `max_items`, `max_notes`, `max_objective_bytes` or `max_context_bytes` with a precise
