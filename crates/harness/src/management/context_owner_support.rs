@@ -36,6 +36,23 @@ pub trait ContextOwnerPort: Send + Sync {
         ))
     }
 
+    /// Looks up the receipt the owner already issued for `command`, for callers
+    /// recovering from a lost or ambiguous reply. Implementations must not
+    /// re-issue, re-apply or infer an effect: `Ok(None)` means the owner has no
+    /// recorded receipt for this exact command. Owners that do not advertise
+    /// `receipt_recovery` in their binding continuity must not be called.
+    fn control_receipt(
+        &self,
+        _actor: &AuthContext,
+        _binding: &ContextOwnerBinding,
+        _command: &ContextControlCommand,
+    ) -> Result<Option<ContextControlReceipt>, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_receipt_recovery_unavailable",
+            "context control receipt recovery is not attached to this owner",
+        ))
+    }
+
     fn is_available(&self) -> bool {
         true
     }
@@ -58,6 +75,18 @@ impl ContextOwnerPort for UnavailableContextOwnerPort {
     ) -> Result<ContextOwnerBinding, ManagementError> {
         Err(ManagementError::unavailable(
             "context_owner_binding_unavailable",
+            "authoritative context owner is not attached",
+        ))
+    }
+
+    fn control_receipt(
+        &self,
+        _actor: &AuthContext,
+        _binding: &ContextOwnerBinding,
+        _command: &ContextControlCommand,
+    ) -> Result<Option<ContextControlReceipt>, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_receipt_recovery_unavailable",
             "authoritative context owner is not attached",
         ))
     }
