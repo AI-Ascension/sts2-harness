@@ -202,8 +202,13 @@ pub(super) fn catalog_reobserve(value: &Value) -> bool {
 }
 
 include!("runtime_v3_wire_validation.rs");
+#[path = "runtime_v3_lookup_catalog.rs"]
+mod lookup_catalog;
 
 fn validate_catalog(response: &Value, profile: &str) -> Result<(), String> {
+    if profile == "negotiated-composition-v1" {
+        return lookup_catalog::validate(response);
+    }
     let result = response
         .get("result")
         .ok_or_else(|| String::from("MCP tools/list omitted result"))?;

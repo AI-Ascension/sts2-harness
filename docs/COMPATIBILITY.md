@@ -1,5 +1,16 @@
 # Compatibility Policy and Matrix
 
+The additive Exo lookup source profile uses `sts2.exo-lookup-wire-v1` and distinct
+`sts2.exo-lookup-config-v1`; see [ADR 0022](decisions/0022-exo-lookup-duplex-bridge.md).
+Its process adapter requires an explicit authoritative owner binding. Automatic native
+episode integration is blocked on an accepted binding discovery/observation contract.
+
+The additive game-information consumer pins the exact v1 schema independently of the Rust
+protocol dependency. Its synthetic component matrix and pending mixed-catalog/provider gates
+are recorded in [ADR 0021](decisions/0021-game-information-consumer.md). Public static/player
+live lookups, bounded retained pages and encrypted restart replay are component-tested;
+native/provider execution and the old native Exo adapter's tool translation remain unverified.
+
 ## Benchmark manifest foundation
 
 `benchmark_manifest` adds a private `ascension.benchmark-manifest.v1` owner format and

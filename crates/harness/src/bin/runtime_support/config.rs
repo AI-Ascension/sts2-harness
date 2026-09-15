@@ -39,11 +39,12 @@ impl RuntimeConfig {
             "runtime-v1"
                 | "runtime-v2"
                 | "runtime-v3-gameplay"
+                | "negotiated-composition-v1"
                 | "runtime-v4-expert"
                 | "runtime-v4-expert-rest-action"
         ) {
             return Err(String::from(
-                "STS2_RUNTIME_PROFILE must be runtime-v1, runtime-v2, runtime-v3-gameplay, runtime-v4-expert, or runtime-v4-expert-rest-action",
+                "STS2_RUNTIME_PROFILE must be runtime-v1, runtime-v2, runtime-v3-gameplay, negotiated-composition-v1, runtime-v4-expert, or runtime-v4-expert-rest-action",
             ));
         }
         let session_id = env_or_default("STS2_SESSION_ID", "session-1")?;

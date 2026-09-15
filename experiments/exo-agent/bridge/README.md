@@ -1,5 +1,23 @@
 # Owned single-turn Exo bridge
 
+An additive lookup mode is specified in [ADR 0022](../../../docs/decisions/0022-exo-lookup-duplex-bridge.md).
+Use `sts2.exo-lookup-config-v1` with the owned `extension/src/lookup.ts` and
+`--lookup-describe` or `--lookup-synthetic CONFIG CONFIG_SHA256`. The host keeps stdin
+open and exchanges `sts2.exo-lookup-wire-v1` frames. Production callers use
+`sts2_harness::exo_lookup_process::ExoLookupProcess` with `run_lookup_tool_loop`,
+an admitted `LookupSession`, unchanged legal actions and the existing MCP port.
+
+The additive process oracle uses an existing read-only pinned Exo source checkout.
+Its extension path is this harness checkout; generated files stay in `target/`:
+
+```sh
+STS2_EXO_TEST_NODE="$NODE_BIN_DIR/node" STS2_EXO_TEST_SOURCE="$EXO_SOURCE_ROOT" \
+  CARGO_TARGET_DIR="$PWD/target/exo-executor" cargo test --locked \
+  --manifest-path experiments/exo-agent/bridge/Cargo.toml --test lookup_oracle -- --ignored
+```
+
+This oracle uses a synthetic loopback model and never calls a provider or a game.
+
 `sts2-exo-bridge` consumes a strict `sts2.exo-bridge-wire-v1` request on stdin, then calls the
 separately built `sts2-exo-executor` embedding package. The latter executes the pinned real Exo
 TypeScript runtime and the owned, tool-free extension. Stdout is exactly one correlated decision

@@ -7,6 +7,17 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Add an opt-in Exo duplex lookup bridge and bounded native TypeScript tool registration,
+  connecting the lookup agent API to the isolated pinned executor. See
+  [ADR 0022](docs/decisions/0022-exo-lookup-duplex-bridge.md). Refs #127.
+
+- Add scoped game-information v1 lookup consumption through the existing MCP port, a bounded
+  typed agent tool loop, complete-source validation before projection, separate source/view
+  identities and encrypted pinned replay archives. The opt-in mixed catalog preserves legacy
+  profiles. Synthetic tool-loop and SQLite restart evidence do not claim native provider or
+  exact-host execution; the old native Exo adapter remains terminal-decision-only.
+  See [ADR 0021](docs/decisions/0021-game-information-consumer.md). Refs #127.
+
 - Add the opt-in immutable benchmark manifest library: bounded strict v1 parsing,
   separate gameplay/experiment/occurrence identities, exact mismatch reasons and
   keyed public references. Existing seed receipts can be associated with an immutable
@@ -33,6 +44,12 @@ claim a released harness version or runtime compatibility.
 - Complete the #139 Exo pin inventory: list every revision-bearing bridge, contract, documentation
   and artifact source in the manifest and enforce the full set in the drift guard. Refresh the
   manifest checksum. Compatibility: inventory-only; no schema or wire change.
+
+- Require game-information v1 responses with `unavailable` or `not_observable` coverage to carry an
+  unknown total (`total_count_known: false`, `total_count: null`). The harness consumer previously
+  rejected only non-empty pages, accepting a known or fabricated total for coverage extremes and
+  thereby violating the "never convert unknown into zero or empty" rule. Compatibility: validation
+  tightening only; no schema, wire field, or contract version changed.
 
 - Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
   and validate exact decision/reservation metadata before completion or uncertainty writes.
