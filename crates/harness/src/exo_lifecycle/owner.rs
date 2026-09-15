@@ -13,6 +13,7 @@ pub struct LifecycleOwner {
     pub(super) authority: Arc<dyn LifecycleAuthorityPort>,
     pub(super) poisoned: bool,
     pub(super) instance: Arc<()>,
+    pub(super) store_instance: Option<Arc<()>>,
 }
 
 /// This handle cannot mint another send permit. Polling never holds an authority guard.
@@ -23,6 +24,7 @@ pub struct InFlight<H> {
     pub(super) input: Vec<u8>,
     pub(super) settled: bool,
     pub(super) instance: Arc<()>,
+    pub(super) store_instance: Arc<()>,
 }
 
 pub enum StartOutcome<H> {
@@ -58,6 +60,7 @@ impl LifecycleOwner {
             authority,
             poisoned: false,
             instance: Arc::new(()),
+            store_instance: None,
         })
     }
 
@@ -70,10 +73,6 @@ impl LifecycleOwner {
         authority: Arc<dyn LifecycleAuthorityPort>,
     ) -> Result<Self, LifecycleError> {
         config.validate()?;
-        let guard = authority.claim(&OwnerClaim {
-            config: &config,
-            kind: &ClaimKind::Restart,
-        })?;
         let (mut journal, mut snapshot) = OwnerJournal::open(config.clone(), key)?;
         let bytes = serde_json::to_vec(&snapshot.broker).map_err(|_| LifecycleError::Corrupt)?;
         let broker = ProviderSessionBroker::from_snapshot_json_checked(
@@ -84,6 +83,10 @@ impl LifecycleOwner {
             capabilities,
         )
         .map_err(|_| LifecycleError::Corrupt)?;
+        let guard = authority.claim(&OwnerClaim {
+            config: &config,
+            kind: &ClaimKind::Restart,
+        })?;
         snapshot.broker = broker.snapshot();
         snapshot.claim_epoch = snapshot.broker.owner_epoch;
         snapshot.revision = snapshot
@@ -105,6 +108,7 @@ impl LifecycleOwner {
             authority,
             poisoned: false,
             instance: Arc::new(()),
+            store_instance: None,
         })
     }
 

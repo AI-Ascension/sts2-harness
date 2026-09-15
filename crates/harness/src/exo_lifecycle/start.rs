@@ -14,6 +14,7 @@ impl LifecycleOwner {
         effect: &mut P,
     ) -> Result<StartOutcome<P::Handle>, LifecycleError> {
         self.check()?;
+        self.check_store(store)?;
         super::validation::input(&manifest, input)?;
         if let Some(entry) = self
             .snapshot
@@ -31,6 +32,7 @@ impl LifecycleOwner {
         self.admit_new(&manifest, store, fingerprint)?;
         let authority = self.authority.clone();
         let guard = authority.admit(&manifest)?;
+        self.bind_store(store);
         let permit = self.prepare_send(&manifest, store)?;
         let result = effect.try_start(permit, input);
         drop(guard);
@@ -42,6 +44,7 @@ impl LifecycleOwner {
                 input: input.to_vec(),
                 settled: false,
                 instance: self.instance.clone(),
+                store_instance: store.incarnation().clone(),
             }))),
             Err(_) => {
                 self.hold(&manifest, store, LifecyclePhase::Unknown)?;

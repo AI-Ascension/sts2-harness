@@ -56,12 +56,7 @@ impl LifecycleOwner {
             .broker
             .operation(&manifest.operation_id)
             .map_err(|_| LifecycleError::Held)?;
-        let request_digest = crate::sha256_hex(
-            serde_json::to_vec(&serde_json::json!({
-                "prepared_id": manifest.prepared_id, "suffix_sha256": manifest.input_digest,
-            }))
-            .map_err(|_| LifecycleError::Invalid)?,
-        );
+        let request_digest = manifest.operation_digest()?;
         if manifest.scope != *self.broker.scope()
             || a.owner_epoch != self.broker.owner_epoch()
             || a.auth_epoch != a.owner_epoch

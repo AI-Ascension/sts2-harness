@@ -15,6 +15,7 @@ impl LifecycleOwner {
         store: &ExecutionStore,
     ) -> Result<BoundDecision, LifecycleError> {
         self.check()?;
+        self.check_store(store)?;
         let index = self
             .snapshot
             .entries
@@ -47,6 +48,7 @@ impl LifecycleOwner {
         let _guard = authority
             .consume(manifest, &digest)
             .map_err(|_| LifecycleError::Fenced)?;
+        self.bind_store(store);
         self.snapshot.entries[index].phase = LifecyclePhase::Completed;
         self.snapshot.entries[index].result_ref = result.reference.result_ref;
         self.snapshot.entries[index].result_digest = Some(digest);
@@ -55,7 +57,7 @@ impl LifecycleOwner {
     }
 }
 
-fn checked_result(
+pub(super) fn checked_result(
     manifest: &InvocationManifest,
     store: &ExecutionStore,
 ) -> Result<(StoredDecision, Vec<u8>, String), LifecycleError> {

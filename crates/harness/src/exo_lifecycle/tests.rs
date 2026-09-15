@@ -10,6 +10,9 @@ use super::*;
 use crate::provider_session::owner_journal::{CommitStage, inject_commit_failure};
 use fixture::{Effect, Fixture};
 
+#[path = "tests_history.rs"]
+mod history;
+
 #[test]
 fn faults_at_every_intent_admitted_sent_boundary_never_hand_off_or_restore_permit() {
     for skip in 0..3 {
@@ -67,6 +70,9 @@ fn faults_at_every_intent_admitted_sent_boundary_never_hand_off_or_restore_permi
                     .is_err()
             );
             assert_eq!(effect.calls, 0);
+            drop(reopened);
+            let repeated = fixture.reopen().expect("repeated held restart");
+            assert!(repeated.claim_epoch() >= 3);
         }
     }
 }

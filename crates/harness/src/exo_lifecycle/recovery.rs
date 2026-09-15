@@ -13,6 +13,7 @@ impl LifecycleOwner {
         store: &ExecutionStore,
     ) -> Result<BoundDecision, LifecycleError> {
         self.check()?;
+        self.check_store(store)?;
         let entry = self
             .snapshot
             .entries
@@ -23,9 +24,7 @@ impl LifecycleOwner {
             return Err(LifecycleError::Held);
         }
         self.validate_broker(manifest, NativeOperationState::Completed)?;
-        let result = store
-            .decision(&manifest.execution_id)
-            .map_err(|_| LifecycleError::Held)?;
+        let (result, bytes, digest) = super::reconcile::checked_result(manifest, store)?;
         let mut expected = manifest.decision()?;
         expected.result_ref = entry.result_ref.clone();
         expected.result_digest = entry.result_digest.clone();
@@ -36,13 +35,13 @@ impl LifecycleOwner {
         {
             return Err(LifecycleError::Held);
         }
-        let bytes = result.result_payload.ok_or(LifecycleError::Held)?;
-        let digest = crate::sha256_hex(&bytes);
         if entry.result_digest.as_deref() != Some(&digest) {
             return Err(LifecycleError::Corrupt);
         }
         let decision = super::validation::response(manifest, input, &bytes)?;
-        let _guard = self.authority.consume(manifest, &digest)?;
+        let authority = self.authority.clone();
+        let _guard = authority.consume(manifest, &digest)?;
+        self.bind_store(store);
         Ok(decision)
     }
 
@@ -53,9 +52,11 @@ impl LifecycleOwner {
         store: &mut ExecutionStore,
     ) -> Result<Option<BoundDecision>, LifecycleError> {
         self.check()?;
+        self.check_store(store)?;
         if inflight.settled
             || inflight.owner_epoch != self.snapshot.claim_epoch
             || !std::sync::Arc::ptr_eq(&inflight.instance, &self.instance)
+            || !std::sync::Arc::ptr_eq(&inflight.store_instance, store.incarnation())
         {
             return Err(LifecycleError::Held);
         }
@@ -68,6 +69,7 @@ impl LifecycleOwner {
         if entry.phase != LifecyclePhase::Sent {
             return Err(LifecycleError::Held);
         }
+        self.pending_store(&inflight.manifest, store)?;
         let completion = match inflight.handle.poll() {
             Ok(None) => return Ok(None),
             Ok(Some(completion)) => completion,
@@ -80,6 +82,9 @@ impl LifecycleOwner {
         inflight.settled = true;
         let result = self.finish(&inflight.manifest, &inflight.input, completion, store);
         if let Err(error) = result {
+            if !self.poisoned && self.pending_store(&inflight.manifest, store).is_err() {
+                self.poisoned = true;
+            }
             if !self.poisoned {
                 self.hold(
                     &inflight.manifest,
@@ -102,6 +107,11 @@ impl LifecycleOwner {
         store: &mut ExecutionStore,
         phase: LifecyclePhase,
     ) -> Result<(), LifecycleError> {
+        self.check_store(store)?;
+        if let Err(error) = self.pending_store(manifest, store) {
+            self.poisoned = true;
+            return Err(error);
+        }
         let index = self
             .snapshot
             .entries
@@ -147,7 +157,8 @@ impl LifecycleOwner {
         let _guard = authority
             .consume(manifest, &digest)
             .map_err(|_| LifecycleError::Fenced)?;
-        store
+        self.pending_store(manifest, store)?;
+        let stored = store
             .complete_provider_with_result(
                 &manifest.reservation_id,
                 &completion.result_ref,
@@ -158,6 +169,7 @@ impl LifecycleOwner {
             .map_err(|_| LifecycleError::Held)?;
         // Once the result transaction succeeds, every remaining failure must require reopening.
         self.poisoned = true;
+        super::store_binding::completed_return(manifest, &completion, &digest, &stored)?;
         self.complete_metadata(manifest, completion, digest)?;
         self.poisoned = false;
         Ok(decision)

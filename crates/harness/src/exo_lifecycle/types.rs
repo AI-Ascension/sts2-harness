@@ -165,6 +165,15 @@ impl InvocationManifest {
         .map_err(|_| LifecycleError::Invalid)
     }
 
+    pub(crate) fn operation_digest(&self) -> Result<String, LifecycleError> {
+        Ok(crate::sha256_hex(
+            serde_json::to_vec(&serde_json::json!({
+                "prepared_id": self.prepared_id, "suffix_sha256": self.input_digest,
+            }))
+            .map_err(|_| LifecycleError::Invalid)?,
+        ))
+    }
+
     pub(crate) fn decision(&self) -> Result<DecisionReference, LifecycleError> {
         DecisionReference::new(
             self.lineage()?,

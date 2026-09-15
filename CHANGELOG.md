@@ -7,6 +7,11 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
+  and validate exact decision/reservation metadata before completion or uncertainty writes.
+  Validate authenticated lifecycle-to-broker references and phase relationships before
+  restart claim publication, retaining held recovery and historical completed entries.
+
 - Add opt-in Exo owner persistence with a separate encrypted broker journal, lifetime owner lock,
   authenticated send/result fences, conservative restart handling, and explicit v1 cutover.
   Existing execution-store reservations and result bytes retain their ownership. See

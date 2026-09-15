@@ -34,6 +34,41 @@ fn entry_count_keeps_unknown_and_terminal_records_and_rejects_129() {
         .map(|index| entry(&fixture.config.scope, index))
         .collect();
     fixture.snapshot.entries[1].phase = LifecyclePhase::Fenced;
+    let mut binding = SessionBinding::candidate(
+        "binding",
+        fixture.config.scope.clone(),
+        "branch",
+        SessionPurpose::Executable,
+        "realm",
+        crate::sha256_hex("fixture"),
+        "2099-01-01T00:00:00Z",
+    )
+    .expect("binding");
+    binding.state = BindingState::Recovering;
+    fixture.snapshot.broker.bindings.push(binding);
+    fixture.snapshot.broker.operations = fixture
+        .snapshot
+        .entries
+        .iter()
+        .map(|entry| NativeOperation {
+            schema: SESSION_OPERATION_SCHEMA.into(),
+            operation_id: entry.manifest.operation_id.clone(),
+            scope: fixture.config.scope.clone(),
+            binding_id: "binding".into(),
+            kind: NativeOperationKind::Turn,
+            idempotency_key: entry.manifest.execution_id.clone(),
+            request_sha256: entry.manifest.operation_digest().expect("digest"),
+            state: NativeOperationState::Unknown,
+            owner_epoch: 1,
+            session_epoch: 1,
+            generation_permission: true,
+            generation_class: true,
+            automatic_retry: false,
+            auto_resume: false,
+            game_effects: 0,
+            terminal_evidence_ref: None,
+        })
+        .collect();
     assert!(fixture.snapshot.validate(&fixture.config).is_ok());
     fixture
         .snapshot

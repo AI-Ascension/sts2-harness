@@ -8,6 +8,7 @@ mod ports;
 mod reconcile;
 mod recovery;
 mod start;
+mod store_binding;
 #[cfg(all(test, unix))]
 mod tests;
 pub(crate) mod types;

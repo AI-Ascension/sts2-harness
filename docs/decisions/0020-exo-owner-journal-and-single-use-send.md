@@ -61,6 +61,14 @@ Current
 authority is checked again. Result bytes commit in the execution store before journal terminal
 metadata; a failure in the latter cannot trigger another send.
 
+The live owner and handle bind the existing execution store's in-memory incarnation.
+Every store-taking path rejects a different incarnation before polling, changing a handle,
+publishing uncertainty, or returning a result. Completion and uncertainty additionally require
+the exact frozen reservation and decision metadata. Reopening the same database creates a
+different live incarnation and cannot finish an old handle. A restarted owner's first exact,
+currently authorized completed-store reconciliation establishes its store binding; it does
+not restore a serialized incarnation or send permit.
+
 This source slice consumes single-action decisions only. It does not implement plan execution,
 provider interruption, native process containment, or cleanup. Those capabilities require
 their own admitted adapters and tests before a complete runtime profile can be enabled.
@@ -73,6 +81,15 @@ The existing broker turns active bindings into recovering bindings and uncertain
 into unknown operations. A send permit is never restored. Prepared, missing-reservation,
 reserved, unknown, and conflicting cross-store records remain held without automatic repair
 or allocation.
+
+Authenticated journal entries must resolve to their exact broker binding and turn operation,
+including the prepared-request digest, immutable operation epochs and compatible phase.
+Validation precedes the restart authority claim and any claim/revision publication. Historical
+completed operations retain their original epochs as bindings advance. Prepared/Admitted
+records after restart correspond to held Unknown operations; completed-store repair may retain
+an unfinished held broker operation. The reserved `FailedBeforeSend` enum has no writer in this
+source slice and is rejected at the journal boundary. No malformed authenticated record is
+repaired by incrementing the claim or rewriting the retained ciphertext.
 
 An explicit `reconcile_stored` call may verify an existing completed transaction's exact
 lineage, reservation, result digest, correlated response, and current consume authority, then

@@ -4,6 +4,7 @@
 
 mod io;
 mod lease;
+mod semantics;
 #[cfg(all(test, unix))]
 mod tests;
 pub(crate) mod types;

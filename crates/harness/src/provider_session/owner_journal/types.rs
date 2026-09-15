@@ -82,6 +82,7 @@ impl JournalSnapshot {
             {
                 return Err(LifecycleError::Corrupt);
             }
+            super::semantics::validate(self, entry)?;
         }
         Ok(())
     }

@@ -56,6 +56,7 @@ impl LifecycleOwner {
             authority,
             poisoned: false,
             instance: Arc::new(()),
+            store_instance: None,
         })
     }
 }
