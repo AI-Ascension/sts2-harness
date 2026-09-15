@@ -3,6 +3,8 @@
 use super::{BranchStrategy, MAX_BRANCHES, MAX_TRANSITION_LABEL_BYTES, OccurrenceId};
 use crate::execution::ExactStateDigest;
 
+#[path = "durable_branch_artifacts.rs"]
+mod branch_artifacts;
 #[path = "durable_branch_store.rs"]
 mod store;
 #[path = "durable_branch_store_artifacts.rs"]
@@ -32,6 +34,11 @@ mod store_retention;
 #[path = "durable_branch_validation.rs"]
 mod validation;
 
+pub use branch_artifacts::{
+    BranchArtifactAvailability, BranchArtifactReference, BranchArtifactResolution,
+    BranchArtifactResolver, BranchArtifactRole, BranchArtifactState, BranchArtifactUnavailable,
+    ExactArtifactStoreResolver,
+};
 pub use store::SqliteBranchStore;
 pub use store_error::BranchStoreError;
 pub use store_reads::{BranchEventPage, BranchPage};
@@ -137,49 +144,6 @@ impl BranchAssurance {
             _ => Err(BranchStoreError::Corrupt),
         }
     }
-}
-
-/// Role of an artifact reference retained by a branch.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub enum BranchArtifactRole {
-    /// Exact checkpoint manifest or payload.
-    Checkpoint,
-    /// Additional exact restore-closure artifact.
-    RestoreClosure,
-    /// Public trajectory prefix used by a replay strategy.
-    ReplayPrefix,
-    /// Context or configuration snapshot needed by an active attempt.
-    ContextSnapshot,
-}
-
-impl BranchArtifactRole {
-    pub(crate) const fn as_str(self) -> &'static str {
-        match self {
-            Self::Checkpoint => "checkpoint",
-            Self::RestoreClosure => "restore_closure",
-            Self::ReplayPrefix => "replay_prefix",
-            Self::ContextSnapshot => "context_snapshot",
-        }
-    }
-
-    pub(crate) fn parse(value: &str) -> Result<Self, BranchStoreError> {
-        match value {
-            "checkpoint" => Ok(Self::Checkpoint),
-            "restore_closure" => Ok(Self::RestoreClosure),
-            "replay_prefix" => Ok(Self::ReplayPrefix),
-            "context_snapshot" => Ok(Self::ContextSnapshot),
-            _ => Err(BranchStoreError::Corrupt),
-        }
-    }
-}
-
-/// One artifact retained for a branch or an in-flight continuation.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct BranchArtifactReference {
-    /// Opaque artifact identity owned by the artifact store.
-    pub artifact_id: String,
-    /// Why this artifact is reachable from the branch.
-    pub role: BranchArtifactRole,
 }
 
 /// The occurrence at which a branch was forked.
