@@ -45,6 +45,18 @@ tombstones, and reports retained versus collectable artifact references. A colle
 only one with no remaining non-pruned branch root; actual blob deletion remains an artifact-owner
 operation and must be planned separately.
 
+The branch graph records only opaque artifact identities, so the store never assumes that a retained
+reference is still readable. Resolving availability delegates to the artifact owner through
+`BranchArtifactResolver`; the harness exact store answers with `available`, `missing`, or
+`unverifiable`. Identity outside the verified manifest/blob namespaces, bytes that no longer match
+their recorded identity, and store failures are all reported as `unverifiable` rather than
+`available`, because each of them blocks a continuation and none of them authorizes recreating the
+artifact. Resolution reads and verifies bytes and never writes, so an absent artifact stays absent
+instead of being re-derived or replaced by a fresh start. Availability is necessary but not
+sufficient for continuation readiness: strategy evidence, scope, destination ownership, and leases
+remain separate gates. A tombstoned branch reports `ArtifactUnavailable` rather than a vacuously
+available empty remainder, because an explicit prune has already collected its retained edges.
+
 ## Persistence and migration
 
 Revision 1 creates the branch tables transactionally and records a namespaced `branch_schema_meta`
