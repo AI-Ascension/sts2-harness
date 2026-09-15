@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MIT
 
+mod lookup_runtime;
+mod lookup_turn;
+mod lookup_wire;
 mod turn;
 
 use serde::{Deserialize, Serialize};
@@ -52,6 +55,13 @@ async fn main() {
 }
 
 async fn run() -> Result<(), &'static str> {
+    let arguments: Vec<_> = std::env::args().skip(1).collect();
+    if arguments == ["--lookup"] {
+        return lookup_turn::run().await;
+    }
+    if !arguments.is_empty() {
+        return Err("exo_executor_arguments");
+    }
     let mut bytes = Vec::new();
     tokio::time::timeout(
         std::time::Duration::from_secs(5),

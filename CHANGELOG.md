@@ -7,6 +7,10 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Add an opt-in Exo duplex lookup bridge and bounded native TypeScript tool registration,
+  connecting the lookup agent API to the isolated pinned executor. See
+  [ADR 0022](docs/decisions/0022-exo-lookup-duplex-bridge.md). Refs #127.
+
 - Add scoped game-information v1 lookup consumption through the existing MCP port, a bounded
   typed agent tool loop, complete-source validation before projection, separate source/view
   identities and encrypted pinned replay archives. The opt-in mixed catalog preserves legacy

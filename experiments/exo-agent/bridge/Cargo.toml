@@ -16,8 +16,10 @@ exoharness = { git = "https://github.com/exoharness/exo", rev = "b06869ab789dee3
 lingua = { git = "https://github.com/braintrustdata/lingua.git", rev = "3ab9bcc9b58688be37216e9ab0b3d8362d185cfb" }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
-tokio = { version = "=1.53.1", features = ["io-std", "io-util", "macros", "rt-multi-thread", "time"] }
+tokio = { version = "=1.53.1", features = ["io-std", "io-util", "macros", "rt-multi-thread", "time", "sync"] }
 getrandom = "=0.3.4"
+async-trait = "=0.1.89"
+anyhow = "=1.0.102"
 
 [lints.rust]
 unsafe_code = "forbid"

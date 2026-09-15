@@ -7,6 +7,9 @@ use serde_json::json;
 mod agent_tests;
 #[path = "game_information_failure_tests.rs"]
 mod failure_tests;
+#[cfg(unix)]
+#[path = "game_information_process_tests.rs"]
+mod process_tests;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 const NOW: &str = "2026-09-15T00:00:00Z";

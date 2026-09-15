@@ -28,9 +28,18 @@ pub struct Loaded {
 }
 
 pub fn load(path: &str) -> Result<Loaded, &'static str> {
+    load_profile(path, false)
+}
+
+pub fn load_profile(path: &str, lookup: bool) -> Result<Loaded, &'static str> {
     let bytes = read_bounded(Path::new(path), 32 * 1024)?;
     let config: Configuration = serde_json::from_slice(&bytes).map_err(|_| "exo_bridge_config")?;
-    if config.schema != "sts2.exo-one-shot-config-v1"
+    if config.schema
+        != if lookup {
+            "sts2.exo-lookup-config-v1"
+        } else {
+            "sts2.exo-one-shot-config-v1"
+        }
         || !responses_capable(&config.model)
         || config.model.len() > 128
         || config.model.chars().any(char::is_control)
@@ -45,9 +54,12 @@ pub fn load(path: &str) -> Result<Loaded, &'static str> {
     verify_source(&config.source_root)?;
     // This build owns exactly this extension, not an arbitrary operator-authored TypeScript agent.
     if config.extension_sha256
-        != sha256_hex(include_bytes!(
-            "../../../../../experiments/exo-agent/extension/src/index.ts"
-        ))
+        != sha256_hex(if lookup {
+            include_bytes!("../../../../../experiments/exo-agent/extension/src/lookup.ts")
+                .as_slice()
+        } else {
+            include_bytes!("../../../../../experiments/exo-agent/extension/src/index.ts").as_slice()
+        })
     {
         return Err("exo_bridge_extension_identity");
     }
@@ -62,6 +74,17 @@ pub fn load(path: &str) -> Result<Loaded, &'static str> {
 }
 
 impl Loaded {
+    pub fn lookup_description(&self) -> Result<Value, &'static str> {
+        let mut value = self.description()?;
+        value["schema"] = json!("sts2.exo-lookup-capability-v1");
+        value["wire_version"] = json!(sts2_harness::exo_lookup_wire::EXO_LOOKUP_WIRE);
+        value["tools"] = json!(["sts2_lookup_query", "sts2_lookup_read"]);
+        value["tool_digest"] = json!(sha256_hex(b"sts2_lookup_query\nsts2_lookup_read\n"));
+        value["decisions"] = json!(["action_id"]);
+        value["max_tool_round_trips"] = json!(32);
+        value["max_model_writes"] = json!(33);
+        Ok(value)
+    }
     pub fn validate_route(&self, synthetic: bool) -> Result<(), &'static str> {
         if synthetic {
             let port = self

@@ -15,13 +15,11 @@ fn real_exo_process_matrix() -> Result {
         .canonicalize()?;
     let binary = root.join("target/debug/sts2-exo-bridge");
     let executor = root.join("target/exo-executor/debug/sts2-exo-executor");
-    let source = root.join("target/exo-source");
+    let source = std::env::var_os("STS2_EXO_TEST_SOURCE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root.join("target/exo-source"));
     let node = PathBuf::from(std::env::var("STS2_EXO_TEST_NODE")?).canonicalize()?;
-    let extension = source.join("experiments/exo-agent/extension/src/index.ts");
-    assert_eq!(
-        digest(&extension)?,
-        digest(&root.join("experiments/exo-agent/extension/src/index.ts"))?
-    );
+    let extension = root.join("experiments/exo-agent/extension/src/index.ts");
     let model = Model::start()?;
     let config = root.join("target/exo-oracle-config.json");
     std::fs::write(

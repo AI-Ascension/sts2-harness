@@ -152,7 +152,7 @@ fn guard_evidence(events: &[Event]) -> Result<(&Event, u64, u64, u64), &'static 
     Ok((event, attempts, forwarded, denied))
 }
 
-async fn bind_model(
+pub(super) async fn bind_model(
     root: &dyn ExoHarness,
     model: &str,
     endpoint: &str,
@@ -179,7 +179,7 @@ async fn bind_model(
     .map_err(|_| ())
 }
 
-fn agent_request(
+pub(super) fn agent_request(
     module: &std::path::Path,
     model: &str,
     tokens: u32,
@@ -239,7 +239,7 @@ fn terminal(events: impl Iterator<Item = EventData>) -> Result<String, ()> {
     Ok(decision)
 }
 
-fn assistant_text(content: AssistantContent) -> Result<String, ()> {
+pub(super) fn assistant_text(content: AssistantContent) -> Result<String, ()> {
     match content {
         AssistantContent::String(text) => Ok(text),
         AssistantContent::Array(parts) => {

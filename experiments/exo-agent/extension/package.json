@@ -22,7 +22,7 @@
   "scripts": {
     "typecheck": "corepack pnpm@10.26.2 --dir ../../.. exec tsgo --noEmit -p tsconfig.json",
     "lint": "corepack pnpm@10.26.2 --dir ../../.. exec oxlint --deny-warnings experiments/exo-agent/extension/src",
-    "test": "corepack pnpm@10.26.2 --dir ../../.. exec vitest run experiments/exo-agent/extension/src/index.test.ts",
+    "test": "corepack pnpm@10.26.2 --dir ../../.. exec vitest run experiments/exo-agent/extension/src",
     "check": "corepack pnpm@10.26.2 run lint && corepack pnpm@10.26.2 run typecheck && corepack pnpm@10.26.2 run test"
   }
 }
