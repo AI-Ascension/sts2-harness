@@ -40,6 +40,8 @@ pub struct LookupAgentInput<'a> {
     pub legal_actions: &'a EpisodeLegalActionSet,
     pub feedback: &'a LookupFeedback,
     pub remaining_turns: usize,
+    /// Serialized optional prepared-data budget; transport envelopes have separate bounds.
+    pub optional_byte_budget: usize,
 }
 
 /// The provider owner maps its explicitly admitted model/tool protocol to these bounded turns.
@@ -73,6 +75,7 @@ pub fn run_lookup_tool_loop<A: LookupAgentPort, M: LookupMcpPort>(
             legal_actions,
             feedback: &feedback,
             remaining_turns: remaining,
+            optional_byte_budget: session.policy.optional_byte_budget,
         })?;
         if let LookupTurn::Decide { action_id } = turn {
             return legal_actions

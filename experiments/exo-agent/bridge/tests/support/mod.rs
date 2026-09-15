@@ -117,10 +117,14 @@ impl Model {
         } else {
             json!({"error": {"message": "synthetic unavailable", "type": "rate_limit_error"}})
         };
-        *self.response.lock().map_err(|_| "response poisoned")? = (status, output);
+        self.replace_response(status, output)?;
         Ok(())
     }
 
+    pub fn replace_response(&self, status: u16, output: Value) -> Result {
+        *self.response.lock().map_err(|_| "response poisoned")? = (status, output);
+        Ok(())
+    }
     pub fn request_count(&self) -> usize {
         self.connections.load(std::sync::atomic::Ordering::SeqCst)
     }

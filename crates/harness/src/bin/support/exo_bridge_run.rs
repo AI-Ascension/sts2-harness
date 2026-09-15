@@ -86,7 +86,10 @@ fn invocation(
     .map_err(|_| "exo_bridge_input")
 }
 
-fn executor_command(loaded: &Loaded, private: &PrivateRoot) -> Result<Command, &'static str> {
+pub(super) fn executor_command(
+    loaded: &Loaded,
+    private: &PrivateRoot,
+) -> Result<Command, &'static str> {
     let mut command = Command::new(&loaded.config.executor);
     command.as_std_mut().process_group(0);
     command
@@ -244,10 +247,10 @@ fn valid_uuid(value: &str) -> bool {
     value.len() == 36 && uuid::Uuid::parse_str(value).is_ok_and(|id| !id.is_nil())
 }
 
-struct PrivateRoot(PathBuf);
+pub(super) struct PrivateRoot(pub(super) PathBuf);
 
 impl PrivateRoot {
-    fn create() -> Result<Self, &'static str> {
+    pub(super) fn create() -> Result<Self, &'static str> {
         let parent = std::env::temp_dir();
         Self::create_under(&parent, uuid::Uuid::new_v4())
     }

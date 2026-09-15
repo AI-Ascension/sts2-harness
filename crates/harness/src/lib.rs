@@ -60,6 +60,8 @@ mod execution_cancellation;
 mod exo;
 mod exo_admitted_transport;
 pub mod exo_lifecycle;
+pub mod exo_lookup_process;
+pub mod exo_lookup_wire;
 mod exo_process;
 pub mod game_information;
 mod game_information_validation;

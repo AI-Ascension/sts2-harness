@@ -5,6 +5,9 @@
 #[path = "support/exo_bridge_config.rs"]
 #[cfg(target_os = "linux")]
 mod config;
+#[path = "support/exo_bridge_lookup.rs"]
+#[cfg(target_os = "linux")]
+mod lookup;
 #[path = "support/exo_bridge_run.rs"]
 #[cfg(target_os = "linux")]
 mod run;
@@ -34,6 +37,23 @@ fn execute() -> Result<(), &'static str> {
     let [mode, path, rest @ ..] = args.as_slice() else {
         return Err("exo_bridge_arguments");
     };
+    if matches!(
+        mode.as_str(),
+        "--lookup-describe" | "--lookup-run" | "--lookup-synthetic"
+    ) {
+        let loaded = config::load_profile(path, true)?;
+        if mode == "--lookup-describe" && rest.is_empty() {
+            return write_output(
+                &serde_json::to_vec(&loaded.lookup_description()?)
+                    .map_err(|_| "exo_bridge_description")?,
+            );
+        }
+        if mode == "--lookup-describe" || rest.len() != 1 || rest[0] != loaded.digest {
+            return Err("exo_bridge_config_identity");
+        }
+        loaded.validate_route(mode == "--lookup-synthetic")?;
+        return lookup::execute(&loaded, mode == "--lookup-synthetic");
+    }
     if !matches!(mode.as_str(), "--describe" | "--run" | "--synthetic") {
         return Err("exo_bridge_arguments");
     }
