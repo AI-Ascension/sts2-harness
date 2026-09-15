@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 
+use super::NativeCapabilities;
 use super::common::{
     MAX_COMPLETED_TURNS, MAX_HISTORY_TTL_SECONDS, SESSION_POLICY_SCHEMA,
     SESSION_POLICY_SCHEMA_MAX_COMPLETED_TURNS, SESSION_POLICY_SCHEMA_MAX_HISTORY_TTL_SECONDS,
     SessionError, digest, valid_digest, valid_id,
 };
+use crate::effective_limits::UnavailableReason;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
@@ -144,11 +146,65 @@ impl ProviderSessionPolicy {
         Ok(())
     }
 
+    /// Saved-policy admission for the **selected** adapter profile.
+    ///
+    /// Schema validity ([`Self::validate_schema`]) is the portable-contract check. This answers
+    /// the separate question the effective-limit record exists for: can the selected profile
+    /// actually execute these saved values? The two outcomes stay distinguishable, and a value is
+    /// never clamped to fit — an unsupported policy is refused with a precise reason so a caller
+    /// can retain it for inspection and propose a bounded migration instead of silently changing
+    /// semantics.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PolicyAdmissionError::Schema`] when the saved policy is not portable-valid, or
+    /// [`PolicyAdmissionError::Profile`] when it is schema-valid but the selected profile cannot
+    /// execute it (disabled surface, unadvertised field, or above the executable ceiling).
+    pub fn admit_for_profile(
+        &self,
+        capabilities: &NativeCapabilities,
+    ) -> Result<(), PolicyAdmissionError> {
+        self.validate_schema()
+            .map_err(PolicyAdmissionError::Schema)?;
+        for (field, requested) in [
+            ("max_completed_turns", self.max_completed_turns as u64),
+            ("max_history_ttl_seconds", self.history_ttl_seconds),
+        ] {
+            capabilities
+                .admit_policy_value(field, requested)
+                .map_err(PolicyAdmissionError::Profile)?;
+        }
+        Ok(())
+    }
+
     #[must_use]
     pub fn allows_execution(&self) -> bool {
         matches!(
             self.mode,
             ProviderSessionMode::FixtureOnly | ProviderSessionMode::Enabled
         )
+    }
+}
+
+/// Why a saved provider-session policy was not admitted for the selected profile.
+///
+/// The variants are deliberately distinct: a portable-contract failure is not the same thing as a
+/// selected profile being unable to execute a perfectly valid policy, and neither may be reported
+/// as a silent clamp or a generic invalid-policy error.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PolicyAdmissionError {
+    /// The saved policy does not satisfy the portable policy contract.
+    Schema(SessionError),
+    /// The policy is schema-valid but the selected profile cannot execute it.
+    Profile(UnavailableReason),
+}
+
+impl PolicyAdmissionError {
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Schema(_) => "provider_session_policy_schema_invalid",
+            Self::Profile(reason) => reason.code(),
+        }
     }
 }

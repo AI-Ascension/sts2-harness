@@ -7,6 +7,13 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Classify saved provider-session policies precisely against the **selected** adapter profile:
+  `ProviderSessionPolicy::admit_for_profile` checks portable schema validity separately from the
+  profile's executable ceiling and returns either a schema failure or a precise capability reason,
+  never a generic invalid-policy error and never a silent clamp. Compatibility: additive; no policy
+  field, schema, range or bound changes. See
+  [ADR 0026](docs/decisions/0026-provider-session-saved-policy-admission.md). Refs #95.
+
 - Expose the authoritative context owner's **current** association for one workflow run as the
   versioned read-only projection `ascension.harness.context-owner-association-view.v1` over
   `GET /v1/workflow-runs/{run_id}/context-owner-association`. The projected grants and epochs are
