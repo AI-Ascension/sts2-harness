@@ -16,7 +16,8 @@ mod store_types;
 mod types;
 
 pub use render::{
-    ContextRenderError, ContextRenderer, ManagedRenderInput, PreparedContext, ollama_user_content,
+    ContextRenderError, ContextRenderLimits, ContextRenderer, ManagedRenderInput, PreparedContext,
+    ollama_user_content,
 };
 pub use state::{ControlAuthority, ControlEvent, ControlReceipt, ControlState, GateStatus};
 pub use store::ContextControlStore;

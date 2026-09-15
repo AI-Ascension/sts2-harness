@@ -12,7 +12,8 @@ use super::auth::AuthContext;
 use super::contract::{RunSnapshot, validate_digest, validate_identifier};
 use super::service::ManagementError;
 use crate::context_control::{
-    ContextBoundary, MAX_CONTEXT_BYTES, MAX_CONTEXT_ITEMS, MAX_CONTEXT_NOTES, MAX_OBJECTIVE_BYTES,
+    ContextBoundary, ContextRenderLimits, MAX_CONTEXT_BYTES, MAX_CONTEXT_ITEMS, MAX_CONTEXT_NOTES,
+    MAX_OBJECTIVE_BYTES,
 };
 use crate::sha256_hex;
 
