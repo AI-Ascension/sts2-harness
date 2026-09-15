@@ -3,7 +3,9 @@
 mod auth;
 mod authoring;
 mod cli;
+mod context_binding_history;
 mod context_owner;
+pub use context_binding_history::RecordedContextBinding;
 mod contract;
 mod contract_authoring;
 mod http;

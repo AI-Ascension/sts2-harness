@@ -30,6 +30,18 @@ CREATE TABLE IF NOT EXISTS management_commands (
     PRIMARY KEY (workflow_run_id, command_id)
 );
 
+-- Opt-in historical metadata, never a current owner attachment or grant.
+CREATE TABLE IF NOT EXISTS management_context_binding_history (
+    workflow_run_id TEXT NOT NULL,
+    node_execution_id TEXT NOT NULL,
+    command_id TEXT NOT NULL,
+    record BLOB NOT NULL CHECK(length(record) <= 16384),
+    PRIMARY KEY (workflow_run_id, node_execution_id),
+    UNIQUE (workflow_run_id, command_id),
+    FOREIGN KEY (workflow_run_id, command_id)
+        REFERENCES management_commands(workflow_run_id, command_id)
+);
+
 CREATE TABLE IF NOT EXISTS management_runtime (
     workflow_run_id TEXT PRIMARY KEY NOT NULL,
     definition_digest TEXT NOT NULL,

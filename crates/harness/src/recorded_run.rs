@@ -14,13 +14,13 @@ mod recorded_run_accounting;
 #[path = "recorded_run_encoding.rs"]
 mod recorded_run_encoding;
 #[path = "recorded_run_json.rs"]
-mod recorded_run_json;
+pub(crate) mod recorded_run_json;
 #[path = "recorded_run_observation.rs"]
 mod recorded_run_observation;
 #[path = "recorded_run_projection.rs"]
 mod recorded_run_projection;
 #[path = "recorded_run_seed.rs"]
-mod recorded_run_seed;
+pub(crate) mod recorded_run_seed;
 #[path = "recorded_run_snapshot.rs"]
 mod recorded_run_snapshot;
 #[path = "recorded_run_support.rs"]

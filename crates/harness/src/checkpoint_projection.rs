@@ -234,7 +234,7 @@ fn to_hex(bytes: &[u8]) -> String {
     out
 }
 
-fn hmac_sha256(key: &[u8], domain: &[u8], message: &[u8]) -> [u8; 32] {
+pub(crate) fn hmac_sha256(key: &[u8], domain: &[u8], message: &[u8]) -> [u8; 32] {
     const BLOCK: usize = 64;
     let mut key_block = [0_u8; BLOCK];
     if key.len() > BLOCK {

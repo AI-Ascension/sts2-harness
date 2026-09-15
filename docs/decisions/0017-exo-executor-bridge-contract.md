@@ -346,6 +346,31 @@ and restore the backup before retrying. Mixed-version rows, missing identity axe
 source pin, or an expert request accepted only by a legacy schema remain non-admissible; rollback
 never silently downgrades a new record to the legacy provider-revision-only meaning.
 
+## Upstream dependency and prerequisites
+
+The selected executor path is resolved entirely through the owned STS2 TypeScript extension and the
+owned `sts2-exo-executor` embedding package (ADR 0018). The reviewed candidate range exposes
+`defineHarness.runTurn` / `runResponsesHarnessTurn` and the substrate conversation-event surface,
+but no bounded machine terminal-decision, EOF, or cancellation hook. That absence is recorded here
+explicitly rather than left implicit:
+
+- Inspected upstream machine surface (candidate
+  `b06869ab789dee3f80ca474b5fa89dbe47ccb859`): `exoharness/typescript/model-runtime/turn-loop.ts`
+  (`runResponsesHarnessTurn`) and
+  [`exoharness/examples/typescript/basic-harness.ts`](https://github.com/exoharness/exo/blob/b06869ab789dee3f80ca474b5fa89dbe47ccb859/exoharness/examples/typescript/basic-harness.ts).
+- **No upstream merge or pin prerequisite is required for the selected path.** The extension owns
+  the terminal-decision projection (`sts2.exo-decision-v1`) and the embedding package owns strict
+  framing, correlation, and process supervision, so the missing upstream hook is not on the
+  admitted path. A future upstream bounded-decision/EOF/cancellation hook would be adoptable only
+  through a new reviewed manifest revision and the re-admission path above.
+- Concrete reproducer and evidence: `experiments/exo-agent/extension/src/index.ts`,
+  `experiments/exo-agent/extension/src/index.test.ts`, `experiments/exo-agent/spike/`, and the
+  recorded real pinned-Exo/synthetic-model spike in
+  [`docs/evidence/exo-extension-real-spike-20260914.md`](../evidence/exo-extension-real-spike-20260914.md).
+- Downstream delivery gates remain #142 (lifecycle/cancellation), #143 (context), #144 (usage),
+  #145 (live episodes), #148 (real-process compatibility CI), and #149 (live provider/native
+  acceptance). Those are delivery gates, not upstream merge prerequisites.
+
 ## Platform matrix and live completion
 
 | Platform/profile | Source contract | Native evidence | Admission |

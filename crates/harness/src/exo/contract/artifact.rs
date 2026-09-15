@@ -127,7 +127,7 @@ pub fn verify_exo_bridge_artifact() -> Result<(), ExoArtifactError> {
         ),
         (
             checksums[1].0,
-            "814a651671da258a43d7e21cd1088b1410525082f0152caabab228097f2c37bd",
+            "46e95d5a81804d0345821a643b0b80376a068b3959b0b703e78b986b4a56d73b",
         ),
         (
             checksums[2].0,
@@ -135,7 +135,7 @@ pub fn verify_exo_bridge_artifact() -> Result<(), ExoArtifactError> {
         ),
         (
             checksums[3].0,
-            "2b1aeb5021c8db1dd1a3ec47d96debdadb30db8253a24f0f70c40fc9974b79a0",
+            "19b78b6d0184ececd2d6b116255ece2836c1ffb829ceb095533e59ad4677f5bf",
         ),
         (
             checksums[4].0,

@@ -11,6 +11,33 @@ are recorded in [ADR 0021](decisions/0021-game-information-consumer.md). Public 
 live lookups, bounded retained pages and encrypted restart replay are component-tested;
 native/provider execution and the old native Exo adapter's tool translation remain unverified.
 
+## Benchmark manifest foundation
+
+`benchmark_manifest` adds a private `ascension.benchmark-manifest.v1` owner format and
+an effect-free Rust API. This is `additive-compatible`: it changes no old record,
+seed normalization, native wire artifact, database or runtime admission. Strict readers
+reject unknown versions/fields, duplicate members and incomplete required inputs.
+There are no compatibility relaxations; equal declarations do not establish runtime support.
+Receipt binding also requires the declared seeded-start protocol version and schema digest
+to match the receipt. `receipt_protocol_mismatch` corrects missing validation in the unreleased
+candidate; it changes no frozen wire schema or existing runtime receipt interpretation.
+See [ADR 0021](decisions/0021-benchmark-manifest-foundation.md) for exact identity and
+receipt evidence limits. The supported input context remains standard Ironclad,
+ascension 0..20, with a fresh baseline; other modes/characters remain unsupported here.
+Seed generation/durability, complete native readback/RNG, cold-launch integration,
+profile provisioning and provider execution remain unverified and outside this delivery.
+
+## Opt-in recorded context bindings
+
+[ADR 0022](decisions/0022-recorded-context-binding-history.md) adds private, bounded SQLite
+binding history and a scoped library-only historical reader. Public closed JSON schemas,
+current-cursor association semantics and file-store JSON remain unchanged. Old SQLite stores
+start with no history; rollback binaries ignore and preserve the added table. Retention is
+explicitly enabled and does not imply current owner availability or control permission.
+The unreleased Rust `CommandApplication` gains `context_binding`; source constructors must
+set `None` or provide exact accepted binding evidence. Default `WorkflowStore` hooks remain
+unsupported, and existing default compositions do not retain this metadata.
+
 ## Effective-limit consumer alignment
 
 The matrix records Console `df36452adcfa1b1c3a7f968be243cd25a02433c3` and Studio

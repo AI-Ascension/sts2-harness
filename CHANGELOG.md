@@ -18,6 +18,33 @@ claim a released harness version or runtime compatibility.
   exact-host execution; the old native Exo adapter remains terminal-decision-only.
   See [ADR 0021](docs/decisions/0021-game-information-consumer.md). Refs #127.
 
+- Add the opt-in immutable benchmark manifest library: bounded strict v1 parsing,
+  separate gameplay/experiment/occurrence identities, exact mismatch reasons and
+  keyed public references. Existing seed receipts can be associated with an immutable
+  planned trial as `seed_receipt_bound` only when the declared protocol version and schema
+  digest also match; this is offline consistency, not native
+  reproducibility or hidden RNG verification. No runtime or legacy-record behavior changes.
+  See [ADR 0021](docs/decisions/0021-benchmark-manifest-foundation.md). Refs #121.
+
+- Add opt-in bounded SQLite history for context-owner bindings, committed atomically with
+  command results and read by original invocation with current scoped, same-subject permission.
+  Historical grants and epochs never authorize current control or claim a restored owner.
+  Public JSON schemas and current-cursor association stay unchanged; Rust `CommandApplication`
+  constructors must supply the new optional `context_binding` field. See
+  [ADR 0022](docs/decisions/0022-recorded-context-binding-history.md). This library-only slice
+  does not implement HTTP history, owner receipt recovery or complete #100 acceptance.
+
+- Reconcile the Exo bridge contract inventory for #139. Add executable conformance vectors for
+  unavailable `map`/`expert` profiles, absent context continuity, incompatible capability
+  schema/contract versions, and malformed descriptor shapes, plus a manifest pin-location drift
+  guard and an explicit upstream dependency/prerequisite record. Compatibility: contract-vector and
+  documentation additions only; no schema or wire field changed. Real provider/native acceptance
+  remains gated by #149.
+
+- Complete the #139 Exo pin inventory: list every revision-bearing bridge, contract, documentation
+  and artifact source in the manifest and enforce the full set in the drift guard. Refresh the
+  manifest checksum. Compatibility: inventory-only; no schema or wire change.
+
 - Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
   and validate exact decision/reservation metadata before completion or uncertainty writes.
   Validate authenticated lifecycle-to-broker references and phase relationships before

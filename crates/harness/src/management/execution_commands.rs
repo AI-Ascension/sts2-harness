@@ -31,6 +31,8 @@ pub(super) fn apply_command(
         ));
     }
     let revision = context.snapshot.run_revision.saturating_add(1);
+    // Evidence belongs only to this command, never a later step/pause/cancel.
+    run.context_binding = None;
     let (status, outcome, reason) = match context.request.kind {
         CommandKind::Pause => {
             if run.cancelled {

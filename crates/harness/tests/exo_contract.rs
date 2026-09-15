@@ -6,11 +6,12 @@ use serde_json::json;
 use sts2_harness::{
     EXO_BRIDGE_WIRE_VERSION, EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES,
     EXO_RESTRICTED_MAX_QUOTA_BYTES, EXO_RESTRICTED_MAX_RETENTION_DAYS, EXO_SOURCE_REVISION,
-    ExoCapabilityDescriptor, ExoCapabilityState, ExoContextMode, ExoDecisionRequest, ExoLimits,
-    ExoPlatform, ExoPreflightError, ExoPrivateStateError, ExoPrivateStatePolicy, ExoProfile,
-    ExoRestrictedError, ExoRuntime, ExoTerminalOutcome, ExoToolCatalog, ExoToolCatalogError,
-    ExoTrustedConfiguration, ExoWireError, ExoWireOutcome, PrivateRootKind, REVIEWED_MODEL_TOOLS,
-    encode_bridge_request, encode_bridge_response, exo_bridge_manifest, parse_bridge_decision,
+    ExoCapabilityDescriptor, ExoCapabilityState, ExoContextMode, ExoDecisionRequest,
+    ExoDescriptorError, ExoIdentity, ExoLimits, ExoPlatform, ExoPreflightError,
+    ExoPrivateStateError, ExoPrivateStatePolicy, ExoProfile, ExoRestrictedError, ExoRuntime,
+    ExoTerminalOutcome, ExoToolCatalog, ExoToolCatalogError, ExoTrustedConfiguration, ExoWireError,
+    ExoWireOutcome, PrivateRootKind, REVIEWED_MODEL_TOOLS, encode_bridge_request,
+    encode_bridge_response, exo_bridge_manifest, parse_bridge_decision,
     parse_bridge_decision_envelope, parse_bridge_request, parse_bridge_request_envelope, preflight,
     responses_capable, responses_routing_capable, verify_control_identity,
     verify_exo_bridge_artifact,
@@ -36,6 +37,12 @@ mod exo_contract_projection;
 
 #[path = "support/exo_contract_conformance.rs"]
 mod exo_contract_conformance;
+
+#[path = "support/exo_contract_capability.rs"]
+mod exo_contract_capability;
+
+#[path = "support/exo_contract_pin_inventory.rs"]
+mod exo_contract_pin_inventory;
 
 #[path = "support/exo_contract_restricted.rs"]
 mod exo_contract_restricted;
