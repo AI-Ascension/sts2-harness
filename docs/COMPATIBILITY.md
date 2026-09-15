@@ -38,6 +38,16 @@ The unreleased Rust `CommandApplication` gains `context_binding`; source constru
 set `None` or provide exact accepted binding evidence. Default `WorkflowStore` hooks remain
 unsupported, and existing default compositions do not retain this metadata.
 
+## Recorded context-binding HTTP projection
+
+[ADR 0023](decisions/0023-recorded-context-binding-http-projection.md) adds one read-only
+management route (`GET /v1/workflow-runs/{run_id}/executions/{node_execution_id}/context-binding`)
+returning the versioned `ascension.harness.recorded-context-binding-view.v1` projection of the
+binding accepted for that invocation. This is `additive-compatible`: no existing route, record,
+schema, digest or resource bound changes, retention remains opt-in, and unknown paths still fail
+closed. The projection is observation-only and is neither current owner authority nor receipt
+recovery.
+
 ## Effective-limit consumer alignment
 
 The matrix records Console `df36452adcfa1b1c3a7f968be243cd25a02433c3` and Studio

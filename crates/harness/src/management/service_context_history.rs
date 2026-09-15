@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::super::RecordedContextBinding;
+use super::super::{RecordedContextBinding, RecordedContextBindingView};
 use super::support::authorize;
 use super::{
     AuthContext, ContextInspectionPort, ManagementError, ManagementService, validate_identifier,
@@ -57,5 +57,22 @@ impl ManagementService {
             ));
         }
         Ok(record)
+    }
+
+    /// Bounded HTTP projection of one historical invocation for its original
+    /// subject with current workflow-read permission. Returns `None` when no
+    /// binding history is recorded for the invocation. Same scoping and failure
+    /// behavior as [`Self::recorded_context_binding`]; it never contacts, attaches
+    /// or refreshes an owner.
+    pub fn recorded_context_binding_view(
+        &self,
+        actor: &AuthContext,
+        run_id: &str,
+        node_execution_id: &str,
+    ) -> Result<Option<RecordedContextBindingView>, ManagementError> {
+        Ok(self
+            .recorded_context_binding(actor, run_id, node_execution_id)?
+            .as_ref()
+            .map(RecordedContextBindingView::from))
     }
 }

@@ -7,6 +7,14 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Expose the recorded context-owner binding for one workflow invocation over the authenticated
+  management HTTP surface as a separately versioned, read-only projection. Same-subject scoped
+  `workflow:read` is required; an unrecorded invocation, another subject, a missing scope and
+  disabled retention are reported as distinct errors. Compatibility: additive read-only endpoint;
+  no existing route, record, schema or resource bound changes. Does not establish current owner
+  authority or receipt recovery. See [ADR 0023](docs/decisions/0023-recorded-context-binding-http-projection.md).
+  Refs #100.
+
 - Add an opt-in Exo duplex lookup bridge and bounded native TypeScript tool registration,
   connecting the lookup agent API to the isolated pinned executor. See
   [ADR 0022](docs/decisions/0022-exo-lookup-duplex-bridge.md). Refs #127.
