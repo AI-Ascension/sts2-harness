@@ -17,6 +17,8 @@ mod effective_limits;
 mod history_prepared;
 #[path = "maintenance.rs"]
 mod maintenance;
+#[path = "policy_migration.rs"]
+mod policy_migration;
 #[path = "scope_policy.rs"]
 mod scope_policy;
 #[path = "telemetry.rs"]
@@ -27,5 +29,6 @@ pub use capabilities::*;
 pub use common::*;
 pub use history_prepared::*;
 pub use maintenance::*;
+pub use policy_migration::*;
 pub use scope_policy::*;
 pub use telemetry::*;

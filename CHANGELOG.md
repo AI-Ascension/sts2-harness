@@ -7,6 +7,13 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Add bounded migration records for saved provider-session policies that are portable-schema valid
+  but above the selected profile's executable ceiling: the exact saved bytes and violated limits are
+  retained, and adoption requires explicit approval plus a caller-supplied target that is already
+  within the executable ceilings — no value is ever silently clamped. Compatibility: additive,
+  library-only; no policy field, schema, range or bound changes. See
+  [ADR 0027](docs/decisions/0027-provider-session-policy-migration.md). Refs #95.
+
 - Classify saved provider-session policies precisely against the **selected** adapter profile:
   `ProviderSessionPolicy::admit_for_profile` checks portable schema validity separately from the
   profile's executable ceiling and returns either a schema failure or a precise capability reason,
