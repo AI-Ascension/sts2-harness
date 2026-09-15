@@ -226,3 +226,70 @@ fn unrelated_subpaths_do_not_resolve() {
         );
     }
 }
+
+/// Same fixture as `record_binding`, plus a second admitted run in the same store, so the
+/// run-prefix scoping of the history read can be exercised.
+fn record_binding_with_second_run(name: &str) -> (Fixture, String) {
+    let dir = Database::new(name);
+    let store = Arc::new(SqliteWorkflowStore::open(&dir.0).expect("open"));
+    let factory = Arc::new(support::FakeFactory::new(false));
+    let owner = Arc::new(RecordingOwner::default());
+    let service = Arc::new(service(store, factory, owner.clone(), true));
+    let actor = support::actor();
+    let run_id = service
+        .submit_run(
+            &actor,
+            support::request("http-binding", support::definition(false)),
+        )
+        .expect("submit")
+        .workflow_run_id;
+    let second_run_id = service
+        .submit_run(
+            &actor,
+            support::request("http-binding-second", support::definition(false)),
+        )
+        .expect("second submit")
+        .workflow_run_id;
+    service
+        .command(
+            &actor,
+            support::command(&run_id, "observe", 1, CommandKind::Step),
+        )
+        .expect("observe");
+    let decide = support::command(&run_id, "decide", 2, CommandKind::Step);
+    let response = service.command(&actor, decide.clone()).expect("decide");
+    let accepted = owner.0.lock().expect("accepted").clone();
+    let recorded = accepted.first().cloned().expect("one accepted binding");
+    (
+        Fixture {
+            service,
+            run_id,
+            recorded,
+            command_id: decide.command_id,
+            run_revision: response.run_revision,
+        },
+        second_run_id,
+    )
+}
+
+#[test]
+fn another_runs_history_is_not_reachable_through_the_run_prefix() {
+    let (fixture, second_run_id) = record_binding_with_second_run("cross-run");
+    assert_ne!(fixture.run_id, second_run_id);
+    // The recorded invocation belongs to the first run. Addressed under the second run's prefix
+    // it must not resolve to that record, and must not become a general denial either.
+    let path = format!("/v1/workflow-runs/{second_run_id}/executions/live.node.2/context-binding");
+    let (status, value) = read(&fixture, "owner-token", authenticator(), &path);
+    assert_ne!(status, 200, "cross-run read must not succeed: {value}");
+    assert_eq!(
+        value.pointer("/error/code").and_then(Value::as_str),
+        Some("context_binding_not_recorded"),
+        "unexpected error for a cross-run read: {value}"
+    );
+    let own = format!(
+        "/v1/workflow-runs/{}/executions/live.node.2/context-binding",
+        fixture.run_id
+    );
+    let (status, value) = read(&fixture, "owner-token", authenticator(), &own);
+    assert_eq!(status, 200, "own-run read should still succeed: {value}");
+}
