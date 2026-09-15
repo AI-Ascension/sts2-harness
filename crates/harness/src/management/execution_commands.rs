@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::super::context_owner::ContextBindingRequest;
+use super::super::context_owner::{ContextBindingRequest, compose_context_owner_binding};
 use super::super::contract::{CommandKind, CommandOutcome, PendingOperation, WorkflowRunStatus};
 use super::super::service::{CommandApplication, CommandContext, ManagementError};
 use crate::workflow::{RuntimeFault, RuntimeStatus};
@@ -229,13 +229,9 @@ fn bind_dispatch_context(
     request.validate()?;
     let binding = owner.bind(&context.actor, &request)?;
     binding.validate_for_request(&request)?;
-    if binding.owner_id != catalog.owner_id || binding.owner_version != catalog.owner_version {
-        return Err(ManagementError::conflict(
-            "context_owner_binding_foreign",
-            "context owner binding was issued by a different catalog owner",
-        ));
-    }
-    descriptor.validate_binding(&binding)?;
+    // Admission and the observable owner surface compose the binding with its
+    // admitting descriptor through the same fail-closed seam.
+    compose_context_owner_binding(&catalog, &binding)?;
     binding.validate(Some(&context.snapshot))?;
     run.context_binding = Some(binding);
     Ok(())

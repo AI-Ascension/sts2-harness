@@ -298,6 +298,8 @@ impl ContextBindingCatalog {
 
 #[path = "context_owner_binding.rs"]
 mod binding;
+#[path = "context_owner_composition.rs"]
+mod composition;
 #[path = "context_owner_receipt.rs"]
 mod receipt;
 pub use support::{CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, ContextOwnerAssociationView};
@@ -306,6 +308,10 @@ pub use support::{CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, ContextOwnerAssociation
 mod support;
 
 pub use binding::{ContextBindingRequest, ContextOwnerBinding};
+pub use composition::{
+    CONTEXT_OWNER_EFFECTIVE_LIMITS_VIEW_SCHEMA, ContextOwnerEffectiveLimitsView,
+    compose_context_owner_binding,
+};
 pub use receipt::{ContextControlCommand, ContextControlCommandKind, ContextControlReceipt};
 pub use support::{ContextOwnerPort, UnavailableContextOwnerPort};
 pub(crate) use support::{catalog_digest, validate_boundary, validate_grants, validate_limits};
