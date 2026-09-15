@@ -5,7 +5,9 @@ mod authoring;
 mod cli;
 mod context_binding_history;
 mod context_owner;
-pub use context_binding_history::RecordedContextBinding;
+pub use context_binding_history::{
+    RECORDED_CONTEXT_BINDING_VIEW_SCHEMA, RecordedContextBinding, RecordedContextBindingView,
+};
 mod contract;
 mod contract_authoring;
 mod http;

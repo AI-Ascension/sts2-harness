@@ -160,6 +160,29 @@ fn dispatch_run_route(
         ("GET", ["", "v1", "workflow-runs", _, "context"]) if request.query.is_empty() => service
             .context_association(actor, run_id)
             .and_then(|value| json_value(&value)),
+        (
+            "GET",
+            [
+                "",
+                "v1",
+                "workflow-runs",
+                _,
+                "executions",
+                _,
+                "context-binding",
+            ],
+        ) if request.query.is_empty() => {
+            let node_execution_id = segments[5];
+            service
+                .recorded_context_binding_view(actor, run_id, node_execution_id)
+                .and_then(|value| match value {
+                    Some(view) => json_value(&view),
+                    None => Err(ManagementError::invalid(
+                        "context_binding_not_recorded",
+                        "no context binding history is recorded for this invocation",
+                    )),
+                })
+        }
         ("GET", ["", "v1", "workflow-runs", _, "provider-sessions"])
             if request.query.is_empty() =>
         {
