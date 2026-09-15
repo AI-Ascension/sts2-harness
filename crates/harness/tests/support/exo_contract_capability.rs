@@ -17,11 +17,13 @@ pub(super) fn execute_capability_vectors(vectors: &[Value]) {
     };
     for vector in vectors {
         let field = vector["field"].as_str().expect("capability vector field");
-        assert_eq!(
-            vector["downgrade"].as_str(),
-            Some("unsupported"),
-            "{field} must fail closed when unsupported"
-        );
+        if field.starts_with("evidence.") || field.starts_with("lifecycle.") {
+            assert_eq!(
+                vector["downgrade"].as_str(),
+                Some("unsupported"),
+                "{field} must fail closed when unsupported"
+            );
+        }
         let mut descriptor = base.clone();
         enable_minimum_capabilities(&mut descriptor);
         let required = match field {
@@ -50,6 +52,11 @@ pub(super) fn execute_capability_vectors(vectors: &[Value]) {
                 "lifecycle.recovery"
             }
             "profile_support.map" => {
+                assert_eq!(
+                    vector["expect"].as_str(),
+                    Some("profile_unsupported"),
+                    "{field} must record an explicit unsupported-profile expectation"
+                );
                 let mut map = trusted.clone();
                 map.profile = ExoProfile::Map;
                 assert_eq!(
@@ -60,6 +67,11 @@ pub(super) fn execute_capability_vectors(vectors: &[Value]) {
                 continue;
             }
             "profile_support.expert" => {
+                assert_eq!(
+                    vector["expect"].as_str(),
+                    Some("profile_unsupported"),
+                    "{field} must record an explicit unsupported-profile expectation"
+                );
                 let mut expert = trusted.clone();
                 expert.profile = ExoProfile::Expert;
                 assert_eq!(
@@ -70,6 +82,11 @@ pub(super) fn execute_capability_vectors(vectors: &[Value]) {
                 continue;
             }
             "context_modes.continuity" => {
+                assert_eq!(
+                    vector["expect"].as_str(),
+                    Some("context_unsupported"),
+                    "{field} must record an explicit unsupported-context expectation"
+                );
                 let mut continuity = trusted.clone();
                 continuity.context_mode = ExoContextMode::Continuity;
                 assert_eq!(
@@ -80,6 +97,11 @@ pub(super) fn execute_capability_vectors(vectors: &[Value]) {
                 continue;
             }
             "schema_version" => {
+                assert_eq!(
+                    vector["expect"].as_str(),
+                    Some("invalid_descriptor_schema"),
+                    "{field} must record an explicit incompatible-schema expectation"
+                );
                 descriptor.schema_version = String::from("sts2.exo-capability-v0");
                 assert_eq!(
                     preflight_with_identity(descriptor, &trusted),
@@ -91,6 +113,11 @@ pub(super) fn execute_capability_vectors(vectors: &[Value]) {
                 continue;
             }
             "contract_version" => {
+                assert_eq!(
+                    vector["expect"].as_str(),
+                    Some("invalid_descriptor_contract"),
+                    "{field} must record an explicit incompatible-contract expectation"
+                );
                 descriptor.contract_version = String::from("sts2-exo-bridge-v0");
                 assert_eq!(
                     preflight_with_identity(descriptor, &trusted),

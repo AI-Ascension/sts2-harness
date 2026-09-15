@@ -52,11 +52,11 @@
     {"name": "idempotency", "field": "lifecycle.idempotency", "downgrade": "unsupported"},
     {"name": "cancellation", "field": "lifecycle.cancellation", "downgrade": "unsupported"},
     {"name": "recovery", "field": "lifecycle.recovery", "downgrade": "unsupported"},
-    {"name": "profile_map", "field": "profile_support.map", "downgrade": "unsupported"},
-    {"name": "profile_expert", "field": "profile_support.expert", "downgrade": "unsupported"},
-    {"name": "context_continuity", "field": "context_modes.continuity", "downgrade": "unsupported"},
-    {"name": "capability_schema_version", "field": "schema_version", "downgrade": "unsupported"},
-    {"name": "capability_contract_version", "field": "contract_version", "downgrade": "unsupported"}
+    {"name": "profile_map", "field": "profile_support.map", "expect": "profile_unsupported"},
+    {"name": "profile_expert", "field": "profile_support.expert", "expect": "profile_unsupported"},
+    {"name": "context_continuity", "field": "context_modes.continuity", "expect": "context_unsupported"},
+    {"name": "capability_schema_version", "field": "schema_version", "expect": "invalid_descriptor_schema"},
+    {"name": "capability_contract_version", "field": "contract_version", "expect": "invalid_descriptor_contract"}
   ],
   "fixtures": [
     "golden/capability-source.json",
