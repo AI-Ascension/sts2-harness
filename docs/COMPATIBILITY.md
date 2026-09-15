@@ -38,6 +38,16 @@ The unreleased Rust `CommandApplication` gains `context_binding`; source constru
 set `None` or provide exact accepted binding evidence. Default `WorkflowStore` hooks remain
 unsupported, and existing default compositions do not retain this metadata.
 
+## Saved provider-session policy admission
+
+[ADR 0026](decisions/0026-provider-session-saved-policy-admission.md) adds
+`ProviderSessionPolicy::admit_for_profile`, which classifies a saved policy against the selected
+adapter profile: portable-contract failures (`provider_session_policy_schema_invalid`) stay distinct
+from schema-valid-but-unexecutable values (`effective_limit_exceeded`, `disabled`,
+`field_not_advertised`, ...). This is `additive-compatible`: no policy field, schema, digest, range or
+resource bound changes, and `validate`/`validate_schema` are unchanged. The portable schema ceilings
+stay intentionally broader than the executable ceilings, and a refused policy is never clamped.
+
 ## Current context-owner association
 
 [ADR 0025](decisions/0025-context-owner-current-association.md) adds
