@@ -30,6 +30,10 @@ claim a released harness version or runtime compatibility.
   documentation additions only; no schema or wire field changed. Real provider/native acceptance
   remains gated by #149.
 
+- Complete the #139 Exo pin inventory: list every revision-bearing bridge, contract, documentation
+  and artifact source in the manifest and enforce the full set in the drift guard. Refresh the
+  manifest checksum. Compatibility: inventory-only; no schema or wire change.
+
 - Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
   and validate exact decision/reservation metadata before completion or uncertainty writes.
   Validate authenticated lifecycle-to-broker references and phase relationships before

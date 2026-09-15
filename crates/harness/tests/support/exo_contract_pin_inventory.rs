@@ -38,6 +38,15 @@ fn manifest_pin_inventory_lists_existing_required_consumers() {
         "experiments/exo-agent/extension/README.md",
         "experiments/exo-agent/bridge/README.md",
         "THIRD_PARTY_NOTICES.md",
+        "crates/harness/src/exo/contract/descriptor.rs",
+        "crates/harness/tests/support/exo_contract_projection.rs",
+        "crates/harness/tests/support/exo_contract_schema_vectors.rs",
+        "experiments/exo-agent/bridge/Cargo.toml",
+        "experiments/exo-agent/bridge/Cargo.lock",
+        "experiments/exo-agent/bridge/tests/process_oracle.rs",
+        "protocol-artifact/exo-bridge-v1/fixtures/invalid-unknown.json",
+        "protocol-artifact/exo-bridge-v1/golden/request.json",
+        "protocol-artifact/exo-bridge-v1/golden/capability-source.json",
     ] {
         assert!(
             pins.contains(&required),
