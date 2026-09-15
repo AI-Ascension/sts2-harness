@@ -26,8 +26,8 @@ loopback server; no provider, credential, network egress, game, save, or native 
 | `extension_sha256` | `2e5485127f434bdd95a534785a414fa9f357432c924d89fd56d50c96f434b9cd` |
 | `oracle_sha256` | `c9cfedd7f4541283a804c002d566992db7c6abdc49db554a5f414c117cce763e` |
 | `executor_sha256` | `c739ff69d16250e31640e00d7611ff514c706a68c2c6bb9d332d096c713627fd` |
-| `bridge_sha256` | `8a4f79b28e06990c98a458a3a72a869d7d51446d994c343d3e6668bda2f326d2` |
-| `harness_revision` | `3d2f1acec49bd1823c05a3b46edfeb882f799211` |
+| `bridge_sha256` | `d7db74112df92c4c0691096f69b9cf114249435a7ccf48ae71217b89e0b81b74` |
+| `harness_revision` | `aee12600150f020436bd8e6f471f573a34b56930` |
 | Node | `v22.14.0` (the extension pin; upstream declares `22.15.0`, still unqualified) |
 | Rust toolchain | `1.97.1`; `aarch64`/non-Linux platforms remain unverified |
 | Model binding | `o3-pro` → synthetic loopback endpoint, model route asserted, no credential |
@@ -37,7 +37,7 @@ loopback server; no provider, credential, network egress, game, save, or native 
 
 ## Result
 
-All 27 oracle cases passed (`test result: ok. 1 passed; 0 failed`), the whole matrix in 25.13 s:
+All 27 oracle cases passed (`test result: ok. 1 passed; 0 failed`), the whole matrix in 24.88 s:
 
 | Case group | Cases | Observed |
 |---|---|---|
@@ -52,11 +52,12 @@ Request-level rejection, identity, and envelope checks happen before the model i
 is the source/process half of acceptance criterion 3. Admission for a dispatched episode still
 belongs to the production transport issue (#141).
 
-The matrix above was run twice, at harness revisions `1aaa3f3` and `3d2f1ac`, and both runs agreed
-on the case names, the pass/fail outcome, the per-case request counts, and the
-`extension_sha256`/`oracle_sha256`/`exo_revision` identities. The two reports differ only in the
-fresh per-run `exo_session_id`/`exo_turn_id` values the real runtime generates and in
-`bridge_sha256`, which tracks the rebuilt harness binary. The committed record is the later run.
+The matrix above was run three times — at harness revisions `1aaa3f3`, `3d2f1ac` and `aee1260` — and
+every run agreed on the case names, the pass/fail outcome, the per-case request counts, and the
+`extension_sha256`/`oracle_sha256`/`exo_revision` identities. After normalising the two runtime-generated
+per-case identifiers, the reports are byte-identical apart from `bridge_sha256`, which tracks the
+rebuilt harness binary, and `harness_revision`. The committed record is the last run, so its
+`harness_revision` is the revision the harness was at when it ran.
 
 ## What this establishes
 
