@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::exo_contract_capability::execute_capability_vectors;
 use super::*;
 use serde_json::{Value, json};
 
@@ -313,61 +314,6 @@ fn execute_envelope_vectors(vectors: &[Value]) {
             }
             other => unreachable!("unhandled envelope conformance vector {other}"),
         }
-    }
-}
-
-fn execute_capability_vectors(vectors: &[Value]) {
-    let base = ExoCapabilityDescriptor::source_review().expect("source descriptor");
-    let identity = complete_identity();
-    let trusted = ExoTrustedConfiguration {
-        identity,
-        platform: ExoPlatform::LinuxX86_64,
-        profile: ExoProfile::Standard,
-        context_mode: ExoContextMode::Fresh,
-        runtime: ExoRuntime::Responses,
-        limits: ExoLimits::reviewed(),
-        restricted: restricted_profile(),
-    };
-    for vector in vectors {
-        let field = vector["field"].as_str().expect("capability vector field");
-        assert_eq!(
-            vector["downgrade"].as_str(),
-            Some("unsupported"),
-            "{field} must fail closed when unsupported"
-        );
-        let mut descriptor = base.clone();
-        enable_minimum_capabilities(&mut descriptor);
-        let required = match field {
-            "evidence.terminal_decision" => {
-                descriptor.evidence.terminal_decision = ExoCapabilityState::Unsupported;
-                "evidence.terminal_decision"
-            }
-            "evidence.turn_identity" => {
-                descriptor.evidence.turn_identity = ExoCapabilityState::Unsupported;
-                "evidence.turn_identity"
-            }
-            "lifecycle.graceful_eof" => {
-                descriptor.lifecycle.graceful_eof = ExoCapabilityState::Unsupported;
-                "lifecycle.graceful_eof"
-            }
-            "lifecycle.idempotency" => {
-                descriptor.lifecycle.idempotency = ExoCapabilityState::Unsupported;
-                "lifecycle.idempotency"
-            }
-            "lifecycle.cancellation" => {
-                descriptor.lifecycle.cancellation = ExoCapabilityState::Unsupported;
-                "lifecycle.cancellation"
-            }
-            "lifecycle.recovery" => {
-                descriptor.lifecycle.recovery = ExoCapabilityState::Unsupported;
-                "lifecycle.recovery"
-            }
-            other => unreachable!("unhandled capability conformance vector {other}"),
-        };
-        assert_eq!(
-            preflight_with_identity(descriptor, &trusted),
-            Err(ExoPreflightError::RequiredCapability(required))
-        );
     }
 }
 

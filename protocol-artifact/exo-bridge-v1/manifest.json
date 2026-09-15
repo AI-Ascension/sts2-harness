@@ -99,7 +99,14 @@
     "crates/harness/src/bin/runtime_support/runtime_v3_telemetry_identity_privacy_tests.rs",
     "crates/harness/src/bin/runtime_support/runtime_v3_telemetry_tests.rs",
     "experiments/exo-agent/extension/package.json",
-    "experiments/exo-agent/extension/src/index.ts"
+    "experiments/exo-agent/extension/src/index.ts",
+    "docs/decisions/0017-exo-executor-bridge-contract.md",
+    "docs/decisions/0018-exo-one-shot-executor-package.md",
+    "docs/evidence/exo-extension-real-spike-20260914.md",
+    "protocol-artifact/exo-bridge-v1/README.md",
+    "experiments/exo-agent/extension/README.md",
+    "experiments/exo-agent/bridge/README.md",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "migration": {
     "old_revision": "7801005e6a1ab77008a05dbba80e0a2a7a56e35d",

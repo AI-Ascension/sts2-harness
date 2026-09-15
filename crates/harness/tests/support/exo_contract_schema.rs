@@ -82,6 +82,11 @@ fn schema_and_conformance_vectors_are_closed_and_executable() {
                 "idempotency",
                 "cancellation",
                 "recovery",
+                "profile_map",
+                "profile_expert",
+                "context_continuity",
+                "capability_schema_version",
+                "capability_contract_version",
             ]
             .as_slice(),
         ),
