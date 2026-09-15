@@ -14,7 +14,8 @@ claim a released harness version or runtime compatibility.
   attempts still returns `Busy`, and the lock primitive, its exclusivity and its release on process
   death are unchanged. This removes the intermittent `restart: Busy` failure of the `exo_lifecycle`
   tests under parallel execution. Compatibility: no file-format, schema, range or bound change; a
-  genuinely busy lease is now reported after up to 160 ms instead of immediately. See
+  genuinely busy lease is now reported after about 160 ms (32 attempts, 5 ms apart) instead of
+  immediately. See
   [ADR 0029](docs/decisions/0029-owner-lease-transient-busy-retry.md). Refs #188.
 
 - Enforce the **selected** context-control limits that a binding advertises instead of only the

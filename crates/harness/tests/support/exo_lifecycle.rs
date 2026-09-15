@@ -13,10 +13,10 @@ mod expiry_support;
 
 /// A per-call nonce for the fixture root.
 ///
-/// The clock alone is not an isolation primitive: its granularity on a loaded or virtualised host
-/// can exceed the interval between two tests, and two fixtures that resolve to the same root fail
-/// in `create_dir` rather than in the code under test. Pair the clock with the process id and with
-/// a process-wide counter, which no two calls in the same process can share.
+/// The process id and the clock are not an isolation primitive on their own: clock granularity on a
+/// loaded or virtualised host can exceed the interval between two tests, and two fixtures that
+/// resolve to the same root fail in `create_dir` rather than in the code under test. Adding a
+/// process-wide counter, which no two calls in the same process can share, removes that residue.
 fn fixture_nonce() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
