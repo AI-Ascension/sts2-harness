@@ -194,4 +194,7 @@ pub struct CommandApplication {
     pub snapshot: RunSnapshot,
     pub outcome: super::super::contract::CommandOutcome,
     pub reason_code: String,
+    /// Binding accepted by this command, before its runtime cursor advanced.
+    /// This is historical evidence, never current authorization.
+    pub context_binding: Option<super::super::context_owner::ContextOwnerBinding>,
 }

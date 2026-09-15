@@ -72,6 +72,48 @@ pub struct CommandApplication {
 }
 
 pub trait WorkflowStore: Send + Sync {
+    /// Whether this store atomically retains bounded context metadata with a
+    /// command result. Unsupported stores cannot enable the opt-in service.
+    fn supports_context_binding_history(&self) -> bool {
+        false
+    }
+
+    /// Checks bounded history capacity before a new step crosses any owner or
+    /// execution port. Exact command replay must bypass this admission check.
+    fn check_context_binding_history_capacity(&self, _run_id: &str) -> Result<(), StoreError> {
+        Err(StoreError::new(
+            "context_history_unavailable",
+            "context history is unsupported",
+        ))
+    }
+
+    fn recorded_context_binding(
+        &self,
+        _run_id: &str,
+        _node_execution_id: &str,
+    ) -> Result<Option<super::RecordedContextBinding>, StoreError> {
+        Err(StoreError::new(
+            "context_history_unavailable",
+            "context history is unsupported",
+        ))
+    }
+
+    /// Commits historical evidence and result together, or neither. The binding
+    /// must match the accepted pre-command cursor, not the advanced snapshot.
+    fn apply_command_with_context_binding(
+        &self,
+        request: &CommandRequest,
+        request_digest: &str,
+        application: CommandApplication,
+        record: super::RecordedContextBinding,
+    ) -> Result<CommandResponse, StoreError> {
+        let _ = (request, request_digest, application, record);
+        Err(StoreError::new(
+            "context_history_unavailable",
+            "context history is unsupported",
+        ))
+    }
+
     fn lookup_submission(
         &self,
         request_id: &str,

@@ -61,6 +61,7 @@ pub(super) fn application(
         snapshot,
         outcome,
         reason_code: reason.to_owned(),
+        context_binding: run.context_binding.clone(),
     }
 }
 

@@ -111,6 +111,7 @@ impl WorkflowExecutionPort for ExecutionDouble {
             snapshot: next,
             outcome: sts2_harness::management::CommandOutcome::Applied,
             reason_code: context.request.kind.reason_code().to_owned(),
+            context_binding: None,
         })
     }
 }

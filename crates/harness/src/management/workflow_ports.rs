@@ -471,6 +471,7 @@ impl WorkflowExecutionPort for SyntheticExecutionPort {
             snapshot,
             outcome: super::contract::CommandOutcome::Applied,
             reason_code: context.request.kind.reason_code().to_owned(),
+            context_binding: None,
         })
     }
 }
@@ -640,6 +641,7 @@ impl WorkflowExecutionPort for PersistentSyntheticExecutionPort {
             snapshot,
             outcome: super::contract::CommandOutcome::Applied,
             reason_code: context.request.kind.reason_code().to_owned(),
+            context_binding: None,
         })
     }
 }

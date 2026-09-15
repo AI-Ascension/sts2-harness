@@ -178,6 +178,7 @@ pub(super) fn apply_command(
     request: &CommandRequest,
     request_digest: &str,
     application: CommandApplication,
+    record: Option<super::super::super::RecordedContextBinding>,
 ) -> Result<CommandResponse, StoreError> {
     let mut connection = connection(store)?;
     let transaction = connection.transaction().map_err(sqlite_error)?;
@@ -200,8 +201,12 @@ pub(super) fn apply_command(
         ));
     }
     if let Some(response) = response {
+        let response = decode(&response)?;
+        if let Some(record) = &record {
+            super::context_history::verify_replay(&transaction, request, &response, record)?;
+        }
         transaction.commit().map_err(sqlite_error)?;
-        return decode(&response);
+        return Ok(response);
     }
     let expected_revision = snapshot
         .run_revision
@@ -216,6 +221,15 @@ pub(super) fn apply_command(
         ));
     }
     let sequence = next_sequence(&transaction, &request.run_id)?;
+    if let Some(record) = &record {
+        super::context_history::insert(
+            &transaction,
+            request,
+            &snapshot,
+            &application.snapshot,
+            record,
+        )?;
+    }
     let event = sqlite_event(
         &application.snapshot,
         sequence,
