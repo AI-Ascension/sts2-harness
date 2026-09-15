@@ -1,5 +1,11 @@
 # Compatibility Policy and Matrix
 
+The additive game-information consumer pins the exact v1 schema independently of the Rust
+protocol dependency. Its synthetic component matrix and pending mixed-catalog/provider gates
+are recorded in [ADR 0021](decisions/0021-game-information-consumer.md). Public static/player
+live lookups, bounded retained pages and encrypted restart replay are component-tested;
+native/provider execution and the old native Exo adapter's tool translation remain unverified.
+
 ## Effective-limit consumer alignment
 
 The matrix records Console `df36452adcfa1b1c3a7f968be243cd25a02433c3` and Studio

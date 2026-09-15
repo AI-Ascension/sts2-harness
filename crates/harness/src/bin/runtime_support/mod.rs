@@ -18,7 +18,10 @@ pub(crate) use config::RuntimeConfig;
 pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
     if matches!(
         config.runtime_profile.as_str(),
-        "runtime-v3-gameplay" | "runtime-v4-expert" | "runtime-v4-expert-rest-action"
+        "runtime-v3-gameplay"
+            | "negotiated-composition-v1"
+            | "runtime-v4-expert"
+            | "runtime-v4-expert-rest-action"
     ) {
         runtime_v3::run(config)
     } else {

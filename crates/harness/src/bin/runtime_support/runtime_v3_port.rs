@@ -2,6 +2,8 @@
 
 
 include!("runtime_v3_port_helpers.rs");
+#[path = "runtime_v3_game_information.rs"]
+mod game_information;
 
 impl RuntimeV3Port {
     #[cfg(test)]

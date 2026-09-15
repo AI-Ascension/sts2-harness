@@ -7,6 +7,13 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Add scoped game-information v1 lookup consumption through the existing MCP port, a bounded
+  typed agent tool loop, complete-source validation before projection, separate source/view
+  identities and encrypted pinned replay archives. The opt-in mixed catalog preserves legacy
+  profiles. Synthetic tool-loop and SQLite restart evidence do not claim native provider or
+  exact-host execution; the old native Exo adapter remains terminal-decision-only.
+  See [ADR 0021](docs/decisions/0021-game-information-consumer.md). Refs #127.
+
 - Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
   and validate exact decision/reservation metadata before completion or uncertainty writes.
   Validate authenticated lifecycle-to-broker references and phase relationships before

@@ -61,6 +61,8 @@ mod exo;
 mod exo_admitted_transport;
 pub mod exo_lifecycle;
 mod exo_process;
+pub mod game_information;
+mod game_information_validation;
 mod identity;
 pub mod management;
 mod map;
