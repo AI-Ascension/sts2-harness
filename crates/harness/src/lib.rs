@@ -23,6 +23,7 @@ pub fn sha256_hex(bytes: impl AsRef<[u8]>) -> String {
 }
 
 mod artifact;
+pub mod benchmark_manifest;
 mod catalog_identity;
 mod checkpoint_capability;
 mod checkpoint_projection;

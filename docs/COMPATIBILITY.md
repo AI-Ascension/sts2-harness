@@ -1,5 +1,18 @@
 # Compatibility Policy and Matrix
 
+## Benchmark manifest foundation
+
+`benchmark_manifest` adds a private `ascension.benchmark-manifest.v1` owner format and
+an effect-free Rust API. This is `additive-compatible`: it changes no old record,
+seed normalization, native wire artifact, database or runtime admission. Strict readers
+reject unknown versions/fields, duplicate members and incomplete required inputs.
+There are no compatibility relaxations; equal declarations do not establish runtime support.
+See [ADR 0021](decisions/0021-benchmark-manifest-foundation.md) for exact identity and
+receipt evidence limits. The supported input context remains standard Ironclad,
+ascension 0..20, with a fresh baseline; other modes/characters remain unsupported here.
+Seed generation/durability, complete native readback/RNG, cold-launch integration,
+profile provisioning and provider execution remain unverified and outside this delivery.
+
 ## Effective-limit consumer alignment
 
 The matrix records Console `df36452adcfa1b1c3a7f968be243cd25a02433c3` and Studio

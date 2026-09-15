@@ -7,6 +7,13 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Add the opt-in immutable benchmark manifest library: bounded strict v1 parsing,
+  separate gameplay/experiment/occurrence identities, exact mismatch reasons and
+  keyed public references. Existing seed receipts can be associated with an immutable
+  planned trial as `seed_receipt_bound`; this is offline consistency, not native
+  reproducibility or hidden RNG verification. No runtime or legacy-record behavior changes.
+  See [ADR 0021](docs/decisions/0021-benchmark-manifest-foundation.md). Refs #121.
+
 - Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
   and validate exact decision/reservation metadata before completion or uncertainty writes.
   Validate authenticated lifecycle-to-broker references and phase relationships before

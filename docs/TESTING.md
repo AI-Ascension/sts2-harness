@@ -1,5 +1,18 @@
 # Testing and Evidence
 
+## Benchmark manifest library
+
+`cargo test --locked --package sts2-harness --test benchmark_manifest --test benchmark_manifest_receipt`
+exercises the production private parser, canonical identities, every controlled input axis,
+separate experiment/occurrence identity, nested duplicate/malformed/size boundaries,
+exact seed/context/fence receipt association, and public/debug privacy. The hand-authored MIT
+synthetic configuration uses the existing pinned MIT seeded-run-v1 golden. No fixture contains
+game files, real profiles or provider content.
+
+Receipt tests explicitly distinguish the available wire identity from harness-only run/process
+declarations and native facts absent from the receipt. Reconstructing a plan in memory is not
+a crash, durable seed-generation, native-game, provider or cold-launch test.
+
 ## Purpose
 
 Tests must prove observable coordination, record, lifecycle, privacy, and artifact behavior rather

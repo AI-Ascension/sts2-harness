@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 // Source-owned envelope generation is the request fence, not the resulting generation.
 // These are structural/internal receipt checks; no offline adapter can authenticate the host.
-pub(super) fn valid(receipt: &Value) -> bool {
+pub(crate) fn valid(receipt: &Value) -> bool {
     let v = &receipt["settled"];
     if v["protocol_version"] != "seeded-run-v1"
         || v["schema_digest"] != "5c659f344be78f84e8d783986925d462714f933cac95d18943358992f7d3e2b8"
