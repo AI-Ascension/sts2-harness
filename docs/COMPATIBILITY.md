@@ -1,5 +1,16 @@
 # Compatibility Policy and Matrix
 
+## Opt-in recorded context bindings
+
+[ADR 0022](decisions/0022-recorded-context-binding-history.md) adds private, bounded SQLite
+binding history and a scoped library-only historical reader. Public closed JSON schemas,
+current-cursor association semantics and file-store JSON remain unchanged. Old SQLite stores
+start with no history; rollback binaries ignore and preserve the added table. Retention is
+explicitly enabled and does not imply current owner availability or control permission.
+The unreleased Rust `CommandApplication` gains `context_binding`; source constructors must
+set `None` or provide exact accepted binding evidence. Default `WorkflowStore` hooks remain
+unsupported, and existing default compositions do not retain this metadata.
+
 ## Effective-limit consumer alignment
 
 The matrix records Console `df36452adcfa1b1c3a7f968be243cd25a02433c3` and Studio
