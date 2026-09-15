@@ -38,6 +38,16 @@ The unreleased Rust `CommandApplication` gains `context_binding`; source constru
 set `None` or provide exact accepted binding evidence. Default `WorkflowStore` hooks remain
 unsupported, and existing default compositions do not retain this metadata.
 
+## Selected context-control limit enforcement
+
+[ADR 0028](decisions/0028-selected-context-control-limit-enforcement.md) adds
+`ContextRenderLimits` and `ContextRenderer::enabled_at_with_limits`, which enforce the limits a
+binding actually advertises (`max_items`, `max_notes`, `max_objective_bytes`, `max_context_bytes`)
+rather than only the harness maxima, reporting `ExceedsSelectedLimit` with the offending limit name.
+This is `additive-compatible`: `enabled`, `enabled_at` and `legacy` are unchanged and the harness
+maxima are untouched. `max_control_events` enforcement belongs to the control-transition path and
+remains outstanding.
+
 ## Saved provider-session policy migration
 
 [ADR 0027](decisions/0027-provider-session-policy-migration.md) adds

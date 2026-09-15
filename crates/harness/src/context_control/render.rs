@@ -120,6 +120,31 @@ impl PreparedContext {
     }
 }
 
+/// Selected owner/profile limits a managed render must respect.
+///
+/// These are the values the authoritative owner advertises in its binding's
+/// `ContextEffectiveLimits`. The harness maxima stay the outer bound; enforcing them is what the
+/// renderer has always done, so passing the maxima here preserves existing behaviour exactly.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ContextRenderLimits {
+    pub max_items: usize,
+    pub max_notes: usize,
+    pub max_context_bytes: usize,
+    pub max_objective_bytes: usize,
+}
+
+impl ContextRenderLimits {
+    #[must_use]
+    pub fn harness_maxima() -> Self {
+        Self {
+            max_items: MAX_CONTEXT_ITEMS,
+            max_notes: MAX_CONTEXT_NOTES,
+            max_context_bytes: MAX_CONTEXT_BYTES,
+            max_objective_bytes: MAX_OBJECTIVE_BYTES,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ContextRenderError {
     InvalidInput(&'static str),
@@ -128,6 +153,7 @@ pub enum ContextRenderError {
     ExpiredItem,
     InvalidUtf8,
     TooLarge,
+    ExceedsSelectedLimit(&'static str),
     Encode,
 }
 
@@ -140,6 +166,7 @@ impl std::fmt::Display for ContextRenderError {
             Self::ExpiredItem => "selected item is expired",
             Self::InvalidUtf8 => "selected item is not valid UTF-8",
             Self::TooLarge => "prepared context exceeds its bound",
+            Self::ExceedsSelectedLimit(_) => "prepared context exceeds the selected owner limit",
             Self::Encode => "prepared context encoding failed",
         })
     }
@@ -206,9 +233,39 @@ impl ContextRenderer {
         config: &ExoConfig,
         now: u64,
     ) -> Result<PreparedContext, ContextRenderError> {
+        Self::enabled_at_with_limits(
+            boundary,
+            request,
+            draft,
+            registry,
+            config,
+            now,
+            &ContextRenderLimits::harness_maxima(),
+        )
+    }
+
+    /// Renders against the **selected** owner/profile limits. The harness maxima are checked first
+    /// (unchanged), then the advertised limits are enforced with a precise error naming the limit,
+    /// so a draft that the harness could prepare but the selected owner cannot accept is refused
+    /// before any inference or retention rather than failing late.
+    pub fn enabled_at_with_limits(
+        boundary: &ContextBoundary,
+        request: ManagedRenderInput,
+        draft: &ContextDraft,
+        registry: &BTreeMap<String, ContextItem>,
+        config: &ExoConfig,
+        now: u64,
+        limits: &ContextRenderLimits,
+    ) -> Result<PreparedContext, ContextRenderError> {
         validate_request(&request)?;
         if draft.selected_items.len() > MAX_CONTEXT_ITEMS || draft.notes.len() > MAX_CONTEXT_NOTES {
             return Err(ContextRenderError::TooLarge);
+        }
+        if draft.selected_items.len() > limits.max_items {
+            return Err(ContextRenderError::ExceedsSelectedLimit("max_items"));
+        }
+        if draft.notes.len() > limits.max_notes {
+            return Err(ContextRenderError::ExceedsSelectedLimit("max_notes"));
         }
         if draft
             .selected_items
@@ -317,6 +374,12 @@ impl ContextRenderer {
                     .map_err(|_| ContextRenderError::InvalidUtf8)
             })
             .transpose()?;
+        let objective_text = objective.unwrap_or_else(|| request.objective.clone());
+        if objective_text.len() > limits.max_objective_bytes {
+            return Err(ContextRenderError::ExceedsSelectedLimit(
+                "max_objective_bytes",
+            ));
+        }
         let managed_context = json!({
             "selected_items": selected,
             "pinned_item_ids": draft.pinned_item_ids,
@@ -337,7 +400,7 @@ impl ContextRenderer {
             "generation": request.generation,
             "observation": request.observation,
             "legal_action_ids": request.legal_action_ids,
-            "objective": objective.unwrap_or_else(|| request.objective.clone()),
+            "objective": objective_text,
             "hard_constraints": request.hard_constraints,
             "max_response_bytes": config.max_response_bytes,
             "management_profile": ManagementProfile::Enabled.as_str(),
@@ -359,6 +422,11 @@ impl ContextRenderer {
             || configuration.len() > MAX_CONTEXT_BYTES
         {
             return Err(ContextRenderError::TooLarge);
+        }
+        if input.len() > limits.max_context_bytes {
+            return Err(ContextRenderError::ExceedsSelectedLimit(
+                "max_context_bytes",
+            ));
         }
         let manifest_sha256 = manifest_digest(
             &input,

@@ -7,6 +7,13 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Enforce the **selected** context-control limits that a binding advertises instead of only the
+  harness maxima: `ContextRenderer::enabled_at_with_limits` refuses a draft that exceeds the
+  advertised `max_items`, `max_notes`, `max_objective_bytes` or `max_context_bytes` with a precise
+  error naming the limit, before any inference or retention. Compatibility: additive; `enabled`,
+  `enabled_at` and `legacy` keep their signatures and behaviour, and no bound changes. See
+  [ADR 0028](docs/decisions/0028-selected-context-control-limit-enforcement.md). Refs #95.
+
 - Add bounded migration records for saved provider-session policies that are portable-schema valid
   but above the selected profile's executable ceiling: the exact saved bytes and violated limits are
   retained, and adoption requires explicit approval plus a caller-supplied target that is already

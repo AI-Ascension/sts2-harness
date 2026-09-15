@@ -4,6 +4,23 @@
 
 use super::*;
 
+impl ContextEffectiveLimits {
+    /// The selected limits a managed render must respect.
+    ///
+    /// The advertised values are validated against the harness maxima when the descriptor is
+    /// validated, so this conversion cannot widen a bound; it narrows the renderer's outer
+    /// harness-maxima check to what this owner/profile actually accepts.
+    #[must_use]
+    pub fn render_limits(&self) -> ContextRenderLimits {
+        ContextRenderLimits {
+            max_items: self.max_items as usize,
+            max_notes: self.max_notes as usize,
+            max_context_bytes: self.max_context_bytes as usize,
+            max_objective_bytes: self.max_objective_bytes as usize,
+        }
+    }
+}
+
 pub trait ContextOwnerPort: Send + Sync {
     fn catalog(&self, actor: &AuthContext) -> Result<ContextBindingCatalog, ManagementError>;
 
