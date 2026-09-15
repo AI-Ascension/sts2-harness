@@ -7,7 +7,7 @@ use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Number, Value};
 
 // Preserve integer source fields exactly; convert to binary64 only during JCS emission.
-pub(super) fn parse(bytes: &[u8]) -> Result<Value, String> {
+pub(crate) fn parse(bytes: &[u8]) -> Result<Value, String> {
     let nodes = Cell::new(0);
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
     let value = Seed {

@@ -7,6 +7,14 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Add the opt-in immutable benchmark manifest library: bounded strict v1 parsing,
+  separate gameplay/experiment/occurrence identities, exact mismatch reasons and
+  keyed public references. Existing seed receipts can be associated with an immutable
+  planned trial as `seed_receipt_bound` only when the declared protocol version and schema
+  digest also match; this is offline consistency, not native
+  reproducibility or hidden RNG verification. No runtime or legacy-record behavior changes.
+  See [ADR 0021](docs/decisions/0021-benchmark-manifest-foundation.md). Refs #121.
+
 - Add opt-in bounded SQLite history for context-owner bindings, committed atomically with
   command results and read by original invocation with current scoped, same-subject permission.
   Historical grants and epochs never authorize current control or claim a restored owner.
