@@ -6,6 +6,7 @@ use super::common::{
     SESSION_POLICY_SCHEMA_MAX_COMPLETED_TURNS, SESSION_POLICY_SCHEMA_MAX_HISTORY_TTL_SECONDS,
     SessionError, digest, valid_digest, valid_id,
 };
+use super::policy_migration::{SessionPolicyLimitViolation, TTL_LIMIT, TURN_LIMIT};
 use crate::effective_limits::UnavailableReason;
 use serde::{Deserialize, Serialize};
 
@@ -61,6 +62,36 @@ pub enum ProviderSessionMode {
 pub enum ContinuityMode {
     StrictReviewed,
     ObservedPersistent,
+}
+
+impl ProviderSessionPolicy {
+    /// Limits this saved policy asks for that the selected profile cannot execute.
+    ///
+    /// Only advertised limits are considered: an absent row is reported by
+    /// [`Self::admit_for_profile`] as not advertised rather than being treated as a violation.
+    #[must_use]
+    pub fn capability_limit_violations(
+        &self,
+        capabilities: &NativeCapabilities,
+    ) -> Vec<SessionPolicyLimitViolation> {
+        let record = capabilities.effective_limit_record();
+        let mut violations = Vec::new();
+        for (field, requested) in [
+            (TURN_LIMIT, self.max_completed_turns as u64),
+            (TTL_LIMIT, self.history_ttl_seconds),
+        ] {
+            if let Some(effective) = record.executable_ceiling(field)
+                && requested > effective
+            {
+                violations.push(SessionPolicyLimitViolation {
+                    limit: field.to_owned(),
+                    requested,
+                    effective,
+                });
+            }
+        }
+        violations
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

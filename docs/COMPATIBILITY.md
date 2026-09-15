@@ -38,6 +38,16 @@ The unreleased Rust `CommandApplication` gains `context_binding`; source constru
 set `None` or provide exact accepted binding evidence. Default `WorkflowStore` hooks remain
 unsupported, and existing default compositions do not retain this metadata.
 
+## Saved provider-session policy migration
+
+[ADR 0027](decisions/0027-provider-session-policy-migration.md) adds
+`SessionPolicyMigrationProposal`, which records a saved policy that is portable-schema valid but
+above the selected profile's executable ceiling. It retains the exact saved bytes and the violated
+limits, requires explicit approval, and adopts only a caller-supplied target that is itself within the
+executable ceilings (`effective_limit_exceeded` otherwise). This is `additive-compatible` and
+library-only: no policy field, schema, digest, range or bound changes, and nothing is clamped,
+persisted or activated.
+
 ## Saved provider-session policy admission
 
 [ADR 0026](decisions/0026-provider-session-saved-policy-admission.md) adds
