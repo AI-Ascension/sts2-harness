@@ -271,3 +271,48 @@ fn unverified_profiles_and_absent_context_continuity_fail_closed() {
         Err(ExoPreflightError::ContextUnsupported)
     );
 }
+
+fn assert_identity_axis_mismatch(name: &'static str, mutate: impl FnOnce(&mut ExoIdentity)) {
+    let trusted = standard_trusted(complete_identity());
+    let mut descriptor = prepared_descriptor(&trusted.identity);
+    mutate(&mut descriptor.identity);
+    assert_eq!(
+        preflight(&descriptor, &trusted),
+        Err(ExoPreflightError::IdentityMismatch(name)),
+        "{name} mismatch must fail closed before any model/game effect"
+    );
+}
+
+#[test]
+fn every_deployment_identity_axis_fails_closed_before_effects() {
+    assert_identity_axis_mismatch("package_digest", |identity| {
+        identity.package_digest = Some(String::from("1").repeat(64));
+    });
+    assert_identity_axis_mismatch("extension_digest", |identity| {
+        identity.extension_digest = Some(String::from("2").repeat(64));
+    });
+    assert_identity_axis_mismatch("bridge_digest", |identity| {
+        identity.bridge_digest = Some(String::from("3").repeat(64));
+    });
+    assert_identity_axis_mismatch("prompt_digest", |identity| {
+        identity.prompt_digest = Some(String::from("4").repeat(64));
+    });
+    assert_identity_axis_mismatch("tool_digest", |identity| {
+        identity.tool_digest = Some(String::from("5").repeat(64));
+    });
+    assert_identity_axis_mismatch("config_digest", |identity| {
+        identity.config_digest = Some(String::from("6").repeat(64));
+    });
+    assert_identity_axis_mismatch("model_binding", |identity| {
+        identity.model_binding = Some(String::from("o3-pro"));
+    });
+    assert_identity_axis_mismatch("provider", |identity| {
+        identity.provider = Some(String::from("openrouter"));
+    });
+    assert_identity_axis_mismatch("endpoint", |identity| {
+        identity.endpoint = Some(String::from("https://api.openai.com/v2"));
+    });
+    assert_identity_axis_mismatch("native_instance_id", |identity| {
+        identity.native_instance_id = Some(String::from("native-2"));
+    });
+}
