@@ -6,11 +6,12 @@ use serde_json::json;
 use sts2_harness::{
     EXO_BRIDGE_WIRE_VERSION, EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES,
     EXO_RESTRICTED_MAX_QUOTA_BYTES, EXO_RESTRICTED_MAX_RETENTION_DAYS, EXO_SOURCE_REVISION,
-    ExoCapabilityDescriptor, ExoCapabilityState, ExoContextMode, ExoDecisionRequest, ExoLimits,
-    ExoPlatform, ExoPreflightError, ExoPrivateStateError, ExoPrivateStatePolicy, ExoProfile,
-    ExoRestrictedError, ExoRuntime, ExoTerminalOutcome, ExoToolCatalog, ExoToolCatalogError,
-    ExoTrustedConfiguration, ExoWireError, ExoWireOutcome, PrivateRootKind, REVIEWED_MODEL_TOOLS,
-    encode_bridge_request, encode_bridge_response, exo_bridge_manifest, parse_bridge_decision,
+    ExoCapabilityDescriptor, ExoCapabilityState, ExoContextMode, ExoDecisionRequest,
+    ExoDescriptorError, ExoIdentity, ExoLimits, ExoPlatform, ExoPreflightError,
+    ExoPrivateStateError, ExoPrivateStatePolicy, ExoProfile, ExoRestrictedError, ExoRuntime,
+    ExoTerminalOutcome, ExoToolCatalog, ExoToolCatalogError, ExoTrustedConfiguration, ExoWireError,
+    ExoWireOutcome, PrivateRootKind, REVIEWED_MODEL_TOOLS, encode_bridge_request,
+    encode_bridge_response, exo_bridge_manifest, parse_bridge_decision,
     parse_bridge_decision_envelope, parse_bridge_request, parse_bridge_request_envelope, preflight,
     responses_capable, responses_routing_capable, verify_control_identity,
     verify_exo_bridge_artifact,
@@ -36,6 +37,9 @@ mod exo_contract_projection;
 
 #[path = "support/exo_contract_conformance.rs"]
 mod exo_contract_conformance;
+
+#[path = "support/exo_contract_capability.rs"]
+mod exo_contract_capability;
 
 #[path = "support/exo_contract_restricted.rs"]
 mod exo_contract_restricted;
@@ -79,6 +83,43 @@ fn frozen_artifact_and_source_descriptor_verify() {
     );
     assert_eq!(descriptor.context_modes, vec![ExoContextMode::Fresh]);
     assert_eq!(descriptor.platforms, vec![ExoPlatform::LinuxX86_64]);
+}
+
+#[test]
+fn manifest_pin_inventory_lists_existing_required_consumers() {
+    let manifest: serde_json::Value =
+        serde_json::from_str(exo_bridge_manifest()).expect("manifest is JSON");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+    let pins = manifest["pin_locations"]
+        .as_array()
+        .expect("pin_locations is an array")
+        .iter()
+        .map(|value| value.as_str().expect("pin location is a string"))
+        .collect::<Vec<_>>();
+    for path in &pins {
+        assert!(
+            root.join(path).exists(),
+            "recorded Exo pin location is missing: {path}"
+        );
+    }
+    for required in [
+        "crates/harness/src/exo/contract/mod.rs",
+        "crates/harness/src/exo/contract/identity.rs",
+        "crates/harness/src/exo/contract/preflight.rs",
+        "crates/harness/src/bin/runtime_support/runtime_v3_settings.rs",
+        "crates/harness/src/bin/runtime_support/runtime_v3_durable_support.rs",
+        "crates/harness/src/bin/sts2-harness-exo.rs",
+        "experiments/exo-agent/config.example.toml",
+        "experiments/exo-agent/extension/package.json",
+        "experiments/exo-agent/extension/src/index.ts",
+    ] {
+        assert!(
+            pins.contains(&required),
+            "required Exo pin location is not inventoried: {required}"
+        );
+    }
 }
 
 #[test]

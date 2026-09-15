@@ -155,3 +155,119 @@ fn responses_capable_mirrors_pinned_upstream_routing() {
         );
     }
 }
+
+fn standard_trusted(identity: ExoIdentity) -> ExoTrustedConfiguration {
+    ExoTrustedConfiguration {
+        identity,
+        platform: ExoPlatform::LinuxX86_64,
+        profile: ExoProfile::Standard,
+        context_mode: ExoContextMode::Fresh,
+        runtime: ExoRuntime::Responses,
+        limits: ExoLimits::reviewed(),
+        restricted: restricted_profile(),
+    }
+}
+
+fn prepared_descriptor(identity: &ExoIdentity) -> ExoCapabilityDescriptor {
+    let mut descriptor =
+        ExoCapabilityDescriptor::source_review().expect("source descriptor is valid");
+    enable_minimum_capabilities(&mut descriptor);
+    descriptor.identity = identity.clone();
+    descriptor
+}
+
+#[test]
+fn unsupported_descriptor_versions_and_shapes_fail_preflight_before_effects() {
+    let identity = complete_identity();
+    let trusted = standard_trusted(identity.clone());
+
+    let mut wrong_schema = prepared_descriptor(&identity);
+    wrong_schema.schema_version = String::from("sts2.exo-capability-v0");
+    assert_eq!(
+        preflight(&wrong_schema, &trusted),
+        Err(ExoPreflightError::InvalidDescriptor(
+            ExoDescriptorError::SchemaMismatch
+        ))
+    );
+
+    let mut wrong_contract = prepared_descriptor(&identity);
+    wrong_contract.contract_version = String::from("sts2-exo-bridge-v0");
+    assert_eq!(
+        preflight(&wrong_contract, &trusted),
+        Err(ExoPreflightError::InvalidDescriptor(
+            ExoDescriptorError::ContractMismatch
+        ))
+    );
+
+    let mut no_decision_kinds = prepared_descriptor(&identity);
+    no_decision_kinds.decision_kinds.clear();
+    assert_eq!(
+        preflight(&no_decision_kinds, &trusted),
+        Err(ExoPreflightError::InvalidDescriptor(
+            ExoDescriptorError::InvalidDecisionKinds
+        ))
+    );
+
+    let mut standard_unavailable = prepared_descriptor(&identity);
+    standard_unavailable.profile_support.standard = ExoCapabilityState::Unsupported;
+    assert_eq!(
+        preflight(&standard_unavailable, &trusted),
+        Err(ExoPreflightError::InvalidDescriptor(
+            ExoDescriptorError::StandardUnavailable
+        ))
+    );
+
+    let mut no_fresh_context = prepared_descriptor(&identity);
+    no_fresh_context.context_modes.clear();
+    assert_eq!(
+        preflight(&no_fresh_context, &trusted),
+        Err(ExoPreflightError::InvalidDescriptor(
+            ExoDescriptorError::FreshContextUnavailable
+        ))
+    );
+
+    let mut no_platform = prepared_descriptor(&identity);
+    no_platform.platforms.clear();
+    assert_eq!(
+        preflight(&no_platform, &trusted),
+        Err(ExoPreflightError::InvalidDescriptor(
+            ExoDescriptorError::PlatformUnavailable
+        ))
+    );
+
+    let mut invalid_limit = prepared_descriptor(&identity);
+    invalid_limit.limits.max_turns = 0;
+    assert_eq!(
+        preflight(&invalid_limit, &trusted),
+        Err(ExoPreflightError::InvalidDescriptor(
+            ExoDescriptorError::InvalidLimit("max_turns")
+        ))
+    );
+}
+
+#[test]
+fn unverified_profiles_and_absent_context_continuity_fail_closed() {
+    let identity = complete_identity();
+    let descriptor = prepared_descriptor(&identity);
+
+    let mut map = standard_trusted(identity.clone());
+    map.profile = ExoProfile::Map;
+    assert_eq!(
+        preflight(&descriptor, &map),
+        Err(ExoPreflightError::ProfileUnsupported)
+    );
+
+    let mut expert = standard_trusted(identity.clone());
+    expert.profile = ExoProfile::Expert;
+    assert_eq!(
+        preflight(&descriptor, &expert),
+        Err(ExoPreflightError::ProfileUnsupported)
+    );
+
+    let mut continuity = standard_trusted(identity);
+    continuity.context_mode = ExoContextMode::Continuity;
+    assert_eq!(
+        preflight(&descriptor, &continuity),
+        Err(ExoPreflightError::ContextUnsupported)
+    );
+}

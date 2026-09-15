@@ -23,6 +23,13 @@ claim a released harness version or runtime compatibility.
   [ADR 0022](docs/decisions/0022-recorded-context-binding-history.md). This library-only slice
   does not implement HTTP history, owner receipt recovery or complete #100 acceptance.
 
+- Reconcile the Exo bridge contract inventory for #139. Add executable conformance vectors for
+  unavailable `map`/`expert` profiles, absent context continuity, incompatible capability
+  schema/contract versions, and malformed descriptor shapes, plus a manifest pin-location drift
+  guard and an explicit upstream dependency/prerequisite record. Compatibility: contract-vector and
+  documentation additions only; no schema or wire field changed. Real provider/native acceptance
+  remains gated by #149.
+
 - Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
   and validate exact decision/reservation metadata before completion or uncertainty writes.
   Validate authenticated lifecycle-to-broker references and phase relationships before
