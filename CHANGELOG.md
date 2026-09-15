@@ -7,6 +7,16 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Record the **real pinned-Exo one-shot executor process oracle** against the shipped extension
+  bytes and bind it mechanically: `docs/evidence/exo-executor-process-oracle-20260915.{md,json}`
+  capture a reproduced run of the real pinned Exo runtime through `sts2-exo-bridge` →
+  `sts2-exo-executor` with an original synthetic loopback model (27/27 cases, four correlated
+  terminal decisions, retry containment to one egress, no provider, no game), the artifact manifest
+  gains a `process_evidence` record, and workspace tests now fail closed when the extension module,
+  the oracle source, or the pin inventory drifts from that record. Compatibility: additive;
+  no schema, wire field, contract version, or runtime behaviour changes. See
+  [the record](docs/evidence/exo-executor-process-oracle-20260915.md). Refs #139.
+
 - Tolerate a **transiently held** owner lease instead of reporting it as busy. `Lease::acquire` now
   retries the non-blocking lock attempt for a bounded interval, because an `flock` belongs to the
   open file description: a descriptor this process has already closed can still be held by a spawned
