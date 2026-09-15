@@ -45,6 +45,12 @@ claim a released harness version or runtime compatibility.
   and artifact source in the manifest and enforce the full set in the drift guard. Refresh the
   manifest checksum. Compatibility: inventory-only; no schema or wire change.
 
+- Require game-information v1 responses with `unavailable` or `not_observable` coverage to carry an
+  unknown total (`total_count_known: false`, `total_count: null`). The harness consumer previously
+  rejected only non-empty pages, accepting a known or fabricated total for coverage extremes and
+  thereby violating the "never convert unknown into zero or empty" rule. Compatibility: validation
+  tightening only; no schema, wire field, or contract version changed.
+
 - Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
   and validate exact decision/reservation metadata before completion or uncertainty writes.
   Validate authenticated lifecycle-to-broker references and phase relationships before

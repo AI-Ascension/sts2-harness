@@ -166,3 +166,83 @@ fn ordering_duplicates_missing_fields_and_utf8_accounting_are_checked()
     );
     Ok(())
 }
+
+fn page_with(
+    request: &Value,
+    coverage: &str,
+    total_count_known: bool,
+    total_count: Value,
+    items: Value,
+    text_bytes: u64,
+) -> Result<Value, ValidationError> {
+    let mut value = response(request)?;
+    value["result"]["page"]["items"] = items;
+    value["result"]["page"]["coverage"] = json!(coverage);
+    value["result"]["page"]["total_count_known"] = json!(total_count_known);
+    value["result"]["page"]["total_count"] = total_count;
+    value["result"]["page"]["final_page"] = json!(true);
+    if let Some(object) = value["result"]["page"].as_object_mut() {
+        object.remove("accounting");
+    }
+    let items = array(&value["result"]["page"]["items"])?.to_vec();
+    let item_bytes = items
+        .iter()
+        .map(encoded_len)
+        .try_fold(0usize, |max, bytes| {
+            Ok::<usize, ValidationError>(max.max(bytes?))
+        })?;
+    let payload_bytes = encoded_len(&value["result"]["page"]["items"])?;
+    let page_bytes = encoded_len(&value["result"]["page"])?;
+    value["result"]["page"]["accounting"] = json!({
+        "item_count":items.len(),"item_bytes":item_bytes,"payload_bytes":payload_bytes,
+        "page_bytes":page_bytes,"text_bytes":text_bytes
+    });
+    Ok(value)
+}
+
+#[test]
+fn unavailable_and_not_observable_coverage_require_unknown_total() -> Result<(), ValidationError> {
+    // Coverage extremes must never carry a known or fabricated total: downstream consumers
+    // must not be able to turn "unknown" into zero or an invented count.
+    let request = request();
+    for coverage in ["unavailable", "not_observable"] {
+        assert_eq!(
+            validate_response(
+                &request,
+                &page_with(&request, coverage, false, Value::Null, json!([]), 0)?
+            ),
+            Ok(()),
+            "an unknown total must be accepted for {coverage}"
+        );
+        for total in [json!(0), json!(42)] {
+            assert_eq!(
+                validate_response(
+                    &request,
+                    &page_with(&request, coverage, true, total.clone(), json!([]), 0)?
+                ),
+                Err(ValidationError::Accounting),
+                "{coverage} must not carry a known total (total={total})"
+            );
+        }
+        // A numeric total alongside `total_count_known: false` is already rejected by the
+        // pinned schema layer; the requirement is that it never validates.
+        assert!(
+            validate_response(
+                &request,
+                &page_with(&request, coverage, false, json!(42), json!([]), 0)?
+            )
+            .is_err(),
+            "{coverage} must not validate a numeric total while unknown"
+        );
+    }
+    let item = response(&request)?["result"]["page"]["items"].clone();
+    assert_eq!(
+        validate_response(
+            &request,
+            &page_with(&request, "unavailable", false, Value::Null, item, 5)?
+        ),
+        Err(ValidationError::Accounting),
+        "unavailable coverage must not carry items"
+    );
+    Ok(())
+}

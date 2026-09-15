@@ -281,7 +281,9 @@ pub(crate) fn validate_response(request: &Value, response: &Value) -> Result<(),
         || (matches!(
             page["coverage"].as_str(),
             Some("unavailable" | "not_observable")
-        ) && !items.is_empty())
+        ) && (page["total_count_known"] != false
+            || !page["total_count"].is_null()
+            || !items.is_empty()))
         || (page["final_page"] == false && items.is_empty())
     {
         return Err(ValidationError::Accounting);
