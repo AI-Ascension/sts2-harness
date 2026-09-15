@@ -62,9 +62,14 @@ async fn relay(
     .await
     .map_err(|_| "exo_bridge_lookup_timeout")??;
     let start = ExoLookupFrame::parse(&bytes).map_err(|_| "exo_bridge_lookup_frame")?;
-    let ExoLookupPayload::Start { request } = &start.payload else {
+    let ExoLookupPayload::Start {
+        request,
+        optional_byte_budget,
+    } = &start.payload
+    else {
         return Err("exo_bridge_lookup_start");
     };
+    let feedback_budget = (*optional_byte_budget).min(EXO_LOOKUP_FEEDBACK_BYTES);
     let request: ExoDecisionRequest =
         serde_json::from_value(request.clone()).map_err(|_| "exo_bridge_lookup_request")?;
     request
@@ -88,6 +93,10 @@ async fn relay(
             "hard_constraints":request.hard_constraints}
     });
     let mut child = executor_command(loaded, private)?
+        .env(
+            "STS2_EXO_LOOKUP_FEEDBACK_BYTES",
+            feedback_budget.to_string(),
+        )
         .arg("--lookup")
         .spawn()
         .map_err(|_| "exo_bridge_executor_unavailable")?;
@@ -161,7 +170,7 @@ async fn relay(
             if serde_json::to_vec(value)
                 .map_err(|_| "exo_bridge_lookup_feedback")?
                 .len()
-                > EXO_LOOKUP_FEEDBACK_BYTES
+                > feedback_budget
             {
                 return Err("exo_bridge_lookup_bound");
             }

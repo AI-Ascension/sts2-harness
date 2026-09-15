@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 //! Original synthetic HTTP/model/tool data; runs the pinned Exo implementation without a provider.
+#[path = "support/lookup_maximum.rs"]
+mod maximum;
 #[allow(dead_code)]
 mod support;
 use serde_json::{Value, json};
@@ -64,7 +66,7 @@ fn real_exo_duplex_lookup_round_trips() -> Result {
         .ok_or("action")?
         .to_owned();
     let mut frame = json!({"wire_version":"sts2.exo-lookup-wire-v1","request_id":"private-request",
-        "turn_id":"private-turn","sequence":0,"payload":{"kind":"start","request":request}});
+        "turn_id":"private-turn","sequence":0,"payload":{"kind":"start","request":request,"optional_byte_budget":7000}});
     write_frame(&mut input, &frame)?;
     for sequence in 1..=2 {
         let mut line = String::new();
@@ -117,15 +119,32 @@ fn real_exo_duplex_lookup_round_trips() -> Result {
     let encoded = serde_json::to_string(&requests[2])?;
     assert!(encoded.contains("synthetic_complete_payload"));
     assert!(!encoded.contains("private-request") && !encoded.contains("private-turn"));
+    let outputs = requests[2]["input"]
+        .as_array()
+        .ok_or("input")?
+        .iter()
+        .filter(|item| item["type"] == "function_call_output")
+        .collect::<Vec<_>>();
+    assert_eq!(outputs.len(), 2);
+    for output in outputs {
+        let text = output["output"].as_str().ok_or("prepared tool output")?;
+        assert!(text.len() <= 7000);
+        let data: Value = serde_json::from_str(text)?;
+        assert_eq!(data["data"]["synthetic_complete_payload"], "sentinel");
+        assert!(data.get("preview").is_none());
+    }
     drop(requests);
     reject_feedback(&binary, &config, &temporary, &model, &frame, true)?;
     reject_feedback(&binary, &config, &temporary, &model, &frame, false)?;
+    let maximum_forwarded = maximum::run(&root, &binary, &config, &temporary, &model)?;
     std::fs::write(
         root.join("target/exo-lookup-oracle-report.json"),
         serde_json::to_vec_pretty(&json!({
             "evidence":"confirmed-real-pinned-Exo-synthetic-model-no-game","exo_revision":"b06869ab789dee3f80ca474b5fa89dbe47ccb859",
         "model_requests":3,"tool_round_trips":2,"complete_tool_payload":true,
         "rejected_feedback_cases":["foreign_turn","oversized_data"],
+        "maximum_source_bytes":65536,"maximum_source_turns":24,
+        "maximum_forwarded_request_bytes":maximum_forwarded,
             "bridge_sha256":digest(&binary)?,"executor_sha256":digest(&executor)?,
             "extension_sha256":digest(&extension)?,"node_sha256":digest(&node)?
         }))?,
@@ -161,7 +180,7 @@ fn reject_feedback(
     )?)?;
     let mut frame = template.clone();
     frame["sequence"] = json!(0);
-    frame["payload"] = json!({"kind":"start","request":request});
+    frame["payload"] = json!({"kind":"start","request":request,"optional_byte_budget":7000});
     write_frame(&mut input, &frame)?;
     let mut line = String::new();
     output.read_line(&mut line)?;

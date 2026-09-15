@@ -9,6 +9,7 @@ pub const EXO_LOOKUP_WIRE: &str = "sts2.exo-lookup-wire-v1";
 pub const EXO_LOOKUP_FRAME_BYTES: usize = 196_608;
 pub const EXO_LOOKUP_TOOL_BYTES: usize = 16_384;
 pub const EXO_LOOKUP_FEEDBACK_BYTES: usize = 7_000;
+pub const EXO_LOOKUP_CHUNK_BYTES: usize = 3_000;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -25,6 +26,7 @@ pub struct ExoLookupFrame {
 pub enum ExoLookupPayload {
     Start {
         request: Value,
+        optional_byte_budget: usize,
     },
     Query {
         arguments: Value,
@@ -57,6 +59,11 @@ impl ExoLookupFrame {
             || !valid_id(&frame.turn_id)
         {
             return Err(LookupError::Invalid);
+        }
+        if matches!(&frame.payload, ExoLookupPayload::Start { optional_byte_budget, .. }
+            if *optional_byte_budget == 0 || *optional_byte_budget > 65_536)
+        {
+            return Err(LookupError::Bounds);
         }
         Ok(frame)
     }
@@ -173,7 +180,14 @@ pub(crate) fn query_turn(
 }
 
 /// Compact bounded feedback survives upstream's 8,000-character tool-result wrapper.
-pub(crate) fn feedback_value(feedback: &LookupFeedback) -> Result<Value, LookupError> {
+pub(crate) fn feedback_value(
+    feedback: &LookupFeedback,
+    budget: usize,
+) -> Result<Value, LookupError> {
+    let maximum = budget.min(EXO_LOOKUP_FEEDBACK_BYTES);
+    if maximum == 0 {
+        return Err(LookupError::Bounds);
+    }
     let value = match feedback {
         LookupFeedback::Data {
             record_ordinal,
@@ -183,7 +197,7 @@ pub(crate) fn feedback_value(feedback: &LookupFeedback) -> Result<Value, LookupE
             if serde_json::to_vec(&full)
                 .map_err(|_| LookupError::Invalid)?
                 .len()
-                <= EXO_LOOKUP_FEEDBACK_BYTES
+                <= maximum
             {
                 full
             } else {
@@ -198,10 +212,32 @@ pub(crate) fn feedback_value(feedback: &LookupFeedback) -> Result<Value, LookupE
             total_bytes,
             bytes,
         } => {
-            let count = bytes.len().min(2048);
-            json!({"record_ordinal":record_ordinal,"offset":offset,"next_offset":offset+count,
-                "total_bytes":total_bytes,"encoding":"hex","bytes":crate::hex_bytes(&bytes[..count]),
-                "authority":"untrusted_game_information_data"})
+            if *record_ordinal >= 256
+                || *total_bytes > 65_536
+                || offset > total_bytes
+                || bytes.len() > total_bytes - offset
+            {
+                return Err(LookupError::Bounds);
+            }
+            let mut count = bytes.len().min(EXO_LOOKUP_CHUNK_BYTES);
+            loop {
+                let next = offset.checked_add(count).ok_or(LookupError::Bounds)?;
+                let value = json!({"record_ordinal":record_ordinal,"offset":offset,"next_offset":next,
+                    "total_bytes":total_bytes,"encoding":"hex","bytes":crate::hex_bytes(&bytes[..count]),
+                    "authority":"untrusted_game_information_data"});
+                let size = serde_json::to_vec(&value)
+                    .map_err(|_| LookupError::Invalid)?
+                    .len();
+                if size <= maximum {
+                    if count == 0 && !bytes.is_empty() {
+                        return Err(LookupError::Bounds);
+                    }
+                    break value;
+                }
+                count = count
+                    .checked_sub((size - maximum).div_ceil(2))
+                    .ok_or(LookupError::Bounds)?;
+            }
         }
         LookupFeedback::Error(error) => json!({"error":error}),
         LookupFeedback::Start => return Err(LookupError::Invalid),
@@ -209,7 +245,7 @@ pub(crate) fn feedback_value(feedback: &LookupFeedback) -> Result<Value, LookupE
     if serde_json::to_vec(&value)
         .map_err(|_| LookupError::Invalid)?
         .len()
-        > EXO_LOOKUP_FEEDBACK_BYTES
+        > maximum
     {
         return Err(LookupError::Bounds);
     }

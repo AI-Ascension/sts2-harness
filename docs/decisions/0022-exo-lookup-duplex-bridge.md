@@ -10,7 +10,8 @@ Its closed configuration pins the owned lookup extension, executor, Node executa
 unchanged Exo source revision `b06869ab789dee3f80ca474b5fa89dbe47ccb859`. The isolated
 executor owns all upstream implementation dependencies. The terminal-only profile is unchanged.
 
-The first frame carries a validated ordinary Exo decision request at sequence zero.
+The first frame carries a validated ordinary Exo decision request and immutable owner
+`optional_byte_budget` at sequence zero.
 The executor emits `query` or `read_retained` frames at sequences 1 through 32;
 the host replies with `feedback` at the same sequence. A `decision` carries only
 `action_id` at the next sequence, at most 33. Each frame separately binds request and
@@ -29,11 +30,28 @@ closed action object. The host independently checks unchanged legal IDs.
 
 Provider arguments cannot supply owner scope, profile, snapshot, transport correlation
 or live instance reference. The host injects those facts from the pinned `LookupBinding`
-and rejects binding or legal-set changes between rounds. Game information is explicitly
+and rejects binding, prepared-budget or legal-set changes between rounds. Game information is explicitly
 untrusted data. Compact JSON text preserves feedback through the upstream 8,000-character
-result wrapper. Oversized views become retained references; reads return at most 2,048
+result wrapper. Oversized views become retained references; reads return at most 3,000
 raw bytes encoded as hex with exact offsets and total size. Paging, archive identity and
 no-fallback replay remain owned by `LookupSession`.
+
+Every serialized prepared feedback value, including native record/offset metadata, must
+fit the smaller of the approved optional budget and 7,000 bytes. Hex chunks shrink to fit
+that encoded budget; the raw-byte budget is never mistaken for the encoded-data budget.
+The owned extension binds native tool call IDs to exact host feedback and projects only
+matching registered result wrappers to that complete feedback. Duplicate native previews
+and artifact metadata remain in native events/artifacts, rather than consuming model
+prepared-data budget. A mismatch fails closed. Internal native assembly is bounded at
+512 KiB solely for this projection; the final forwarded HTTP body remains bounded at
+160 KiB. Legacy and nonlookup behavior does not gain a larger request allowance.
+
+At an approved optional budget of 7,000 bytes, a maximum 65,536-byte source
+needs 22 retained reads; query, reads and final decision fit within 24 of the 32 turns.
+Smaller approved budgets reduce each read and may exhaust the loop, which returns a
+typed bound error instead of a successful truncated decision. Multi-page operations share
+the same per-loop turn budget: the 16-page session cap does not promise all maximum-size
+pages fit in one loop. Retained records remain independently readable and replayable.
 
 The process adapter owns a joined supervisor, bounded channels, absolute deadline and
 process-group cleanup. Bridge stdin EOF cancels its separately owned executor while output
@@ -45,6 +63,8 @@ The deterministic subprocess test drives the production agent loop through stati
 live detail and a legal decision using the admitted MCP mapping. A separate pinned Exo
 oracle confirms two native tool round trips and three synthetic loopback model requests,
 complete feedback in the next model input, and no private host IDs in that input.
+Its maximum-source case also checks 22 retained reads and exact reconstruction from the
+actual final model request while retaining the 160 KiB forwarded-body cap.
 The lane uses Node 22.14.0; upstream's declared 22.15.0 remains unverified.
 
 Automatic main episode binding is not established by these tests. In consumed MCP

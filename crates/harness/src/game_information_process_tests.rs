@@ -4,6 +4,8 @@ use super::*;
 use crate::exo_lookup_process::ExoLookupProcess;
 use crate::{ActionKind, EpisodeLegalAction, EpisodeLegalActionSet, ExoProcessConfig};
 use std::time::{Duration, Instant};
+#[path = "game_information_maximum_process_tests.rs"]
+mod maximum;
 
 fn decision_request() -> Value {
     json!({"schema":"sts2.exo-decision-v1","provider_revision":crate::EXO_SOURCE_REVISION,
@@ -133,7 +135,8 @@ fn duplex_rejects_crash_stall_bounds_correlation_and_forged_action() -> TestResu
                     binding: &session.binding,
                     legal_actions: &legal,
                     feedback: &LookupFeedback::Start,
-                    remaining_turns: 2
+                    remaining_turns: 2,
+                    optional_byte_budget: session.policy.optional_byte_budget,
                 })
                 .is_err()
         );
@@ -154,7 +157,8 @@ fn duplex_pins_owner_scope_between_tool_round_trips() -> TestResult {
             binding: &session.binding,
             legal_actions: &legal,
             feedback: &LookupFeedback::Start,
-            remaining_turns: 2
+            remaining_turns: 2,
+            optional_byte_budget: session.policy.optional_byte_budget,
         })?,
         LookupTurn::ReadRetained { .. }
     ));
@@ -166,7 +170,8 @@ fn duplex_pins_owner_scope_between_tool_round_trips() -> TestResult {
                 binding: &foreign,
                 legal_actions: &legal,
                 feedback: &LookupFeedback::Error(LookupError::MissingRetention),
-                remaining_turns: 1
+                remaining_turns: 1,
+                optional_byte_budget: session.policy.optional_byte_budget,
             })
             .err(),
         Some(LookupError::Scope)

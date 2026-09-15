@@ -27,6 +27,7 @@ pub struct ExoLookupProcess {
     worker: Option<JoinHandle<()>>,
     cancel: tokio::sync::watch::Sender<bool>,
     binding: Option<crate::game_information::LookupBinding>,
+    byte_budget: Option<usize>,
 }
 
 impl ExoLookupProcess {
@@ -52,6 +53,7 @@ impl ExoLookupProcess {
             sequence: 0,
             payload: ExoLookupPayload::Start {
                 request: request.clone(),
+                optional_byte_budget: crate::exo_lookup_wire::EXO_LOOKUP_FEEDBACK_BYTES,
             },
         }
         .encode()?;
@@ -86,6 +88,7 @@ impl ExoLookupProcess {
             worker: Some(worker),
             cancel,
             binding: None,
+            byte_budget: None,
         })
     }
 
@@ -120,6 +123,9 @@ impl LookupAgentPort for ExoLookupProcess {
                 .binding
                 .as_ref()
                 .is_some_and(|binding| binding != input.binding)
+                || self
+                    .byte_budget
+                    .is_some_and(|budget| budget != input.optional_byte_budget)
                 || self.request["generation"].as_u64() != Some(input.legal_actions.generation())
                 || self.request["state_id"].as_str() != Some(input.legal_actions.state_id())
                 || self.request["legal_action_ids"]
@@ -139,12 +145,17 @@ impl LookupAgentPort for ExoLookupProcess {
                     return Err(LookupError::Scope);
                 }
                 self.binding = Some(input.binding.clone());
+                self.byte_budget = Some(input.optional_byte_budget);
                 ExoLookupPayload::Start {
                     request: self.request.clone(),
+                    optional_byte_budget: input.optional_byte_budget,
                 }
             } else {
                 ExoLookupPayload::Feedback {
-                    value: crate::exo_lookup_wire::feedback_value(input.feedback)?,
+                    value: crate::exo_lookup_wire::feedback_value(
+                        input.feedback,
+                        input.optional_byte_budget,
+                    )?,
                 }
             };
             match self.exchange(payload)? {
