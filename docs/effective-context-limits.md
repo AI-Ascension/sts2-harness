@@ -144,8 +144,11 @@ These scalar checks cover the published memory/session records. They do not repl
 policy validation: minimum values and relations such as `max_results <= max_candidates` remain
 separate validator obligations. The management context-control item/note/byte/objective/event
 limits in `management/context_owner_support.rs` are a separate public surface and are not covered
-by this consumer fixture lane. The full harness #95 inventory, saved-policy activation/history
-and composed authenticated owner integration remain open acceptance work.
+by this consumer fixture lane; ADR 0030 composes those selected values with the owner's current run
+binding and exposes them read-only over
+`GET /v1/workflow-runs/{run_id}/context-owner-effective-limits`. The full harness #95 inventory,
+saved-policy activation/history, selected-limit enforcement at the renderer/event-journal point of
+use and consumer adoption remain open acceptance work.
 
 ## Explicit policy migration
 
