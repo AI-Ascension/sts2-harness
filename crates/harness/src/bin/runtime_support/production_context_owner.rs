@@ -9,8 +9,9 @@ use sts2_harness::context_control::{
 };
 use sts2_harness::management::{
     AuthContext, ContextBindingCatalog, ContextBindingContinuity, ContextBindingDescriptor,
-    ContextBindingGrants, ContextBindingRequest, ContextBindingState, ContextEffectiveLimits,
-    ContextOwnerBinding, ContextOwnerPort, LiveContextObservationPort, ManagementError, RunRequest,
+    ContextBindingGrants, ContextBindingOperation, ContextBindingRequest, ContextBindingState,
+    ContextEffectiveLimits, ContextOwnerBinding, ContextOwnerPort, LiveContextObservationPort,
+    ManagementError, RunRequest,
 };
 use sts2_harness::{EpisodeObservation, sha256_hex};
 use zeroize::Zeroize;
@@ -96,7 +97,11 @@ impl Owner {
             context_ref: self.configuration.context_ref.clone(),
             node_kinds: vec!["decide".into()],
             sources: Vec::new(),
-            operations: Vec::new(),
+            operations: vec![
+                ContextBindingOperation::Pause,
+                ContextBindingOperation::Commit,
+                ContextBindingOperation::Resume,
+            ],
             effective_limits: self.configuration.limits.clone(),
             continuity: ContextBindingContinuity {
                 survives_controller_restart: true,
@@ -107,7 +112,7 @@ impl Owner {
                 metadata_read: true,
                 content_read: false,
                 edit: false,
-                control: false,
+                control: true,
             },
             state: ContextBindingState::Available,
         }
@@ -264,6 +269,105 @@ impl ContextOwnerPort for Owner {
             plan_epoch: state.plan_epoch,
             grants: descriptor.grants,
             continuity: descriptor.continuity,
+        })
+    }
+
+    fn control(
+        &self,
+        actor: &AuthContext,
+        binding: &ContextOwnerBinding,
+        command: &sts2_harness::management::ContextControlCommand,
+    ) -> Result<sts2_harness::management::ContextControlReceipt, ManagementError> {
+        if !actor.can("workflow:control") || !actor.can_run(&binding.workflow_run_id) {
+            return Err(ManagementError::forbidden(
+                "context_owner_control_forbidden",
+                "actor cannot control this context authority",
+            ));
+        }
+        let mut current = self.current.lock().map_err(|_| {
+            ManagementError::unavailable("context_owner_lock", "context owner is unavailable")
+        })?;
+        let entry = current.get_mut(&binding.workflow_run_id).ok_or_else(|| {
+            ManagementError::unavailable(
+                "context_owner_association_unavailable",
+                "current authority is unavailable",
+            )
+        })?;
+        if entry.actor != actor.subject || entry.authority.state().boundary != binding.boundary {
+            return Err(ManagementError::conflict(
+                "context_owner_control_stale",
+                "context control binding is stale",
+            ));
+        }
+        let receipt = match command {
+            sts2_harness::management::ContextControlCommand::Pause {
+                idempotency_key,
+                expected_control_version,
+            } => entry
+                .authority
+                .request_pause(idempotency_key, *expected_control_version),
+            sts2_harness::management::ContextControlCommand::Commit {
+                idempotency_key,
+                expected_control_version,
+                expected_revision_id,
+                expected_boundary,
+                preview_manifest_digest,
+                approved_manifest_digest,
+            } => entry.authority.commit(
+                idempotency_key,
+                *expected_control_version,
+                expected_revision_id,
+                expected_boundary,
+                preview_manifest_digest,
+                approved_manifest_digest,
+            ),
+            sts2_harness::management::ContextControlCommand::Resume {
+                idempotency_key,
+                expected_control_version,
+                expected_boundary,
+            } => entry.authority.resume(
+                idempotency_key,
+                *expected_control_version,
+                expected_boundary,
+            ),
+        }
+        .map_err(|error| ManagementError::conflict("context_owner_control_refused", error))?;
+        entry
+            .store
+            .persist(&entry.authority, StoreMode::Enabled)
+            .map_err(|error| {
+                ManagementError::unavailable("context_owner_persist", error.to_string())
+            })?;
+        let state = entry.authority.state();
+        let kind = match command {
+            sts2_harness::management::ContextControlCommand::Pause { .. } => {
+                sts2_harness::management::ContextControlCommandKind::Pause
+            }
+            sts2_harness::management::ContextControlCommand::Commit { .. } => {
+                sts2_harness::management::ContextControlCommandKind::Commit
+            }
+            sts2_harness::management::ContextControlCommand::Resume { .. } => {
+                sts2_harness::management::ContextControlCommandKind::Resume
+            }
+        };
+        Ok(sts2_harness::management::ContextControlReceipt {
+            schema_version: sts2_harness::management::CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION.into(),
+            owner_id: self.configuration.owner_id.clone(),
+            invocation_id: binding.invocation_id.clone(),
+            binding_id: binding.binding_id.clone(),
+            binding_digest: binding.binding_digest.clone(),
+            command: kind,
+            command_id: receipt.command_id,
+            idempotency_key: receipt.idempotency_key,
+            effect: receipt.effect,
+            control_version: receipt.control_version,
+            plan_epoch: receipt.plan_epoch,
+            controller_epoch: state.boundary.controller_epoch,
+            gate_epoch: state.boundary.gate_epoch,
+            boundary: state.boundary.clone(),
+            revision_id: None,
+            preview_manifest_digest: None,
+            approved_manifest_digest: None,
         })
     }
 }
