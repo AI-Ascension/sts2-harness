@@ -55,6 +55,18 @@ now inspected from the launch's own artifacts, an uninspectable pinned axis refu
 `UnboundIdentity`, and the envelope therefore refuses the current deployment for that identity
 reason before the capability gate is reached.
 
+## Update (2026-09-16): the package axis is now bound to an inspected locator
+
+The reviewed envelope requires one additional operator value, `STS2_EXO_PACKAGE_PATH`, and the
+runtime inspects the exact bytes it locates there as the package axis. This is a
+backward-incompatible operator-configuration change: a deployment that does not supply the locator
+fails closed with `STS2_EXO_PACKAGE_PATH is required` while settings are assembled. A package whose
+located bytes do not match `STS2_EXO_PACKAGE_DIGEST` is refused as
+`IdentityMismatch("package_digest")` before the capability gate; the inspected digest is computed
+from the located bytes, never copied from the declaration. Every other part of this ADR is
+unchanged, and because the remaining axes still have no inspected artifact the envelope still
+refuses every deployment today.
+
 ## Open decision
 
 `ExoAdmittedTransport` is single-use by contract (`ExoLimits::reviewed().max_turns == 1`) while a
