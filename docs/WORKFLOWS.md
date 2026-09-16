@@ -35,6 +35,9 @@ Changes to the Studio revision require reviewed consumer regression evidence;
 new incompatible APIs require a coordinated rollout, not silently moving the pin
 to bypass a failure. It does not exercise a game, provider, or deployment.
 Maintain the stable job name when configuring required branch checks externally.
+Failed consumer runs retain their synthetic Playwright traces and error context for
+seven days, keyed by candidate SHA and run attempt. The Studio consumer revision
+and artifact inventory also stay aligned with the effective-limit conformance lane.
 
 ## Effective-limit consumer contract
 
