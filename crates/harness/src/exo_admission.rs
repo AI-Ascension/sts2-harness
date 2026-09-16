@@ -25,6 +25,8 @@ use crate::exo::{
     preflight,
 };
 use crate::exo_admitted_transport::{ExoAdmissionError, ExoAdmittedTransport};
+use crate::exo_lifecycle::{ExoLifecycleRuntimeTransport, LifecycleManifestFactory};
+use crate::ExoCapabilityState;
 use crate::sha256_hex;
 
 /// The exact artifact bytes an operator inspected for one deployment.
@@ -210,6 +212,29 @@ impl ExoAdmissionPlan {
         // Refuse before the admitted wrapper exists so a rejected deployment never dispatches.
         self.validate()?;
         let descriptor = self.reviewed_descriptor()?;
+        ExoAdmittedTransport::new(
+            transport,
+            &descriptor,
+            &self.trusted,
+            self.model_execution_id.clone(),
+            self.request_id.clone(),
+            self.turn_id.clone(),
+        )
+        .map_err(ExoAdmissionRefusal::Admission)
+    }
+
+    /// Admits the receipt-bound lifecycle adapter. This is the sole capability promotion path:
+    /// its concrete type owns a durable lifecycle owner and v2 process effect, whereas the
+    /// generic [`Self::admit`] deliberately retains source-review capability states.
+    pub fn admit_lifecycle<F: LifecycleManifestFactory>(
+        &self,
+        transport: ExoLifecycleRuntimeTransport<F>,
+    ) -> Result<ExoAdmittedTransport<ExoLifecycleRuntimeTransport<F>>, ExoAdmissionRefusal> {
+        let mut descriptor = self.reviewed_descriptor()?;
+        descriptor.lifecycle.cancellation = ExoCapabilityState::Supported;
+        descriptor.lifecycle.recovery = ExoCapabilityState::Supported;
+        descriptor.evidence.turn_identity = ExoCapabilityState::Supported;
+        preflight(&descriptor, &self.trusted).map_err(ExoAdmissionRefusal::Preflight)?;
         ExoAdmittedTransport::new(
             transport,
             &descriptor,
