@@ -12,9 +12,9 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 use sts2_harness::management::{
-    CommandKind, CommandRequest, ManagementClient, RunRequest, RunTargetConfiguration,
-    TARGET_ADMISSION_SCHEMA_VERSION, TARGET_CATALOG_SCHEMA_VERSION, TargetAdmissionRequest,
-    TargetCatalogResponse, TargetPreflightResponse, digest_value,
+    ManagementClient, RunRequest, RunTargetConfiguration, TARGET_ADMISSION_SCHEMA_VERSION,
+    TARGET_CATALOG_SCHEMA_VERSION, TargetAdmissionRequest, TargetCatalogResponse,
+    TargetPreflightResponse, digest_value,
 };
 use sts2_harness::provider_session::{
     NativeCapabilities, ProviderSessionMetadataStore, ProviderSessionPolicy,
@@ -194,6 +194,7 @@ pub(crate) fn run_scenario(
             .env("STS2_EXO_TIMEOUT_MILLIS", "2000")
             .env("STS2_EXO_MAX_REQUEST_BYTES", "131072")
             .env("STS2_EXO_MAX_RESPONSE_BYTES", "8192")
+            .env("STS2_OBJECTIVE", "exercise served policy gate")
             .env("STS2_MAX_STEPS", "4")
             .env("STS2_BARRIER_MAX_POLLS", "1")
             .env("STS2_BARRIER_WAIT_MILLIS", "1")
@@ -297,6 +298,7 @@ pub(crate) fn run_served_policy_gate(
             .env("STS2_EXO_TIMEOUT_MILLIS", "2000")
             .env("STS2_EXO_MAX_REQUEST_BYTES", "131072")
             .env("STS2_EXO_MAX_RESPONSE_BYTES", "8192")
+            .env("STS2_OBJECTIVE", "exercise served policy gate")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let mut service = command.spawn()?;
@@ -487,34 +489,18 @@ fn submit_and_step_policy_gate(
         profile: "live.workflow.v1".to_owned(),
         admission: Some(preflight.admission),
     };
-    let submitted: Value = response(client.request_json(
+    let submitted = client.request_json(
         "POST",
         "/v1/workflow-runs",
         Some(&serde_json::to_vec(&run)?),
-    )?)?;
-    let run_id = submitted["workflow_run_id"]
-        .as_str()
-        .ok_or("served run ID is absent")?;
-    let command = CommandRequest {
-        schema_version: sts2_harness::management::MANAGEMENT_SCHEMA_VERSION.to_owned(),
-        command_id: "served-policy-step".to_owned(),
-        run_id: run_id.to_owned(),
-        expected_revision: 1,
-        actor_scope: "served".to_owned(),
-        kind: CommandKind::Step,
-        parameters: Default::default(),
-    };
-    let reply = client.request_json(
-        "POST",
-        &format!("/v1/workflow-runs/{run_id}/commands"),
-        Some(&serde_json::to_vec(&command)?),
     )?;
-    if reply.status != 409
-        || !String::from_utf8_lossy(&reply.body).contains("provider_session_policy_scope_mismatch")
+    if submitted.status != 409
+        || !String::from_utf8_lossy(&submitted.body)
+            .contains("provider_session_policy_scope_mismatch")
     {
         return Err(format!(
-            "served policy gate did not refuse at launch: {}",
-            String::from_utf8_lossy(&reply.body)
+            "served policy gate did not refuse submission: {}",
+            String::from_utf8_lossy(&submitted.body)
         )
         .into());
     }
