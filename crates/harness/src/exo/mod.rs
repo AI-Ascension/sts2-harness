@@ -8,6 +8,8 @@ mod protocol;
 mod sandbox;
 mod session;
 
+pub(crate) use contract::strict::parse_strict_value;
+
 pub use client::ExoClient;
 pub use codex_accounting::{
     CodexEventAccounting, CodexEventError, CodexStreamStatus, CodexTokenUsage, CodexUsageStatus,

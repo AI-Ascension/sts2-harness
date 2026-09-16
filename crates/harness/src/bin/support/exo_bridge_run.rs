@@ -2,7 +2,8 @@
 
 use super::config::Loaded;
 use serde::Deserialize;
-use serde_json::json;
+use serde::Serialize;
+use serde_json::{Value, json};
 use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -20,13 +21,36 @@ struct Receipt {
     version: String,
     request_id: String,
     host_turn_id: String,
+    exo_agent_id: String,
+    exo_conversation_id: String,
     exo_turn_id: String,
     exo_session_id: String,
+    event_cursor: String,
     decision: Option<String>,
     error_code: Option<String>,
     fetch_attempts: u64,
     forwarded_requests: u64,
     denied_requests: u64,
+}
+
+#[derive(Serialize)]
+struct LifecycleResponse<'a> {
+    wire_version: &'static str,
+    request_id: &'a str,
+    turn_id: &'a str,
+    outcome: &'static str,
+    decision: Value,
+    error_code: Option<&'static str>,
+    native: NativeReceipt<'a>,
+}
+
+#[derive(Serialize)]
+struct NativeReceipt<'a> {
+    agent_id: &'a str,
+    conversation_id: &'a str,
+    session_id: &'a str,
+    turn_id: &'a str,
+    event_cursor: &'a str,
 }
 
 pub fn execute(
@@ -51,6 +75,34 @@ pub fn execute(
     let result = runtime
         .block_on(exchange(loaded, &private, invocation))
         .and_then(|bytes| response(&envelope, &bytes));
+    private.remove()?;
+    result
+}
+
+/// Opt-in v2 wire. It carries the executor-observed native receipt beside the unchanged decision.
+/// V1 remains the default for existing bridge callers.
+pub fn execute_v2(
+    loaded: &Loaded,
+    envelope: ExoBridgeRequestEnvelope,
+    synthetic: bool,
+) -> Result<Vec<u8>, &'static str> {
+    let credential = if synthetic {
+        String::from("sts2-synthetic-model-key")
+    } else {
+        std::env::var("STS2_EXO_MODEL_KEY").map_err(|_| "exo_bridge_credentials_unavailable")?
+    };
+    if credential.is_empty() {
+        return Err("exo_bridge_credentials_unavailable");
+    }
+    let private = PrivateRoot::create()?;
+    let invocation = invocation(loaded, &envelope, &private, credential)?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|_| "exo_bridge_runtime")?;
+    let result = runtime
+        .block_on(exchange(loaded, &private, invocation))
+        .and_then(|bytes| response_v2(&envelope, &bytes));
     private.remove()?;
     result
 }
@@ -182,15 +234,51 @@ fn response(envelope: &ExoBridgeRequestEnvelope, bytes: &[u8]) -> Result<Vec<u8>
     Ok(output)
 }
 
+fn response_v2(envelope: &ExoBridgeRequestEnvelope, bytes: &[u8]) -> Result<Vec<u8>, &'static str> {
+    let receipt: Receipt =
+        serde_json::from_slice(bytes).map_err(|_| "exo_bridge_invalid_receipt")?;
+    validate_receipt(envelope, &receipt)?;
+    let terminal = receipt
+        .decision
+        .as_deref()
+        .ok_or("exo_bridge_missing_decision")?;
+    validate_decision(envelope, terminal)?;
+    let decision: Value =
+        serde_json::from_str(terminal).map_err(|_| "exo_bridge_invalid_decision")?;
+    let response = LifecycleResponse {
+        wire_version: "sts2.exo-bridge-wire-v2",
+        request_id: &envelope.request_id,
+        turn_id: &envelope.turn_id,
+        outcome: "decision",
+        decision,
+        error_code: None,
+        native: NativeReceipt {
+            agent_id: &receipt.exo_agent_id,
+            conversation_id: &receipt.exo_conversation_id,
+            session_id: &receipt.exo_session_id,
+            turn_id: &receipt.exo_turn_id,
+            event_cursor: &receipt.event_cursor,
+        },
+    };
+    let output = serde_json::to_vec(&response).map_err(|_| "exo_bridge_invalid_decision")?;
+    if output.len() > envelope.request.max_response_bytes as usize {
+        return Err("exo_bridge_response_bound");
+    }
+    Ok(output)
+}
+
 fn validate_receipt(
     envelope: &ExoBridgeRequestEnvelope,
     receipt: &Receipt,
 ) -> Result<(), &'static str> {
-    if receipt.version != "sts2.exo-executor-receipt-v1"
+    if receipt.version != "sts2.exo-executor-receipt-v2"
         || receipt.request_id != envelope.request_id
         || receipt.host_turn_id != envelope.turn_id
+        || !valid_uuid(&receipt.exo_agent_id)
+        || !valid_uuid(&receipt.exo_conversation_id)
         || !valid_uuid(&receipt.exo_turn_id)
         || !valid_uuid(&receipt.exo_session_id)
+        || !valid_uuid(&receipt.event_cursor)
     {
         return Err("exo_bridge_receipt_identity");
     }
@@ -207,8 +295,11 @@ fn validate_receipt(
         "{}",
         json!({
             "schema": "sts2.exo-one-shot-evidence-v1",
+            "exo_agent_id": receipt.exo_agent_id,
+            "exo_conversation_id": receipt.exo_conversation_id,
             "exo_turn_id": receipt.exo_turn_id,
             "exo_session_id": receipt.exo_session_id,
+            "event_cursor": receipt.event_cursor,
             "fetch_attempts": receipt.fetch_attempts,
             "forwarded_requests": receipt.forwarded_requests,
             "denied_requests": receipt.denied_requests
