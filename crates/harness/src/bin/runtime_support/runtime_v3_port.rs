@@ -60,7 +60,7 @@ impl RuntimeV3Port {
         })
     }
 
-    fn durable_handle(&self) -> Option<durable::DurableHandle> {
+    pub(super) fn durable_handle(&self) -> Option<durable::DurableHandle> {
         self.durable.clone()
     }
 

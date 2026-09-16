@@ -160,6 +160,9 @@ fn worker_main(
                 let _ = ShutdownPort::release_lease(&mut port);
                 let _ = port.close_mcp();
                 let _ = port.close_gateway();
+                if let Some(durable) = port.durable_handle() {
+                    let _ = durable.close();
+                }
                 let _ = reply.send(());
                 break;
             }
