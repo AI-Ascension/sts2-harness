@@ -7,9 +7,21 @@
 //! operator-trusted deployment identity, so a missing, malformed, unreviewed or unverified
 //! deployment refuses the run while the runtime is still assembling settings, before it opens a
 //! durable store, a gateway connection, an MCP session or a provider.
+//!
+//! The envelope path also *inspects* the one artifact it can read: the exact bytes of the bridge
+//! executable it is about to launch are hashed into the inspected identity. That hash does **not**
+//! yet decide admission. The pin mandates every identity axis (ADR 0031), only the bridge axis
+//! carries inspected bytes at this seam, and `preflight` evaluates the axes in order and returns on
+//! the first one that is unbound or mismatched — `package_digest` is evaluated first. The reviewed
+//! envelope therefore always refuses today with `UnboundIdentity("package_digest")` before the bridge
+//! pair is ever reached, so a swapped bridge fails only incidentally (as every deployment does), not
+//! because its bytes were cross-checked against `STS2_EXO_BRIDGE_DIGEST`. Binding the remaining axes,
+//! or refusing unbound pins before ordering the axes, is required before the bridge hash can decide
+//! anything. See ADR 0032.
 
 use sts2_harness::exo_admission::{
-    AdmittedExoRuntimeTransport, ExoAdmissionMode, ExoAdmissionPlan, ExoRuntimeAdmission,
+    AdmittedExoRuntimeTransport, ExoAdmissionMode, ExoAdmissionPlan, ExoInspectedArtifacts,
+    ExoRuntimeAdmission,
 };
 use sts2_harness::{
     EXO_CONTRACT_VERSION, ExoContextMode, ExoIdentity, ExoLimits, ExoPlatform, ExoProcessConfig,
@@ -21,9 +33,12 @@ use super::runtime_v3_settings::{optional, required};
 const ADMISSION_MODE: &str = "STS2_EXO_ADMISSION";
 const DEFAULT_PRIVATE_STATE_ROOT: &str = "/var/lib/sts2-harness/exo-runtime";
 
-pub(super) fn from_environment(map_context_enabled: bool) -> Result<ExoRuntimeAdmission, String> {
+pub(super) fn from_environment(
+    bridge_executable: &str,
+    map_context_enabled: bool,
+) -> Result<ExoRuntimeAdmission, String> {
     match selected_mode(optional(ADMISSION_MODE)?.as_deref())? {
-        ExoAdmissionMode::Enveloped => enveloped(map_context_enabled),
+        ExoAdmissionMode::Enveloped => enveloped(bridge_executable, map_context_enabled),
         ExoAdmissionMode::Legacy => Ok(ExoRuntimeAdmission::legacy()),
     }
 }
@@ -38,7 +53,10 @@ fn selected_mode(value: Option<&str>) -> Result<ExoAdmissionMode, String> {
     }
 }
 
-fn enveloped(map_context_enabled: bool) -> Result<ExoRuntimeAdmission, String> {
+fn enveloped(
+    bridge_executable: &str,
+    map_context_enabled: bool,
+) -> Result<ExoRuntimeAdmission, String> {
     let trusted = ExoTrustedConfiguration {
         identity: ExoIdentity {
             source_revision: required("STS2_EXO_REVISION")?,
@@ -65,13 +83,30 @@ fn enveloped(map_context_enabled: bool) -> Result<ExoRuntimeAdmission, String> {
         limits: ExoLimits::reviewed(),
         restricted: ExoRestrictedProfile::reviewed_private(private_state_root()?),
     };
-    let plan = ExoAdmissionPlan::new(
+    let plan = ExoAdmissionPlan::inspected(
         trusted,
+        &inspected_artifacts(bridge_executable)?,
         required("STS2_EXO_MODEL_EXECUTION_ID")?,
         required("STS2_EXO_REQUEST_ID")?,
         required("STS2_EXO_TURN_ID")?,
     );
     ExoRuntimeAdmission::enveloped(plan).map_err(String::from)
+}
+
+/// Inspects the artifacts the launch can bind to real bytes. The bridge executable is the only
+/// artifact whose bytes this seam can read; it is read whole (bounded) and hashed into the inspected
+/// identity, so that identity reflects the bytes actually about to run rather than the operator's
+/// declaration. Every other axis stays unbound, and because the reviewed preflight evaluates those
+/// (starting with `package_digest`) first, the envelope refuses with `UnboundIdentity("package_digest")`
+/// before this hash is compared — so the bridge digest does not yet decide admission.
+fn inspected_artifacts(bridge_executable: &str) -> Result<ExoInspectedArtifacts, String> {
+    let bridge = ExoInspectedArtifacts::read(bridge_executable).map_err(|error| {
+        format!("Exo admission cannot inspect the bridge artifact {bridge_executable}: {error}")
+    })?;
+    Ok(ExoInspectedArtifacts {
+        bridge: Some(bridge),
+        ..ExoInspectedArtifacts::default()
+    })
 }
 
 /// Admits the runtime bridge for the assembled deployment. The runtime takes its transport only

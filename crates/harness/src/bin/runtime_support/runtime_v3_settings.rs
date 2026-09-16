@@ -28,7 +28,6 @@ pub(super) struct RuntimeV3Settings {
 impl RuntimeV3Settings {
     pub(super) fn from_environment(config: &RuntimeConfig) -> Result<Self, String> {
         let exo = exo_from_environment(config.map_context_enabled)?;
-        let admission = runtime_v3_admission::from_environment(config.map_context_enabled)?;
         let process = ExoProcessConfig::new(
             required("STS2_EXO_BRIDGE_BINARY")?,
             string_list("STS2_EXO_BRIDGE_ARGS_JSON")?,
@@ -36,6 +35,12 @@ impl RuntimeV3Settings {
             string_list("STS2_EXO_INHERITED_ENV_JSON")?,
         )
         .map_err(|error| format!("Exo bridge process configuration is invalid: {error}"))?;
+        // Admission inspects the exact bridge executable it is about to launch, so the process
+        // configuration is assembled first.
+        let admission = runtime_v3_admission::from_environment(
+            process.executable(),
+            config.map_context_enabled,
+        )?;
         let runner = runner_from_environment(config.map_context_enabled)?;
         Ok(Self {
             runner,

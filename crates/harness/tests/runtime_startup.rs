@@ -211,7 +211,12 @@ fn refused_exo_preflight_fails_before_gateway_mcp_or_provider_calls() -> Result<
     let fixture = Fixture::new()?;
     let output = run_child(fixture.command_with_reviewed_admission_identity())?;
     assert_failure_contains(&output, REFUSAL_PREFIX)?;
-    assert_failure_contains(&output, "Exo minimum admission capability is not supported")?;
+    // Admission now inspects the bridge executable's bytes, so the envelope refuses a deployment
+    // whose other pinned identity axes have no inspected artifact to bind to.
+    assert_failure_contains(
+        &output,
+        "the inspected Exo deployment did not bind the pinned package_digest identity",
+    )?;
     fixture.assert_no_gateway_connection()?;
     if fixture.counter.exists() {
         return Err(String::from(

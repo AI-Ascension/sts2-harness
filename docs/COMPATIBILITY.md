@@ -210,8 +210,12 @@ admission gate recorded in [ADR 0031](decisions/0031-runtime-exo-admission-gate.
 `STS2_EXO_ADMISSION=envelope` mode refuses the run while a required capability, digest, revision,
 route or schema is not admitted, and it refuses before the durable store, the gateway, the MCP
 session, the provider or any game effect exists; `STS2_EXO_ADMISSION=legacy` is an explicit
-operator acknowledgement of an un-admitted raw-wire bridge. Standard/fresh/Linux x86_64 and strict
-terminal decision parsing are source-derived;
+operator acknowledgement of an un-admitted raw-wire bridge. That gate cross-checks the identity
+**inspected** from the launch's own artifacts against the operator pin
+([ADR 0032](decisions/0032-inspected-admission-identity.md)), so a swapped package, extension or
+bridge artifact fails closed and a pinned axis the inspection did not bind refuses as
+`UnboundIdentity` instead of being admitted on the declaration alone. Standard/fresh/Linux x86_64 and
+strict terminal decision parsing are source-derived;
 map/expert, continuity, cancellation/recovery, event/usage, replay, native package/model
 identity, live Exo connectivity, and STS2 gameplay remain `unverified` until the real pinned
 executor spike records them. The required `runtime`, `provider`, and `endpoint` identity axes are
@@ -539,8 +543,11 @@ deployment identity (`STS2_EXO_PACKAGE_DIGEST`, `STS2_EXO_EXTENSION_DIGEST`,
 `STS2_EXO_NATIVE_INSTANCE_ID`, `STS2_EXO_MODEL_EXECUTION_ID`, `STS2_EXO_REQUEST_ID`,
 `STS2_EXO_TURN_ID`). A missing or unverified deployment ends the run while settings are assembled,
 before any gateway, MCP, provider or game effect, and no request bytes are emitted. Because the
-reviewed capability axes are not promoted on the bridge's behalf, `envelope` currently refuses with
-`RequiredCapability("evidence.turn_identity")`. The already-documented raw-wire development bridges
+reviewed capability axes are not promoted on the bridge's behalf, and the pin mandates identity axes
+this seam cannot inspect, so `envelope` currently refuses with `UnboundIdentity("package_digest")`.
+The identity comparison now precedes the capability gate, `package_digest` is evaluated first and is
+unbound because only the bridge executable is inspected, so the bridge digest is computed but does
+not yet decide admission. The already-documented raw-wire development bridges
 (`docs/OLLAMA_MODEL_SELECTION.md`, `experiments/live-combat/README.md`) must set
 `STS2_EXO_ADMISSION=legacy`, which is an explicit acknowledgement of an un-admitted bridge rather
 than an admission. Rollback is to set `legacy`; no wire field, schema, contract version or durable

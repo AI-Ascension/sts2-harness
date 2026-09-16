@@ -150,8 +150,11 @@ pub fn preflight(
     if descriptor.identity.contract_version != trusted.identity.contract_version {
         return Err(ExoPreflightError::ContractMismatch);
     }
-    require_minimum_capabilities(descriptor)?;
+    // Bind the inspected deployment to the operator's pin before evaluating anything the deployment
+    // claims about itself. A swapped artifact, a repinned digest or a wrong instance identity is
+    // then refused as an identity mismatch instead of being masked by an unrelated capability gate.
     compare_optional_identity(descriptor, trusted)?;
+    require_minimum_capabilities(descriptor)?;
     if !descriptor.platforms.contains(&trusted.platform) {
         return Err(ExoPreflightError::PlatformUnsupported);
     }
@@ -193,6 +196,7 @@ pub enum ExoPreflightError {
     UnreviewedSourceRevision,
     ContractMismatch,
     IdentityMismatch(&'static str),
+    UnboundIdentity(&'static str),
     RequiredCapability(&'static str),
     RuntimeUnsupported,
     ModelBindingNotResponsesCapable,
@@ -205,30 +209,53 @@ pub enum ExoPreflightError {
 
 impl std::fmt::Display for ExoPreflightError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(match self {
-            Self::InvalidDescriptor(_) => "Exo capability descriptor failed validation",
-            Self::InvalidIdentity(_) => "trusted Exo identity failed validation",
-            Self::InvalidLimits(_) => "trusted Exo limits failed validation",
-            Self::InvalidRestrictedProfile(_) => "trusted Exo restricted profile failed validation",
-            Self::MissingIdentity => "trusted Exo identity is incomplete",
-            Self::UnreviewedSourceRevision => {
-                "Exo source revision is not the reviewed candidate manifest pin"
+        match self {
+            Self::InvalidDescriptor(_) => {
+                formatter.write_str("Exo capability descriptor failed validation")
             }
-            Self::ContractMismatch => "Exo contract versions do not match",
-            Self::IdentityMismatch(_) => "advertised and trusted Exo identities differ",
-            Self::RequiredCapability(_) => "Exo minimum admission capability is not supported",
-            Self::RuntimeUnsupported => "trusted Exo runtime is not the reviewed Responses runtime",
+            Self::InvalidIdentity(_) => {
+                formatter.write_str("trusted Exo identity failed validation")
+            }
+            Self::InvalidLimits(_) => formatter.write_str("trusted Exo limits failed validation"),
+            Self::InvalidRestrictedProfile(_) => {
+                formatter.write_str("trusted Exo restricted profile failed validation")
+            }
+            Self::MissingIdentity => formatter.write_str("trusted Exo identity is incomplete"),
+            Self::UnreviewedSourceRevision => formatter
+                .write_str("Exo source revision is not the reviewed candidate manifest pin"),
+            Self::ContractMismatch => formatter.write_str("Exo contract versions do not match"),
+            Self::IdentityMismatch(axis) => write!(
+                formatter,
+                "advertised Exo {axis} differs from the operator-trusted pin"
+            ),
+            Self::UnboundIdentity(axis) => write!(
+                formatter,
+                "the inspected Exo deployment did not bind the pinned {axis} identity"
+            ),
+            Self::RequiredCapability(_) => {
+                formatter.write_str("Exo minimum admission capability is not supported")
+            }
+            Self::RuntimeUnsupported => {
+                formatter.write_str("trusted Exo runtime is not the reviewed Responses runtime")
+            }
             Self::ModelBindingNotResponsesCapable => {
-                "trusted Exo model binding cannot select the Responses runtime"
+                formatter.write_str("trusted Exo model binding cannot select the Responses runtime")
             }
-            Self::RoutingNotResponsesCapable => {
-                "trusted Exo provider endpoint cannot select the Responses runtime"
+            Self::RoutingNotResponsesCapable => formatter
+                .write_str("trusted Exo provider endpoint cannot select the Responses runtime"),
+            Self::PlatformUnsupported => {
+                formatter.write_str("requested Exo platform is unsupported")
             }
-            Self::PlatformUnsupported => "requested Exo platform is unsupported",
-            Self::ProfileUnsupported => "requested Exo profile is not supported",
-            Self::ContextUnsupported => "requested Exo context mode is unsupported",
-            Self::LimitExceeded(_) => "trusted Exo limit exceeds the advertised capability",
-        })
+            Self::ProfileUnsupported => {
+                formatter.write_str("requested Exo profile is not supported")
+            }
+            Self::ContextUnsupported => {
+                formatter.write_str("requested Exo context mode is unsupported")
+            }
+            Self::LimitExceeded(_) => {
+                formatter.write_str("trusted Exo limit exceeds the advertised capability")
+            }
+        }
     }
 }
 

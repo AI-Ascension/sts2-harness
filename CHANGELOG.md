@@ -7,6 +7,19 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Cross-check the **inspected Exo deployment identity** against the operator pin at the runtime
+  admission boundary, so a swapped package, extension or bridge artifact fails closed instead of
+  being admitted on the operator's declaration alone. `ExoAdmissionPlan::inspected` derives the
+  advertised identity from the SHA-256 of the inspected artifact bytes, `preflight` compares that
+  identity before the capability gate (a swapped artifact is now `IdentityMismatch(axis)` rather than
+  a masked `RequiredCapability`), and a pinned axis the inspection did not bind is refused as
+  `UnboundIdentity(axis)`. The runtime seam inspects the bridge executable's bytes and deliberately
+  does not copy the operator's environment into the inspected identity, so the remaining pinned axes
+  stay unbound and the reviewed `envelope` mode still refuses before any model or game effect.
+  Compatibility: `breaking` for the refusal vocabulary and operator messages only — no wire field,
+  schema, contract version or durable record changes, and `legacy` behaviour is unchanged. See
+  [ADR 0032](docs/decisions/0032-inspected-admission-identity.md). Refs #139.
+
 - Invoke the pinned-Exo **capability preflight at the runtime transport seam** so a missing,
   malformed, unknown or unverified deployment fails closed before a model or game effect.
   `STS2_EXO_ADMISSION` selects the mode: `envelope` (the default when unset) assembles the
@@ -16,9 +29,10 @@ claim a released harness version or runtime compatibility.
   raw-wire bridge and preserves the previous behaviour. Compatibility: `breaking` for operator
   configuration only — no wire field, schema, contract version or durable record changes, the
   reviewed capability axes are not promoted on the bridge's behalf (so `envelope` currently refuses
-  with `RequiredCapability("evidence.turn_identity")`), and the raw-wire development bridges need
-  `STS2_EXO_ADMISSION=legacy`. Per-turn envelope admission for a multi-turn episode remains open.
-  See [ADR 0031](docs/decisions/0031-runtime-exo-admission-gate.md). Refs #139.
+  the current deployment; the inspected-identity entry above strengthens the reason), and the
+  raw-wire development bridges need `STS2_EXO_ADMISSION=legacy`. Per-turn envelope admission for a
+  multi-turn episode remains open. See
+  [ADR 0031](docs/decisions/0031-runtime-exo-admission-gate.md). Refs #139.
 
 - Keep a **cancel** pending as `NeedsOperator` while a live operation's settlement is still unknown,
   instead of stopping the episode and marking the run cancelled. `CommandKind::Cancel` reconciles

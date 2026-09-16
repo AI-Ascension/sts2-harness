@@ -290,12 +290,14 @@ checks pass.
 
 The Rust runtime now invokes this preflight at its transport seam through
 [ADR 0031](0031-runtime-exo-admission-gate.md): the reviewed `STS2_EXO_ADMISSION=envelope` mode
-assembles the operator-trusted deployment identity, refuses the run while settings are still being
-assembled when a capability, digest, revision or schema is not admitted, and admits a correlated
-turn through `ExoAdmittedTransport`. Because this descriptor's capability axes are not promoted on
-the bridge's behalf, that mode currently refuses with
-`RequiredCapability("evidence.turn_identity")`; the raw-wire process bridges remain executable only
-under the explicit `STS2_EXO_ADMISSION=legacy` acknowledgement. Copying the extension into the
+assembles the operator-trusted deployment identity, cross-checks it against the identity inspected
+from the launch's own artifacts ([ADR 0032](0032-inspected-admission-identity.md)), refuses the run
+while settings are still being assembled when a capability, digest, revision or schema is not
+admitted, and admits a correlated turn through `ExoAdmittedTransport`. Because this descriptor's
+capability axes are not promoted on the bridge's behalf, and because an uninspectable pinned axis
+refuses as `UnboundIdentity`, that mode currently refuses the deployment before reaching the
+capability gate; the raw-wire process bridges remain executable only under the explicit
+`STS2_EXO_ADMISSION=legacy` acknowledgement. Copying the extension into the
 candidate checkout, running the locked commands above, and a per-turn envelope handoff for a
 multi-turn episode remain open, so the mapping is still a contract requirement rather than an
 operational claim.
