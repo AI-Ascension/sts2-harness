@@ -181,3 +181,80 @@ fn opening_rejects_proposal_digest_tampering() {
     );
     std::fs::remove_dir_all(path.parent().expect("parent")).expect("cleanup");
 }
+
+#[test]
+fn owner_lease_excludes_second_process_and_reopen_keeps_final_adoption() {
+    const CHILD_PATH: &str = "STS2_PROVIDER_POLICY_OWNER_LOCK_CHILD_PATH";
+    if let Some(path) = std::env::var_os(CHILD_PATH) {
+        let path = std::path::PathBuf::from(path);
+        let scope = scope();
+        let result = ProviderSessionPolicyOwner::open(
+            store(&path, scope.clone()),
+            scope,
+            NativeCapabilities::fixture(),
+        );
+        assert!(matches!(result, Err(ProviderSessionPolicyOwnerError::Busy)));
+        return;
+    }
+
+    let path = path("exclusive");
+    let scope = scope();
+    let owner = ProviderSessionPolicyOwner::open(
+        store(&path, scope.clone()),
+        scope.clone(),
+        NativeCapabilities::fixture(),
+    )
+    .expect("first owner");
+    let child = std::process::Command::new(std::env::current_exe().expect("test binary"))
+        .args([
+            "--exact",
+            "provider_session::policy_owner::tests::owner_lease_excludes_second_process_and_reopen_keeps_final_adoption",
+            "--nocapture",
+        ])
+        .env(CHILD_PATH, &path)
+        .output()
+        .expect("second process");
+    assert!(
+        child.status.success(),
+        "second process did not report the expected busy owner: {}",
+        String::from_utf8_lossy(&child.stderr)
+    );
+
+    let policy_bytes = serde_json::to_vec(&valid_policy(scope.clone())).expect("policy");
+    let sha256 = owner
+        .import_at_revision(policy_bytes, 1)
+        .expect("import under exclusive lease");
+    owner
+        .adopt_imported(&sha256, 2)
+        .expect("adopt under exclusive lease");
+    drop(owner);
+
+    let reopened = ProviderSessionPolicyOwner::open(
+        store(&path, scope.clone()),
+        scope,
+        NativeCapabilities::fixture(),
+    )
+    .expect("reopen after lease release");
+    let (_, active_sha256, active_revision) = reopened.active().expect("active policy");
+    let metadata = reopened.metadata().expect("final metadata");
+    assert_eq!(active_sha256, sha256);
+    assert_eq!(active_revision, 3);
+    assert_eq!(metadata.revision, 3);
+    assert_eq!(metadata.policies.len(), 1);
+    drop(reopened);
+    std::fs::remove_dir_all(path.parent().expect("parent")).expect("cleanup");
+}
+
+#[test]
+fn opening_rejects_structurally_invalid_capabilities_without_policy_history() {
+    let path = path("invalid-capabilities");
+    let scope = scope();
+    let mut capabilities = NativeCapabilities::fixture();
+    capabilities.binding.descriptor_sha256 = "0".repeat(64);
+
+    assert!(matches!(
+        ProviderSessionPolicyOwner::open(store(&path, scope.clone()), scope, capabilities),
+        Err(ProviderSessionPolicyOwnerError::Invalid)
+    ));
+    std::fs::remove_dir_all(path.parent().expect("parent")).expect("cleanup");
+}

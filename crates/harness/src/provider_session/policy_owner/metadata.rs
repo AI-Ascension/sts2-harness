@@ -48,6 +48,7 @@ impl ProviderSessionPolicyOwner {
     pub fn metadata(
         &self,
     ) -> Result<ProviderSessionPolicyOwnerMetadata, ProviderSessionPolicyOwnerError> {
+        self.verify_lease()?;
         let journal = self
             .journal
             .lock()

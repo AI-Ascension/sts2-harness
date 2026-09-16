@@ -3,9 +3,9 @@
 //! Durable, explicit adoption history for saved provider-session policies.
 
 use super::{
-    NativeCapabilities, ProviderSessionMetadataStore, ProviderSessionMetadataStoreError,
-    ProviderSessionPolicy, SessionPolicyMigrationProposal, SessionPolicyMigrationState,
-    SessionScope,
+    NativeCapabilities, PolicyOwnerLease, ProviderSessionMetadataStore,
+    ProviderSessionMetadataStoreError, ProviderSessionPolicy, SessionPolicyMigrationProposal,
+    SessionPolicyMigrationState, SessionScope,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -58,6 +58,8 @@ pub enum ProviderSessionPolicyOwnerError {
     Missing,
     Conflict,
     NotAdopted,
+    /// Another live policy owner holds this journal's exclusive lease.
+    Busy,
     Store,
 }
 
@@ -73,10 +75,15 @@ pub struct ProviderSessionPolicyOwner {
     store: ProviderSessionMetadataStore,
     scope: SessionScope,
     capabilities: NativeCapabilities,
+    _lease: PolicyOwnerLease,
     journal: Mutex<Journal>,
 }
 
 impl ProviderSessionPolicyOwner {
+    /// Opens the single authoritative owner for this durable journal.
+    ///
+    /// The capability descriptor is structurally validated before the journal is loaded. A
+    /// competing live owner returns `Busy`; callers must use the already open owner instance.
     pub fn open(
         store: ProviderSessionMetadataStore,
         scope: SessionScope,
@@ -86,6 +93,15 @@ impl ProviderSessionPolicyOwner {
         {
             return Err(ProviderSessionPolicyOwnerError::Invalid);
         }
+        capabilities
+            .validate()
+            .map_err(|_| ProviderSessionPolicyOwnerError::Invalid)?;
+        let lease = store
+            .acquire_owner_journal_lease()
+            .map_err(|error| match error {
+                ProviderSessionMetadataStoreError::Busy => ProviderSessionPolicyOwnerError::Busy,
+                _ => ProviderSessionPolicyOwnerError::Store,
+            })?;
         let journal = match store.load_owner_journal() {
             Ok(bytes) => serde_json::from_slice(&bytes)
                 .map_err(|_| ProviderSessionPolicyOwnerError::Store)?,
@@ -98,12 +114,22 @@ impl ProviderSessionPolicyOwner {
             },
             Err(_) => return Err(ProviderSessionPolicyOwnerError::Store),
         };
+        lease
+            .verify()
+            .map_err(|_| ProviderSessionPolicyOwnerError::Store)?;
         validate_journal(&journal, &scope, &capabilities)?;
         Ok(Self {
             store,
             scope,
             capabilities,
+            _lease: lease,
             journal: Mutex::new(journal),
         })
+    }
+
+    pub(super) fn verify_lease(&self) -> Result<(), ProviderSessionPolicyOwnerError> {
+        self._lease
+            .verify()
+            .map_err(|_| ProviderSessionPolicyOwnerError::Store)
     }
 }

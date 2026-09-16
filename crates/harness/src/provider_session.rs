@@ -24,6 +24,7 @@ pub use protocol::{
     NativeFrame, NativeFrameKind, NativePeerError, NativeResponse, parse_native_frame,
     parse_native_request,
 };
+pub(crate) use state_store::PolicyOwnerLease;
 pub use state_store::{
     ProviderSessionMetadataMode, ProviderSessionMetadataStore, ProviderSessionMetadataStoreError,
 };

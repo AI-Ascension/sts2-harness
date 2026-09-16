@@ -57,7 +57,16 @@ The journal remains bounded and encrypted by `ProviderSessionMetadataStore`. Sta
 a genuinely absent journal from I/O, authentication or corruption failures, then verifies every
 retained policy's exact-byte digest and scope, the active policy's profile admission, and every
 proposal's source bytes, target, capability binding and immutable proposal digest before serving
-metadata or commands.
+metadata or commands. The supplied capability descriptor must also pass structural validation
+before an owner can open an empty journal; trusted provenance pins remain the responsibility of
+the runtime configuration boundary.
+
+One `ProviderSessionPolicyOwner` is authoritative for a journal path at a time. Before loading the
+journal, `open` acquires a no-follow, private, exclusive operating-system lock on a sibling lock
+file and holds it for the owner's lifetime. A competing owner fails with `Busy` before it can cache
+or mutate journal state. The owner verifies that the held lock still names the protected lock file
+before reads and mutations. Process exit or dropping the owner releases the lock so the next owner
+can reload the last durable revision.
 
 ## Compatibility
 

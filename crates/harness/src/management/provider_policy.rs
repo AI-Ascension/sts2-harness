@@ -247,6 +247,10 @@ fn owner_error(error: ProviderSessionPolicyOwnerError) -> ManagementError {
             "provider_session_policy_not_adopted",
             "provider-session policy owner has no active adopted policy",
         ),
+        ProviderSessionPolicyOwnerError::Busy => ManagementError::unavailable(
+            "provider_session_policy_owner_busy",
+            "provider-session policy journal already has an authoritative owner",
+        ),
         ProviderSessionPolicyOwnerError::Store => ManagementError::store(
             "provider_session_policy_owner_store",
             "provider-session policy owner storage is unavailable",

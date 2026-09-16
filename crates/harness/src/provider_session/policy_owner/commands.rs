@@ -18,6 +18,7 @@ impl ProviderSessionPolicyOwner {
         bytes: Vec<u8>,
         expected_revision: u64,
     ) -> Result<String, ProviderSessionPolicyOwnerError> {
+        self.verify_lease()?;
         let policy: ProviderSessionPolicy =
             serde_json::from_slice(&bytes).map_err(|_| ProviderSessionPolicyOwnerError::Invalid)?;
         policy
@@ -197,6 +198,7 @@ impl ProviderSessionPolicyOwner {
     pub fn active(
         &self,
     ) -> Result<(ProviderSessionPolicy, String, u64), ProviderSessionPolicyOwnerError> {
+        self.verify_lease()?;
         let journal = self
             .journal
             .lock()
@@ -274,6 +276,7 @@ impl ProviderSessionPolicyOwner {
         &self,
         f: impl FnOnce(&mut Journal) -> Result<(T, bool), ProviderSessionPolicyOwnerError>,
     ) -> Result<T, ProviderSessionPolicyOwnerError> {
+        self.verify_lease()?;
         let mut journal = self
             .journal
             .lock()
