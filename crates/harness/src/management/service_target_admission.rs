@@ -208,10 +208,105 @@ pub(super) fn bind_snapshot_admission(
         }
         _ => {}
     }
+    // The execution port declares the mode it actually served. A synthetic
+    // adapter that claims live execution (or the reverse) is refused here,
+    // before the snapshot is persisted or returned to a consumer.
+    let expected_mode = binding.map_or(ExecutionMode::Synthetic, |binding| {
+        binding.target.execution_mode.clone()
+    });
+    if let Some(reported) = snapshot.execution_mode.as_ref()
+        && reported != &expected_mode
+    {
+        return Err(ManagementError::conflict(
+            "port_execution_mode_mismatch",
+            "execution port reported a different execution mode than the admitted target",
+        ));
+    }
     snapshot.admission = binding.cloned();
     Ok(snapshot)
 }
 
 pub(super) fn is_live_profile(profile: &str) -> bool {
     profile == "live" || profile.starts_with("live.")
+}
+
+#[cfg(test)]
+mod execution_mode_binding_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use crate::management::contract::{
+        Budget, CleanupState, Cursor, GameOutcome, RUN_SCHEMA_VERSION, RunTargetConfiguration,
+        TARGET_ADMISSION_SCHEMA_VERSION, WorkflowRunStatus,
+    };
+
+    fn snapshot(mode: Option<ExecutionMode>) -> RunSnapshot {
+        RunSnapshot {
+            schema_version: RUN_SCHEMA_VERSION.to_owned(),
+            workflow_run_id: "run-1".to_owned(),
+            definition_digest: "a".repeat(64),
+            run_revision: 1,
+            status: WorkflowRunStatus::Running,
+            game_outcome: GameOutcome::NotTerminal,
+            cursor: Cursor {
+                graph_id: "graph".to_owned(),
+                node_id: "node".to_owned(),
+                node_execution_id: "node-exec".to_owned(),
+            },
+            pending_operation: None,
+            budget: Budget::default(),
+            cleanup: CleanupState::NotStarted,
+            admission: None,
+            execution_mode: mode,
+        }
+    }
+
+    fn live_binding() -> TargetAdmissionBinding {
+        TargetAdmissionBinding {
+            schema_version: TARGET_ADMISSION_SCHEMA_VERSION.to_owned(),
+            request_id: "request-1".to_owned(),
+            workflow_definition_digest: "a".repeat(64),
+            target: RunTargetConfiguration {
+                instance_id: "instance-1".to_owned(),
+                execution_profile: "live.workflow.v1".to_owned(),
+                execution_mode: ExecutionMode::Live,
+                workflow_revision: "0.1.0".to_owned(),
+                compatibility_revision: "live.compatibility.v1".to_owned(),
+                capability_revision: "live.capabilities.v1".to_owned(),
+                game_profile: "sts2-live-v1".to_owned(),
+                save_profile: None,
+                inference_profile: None,
+                context_capability: None,
+                provider_capability: None,
+            },
+            descriptor_digest: "b".repeat(64),
+            catalog_revision: "live.catalog.v1".to_owned(),
+        }
+    }
+
+    #[test]
+    fn a_synthetic_report_cannot_satisfy_a_live_admission() {
+        let error = bind_snapshot_admission(
+            snapshot(Some(ExecutionMode::Synthetic)),
+            Some(&live_binding()),
+        )
+        .expect_err("a synthetic port report must not satisfy a live admission");
+        assert_eq!(error.code, "port_execution_mode_mismatch");
+    }
+
+    #[test]
+    fn live_execution_is_not_reported_without_a_live_admission() {
+        let error = bind_snapshot_admission(snapshot(Some(ExecutionMode::Live)), None)
+            .expect_err("live mode must not be reported without a live admission");
+        assert_eq!(error.code, "port_execution_mode_mismatch");
+    }
+
+    #[test]
+    fn a_matching_report_preserves_the_mode_and_binds_the_admission() {
+        let binding = live_binding();
+        let bound = bind_snapshot_admission(snapshot(Some(ExecutionMode::Live)), Some(&binding))
+            .expect("a matching report binds");
+        assert_eq!(bound.execution_mode, Some(ExecutionMode::Live));
+        assert_eq!(bound.admission, Some(binding));
+    }
 }

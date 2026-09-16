@@ -3,8 +3,8 @@
 use serde_json::json;
 
 use super::super::contract::{
-    Budget, CleanupState, CommandOutcome, Cursor, GameOutcome, PendingOperation, RunRequest,
-    RunSnapshot, TargetAdmissionBinding, WorkflowRunStatus,
+    Budget, CleanupState, CommandOutcome, Cursor, ExecutionMode, GameOutcome, PendingOperation,
+    RunRequest, RunSnapshot, TargetAdmissionBinding, WorkflowRunStatus,
 };
 use super::super::service::{CommandApplication, ManagementError};
 use super::execution::LiveRun;
@@ -112,6 +112,7 @@ pub(super) fn snapshot_from_runtime(
         },
         cleanup: state.cleanup,
         admission: state.admission,
+        execution_mode: Some(ExecutionMode::Live),
     }
 }
 

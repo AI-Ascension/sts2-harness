@@ -131,6 +131,7 @@ impl WorkflowExecutionPort for SubmissionDouble {
                 budget: Budget::default(),
                 cleanup: CleanupState::NotStarted,
                 admission: None,
+                execution_mode: None,
             },
         })
     }

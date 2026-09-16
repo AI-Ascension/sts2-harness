@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::target_admission::TargetAdmissionBinding;
+use super::target_admission::{ExecutionMode, TargetAdmissionBinding};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -107,6 +107,20 @@ pub struct RunSnapshot {
     pub cleanup: CleanupState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub admission: Option<TargetAdmissionBinding>,
+    /// The execution mode the serving composition declared for this run.
+    ///
+    /// Internal only: this key is deliberately kept off the serialized
+    /// run-snapshot contract. The pinned Studio consumer parses that object with
+    /// a closed (`strict`) schema that does not list `execution_mode`, so a new
+    /// key would break every run read. Extending a closed public schema requires
+    /// explicit version/capability negotiation plus coordinated
+    /// producer/consumer pin updates (issue #94). Until that negotiation lands,
+    /// the harness keeps the in-process report solely to refuse a port whose
+    /// declared mode contradicts the admitted target, and never emits it.
+    ///
+    /// `default` keeps records written before mode reporting deserializable.
+    #[serde(default, skip_serializing)]
+    pub execution_mode: Option<ExecutionMode>,
 }
 
 /// A scoped, redacted association between the current workflow cursor and its

@@ -25,6 +25,7 @@ fn snapshot(run_id: &str, digest: &str) -> RunSnapshot {
         budget: Budget::default(),
         cleanup: CleanupState::NotStarted,
         admission: None,
+        execution_mode: None,
     }
 }
 

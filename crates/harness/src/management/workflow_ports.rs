@@ -913,6 +913,7 @@ fn snapshot_from_runtime(
         },
         cleanup: CleanupState::NotStarted,
         admission,
+        execution_mode: Some(ExecutionMode::Synthetic),
     }
 }
 
