@@ -77,6 +77,12 @@ impl EffectPort for LifecycleProcessEffect {
         let envelope = parse_bridge_request_envelope(input, 128 * 1024)
             .map_err(|_| LifecycleError::Invalid)?;
         let (sender, receiver) = sync_channel(1);
+        // Returning a handle before its child exists makes cancellation ambiguous: the owner can
+        // correctly retain Unknown, but callers cannot distinguish a cancelled launched process
+        // from a scheduler race that cancelled before `Command::spawn`.  The short readiness
+        // rendezvous proves one child was created after the durable send boundary without waiting
+        // for provider work or its response.
+        let (started_sender, started_receiver) = sync_channel(1);
         let config = self.config.clone();
         let cancellation = self.cancellation.clone();
         let bytes = input.to_vec();
@@ -97,10 +103,16 @@ impl EffectPort for LifecycleProcessEffect {
                     &envelope.turn_id,
                     &operation_id,
                     completed_units,
+                    started_sender,
                 );
                 let _ = sender.send(result);
             })
             .map_err(|_| LifecycleError::Unavailable)?;
+        match started_receiver.recv_timeout(Duration::from_millis(250)) {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => return Err(error),
+            Err(_) => return Err(LifecycleError::Unavailable),
+        }
         Ok(LifecycleProcessHandle {
             result: receiver,
             cancellation: self.cancellation.clone(),
@@ -131,6 +143,7 @@ fn exchange(
     turn_id: &str,
     operation_id: &str,
     completed_units: u64,
+    started: std::sync::mpsc::SyncSender<Result<(), LifecycleError>>,
 ) -> Result<EffectCompletion, LifecycleError> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -146,6 +159,7 @@ fn exchange(
         turn_id,
         operation_id,
         completed_units,
+        started,
     ))
 }
 
@@ -159,6 +173,7 @@ async fn exchange_async(
     turn_id: &str,
     operation_id: &str,
     completed_units: u64,
+    started: std::sync::mpsc::SyncSender<Result<(), LifecycleError>>,
 ) -> Result<EffectCompletion, LifecycleError> {
     let mut command = Command::new(config.executable());
     command
@@ -181,12 +196,19 @@ async fn exchange_async(
             command.env(name, value);
         }
     }
-    let mut child = command.spawn().map_err(|_| LifecycleError::Unavailable)?;
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(_) => {
+            let _ = started.send(Err(LifecycleError::Unavailable));
+            return Err(LifecycleError::Unavailable);
+        }
+    };
     let pid = child
         .id()
         .and_then(|id| i32::try_from(id).ok())
         .and_then(rustix::process::Pid::from_raw)
         .ok_or(LifecycleError::Unavailable)?;
+    let _ = started.send(Ok(()));
     let deadline = Instant::now() + Duration::from_millis(u64::from(timeout_millis));
     let result = tokio::select! {
         value = exchange_pipes(&mut child, &input, maximum) => value,
