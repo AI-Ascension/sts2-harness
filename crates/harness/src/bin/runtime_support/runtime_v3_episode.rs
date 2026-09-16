@@ -29,7 +29,11 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         self.allocated_lease_binding()
     }
     fn observe(&mut self) -> Result<EpisodeObservation, sts2_harness::PortError> {
-        self.observe_inner(false)
+        let observation = self.observe_inner(false)?;
+        self.mark_adopted_boundary_verified().map_err(|error| {
+            wire::port_error("resume_boundary_verification_failed", error, false)
+        })?;
+        Ok(observation)
     }
 
     fn observe_projection(

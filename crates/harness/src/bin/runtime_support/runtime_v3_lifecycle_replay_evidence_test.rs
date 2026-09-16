@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde_json::{Value, json};
 use sts2_harness::{
     Decision, DecisionInput, DecisionSource, EpisodeRunner, EpisodeRunnerConfig,
-    EpisodeRunnerError, PolicyError, RecoveryController, StabilityBarrier,
+    EpisodeRunnerError, EpisodeStage, PolicyError, RecoveryController, StabilityBarrier,
 };
 
 use super::*;
@@ -81,8 +81,12 @@ fn state_value(
     value["observation"]["state"] = match stage {
         "setup" => json!({"state":"setup","characters":["ironclad"]}),
         "map" => json!({"state":"map","node_id":"node-start","options":["node-next"]}),
+        "defeat" => json!({"state":"defeat","reason":null}),
         _ => return Err(format!("unsupported fixture stage {stage}").into()),
     };
+    if stage == "defeat" {
+        value["observation"]["player"]["hp"] = json!(0);
+    }
     value["legal_actions"] = legal_actions;
     Ok(value)
 }
@@ -282,69 +286,115 @@ fn fake_gateway(listener: TcpListener) -> Result<(), String> {
     Ok(())
 }
 
-#[test]
-fn fake_mcp_map_error_flushes_a_replayable_settled_prefix() -> Result<(), Box<dyn std::error::Error>>
-{
-    let fixture = Fixture::new()?;
-    let script = fixture.script(&fake_mcp_script()?)?;
-    let listener = TcpListener::bind("127.0.0.1:0")?;
-    listener.set_nonblocking(true)?;
-    let mut runtime_config = super::config(listener.local_addr()?.to_string());
-    runtime_config.mcp_binary = script;
-    runtime_config.map_context_enabled = true;
-    let mut port = RuntimeV3Port::new_with_telemetry(runtime_config, TelemetryHandle::disabled())?;
-    let runner_config = EpisodeRunnerConfig::new(
-        8,
-        StabilityBarrier::new(2, 1)?,
-        RecoveryController::new(1)?,
-        "synthetic replay evidence",
-        Vec::new(),
-    )?
-    .with_map_context_enabled(true);
-    let gateway = std::thread::spawn(move || fake_gateway(listener));
-    let mut source = FirstActionSource;
-    let (result, bytes) = recording::capture_replay_events(|| {
-        let result = EpisodeRunner::new(runner_config).run(
-            &mut port,
-            &mut recording::DecisionRecorder::new(&mut source, TelemetryHandle::disabled()),
-        );
-        if let Err(error) = &result {
-            recording::episode_failure(error, &TelemetryHandle::disabled());
-        }
-        result
+fn fake_prefix_continuation_mcp() -> Result<String, Box<dyn std::error::Error>> {
+    let setup = state_value("state_response", "1", "setup-1", 1, "setup", start_action())?;
+    let mut setup_catalog = state_value(
+        "legal_actions_response",
+        "2",
+        "setup-1",
+        1,
+        "setup",
+        start_action(),
+    )?;
+    setup_catalog["observation"] = Value::Null;
+    let mut start_accepted = state_value(
+        "dispatch_action_response",
+        "3",
+        "setup-1",
+        1,
+        "setup",
+        start_action(),
+    )?;
+    start_accepted["status"] = json!("accepted");
+    start_accepted["operation_id"] = json!("episode-action-1-1");
+    let mut start_wait = state_value("wait_response", "4", "map-1", 2, "map", map_action())?;
+    start_wait["status"] = json!("settled");
+    start_wait["operation_id"] = json!("episode-action-1-1");
+    start_wait["transition"] = json!({
+        "from_generation":1, "to_generation":2,
+        "state_id":"map-1", "effect_kind":"start_run_settled"
     });
-    assert!(matches!(
-        result,
-        Err(EpisodeRunnerError::LegalActions(error))
-            if error.code() == "map_snapshot_invalid"
-    ));
-    gateway.join().map_err(|_| "fake gateway panicked")??;
+    start_wait["wait_outcome"] = json!("successor");
 
-    let rows = std::str::from_utf8(&bytes)?
-        .lines()
-        .map(serde_json::from_str::<Value>)
-        .collect::<Result<Vec<_>, _>>()?;
-    assert_eq!(
-        rows.iter()
-            .filter_map(|row| row["event"].as_str())
-            .collect::<Vec<_>>(),
-        [
-            "model_decision",
-            "action_receipt",
-            "operation_wait_completed",
-            "episode_failed"
-        ]
+    let map = state_value("state_response", "5", "map-1", 2, "map", map_action())?;
+    let mut map_catalog = state_value(
+        "legal_actions_response",
+        "6",
+        "map-1",
+        2,
+        "map",
+        map_action(),
+    )?;
+    map_catalog["observation"] = Value::Null;
+    let mut map_accepted = state_value(
+        "dispatch_action_response",
+        "7",
+        "map-1",
+        2,
+        "map",
+        map_action(),
+    )?;
+    map_accepted["status"] = json!("accepted");
+    map_accepted["operation_id"] = json!("episode-action-1-1");
+    let mut terminal = state_value("wait_response", "8", "defeat-1", 3, "defeat", json!([]))?;
+    terminal["status"] = json!("settled");
+    terminal["operation_id"] = json!("episode-action-1-1");
+    terminal["transition"] = json!({
+        "from_generation":2, "to_generation":3,
+        "state_id":"defeat-1", "effect_kind":"map_choice_settled"
+    });
+    terminal["wait_outcome"] = json!("successor");
+    let script = format!(
+        "{}{}{}{}{}{}{}{}{}",
+        gameplay_init(),
+        reply_artifact(1, setup),
+        reply_artifact(2, setup_catalog),
+        reply_artifact_with_request_operation(3, start_accepted),
+        reply_artifact_with_request_operation(4, start_wait),
+        reply_artifact(5, map),
+        reply_artifact(6, map_catalog),
+        reply_artifact_with_request_operation(7, map_accepted),
+        reply_artifact_with_request_operation(8, terminal)
     );
-    assert_eq!(rows[1]["status"], "Accepted");
-    let operation_id = rows[2]["operation_id"]
-        .as_str()
-        .ok_or("replay wait row omitted operation id")?;
-    let operation_uuid = uuid::Uuid::parse_str(operation_id)?;
-    assert_eq!(operation_uuid.get_version_num(), 4);
-    assert_eq!(rows[3]["error_code"], "map_snapshot_invalid");
-    assert!(rows.iter().all(|row| {
-        row["event"] != "episode_complete"
-            && row.to_string().find("synthetic replay evidence").is_none()
-    }));
-    Ok(())
+    Ok(script)
 }
+
+fn settled_prefix_bytes() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut setup = state_value(
+        "state_response",
+        "source",
+        "setup-source",
+        1,
+        "setup",
+        start_action(),
+    )?;
+    setup["observation"]["legal_actions"] = start_action();
+    let mut map = state_value(
+        "state_response",
+        "source",
+        "map-source",
+        2,
+        "map",
+        map_action(),
+    )?;
+    map["observation"]["legal_actions"] = map_action();
+    let rows = [
+        json!({"event":"model_decision","action_id":"start-run","observation":setup["observation"]}),
+        json!({"event":"action_receipt","action_id":"start-run","operation_id":"source-op",
+            "status":"Settled","effect":"start_run_settled","observation":map["observation"]}),
+        json!({"event":"operation_wait_completed","operation_id":"source-op",
+            "effect":"start_run_settled","observation":map["observation"]}),
+        json!({"event":"episode_failed","error_code":"map_snapshot_invalid"}),
+    ];
+    Ok(rows
+        .iter()
+        .map(Value::to_string)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .into_bytes())
+}
+
+#[path = "runtime_v3_lifecycle_replay_map_error_test.rs"]
+mod map_error_tests;
+#[path = "runtime_v3_lifecycle_replay_prefix_test.rs"]
+mod prefix_tests;

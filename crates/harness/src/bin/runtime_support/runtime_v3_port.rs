@@ -67,6 +67,10 @@ impl RuntimeV3Port {
             expert_mcp: None,
             allocated: false,
             released: false,
+            continuation_prelaunched: false,
+            continuation_adopted: false,
+            continuation_boundary_verified: false,
+            continuation_adopted_owner: None,
             next_rpc_id: 1,
             expert_next_rpc_id: 1,
             generation: 0,
@@ -88,6 +92,7 @@ impl RuntimeV3Port {
             recovery_context: None,
             recovery_rpc_id: 1,
             lifecycle_authority: lifecycle_authority::RuntimeLifecycleAuthorityState::default(),
+            continuation_owner_claim: None,
         })
     }
 
@@ -97,104 +102,149 @@ impl RuntimeV3Port {
         self.lifecycle_authority.clone()
     }
 
-    pub(super) fn durable_handle(&self) -> Option<durable::DurableHandle> {
-        self.durable.clone()
+    fn arm_continuation_owner_claim(
+        &mut self,
+        context: continuation_owner::ContinuationOwnerClaimContext,
+    ) -> Result<(), String> {
+        if self.allocated || self.continuation_owner_claim.is_some() {
+            return Err(String::from(
+                "continuation owner claim must be armed once before runtime allocation",
+            ));
+        }
+        self.continuation_owner_claim = Some(context);
+        Ok(())
     }
 
-    pub(super) fn record_durable_receipt(
-        &self,
-        operation_id: &str,
-        payload_digest: &str,
-        receipt: &TransitionReceipt,
-        response: &Value,
-    ) -> Result<(), String> {
-        let Some(durable) = &self.durable else {
-            return Ok(());
-        };
-        let state = match receipt.status() {
-            sts2_harness::DispatchStatus::Accepted => sts2_harness::OperationState::Accepted,
-            sts2_harness::DispatchStatus::Settled => sts2_harness::OperationState::Settled,
-            sts2_harness::DispatchStatus::Rejected
-            | sts2_harness::DispatchStatus::Cancelled => sts2_harness::OperationState::Rejected,
-            sts2_harness::DispatchStatus::Unknown => sts2_harness::OperationState::Unknown,
-        };
-        durable.operation_result(operation_id, payload_digest, state, Some(response))
-    }
-
-    pub(super) fn record_reconciled_durable_receipt(
-        &self,
-        operation_id: &str,
-        payload_digest: &str,
-        receipt: &TransitionReceipt,
-        response: &Value,
-    ) -> Result<(), String> {
-        let Some(durable) = &self.durable else {
-            return Ok(());
-        };
-        match receipt.status() {
-            sts2_harness::DispatchStatus::Settled => {
-                match durable.operation_state(operation_id)? {
-                    sts2_harness::OperationState::Settled
-                    | sts2_harness::OperationState::Reconciled => Ok(()),
-                    sts2_harness::OperationState::Accepted
-                    | sts2_harness::OperationState::Unknown
-                    | sts2_harness::OperationState::MayHaveBeenDispatched
-                    | sts2_harness::OperationState::IntentRecorded => durable
-                        .reconcile_response(
-                            operation_id,
-                            sts2_harness::OperationState::Settled,
-                            response,
-                        ),
-                    sts2_harness::OperationState::Rejected => Err(String::from(
-                        "cannot reconcile a settled receipt after durable rejection",
-                    )),
-                }
+    fn preflight_continuation_launch(&mut self) -> Result<(), String> {
+        if self.continuation_owner_claim.is_none() || self.allocated {
+            return Err(String::from(
+                "continuation owner preflight is unavailable or already allocated",
+            ));
+        }
+        match EpisodeRuntimePort::launch(self) {
+            Ok(()) => {
+                self.continuation_prelaunched = true;
+                Ok(())
             }
-            sts2_harness::DispatchStatus::Rejected | sts2_harness::DispatchStatus::Cancelled => {
-                durable.reconcile_response(operation_id, sts2_harness::OperationState::Rejected, response)
-            }
-            sts2_harness::DispatchStatus::Accepted => {
-                let state = durable.operation_state(operation_id)?;
-                durable.operation_result(
-                    operation_id,
-                    payload_digest,
-                    if state == sts2_harness::OperationState::Unknown {
-                        sts2_harness::OperationState::Unknown
-                    } else {
-                        sts2_harness::OperationState::Accepted
-                    },
-                    Some(response),
-                )
-            }
-            sts2_harness::DispatchStatus::Unknown => {
-                // Unknown is a provisional outcome. Keep the first transport evidence when a
-                // read-only reconcile reports Unknown again; recovery responses can carry a new
-                // correlation/result digest, but they must not create an evidence conflict or
-                // promote the operation to a terminal state.
-                match durable.operation_state(operation_id)? {
-                    sts2_harness::OperationState::Unknown => Ok(()),
-                    // An accepted response is also provisional. If a later read cannot prove
-                    // settlement, retain that first response while moving the operation back to
-                    // the unresolved Unknown state; replacing it with a fresh recovery response
-                    // would make the provisional evidence appear contradictory.
-                    sts2_harness::OperationState::Accepted => durable.operation_result(
-                        operation_id,
-                        payload_digest,
-                        sts2_harness::OperationState::Unknown,
-                        None,
-                    ),
-                    _ => durable.operation_result(
-                        operation_id,
-                        payload_digest,
-                        sts2_harness::OperationState::Unknown,
-                        Some(response),
-                    ),
-                }
+            Err(error) => {
+                let close = self.close_mcp_processes();
+                let release = self.release_lease_inner();
+                Err(wire::combine_cleanup(error.to_string(), close, release))
             }
         }
+    }
+
+    /// Reattaches to the selected branch's existing live owner without allocating or initializing
+    /// a new host run. The first Runtime-v3 observation must still match the durable boundary.
+    fn preflight_continuation_resume(&mut self) -> Result<(), String> {
+        if self.continuation_owner_claim.is_none() || self.allocated {
+            return Err(String::from(
+                "selected-branch owner adoption is unavailable or already allocated",
+            ));
+        }
+        let durable = self
+            .durable
+            .as_ref()
+            .ok_or_else(|| String::from("selected-branch resume has no durable execution store"))?;
+        if !durable.has_resume_boundary()? {
+            return Err(String::from(
+                "selected-branch resume has no durable verified observation boundary",
+            ));
+        }
+        if let Some(operation) = durable.pending_operations()?.first() {
+            return Err(format!(
+                "selected-branch resume is blocked by unresolved durable operation {} ({:?}); reconcile it through the authoritative operation lookup before retrying",
+                operation.intent.operation_id, operation.state
+            ));
+        }
+        let context = self
+            .continuation_owner_claim
+            .as_ref()
+            .ok_or_else(|| String::from("selected-branch owner claim disappeared"))?;
+        let expected_owner = context
+            .claim
+            .owner_json
+            .as_deref()
+            .map(|owner| super::gateway_json::parse(owner.as_bytes()))
+            .transpose()
+            .map_err(|_| String::from("persisted selected-branch owner fence is invalid"))?;
+        let allocation = continuation_owner::adopt_current_owner(&self.config, context)?;
+        allocation.apply_current_lease(&mut self.config);
+        self.recovery_authority = allocation.recovery_authority;
+        let authority = self.recovery_authority.as_ref().ok_or_else(|| {
+            String::from("selected-branch adopt response omitted current recovery authority")
+        })?;
+        self.recovery_context = Some(
+            recovery::RecoveryContext::from_authority(authority, &self.config)
+                .map_err(|error| format!("adopted recovery authority is invalid: {error}"))?,
+        );
+        self.continuation_adopted_owner = expected_owner.clone();
+        self.continuation_adopted = true;
+        self.continuation_boundary_verified = false;
+        self.require_lifecycle_lease_authority()
+            .map_err(|error| format!("adopted lease authority is invalid: {error}"))?;
+        // The existing lease is retained even if MCP launch or boundary verification fails.
+        self.allocated = true;
+        let binding = self
+            .allocated_lease_binding()
+            .map_err(|error| format!("adopted runtime lease binding is invalid: {error}"))?;
+        let owner = expected_owner.ok_or_else(|| {
+            String::from("persisted selected-branch owner fence is unavailable")
+        })?;
+        if binding.instance_id != owner["instance_id"]
+            || binding.session_id != owner["session_id"]
+            || binding.lease_id != owner["lease_id"]
+            || binding.lease_epoch != owner["lease_epoch"].as_u64().unwrap_or_default()
+        {
+            return Err(String::from(
+                "adopted runtime lease binding differs from the persisted gateway owner fence",
+            ));
+        }
+        if let Err(error) = self.launch_mcp() {
+            let close = self.close_mcp_processes();
+            return Err(wire::combine_cleanup(error, close, Ok(())));
+        }
+        self.continuation_prelaunched = true;
+        Ok(())
+    }
+
+    fn cleanup_continuation_preflight(&mut self) -> Result<(), String> {
+        self.continuation_prelaunched = false;
+        let close = self.close_mcp_processes();
+        let release = self.release_lease_inner();
+        match (close, release) {
+            (Ok(()), Ok(())) => Ok(()),
+            (close, release) => Err(wire::combine_cleanup(
+                String::from("continuation preflight cleanup failed"),
+                close,
+                release,
+            )),
+        }
+    }
+
+    fn mark_adopted_boundary_verified(&mut self) -> Result<(), String> {
+        if !self.continuation_adopted || self.continuation_boundary_verified {
+            return Ok(());
+        }
+        let durable = self
+            .durable
+            .as_ref()
+            .ok_or_else(|| String::from("adopted continuation lost its durable boundary"))?;
+        if durable.has_resume_boundary()? {
+            return Err(String::from(
+                "first observation did not consume the durable resume boundary",
+            ));
+        }
+        self.continuation_boundary_verified = true;
+        Ok(())
+    }
+
+    pub(super) fn durable_handle(&self) -> Option<durable::DurableHandle> {
+        self.durable.clone()
     }
 
 }
 
 include!("runtime_v3_port_transport.rs");
 include!("runtime_v3_lifecycle_port_hooks.rs");
+include!("runtime_v3_port_durable_receipts.rs");

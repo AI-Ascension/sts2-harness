@@ -131,6 +131,8 @@ pub(crate) fn transition_allowed(from: DurableBranchStatus, to: DurableBranchSta
         (DurableBranchStatus::Pending, DurableBranchStatus::Restoring)
             | (DurableBranchStatus::Pending, DurableBranchStatus::Replaying)
             | (DurableBranchStatus::Pending, DurableBranchStatus::Archived)
+            | (DurableBranchStatus::Ready, DurableBranchStatus::Restoring)
+            | (DurableBranchStatus::Ready, DurableBranchStatus::Replaying)
             | (
                 DurableBranchStatus::Restoring,
                 DurableBranchStatus::Ready

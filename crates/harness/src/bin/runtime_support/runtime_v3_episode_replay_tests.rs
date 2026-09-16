@@ -196,38 +196,6 @@ fn terminal_content_is_checked_after_all_actions_settle() {
 }
 
 #[test]
-fn prefix_requires_explicit_mode_and_stops_only_at_matching_settled_checkpoint() {
-    let mut values = rows();
-    values.truncate(3);
-    values[2]["observation"] = observation("setup", 3, "next", "ironclad");
-    let encode = |values: &[Value]| {
-        values
-            .iter()
-            .map(Value::to_string)
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-    let bytes = encode(&values);
-    assert!(ReplayTrace::parse(bytes.as_bytes()).is_err());
-    let trace = ReplayTrace::parse_mode(bytes.as_bytes(), true).expect("settled prefix");
-    let mut source = ReplaySource::new(trace);
-    let fresh = input(
-        observation("setup", 20, "start-fresh", "ironclad"),
-        EpisodeStage::Setup,
-    );
-    assert!(matches!(source.decide(&fresh), Ok(Decision::Action { .. })));
-    source.action_completed(true);
-    assert!(
-        matches!(source.decide(&fresh), Ok(Decision::Recovery { kind, .. }) if kind == "stop_episode")
-    );
-    assert!(source.prefix_verified);
-    values[2]["observation"]["legal_actions"] = json!([]);
-    assert!(ReplayTrace::parse_mode(encode(&values).as_bytes(), true).is_err());
-    values.truncate(2);
-    assert!(ReplayTrace::parse_mode(encode(&values).as_bytes(), true).is_err());
-}
-
-#[test]
 fn fake_mcp_map_failure_keeps_the_first_settled_action_as_a_replay_prefix() {
     let mut values = rows();
     values.truncate(3);
@@ -357,3 +325,5 @@ fn rejected_admission_is_skipped_but_uncertain_or_cross_seed_rejection_is_not() 
 
 #[path = "runtime_v3_episode_replay_catalog_tests.rs"]
 mod catalog_tests;
+#[path = "runtime_v3_episode_replay_prefix_tests.rs"]
+mod prefix_tests;

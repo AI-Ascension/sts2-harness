@@ -20,19 +20,22 @@ pub(crate) struct GatewayClient {
 
 impl GatewayClient {
     pub(crate) fn new(config: &RuntimeConfig) -> Result<Self, String> {
-        let address = parse_address(&config.gateway_address)?;
-        if config.gateway_token.is_empty()
-            || config.gateway_token.len() > 256
-            || !config
-                .gateway_token
-                .bytes()
-                .all(|byte| byte.is_ascii_graphic())
+        Self::with_bearer(&config.gateway_address, &config.gateway_token)
+    }
+
+    pub(crate) fn with_bearer(address: &str, token: &str) -> Result<Self, String> {
+        let address = parse_address(address)?;
+        if token.is_empty()
+            || token.len() > 256
+            || !token.bytes().all(|byte| byte.is_ascii_graphic())
         {
-            return Err(String::from("gateway token is empty, unsafe, or oversized"));
+            return Err(String::from(
+                "gateway bearer is empty, unsafe, or oversized",
+            ));
         }
         Ok(Self {
             address,
-            token: config.gateway_token.clone(),
+            token: token.to_owned(),
         })
     }
 
@@ -94,8 +97,7 @@ impl GatewayClient {
         if !(200..300).contains(&response.status) {
             return Err(format!("gateway returned HTTP {}", response.status));
         }
-        serde_json::from_slice(&response.body)
-            .map_err(|_| String::from("gateway response was not JSON"))
+        super::gateway_json::parse(&response.body)
     }
 }
 

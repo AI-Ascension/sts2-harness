@@ -141,20 +141,21 @@ pub use error::{CloseFailure, CloseReport, Component, HarnessError, PortError, P
 pub use evaluation::{
     EvaluationError, EvaluationReport, EvaluationSample, Evaluator, TerminalOutcome,
 };
+pub use exact_transition::branch_continuation::*;
 pub use exact_transition::{
     AncestrySplit, BranchArtifactAvailability, BranchArtifactReference, BranchArtifactResolution,
     BranchArtifactResolver, BranchArtifactRole, BranchArtifactState, BranchArtifactUnavailable,
-    BranchAssurance, BranchEvent, BranchEventPage, BranchFork, BranchPage, BranchPolicy,
-    BranchPrunePlan, BranchPruneRequest, BranchRecord, BranchRetentionPolicy, BranchStatus,
-    BranchStoreError, BranchStrategy, BranchTree, BranchTreeError, DURABLE_BRANCH_SCHEMA_REVISION,
-    DURABLE_BRANCH_SCHEMA_VERSION, DurableBranch, DurableBranchDraft, DurableBranchStatus,
-    ExactArtifactStoreResolver, Experiment, ExperimentBranch, ExperimentError, LineageError,
-    MAX_BRANCH_ARTIFACTS, MAX_BRANCH_EVENT_PAGE, MAX_BRANCH_NAME_BYTES, MAX_BRANCH_NOTES_BYTES,
-    MAX_BRANCH_PAGE, MAX_BRANCHES, MAX_OCCURRENCES, MAX_TRANSITION_LABEL_BYTES,
-    MAX_TRANSITION_RECORDS, OccurrenceGraph, OccurrenceId, OccurrenceRecord, SqliteBranchStore,
-    TRANSITION_COMMITMENT_PREFIX, TRANSITION_COMMITMENT_VERSION, TRANSITION_DOMAIN,
-    TraceComparison, TraceOutcome, TransitionError, TransitionRecord, TransitionTrace,
-    compare_traces, split_by_ancestry,
+    BranchAssurance, BranchContinuationClaim, BranchContinuationClaimState, BranchEvent,
+    BranchEventPage, BranchFork, BranchPage, BranchPolicy, BranchPrunePlan, BranchPruneRequest,
+    BranchRecord, BranchRetentionPolicy, BranchStatus, BranchStoreError, BranchStrategy,
+    BranchTree, BranchTreeError, DURABLE_BRANCH_SCHEMA_REVISION, DURABLE_BRANCH_SCHEMA_VERSION,
+    DurableBranch, DurableBranchDraft, DurableBranchStatus, ExactArtifactStoreResolver, Experiment,
+    ExperimentBranch, ExperimentError, LineageError, MAX_BRANCH_ARTIFACTS, MAX_BRANCH_EVENT_PAGE,
+    MAX_BRANCH_NAME_BYTES, MAX_BRANCH_NOTES_BYTES, MAX_BRANCH_PAGE, MAX_BRANCHES, MAX_OCCURRENCES,
+    MAX_TRANSITION_LABEL_BYTES, MAX_TRANSITION_RECORDS, OccurrenceGraph, OccurrenceId,
+    OccurrenceRecord, SqliteBranchStore, TRANSITION_COMMITMENT_PREFIX,
+    TRANSITION_COMMITMENT_VERSION, TRANSITION_DOMAIN, TraceComparison, TraceOutcome,
+    TransitionError, TransitionRecord, TransitionTrace, compare_traces, split_by_ancestry,
 };
 pub use execution::{
     AttemptKind, AttemptState, BLOB_DIGEST_PREFIX, BlobDigest, CHECKPOINT_MANIFEST_DOMAIN,
