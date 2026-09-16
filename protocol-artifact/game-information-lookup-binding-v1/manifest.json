@@ -19,15 +19,16 @@
     "golden/observation-response.json",
     "golden/reobserve-exhausted-response.json",
     "golden/reobserve-required-response.json",
+    "golden/reobserve-unavailable-response.json",
     "golden/reobserved-response.json"
   ],
   "fixtures": [
-    "../../conformance/fixtures/game-information-lookup-binding-v1/valid/binding-identity-epoch.json",
-    "../../conformance/fixtures/game-information-lookup-binding-v1/valid/binding-identity-input.json"
+    "conformance/fixtures/game-information-lookup-binding-v1/valid/binding-identity-epoch.json",
+    "conformance/fixtures/game-information-lookup-binding-v1/valid/binding-identity-input.json"
   ],
   "negative_fixtures": [
-    "../../conformance/fixtures/game-information-lookup-binding-v1/invalid"
+    "conformance/fixtures/game-information-lookup-binding-v1/invalid"
   ],
-  "conformance": "../../conformance/cases/game-information-lookup-binding-v1.json",
+  "conformance": "conformance/cases/game-information-lookup-binding-v1.json",
   "checksums": "SHA256SUMS"
 }

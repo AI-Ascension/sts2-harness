@@ -58,16 +58,15 @@ impl LookupBindingPort for RuntimeV3Port {
     fn lookup_binding(
         &mut self,
         request: &LookupBindingRequest,
-    ) -> Result<Value, LookupBindingError> {
+    ) -> Result<Vec<u8>, LookupBindingError> {
         let operation = match request.operation {
             sts2_harness::game_information_binding::LookupBindingOperation::Discovery => {
                 "discovery"
             }
             sts2_harness::game_information_binding::LookupBindingOperation::Observe => "observe",
         };
-        let correlation = format!("game-information-binding-{operation}");
         self.gateway
-            .request(
+            .request_bytes(
                 "POST",
                 &format!(
                     "/v1/instances/{}/game-information/lookup-binding",
@@ -81,7 +80,7 @@ impl LookupBindingPort for RuntimeV3Port {
                     "agent_id": request.scope.agent_id,
                     "authority_epoch": request.authority_epoch,
                 }),
-                super::identity_headers(&self.config, &correlation),
+                super::identity_headers(&self.config, &request.correlation_id),
             )
             .map_err(|_| LookupBindingError::NativeUnavailable)
     }
@@ -99,6 +98,9 @@ impl RuntimeV3Port {
                 agent_id,
             },
             authority_epoch,
+            supported_capabilities: vec![String::from(
+                sts2_harness::game_information_binding::LOOKUP_BINDING_PROFILE,
+            )],
         };
         let mut binding = LookupBindingSession::new(context);
         binding
@@ -206,7 +208,9 @@ mod lookup_binding_tests {
                         "authority_epoch":7
                     })
                 );
-                let response = json!({"status":"synthetic"}).to_string();
+                let response = String::from(
+                    r#"{"correlation_id":"game-information-binding-discovery","kind":"lookup_binding_discovery_response","kind":"error_response"}"#,
+                );
                 write!(
                     stream,
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{response}",
@@ -218,19 +222,23 @@ mod lookup_binding_tests {
                 config(address),
                 super::super::TelemetryHandle::disabled(),
             )?;
-            let request = LookupBindingRequest {
-                operation: sts2_harness::game_information_binding::LookupBindingOperation::Discovery,
+            let mut binding = LookupBindingSession::new(LookupBindingContext {
+                instance_id: String::from("instance-1"),
                 scope: LookupScope {
-                    project_id: "proj-1".into(),
-                    run_id: "run-42".into(),
-                    episode_id: "episode-7".into(),
-                    agent_id: "agent-3".into(),
+                    project_id: String::from("proj-1"),
+                    run_id: String::from("run-42"),
+                    episode_id: String::from("episode-7"),
+                    agent_id: String::from("agent-3"),
                 },
                 authority_epoch: 7,
-            };
-            let value = LookupBindingPort::lookup_binding(&mut port, &request)
-                .map_err(|error| error.to_string())?;
-            assert_eq!(value["status"], "synthetic");
+                supported_capabilities: vec![String::from(
+                    sts2_harness::game_information_binding::LOOKUP_BINDING_PROFILE,
+                )],
+            });
+            assert_eq!(
+                binding.discover(&mut port),
+                Err(LookupBindingError::Invalid)
+            );
             gateway.join().map_err(|_| "gateway thread panicked")??;
             Ok(())
         })

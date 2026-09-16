@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
-use crate::game_information_validation::decode_strict;
-use crate::sha256_hex;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use std::sync::OnceLock;
+use serde_json::json;
+
+#[path = "game_information_binding_validation.rs"]
+mod validation;
+pub use validation::decode_lookup_binding_response;
+use validation::{Decoded, binding_id, error_code, schema, string};
 
 pub const LOOKUP_BINDING_PROFILE: &str = "game-information-lookup-binding-v1";
 pub const LOOKUP_BINDING_SCHEMA_DIGEST: &str =
@@ -32,6 +34,7 @@ pub struct LookupBindingRequest {
     pub operation: LookupBindingOperation,
     pub scope: LookupScope,
     pub authority_epoch: u64,
+    pub correlation_id: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -39,6 +42,7 @@ pub struct LookupBindingContext {
     pub instance_id: String,
     pub scope: LookupScope,
     pub authority_epoch: u64,
+    pub supported_capabilities: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -71,21 +75,13 @@ pub enum LookupBindingError {
     Transport,
 }
 
-impl std::fmt::Display for LookupBindingError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "game-information lookup binding: {self:?}")
-    }
-}
-
-impl std::error::Error for LookupBindingError {}
-
 /// Boundary adapter implemented by the runtime. It only carries the closed
 /// request identity; it cannot supply locale, profile, manifest, or snapshots.
 pub trait LookupBindingPort {
     fn lookup_binding(
         &mut self,
         request: &LookupBindingRequest,
-    ) -> Result<Value, LookupBindingError>;
+    ) -> Result<Vec<u8>, LookupBindingError>;
 }
 
 /// One discovered binding and its latest observation. Re-observation never
@@ -121,11 +117,13 @@ impl LookupBindingSession {
         if self.discovered.is_some() {
             return Err(LookupBindingError::Invalid);
         }
-        let response = port.lookup_binding(&self.request(LookupBindingOperation::Discovery))?;
-        let decoded = self.decode(&response)?;
+        let request = self.request(LookupBindingOperation::Discovery);
+        let response = port.lookup_binding(&request)?;
+        let decoded = self.decode(&response, &request.correlation_id, None)?;
         if decoded.kind != "lookup_binding_discovery_response"
             || decoded.state != "not_yet_observed"
             || decoded.observation.is_some()
+            || decoded.error.is_some()
         {
             return Err(LookupBindingError::Invalid);
         }
@@ -144,35 +142,47 @@ impl LookupBindingSession {
             .as_ref()
             .cloned()
             .ok_or(LookupBindingError::DiscoveryRequired)?;
-        let retained_generation = self
-            .observation
-            .as_ref()
-            .map_or(0, |observation| observation.state_generation);
+        let retained = self.observation.clone();
         for attempt in 0..MAX_REOBSERVE_CALLS {
-            let response = port.lookup_binding(&self.request(LookupBindingOperation::Observe))?;
-            let decoded = self.decode(&response)?;
+            let request = self.request(LookupBindingOperation::Observe);
+            let response = port.lookup_binding(&request)?;
+            let decoded = match self.decode(&response, &request.correlation_id, retained.as_ref()) {
+                Err(LookupBindingError::StaleSnapshot) if attempt + 1 < MAX_REOBSERVE_CALLS => {
+                    self.observation = None;
+                    continue;
+                }
+                result => result?,
+            };
+            if decoded.error == Some(LookupBindingError::ReobserveUnavailable) {
+                self.observation = None;
+                return Err(LookupBindingError::ReobserveUnavailable);
+            }
+            if decoded.kind != "lookup_binding_observation_response" {
+                return Err(LookupBindingError::Invalid);
+            }
             if decoded.binding != discovered {
                 return Err(LookupBindingError::InvalidIdentity);
             }
             match (decoded.state.as_str(), decoded.observation) {
-                ("observed", Some(observation))
-                    if observation.state_generation >= retained_generation =>
-                {
-                    if self.observation.as_ref().is_some_and(|previous| {
-                        previous.observation_id == observation.observation_id
+                ("observed", Some(observation)) => {
+                    if retained.as_ref().is_some_and(|previous| {
+                        observation.state_generation < previous.state_generation
+                            || previous.observation_id == observation.observation_id
                     }) {
+                        self.observation = None;
                         return Err(LookupBindingError::StaleSnapshot);
                     }
                     self.observation = Some(observation);
                     return self.observation.as_ref().ok_or(LookupBindingError::Invalid);
                 }
-                ("observed", Some(_)) if attempt + 1 < MAX_REOBSERVE_CALLS => {
-                    self.observation = None;
-                }
                 ("reobserve_required", None) if attempt + 1 < MAX_REOBSERVE_CALLS => {
                     self.observation = None;
                 }
                 ("reobserve_exhausted", None) => {
+                    self.observation = None;
+                    return Err(LookupBindingError::ReobserveUnavailable);
+                }
+                ("reobserve_required", None) => {
                     self.observation = None;
                     return Err(LookupBindingError::ReobserveUnavailable);
                 }
@@ -183,35 +193,37 @@ impl LookupBindingSession {
     }
 
     fn request(&self, operation: LookupBindingOperation) -> LookupBindingRequest {
+        let correlation_id = match operation {
+            LookupBindingOperation::Discovery => String::from("game-information-binding-discovery"),
+            LookupBindingOperation::Observe => String::from("game-information-binding-observe"),
+        };
         LookupBindingRequest {
             operation,
             scope: self.context.scope.clone(),
             authority_epoch: self.context.authority_epoch,
+            correlation_id,
         }
     }
 
-    fn decode(&self, value: &Value) -> Result<Decoded, LookupBindingError> {
-        schema(value)?;
+    fn decode(
+        &self,
+        bytes: &[u8],
+        expected_correlation: &str,
+        retained: Option<&LookupObservation>,
+    ) -> Result<Decoded, LookupBindingError> {
+        let value = decode_lookup_binding_response(bytes)?;
         if value["protocol_version"] != LOOKUP_BINDING_PROFILE
             || value["schema_digest"] != LOOKUP_BINDING_SCHEMA_DIGEST
         {
             return Err(LookupBindingError::UnsupportedVersion);
         }
+        schema(&value)?;
+        if value["correlation_id"] != expected_correlation {
+            return Err(LookupBindingError::Invalid);
+        }
         let binding = &value["binding"];
         if binding.is_null() {
-            return Err(error_code(value));
-        }
-        if binding["scope"] != json!(self.context.scope)
-            || binding["instance_id"] != self.context.instance_id
-            || binding["authority_epoch"] != self.context.authority_epoch
-        {
-            return Err(LookupBindingError::DeniedScope);
-        }
-        if value["discovery"]["required_capabilities"]["profile"] != LOOKUP_BINDING_PROFILE
-            || value["discovery"]["required_capabilities"]["schema_digest"]
-                != LOOKUP_BINDING_SCHEMA_DIGEST
-        {
-            return Err(LookupBindingError::MissingCapability);
+            return Err(error_code(&value));
         }
         let supplied = binding["binding_id"]
             .as_str()
@@ -219,6 +231,25 @@ impl LookupBindingSession {
         let expected = binding_id(binding)?;
         if supplied != expected {
             return Err(LookupBindingError::InvalidIdentity);
+        }
+        if binding["scope"] != json!(self.context.scope)
+            || binding["instance_id"] != self.context.instance_id
+            || binding["authority_epoch"] != self.context.authority_epoch
+        {
+            return Err(LookupBindingError::DeniedScope);
+        }
+        let required_profile = value["discovery"]["required_capabilities"]["profile"]
+            .as_str()
+            .ok_or(LookupBindingError::Invalid)?;
+        if value["discovery"]["required_capabilities"]["schema_digest"]
+            != LOOKUP_BINDING_SCHEMA_DIGEST
+            || !self
+                .context
+                .supported_capabilities
+                .iter()
+                .any(|capability| capability == required_profile)
+        {
+            return Err(LookupBindingError::MissingCapability);
         }
         let decoded = LookupBinding {
             binding_id: supplied.to_owned(),
@@ -241,83 +272,43 @@ impl LookupBindingSession {
                     .ok_or(LookupBindingError::Invalid)?,
             })
         };
+        let state = string(&value["discovery"], "observation_state")?;
+        let supersedes = value["discovery"]["reobserve"]["supersedes_observation_id"].as_str();
+        if let Some(retained) = retained
+            && matches!(state.as_str(), "reobserve_required" | "reobserve_exhausted")
+            && supersedes != Some(retained.observation_id.as_str())
+        {
+            return Err(LookupBindingError::Invalid);
+        }
+        if let (Some(retained), Some(observation)) = (retained, observation.as_ref())
+            && observation.state_generation < retained.state_generation
+        {
+            return Err(LookupBindingError::StaleSnapshot);
+        }
+        let kind = string(&value, "kind")?;
+        let error = if kind == "error_response" {
+            let code = error_code(&value);
+            if code != LookupBindingError::ReobserveUnavailable
+                || state != "reobserve_exhausted"
+                || observation.is_some()
+                || value["discovery"]["reobserve"]["attempts"]
+                    .as_u64()
+                    .is_none_or(|attempts| attempts < 1)
+            {
+                return Err(LookupBindingError::Invalid);
+            }
+            Some(code)
+        } else {
+            None
+        };
         Ok(Decoded {
-            kind: string(value, "kind")?,
-            state: string(&value["discovery"], "observation_state")?,
+            kind,
+            state,
             binding: decoded,
             observation,
+            error,
         })
     }
-}
-
-struct Decoded {
-    kind: String,
-    state: String,
-    binding: LookupBinding,
-    observation: Option<LookupObservation>,
-}
-
-fn string(value: &Value, name: &str) -> Result<String, LookupBindingError> {
-    value[name]
-        .as_str()
-        .map(str::to_owned)
-        .ok_or(LookupBindingError::Invalid)
-}
-
-fn binding_id(binding: &Value) -> Result<String, LookupBindingError> {
-    let scope = &binding["scope"];
-    let input = json!({
-        "agent_id": string(scope, "agent_id")?,
-        "authority_epoch": binding["authority_epoch"].as_u64().ok_or(LookupBindingError::Invalid)?,
-        "content_manifest_id": string(binding, "content_manifest_id")?,
-        "episode_id": string(scope, "episode_id")?,
-        "game_profile": string(binding, "game_profile")?,
-        "locale": string(binding, "locale")?,
-        "project_id": string(scope, "project_id")?,
-        "run_id": string(scope, "run_id")?,
-    });
-    serde_json::to_vec(&input)
-        .map(sha256_hex)
-        .map_err(|_| LookupBindingError::Invalid)
-}
-
-fn schema(value: &Value) -> Result<(), LookupBindingError> {
-    static VALIDATOR: OnceLock<Result<jsonschema::Validator, ()>> = OnceLock::new();
-    let validator = VALIDATOR
-        .get_or_init(|| {
-            let source = include_str!(
-                "../../../protocol-artifact/game-information-lookup-binding-v1/schema.json"
-            );
-            if sha256_hex(source) != LOOKUP_BINDING_SCHEMA_DIGEST {
-                return Err(());
-            }
-            let schema = serde_json::from_str(source).map_err(|_| ())?;
-            jsonschema::validator_for(&schema).map_err(|_| ())
-        })
-        .as_ref()
-        .map_err(|_| LookupBindingError::Invalid)?;
-    if !validator.is_valid(value) {
-        return Err(LookupBindingError::Invalid);
-    }
-    Ok(())
-}
-
-fn error_code(value: &Value) -> LookupBindingError {
-    match value["error"]["code"].as_str() {
-        Some("unsupported_version") => LookupBindingError::UnsupportedVersion,
-        Some("invalid_identity") => LookupBindingError::InvalidIdentity,
-        Some("denied_scope") => LookupBindingError::DeniedScope,
-        Some("missing_capability") => LookupBindingError::MissingCapability,
-        Some("stale_snapshot") => LookupBindingError::StaleSnapshot,
-        Some("mixed_binding") => LookupBindingError::MixedBinding,
-        Some("reobserve_unavailable") => LookupBindingError::ReobserveUnavailable,
-        _ => LookupBindingError::Invalid,
-    }
-}
-
-/// Decode raw boundary bytes with the existing duplicate-member rejection.
-pub fn decode_lookup_binding_response(bytes: &[u8]) -> Result<Value, LookupBindingError> {
-    decode_strict(bytes).map_err(|_| LookupBindingError::Invalid)
 }
 
 #[cfg(test)]

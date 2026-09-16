@@ -2,7 +2,9 @@
 
 use super::*;
 use std::net::TcpListener;
+use std::path::Path;
 use std::thread;
+use sts2_harness::game_information_binding::{LookupBindingError, decode_lookup_binding_response};
 
 #[test]
 fn numeric_loopback_only_and_request_injection_rejected() {
@@ -88,6 +90,56 @@ fn exchange_response(response: Vec<u8>) -> Result<Value, String> {
         .map_err(|_| "server panicked")?
         .map_err(|error| error.to_string())?;
     result
+}
+
+fn exchange_response_bytes(body: &[u8]) -> Result<Vec<u8>, String> {
+    let listener = TcpListener::bind("127.0.0.1:0").map_err(|error| error.to_string())?;
+    let address = listener.local_addr().map_err(|error| error.to_string())?;
+    let response = [
+        format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len()).as_bytes(),
+        body,
+    ]
+    .concat();
+    let server = thread::spawn(move || -> std::io::Result<()> {
+        let (mut stream, _) = listener.accept()?;
+        stream.set_read_timeout(Some(Duration::from_secs(2)))?;
+        let mut request = [0; 4096];
+        let _ = stream.read(&mut request)?;
+        stream.write_all(&response)
+    });
+    let result = GatewayClient {
+        address,
+        token: "synthetic-token".into(),
+    }
+    .request_bytes("GET", "/", &Value::Null, BTreeMap::new());
+    server
+        .join()
+        .map_err(|_| String::from("server panicked"))?
+        .map_err(|error| error.to_string())?;
+    result
+}
+
+#[test]
+fn byte_exchange_preserves_shared_duplicate_key_vector_for_strict_decode() -> Result<(), String> {
+    let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        "../../protocol-artifact/game-information-lookup-binding-v1/conformance/fixtures/game-information-lookup-binding-v1/invalid/duplicate-key.json",
+    );
+    let fixture_text = std::fs::read_to_string(&fixture_path).map_err(|error| error.to_string())?;
+    let fixture: Value = serde_json::from_str(&fixture_text).map_err(|error| error.to_string())?;
+    let raw = fixture["raw"]
+        .as_str()
+        .ok_or_else(|| String::from("duplicate-key vector has no raw JSON"))?;
+    let received = exchange_response_bytes(raw.as_bytes())?;
+    if received != raw.as_bytes() {
+        return Err(String::from(
+            "gateway byte exchange changed the duplicate-key response",
+        ));
+    }
+    assert_eq!(
+        decode_lookup_binding_response(&received),
+        Err(LookupBindingError::Invalid)
+    );
+    Ok(())
 }
 
 #[test]
