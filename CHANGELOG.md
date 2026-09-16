@@ -7,6 +7,14 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Keep a **cancel** pending as `NeedsOperator` while a live operation's settlement is still unknown,
+  instead of stopping the episode and marking the run cancelled. `CommandKind::Cancel` reconciles
+  first, and when reconciliation reports `ErrorClass::Unresolved` it returns
+  `CommandOutcome::Pending` with reason `live_operation_unknown`, leaving the pending operation
+  identity, the `NotStarted` cleanup state and the live session untouched so that an operator can
+  still settle it. Compatibility: the cancel command, its revision guard and its response schema are
+  unchanged, and a cancel at a settled revision behaves exactly as before. Refs #94.
+
 - Record the **real pinned-Exo one-shot executor process oracle** against the shipped extension
   bytes and bind it mechanically: `docs/evidence/exo-executor-process-oracle-20260915.{md,json}`
   capture a reproduced run of the real pinned Exo runtime through `sts2-exo-bridge` →

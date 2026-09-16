@@ -117,6 +117,7 @@ pub(crate) struct FakeFactory {
     launch_error: bool,
     stop_error: bool,
     release_error: bool,
+    reconcile_unknown: bool,
 }
 
 impl FakeFactory {
@@ -131,6 +132,7 @@ impl FakeFactory {
             launch_error: false,
             stop_error: false,
             release_error: false,
+            reconcile_unknown: false,
         }
     }
 
@@ -145,6 +147,7 @@ impl FakeFactory {
             launch_error: false,
             stop_error: false,
             release_error: false,
+            reconcile_unknown: false,
         }
     }
 
@@ -164,6 +167,10 @@ impl FakeFactory {
         Self::new(false).with_release_error()
     }
 
+    pub(crate) fn unresolved_reconcile() -> Self {
+        Self::new(true).with_reconcile_unknown()
+    }
+
     fn with_mismatched_receipt(mut self) -> Self {
         self.mismatched_receipt = true;
         self
@@ -181,6 +188,11 @@ impl FakeFactory {
 
     fn with_release_error(mut self) -> Self {
         self.release_error = true;
+        self
+    }
+
+    fn with_reconcile_unknown(mut self) -> Self {
+        self.reconcile_unknown = true;
         self
     }
 
@@ -235,6 +247,7 @@ impl LiveWorkflowSessionFactory for FakeFactory {
             launch_error: self.launch_error,
             stop_error: self.stop_error,
             release_error: self.release_error,
+            reconcile_unknown: self.reconcile_unknown,
             identity: None,
             action: None,
         }))
@@ -250,6 +263,7 @@ struct FakeSession {
     launch_error: bool,
     stop_error: bool,
     release_error: bool,
+    reconcile_unknown: bool,
     identity: Option<String>,
     action: Option<EpisodeLegalAction>,
 }
@@ -260,182 +274,10 @@ impl FakeSession {
     }
 }
 
-impl LiveWorkflowSession for FakeSession {
-    fn launch(&mut self) -> Result<(), sts2_harness::management::ManagementError> {
-        self.record("launch");
-        if self.launch_error {
-            return Err(sts2_harness::management::ManagementError::unavailable(
-                "fake_launch",
-                "fixture launch failed",
-            ));
-        }
-        Ok(())
-    }
-
-    fn observe(&mut self) -> Result<EpisodeObservation, sts2_harness::management::ManagementError> {
-        self.record("observe");
-        Ok(observation("state-0", 0))
-    }
-
-    fn observe_projection(
-        &mut self,
-        projection_ref: &str,
-    ) -> Result<EpisodeObservation, sts2_harness::management::ManagementError> {
-        assert_eq!(projection_ref, "fair-play.live.v1");
-        self.observe()
-    }
-
-    fn legal_actions(
-        &mut self,
-        state_id: &str,
-        generation: u64,
-    ) -> Result<EpisodeLegalActionSet, sts2_harness::management::ManagementError> {
-        self.record("legal_actions");
-        EpisodeLegalActionSet::new(
-            state_id,
-            generation,
-            vec![EpisodeLegalAction::new("end-turn", ActionKind::EndTurn).expect("action")],
-        )
-        .map_err(|error| {
-            sts2_harness::management::ManagementError::invalid("fake_catalog", error.to_string())
-        })
-    }
-
-    fn decide(
-        &mut self,
-        _input: &DecisionInput,
-    ) -> Result<Decision, sts2_harness::management::ManagementError> {
-        self.record("decide");
-        Ok(Decision::Action {
-            action_id: "end-turn".to_owned(),
-            rationale: "fixture decision".to_owned(),
-            confidence: Some(100),
-        })
-    }
-
-    fn decide_for(
-        &mut self,
-        input: &DecisionInput,
-        decision_profile_ref: &str,
-        context_ref: &str,
-    ) -> Result<Decision, sts2_harness::management::ManagementError> {
-        assert_eq!(decision_profile_ref, "decision.live.v1");
-        assert_eq!(context_ref, "context.live.v1");
-        self.decide(input)
-    }
-
-    fn dispatch_action(
-        &mut self,
-        identity: &ActionIdentity,
-        action: &EpisodeLegalAction,
-    ) -> Result<TransitionReceipt, sts2_harness::management::ManagementError> {
-        self.record("dispatch");
-        self.identity = Some(identity.operation_id.clone());
-        self.action = Some(action.clone());
-        if self.dispatch_error {
-            return Err(sts2_harness::management::ManagementError::unresolved(
-                "fake_transport",
-                "dispatch response was lost",
-            ));
-        }
-        if self.mismatched_receipt {
-            return Ok(TransitionReceipt::new(
-                format!("{}-other", identity.operation_id),
-                action.clone(),
-                DispatchStatus::Settled,
-                Some(observation("state-1", 1)),
-                Some("host.semantic.mismatched".to_owned()),
-                None,
-            ));
-        }
-        let status = if self.unknown {
-            DispatchStatus::Unknown
-        } else {
-            DispatchStatus::Accepted
-        };
-        Ok(TransitionReceipt::new(
-            identity.operation_id.clone(),
-            action.clone(),
-            status,
-            None,
-            None,
-            None,
-        ))
-    }
-
-    fn wait_for_transition(
-        &mut self,
-        _operation_id: &str,
-        _wait_for_millis: u32,
-    ) -> Result<WaitSample, sts2_harness::management::ManagementError> {
-        self.record("wait");
-        Ok(
-            WaitSample::new(WaitOutcome::Successor, Some(observation("state-1", 1)))
-                .with_effect_kind("host.semantic.test"),
-        )
-    }
-
-    fn reconcile(
-        &mut self,
-        operation_id: &str,
-    ) -> Result<TransitionReceipt, sts2_harness::management::ManagementError> {
-        self.record("reconcile");
-        let action = self.action.clone().ok_or_else(|| {
-            sts2_harness::management::ManagementError::unavailable(
-                "fake_reconcile",
-                "missing operation",
-            )
-        })?;
-        if self.identity.as_deref() != Some(operation_id) {
-            return Err(sts2_harness::management::ManagementError::conflict(
-                "fake_reconcile",
-                "operation identity mismatch",
-            ));
-        }
-        if self.reconcile_conflict {
-            return Ok(TransitionReceipt::new(
-                format!("{operation_id}-other"),
-                action,
-                DispatchStatus::Settled,
-                Some(observation("state-1", 1)),
-                Some("host.semantic.reconcile-conflict".to_owned()),
-                None,
-            ));
-        }
-        Ok(TransitionReceipt::new(
-            operation_id,
-            action,
-            DispatchStatus::Settled,
-            Some(observation("state-1", 1)),
-            Some("host.semantic.reconciled".to_owned()),
-            None,
-        ))
-    }
-
-    fn release_lease(&mut self) -> Result<(), sts2_harness::management::ManagementError> {
-        self.record("release");
-        if self.release_error {
-            return Err(sts2_harness::management::ManagementError::unavailable(
-                "fake_release",
-                "fixture lease release failed",
-            ));
-        }
-        Ok(())
-    }
-
-    fn stop_episode(&mut self) -> Result<(), sts2_harness::management::ManagementError> {
-        self.record("stop");
-        if self.stop_error {
-            return Err(sts2_harness::management::ManagementError::unavailable(
-                "fake_stop",
-                "fixture stop failed",
-            ));
-        }
-        Ok(())
-    }
-}
-
 #[path = "live_workflow_context_owner.rs"]
 mod context_owner;
 
 pub(crate) use context_owner::{FakeContextOwner, live_service};
+
+#[path = "live_workflow_session.rs"]
+mod session;
