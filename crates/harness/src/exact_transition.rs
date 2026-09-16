@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::execution::{BlobDigest, ExactStateDigest};
 
+pub mod branch_continuation;
 mod branch_tree;
 mod durable_branch;
 mod error;

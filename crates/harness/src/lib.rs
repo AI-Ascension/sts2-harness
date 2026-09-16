@@ -141,6 +141,7 @@ pub use error::{CloseFailure, CloseReport, Component, HarnessError, PortError, P
 pub use evaluation::{
     EvaluationError, EvaluationReport, EvaluationSample, Evaluator, TerminalOutcome,
 };
+pub use exact_transition::branch_continuation::*;
 pub use exact_transition::{
     AncestrySplit, BranchArtifactAvailability, BranchArtifactReference, BranchArtifactResolution,
     BranchArtifactResolver, BranchArtifactRole, BranchArtifactState, BranchArtifactUnavailable,
