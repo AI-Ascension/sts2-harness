@@ -49,6 +49,16 @@ pub trait EpisodeRuntimePort: BarrierPort + RecoveryPort + ShutdownPort {
         ))
     }
 
+    /// Resolves the enabled owner-backed game-information binding after lease
+    /// admission and before the runner reads an episode observation.
+    ///
+    /// Adapters without the additive LBR v1 route remain compatible by
+    /// inheriting the no-op implementation. An enabled adapter must fail
+    /// closed rather than substituting locally derived game information.
+    fn prepare_game_information_binding(&mut self) -> Result<(), PortError> {
+        Ok(())
+    }
+
     fn observe(&mut self) -> Result<EpisodeObservation, PortError>;
 
     /// Reads the authored projection binding through the runtime boundary.
@@ -222,7 +232,13 @@ impl EpisodeRunner {
         source: &mut S,
     ) -> Result<EpisodeRunReport, EpisodeRunnerError> {
         port.launch().map_err(EpisodeRunnerError::Launch)?;
-        let outcome = self.run_inner(port, source);
+        let outcome = match port.prepare_game_information_binding() {
+            Ok(()) => self.run_inner(port, source),
+            Err(error) => Err(runner_impl::RunFailure {
+                error: EpisodeRunnerError::GameInformationBinding(error),
+                pending_operation_id: None,
+            }),
+        };
         let cleanup = EpisodeShutdown.close_report(port);
         match (outcome, cleanup.first_failure()) {
             (Ok(report), None) => Ok(report),
@@ -240,3 +256,7 @@ impl EpisodeRunner {
 fn valid_text(value: &str, maximum: usize) -> bool {
     !value.is_empty() && value.len() <= maximum && !value.chars().any(char::is_control)
 }
+
+#[cfg(test)]
+#[path = "runner_tests.rs"]
+mod tests;

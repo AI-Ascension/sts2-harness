@@ -10,9 +10,6 @@ use sts2_harness::{
 
 use super::super::mcp::validate_or_release_allocation_with;
 use super::{RuntimeV3Port, RuntimeV3ToolError, allocation_context, ledger, parse, wire};
-use ledger::OperationRecord;
-
-const MAX_OPERATIONS: usize = 1_024;
 
 include!("runtime_v3_episode_legal_actions.rs");
 
@@ -44,6 +41,10 @@ impl EpisodeRuntimePort for RuntimeV3Port {
             ));
         }
         self.observe()
+    }
+
+    fn prepare_game_information_binding(&mut self) -> Result<(), sts2_harness::PortError> {
+        self.initialize_game_information_binding()
     }
 
     fn legal_actions(
@@ -170,6 +171,5 @@ impl EpisodeRuntimePort for RuntimeV3Port {
 include!("runtime_v3_episode_helpers.rs");
 
 #[cfg(test)]
-mod tests {
-    include!("runtime_v3_episode_tests.rs");
-}
+#[path = "runtime_v3_episode_tests.rs"]
+mod tests;

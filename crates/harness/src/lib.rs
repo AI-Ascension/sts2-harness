@@ -67,6 +67,7 @@ pub mod exo_lookup_process;
 pub mod exo_lookup_wire;
 mod exo_process;
 pub mod game_information;
+pub mod game_information_binding;
 mod game_information_validation;
 mod identity;
 pub mod management;

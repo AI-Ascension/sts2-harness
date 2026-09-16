@@ -11,6 +11,15 @@ are recorded in [ADR 0039](decisions/0039-game-information-consumer.md). Public 
 live lookups, bounded retained pages and encrypted restart replay are component-tested;
 native/provider execution and the old native Exo adapter's tool translation remain unverified.
 
+The additive lookup-binding consumer pins
+`game-information-lookup-binding-v1` at schema digest
+`f10f9af01d6be1de104069ba842e7971971e88f27553e782e81174ee7aa1cd58`.
+It uses the gateway-owned discovery/observe route only when explicitly enabled, rejects ownership
+overrides, and fails closed on unavailable native adapters or exhausted re-observation. This does
+not add a complete content-manifest transport; its missing package/version/order/inventory and
+override fields require a separately versioned contract. See
+[ADR 0042](decisions/0042-game-information-lookup-binding-route.md).
+
 ## Benchmark manifest foundation
 
 `benchmark_manifest` adds a private `ascension.benchmark-manifest.v1` owner format and
