@@ -16,6 +16,8 @@ impl ProviderSessionBroker {
     ) -> Result<SessionBinding, SessionError> {
         self.authorize_owner(owner_token)?;
         if !self.policy.allows_execution()
+            || self.capabilities.profile_id != "sts2-exo-lifecycle-v2"
+            || self.policy.continuity != ContinuityMode::StrictReviewed
             || !self
                 .capabilities
                 .enabled_methods
@@ -42,11 +44,12 @@ impl ProviderSessionBroker {
             self.policy.profile_sha256.clone(),
             expires_at,
         )?;
-        binding.state = BindingState::Active;
+        binding.state = BindingState::OneShotPendingNative;
         binding.game_dispatch_capability = true;
         binding.owner_epoch = self.owner_epoch;
         binding.validate()?;
-        self.bindings.insert(binding.binding_id.clone(), binding.clone());
+        self.bindings
+            .insert(binding.binding_id.clone(), binding.clone());
         Ok(binding)
     }
 }

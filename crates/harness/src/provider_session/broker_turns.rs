@@ -176,7 +176,10 @@ impl ProviderSessionBroker {
         if binding.state == BindingState::Quarantined {
             return Err(SessionError::Fenced);
         }
-        if binding.state != BindingState::Active || !binding.game_dispatch_capability {
+        let one_shot = binding.state == BindingState::OneShotPendingNative
+            && self.capabilities.profile_id == "sts2-exo-lifecycle-v2";
+        if (!one_shot && binding.state != BindingState::Active) || !binding.game_dispatch_capability
+        {
             return Err(SessionError::HeldRequired);
         }
         // The approval dependency vector is revalidated at the first resumed submission, not only

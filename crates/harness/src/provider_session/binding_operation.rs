@@ -20,6 +20,7 @@ pub enum BindingState {
     Candidate,
     Held,
     Active,
+    OneShotPendingNative,
     Recovering,
     Quarantined,
     Retired,
@@ -109,7 +110,11 @@ impl SessionBinding {
             || !unique_ids(&self.dependency_ids)
             || !valid_timestamp(&self.expires_at)
             || (self.game_dispatch_capability && self.purpose != SessionPurpose::Executable)
-            || (self.game_dispatch_capability && self.state != BindingState::Active)
+            || (self.game_dispatch_capability
+                && !matches!(
+                    self.state,
+                    BindingState::Active | BindingState::OneShotPendingNative
+                ))
             || (matches!(self.state, BindingState::Retired | BindingState::Closed)
                 && self.game_dispatch_capability)
         {
@@ -121,7 +126,10 @@ impl SessionBinding {
     #[must_use]
     pub fn executable(&self) -> bool {
         matches!(self.purpose, SessionPurpose::Executable)
-            && matches!(self.state, BindingState::Active)
+            && matches!(
+                self.state,
+                BindingState::Active | BindingState::OneShotPendingNative
+            )
             && self.game_dispatch_capability
     }
 }

@@ -163,6 +163,7 @@ const fn binding_state(state: BindingState) -> &'static str {
         BindingState::Candidate => "candidate",
         BindingState::Held => "held",
         BindingState::Active => "active",
+        BindingState::OneShotPendingNative => "one_shot_pending_native",
         BindingState::Recovering => "recovering",
         BindingState::Quarantined => "quarantined",
         BindingState::Retired => "retired",

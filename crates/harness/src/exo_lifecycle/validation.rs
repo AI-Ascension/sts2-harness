@@ -61,7 +61,10 @@ impl LifecycleOwner {
             || a.owner_epoch != self.broker.owner_epoch()
             || a.auth_epoch != a.owner_epoch
             || a.revocation_epoch != self.broker.revocation_epoch()
-            || binding.state != BindingState::Active
+            || !matches!(
+                binding.state,
+                BindingState::Active | BindingState::OneShotPendingNative
+            )
             || !binding.game_dispatch_capability
             || binding.owner_epoch != a.owner_epoch
             || binding.session_epoch != a.session_epoch
