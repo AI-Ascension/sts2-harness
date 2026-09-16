@@ -96,6 +96,11 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
             .observe()
             .map_err(runtime_error("live_launch_fence_failed"))?;
         self.record_context_observation(&observation)?;
+        let actions = self
+            .runtime
+            .legal_actions(observation.state_id(), observation.generation())
+            .map_err(runtime_error("live_launch_catalog_failed"))?;
+        self.record_context_legal_actions(&actions)?;
         self.launch_observation = Some(observation);
         self.provider_policy.load_active_policy(
             &self.actor,
@@ -146,9 +151,12 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
         state_id: &str,
         generation: u64,
     ) -> Result<EpisodeLegalActionSet, ManagementError> {
-        self.runtime
+        let actions = self
+            .runtime
             .legal_actions(state_id, generation)
-            .map_err(runtime_error("live_catalog_failed"))
+            .map_err(runtime_error("live_catalog_failed"))?;
+        self.record_context_legal_actions(&actions)?;
+        Ok(actions)
     }
 
     fn decide(&mut self, input: &DecisionInput) -> Result<crate::Decision, ManagementError> {

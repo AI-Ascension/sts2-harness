@@ -43,7 +43,7 @@ pub(super) fn authority_configuration_digest(
 /// The runtime port, provider recorder, and test seams all use this handle, but each database
 /// borrow is kept short.  No store connection is shared across processes or threads.
 #[derive(Clone)]
-pub(super) struct DurableHandle {
+pub(crate) struct DurableHandle {
     store: Rc<RefCell<ExecutionStore>>,
     lineage: ExecutionLineage,
     fingerprint: ExecutionFingerprint,

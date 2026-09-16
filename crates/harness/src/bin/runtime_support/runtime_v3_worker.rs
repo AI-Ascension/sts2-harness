@@ -107,7 +107,14 @@ fn worker_main(
         }
     };
     let telemetry = RuntimeV3Telemetry::new(context);
-    let mut port = match RuntimeV3Port::new(config, telemetry.handle(), None) {
+    let durable = match durable::DurableHandle::open(&config, &settings, false) {
+        Ok((durable, _)) => durable,
+        Err(error) => {
+            let _ = ready.send(Err(error));
+            return;
+        }
+    };
+    let mut port = match RuntimeV3Port::new_with_store(config, telemetry.handle(), durable) {
         Ok(port) => {
             let _ = ready.send(Ok(()));
             port

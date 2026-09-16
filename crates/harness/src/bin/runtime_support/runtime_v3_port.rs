@@ -14,7 +14,7 @@ impl RuntimeV3Port {
         Self::new(config, telemetry, None)
     }
 
-    fn new_with_store(
+    pub(super) fn new_with_store(
         config: RuntimeConfig,
         telemetry: TelemetryHandle,
         durable: durable::DurableHandle,
