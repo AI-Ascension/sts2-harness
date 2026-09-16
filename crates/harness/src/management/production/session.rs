@@ -102,9 +102,12 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
             .map_err(runtime_error("live_launch_catalog_failed"))?;
         self.record_context_legal_actions(&actions)?;
         self.launch_observation = Some(observation);
+        let workflow_run_id =
+            crate::management::live_run_id(&self.request, &self.definition_digest)?;
         self.provider_policy.load_active_policy(
             &self.actor,
             &self.request,
+            &workflow_run_id,
             &self.definition,
             &self.provider_capabilities,
         )?;
