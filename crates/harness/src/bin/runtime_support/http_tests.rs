@@ -160,6 +160,21 @@ fn response_payload_is_never_exposed_in_errors() {
 }
 
 #[test]
+fn gateway_response_json_rejects_duplicate_fields() {
+    let duplicate = br#"{"contract":"sts2-continuation-owner-v1","contract":"attacker"}"#.to_vec();
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+        duplicate.len()
+    );
+    let mut bytes = response.into_bytes();
+    bytes.extend_from_slice(&duplicate);
+    assert_eq!(
+        exchange_response(bytes),
+        Err(String::from("gateway response was not JSON"))
+    );
+}
+
+#[test]
 fn terminator_cannot_cross_header_budget() {
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nX-Pad: {}\r\n\r\n{{}}",

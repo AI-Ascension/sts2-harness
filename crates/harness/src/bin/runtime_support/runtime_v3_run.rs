@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: MIT
 
-pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
-    let policy_preflight = game_information_owner::begin_memory_policy_preflight(&config)?;
+pub(super) fn run(
+    mut config: RuntimeConfig,
+    selector: Option<sts2_harness::BranchContinuationSelector>,
+) -> Result<(), String> {
     let runtime_profile = config.runtime_profile.clone();
-    let settings = RuntimeV3Settings::from_environment(&config)?;
     let resume_requested = std::env::args()
         .skip(1)
         .any(|argument| argument == "--resume")
         || std::env::var("STS2_RESUME").as_deref() == Ok("true");
+    let mut selected_branch =
+        select_branch_continuation(selector, resume_requested, &mut config)?;
+    let policy_preflight = game_information_owner::begin_memory_policy_preflight(&config)?;
+    let settings = RuntimeV3Settings::from_environment(&config)?;
     let telemetry_context = TelemetryContext::new(TelemetryContextInput {
         run_id: &config.run_id,
         episode_id: &config.episode_id,
@@ -40,7 +45,51 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
             return Err(error);
         }
     };
+    if let Some(selected) = selected_branch
+        .as_ref()
+        .filter(|selected| selected.is_resuming())
+    {
+        let verification = selected
+            .branch()
+            .effective_seed
+            .as_deref()
+            .ok_or_else(|| String::from("selected running branch has no effective seed"))
+            .and_then(|branch_seed| durable.verify_branch_effective_seed(branch_seed));
+        if let Err(error) = verification {
+            let close = durable.close();
+            let _ = telemetry_handle.failure(
+                "branch_continuation_seed",
+                super::runtime_v3_telemetry::FailureCode::Configuration,
+                false,
+                None,
+            );
+            let _ = telemetry_handle.run_finished(
+                GameOutcome::Unavailable,
+                TelemetryStage::Unknown,
+                if close.is_ok() {
+                    CleanupStatus::Clean
+                } else {
+                    CleanupStatus::Failed
+                },
+            );
+            finish_telemetry(telemetry);
+            return Err(match close {
+                Ok(()) => error,
+                Err(close_error) => {
+                    format!("{error}; execution store cleanup failed: {close_error}")
+                }
+            });
+        }
+    }
     if let ResumeState::Completed(completion) = state {
+        if let Some(mut selected) = selected_branch.take() {
+            if !selected.is_resuming() {
+                return Err(String::from(
+                    "a completed execution store cannot start a new selected branch continuation",
+                ));
+            }
+            selected.complete()?;
+        }
         return completed_resume::finish(durable, completion, telemetry_handle, telemetry);
     }
     if resume_requested && let Err(error) = durable.validate_pending_action_identity() {
@@ -80,6 +129,9 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
                 return Err(error);
             }
         };
+    if let Some(selected) = selected_branch.take() {
+        return branch_continuation::run(selected, port, settings, telemetry_handle, telemetry);
+    }
     if std::env::var("STS2_COMBAT_DEMO").as_deref() != Ok("true") {
         let path = std::env::var("STS2_REPLAY_TRAJECTORY").unwrap_or_default();
         if !path.is_empty() {

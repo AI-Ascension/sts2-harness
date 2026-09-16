@@ -3,10 +3,12 @@
 //! Runtime startup reconciliation for durable continuation branches.
 //!
 //! The production runtime binary is the owner-side consumer for durable continuation branches: it
-//! constructs the branch store, resolves every half-created branch for its experiment scope before
-//! any episode is admitted or resumed, and reads each resolved branch back to confirm the durable
-//! strategy descriptor survived the transition. Reconciliation never retries an uncertain effect
-//! and never allocates a destination.
+//! constructs the branch store, resolves every pending or in-progress preparation branch for its
+//! experiment scope before any episode is admitted or resumed, and reads each resolved branch back
+//! to confirm the durable strategy descriptor survived the transition. `running` branches are not
+//! rewritten here because the runtime cannot prove whether another process still owns their
+//! destination lease; explicit continuation admission refuses them until owner reconciliation.
+//! Reconciliation never retries an uncertain effect and never allocates a destination.
 //!
 //! The functions in this module take plain parameters so the same production source is exercised
 //! directly by `tests/durable_branch_consumer_roundtrip.rs`; the binary resolves the store path and
@@ -19,7 +21,7 @@ use sts2_harness::{DurableBranch, SqliteBranchStore};
 /// Deterministic operation prefix for the runtime's idempotent startup reconciliation.
 pub(crate) const STARTUP_RECONCILE_OPERATION_PREFIX: &str = "runtime-continuation-startup";
 
-/// Resolves every half-created continuation branch for `experiment_id`.
+/// Resolves every pending, restoring, replaying, or unknown branch for `experiment_id`.
 ///
 /// Opens the durable branch store at `store_path`, applies the owner startup reconciliation, and
 /// returns the persisted records re-read from the store. A branch whose immutable continuation

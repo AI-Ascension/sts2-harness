@@ -67,6 +67,28 @@ CREATE TABLE IF NOT EXISTS branch_operations (
         REFERENCES durable_branches(experiment_id, branch_id)
 );
 
+CREATE TABLE IF NOT EXISTS branch_continuation_claims (
+    experiment_id TEXT NOT NULL,
+    branch_id TEXT NOT NULL,
+    operation_id TEXT NOT NULL UNIQUE REFERENCES branch_operations(operation_id),
+    claim_state TEXT NOT NULL CHECK (
+        claim_state IN (
+            'prepared', 'owner_snapshotted', 'claimed', 'unknown', 'boundary_verified', 'resuming'
+        )
+    ),
+    owner_json TEXT,
+    owner_digest TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (experiment_id, branch_id),
+    FOREIGN KEY (experiment_id, branch_id)
+        REFERENCES durable_branches(experiment_id, branch_id),
+    CHECK (
+        (owner_json IS NULL AND owner_digest IS NULL)
+        OR (owner_json IS NOT NULL AND owner_digest IS NOT NULL)
+    )
+);
+
 CREATE TABLE IF NOT EXISTS branch_prune_plans (
     operation_id TEXT PRIMARY KEY NOT NULL REFERENCES branch_operations(operation_id),
     experiment_id TEXT NOT NULL,

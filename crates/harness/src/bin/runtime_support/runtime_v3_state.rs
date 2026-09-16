@@ -18,6 +18,10 @@ pub(super) struct RuntimeV3Port {
     expert_mcp: Option<McpProcess>,
     allocated: bool,
     released: bool,
+    continuation_prelaunched: bool,
+    continuation_adopted: bool,
+    continuation_boundary_verified: bool,
+    continuation_adopted_owner: Option<Value>,
     next_rpc_id: u64,
     expert_next_rpc_id: u64,
     generation: u64,
@@ -39,4 +43,5 @@ pub(super) struct RuntimeV3Port {
     recovery_context: Option<recovery::RecoveryContext>,
     recovery_rpc_id: u64,
     lifecycle_authority: lifecycle_authority::RuntimeLifecycleAuthorityState,
+    continuation_owner_claim: Option<continuation_owner::ContinuationOwnerClaimContext>,
 }
