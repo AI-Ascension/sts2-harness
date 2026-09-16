@@ -13,7 +13,7 @@ use sts2_harness::management::{
     ContextEffectiveLimits, ContextOwnerBinding, ContextOwnerPort, LiveContextObservationPort,
     ManagementError, RunRequest, RuntimeAuthorityBinding,
 };
-use sts2_harness::{EpisodeObservation, sha256_hex};
+use sts2_harness::{EpisodeLegalActionSet, EpisodeObservation, sha256_hex};
 use zeroize::Zeroize;
 
 const SCHEMA: &str = "ascension.workflow-context-owner-config.v1";
@@ -40,6 +40,8 @@ struct Current {
     authority: ControlAuthority,
     store: ContextControlStore,
     actor: String,
+    catalog_generation: Option<u64>,
+    runtime_lease_epoch: u64,
 }
 
 impl Configuration {
@@ -143,11 +145,6 @@ impl LiveContextObservationPort for Owner {
             ));
         }
         let fair_play = observation.fair_play().as_value();
-        // Some runtime profiles return the legal catalog through the following
-        // `legal_actions` port call. Until that authoritative catalog is
-        // attached, the current sanitized MCP observation remains the only
-        // canonical observation payload available at this boundary.
-        let legal_actions = fair_play.get("legal_actions").unwrap_or(fair_play);
         let boundary = ContextBoundary {
             run_id: run_id.clone(),
             episode_id: binding.episode_id.clone(),
@@ -157,14 +154,12 @@ impl LiveContextObservationPort for Owner {
             observation_sha256: sha256_hex(serde_json::to_vec(fair_play).map_err(|error| {
                 ManagementError::invalid("context_observation_encode", error.to_string())
             })?),
-            catalog_sha256: sha256_hex(serde_json::to_vec(legal_actions).map_err(|error| {
-                ManagementError::invalid("context_catalog_encode", error.to_string())
-            })?),
+            catalog_sha256: sha256_hex(b"catalog-unavailable"),
             adapter_revision: binding.adapter_revision.clone(),
             model_revision: binding.model_revision.clone(),
             configuration_sha256: binding.configuration_digest.clone(),
             output_schema_sha256: binding.output_schema_digest.clone(),
-            controller_epoch: binding.lease_epoch,
+            controller_epoch: 1,
             gate_epoch: 1,
             control_version: 1,
         };
@@ -172,12 +167,14 @@ impl LiveContextObservationPort for Owner {
             ManagementError::unavailable("context_owner_lock", "context owner is unavailable")
         })?;
         if let Some(entry) = current.get_mut(&run_id) {
-            if entry.actor != actor.subject {
+            if entry.actor != actor.subject || entry.runtime_lease_epoch != binding.lease_epoch {
                 return Err(ManagementError::forbidden(
-                    "context_owner_actor",
-                    "actor cannot replace this context authority",
+                    "context_owner_runtime_scope",
+                    "actor or runtime lease cannot replace this context authority",
                 ));
             }
+            let retains_catalog = entry.catalog_generation == Some(observation.generation())
+                && entry.authority.state().boundary.state_id == observation.state_id();
             entry
                 .authority
                 .record_observation_boundary(boundary)
@@ -188,6 +185,7 @@ impl LiveContextObservationPort for Owner {
                 .map_err(|e| {
                     ManagementError::unavailable("context_owner_persist", e.to_string())
                 })?;
+            entry.catalog_generation = retains_catalog.then_some(observation.generation());
             return Ok(());
         }
         let mut store = ContextControlStore::open(
@@ -200,7 +198,6 @@ impl LiveContextObservationPort for Owner {
             Ok(authority) => {
                 if authority.state().boundary.episode_id != binding.episode_id
                     || authority.state().boundary.agent_id != binding.agent_id
-                    || authority.state().boundary.controller_epoch != binding.lease_epoch
                     || authority.state().boundary.configuration_sha256
                         != binding.configuration_digest
                     || authority.state().boundary.output_schema_sha256
@@ -243,8 +240,67 @@ impl LiveContextObservationPort for Owner {
                 authority,
                 store,
                 actor: actor.subject.clone(),
+                catalog_generation: None,
+                runtime_lease_epoch: binding.lease_epoch,
             },
         );
+        Ok(())
+    }
+
+    fn record_legal_actions(
+        &self,
+        actor: &AuthContext,
+        request: &RunRequest,
+        digest: &str,
+        binding: &RuntimeAuthorityBinding,
+        actions: &EpisodeLegalActionSet,
+    ) -> Result<(), ManagementError> {
+        let run_id = run_id(request, digest)?;
+        if binding.run_id != run_id || binding.lease_epoch == 0 {
+            return Err(ManagementError::conflict(
+                "context_owner_runtime_scope",
+                "runtime authority is not bound to the admitted workflow run",
+            ));
+        }
+        let mut current = self.current.lock().map_err(|_| {
+            ManagementError::unavailable("context_owner_lock", "context owner is unavailable")
+        })?;
+        let entry = current.get_mut(&run_id).ok_or_else(|| {
+            ManagementError::unavailable(
+                "context_owner_observation_missing",
+                "current runtime observation is unavailable",
+            )
+        })?;
+        if entry.actor != actor.subject || entry.runtime_lease_epoch != binding.lease_epoch {
+            return Err(ManagementError::conflict(
+                "context_owner_catalog_scope",
+                "actor or runtime authority cannot update this legal-action catalog",
+            ));
+        }
+        actions
+            .assert_matches(
+                &entry.authority.state().boundary.state_id,
+                entry.authority.state().boundary.generation,
+            )
+            .map_err(|_| {
+                ManagementError::conflict(
+                    "context_owner_catalog_stale",
+                    "legal-action catalog is stale for the current MCP observation",
+                )
+            })?;
+        let mut boundary = entry.authority.state().boundary.clone();
+        boundary.catalog_sha256 = legal_catalog_digest(actions)?;
+        entry
+            .authority
+            .record_observation_boundary(boundary)
+            .map_err(|error| ManagementError::conflict("context_owner_observation_stale", error))?;
+        entry
+            .store
+            .persist(&entry.authority, StoreMode::Enabled)
+            .map_err(|error| {
+                ManagementError::unavailable("context_owner_persist", error.to_string())
+            })?;
+        entry.catalog_generation = Some(actions.generation());
         Ok(())
     }
     fn invalidate(&self, actor: &AuthContext, request: &RunRequest, digest: &str) {
@@ -295,6 +351,12 @@ impl ContextOwnerPort for Owner {
                 "current runtime observation is unavailable",
             )
         })?;
+        if entry.catalog_generation != Some(entry.authority.state().boundary.generation) {
+            return Err(ManagementError::unavailable(
+                "context_owner_catalog_missing",
+                "current runtime legal-action catalog is unavailable",
+            ));
+        }
         if entry.actor != actor.subject {
             return Err(ManagementError::forbidden(
                 "context_owner_actor",
@@ -444,6 +506,22 @@ fn scoped_store_path(base: &std::path::Path, run_id: &str) -> std::path::PathBuf
         .and_then(|value| value.to_str())
         .unwrap_or("context");
     base.with_file_name(format!("{stem}.{run_id}.{extension}"))
+}
+
+fn legal_catalog_digest(actions: &EpisodeLegalActionSet) -> Result<String, ManagementError> {
+    let values = actions
+        .actions()
+        .iter()
+        .map(|action| {
+            serde_json::json!({
+                "action_id": action.action_id(),
+                "kind": format!("{:?}", action.kind()),
+            })
+        })
+        .collect::<Vec<_>>();
+    serde_json::to_vec(&values)
+        .map(sha256_hex)
+        .map_err(|error| ManagementError::invalid("context_catalog_encode", error.to_string()))
 }
 fn key(reference: &str) -> Result<[u8; 32], String> {
     let value = std::env::var(reference)

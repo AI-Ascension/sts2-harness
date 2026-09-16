@@ -99,6 +99,15 @@ pub trait LiveContextObservationPort: Send + Sync {
         observation: &EpisodeObservation,
     ) -> Result<(), ManagementError>;
 
+    fn record_legal_actions(
+        &self,
+        actor: &AuthContext,
+        request: &RunRequest,
+        definition_digest: &str,
+        binding: &RuntimeAuthorityBinding,
+        actions: &EpisodeLegalActionSet,
+    ) -> Result<(), ManagementError>;
+
     fn invalidate(&self, actor: &AuthContext, request: &RunRequest, definition_digest: &str);
 }
 
@@ -284,6 +293,11 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
             .observe_projection(projection_ref)
             .map_err(runtime_error("live_observe_failed"))?;
         self.record_context_observation(&observation)?;
+        let actions = self
+            .runtime
+            .legal_actions(observation.state_id(), observation.generation())
+            .map_err(runtime_error("live_catalog_failed"))?;
+        self.record_context_legal_actions(&actions)?;
         Ok(observation)
     }
 
@@ -434,6 +448,22 @@ impl ProductionLiveWorkflowSession {
                 &self.definition_digest,
                 &self.authority_binding,
                 observation,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn record_context_legal_actions(
+        &self,
+        actions: &EpisodeLegalActionSet,
+    ) -> Result<(), ManagementError> {
+        if let Some(owner) = &self.context_observations {
+            owner.record_legal_actions(
+                &self.actor,
+                &self.request,
+                &self.definition_digest,
+                &self.authority_binding,
+                actions,
             )?;
         }
         Ok(())
