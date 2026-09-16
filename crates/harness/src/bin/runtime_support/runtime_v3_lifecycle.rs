@@ -319,11 +319,8 @@ mod bootstrap_tests {
             "model":"o3-pro",
             "endpoint":"https://api.openai.com/v1"
         });
-        std::fs::write(
-            &configuration,
-            serde_json::to_vec(&config_bytes).expect("config"),
-        )
-        .expect("configuration");
+        let original_configuration = serde_json::to_vec(&config_bytes).expect("config");
+        std::fs::write(&configuration, &original_configuration).expect("configuration");
         let digest = sha256_hex(std::fs::read(&configuration).expect("configuration bytes"));
         let (lifecycle, secrets) =
             RuntimeLifecycleConfig::bootstrap_test(base.join("journal"), base.join("policy.bin"));
@@ -426,6 +423,9 @@ mod bootstrap_tests {
             lifecycle: Some((lifecycle, secrets)),
         };
         let (lifecycle, secrets) = settings.lifecycle.as_ref().expect("lifecycle");
+        std::fs::write(&configuration, br#"{"schema":"swapped"}"#).expect("swap");
+        assert!(build(&config, &settings, durable.clone(), lifecycle, secrets).is_err());
+        std::fs::write(&configuration, original_configuration).expect("restore");
         assert!(build(&config, &settings, durable, lifecycle, secrets).is_ok());
         let _ = std::fs::remove_dir_all(base);
     }
