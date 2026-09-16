@@ -43,6 +43,8 @@ mod episode;
 mod episode_replay;
 #[path = "runtime_v4_expert_port.rs"]
 mod expert;
+#[path = "runtime_v3_game_information_owner.rs"]
+mod game_information_owner;
 #[path = "runtime_v3_ledger.rs"]
 mod ledger;
 #[path = "runtime_v3_receipt_query.rs"]

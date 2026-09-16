@@ -29,7 +29,9 @@ mod store_schema;
 mod types;
 
 pub use authority::{MemoryPolicyAuthority, PolicyClock, TrustedPolicyState};
-pub use prepare::{ActivePolicyPreparation, PreparedActivePolicy};
+pub use prepare::{
+    ActivePolicyPreparation, LookupPolicyAuthorityGuard, LookupPolicySnapshot, PreparedActivePolicy,
+};
 pub use records::{
     ActivePolicyBinding, PolicyApproval, PolicyFence, PolicyReceipt, PolicyReview, ReviewKind,
     SavedPolicy, SavedPolicyRef,
@@ -146,6 +148,17 @@ impl MemoryPolicyOwner {
     ) -> Result<PolicyReview, PolicyOwnerError> {
         self.read(access, PolicyPermission::ReadMetadata, |journal| {
             journal.review(review_id).cloned()
+        })
+    }
+
+    /// Returns the durable active pointer, including a stale pointer after a
+    /// restart, without treating it as currently selectable.
+    pub fn inspect_active_binding(
+        &self,
+        access: PolicyAccess<'_>,
+    ) -> Result<Option<ActivePolicyBinding>, PolicyOwnerError> {
+        self.read(access, PolicyPermission::ReadMetadata, |journal| {
+            Ok(journal.active.clone())
         })
     }
 

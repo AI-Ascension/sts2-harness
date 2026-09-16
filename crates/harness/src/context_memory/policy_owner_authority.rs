@@ -4,7 +4,7 @@ use super::types::*;
 use crate::context_memory::{MemoryCapabilities, MemoryCorpus, MemoryPolicy};
 use crate::management::Authenticator;
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Time is consulted at entry and just before publication; a lease does not freeze time.
 pub trait PolicyClock: Send + Sync {
@@ -97,6 +97,12 @@ pub(super) struct AuthorizedActor {
     pub subject: String,
     pub grant_id: String,
     pub grant_epoch: u64,
+}
+
+pub(super) struct AuthorizedPolicyState<'a> {
+    pub(super) state: MutexGuard<'a, TrustedPolicyState>,
+    pub(super) actor: AuthorizedActor,
+    pub(super) clock: &'a dyn PolicyClock,
 }
 
 /// The concrete lease-owning authority. All relevant mutation uses `update`; callers must not
@@ -196,6 +202,15 @@ impl MemoryPolicyAuthority {
             &dyn PolicyClock,
         ) -> Result<T, PolicyOwnerError>,
     ) -> Result<T, PolicyOwnerError> {
+        let authorized = self.lock_authorized(access, permission)?;
+        action(&authorized.state, &authorized.actor, authorized.clock)
+    }
+
+    pub(super) fn lock_authorized(
+        &self,
+        access: PolicyAccess<'_>,
+        permission: PolicyPermission,
+    ) -> Result<AuthorizedPolicyState<'_>, PolicyOwnerError> {
         if access.bearer.is_some_and(|token| token.len() > 4096) {
             return Err(PolicyOwnerError::Unauthenticated);
         }
@@ -225,6 +240,10 @@ impl MemoryPolicyAuthority {
         };
         // An authenticated workflow wildcard never substitutes for this explicit scoped grant.
         state.check_actor(&actor, permission, self.clock.now_seconds())?;
-        action(&state, &actor, self.clock.as_ref())
+        Ok(AuthorizedPolicyState {
+            state,
+            actor,
+            clock: self.clock.as_ref(),
+        })
     }
 }

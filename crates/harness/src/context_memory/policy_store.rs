@@ -39,6 +39,7 @@ pub(super) struct PolicyStore {
     key: [u8; 32],
     scope: MemoryScope,
     epoch: u64,
+    authority_lease_active: bool,
     pub failpoint: Option<PolicyStoreFailpoint>,
 }
 
@@ -85,6 +86,7 @@ impl PolicyStore {
             key,
             scope,
             epoch: 0,
+            authority_lease_active: false,
             failpoint: None,
         };
         store.claim(existing)?;
@@ -227,6 +229,45 @@ impl PolicyStore {
             .commit()
             .map_err(|_| PolicyOwnerError::Unavailable)?;
         Ok(result)
+    }
+
+    /// Opens an immediate SQLite transaction and leaves it active while a
+    /// lookup-authority guard holds this store mutex. The caller must end the
+    /// lease before releasing that mutex.
+    pub fn begin_authority_lease(&mut self) -> Result<PolicyJournal, PolicyOwnerError> {
+        if self.authority_lease_active {
+            return Err(PolicyOwnerError::Unavailable);
+        }
+        check_file(&self.path)?;
+        check_pages(&self.connection)?;
+        check_schema(&self.connection)?;
+        self.connection
+            .execute_batch("BEGIN IMMEDIATE")
+            .map_err(|_| PolicyOwnerError::Unavailable)?;
+        self.authority_lease_active = true;
+        let result = (|| {
+            check_schema(&self.connection)?;
+            let (epoch, envelope) = read_envelope(&self.connection)?;
+            if epoch != self.epoch {
+                return Err(PolicyOwnerError::OwnerFenced);
+            }
+            let journal = decrypt(&self.key, &self.scope, &envelope)?;
+            if journal.store_epoch != epoch {
+                return Err(PolicyOwnerError::Corrupt);
+            }
+            Ok(journal)
+        })();
+        if result.is_err() {
+            self.end_authority_lease();
+        }
+        result
+    }
+
+    pub fn end_authority_lease(&mut self) {
+        if self.authority_lease_active {
+            let _ = self.connection.execute_batch("ROLLBACK");
+            self.authority_lease_active = false;
+        }
     }
 }
 
