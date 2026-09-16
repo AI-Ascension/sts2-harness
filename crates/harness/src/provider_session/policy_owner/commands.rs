@@ -200,28 +200,6 @@ impl ProviderSessionPolicyOwner {
         })
     }
 
-    pub fn active(
-        &self,
-    ) -> Result<(ProviderSessionPolicy, String, u64), ProviderSessionPolicyOwnerError> {
-        self.verify_lease()?;
-        let journal = self
-            .journal
-            .lock()
-            .map_err(|_| ProviderSessionPolicyOwnerError::Store)?;
-        let active = journal
-            .active_sha256
-            .as_ref()
-            .ok_or(ProviderSessionPolicyOwnerError::NotAdopted)?;
-        let record = journal
-            .policies
-            .iter()
-            .find(|item| &item.sha256 == active)
-            .ok_or(ProviderSessionPolicyOwnerError::Invalid)?;
-        let policy = serde_json::from_slice(&record.bytes)
-            .map_err(|_| ProviderSessionPolicyOwnerError::Invalid)?;
-        Ok((policy, active.clone(), journal.revision))
-    }
-
     /// Explicitly activates an already imported, executable policy. This is
     /// separate from migration adoption: a valid initial policy has no
     /// over-limit proposal to approve, but still requires an owner command.
@@ -288,8 +266,22 @@ impl ProviderSessionPolicyOwner {
             .map_err(|_| ProviderSessionPolicyOwnerError::Store)?;
         let mut candidate = journal.clone();
         let (result, changed) = f(&mut candidate)?;
+        let adoption_generation = if journal.active_sha256 != candidate.active_sha256 {
+            Some(
+                self.adoption_generation
+                    .load(Ordering::Relaxed)
+                    .checked_add(1)
+                    .ok_or(ProviderSessionPolicyOwnerError::AdoptionGenerationExhausted)?,
+            )
+        } else {
+            None
+        };
         if changed {
             persist_candidate(&self.store, &mut journal, candidate)?;
+        }
+        if let Some(generation) = adoption_generation {
+            self.adoption_generation
+                .store(generation, Ordering::Release);
         }
         Ok(result)
     }

@@ -3,6 +3,7 @@
 use std::fs;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -10,6 +11,18 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use sts2_harness::management::{
+    CommandKind, CommandParameters, CommandRequest, CommandResponse, MANAGEMENT_SCHEMA_VERSION,
+    ManagementClient, PROVIDER_SESSION_POLICY_COMMAND_SCHEMA_VERSION,
+    ProviderSessionPolicyAdoptImportedRequest, ProviderSessionPolicyCommandResponse,
+    ProviderSessionPolicyViewResponse, RunRequest, RunTargetConfiguration,
+    TARGET_ADMISSION_SCHEMA_VERSION, TARGET_CATALOG_SCHEMA_VERSION, TargetAdmissionRequest,
+    TargetCatalogResponse, TargetPreflightResponse, digest_value,
+};
+use sts2_harness::provider_session::{
+    NativeCapabilities, ProviderSessionMetadataStore, ProviderSessionPolicy,
+    ProviderSessionPolicyOwner, SessionScope,
+};
 
 use super::fixture::{
     ACTION_ID, CALLER_ID, DownstreamLedger, FixtureMode, INSTANCE_ID, LEASE_EPOCH, LEASE_ID,
@@ -23,7 +36,7 @@ pub(crate) struct ScenarioResult {
 }
 
 pub(crate) struct TempDir {
-    path: PathBuf,
+    pub(super) path: PathBuf,
 }
 
 impl TempDir {
@@ -35,6 +48,7 @@ impl TempDir {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir(&path)?;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
         Ok(Self { path })
     }
 
@@ -66,12 +80,12 @@ pub(crate) fn executable(name: &str) -> Result<PathBuf, Box<dyn std::error::Erro
     }
 }
 
-fn free_address() -> Result<SocketAddr, Box<dyn std::error::Error>> {
+pub(super) fn free_address() -> Result<SocketAddr, Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     Ok(listener.local_addr()?)
 }
 
-fn gateway(
+pub(super) fn gateway(
     binary: &Path,
     address: SocketAddr,
     mod_address: SocketAddr,
@@ -91,10 +105,15 @@ fn gateway(
         .env("STS2_LEASE_EPOCH", LEASE_EPOCH.to_string())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    use std::os::unix::process::CommandExt;
+    command.process_group(0);
     Ok(command.spawn()?)
 }
 
-fn ready(child: &mut Child, address: SocketAddr) -> Result<(), Box<dyn std::error::Error>> {
+pub(super) fn ready(
+    child: &mut Child,
+    address: SocketAddr,
+) -> Result<(), Box<dyn std::error::Error>> {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         if let Some(status) = child.try_wait()? {
@@ -110,9 +129,14 @@ fn ready(child: &mut Child, address: SocketAddr) -> Result<(), Box<dyn std::erro
     }
 }
 
-fn stop(mut child: Child) -> Result<Output, Box<dyn std::error::Error>> {
+pub(super) fn stop(mut child: Child) -> Result<Output, Box<dyn std::error::Error>> {
     if child.try_wait()?.is_none() {
-        child.kill()?;
+        let group = Command::new("kill")
+            .args(["-KILL", "--", &format!("-{}", child.id())])
+            .status()?;
+        if !group.success() {
+            child.kill()?;
+        }
     }
     Ok(child.wait_with_output()?)
 }
@@ -147,6 +171,7 @@ pub(crate) fn run_scenario(
         .map(|path| {
             path.join(match mode {
                 FixtureMode::Success => "execution-success.sqlite3",
+                FixtureMode::UnknownOperation => "execution-unknown.sqlite3",
                 FixtureMode::ForeignExpertState => "execution-foreign.sqlite3",
                 FixtureMode::MalformedExpertState => "execution-malformed.sqlite3",
             })
@@ -183,6 +208,7 @@ pub(crate) fn run_scenario(
             .env("STS2_EXO_TIMEOUT_MILLIS", "2000")
             .env("STS2_EXO_MAX_REQUEST_BYTES", "131072")
             .env("STS2_EXO_MAX_RESPONSE_BYTES", "8192")
+            .env("STS2_OBJECTIVE", "exercise served policy gate")
             .env("STS2_MAX_STEPS", "4")
             .env("STS2_BARRIER_MAX_POLLS", "1")
             .env("STS2_BARRIER_WAIT_MILLIS", "1")
@@ -205,151 +231,15 @@ pub(crate) fn run_scenario(
     })
 }
 
-fn paths(ledger: &DownstreamLedger) -> Vec<String> {
-    ledger
-        .requests
-        .iter()
-        .map(|request| request.path.clone())
-        .collect()
-}
+#[path = "runtime_v4_executable_composition_process/served.rs"]
+mod served;
+pub(crate) use served::{
+    paths, run_served_policy_gate, run_served_restart_refuses_duplicate_effect,
+};
 
-pub(crate) fn assert_success(
-    result: &ScenarioResult,
-) -> Result<String, Box<dyn std::error::Error>> {
-    if result.runtime.status.code() != Some(0) {
-        return Err(format!(
-            "runtime failed: {}",
-            String::from_utf8_lossy(&result.runtime.stderr)
-        )
-        .into());
-    }
-    if !result.ledger.errors.is_empty() {
-        return Err(format!("fixture failed: {:?}", result.ledger.errors).into());
-    }
-    let action = result
-        .ledger
-        .requests
-        .iter()
-        .find(|request| request.path == "/api/v4/runtime/expert-action")
-        .ok_or("expert action missing")?;
-    let operation = action.body["operation_id"]
-        .as_str()
-        .ok_or("operation missing")?
-        .to_owned();
-    let expected = [
-        "/api/v3/runtime/state",
-        "/api/v4/runtime/expert-state",
-        "/api/v3/runtime/legal-actions",
-        "/api/v4/runtime/expert-state",
-        "/api/v4/runtime/expert-action",
-    ];
-    let actual = paths(&result.ledger);
-    if actual.len() != 6
-        || actual[..5] != expected
-        || actual[5] != format!("/api/v4/runtime/expert-actions/{operation}")
-    {
-        return Err(format!("unexpected path ledger: {actual:?}").into());
-    }
-    let methods: Vec<&str> = result
-        .ledger
-        .requests
-        .iter()
-        .map(|request| request.method.as_str())
-        .collect();
-    if methods != ["GET", "GET", "GET", "GET", "POST", "GET"] {
-        return Err(format!("unexpected downstream methods: {methods:?}").into());
-    }
-    let statuses: Vec<u16> = result
-        .ledger
-        .responses
-        .iter()
-        .map(|response| response.status)
-        .collect();
-    if statuses != [200, 200, 200, 200, 503, 200] {
-        return Err(format!("unexpected downstream response statuses: {statuses:?}").into());
-    }
-    if action.body["state_id"] != "live:7"
-        || action.body["generation"] != 7
-        || action.body["action"]["action_id"] != ACTION_ID
-        || action.body["action"]["action"]["kind"] != "use_potion"
-        || action.body["status"] != Value::Null
-    {
-        return Err("action fence mismatch".into());
-    }
-    let reconcile = &result.ledger.requests[5];
-    if reconcile.body != Value::Null
-        || reconcile.headers.get("x-sts2-lease-id").map(String::as_str) != Some(LEASE_ID)
-        || reconcile
-            .headers
-            .get("x-sts2-lease-epoch")
-            .map(String::as_str)
-            != Some("1")
-    {
-        return Err("reconcile lease mismatch".into());
-    }
-    let unknown = &result.ledger.responses[4].body;
-    if unknown["status"] != "unknown"
-        || unknown["operation_id"] != operation
-        || unknown["state_id"] != "live:7"
-        || unknown["generation"] != 7
-    {
-        return Err("unknown response identity mismatch".into());
-    }
-    let settled = &result.ledger.responses[5].body;
-    if settled["status"] != "settled"
-        || settled["operation_id"] != operation
-        || settled["state_id"] != "live:8"
-        || settled["generation"] != 8
-        || settled["observation"]["state_id"] != "live:8"
-        || settled["observation"]["generation"] != 8
-    {
-        return Err("settled response identity mismatch".into());
-    }
-    let report: Value = serde_json::from_slice(&result.runtime.stdout)
-        .map_err(|error| format!("runtime report is not JSON: {error}"))?;
-    if report["protocol"] != "runtime-v4-expert"
-        || report["status"] != "complete"
-        || report["terminal_stage"] != "victory"
-        || report["final_generation"] != 8
-        || report["transitions"] != 1
-    {
-        return Err(format!("runtime completion report mismatch: {report}").into());
-    }
-    Ok(operation)
-}
-
-pub(crate) fn assert_foreign_state_rejected(
-    result: &ScenarioResult,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if result.runtime.status.code() != Some(2) {
-        return Err(format!("foreign state exit: {:?}", result.runtime.status.code()).into());
-    }
-    let methods: Vec<&str> = result
-        .ledger
-        .requests
-        .iter()
-        .map(|request| request.method.as_str())
-        .collect();
-    if !result.ledger.errors.is_empty()
-        || paths(&result.ledger) != ["/api/v3/runtime/state", "/api/v4/runtime/expert-state"]
-        || methods != ["GET", "GET"]
-        || result.ledger.responses.len() != 2
-        || result.ledger.responses[0].status != 200
-        || result.ledger.responses[1].status != 200
-        || result.ledger.responses[1].body["state_id"] != "foreign-state"
-    {
-        return Err(format!(
-            "foreign state was not rejected at composition: exit={:?}, errors={:?}, paths={:?}, methods={methods:?}, responses={:?}, stderr={}",
-            result.runtime.status.code(),
-            result.ledger.errors,
-            paths(&result.ledger),
-            result.ledger.responses,
-            String::from_utf8_lossy(&result.runtime.stderr),
-        )
-        .into());
-    }
-    Ok(())
-}
+#[path = "runtime_v4_executable_composition_process/assertions.rs"]
+mod assertions;
+pub(crate) use assertions::{assert_foreign_state_rejected, assert_success};
 
 include!("runtime_v4_executable_composition_malformed.rs");
 

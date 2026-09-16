@@ -14,6 +14,7 @@ mod protected;
 mod recovery;
 mod run_setup;
 mod runner;
+mod runtime_lease_binding;
 mod shutdown;
 mod stability_barrier;
 mod state_machine;
@@ -46,6 +47,7 @@ pub use runner::{
     EpisodeRunFailure, EpisodeRunReport, EpisodeRunner, EpisodeRunnerConfig, EpisodeRunnerError,
     EpisodeRuntimePort,
 };
+pub use runtime_lease_binding::RuntimeLeaseBinding;
 pub use shutdown::{EpisodeCleanupReport, EpisodeShutdown, ShutdownError, ShutdownPort};
 pub use stability_barrier::{BarrierError, BarrierPort, StabilityBarrier, WaitOutcome, WaitSample};
 pub use state_machine::{EpisodeMachine, EpisodeMachineError, EpisodePhase};

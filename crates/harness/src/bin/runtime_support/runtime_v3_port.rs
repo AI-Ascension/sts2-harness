@@ -14,12 +14,42 @@ impl RuntimeV3Port {
         Self::new(config, telemetry, None)
     }
 
-    fn new_with_store(
+    pub(super) fn new_with_store(
         config: RuntimeConfig,
         telemetry: TelemetryHandle,
         durable: durable::DurableHandle,
     ) -> Result<Self, String> {
         Self::new(config, telemetry, Some(durable))
+    }
+
+    pub(super) fn allocated_lease_binding(
+        &self,
+    ) -> Result<sts2_harness::RuntimeLeaseBinding, sts2_harness::PortError> {
+        if !self.allocated || self.released {
+            return Err(wire::port_error(
+                "runtime_lease_binding_unavailable",
+                "gateway lease is not currently allocated",
+                false,
+            ));
+        }
+        let (lease_id, lease_epoch) = self.recovery_authority.as_ref().map_or_else(
+            || (self.config.lease_id.as_str(), self.config.lease_epoch),
+            |authority| (authority.lease_id.as_str(), authority.lease_epoch),
+        );
+        if lease_id != self.config.lease_id || lease_epoch != self.config.lease_epoch {
+            return Err(wire::port_error(
+                "runtime_lease_binding_mismatch",
+                "validated allocation and active recovery authority disagree",
+                false,
+            ));
+        }
+        Ok(sts2_harness::RuntimeLeaseBinding {
+            instance_id: self.config.instance_id.clone(),
+            session_id: self.config.session_id.clone(),
+            run_id: self.config.run_id.clone(),
+            lease_id: lease_id.to_owned(),
+            lease_epoch,
+        })
     }
 
     fn new(
@@ -37,7 +67,6 @@ impl RuntimeV3Port {
             expert_mcp: None,
             allocated: false,
             released: false,
-            continuation_prelaunched: false,
             next_rpc_id: 1,
             expert_next_rpc_id: 1,
             generation: 0,
@@ -58,57 +87,10 @@ impl RuntimeV3Port {
             recovery: None,
             recovery_context: None,
             recovery_rpc_id: 1,
-            continuation_owner_claim: None,
         })
     }
 
-    fn arm_continuation_owner_claim(
-        &mut self,
-        context: continuation_owner::ContinuationOwnerClaimContext,
-    ) -> Result<(), String> {
-        if self.allocated || self.continuation_owner_claim.is_some() {
-            return Err(String::from(
-                "continuation owner claim must be armed once before runtime allocation",
-            ));
-        }
-        self.continuation_owner_claim = Some(context);
-        Ok(())
-    }
-
-    fn preflight_continuation_launch(&mut self) -> Result<(), String> {
-        if self.continuation_owner_claim.is_none() || self.allocated {
-            return Err(String::from(
-                "continuation owner preflight is unavailable or already allocated",
-            ));
-        }
-        match EpisodeRuntimePort::launch(self) {
-            Ok(()) => {
-                self.continuation_prelaunched = true;
-                Ok(())
-            }
-            Err(error) => {
-                let close = self.close_mcp_processes();
-                let release = self.release_lease_inner();
-                Err(wire::combine_cleanup(error.to_string(), close, release))
-            }
-        }
-    }
-
-    fn cleanup_continuation_preflight(&mut self) -> Result<(), String> {
-        self.continuation_prelaunched = false;
-        let close = self.close_mcp_processes();
-        let release = self.release_lease_inner();
-        match (close, release) {
-            (Ok(()), Ok(())) => Ok(()),
-            (close, release) => Err(wire::combine_cleanup(
-                String::from("continuation preflight cleanup failed"),
-                close,
-                release,
-            )),
-        }
-    }
-
-    fn durable_handle(&self) -> Option<durable::DurableHandle> {
+    pub(super) fn durable_handle(&self) -> Option<durable::DurableHandle> {
         self.durable.clone()
     }
 

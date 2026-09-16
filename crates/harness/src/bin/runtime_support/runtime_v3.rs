@@ -3,8 +3,10 @@
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use sts2_harness::{
-    EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, EpisodeRuntimePort,
-    ExoDecisionSource, ExoProvider, ExoSession, ResumeState, TransitionReceipt,
+    ActionIdentity, BarrierError, BarrierPort, EpisodeLegalAction, EpisodeLegalActionSet,
+    EpisodeObservation, EpisodeRunner, EpisodeRuntimePort, ExoDecisionSource, ExoProvider,
+    ExoSession, PortError, ReceiptQueryIdentity, ReceiptQueryResult, RecoveryError, RecoveryPort,
+    ResumeState, RuntimeLeaseBinding, ShutdownError, ShutdownPort, TransitionReceipt, WaitSample,
 };
 
 use super::config::RuntimeConfig;
@@ -22,8 +24,6 @@ use super::runtime_v3_wire as wire;
 mod allocation_context;
 #[path = "runtime_v3_completed_resume.rs"]
 mod completed_resume;
-#[path = "continuation_owner.rs"]
-mod continuation_owner;
 #[path = "runtime_v3_decision_admission.rs"]
 mod decision_admission;
 #[path = "runtime_v3_decision_replay.rs"]
@@ -31,8 +31,6 @@ mod decision_replay;
 #[path = "runtime_v3_durable.rs"]
 mod durable;
 
-#[path = "runtime_v3_branch_continuation.rs"]
-mod branch_continuation;
 #[path = "runtime_v3_combat_demo.rs"]
 pub(crate) mod combat_demo;
 #[path = "runtime_v3_episode.rs"]
@@ -64,55 +62,25 @@ mod shutdown;
 mod wait;
 
 #[cfg(test)]
+#[path = "runtime_v3_allocation_launch_test.rs"]
+mod allocation_launch_tests;
+#[cfg(test)]
 #[path = "runtime_v3_lifecycle_test.rs"]
 mod lifecycle_tests;
 
 include!("runtime_v3_run_combat.rs");
 
-pub(super) fn run(
-    mut config: RuntimeConfig,
-    selector: Option<sts2_harness::BranchContinuationSelector>,
-) -> Result<(), String> {
+#[path = "runtime_v3/authority.rs"]
+mod authority;
+pub(crate) use authority::authority_configuration_digest;
+
+pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
+    let runtime_profile = config.runtime_profile.clone();
+    let settings = RuntimeV3Settings::from_environment(&config)?;
     let resume_requested = std::env::args()
         .skip(1)
         .any(|argument| argument == "--resume")
         || std::env::var("STS2_RESUME").as_deref() == Ok("true");
-    let mut selected_branch = if let Some(selector) = selector {
-        if std::env::var("STS2_REPLAY_TRAJECTORY").is_ok_and(|value| !value.is_empty()) {
-            return Err(String::from(
-                "a selected branch uses its retained replay prefix, not STS2_REPLAY_TRAJECTORY",
-            ));
-        }
-        let artifact_path = super::branch_continuation_runtime::artifact_store_path()?;
-        let branch_store = super::continuation_branch_store_path()?;
-        let selected = if resume_requested {
-            super::branch_continuation_runtime::SelectedBranchContinuation::load_for_resume(
-                &selector,
-                &branch_store,
-                &artifact_path,
-            )?
-        } else {
-            super::branch_continuation_runtime::SelectedBranchContinuation::load(
-                &selector,
-                &branch_store,
-                &artifact_path,
-            )?
-        };
-        if matches!(
-            selected.strategy(),
-            sts2_harness::BranchContinuationStrategyPlan::ExactRestore { .. }
-        ) {
-            return Err(String::from(
-                "exact branch continuation is unavailable: no fixed game-mod/MCP/gateway restore route is installed",
-            ));
-        }
-        super::branch_continuation_runtime::bind_branch_identities(&selected, &mut config)?;
-        Some(selected)
-    } else {
-        None
-    };
-    let runtime_profile = config.runtime_profile.clone();
-    let settings = RuntimeV3Settings::from_environment(&config)?;
     let telemetry_context = TelemetryContext::new(TelemetryContextInput {
         run_id: &config.run_id,
         episode_id: &config.episode_id,
@@ -146,14 +114,6 @@ pub(super) fn run(
         }
     };
     if let ResumeState::Completed(completion) = state {
-        if let Some(mut selected) = selected_branch.take() {
-            if !selected.is_resuming() {
-                return Err(String::from(
-                    "a completed execution store cannot start a new selected branch continuation",
-                ));
-            }
-            selected.complete()?;
-        }
         return completed_resume::finish(durable, completion, telemetry_handle, telemetry);
     }
     if resume_requested && let Err(error) = durable.validate_pending_action_identity() {
@@ -185,9 +145,6 @@ pub(super) fn run(
             return Err(error);
         }
     };
-    if let Some(selected) = selected_branch.take() {
-        return branch_continuation::run(selected, port, settings, telemetry_handle, telemetry);
-    }
     if std::env::var("STS2_COMBAT_DEMO").as_deref() != Ok("true") {
         let path = std::env::var("STS2_REPLAY_TRAJECTORY").unwrap_or_default();
         if !path.is_empty() {
@@ -326,38 +283,11 @@ pub(super) fn run(
     Ok(())
 }
 
-pub(super) struct RuntimeV3Port {
-    config: RuntimeConfig,
-    gateway: GatewayClient,
-    mcp: Option<McpProcess>,
-    seeded_mcp: Option<McpProcess>,
-    seeded_receipt: Option<Value>,
-    expert_mcp: Option<McpProcess>,
-    allocated: bool,
-    released: bool,
-    continuation_prelaunched: bool,
-    next_rpc_id: u64,
-    expert_next_rpc_id: u64,
-    generation: u64,
-    current_state: Option<String>,
-    current_actions: Option<EpisodeLegalActionSet>,
-    catalog: Option<Value>,
-    catalog_raw: Option<Vec<u8>>,
-    payloads: BTreeMap<String, Value>,
-    rest_selector_actions: Option<EpisodeLegalActionSet>,
-    rest_selector_payloads: BTreeMap<String, Value>,
-    rest_selector_value: Option<Value>,
-    operations: BTreeMap<String, ledger::OperationRecord>,
-    reconnect_attempts: u8,
-    telemetry: TelemetryHandle,
-    durable: Option<durable::DurableHandle>,
-    last_response_text: Option<String>,
-    recovery_authority: Option<allocation_context::RecoveryAuthority>,
-    recovery: Option<McpProcess>,
-    recovery_context: Option<recovery::RecoveryContext>,
-    recovery_rpc_id: u64,
-    continuation_owner_claim: Option<continuation_owner::ContinuationOwnerClaimContext>,
-}
+include!("runtime_v3_state.rs");
+
+#[path = "runtime_v3_worker.rs"]
+mod worker;
+pub(crate) use worker::RuntimeV3SessionWorker;
 
 include!("runtime_v3_port.rs");
 include!("runtime_v3_observation.rs");

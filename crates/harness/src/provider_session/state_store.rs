@@ -274,7 +274,6 @@ impl ProviderSessionMetadataStore {
         validate_store_path(path)?;
         PolicyOwnerLease::acquire(path)
     }
-
     fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, ProviderSessionMetadataStoreError> {
         let key = self
             .key

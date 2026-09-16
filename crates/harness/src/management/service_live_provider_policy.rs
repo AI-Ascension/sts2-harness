@@ -14,6 +14,8 @@ pub struct ProviderSessionPolicyBinding {
     pub policy: ProviderSessionPolicy,
     pub policy_sha256: String,
     pub active_revision: u64,
+    /// Owner-instance generation changes only when the active SHA changes.
+    pub adoption_generation: u64,
 }
 
 /// Trusted live-policy boundary. A live factory calls this after it has its

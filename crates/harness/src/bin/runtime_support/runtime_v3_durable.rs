@@ -31,12 +31,19 @@ pub(super) use operations::OperationCatalogEvidence;
 
 use support::{config_digest, fingerprint, optional_env, sha256_bytes, sha256_json};
 
+pub(super) fn authority_configuration_digest(
+    config: &RuntimeConfig,
+    settings: &RuntimeV3Settings,
+) -> Result<String, String> {
+    config_digest(config, settings)
+}
+
 /// A cloneable handle deliberately backed by one owner-local SQLite connection.
 ///
 /// The runtime port, provider recorder, and test seams all use this handle, but each database
 /// borrow is kept short.  No store connection is shared across processes or threads.
 #[derive(Clone)]
-pub(super) struct DurableHandle {
+pub(crate) struct DurableHandle {
     store: Rc<RefCell<ExecutionStore>>,
     lineage: ExecutionLineage,
     fingerprint: ExecutionFingerprint,
