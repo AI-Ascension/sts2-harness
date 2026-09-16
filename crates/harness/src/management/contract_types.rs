@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::target_admission::TargetAdmissionBinding;
+use super::target_admission::{ExecutionMode, TargetAdmissionBinding};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -107,6 +107,14 @@ pub struct RunSnapshot {
     pub cleanup: CleanupState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub admission: Option<TargetAdmissionBinding>,
+    /// The execution mode the serving composition declared for this run.
+    ///
+    /// Studio consumers need to distinguish execution against authoritative live
+    /// ports from a labelled synthetic fixture run without inferring it from an
+    /// absent admission binding. Absent only for records written before
+    /// execution-mode reporting existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_mode: Option<ExecutionMode>,
 }
 
 /// A scoped, redacted association between the current workflow cursor and its

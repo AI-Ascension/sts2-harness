@@ -163,6 +163,7 @@ fn assert_completed(
 ) {
     let status = http(&worker.client, "GET", path, None, 200);
     assert_eq!(status["run"]["status"], "completed");
+    assert_eq!(status["run"]["execution_mode"], "live");
     assert_eq!(status["run"]["definition_digest"], digest);
     let expected = if alternate {
         json!([
