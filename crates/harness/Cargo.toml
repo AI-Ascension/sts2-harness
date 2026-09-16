@@ -20,7 +20,7 @@ getrandom.workspace = true
 png.workspace = true
 sts2-protocol.workspace = true
 tokio.workspace = true
-uuid = { version = "=1.23.5", features = ["v4"] }
+uuid = { version = "=1.26.1", features = ["v4"] }
 zeroize.workspace = true
 ryu-js = "=1.0.2"
 jsonschema = { version = "=0.55.0", default-features = false }
