@@ -269,6 +269,19 @@ fn launch_forwards_acquired_lease_to_mcp_and_release() -> Result<(), String> {
         if port.recovery_authority.is_none() {
             return Err(String::from("launch did not retain recovery authority"));
         }
+        let lease = port
+            .current_lease_binding()
+            .map_err(|error| error.to_string())?;
+        if lease.instance_id != INSTANCE_ID
+            || lease.session_id != "session-1"
+            || lease.run_id != "run-1"
+            || lease.lease_id != ACQUIRED_LEASE
+            || lease.lease_epoch != 3
+        {
+            return Err(format!(
+                "runtime exposed the wrong acquired lease: {lease:?}"
+            ));
+        }
         let lease = fs::read_to_string(&fixture.lease_record)
             .map_err(|error| format!("cannot read MCP lease record: {error}"))?;
         if lease.trim() != format!("{ACQUIRED_LEASE}|3") {

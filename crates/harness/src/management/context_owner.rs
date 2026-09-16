@@ -302,7 +302,7 @@ mod binding;
 mod composition;
 #[path = "context_owner_receipt.rs"]
 mod receipt;
-pub use composition::ContextOwnerControlLimits;
+pub use composition::{CONTEXT_OWNER_CONTROL_LIMITS_SCHEMA, ContextOwnerControlLimits};
 pub use support::{CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, ContextOwnerAssociationView};
 
 #[path = "context_owner_support.rs"]

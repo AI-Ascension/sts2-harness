@@ -15,88 +15,13 @@ use sts2_harness::management::{
     WorkflowExecutionPort, WorkflowRunStatus, WorkflowStore, decode_strict, digest_value,
 };
 
+#[path = "support/live_workflow_reservation_factory.rs"]
+mod reservation_factory;
 #[path = "support/live_workflow.rs"]
 mod support;
 
+use reservation_factory::ReservationObservingFactory;
 use support::*;
-
-struct ReservationObservingFactory {
-    inner: support::FakeFactory,
-    store: Arc<dyn WorkflowStore>,
-    opens: Arc<AtomicUsize>,
-}
-
-impl ReservationObservingFactory {
-    fn new(store: Arc<dyn WorkflowStore>) -> (Self, Arc<AtomicUsize>) {
-        let opens = Arc::new(AtomicUsize::new(0));
-        (
-            Self {
-                inner: support::FakeFactory::new(false),
-                store,
-                opens: Arc::clone(&opens),
-            },
-            opens,
-        )
-    }
-}
-
-impl LiveWorkflowSessionFactory for ReservationObservingFactory {
-    fn capabilities(&self) -> serde_json::Value {
-        self.inner.capabilities()
-    }
-
-    fn target_catalog(
-        &self,
-        actor: &AuthContext,
-    ) -> Result<TargetCatalogResponse, ManagementError> {
-        self.inner.target_catalog(actor)
-    }
-
-    fn open(
-        &self,
-        request: &RunRequest,
-        actor: &AuthContext,
-        definition: &sts2_harness::workflow::WorkflowDefinition,
-        definition_digest: &str,
-    ) -> Result<Box<dyn LiveWorkflowSession>, ManagementError> {
-        self.opens.fetch_add(1, Ordering::SeqCst);
-        let run_identity = json!({
-            "request_id": request.request_id,
-            "instance_id": request.instance_id,
-            "definition_digest": definition_digest,
-        });
-        let run_digest = digest_value(&run_identity).map_err(ManagementError::from)?;
-        let run_id = format!("run.live.{}", &run_digest[..32]);
-        match self.store.get_run(&run_id).map_err(ManagementError::from)? {
-            Some(snapshot)
-                if snapshot.admission == request.admission
-                    && snapshot.status == WorkflowRunStatus::Created => {}
-            _ => {
-                return Err(ManagementError::conflict(
-                    "reservation_not_persisted",
-                    "live factory opened before the created reservation was persisted",
-                ));
-            }
-        }
-        let events = self
-            .store
-            .events(&run_id, 0, 128)
-            .map_err(ManagementError::from)?
-            .events;
-        if !events.first().is_some_and(|event| {
-            event.event_type == EventType::RunStarted
-                && event.sequence == 1
-                && event.run_revision == 1
-        }) {
-            return Err(ManagementError::conflict(
-                "reservation_receipt_not_persisted",
-                "live factory opened before the RunStarted receipt was persisted",
-            ));
-        }
-        self.inner
-            .open(request, actor, definition, definition_digest)
-    }
-}
 
 #[test]
 fn direct_live_submit_paths_fail_closed_without_a_reservation() {
@@ -367,6 +292,17 @@ impl LiveWorkflowSessionFactory for OpenErrorFactory {
             "fixture open failed",
         ))
     }
+
+    fn open_admitted(
+        &self,
+        request: &RunRequest,
+        actor: &AuthContext,
+        definition: &sts2_harness::workflow::WorkflowDefinition,
+        definition_digest: &str,
+        _control_limits: Option<&sts2_harness::management::ContextOwnerControlLimits>,
+    ) -> Result<Box<dyn LiveWorkflowSession>, ManagementError> {
+        self.open(request, actor, definition, definition_digest)
+    }
 }
 
 struct FinalCatalogFailureFactory {
@@ -413,5 +349,22 @@ impl LiveWorkflowSessionFactory for FinalCatalogFailureFactory {
     ) -> Result<Box<dyn LiveWorkflowSession>, ManagementError> {
         self.inner
             .open(request, actor, definition, definition_digest)
+    }
+
+    fn open_admitted(
+        &self,
+        request: &RunRequest,
+        actor: &AuthContext,
+        definition: &sts2_harness::workflow::WorkflowDefinition,
+        definition_digest: &str,
+        control_limits: Option<&sts2_harness::management::ContextOwnerControlLimits>,
+    ) -> Result<Box<dyn LiveWorkflowSession>, ManagementError> {
+        self.inner.open_admitted(
+            request,
+            actor,
+            definition,
+            definition_digest,
+            control_limits,
+        )
     }
 }

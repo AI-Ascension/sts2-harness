@@ -252,6 +252,26 @@ impl LiveWorkflowSessionFactory for FakeFactory {
             action: None,
         }))
     }
+
+    fn open_admitted(
+        &self,
+        request: &RunRequest,
+        actor: &AuthContext,
+        definition: &sts2_harness::workflow::WorkflowDefinition,
+        definition_digest: &str,
+        control_limits: Option<&sts2_harness::management::ContextOwnerControlLimits>,
+    ) -> Result<Box<dyn LiveWorkflowSession>, sts2_harness::management::ManagementError> {
+        // This workflow test double has no delegated context-control operation; validate the
+        // admitted bound before opening its non-control session. Production factories must pass
+        // the same typed selection into the owner that creates the durable control authority.
+        if control_limits.is_some_and(|limits| limits.max_control_events == 0) {
+            return Err(sts2_harness::management::ManagementError::capability(
+                "context_control_event_limit_invalid",
+                "fake factory received an empty admitted control bound",
+            ));
+        }
+        self.open(request, actor, definition, definition_digest)
+    }
 }
 
 struct FakeSession {

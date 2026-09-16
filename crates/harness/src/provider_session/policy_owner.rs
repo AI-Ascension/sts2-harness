@@ -9,7 +9,12 @@ use super::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
+mod active_binding;
+#[cfg(test)]
+#[path = "policy_owner/adoption_generation_tests.rs"]
+mod adoption_generation_tests;
 mod commands;
 mod journal;
 mod metadata;
@@ -60,6 +65,7 @@ pub enum ProviderSessionPolicyOwnerError {
     NotAdopted,
     /// Another live policy owner holds this journal's exclusive lease.
     Busy,
+    AdoptionGenerationExhausted,
     Store,
 }
 
@@ -77,6 +83,7 @@ pub struct ProviderSessionPolicyOwner {
     capabilities: NativeCapabilities,
     _lease: PolicyOwnerLease,
     journal: Mutex<Journal>,
+    adoption_generation: AtomicU64,
 }
 
 impl ProviderSessionPolicyOwner {
@@ -124,6 +131,7 @@ impl ProviderSessionPolicyOwner {
             capabilities,
             _lease: lease,
             journal: Mutex::new(journal),
+            adoption_generation: AtomicU64::new(0),
         })
     }
 

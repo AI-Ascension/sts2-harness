@@ -14,12 +14,42 @@ impl RuntimeV3Port {
         Self::new(config, telemetry, None)
     }
 
-    fn new_with_store(
+    pub(super) fn new_with_store(
         config: RuntimeConfig,
         telemetry: TelemetryHandle,
         durable: durable::DurableHandle,
     ) -> Result<Self, String> {
         Self::new(config, telemetry, Some(durable))
+    }
+
+    pub(super) fn allocated_lease_binding(
+        &self,
+    ) -> Result<sts2_harness::RuntimeLeaseBinding, sts2_harness::PortError> {
+        if !self.allocated || self.released {
+            return Err(wire::port_error(
+                "runtime_lease_binding_unavailable",
+                "gateway lease is not currently allocated",
+                false,
+            ));
+        }
+        let (lease_id, lease_epoch) = self.recovery_authority.as_ref().map_or_else(
+            || (self.config.lease_id.as_str(), self.config.lease_epoch),
+            |authority| (authority.lease_id.as_str(), authority.lease_epoch),
+        );
+        if lease_id != self.config.lease_id || lease_epoch != self.config.lease_epoch {
+            return Err(wire::port_error(
+                "runtime_lease_binding_mismatch",
+                "validated allocation and active recovery authority disagree",
+                false,
+            ));
+        }
+        Ok(sts2_harness::RuntimeLeaseBinding {
+            instance_id: self.config.instance_id.clone(),
+            session_id: self.config.session_id.clone(),
+            run_id: self.config.run_id.clone(),
+            lease_id: lease_id.to_owned(),
+            lease_epoch,
+        })
     }
 
     fn new(
@@ -67,7 +97,7 @@ impl RuntimeV3Port {
         self.lifecycle_authority.clone()
     }
 
-    fn durable_handle(&self) -> Option<durable::DurableHandle> {
+    pub(super) fn durable_handle(&self) -> Option<durable::DurableHandle> {
         self.durable.clone()
     }
 

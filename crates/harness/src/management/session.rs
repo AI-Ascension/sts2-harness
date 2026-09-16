@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-use serde_json::Value;
-
-use super::super::auth::AuthContext;
-use super::super::contract::{RunRequest, TargetCatalogResponse};
 use super::super::service::ManagementError;
 use crate::episode::{
     ActionIdentity, DecisionInput, DecisionSource, EpisodeLegalAction, EpisodeLegalActionSet,
     EpisodeObservation, EpisodeRuntimePort, RecoveryError, RecoveryPort, TransitionReceipt,
     WaitSample,
 };
+
+#[path = "session/factory.rs"]
+mod factory;
+pub use factory::{LiveWorkflowFactory, LiveWorkflowSessionFactory};
 
 /// The live boundary assembled by a binary from its gateway/MCP runtime and
 /// provider. No graph, transport, or game authority enters this trait.
@@ -197,77 +197,6 @@ where
 
     fn model_execution_id(&self) -> Option<crate::ModelExecutionId> {
         self.source.model_execution_id()
-    }
-}
-
-/// A factory opens one session for each admitted workflow run.
-pub trait LiveWorkflowSessionFactory: Send + Sync {
-    fn capabilities(&self) -> Value;
-
-    /// Returns the actor-scoped catalog used to mint and revalidate live
-    /// admission bindings. Factories that cannot provide authoritative target
-    /// metadata fail closed rather than allowing client-supplied descriptors.
-    fn target_catalog(
-        &self,
-        _actor: &AuthContext,
-    ) -> Result<TargetCatalogResponse, ManagementError> {
-        Err(ManagementError::unavailable(
-            "target_catalog_unavailable",
-            "live target discovery is not attached to this workflow owner",
-        ))
-    }
-
-    fn open(
-        &self,
-        request: &RunRequest,
-        actor: &AuthContext,
-        definition: &crate::workflow::WorkflowDefinition,
-        definition_digest: &str,
-    ) -> Result<Box<dyn LiveWorkflowSession>, ManagementError>;
-}
-
-/// Closure-backed factory suitable for a process that owns concrete adapters.
-pub struct LiveWorkflowFactory<F> {
-    capabilities: Value,
-    opener: F,
-}
-
-impl<F> LiveWorkflowFactory<F> {
-    pub fn new(capabilities: Value, opener: F) -> Result<Self, ManagementError> {
-        super::validation::validate_capability_manifest(&capabilities)?;
-        Ok(Self {
-            capabilities,
-            opener,
-        })
-    }
-}
-
-impl<F, R, S> LiveWorkflowSessionFactory for LiveWorkflowFactory<F>
-where
-    F: Fn(
-            &RunRequest,
-            &AuthContext,
-            &crate::workflow::WorkflowDefinition,
-            &str,
-        ) -> Result<(R, S), ManagementError>
-        + Send
-        + Sync,
-    R: EpisodeRuntimePort + Send + 'static,
-    S: DecisionSource + Send + 'static,
-{
-    fn capabilities(&self) -> Value {
-        self.capabilities.clone()
-    }
-
-    fn open(
-        &self,
-        request: &RunRequest,
-        actor: &AuthContext,
-        definition: &crate::workflow::WorkflowDefinition,
-        definition_digest: &str,
-    ) -> Result<Box<dyn LiveWorkflowSession>, ManagementError> {
-        let (runtime, source) = (self.opener)(request, actor, definition, definition_digest)?;
-        Ok(Box::new(EpisodeRuntimeSession::new(runtime, source)))
     }
 }
 

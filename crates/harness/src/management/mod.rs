@@ -28,15 +28,15 @@ pub use auth::{
 pub use authoring::{AuthoringStore, MemoryAuthoringStore, PublishResult};
 pub use context_owner::{
     CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, CONTEXT_OWNER_BINDING_SCHEMA_VERSION,
-    CONTEXT_OWNER_CATALOG_SCHEMA_VERSION, CONTEXT_OWNER_EFFECTIVE_LIMITS_VIEW_SCHEMA,
-    CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION, CONTEXT_OWNER_RECEIPT_V1_SCHEMA_VERSION,
-    ContextBindingCatalog, ContextBindingContinuity, ContextBindingDescriptor,
-    ContextBindingGrants, ContextBindingOperation, ContextBindingRequest, ContextBindingSource,
-    ContextBindingState, ContextControlCommand, ContextControlCommandKind, ContextControlReceipt,
-    ContextEffectiveLimits, ContextOwnerAssociationView, ContextOwnerBinding,
-    ContextOwnerEffectiveLimitsView, ContextOwnerPort, MAX_CONTEXT_BINDINGS,
-    MAX_CONTEXT_NODE_KINDS, MAX_CONTEXT_OPERATIONS, MAX_CONTEXT_SOURCES,
-    UnavailableContextOwnerPort, compose_context_owner_binding,
+    CONTEXT_OWNER_CATALOG_SCHEMA_VERSION, CONTEXT_OWNER_CONTROL_LIMITS_SCHEMA,
+    CONTEXT_OWNER_EFFECTIVE_LIMITS_VIEW_SCHEMA, CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION,
+    CONTEXT_OWNER_RECEIPT_V1_SCHEMA_VERSION, ContextBindingCatalog, ContextBindingContinuity,
+    ContextBindingDescriptor, ContextBindingGrants, ContextBindingOperation, ContextBindingRequest,
+    ContextBindingSource, ContextBindingState, ContextControlCommand, ContextControlCommandKind,
+    ContextControlReceipt, ContextEffectiveLimits, ContextOwnerAssociationView,
+    ContextOwnerBinding, ContextOwnerControlLimits, ContextOwnerEffectiveLimitsView,
+    ContextOwnerPort, MAX_CONTEXT_BINDINGS, MAX_CONTEXT_NODE_KINDS, MAX_CONTEXT_OPERATIONS,
+    MAX_CONTEXT_SOURCES, UnavailableContextOwnerPort, compose_context_owner_binding,
 };
 pub use contract::ReplayRequest as ManagementReplayRequest;
 pub use contract::{
@@ -79,8 +79,11 @@ pub use http::{
 };
 pub use live_workflow::{
     EpisodeRuntimeSession, LIVE_WORKFLOW_CAPABILITY, LIVE_WORKFLOW_PROFILE,
-    LiveWorkflowExecutionPort, LiveWorkflowFactory, LiveWorkflowOptions, LiveWorkflowSession,
-    LiveWorkflowSessionFactory, live_store,
+    LiveContextObservationPort, LiveProviderSessionFactory, LiveRuntimeSessionFactory,
+    LiveTargetCatalogPort, LiveWorkflowExecutionPort, LiveWorkflowFactory, LiveWorkflowOptions,
+    LiveWorkflowSession, LiveWorkflowSessionFactory, ProductionLiveWorkflowSessionFactory,
+    RuntimeAuthorityBinding, live_run_id, live_store, live_store_with_provider_policy,
+    live_store_with_provider_policy_and_command_port,
 };
 pub use provider_policy::{
     DurableProviderSessionPolicyCommandPort, ProviderSessionPolicyCommandPort,
@@ -105,3 +108,106 @@ pub use store::{
     WorkflowStore,
 };
 pub use workflow_ports::{synthetic_file_store, synthetic_sqlite_store, synthetic_store};
+
+/// Starts a served-live management endpoint from a binary that owns concrete
+/// runtime and provider adapters. The ordinary CLI retains synthetic mode.
+pub fn serve_live(
+    listen: std::net::SocketAddr,
+    store_path: &str,
+    authenticator: std::sync::Arc<dyn Authenticator>,
+    factory: std::sync::Arc<dyn LiveWorkflowSessionFactory>,
+) -> Result<(), ManagementError> {
+    let store = SqliteWorkflowStore::open(store_path)
+        .map_err(|error| ManagementError::store("workflow_store_open", error.to_string()))?;
+    let store: std::sync::Arc<dyn WorkflowStore> = std::sync::Arc::new(store);
+    let service = std::sync::Arc::new(live_store(store, factory, LiveWorkflowOptions::default())?);
+    serve_live_service(listen, authenticator, service)
+}
+
+/// Starts a served-live management endpoint with the durable provider-policy
+/// owner attached to management and the production session factory.
+pub fn serve_live_with_provider_policy(
+    listen: std::net::SocketAddr,
+    store_path: &str,
+    authenticator: std::sync::Arc<dyn Authenticator>,
+    factory: std::sync::Arc<dyn LiveWorkflowSessionFactory>,
+    provider_policy: std::sync::Arc<dyn LiveProviderPolicyPort>,
+) -> Result<(), ManagementError> {
+    let store = SqliteWorkflowStore::open(store_path)
+        .map_err(|error| ManagementError::store("workflow_store_open", error.to_string()))?;
+    let store: std::sync::Arc<dyn WorkflowStore> = std::sync::Arc::new(store);
+    let service = std::sync::Arc::new(live_store_with_provider_policy(
+        store,
+        factory,
+        LiveWorkflowOptions::default(),
+        provider_policy,
+    )?);
+    serve_live_service(listen, authenticator, service)
+}
+
+pub fn serve_live_with_provider_policy_and_context_owner(
+    listen: std::net::SocketAddr,
+    store_path: &str,
+    authenticator: std::sync::Arc<dyn Authenticator>,
+    factory: std::sync::Arc<dyn LiveWorkflowSessionFactory>,
+    provider_policy: std::sync::Arc<dyn LiveProviderPolicyPort>,
+    context_owner: std::sync::Arc<dyn ContextOwnerPort>,
+) -> Result<(), ManagementError> {
+    let store = SqliteWorkflowStore::open(store_path)
+        .map_err(|error| ManagementError::store("workflow_store_open", error.to_string()))?;
+    let store: std::sync::Arc<dyn WorkflowStore> = std::sync::Arc::new(store);
+    let service = std::sync::Arc::new(
+        live_store_with_provider_policy(
+            store,
+            factory,
+            LiveWorkflowOptions::default(),
+            provider_policy,
+        )?
+        .with_context_owner_port(context_owner)
+        .with_context_binding_history()?,
+    );
+    serve_live_service(listen, authenticator, service)
+}
+
+/// Starts served-live management with shared durable provider-policy owner
+/// ports, explicit saved-policy commands, and an attached context owner.
+pub fn serve_live_with_provider_policy_commands_and_context_owner(
+    listen: std::net::SocketAddr,
+    store_path: &str,
+    authenticator: std::sync::Arc<dyn Authenticator>,
+    factory: std::sync::Arc<dyn LiveWorkflowSessionFactory>,
+    provider_policy: std::sync::Arc<dyn LiveProviderPolicyPort>,
+    command_port: std::sync::Arc<dyn ProviderSessionPolicyCommandPort>,
+    context_owner: std::sync::Arc<dyn ContextOwnerPort>,
+) -> Result<(), ManagementError> {
+    let store = SqliteWorkflowStore::open(store_path)
+        .map_err(|error| ManagementError::store("workflow_store_open", error.to_string()))?;
+    let store: std::sync::Arc<dyn WorkflowStore> = std::sync::Arc::new(store);
+    let service = std::sync::Arc::new(
+        live_store_with_provider_policy_and_command_port(
+            store,
+            factory,
+            LiveWorkflowOptions::default(),
+            provider_policy,
+            command_port,
+        )?
+        .with_context_owner_port(context_owner)
+        .with_context_binding_history()?,
+    );
+    serve_live_service(listen, authenticator, service)
+}
+
+fn serve_live_service(
+    listen: std::net::SocketAddr,
+    authenticator: std::sync::Arc<dyn Authenticator>,
+    service: std::sync::Arc<ManagementService>,
+) -> Result<(), ManagementError> {
+    let config = ServerConfig::new(listen, authenticator)
+        .map_err(|error| ManagementError::invalid("workflow_server_config", error.to_string()))?;
+    let server = ManagementServer::start(config, service).map_err(|error| {
+        ManagementError::unavailable("workflow_server_start", error.to_string())
+    })?;
+    server
+        .wait()
+        .map_err(|error| ManagementError::unavailable("workflow_server_wait", error.to_string()))
+}

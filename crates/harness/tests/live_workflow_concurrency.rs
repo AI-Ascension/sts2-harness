@@ -20,6 +20,10 @@ use sts2_harness::{
 #[path = "support/live_workflow.rs"]
 mod support;
 
+#[path = "support/live_workflow_concurrency_factory.rs"]
+mod concurrency_factory;
+
+use concurrency_factory::GatedFactory;
 use support::*;
 
 /// A one-shot coordination gate that pins a wrapped live session inside a
@@ -111,42 +115,6 @@ fn command_with_timeout(
     receiver
         .recv_timeout(timeout)
         .expect("command did not return before the bounded deadline")
-}
-
-/// Wraps the recording fake so the `observe` node of the authored graph can be
-/// stalled while a first command is durably in flight.
-struct GatedFactory {
-    inner: Arc<FakeFactory>,
-    gate: Arc<SessionGate>,
-}
-
-impl LiveWorkflowSessionFactory for GatedFactory {
-    fn capabilities(&self) -> Value {
-        self.inner.capabilities()
-    }
-
-    fn target_catalog(
-        &self,
-        actor: &AuthContext,
-    ) -> Result<TargetCatalogResponse, ManagementError> {
-        self.inner.target_catalog(actor)
-    }
-
-    fn open(
-        &self,
-        request: &RunRequest,
-        actor: &AuthContext,
-        definition: &sts2_harness::workflow::WorkflowDefinition,
-        definition_digest: &str,
-    ) -> Result<Box<dyn LiveWorkflowSession>, ManagementError> {
-        let inner = self
-            .inner
-            .open(request, actor, definition, definition_digest)?;
-        Ok(Box::new(GatedSession {
-            inner,
-            gate: Arc::clone(&self.gate),
-        }))
-    }
 }
 
 struct GatedSession {

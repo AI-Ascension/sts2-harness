@@ -115,6 +115,18 @@ impl<T: crate::exo::ExoTransport> DecisionSource for ExoDecisionSource<T> {
         self.execution_id
     }
 
+    fn decide_for(
+        &mut self,
+        input: &DecisionInput,
+        decision_profile_ref: &str,
+        context_ref: &str,
+    ) -> Result<Decision, PolicyError> {
+        if decision_profile_ref.is_empty() || context_ref.is_empty() {
+            return Err(PolicyError::InputBlocked);
+        }
+        self.decide(input)
+    }
+
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError> {
         input
             .observation

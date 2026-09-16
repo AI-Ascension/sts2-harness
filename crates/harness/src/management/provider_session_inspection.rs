@@ -59,12 +59,13 @@ impl LiveProviderPolicyPort for ProviderSessionPolicyOwnerPort {
                 "authenticated actor cannot load the active provider-session policy",
             ));
         }
-        let (policy, policy_sha256, active_revision) = self.owner.active().map_err(|error| {
-            ManagementError::capability(
-                "provider_session_policy_not_adopted",
-                format!("no admissible adopted provider-session policy is available: {error}"),
-            )
-        })?;
+        let (policy, policy_sha256, active_revision, adoption_generation) =
+            self.owner.active_with_generation().map_err(|error| {
+                ManagementError::capability(
+                    "provider_session_policy_not_adopted",
+                    format!("no admissible adopted provider-session policy is available: {error}"),
+                )
+            })?;
         if policy.scope.run_id != workflow_run_id {
             return Err(ManagementError::conflict(
                 "provider_session_policy_scope_mismatch",
@@ -81,6 +82,7 @@ impl LiveProviderPolicyPort for ProviderSessionPolicyOwnerPort {
             policy,
             policy_sha256,
             active_revision,
+            adoption_generation,
         })
     }
 }

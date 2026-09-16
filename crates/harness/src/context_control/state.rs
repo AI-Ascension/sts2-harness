@@ -345,6 +345,32 @@ impl ControlAuthority {
         Ok(())
     }
 
+    /// Replaces the game-observation portion of this authority's boundary
+    /// from its owning runtime. The authority keeps its own controller, gate,
+    /// and control epochs; a gateway/MCP observation cannot mint control
+    /// authority or move the boundary backwards.
+    pub fn record_observation_boundary(
+        &mut self,
+        mut observed: ContextBoundary,
+    ) -> Result<(), String> {
+        let current = &self.state.boundary;
+        if observed.run_id != current.run_id
+            || observed.episode_id != current.episode_id
+            || observed.agent_id != current.agent_id
+            || observed.generation < current.generation
+            || (observed.generation == current.generation
+                && (observed.state_id != current.state_id
+                    || observed.observation_sha256 != current.observation_sha256))
+        {
+            return Err("observation_boundary_stale".to_owned());
+        }
+        observed.controller_epoch = current.controller_epoch;
+        observed.gate_epoch = self.state.gate_epoch;
+        observed.control_version = self.state.control_version;
+        self.state.boundary = observed;
+        Ok(())
+    }
+
     pub fn admit_plan(&self, plan_epoch: u64) -> Result<(), String> {
         if self.state.pause_latched
             || self.state.stop_latched
