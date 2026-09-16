@@ -267,13 +267,6 @@ pub(crate) fn run_served_policy_gate(
                     "owner_id":"served-context-owner",
                     "owner_version":"v1",
                     "context_ref":"context.live.v1",
-                    "episode_id":"episode-served-policy-gate",
-                    "agent_id":"served-agent",
-                    "catalog_digest":"3333333333333333333333333333333333333333333333333333333333333333",
-                    "adapter_revision":"runtime-v4-expert",
-                    "model_revision":"fixture-peer-1",
-                    "configuration_digest":"4444444444444444444444444444444444444444444444444444444444444444",
-                    "output_schema_digest":"5555555555555555555555555555555555555555555555555555555555555555",
                     "limits":{"max_items":64,"max_notes":16,"max_context_bytes":131072,"max_objective_bytes":512,"max_control_events":64}
                 }))?,
             )
