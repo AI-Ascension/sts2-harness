@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+#[derive(Clone)]
 pub(crate) struct RuntimeConfig {
     #[allow(dead_code)]
     pub(crate) seed_transport: Option<super::seed_transport::SeedTransportConfig>,

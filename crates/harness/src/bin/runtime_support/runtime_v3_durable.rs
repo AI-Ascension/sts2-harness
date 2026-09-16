@@ -80,6 +80,20 @@ impl DurableHandle {
         })
     }
 
+    #[cfg(test)]
+    pub(in super::super) fn from_store_for_lifecycle_test(
+        store: ExecutionStore,
+        lineage: ExecutionLineage,
+        fingerprint: ExecutionFingerprint,
+        model_revision: String,
+        config_digest: String,
+    ) -> Result<Self, String> {
+        let mut durable = Self::from_store_for_test(store, lineage, fingerprint)?;
+        durable.model_revision = model_revision;
+        durable.config_digest = config_digest;
+        Ok(durable)
+    }
+
     pub(super) fn open(
         config: &RuntimeConfig,
         settings: &RuntimeV3Settings,
@@ -249,6 +263,27 @@ impl DurableHandle {
             .map_err(|_| String::from("runtime-v3 execution store is already borrowed"))?
             .close()
             .map_err(|error| format!("cannot close runtime-v3 execution store: {error}"))
+    }
+
+    /// The lifecycle owner is deliberately given this exact owner-local store handle, never a
+    /// second journal or a reopened database connection. Callers must retain the `Rc` on this
+    /// runtime worker and keep every borrow short.
+    pub(super) fn lifecycle_store(&self) -> Rc<RefCell<ExecutionStore>> {
+        self.store.clone()
+    }
+
+    /// Fingerprint paired with [`Self::lifecycle_store`]. A lifecycle send validates it against
+    /// the already-admitted episode before it can persist its provider reservation.
+    pub(super) fn lifecycle_fingerprint(&self) -> ExecutionFingerprint {
+        self.fingerprint.clone()
+    }
+
+    pub(super) fn lifecycle_lineage(&self) -> ExecutionLineage {
+        self.lineage.clone()
+    }
+
+    pub(super) fn lifecycle_config_digest(&self) -> String {
+        self.config_digest.clone()
     }
 }
 

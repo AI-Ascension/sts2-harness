@@ -320,7 +320,8 @@ fn changed_input_or_authority_or_prepared_identity_is_denied_before_effect() {
                     &fixture.fingerprint,
                     &mut effect
                 )
-                .is_err()
+                .is_err(),
+            "variant {variant} should be refused"
         );
         assert_eq!(effect.calls, 0);
         assert!(owner.entries().is_empty());

@@ -53,7 +53,10 @@ fn execute() -> Result<(), &'static str> {
         loaded.validate_route(mode == "--lookup-synthetic")?;
         return lookup::execute(&loaded, mode == "--lookup-synthetic");
     }
-    if !matches!(mode.as_str(), "--describe" | "--run" | "--synthetic") {
+    if !matches!(
+        mode.as_str(),
+        "--describe" | "--run" | "--synthetic" | "--run-v2" | "--synthetic-v2"
+    ) {
         return Err("exo_bridge_arguments");
     }
     let loaded = config::load(path)?;
@@ -68,7 +71,7 @@ fn execute() -> Result<(), &'static str> {
     if rest.len() != 1 || rest[0] != loaded.digest {
         return Err("exo_bridge_config_identity");
     }
-    loaded.validate_route(mode == "--synthetic")?;
+    loaded.validate_route(mode == "--synthetic" || mode == "--synthetic-v2")?;
     let bytes = read_input()?;
     let envelope =
         parse_bridge_request_envelope(&bytes, 131_072).map_err(|_| "exo_bridge_invalid_request")?;
@@ -80,7 +83,11 @@ fn execute() -> Result<(), &'static str> {
     {
         return Err("exo_bridge_unsupported_profile");
     }
-    let response = run::execute(&loaded, envelope, mode == "--synthetic")?;
+    let response = if mode == "--run-v2" || mode == "--synthetic-v2" {
+        run::execute_v2(&loaded, envelope, mode == "--synthetic-v2")?
+    } else {
+        run::execute(&loaded, envelope, mode == "--synthetic")?
+    };
     write_output(&response)
 }
 

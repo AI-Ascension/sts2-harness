@@ -318,7 +318,7 @@ fn a_matching_package_binding_requires_the_actual_launch_configuration() -> Resu
     let output = run_child(command)?;
     assert_failure_contains(
         &output,
-        "Exo envelope requires --run, absolute configuration path and digest",
+        "Exo envelope requires --run or --run-v2, absolute configuration path and digest",
     )?;
     fixture.assert_no_gateway_connection()?;
     if fixture.counter.exists() {

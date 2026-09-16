@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 
 use super::wire::ExoWireError;
 
-pub(super) fn parse_strict_value(bytes: &[u8]) -> Result<Value, ExoWireError> {
+pub(crate) fn parse_strict_value(bytes: &[u8]) -> Result<Value, ExoWireError> {
     let mut decoder = serde_json::Deserializer::from_slice(bytes);
     let StrictJsonValue(value) = StrictJsonValue::deserialize(&mut decoder).map_err(|error| {
         if error.to_string().contains("duplicate JSON object key") {

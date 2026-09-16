@@ -14,6 +14,8 @@ mod history;
 mod interrupts;
 #[path = "broker_maintenance.rs"]
 mod maintenance;
+#[path = "broker_one_shot.rs"]
+mod one_shot;
 #[path = "broker_retirement.rs"]
 mod retirement;
 #[path = "broker_snapshot.rs"]
@@ -174,6 +176,10 @@ impl ProviderSessionBroker {
         self.operations
             .get(operation_id)
             .ok_or(SessionError::NotFound)
+    }
+
+    pub fn prepared(&self, prepared_id: &str) -> Result<&PreparedSessionTurn, SessionError> {
+        self.prepared.get(prepared_id).ok_or(SessionError::NotFound)
     }
 
     /// Revalidates the caller-owned serialization token.  Native IDs are never accepted here.

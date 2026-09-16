@@ -19,12 +19,14 @@
 
 use std::path::Path;
 
+use crate::ExoCapabilityState;
 use crate::exo::{
     EXO_CONTRACT_VERSION, EXO_SOURCE_REVISION, ExoCapabilityDescriptor, ExoIdentity,
     ExoIdentityError, ExoPreflightError, ExoTransport, ExoTransportError, ExoTrustedConfiguration,
     preflight,
 };
 use crate::exo_admitted_transport::{ExoAdmissionError, ExoAdmittedTransport};
+use crate::exo_lifecycle::{ExoLifecycleRuntimeTransport, LifecycleManifestFactory};
 use crate::sha256_hex;
 
 /// The exact artifact bytes an operator inspected for one deployment.
@@ -220,6 +222,29 @@ impl ExoAdmissionPlan {
         )
         .map_err(ExoAdmissionRefusal::Admission)
     }
+
+    /// Admits the receipt-bound lifecycle adapter. This is the sole capability promotion path:
+    /// its concrete type owns a durable lifecycle owner and v2 process effect, whereas the
+    /// generic [`Self::admit`] deliberately retains source-review capability states.
+    pub fn admit_lifecycle<F: LifecycleManifestFactory>(
+        &self,
+        transport: ExoLifecycleRuntimeTransport<F>,
+    ) -> Result<ExoAdmittedTransport<ExoLifecycleRuntimeTransport<F>>, ExoAdmissionRefusal> {
+        let mut descriptor = self.reviewed_descriptor()?;
+        descriptor.lifecycle.cancellation = ExoCapabilityState::Supported;
+        descriptor.lifecycle.recovery = ExoCapabilityState::Supported;
+        descriptor.evidence.turn_identity = ExoCapabilityState::Supported;
+        preflight(&descriptor, &self.trusted).map_err(ExoAdmissionRefusal::Preflight)?;
+        ExoAdmittedTransport::new(
+            transport,
+            &descriptor,
+            &self.trusted,
+            self.model_execution_id.clone(),
+            self.request_id.clone(),
+            self.turn_id.clone(),
+        )
+        .map_err(ExoAdmissionRefusal::Admission)
+    }
 }
 
 /// The transport the runtime hands to its provider after admission.
@@ -264,6 +289,13 @@ impl ExoRuntimeAdmission {
     pub fn enveloped(plan: ExoAdmissionPlan) -> Result<Self, ExoAdmissionRefusal> {
         plan.validate()?;
         Ok(Self::Enveloped(Box::new(plan)))
+    }
+
+    /// Defers capability validation until the lifecycle adapter has supplied its durable,
+    /// receipt-bound implementation. Generic admission still validates if it receives this value.
+    #[must_use]
+    pub fn enveloped_lifecycle(plan: ExoAdmissionPlan) -> Self {
+        Self::Enveloped(Box::new(plan))
     }
 
     /// Records the explicit, un-admitted raw-wire acknowledgement.

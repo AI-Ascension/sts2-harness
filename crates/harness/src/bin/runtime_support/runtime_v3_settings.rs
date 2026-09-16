@@ -8,6 +8,7 @@ use sts2_harness::{
 
 use super::config::RuntimeConfig;
 use super::runtime_v3_admission;
+use super::runtime_v3_lifecycle_config::{RuntimeLifecycleConfig, RuntimeLifecycleSecrets};
 
 #[path = "../support/ollama_options.rs"]
 mod ollama_options;
@@ -23,6 +24,8 @@ pub(super) struct RuntimeV3Settings {
     pub(super) exo: ExoConfig,
     pub(super) process: ExoProcessConfig,
     pub(super) admission: ExoRuntimeAdmission,
+    #[allow(dead_code)]
+    pub(super) lifecycle: Option<(RuntimeLifecycleConfig, RuntimeLifecycleSecrets)>,
 }
 
 impl RuntimeV3Settings {
@@ -35,12 +38,15 @@ impl RuntimeV3Settings {
             string_list("STS2_EXO_INHERITED_ENV_JSON")?,
         )
         .map_err(|error| format!("Exo bridge process configuration is invalid: {error}"))?;
+        let lifecycle = RuntimeLifecycleConfig::from_environment()?;
         // Admission inspects the exact bridge executable it is about to launch, so the process
-        // configuration is assembled first.
+        // configuration is assembled first. Lifecycle capability promotion is deferred until
+        // its durable receipt adapter has been built.
         let admission = runtime_v3_admission::from_environment(
             &process,
             config.map_context_enabled,
             &config.instance_id,
+            lifecycle.is_some(),
         )?;
         let runner = runner_from_environment(config.map_context_enabled)?;
         Ok(Self {
@@ -48,6 +54,7 @@ impl RuntimeV3Settings {
             exo,
             process,
             admission,
+            lifecycle,
         })
     }
 }
