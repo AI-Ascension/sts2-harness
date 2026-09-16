@@ -44,6 +44,9 @@ pub struct SessionBinding {
     pub purpose: SessionPurpose,
     pub state: BindingState,
     pub native_thread_ref: String,
+    /// A one-shot binding has no native thread identity until its lifecycle receipt is recorded.
+    #[serde(default)]
+    pub native_identity_pending: bool,
     pub credential_realm_ref: String,
     pub profile_sha256: String,
     pub owner_epoch: u64,
@@ -74,6 +77,7 @@ impl SessionBinding {
         let value = Self {
             schema: SESSION_BINDING_SCHEMA.to_owned(),
             native_thread_ref: format!("pending-{binding_id}"),
+            native_identity_pending: true,
             binding_id,
             scope,
             branch_id,
