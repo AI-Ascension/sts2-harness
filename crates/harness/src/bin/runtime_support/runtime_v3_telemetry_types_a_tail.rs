@@ -10,6 +10,7 @@ pub enum FailureCode {
     ProviderUnavailable,
     ProviderMalformed,
     ProviderClosed,
+    ContextRenderLimit,
     Rejected,
     UnknownOutcome,
     Cleanup,
@@ -28,6 +29,7 @@ impl FailureCode {
             Self::ProviderUnavailable => "provider_unavailable",
             Self::ProviderMalformed => "provider_malformed",
             Self::ProviderClosed => "provider_closed",
+            Self::ContextRenderLimit => "context_render_limit_exceeded",
             Self::Rejected => "rejected",
             Self::UnknownOutcome => "unknown_outcome",
             Self::Cleanup => "cleanup_failed",
@@ -48,6 +50,7 @@ impl From<&PolicyError> for FailureCode {
             PolicyError::ProviderUnavailable => Self::ProviderUnavailable,
             PolicyError::ProviderMalformed => Self::ProviderMalformed,
             PolicyError::ProviderClosed => Self::ProviderClosed,
+            PolicyError::SelectedContextLimit(_) => Self::ContextRenderLimit,
         }
     }
 }

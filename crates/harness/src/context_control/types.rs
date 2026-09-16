@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 pub const CONTEXT_DRAFT_SCHEMA: &str = "ascension.context-control.draft.v1";
 pub const CONTROL_JOURNAL_SCHEMA: &str = "ascension.context-control.journal.v1";
@@ -74,6 +75,37 @@ pub struct ContextDraft {
     pub notes: Vec<ContextNote>,
     pub objective: Option<ContextItemRef>,
     pub author_ref: String,
+}
+
+/// Immutable owner-published source bytes used by managed live rendering.
+///
+/// A source is admitted and adopted by its management owner; this document
+/// carries no authority or source identity by itself.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContextSourceDocument {
+    pub draft: ContextDraft,
+    pub items: BTreeMap<String, ContextItem>,
+}
+
+/// Owner-issued reference to an immutable source snapshot currently adopted
+/// by the durable control authority.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActiveContextSource {
+    pub source_id: String,
+    pub version: u64,
+    pub digest: String,
+    pub active_revision_id: String,
+}
+
+/// Exact source identity recorded atomically with a control commit receipt.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContextSourceActivation {
+    pub source_id: String,
+    pub version: u64,
+    pub digest: String,
+    pub active_revision_id: String,
 }
 
 impl ContextDraft {

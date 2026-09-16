@@ -7,12 +7,16 @@
 //! copied into a separate additive table and are never rewritten. This module is intentionally
 //! a fixture-facing seam; callers still need an approved private key and scoped authorization.
 
+#[path = "store_persist.rs"]
+mod persist;
+
 use super::state::ControlAuthority;
 use super::store_receipts::{persist_owner_receipt, prepare_owner_receipt};
+use super::store_render_sources::persist_active_source;
 use super::store_schema::{digest, ensure_schema, insert_outbox, now_seconds};
 use super::store_types::{
-    AAD, DurableContextOwnerControlReceipt, DurableControlStoreError, DurableStoreFailpoint,
-    MAX_JOURNAL_BYTES, StoreMode,
+    AAD, DurableActiveContextSource, DurableContextOwnerControlReceipt, DurableControlStoreError,
+    DurableStoreFailpoint, MAX_JOURNAL_BYTES, StoreMode,
 };
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
@@ -62,7 +66,7 @@ impl ContextControlStore {
         authority: &ControlAuthority,
         mode: StoreMode,
     ) -> Result<(), DurableControlStoreError> {
-        self.persist_inner(authority, mode, None)
+        self.persist_inner(authority, mode, None, None)
     }
 
     /// Atomically persists the authority transition and its exact owner-issued receipt.
@@ -76,77 +80,19 @@ impl ContextControlStore {
         mode: StoreMode,
         record: &DurableContextOwnerControlReceipt,
     ) -> Result<(), DurableControlStoreError> {
-        self.persist_inner(authority, mode, Some(record))
+        self.persist_inner(authority, mode, Some(record), None)
     }
 
-    fn persist_inner(
+    /// Atomically persists an owner control receipt, the resulting authority journal, and the
+    /// immutable source reference adopted by that revision.
+    pub fn persist_with_owner_control_receipt_and_source(
         &mut self,
         authority: &ControlAuthority,
         mode: StoreMode,
-        receipt_record: Option<&DurableContextOwnerControlReceipt>,
+        record: &DurableContextOwnerControlReceipt,
+        source: &DurableActiveContextSource,
     ) -> Result<(), DurableControlStoreError> {
-        let journal = authority
-            .export_journal()
-            .map_err(|_| DurableControlStoreError::Encode)?;
-        if journal.len() > MAX_JOURNAL_BYTES {
-            return Err(DurableControlStoreError::TooLarge);
-        }
-        let encrypted = self.encrypt(&journal)?;
-        let journal_digest = digest(&encrypted);
-        if self.failpoint == Some(DurableStoreFailpoint::BeforeJournalWrite) {
-            self.failpoint = None;
-            return Err(DurableControlStoreError::Failpoint);
-        }
-        let state = authority.state();
-        if state.boundary.run_id != self.run_id {
-            return Err(DurableControlStoreError::ScopeMismatch);
-        }
-        let receipt_envelope = receipt_record
-            .map(|record| prepare_owner_receipt(self, record, state))
-            .transpose()?;
-        self.claim_owner()?;
-        let transaction = self
-            .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(|_| DurableControlStoreError::Sqlite)?;
-        Self::verify_owner(&transaction, &self.run_id, &self.owner_token)?;
-        persist_owner_receipt(&transaction, &self.run_id, &self.key, receipt_envelope)?;
-        transaction
-            .execute(
-                "INSERT INTO context_control_journal
-                    (run_id, envelope, envelope_digest, management_active, active_revision_id,
-                     pause_latched, controller_epoch, plan_epoch, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-                 ON CONFLICT(run_id) DO UPDATE SET
-                    envelope = excluded.envelope,
-                    envelope_digest = excluded.envelope_digest,
-                    management_active = excluded.management_active,
-                    active_revision_id = excluded.active_revision_id,
-                    pause_latched = excluded.pause_latched,
-                    controller_epoch = excluded.controller_epoch,
-                    plan_epoch = excluded.plan_epoch,
-                    updated_at = excluded.updated_at",
-                params![
-                    self.run_id,
-                    encrypted,
-                    journal_digest,
-                    mode.as_i64(),
-                    state.active_revision_id,
-                    i64::from(state.pause_latched),
-                    state.boundary.controller_epoch as i64,
-                    state.plan_epoch as i64,
-                    now_seconds(),
-                ],
-            )
-            .map_err(|_| DurableControlStoreError::Sqlite)?;
-        insert_outbox(&transaction, &self.run_id, authority.events())?;
-        if self.failpoint == Some(DurableStoreFailpoint::BeforeCommit) {
-            self.failpoint = None;
-            return Err(DurableControlStoreError::Failpoint);
-        }
-        transaction
-            .commit()
-            .map_err(|_| DurableControlStoreError::Sqlite)
+        self.persist_inner(authority, mode, Some(record), Some(source))
     }
 
     pub fn load(&self) -> Result<ControlAuthority, DurableControlStoreError> {

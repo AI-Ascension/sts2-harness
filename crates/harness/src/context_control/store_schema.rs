@@ -165,4 +165,20 @@ CREATE TABLE IF NOT EXISTS context_control_owner_receipts (
     PRIMARY KEY (run_id, owner_id, command_digest),
     UNIQUE (run_id, owner_id, idempotency_digest)
 );
+CREATE TABLE IF NOT EXISTS context_control_context_sources (
+    run_id TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    source_digest TEXT NOT NULL,
+    envelope BLOB NOT NULL,
+    envelope_digest TEXT NOT NULL,
+    PRIMARY KEY (run_id, source_id, version)
+);
+CREATE TABLE IF NOT EXISTS context_control_active_context_source (
+    run_id TEXT PRIMARY KEY NOT NULL,
+    source_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    source_digest TEXT NOT NULL,
+    active_revision_id TEXT NOT NULL
+);
 "#;

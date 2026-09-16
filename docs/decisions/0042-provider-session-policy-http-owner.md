@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted for scoped implementation of Harness #95. The routes provide a durable operator surface;
-served live composition and downstream Console/Studio adoption remain separate acceptance work.
+Accepted for scoped implementation of Harness #95. `serve-workflow` attaches the durable owner to
+both its HTTP command routes and live pre-provider admission. Downstream Console/Studio journeys
+remain separate consumer acceptance work.
 
 ## Context
 
@@ -79,8 +80,9 @@ these routes.
 
 - The API allows an authorized operator to retain, review and explicitly activate an initial or
   migrated policy without clamping policy values.
-- A served live workflow must attach the same trusted policy owner to its pre-provider admission
-  boundary. The HTTP route alone does not establish that the executable runtime loads the adopted
-  revision.
+- `serve-workflow` attaches the same trusted policy owner to its command port and pre-provider
+  admission boundary, so live decisions revalidate the adopted active policy. Managed context source
+  publication and rendering use a separate owner contract described in
+  [ADR 0043](0043-served-managed-context-source.md).
 - Provider execution, native compatibility and Console/Studio journeys remain unverified until
   their respective production callers and acceptance evidence are complete.

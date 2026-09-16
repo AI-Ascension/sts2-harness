@@ -268,6 +268,7 @@ fn make_session(
         }),
         provider_capabilities: NativeCapabilities::fixture(),
         context_observations: None,
+        context_render: None,
         context_control_limits: None,
         active_policy_binding: Some(("a".repeat(64), 0)),
         authority_binding: RuntimeAuthorityBinding {
@@ -351,3 +352,7 @@ fn journal_only_change_with_same_active_generation_does_not_fence_decision() {
     assert_eq!(active.lock().expect("policy lock").generation, 0);
     assert_eq!(active.lock().expect("policy lock").journal_revision, 5);
 }
+
+#[cfg(test)]
+#[path = "production_managed_render_tests.rs"]
+mod managed_render_tests;

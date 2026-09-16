@@ -61,6 +61,31 @@ impl TempDir {
         fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
         Ok(path)
     }
+
+    pub(crate) fn bridge_capturing(
+        &self,
+        capture_path: &Path,
+    ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        let path = self.path.join("bounded-exo-bridge-capture.sh");
+        let capture_path = capture_path
+            .to_str()
+            .ok_or("provider capture path is not UTF-8")?;
+        let count_path = capture_path
+            .strip_suffix(".json")
+            .map(|path| format!("{path}.count"))
+            .ok_or("provider capture path must use a .json extension")?;
+        if capture_path.contains('\'') || count_path.contains('\'') {
+            return Err("provider capture path contains a shell quote".into());
+        }
+        fs::write(
+            &path,
+            format!(
+                "#!/bin/sh\nprintf x >> '{count_path}'\ncat > '{capture_path}'\nprintf '%s' '{{\"decision\":\"action\",\"action_id\":\"potion:7:potion:fire:enemy:1\",\"rationale\":\"use the visible potion\"}}'\n"
+            ),
+        )?;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
+        Ok(path)
+    }
 }
 
 impl Drop for TempDir {
@@ -234,7 +259,8 @@ pub(crate) fn run_scenario(
 #[path = "runtime_v4_executable_composition_process/served.rs"]
 mod served;
 pub(crate) use served::{
-    paths, run_served_policy_gate, run_served_restart_refuses_duplicate_effect,
+    paths, run_served_context_source_adoption, run_served_policy_gate,
+    run_served_restart_refuses_duplicate_effect,
 };
 
 #[path = "runtime_v4_executable_composition_process/assertions.rs"]

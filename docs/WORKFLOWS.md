@@ -67,12 +67,16 @@ harness → MCP → gateway process chain. The only synthetic component is a bou
 game-mod HTTP endpoint owned by the harness test fixture; it is downstream of the
 real peers and has no game, provider, or host authority.
 
-The lane runs the generic runtime composition and the served `serve-workflow`
-positive and restart regressions against those same peers. The served positive
-case exercises run-scoped saved-policy GET and adoption commands, settles one
-action, and verifies the live context binding; the restart case persists an
-unknown operation, restarts against the same stores, and proves a later step is
-refused without a second effect. Both use the test-only local provider bridge.
+The lane runs the generic runtime composition and served `serve-workflow`
+policy, restart, and managed-context regressions against those same peers. The
+policy case exercises run-scoped policy GET and adoption, settles one action,
+and verifies the live context binding. The restart case persists an unknown
+operation, restarts against the same stores, and proves a later step is refused
+without a second effect. The managed-context case publishes and adopts an
+allowlisted source against the actual decision cursor, then verifies one
+provider exchange contains the retained item; its missing-source case fails
+before exchange. Both managed-context cases stop before game execution. They
+use the test-only local provider bridge.
 The generic case deliberately sends a foreign identity envelope and a malformed
 expert-state envelope; both must fail before an action is forwarded. Separate
 persisted-startup and cancellation-cleanup regressions remain required in the

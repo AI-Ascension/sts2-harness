@@ -12,6 +12,7 @@ mod store;
 mod store_ops;
 mod store_ownership;
 mod store_receipts;
+mod store_render_sources;
 mod store_schema;
 mod store_types;
 mod types;
@@ -24,11 +25,14 @@ pub use state::{
     ControlAuthority, ControlEvent, ControlReceipt, ControlState, GateStatus, MAX_CONTROL_EVENTS,
 };
 pub use store::ContextControlStore;
+pub use store_render_sources::context_source_digest;
 pub use store_types::{
-    CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION, DurableContextOwnerControlReceipt,
-    DurableControlStoreError, DurableStoreFailpoint, LegacyOpenError, StoreMode, StoreSnapshot,
+    CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION, DurableActiveContextSource,
+    DurableContextOwnerControlReceipt, DurableContextSourceSnapshot, DurableControlStoreError,
+    DurableStoreFailpoint, LegacyOpenError, StoreMode, StoreSnapshot,
 };
 pub use types::{
-    ContextBoundary, ContextDraft, ContextItem, ContextItemRef, ContextNote, MAX_CONTEXT_BYTES,
+    ActiveContextSource, CONTEXT_DRAFT_SCHEMA, ContextBoundary, ContextDraft, ContextItem,
+    ContextItemRef, ContextNote, ContextSourceActivation, ContextSourceDocument, MAX_CONTEXT_BYTES,
     MAX_CONTEXT_ITEMS, MAX_CONTEXT_NOTES, MAX_OBJECTIVE_BYTES, ManagementProfile,
 };
