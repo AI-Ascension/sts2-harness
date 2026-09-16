@@ -135,12 +135,14 @@ fn inspected_deployment(
 ) -> Result<ExoIdentity, String> {
     let [mode, path, digest] = process.arguments() else {
         return Err(
-            "Exo envelope requires --run, absolute configuration path and digest".to_owned(),
+            "Exo envelope requires --run or --run-v2, absolute configuration path and digest"
+                .to_owned(),
         );
     };
-    if mode != "--run" || !std::path::Path::new(path).is_absolute() {
+    if !matches!(mode.as_str(), "--run" | "--run-v2") || !std::path::Path::new(path).is_absolute() {
         return Err(
-            "Exo envelope requires --run, absolute configuration path and digest".to_owned(),
+            "Exo envelope requires --run or --run-v2, absolute configuration path and digest"
+                .to_owned(),
         );
     }
     let loaded = sts2_harness::exo_bridge_configuration::load(path)
