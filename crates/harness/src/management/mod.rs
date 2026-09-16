@@ -150,7 +150,8 @@ pub fn serve_live_with_provider_policy_and_context_owner(
             LiveWorkflowOptions::default(),
             provider_policy,
         )?
-        .with_context_owner_port(context_owner),
+        .with_context_owner_port(context_owner)
+        .with_context_binding_history()?,
     );
     serve_live_service(listen, authenticator, service)
 }

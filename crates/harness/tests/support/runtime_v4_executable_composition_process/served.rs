@@ -324,6 +324,22 @@ fn submit_and_step_policy_gate(
                 format!("served step {index} was not applied: {:?}", command.outcome).into(),
             );
         }
+        if index == 2 {
+            let binding: Value = response(client.request_json(
+                "GET",
+                &format!("/v1/workflow-runs/{run_id}/executions/live.node.2/context-binding"),
+                None,
+            )?)?;
+            if binding["binding"]["workflow_run_id"] != run_id
+                || binding["binding"]["boundary"]["state_id"] != "live:7"
+                || binding["binding"]["boundary"]["generation"] != 7
+                || binding["binding"]["boundary"]["catalog_sha256"] == "catalog-unavailable"
+            {
+                return Err(
+                    "served context binding does not retain the launch observation/catalog".into(),
+                );
+            }
+        }
         revision = command.run_revision;
     }
     Ok(())
