@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-fn run_combat_demo(
+fn run_combat_demo<T: sts2_harness::ExoTransport>(
     mut port: RuntimeV3Port,
-    mut source: ExoDecisionSource<ExoProcessTransport>,
+    mut source: ExoDecisionSource<T>,
     runner: sts2_harness::EpisodeRunnerConfig,
     telemetry_handle: TelemetryHandle,
     telemetry: RuntimeV3Telemetry,

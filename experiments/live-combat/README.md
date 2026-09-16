@@ -4,6 +4,11 @@ Start with `sts2-astra-bridge` for OpenAI `gpt-6-astra`. It uses an existing Cod
 login (`codex login status`), not Ollama. Requirements: Codex CLI with this model available,
 GNU `timeout`, and explicit `HOME`/`PATH` inheritance through the provider process boundary.
 Set `STS2_PROVIDER_KIND=openai-astra` and pin the bridge executable SHA-256 as below.
+Both provider kinds also require `STS2_EXO_ADMISSION=legacy`: they speak the raw request shape
+rather than the reviewed `sts2.exo-bridge-wire-v1` envelope, so the run acknowledges an
+un-admitted bridge instead of claiming the reviewed envelope admission
+([ADR 0031](../../docs/decisions/0031-runtime-exo-admission-gate.md)). Without it the runtime
+defaults to the reviewed `envelope` mode and refuses before any model call.
 The bridge uses ephemeral, read-only Codex calls with shell, apps, browser, and delegation
 disabled, a strict legal-action JSON schema, and a 90-second execution deadline plus a
 5-second termination grace. Temporary schema/output files are removed after each decision.

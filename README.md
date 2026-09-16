@@ -235,6 +235,10 @@ value and provide the exact reviewed `STS2_EXO_REVISION`, direct `STS2_EXO_BRIDG
 `STS2_OBJECTIVE` inputs. The profile requires the six semantic MCP tools, keeps host payloads at the
 MCP boundary, and fails closed when the gateway, MCP process, Exo bridge, or target runtime is
 missing. The host `visible_seed` is preserved by default for repeatable invocation and replay.
+The profile also admits the Exo deployment through `STS2_EXO_ADMISSION`
+([ADR 0031](docs/decisions/0031-runtime-exo-admission-gate.md)): the default reviewed `envelope`
+mode refuses the run before any model call while a capability, digest, revision, route or schema is
+not admitted, and a raw-wire development bridge requires the explicit `legacy` acknowledgement.
 Set `STS2_EXO_FORWARD_VISIBLE_SEED=false` for an explicitly seed-blind experiment
 (only `true`/`false` are accepted). Configure
 `STS2_SESSION_ID=session-1` and `STS2_MCP_SESSION_ID=mcp-session-1` explicitly in both the gateway

@@ -176,6 +176,9 @@ pub(crate) fn run_scenario(
             .env("STS2_ARTIFACT_ID", "artifact-executable-composition")
             .env("STS2_EXO_REVISION", REVIEWED_EXO_REVISION)
             .env("STS2_PROVIDER_KIND", "synthetic")
+            // The synthetic probe is a raw-wire bridge: acknowledge it explicitly instead of
+            // claiming the reviewed one-turn envelope admission.
+            .env("STS2_EXO_ADMISSION", "legacy")
             .env("STS2_EXO_BRIDGE_BINARY", bridge)
             .env("STS2_EXO_TIMEOUT_MILLIS", "2000")
             .env("STS2_EXO_MAX_REQUEST_BYTES", "131072")

@@ -59,6 +59,7 @@ mod exact_transition;
 mod execution;
 mod execution_cancellation;
 mod exo;
+pub mod exo_admission;
 mod exo_admitted_transport;
 pub mod exo_lifecycle;
 pub mod exo_lookup_process;

@@ -230,6 +230,9 @@ impl Fixture {
             .env("STS2_STATE_DIGEST", "state-completed-resume")
             .env("STS2_EXO_REVISION", EXO_REVISION)
             .env("STS2_EXO_BRIDGE_BINARY", &self.bridge)
+            // The fixture probe is a raw-wire bridge, so it carries the explicit
+            // un-admitted acknowledgement rather than the reviewed envelope admission.
+            .env("STS2_EXO_ADMISSION", "legacy")
             .env("STS2_EXO_FORWARD_VISIBLE_SEED", "true")
             .env("STS2_OBJECTIVE", "complete the test episode")
             .env_remove("STS2_PROVIDER_KIND")

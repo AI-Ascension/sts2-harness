@@ -23,6 +23,7 @@ array alongside its exact binary digest:
 
 ```sh
 export STS2_PROVIDER_KIND=ollama
+export STS2_EXO_ADMISSION=legacy
 export STS2_COMBAT_DEMO=true
 export STS2_EXO_BRIDGE_BINARY="$(pwd)/target/debug/sts2-ollama-bridge"
 export STS2_EXO_REVISION="$(sha256sum "$STS2_EXO_BRIDGE_BINARY" | cut -d ' ' -f 1)"
@@ -32,6 +33,10 @@ export STS2_EXO_BRIDGE_ARGS_JSON='["--model","team/custom-model:7b"]'
 These settings are only the provider portion of the runtime configuration. They do not launch the
 game or replace gateway/MCP configuration, leases, or fixture authorization. The runtime accepts
 only the exact two-element model option for this bridge; `--describe` is not an execution argument.
+`STS2_EXO_ADMISSION=legacy` is required and explicit: this bridge speaks the raw request shape, so
+the run acknowledges an un-admitted bridge instead of claiming the reviewed envelope admission
+described in [ADR 0031](decisions/0031-runtime-exo-admission-gate.md). Without it the runtime
+defaults to the reviewed `envelope` mode and refuses before any model call.
 The existing Astra-only live-episode mode is unchanged. Other providers need their own compatible
 adapter; accepting an arbitrary Ollama model name is not universal provider support.
 

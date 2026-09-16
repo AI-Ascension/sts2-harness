@@ -109,9 +109,32 @@ impl Fixture {
             .env("STS2_BUILD_DIGEST", "build-runtime-startup-hostile")
             .env("STS2_STATE_DIGEST", "state-runtime-startup-hostile")
             .env("STS2_EXO_REVISION", EXO_REVISION)
+            // These fixtures use raw-wire process probes, which cannot accept the versioned
+            // envelope, so they carry the explicit un-admitted acknowledgement.
+            .env("STS2_EXO_ADMISSION", "legacy")
             .env("STS2_EXO_BRIDGE_BINARY", &self.bridge)
             .env("STS2_EXO_FORWARD_VISIBLE_SEED", "true")
             .env("STS2_OBJECTIVE", "complete the test episode");
+        command
+    }
+
+    fn command_with_reviewed_admission_identity(&self) -> Command {
+        let mut command = self.command();
+        command
+            .env_remove("STS2_EXO_ADMISSION")
+            .env("STS2_EXO_PACKAGE_DIGEST", "a".repeat(64))
+            .env("STS2_EXO_EXTENSION_DIGEST", "b".repeat(64))
+            .env("STS2_EXO_BRIDGE_DIGEST", "c".repeat(64))
+            .env("STS2_EXO_MODEL_BINDING", "gpt-5-pro")
+            .env("STS2_EXO_PROVIDER", "openai")
+            .env("STS2_EXO_ENDPOINT", "https://api.openai.com/v1")
+            .env("STS2_EXO_PROMPT_DIGEST", "d".repeat(64))
+            .env("STS2_EXO_TOOL_DIGEST", "e".repeat(64))
+            .env("STS2_EXO_CONFIG_DIGEST", "f".repeat(64))
+            .env("STS2_EXO_NATIVE_INSTANCE_ID", "native-startup-instance")
+            .env("STS2_EXO_MODEL_EXECUTION_ID", "execution-startup")
+            .env("STS2_EXO_REQUEST_ID", "request-runtime-startup-hostile")
+            .env("STS2_EXO_TURN_ID", "turn-runtime-startup-hostile");
         command
     }
 
@@ -177,6 +200,22 @@ fn missing_episode_resume_fails_before_gateway_mcp_or_provider_calls() -> Result
     if fixture.counter.exists() {
         return Err(String::from(
             "missing-state resume invoked an MCP or provider boundary",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn refused_exo_preflight_fails_before_gateway_mcp_or_provider_calls() -> Result<(), String> {
+    const REFUSAL_PREFIX: &str = "Exo admission refused before any model or game effect";
+    let fixture = Fixture::new()?;
+    let output = run_child(fixture.command_with_reviewed_admission_identity())?;
+    assert_failure_contains(&output, REFUSAL_PREFIX)?;
+    assert_failure_contains(&output, "Exo minimum admission capability is not supported")?;
+    fixture.assert_no_gateway_connection()?;
+    if fixture.counter.exists() {
+        return Err(String::from(
+            "a refused Exo preflight invoked an MCP or provider boundary",
         ));
     }
     Ok(())

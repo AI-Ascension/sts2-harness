@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 
+use sts2_harness::exo_admission::ExoRuntimeAdmission;
 use sts2_harness::{
     EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES, EXO_SOURCE_REVISION,
     EpisodeRunnerConfig, ExoConfig, ExoProcessConfig, RecoveryController, StabilityBarrier,
 };
 
 use super::config::RuntimeConfig;
+use super::runtime_v3_admission;
 
 #[path = "../support/ollama_options.rs"]
 mod ollama_options;
@@ -20,11 +22,13 @@ pub(super) struct RuntimeV3Settings {
     pub(super) runner: EpisodeRunnerConfig,
     pub(super) exo: ExoConfig,
     pub(super) process: ExoProcessConfig,
+    pub(super) admission: ExoRuntimeAdmission,
 }
 
 impl RuntimeV3Settings {
     pub(super) fn from_environment(config: &RuntimeConfig) -> Result<Self, String> {
         let exo = exo_from_environment(config.map_context_enabled)?;
+        let admission = runtime_v3_admission::from_environment(config.map_context_enabled)?;
         let process = ExoProcessConfig::new(
             required("STS2_EXO_BRIDGE_BINARY")?,
             string_list("STS2_EXO_BRIDGE_ARGS_JSON")?,
@@ -37,6 +41,7 @@ impl RuntimeV3Settings {
             runner,
             exo,
             process,
+            admission,
         })
     }
 }
@@ -176,7 +181,7 @@ fn runner_from_environment(map_context_enabled: bool) -> Result<EpisodeRunnerCon
     .map_err(|error| format!("episode runner configuration is invalid: {error}"))
 }
 
-fn required(name: &str) -> Result<String, String> {
+pub(super) fn required(name: &str) -> Result<String, String> {
     match std::env::var(name) {
         Ok(value) if !value.is_empty() => Ok(value),
         Ok(_) => Err(format!("{name} must not be empty")),
@@ -185,7 +190,7 @@ fn required(name: &str) -> Result<String, String> {
     }
 }
 
-fn optional(name: &str) -> Result<Option<String>, String> {
+pub(super) fn optional(name: &str) -> Result<Option<String>, String> {
     match std::env::var(name) {
         Ok(value) if !value.is_empty() => Ok(Some(value)),
         Ok(_) => Err(format!("{name} must not be empty")),

@@ -288,11 +288,16 @@ conversation evidence paths; they do not prove a game effect or terminal decisio
 mapping is therefore admitted only after the outer envelope, identity, capability, and preflight
 checks pass.
 
-The current Rust runtime has not wired this future loader to `ExoTransport`: it still emits the
-legacy request shape through its configured process seam and does not invoke this preflight or
-outer envelope. A later integration must copy the extension into the candidate checkout, run the
-locked commands above, invoke preflight before any effect, and add the correlated envelope handoff.
-Until that work and the real spike land, the mapping is a contract requirement rather than an
+The Rust runtime now invokes this preflight at its transport seam through
+[ADR 0031](0031-runtime-exo-admission-gate.md): the reviewed `STS2_EXO_ADMISSION=envelope` mode
+assembles the operator-trusted deployment identity, refuses the run while settings are still being
+assembled when a capability, digest, revision or schema is not admitted, and admits a correlated
+turn through `ExoAdmittedTransport`. Because this descriptor's capability axes are not promoted on
+the bridge's behalf, that mode currently refuses with
+`RequiredCapability("evidence.turn_identity")`; the raw-wire process bridges remain executable only
+under the explicit `STS2_EXO_ADMISSION=legacy` acknowledgement. Copying the extension into the
+candidate checkout, running the locked commands above, and a per-turn envelope handoff for a
+multi-turn episode remain open, so the mapping is still a contract requirement rather than an
 operational claim.
 
 ## Run, turn, replay, and private-state mapping
