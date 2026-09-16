@@ -20,6 +20,13 @@ claim a released harness version or runtime compatibility.
   schema, contract version or durable record changes, and `legacy` behaviour is unchanged. See
   [ADR 0032](docs/decisions/0032-inspected-admission-identity.md). Refs #139.
 
+- Renumber eight harness decision records whose numbers were each held by two
+  different records, so every `ADR NNNN` label and `NNNN-*.md` link denotes exactly
+  one decision. The moved records and every in-repo citation site were updated in
+  the same change; no decision content changed. See
+  [docs/decisions/README.md](docs/decisions/README.md) for the old-to-new mapping.
+  Refs #203.
+
 - Cross-check the **inspected Exo deployment identity** against the operator pin at the runtime
   admission boundary, so a swapped package, extension or bridge artifact fails closed instead of
   being admitted on the operator's declaration alone. `ExoAdmissionPlan::inspected` derives the
@@ -143,7 +150,7 @@ claim a released harness version or runtime compatibility.
   identities and encrypted pinned replay archives. The opt-in mixed catalog preserves legacy
   profiles. Synthetic tool-loop and SQLite restart evidence do not claim native provider or
   exact-host execution; the old native Exo adapter remains terminal-decision-only.
-  See [ADR 0021](docs/decisions/0021-game-information-consumer.md). Refs #127.
+  See [ADR 0039](docs/decisions/0039-game-information-consumer.md). Refs #127.
 
 - Add the opt-in immutable benchmark manifest library: bounded strict v1 parsing,
   separate gameplay/experiment/occurrence identities, exact mismatch reasons and
@@ -158,7 +165,7 @@ claim a released harness version or runtime compatibility.
   Historical grants and epochs never authorize current control or claim a restored owner.
   Public JSON schemas and current-cursor association stay unchanged; Rust `CommandApplication`
   constructors must supply the new optional `context_binding` field. See
-  [ADR 0022](docs/decisions/0022-recorded-context-binding-history.md). This library-only slice
+  [ADR 0040](docs/decisions/0040-recorded-context-binding-history.md). This library-only slice
   does not implement HTTP history, owner receipt recovery or complete #100 acceptance.
 
 - Reconcile the Exo bridge contract inventory for #139. Add executable conformance vectors for

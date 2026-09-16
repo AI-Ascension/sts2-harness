@@ -17,7 +17,7 @@ the host replies with `feedback` at the same sequence. A `decision` carries only
 `action_id` at the next sequence, at most 33. Each frame separately binds request and
 turn identity. Duplicate JSON keys, unknown fields, wrong sequence and foreign identity
 fail closed. Frames are at most 196,608 bytes, query arguments 16,384 bytes and feedback
-7,000 bytes. ADR 0021's stricter applicable policy and producer limits still apply.
+7,000 bytes. ADR 0039's stricter applicable policy and producer limits still apply.
 The generic harness loop admits at most 32 combined read/decision turns.
 
 The extension registers exactly `sts2_lookup_query` and `sts2_lookup_read` through the
@@ -78,7 +78,7 @@ generation without content-manifest or lookup snapshot identity. These namespace
 not be equated.
 
 Protocol PR 50, merge `c4f2258be73912f7e4b9b44d3ac0e3003fed3ebd`, adds a proposed v2
-rest-option context candidate under ADR 0039, explicitly without admitted consumers or
+rest-option context candidate under `sts2-protocol` ADR 0039, explicitly without admitted consumers or
 runtime compatibility. MCP main `2567cd336` has no v2 adoption; the v1 request mapper
 still matches the consumed revision. This candidate is not a qualified general identity
 discovery path. Main episode integration needs an accepted producer/protocol/MCP source

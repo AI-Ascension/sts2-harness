@@ -1,4 +1,4 @@
-# ADR 0004: Provider map context and image boundary
+# ADR 0033: Provider map context and image boundary
 
 Status: implemented against the protocol-owned `runtime-map-v1` and
 `visible-map-v1` contract at revision

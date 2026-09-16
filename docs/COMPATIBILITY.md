@@ -7,7 +7,7 @@ episode integration is blocked on an accepted binding discovery/observation cont
 
 The additive game-information consumer pins the exact v1 schema independently of the Rust
 protocol dependency. Its synthetic component matrix and pending mixed-catalog/provider gates
-are recorded in [ADR 0021](decisions/0021-game-information-consumer.md). Public static/player
+are recorded in [ADR 0039](decisions/0039-game-information-consumer.md). Public static/player
 live lookups, bounded retained pages and encrypted restart replay are component-tested;
 native/provider execution and the old native Exo adapter's tool translation remain unverified.
 
@@ -29,7 +29,7 @@ profile provisioning and provider execution remain unverified and outside this d
 
 ## Opt-in recorded context bindings
 
-[ADR 0022](decisions/0022-recorded-context-binding-history.md) adds private, bounded SQLite
+[ADR 0040](decisions/0040-recorded-context-binding-history.md) adds private, bounded SQLite
 binding history and a scoped library-only historical reader. Public closed JSON schemas,
 current-cursor association semantics and file-store JSON remain unchanged. Old SQLite stores
 start with no history; rollback binaries ignore and preserve the added table. Retention is

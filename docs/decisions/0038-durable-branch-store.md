@@ -1,4 +1,4 @@
-# ADR 0016: Durable Checkpoint Branch Metadata Store
+# ADR 0038: Durable Checkpoint Branch Metadata Store
 
 ## Status
 
