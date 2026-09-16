@@ -262,3 +262,171 @@ fn build(
         },
     ))
 }
+
+#[cfg(test)]
+mod bootstrap_tests {
+    use super::*;
+    use crate::runtime_support::runtime_v3_lifecycle_config::RuntimeLifecycleConfig;
+    use sts2_harness::provider_session::{ProviderSessionMode, ProviderSessionPolicy};
+    use sts2_harness::{
+        EXO_SOURCE_REVISION, ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExoConfig,
+        ExoProcessConfig,
+    };
+
+    fn root() -> std::path::PathBuf {
+        std::path::PathBuf::from(format!(
+            "/tmp/sts2-lifecycle-bootstrap-{}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    #[ignore = "requires the reviewed external Exo checkout prepared by the executable fixture"]
+    fn inspected_adopted_bootstrap_selects_lifecycle_before_any_effect() {
+        let source = std::path::PathBuf::from("/tmp/sts2-exo-source-b068");
+        assert_eq!(
+            std::process::Command::new("/usr/bin/git")
+                .args(["-C", source.to_str().expect("source"), "rev-parse", "HEAD"])
+                .output()
+                .expect("git")
+                .stdout,
+            format!("{EXO_SOURCE_REVISION}\n").as_bytes()
+        );
+        let base = root();
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("fixture directory");
+        let executor = base.join("executor");
+        std::fs::write(&executor, "#!/bin/sh\nexit 97\n").expect("executor");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&executor, std::fs::Permissions::from_mode(0o700))
+                .expect("executor mode");
+        }
+        let extension = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../experiments/exo-agent/extension/src/index.ts");
+        let node = std::path::PathBuf::from("/usr/local/bin/node");
+        let configuration = base.join("bridge.json");
+        let config_bytes = serde_json::json!({
+            "schema":"sts2.exo-one-shot-config-v1",
+            "executor":executor,
+            "executor_sha256":sha256_hex(std::fs::read(&executor).expect("executor bytes")),
+            "source_root":source,
+            "extension":extension,
+            "extension_sha256":sha256_hex(std::fs::read(&extension).expect("extension bytes")),
+            "node":node,
+            "node_sha256":sha256_hex(std::fs::read(&node).expect("node bytes")),
+            "model":"o3-pro",
+            "endpoint":"https://api.openai.com/v1"
+        });
+        std::fs::write(
+            &configuration,
+            serde_json::to_vec(&config_bytes).expect("config"),
+        )
+        .expect("configuration");
+        let digest = sha256_hex(std::fs::read(&configuration).expect("configuration bytes"));
+        let (lifecycle, secrets) =
+            RuntimeLifecycleConfig::bootstrap_test(base.join("journal"), base.join("policy.bin"));
+        let process = ExoProcessConfig::new(
+            executor.to_string_lossy(),
+            vec![
+                String::from("--run-v2"),
+                configuration.to_string_lossy().into_owned(),
+                digest,
+            ],
+            None,
+            Vec::new(),
+        )
+        .expect("process");
+        let inspected =
+            sts2_harness::exo_bridge_configuration::load(process.arguments()[1].as_str())
+                .expect("inspection");
+        let identity = inspected
+            .inspected_identity(
+                std::path::Path::new(process.executable()),
+                "bootstrap-instance",
+            )
+            .expect("identity");
+        let capabilities = lifecycle.capabilities(&identity).expect("capabilities");
+        let scope = SessionScope::new(
+            "bootstrap-project",
+            "bootstrap-run",
+            "bootstrap-episode",
+            "bootstrap-agent",
+        )
+        .expect("scope");
+        let owner = ProviderSessionPolicyOwner::open(
+            ProviderSessionMetadataStore::encrypted(
+                &lifecycle.policy_store_path,
+                secrets.policy_key,
+                scope.clone(),
+            )
+            .expect("policy store"),
+            scope.clone(),
+            capabilities.clone(),
+        )
+        .expect("policy owner");
+        let mut policy = ProviderSessionPolicy::disabled(scope.clone());
+        policy.mode = ProviderSessionMode::FixtureOnly;
+        policy.credential_realm_ref = String::from("bootstrap-realm");
+        policy.profile_sha256 = capabilities.profile_sha256.clone();
+        let bytes = serde_json::to_vec(&policy).expect("policy");
+        let policy_digest = owner.import(bytes).expect("import");
+        owner.adopt_imported(&policy_digest, 2).expect("adopt");
+        let config = RuntimeConfig {
+            seed_transport: None,
+            gateway_address: String::new(),
+            gateway_token: String::new(),
+            mcp_binary: String::new(),
+            runtime_profile: String::from("runtime-v3-gameplay"),
+            instance_id: String::from("bootstrap-instance"),
+            caller_id: String::from("bootstrap-caller"),
+            session_id: String::from("bootstrap-session"),
+            lease_id: String::from("bootstrap-lease"),
+            lease_epoch: 1,
+            mcp_session_id: String::from("bootstrap-mcp"),
+            run_id: String::from("bootstrap-run"),
+            episode_id: String::from("bootstrap-episode"),
+            trajectory_id: String::from("bootstrap-trajectory"),
+            trace_id: String::from("bootstrap-trace"),
+            artifact_id: String::from("bootstrap-artifact"),
+            wait_for_combat_seconds: 0,
+            settlement_timeout_seconds: 1,
+            map_context_enabled: false,
+            recovery_environment: Vec::new(),
+        };
+        let fingerprint =
+            ExecutionFingerprint::new("seed", "build", "state", sha256_hex("config"), "provider")
+                .expect("fingerprint");
+        let lineage = ExecutionLineage::new(
+            "bootstrap-run",
+            "bootstrap-episode",
+            "bootstrap-attempt",
+            "bootstrap-trajectory",
+        )
+        .expect("lineage");
+        let mut store = ExecutionStore::open_in_memory().expect("store");
+        store
+            .start_episode(&lineage, &fingerprint)
+            .expect("episode");
+        let durable =
+            DurableHandle::from_store_for_test(store, lineage, fingerprint).expect("durable");
+        let settings = RuntimeV3Settings {
+            runner: sts2_harness::EpisodeRunnerConfig::new(
+                1,
+                sts2_harness::StabilityBarrier::new(1, 1).expect("barrier"),
+                sts2_harness::RecoveryController::new(1).expect("recovery"),
+                "objective",
+                Vec::new(),
+            )
+            .expect("runner"),
+            exo: ExoConfig::new(EXO_SOURCE_REVISION, 8192, 8192, 1000).expect("exo"),
+            process,
+            admission: ExoRuntimeAdmission::legacy(),
+            lifecycle: Some((lifecycle, secrets)),
+        };
+        let (lifecycle, secrets) = settings.lifecycle.as_ref().expect("lifecycle");
+        assert!(build(&config, &settings, durable, lifecycle, secrets).is_ok());
+        let _ = std::fs::remove_dir_all(base);
+    }
+}

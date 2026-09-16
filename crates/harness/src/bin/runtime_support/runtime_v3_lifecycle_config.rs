@@ -32,6 +32,31 @@ pub(super) struct RuntimeLifecycleSecrets {
 }
 
 impl RuntimeLifecycleConfig {
+    #[cfg(test)]
+    pub(super) fn bootstrap_test(
+        directory: PathBuf,
+        policy_store_path: PathBuf,
+    ) -> (Self, RuntimeLifecycleSecrets) {
+        (
+            Self {
+                schema_version: SCHEMA.to_owned(),
+                directory,
+                store_id: String::from("bootstrap-journal"),
+                key_reference: String::from("test"),
+                owner_token_reference: String::from("test"),
+                project_id: String::from("bootstrap-project"),
+                agent_id: String::from("bootstrap-agent"),
+                policy_store_path,
+                policy_key_reference: String::from("test"),
+                legacy_path: None,
+            },
+            RuntimeLifecycleSecrets {
+                journal_key: [0x11; 32],
+                owner_token: String::from("bootstrap-owner"),
+                policy_key: [0x22; 32],
+            },
+        )
+    }
     pub(super) fn from_environment() -> Result<Option<(Self, RuntimeLifecycleSecrets)>, String> {
         let Some(value) = optional(CONFIG_ENV)? else {
             return Ok(None);
