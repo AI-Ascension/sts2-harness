@@ -44,6 +44,9 @@ mod exo_contract_capability;
 #[path = "support/exo_contract_pin_inventory.rs"]
 mod exo_contract_pin_inventory;
 
+#[path = "support/exo_contract_process_evidence.rs"]
+mod exo_contract_process_evidence;
+
 #[path = "support/exo_contract_restricted.rs"]
 mod exo_contract_restricted;
 

@@ -8,6 +8,13 @@ production Rust bridge remain `unverified`.
 The recorded loader run exercised Node `22.14.0` only. Compatibility with the candidate checkout's
 Node `22.15.0` pin is unverified and requires a separate rerun.
 
+> **Identity status (2026-09-15).** The extension bytes recorded below were replaced by commit
+> `835509b` ("add owned standard single-turn executor bridge"). This record is retained as
+> historical evidence for the loader path it exercised, and it no longer describes the shipped
+> extension. [`exo-executor-process-oracle-20260915.md`](exo-executor-process-oracle-20260915.md)
+> supersedes it for extension identity with a reproduced real-process run, and the workspace tests
+> now fail closed when either record's identity drifts from the repository bytes.
+
 ## Selected path under test
 
 `experiments/exo-agent/extension/src/index.ts` loaded through `agent.typescript.module_path`, the

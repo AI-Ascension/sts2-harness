@@ -76,6 +76,17 @@
     "approved_dependencies": ["sts2_harness::ExoProcessTransport", "sts2-exo-bridge-v1"],
     "fallbacks": []
   },
+  "process_evidence": {
+    "record": "docs/evidence/exo-executor-process-oracle-20260915.json",
+    "documentation": "docs/evidence/exo-executor-process-oracle-20260915.md",
+    "kind": "real-pinned-Exo-with-synthetic-loopback-model-no-provider-no-game",
+    "exo_revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
+    "extension_sha256": "2e5485127f434bdd95a534785a414fa9f357432c924d89fd56d50c96f434b9cd",
+    "oracle_sha256": "c9cfedd7f4541283a804c002d566992db7c6abdc49db554a5f414c117cce763e",
+    "runtime_admission": "source-process-only",
+    "provider": "unverified",
+    "native_game": "unverified"
+  },
   "pin_locations": [
     "crates/harness/src/exo/contract/mod.rs",
     "crates/harness/src/exo/contract/identity.rs",
@@ -103,6 +114,9 @@
     "docs/decisions/0017-exo-executor-bridge-contract.md",
     "docs/decisions/0018-exo-one-shot-executor-package.md",
     "docs/evidence/exo-extension-real-spike-20260914.md",
+    "docs/evidence/exo-executor-process-oracle-20260915.md",
+    "docs/evidence/exo-executor-process-oracle-20260915.json",
+    "docs/decisions/0022-exo-lookup-duplex-bridge.md",
     "protocol-artifact/exo-bridge-v1/README.md",
     "experiments/exo-agent/extension/README.md",
     "experiments/exo-agent/bridge/README.md",
@@ -113,6 +127,9 @@
     "experiments/exo-agent/bridge/Cargo.toml",
     "experiments/exo-agent/bridge/Cargo.lock",
     "experiments/exo-agent/bridge/tests/process_oracle.rs",
+    "experiments/exo-agent/bridge/tests/lookup_oracle.rs",
+    "crates/harness/tests/context_render_selected_limits.rs",
+    "protocol-artifact/exo-bridge-v1/manifest.json",
     "protocol-artifact/exo-bridge-v1/fixtures/invalid-unknown.json",
     "protocol-artifact/exo-bridge-v1/golden/request.json",
     "protocol-artifact/exo-bridge-v1/golden/capability-source.json"
