@@ -79,12 +79,13 @@ pub use live_workflow::{
 pub use provider_session_inspection::ProviderSessionBrokerInspectionPort;
 pub use service::{
     CapabilityPort, CommandApplication, CommandContext, ContextInspectionPort,
-    ContextInspectionResult, DefinitionPort, DiffResult, InspectionResult, ManagementError,
-    ManagementService, ProviderSessionInspectionPort, ProviderSessionInspectionResult,
-    ReplayResult, RunAdmission, RunReservation, UnavailableAuthoringStore,
-    UnavailableCapabilityPort, UnavailableContextInspectionPort, UnavailableDefinitionPort,
-    UnavailableExecutionPort, UnavailableProviderSessionInspectionPort, UnavailableReplayPort,
-    ValidationResult, WorkflowExecutionPort, WorkflowReplayPort,
+    ContextInspectionResult, DefinitionPort, DiffResult, InspectionResult, LiveProviderPolicyPort,
+    ManagementError, ManagementService, ProviderSessionInspectionPort,
+    ProviderSessionInspectionResult, ProviderSessionPolicyBinding, ReplayResult, RunAdmission,
+    RunReservation, UnavailableAuthoringStore, UnavailableCapabilityPort,
+    UnavailableContextInspectionPort, UnavailableDefinitionPort, UnavailableExecutionPort,
+    UnavailableLiveProviderPolicyPort, UnavailableProviderSessionInspectionPort,
+    UnavailableReplayPort, ValidationResult, WorkflowExecutionPort, WorkflowReplayPort,
 };
 pub use store::{
     CommandAcceptance, FileWorkflowStore, MemoryWorkflowStore, SqliteWorkflowStore, StoreError,
