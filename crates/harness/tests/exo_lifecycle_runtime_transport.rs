@@ -71,7 +71,7 @@ fn v2_receipt_is_durable_and_a_replay_uses_the_stored_result()
         .exchange(&fixture.input, 8 * 1024, 1_000)
         .map_err(|error| format!("{error:?}"))?;
     assert!(!first.is_empty());
-    assert!(std::fs::read_to_string(&log).map_or(0, |value| value.lines().count()) <= 1);
+    assert_eq!(std::fs::read_to_string(&log)?.lines().count(), 1);
     assert!(
         store
             .borrow()
@@ -82,7 +82,7 @@ fn v2_receipt_is_durable_and_a_replay_uses_the_stored_result()
         .exchange(&fixture.input, 8 * 1024, 1_000)
         .map_err(|error| format!("{error:?}"))?;
     assert_eq!(first, replay);
-    assert!(std::fs::read_to_string(&log).map_or(0, |value| value.lines().count()) <= 1);
+    assert_eq!(std::fs::read_to_string(&log)?.lines().count(), 1);
     Ok(())
 }
 
@@ -194,8 +194,12 @@ fn cancellation_kills_the_process_path_and_holds_the_decision_unknown()
               _: &ExoDecisionRequest|
               -> Result<InvocationManifest, LifecycleError> { Ok(manifest.clone()) },
     );
+    let log_for_cancel = log.clone();
     let cancel = std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        while !log_for_cancel.exists() && std::time::Instant::now() < deadline {
+            std::thread::yield_now();
+        }
         canceller.cancel();
     });
     assert!(transport.exchange(&fixture.input, 8 * 1024, 5_000).is_err());
@@ -206,7 +210,7 @@ fn cancellation_kills_the_process_path_and_holds_the_decision_unknown()
             .decision(&fixture.manifest.execution_id)?
             .unknown
     );
-    assert!(std::fs::read_to_string(&log).map_or(0, |value| value.lines().count()) <= 1);
+    assert_eq!(std::fs::read_to_string(&log)?.lines().count(), 1);
     Ok(())
 }
 

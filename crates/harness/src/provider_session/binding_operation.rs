@@ -21,6 +21,7 @@ pub enum BindingState {
     Held,
     Active,
     OneShotPendingNative,
+    OneShotCompleted,
     Recovering,
     Quarantined,
     Retired,

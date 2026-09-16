@@ -150,8 +150,11 @@ impl ProviderSessionBroker {
             // committing its durable result. The pending marker can therefore never be promoted
             // by a configuration value or a pre-send broker operation.
             binding.native_identity_pending = false;
-            binding.native_thread_ref = native_turn_ref.to_owned();
-            binding.state = BindingState::Active;
+            // A turn receipt is not a thread receipt. Keep this terminal one-shot binding out of
+            // threaded/native dispatch entirely; the complete NativeIdentity lives in the
+            // lifecycle entry beside the durable result.
+            binding.state = BindingState::OneShotCompleted;
+            binding.game_dispatch_capability = false;
         }
         self.histories.insert(binding_id, projected_items);
         self.inflight_turn = None;
