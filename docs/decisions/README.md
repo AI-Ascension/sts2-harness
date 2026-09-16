@@ -35,4 +35,5 @@ The rule applied to each pair, in order:
 Every in-repo citation of a moved record was updated in the same change (eight
 citation sites, plus the number in each moved record's own heading), so no `ADR
 NNNN` label and no `NNNN-*.md` link is left dangling or ambiguous. The remaining
-records that kept their numbers were not modified.
+records were not renumbered; the only edits to them are citation retargets where
+they referred to a record that moved.
