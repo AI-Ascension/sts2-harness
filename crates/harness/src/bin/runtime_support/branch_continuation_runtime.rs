@@ -2,16 +2,18 @@
 
 //! Runtime selection, artifact loading, and CAS lifecycle for durable branch continuations.
 //!
-//! Strategy effects cross a typed port. The runtime only enables an owner route after that route
-//! exists; the exact-restore route remains explicitly unavailable while the game-mod and MCP/
-//! gateway restore operation is still source-only.
+//! Strategy effects cross a typed port. Running prefix branches resume only after a durable
+//! verified-boundary claim matches the live Gateway owner fence. The exact-restore route remains
+//! unavailable until the fixed game-mod/MCP/Gateway restore operation is implemented.
 
 use std::path::{Path, PathBuf};
 
 use sts2_harness::{
     BlobDigest, BranchAssurance, BranchContinuationAdmission, BranchContinuationAdmissionError,
-    BranchContinuationSelector, BranchContinuationStrategyPlan, DurableBranch, DurableBranchStatus,
-    ExactArtifactStore, ExactArtifactStoreResolver, SqliteBranchStore, admit_branch_continuation,
+    BranchContinuationClaim, BranchContinuationClaimState, BranchContinuationSelector,
+    BranchContinuationStrategyPlan, DurableBranch, DurableBranchStatus, ExactArtifactStore,
+    ExactArtifactStoreResolver, SqliteBranchStore, admit_branch_continuation,
+    admit_running_branch_continuation,
 };
 
 const CONTINUATION_OPERATION_PREFIX: &str = "runtime-branch-continuation";
@@ -23,6 +25,8 @@ pub(crate) struct SelectedBranchContinuation {
     replay_prefix: Option<Vec<u8>>,
     operation_id: String,
     metadata_revision: u64,
+    owner_claim: Option<BranchContinuationClaim>,
+    resuming: bool,
 }
 
 impl SelectedBranchContinuation {
@@ -32,19 +36,62 @@ impl SelectedBranchContinuation {
         branch_store_path: &Path,
         artifact_store_path: &Path,
     ) -> Result<Self, String> {
+        Self::load_selected(selector, branch_store_path, artifact_store_path, false)
+    }
+
+    /// Loads a running prefix branch only when its persisted claim proves a verified boundary.
+    pub(crate) fn load_for_resume(
+        selector: &BranchContinuationSelector,
+        branch_store_path: &Path,
+        artifact_store_path: &Path,
+    ) -> Result<Self, String> {
+        Self::load_selected(selector, branch_store_path, artifact_store_path, true)
+    }
+
+    fn load_selected(
+        selector: &BranchContinuationSelector,
+        branch_store_path: &Path,
+        artifact_store_path: &Path,
+        resuming: bool,
+    ) -> Result<Self, String> {
         let store = SqliteBranchStore::open(branch_store_path)
             .map_err(|error| format!("cannot open durable branch store: {error}"))?;
         let artifacts = ExactArtifactStore::new(artifact_store_path);
         let resolver = ExactArtifactStoreResolver::new(&artifacts);
-        let admission = admit_branch_continuation(&store, selector, &resolver)
+        let admission = if resuming {
+            admit_running_branch_continuation(&store, selector, &resolver)
+        } else {
+            admit_branch_continuation(&store, selector, &resolver)
+        }
             .map_err(|error| match error {
                 BranchContinuationAdmissionError::BranchNotReady {
                     status: DurableBranchStatus::Running,
                 } => String::from(
-                    "selected branch is already running; destination lease/session ownership evidence is unavailable, so continuation is refused",
+                    "selected branch is running; use explicit resume with verified-boundary and current-owner evidence",
                 ),
                 error => format!("durable branch continuation admission failed: {error}"),
             })?;
+        let owner_claim = if resuming {
+            let claim = store
+                .continuation_claim(selector.experiment_id(), selector.branch_id())
+                .map_err(|error| format!("cannot read selected branch owner-claim evidence: {error}"))?
+                .ok_or_else(|| {
+                    String::from(
+                        "running branch has no durable current-owner claim; explicit resume is refused",
+                    )
+                })?;
+            if claim.state != BranchContinuationClaimState::BoundaryVerified
+                || claim.owner_json.is_none()
+                || claim.owner_digest.is_none()
+            {
+                return Err(String::from(
+                    "running branch lacks a verified prefix boundary and owner claim; explicit resume is refused",
+                ));
+            }
+            Some(claim)
+        } else {
+            None
+        };
         let replay_prefix = match &admission.strategy {
             BranchContinuationStrategyPlan::ExactRestore { .. } => None,
             BranchContinuationStrategyPlan::PrefixReplay { replay_prefix } => {
@@ -65,6 +112,8 @@ impl SelectedBranchContinuation {
             replay_prefix,
             operation_id,
             metadata_revision,
+            owner_claim,
+            resuming,
         })
     }
 
@@ -81,6 +130,29 @@ impl SelectedBranchContinuation {
     /// Returns the content-verified replay prefix, if this branch uses prefix replay.
     pub(crate) fn replay_prefix(&self) -> Option<&[u8]> {
         self.replay_prefix.as_deref()
+    }
+
+    /// Persists and returns the stable gateway owner-claim identity before runtime effects.
+    pub(crate) fn prepare_owner_claim(&mut self) -> Result<BranchContinuationClaim, String> {
+        let claim = match self.owner_claim.clone() {
+            Some(claim) => claim,
+            None => self
+                .store
+                .prepare_continuation_claim(
+                    &self.admission.branch.experiment_id,
+                    &self.admission.branch.branch_id,
+                )
+                .map_err(|error| {
+                    format!("cannot persist selected branch owner-claim intent: {error}")
+                })?,
+        };
+        self.owner_claim = Some(claim.clone());
+        Ok(claim)
+    }
+
+    /// Returns true when this selection is an explicit resume of a verified running branch.
+    pub(crate) const fn is_resuming(&self) -> bool {
+        self.resuming
     }
 
     /// Claims the replay attempt before the first runtime effect using the admitted CAS revision.
@@ -149,6 +221,17 @@ impl SelectedBranchContinuation {
             )
             .map_err(|error| format!("cannot admit branch continuation: {error}"))?;
         self.metadata_revision = running.metadata_revision;
+        if let Some(claim) = self.owner_claim.as_ref()
+            && claim.state == BranchContinuationClaimState::Claimed
+        {
+            self.store
+                .transition_continuation_claim(
+                    &claim.operation_id,
+                    BranchContinuationClaimState::Claimed,
+                    BranchContinuationClaimState::BoundaryVerified,
+                )
+                .map_err(|error| format!("cannot persist verified owner boundary: {error}"))?;
+        }
         Ok(())
     }
 

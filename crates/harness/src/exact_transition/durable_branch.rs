@@ -46,7 +46,7 @@ pub use store_retention::{BranchPrunePlan, BranchPruneRequest, BranchRetentionPo
 /// Versioned durable branch contract persisted by [`SqliteBranchStore`].
 pub const DURABLE_BRANCH_SCHEMA_VERSION: &str = "ascension.durable-branch/v1";
 /// Current SQLite migration revision for the durable branch contract.
-pub const DURABLE_BRANCH_SCHEMA_REVISION: i64 = 1;
+pub const DURABLE_BRANCH_SCHEMA_REVISION: i64 = 2;
 /// Maximum branch name length.
 pub const MAX_BRANCH_NAME_BYTES: usize = 128;
 /// Maximum notes length.

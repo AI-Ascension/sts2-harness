@@ -6,6 +6,8 @@
 //! artifact availability. It does not perform a restore or replay, acquire a destination, or prove
 //! that a prior receipt applies to a new destination. A runtime consumer must execute the returned
 //! strategy plan through its owning port and verify fresh destination evidence before decisions.
+//! Running prefix branches use a separate resume admission that requires a verified boundary and a
+//! fresh current-owner fence.
 
 use std::fmt;
 
@@ -187,6 +189,65 @@ pub fn admit_branch_continuation(
     }
 
     let strategy = strategy_plan(&branch)?;
+    let artifacts = store
+        .artifact_availability(selector.experiment_id(), selector.branch_id(), resolver)
+        .map_err(BranchContinuationAdmissionError::Store)?;
+    if !artifacts.all_available() {
+        return Err(BranchContinuationAdmissionError::ArtifactsUnavailable(
+            artifacts,
+        ));
+    }
+    Ok(BranchContinuationAdmission {
+        branch,
+        strategy,
+        artifacts,
+    })
+}
+
+/// Admits a selected running prefix branch for explicit execution-store resume.
+///
+/// This path requires the prefix boundary assurance and every retained artifact to remain
+/// available. It does not replay the prefix. A runtime caller must additionally prove the same
+/// live gateway owner and historical continuation claim before opening the decision path.
+///
+/// # Errors
+///
+/// Returns a typed error when the branch is not running, is not a prefix-replay branch, lacks its
+/// verified prefix boundary, or has unavailable retained artifacts.
+pub fn admit_running_branch_continuation(
+    store: &SqliteBranchStore,
+    selector: &BranchContinuationSelector,
+    resolver: &dyn BranchArtifactResolver,
+) -> Result<BranchContinuationAdmission, BranchContinuationAdmissionError> {
+    let branch = store
+        .get(selector.experiment_id(), selector.branch_id())
+        .map_err(BranchContinuationAdmissionError::Store)?
+        .ok_or(BranchContinuationAdmissionError::Store(
+            BranchStoreError::UnknownBranch,
+        ))?;
+    if branch.status != DurableBranchStatus::Running {
+        return Err(BranchContinuationAdmissionError::BranchNotReady {
+            status: branch.status,
+        });
+    }
+    if branch.strategy != BranchStrategy::PrefixReplay {
+        return Err(
+            BranchContinuationAdmissionError::InvalidStrategyDescriptor {
+                strategy: branch.strategy,
+            },
+        );
+    }
+    let strategy = strategy_plan(&branch)?;
+    if !matches!(
+        strategy,
+        BranchContinuationStrategyPlan::PrefixReplay { .. }
+    ) {
+        return Err(
+            BranchContinuationAdmissionError::InvalidStrategyDescriptor {
+                strategy: branch.strategy,
+            },
+        );
+    }
     let artifacts = store
         .artifact_availability(selector.experiment_id(), selector.branch_id(), resolver)
         .map_err(BranchContinuationAdmissionError::Store)?;

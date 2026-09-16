@@ -17,6 +17,10 @@ const MAX_OPERATIONS: usize = 1_024;
 impl EpisodeRuntimePort for RuntimeV3Port {
     fn launch(&mut self) -> Result<(), sts2_harness::PortError> {
         if self.allocated {
+            if self.continuation_prelaunched {
+                self.continuation_prelaunched = false;
+                return Ok(());
+            }
             return Err(wire::port_error(
                 "duplicate_launch",
                 "episode is already allocated",
@@ -69,6 +73,20 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                     |error| wire::port_error("recovery_authority_invalid", error, false),
                 )?,
             );
+        }
+        if let Some(context) = self.continuation_owner_claim.as_ref()
+            && let Err(error) = super::continuation_owner::claim_current_owner(
+                &self.config,
+                self.recovery_authority.as_ref(),
+                context,
+            )
+        {
+            let release = self.release_lease_inner();
+            return Err(wire::port_error(
+                "continuation_owner_claim_failed",
+                wire::combine_cleanup(error, Ok(()), release),
+                false,
+            ));
         }
         if let Err(error) = self.launch_mcp() {
             return Err(wire::port_error("runtime_launch_failed", error, false));

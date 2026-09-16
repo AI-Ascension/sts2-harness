@@ -65,7 +65,7 @@ fn reconcile_continuation_startup(
     let reconciled = continuation_branches::reconcile_continuation_branches(
         &continuation_branch_store_path()?,
         continuation_branches::STARTUP_RECONCILE_OPERATION_PREFIX,
-        &experiment_id,
+        experiment_id,
     )?;
     let unresolved = reconciled
         .iter()

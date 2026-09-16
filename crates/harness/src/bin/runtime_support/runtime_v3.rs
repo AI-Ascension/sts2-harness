@@ -3,8 +3,8 @@
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use sts2_harness::{
-    EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, ExoDecisionSource, ExoProvider,
-    ExoSession, ResumeState, TransitionReceipt,
+    EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, EpisodeRuntimePort,
+    ExoDecisionSource, ExoProvider, ExoSession, ResumeState, TransitionReceipt,
 };
 
 use super::config::RuntimeConfig;
@@ -22,6 +22,8 @@ use super::runtime_v3_wire as wire;
 mod allocation_context;
 #[path = "runtime_v3_completed_resume.rs"]
 mod completed_resume;
+#[path = "continuation_owner.rs"]
+mod continuation_owner;
 #[path = "runtime_v3_decision_admission.rs"]
 mod decision_admission;
 #[path = "runtime_v3_decision_replay.rs"]
@@ -76,22 +78,26 @@ pub(super) fn run(
         .any(|argument| argument == "--resume")
         || std::env::var("STS2_RESUME").as_deref() == Ok("true");
     let mut selected_branch = if let Some(selector) = selector {
-        if resume_requested {
-            return Err(String::from(
-                "a selected branch continuation cannot also request execution-store resume",
-            ));
-        }
         if std::env::var("STS2_REPLAY_TRAJECTORY").is_ok_and(|value| !value.is_empty()) {
             return Err(String::from(
                 "a selected branch uses its retained replay prefix, not STS2_REPLAY_TRAJECTORY",
             ));
         }
         let artifact_path = super::branch_continuation_runtime::artifact_store_path()?;
-        let selected = super::branch_continuation_runtime::SelectedBranchContinuation::load(
-            &selector,
-            &super::continuation_branch_store_path()?,
-            &artifact_path,
-        )?;
+        let branch_store = super::continuation_branch_store_path()?;
+        let selected = if resume_requested {
+            super::branch_continuation_runtime::SelectedBranchContinuation::load_for_resume(
+                &selector,
+                &branch_store,
+                &artifact_path,
+            )?
+        } else {
+            super::branch_continuation_runtime::SelectedBranchContinuation::load(
+                &selector,
+                &branch_store,
+                &artifact_path,
+            )?
+        };
         if matches!(
             selected.strategy(),
             sts2_harness::BranchContinuationStrategyPlan::ExactRestore { .. }
@@ -140,6 +146,14 @@ pub(super) fn run(
         }
     };
     if let ResumeState::Completed(completion) = state {
+        if let Some(mut selected) = selected_branch.take() {
+            if !selected.is_resuming() {
+                return Err(String::from(
+                    "a completed execution store cannot start a new selected branch continuation",
+                ));
+            }
+            selected.complete()?;
+        }
         return completed_resume::finish(durable, completion, telemetry_handle, telemetry);
     }
     if resume_requested && let Err(error) = durable.validate_pending_action_identity() {
@@ -321,6 +335,7 @@ pub(super) struct RuntimeV3Port {
     expert_mcp: Option<McpProcess>,
     allocated: bool,
     released: bool,
+    continuation_prelaunched: bool,
     next_rpc_id: u64,
     expert_next_rpc_id: u64,
     generation: u64,
@@ -341,6 +356,7 @@ pub(super) struct RuntimeV3Port {
     recovery: Option<McpProcess>,
     recovery_context: Option<recovery::RecoveryContext>,
     recovery_rpc_id: u64,
+    continuation_owner_claim: Option<continuation_owner::ContinuationOwnerClaimContext>,
 }
 
 include!("runtime_v3_port.rs");

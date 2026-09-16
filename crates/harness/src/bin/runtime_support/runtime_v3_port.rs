@@ -37,6 +37,7 @@ impl RuntimeV3Port {
             expert_mcp: None,
             allocated: false,
             released: false,
+            continuation_prelaunched: false,
             next_rpc_id: 1,
             expert_next_rpc_id: 1,
             generation: 0,
@@ -57,7 +58,54 @@ impl RuntimeV3Port {
             recovery: None,
             recovery_context: None,
             recovery_rpc_id: 1,
+            continuation_owner_claim: None,
         })
+    }
+
+    fn arm_continuation_owner_claim(
+        &mut self,
+        context: continuation_owner::ContinuationOwnerClaimContext,
+    ) -> Result<(), String> {
+        if self.allocated || self.continuation_owner_claim.is_some() {
+            return Err(String::from(
+                "continuation owner claim must be armed once before runtime allocation",
+            ));
+        }
+        self.continuation_owner_claim = Some(context);
+        Ok(())
+    }
+
+    fn preflight_continuation_launch(&mut self) -> Result<(), String> {
+        if self.continuation_owner_claim.is_none() || self.allocated {
+            return Err(String::from(
+                "continuation owner preflight is unavailable or already allocated",
+            ));
+        }
+        match EpisodeRuntimePort::launch(self) {
+            Ok(()) => {
+                self.continuation_prelaunched = true;
+                Ok(())
+            }
+            Err(error) => {
+                let close = self.close_mcp_processes();
+                let release = self.release_lease_inner();
+                Err(wire::combine_cleanup(error.to_string(), close, release))
+            }
+        }
+    }
+
+    fn cleanup_continuation_preflight(&mut self) -> Result<(), String> {
+        self.continuation_prelaunched = false;
+        let close = self.close_mcp_processes();
+        let release = self.release_lease_inner();
+        match (close, release) {
+            (Ok(()), Ok(())) => Ok(()),
+            (close, release) => Err(wire::combine_cleanup(
+                String::from("continuation preflight cleanup failed"),
+                close,
+                release,
+            )),
+        }
     }
 
     fn durable_handle(&self) -> Option<durable::DurableHandle> {

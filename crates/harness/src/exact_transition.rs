@@ -13,12 +13,16 @@ use crate::execution::{BlobDigest, ExactStateDigest};
 pub mod branch_continuation;
 mod branch_tree;
 mod durable_branch;
+mod durable_branch_continuation_claim;
 mod error;
 mod experiment;
 mod lineage;
 
 pub use branch_tree::{BranchRecord, BranchStatus, BranchStrategy, BranchTree, BranchTreeError};
 pub use durable_branch::*;
+pub use durable_branch_continuation_claim::{
+    BranchContinuationClaim, BranchContinuationClaimState,
+};
 pub use error::TransitionError;
 pub use experiment::*;
 pub use lineage::{LineageError, MAX_OCCURRENCES, OccurrenceGraph, OccurrenceId, OccurrenceRecord};

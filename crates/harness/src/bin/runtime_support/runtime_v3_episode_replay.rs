@@ -90,12 +90,12 @@ fn run_bytes<'a>(
         }
     };
     let trace = if prefix {
-        ReplayTrace::parse_mode(&bytes, true)?
+        ReplayTrace::parse_mode(bytes, true)?
     } else {
-        ReplayTrace::parse(&bytes)?
+        ReplayTrace::parse(bytes)?
     };
     trace.admit_seeded_receipt(port.config.seed_transport.as_ref())?;
-    let digest = sts2_harness::sha256_hex(&bytes);
+    let digest = sts2_harness::sha256_hex(bytes);
     let mut source = ReplaySource::with_continuation(trace, continuation, on_boundary);
     println!(
         "{}",

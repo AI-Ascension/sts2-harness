@@ -245,6 +245,8 @@ fn parse_flag(name: &str, value: &str) -> Result<bool, String> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::{RuntimeConfig, parse_flag};
 
     #[test]
