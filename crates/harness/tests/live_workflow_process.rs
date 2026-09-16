@@ -163,7 +163,10 @@ fn assert_completed(
 ) {
     let status = http(&worker.client, "GET", path, None, 200);
     assert_eq!(status["run"]["status"], "completed");
-    assert_eq!(status["run"]["execution_mode"], "live");
+    // The execution-mode report is internal enforcement input; the pinned Studio
+    // consumer parses run snapshots with a closed schema, so the key must not
+    // appear on the wire until version/capability negotiation adds it.
+    assert!(status["run"].get("execution_mode").is_none());
     assert_eq!(status["run"]["definition_digest"], digest);
     let expected = if alternate {
         json!([

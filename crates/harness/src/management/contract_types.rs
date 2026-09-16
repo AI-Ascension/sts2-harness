@@ -109,11 +109,17 @@ pub struct RunSnapshot {
     pub admission: Option<TargetAdmissionBinding>,
     /// The execution mode the serving composition declared for this run.
     ///
-    /// Studio consumers need to distinguish execution against authoritative live
-    /// ports from a labelled synthetic fixture run without inferring it from an
-    /// absent admission binding. Absent only for records written before
-    /// execution-mode reporting existed.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Internal only: this key is deliberately kept off the serialized
+    /// run-snapshot contract. The pinned Studio consumer parses that object with
+    /// a closed (`strict`) schema that does not list `execution_mode`, so a new
+    /// key would break every run read. Extending a closed public schema requires
+    /// explicit version/capability negotiation plus coordinated
+    /// producer/consumer pin updates (issue #94). Until that negotiation lands,
+    /// the harness keeps the in-process report solely to refuse a port whose
+    /// declared mode contradicts the admitted target, and never emits it.
+    ///
+    /// `default` keeps records written before mode reporting deserializable.
+    #[serde(default, skip_serializing)]
     pub execution_mode: Option<ExecutionMode>,
 }
 
