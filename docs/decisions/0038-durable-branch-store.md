@@ -34,8 +34,10 @@ ownership relationships.
 The lifecycle is `pending`, `restoring`, `replaying`, `ready`, `running`, `held`, `completed`,
 `failed`, `unknown`, and `archived`. Readiness requires strategy-specific evidence:
 `exact_restore` requires `exact_restore_receipt`, while `prefix_replay` requires
-`prefix_replay_boundary`. These labels are not interchangeable. Startup reconciliation only lists
-pending/preparing/unknown rows; it never retries an uncertain effect or allocates a destination.
+`prefix_replay_boundary`. These labels are not interchangeable. Startup reconciliation resolves every
+half-created row deterministically: a `pending` fork intent that never started a strategy is
+archived, while a `restoring`, `replaying`, or `unknown` attempt fails closed as `failed`; it never
+retries an uncertain effect or allocates a destination.
 
 Reads provide stable branch-ID pagination, root-first ancestry, and append-only event cursors. Rename,
 assurance, lifecycle, and artifact mutations use operation IDs plus a metadata CAS revision.
