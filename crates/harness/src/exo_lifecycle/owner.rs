@@ -47,6 +47,9 @@ impl LifecycleOwner {
         {
             return Err(LifecycleError::Invalid);
         }
+        if let Some(completed) = self.completed_manifest_for_request(&manifest, input)? {
+            return Ok(completed);
+        }
         let binding_id = format!("lifecycle-binding-{}", manifest.execution_id);
         let prepared_id = format!("lifecycle-prepared-{}", manifest.execution_id);
         if self.broker.binding(&binding_id).is_err() {

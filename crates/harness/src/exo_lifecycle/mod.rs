@@ -8,6 +8,7 @@
 mod bridge_v2;
 #[cfg(test)]
 mod bridge_v2_tests;
+mod completed_replay;
 mod migration;
 mod owner;
 mod ports;

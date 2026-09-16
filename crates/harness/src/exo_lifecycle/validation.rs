@@ -54,15 +54,21 @@ impl LifecycleOwner {
             .operation(&manifest.operation_id)
             .map_err(|_| LifecycleError::Held)?;
         let request_digest = manifest.operation_digest()?;
+        let binding_state_matches = if expected == NativeOperationState::Completed
+            && binding.state == BindingState::OneShotCompleted
+        {
+            !binding.game_dispatch_capability
+        } else {
+            matches!(
+                binding.state,
+                BindingState::Active | BindingState::OneShotPendingNative
+            ) && binding.game_dispatch_capability
+        };
         if manifest.scope != *self.broker.scope()
             || a.owner_epoch != self.broker.owner_epoch()
             || a.auth_epoch != a.owner_epoch
             || a.revocation_epoch != self.broker.revocation_epoch()
-            || !matches!(
-                binding.state,
-                BindingState::Active | BindingState::OneShotPendingNative
-            )
-            || !binding.game_dispatch_capability
+            || !binding_state_matches
             || binding.owner_epoch != a.owner_epoch
             || binding.session_epoch != a.session_epoch
             || binding.history_epoch != a.history_epoch
