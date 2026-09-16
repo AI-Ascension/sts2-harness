@@ -77,7 +77,7 @@ impl ProviderSessionPolicyOwner {
         let journal = match store.load_owner_journal() {
             Ok(bytes) => serde_json::from_slice(&bytes)
                 .map_err(|_| ProviderSessionPolicyOwnerError::Store)?,
-            Err(ProviderSessionMetadataStoreError::Io) => Journal {
+            Err(ProviderSessionMetadataStoreError::NotFound) => Journal {
                 schema: SCHEMA.to_owned(),
                 revision: 1,
                 policies: Vec::new(),
