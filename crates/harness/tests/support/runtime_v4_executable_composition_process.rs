@@ -13,9 +13,9 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use sts2_harness::management::{
     CommandKind, CommandParameters, CommandRequest, CommandResponse, MANAGEMENT_SCHEMA_VERSION,
-    ManagementClient, RunRequest, RunSnapshot, RunTargetConfiguration,
-    TARGET_ADMISSION_SCHEMA_VERSION, TARGET_CATALOG_SCHEMA_VERSION, TargetAdmissionRequest,
-    TargetCatalogResponse, TargetPreflightResponse, digest_value,
+    ManagementClient, RunRequest, RunTargetConfiguration, TARGET_ADMISSION_SCHEMA_VERSION,
+    TARGET_CATALOG_SCHEMA_VERSION, TargetAdmissionRequest, TargetCatalogResponse,
+    TargetPreflightResponse, digest_value,
 };
 use sts2_harness::provider_session::{
     NativeCapabilities, ProviderSessionMetadataStore, ProviderSessionPolicy,
@@ -351,7 +351,7 @@ fn policy_config(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
         "schema_version": "ascension.workflow-provider-policy-config.v1",
         "store_path": path,
         "key_reference": "STS2_SERVED_PROVIDER_POLICY_KEY",
-        "scope": policy_scope("other-request")?,
+        "scope": policy_scope("run-served-policy-gate")?,
         "capabilities": capabilities,
         "selected_profile": "codex-app-server-fixture-v1"
     }))?)
@@ -376,38 +376,17 @@ fn seed_adopted_runtime_policy(path: &Path) -> Result<(), Box<dyn std::error::Er
         .map_err(|error| format!("create provider-policy store: {error}"))?;
     let owner = ProviderSessionPolicyOwner::open(store, scope.clone(), capabilities.clone())
         .map_err(|error| format!("open provider-policy owner: {error}"))?;
-    let mut source = ProviderSessionPolicy::disabled(scope.clone());
-    source.profile_sha256 = capabilities.profile_sha256.clone();
-    source.max_completed_turns = 1;
-    let source = serde_json::to_vec(&source)?;
-    let source_sha256 = owner
-        .import(source)
+    let mut policy = ProviderSessionPolicy::disabled(scope);
+    policy.mode = sts2_harness::provider_session::ProviderSessionMode::FixtureOnly;
+    policy.credential_realm_ref = "served-fixture-realm".to_owned();
+    policy.max_completed_turns = 1;
+    policy.profile_sha256 = capabilities.profile_sha256.clone();
+    let sha256 = owner
+        .import(serde_json::to_vec(&policy)?)
         .map_err(|error| format!("import provider policy: {error}"))?;
-    let mut target = ProviderSessionPolicy::disabled(scope);
-    target.mode = sts2_harness::provider_session::ProviderSessionMode::FixtureOnly;
-    target.max_completed_turns = 1;
-    target.profile_sha256 = capabilities.profile_sha256.clone();
-    target.version = 2;
-    target.epoch = 2;
-    let digest = owner
-        .propose(
-            "served-policy-proposal",
-            &source_sha256,
-            serde_json::to_vec(&target)?,
-            2,
-        )
-        .map_err(|error| format!("propose provider policy: {error}"))?;
     owner
-        .approve("served-policy-proposal", &digest, "served-policy-approval")
-        .map_err(|error| format!("approve provider policy: {error}"))?;
-    owner
-        .adopt(
-            "served-policy-proposal",
-            &digest,
-            "served-policy-approval",
-            4,
-        )
-        .map_err(|error| format!("adopt provider policy: {error}"))?;
+        .adopt_imported(&sha256, 2)
+        .map_err(|error| format!("adopt imported provider policy: {error}"))?;
     Ok(())
 }
 
@@ -497,28 +476,33 @@ fn submit_and_step_policy_gate(
         "/v1/workflow-runs",
         Some(&serde_json::to_vec(&run)?),
     )?;
-    if submitted.status != 201 {
+    if submitted.status != 200 {
         return Err(format!(
             "served policy gate did not accept submission: {}",
             String::from_utf8_lossy(&submitted.body)
         )
         .into());
     }
-    let snapshot: RunSnapshot = serde_json::from_slice(&submitted.body)?;
-    let mut revision = snapshot.run_revision;
+    let snapshot: Value = serde_json::from_slice(&submitted.body)?;
+    let run_id = snapshot["workflow_run_id"]
+        .as_str()
+        .ok_or("served submission omitted workflow run identity")?;
+    let mut revision = snapshot["run_revision"]
+        .as_u64()
+        .ok_or("served submission omitted run revision")?;
     for index in 1..=4 {
         let command = CommandRequest {
             schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
             command_id: format!("served-step-{index}"),
-            run_id: snapshot.workflow_run_id.clone(),
+            run_id: run_id.to_owned(),
             expected_revision: revision,
-            actor_scope: "workflow:control".to_owned(),
+            actor_scope: "profile:served".to_owned(),
             kind: CommandKind::Step,
             parameters: CommandParameters::default(),
         };
         let command = response::<CommandResponse>(client.request_json(
             "POST",
-            &format!("/v1/workflow-runs/{}/commands", snapshot.workflow_run_id),
+            &format!("/v1/workflow-runs/{run_id}/commands"),
             Some(&serde_json::to_vec(&command)?),
         )?)?;
         revision = command.run_revision;
