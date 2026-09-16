@@ -24,6 +24,8 @@ use super::runtime_v3_wire as wire;
 mod allocation_context;
 #[path = "runtime_v3_completed_resume.rs"]
 mod completed_resume;
+#[path = "continuation_owner.rs"]
+mod continuation_owner;
 #[path = "runtime_v3_decision_admission.rs"]
 mod decision_admission;
 #[path = "runtime_v3_decision_replay.rs"]
@@ -35,6 +37,8 @@ mod lifecycle;
 #[path = "runtime_v3_lifecycle_authority.rs"]
 mod lifecycle_authority;
 
+#[path = "runtime_v3_branch_continuation.rs"]
+mod branch_continuation;
 #[path = "runtime_v3_combat_demo.rs"]
 pub(crate) mod combat_demo;
 #[path = "runtime_v3_episode.rs"]
@@ -79,6 +83,7 @@ mod authority;
 pub(crate) use authority::authority_configuration_digest;
 
 include!("runtime_v3_run.rs");
+include!("runtime_v3_run_branch_selection.rs");
 
 include!("runtime_v3_state.rs");
 

@@ -5,6 +5,13 @@ use sts2_harness::{CatalogEvidence, Checkpoint, EpisodeObservation};
 use super::{DurableHandle, sha256_bytes};
 
 impl DurableHandle {
+    pub(in super::super) fn has_resume_boundary(&self) -> Result<bool, String> {
+        self.resume_boundary
+            .try_borrow()
+            .map(|boundary| boundary.is_some())
+            .map_err(|_| String::from("runtime-v3 resume boundary is already borrowed"))
+    }
+
     pub(in super::super) fn clear_resume_boundary(&self) -> Result<(), String> {
         *self
             .resume_boundary

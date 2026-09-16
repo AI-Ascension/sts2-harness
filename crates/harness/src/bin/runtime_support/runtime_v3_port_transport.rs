@@ -217,6 +217,9 @@ impl RuntimeV3Port {
 
     fn release_lease_inner(&mut self) -> Result<(), String> {
         self.lifecycle_authority.invalidate();
+        if self.continuation_adopted && !self.continuation_boundary_verified {
+            return Ok(());
+        }
         if !self.allocated || self.released {
             return Ok(());
         }

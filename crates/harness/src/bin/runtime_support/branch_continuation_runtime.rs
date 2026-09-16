@@ -8,6 +8,9 @@
 
 use std::path::{Path, PathBuf};
 
+#[path = "branch_continuation_runtime_resume_lock.rs"]
+mod resume_lock;
+
 use sts2_harness::{
     BlobDigest, BranchAssurance, BranchContinuationAdmission, BranchContinuationAdmissionError,
     BranchContinuationClaim, BranchContinuationClaimState, BranchContinuationSelector,
@@ -27,6 +30,7 @@ pub(crate) struct SelectedBranchContinuation {
     metadata_revision: u64,
     owner_claim: Option<BranchContinuationClaim>,
     resuming: bool,
+    _resume_lock: Option<std::fs::File>,
 }
 
 impl SelectedBranchContinuation {
@@ -54,8 +58,20 @@ impl SelectedBranchContinuation {
         artifact_store_path: &Path,
         resuming: bool,
     ) -> Result<Self, String> {
+        let resume_lock = if resuming {
+            Some(resume_lock::acquire(
+                branch_store_path,
+                selector.experiment_id(),
+                selector.branch_id(),
+            )?)
+        } else {
+            None
+        };
         let store = SqliteBranchStore::open(branch_store_path)
             .map_err(|error| format!("cannot open durable branch store: {error}"))?;
+        if let Some(lock) = resume_lock.as_ref() {
+            resume_lock::verify(branch_store_path, lock)?;
+        }
         let artifacts = ExactArtifactStore::new(artifact_store_path);
         let resolver = ExactArtifactStoreResolver::new(&artifacts);
         let admission = if resuming {
@@ -80,8 +96,11 @@ impl SelectedBranchContinuation {
                         "running branch has no durable current-owner claim; explicit resume is refused",
                     )
                 })?;
-            if claim.state != BranchContinuationClaimState::BoundaryVerified
-                || claim.owner_json.is_none()
+            if !matches!(
+                claim.state,
+                BranchContinuationClaimState::BoundaryVerified
+                    | BranchContinuationClaimState::Resuming
+            ) || claim.owner_json.is_none()
                 || claim.owner_digest.is_none()
             {
                 return Err(String::from(
@@ -114,6 +133,7 @@ impl SelectedBranchContinuation {
             metadata_revision,
             owner_claim,
             resuming,
+            _resume_lock: resume_lock,
         })
     }
 
@@ -153,30 +173,6 @@ impl SelectedBranchContinuation {
     /// Returns true when this selection is an explicit resume of a verified running branch.
     pub(crate) const fn is_resuming(&self) -> bool {
         self.resuming
-    }
-
-    /// Claims the replay attempt before the first runtime effect using the admitted CAS revision.
-    pub(crate) fn claim_prefix_replay(&mut self) -> Result<(), String> {
-        if !matches!(
-            self.admission.strategy,
-            BranchContinuationStrategyPlan::PrefixReplay { .. }
-        ) {
-            return Err(String::from(
-                "prefix replay claim does not match the selected branch strategy",
-            ));
-        }
-        let claimed = self
-            .store
-            .transition(
-                &operation_suffix(&self.operation_id, "claim"),
-                &self.admission.branch.experiment_id,
-                &self.admission.branch.branch_id,
-                self.metadata_revision,
-                DurableBranchStatus::Replaying,
-            )
-            .map_err(|error| format!("cannot claim prefix replay branch: {error}"))?;
-        self.metadata_revision = claimed.metadata_revision;
-        Ok(())
     }
 
     /// Persists verified prefix evidence and publishes the branch as the active continuation.
@@ -285,116 +281,13 @@ impl SelectedBranchContinuation {
     }
 }
 
-/// Typed owner boundary for the two durable branch continuation strategies.
-pub(crate) trait BranchContinuationEffectPort {
-    /// Effect result after destination restore evidence has been verified.
-    type Output;
+include!("branch_continuation_runtime_resume_claim.rs");
 
-    /// Restores the exact checkpoint into a fresh destination and verifies destination evidence.
-    fn exact_restore(
-        &mut self,
-        selected: &mut SelectedBranchContinuation,
-    ) -> Result<Self::Output, String>;
+include!("branch_continuation_runtime_dispatch.rs");
 
-    /// Replays the retained prefix and continues the same destination after its boundary verifies.
-    fn prefix_replay(
-        &mut self,
-        selected: &mut SelectedBranchContinuation,
-        prefix: &[u8],
-    ) -> Result<Self::Output, String>;
-}
+include!("branch_continuation_runtime_binding.rs");
 
-/// Dispatches the persisted strategy through the typed owner port.
-pub(crate) fn dispatch<P: BranchContinuationEffectPort>(
-    selected: &mut SelectedBranchContinuation,
-    port: &mut P,
-) -> Result<P::Output, String> {
-    match selected.strategy() {
-        BranchContinuationStrategyPlan::ExactRestore { .. } => port.exact_restore(selected),
-        BranchContinuationStrategyPlan::PrefixReplay { .. } => {
-            let prefix = selected
-                .replay_prefix()
-                .ok_or_else(|| String::from("verified replay prefix bytes are unavailable"))?
-                .to_vec();
-            port.prefix_replay(selected, &prefix)
-        }
-    }
-}
-
-/// Applies the durable branch's independently allocated run identities to the runtime config.
-pub(crate) fn bind_branch_identities(
-    selected: &SelectedBranchContinuation,
-    config: &mut super::RuntimeConfig,
-) -> Result<(), String> {
-    let branch = selected.branch();
-    let episode_id = branch
-        .episode_id
-        .as_deref()
-        .ok_or_else(|| String::from("selected branch has no episode identity"))?;
-    let trajectory_id = branch
-        .trajectory_id
-        .as_deref()
-        .ok_or_else(|| String::from("selected branch has no trajectory identity"))?;
-    let context_id = branch
-        .context_id
-        .as_deref()
-        .ok_or_else(|| String::from("selected branch has no context identity"))?;
-    for (name, value) in [
-        ("branch run_id", branch.run_id.as_str()),
-        ("branch episode_id", episode_id),
-        ("branch trajectory_id", trajectory_id),
-        ("branch context_id", context_id),
-    ] {
-        if !runtime_safe_identity(value) {
-            return Err(format!("selected {name} is invalid"));
-        }
-    }
-    if matches!(
-        selected.strategy(),
-        BranchContinuationStrategyPlan::PrefixReplay { .. }
-    ) {
-        let branch_seed = branch
-            .effective_seed
-            .as_deref()
-            .ok_or_else(|| String::from("selected replay branch has no effective seed"))?;
-        let runtime_seed = config
-            .seed_transport
-            .as_ref()
-            .map(super::seed_transport::SeedTransportConfig::requested_seed)
-            .ok_or_else(|| String::from("prefix continuation requires an explicit seed plan"))?;
-        if branch_seed != runtime_seed {
-            return Err(String::from(
-                "runtime seed does not match the selected branch effective seed",
-            ));
-        }
-    }
-    config.run_id.clone_from(&branch.run_id);
-    config.episode_id = episode_id.to_owned();
-    config.trajectory_id = trajectory_id.to_owned();
-    let branch_scope = format!("{}\0{}", branch.experiment_id, branch.branch_id);
-    let scope_digest = sts2_harness::sha256_hex(branch_scope.as_bytes());
-    config.trace_id = format!("branch-trace:{scope_digest}");
-    config.artifact_id = format!("branch-artifact:{scope_digest}");
-    config.validate()
-}
-
-/// Resolves the content-addressed artifact directory used by durable branches.
-pub(crate) fn artifact_store_path() -> Result<PathBuf, String> {
-    match std::env::var("STS2_EXACT_ARTIFACT_STORE_PATH") {
-        Ok(path) if !path.is_empty() => Ok(PathBuf::from(path)),
-        Ok(_) => Err(String::from(
-            "STS2_EXACT_ARTIFACT_STORE_PATH must not be empty",
-        )),
-        Err(std::env::VarError::NotPresent) => {
-            let execution = std::env::var("STS2_EXECUTION_STORE_PATH")
-                .unwrap_or_else(|_| String::from("harness-execution.sqlite3"));
-            Ok(PathBuf::from(execution).with_file_name("harness-exact-artifacts"))
-        }
-        Err(std::env::VarError::NotUnicode(_)) => Err(String::from(
-            "STS2_EXACT_ARTIFACT_STORE_PATH is not valid UTF-8",
-        )),
-    }
-}
+include!("branch_continuation_runtime_artifact_path.rs");
 
 fn operation_id(selector: &BranchContinuationSelector, revision: u64) -> String {
     let identity = format!(
@@ -410,15 +303,6 @@ fn operation_id(selector: &BranchContinuationSelector, revision: u64) -> String 
 
 fn operation_suffix(base: &str, suffix: &str) -> String {
     format!("{base}:{suffix}")
-}
-
-fn runtime_safe_identity(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 128
-        && !value.contains("..")
-        && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/')
-        })
 }
 
 #[cfg(test)]

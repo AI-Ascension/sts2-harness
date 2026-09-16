@@ -10,8 +10,8 @@ use sts2_harness::{BranchContinuationClaim, BranchContinuationClaimState, Sqlite
 use super::super::{config::RuntimeConfig, http::GatewayClient};
 use super::allocation_context::RecoveryAuthority;
 use wire::{
-    claim_owner, ensure_current_owner, ensure_lookup_matches, is_lower_sha256, lookup_claim,
-    read_available_owner, validate_allocation_binding, validate_response_frame,
+    claim_owner, ensure_current_owner, ensure_lookup_matches, lookup_claim, read_available_owner,
+    validate_allocation_binding, validate_claim_response,
 };
 
 const CONTRACT: &str = "sts2-continuation-owner-v1";
@@ -21,8 +21,12 @@ const CLAIM_PATH: &str = "/v1/recovery/continuation/owner/claim";
 const LOOKUP_PATH: &str = "/v1/recovery/continuation/owner/lookup";
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
+#[path = "continuation_owner_adopt.rs"]
+mod adoption;
 #[path = "continuation_owner_wire.rs"]
 mod wire;
+
+pub(crate) use adoption::adopt_current_owner;
 
 /// Input that binds the selected branch's stable claim journal to the runtime allocation.
 #[derive(Clone, Debug)]
@@ -174,37 +178,11 @@ fn claim_current_owner_with_gateway<P: OwnerGatewayPort>(
     let response = claim_owner(gateway, config, &claim.operation_id, &owner);
     match response {
         Ok(response) => {
-            validate_response_frame(
-                &response,
-                config,
-                "owner_claim_response",
-                "continuation_owner_claim",
-            )?;
-            let response_claim = &response["payload"]["claim"];
-            if response["payload"]["result"]
-                .as_str()
-                .is_none_or(|result| !matches!(result, "CLAIMED" | "DUPLICATE"))
-                || response_claim["operation_id"].as_str() != Some(claim.operation_id.as_str())
-                || response_claim["owner"] != owner
-                || !is_lower_sha256(response_claim["request_digest"].as_str())
-                || response_claim["claimed_at_millis"]
-                    .as_u64()
-                    .is_none_or(|value| value > MAX_SAFE_INTEGER)
+            if let Err(error) =
+                validate_claim_response(&response, config, &claim.operation_id, &owner)
             {
-                if expected_state != BranchContinuationClaimState::Unknown {
-                    store
-                        .transition_continuation_claim(
-                            &claim.operation_id,
-                            expected_state,
-                            BranchContinuationClaimState::Unknown,
-                        )
-                        .map_err(|error| {
-                            format!("cannot record malformed owner-claim response: {error}")
-                        })?;
-                }
-                return Err(String::from(
-                    "gateway returned an invalid selected-branch owner claim",
-                ));
+                mark_claim_unknown(&store, &claim.operation_id, expected_state)?;
+                return Err(error);
             }
         }
         Err(_) => {
@@ -217,18 +195,11 @@ fn claim_current_owner_with_gateway<P: OwnerGatewayPort>(
                 // same claim cannot claim a second lease or repeat a game effect.
                 match claim_owner(gateway, config, &claim.operation_id, &owner) {
                     Ok(response) => {
-                        validate_response_frame(
-                            &response,
-                            config,
-                            "owner_claim_response",
-                            "continuation_owner_claim",
-                        )?;
-                        if response["payload"]["claim"]["operation_id"] != claim.operation_id
-                            || response["payload"]["claim"]["owner"] != owner
+                        if let Err(error) =
+                            validate_claim_response(&response, config, &claim.operation_id, &owner)
                         {
-                            return Err(String::from(
-                                "gateway retry returned a different continuation owner claim",
-                            ));
+                            mark_claim_unknown(&store, &claim.operation_id, expected_state)?;
+                            return Err(error);
                         }
                     }
                     Err(_) => {
@@ -258,6 +229,23 @@ fn claim_current_owner_with_gateway<P: OwnerGatewayPort>(
             BranchContinuationClaimState::Claimed,
         )
         .map_err(|error| format!("cannot persist gateway owner claim: {error}"))?;
+    Ok(())
+}
+
+fn mark_claim_unknown(
+    store: &SqliteBranchStore,
+    operation_id: &str,
+    expected_state: BranchContinuationClaimState,
+) -> Result<(), String> {
+    if expected_state != BranchContinuationClaimState::Unknown {
+        store
+            .transition_continuation_claim(
+                operation_id,
+                expected_state,
+                BranchContinuationClaimState::Unknown,
+            )
+            .map_err(|error| format!("cannot record uncertain owner-claim response: {error}"))?;
+    }
     Ok(())
 }
 

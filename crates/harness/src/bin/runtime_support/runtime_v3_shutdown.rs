@@ -16,7 +16,10 @@ impl ShutdownPort for RuntimeV3Port {
     }
 
     fn close_gateway(&mut self) -> Result<(), ShutdownError> {
-        if self.allocated && !self.released {
+        if self.allocated
+            && !self.released
+            && !(self.continuation_adopted && !self.continuation_boundary_verified)
+        {
             return Err(ShutdownError::GatewayCloseFailed);
         }
         Ok(())

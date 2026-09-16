@@ -10,9 +10,7 @@ use super::super::branch_continuation_runtime::BranchContinuationEffectPort;
 use super::super::runtime_v3_telemetry::{
     CleanupStatus, RuntimeV3Telemetry, TelemetryHandle, TelemetryStage,
 };
-use super::super::{
-    branch_continuation_runtime as branch_runtime, runtime_v3_admission, runtime_v3_telemetry,
-};
+use super::super::{branch_continuation_runtime as branch_runtime, runtime_v3_telemetry};
 use super::{RuntimeV3Port, episode_replay, recording, wire};
 
 pub(super) fn run(
@@ -23,11 +21,19 @@ pub(super) fn run(
     telemetry: RuntimeV3Telemetry,
 ) -> Result<(), String> {
     let claim = selected.prepare_owner_claim()?;
+    if selected.is_resuming() {
+        selected.claim_resume()?;
+    }
     port.arm_continuation_owner_claim(super::continuation_owner::ContinuationOwnerClaimContext {
         branch_store_path: super::super::continuation_branch_store_path()?,
         claim,
     })?;
-    if let Err(error) = port.preflight_continuation_launch() {
+    let preflight = if selected.is_resuming() {
+        port.preflight_continuation_resume()
+    } else {
+        port.preflight_continuation_launch()
+    };
+    if let Err(error) = preflight {
         let durable_close = port
             .durable_handle()
             .map_or(Ok(()), |durable| durable.close());
@@ -42,7 +48,15 @@ pub(super) fn run(
         drop(port);
         return Err(wire::combine_cleanup(error, Ok(()), durable_close));
     }
-    let transport = match runtime_v3_admission::admit(&settings.admission, settings.process) {
+    let durable = port
+        .durable_handle()
+        .ok_or_else(|| String::from("runtime-v3 durable handle disappeared"))?;
+    let transport = match super::select_provider_transport(
+        &port.config,
+        &settings,
+        durable.clone(),
+        port.lifecycle_authority_state(),
+    ) {
         Ok(transport) => transport,
         Err(error) => {
             let cleanup = port.cleanup_continuation_preflight();
@@ -63,9 +77,6 @@ pub(super) fn run(
     };
     let mut source =
         ExoDecisionSource::new(ExoSession::new(ExoProvider::new(transport, settings.exo)));
-    let durable = port
-        .durable_handle()
-        .ok_or_else(|| String::from("runtime-v3 durable handle disappeared"))?;
     let mut recorder = recording::DecisionRecorder::with_durable(
         &mut source,
         telemetry_handle.clone(),

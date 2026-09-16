@@ -97,8 +97,7 @@ impl GatewayClient {
         if !(200..300).contains(&response.status) {
             return Err(format!("gateway returned HTTP {}", response.status));
         }
-        serde_json::from_slice(&response.body)
-            .map_err(|_| String::from("gateway response was not JSON"))
+        super::gateway_json::parse(&response.body)
     }
 }
 

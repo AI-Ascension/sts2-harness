@@ -72,7 +72,9 @@ CREATE TABLE IF NOT EXISTS branch_continuation_claims (
     branch_id TEXT NOT NULL,
     operation_id TEXT NOT NULL UNIQUE REFERENCES branch_operations(operation_id),
     claim_state TEXT NOT NULL CHECK (
-        claim_state IN ('prepared', 'owner_snapshotted', 'claimed', 'unknown', 'boundary_verified')
+        claim_state IN (
+            'prepared', 'owner_snapshotted', 'claimed', 'unknown', 'boundary_verified', 'resuming'
+        )
     ),
     owner_json TEXT,
     owner_digest TEXT,
