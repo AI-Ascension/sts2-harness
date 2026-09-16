@@ -99,7 +99,7 @@ pub trait LiveContextObservationPort: Send + Sync {
         observation: &EpisodeObservation,
     ) -> Result<(), ManagementError>;
 
-    fn invalidate(&self, actor: &AuthContext, request: &RunRequest);
+    fn invalidate(&self, actor: &AuthContext, request: &RunRequest, definition_digest: &str);
 }
 
 /// Concrete served factory joining authoritative target discovery, the
@@ -411,7 +411,7 @@ impl ProductionLiveWorkflowSession {
 
     fn invalidate_context_observation(&self) {
         if let Some(owner) = &self.context_observations {
-            owner.invalidate(&self.actor, &self.request);
+            owner.invalidate(&self.actor, &self.request, &self.definition_digest);
         }
     }
 }

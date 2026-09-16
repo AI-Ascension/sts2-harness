@@ -191,7 +191,7 @@ impl LiveContextObservationPort for Owner {
             &run_id,
         )
         .map_err(|e| ManagementError::unavailable("context_owner_store", e.to_string()))?;
-        let authority = match store.load() {
+        let mut authority = match store.load() {
             Ok(authority) => {
                 if authority.state().boundary.episode_id != binding.episode_id
                     || authority.state().boundary.agent_id != binding.agent_id
@@ -204,7 +204,7 @@ impl LiveContextObservationPort for Owner {
                 authority
             }
             Err(sts2_harness::context_control::DurableControlStoreError::Missing) => {
-                let authority = ControlAuthority::new(boundary, "context.revision.1")
+                let authority = ControlAuthority::new(boundary.clone(), "context.revision.1")
                     .with_max_control_events(self.configuration.limits.max_control_events)
                     .map_err(|e| ManagementError::invalid("context_owner_limits", e))?;
                 store.persist(&authority, StoreMode::Enabled).map_err(|e| {
@@ -219,6 +219,14 @@ impl LiveContextObservationPort for Owner {
                 ));
             }
         };
+        authority
+            .record_observation_boundary(boundary)
+            .map_err(|error| ManagementError::conflict("context_owner_observation_stale", error))?;
+        store
+            .persist(&authority, StoreMode::Enabled)
+            .map_err(|error| {
+                ManagementError::unavailable("context_owner_persist", error.to_string())
+            })?;
         current.insert(
             run_id,
             Current {
@@ -229,11 +237,13 @@ impl LiveContextObservationPort for Owner {
         );
         Ok(())
     }
-    fn invalidate(&self, actor: &AuthContext, request: &RunRequest) {
+    fn invalidate(&self, actor: &AuthContext, request: &RunRequest, digest: &str) {
+        let Ok(run_id) = run_id(request, digest) else {
+            return;
+        };
         if let Ok(mut current) = self.current.lock() {
             current.retain(|_, entry| {
-                entry.actor != actor.subject
-                    || entry.authority.state().boundary.run_id != request.request_id
+                entry.actor != actor.subject || entry.authority.state().boundary.run_id != run_id
             });
         }
     }

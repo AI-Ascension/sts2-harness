@@ -335,12 +335,20 @@ pub(crate) fn run_served_policy_gate(
     {
         return Err("served workflow did not reach the authoritative MCP observation".into());
     }
-    if ledger
+    let actions: Vec<_> = ledger
         .requests
         .iter()
-        .any(|request| request.path == "/api/v4/runtime/expert-action")
+        .filter(|request| request.path == "/api/v4/runtime/expert-action")
+        .collect();
+    if actions.len() != 1
+        || actions[0].body["state_id"] != "live:7"
+        || actions[0].body["generation"] != 7
+        || !ledger
+            .requests
+            .iter()
+            .any(|request| request.path.starts_with("/api/v4/runtime/expert-actions/"))
     {
-        return Err("unadopted provider policy reached an action".into());
+        return Err("adopted provider policy did not dispatch and settle one fenced action".into());
     }
     Ok(())
 }
