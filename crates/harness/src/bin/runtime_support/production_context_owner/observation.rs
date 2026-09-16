@@ -196,3 +196,7 @@ impl LiveContextObservationPort for Owner {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "observation_tests.rs"]
+mod tests;
