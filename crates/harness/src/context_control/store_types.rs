@@ -2,6 +2,10 @@
 
 use std::fmt::{Display, Formatter};
 
+use serde::{Deserialize, Serialize};
+
+use crate::management::{ContextControlCommand, ContextControlReceipt, ContextOwnerBinding};
+
 pub const CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION: i64 = 1;
 pub(super) const STORE_SCHEMA: &str = "ascension.context-control.sqlite.v1";
 pub(super) const AAD: &[u8] = b"ascension.context-control.sqlite.v1\0";
@@ -9,6 +13,21 @@ pub(super) const MAX_JOURNAL_BYTES: usize = 2 * 1024 * 1024;
 pub(super) const MAX_SNAPSHOT_BYTES: usize = 4 * 1024 * 1024;
 pub(super) const MAX_EVENTS: usize = 4096;
 pub(super) const MAX_EVENT_BYTES: usize = 64 * 1024;
+pub(super) const MAX_OWNER_RECEIPT_BYTES: usize = 64 * 1024;
+
+/// Encrypted, owner-scoped evidence for one already applied context-control command.
+///
+/// The durable store persists this record atomically with the resulting authority journal.
+/// Reading it does not acquire the runtime or owner fence.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DurableContextOwnerControlReceipt {
+    pub owner_id: String,
+    pub actor_subject: String,
+    pub binding: ContextOwnerBinding,
+    pub command: ContextControlCommand,
+    pub receipt: ContextControlReceipt,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StoreMode {
@@ -69,6 +88,7 @@ pub enum DurableControlStoreError {
     Failpoint,
     SnapshotConflict,
     InvalidSnapshotId,
+    OwnerReceiptConflict,
 }
 
 impl Display for DurableControlStoreError {
@@ -90,6 +110,9 @@ impl Display for DurableControlStoreError {
             Self::Failpoint => "control store failpoint rejected the transaction",
             Self::SnapshotConflict => "phase1 snapshot already has different bytes",
             Self::InvalidSnapshotId => "phase1 snapshot identity is invalid",
+            Self::OwnerReceiptConflict => {
+                "context control idempotency key is already bound to different receipt evidence"
+            }
         })
     }
 }

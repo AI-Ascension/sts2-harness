@@ -8,9 +8,11 @@
 //! a fixture-facing seam; callers still need an approved private key and scoped authorization.
 
 use super::state::ControlAuthority;
+use super::store_receipts::{persist_owner_receipt, prepare_owner_receipt};
 use super::store_schema::{digest, ensure_schema, insert_outbox, now_seconds};
 use super::store_types::{
-    AAD, DurableControlStoreError, DurableStoreFailpoint, MAX_JOURNAL_BYTES, StoreMode,
+    AAD, DurableContextOwnerControlReceipt, DurableControlStoreError, DurableStoreFailpoint,
+    MAX_JOURNAL_BYTES, StoreMode,
 };
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
@@ -60,6 +62,29 @@ impl ContextControlStore {
         authority: &ControlAuthority,
         mode: StoreMode,
     ) -> Result<(), DurableControlStoreError> {
+        self.persist_inner(authority, mode, None)
+    }
+
+    /// Atomically persists the authority transition and its exact owner-issued receipt.
+    ///
+    /// The receipt record is encrypted with the store key and indexed only by hashes of its
+    /// command and idempotency key. Reusing an idempotency key for different command or owner
+    /// evidence is rejected before either record is committed.
+    pub fn persist_with_owner_control_receipt(
+        &mut self,
+        authority: &ControlAuthority,
+        mode: StoreMode,
+        record: &DurableContextOwnerControlReceipt,
+    ) -> Result<(), DurableControlStoreError> {
+        self.persist_inner(authority, mode, Some(record))
+    }
+
+    fn persist_inner(
+        &mut self,
+        authority: &ControlAuthority,
+        mode: StoreMode,
+        receipt_record: Option<&DurableContextOwnerControlReceipt>,
+    ) -> Result<(), DurableControlStoreError> {
         let journal = authority
             .export_journal()
             .map_err(|_| DurableControlStoreError::Encode)?;
@@ -76,12 +101,16 @@ impl ContextControlStore {
         if state.boundary.run_id != self.run_id {
             return Err(DurableControlStoreError::ScopeMismatch);
         }
+        let receipt_envelope = receipt_record
+            .map(|record| prepare_owner_receipt(self, record, state))
+            .transpose()?;
         self.claim_owner()?;
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| DurableControlStoreError::Sqlite)?;
         Self::verify_owner(&transaction, &self.run_id, &self.owner_token)?;
+        persist_owner_receipt(&transaction, &self.run_id, &self.key, receipt_envelope)?;
         transaction
             .execute(
                 "INSERT INTO context_control_journal
@@ -217,6 +246,14 @@ impl ContextControlStore {
     }
 
     fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, DurableControlStoreError> {
+        self.encrypt_with_aad(plaintext, AAD)
+    }
+
+    pub(super) fn encrypt_with_aad(
+        &self,
+        plaintext: &[u8],
+        aad: &[u8],
+    ) -> Result<Vec<u8>, DurableControlStoreError> {
         let first = Uuid::new_v4();
         let second = Uuid::new_v4();
         let mut nonce = [0_u8; 24];
@@ -228,7 +265,7 @@ impl ContextControlStore {
                 XNonce::from_slice(&nonce),
                 Payload {
                     msg: plaintext,
-                    aad: AAD,
+                    aad,
                 },
             )
             .map_err(|_| DurableControlStoreError::AuthenticationFailed)?;
@@ -239,23 +276,39 @@ impl ContextControlStore {
     }
 
     pub(super) fn decrypt(&self, envelope: &[u8]) -> Result<Vec<u8>, DurableControlStoreError> {
-        if envelope.len() < 24 + 16 {
-            return Err(DurableControlStoreError::Corrupt);
-        }
-        let (nonce, ciphertext) = envelope.split_at(24);
-        let cipher = XChaCha20Poly1305::new(Key::from_slice(&self.key));
-        let plaintext = cipher
-            .decrypt(
-                XNonce::from_slice(nonce),
-                Payload {
-                    msg: ciphertext,
-                    aad: AAD,
-                },
-            )
-            .map_err(|_| DurableControlStoreError::AuthenticationFailed)?;
-        if plaintext.len() > MAX_JOURNAL_BYTES {
-            return Err(DurableControlStoreError::TooLarge);
-        }
-        Ok(plaintext)
+        self.decrypt_with_aad(envelope, AAD)
     }
+
+    pub(super) fn decrypt_with_aad(
+        &self,
+        envelope: &[u8],
+        aad: &[u8],
+    ) -> Result<Vec<u8>, DurableControlStoreError> {
+        decrypt_with_key(&self.key, envelope, aad)
+    }
+}
+
+pub(super) fn decrypt_with_key(
+    key: &[u8; 32],
+    envelope: &[u8],
+    aad: &[u8],
+) -> Result<Vec<u8>, DurableControlStoreError> {
+    if envelope.len() < 24 + 16 {
+        return Err(DurableControlStoreError::Corrupt);
+    }
+    let (nonce, ciphertext) = envelope.split_at(24);
+    let cipher = XChaCha20Poly1305::new(Key::from_slice(key));
+    let plaintext = cipher
+        .decrypt(
+            XNonce::from_slice(nonce),
+            Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
+        .map_err(|_| DurableControlStoreError::AuthenticationFailed)?;
+    if plaintext.len() > MAX_JOURNAL_BYTES.max(super::store_types::MAX_OWNER_RECEIPT_BYTES) {
+        return Err(DurableControlStoreError::TooLarge);
+    }
+    Ok(plaintext)
 }
