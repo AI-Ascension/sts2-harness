@@ -254,14 +254,6 @@ impl LiveRuntimeSessionFactory for Runtime {
                 "configured runtime differs from target",
             ));
         }
-        if self.policy_scope.run_id != config.run_id
-            || self.policy_scope.episode_id != config.episode_id
-        {
-            return Err(ManagementError::conflict(
-                "runtime_policy_scope_mismatch",
-                "adopted provider policy does not match runtime lineage",
-            ));
-        }
         let settings = runtime_v3_settings::RuntimeV3Settings::from_environment(&config)
             .map_err(|error| ManagementError::unavailable("runtime_configuration", error))?;
         let configuration_digest = runtime_v3::authority_configuration_digest(&config, &settings)
