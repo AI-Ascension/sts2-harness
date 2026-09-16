@@ -3,6 +3,11 @@
 use super::*;
 use sts2_harness::context_control::StoreMode;
 
+#[path = "binding_association.rs"]
+mod association;
+#[path = "binding_control.rs"]
+mod control;
+
 impl Owner {
     pub(super) fn configuration_from_environment() -> Result<Configuration, String> {
         let raw = std::env::var("STS2_WORKFLOW_CONTEXT_OWNER_CONFIG")
@@ -48,7 +53,7 @@ impl Owner {
             effective_limits: self.configuration.limits.clone(),
             continuity: ContextBindingContinuity {
                 survives_controller_restart: true,
-                receipt_recovery: false,
+                receipt_recovery: true,
                 provider_session_continuity: false,
             },
             grants: ContextBindingGrants {
@@ -60,6 +65,43 @@ impl Owner {
             state: ContextBindingState::Available,
         }
         .seal()
+    }
+
+    fn binding_for_request(
+        &self,
+        request: &ContextBindingRequest,
+        entry: &Current,
+        catalog: &ContextBindingCatalog,
+    ) -> Result<ContextOwnerBinding, ManagementError> {
+        let descriptor = self.descriptor()?;
+        let state = entry.authority.state();
+        let binding = ContextOwnerBinding {
+            schema_version: sts2_harness::management::CONTEXT_OWNER_BINDING_SCHEMA_VERSION.into(),
+            owner_id: self.configuration.owner_id.clone(),
+            owner_version: self.configuration.owner_version.clone(),
+            invocation_id: format!("{}.{}", request.workflow_run_id, request.node_execution_id),
+            binding_id: descriptor.binding_id,
+            binding_version: descriptor.version,
+            binding_digest: descriptor.digest,
+            context_ref: request.context_ref.clone(),
+            instance_id: request.instance_id.clone(),
+            node_kind: request.node_kind.clone(),
+            state: ContextBindingState::Available,
+            workflow_run_id: request.workflow_run_id.clone(),
+            definition_digest: request.definition_digest.clone(),
+            graph_id: request.graph_id.clone(),
+            node_id: request.node_id.clone(),
+            node_execution_id: request.node_execution_id.clone(),
+            boundary: state.boundary.clone(),
+            lease_epoch: entry.runtime_lease_epoch,
+            snapshot_id: format!("snapshot.{}", state.boundary.generation),
+            approved_revision_id: state.active_revision_id.clone(),
+            plan_epoch: state.plan_epoch,
+            grants: descriptor.grants,
+            continuity: descriptor.continuity,
+        };
+        ContextOwnerEffectiveLimitsView::compose(catalog, &binding)?;
+        Ok(binding)
     }
 }
 
@@ -79,6 +121,7 @@ impl ContextOwnerPort for Owner {
         actor: &AuthContext,
         request: &ContextBindingRequest,
     ) -> Result<ContextOwnerBinding, ManagementError> {
+        request.validate()?;
         let catalog = self.catalog(actor)?;
         catalog.validate()?;
         let descriptor = self.descriptor()?;
@@ -113,33 +156,14 @@ impl ContextOwnerPort for Owner {
                 "actor cannot bind this context authority",
             ));
         }
+        if request.instance_id != entry.runtime_instance_id {
+            return Err(ManagementError::conflict(
+                "context_owner_instance",
+                "context binding instance does not match the trusted runtime instance",
+            ));
+        }
         self.validate_control_limits_in_catalog(&catalog, &entry.admitted_control_limits)?;
-        let state = entry.authority.state();
-        let binding = ContextOwnerBinding {
-            schema_version: sts2_harness::management::CONTEXT_OWNER_BINDING_SCHEMA_VERSION.into(),
-            owner_id: self.configuration.owner_id.clone(),
-            owner_version: self.configuration.owner_version.clone(),
-            invocation_id: format!("{}.{}", request.workflow_run_id, request.node_execution_id),
-            binding_id: descriptor.binding_id,
-            binding_version: descriptor.version,
-            binding_digest: descriptor.digest,
-            context_ref: request.context_ref.clone(),
-            instance_id: request.instance_id.clone(),
-            node_kind: request.node_kind.clone(),
-            state: ContextBindingState::Available,
-            workflow_run_id: request.workflow_run_id.clone(),
-            definition_digest: request.definition_digest.clone(),
-            graph_id: request.graph_id.clone(),
-            node_id: request.node_id.clone(),
-            node_execution_id: request.node_execution_id.clone(),
-            boundary: state.boundary.clone(),
-            lease_epoch: state.boundary.controller_epoch,
-            snapshot_id: format!("snapshot.{}", state.boundary.generation),
-            approved_revision_id: state.active_revision_id.clone(),
-            plan_epoch: state.plan_epoch,
-            grants: descriptor.grants,
-            continuity: descriptor.continuity,
-        };
+        let binding = self.binding_for_request(request, entry, &catalog)?;
         let selected_limits = &entry.admitted_control_limits;
         // This owner publishes `configuration.limits` in its descriptor, so
         // the catalog check above also bounds the composed current binding.
@@ -166,7 +190,16 @@ impl ContextOwnerPort for Owner {
             .map_err(|error| {
                 ManagementError::unavailable("context_owner_persist", error.to_string())
             })?;
+        entry.binding_request = Some(request.clone());
         Ok(binding)
+    }
+
+    fn association(
+        &self,
+        actor: &AuthContext,
+        snapshot: &sts2_harness::management::RunSnapshot,
+    ) -> Result<ContextOwnerBinding, ManagementError> {
+        self.current_association(actor, snapshot)
     }
 
     fn control(
@@ -175,128 +208,16 @@ impl ContextOwnerPort for Owner {
         binding: &ContextOwnerBinding,
         command: &sts2_harness::management::ContextControlCommand,
     ) -> Result<sts2_harness::management::ContextControlReceipt, ManagementError> {
-        if !actor.can("workflow:control") || !actor.can_run(&binding.workflow_run_id) {
-            return Err(ManagementError::forbidden(
-                "context_owner_control_forbidden",
-                "actor cannot control this context authority",
-            ));
-        }
-        let catalog = self.catalog(actor)?;
-        catalog.validate()?;
-        ContextOwnerEffectiveLimitsView::compose(&catalog, binding)?;
-        let mut current = self.current.lock().map_err(|_| {
-            ManagementError::unavailable("context_owner_lock", "context owner is unavailable")
-        })?;
-        let entry = current.get_mut(&binding.workflow_run_id).ok_or_else(|| {
-            ManagementError::unavailable(
-                "context_owner_association_unavailable",
-                "current authority is unavailable",
-            )
-        })?;
-        if entry.actor != actor.subject || entry.authority.state().boundary != binding.boundary {
-            return Err(ManagementError::conflict(
-                "context_owner_control_stale",
-                "context control binding is stale",
-            ));
-        }
-        self.validate_control_limits_in_catalog(&catalog, &entry.admitted_control_limits)?;
-        entry.authority = entry
-            .authority
-            .clone()
-            .with_max_control_events(entry.admitted_control_limits.max_control_events)
-            .map_err(|code| {
-                let reason = if code == "context_control_events_exhausted" {
-                    "context_control_events_exhausted"
-                } else {
-                    "context_control_event_limit_invalid"
-                };
-                ManagementError::conflict(
-                    reason,
-                    "current context control authority exceeds the admitted run limit",
-                )
-            })?;
-        entry
-            .store
-            .persist(&entry.authority, StoreMode::Enabled)
-            .map_err(|error| {
-                ManagementError::unavailable("context_owner_persist", error.to_string())
-            })?;
-        let receipt = match command {
-            sts2_harness::management::ContextControlCommand::Pause {
-                idempotency_key,
-                expected_control_version,
-            } => entry
-                .authority
-                .request_pause(idempotency_key, *expected_control_version),
-            sts2_harness::management::ContextControlCommand::Commit {
-                idempotency_key,
-                expected_control_version,
-                expected_revision_id,
-                expected_boundary,
-                preview_manifest_digest,
-                approved_manifest_digest,
-            } => entry.authority.commit(
-                idempotency_key,
-                *expected_control_version,
-                expected_revision_id,
-                expected_boundary,
-                preview_manifest_digest,
-                approved_manifest_digest,
-            ),
-            sts2_harness::management::ContextControlCommand::Resume {
-                idempotency_key,
-                expected_control_version,
-                expected_boundary,
-            } => entry.authority.resume(
-                idempotency_key,
-                *expected_control_version,
-                expected_boundary,
-            ),
-        }
-        .map_err(|error| {
-            let code = if error == "context_control_events_exhausted" {
-                "context_control_events_exhausted"
-            } else {
-                "context_owner_control_refused"
-            };
-            ManagementError::conflict(code, error)
-        })?;
-        entry
-            .store
-            .persist(&entry.authority, StoreMode::Enabled)
-            .map_err(|error| {
-                ManagementError::unavailable("context_owner_persist", error.to_string())
-            })?;
-        let state = entry.authority.state();
-        let kind = match command {
-            sts2_harness::management::ContextControlCommand::Pause { .. } => {
-                sts2_harness::management::ContextControlCommandKind::Pause
-            }
-            sts2_harness::management::ContextControlCommand::Commit { .. } => {
-                sts2_harness::management::ContextControlCommandKind::Commit
-            }
-            sts2_harness::management::ContextControlCommand::Resume { .. } => {
-                sts2_harness::management::ContextControlCommandKind::Resume
-            }
-        };
-        Ok(sts2_harness::management::ContextControlReceipt {
-            schema_version: sts2_harness::management::CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION.into(),
-            owner_id: self.configuration.owner_id.clone(),
-            invocation_id: binding.invocation_id.clone(),
-            binding_id: binding.binding_id.clone(),
-            binding_digest: binding.binding_digest.clone(),
-            command: kind,
-            command_id: receipt.command_id,
-            idempotency_key: receipt.idempotency_key,
-            effect: receipt.effect,
-            control_version: receipt.control_version,
-            plan_epoch: receipt.plan_epoch,
-            controller_epoch: state.boundary.controller_epoch,
-            gate_epoch: state.boundary.gate_epoch,
-            boundary: state.boundary.clone(),
-            revision_id: None,
-            preview_manifest_digest: None,
-            approved_manifest_digest: None,
-        })
+        self.control_current(actor, binding, command)
+    }
+
+    fn recover_control_receipt(
+        &self,
+        actor: &AuthContext,
+        snapshot: &sts2_harness::management::RunSnapshot,
+        command: &sts2_harness::management::ContextControlCommand,
+    ) -> Result<Option<sts2_harness::management::ContextControlReceiptRecovery>, ManagementError>
+    {
+        self.recover_historical_receipt(actor, snapshot, command)
     }
 }

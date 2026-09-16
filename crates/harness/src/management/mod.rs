@@ -33,10 +33,11 @@ pub use context_owner::{
     CONTEXT_OWNER_RECEIPT_V1_SCHEMA_VERSION, ContextBindingCatalog, ContextBindingContinuity,
     ContextBindingDescriptor, ContextBindingGrants, ContextBindingOperation, ContextBindingRequest,
     ContextBindingSource, ContextBindingState, ContextControlCommand, ContextControlCommandKind,
-    ContextControlReceipt, ContextEffectiveLimits, ContextOwnerAssociationView,
-    ContextOwnerBinding, ContextOwnerControlLimits, ContextOwnerEffectiveLimitsView,
-    ContextOwnerPort, MAX_CONTEXT_BINDINGS, MAX_CONTEXT_NODE_KINDS, MAX_CONTEXT_OPERATIONS,
-    MAX_CONTEXT_SOURCES, UnavailableContextOwnerPort, compose_context_owner_binding,
+    ContextControlReceipt, ContextControlReceiptRecovery, ContextEffectiveLimits,
+    ContextOwnerAssociationView, ContextOwnerBinding, ContextOwnerControlLimits,
+    ContextOwnerEffectiveLimitsView, ContextOwnerPort, MAX_CONTEXT_BINDINGS,
+    MAX_CONTEXT_NODE_KINDS, MAX_CONTEXT_OPERATIONS, MAX_CONTEXT_SOURCES,
+    UnavailableContextOwnerPort, compose_context_owner_binding,
 };
 pub use contract::ReplayRequest as ManagementReplayRequest;
 pub use contract::{

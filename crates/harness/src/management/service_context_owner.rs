@@ -6,9 +6,7 @@ use super::super::context_owner::{
     CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, ContextControlCommand, ContextControlReceipt,
     ContextOwnerAssociationView, ContextOwnerEffectiveLimitsView,
 };
-use super::super::context_owner::{
-    ContextBindingCatalog, ContextBindingRequest, ContextOwnerBinding, ContextOwnerPort,
-};
+use super::super::context_owner::{ContextBindingCatalog, ContextOwnerBinding, ContextOwnerPort};
 use super::support::authorize;
 use super::{AuthContext, ManagementError, ManagementService, RunSnapshot, validate_identifier};
 use crate::context_control::{
@@ -17,6 +15,9 @@ use crate::context_control::{
 };
 use crate::exo::ExoConfig;
 use std::collections::BTreeMap;
+
+#[path = "service_context_owner_binding.rs"]
+mod binding;
 
 impl ManagementService {
     pub fn with_context_owner_port(mut self, port: Arc<dyn ContextOwnerPort>) -> Self {
@@ -41,46 +42,16 @@ impl ManagementService {
         Ok(catalog)
     }
 
-    /// Establishes an owner-issued binding for one context-bound invocation.
-    /// Only bounded identities are exchanged; no context bytes or effects are
-    /// reachable from this path.
-    pub fn bind_context(
-        &self,
-        actor: &AuthContext,
-        request: ContextBindingRequest,
-    ) -> Result<ContextOwnerBinding, ManagementError> {
-        authorize(actor, "workflow:read", Some(&request.workflow_run_id))?;
-        let binding = self.context_owner.bind(actor, &request)?;
-        // The owner response must be the exact binding for the requested
-        // invocation; a miscorrelated owner response fails closed.
-        if binding.workflow_run_id != request.workflow_run_id
-            || binding.definition_digest != request.definition_digest
-            || binding.graph_id != request.graph_id
-            || binding.node_id != request.node_id
-            || binding.node_execution_id != request.node_execution_id
-            || binding.context_ref != request.context_ref
-            || binding.binding_id != request.binding_id
-            || binding.binding_version != request.binding_version
-            || binding.binding_digest != request.binding_digest
-        {
-            return Err(ManagementError::conflict(
-                "context_binding_mismatch",
-                "context owner returned a binding for a different invocation",
-            ));
-        }
-        binding.validate(None)?;
-        Ok(binding)
-    }
-
     /// Recovers the receipt the authoritative owner already issued for `command`,
     /// for a caller whose reply was lost or ambiguous.
     ///
     /// This path never re-issues, re-applies or infers an effect. It requires
-    /// current scoped `workflow:read` for the run, the owner's current
-    /// association for that run, and an owner that advertises
-    /// `receipt_recovery` in its binding continuity. A recovered receipt must
-    /// satisfy exact owner/invocation/binding/command identity before it is
-    /// returned, so a receipt for one command cannot be replayed as another.
+    /// current scoped `workflow:read` for the run and exact owner-issued
+    /// historical evidence for the supplied command. Receipt recovery does not
+    /// assert that the old binding is a current runtime association. A recovered
+    /// receipt must satisfy exact owner/invocation/binding/command identity
+    /// before it is returned, so a receipt for one command cannot be replayed as
+    /// another.
     pub fn recover_context_control_receipt(
         &self,
         actor: &AuthContext,
@@ -92,24 +63,33 @@ impl ManagementService {
         let snapshot = self.store.get_run(run_id)?.ok_or_else(|| {
             ManagementError::invalid("run_not_found", "workflow run was not found")
         })?;
-        let binding = self.current_context_binding(actor, &snapshot)?;
-        if !binding.continuity.receipt_recovery {
-            return Err(ManagementError::unavailable(
-                "context_control_receipt_recovery_unsupported",
-                "the authoritative context owner does not advertise control receipt recovery",
-            ));
-        }
-        let receipt = self
+        let recovery = self
             .context_owner
-            .control_receipt(actor, &binding, command)?
+            .recover_control_receipt(actor, &snapshot, command)?
             .ok_or_else(|| {
                 ManagementError::invalid(
                     "context_control_receipt_not_recorded",
                     "the context owner has no recorded receipt for the supplied command",
                 )
             })?;
-        receipt.validate_for(&binding, command)?;
-        Ok(receipt)
+        let binding = recovery.binding;
+        binding.validate(None)?;
+        if binding.workflow_run_id != snapshot.workflow_run_id
+            || binding.definition_digest != snapshot.definition_digest
+        {
+            return Err(ManagementError::conflict(
+                "context_control_receipt_scope",
+                "historical receipt evidence is not attached to the admitted workflow run",
+            ));
+        }
+        if !binding.continuity.receipt_recovery {
+            return Err(ManagementError::unavailable(
+                "context_control_receipt_recovery_unsupported",
+                "the historical binding does not advertise receipt recovery",
+            ));
+        }
+        recovery.receipt.validate_for(&binding, command)?;
+        Ok(recovery.receipt)
     }
 
     /// Resolves the authoritative owner's current association for one run and
@@ -125,6 +105,16 @@ impl ManagementService {
             return Err(ManagementError::conflict(
                 "context_binding_mismatch",
                 "context owner returned a binding for a different workflow run",
+            ));
+        }
+        if snapshot
+            .admission
+            .as_ref()
+            .is_some_and(|admission| admission.target.instance_id != binding.instance_id)
+        {
+            return Err(ManagementError::conflict(
+                "context_binding_instance_mismatch",
+                "current context binding does not match the admitted workflow target",
             ));
         }
         Ok(binding)

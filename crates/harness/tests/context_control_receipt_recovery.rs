@@ -161,10 +161,9 @@ impl ContextOwnerPort for RecoveringOwner {
         _actor: &AuthContext,
         snapshot: &sts2_harness::management::RunSnapshot,
     ) -> Result<ContextOwnerBinding, ManagementError> {
-        Ok(binding_for(
-            &snapshot.workflow_run_id,
-            self.receipt_recovery,
-        ))
+        let mut binding = binding_for(&snapshot.workflow_run_id, self.receipt_recovery);
+        binding.definition_digest = snapshot.definition_digest.clone();
+        Ok(binding)
     }
 
     fn control_receipt(

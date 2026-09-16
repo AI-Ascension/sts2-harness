@@ -70,9 +70,40 @@ pub trait ContextOwnerPort: Send + Sync {
         ))
     }
 
+    /// Recovers historical receipt evidence without asserting a current association.
+    ///
+    /// The default adapter preserves existing owners by asking for a current
+    /// association first. Owners with durable receipt history can override this
+    /// method to return the original binding after restart; callers must still
+    /// validate it against the admitted run and exact command.
+    fn recover_control_receipt(
+        &self,
+        actor: &AuthContext,
+        snapshot: &RunSnapshot,
+        command: &ContextControlCommand,
+    ) -> Result<Option<ContextControlReceiptRecovery>, ManagementError> {
+        let binding = self.association(actor, snapshot)?;
+        if !binding.continuity.receipt_recovery {
+            return Err(ManagementError::unavailable(
+                "context_control_receipt_recovery_unsupported",
+                "the authoritative context owner does not advertise control receipt recovery",
+            ));
+        }
+        let receipt = self.control_receipt(actor, &binding, command)?;
+        Ok(receipt.map(|receipt| ContextControlReceiptRecovery { binding, receipt }))
+    }
+
     fn is_available(&self) -> bool {
         true
     }
+}
+
+/// Internal owner response for exact historical receipt recovery. HTTP exposes
+/// only `receipt`; `binding` is retained here to validate the historical scope.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ContextControlReceiptRecovery {
+    pub binding: ContextOwnerBinding,
+    pub receipt: ContextControlReceipt,
 }
 
 /// HTTP-visible schema for the bounded current-association projection.
