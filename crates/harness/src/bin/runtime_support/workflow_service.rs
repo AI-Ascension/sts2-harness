@@ -8,8 +8,8 @@ use sts2_harness::management::{
     AuthContext, EnvironmentAuthenticator, ExecutionMode, LiveProviderPolicyPort,
     LiveProviderSessionFactory, LiveRuntimeSessionFactory, LiveTargetCatalogPort,
     LiveWorkflowSessionFactory, ManagementError, ProductionLiveWorkflowSessionFactory,
-    ProviderSessionPolicyOwnerPort, RunRequest, TargetAvailability, TargetCatalogResponse,
-    TargetDescriptor,
+    ProviderSessionPolicyOwnerPort, RunRequest, RuntimeAuthorityBinding, TargetAvailability,
+    TargetCatalogResponse, TargetDescriptor,
 };
 use sts2_harness::provider_session::{
     NativeCapabilities, ProviderSessionMetadataStore, ProviderSessionPolicyOwner, SessionScope,
@@ -45,6 +45,7 @@ pub(super) fn serve() -> Result<(), String> {
         authenticator,
         factory(
             Arc::clone(&provider_policy),
+            policy.scope,
             policy.capabilities,
             Arc::clone(&context_owner),
         )?,
@@ -56,13 +57,17 @@ pub(super) fn serve() -> Result<(), String> {
 
 fn factory(
     provider_policy: Arc<dyn LiveProviderPolicyPort>,
+    policy_scope: SessionScope,
     provider_capabilities: NativeCapabilities,
     context_owner: Arc<production_context_owner::Owner>,
 ) -> Result<Arc<dyn LiveWorkflowSessionFactory>, String> {
     Ok(Arc::new(ProductionLiveWorkflowSessionFactory::new(
         json!({"schema_version":"ascension.capabilities/v1","capabilities":["workflow.live","workflow.node.observe.v1","workflow.node.decide.v1","workflow.node.execute_action.v1","workflow.node.terminal.v1","workflow.execution.fence.mcp-observation.v1","observe.fair-play.v1","actions.catalog.v1","actions.settlement.v1","workflow.projection.fair-play.live.v1","workflow.provider.decision.live.v1","workflow.context.context.live.v1"]}),
         Arc::new(Catalog),
-        Arc::new(Runtime),
+        Arc::new(Runtime {
+            policy_scope,
+            provider_capabilities: provider_capabilities.clone(),
+        }),
         Arc::new(Provider),
         provider_policy,
         provider_capabilities,
@@ -209,7 +214,10 @@ impl LiveTargetCatalogPort for Catalog {
         })
     }
 }
-struct Runtime;
+struct Runtime {
+    policy_scope: SessionScope,
+    provider_capabilities: NativeCapabilities,
+}
 impl LiveRuntimeSessionFactory for Runtime {
     fn open_runtime(
         &self,
@@ -229,6 +237,53 @@ impl LiveRuntimeSessionFactory for Runtime {
         runtime_v3::RuntimeV3SessionWorker::start(config)
             .map(|worker| Box::new(worker) as Box<dyn sts2_harness::EpisodeRuntimePort + Send>)
             .map_err(|e| ManagementError::unavailable("runtime_worker_start", e))
+    }
+
+    fn authority_binding(
+        &self,
+        request: &RunRequest,
+        _: &AuthContext,
+        _: &WorkflowDefinition,
+        _: &str,
+    ) -> Result<RuntimeAuthorityBinding, ManagementError> {
+        let config = RuntimeConfig::from_environment()
+            .map_err(|error| ManagementError::unavailable("runtime_configuration", error))?;
+        if config.instance_id != request.instance_id {
+            return Err(ManagementError::conflict(
+                "runtime_instance_mismatch",
+                "configured runtime differs from target",
+            ));
+        }
+        if self.policy_scope.run_id != config.run_id
+            || self.policy_scope.episode_id != config.episode_id
+        {
+            return Err(ManagementError::conflict(
+                "runtime_policy_scope_mismatch",
+                "adopted provider policy does not match runtime lineage",
+            ));
+        }
+        let settings = runtime_v3_settings::RuntimeV3Settings::from_environment(&config)
+            .map_err(|error| ManagementError::unavailable("runtime_configuration", error))?;
+        let configuration_digest = runtime_v3::authority_configuration_digest(&config, &settings)
+            .map_err(|error| {
+            ManagementError::unavailable("runtime_configuration_digest", error)
+        })?;
+        Ok(RuntimeAuthorityBinding {
+            instance_id: config.instance_id,
+            session_id: config.session_id,
+            lease_id: config.lease_id,
+            lease_epoch: config.lease_epoch,
+            run_id: config.run_id,
+            episode_id: config.episode_id,
+            trajectory_id: config.trajectory_id,
+            trace_id: config.trace_id,
+            artifact_id: config.artifact_id,
+            agent_id: self.policy_scope.agent_id.clone(),
+            adapter_revision: self.provider_capabilities.binding.adapter_revision.clone(),
+            model_revision: self.provider_capabilities.binding.model_revision.clone(),
+            configuration_digest,
+            output_schema_digest: self.provider_capabilities.native_schema_sha256.clone(),
+        })
     }
 }
 struct Provider;

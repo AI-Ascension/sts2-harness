@@ -11,7 +11,7 @@ use sts2_harness::management::{
     AuthContext, ContextBindingCatalog, ContextBindingContinuity, ContextBindingDescriptor,
     ContextBindingGrants, ContextBindingOperation, ContextBindingRequest, ContextBindingState,
     ContextEffectiveLimits, ContextOwnerBinding, ContextOwnerPort, LiveContextObservationPort,
-    ManagementError, RunRequest,
+    ManagementError, RunRequest, RuntimeAuthorityBinding,
 };
 use sts2_harness::{EpisodeObservation, sha256_hex};
 use zeroize::Zeroize;
@@ -28,13 +28,6 @@ pub(super) struct Configuration {
     pub owner_version: String,
     pub context_ref: String,
     pub limits: ContextEffectiveLimits,
-    pub episode_id: String,
-    pub agent_id: String,
-    pub catalog_digest: String,
-    pub adapter_revision: String,
-    pub model_revision: String,
-    pub configuration_digest: String,
-    pub output_schema_digest: String,
 }
 
 pub(super) struct Owner {
@@ -60,8 +53,6 @@ impl Configuration {
             || value.owner_version.is_empty()
             || value.context_ref.is_empty()
             || value.key_reference.is_empty()
-            || value.episode_id.is_empty()
-            || value.agent_id.is_empty()
         {
             return Err(String::from(
                 "STS2_WORKFLOW_CONTEXT_OWNER_CONFIG is invalid",
@@ -135,25 +126,39 @@ impl LiveContextObservationPort for Owner {
         actor: &AuthContext,
         request: &RunRequest,
         digest: &str,
+        binding: &RuntimeAuthorityBinding,
         observation: &EpisodeObservation,
     ) -> Result<(), ManagementError> {
         let run_id = run_id(request, digest)?;
+        if binding.instance_id != request.instance_id {
+            return Err(ManagementError::conflict(
+                "context_owner_instance",
+                "runtime authority binding does not match the requested instance",
+            ));
+        }
+        let fair_play = observation.fair_play().as_value();
+        let legal_actions = fair_play.get("legal_actions").ok_or_else(|| {
+            ManagementError::invalid(
+                "context_observation_catalog_missing",
+                "sanitized MCP observation omitted its legal action catalog",
+            )
+        })?;
         let boundary = ContextBoundary {
             run_id: run_id.clone(),
-            episode_id: self.configuration.episode_id.clone(),
-            agent_id: self.configuration.agent_id.clone(),
+            episode_id: binding.episode_id.clone(),
+            agent_id: binding.agent_id.clone(),
             state_id: observation.state_id().into(),
             generation: observation.generation(),
-            observation_sha256: sha256_hex(
-                serde_json::to_vec(observation.fair_play().as_value()).map_err(|error| {
-                    ManagementError::invalid("context_observation_encode", error.to_string())
-                })?,
-            ),
-            catalog_sha256: self.configuration.catalog_digest.clone(),
-            adapter_revision: self.configuration.adapter_revision.clone(),
-            model_revision: self.configuration.model_revision.clone(),
-            configuration_sha256: self.configuration.configuration_digest.clone(),
-            output_schema_sha256: self.configuration.output_schema_digest.clone(),
+            observation_sha256: sha256_hex(serde_json::to_vec(fair_play).map_err(|error| {
+                ManagementError::invalid("context_observation_encode", error.to_string())
+            })?),
+            catalog_sha256: sha256_hex(serde_json::to_vec(legal_actions).map_err(|error| {
+                ManagementError::invalid("context_catalog_encode", error.to_string())
+            })?),
+            adapter_revision: binding.adapter_revision.clone(),
+            model_revision: binding.model_revision.clone(),
+            configuration_sha256: binding.configuration_digest.clone(),
+            output_schema_sha256: binding.output_schema_digest.clone(),
             controller_epoch: 1,
             gate_epoch: 1,
             control_version: 1,
@@ -180,17 +185,40 @@ impl LiveContextObservationPort for Owner {
                 })?;
             return Ok(());
         }
-        let authority = ControlAuthority::new(boundary, "context.revision.1")
-            .with_max_control_events(self.configuration.limits.max_control_events)
-            .map_err(|e| ManagementError::invalid("context_owner_limits", e))?;
-        let store = ContextControlStore::create(
-            &self.configuration.store_path,
+        let mut store = ContextControlStore::open(
+            scoped_store_path(&self.configuration.store_path, &run_id),
             self.key,
             &run_id,
-            &authority,
-            StoreMode::Enabled,
         )
         .map_err(|e| ManagementError::unavailable("context_owner_store", e.to_string()))?;
+        let authority = match store.load() {
+            Ok(authority) => {
+                if authority.state().boundary.episode_id != binding.episode_id
+                    || authority.state().boundary.agent_id != binding.agent_id
+                {
+                    return Err(ManagementError::conflict(
+                        "context_owner_recovered_scope",
+                        "recovered context authority belongs to a different runtime scope",
+                    ));
+                }
+                authority
+            }
+            Err(sts2_harness::context_control::DurableControlStoreError::Missing) => {
+                let authority = ControlAuthority::new(boundary, "context.revision.1")
+                    .with_max_control_events(self.configuration.limits.max_control_events)
+                    .map_err(|e| ManagementError::invalid("context_owner_limits", e))?;
+                store.persist(&authority, StoreMode::Enabled).map_err(|e| {
+                    ManagementError::unavailable("context_owner_persist", e.to_string())
+                })?;
+                authority
+            }
+            Err(error) => {
+                return Err(ManagementError::unavailable(
+                    "context_owner_recover",
+                    error.to_string(),
+                ));
+            }
+        };
         current.insert(
             run_id,
             Current {
@@ -384,6 +412,18 @@ impl ContextOwnerPort for Owner {
 fn run_id(request: &RunRequest, digest: &str) -> Result<String, ManagementError> {
     let bytes = serde_json::to_vec(&serde_json::json!({"request_id":request.request_id,"instance_id":request.instance_id,"definition_digest":digest})).map_err(|e| ManagementError::invalid("context_owner_run_id", e.to_string()))?;
     Ok(format!("run.live.{}", &sha256_hex(bytes)[..32]))
+}
+
+fn scoped_store_path(base: &std::path::Path, run_id: &str) -> std::path::PathBuf {
+    let extension = base
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("sqlite3");
+    let stem = base
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("context");
+    base.with_file_name(format!("{stem}.{run_id}.{extension}"))
 }
 fn key(reference: &str) -> Result<[u8; 32], String> {
     let value = std::env::var(reference)

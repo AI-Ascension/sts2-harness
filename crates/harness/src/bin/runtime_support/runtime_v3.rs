@@ -69,6 +69,16 @@ mod lifecycle_tests;
 
 include!("runtime_v3_run_combat.rs");
 
+/// Returns the byte-derived runtime configuration identity used by durable
+/// execution records. The served workflow adapter uses the same identity when
+/// it creates its immutable context-authority provenance.
+pub(super) fn authority_configuration_digest(
+    config: &RuntimeConfig,
+    settings: &RuntimeV3Settings,
+) -> Result<String, String> {
+    durable::authority_configuration_digest(config, settings)
+}
+
 pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let runtime_profile = config.runtime_profile.clone();
     let settings = RuntimeV3Settings::from_environment(&config)?;

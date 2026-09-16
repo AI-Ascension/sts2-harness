@@ -27,7 +27,7 @@ mod validation;
 pub use execution::LiveWorkflowExecutionPort;
 pub use production::{
     LiveContextObservationPort, LiveProviderSessionFactory, LiveRuntimeSessionFactory,
-    LiveTargetCatalogPort, ProductionLiveWorkflowSessionFactory,
+    LiveTargetCatalogPort, ProductionLiveWorkflowSessionFactory, RuntimeAuthorityBinding,
 };
 pub use session::{
     EpisodeRuntimeSession, LiveWorkflowFactory, LiveWorkflowOptions, LiveWorkflowSession,

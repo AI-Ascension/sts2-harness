@@ -39,6 +39,39 @@ pub trait LiveRuntimeSessionFactory: Send + Sync {
         definition: &WorkflowDefinition,
         definition_digest: &str,
     ) -> Result<Box<dyn EpisodeRuntimePort + Send>, ManagementError>;
+
+    fn authority_binding(
+        &self,
+        _request: &RunRequest,
+        _actor: &AuthContext,
+        _definition: &WorkflowDefinition,
+        _definition_digest: &str,
+    ) -> Result<RuntimeAuthorityBinding, ManagementError> {
+        Err(ManagementError::unavailable(
+            "runtime_authority_binding_unavailable",
+            "runtime authority provenance is unavailable",
+        ))
+    }
+}
+
+/// Immutable provenance captured from the runtime configuration and the
+/// already-admitted provider policy before a served session is exposed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeAuthorityBinding {
+    pub instance_id: String,
+    pub session_id: String,
+    pub lease_id: String,
+    pub lease_epoch: u64,
+    pub run_id: String,
+    pub episode_id: String,
+    pub trajectory_id: String,
+    pub trace_id: String,
+    pub artifact_id: String,
+    pub agent_id: String,
+    pub adapter_revision: String,
+    pub model_revision: String,
+    pub configuration_digest: String,
+    pub output_schema_digest: String,
 }
 
 /// Opens the provider decision source after the gateway fence has been
@@ -62,6 +95,7 @@ pub trait LiveContextObservationPort: Send + Sync {
         actor: &AuthContext,
         request: &RunRequest,
         definition_digest: &str,
+        binding: &RuntimeAuthorityBinding,
         observation: &EpisodeObservation,
     ) -> Result<(), ManagementError>;
 
@@ -135,6 +169,9 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
         definition: &WorkflowDefinition,
         definition_digest: &str,
     ) -> Result<Box<dyn LiveWorkflowSession>, ManagementError> {
+        let authority_binding =
+            self.runtime
+                .authority_binding(request, actor, definition, definition_digest)?;
         let runtime = self
             .runtime
             .open_runtime(request, actor, definition, definition_digest)?;
@@ -150,6 +187,7 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
             provider_policy: Arc::clone(&self.provider_policy),
             provider_capabilities: self.provider_capabilities.clone(),
             context_observations: self.context_observations.clone(),
+            authority_binding,
         }))
     }
 }
@@ -166,6 +204,7 @@ struct ProductionLiveWorkflowSession {
     provider_policy: Arc<dyn LiveProviderPolicyPort>,
     provider_capabilities: NativeCapabilities,
     context_observations: Option<Arc<dyn LiveContextObservationPort>>,
+    authority_binding: RuntimeAuthorityBinding,
 }
 
 impl LiveWorkflowSession for ProductionLiveWorkflowSession {
@@ -363,6 +402,7 @@ impl ProductionLiveWorkflowSession {
                 &self.actor,
                 &self.request,
                 &self.definition_digest,
+                &self.authority_binding,
                 observation,
             )?;
         }
