@@ -2,6 +2,9 @@
 
 use serde::Deserialize;
 use std::path::PathBuf;
+use sts2_harness::{
+    EXO_LIFECYCLE_WIRE_V2, ExoIdentity, NativeCapabilities, ProviderSessionPolicy,
+};
 
 const CONFIG_ENV: &str = "STS2_EXO_LIFECYCLE_CONFIG";
 const SCHEMA: &str = "sts2.exo-lifecycle-runtime-v1";
@@ -60,6 +63,57 @@ impl RuntimeLifecycleConfig {
             || !environment_name(&self.policy_key_reference)
         {
             return Err(format!("{CONFIG_ENV} has an invalid lifecycle field"));
+        }
+        Ok(())
+    }
+
+    /// Opens no provider route. This derives the sole native-session capability descriptor from
+    /// the inspected executor/configuration identity and the v2 wire the local effect parses.
+    /// A saved policy is separately checked against this profile before an owner exists.
+    pub(super) fn capabilities(
+        &self,
+        inspected: &ExoIdentity,
+    ) -> Result<NativeCapabilities, String> {
+        let executor = inspected
+            .package_digest
+            .clone()
+            .ok_or_else(|| String::from("lifecycle executor was not inspected"))?;
+        let configuration = inspected
+            .config_digest
+            .clone()
+            .ok_or_else(|| String::from("lifecycle configuration was not inspected"))?;
+        let profile = sts2_harness::sha256_hex(
+            serde_json::to_vec(&serde_json::json!({
+                "adapter": "sts2-exo-lifecycle-v2",
+                "configuration_sha256": configuration,
+                "executor_sha256": executor,
+                "wire": EXO_LIFECYCLE_WIRE_V2,
+            }))
+            .map_err(|_| String::from("cannot encode lifecycle capability profile"))?,
+        );
+        NativeCapabilities::reviewed_exo_lifecycle(
+            "sts2-exo-lifecycle-v2",
+            profile,
+            executor,
+            sts2_harness::sha256_hex(EXO_LIFECYCLE_WIRE_V2),
+        )
+        .map_err(|_| String::from("lifecycle capability profile is invalid"))
+    }
+
+    pub(super) fn validate_policy(
+        &self,
+        policy: &ProviderSessionPolicy,
+        capabilities: &NativeCapabilities,
+    ) -> Result<(), String> {
+        if policy.scope.project_id != self.project_id
+            || policy.scope.agent_id != self.agent_id
+            || policy
+                .admit_for_profile(capabilities)
+                .is_err()
+        {
+            return Err(String::from(
+                "adopted provider-session policy is incompatible with lifecycle profile",
+            ));
         }
         Ok(())
     }

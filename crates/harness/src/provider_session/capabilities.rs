@@ -231,6 +231,47 @@ impl NativeCapabilities {
         capabilities
     }
 
+    /// Builds the narrow capability descriptor for the harness-owned Exo lifecycle v2 adapter.
+    ///
+    /// This is deliberately a source-derived profile rather than a claim about an upstream
+    /// Codex peer: the adapter launches one owned process per turn and maps only its verified
+    /// operations.  It therefore cannot advertise read, fork, compaction, reuse, or raw RPC.
+    /// `executor_sha256`, `wire_schema_sha256`, and `profile_sha256` must come from the inspected
+    /// launch configuration; callers cannot use a policy declaration as their source.
+    pub fn reviewed_exo_lifecycle(
+        profile_id: &str,
+        profile_sha256: String,
+        executor_sha256: String,
+        wire_schema_sha256: String,
+    ) -> Result<Self, SessionError> {
+        if !valid_id(profile_id)
+            || !valid_digest(&profile_sha256)
+            || !valid_digest(&executor_sha256)
+            || !valid_digest(&wire_schema_sha256)
+        {
+            return Err(SessionError::InvalidCapabilities);
+        }
+        let mut capabilities = Self::fixture();
+        capabilities.profile_id = profile_id.to_owned();
+        capabilities.profile_sha256 = profile_sha256.clone();
+        capabilities.native_version = profile_id.to_owned();
+        capabilities.native_binary_sha256 = executor_sha256;
+        capabilities.native_schema_sha256 = wire_schema_sha256;
+        capabilities.evidence = CapabilityEvidence::SchemaOnly;
+        capabilities.enabled_methods = vec![
+            String::from("initialize"),
+            String::from("thread/start"),
+            String::from("turn/start"),
+            String::from("turn/interrupt"),
+        ];
+        capabilities.binding.model_revision = profile_id.to_owned();
+        capabilities.binding.adapter_revision = profile_id.to_owned();
+        capabilities.binding.adapter_revision_sha256 = profile_sha256;
+        capabilities.binding.descriptor_sha256 = capabilities.descriptor_digest();
+        capabilities.validate()?;
+        Ok(capabilities)
+    }
+
     pub fn validate(&self) -> Result<(), SessionError> {
         if self.schema != SESSION_CAPABILITIES_SCHEMA
             || !valid_id(&self.profile_id)
