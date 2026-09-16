@@ -114,6 +114,6 @@ fn actual_committed_workflows_have_the_reviewed_checkout() {
     assert!(checkout_pin_matches(
         include_str!("../../../../.github/workflows/studio-contract.yml"),
         "AI-Ascension/ascension-workflow-studio",
-        "31c5e5f407ab17fb0363374dd1d926c25e6350ea",
+        "b316e0e9c535b8544f41f58baa6faf1095ff7b16",
     ));
 }
