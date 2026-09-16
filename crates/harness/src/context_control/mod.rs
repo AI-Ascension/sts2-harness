@@ -11,6 +11,7 @@ mod state;
 mod store;
 mod store_ops;
 mod store_ownership;
+mod store_receipts;
 mod store_schema;
 mod store_types;
 mod types;
@@ -24,8 +25,8 @@ pub use state::{
 };
 pub use store::ContextControlStore;
 pub use store_types::{
-    CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION, DurableControlStoreError, DurableStoreFailpoint,
-    LegacyOpenError, StoreMode, StoreSnapshot,
+    CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION, DurableContextOwnerControlReceipt,
+    DurableControlStoreError, DurableStoreFailpoint, LegacyOpenError, StoreMode, StoreSnapshot,
 };
 pub use types::{
     ContextBoundary, ContextDraft, ContextItem, ContextItemRef, ContextNote, MAX_CONTEXT_BYTES,

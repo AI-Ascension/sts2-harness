@@ -155,4 +155,14 @@ CREATE TABLE IF NOT EXISTS context_control_phase1_snapshots (
     digest TEXT NOT NULL,
     PRIMARY KEY (run_id, snapshot_id)
 );
+CREATE TABLE IF NOT EXISTS context_control_owner_receipts (
+    run_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    command_digest TEXT NOT NULL,
+    idempotency_digest TEXT NOT NULL,
+    envelope BLOB NOT NULL,
+    envelope_digest TEXT NOT NULL,
+    PRIMARY KEY (run_id, owner_id, command_digest),
+    UNIQUE (run_id, owner_id, idempotency_digest)
+);
 "#;

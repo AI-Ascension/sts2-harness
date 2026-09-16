@@ -4,7 +4,7 @@
 
 use super::super::*;
 use sts2_harness::management::MANAGEMENT_SCHEMA_VERSION;
-use sts2_harness::management::{ContextBindingRequest, ContextControlCommand};
+use sts2_harness::management::{AuthContext, ContextBindingRequest, ContextControlCommand};
 use sts2_harness::{ActionKind, EpisodeLegalAction, EpisodeStage};
 
 fn setup() -> (
@@ -288,3 +288,6 @@ fn served_owner_control_refuses_commit_past_the_admitted_run_limit() {
         .expect_err("selected cap of one event must refuse two-event commit");
     assert_eq!(error.code, "context_control_events_exhausted");
 }
+
+#[path = "association_receipt_tests.rs"]
+mod association_receipt_tests;
