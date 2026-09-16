@@ -49,8 +49,9 @@ must first be separately approved and then adopted with that same approval refer
 
 The `ascension.provider-session.policy-owner-view.v1` GET projection exposes the active policy's
 bounded execution metadata, redacted policy history, proposal state and owner revision. It omits
-policy bytes, credential realm references and approval values. Command responses report metadata
-only and declare zero inference calls and zero game effects.
+policy bytes, credential realm references and approval values. It includes proposal digests so an
+operator can continue approval/adoption after refreshing history or recovering a lost response.
+Command responses report metadata only and declare zero inference calls and zero game effects.
 
 The journal remains bounded and encrypted by `ProviderSessionMetadataStore`. Startup distinguishes
 a genuinely absent journal from I/O, authentication or corruption failures, then verifies every

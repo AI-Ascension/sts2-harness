@@ -440,6 +440,10 @@ fn policy_command_http_lifecycle_is_cas_idempotent_and_survives_restart() {
     assert_eq!(view["value"]["revision"], 7);
     assert_eq!(view["value"]["active"]["sha256"], target_sha256);
     assert_eq!(view["value"]["proposals"][0]["state"], "adopted");
+    assert_eq!(
+        view["value"]["proposals"][0]["proposal_sha256"],
+        proposal_sha256
+    );
     assert_eq!(view["value"]["proposals"][0]["approval_recorded"], true);
     assert!(view["value"]["proposals"][0].get("approval_ref").is_none());
     assert_eq!(

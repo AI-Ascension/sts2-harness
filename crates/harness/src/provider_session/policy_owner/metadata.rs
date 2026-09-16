@@ -23,6 +23,7 @@ pub struct ProviderSessionPolicyMetadata {
 #[serde(deny_unknown_fields)]
 pub struct ProviderSessionPolicyProposalMetadata {
     pub proposal_id: String,
+    pub proposal_sha256: String,
     pub source_sha256: String,
     pub target_sha256: String,
     pub state: SessionPolicyMigrationState,
@@ -73,6 +74,7 @@ impl ProviderSessionPolicyOwner {
             .iter()
             .map(|proposal| ProviderSessionPolicyProposalMetadata {
                 proposal_id: proposal.id.clone(),
+                proposal_sha256: proposal.digest.clone(),
                 source_sha256: proposal.source_sha256.clone(),
                 target_sha256: proposal.target_sha256.clone(),
                 state: proposal.migration.state,

@@ -87,6 +87,7 @@ pub struct ProviderSessionPolicyHistoryMetadata {
 #[serde(deny_unknown_fields)]
 pub struct ProviderSessionPolicyProposalMetadata {
     pub proposal_id: String,
+    pub proposal_sha256: String,
     pub source_sha256: String,
     pub target_sha256: String,
     pub state: String,

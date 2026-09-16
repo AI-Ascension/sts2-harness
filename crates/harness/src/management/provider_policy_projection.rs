@@ -73,6 +73,7 @@ fn history_metadata(
 fn proposal_metadata(proposal: ProviderSessionPolicyProposalMetadata) -> ApiProposalMetadata {
     ApiProposalMetadata {
         proposal_id: proposal.proposal_id,
+        proposal_sha256: proposal.proposal_sha256,
         source_sha256: proposal.source_sha256,
         target_sha256: proposal.target_sha256,
         state: match proposal.state {
