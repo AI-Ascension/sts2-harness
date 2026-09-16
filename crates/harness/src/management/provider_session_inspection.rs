@@ -35,27 +35,12 @@ pub struct ProviderSessionBrokerInspectionPort {
 /// current native capability descriptor before any provider session opens.
 pub struct ProviderSessionPolicyOwnerPort {
     owner: std::sync::Arc<ProviderSessionPolicyOwner>,
-    runtime_run_id: Option<String>,
 }
 
 impl ProviderSessionPolicyOwnerPort {
     #[must_use]
     pub fn new(owner: std::sync::Arc<ProviderSessionPolicyOwner>) -> Self {
-        Self {
-            owner,
-            runtime_run_id: None,
-        }
-    }
-
-    pub fn for_runtime_run(
-        owner: std::sync::Arc<ProviderSessionPolicyOwner>,
-        runtime_run_id: String,
-    ) -> Result<Self, ManagementError> {
-        validate_identifier("runtime_run_id", &runtime_run_id)?;
-        Ok(Self {
-            owner,
-            runtime_run_id: Some(runtime_run_id),
-        })
+        Self { owner }
     }
 }
 
@@ -63,11 +48,12 @@ impl LiveProviderPolicyPort for ProviderSessionPolicyOwnerPort {
     fn load_active_policy(
         &self,
         actor: &AuthContext,
-        request: &super::RunRequest,
+        _request: &super::RunRequest,
+        workflow_run_id: &str,
         _definition: &WorkflowDefinition,
         capabilities: &crate::provider_session::NativeCapabilities,
     ) -> Result<ProviderSessionPolicyBinding, ManagementError> {
-        if !actor.can("workflow:control") || !actor.can_run(&request.request_id) {
+        if !actor.can("workflow:control") || !actor.can_run(workflow_run_id) {
             return Err(ManagementError::forbidden(
                 "provider_session_policy_forbidden",
                 "authenticated actor cannot load the active provider-session policy",
@@ -79,14 +65,10 @@ impl LiveProviderPolicyPort for ProviderSessionPolicyOwnerPort {
                 format!("no admissible adopted provider-session policy is available: {error}"),
             )
         })?;
-        let expected_run_id = self
-            .runtime_run_id
-            .as_deref()
-            .unwrap_or(&request.request_id);
-        if policy.scope.run_id != expected_run_id {
+        if policy.scope.run_id != workflow_run_id {
             return Err(ManagementError::conflict(
                 "provider_session_policy_scope_mismatch",
-                "adopted provider-session policy is not scoped to this workflow submission",
+                "adopted provider-session policy is not scoped to this workflow run",
             ));
         }
         policy.admit_for_profile(capabilities).map_err(|error| {
