@@ -17,12 +17,18 @@ mod node;
 mod node_projection;
 #[path = "node_recovery.rs"]
 mod node_recovery;
+#[path = "production.rs"]
+mod production;
 #[path = "session.rs"]
 mod session;
 #[path = "validation.rs"]
 mod validation;
 
 pub use execution::LiveWorkflowExecutionPort;
+pub use production::{
+    LiveProviderSessionFactory, LiveRuntimeSessionFactory, LiveTargetCatalogPort,
+    ProductionLiveWorkflowSessionFactory,
+};
 pub use session::{
     EpisodeRuntimeSession, LiveWorkflowFactory, LiveWorkflowOptions, LiveWorkflowSession,
     LiveWorkflowSessionFactory,
