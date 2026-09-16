@@ -38,6 +38,22 @@ The unreleased Rust `CommandApplication` gains `context_binding`; source constru
 set `None` or provide exact accepted binding evidence. Default `WorkflowStore` hooks remain
 unsupported, and existing default compositions do not retain this metadata.
 
+## Composed context-owner effective limits
+
+[ADR 0030](decisions/0030-context-owner-effective-limits-composition.md) adds
+`GET /v1/workflow-runs/{run_id}/context-owner-effective-limits`, returning
+`ascension.harness.context-owner-effective-limits-view.v1`: the limits advertised by the catalog
+descriptor that admits the owner's **current** binding for one run, composed through the same
+fail-closed seam (`compose_context_owner_binding`) that live admission uses. This is
+`additive-compatible`: `GET /v1/context-bindings`, `POST /v1/context-bindings/bind` and the ADR 0025
+association projection are unchanged, no bound, schema, digest or default changes, and the admission
+refactor keeps the existing error codes for the checks it moves. A foreign owner, a missing or
+disabled descriptor, a non-available binding, a non-published binding identity, a grant or
+continuity escalation, an oversized descriptor and a stale descriptor/catalog digest are refused
+before any advertised value is reported; an unattached owner stays explicitly unavailable. The
+projection is observation-only and does not enforce `max_control_events` in the control-transition
+path.
+
 ## Selected context-control limit enforcement
 
 [ADR 0028](decisions/0028-selected-context-control-limit-enforcement.md) adds
