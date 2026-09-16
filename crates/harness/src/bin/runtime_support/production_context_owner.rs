@@ -23,7 +23,7 @@ mod binding;
 #[path = "production_context_owner/observation.rs"]
 mod observation;
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Configuration {
     pub schema_version: String,
@@ -51,6 +51,7 @@ struct Current {
     authority: ControlAuthority,
     store: ContextControlStore,
     actor: String,
+    binding_request: Option<ContextBindingRequest>,
     catalog_generation: Option<u64>,
     runtime_lease_id: String,
     runtime_lease_epoch: u64,

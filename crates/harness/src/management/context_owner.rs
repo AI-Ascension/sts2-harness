@@ -314,5 +314,5 @@ pub use composition::{
     compose_context_owner_binding,
 };
 pub use receipt::{ContextControlCommand, ContextControlCommandKind, ContextControlReceipt};
-pub use support::{ContextOwnerPort, UnavailableContextOwnerPort};
+pub use support::{ContextControlReceiptRecovery, ContextOwnerPort, UnavailableContextOwnerPort};
 pub(crate) use support::{catalog_digest, validate_boundary, validate_grants, validate_limits};

@@ -135,6 +135,7 @@ impl LiveContextObservationPort for Owner {
                 authority,
                 store,
                 actor: actor.subject.clone(),
+                binding_request: None,
                 catalog_generation: None,
                 runtime_lease_id: binding.lease_id.clone(),
                 runtime_lease_epoch: binding.lease_epoch,
