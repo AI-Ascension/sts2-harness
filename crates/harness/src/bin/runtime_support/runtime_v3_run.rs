@@ -11,6 +11,7 @@ pub(super) fn run(
         || std::env::var("STS2_RESUME").as_deref() == Ok("true");
     let mut selected_branch =
         select_branch_continuation(selector, resume_requested, &mut config)?;
+    let policy_preflight = game_information_owner::begin_memory_policy_preflight(&config)?;
     let settings = RuntimeV3Settings::from_environment(&config)?;
     let telemetry_context = TelemetryContext::new(TelemetryContextInput {
         run_id: &config.run_id,
@@ -107,7 +108,14 @@ pub(super) fn run(
         return Err(error);
     }
     let mut port =
-        match RuntimeV3Port::new_with_store(config.clone(), telemetry_handle.clone(), durable) {
+        match RuntimeV3Port::new_with_store_and_lookup_owner(
+            config.clone(),
+            telemetry_handle.clone(),
+            durable,
+            policy_preflight
+                .as_ref()
+                .map(|preflight| std::sync::Arc::clone(&preflight.owner)),
+        ) {
             Ok(port) => port,
             Err(error) => {
                 let _ = telemetry_handle.failure(
@@ -165,26 +173,34 @@ pub(super) fn run(
             return result.map(|_| ()).and(store_close);
         }
     }
-    let transport = select_provider_transport(
+    if std::env::var("STS2_COMBAT_DEMO").as_deref() == Ok("true") {
+        let transport = select_provider_transport(
+            &config,
+            &settings,
+            port.durable_handle()
+                .ok_or_else(|| String::from("runtime-v3 durable handle disappeared"))?,
+            port.lifecycle_authority_state(),
+        )?;
+        let provider = ExoProvider::new(transport, settings.exo.clone());
+        let source = ExoDecisionSource::new(ExoSession::new(provider));
+        return run_combat_demo(port, source, settings.runner, telemetry_handle, telemetry);
+    }
+    let mut source = decision_source(
         &config,
         &settings,
         port.durable_handle()
             .ok_or_else(|| String::from("runtime-v3 durable handle disappeared"))?,
         port.lifecycle_authority_state(),
+        policy_preflight.is_some(),
     )?;
-    let provider = ExoProvider::new(transport, settings.exo);
-    let mut source = ExoDecisionSource::new(ExoSession::new(provider));
-    if std::env::var("STS2_COMBAT_DEMO").as_deref() == Ok("true") {
-        return run_combat_demo(port, source, settings.runner, telemetry_handle, telemetry);
-    }
     let durable = port
         .durable_handle()
         .ok_or_else(|| String::from("runtime-v3 durable handle disappeared"))?;
     let mut recorder = if settings.lifecycle.is_some() {
-        recording::DecisionRecorder::new(&mut source, telemetry_handle.clone())
+        recording::DecisionRecorder::new(&mut *source, telemetry_handle.clone())
     } else {
         recording::DecisionRecorder::with_durable(
-            &mut source,
+            &mut *source,
             telemetry_handle.clone(),
             durable.clone(),
         )

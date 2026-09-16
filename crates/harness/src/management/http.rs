@@ -16,6 +16,8 @@ mod parse;
 mod response;
 #[path = "http_routes.rs"]
 mod routes;
+#[path = "http_routes_memory_owner.rs"]
+mod routes_memory_owner;
 #[path = "http_routes_policy.rs"]
 mod routes_policy;
 #[path = "http_routes_run.rs"]

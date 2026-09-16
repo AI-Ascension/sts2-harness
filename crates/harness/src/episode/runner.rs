@@ -21,6 +21,7 @@ use super::shutdown::{EpisodeShutdown, ShutdownPort};
 use super::stability_barrier::{BarrierPort, StabilityBarrier};
 use super::transition::TransitionReceipt;
 use crate::error::PortError;
+use crate::game_information::LookupAgentPort;
 use crate::identity::ModelExecutionId;
 use serde_json::Value;
 
@@ -47,6 +48,40 @@ pub trait EpisodeRuntimePort: BarrierPort + RecoveryPort + ShutdownPort {
             "runtime did not expose its post-launch gateway lease binding",
             false,
         ))
+    }
+
+    /// Runs the additive selected-policy tool loop against the already-open
+    /// owner and existing MCP session. Adapters without that opt-in path fail closed.
+    fn run_game_information_lookup(
+        &mut self,
+        _legal_actions: &EpisodeLegalActionSet,
+        _agent: &mut dyn LookupAgentPort,
+    ) -> Result<String, crate::episode::PolicyError> {
+        Err(crate::episode::PolicyError::ProviderUnavailable)
+    }
+
+    /// Resolves the enabled owner-backed game-information binding after lease
+    /// admission and before the runner reads an episode observation.
+    ///
+    /// Adapters without the additive LBR v1 route remain compatible by
+    /// inheriting the no-op implementation. An enabled adapter must fail
+    /// closed rather than substituting locally derived game information.
+    fn prepare_game_information_binding(&mut self) -> Result<(), PortError> {
+        Ok(())
+    }
+
+    /// Refreshes an enabled owner-issued game-information observation before a
+    /// provider can make a decision from the matching observation generation.
+    ///
+    /// Adapters without the additive lookup-binding route remain compatible.
+    /// Enabled adapters must reject stale, mixed, or unavailable observations
+    /// before invoking a decision source.
+    fn refresh_game_information_binding(
+        &mut self,
+        _state_id: &str,
+        _generation: u64,
+    ) -> Result<(), PortError> {
+        Ok(())
     }
 
     fn observe(&mut self) -> Result<EpisodeObservation, PortError>;
@@ -222,7 +257,13 @@ impl EpisodeRunner {
         source: &mut S,
     ) -> Result<EpisodeRunReport, EpisodeRunnerError> {
         port.launch().map_err(EpisodeRunnerError::Launch)?;
-        let outcome = self.run_inner(port, source);
+        let outcome = match port.prepare_game_information_binding() {
+            Ok(()) => self.run_inner(port, source),
+            Err(error) => Err(runner_impl::RunFailure {
+                error: EpisodeRunnerError::GameInformationBinding(error),
+                pending_operation_id: None,
+            }),
+        };
         let cleanup = EpisodeShutdown.close_report(port);
         match (outcome, cleanup.first_failure()) {
             (Ok(report), None) => Ok(report),
@@ -240,3 +281,7 @@ impl EpisodeRunner {
 fn valid_text(value: &str, maximum: usize) -> bool {
     !value.is_empty() && value.len() <= maximum && !value.chars().any(char::is_control)
 }
+
+#[cfg(test)]
+#[path = "runner_tests.rs"]
+mod tests;

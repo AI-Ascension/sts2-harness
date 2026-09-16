@@ -2,11 +2,13 @@
 
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use sts2_harness::{
-    ActionIdentity, BarrierError, BarrierPort, EpisodeLegalAction, EpisodeLegalActionSet,
-    EpisodeObservation, EpisodeRunner, EpisodeRuntimePort, ExoDecisionSource, ExoProvider,
-    ExoSession, PortError, ReceiptQueryIdentity, ReceiptQueryResult, RecoveryError, RecoveryPort,
-    ResumeState, RuntimeLeaseBinding, ShutdownError, ShutdownPort, TransitionReceipt, WaitSample,
+    ActionIdentity, BarrierError, BarrierPort, DecisionSource, EpisodeLegalAction,
+    EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, EpisodeRuntimePort,
+    ExoDecisionSource, ExoProvider, ExoSession, PortError, ReceiptQueryIdentity,
+    ReceiptQueryResult, RecoveryError, RecoveryPort, ResumeState, RuntimeLeaseBinding,
+    ShutdownError, ShutdownPort, TransitionReceipt, WaitSample,
 };
 
 use super::config::RuntimeConfig;
@@ -47,6 +49,10 @@ mod episode;
 mod episode_replay;
 #[path = "runtime_v4_expert_port.rs"]
 mod expert;
+#[path = "runtime_v3_game_information_decision.rs"]
+mod game_information_decision;
+#[path = "runtime_v3_game_information_owner.rs"]
+mod game_information_owner;
 #[path = "runtime_v3_ledger.rs"]
 mod ledger;
 #[path = "runtime_v3_receipt_query.rs"]
@@ -77,6 +83,7 @@ mod allocation_launch_tests;
 mod lifecycle_tests;
 
 include!("runtime_v3_run_combat.rs");
+include!("runtime_v3_decision_source.rs");
 
 #[path = "runtime_v3/authority.rs"]
 mod authority;

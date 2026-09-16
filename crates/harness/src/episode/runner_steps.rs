@@ -193,6 +193,8 @@ impl EpisodeRunner {
         legal_actions
             .assert_matches(observation.state_id(), observation.generation())
             .map_err(EpisodeRunnerError::ActionSet)?;
+        port.refresh_game_information_binding(observation.state_id(), observation.generation())
+            .map_err(EpisodeRunnerError::LegalActions)?;
         let execution_id = ModelExecutionId::new(u64::from(step + 1))
             .ok_or(EpisodeRunnerError::InvalidIdentity)?;
         let mut input = DecisionInput::new(
@@ -234,7 +236,8 @@ impl EpisodeRunner {
             })?;
             input = input.with_map_context(context);
         }
-        let choice = PolicyRouter::choose(source, &input).map_err(EpisodeRunnerError::Policy)?;
+        let choice = PolicyRouter::choose_with_game_information(source, &input, port)
+            .map_err(EpisodeRunnerError::Policy)?;
         Ok((legal_actions, choice))
     }
 }

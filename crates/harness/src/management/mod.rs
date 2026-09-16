@@ -97,11 +97,12 @@ pub use provider_session_inspection::{
 pub use service::{
     CapabilityPort, CommandApplication, CommandContext, ContextInspectionPort,
     ContextInspectionResult, DefinitionPort, DiffResult, InspectionResult, LiveProviderPolicyPort,
-    ManagementError, ManagementService, ProviderSessionInspectionPort,
-    ProviderSessionInspectionResult, ProviderSessionPolicyBinding, ReplayResult, RunAdmission,
-    RunReservation, UnavailableAuthoringStore, UnavailableCapabilityPort,
-    UnavailableContextInspectionPort, UnavailableDefinitionPort, UnavailableExecutionPort,
-    UnavailableLiveProviderPolicyPort, UnavailableProviderSessionInspectionPort,
+    ManagementError, ManagementService, MemoryPolicyOwnerManagementPort,
+    ProviderSessionInspectionPort, ProviderSessionInspectionResult, ProviderSessionPolicyBinding,
+    ReplayResult, RunAdmission, RunReservation, UnavailableAuthoringStore,
+    UnavailableCapabilityPort, UnavailableContextInspectionPort, UnavailableDefinitionPort,
+    UnavailableExecutionPort, UnavailableLiveProviderPolicyPort,
+    UnavailableMemoryPolicyOwnerManagementPort, UnavailableProviderSessionInspectionPort,
     UnavailableReplayPort, ValidationResult, WorkflowExecutionPort, WorkflowReplayPort,
 };
 pub use store::{

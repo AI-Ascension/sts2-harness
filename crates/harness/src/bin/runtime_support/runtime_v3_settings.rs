@@ -19,6 +19,11 @@ const DEFAULT_MAP_MAX_REQUEST_BYTES: usize = EXO_MAX_MAP_REQUEST_BYTES;
 const DEFAULT_MAX_RESPONSE_BYTES: usize = 8 * 1024;
 const DEFAULT_TIMEOUT_MILLIS: u32 = 120_000;
 
+pub(super) use lookup::LookupAgentSettings;
+
+#[path = "runtime_v3_settings_lookup.rs"]
+mod lookup;
+
 pub(super) struct RuntimeV3Settings {
     pub(super) runner: EpisodeRunnerConfig,
     pub(super) exo: ExoConfig,
@@ -26,10 +31,15 @@ pub(super) struct RuntimeV3Settings {
     pub(super) admission: ExoRuntimeAdmission,
     #[allow(dead_code)]
     pub(super) lifecycle: Option<(RuntimeLifecycleConfig, RuntimeLifecycleSecrets)>,
+    pub(super) lookup_agent: Option<LookupAgentSettings>,
 }
 
 impl RuntimeV3Settings {
     pub(super) fn from_environment(config: &RuntimeConfig) -> Result<Self, String> {
+        let runner = runner_from_environment(config.map_context_enabled)?;
+        if config.lookup_binding_enabled()? {
+            return lookup::settings_from_environment(runner);
+        }
         let exo = exo_from_environment(config.map_context_enabled)?;
         let process = ExoProcessConfig::new(
             required("STS2_EXO_BRIDGE_BINARY")?,
@@ -48,13 +58,13 @@ impl RuntimeV3Settings {
             &config.instance_id,
             lifecycle.is_some(),
         )?;
-        let runner = runner_from_environment(config.map_context_enabled)?;
         Ok(Self {
             runner,
             exo,
             process,
             admission,
             lifecycle,
+            lookup_agent: None,
         })
     }
 }

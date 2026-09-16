@@ -277,6 +277,7 @@ impl McpProcess {
     }
 }
 
+include!("mcp_process_lookup_startup.rs");
 include!("mcp_process_lifecycle.rs");
 
 // No detached workers: cancellation drops asynchronous pipe futures, including when a

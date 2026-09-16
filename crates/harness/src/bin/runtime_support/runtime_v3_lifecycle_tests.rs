@@ -197,6 +197,7 @@ impl Fixture {
             process,
             admission,
             lifecycle: Some((lifecycle, secrets)),
+            lookup_agent: None,
         };
         let config_digest = sha256_hex("config");
         let fingerprint =

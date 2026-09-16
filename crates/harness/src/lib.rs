@@ -2,8 +2,7 @@
 
 use sha2::{Digest as _, Sha256};
 
-/// Encode bytes as lowercase hexadecimal without relying on `LowerHex` support
-/// from the digest type.
+/// Encode bytes as lowercase hexadecimal without formatting the digest type.
 #[must_use]
 pub fn hex_bytes(bytes: impl AsRef<[u8]>) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
@@ -67,6 +66,7 @@ pub mod exo_lookup_process;
 pub mod exo_lookup_wire;
 mod exo_process;
 pub mod game_information;
+pub mod game_information_binding;
 mod game_information_validation;
 mod identity;
 pub mod management;

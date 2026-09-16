@@ -18,7 +18,8 @@ pub use mcp::{LookupMcpContext, LookupMcpPort, call_capabilities_mcp, call_looku
 #[path = "game_information_agent.rs"]
 mod agent;
 pub use agent::{
-    LookupAgentInput, LookupAgentPort, LookupFeedback, LookupTurn, run_lookup_tool_loop,
+    LookupAgentInput, LookupAgentPort, LookupFeedback, LookupTurn, run_lookup_replay_tool_loop,
+    run_lookup_tool_loop,
 };
 #[path = "game_information_archive.rs"]
 mod archive;
@@ -129,6 +130,7 @@ pub struct LookupSession {
     capabilities: Option<Value>,
     records: Vec<LookupRecord>,
     pages: BTreeMap<String, (Value, Value, usize)>,
+    replay_cursor: usize,
     now: String,
     expires_at: String,
 }
@@ -157,6 +159,7 @@ impl LookupSession {
             capabilities: None,
             records: Vec::new(),
             pages: BTreeMap::new(),
+            replay_cursor: 0,
             now: now.to_owned(),
             expires_at: expires_at.to_owned(),
         })

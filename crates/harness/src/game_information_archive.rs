@@ -2,7 +2,7 @@
 //! Bounded replay manifest paired with the existing encrypted memory store.
 //! The caller owns artifact publication and supplies its independently pinned manifest digest.
 use super::*;
-use crate::context_memory::DurableMemoryStore;
+use crate::context_memory::{DurableMemoryStore, MemoryEntry, MemoryRef};
 use std::collections::BTreeSet;
 
 #[cfg(test)]
@@ -55,6 +55,22 @@ impl LookupSession {
             if record.error.is_none() {
                 self.replay(record, &record.request, corpus)?;
             }
+        }
+        let mut dependencies = BTreeMap::new();
+        for reference in &self.policy.approved_summary_catalog {
+            collect_dependency(reference, corpus, &mut dependencies)?;
+        }
+        let mut dependencies = dependencies.into_values().collect::<Vec<_>>();
+        dependencies.sort_by_key(|entry| {
+            (
+                entry.admitted_seq,
+                entry.observed_seq,
+                entry.lineage_depth,
+                entry.entry_id.clone(),
+            )
+        });
+        for entry in dependencies {
+            store.publish(entry).map_err(|_| LookupError::Retention)?;
         }
         for record in &manifest.records {
             if let Some(reference) = &record.source {
@@ -116,6 +132,35 @@ impl LookupSession {
         session.records = manifest.records;
         Ok((session, corpus))
     }
+}
+
+fn collect_dependency(
+    reference: &MemoryRef,
+    corpus: &MemoryCorpus,
+    entries: &mut BTreeMap<MemoryRef, MemoryEntry>,
+) -> Result<(), LookupError> {
+    if entries.contains_key(reference) {
+        return Ok(());
+    }
+    let entry = corpus
+        .entry(reference)
+        .cloned()
+        .ok_or(LookupError::MissingRetention)?;
+    entry
+        .validate_contract()
+        .map_err(|_| LookupError::MissingRetention)?;
+    if entry.scope != *corpus.scope() {
+        return Err(LookupError::Scope);
+    }
+    for parent in &entry.parents {
+        collect_dependency(
+            &MemoryRef::new(&parent.entry_id, parent.version, &parent.sha256),
+            corpus,
+            entries,
+        )?;
+    }
+    entries.insert(reference.clone(), entry);
+    Ok(())
 }
 
 fn validate_manifest(manifest: &Manifest, binding: &LookupBinding) -> Result<(), LookupError> {
