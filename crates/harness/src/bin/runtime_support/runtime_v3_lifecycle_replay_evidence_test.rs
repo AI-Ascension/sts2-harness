@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde_json::{Value, json};
 use sts2_harness::{
     Decision, DecisionInput, DecisionSource, EpisodeRunner, EpisodeRunnerConfig,
-    EpisodeRunnerError, PolicyError, RecoveryController, StabilityBarrier,
+    EpisodeRunnerError, EpisodeStage, PolicyError, RecoveryController, StabilityBarrier,
 };
 
 use super::*;
@@ -81,8 +81,12 @@ fn state_value(
     value["observation"]["state"] = match stage {
         "setup" => json!({"state":"setup","characters":["ironclad"]}),
         "map" => json!({"state":"map","node_id":"node-start","options":["node-next"]}),
+        "defeat" => json!({"state":"defeat","reason":null}),
         _ => return Err(format!("unsupported fixture stage {stage}").into()),
     };
+    if stage == "defeat" {
+        value["observation"]["player"]["hp"] = json!(0);
+    }
     value["legal_actions"] = legal_actions;
     Ok(value)
 }
@@ -346,5 +350,159 @@ fn fake_mcp_map_error_flushes_a_replayable_settled_prefix() -> Result<(), Box<dy
         row["event"] != "episode_complete"
             && row.to_string().find("synthetic replay evidence").is_none()
     }));
+    Ok(())
+}
+
+fn fake_prefix_continuation_mcp() -> Result<String, Box<dyn std::error::Error>> {
+    let setup = state_value("state_response", "1", "setup-1", 1, "setup", start_action())?;
+    let mut setup_catalog = state_value(
+        "legal_actions_response",
+        "2",
+        "setup-1",
+        1,
+        "setup",
+        start_action(),
+    )?;
+    setup_catalog["observation"] = Value::Null;
+    let mut start_accepted = state_value(
+        "dispatch_action_response",
+        "3",
+        "setup-1",
+        1,
+        "setup",
+        start_action(),
+    )?;
+    start_accepted["status"] = json!("accepted");
+    start_accepted["operation_id"] = json!("episode-action-1-1");
+    let mut start_wait = state_value("wait_response", "4", "map-1", 2, "map", map_action())?;
+    start_wait["status"] = json!("settled");
+    start_wait["operation_id"] = json!("episode-action-1-1");
+    start_wait["transition"] = json!({
+        "from_generation":1, "to_generation":2,
+        "state_id":"map-1", "effect_kind":"start_run_settled"
+    });
+    start_wait["wait_outcome"] = json!("successor");
+
+    let map = state_value("state_response", "5", "map-1", 2, "map", map_action())?;
+    let mut map_catalog = state_value(
+        "legal_actions_response",
+        "6",
+        "map-1",
+        2,
+        "map",
+        map_action(),
+    )?;
+    map_catalog["observation"] = Value::Null;
+    let mut map_accepted = state_value(
+        "dispatch_action_response",
+        "7",
+        "map-1",
+        2,
+        "map",
+        map_action(),
+    )?;
+    map_accepted["status"] = json!("accepted");
+    map_accepted["operation_id"] = json!("episode-action-1-1");
+    let mut terminal = state_value("wait_response", "8", "defeat-1", 3, "defeat", json!([]))?;
+    terminal["status"] = json!("settled");
+    terminal["operation_id"] = json!("episode-action-1-1");
+    terminal["transition"] = json!({
+        "from_generation":2, "to_generation":3,
+        "state_id":"defeat-1", "effect_kind":"map_choice_settled"
+    });
+    terminal["wait_outcome"] = json!("successor");
+    let script = format!(
+        "{}{}{}{}{}{}{}{}{}",
+        gameplay_init(),
+        reply_artifact(1, setup),
+        reply_artifact(2, setup_catalog),
+        reply_artifact_with_request_operation(3, start_accepted),
+        reply_artifact_with_request_operation(4, start_wait),
+        reply_artifact(5, map),
+        reply_artifact(6, map_catalog),
+        reply_artifact_with_request_operation(7, map_accepted),
+        reply_artifact_with_request_operation(8, terminal)
+    );
+    Ok(script)
+}
+
+fn settled_prefix_bytes() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut setup = state_value(
+        "state_response",
+        "source",
+        "setup-source",
+        1,
+        "setup",
+        start_action(),
+    )?;
+    setup["observation"]["legal_actions"] = start_action();
+    let mut map = state_value(
+        "state_response",
+        "source",
+        "map-source",
+        2,
+        "map",
+        map_action(),
+    )?;
+    map["observation"]["legal_actions"] = map_action();
+    let rows = [
+        json!({"event":"model_decision","action_id":"start-run","observation":setup["observation"]}),
+        json!({"event":"action_receipt","action_id":"start-run","operation_id":"source-op",
+            "status":"Settled","effect":"start_run_settled","observation":map["observation"]}),
+        json!({"event":"operation_wait_completed","operation_id":"source-op",
+            "effect":"start_run_settled","observation":map["observation"]}),
+        json!({"event":"episode_failed","error_code":"map_snapshot_invalid"}),
+    ];
+    Ok(rows
+        .iter()
+        .map(Value::to_string)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .into_bytes())
+}
+
+#[test]
+fn verified_prefix_reuses_one_real_runtime_port_for_live_continuation()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new()?;
+    let script = fixture.script(&fake_prefix_continuation_mcp()?)?;
+    let listener = TcpListener::bind("127.0.0.1:0")?;
+    listener.set_nonblocking(true)?;
+    let mut runtime_config = super::config(listener.local_addr()?.to_string());
+    runtime_config.mcp_binary = script;
+    let mut port = RuntimeV3Port::new_with_telemetry(runtime_config, TelemetryHandle::disabled())?;
+    let runner_config = EpisodeRunnerConfig::new(
+        8,
+        StabilityBarrier::new(1, 1)?,
+        RecoveryController::new(1)?,
+        "synthetic prefix continuation",
+        Vec::new(),
+    )?;
+    let gateway = std::thread::spawn(move || fake_gateway(listener));
+    let mut live_source = FirstActionSource;
+    let mut boundary_published = false;
+    let mut publish_boundary = || {
+        boundary_published = true;
+        Ok(())
+    };
+
+    let result = episode_replay::run_prefix_and_continue(
+        &mut port,
+        &runner_config,
+        &settled_prefix_bytes()?,
+        &mut live_source,
+        &mut publish_boundary,
+    );
+    let result = result?;
+
+    gateway.join().map_err(|_| "fake gateway panicked")??;
+    assert!(boundary_published);
+    assert!(matches!(
+        result,
+        episode_replay::ReplayOutcome::Terminal {
+            stage: EpisodeStage::Defeat,
+            ..
+        }
+    ));
     Ok(())
 }

@@ -29,6 +29,8 @@ mod decision_replay;
 #[path = "runtime_v3_durable.rs"]
 mod durable;
 
+#[path = "runtime_v3_branch_continuation.rs"]
+mod branch_continuation;
 #[path = "runtime_v3_combat_demo.rs"]
 pub(crate) mod combat_demo;
 #[path = "runtime_v3_episode.rs"]
@@ -65,13 +67,46 @@ mod lifecycle_tests;
 
 include!("runtime_v3_run_combat.rs");
 
-pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
-    let runtime_profile = config.runtime_profile.clone();
-    let settings = RuntimeV3Settings::from_environment(&config)?;
+pub(super) fn run(
+    mut config: RuntimeConfig,
+    selector: Option<sts2_harness::BranchContinuationSelector>,
+) -> Result<(), String> {
     let resume_requested = std::env::args()
         .skip(1)
         .any(|argument| argument == "--resume")
         || std::env::var("STS2_RESUME").as_deref() == Ok("true");
+    let mut selected_branch = if let Some(selector) = selector {
+        if resume_requested {
+            return Err(String::from(
+                "a selected branch continuation cannot also request execution-store resume",
+            ));
+        }
+        if std::env::var("STS2_REPLAY_TRAJECTORY").is_ok_and(|value| !value.is_empty()) {
+            return Err(String::from(
+                "a selected branch uses its retained replay prefix, not STS2_REPLAY_TRAJECTORY",
+            ));
+        }
+        let artifact_path = super::branch_continuation_runtime::artifact_store_path()?;
+        let selected = super::branch_continuation_runtime::SelectedBranchContinuation::load(
+            &selector,
+            &super::continuation_branch_store_path()?,
+            &artifact_path,
+        )?;
+        if matches!(
+            selected.strategy(),
+            sts2_harness::BranchContinuationStrategyPlan::ExactRestore { .. }
+        ) {
+            return Err(String::from(
+                "exact branch continuation is unavailable: no fixed game-mod/MCP/gateway restore route is installed",
+            ));
+        }
+        super::branch_continuation_runtime::bind_branch_identities(&selected, &mut config)?;
+        Some(selected)
+    } else {
+        None
+    };
+    let runtime_profile = config.runtime_profile.clone();
+    let settings = RuntimeV3Settings::from_environment(&config)?;
     let telemetry_context = TelemetryContext::new(TelemetryContextInput {
         run_id: &config.run_id,
         episode_id: &config.episode_id,
@@ -136,6 +171,9 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
             return Err(error);
         }
     };
+    if let Some(selected) = selected_branch.take() {
+        return branch_continuation::run(selected, port, settings, telemetry_handle, telemetry);
+    }
     if std::env::var("STS2_COMBAT_DEMO").as_deref() != Ok("true") {
         let path = std::env::var("STS2_REPLAY_TRAJECTORY").unwrap_or_default();
         if !path.is_empty() {

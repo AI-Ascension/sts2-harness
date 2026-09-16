@@ -26,6 +26,38 @@ pub(crate) struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
+    /// Loads the explicitly selected durable branch, if both selector variables are present.
+    ///
+    /// Experiment and branch identities are separate namespaces. A partial selector is rejected
+    /// so a runtime can never guess which experiment owns a branch.
+    pub(crate) fn branch_continuation_selector()
+    -> Result<Option<sts2_harness::BranchContinuationSelector>, String> {
+        let experiment_id = optional_identity("STS2_EXPERIMENT_ID")?;
+        let branch_id = optional_identity("STS2_BRANCH_ID")?;
+        Self::selector_from_values(experiment_id, branch_id)
+    }
+
+    fn selector_from_values(
+        experiment_id: Option<String>,
+        branch_id: Option<String>,
+    ) -> Result<Option<sts2_harness::BranchContinuationSelector>, String> {
+        match (experiment_id, branch_id) {
+            (None, None) => Ok(None),
+            (Some(experiment_id), Some(branch_id)) => {
+                sts2_harness::BranchContinuationSelector::new(experiment_id, branch_id)
+                    .map(Some)
+                    .map_err(|_| {
+                        String::from(
+                            "STS2_EXPERIMENT_ID or STS2_BRANCH_ID is empty, unsafe, or oversized",
+                        )
+                    })
+            }
+            _ => Err(String::from(
+                "STS2_EXPERIMENT_ID and STS2_BRANCH_ID must be set together",
+            )),
+        }
+    }
+
     pub(crate) fn recovery_value(&self, name: &str) -> Option<&str> {
         self.recovery_environment
             .iter()
@@ -98,10 +130,11 @@ impl RuntimeConfig {
             .collect(),
         };
         config.validate()?;
+        Self::branch_continuation_selector()?;
         Ok(config)
     }
 
-    fn validate(&self) -> Result<(), String> {
+    pub(crate) fn validate(&self) -> Result<(), String> {
         let config = self;
         for (name, value) in [
             ("STS2_INSTANCE_ID", &config.instance_id),
@@ -155,6 +188,15 @@ impl RuntimeConfig {
 
 fn required(name: &str) -> Result<String, String> {
     std::env::var(name).map_err(|_| format!("{name} is required"))
+}
+
+fn optional_identity(name: &str) -> Result<Option<String>, String> {
+    match std::env::var(name) {
+        Ok(value) if !value.is_empty() => Ok(Some(value)),
+        Ok(_) => Err(format!("{name} must not be empty")),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!("{name} is not valid UTF-8")),
+    }
 }
 
 fn bounded_seconds(name: &str, default: &str) -> Result<u64, String> {
@@ -215,6 +257,33 @@ mod tests {
                 "{value:?} must be rejected"
             );
         }
+    }
+
+    #[test]
+    fn branch_selector_requires_both_explicit_identity_components() {
+        assert!(
+            RuntimeConfig::selector_from_values(None, None)
+                .expect("empty selector")
+                .is_none()
+        );
+        assert!(
+            RuntimeConfig::selector_from_values(Some("experiment:e".into()), None)
+                .expect_err("partial selector")
+                .contains("must be set together")
+        );
+        assert!(
+            RuntimeConfig::selector_from_values(None, Some("branch:b".into()))
+                .expect_err("partial selector")
+                .contains("must be set together")
+        );
+        let selector = RuntimeConfig::selector_from_values(
+            Some("experiment:e".into()),
+            Some("branch:b".into()),
+        )
+        .expect("explicit selector")
+        .expect("selector exists");
+        assert_eq!(selector.experiment_id(), "experiment:e");
+        assert_eq!(selector.branch_id(), "branch:b");
     }
 
     #[test]

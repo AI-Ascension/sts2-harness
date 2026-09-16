@@ -2,6 +2,7 @@
 
 use sts2_harness::DurableBranchStatus;
 
+pub(super) mod branch_continuation_runtime;
 mod config;
 mod continuation_branches;
 mod http;
@@ -20,7 +21,21 @@ mod v1_projection;
 pub(crate) use config::RuntimeConfig;
 
 pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
-    reconcile_continuation_startup(&config)?;
+    let selector = RuntimeConfig::branch_continuation_selector()?;
+    reconcile_continuation_startup(&config, selector.as_ref())?;
+    if selector.is_some()
+        && !matches!(
+            config.runtime_profile.as_str(),
+            "runtime-v3-gameplay"
+                | "negotiated-composition-v1"
+                | "runtime-v4-expert"
+                | "runtime-v4-expert-rest-action"
+        )
+    {
+        return Err(String::from(
+            "durable branch continuation requires a gameplay runtime profile",
+        ));
+    }
     if matches!(
         config.runtime_profile.as_str(),
         "runtime-v3-gameplay"
@@ -28,7 +43,7 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
             | "runtime-v4-expert"
             | "runtime-v4-expert-rest-action"
     ) {
-        runtime_v3::run(config)
+        runtime_v3::run(config, selector)
     } else {
         mcp::run(config)
     }
@@ -39,8 +54,14 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
 /// The runtime binary owns its experiment scope: it constructs the durable branch store, resolves
 /// every branch that never reached a terminal outcome, and refuses to continue if reconciliation
 /// leaves a half-created branch behind.
-fn reconcile_continuation_startup(config: &RuntimeConfig) -> Result<(), String> {
-    let experiment_id = format!("experiment:{}", config.episode_id);
+fn reconcile_continuation_startup(
+    config: &RuntimeConfig,
+    selector: Option<&sts2_harness::BranchContinuationSelector>,
+) -> Result<(), String> {
+    let default_experiment_id = format!("experiment:{}", config.episode_id);
+    let experiment_id = selector
+        .map(sts2_harness::BranchContinuationSelector::experiment_id)
+        .unwrap_or(&default_experiment_id);
     let reconciled = continuation_branches::reconcile_continuation_branches(
         &continuation_branch_store_path()?,
         continuation_branches::STARTUP_RECONCILE_OPERATION_PREFIX,
