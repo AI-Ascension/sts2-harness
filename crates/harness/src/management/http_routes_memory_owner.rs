@@ -81,23 +81,21 @@ pub(super) fn dispatch_memory_policy_owner_route(
                 .and_then(|()| service.memory_policy_owner_inspect_review(actor, bearer, review_id))
         }
         ("POST", ["", "v1", "memory-policy-owner", "proposals", review_id]) => {
-            let result =
-                proposal_query(&request.query).and_then(|(source, expected_active_version)| {
-                    validate_identifier("review_id", review_id).map_err(ManagementError::from)?;
-                    let key = idempotency_key(request)?;
-                    service.memory_policy_owner_execute(
-                        actor,
-                        bearer,
-                        PolicyCommand::ProposeRevalidation {
-                            key,
-                            review_id: (*review_id).to_owned(),
-                            source,
-                            target_raw: request.body.clone(),
-                            expected_active_version,
-                        },
-                    )
-                });
-            result
+            proposal_query(&request.query).and_then(|(source, expected_active_version)| {
+                validate_identifier("review_id", review_id).map_err(ManagementError::from)?;
+                let key = idempotency_key(request)?;
+                service.memory_policy_owner_execute(
+                    actor,
+                    bearer,
+                    PolicyCommand::ProposeRevalidation {
+                        key,
+                        review_id: (*review_id).to_owned(),
+                        source,
+                        target_raw: request.body.clone(),
+                        expected_active_version,
+                    },
+                )
+            })
         }
         (
             "POST",

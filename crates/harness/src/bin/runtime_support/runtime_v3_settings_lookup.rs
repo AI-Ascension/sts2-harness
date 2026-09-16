@@ -112,44 +112,6 @@ fn protected_lookup_environment(name: &str) -> bool {
         || name.starts_with("STS2_WORKFLOW_TOKEN_")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn lookup_agent_process_configuration_rejects_owner_secrets() {
-        for name in [
-            "STS2_LOOKUP_CORPUS_STORE_KEY_HEX",
-            "STS2_LOOKUP_POLICY_STORE_KEY_HEX",
-            "STS2_LOOKUP_ARCHIVE_STORE_KEY_HEX",
-            "STS2_LOOKUP_OWNER_CONFIG",
-            "STS2_WORKFLOW_TOKEN_LOOKUP_OWNER",
-        ] {
-            assert!(
-                lookup_process_config(
-                    String::from("/bin/true"),
-                    Vec::new(),
-                    None,
-                    vec![String::from(name)],
-                )
-                .is_err(),
-                "lookup-agent must not inherit {name}"
-            );
-        }
-        let process = lookup_process_config(
-            String::from("/bin/true"),
-            Vec::new(),
-            None,
-            vec![String::from("STS2_LOOKUP_AGENT_LOG_LEVEL")],
-        )
-        .expect("nonsecret allowlist entry");
-        assert_eq!(
-            process.inherited_environment(),
-            &["STS2_LOOKUP_AGENT_LOG_LEVEL"]
-        );
-    }
-}
-
 pub(super) fn valid_sha256(value: &str) -> bool {
     value.len() == 64
         && value
@@ -195,4 +157,43 @@ fn verify_lookup_agent_binary(path: &Path, expected_sha256: &str) -> Result<(), 
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lookup_agent_process_configuration_rejects_owner_secrets() {
+        for name in [
+            "STS2_LOOKUP_CORPUS_STORE_KEY_HEX",
+            "STS2_LOOKUP_POLICY_STORE_KEY_HEX",
+            "STS2_LOOKUP_ARCHIVE_STORE_KEY_HEX",
+            "STS2_LOOKUP_OWNER_CONFIG",
+            "STS2_WORKFLOW_TOKEN_LOOKUP_OWNER",
+        ] {
+            assert!(
+                lookup_process_config(
+                    String::from("/bin/true"),
+                    Vec::new(),
+                    None,
+                    vec![String::from(name)],
+                )
+                .is_err(),
+                "lookup-agent must not inherit {name}"
+            );
+        }
+        let process = lookup_process_config(
+            String::from("/bin/true"),
+            Vec::new(),
+            None,
+            vec![String::from("STS2_LOOKUP_AGENT_LOG_LEVEL")],
+        )
+        .expect("nonsecret allowlist entry");
+        assert_eq!(
+            process.inherited_environment(),
+            &["STS2_LOOKUP_AGENT_LOG_LEVEL"]
+        );
+    }
 }

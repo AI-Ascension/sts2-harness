@@ -22,7 +22,7 @@ impl RuntimeV3Port {
         Self::new_with_lookup_owner(config, telemetry, Some(durable), None)
     }
 
-    pub(super) fn new_with_store_and_lookup_owner(
+    fn new_with_store_and_lookup_owner(
         config: RuntimeConfig,
         telemetry: TelemetryHandle,
         durable: durable::DurableHandle,

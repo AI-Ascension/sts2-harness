@@ -181,7 +181,7 @@ impl EpisodeRuntimePort for FailingDecisionBindingPort {
 
     fn observe(&mut self) -> Result<EpisodeObservation, PortError> {
         self.calls.push("observe");
-        Ok(EpisodeObservation::new(
+        EpisodeObservation::new(
             "state-1",
             1,
             super::super::observation::EpisodeStage::Combat,
@@ -198,7 +198,7 @@ impl EpisodeRuntimePort for FailingDecisionBindingPort {
                 "legal_actions":[{"action_id":"end-turn","action":{"kind":"end_turn"}}]
             }),
         )
-        .map_err(|error| PortError::new("observation", error.to_string(), false))?)
+        .map_err(|error| PortError::new("observation", error.to_string(), false))
     }
 
     fn legal_actions(

@@ -17,7 +17,6 @@ impl LookupMcpPort for RuntimeV3Port {
         Ok(self.next_rpc_id.to_string())
     }
     fn information_capabilities(&mut self) -> Result<(String, Vec<u8>), LookupError> {
-        self.validate_lookup_owner_now()?;
         let correlation = self.information_correlation()?;
         let id = self.next_rpc_id;
         self.next_rpc_id = id.checked_add(1).ok_or(LookupError::Bounds)?;
@@ -27,7 +26,10 @@ impl LookupMcpPort for RuntimeV3Port {
             lease_id: self.config.lease_id.clone(),
             lease_epoch: self.config.lease_epoch,
         };
-        let bytes = call_capabilities_mcp(&context, id, |id, args| {
+        let owner = self.lookup_policy_owner.clone();
+        let expected = self.lookup_policy_binding.clone();
+        let mut call = || {
+            call_capabilities_mcp(&context, id, |id, args| {
             wire::rpc_call_catalog_read(
                 self.mcp.as_mut().ok_or(LookupError::Transport)?,
                 id,
@@ -35,12 +37,19 @@ impl LookupMcpPort for RuntimeV3Port {
                 args,
             )
             .map_err(|_| LookupError::Transport)
-        })?;
-        self.validate_lookup_owner_now()?;
+            })
+        };
+        let bytes = if self.lookup_binding_required {
+            owner
+                .as_ref()
+                .ok_or(LookupError::Scope)?
+                .call_with_lookup_revalidation(expected.as_ref().ok_or(LookupError::Scope)?, call)?
+        } else {
+            call()?
+        };
         Ok((correlation, bytes))
     }
     fn call_information(&mut self, tool: &str, request: &Value) -> Result<Vec<u8>, LookupError> {
-        self.validate_lookup_owner_now()?;
         let context = LookupMcpContext {
             instance_id: self.config.instance_id.clone(),
             mcp_session_id: self.config.mcp_session_id.clone(),
@@ -52,16 +61,27 @@ impl LookupMcpPort for RuntimeV3Port {
             return Err(LookupError::Scope);
         }
         self.next_rpc_id = self.next_rpc_id.checked_add(1).ok_or(LookupError::Bounds)?;
-        let response = call_lookup_mcp(&context, tool, request, |id, arguments| {
-            wire::rpc_call_catalog_read(
-                self.mcp.as_mut().ok_or(LookupError::Transport)?,
-                id,
-                "tools/call",
-                arguments,
-            )
-            .map_err(|_| LookupError::Transport)
-        })?;
-        self.validate_lookup_owner_now()?;
+        let owner = self.lookup_policy_owner.clone();
+        let expected = self.lookup_policy_binding.clone();
+        let mut call = || {
+            call_lookup_mcp(&context, tool, request, |id, arguments| {
+                wire::rpc_call_catalog_read(
+                    self.mcp.as_mut().ok_or(LookupError::Transport)?,
+                    id,
+                    "tools/call",
+                    arguments,
+                )
+                .map_err(|_| LookupError::Transport)
+            })
+        };
+        let response = if self.lookup_binding_required {
+            owner
+                .as_ref()
+                .ok_or(LookupError::Scope)?
+                .call_with_lookup_revalidation(expected.as_ref().ok_or(LookupError::Scope)?, call)?
+        } else {
+            call()?
+        };
         Ok(response)
     }
 }

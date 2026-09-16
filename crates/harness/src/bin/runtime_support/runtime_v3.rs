@@ -2,6 +2,7 @@
 
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use sts2_harness::{
     ActionIdentity, BarrierError, BarrierPort, DecisionSource, EpisodeLegalAction,
     EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, EpisodeRuntimePort,

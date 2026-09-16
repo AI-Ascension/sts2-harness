@@ -8,7 +8,168 @@ mod fixture;
 use super::*;
 use std::sync::Arc;
 use sts2_harness::context_memory::policy_owner::{MemoryPolicyOwner, PolicyStoreConsent};
+use sts2_harness::game_information::LookupError;
 use sts2_harness::management::ManagementClient;
+
+#[cfg(unix)]
+#[path = "runtime_v3_game_information_entry_tests.rs"]
+mod entry_tests;
+
+pub(in crate::runtime_support::runtime_v3) struct AdoptedRuntimeOwnerFixture {
+    _fixture: fixture::Fixture,
+    pub(in crate::runtime_support::runtime_v3) owner: Arc<RuntimeGameInformationOwner>,
+    pub(in crate::runtime_support::runtime_v3) authority: Arc<MemoryPolicyAuthority>,
+    pub(in crate::runtime_support::runtime_v3) binding:
+        sts2_harness::context_memory::policy_owner::ActivePolicyBinding,
+}
+
+pub(in crate::runtime_support::runtime_v3) fn adopted_runtime_owner() -> AdoptedRuntimeOwnerFixture
+{
+    let fixture = fixture::Fixture::new();
+    let initial_review = fixture.adopt();
+    let source = fixture
+        .owner
+        .inspect_policy(fixture::access(), &initial_review.target)
+        .expect("source policy");
+    let scope = fixture::scope();
+    let reopened = Arc::new(
+        MemoryPolicyOwner::open(
+            &fixture.path,
+            [7; 32],
+            fixture.authority.clone(),
+            PolicyStoreConsent::SyntheticOnly,
+        )
+        .expect("reopen durable owner"),
+    );
+    let corpus_path = fixture.directory.join("runtime-corpus.sqlite");
+    let mut corpus_store = DurableMemoryStore::open(
+        corpus_path.to_str().expect("UTF-8 path"),
+        scope.clone(),
+        [9; 32],
+    )
+    .expect("runtime corpus store");
+    let trusted_corpus = fixture
+        .authority
+        .inspect(|state| Ok(state.corpus.clone()))
+        .expect("trusted corpus");
+    for entry in trusted_corpus.entries() {
+        corpus_store
+            .publish(entry.clone())
+            .expect("persist trusted corpus");
+    }
+    let authenticator: Arc<dyn Authenticator> = fixture::authenticator();
+    let owner = Arc::new(RuntimeGameInformationOwner {
+        scope: scope.clone(),
+        owner: reopened.clone(),
+        corpus_store: Mutex::new(corpus_store),
+        archive_store: Mutex::new(
+            DurableMemoryStore::open(":memory:", scope, [11; 32]).expect("archive store"),
+        ),
+        authenticator,
+        selector_grant_id: String::from("policy-grant"),
+        operator_grant_id: String::from("policy-grant"),
+        bearer: Zeroizing::new(String::from("synthetic-owner-token")),
+        deployment_sha256: sts2_harness::sha256_hex(b"synthetic test deployment"),
+        management_listen: "127.0.0.1:0".parse().expect("loopback"),
+        preflight_timeout_seconds: 3,
+        replay_archive: true,
+        archive_retention_seconds: 86_400,
+    });
+
+    reopened
+        .execute(
+            fixture::access(),
+            PolicyCommand::ProposeRevalidation {
+                key: String::from("test-revalidation"),
+                review_id: String::from("test-revalidation"),
+                source: initial_review.target,
+                target_raw: source.raw_bytes().to_vec(),
+                expected_active_version: 1,
+            },
+        )
+        .expect("propose explicit revalidation");
+    let review = reopened
+        .inspect_review(fixture::access(), "test-revalidation")
+        .expect("review");
+    reopened
+        .execute(
+            fixture::access(),
+            PolicyCommand::Approve {
+                key: String::from("test-approval"),
+                review_id: review.review_id.clone(),
+                review_sha256: review.review_sha256.clone(),
+            },
+        )
+        .expect("approve revalidation");
+    reopened
+        .execute(
+            fixture::access(),
+            PolicyCommand::Adopt {
+                key: String::from("test-adoption"),
+                review_id: review.review_id,
+                review_sha256: review.review_sha256,
+            },
+        )
+        .expect("adopt revalidated policy");
+    let selected = owner
+        .lookup_snapshot(None)
+        .expect("fresh policy and matching corpus");
+    let authority = fixture.authority.clone();
+    AdoptedRuntimeOwnerFixture {
+        _fixture: fixture,
+        owner,
+        authority,
+        binding: selected.binding,
+    }
+}
+
+#[test]
+fn blocked_mcp_callback_releases_owner_lease_and_discards_stale_reply() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let fixture = adopted_runtime_owner();
+    let (started_tx, started_rx) = mpsc::sync_channel(1);
+    let (release_tx, release_rx) = mpsc::sync_channel(1);
+    let owner = Arc::clone(&fixture.owner);
+    let binding = fixture.binding.clone();
+    let mcp_call = std::thread::spawn(move || {
+        owner.call_with_lookup_revalidation(&binding, || {
+            started_tx.send(()).map_err(|_| LookupError::Transport)?;
+            release_rx
+                .recv_timeout(Duration::from_secs(3))
+                .map_err(|_| LookupError::Transport)?;
+            Ok(vec![1, 2, 3])
+        })
+    });
+    started_rx
+        .recv_timeout(Duration::from_secs(3))
+        .expect("fake MCP call reached its blocked external boundary");
+
+    let (revoked_tx, revoked_rx) = mpsc::sync_channel(1);
+    let authority = Arc::clone(&fixture.authority);
+    let revoke = std::thread::spawn(move || {
+        let result = authority.update(|state| {
+            state.control_epoch = state.control_epoch.saturating_add(1);
+            Ok(())
+        });
+        let _ = revoked_tx.send(result);
+    });
+    let revocation = revoked_rx.recv_timeout(Duration::from_millis(500));
+    let _ = release_tx.send(());
+    let call_result = mcp_call.join().expect("fake MCP thread");
+    revoke.join().expect("revocation thread");
+    assert!(
+        revocation.is_ok(),
+        "owner revocation must proceed while the external MCP call is blocked"
+    );
+    assert!(revocation.expect("revocation completed").is_ok());
+    assert_eq!(
+        call_result,
+        Err(LookupError::Scope),
+        "the MCP response must be discarded after authority changes in flight"
+    );
+}
 
 #[test]
 fn authenticated_loopback_preflight_requires_explicit_revalidation_approval_and_adoption() {

@@ -6,6 +6,7 @@ use sts2_harness::context_memory::{
     MemoryCorpus,
     policy_owner::{LookupPolicyAuthorityGuard, LookupPolicySnapshot},
 };
+use sts2_harness::game_information::LookupError;
 
 impl RuntimeGameInformationOwner {
     pub(in crate::runtime_support::runtime_v3) fn management_lookup_snapshot(
@@ -67,9 +68,27 @@ impl RuntimeGameInformationOwner {
             _corpus_store: corpus_store,
         })
     }
+
+    /// Authorizes one bounded external call at admission, releases every owner/store lock while
+    /// it runs, then discards its result if current authority changed before return.
+    pub(in crate::runtime_support::runtime_v3) fn call_with_lookup_revalidation<T>(
+        &self,
+        expected: &ActivePolicyBinding,
+        call: impl FnOnce() -> Result<T, LookupError>,
+    ) -> Result<T, LookupError> {
+        self.lookup_snapshot(Some(expected))
+            .map_err(|_| LookupError::Scope)?;
+        let result = call();
+        let postflight = self.lookup_snapshot(Some(expected));
+        match (result, postflight) {
+            (Ok(value), Ok(_)) => Ok(value),
+            (Err(error), Ok(_)) => Err(error),
+            (_, Err(_)) => Err(LookupError::Scope),
+        }
+    }
 }
 
-/// Retains the actual durable corpus handle and selected-policy owner lease through one operation.
+/// Holds the selected-policy and corpus-store leases through one short local validation or write.
 pub(in crate::runtime_support::runtime_v3) struct RuntimeLookupAuthorityGuard<'a> {
     policy: LookupPolicyAuthorityGuard<'a>,
     _corpus_store: MutexGuard<'a, DurableMemoryStore>,

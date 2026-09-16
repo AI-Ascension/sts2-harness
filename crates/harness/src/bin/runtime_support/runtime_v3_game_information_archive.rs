@@ -196,6 +196,7 @@ pub(super) fn restore(
     Ok(Some((session, corpus)))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn archive_entry(
     owner: &RuntimeGameInformationOwner,
     entry_id: &str,

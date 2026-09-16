@@ -40,7 +40,7 @@ pub(super) use preflight::{start_management_server, wait_for_owner_ready};
 
 #[cfg(test)]
 #[path = "runtime_v3_game_information_owner_tests.rs"]
-mod owner_management_tests;
+pub(super) mod owner_management_tests;
 
 struct RuntimePolicyClock;
 

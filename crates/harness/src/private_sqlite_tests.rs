@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used)]
+
 // SPDX-License-Identifier: MIT
 
 use super::PrivateSqliteGuard;
