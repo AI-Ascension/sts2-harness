@@ -23,7 +23,9 @@ use super::super::{RuntimeV3Port, allocation_context, parse};
 use super::*;
 use crate::runtime_support::runtime_v3_telemetry::TelemetryHandle;
 
-const SOURCE_ROOT: &str = "/tmp/sts2-exo-source-b068";
+#[path = "../../../tests/support/exo_test_source.rs"]
+mod exo_test_source;
+
 const MODEL_EXECUTION_ID: &str = "execution-11";
 const REQUEST_ID: &str = "bootstrap-request";
 const TURN_ID: &str = "bootstrap-turn";
@@ -56,16 +58,23 @@ impl Fixture {
         blocked_effect: bool,
         fence: Option<Arc<dyn RuntimeLifecycleFence>>,
     ) -> Self {
+        let source = exo_test_source::pinned_exo_test_source()
+            .expect("pinned Exo test source configuration");
         let root = scratch_root();
         std::fs::create_dir(&root).expect("private scratch root");
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))
             .expect("private permissions");
-        let source = std::path::PathBuf::from(SOURCE_ROOT);
         let revision = std::process::Command::new("/usr/bin/git")
-            .args(["-C", SOURCE_ROOT, "rev-parse", "HEAD"])
+            .args(["-C"])
+            .arg(&source)
+            .args(["rev-parse", "HEAD"])
             .output()
-            .expect("Exo source revision");
-        assert!(revision.status.success());
+            .expect("Exo source revision command");
+        assert!(
+            revision.status.success(),
+            "configured Exo test checkout must exist: {}",
+            String::from_utf8_lossy(&revision.stderr)
+        );
         assert_eq!(
             revision.stdout,
             format!("{EXO_SOURCE_REVISION}\n").as_bytes()

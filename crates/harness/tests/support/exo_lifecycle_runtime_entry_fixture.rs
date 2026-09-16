@@ -20,8 +20,8 @@ use helpers::{required_axis, write_executable};
 
 use super::peers;
 use super::{
-    ATTEMPT_ID, CALLER_ID, EPISODE_ID, EXO_SOURCE, INSTANCE_ID, LEASE_ID, REQUEST_ID, RUN_ID,
-    SESSION_ID, TRAJECTORY_ID, TURN_ID,
+    ATTEMPT_ID, CALLER_ID, EPISODE_ID, INSTANCE_ID, LEASE_ID, REQUEST_ID, RUN_ID, SESSION_ID,
+    TRAJECTORY_ID, TURN_ID, pinned_exo_test_source,
 };
 
 pub(super) struct Fixture {
@@ -43,6 +43,7 @@ pub(super) struct Fixture {
 
 impl Fixture {
     pub(super) fn new() -> Result<Self, String> {
+        let source_root = pinned_exo_test_source()?;
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|error| error.to_string())?
@@ -102,7 +103,7 @@ impl Fixture {
             "schema":"sts2.exo-one-shot-config-v1",
             "executor":executor,
             "executor_sha256":sha256_hex(std::fs::read(&executor).map_err(|error| error.to_string())?),
-            "source_root":EXO_SOURCE,
+            "source_root":source_root,
             "extension":extension,
             "extension_sha256":sha256_hex(std::fs::read(&extension).map_err(|error| error.to_string())?),
             "node":node,

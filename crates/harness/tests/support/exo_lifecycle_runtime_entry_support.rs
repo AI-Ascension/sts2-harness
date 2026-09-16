@@ -10,8 +10,9 @@ const ATTEMPT_ID: &str = "entry-attempt";
 const TRAJECTORY_ID: &str = "entry-trajectory";
 const REQUEST_ID: &str = "entry-request";
 const TURN_ID: &str = "entry-turn";
-const EXO_SOURCE: &str = "/tmp/sts2-exo-source-b068";
 
+#[path = "exo_test_source.rs"]
+mod exo_test_source;
 #[path = "exo_lifecycle_runtime_entry_fixture.rs"]
 mod fixture;
 #[path = "exo_lifecycle_runtime_entry_peers.rs"]
@@ -24,3 +25,5 @@ mod runner;
 pub fn run_offline_lifecycle_entry() -> Result<(), String> {
     runner::run_offline_lifecycle_entry()
 }
+
+pub(super) use exo_test_source::pinned_exo_test_source;
