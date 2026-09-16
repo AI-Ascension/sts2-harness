@@ -17,7 +17,7 @@ pub(super) fn submit_run(
 ) -> Result<RunSubmissionResponse, ManagementError> {
     // A live invocation must be bound to the authoritative context owner before
     // any reservation, session open, or launch. Fail closed when it is absent.
-    if is_live_profile(&request.profile) {
+    let context_control_limits = if is_live_profile(&request.profile) {
         let owner = service.context_owner_port();
         if !owner.is_available() {
             return Err(ManagementError::unavailable(
@@ -25,8 +25,15 @@ pub(super) fn submit_run(
                 "live workflow admission requires an attached authoritative context owner",
             ));
         }
-        admit_context_owner(owner, actor, &request, &definition_digest)?;
-    }
+        Some(admit_context_owner(
+            owner,
+            actor,
+            &request,
+            &definition_digest,
+        )?)
+    } else {
+        None
+    };
     let binding = service.revalidate_target_admission(actor, &request, &definition_digest)?;
     let reservation = RunReservation::new(
         std::sync::Arc::clone(&service.store),
@@ -34,6 +41,7 @@ pub(super) fn submit_run(
         request_digest.clone(),
         definition_digest.clone(),
         binding.clone(),
+        context_control_limits,
     );
     let execution_result = service.execution.submit_admitted_with_reservation(
         &request,
@@ -166,7 +174,7 @@ fn admit_context_owner(
     actor: &AuthContext,
     request: &RunRequest,
     _definition_digest: &str,
-) -> Result<(), ManagementError> {
+) -> Result<super::super::context_owner::ContextOwnerControlLimits, ManagementError> {
     let catalog = owner.catalog(actor)?;
     catalog.validate()?;
     let definition = request.definition.as_ref().ok_or_else(|| {
@@ -176,21 +184,19 @@ fn admit_context_owner(
         )
     })?;
     let parsed = super::super::workflow_ports::parse_definition(definition)?;
-    validate_context_nodes(&parsed, &catalog)?;
-    Ok(())
+    validate_context_nodes(&parsed, &catalog)
 }
 
 fn validate_context_nodes(
     definition: &WorkflowDefinition,
     catalog: &super::super::context_owner::ContextBindingCatalog,
-) -> Result<(), ManagementError> {
-    let mut found = false;
+) -> Result<super::super::context_owner::ContextOwnerControlLimits, ManagementError> {
+    let mut descriptors = Vec::new();
     for graph in &definition.graphs {
         for node in &graph.nodes {
             let Some((_, node_kind, context_ref)) = context_node_parts(node) else {
                 continue;
             };
-            found = true;
             let descriptor = catalog.descriptor_for(context_ref, node_kind)?;
             if !descriptor.grants.metadata_read {
                 return Err(ManagementError::capability(
@@ -198,15 +204,10 @@ fn validate_context_nodes(
                     "context owner catalog does not grant metadata access for this node",
                 ));
             }
+            descriptors.push(descriptor);
         }
     }
-    if !found {
-        return Err(ManagementError::capability(
-            "context_binding_unsupported",
-            "live workflow has no supported context-bound node",
-        ));
-    }
-    Ok(())
+    super::super::context_owner::ContextOwnerControlLimits::from_descriptors(catalog, &descriptors)
 }
 
 fn context_node_parts(node: &NodeDefinition) -> Option<(&str, &str, &str)> {

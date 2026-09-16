@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::provider_session::{
     BindingState, HistoryCoverage, NativeOperationState, ProviderSessionBroker,
+    ProviderSessionPolicyOwner,
 };
 
 use super::{
@@ -18,12 +19,70 @@ use super::{
     ProviderSessionInspectionResult, ProviderSessionOperationSummary, RunSnapshot,
     validate_identifier,
 };
+use super::{LiveProviderPolicyPort, ProviderSessionPolicyBinding};
+use crate::workflow::WorkflowDefinition;
 
 /// Read-only management projection over broker instances explicitly associated
 /// with workflow runs by the Harness scheduler. Construction fails on an
 /// ambiguous mapping. The browser never supplies any provider identifier.
 pub struct ProviderSessionBrokerInspectionPort {
     brokers_by_workflow_run: BTreeMap<String, Arc<Mutex<ProviderSessionBroker>>>,
+}
+
+/// Adapts the durable, explicitly adopted policy owner to live provider
+/// composition. The caller cannot select a stored policy revision: only the
+/// owner's active adoption is returned, and it is re-admitted against the
+/// current native capability descriptor before any provider session opens.
+pub struct ProviderSessionPolicyOwnerPort {
+    owner: std::sync::Arc<ProviderSessionPolicyOwner>,
+}
+
+impl ProviderSessionPolicyOwnerPort {
+    #[must_use]
+    pub fn new(owner: std::sync::Arc<ProviderSessionPolicyOwner>) -> Self {
+        Self { owner }
+    }
+}
+
+impl LiveProviderPolicyPort for ProviderSessionPolicyOwnerPort {
+    fn load_active_policy(
+        &self,
+        actor: &AuthContext,
+        _request: &super::RunRequest,
+        workflow_run_id: &str,
+        _definition: &WorkflowDefinition,
+        capabilities: &crate::provider_session::NativeCapabilities,
+    ) -> Result<ProviderSessionPolicyBinding, ManagementError> {
+        if !actor.can("workflow:control") || !actor.can_run(workflow_run_id) {
+            return Err(ManagementError::forbidden(
+                "provider_session_policy_forbidden",
+                "authenticated actor cannot load the active provider-session policy",
+            ));
+        }
+        let (policy, policy_sha256, active_revision) = self.owner.active().map_err(|error| {
+            ManagementError::capability(
+                "provider_session_policy_not_adopted",
+                format!("no admissible adopted provider-session policy is available: {error}"),
+            )
+        })?;
+        if policy.scope.run_id != workflow_run_id {
+            return Err(ManagementError::conflict(
+                "provider_session_policy_scope_mismatch",
+                "adopted provider-session policy is not scoped to this workflow run",
+            ));
+        }
+        policy.admit_for_profile(capabilities).map_err(|error| {
+            ManagementError::capability(
+                error.code(),
+                "adopted provider-session policy is not executable by the selected profile",
+            )
+        })?;
+        Ok(ProviderSessionPolicyBinding {
+            policy,
+            policy_sha256,
+            active_revision,
+        })
+    }
 }
 
 impl ProviderSessionBrokerInspectionPort {

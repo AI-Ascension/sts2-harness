@@ -21,7 +21,8 @@ mod recorded_run_observation;
 mod recorded_run_projection;
 #[path = "recorded_run_seed.rs"]
 pub(crate) mod recorded_run_seed;
-#[path = "recorded_run_snapshot.rs"]
+#[cfg_attr(unix, path = "recorded_run_snapshot.rs")]
+#[cfg_attr(not(unix), path = "recorded_run_snapshot_unsupported.rs")]
 mod recorded_run_snapshot;
 #[path = "recorded_run_support.rs"]
 mod recorded_run_support;
@@ -30,7 +31,7 @@ mod recorded_run_trajectory;
 #[cfg(test)]
 #[path = "recorded_run_review_tests.rs"]
 mod review_tests;
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[path = "recorded_run_snapshot_tests.rs"]
 mod snapshot_tests;
 #[cfg(test)]
@@ -49,6 +50,7 @@ use recorded_run_support::{
 use recorded_run_trajectory::trajectory_record;
 
 const FORMAT: &str = "seed-readiness-controller-release-v2";
+#[cfg(unix)]
 const MAX_FILE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_LINE_BYTES: usize = 1024 * 1024;
 const COMMON: &str = "ai-ascension.recorded-run.common.v1";
