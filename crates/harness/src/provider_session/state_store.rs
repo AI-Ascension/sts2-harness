@@ -38,6 +38,7 @@ pub enum ProviderSessionMetadataStoreError {
     InvalidKey,
     InvalidPath,
     ScopeMismatch,
+    NotFound,
     Capacity,
     Corrupt,
     Crypto,
@@ -55,6 +56,7 @@ impl std::fmt::Display for ProviderSessionMetadataStoreError {
             Self::ScopeMismatch => {
                 formatter.write_str("provider metadata store scope does not match")
             }
+            Self::NotFound => formatter.write_str("provider metadata store journal was not found"),
             Self::Capacity => formatter.write_str("provider metadata store is over its bound"),
             Self::Corrupt => formatter.write_str("provider metadata store envelope is corrupt"),
             Self::Crypto => formatter.write_str("provider metadata store authentication failed"),
@@ -245,7 +247,8 @@ impl ProviderSessionMetadataStore {
             .as_deref()
             .ok_or(ProviderSessionMetadataStoreError::Unsupported)?;
         validate_store_path(path)?;
-        let bytes = self.decrypt(&read_restricted_file(path)?)?;
+        let envelope = read_restricted_file(path)?;
+        let bytes = self.decrypt(&envelope)?;
         if bytes.len() > MAX_HISTORY_BYTES {
             return Err(ProviderSessionMetadataStoreError::Capacity);
         }
@@ -317,7 +320,13 @@ fn read_restricted_file(path: &Path) -> Result<Vec<u8>, ProviderSessionMetadataS
         OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
         Mode::empty(),
     )
-    .map_err(|_| ProviderSessionMetadataStoreError::InvalidPath)?;
+    .map_err(|error| {
+        if error == rustix::io::Errno::NOENT {
+            ProviderSessionMetadataStoreError::NotFound
+        } else {
+            ProviderSessionMetadataStoreError::InvalidPath
+        }
+    })?;
     let mut file = File::from(descriptor);
     let metadata = file
         .metadata()
@@ -333,7 +342,13 @@ fn read_restricted_file(path: &Path) -> Result<Vec<u8>, ProviderSessionMetadataS
 
 #[cfg(not(unix))]
 fn read_restricted_file(path: &Path) -> Result<Vec<u8>, ProviderSessionMetadataStoreError> {
-    let metadata = fs::symlink_metadata(path).map_err(|_| ProviderSessionMetadataStoreError::Io)?;
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        if error.kind() == io::ErrorKind::NotFound {
+            ProviderSessionMetadataStoreError::NotFound
+        } else {
+            ProviderSessionMetadataStoreError::Io
+        }
+    })?;
     if !metadata.file_type().is_file() {
         return Err(ProviderSessionMetadataStoreError::InvalidPath);
     }
