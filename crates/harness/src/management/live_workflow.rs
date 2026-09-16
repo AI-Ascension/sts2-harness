@@ -47,12 +47,29 @@ pub fn live_store(
     factory: Arc<dyn LiveWorkflowSessionFactory>,
     options: LiveWorkflowOptions,
 ) -> Result<ManagementService, ManagementError> {
+    live_store_with_provider_policy(
+        store,
+        factory,
+        options,
+        Arc::new(super::UnavailableLiveProviderPolicyPort),
+    )
+}
+
+/// Compose a served-live management service with the durable provider-policy
+/// owner that also gates provider construction in the session factory.
+pub fn live_store_with_provider_policy(
+    store: Arc<dyn WorkflowStore>,
+    factory: Arc<dyn LiveWorkflowSessionFactory>,
+    options: LiveWorkflowOptions,
+    provider_policy: Arc<dyn super::LiveProviderPolicyPort>,
+) -> Result<ManagementService, ManagementError> {
     let capabilities = factory.capabilities();
     let definitions = validation::LiveDefinitionPort::new(capabilities.clone())?;
     let execution = LiveWorkflowExecutionPort::new(Arc::clone(&factory), options)?;
     Ok(ManagementService::new(store)
         .with_definition_port(Arc::new(definitions))
         .with_execution_port(Arc::new(execution))
+        .with_live_provider_policy_port(provider_policy)
         .with_capability_port(Arc::new(validation::LiveCapabilityPort {
             capabilities,
             factory,

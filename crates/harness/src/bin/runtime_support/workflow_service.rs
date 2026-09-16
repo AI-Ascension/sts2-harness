@@ -2,14 +2,20 @@
 
 use std::sync::Arc;
 
+use serde::Deserialize;
 use serde_json::json;
 use sts2_harness::management::{
-    AuthContext, EnvironmentAuthenticator, ExecutionMode, LiveProviderSessionFactory,
-    LiveRuntimeSessionFactory, LiveTargetCatalogPort, LiveWorkflowSessionFactory, ManagementError,
-    ProductionLiveWorkflowSessionFactory, RunRequest, TargetAvailability, TargetCatalogResponse,
+    AuthContext, EnvironmentAuthenticator, ExecutionMode, LiveProviderPolicyPort,
+    LiveProviderSessionFactory, LiveRuntimeSessionFactory, LiveTargetCatalogPort,
+    LiveWorkflowSessionFactory, ManagementError, ProductionLiveWorkflowSessionFactory,
+    ProviderSessionPolicyOwnerPort, RunRequest, TargetAvailability, TargetCatalogResponse,
     TargetDescriptor,
 };
+use sts2_harness::provider_session::{
+    NativeCapabilities, ProviderSessionMetadataStore, ProviderSessionPolicyOwner, SessionScope,
+};
 use sts2_harness::workflow::WorkflowDefinition;
+use zeroize::Zeroize;
 
 use super::{RuntimeConfig, runtime_v3, runtime_v3_admission, runtime_v3_settings};
 
@@ -25,17 +31,129 @@ pub(super) fn serve() -> Result<(), String> {
     let profile = required("STS2_WORKFLOW_AUTH_PROFILE")?;
     let authenticator =
         Arc::new(EnvironmentAuthenticator::from_profile(&profile).map_err(|e| e.to_string())?);
-    sts2_harness::management::serve_live(listen, &store, authenticator, factory()?)
-        .map_err(|error| error.to_string())
+    let policy = ProviderPolicyConfiguration::from_environment()?;
+    let owner = Arc::new(policy.open_owner()?);
+    let provider_policy: Arc<dyn LiveProviderPolicyPort> =
+        Arc::new(ProviderSessionPolicyOwnerPort::new(Arc::clone(&owner)));
+    sts2_harness::management::serve_live_with_provider_policy(
+        listen,
+        &store,
+        authenticator,
+        factory(Arc::clone(&provider_policy), policy.capabilities)?,
+        provider_policy,
+    )
+    .map_err(|error| error.to_string())
 }
 
-fn factory() -> Result<Arc<dyn LiveWorkflowSessionFactory>, String> {
+fn factory(
+    provider_policy: Arc<dyn LiveProviderPolicyPort>,
+    provider_capabilities: NativeCapabilities,
+) -> Result<Arc<dyn LiveWorkflowSessionFactory>, String> {
     Ok(Arc::new(ProductionLiveWorkflowSessionFactory::new(
         json!({"schema_version":"ascension.capabilities/v1","capabilities":["workflow.live","workflow.node.observe.v1","workflow.node.decide.v1","workflow.node.execute_action.v1","workflow.node.terminal.v1","workflow.execution.fence.mcp-observation.v1"]}),
         Arc::new(Catalog),
         Arc::new(Runtime),
         Arc::new(Provider),
+        provider_policy,
+        provider_capabilities,
     ).map_err(|error| error.to_string())?))
+}
+
+const PROVIDER_POLICY_CONFIGURATION_SCHEMA: &str = "ascension.workflow-provider-policy-config.v1";
+const MAX_PROVIDER_POLICY_CONFIGURATION_BYTES: usize = 64 * 1024;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProviderPolicyConfiguration {
+    schema_version: String,
+    store_path: std::path::PathBuf,
+    key_reference: String,
+    scope: SessionScope,
+    capabilities: NativeCapabilities,
+    selected_profile: String,
+}
+
+impl ProviderPolicyConfiguration {
+    fn from_environment() -> Result<Self, String> {
+        let bytes = required("STS2_WORKFLOW_PROVIDER_POLICY_CONFIG")?;
+        if bytes.len() > MAX_PROVIDER_POLICY_CONFIGURATION_BYTES {
+            return Err(String::from(
+                "STS2_WORKFLOW_PROVIDER_POLICY_CONFIG exceeds its byte bound",
+            ));
+        }
+        let configuration: Self = serde_json::from_str(&bytes).map_err(|_| {
+            String::from(
+                "STS2_WORKFLOW_PROVIDER_POLICY_CONFIG must be a closed provider-policy configuration",
+            )
+        })?;
+        if configuration.schema_version != PROVIDER_POLICY_CONFIGURATION_SCHEMA
+            || !configuration.scope.valid()
+            || !valid_environment_name(&configuration.key_reference)
+            || configuration.selected_profile != configuration.capabilities.profile_id
+        {
+            return Err(String::from(
+                "STS2_WORKFLOW_PROVIDER_POLICY_CONFIG contains an invalid provider-policy binding",
+            ));
+        }
+        configuration.capabilities.validate().map_err(|_| {
+            String::from(
+                "STS2_WORKFLOW_PROVIDER_POLICY_CONFIG contains invalid native capabilities",
+            )
+        })?;
+        Ok(configuration)
+    }
+
+    fn open_owner(&self) -> Result<ProviderSessionPolicyOwner, String> {
+        let mut key = provider_policy_key(&self.key_reference)?;
+        let store =
+            ProviderSessionMetadataStore::encrypted(&self.store_path, key, self.scope.clone());
+        key.zeroize();
+        let store = store
+            .map_err(|_| String::from("provider-policy metadata store configuration is invalid"))?;
+        ProviderSessionPolicyOwner::open(store, self.scope.clone(), self.capabilities.clone())
+            .map_err(|_| String::from("provider-policy owner could not be opened"))
+    }
+}
+
+fn valid_environment_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.bytes().enumerate().all(|(index, byte)| {
+            matches!(byte, b'A'..=b'Z' | b'0'..=b'9' | b'_')
+                && (index != 0 || matches!(byte, b'A'..=b'Z' | b'_'))
+        })
+}
+
+fn provider_policy_key(reference: &str) -> Result<[u8; 32], String> {
+    let encoded = std::env::var(reference)
+        .map_err(|_| format!("provider-policy key reference {reference} is unavailable"))?;
+    let bytes = encoded.as_bytes();
+    if bytes.len() != 64 {
+        return Err(String::from(
+            "provider-policy key must be exactly 64 hexadecimal characters",
+        ));
+    }
+    let mut key = [0_u8; 32];
+    for (index, slot) in key.iter_mut().enumerate() {
+        let high = hex_nibble(bytes[index * 2])
+            .ok_or_else(|| String::from("provider-policy key must be hexadecimal"))?;
+        let low = hex_nibble(bytes[index * 2 + 1])
+            .ok_or_else(|| String::from("provider-policy key must be hexadecimal"))?;
+        *slot = (high << 4) | low;
+    }
+    if key.iter().all(|value| *value == 0) {
+        return Err(String::from("provider-policy key must not be all zeroes"));
+    }
+    Ok(key)
+}
+
+fn hex_nibble(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        _ => None,
+    }
 }
 
 struct Catalog;

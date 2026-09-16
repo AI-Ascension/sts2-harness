@@ -11,12 +11,13 @@ use std::sync::Arc;
 
 use super::super::auth::AuthContext;
 use super::super::contract::{RunRequest, TargetCatalogResponse};
-use super::super::service::ManagementError;
+use super::super::service::{LiveProviderPolicyPort, ManagementError};
 use super::session::{LiveWorkflowSession, LiveWorkflowSessionFactory};
 use crate::episode::{
     ActionIdentity, DecisionInput, DecisionSource, EpisodeLegalAction, EpisodeLegalActionSet,
     EpisodeObservation, EpisodeRuntimePort, RecoveryPort, TransitionReceipt, WaitSample,
 };
+use crate::provider_session::NativeCapabilities;
 use crate::workflow::WorkflowDefinition;
 
 /// Authoritative, actor-scoped discovery supplied by the gateway/MCP owner.
@@ -59,6 +60,8 @@ pub struct ProductionLiveWorkflowSessionFactory {
     catalog: Arc<dyn LiveTargetCatalogPort>,
     runtime: Arc<dyn LiveRuntimeSessionFactory>,
     provider: Arc<dyn LiveProviderSessionFactory>,
+    provider_policy: Arc<dyn LiveProviderPolicyPort>,
+    provider_capabilities: NativeCapabilities,
 }
 
 impl ProductionLiveWorkflowSessionFactory {
@@ -67,13 +70,23 @@ impl ProductionLiveWorkflowSessionFactory {
         catalog: Arc<dyn LiveTargetCatalogPort>,
         runtime: Arc<dyn LiveRuntimeSessionFactory>,
         provider: Arc<dyn LiveProviderSessionFactory>,
+        provider_policy: Arc<dyn LiveProviderPolicyPort>,
+        provider_capabilities: NativeCapabilities,
     ) -> Result<Self, ManagementError> {
         super::validation::validate_capability_manifest(&capabilities)?;
+        provider_capabilities.validate().map_err(|error| {
+            ManagementError::capability(
+                "provider_session_capabilities_invalid",
+                format!("provider session capability descriptor is invalid: {error}"),
+            )
+        })?;
         Ok(Self {
             capabilities,
             catalog,
             runtime,
             provider,
+            provider_policy,
+            provider_capabilities,
         })
     }
 }
@@ -109,6 +122,8 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
             definition: definition.clone(),
             definition_digest: definition_digest.to_owned(),
             launch_observation: None,
+            provider_policy: Arc::clone(&self.provider_policy),
+            provider_capabilities: self.provider_capabilities.clone(),
         }))
     }
 }
@@ -122,6 +137,8 @@ struct ProductionLiveWorkflowSession {
     definition: WorkflowDefinition,
     definition_digest: String,
     launch_observation: Option<EpisodeObservation>,
+    provider_policy: Arc<dyn LiveProviderPolicyPort>,
+    provider_capabilities: NativeCapabilities,
 }
 
 impl LiveWorkflowSession for ProductionLiveWorkflowSession {
@@ -134,6 +151,12 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
             .observe()
             .map_err(runtime_error("live_launch_fence_failed"))?;
         self.launch_observation = Some(observation);
+        self.provider_policy.load_active_policy(
+            &self.actor,
+            &self.request,
+            &self.definition,
+            &self.provider_capabilities,
+        )?;
         self.provider = Some(self.provider_factory.open_provider(
             &self.request,
             &self.actor,
