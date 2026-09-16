@@ -129,6 +129,7 @@
     "experiments/exo-agent/bridge/tests/process_oracle.rs",
     "experiments/exo-agent/bridge/tests/lookup_oracle.rs",
     "crates/harness/tests/context_render_selected_limits.rs",
+    "crates/harness/tests/context_control_limit_enforcement.rs",
     "protocol-artifact/exo-bridge-v1/manifest.json",
     "protocol-artifact/exo-bridge-v1/fixtures/invalid-unknown.json",
     "protocol-artifact/exo-bridge-v1/golden/request.json",
