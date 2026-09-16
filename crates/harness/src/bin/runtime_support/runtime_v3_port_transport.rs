@@ -149,6 +149,11 @@ impl RuntimeV3Port {
             durable.verify_resume_boundary_with_catalog(&parsed.observation, &parsed.catalog_raw)?;
             durable.checkpoint_raw(&parsed.observation, &parsed.catalog_raw)?;
         }
+        if !self.is_expert_profile()
+            && let Some(actions) = self.current_actions.as_ref()
+        {
+            self.observe_lifecycle_authority(&parsed.observation, actions)?;
+        }
         Ok(parsed.observation)
     }
 
@@ -188,6 +193,7 @@ impl RuntimeV3Port {
     }
 
     fn close_mcp_processes(&mut self) -> Result<(), String> {
+        self.lifecycle_authority.clear_turn();
         let mut failure = None;
         if let Some(mcp) = self.seeded_mcp.as_mut()
             && let Err(error) = mcp.close()
@@ -210,6 +216,7 @@ impl RuntimeV3Port {
     }
 
     fn release_lease_inner(&mut self) -> Result<(), String> {
+        self.lifecycle_authority.invalidate();
         if !self.allocated || self.released {
             return Ok(());
         }

@@ -30,6 +30,8 @@ mod decision_replay;
 mod durable;
 #[path = "runtime_v3_lifecycle.rs"]
 mod lifecycle;
+#[path = "runtime_v3_lifecycle_authority.rs"]
+mod lifecycle_authority;
 
 #[path = "runtime_v3_combat_demo.rs"]
 pub(crate) mod combat_demo;
@@ -185,6 +187,7 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         &settings,
         port.durable_handle()
             .ok_or_else(|| String::from("runtime-v3 durable handle disappeared"))?,
+        port.lifecycle_authority_state(),
     )?;
     let provider = ExoProvider::new(transport, settings.exo);
     let mut source = ExoDecisionSource::new(ExoSession::new(provider));
@@ -311,6 +314,7 @@ pub(super) struct RuntimeV3Port {
     recovery: Option<McpProcess>,
     recovery_context: Option<recovery::RecoveryContext>,
     recovery_rpc_id: u64,
+    lifecycle_authority: lifecycle_authority::RuntimeLifecycleAuthorityState,
 }
 
 include!("runtime_v3_port.rs");

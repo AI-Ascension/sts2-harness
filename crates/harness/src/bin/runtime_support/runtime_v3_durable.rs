@@ -73,6 +73,20 @@ impl DurableHandle {
         })
     }
 
+    #[cfg(test)]
+    pub(in super::super) fn from_store_for_lifecycle_test(
+        store: ExecutionStore,
+        lineage: ExecutionLineage,
+        fingerprint: ExecutionFingerprint,
+        model_revision: String,
+        config_digest: String,
+    ) -> Result<Self, String> {
+        let mut durable = Self::from_store_for_test(store, lineage, fingerprint)?;
+        durable.model_revision = model_revision;
+        durable.config_digest = config_digest;
+        Ok(durable)
+    }
+
     pub(super) fn open(
         config: &RuntimeConfig,
         settings: &RuntimeV3Settings,

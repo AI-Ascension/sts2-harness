@@ -294,6 +294,7 @@ impl RuntimeV3Port {
             durable.verify_resume_boundary_with_catalog(&composed.observation, catalog_raw)?;
             durable.checkpoint_raw(&composed.observation, catalog_raw)?;
         }
+        self.observe_lifecycle_authority(&composed.observation, &composed.actions)?;
         Ok(())
     }
 }

@@ -11,7 +11,8 @@ use crate::{
 };
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Supplies the manifest from the runtime's current, authoritative turn binding.
 ///
@@ -51,6 +52,8 @@ pub struct ExoLifecycleRuntimeTransport<F> {
     fingerprint: ExecutionFingerprint,
     effect: LifecycleProcessEffect,
     manifests: F,
+    binding_ttl_seconds: u64,
+    clock: Arc<dyn Fn() -> SystemTime + Send + Sync>,
     closed: bool,
 }
 
@@ -60,16 +63,25 @@ impl<F: LifecycleManifestFactory> ExoLifecycleRuntimeTransport<F> {
         store: Rc<RefCell<ExecutionStore>>,
         fingerprint: ExecutionFingerprint,
         effect: LifecycleProcessEffect,
+        binding_ttl_seconds: u64,
+        clock: Arc<dyn Fn() -> SystemTime + Send + Sync>,
         manifests: F,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, LifecycleError> {
+        if binding_ttl_seconds == 0
+            || binding_ttl_seconds > crate::provider_session::MAX_HISTORY_TTL_SECONDS
+        {
+            return Err(LifecycleError::Invalid);
+        }
+        Ok(Self {
             owner,
             store,
             fingerprint,
             effect,
             manifests,
+            binding_ttl_seconds,
+            clock,
             closed: false,
-        }
+        })
     }
 
     fn exchange_inner(&mut self, bytes: &[u8]) -> Result<Vec<u8>, LifecycleError> {
@@ -81,8 +93,9 @@ impl<F: LifecycleManifestFactory> ExoLifecycleRuntimeTransport<F> {
         manifest.input_digest = crate::sha256_hex(bytes);
         manifest.input_length = bytes.len();
         let manifest = if manifest.binding_id == "pending-binding" {
+            let expires_at = binding_expiry((self.clock)(), self.binding_ttl_seconds)?;
             self.owner
-                .prepare_one_shot_manifest(manifest, "2099-01-01T00:00:00Z")?
+                .prepare_one_shot_manifest(manifest, bytes, &expires_at)?
         } else {
             manifest
         };
@@ -138,6 +151,65 @@ impl<F: LifecycleManifestFactory> ExoLifecycleRuntimeTransport<F> {
             None,
         )
         .map_err(|_| LifecycleError::Invalid)
+    }
+}
+
+fn binding_expiry(now: SystemTime, ttl_seconds: u64) -> Result<String, LifecycleError> {
+    if ttl_seconds == 0 || ttl_seconds > crate::provider_session::MAX_HISTORY_TTL_SECONDS {
+        return Err(LifecycleError::Invalid);
+    }
+    let now = now
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| LifecycleError::Invalid)?;
+    let now = i64::try_from(now.as_secs()).map_err(|_| LifecycleError::Invalid)?;
+    let ttl = i64::try_from(ttl_seconds).map_err(|_| LifecycleError::Invalid)?;
+    let expiry = now.checked_add(ttl).ok_or(LifecycleError::Invalid)?;
+    let days = expiry.div_euclid(86_400);
+    let day_seconds = expiry.rem_euclid(86_400);
+    let (year, month, day) = civil_from_days(days).ok_or(LifecycleError::Invalid)?;
+    if !(0..=9999).contains(&year) {
+        return Err(LifecycleError::Invalid);
+    }
+    let hour = day_seconds / 3_600;
+    let minute = day_seconds % 3_600 / 60;
+    let second = day_seconds % 60;
+    Ok(format!(
+        "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z"
+    ))
+}
+
+fn civil_from_days(days: i64) -> Option<(i64, i64, i64)> {
+    let shifted = days.checked_add(719_468)?;
+    let era = if shifted >= 0 {
+        shifted / 146_097
+    } else {
+        (shifted - 146_096) / 146_097
+    };
+    let day_of_era = shifted.checked_sub(era.checked_mul(146_097)?)?;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year = year_of_era.checked_add(era.checked_mul(400)?)?;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    let year = year + i64::from(month <= 2);
+    Some((year, month, day))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LifecycleError, binding_expiry};
+    use std::time::{Duration, UNIX_EPOCH};
+
+    #[test]
+    fn binding_expiry_uses_injected_time_and_bounded_ttl() {
+        let now = UNIX_EPOCH + Duration::from_secs(1_790_000_000);
+        assert_eq!(
+            binding_expiry(now, 60).expect("expiry"),
+            "2026-09-21T14:14:20Z"
+        );
+        assert_eq!(binding_expiry(now, 0), Err(LifecycleError::Invalid));
     }
 }
 

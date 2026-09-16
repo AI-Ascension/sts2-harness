@@ -6,6 +6,8 @@
 use std::cell::RefCell;
 use std::os::unix::fs::PermissionsExt;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::time::SystemTime;
 
 use sts2_harness as harness_api;
 use sts2_harness::exo_lifecycle::{
@@ -62,11 +64,14 @@ fn v2_receipt_is_durable_and_a_replay_uses_the_stored_result()
         store.clone(),
         fixture.fingerprint.clone(),
         effect,
+        3_600,
+        Arc::new(SystemTime::now),
         move |_: &str,
               _: &str,
               _: &ExoDecisionRequest|
               -> Result<InvocationManifest, LifecycleError> { Ok(manifest.clone()) },
-    );
+    )
+    .map_err(|error| format!("{error:?}"))?;
     let first = transport
         .exchange(&fixture.input, 8 * 1024, 1_000)
         .map_err(|error| format!("{error:?}"))?;
@@ -128,11 +133,14 @@ fn malformed_native_receipt_becomes_unknown_and_is_not_replayed()
         store.clone(),
         fixture.fingerprint.clone(),
         effect,
+        3_600,
+        Arc::new(SystemTime::now),
         move |_: &str,
               _: &str,
               _: &ExoDecisionRequest|
               -> Result<InvocationManifest, LifecycleError> { Ok(manifest.clone()) },
-    );
+    )
+    .map_err(|error| format!("{error:?}"))?;
     assert!(transport.exchange(&fixture.input, 8 * 1024, 1_000).is_err());
     assert!(
         store
@@ -189,11 +197,14 @@ fn cancellation_kills_the_process_path_and_holds_the_decision_unknown()
         store.clone(),
         fixture.fingerprint.clone(),
         effect,
+        3_600,
+        Arc::new(SystemTime::now),
         move |_: &str,
               _: &str,
               _: &ExoDecisionRequest|
               -> Result<InvocationManifest, LifecycleError> { Ok(manifest.clone()) },
-    );
+    )
+    .map_err(|error| format!("{error:?}"))?;
     let log_for_cancel = log.clone();
     let cancel = std::thread::spawn(move || {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
@@ -252,11 +263,14 @@ fn failed_durable_admission_starts_no_process() -> Result<(), Box<dyn std::error
         store,
         wrong,
         effect,
+        3_600,
+        Arc::new(SystemTime::now),
         move |_: &str,
               _: &str,
               _: &ExoDecisionRequest|
               -> Result<InvocationManifest, LifecycleError> { Ok(manifest.clone()) },
-    );
+    )
+    .map_err(|error| format!("{error:?}"))?;
     assert!(transport.exchange(&fixture.input, 8 * 1024, 1_000).is_err());
     assert!(!log.exists());
     Ok(())

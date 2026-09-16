@@ -57,7 +57,14 @@ impl RuntimeV3Port {
             recovery: None,
             recovery_context: None,
             recovery_rpc_id: 1,
+            lifecycle_authority: lifecycle_authority::RuntimeLifecycleAuthorityState::default(),
         })
+    }
+
+    fn lifecycle_authority_state(
+        &self,
+    ) -> lifecycle_authority::RuntimeLifecycleAuthorityState {
+        self.lifecycle_authority.clone()
     }
 
     fn durable_handle(&self) -> Option<durable::DurableHandle> {
@@ -160,3 +167,4 @@ impl RuntimeV3Port {
 }
 
 include!("runtime_v3_port_transport.rs");
+include!("runtime_v3_lifecycle_port_hooks.rs");

@@ -260,7 +260,6 @@ impl NativeCapabilities {
         capabilities.evidence = CapabilityEvidence::SchemaOnly;
         capabilities.enabled_methods = vec![
             String::from("initialize"),
-            String::from("thread/start"),
             String::from("turn/start"),
             String::from("turn/interrupt"),
         ];
@@ -357,7 +356,7 @@ mod tests {
         .expect("reviewed profile");
         assert_eq!(
             capabilities.enabled_methods,
-            ["initialize", "thread/start", "turn/start", "turn/interrupt"]
+            ["initialize", "turn/start", "turn/interrupt"]
         );
         assert_ne!(capabilities.profile_id, "codex-app-server-fixture-v1");
         assert!(capabilities.validate().is_ok());

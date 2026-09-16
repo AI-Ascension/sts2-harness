@@ -39,9 +39,14 @@ impl LifecycleOwner {
     pub fn prepare_one_shot_manifest(
         &mut self,
         mut manifest: InvocationManifest,
+        input: &[u8],
         expires_at: &str,
     ) -> Result<InvocationManifest, LifecycleError> {
         self.check()?;
+        if input.len() != manifest.input_length || crate::sha256_hex(input) != manifest.input_digest
+        {
+            return Err(LifecycleError::Invalid);
+        }
         let binding_id = format!("lifecycle-binding-{}", manifest.execution_id);
         let prepared_id = format!("lifecycle-prepared-{}", manifest.execution_id);
         if self.broker.binding(&binding_id).is_err() {
@@ -62,7 +67,7 @@ impl LifecycleOwner {
             &manifest.host_turn_id,
             &manifest.execution_id,
             &manifest.host_turn_id,
-            manifest.input_digest.as_bytes().to_vec(),
+            input.to_vec(),
             br#"{"type":"object"}"#.to_vec(),
             Vec::new(),
             Vec::new(),
