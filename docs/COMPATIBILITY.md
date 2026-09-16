@@ -554,10 +554,17 @@ is refused as `IdentityMismatch("package_digest")` and a swapped bridge as
 `IdentityMismatch("bridge_digest")`. The inspected digests are always computed from the located
 bytes; `STS2_EXO_PACKAGE_DIGEST` and `STS2_EXO_BRIDGE_DIGEST` are never substituted for the
 observation. The identity comparison precedes the capability gate and `package_digest` is evaluated
-first, so the package pin now decides admission. The remaining axes have no inspected artifact at
-this seam, so a deployment whose located package matches its pin still refuses with
-`UnboundIdentity("extension_digest")`: because the reviewed capability axes are not promoted on the
-bridge's behalf, `envelope` still refuses every deployment today. `STS2_EXO_PACKAGE_PATH` is a
+first. The envelope now requires launch arguments `--run`, an absolute bridge configuration path,
+and its digest. The shared bridge loader verifies that configuration, the executor, the reviewed
+extension, Node and source revision. The package locator must resolve to that same executor.
+Extension and prompt identity bind the complete reviewed extension source; tool identity uses the
+reviewed tool catalog; model, provider route and configuration identity come from the verified
+launch configuration. The instance identity comes from the gateway runtime configuration and is
+subsequently subject to gateway allocation validation. It is not native acceptance evidence.
+This is a breaking operator-configuration change, with unchanged wire schemas. It removes the
+unbound extension obstacle but does not promote unverified cancellation/recovery capabilities;
+those still prevent full admission until their runtime composition is verified.
+`STS2_EXO_PACKAGE_PATH` is a
 backward-incompatible addition to the reviewed envelope contract — every deployment that does not
 supply it now fails closed with `STS2_EXO_PACKAGE_PATH is required`. The already-documented raw-wire
 development bridges

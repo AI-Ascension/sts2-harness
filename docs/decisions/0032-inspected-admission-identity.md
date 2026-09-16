@@ -60,7 +60,31 @@ envelope still refuses every deployment today, now naming `extension_digest` as 
 axis. Everything else in this ADR, including the axis order and the fail-closed
 `UnboundIdentity(axis)` rule, is unchanged.
 
-## Consequences
+## Update: inspect the actual bridge configuration
+
+The runtime and bridge now share `exo_bridge_configuration.rs`. Envelope startup requires the
+actual launch arguments `--run`, an absolute configuration path, and the configuration digest.
+The loader verifies the executor, reviewed extension, Node and exact clean Exo source revision;
+the separately configured package locator must resolve to that executor. A disconnected artifact
+with a matching operator pin cannot substitute for the file the bridge will execute.
+
+The inspected identity binds extension bytes, the complete extension-embedded prompt, the reviewed
+tool catalog and verified configuration bytes. Model and endpoint come from that configuration;
+the reviewed implementation selects the OpenAI provider. The instance axis comes from the runtime
+gateway configuration, which allocation must subsequently validate. None of these observations
+establishes native host certification.
+
+Executable inspection uses the bridge's existing 512 MiB ceiling in both consumers; extensions
+remain limited to 64 KiB, configuration to 32 KiB and Node to 256 MiB. This removes the inconsistent
+128 MiB admission ceiling without increasing the bridge's existing executable ceiling. Reads remain
+bounded and admission happens before launching a provider. This classification applies to the Exo
+executor/bridge; independently configured legacy provider bridges retain their own limits.
+
+This supersedes the unbound-axis statements above. The source-review descriptor still marks
+turn identity, cancellation and recovery unverified, so binding the deployment does not by itself
+admit an envelope or bypass any capability prerequisite.
+
+## Original consequences (before the configuration inspection update)
 
 - The reviewed envelope now refuses for a strictly stronger reason: it refuses a deployment it could
   not inspect, not merely one whose capability axes are unverified. The refusal is still produced

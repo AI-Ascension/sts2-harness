@@ -44,15 +44,15 @@ pub struct ExoInspectedArtifacts {
 }
 
 impl ExoInspectedArtifacts {
-    /// The largest artifact this seam hashes in one read, matching the local-provider bridge digest
-    /// check in `runtime_v3_settings`.
-    pub const MAX_INSPECTED_ARTIFACT_BYTES: u64 = 128 * 1024 * 1024;
+    /// The largest executable this seam hashes, shared with the reviewed Exo bridge loader.
+    pub const MAX_INSPECTED_ARTIFACT_BYTES: u64 =
+        crate::exo_bridge_configuration::MAX_EXECUTOR_BYTES as u64;
 
     /// Reads one artifact's exact bytes, so replacing the file changes the inspected digest.
     ///
-    /// The read is bounded to [`Self::MAX_INSPECTED_ARTIFACT_BYTES`], the same bound the
-    /// local-provider bridge digest check uses, so an oversized artifact is an error rather than an
-    /// unbounded allocation.
+    /// The read is bounded to [`Self::MAX_INSPECTED_ARTIFACT_BYTES`], so an oversized artifact
+    /// is an error rather than an unbounded allocation. Extension and configuration files use their
+    /// smaller, artifact-specific bounds in the shared bridge loader.
     pub fn read(path: impl AsRef<Path>) -> std::io::Result<Vec<u8>> {
         use std::io::Read as _;
         let mut bytes = Vec::new();
