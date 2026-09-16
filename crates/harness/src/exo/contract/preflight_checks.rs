@@ -75,6 +75,11 @@ pub(super) fn compare_limits(
         })
 }
 
+/// Cross-checks the identity the deployment advertises against the operator's pin.
+///
+/// The advertised identity is what was actually inspected; the pin is what the operator requires.
+/// An axis the pin requires but the inspection did not bind is refused as `UnboundIdentity`, so a
+/// deployment can never be admitted on a pinned declaration that no artifact backed.
 pub(super) fn compare_optional_identity(
     descriptor: &ExoCapabilityDescriptor,
     trusted: &ExoTrustedConfiguration,
@@ -132,8 +137,13 @@ pub(super) fn compare_optional_identity(
         ),
     ];
     for (name, advertised, expected) in pairs {
-        if advertised != expected {
-            return Err(ExoPreflightError::IdentityMismatch(name));
+        let Some(expected) = expected else {
+            continue;
+        };
+        match advertised {
+            Some(advertised) if advertised == expected => {}
+            Some(_) => return Err(ExoPreflightError::IdentityMismatch(name)),
+            None => return Err(ExoPreflightError::UnboundIdentity(name)),
         }
     }
     Ok(())

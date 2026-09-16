@@ -10,12 +10,14 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use sts2_harness::exo_admission::{ExoAdmissionPlan, ExoAdmissionRefusal, ExoRuntimeAdmission};
+use sts2_harness::exo_admission::{
+    ExoAdmissionPlan, ExoAdmissionRefusal, ExoInspectedArtifacts, ExoRuntimeAdmission,
+};
 use sts2_harness::{
     EXO_CONTRACT_VERSION, EXO_SOURCE_REVISION, ExoAdmittedTransport, ExoCapabilityDescriptor,
     ExoCapabilityState, ExoContextMode, ExoIdentity, ExoLimits, ExoPlatform, ExoPreflightError,
     ExoProfile, ExoRestrictedProfile, ExoRuntime, ExoTransport, ExoTransportError,
-    ExoTrustedConfiguration,
+    ExoTrustedConfiguration, preflight,
 };
 
 #[derive(Default)]
@@ -81,8 +83,37 @@ fn trusted(identity: ExoIdentity) -> ExoTrustedConfiguration {
 }
 
 fn plan(trusted: ExoTrustedConfiguration) -> ExoAdmissionPlan {
+    // These plans describe a deployment whose advertised identity is its operator pin, so the tests
+    // below exercise the capability, profile, route, schema and revision gates. The identity binding
+    // itself is covered by the inspection tests, which derive the advertised identity from bytes.
+    let inspected = trusted.identity.clone();
     ExoAdmissionPlan::new(
         trusted,
+        inspected,
+        String::from("execution-1"),
+        String::from("request-1"),
+        String::from("turn-1"),
+    )
+}
+
+fn bound_artifacts() -> ExoInspectedArtifacts {
+    ExoInspectedArtifacts {
+        package: Some(b"package bytes".to_vec()),
+        extension: Some(b"extension bytes".to_vec()),
+        bridge: Some(b"bridge bytes".to_vec()),
+        prompt: Some(b"prompt bytes".to_vec()),
+        tool: Some(b"tool bytes".to_vec()),
+        config: Some(b"config bytes".to_vec()),
+    }
+}
+
+fn inspected_plan(
+    configured: ExoTrustedConfiguration,
+    artifacts: &ExoInspectedArtifacts,
+) -> ExoAdmissionPlan {
+    ExoAdmissionPlan::inspected(
+        configured,
+        artifacts,
         String::from("execution-1"),
         String::from("request-1"),
         String::from("turn-1"),
@@ -202,4 +233,104 @@ fn admitted_turn_reports_zero_model_calls_before_it_dispatches() {
     .expect("synthetic admission");
     assert_eq!(admitted.admission().model_calls, 0);
     assert_eq!(recording.borrow().exchanges, 0);
+}
+
+/// The inspected (advertised) deployment identity must be cross-checked against the operator pin
+/// before the capability gate, so a swapped artifact is refused as an identity mismatch instead of
+/// being masked by an unrelated capability refusal.
+#[test]
+fn swapped_artifact_bytes_are_refused_as_an_identity_mismatch_before_the_capability_gate() {
+    let mut descriptor = ExoCapabilityDescriptor::source_review().expect("source descriptor");
+    descriptor.identity = complete_identity();
+    let mut configured = trusted(complete_identity());
+    configured.identity.package_digest = Some(String::from("9").repeat(64));
+    assert_eq!(
+        preflight(&descriptor, &configured),
+        Err(ExoPreflightError::IdentityMismatch("package_digest")),
+        "a swapped package artifact must fail identity binding"
+    );
+}
+
+/// The advertised identity is inspected from real bytes, so a bridge whose bytes differ from the
+/// pin is refused as an identity mismatch before the capability gate can mask it, and no transport
+/// is ever dispatched.
+#[test]
+fn inspected_bridge_bytes_that_do_not_match_the_pin_refuse_before_any_dispatch() {
+    let artifacts = bound_artifacts();
+    let mut configured = trusted(complete_identity());
+    configured.identity.package_digest = artifacts.package.as_deref().map(sts2_harness::sha256_hex);
+    configured.identity.extension_digest =
+        artifacts.extension.as_deref().map(sts2_harness::sha256_hex);
+    configured.identity.prompt_digest = artifacts.prompt.as_deref().map(sts2_harness::sha256_hex);
+    configured.identity.tool_digest = artifacts.tool.as_deref().map(sts2_harness::sha256_hex);
+    configured.identity.config_digest = artifacts.config.as_deref().map(sts2_harness::sha256_hex);
+    configured.identity.bridge_digest = Some(String::from("3").repeat(64));
+    let plan = inspected_plan(configured, &artifacts);
+
+    let refusal = plan.validate().expect_err("a swapped bridge must refuse");
+    assert!(
+        matches!(
+            refusal,
+            ExoAdmissionRefusal::Preflight(ExoPreflightError::IdentityMismatch("bridge_digest"))
+        ),
+        "the inspected bridge bytes must be compared against the pin, got {refusal}"
+    );
+    let recording = Rc::new(RefCell::new(Recording::default()));
+    assert!(plan.admit(recording_transport(&recording)).is_err());
+    assert_eq!(recording.borrow().exchanges, 0);
+    assert_eq!(recording.borrow().closes, 0);
+}
+
+/// A pinned axis that the inspection did not bind cannot be admitted from the operator's declaration
+/// alone: preflight refuses it as unbound, so an uninspected artifact never reaches a model or game
+/// effect.
+#[test]
+fn a_pinned_axis_without_inspected_bytes_refuses_before_any_dispatch() {
+    let artifacts = ExoInspectedArtifacts {
+        bridge: Some(b"bridge bytes".to_vec()),
+        ..ExoInspectedArtifacts::default()
+    };
+    let plan = inspected_plan(trusted(complete_identity()), &artifacts);
+
+    let refusal = plan.validate().expect_err("an unbound pin must refuse");
+    assert!(
+        matches!(
+            refusal,
+            ExoAdmissionRefusal::Preflight(ExoPreflightError::UnboundIdentity("package_digest"))
+        ),
+        "a pin without inspected bytes must fail closed, got {refusal}"
+    );
+    let recording = Rc::new(RefCell::new(Recording::default()));
+    assert!(plan.admit(recording_transport(&recording)).is_err());
+    assert_eq!(recording.borrow().exchanges, 0);
+    assert_eq!(recording.borrow().closes, 0);
+}
+
+/// The inspected identity is the hash of the inspected bytes, never a copy of the pin, so a plan
+/// built from bytes the operator did not pin is refused even when every other axis is pinned.
+#[test]
+fn inspected_package_bytes_that_do_not_match_the_pin_refuse_before_any_dispatch() {
+    let artifacts = bound_artifacts();
+    let mut configured = trusted(complete_identity());
+    configured.identity.package_digest = Some(String::from("9").repeat(64));
+    configured.identity.extension_digest =
+        artifacts.extension.as_deref().map(sts2_harness::sha256_hex);
+    configured.identity.bridge_digest = artifacts.bridge.as_deref().map(sts2_harness::sha256_hex);
+    configured.identity.prompt_digest = artifacts.prompt.as_deref().map(sts2_harness::sha256_hex);
+    configured.identity.tool_digest = artifacts.tool.as_deref().map(sts2_harness::sha256_hex);
+    configured.identity.config_digest = artifacts.config.as_deref().map(sts2_harness::sha256_hex);
+    let plan = inspected_plan(configured, &artifacts);
+
+    let refusal = plan.validate().expect_err("a swapped package must refuse");
+    assert!(
+        matches!(
+            refusal,
+            ExoAdmissionRefusal::Preflight(ExoPreflightError::IdentityMismatch("package_digest"))
+        ),
+        "swapped package bytes must fail identity binding, got {refusal}"
+    );
+    let recording = Rc::new(RefCell::new(Recording::default()));
+    assert!(plan.admit(recording_transport(&recording)).is_err());
+    assert_eq!(recording.borrow().exchanges, 0);
+    assert_eq!(recording.borrow().closes, 0);
 }

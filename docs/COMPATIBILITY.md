@@ -210,8 +210,12 @@ admission gate recorded in [ADR 0031](decisions/0031-runtime-exo-admission-gate.
 `STS2_EXO_ADMISSION=envelope` mode refuses the run while a required capability, digest, revision,
 route or schema is not admitted, and it refuses before the durable store, the gateway, the MCP
 session, the provider or any game effect exists; `STS2_EXO_ADMISSION=legacy` is an explicit
-operator acknowledgement of an un-admitted raw-wire bridge. Standard/fresh/Linux x86_64 and strict
-terminal decision parsing are source-derived;
+operator acknowledgement of an un-admitted raw-wire bridge. That gate cross-checks the identity
+**inspected** from the launch's own artifacts against the operator pin
+([ADR 0032](decisions/0032-inspected-admission-identity.md)), so a swapped package, extension or
+bridge artifact fails closed and a pinned axis the inspection did not bind refuses as
+`UnboundIdentity` instead of being admitted on the declaration alone. Standard/fresh/Linux x86_64 and
+strict terminal decision parsing are source-derived;
 map/expert, continuity, cancellation/recovery, event/usage, replay, native package/model
 identity, live Exo connectivity, and STS2 gameplay remain `unverified` until the real pinned
 executor spike records them. The required `runtime`, `provider`, and `endpoint` identity axes are

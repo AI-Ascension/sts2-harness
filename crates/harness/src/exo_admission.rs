@@ -4,22 +4,76 @@
 //!
 //! The runtime must not give a model provider a transport until the offline, model-free contract
 //! [`preflight`] has admitted the configured deployment. [`ExoAdmissionPlan`] assembles the
-//! reviewed capability descriptor plus the operator-trusted configuration, refuses the run when a
-//! required capability is missing or unverified, when a digest or revision does not match, or when
-//! the advertised schema, runtime, platform or profile is unsupported, and only then admits one
-//! correlated turn through [`ExoAdmittedTransport`]. Every refusal is produced before the inner
-//! transport is dispatched, so a rejected deployment cannot cause a model or game effect.
+//! reviewed capability descriptor whose deployment identity is the identity *inspected* from the
+//! deployment actually on disk, and cross-checks it against the operator-trusted configuration. It
+//! refuses the run when a pinned identity axis was not inspected or its inspected bytes do not match
+//! the pin, when a required capability is missing or unverified, or when the advertised schema,
+//! runtime, platform or profile is unsupported, and only then admits one correlated turn through
+//! [`ExoAdmittedTransport`]. Every refusal is produced before the inner transport is dispatched, so
+//! a rejected deployment cannot cause a model or game effect.
 //!
 //! [`ExoRuntimeAdmission`] is the production-facing decision. `Enveloped` is the reviewed,
 //! fail-closed default that speaks the versioned `sts2.exo-bridge-wire-v1` envelope. `Legacy` is
 //! an explicit operator acknowledgement of the un-admitted raw-wire process bridge used by the
 //! local `ollama`, `openai-astra` and `synthetic` fixtures, which cannot accept that envelope.
 
+use std::path::Path;
+
 use crate::exo::{
-    ExoCapabilityDescriptor, ExoIdentityError, ExoPreflightError, ExoTransport, ExoTransportError,
-    ExoTrustedConfiguration, preflight,
+    EXO_CONTRACT_VERSION, EXO_SOURCE_REVISION, ExoCapabilityDescriptor, ExoIdentity,
+    ExoIdentityError, ExoPreflightError, ExoTransport, ExoTransportError, ExoTrustedConfiguration,
+    preflight,
 };
 use crate::exo_admitted_transport::{ExoAdmissionError, ExoAdmittedTransport};
+use crate::sha256_hex;
+
+/// The exact artifact bytes an operator inspected for one deployment.
+///
+/// Every digest axis is derived from the bytes recorded here, so replacing a package, extension,
+/// bridge, prompt, tool or configuration artifact changes the inspected identity and can no longer
+/// satisfy the operator's pin. `None` records an axis the inspection did not observe; [`preflight`]
+/// then refuses it, because an unobserved axis cannot be bound to the pin.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ExoInspectedArtifacts {
+    pub package: Option<Vec<u8>>,
+    pub extension: Option<Vec<u8>>,
+    pub bridge: Option<Vec<u8>>,
+    pub prompt: Option<Vec<u8>>,
+    pub tool: Option<Vec<u8>>,
+    pub config: Option<Vec<u8>>,
+}
+
+impl ExoInspectedArtifacts {
+    /// Reads one artifact's exact bytes, so replacing the file changes the inspected digest.
+    pub fn read(path: impl AsRef<Path>) -> std::io::Result<Vec<u8>> {
+        std::fs::read(path)
+    }
+
+    /// The identity observed from the deployment actually on disk: every digest axis is computed
+    /// from the inspected artifact bytes and the source revision is the harness-reviewed pin.
+    ///
+    /// An axis with no inspected bytes stays `None` instead of borrowing the operator's pin, so
+    /// [`preflight`] refuses it as unbound rather than comparing a pinned value with itself. The
+    /// model binding, provider and endpoint axes are not derivable from artifact bytes, so a caller
+    /// that observes them independently supplies them through [`ExoAdmissionPlan::new`].
+    #[must_use]
+    pub fn identity(&self) -> ExoIdentity {
+        ExoIdentity {
+            source_revision: EXO_SOURCE_REVISION.to_owned(),
+            package_digest: self.package.as_deref().map(sha256_hex),
+            extension_digest: self.extension.as_deref().map(sha256_hex),
+            bridge_digest: self.bridge.as_deref().map(sha256_hex),
+            model_binding: None,
+            provider: None,
+            endpoint: None,
+            prompt_digest: self.prompt.as_deref().map(sha256_hex),
+            tool_digest: self.tool.as_deref().map(sha256_hex),
+            config_digest: self.config.as_deref().map(sha256_hex),
+            contract_version: EXO_CONTRACT_VERSION.to_owned(),
+            native_instance_id: None,
+        }
+    }
+}
 
 /// Admission mode selected for the runtime Exo transport seam.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -63,34 +117,62 @@ impl From<ExoAdmissionRefusal> for String {
 /// One reviewed deployment, admitted offline as exactly one correlated turn.
 pub struct ExoAdmissionPlan {
     trusted: ExoTrustedConfiguration,
+    inspected: ExoIdentity,
     model_execution_id: String,
     request_id: String,
     turn_id: String,
 }
 
 impl ExoAdmissionPlan {
+    /// Builds a plan from the operator's pin and the independently inspected deployment identity.
+    ///
+    /// `inspected` must be the identity observed from the deployment actually on disk (see
+    /// [`ExoInspectedArtifacts::identity`]); it is never taken from `trusted`, so the two remain
+    /// genuinely independent values for `preflight` to cross-check.
     #[must_use]
     pub fn new(
         trusted: ExoTrustedConfiguration,
+        inspected: ExoIdentity,
         model_execution_id: String,
         request_id: String,
         turn_id: String,
     ) -> Self {
         Self {
             trusted,
+            inspected,
             model_execution_id,
             request_id,
             turn_id,
         }
     }
 
-    /// Builds the reviewed descriptor whose deployment identity axes are the operator-trusted
-    /// values. Capability axes stay exactly as shipped by the source review; they are not asserted
-    /// from, or on behalf of, the configured bridge.
+    /// Builds a plan whose deployment identity is inspected from the exact artifact bytes, so a
+    /// swapped package, extension or bridge fails `preflight` against the pin, and so a pin the
+    /// inspection did not bind refuses the run rather than being admitted on the declaration alone.
+    #[must_use]
+    pub fn inspected(
+        trusted: ExoTrustedConfiguration,
+        artifacts: &ExoInspectedArtifacts,
+        model_execution_id: String,
+        request_id: String,
+        turn_id: String,
+    ) -> Self {
+        Self::new(
+            trusted,
+            artifacts.identity(),
+            model_execution_id,
+            request_id,
+            turn_id,
+        )
+    }
+
+    /// Builds the reviewed descriptor whose deployment identity axes are the inspected values.
+    /// Capability axes stay exactly as shipped by the source review; they are not asserted from, or
+    /// on behalf of, the configured bridge.
     fn reviewed_descriptor(&self) -> Result<ExoCapabilityDescriptor, ExoAdmissionRefusal> {
         let mut descriptor =
             ExoCapabilityDescriptor::source_review().map_err(ExoAdmissionRefusal::Descriptor)?;
-        descriptor.identity = self.trusted.identity.clone();
+        descriptor.identity = self.inspected.clone();
         Ok(descriptor)
     }
 

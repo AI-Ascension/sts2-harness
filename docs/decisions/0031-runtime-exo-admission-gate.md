@@ -40,14 +40,20 @@ assembles settings:
   transport is passed through unenveloped, exactly as before.
 
 The descriptor keeps the capability axes shipped by `ExoCapabilityDescriptor::source_review()`
-with the deployment identity axes supplied by the operator-trusted configuration. The runtime does
-not promote a capability to `Supported` on the bridge's behalf. Because the reviewed descriptor
-still reports `evidence.turn_identity`, `lifecycle.cancellation` and `lifecycle.recovery` as
-`Unverified`, the reviewed envelope mode refuses the current deployment with
-`RequiredCapability("evidence.turn_identity")`. That refusal is the intended fail-closed outcome:
-the criterion "missing/malformed/unknown capabilities, swapped package bytes, wrong revisions and
-unsupported schemas fail preflight before model/game effects" is satisfied by refusing, not by
-asserting an unverified capability.
+with the deployment identity axes inspected from the launch's own artifacts. The runtime does not
+promote a capability to `Supported` on the bridge's behalf. Because the reviewed descriptor still
+reports `evidence.turn_identity`, `lifecycle.cancellation` and `lifecycle.recovery` as `Unverified`,
+the reviewed envelope mode refuses the current deployment. That refusal is the intended fail-closed
+outcome: the criterion "missing/malformed/unknown capabilities, swapped package bytes, wrong
+revisions and unsupported schemas fail preflight before model/game effects" is satisfied by
+refusing, not by asserting an unverified capability.
+
+The deployment identity axes were originally supplied by the operator-trusted configuration, which
+made the digest cross-check inherit the pin and compare it with itself. That is corrected by
+[ADR 0032](0032-inspected-admission-identity.md), which supersedes this paragraph: the identity is
+now inspected from the launch's own artifacts, an uninspectable pinned axis refuses as
+`UnboundIdentity`, and the envelope therefore refuses the current deployment for that identity
+reason before the capability gate is reached.
 
 ## Open decision
 
