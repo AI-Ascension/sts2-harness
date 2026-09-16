@@ -6,6 +6,9 @@ link to the file), so it must denote exactly one decision.
 
 `ADR-WF-004-store.md` uses a distinct prefix and is not a numbered record.
 
+`repo-policy --strict` fails with `ADR001` when two records in this directory
+share a four-digit number prefix; see the rule families in `docs/POLICY_AS_CODE.md`.
+
 ## Renumbering 2026-09-16 (issue #203)
 
 Eight numbers were each held by two different records, so a single label denoted

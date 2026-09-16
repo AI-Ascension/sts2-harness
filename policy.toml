@@ -47,6 +47,7 @@ required_files = [
   "crates/harness/src/routing.rs",
   "crates/harness/tests/foundation.rs",
   "tools/repo-policy/Cargo.toml",
+  "tools/repo-policy/src/adr.rs",
   "tools/repo-policy/src/config.rs",
   "tools/repo-policy/src/diagnostic.rs",
   "tools/repo-policy/src/files.rs",
