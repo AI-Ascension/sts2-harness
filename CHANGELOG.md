@@ -7,6 +7,10 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Refuse recorded-run export explicitly on non-Unix platforms, where its descriptor-relative
+  no-follow snapshot reader is unavailable, instead of preventing the whole harness from compiling.
+  The Unix snapshot checks remain intact. This does not certify Windows runtime behavior.
+
 - Inspect the actual Exo launch configuration using the same loader as the bridge. Bind the
   configured extension, prompt, tool catalog, model route and configuration to the operator pins,
   require the package locator to match the configured executor, and use the shared artifact bounds.

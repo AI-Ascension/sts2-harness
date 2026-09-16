@@ -240,7 +240,7 @@ fn the_production_control_binding_refuses_an_existing_over_bound_journal() {
     let service = described_service(Scenario::Matching);
     let run = run_id(&service);
     let selected = selected_limits();
-    let mut authority = ControlAuthority::new(boundary(), "revision-1");
+    let mut authority = ControlAuthority::new(fixture::boundary(&run), "revision-1");
     for index in 0..selected.max_control_events / 2 {
         let operation_id = format!("operation-{index}");
         authority
