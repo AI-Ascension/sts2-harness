@@ -10,6 +10,14 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+pub(super) struct ProcessCaseOutcome {
+    pub(super) provider_called: bool,
+    pub(super) gateway_paths: Vec<String>,
+    pub(super) output: String,
+    pub(super) mcp_log: String,
+    pub(super) unknown_operation_retained: bool,
+}
+
 fn read_request(stream: &mut TcpStream) -> Result<(String, Value), Box<dyn std::error::Error>> {
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     let mut header = Vec::new();
@@ -231,7 +239,7 @@ pub(super) fn run_case(
     mismatch_observation: bool,
     mismatch_seed: bool,
     pending_unknown: bool,
-) -> Result<(bool, Vec<String>, String, String, bool), Box<dyn std::error::Error>> {
+) -> Result<ProcessCaseOutcome, Box<dyn std::error::Error>> {
     let temp = TempDir::new()?;
     seed_branch_and_boundary(
         temp.path(),
@@ -355,11 +363,11 @@ pub(super) fn run_case(
                     && operation.state == OperationState::Unknown
             })
     };
-    Ok((
-        provider_hit.exists(),
+    Ok(ProcessCaseOutcome {
+        provider_called: provider_hit.exists(),
         gateway_paths,
-        format!("{}{}", stdout, stderr),
-        fs::read_to_string(mcp_log).unwrap_or_default(),
+        output: format!("{}{}", stdout, stderr),
+        mcp_log: fs::read_to_string(mcp_log).unwrap_or_default(),
         unknown_operation_retained,
-    ))
+    })
 }

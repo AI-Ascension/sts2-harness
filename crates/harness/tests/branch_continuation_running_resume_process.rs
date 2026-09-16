@@ -299,113 +299,121 @@ fn recovery_authority(owner: &Value) -> Value {
 #[test]
 fn running_prefix_resume_adopts_before_observation_and_gates_provider_on_boundary()
 -> Result<(), Box<dyn std::error::Error>> {
-    let (provider_after_match, matching_routes, matching_output, matching_mcp, _) =
-        process_case::run_case(false, false, false)?;
+    let matching = process_case::run_case(false, false, false)?;
     assert!(
-        provider_after_match,
-        "matching boundary never reached the provider bridge: {matching_output}; routes={matching_routes:?}; MCP={matching_mcp}"
+        matching.provider_called,
+        "matching boundary never reached provider: {}; routes={:?}; MCP={}",
+        matching.output, matching.gateway_paths, matching.mcp_log
     );
     assert_eq!(
-        matching_routes.first().map(String::as_str),
+        matching.gateway_paths.first().map(String::as_str),
         Some("/v1/recovery/continuation/owner/adopt"),
-        "runtime did not adopt the existing owner first: {matching_routes:?}"
+        "runtime did not adopt the existing owner first: {:?}",
+        matching.gateway_paths
     );
     assert!(
-        !matching_routes
+        !matching
+            .gateway_paths
             .iter()
             .any(|path| path == "/v1/sessions/allocate"),
-        "selected Running resume attempted a fresh allocation: {matching_routes:?}"
+        "selected Running resume attempted fresh allocation: {:?}",
+        matching.gateway_paths
     );
     assert!(
-        matching_mcp.contains("tools/call sts2.observe"),
-        "runtime did not observe the selected live destination: {matching_mcp}"
+        matching.mcp_log.contains("tools/call sts2.observe"),
+        "runtime did not observe the selected live destination: {}",
+        matching.mcp_log
     );
     assert!(
-        !matching_mcp.contains("start_seeded_run"),
-        "selected Running resume attempted a seeded start: {matching_mcp}"
+        !matching.mcp_log.contains("start_seeded_run"),
+        "selected Running resume attempted a seeded start: {}",
+        matching.mcp_log
     );
 
-    let (provider_after_mismatch, mismatch_routes, mismatch_output, mismatch_mcp, _) =
-        process_case::run_case(true, false, false)?;
+    let mismatch = process_case::run_case(true, false, false)?;
     assert!(
-        !provider_after_mismatch,
-        "provider ran before a mismatched live observation was refused: {mismatch_output}"
+        !mismatch.provider_called,
+        "provider ran before mismatched observation refusal: {}",
+        mismatch.output
     );
     assert_eq!(
-        mismatch_routes.first().map(String::as_str),
+        mismatch.gateway_paths.first().map(String::as_str),
         Some("/v1/recovery/continuation/owner/adopt"),
-        "mismatched resume did not first adopt the current owner: {mismatch_routes:?}"
+        "mismatched resume did not adopt the current owner first: {:?}",
+        mismatch.gateway_paths
     );
     assert!(
-        !mismatch_routes
+        !mismatch
+            .gateway_paths
             .iter()
             .any(|path| path == "/v1/sessions/allocate"),
-        "mismatched Running resume attempted a fresh allocation: {mismatch_routes:?}"
+        "mismatched Running resume attempted fresh allocation: {:?}",
+        mismatch.gateway_paths
     );
     assert!(
-        mismatch_mcp.contains("tools/call sts2.observe"),
-        "mismatched scenario did not reach the authoritative observation: {mismatch_mcp}"
+        mismatch.mcp_log.contains("tools/call sts2.observe"),
+        "mismatched scenario did not reach authoritative observation: {}",
+        mismatch.mcp_log
     );
     assert!(
-        !mismatch_routes
+        !mismatch
+            .gateway_paths
             .iter()
             .any(|path| path.ends_with("/release")),
-        "a mismatched boundary released a lease it no longer owns: {mismatch_routes:?}"
+        "mismatched boundary released a lease it no longer owns: {:?}",
+        mismatch.gateway_paths
     );
 
-    let (
-        provider_after_seed_mismatch,
-        seed_mismatch_routes,
-        seed_mismatch_output,
-        seed_mismatch_mcp,
-        _,
-    ) = process_case::run_case(false, true, false)?;
+    let seed_mismatch = process_case::run_case(false, true, false)?;
     assert!(
-        !provider_after_seed_mismatch,
-        "resume with a mismatched persisted effective seed reached the provider: {seed_mismatch_output}"
+        !seed_mismatch.provider_called,
+        "seed mismatch reached the provider: {}",
+        seed_mismatch.output
     );
     assert!(
-        seed_mismatch_routes.is_empty(),
-        "seed identity mismatch contacted Gateway before admission: {seed_mismatch_routes:?}"
+        seed_mismatch.gateway_paths.is_empty(),
+        "seed mismatch contacted Gateway: {:?}",
+        seed_mismatch.gateway_paths
     );
     assert!(
-        seed_mismatch_mcp.is_empty(),
-        "seed identity mismatch launched MCP before admission: {seed_mismatch_mcp}"
+        seed_mismatch.mcp_log.is_empty(),
+        "seed mismatch launched MCP: {}",
+        seed_mismatch.mcp_log
     );
     assert!(
-        seed_mismatch_output.contains(
+        seed_mismatch.output.contains(
             "selected branch effective seed does not match its durable execution fingerprint"
         ),
-        "seed identity mismatch was not rejected against the durable fingerprint: {seed_mismatch_output}"
+        "seed mismatch was not rejected against the durable fingerprint: {}",
+        seed_mismatch.output
     );
 
-    let (
-        provider_after_pending,
-        pending_routes,
-        pending_output,
-        pending_mcp,
-        unknown_operation_retained,
-    ) = process_case::run_case(false, false, true)?;
+    let pending = process_case::run_case(false, false, true)?;
     assert!(
-        !provider_after_pending,
-        "provider ran while an operation remained unresolved: {pending_output}"
+        !pending.provider_called,
+        "provider ran while an operation remained unresolved: {}",
+        pending.output
     );
     assert!(
-        pending_routes.is_empty(),
-        "resume contacted Gateway before refusing an unresolved durable operation: {pending_routes:?}"
+        pending.gateway_paths.is_empty(),
+        "resume contacted Gateway before refusing pending operation: {:?}",
+        pending.gateway_paths
     );
     assert!(
-        pending_mcp.is_empty(),
-        "resume contacted MCP before refusing an unresolved durable operation: {pending_mcp}"
+        pending.mcp_log.is_empty(),
+        "resume contacted MCP before refusing pending operation: {}",
+        pending.mcp_log
     );
     assert!(
-        pending_output
+        pending
+            .output
             .contains("selected-branch resume is blocked by unresolved durable operation"),
-        "pending operation was not refused with the fail-closed reason: {pending_output}"
+        "pending operation was not refused with fail-closed reason: {}",
+        pending.output
     );
     assert!(
-        unknown_operation_retained,
-        "unknown operation was not retained for explicit authoritative reconciliation"
+        pending.unknown_operation_retained,
+        "unknown operation was not retained for authoritative reconciliation"
     );
     Ok(())
 }
