@@ -38,6 +38,13 @@ impl LifecycleProcessEffect {
             || max_response_bytes > MAX_RESPONSE_BYTES
             || timeout_millis == 0
             || completed_units == 0
+            || !matches!(
+                config.arguments(),
+                [mode, path, digest]
+                    if mode == "--run-v2"
+                        && std::path::Path::new(path).is_absolute()
+                        && !digest.is_empty()
+            )
         {
             return Err(LifecycleError::Invalid);
         }
