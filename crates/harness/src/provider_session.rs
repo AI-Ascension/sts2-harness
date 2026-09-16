@@ -8,12 +8,16 @@
 
 mod broker;
 pub(crate) mod owner_journal;
+mod policy_owner;
 mod protocol;
 mod state_store;
 mod transport;
 mod types;
 
 pub use broker::{BrokerSnapshot, ProviderSessionBroker};
+pub use policy_owner::{
+    ProviderSessionPolicyOwner, ProviderSessionPolicyOwnerError, ProviderSessionPolicyRecord,
+};
 pub use protocol::{
     NativeFrame, NativeFrameKind, NativePeerError, NativeResponse, parse_native_frame,
     parse_native_request,
