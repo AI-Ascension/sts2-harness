@@ -68,7 +68,7 @@ fn restart_with_durable_intent_fails_closed_without_redispatch() {
 fn store_failure_after_live_launch_rolls_back_admission_without_a_leaked_run() {
     let seed_store = Arc::new(MemoryWorkflowStore::new());
     let seed_factory = Arc::new(FakeFactory::new(false));
-    let seed_service = live_store(
+    let seed_service = live_service(
         Arc::clone(&seed_store) as Arc<dyn WorkflowStore>,
         Arc::clone(&seed_factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -109,7 +109,7 @@ fn store_failure_after_live_launch_rolls_back_admission_without_a_leaked_run() {
         )
         .expect("seed duplicate run");
     let factory = Arc::new(FakeFactory::new(false));
-    let service = live_store(
+    let service = live_service(
         Arc::clone(&store) as Arc<dyn WorkflowStore>,
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
@@ -228,7 +228,7 @@ fn cancel_attempts_cleanup_after_reconciliation_conflict() {
 #[test]
 fn unresolved_cancel_keeps_pending_identity_and_live_session() {
     let factory = Arc::new(FakeFactory::unresolved_reconcile());
-    let service = live_store(
+    let service = live_service(
         Arc::new(MemoryWorkflowStore::new()),
         Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
         LiveWorkflowOptions::default(),
