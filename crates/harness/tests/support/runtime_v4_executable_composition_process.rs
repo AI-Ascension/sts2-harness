@@ -218,10 +218,9 @@ pub(crate) fn run_scenario(
     })
 }
 
-/// Starts the actual `serve-workflow` binary against the pinned gateway/MCP
-/// processes. The provider-policy store is deliberately seeded with an
-/// adopted policy for a different request, proving that runtime allocation and
-/// first MCP observation precede the scoped provider-policy refusal.
+/// Starts the actual `serve-workflow` binary against gateway/MCP processes.
+/// The provider-policy store and runtime configuration are both bound to the
+/// deterministic management run identity before the service accepts a step.
 pub(crate) fn run_served_policy_gate(
     gateway_binary: &Path,
     mcp_binary: &Path,
@@ -235,9 +234,10 @@ pub(crate) fn run_served_policy_gate(
     let policy_store = temporary.path.join("served-provider-policy.sqlite3");
     let context_store = temporary.path.join("served-context.sqlite3");
     let execution_store = temporary.path.join("served-execution.sqlite3");
-    seed_adopted_runtime_policy(&policy_store)?;
+    let runtime_run_id = served_runtime_run_id()?;
+    seed_adopted_runtime_policy(&policy_store, &runtime_run_id)?;
     let mut gateway = gateway(gateway_binary, gateway_address, mod_server.address)?;
-    let result = (|| {
+    let result: Result<Output, Box<dyn std::error::Error>> = (|| {
         ready(&mut gateway, gateway_address)?;
         let mut command = Command::new(harness_binary);
         command
@@ -253,7 +253,7 @@ pub(crate) fn run_served_policy_gate(
             .env("STS2_WORKFLOW_TOKEN_SERVED", "served-workflow-token")
             .env(
                 "STS2_WORKFLOW_PROVIDER_POLICY_CONFIG",
-                policy_config(&policy_store)?,
+                policy_config(&policy_store, &runtime_run_id)?,
             )
             .env(
                 "STS2_SERVED_PROVIDER_POLICY_KEY",
@@ -286,7 +286,7 @@ pub(crate) fn run_served_policy_gate(
             .env("STS2_MCP_SESSION_ID", MCP_SESSION_ID)
             .env("STS2_LEASE_ID", LEASE_ID)
             .env("STS2_LEASE_EPOCH", LEASE_EPOCH.to_string())
-            .env("STS2_RUN_ID", "run-served-policy-gate")
+            .env("STS2_RUN_ID", &runtime_run_id)
             .env("STS2_EPISODE_ID", "episode-served-policy-gate")
             .env("STS2_TRAJECTORY_ID", "trajectory-served-policy-gate")
             .env("STS2_TRACE_ID", "trace-served-policy-gate")
@@ -304,8 +304,10 @@ pub(crate) fn run_served_policy_gate(
             .stderr(Stdio::piped());
         let mut service = command.spawn()?;
         let client = wait_for_workflow_service(&mut service, workflow_address)?;
-        submit_and_step_policy_gate(&client)?;
-        stop(service)
+        let submission = submit_and_step_policy_gate(&client);
+        let output = stop(service)?;
+        submission?;
+        Ok(output)
     })();
     let gateway_output = stop(gateway)?;
     let ledger = mod_server.finish();
@@ -340,26 +342,52 @@ pub(crate) fn run_served_policy_gate(
         .iter()
         .filter(|request| request.path == "/api/v4/runtime/expert-action")
         .collect();
+    let Some(action) = actions.first() else {
+        return Err("adopted provider policy did not dispatch an action".into());
+    };
+    let Some(operation_id) = action.body["operation_id"].as_str() else {
+        return Err("served action omitted its operation identity".into());
+    };
+    let settled: Vec<_> = ledger
+        .responses
+        .iter()
+        .filter(|response| {
+            response.body["status"] == "settled"
+                && response.body["operation_id"] == operation_id
+                && response.body["state_id"] == "live:8"
+                && response.body["generation"] == 8
+        })
+        .collect();
     if actions.len() != 1
         || actions[0].body["state_id"] != "live:7"
         || actions[0].body["generation"] != 7
-        || !ledger
+        || action.body["action"]["action_id"] != ACTION_ID
+        || ledger
             .requests
             .iter()
-            .any(|request| request.path.starts_with("/api/v4/runtime/expert-actions/"))
+            .filter(|request| {
+                request.path == format!("/api/v4/runtime/expert-actions/{operation_id}")
+            })
+            .count()
+            != 1
+        || settled.len() != 1
     {
-        return Err("adopted provider policy did not dispatch and settle one fenced action".into());
+        return Err(format!(
+            "adopted provider policy did not dispatch and settle one fenced action: {:?}",
+            paths(&ledger)
+        )
+        .into());
     }
     Ok(())
 }
 
-fn policy_config(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
+fn policy_config(path: &Path, runtime_run_id: &str) -> Result<String, Box<dyn std::error::Error>> {
     let capabilities = NativeCapabilities::fixture();
     Ok(serde_json::to_string(&json!({
         "schema_version": "ascension.workflow-provider-policy-config.v1",
         "store_path": path,
         "key_reference": "STS2_SERVED_PROVIDER_POLICY_KEY",
-        "scope": policy_scope("run-served-policy-gate")?,
+        "scope": policy_scope(runtime_run_id)?,
         "capabilities": capabilities,
         "selected_profile": "codex-app-server-fixture-v1"
     }))?)
@@ -375,8 +403,11 @@ fn policy_scope(request_id: &str) -> Result<SessionScope, Box<dyn std::error::Er
     .map_err(|error| format!("fixture provider-policy scope is invalid: {error}").into())
 }
 
-fn seed_adopted_runtime_policy(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let scope = policy_scope("run-served-policy-gate")?;
+fn seed_adopted_runtime_policy(
+    path: &Path,
+    runtime_run_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let scope = policy_scope(runtime_run_id)?;
     let mut capabilities = NativeCapabilities::fixture();
     capabilities.effective_limits.max_completed_turns = 1;
     capabilities.binding.descriptor_sha256 = capabilities.descriptor_digest();
@@ -421,17 +452,7 @@ fn wait_for_workflow_service(
 fn submit_and_step_policy_gate(
     client: &ManagementClient,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut definition: Value = serde_json::from_slice(include_bytes!(
-        "../../../../conformance/workflow-v1/valid-strict.json"
-    ))?;
-    definition["annotations"]["synthetic"] = json!(false);
-    definition["game_profile"] = json!("sts2-live-v1");
-    definition["policy_ref"] = json!("policy.live.v1");
-    definition["graphs"][0]["nodes"][0]["config"]["projection_ref"] = json!("fair-play.live.v1");
-    definition["graphs"][0]["nodes"][1]["config"]["decision_profile_ref"] =
-        json!("decision.live.v1");
-    definition["graphs"][0]["nodes"][1]["config"]["context_ref"] = json!("context.live.v1");
-    definition["capabilities"]["required"][0] = json!("observe.fair-play.v1");
+    let definition = served_definition()?;
     let request_id = "served-policy-gate";
     let digest = digest_value(&definition)?;
     let catalog = response::<TargetCatalogResponse>(client.request_json(
@@ -513,9 +534,48 @@ fn submit_and_step_policy_gate(
             &format!("/v1/workflow-runs/{run_id}/commands"),
             Some(&serde_json::to_vec(&command)?),
         )?)?;
+        if !matches!(
+            command.outcome,
+            sts2_harness::management::CommandOutcome::Applied
+                | sts2_harness::management::CommandOutcome::Pending
+        ) {
+            return Err(
+                format!("served step {index} was not applied: {:?}", command.outcome).into(),
+            );
+        }
         revision = command.run_revision;
     }
     Ok(())
+}
+
+fn served_runtime_run_id() -> Result<String, Box<dyn std::error::Error>> {
+    let definition = served_definition()?;
+    let digest = digest_value(&definition)?;
+    let request = RunRequest {
+        schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
+        request_id: "served-policy-gate".to_owned(),
+        definition: Some(definition),
+        artifact_id: None,
+        instance_id: INSTANCE_ID.to_owned(),
+        profile: "live.workflow.v1".to_owned(),
+        admission: None,
+    };
+    Ok(sts2_harness::management::live_run_id(&request, &digest)?)
+}
+
+fn served_definition() -> Result<Value, Box<dyn std::error::Error>> {
+    let mut definition: Value = serde_json::from_slice(include_bytes!(
+        "../../../../conformance/workflow-v1/valid-strict.json"
+    ))?;
+    definition["annotations"]["synthetic"] = json!(false);
+    definition["game_profile"] = json!("sts2-live-v1");
+    definition["policy_ref"] = json!("policy.live.v1");
+    definition["graphs"][0]["nodes"][0]["config"]["projection_ref"] = json!("fair-play.live.v1");
+    definition["graphs"][0]["nodes"][1]["config"]["decision_profile_ref"] =
+        json!("decision.live.v1");
+    definition["graphs"][0]["nodes"][1]["config"]["context_ref"] = json!("context.live.v1");
+    definition["capabilities"]["required"][0] = json!("observe.fair-play.v1");
+    Ok(definition)
 }
 
 fn response<T: serde::de::DeserializeOwned>(

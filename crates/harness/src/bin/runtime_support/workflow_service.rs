@@ -230,7 +230,7 @@ impl LiveRuntimeSessionFactory for Runtime {
         request: &RunRequest,
         _: &AuthContext,
         _: &WorkflowDefinition,
-        _: &str,
+        definition_digest: &str,
     ) -> Result<Box<dyn sts2_harness::EpisodeRuntimePort + Send>, ManagementError> {
         let config = RuntimeConfig::from_environment()
             .map_err(|e| ManagementError::unavailable("runtime_configuration", e))?;
@@ -240,6 +240,7 @@ impl LiveRuntimeSessionFactory for Runtime {
                 "configured runtime differs from target",
             ));
         }
+        validate_runtime_lineage(&config, &self.policy_scope, request, definition_digest)?;
         runtime_v3::RuntimeV3SessionWorker::start(config)
             .map(|worker| Box::new(worker) as Box<dyn sts2_harness::EpisodeRuntimePort + Send>)
             .map_err(|e| ManagementError::unavailable("runtime_worker_start", e))
@@ -250,7 +251,7 @@ impl LiveRuntimeSessionFactory for Runtime {
         request: &RunRequest,
         _: &AuthContext,
         _: &WorkflowDefinition,
-        _: &str,
+        definition_digest: &str,
     ) -> Result<RuntimeAuthorityBinding, ManagementError> {
         let config = RuntimeConfig::from_environment()
             .map_err(|error| ManagementError::unavailable("runtime_configuration", error))?;
@@ -260,6 +261,7 @@ impl LiveRuntimeSessionFactory for Runtime {
                 "configured runtime differs from target",
             ));
         }
+        validate_runtime_lineage(&config, &self.policy_scope, request, definition_digest)?;
         let settings = runtime_v3_settings::RuntimeV3Settings::from_environment(&config)
             .map_err(|error| ManagementError::unavailable("runtime_configuration", error))?;
         let configuration_digest = runtime_v3::authority_configuration_digest(&config, &settings)
@@ -283,6 +285,25 @@ impl LiveRuntimeSessionFactory for Runtime {
             output_schema_digest: self.provider_capabilities.native_schema_sha256.clone(),
         })
     }
+}
+
+fn validate_runtime_lineage(
+    config: &RuntimeConfig,
+    policy_scope: &SessionScope,
+    request: &RunRequest,
+    definition_digest: &str,
+) -> Result<(), ManagementError> {
+    let workflow_run_id = sts2_harness::management::live_run_id(request, definition_digest)?;
+    if config.run_id != workflow_run_id
+        || policy_scope.run_id != workflow_run_id
+        || policy_scope.episode_id != config.episode_id
+    {
+        return Err(ManagementError::conflict(
+            "runtime_run_lineage_mismatch",
+            "configured runtime and provider policy are not bound to the admitted workflow run",
+        ));
+    }
+    Ok(())
 }
 struct Provider;
 impl LiveProviderSessionFactory for Provider {

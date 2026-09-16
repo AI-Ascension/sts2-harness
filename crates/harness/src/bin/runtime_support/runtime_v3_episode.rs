@@ -109,6 +109,20 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         self.observe_inner(false)
     }
 
+    fn observe_projection(
+        &mut self,
+        reference: &str,
+    ) -> Result<EpisodeObservation, sts2_harness::PortError> {
+        if reference != "fair-play.live.v1" {
+            return Err(wire::port_error(
+                "projection_binding_unavailable",
+                format!("runtime does not support authored projection {reference}"),
+                false,
+            ));
+        }
+        self.observe()
+    }
+
     fn legal_actions(
         &mut self,
         state_id: &str,

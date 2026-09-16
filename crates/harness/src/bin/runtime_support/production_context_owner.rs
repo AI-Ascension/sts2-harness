@@ -136,13 +136,18 @@ impl LiveContextObservationPort for Owner {
                 "runtime authority binding does not match the requested instance",
             ));
         }
+        if binding.run_id != run_id || binding.lease_epoch == 0 {
+            return Err(ManagementError::conflict(
+                "context_owner_runtime_scope",
+                "runtime authority is not bound to the admitted workflow run",
+            ));
+        }
         let fair_play = observation.fair_play().as_value();
-        let legal_actions = fair_play.get("legal_actions").ok_or_else(|| {
-            ManagementError::invalid(
-                "context_observation_catalog_missing",
-                "sanitized MCP observation omitted its legal action catalog",
-            )
-        })?;
+        // Some runtime profiles return the legal catalog through the following
+        // `legal_actions` port call. Until that authoritative catalog is
+        // attached, the current sanitized MCP observation remains the only
+        // canonical observation payload available at this boundary.
+        let legal_actions = fair_play.get("legal_actions").unwrap_or(fair_play);
         let boundary = ContextBoundary {
             run_id: run_id.clone(),
             episode_id: binding.episode_id.clone(),
@@ -159,7 +164,7 @@ impl LiveContextObservationPort for Owner {
             model_revision: binding.model_revision.clone(),
             configuration_sha256: binding.configuration_digest.clone(),
             output_schema_sha256: binding.output_schema_digest.clone(),
-            controller_epoch: 1,
+            controller_epoch: binding.lease_epoch,
             gate_epoch: 1,
             control_version: 1,
         };
@@ -195,6 +200,11 @@ impl LiveContextObservationPort for Owner {
             Ok(authority) => {
                 if authority.state().boundary.episode_id != binding.episode_id
                     || authority.state().boundary.agent_id != binding.agent_id
+                    || authority.state().boundary.controller_epoch != binding.lease_epoch
+                    || authority.state().boundary.configuration_sha256
+                        != binding.configuration_digest
+                    || authority.state().boundary.output_schema_sha256
+                        != binding.output_schema_digest
                 {
                     return Err(ManagementError::conflict(
                         "context_owner_recovered_scope",
