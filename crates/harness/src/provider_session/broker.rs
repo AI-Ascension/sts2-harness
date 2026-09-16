@@ -79,12 +79,16 @@ impl ProviderSessionBroker {
         owner_token: impl Into<String>,
     ) -> Result<Self, SessionError> {
         // Keep portable schema validity separate from selected-profile admission. A policy may
-        // be inspectable at the schema ceiling while remaining unsupported by this profile.
+        // be inspectable at the schema ceiling while remaining unsupported by this profile, so a
+        // saved policy is admitted through the same selected-profile classification the
+        // effective-limit record publishes instead of an inline ceiling comparison. Refusal is a
+        // capability outcome (`Unsupported`), never a schema outcome, and the saved values are
+        // refused rather than clamped.
         policy.validate_schema()?;
-        if policy.max_completed_turns > capabilities.effective_limits.max_completed_turns
-            || policy.history_ttl_seconds > capabilities.effective_limits.max_history_ttl_seconds
-        {
-            return Err(SessionError::Unsupported);
+        match policy.admit_for_profile(&capabilities) {
+            Ok(()) => {}
+            Err(PolicyAdmissionError::Schema(_)) => return Err(SessionError::InvalidPolicy),
+            Err(PolicyAdmissionError::Profile(_)) => return Err(SessionError::Unsupported),
         }
         if !matches!(policy.mode, ProviderSessionMode::Disabled)
             && policy.profile_sha256 != capabilities.profile_sha256
