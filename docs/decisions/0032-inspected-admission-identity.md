@@ -84,6 +84,10 @@ This supersedes the unbound-axis statements above. The source-review descriptor 
 turn identity, cancellation and recovery unverified, so binding the deployment does not by itself
 admit an envelope or bypass any capability prerequisite.
 
+Envelope admission requires an absolute bridge executable path. The transport may change its
+working directory before launch; a relative executable could otherwise identify different files
+during inspection and execution. The configured absolute path is used for both operations.
+
 ## Original consequences (before the configuration inspection update)
 
 - The reviewed envelope now refuses for a strictly stronger reason: it refuses a deployment it could
