@@ -4,17 +4,12 @@
 
 use std::fs;
 use std::net::TcpListener;
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::path::PathBuf;
+use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, params, types::Value as SqlValue};
-use serde_json::{Value, json};
-use sts2_harness::{
-    ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig, OperationIntent,
-};
+use sts2_harness::{ExecutionFingerprint, ExecutionLineage};
 
 const EXO_REVISION: &str = "b06869ab789dee3f80ca474b5fa89dbe47ccb859";
 const RUN_ID: &str = "run-runtime-startup-hostile";
@@ -25,13 +20,24 @@ const TRAJECTORY_ID: &str = "trajectory-runtime-startup-hostile";
 #[path = "support/completed_resume_process_support.rs"]
 mod process_support;
 
+#[path = "support/runtime_startup_helpers.rs"]
+mod helpers;
+
 use process_support::run_child;
+
+use helpers::{
+    assert_failure_contains, assert_hostile_startup_is_bounded, digest_bytes, fingerprint,
+    seed_hostile_operation, seed_matching_digest_malformed_operation,
+    seed_mismatched_action_digest_operation, write_probe,
+};
 
 struct Fixture {
     root: PathBuf,
     store: PathBuf,
     mcp: PathBuf,
     bridge: PathBuf,
+    package: PathBuf,
+    package_digest: String,
     counter: PathBuf,
     gateway: TcpListener,
     gateway_address: String,
@@ -54,6 +60,7 @@ impl Fixture {
         let store = root.join("execution.sqlite3");
         let mcp = root.join("mcp-probe.sh");
         let bridge = root.join("provider-probe.sh");
+        let package = root.join("package-artifact");
         let counter = root.join("boundary-calls.log");
         let gateway = TcpListener::bind(("127.0.0.1", 0))
             .map_err(|error| format!("cannot bind gateway probe: {error}"))?;
@@ -66,6 +73,10 @@ impl Fixture {
             .to_string();
         write_probe(&mcp, "mcp", &counter)?;
         write_probe(&bridge, "provider", &counter)?;
+        let package_bytes = b"runtime-startup-package-artifact";
+        fs::write(&package, package_bytes)
+            .map_err(|error| format!("cannot write the package artifact probe: {error}"))?;
+        let package_digest = digest_bytes(package_bytes);
         let lineage = ExecutionLineage::new(RUN_ID, EPISODE_ID, ATTEMPT_ID, TRAJECTORY_ID)
             .map_err(|error| format!("fixture lineage is invalid: {error}"))?;
         let fingerprint = fingerprint(&mcp, &bridge, &gateway_address)?;
@@ -74,6 +85,8 @@ impl Fixture {
             store,
             mcp,
             bridge,
+            package,
+            package_digest,
             counter,
             gateway,
             gateway_address,
@@ -122,6 +135,7 @@ impl Fixture {
         let mut command = self.command();
         command
             .env_remove("STS2_EXO_ADMISSION")
+            .env("STS2_EXO_PACKAGE_PATH", &self.package)
             .env("STS2_EXO_PACKAGE_DIGEST", "a".repeat(64))
             .env("STS2_EXO_EXTENSION_DIGEST", "b".repeat(64))
             .env("STS2_EXO_BRIDGE_DIGEST", "c".repeat(64))
@@ -135,6 +149,14 @@ impl Fixture {
             .env("STS2_EXO_MODEL_EXECUTION_ID", "execution-startup")
             .env("STS2_EXO_REQUEST_ID", "request-runtime-startup-hostile")
             .env("STS2_EXO_TURN_ID", "turn-runtime-startup-hostile");
+        command
+    }
+
+    /// The same reviewed envelope, but with the package pin set to the digest of the exact artifact
+    /// the fixture placed at `STS2_EXO_PACKAGE_PATH`.
+    fn command_with_matching_package_identity(&self) -> Command {
+        let mut command = self.command_with_reviewed_admission_identity();
+        command.env("STS2_EXO_PACKAGE_DIGEST", &self.package_digest);
         command
     }
 
@@ -211,11 +233,11 @@ fn refused_exo_preflight_fails_before_gateway_mcp_or_provider_calls() -> Result<
     let fixture = Fixture::new()?;
     let output = run_child(fixture.command_with_reviewed_admission_identity())?;
     assert_failure_contains(&output, REFUSAL_PREFIX)?;
-    // Admission now inspects the bridge executable's bytes, so the envelope refuses a deployment
-    // whose other pinned identity axes have no inspected artifact to bind to.
+    // Admission inspects the package artifact at the locator, so a pin that does not match those
+    // bytes is refused as an identity mismatch.
     assert_failure_contains(
         &output,
-        "the inspected Exo deployment did not bind the pinned package_digest identity",
+        "advertised Exo package_digest differs from the operator-trusted pin",
     )?;
     fixture.assert_no_gateway_connection()?;
     if fixture.counter.exists() {
@@ -226,201 +248,79 @@ fn refused_exo_preflight_fails_before_gateway_mcp_or_provider_calls() -> Result<
     Ok(())
 }
 
-fn write_probe(path: &Path, marker: &str, counter: &Path) -> Result<(), String> {
-    let body = format!(
-        "#!/bin/sh\nprintf '{marker}' >> '{}'\nexit 17\n",
-        counter.display()
-    );
-    fs::write(path, body).map_err(|error| format!("cannot write probe: {error}"))?;
-    let mut permissions = fs::metadata(path)
-        .map_err(|error| format!("cannot inspect probe: {error}"))?
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(path, permissions)
-        .map_err(|error| format!("cannot make probe executable: {error}"))
-}
-
-fn fingerprint(
-    mcp: &Path,
-    bridge: &Path,
-    gateway_address: &str,
-) -> Result<ExecutionFingerprint, String> {
-    let mcp_bytes = fs::read(mcp).map_err(|error| format!("cannot read MCP probe: {error}"))?;
-    let mcp_value = json!({
-        "path": mcp.display().to_string(),
-        "sha256": digest_bytes(&mcp_bytes),
-        "bytes": mcp_bytes.len(),
-    });
-    let config = json!({
-        "runtime_profile": "runtime-v3-gameplay",
-        "gateway_address": gateway_address,
-        "mcp_binary": mcp.display().to_string(),
-        "mcp_executable": mcp_value,
-        "instance_id": "instance-runtime-startup-hostile",
-        "caller_id": "caller-runtime-startup-hostile",
-        "session_id": "session-runtime-startup-hostile",
-        "lease_id": "lease-runtime-startup-hostile",
-        "lease_epoch": 1,
-        "mcp_session_id": "mcp-runtime-startup-hostile",
-        "run_id": RUN_ID,
-        "episode_id": EPISODE_ID,
-        "trajectory_id": TRAJECTORY_ID,
-        "trace_id": "trace-runtime-startup-hostile",
-        "artifact_id": "artifact-runtime-startup-hostile",
-        "settlement_timeout_seconds": 30,
-        "exo_revision": EXO_REVISION,
-        "exo_identity": {
-            "contract_version": "sts2-exo-bridge-v1",
-            "source_revision": EXO_REVISION,
-            "package_digest": null,
-            "extension_digest": null,
-            "bridge_digest": null,
-            "model_binding": null,
-            "prompt_digest": null,
-            "tool_digest": null,
-            "config_digest": null,
-            "native_instance_id": null,
-        },
-        "exo_max_request_bytes": 131072,
-        "exo_max_response_bytes": 8192,
-        "exo_timeout_millis": 120000,
-        "exo_forward_visible_seed": true,
-        "exo_bridge": {
-            "executable": bridge.display().to_string(),
-            "arguments": [],
-            "working_directory": null,
-            "inherited_environment": [],
-        },
-        "runner": {
-            "max_steps": 1024,
-            "objective": "complete the test episode",
-            "hard_constraints": [],
-        },
-    });
-    let provider_identity = json!({
-        "contract_version": "sts2-exo-bridge-v1",
-        "source_revision": EXO_REVISION,
-        "package_digest": null,
-        "extension_digest": null,
-        "bridge_digest": null,
-        "model_binding": null,
-        "prompt_digest": null,
-        "tool_digest": null,
-        "config_digest": null,
-        "native_instance_id": null,
-    });
-    ExecutionFingerprint::new(
-        "seed-runtime-startup-hostile",
-        "build-runtime-startup-hostile",
-        "state-runtime-startup-hostile",
-        digest_value(&config)?,
-        digest_value(&provider_identity)?,
-    )
-    .map_err(|error| format!("fixture fingerprint is invalid: {error}"))
-}
-
-fn seed_hostile_operation(fixture: &Fixture) -> Result<(), String> {
-    seed_valid_operation(fixture)?;
-    rewrite_operation_payload(
-        fixture,
-        &vec![b'x'; sts2_harness::MAX_OPERATION_ACTION_BYTES + 1],
-        "payload-digest",
-    )
-}
-
-fn seed_matching_digest_malformed_operation(fixture: &Fixture) -> Result<(), String> {
-    seed_valid_operation(fixture)?;
-    let malformed = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn""#;
-    rewrite_operation_payload(fixture, malformed, &digest_bytes(malformed))
-}
-
-fn seed_mismatched_action_digest_operation(fixture: &Fixture) -> Result<(), String> {
-    seed_valid_operation(fixture)?;
-    let canonical = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}"#;
-    rewrite_operation_payload(fixture, canonical, &"0".repeat(64))
-}
-
-fn seed_valid_operation(fixture: &Fixture) -> Result<(), String> {
-    let mut store = ExecutionStore::open(ExecutionStoreConfig::new(&fixture.store))
-        .map_err(|error| format!("cannot open fixture store: {error}"))?;
-    store
-        .start_episode(&fixture.lineage, &fixture.fingerprint)
-        .map_err(|error| format!("cannot seed episode: {error}"))?;
-    let canonical = br#"{"action":{"kind":"end_turn"},"action_id":"combat.end-turn"}"#;
-    let payload_digest = digest_bytes(canonical);
-    let catalog_digest =
-        digest_bytes(br#"[{"action_id":"combat.end-turn","action":{"kind":"end_turn"}}]"#);
-    let intent = OperationIntent::new_with_action(
-        fixture.lineage.clone(),
-        "11111111-1111-4111-8111-111111111111",
-        "state-hostile",
-        1,
-        "combat.end-turn",
-        "end_turn",
-        canonical.to_vec(),
-        payload_digest,
-        "input-hostile",
-        Some(catalog_digest),
-    )
-    .map_err(|error| format!("hostile intent is invalid: {error}"))?;
-    store
-        .record_operation_intent(&intent)
-        .map_err(|error| format!("cannot seed operation: {error}"))?;
-    store
-        .close()
-        .map_err(|error| format!("cannot close fixture store: {error}"))?;
-    Ok(())
-}
-
-fn rewrite_operation_payload(
-    fixture: &Fixture,
-    payload: &[u8],
-    digest: &str,
-) -> Result<(), String> {
-    let connection = Connection::open(&fixture.store)
-        .map_err(|error| format!("cannot reopen fixture store: {error}"))?;
-    connection
-        .execute(
-            "UPDATE operations SET action_payload = ?1, payload_digest = ?2
-             WHERE operation_id = '11111111-1111-4111-8111-111111111111'",
-            params![SqlValue::Blob(payload.to_vec()), digest],
-        )
-        .map_err(|error| format!("cannot poison operation: {error}"))?;
-    Ok(())
-}
-
-fn assert_hostile_startup_is_bounded(fixture: &Fixture) -> Result<(), String> {
-    let output = run_child(fixture.command())?;
-    assert_failure_contains(&output, "cannot inspect runtime-v3 execution state")?;
+/// A swapped package artifact must be refused as `IdentityMismatch("package_digest")` at the
+/// production seam, before the runtime reaches the gateway, MCP or provider boundary.
+#[test]
+fn swapped_package_bytes_fail_before_gateway_mcp_or_provider_calls() -> Result<(), String> {
+    const REFUSAL_PREFIX: &str = "Exo admission refused before any model or game effect";
+    let fixture = Fixture::new()?;
+    // Pin the digest of the artifact as it stands, then swap the bytes behind the locator.
+    let command = fixture.command_with_matching_package_identity();
+    fs::write(&fixture.package, b"swapped package bytes")
+        .map_err(|error| format!("cannot swap the package artifact: {error}"))?;
+    let output = run_child(command)?;
+    assert_failure_contains(&output, REFUSAL_PREFIX)?;
+    assert_failure_contains(
+        &output,
+        "advertised Exo package_digest differs from the operator-trusted pin",
+    )?;
     fixture.assert_no_gateway_connection()?;
     if fixture.counter.exists() {
         return Err(String::from(
-            "hostile startup state invoked an MCP or provider boundary",
+            "a swapped package artifact reached an MCP or provider boundary",
         ));
     }
     Ok(())
 }
 
-fn assert_failure_contains(output: &Output, expected: &str) -> Result<(), String> {
-    if output.status.success() {
-        return Err(String::from("runtime child unexpectedly succeeded"));
+/// A missing or empty package locator must fail closed rather than admit the operator's
+/// declaration with no inspected bytes behind the package axis.
+#[test]
+fn an_absent_or_empty_package_locator_fails_before_gateway_mcp_or_provider_calls()
+-> Result<(), String> {
+    for (label, value) in [("absent", None), ("empty", Some(""))] {
+        let fixture = Fixture::new()?;
+        let mut command = fixture.command_with_reviewed_admission_identity();
+        match value {
+            Some(value) => {
+                command.env("STS2_EXO_PACKAGE_PATH", value);
+            }
+            None => {
+                command.env_remove("STS2_EXO_PACKAGE_PATH");
+            }
+        }
+        let output = run_child(command)?;
+        let expected = match value {
+            Some(_) => "STS2_EXO_PACKAGE_PATH must not be empty",
+            None => "STS2_EXO_PACKAGE_PATH is required",
+        };
+        assert_failure_contains(&output, expected).map_err(|error| format!("{label}: {error}"))?;
+        fixture.assert_no_gateway_connection()?;
+        if fixture.counter.exists() {
+            return Err(format!(
+                "a {label} package locator invoked an MCP or provider boundary"
+            ));
+        }
     }
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if stderr.contains(expected) {
-        Ok(())
-    } else {
-        Err(format!(
-            "runtime child error {stderr:?} omitted {expected:?}"
-        ))
-    }
+    Ok(())
 }
 
-fn digest_bytes(bytes: &[u8]) -> String {
-    sts2_harness::sha256_hex(bytes)
-}
-
-fn digest_value(value: &Value) -> Result<String, String> {
-    let bytes = serde_json::to_vec(value)
-        .map_err(|error| format!("cannot serialize fixture config: {error}"))?;
-    Ok(digest_bytes(&bytes))
+/// With the package axis located and matching, the envelope still refuses, but only for the axes
+/// this seam cannot inspect — proving the package binding itself no longer fails and that an
+/// unbound axis is still refused rather than admitted.
+#[test]
+fn a_matching_package_binding_still_refuses_the_next_unbound_axis() -> Result<(), String> {
+    let fixture = Fixture::new()?;
+    let output = run_child(fixture.command_with_matching_package_identity())?;
+    assert_failure_contains(
+        &output,
+        "the inspected Exo deployment did not bind the pinned extension_digest identity",
+    )?;
+    fixture.assert_no_gateway_connection()?;
+    if fixture.counter.exists() {
+        return Err(String::from(
+            "an unbound axis invoked an MCP or provider boundary",
+        ));
+    }
+    Ok(())
 }

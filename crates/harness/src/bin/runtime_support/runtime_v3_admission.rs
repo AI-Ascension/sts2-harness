@@ -8,16 +8,20 @@
 //! deployment refuses the run while the runtime is still assembling settings, before it opens a
 //! durable store, a gateway connection, an MCP session or a provider.
 //!
-//! The envelope path also *inspects* the one artifact it can read: the exact bytes of the bridge
-//! executable it is about to launch are hashed into the inspected identity. That hash does **not**
-//! yet decide admission. The pin mandates every identity axis (ADR 0031), only the bridge axis
-//! carries inspected bytes at this seam, and `preflight` evaluates the axes in order and returns on
-//! the first one that is unbound or mismatched — `package_digest` is evaluated first. The reviewed
-//! envelope therefore always refuses today with `UnboundIdentity("package_digest")` before the bridge
-//! pair is ever reached, so a swapped bridge fails only incidentally (as every deployment does), not
-//! because its bytes were cross-checked against `STS2_EXO_BRIDGE_DIGEST`. Binding the remaining axes,
-//! or refusing unbound pins before ordering the axes, is required before the bridge hash can decide
-//! anything. See ADR 0032.
+//! The envelope path also *inspects* the artifact bytes this seam can locate. Two artifacts are read
+//! whole and bounded and hashed into the inspected identity: the exact bytes of the bridge executable
+//! it is about to launch, and the exact bytes of the package artifact the operator locates with
+//! `STS2_EXO_PACKAGE_PATH`. Both digests are computed from the bytes read at the locator and never
+//! from the operator's `STS2_EXO_BRIDGE_DIGEST`/`STS2_EXO_PACKAGE_DIGEST` declarations, so the pin
+//! stays independent of the observation and a swapped package is refused as
+//! `IdentityMismatch("package_digest")` rather than being admitted on the declaration it is supposed
+//! to cross-check.
+//!
+//! The remaining identity axes have no inspected artifact at this seam. The pin mandates every axis
+//! (ADR 0031) and `preflight` evaluates them in order, returning on the first one that is unbound or
+//! mismatched, so a deployment whose located package matches its pin still refuses with
+//! `UnboundIdentity("extension_digest")`. The reviewed envelope therefore still refuses every
+//! deployment today, and `legacy` remains the only executable path. See ADR 0032.
 
 use sts2_harness::exo_admission::{
     AdmittedExoRuntimeTransport, ExoAdmissionMode, ExoAdmissionPlan, ExoInspectedArtifacts,
@@ -31,6 +35,7 @@ use sts2_harness::{
 use super::runtime_v3_settings::{optional, required};
 
 const ADMISSION_MODE: &str = "STS2_EXO_ADMISSION";
+const PACKAGE_PATH: &str = "STS2_EXO_PACKAGE_PATH";
 const DEFAULT_PRIVATE_STATE_ROOT: &str = "/var/lib/sts2-harness/exo-runtime";
 
 pub(super) fn from_environment(
@@ -83,9 +88,13 @@ fn enveloped(
         limits: ExoLimits::reviewed(),
         restricted: ExoRestrictedProfile::reviewed_private(private_state_root()?),
     };
+    // The package locator is required, not optional: an operator that supplies no package bytes
+    // cannot have them inspected, and the seam must stay fail-closed rather than admit the
+    // declaration alone.
+    let package_path = required(PACKAGE_PATH)?;
     let plan = ExoAdmissionPlan::inspected(
         trusted,
-        &inspected_artifacts(bridge_executable)?,
+        &inspected_artifacts(bridge_executable, &package_path)?,
         required("STS2_EXO_MODEL_EXECUTION_ID")?,
         required("STS2_EXO_REQUEST_ID")?,
         required("STS2_EXO_TURN_ID")?,
@@ -93,17 +102,25 @@ fn enveloped(
     ExoRuntimeAdmission::enveloped(plan).map_err(String::from)
 }
 
-/// Inspects the artifacts the launch can bind to real bytes. The bridge executable is the only
-/// artifact whose bytes this seam can read; it is read whole (bounded) and hashed into the inspected
-/// identity, so that identity reflects the bytes actually about to run rather than the operator's
-/// declaration. Every other axis stays unbound, and because the reviewed preflight evaluates those
-/// (starting with `package_digest`) first, the envelope refuses with `UnboundIdentity("package_digest")`
-/// before this hash is compared — so the bridge digest does not yet decide admission.
-fn inspected_artifacts(bridge_executable: &str) -> Result<ExoInspectedArtifacts, String> {
+/// Inspects the artifacts the launch can bind to an explicit locator. The bridge executable and the
+/// operator-located package artifact (`STS2_EXO_PACKAGE_PATH`) are each read whole through the
+/// bounded `ExoInspectedArtifacts::read` and hashed into the inspected identity, so that identity
+/// reflects the bytes actually on disk rather than the operator's declaration. A locator that is
+/// missing, empty or unreadable is an error rather than an admission, so the seam stays fail-closed.
+/// Every axis without inspected bytes stays unbound, and the reviewed preflight still refuses it as
+/// `UnboundIdentity(axis)`.
+fn inspected_artifacts(
+    bridge_executable: &str,
+    package_path: &str,
+) -> Result<ExoInspectedArtifacts, String> {
     let bridge = ExoInspectedArtifacts::read(bridge_executable).map_err(|error| {
         format!("Exo admission cannot inspect the bridge artifact {bridge_executable}: {error}")
     })?;
+    let package = ExoInspectedArtifacts::read(package_path).map_err(|error| {
+        format!("Exo admission cannot inspect the package artifact {package_path}: {error}")
+    })?;
     Ok(ExoInspectedArtifacts {
+        package: Some(package),
         bridge: Some(bridge),
         ..ExoInspectedArtifacts::default()
     })
@@ -127,7 +144,100 @@ fn private_state_root() -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExoAdmissionMode, selected_mode};
+    use std::path::{Path, PathBuf};
+
+    use super::{ExoAdmissionMode, ExoInspectedArtifacts, inspected_artifacts, selected_mode};
+
+    fn scratch_directory(name: &str) -> Result<PathBuf, String> {
+        let path =
+            std::env::temp_dir().join(format!("sts2-l139-package-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&path).map_err(|error| error.to_string())?;
+        Ok(path)
+    }
+
+    fn path_text(path: &Path) -> Result<&str, String> {
+        path.to_str()
+            .ok_or_else(|| format!("fixture path {path:?} is not valid UTF-8"))
+    }
+
+    fn write_bridge(root: &Path) -> Result<PathBuf, String> {
+        let bridge = root.join("bridge-probe");
+        std::fs::write(&bridge, b"bridge bytes").map_err(|error| error.to_string())?;
+        Ok(bridge)
+    }
+
+    /// The package axis is the hash of the bytes at the locator, never of the operator's declared
+    /// pin, so swapping the located artifact changes the inspected identity while the pin stays put.
+    #[test]
+    fn the_inspected_package_digest_is_the_hash_of_the_located_bytes() -> Result<(), String> {
+        let root = scratch_directory("identity")?;
+        let bridge = write_bridge(&root)?;
+        let package = root.join("package-artifact");
+        std::fs::write(&package, b"package bytes").map_err(|error| error.to_string())?;
+
+        let inspected = inspected_artifacts(path_text(&bridge)?, path_text(&package)?)?;
+        assert_eq!(
+            inspected.package.as_deref().map(sts2_harness::sha256_hex),
+            Some(sts2_harness::sha256_hex(b"package bytes"))
+        );
+        assert_eq!(
+            inspected.bridge.as_deref().map(sts2_harness::sha256_hex),
+            Some(sts2_harness::sha256_hex(b"bridge bytes"))
+        );
+
+        std::fs::write(&package, b"swapped package bytes").map_err(|error| error.to_string())?;
+        let swapped = inspected_artifacts(path_text(&bridge)?, path_text(&package)?)?;
+        assert_ne!(
+            swapped.identity().package_digest,
+            inspected.identity().package_digest
+        );
+        assert_eq!(
+            swapped.identity().bridge_digest,
+            inspected.identity().bridge_digest
+        );
+        std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    /// The inspection read is bounded, so an oversized package artifact is a fail-closed error rather
+    /// than an unbounded allocation. The fixture is sparse, so it costs no disk space.
+    #[test]
+    fn an_oversized_package_artifact_is_a_bounded_error() -> Result<(), String> {
+        let root = scratch_directory("bound")?;
+        let bridge = write_bridge(&root)?;
+        let package = root.join("oversized-package-artifact");
+        std::fs::File::create(&package)
+            .and_then(|file| file.set_len(ExoInspectedArtifacts::MAX_INSPECTED_ARTIFACT_BYTES + 1))
+            .map_err(|error| error.to_string())?;
+
+        let error = inspected_artifacts(path_text(&bridge)?, path_text(&package)?)
+            .err()
+            .ok_or("an oversized package artifact must refuse")?;
+        assert!(
+            error.contains("package artifact"),
+            "the bound must name the package artifact, got {error}"
+        );
+        std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    /// A locator that names nothing on disk is refused rather than admitted with an unbound package
+    /// axis.
+    #[test]
+    fn a_package_locator_that_names_no_file_is_refused() -> Result<(), String> {
+        let root = scratch_directory("absent")?;
+        let bridge = write_bridge(&root)?;
+
+        let error = inspected_artifacts(path_text(&bridge)?, path_text(&root.join("absent"))?)
+            .err()
+            .ok_or("an absent package artifact must refuse")?;
+        assert!(
+            error.contains("package artifact"),
+            "the refusal must name the package artifact, got {error}"
+        );
+        std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+        Ok(())
+    }
 
     #[test]
     fn admission_mode_defaults_to_the_reviewed_envelope_and_rejects_unknown_values() {

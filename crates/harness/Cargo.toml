@@ -23,7 +23,7 @@ tokio.workspace = true
 uuid = { version = "=1.26.1", features = ["v4"] }
 zeroize.workspace = true
 ryu-js = "=1.0.3"
-jsonschema = { version = "=0.55.0", default-features = false }
+jsonschema = { version = "=0.56.0", default-features = false }
 yaml-rust2 = { version = "=0.13.0", default-features = false }
 
 [target.'cfg(windows)'.dependencies]

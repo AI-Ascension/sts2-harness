@@ -44,6 +44,22 @@ descriptor advertised the operator's declaration rather than anything the harnes
    unbound at this seam, so the reviewed envelope refuses the current deployment with
    `UnboundIdentity("package_digest")` before the capability gate is reached.
 
+## Update (2026-09-16): the package axis has an inspected locator
+
+Decision 4 is narrowed for the package axis. The seam now reads the exact bytes at the required
+operator locator `STS2_EXO_PACKAGE_PATH` and hashes them into `package_digest`, so the package axis
+is no longer unbound and a swapped package is refused as `IdentityMismatch("package_digest")`. The
+digest is computed from the located bytes and is never taken from `STS2_EXO_PACKAGE_DIGEST`, so the
+pin stays independent of the observation. This is a backward-incompatible operator-configuration
+change: the locator is required, and a deployment without it fails closed with
+`STS2_EXO_PACKAGE_PATH is required`. `extension`, `prompt`, `tool`, `config`, `model_binding`,
+`provider`, `endpoint` and `native_instance_id` stay unbound — the extension has no reviewed
+operator locator at this seam, and the bridge embeds the reviewed extension digest at build time and
+verifies the configured extension file against it (`exo_bridge_config.rs`) — so the reviewed
+envelope still refuses every deployment today, now naming `extension_digest` as the first unbound
+axis. Everything else in this ADR, including the axis order and the fail-closed
+`UnboundIdentity(axis)` rule, is unchanged.
+
 ## Consequences
 
 - The reviewed envelope now refuses for a strictly stronger reason: it refuses a deployment it could
