@@ -23,11 +23,11 @@ use sts2_harness::{
 #[path = "support/context_owner_effective_limits.rs"]
 mod fixture;
 
-use fixture::{Scenario, actor, described_service, run_id, selected_limits};
+use fixture::{Scenario, actor, described_service, owner_boundary, run_id, selected_limits};
 
 const REVISION: &str = "b06869ab789dee3f80ca474b5fa89dbe47ccb859";
 
-fn boundary() -> ContextBoundary {
+fn foreign_boundary() -> ContextBoundary {
     ContextBoundary {
         run_id: "run-1".to_owned(),
         episode_id: "episode-1".to_owned(),
@@ -102,13 +102,14 @@ fn fixtures(selected_items: usize) -> (ContextDraft, BTreeMap<String, ContextIte
 fn the_production_render_point_refuses_a_draft_above_the_selected_item_limit() {
     let service = described_service(Scenario::Matching);
     let run = run_id(&service);
+    let boundary = owner_boundary(&run);
     let selected = selected_limits();
     let (draft, registry, config) = fixtures(selected.max_items as usize + 1);
     let error = service
         .prepare_context_render(
             &actor(),
             &run,
-            &boundary(),
+            &boundary,
             render_input(),
             &draft,
             &registry,
@@ -128,16 +129,17 @@ fn the_production_render_point_refuses_a_draft_above_the_selected_item_limit() {
 fn the_production_render_point_refuses_a_render_the_harness_maxima_would_accept() {
     let service = described_service(Scenario::Matching);
     let run = run_id(&service);
+    let boundary = owner_boundary(&run);
     let (draft, registry, config) = fixtures(1);
     // The identical draft, boundary and configuration are acceptable under the harness maxima, so
     // the refusal below is caused by the *selected* limits and nothing else.
-    ContextRenderer::enabled_at(&boundary(), render_input(), &draft, &registry, &config, 1)
+    ContextRenderer::enabled_at(&boundary, render_input(), &draft, &registry, &config, 1)
         .expect("the harness maxima accept this draft");
     let error = service
         .prepare_context_render(
             &actor(),
             &run,
-            &boundary(),
+            &boundary,
             render_input(),
             &draft,
             &registry,
@@ -157,18 +159,19 @@ fn the_production_render_point_refuses_a_render_the_harness_maxima_would_accept(
 fn the_production_render_point_uses_the_selected_objective_limit() {
     let service = described_service(Scenario::Matching);
     let run = run_id(&service);
+    let boundary = owner_boundary(&run);
     let (draft, registry, config) = fixtures(1);
     let mut input = render_input();
     input.objective = "s".repeat(selected_limits().max_objective_bytes as usize * 2);
     // The objective is under the harness maximum, so the refusal below can only come from the
     // selected limit this owner advertised.
-    ContextRenderer::enabled_at(&boundary(), input.clone(), &draft, &registry, &config, 1)
+    ContextRenderer::enabled_at(&boundary, input.clone(), &draft, &registry, &config, 1)
         .expect("the harness maxima accept this objective");
     let error = service
         .prepare_context_render(
             &actor(),
             &run,
-            &boundary(),
+            &boundary,
             input,
             &draft,
             &registry,
@@ -188,12 +191,13 @@ fn the_production_render_point_uses_the_selected_objective_limit() {
 fn the_production_control_transition_refuses_past_the_selected_event_bound() {
     let service = described_service(Scenario::Matching);
     let run = run_id(&service);
+    let boundary = owner_boundary(&run);
     let selected = selected_limits();
     let authority = service
         .bind_context_control_authority(
             &actor(),
             &run,
-            ControlAuthority::new(boundary(), "revision-1"),
+            ControlAuthority::new(boundary, "revision-1"),
         )
         .expect("the selected control-event bound applies");
     assert_eq!(
@@ -240,7 +244,7 @@ fn the_production_control_binding_refuses_an_existing_over_bound_journal() {
     let service = described_service(Scenario::Matching);
     let run = run_id(&service);
     let selected = selected_limits();
-    let mut authority = ControlAuthority::new(fixture::boundary(&run), "revision-1");
+    let mut authority = ControlAuthority::new(owner_boundary(&run), "revision-1");
     for index in 0..selected.max_control_events / 2 {
         let operation_id = format!("operation-{index}");
         authority
@@ -266,7 +270,7 @@ fn the_production_control_binding_refuses_an_existing_over_bound_journal() {
 #[test]
 fn the_selected_bound_also_governs_recovery_from_a_journal() {
     let selected = selected_limits();
-    let mut authority = ControlAuthority::new(boundary(), "revision-1")
+    let mut authority = ControlAuthority::new(foreign_boundary(), "revision-1")
         .with_max_control_events(selected.max_control_events)
         .expect("the selected control-event bound applies");
     for index in 0..selected.max_control_events / 2 {
@@ -289,4 +293,34 @@ fn the_selected_bound_also_governs_recovery_from_a_journal() {
         Err("context_control_events_exhausted".to_owned()),
         "a journal over the selected bound must be refused at the recovery boundary"
     );
+}
+
+#[test]
+fn production_enforcement_refuses_an_authority_or_render_for_another_owner_boundary() {
+    let service = described_service(Scenario::Matching);
+    let run = run_id(&service);
+    let (draft, registry, config) = fixtures(1);
+
+    let render_error = service
+        .prepare_context_render(
+            &actor(),
+            &run,
+            &foreign_boundary(),
+            render_input(),
+            &draft,
+            &registry,
+            &config,
+            1,
+        )
+        .expect_err("a foreign render boundary must be refused before preparation");
+    assert_eq!(render_error.code, "context_render_boundary_mismatch");
+
+    let control_error = service
+        .bind_context_control_authority(
+            &actor(),
+            &run,
+            ControlAuthority::new(foreign_boundary(), "revision-1"),
+        )
+        .expect_err("a foreign control boundary must be refused before limits are applied");
+    assert_eq!(control_error.code, "context_control_boundary_mismatch");
 }

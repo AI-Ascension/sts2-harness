@@ -155,6 +155,10 @@ pub fn boundary(run_id: &str) -> ContextBoundary {
     }
 }
 
+pub fn owner_boundary(run_id: &str) -> ContextBoundary {
+    boundary(run_id)
+}
+
 pub fn binding_for(
     scenario: Scenario,
     run_id: &str,
@@ -181,7 +185,7 @@ pub fn binding_for(
         graph_id: "main".to_owned(),
         node_id: "decide".to_owned(),
         node_execution_id: "test.node.1".to_owned(),
-        boundary: boundary(answer_for),
+        boundary: owner_boundary(answer_for),
         lease_epoch: 1,
         snapshot_id: "test.snapshot.1".to_owned(),
         approved_revision_id: "test.revision.1".to_owned(),

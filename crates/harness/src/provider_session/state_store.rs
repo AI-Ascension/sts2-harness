@@ -6,6 +6,9 @@
 //! bounded `BrokerSnapshot` journal owned by this crate. Native persistent operation must still
 //! supply an independently verified encrypted state boundary before an enabled profile is allowed.
 
+mod owner_lease;
+pub(crate) use owner_lease::PolicyOwnerLease;
+
 use super::{
     MAX_HISTORY_BYTES, NativeCapabilities, ProviderSessionBroker, ProviderSessionPolicy,
     SessionError, SessionScope,
@@ -38,9 +41,12 @@ pub enum ProviderSessionMetadataStoreError {
     InvalidKey,
     InvalidPath,
     ScopeMismatch,
+    NotFound,
     Capacity,
     Corrupt,
     Crypto,
+    /// The exclusive policy-owner lease is held by another live owner.
+    Busy,
     Io,
     Unsupported,
     Session(SessionError),
@@ -55,9 +61,11 @@ impl std::fmt::Display for ProviderSessionMetadataStoreError {
             Self::ScopeMismatch => {
                 formatter.write_str("provider metadata store scope does not match")
             }
+            Self::NotFound => formatter.write_str("provider metadata store journal was not found"),
             Self::Capacity => formatter.write_str("provider metadata store is over its bound"),
             Self::Corrupt => formatter.write_str("provider metadata store envelope is corrupt"),
             Self::Crypto => formatter.write_str("provider metadata store authentication failed"),
+            Self::Busy => formatter.write_str("provider metadata journal already has an owner"),
             Self::Io => formatter.write_str("provider metadata store filesystem operation failed"),
             Self::Unsupported => formatter.write_str("provider metadata store mode is unsupported"),
             Self::Session(error) => error.fmt(formatter),
@@ -215,6 +223,58 @@ impl ProviderSessionMetadataStore {
         .map_err(ProviderSessionMetadataStoreError::from)
     }
 
+    /// Persists a bounded policy-owner journal with the same encrypted,
+    /// scope-bound envelope used for broker metadata. The caller owns the
+    /// journal schema; this storage boundary supplies no policy semantics.
+    pub(crate) fn save_owner_journal(
+        &self,
+        bytes: &[u8],
+    ) -> Result<(), ProviderSessionMetadataStoreError> {
+        if self.mode == ProviderSessionMetadataMode::Volatile {
+            return Err(ProviderSessionMetadataStoreError::Unsupported);
+        }
+        if bytes.len() > MAX_HISTORY_BYTES {
+            return Err(ProviderSessionMetadataStoreError::Capacity);
+        }
+        let path = self
+            .path
+            .as_deref()
+            .ok_or(ProviderSessionMetadataStoreError::Unsupported)?;
+        validate_store_path(path)?;
+        atomic_write(path, &self.encrypt(bytes)?)
+    }
+
+    pub(crate) fn load_owner_journal(&self) -> Result<Vec<u8>, ProviderSessionMetadataStoreError> {
+        if self.mode == ProviderSessionMetadataMode::Volatile {
+            return Err(ProviderSessionMetadataStoreError::Unsupported);
+        }
+        let path = self
+            .path
+            .as_deref()
+            .ok_or(ProviderSessionMetadataStoreError::Unsupported)?;
+        validate_store_path(path)?;
+        let envelope = read_restricted_file(path)?;
+        let bytes = self.decrypt(&envelope)?;
+        if bytes.len() > MAX_HISTORY_BYTES {
+            return Err(ProviderSessionMetadataStoreError::Capacity);
+        }
+        Ok(bytes)
+    }
+
+    pub(crate) fn acquire_owner_journal_lease(
+        &self,
+    ) -> Result<PolicyOwnerLease, ProviderSessionMetadataStoreError> {
+        if self.mode == ProviderSessionMetadataMode::Volatile {
+            return Err(ProviderSessionMetadataStoreError::Unsupported);
+        }
+        let path = self
+            .path
+            .as_deref()
+            .ok_or(ProviderSessionMetadataStoreError::Unsupported)?;
+        validate_store_path(path)?;
+        PolicyOwnerLease::acquire(path)
+    }
+
     fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, ProviderSessionMetadataStoreError> {
         let key = self
             .key
@@ -280,7 +340,13 @@ fn read_restricted_file(path: &Path) -> Result<Vec<u8>, ProviderSessionMetadataS
         OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
         Mode::empty(),
     )
-    .map_err(|_| ProviderSessionMetadataStoreError::InvalidPath)?;
+    .map_err(|error| {
+        if error == rustix::io::Errno::NOENT {
+            ProviderSessionMetadataStoreError::NotFound
+        } else {
+            ProviderSessionMetadataStoreError::InvalidPath
+        }
+    })?;
     let mut file = File::from(descriptor);
     let metadata = file
         .metadata()
@@ -296,7 +362,13 @@ fn read_restricted_file(path: &Path) -> Result<Vec<u8>, ProviderSessionMetadataS
 
 #[cfg(not(unix))]
 fn read_restricted_file(path: &Path) -> Result<Vec<u8>, ProviderSessionMetadataStoreError> {
-    let metadata = fs::symlink_metadata(path).map_err(|_| ProviderSessionMetadataStoreError::Io)?;
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
+        if error.kind() == io::ErrorKind::NotFound {
+            ProviderSessionMetadataStoreError::NotFound
+        } else {
+            ProviderSessionMetadataStoreError::Io
+        }
+    })?;
     if !metadata.file_type().is_file() {
         return Err(ProviderSessionMetadataStoreError::InvalidPath);
     }

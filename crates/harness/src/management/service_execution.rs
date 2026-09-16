@@ -20,6 +20,7 @@ pub struct RunReservation {
     request_digest: String,
     definition_digest: String,
     binding: Option<TargetAdmissionBinding>,
+    context_control_limits: Option<super::super::context_owner::ContextOwnerControlLimits>,
     snapshot: Mutex<Option<RunSnapshot>>,
 }
 
@@ -30,6 +31,7 @@ impl RunReservation {
         request_digest: String,
         definition_digest: String,
         binding: Option<TargetAdmissionBinding>,
+        context_control_limits: Option<super::super::context_owner::ContextOwnerControlLimits>,
     ) -> Self {
         Self {
             store,
@@ -37,8 +39,18 @@ impl RunReservation {
             request_digest,
             definition_digest,
             binding,
+            context_control_limits,
             snapshot: Mutex::new(None),
         }
+    }
+
+    /// Definition-scoped limits selected before runtime invocation identities
+    /// exist. This is never a substitute for a current owner binding.
+    #[must_use]
+    pub fn context_control_limits(
+        &self,
+    ) -> Option<&super::super::context_owner::ContextOwnerControlLimits> {
+        self.context_control_limits.as_ref()
     }
 
     pub(crate) fn reserve(&self, candidate: &RunAdmission) -> Result<(), ManagementError> {
