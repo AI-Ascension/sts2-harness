@@ -7,6 +7,19 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Bind the **package axis** of the runtime Exo admission identity to an inspected artifact. The
+  reviewed `envelope` mode now requires `STS2_EXO_PACKAGE_PATH`, reads the exact bytes it locates
+  through the existing bounded inspection read, and hashes them into `package_digest`, so a swapped
+  package is refused as `IdentityMismatch("package_digest")` before the capability gate instead of
+  incidentally as `UnboundIdentity("package_digest")`. The inspected digest is computed from the
+  located bytes and the operator's `STS2_EXO_PACKAGE_DIGEST` is never substituted for the
+  observation, so the pin stays independent. The remaining axes still have no inspected artifact, so
+  the envelope still refuses every deployment today, now naming `extension_digest` as the first
+  unbound axis. Compatibility: `breaking` for operator configuration — the locator is required and a
+  deployment without it fails closed with `STS2_EXO_PACKAGE_PATH is required`; no wire field,
+  schema, contract version or durable record changes, and `legacy` behaviour is unchanged. See
+  [ADR 0032](docs/decisions/0032-inspected-admission-identity.md). Refs #139.
+
 - Cross-check the **inspected Exo deployment identity** against the operator pin at the runtime
   admission boundary, so a swapped package, extension or bridge artifact fails closed instead of
   being admitted on the operator's declaration alone. `ExoAdmissionPlan::inspected` derives the

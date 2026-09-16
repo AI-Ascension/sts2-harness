@@ -238,10 +238,10 @@ missing. The host `visible_seed` is preserved by default for repeatable invocati
 The profile also admits the Exo deployment through `STS2_EXO_ADMISSION`
 ([ADR 0031](docs/decisions/0031-runtime-exo-admission-gate.md),
 [ADR 0032](docs/decisions/0032-inspected-admission-identity.md)): the default reviewed `envelope`
-mode inspects the bytes of the bridge executable it is about to launch and refuses the run before any
-model call while a capability, digest, revision, route or schema is not admitted or while a pinned
-identity axis has no inspected artifact to bind to; a raw-wire development bridge requires the
-explicit `legacy` acknowledgement.
+mode inspects the bytes of the bridge executable it is about to launch and the package artifact at
+the required `STS2_EXO_PACKAGE_PATH`, and refuses the run before any model call while a capability,
+digest, revision, route or schema is not admitted or while a pinned identity axis has no inspected
+artifact to bind to; a raw-wire development bridge requires the explicit `legacy` acknowledgement.
 Set `STS2_EXO_FORWARD_VISIBLE_SEED=false` for an explicitly seed-blind experiment
 (only `true`/`false` are accepted). Configure
 `STS2_SESSION_ID=session-1` and `STS2_MCP_SESSION_ID=mcp-session-1` explicitly in both the gateway
