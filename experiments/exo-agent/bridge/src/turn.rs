@@ -63,6 +63,8 @@ pub(super) async fn execute(mut invocation: Invocation) -> Result<Receipt, &'sta
         .create_conversation(CreateConversationRequest::default())
         .await
         .map_err(|_| "exo_executor_conversation")?;
+    let agent_id = agent.record().id.to_string();
+    let conversation_id = conversation.record().id.to_string();
     let result = conversation
         .send(SendRequest {
             input: vec![Message::User {
@@ -83,17 +85,26 @@ pub(super) async fn execute(mut invocation: Invocation) -> Result<Receipt, &'sta
         }))
         .await
         .map_err(|_| "exo_executor_events")?;
-    receipt(invocation, &events.events, result.ok())
+    receipt(
+        invocation,
+        &agent_id,
+        &conversation_id,
+        &events.events,
+        result.ok(),
+    )
 }
 
 fn receipt(
     invocation: Invocation,
+    agent_id: &str,
+    conversation_id: &str,
     events: &[Event],
     result: Option<SendResult>,
 ) -> Result<Receipt, &'static str> {
     let (event, attempts, forwarded, denied) = guard_evidence(events)?;
     let turn_id = event.turn_id.ok_or("exo_executor_turn_identity")?;
     let session_id = event.session_id.ok_or("exo_executor_session_identity")?;
+    let event_cursor = event.id.to_string();
     let decision = if result
         .as_ref()
         .is_some_and(|result| result.turn_id == turn_id && result.session_id == session_id)
@@ -106,11 +117,14 @@ fn receipt(
         None
     };
     Ok(Receipt {
-        version: "sts2.exo-executor-receipt-v1",
+        version: "sts2.exo-executor-receipt-v2",
         request_id: invocation.request_id,
         host_turn_id: invocation.host_turn_id,
+        exo_agent_id: agent_id.to_owned(),
+        exo_conversation_id: conversation_id.to_owned(),
         exo_turn_id: turn_id.to_string(),
         exo_session_id: session_id.to_string(),
+        event_cursor,
         error_code: decision.is_none().then_some("exo_turn_failed"),
         decision,
         fetch_attempts: attempts,

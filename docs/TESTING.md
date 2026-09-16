@@ -61,6 +61,20 @@ The standalone tool has its own locked format/Clippy/test/build gates, described
 [`tools/consumer-conformance`](../tools/consumer-conformance/README.md); root workspace commands
 do not include that deliberately separate tool workspace.
 
+The Runtime-v3 Exo admission and shipped-CLI lifecycle tests inspect a clean checkout at the
+reviewed Exo source revision. CI checks it out under `target/exo-test-source` and sets
+`STS2_EXO_TEST_SOURCE`; local runs must set the same variable to an equivalent checkout:
+
+```bash
+git clone https://github.com/exoharness/exo.git target/exo-test-source
+revision="$(sed -n 's/^pub const EXO_SOURCE_REVISION: &str = "\([0-9a-f]\{40\}\)";$/\1/p' crates/harness/src/exo/contract/mod.rs)"
+git -C target/exo-test-source checkout --detach "$revision"
+export STS2_EXO_TEST_SOURCE="$PWD/target/exo-test-source"
+export CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_INCREMENTAL=0
+cargo test --locked --package sts2-harness --bin sts2-harness-runtime
+cargo test --locked --package sts2-harness --test exo_lifecycle_runtime_entry
+```
+
 ```bash
 cargo run --locked --package repo-policy -- --strict
 cargo fmt --all --check

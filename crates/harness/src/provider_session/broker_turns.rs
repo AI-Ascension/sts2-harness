@@ -43,7 +43,11 @@ impl ProviderSessionBroker {
             return Err(SessionError::Unsupported);
         }
         let binding = self.ensure_binding_not_expired(binding_id)?;
-        if binding.state != BindingState::Held || !self.policy.allows_execution() {
+        if !matches!(
+            binding.state,
+            BindingState::Held | BindingState::OneShotPendingNative
+        ) || !self.policy.allows_execution()
+        {
             return Err(SessionError::HeldRequired);
         }
         if self.prepared.contains_key(prepared_id) {
@@ -176,7 +180,10 @@ impl ProviderSessionBroker {
         if binding.state == BindingState::Quarantined {
             return Err(SessionError::Fenced);
         }
-        if binding.state != BindingState::Active || !binding.game_dispatch_capability {
+        let one_shot = binding.state == BindingState::OneShotPendingNative
+            && self.capabilities.profile_id == "sts2-exo-lifecycle-v2";
+        if (!one_shot && binding.state != BindingState::Active) || !binding.game_dispatch_capability
+        {
             return Err(SessionError::HeldRequired);
         }
         // The approval dependency vector is revalidated at the first resumed submission, not only

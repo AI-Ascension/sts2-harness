@@ -162,75 +162,11 @@ pub enum TransformHandling {
     OpaqueApproved,
 }
 
-impl NativeCapabilities {
-    #[must_use]
-    pub fn fixture() -> Self {
-        let methods = [
-            "initialize",
-            "thread/start",
-            "thread/read",
-            "turn/start",
-            "turn/interrupt",
-            "thread/fork",
-            "thread/compact/start",
-        ]
-        .into_iter()
-        .map(str::to_owned)
-        .collect();
-        let mut capabilities = Self {
-            schema: SESSION_CAPABILITIES_SCHEMA.to_owned(),
-            profile_id: "codex-app-server-fixture-v1".to_owned(),
-            profile_sha256: digest(b"codex-app-server-fixture-v1"),
-            native_version: "fixture-peer-1".to_owned(),
-            native_binary_sha256: digest(b"compiled-fake-native-peer"),
-            native_schema_sha256: digest(NATIVE_FRAME_SCHEMA.as_bytes()),
-            evidence: CapabilityEvidence::CompiledPeer,
-            transport: "owned_stdio".to_owned(),
-            enabled_methods: methods,
-            hardening: CapabilityHardening {
-                tools_enabled: false,
-                ambient_history: false,
-                encrypted_state: false,
-                configuration_verified: true,
-                transform_handling: TransformHandling::DetectAndFence,
-            },
-            effective_limits: EffectiveSessionLimits {
-                policy_schema: SESSION_POLICY_SCHEMA.to_owned(),
-                max_session_items: MAX_SESSION_ITEMS,
-                max_dependencies: MAX_DEPENDENCIES,
-                max_events: MAX_EVENTS,
-                max_operations: MAX_OPERATIONS,
-                max_prepared: MAX_PREPARED,
-                max_candidates: MAX_CANDIDATES,
-                max_maintenance_jobs: MAX_MAINTENANCE_JOBS,
-                max_completed_turns: MAX_COMPLETED_TURNS,
-                max_history_ttl_seconds: MAX_HISTORY_TTL_SECONDS,
-                max_frame_bytes: MAX_FRAME_BYTES,
-                max_history_bytes: MAX_HISTORY_BYTES,
-                max_prepared_bytes: MAX_PREPARED_BYTES,
-                max_suffix_bytes: MAX_SUFFIX_BYTES,
-                max_output_schema_bytes: MAX_OUTPUT_SCHEMA_BYTES,
-                max_method_bytes: MAX_METHOD_BYTES,
-                max_json_depth: MAX_JSON_DEPTH,
-            },
-            binding: SessionCapabilityBinding {
-                owner: SESSION_CAPABILITIES_OWNER.to_owned(),
-                owner_revision: SESSION_CAPABILITIES_REVISION.to_owned(),
-                policy_schema_sha256: session_policy_schema_sha256(),
-                model_revision: "fixture-peer-1".to_owned(),
-                adapter_revision: "codex-app-server-fixture-v1".to_owned(),
-                adapter_revision_sha256: digest(b"codex-app-server-fixture-v1"),
-                descriptor_sha256: String::new(),
-            },
-            strict_executable: false,
-            experimental_api: false,
-            unknown_methods: "deny".to_owned(),
-            raw_rpc: false,
-        };
-        capabilities.binding.descriptor_sha256 = capabilities.descriptor_digest();
-        capabilities
-    }
+impl NativeCapabilities {}
 
+include!("capabilities_reviewed.rs");
+
+impl NativeCapabilities {
     pub fn validate(&self) -> Result<(), SessionError> {
         if self.schema != SESSION_CAPABILITIES_SCHEMA
             || !valid_id(&self.profile_id)
@@ -299,4 +235,27 @@ fn allowlisted_method(value: &str) -> bool {
             | "thread/fork"
             | "thread/compact/start"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{NativeCapabilities, SessionError};
+
+    #[test]
+    fn reviewed_exo_lifecycle_advertises_only_implemented_one_shot_methods()
+    -> Result<(), SessionError> {
+        let capabilities = NativeCapabilities::reviewed_exo_lifecycle(
+            "sts2-exo-lifecycle-v2",
+            "1".repeat(64),
+            "2".repeat(64),
+            "3".repeat(64),
+        )?;
+        assert_eq!(
+            capabilities.enabled_methods,
+            ["initialize", "turn/start", "turn/interrupt"]
+        );
+        assert_ne!(capabilities.profile_id, "codex-app-server-fixture-v1");
+        assert!(capabilities.validate().is_ok());
+        Ok(())
+    }
 }

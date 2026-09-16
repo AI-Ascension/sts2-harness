@@ -49,6 +49,7 @@ pub(super) fn launch(port: &mut RuntimeV3Port) -> Result<(), sts2_harness::PortE
     )
     .map_err(|error| wire::port_error(code, error, false))?;
     allocation.apply_current_lease(&mut port.config);
+    port.require_lifecycle_lease_authority()?;
     port.recovery_authority = allocation.recovery_authority;
     if let Some(authority) = port.recovery_authority.as_ref() {
         port.recovery_context = Some(

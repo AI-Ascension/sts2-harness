@@ -130,6 +130,7 @@ impl ProviderSessionBroker {
             .get_mut(&binding_id)
             .ok_or(SessionError::NotFound)?;
         binding.native_thread_ref = native_thread_ref.to_owned();
+        binding.native_identity_pending = false;
         binding.state = BindingState::Held;
         binding.history_coverage = HistoryCoverage::Unknown;
         let operation = self

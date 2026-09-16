@@ -20,6 +20,8 @@ pub enum BindingState {
     Candidate,
     Held,
     Active,
+    OneShotPendingNative,
+    OneShotCompleted,
     Recovering,
     Quarantined,
     Retired,
@@ -43,6 +45,9 @@ pub struct SessionBinding {
     pub purpose: SessionPurpose,
     pub state: BindingState,
     pub native_thread_ref: String,
+    /// A one-shot binding has no native thread identity until its lifecycle receipt is recorded.
+    #[serde(default)]
+    pub native_identity_pending: bool,
     pub credential_realm_ref: String,
     pub profile_sha256: String,
     pub owner_epoch: u64,
@@ -73,6 +78,7 @@ impl SessionBinding {
         let value = Self {
             schema: SESSION_BINDING_SCHEMA.to_owned(),
             native_thread_ref: format!("pending-{binding_id}"),
+            native_identity_pending: true,
             binding_id,
             scope,
             branch_id,
@@ -109,7 +115,11 @@ impl SessionBinding {
             || !unique_ids(&self.dependency_ids)
             || !valid_timestamp(&self.expires_at)
             || (self.game_dispatch_capability && self.purpose != SessionPurpose::Executable)
-            || (self.game_dispatch_capability && self.state != BindingState::Active)
+            || (self.game_dispatch_capability
+                && !matches!(
+                    self.state,
+                    BindingState::Active | BindingState::OneShotPendingNative
+                ))
             || (matches!(self.state, BindingState::Retired | BindingState::Closed)
                 && self.game_dispatch_capability)
         {
@@ -121,7 +131,10 @@ impl SessionBinding {
     #[must_use]
     pub fn executable(&self) -> bool {
         matches!(self.purpose, SessionPurpose::Executable)
-            && matches!(self.state, BindingState::Active)
+            && matches!(
+                self.state,
+                BindingState::Active | BindingState::OneShotPendingNative
+            )
             && self.game_dispatch_capability
     }
 }

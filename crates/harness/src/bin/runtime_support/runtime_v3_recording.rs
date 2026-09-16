@@ -21,7 +21,6 @@ pub(super) struct DecisionRecorder<'a, S> {
 }
 
 impl<'a, S> DecisionRecorder<'a, S> {
-    #[cfg(test)]
     pub(super) fn new(source: &'a mut S, telemetry: TelemetryHandle) -> Self {
         Self {
             source,

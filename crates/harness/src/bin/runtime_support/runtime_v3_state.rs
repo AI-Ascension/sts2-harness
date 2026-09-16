@@ -29,4 +29,5 @@ pub(super) struct RuntimeV3Port {
     recovery: Option<McpProcess>,
     recovery_context: Option<recovery::RecoveryContext>,
     recovery_rpc_id: u64,
+    lifecycle_authority: lifecycle_authority::RuntimeLifecycleAuthorityState,
 }
