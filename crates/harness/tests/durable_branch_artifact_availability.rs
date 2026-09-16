@@ -344,7 +344,7 @@ fn pruning_one_sibling_keeps_the_shared_artifact_readable_for_the_other()
         vec![shared_reference],
         "the shared blob stays pinned by the surviving sibling"
     );
-    // No filesystem check here on purpose. `prune` is metadata-only (ADR 0016) and structurally never
+    // No filesystem check here on purpose. `prune` is metadata-only (ADR 0038) and structurally never
     // unlinks blob bytes, so an `exists()` assertion could not fail for a wrong retention allocation:
     // the allocation equalities above and the availability read below carry criterion 4 instead.
 

@@ -1,4 +1,4 @@
-# ADR 0006: Runtime-v2 multi-instance coordinator seam
+# ADR 0034: Runtime-v2 multi-instance coordinator seam
 
 - Status: Accepted for component coordination; live supervisor and host isolation remain unverified
 - Date: 2026-09-02
