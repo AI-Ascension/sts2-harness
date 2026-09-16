@@ -7,8 +7,38 @@ use sts2_harness::context_memory::{
     policy_owner::{LookupPolicyAuthorityGuard, LookupPolicySnapshot},
 };
 use sts2_harness::game_information::LookupError;
+use sts2_harness::game_information_binding::{LookupBindingRequest, LookupScope};
 
 impl RuntimeGameInformationOwner {
+    pub(in crate::runtime_support::runtime_v3) fn lookup_binding_discovery_request(
+        &self,
+    ) -> Result<(ActivePolicyBinding, LookupBindingRequest), String> {
+        let selected = self
+            .lookup_snapshot(None)
+            .map_err(|_| String::from("selected lookup policy is unavailable"))?;
+        if selected.corpus.scope() != &self.scope {
+            return Err(String::from(
+                "selected lookup policy scope does not match runtime scope",
+            ));
+        }
+        let authority_epoch = selected.binding.fence.owner_epoch;
+        if authority_epoch == 0 || authority_epoch > 9_007_199_254_740_991 {
+            return Err(String::from(
+                "selected lookup policy authority epoch is invalid",
+            ));
+        }
+        let scope = LookupScope {
+            project_id: self.scope.project_id.clone(),
+            run_id: self.scope.run_id.clone(),
+            episode_id: self.scope.episode_id.clone(),
+            agent_id: self.scope.agent_id.clone(),
+        };
+        Ok((
+            selected.binding,
+            sts2_harness::game_information_binding::discovery_request(scope, authority_epoch),
+        ))
+    }
+
     pub(in crate::runtime_support::runtime_v3) fn management_lookup_snapshot(
         &self,
         bearer: Option<&str>,

@@ -82,6 +82,7 @@ impl RuntimeV3Port {
             gateway,
             lookup_binding_required: false,
             lookup_binding: None,
+            lookup_binding_discovery_request: None,
             lookup_policy_owner,
             lookup_policy_binding: None,
             lookup_session: None,

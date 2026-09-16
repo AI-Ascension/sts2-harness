@@ -77,6 +77,11 @@ pub(super) fn serve_gateway(listener: TcpListener) -> Result<Vec<String>, String
             let operation = body["operation"]
                 .as_str()
                 .ok_or("binding operation missing")?;
+            if body["authority_epoch"] != 1 {
+                return Err(String::from(
+                    "lookup binding must use the selected owner authority epoch",
+                ));
+            }
             let correlation = header(&headers, "x-sts2-correlation-id")
                 .ok_or("binding correlation header missing")?;
             let filename = if operation == "discovery" {
@@ -99,12 +104,12 @@ pub(super) fn serve_gateway(listener: TcpListener) -> Result<Vec<String>, String
                 "project_id":PROJECT,"run_id":RUN,"episode_id":EPISODE,"agent_id":AGENT
             });
             binding["binding"]["instance_id"] = json!("instance-1");
-            binding["binding"]["authority_epoch"] = json!(7);
+            binding["binding"]["authority_epoch"] = json!(1);
             binding["binding"]["content_manifest_id"] = json!("content-1");
             binding["binding"]["game_profile"] = json!("sts2-native-v1");
             binding["binding"]["locale"] = json!("en-US");
             let id_input = json!({
-                "agent_id":AGENT,"authority_epoch":7,"content_manifest_id":"content-1",
+                "agent_id":AGENT,"authority_epoch":1,"content_manifest_id":"content-1",
                 "episode_id":EPISODE,"game_profile":"sts2-native-v1","locale":"en-US",
                 "project_id":PROJECT,"run_id":RUN
             });

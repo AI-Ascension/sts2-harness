@@ -37,6 +37,18 @@ pub struct LookupBindingRequest {
     pub correlation_id: String,
 }
 
+/// Builds the one closed discovery request shared by runtime startup and the
+/// retained binding session. Its identity is supplied only by the selected
+/// authority owner.
+pub fn discovery_request(scope: LookupScope, authority_epoch: u64) -> LookupBindingRequest {
+    LookupBindingRequest {
+        operation: LookupBindingOperation::Discovery,
+        scope,
+        authority_epoch,
+        correlation_id: String::from("game-information-binding-discovery"),
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LookupBindingContext {
     pub instance_id: String,
@@ -193,15 +205,16 @@ impl LookupBindingSession {
     }
 
     fn request(&self, operation: LookupBindingOperation) -> LookupBindingRequest {
-        let correlation_id = match operation {
-            LookupBindingOperation::Discovery => String::from("game-information-binding-discovery"),
-            LookupBindingOperation::Observe => String::from("game-information-binding-observe"),
-        };
-        LookupBindingRequest {
-            operation,
-            scope: self.context.scope.clone(),
-            authority_epoch: self.context.authority_epoch,
-            correlation_id,
+        match operation {
+            LookupBindingOperation::Discovery => {
+                discovery_request(self.context.scope.clone(), self.context.authority_epoch)
+            }
+            LookupBindingOperation::Observe => LookupBindingRequest {
+                operation,
+                scope: self.context.scope.clone(),
+                authority_epoch: self.context.authority_epoch,
+                correlation_id: String::from("game-information-binding-observe"),
+            },
         }
     }
 

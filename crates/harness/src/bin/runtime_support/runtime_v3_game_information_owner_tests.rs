@@ -124,6 +124,20 @@ pub(in crate::runtime_support::runtime_v3) fn adopted_runtime_owner() -> Adopted
 }
 
 #[test]
+fn startup_discovery_request_uses_the_selected_owner_scope_and_epoch() {
+    let fixture = adopted_runtime_owner();
+    let (binding, request) = fixture
+        .owner
+        .lookup_binding_discovery_request()
+        .expect("adopted owner produces a startup request");
+    assert_eq!(binding, fixture.binding);
+    assert_eq!(
+        serde_json::to_string(&request).expect("compact startup request"),
+        r#"{"operation":"discovery","scope":{"project_id":"project","run_id":"run","episode_id":"episode","agent_id":"agent"},"authority_epoch":1,"correlation_id":"game-information-binding-discovery"}"#
+    );
+}
+
+#[test]
 fn blocked_mcp_callback_releases_owner_lease_and_discards_stale_reply() {
     use std::sync::mpsc;
     use std::time::Duration;
@@ -227,6 +241,10 @@ fn authenticated_loopback_preflight_requires_explicit_revalidation_approval_and_
     assert!(
         owner.lookup_snapshot(None).is_err(),
         "opening the durable owner must leave the old adoption stale"
+    );
+    assert!(
+        owner.lookup_binding_discovery_request().is_err(),
+        "startup bootstrap must not be available before explicit revalidation and adoption"
     );
 
     let server = start_management_server(&owner).expect("authenticated loopback server");

@@ -52,6 +52,7 @@ fn child_environment_preserves_distinct_gateway_and_mcp_sessions() {
         "STS2_LOOKUP_ARCHIVE_STORE_KEY_HEX",
         "STS2_WORKFLOW_TOKEN_LOOKUP_OWNER",
         "STS2_LOOKUP_OWNER_CONFIG",
+        "STS2_LOOKUP_BINDING_DISCOVERY_REQUEST_JSON",
     ] {
         assert!(
             !environment.contains_key(std::ffi::OsStr::new(name)),
@@ -62,6 +63,59 @@ fn child_environment_preserves_distinct_gateway_and_mcp_sessions() {
         environment.get(std::ffi::OsStr::new("STS2_GATEWAY_TOKEN")),
         Some(&Some(std::ffi::OsStr::new("synthetic-token"))),
         "the MCP child receives its own explicit gateway credential"
+    );
+}
+
+#[test]
+fn lookup_startup_input_is_bounded_and_discovery_only() {
+    let config = session_config();
+    let scope = sts2_harness::game_information_binding::LookupScope {
+        project_id: String::from("project-1"),
+        run_id: String::from("run-1"),
+        episode_id: String::from("episode-1"),
+        agent_id: String::from("agent-1"),
+    };
+    let mut request = sts2_harness::game_information_binding::discovery_request(scope.clone(), 1);
+    request.operation = sts2_harness::game_information_binding::LookupBindingOperation::Observe;
+    assert!(
+        McpProcess::spawn_profile_with_lookup_discovery_request(
+            &config,
+            "runtime-v3-gameplay",
+            &request,
+        )
+        .is_err(),
+        "the lookup-binding startup input accepts discovery only"
+    );
+
+    request = sts2_harness::game_information_binding::discovery_request(scope.clone(), 1);
+    request.correlation_id = String::from("caller-selected-correlation");
+    assert!(
+        McpProcess::spawn_profile_with_lookup_discovery_request(
+            &config,
+            "runtime-v3-gameplay",
+            &request,
+        )
+        .is_err(),
+        "the lookup-binding startup input uses the fixed discovery correlation"
+    );
+
+    request = sts2_harness::game_information_binding::discovery_request(
+        sts2_harness::game_information_binding::LookupScope {
+            project_id: "p".repeat(2048),
+            run_id: scope.run_id,
+            episode_id: scope.episode_id,
+            agent_id: scope.agent_id,
+        },
+        1,
+    );
+    assert!(
+        McpProcess::spawn_profile_with_lookup_discovery_request(
+            &config,
+            "runtime-v3-gameplay",
+            &request,
+        )
+        .is_err(),
+        "the lookup-binding startup input is size bounded"
     );
 }
 

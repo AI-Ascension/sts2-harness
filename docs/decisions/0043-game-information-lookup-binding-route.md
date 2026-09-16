@@ -41,6 +41,29 @@ snapshot identity, and `state_generation`. The MCP server exposes only the read-
 `sts2.game_information_binding` tool over this route; it does not own a second route or discovery
 authority.
 
+Before starting the MCP child, the harness serializes the existing closed discovery request as
+compact JSON in `STS2_LOOKUP_BINDING_DISCOVERY_REQUEST_JSON`, bounded to 2048 bytes. The request
+contains only the validated lookup scope, `operation: "discovery"`, the fixed discovery correlation
+identifier, and the selected memory-policy owner's `binding.fence.owner_epoch`. It is derived from
+one authenticated active-policy snapshot and that same `ActivePolicyBinding` remains the expected
+binding through Gateway discovery, observation, and lookup-session construction. The value carries
+no owner credential, store key, grant, endpoint, or producer offer; the MCP child environment is
+cleared and receives this one value explicitly. The ordinary observe request is never accepted as
+startup input. Owner-backed startup does not parse or use `STS2_AUTHORITY_EPOCH`.
+
+The LBR `authority_epoch` represents the Harness-owned lookup-policy authority epoch from that
+selected binding. It is distinct from the policy store's durable `store_epoch`: reopening the store
+advances `store_epoch` and fences the old selected snapshot until explicit revalidation and adoption,
+even when the scoped LBR authority epoch remains unchanged. Each Gateway discovery or observation
+call is checked against the retained `ActivePolicyBinding` before and after network I/O, without
+holding the owner lease during the call.
+
+The MCP startup bootstrap and Harness retained-session setup each perform a read-only discovery
+exchange. The bootstrap validates the producer-backed catalog before MCP advertises it; Harness
+then performs its own discovery and observation and admits queries only against that validated
+binding and current selected-policy fence. These are separate reads, and the fixed discovery
+correlation value matches each request to its response; it is not an idempotency key.
+
 The harness consumes the exact artifact profile
 `game-information-lookup-binding-v1` and schema digest
 `f10f9af01d6be1de104069ba842e7971971e88f27553e782e81174ee7aa1cd58`.
@@ -61,9 +84,12 @@ compatible while giving the deployed entry point an explicit, operator-selected 
 
 Gateway request bodies remain within the Runtime-v3 HTTP client's 16 KiB bound. Every identity
 string is validated by the runtime configuration's 128-byte safe-identity bound; `authority_epoch`
-is an unsigned integer. The runtime's focused transport test proves the fixed POST path, closed
-body, and selected MCP-session header. The consumer tests use the copied LBR v1 discovery,
-reobserve-required, reobserved, and exhausted goldens, including a forged-binding rejection.
+is a positive safe unsigned integer. The runtime's focused transport test proves the fixed POST
+path, closed body, and selected MCP-session header. The entry test also proves that the bounded MCP
+startup request uses the adopted owner's scope/epoch despite a conflicting inherited epoch/value,
+and that the same selected binding fences subsequent calls. The consumer tests use the copied LBR v1
+discovery, reobserve-required, reobserved, and exhausted goldens, including a forged-binding
+rejection.
 
 This is synthetic component evidence for harness routing and consumer behavior. It does not prove
 gateway route registration, MCP tool registration, game-mod extraction, native host compatibility,

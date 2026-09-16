@@ -67,6 +67,10 @@ def secrets_absent():
            "STS2_LOOKUP_CORPUS_STORE_KEY_HEX","STS2_LOOKUP_POLICY_STORE_KEY_HEX",
            "STS2_LOOKUP_ARCHIVE_STORE_KEY_HEX","STS2_WORKFLOW_TOKEN_LOOKUP_OWNER"]
     return not any(name in os.environ for name in names)
+startup_request=os.environ.get("STS2_LOOKUP_BINDING_DISCOVERY_REQUEST_JSON")
+with open(LOG,"a",encoding="utf-8") as out:
+    out.write(json.dumps({{"kind":"startup","owner_secrets_absent":secrets_absent(),
+                          "lookup_discovery_request":json.loads(startup_request) if startup_request else None}})+"\n")
 def query_response(i, a):
     query={{
       "query_kind":"list","entity_kind":"card",
@@ -156,7 +160,8 @@ def secrets_absent():
     names=["STS2_LOOKUP_OWNER_CONFIG","STS2_LOOKUP_OWNER_CONFIG_SHA256",
            "STS2_LOOKUP_CORPUS_STORE_KEY_HEX","STS2_LOOKUP_POLICY_STORE_KEY_HEX",
            "STS2_LOOKUP_ARCHIVE_STORE_KEY_HEX","STS2_WORKFLOW_TOKEN_LOOKUP_OWNER"]
-    return not any(name in os.environ for name in names)
+    return not any(name in os.environ for name in names) and \
+           "STS2_LOOKUP_BINDING_DISCOVERY_REQUEST_JSON" not in os.environ
 raw=input()
 with open(LOG,"a",encoding="utf-8") as out:
  out.write(json.dumps({{"kind":"start","owner_secrets_absent":secrets_absent()}})+"\n")

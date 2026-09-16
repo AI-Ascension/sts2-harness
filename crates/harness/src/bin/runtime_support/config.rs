@@ -158,17 +158,22 @@ impl RuntimeConfig {
     }
 
     pub(crate) fn lookup_scope(&self) -> Result<(String, String, u64), String> {
-        let project_id = env_or_default("STS2_PROJECT_ID", "project-runtime-0001")?;
-        let agent_id = env_or_default("STS2_AGENT_ID", "agent-runtime-0001")?;
+        let (project_id, agent_id) = self.lookup_scope_identity()?;
         let authority_epoch = env_or_default("STS2_AUTHORITY_EPOCH", "1")?
             .parse::<u64>()
             .map_err(|_| String::from("STS2_AUTHORITY_EPOCH must be an integer"))?;
+        Ok((project_id, agent_id, authority_epoch))
+    }
+
+    pub(crate) fn lookup_scope_identity(&self) -> Result<(String, String), String> {
+        let project_id = env_or_default("STS2_PROJECT_ID", "project-runtime-0001")?;
+        let agent_id = env_or_default("STS2_AGENT_ID", "agent-runtime-0001")?;
         if !safe_identity(&project_id) || !safe_identity(&agent_id) {
             return Err(String::from(
                 "STS2_PROJECT_ID or STS2_AGENT_ID is empty, unsafe, or oversized",
             ));
         }
-        Ok((project_id, agent_id, authority_epoch))
+        Ok((project_id, agent_id))
     }
 }
 

@@ -134,7 +134,11 @@ pub(super) fn start_runtime_child(
         .env("STS2_ARTIFACT_ID", "entry-artifact")
         .env("STS2_PROJECT_ID", PROJECT)
         .env("STS2_AGENT_ID", AGENT)
-        .env("STS2_AUTHORITY_EPOCH", "7")
+        .env("STS2_AUTHORITY_EPOCH", "not-the-selected-owner-epoch")
+        .env(
+            "STS2_LOOKUP_BINDING_DISCOVERY_REQUEST_JSON",
+            r#"{"operation":"observe"}"#,
+        )
         .env("STS2_OBJECTIVE", "choose one legal action")
         .env("STS2_HARD_CONSTRAINTS_JSON", "[]")
         .env("STS2_MAX_STEPS", "4")

@@ -108,6 +108,7 @@ fn protected_lookup_environment(name: &str) -> bool {
         || name == "STS2_LOOKUP_CORPUS_STORE_KEY_HEX"
         || name == "STS2_LOOKUP_POLICY_STORE_KEY_HEX"
         || name == "STS2_LOOKUP_ARCHIVE_STORE_KEY_HEX"
+        || name == "STS2_LOOKUP_BINDING_DISCOVERY_REQUEST_JSON"
         || name.starts_with("STS2_LOOKUP_OWNER_")
         || name.starts_with("STS2_WORKFLOW_TOKEN_")
 }
@@ -165,11 +166,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lookup_agent_process_configuration_rejects_owner_secrets() {
+    fn lookup_agent_process_configuration_rejects_protected_runtime_environment() {
         for name in [
             "STS2_LOOKUP_CORPUS_STORE_KEY_HEX",
             "STS2_LOOKUP_POLICY_STORE_KEY_HEX",
             "STS2_LOOKUP_ARCHIVE_STORE_KEY_HEX",
+            "STS2_LOOKUP_BINDING_DISCOVERY_REQUEST_JSON",
             "STS2_LOOKUP_OWNER_CONFIG",
             "STS2_WORKFLOW_TOKEN_LOOKUP_OWNER",
         ] {
@@ -181,7 +183,7 @@ mod tests {
                     vec![String::from(name)],
                 )
                 .is_err(),
-                "lookup-agent must not inherit {name}"
+                "lookup-agent must not inherit protected runtime input {name}"
             );
         }
         let process = lookup_process_config(

@@ -282,6 +282,22 @@ fn runtime_entry_adopts_delivers_and_replays_game_information_with_scripted_mcp_
             "lookup agent must not inherit owner credentials or store keys"
         );
         let mcp_events = read_json_lines(&mcp_log);
+        let startup = mcp_events
+            .iter()
+            .find(|event| event["kind"] == "startup")
+            .expect("the MCP process records its explicit startup request");
+        assert_eq!(
+            startup["lookup_discovery_request"],
+            json!({
+                "operation":"discovery",
+                "scope":{
+                    "project_id":PROJECT,"run_id":RUN,"episode_id":EPISODE,"agent_id":AGENT
+                },
+                "authority_epoch":1,
+                "correlation_id":"game-information-binding-discovery"
+            }),
+            "MCP bootstrap identity must come from the adopted owner, not STS2_AUTHORITY_EPOCH or the inherited observe-shaped value"
+        );
         assert!(
             mcp_events
                 .iter()

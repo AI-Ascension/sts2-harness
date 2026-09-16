@@ -255,7 +255,43 @@ impl RuntimeV3Port {
         } else {
             self.config.runtime_profile.as_str()
         };
-        let mut mcp = match McpProcess::spawn_profile(&self.config, normal_profile) {
+        let lookup_discovery_request = match self.config.lookup_binding_enabled() {
+            Ok(true) => {
+                let Some(owner) = self.lookup_policy_owner.as_ref() else {
+                    let release = self.release_lease_inner();
+                    return Err(wire::combine_cleanup(
+                        String::from("lookup binding requires its selected policy owner"),
+                        Ok(()),
+                        release,
+                    ));
+                };
+                match owner.lookup_binding_discovery_request() {
+                    Ok((binding, request)) => {
+                        self.lookup_policy_binding = Some(binding);
+                        self.lookup_binding_discovery_request = Some(request.clone());
+                        Some(request)
+                    }
+                    Err(error) => {
+                        let release = self.release_lease_inner();
+                        return Err(wire::combine_cleanup(error, Ok(()), release));
+                    }
+                }
+            }
+            Ok(false) => None,
+            Err(error) => {
+                let release = self.release_lease_inner();
+                return Err(wire::combine_cleanup(error, Ok(()), release));
+            }
+        };
+        let spawned = match lookup_discovery_request.as_ref() {
+            Some(request) => McpProcess::spawn_profile_with_lookup_discovery_request(
+                &self.config,
+                normal_profile,
+                request,
+            ),
+            None => McpProcess::spawn_profile(&self.config, normal_profile),
+        };
+        let mut mcp = match spawned {
             Ok(mcp) => mcp,
             Err(error) => {
                 let release = self.release_lease_inner();

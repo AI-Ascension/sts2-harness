@@ -24,7 +24,7 @@ pub(in crate::runtime_support::runtime_v3) fn begin_memory_policy_preflight(
     if !runtime_config.lookup_binding_enabled()? {
         return Ok(None);
     }
-    let (project_id, agent_id, _) = runtime_config.lookup_scope()?;
+    let (project_id, agent_id) = runtime_config.lookup_scope_identity()?;
     let expected_scope = MemoryScope::new(
         project_id,
         runtime_config.run_id.clone(),
