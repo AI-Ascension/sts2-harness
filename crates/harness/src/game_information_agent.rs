@@ -90,6 +90,106 @@ pub fn run_lookup_tool_loop<A: LookupAgentPort, M: LookupMcpPort>(
     Err(LookupError::Bounds)
 }
 
+/// Replays the next archived tool transcript without an MCP callback.
+/// Every query must match the retained request byte-for-byte except its transport correlation.
+pub fn run_lookup_replay_tool_loop<A: LookupAgentPort>(
+    session: &mut LookupSession,
+    corpus: &MemoryCorpus,
+    agent: &mut A,
+    legal_actions: &EpisodeLegalActionSet,
+    max_turns: usize,
+) -> Result<String, LookupError> {
+    if max_turns == 0 || max_turns > 32 {
+        return Err(LookupError::Bounds);
+    }
+    let binding = session.binding.clone();
+    if binding.snapshot.as_ref().is_some_and(|snapshot| {
+        snapshot["state_generation"].as_u64() != Some(legal_actions.generation())
+    }) {
+        return Err(LookupError::Reobserve);
+    }
+    let mut feedback = LookupFeedback::Start;
+    for remaining in (0..max_turns).rev() {
+        let turn = agent.next_turn(LookupAgentInput {
+            binding: &binding,
+            legal_actions,
+            feedback: &feedback,
+            remaining_turns: remaining,
+            optional_byte_budget: session.policy.optional_byte_budget,
+        })?;
+        match turn {
+            LookupTurn::Decide { action_id } => {
+                return legal_actions
+                    .actions()
+                    .iter()
+                    .any(|action| action.action_id() == action_id)
+                    .then_some(action_id)
+                    .ok_or(LookupError::Invalid);
+            }
+            LookupTurn::Query {
+                operation_id,
+                request,
+            } => {
+                let record_ordinal = session.replay_cursor;
+                let record = session
+                    .records
+                    .get(record_ordinal)
+                    .cloned()
+                    .ok_or(LookupError::Divergence)?;
+                let request = validation::decode_strict(&request)?;
+                validation::validate_request(&request)?;
+                if record.operation_id != operation_id
+                    || without_correlation(&record.request) != without_correlation(&request)
+                {
+                    return Err(LookupError::Divergence);
+                }
+                if matches!(record.error, Some(LookupError::Reobserve)) {
+                    return Err(LookupError::Reobserve);
+                }
+                session.replay_cursor = session
+                    .replay_cursor
+                    .checked_add(1)
+                    .ok_or(LookupError::Bounds)?;
+                feedback = match session.replay(&record, &record.request, corpus) {
+                    Ok(delivery) => LookupFeedback::Data {
+                        record_ordinal,
+                        delivery: Box::new(delivery),
+                    },
+                    Err(LookupError::Divergence | LookupError::Scope | LookupError::Reobserve) => {
+                        return Err(LookupError::Divergence);
+                    }
+                    Err(error) => LookupFeedback::Error(error),
+                };
+            }
+            LookupTurn::ReadRetained {
+                record_ordinal,
+                offset,
+            } => {
+                let record = session
+                    .records
+                    .get(record_ordinal)
+                    .ok_or(LookupError::MissingRetention)?;
+                let bytes = session.read_retained(record, corpus, offset)?;
+                feedback = LookupFeedback::Bytes {
+                    record_ordinal,
+                    offset,
+                    total_bytes: record.source_bytes,
+                    bytes,
+                };
+            }
+        }
+    }
+    Err(LookupError::Bounds)
+}
+
+fn without_correlation(value: &Value) -> Value {
+    let mut request = value.clone();
+    if let Some(object) = request.as_object_mut() {
+        object.remove("correlation_id");
+    }
+    request
+}
+
 fn handle_read<M: LookupMcpPort>(
     session: &mut LookupSession,
     corpus: &mut MemoryCorpus,

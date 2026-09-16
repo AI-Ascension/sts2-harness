@@ -19,7 +19,16 @@ impl RuntimeV3Port {
         telemetry: TelemetryHandle,
         durable: durable::DurableHandle,
     ) -> Result<Self, String> {
-        Self::new(config, telemetry, Some(durable))
+        Self::new_with_lookup_owner(config, telemetry, Some(durable), None)
+    }
+
+    fn new_with_store_and_lookup_owner(
+        config: RuntimeConfig,
+        telemetry: TelemetryHandle,
+        durable: durable::DurableHandle,
+        lookup_policy_owner: Option<Arc<game_information_owner::RuntimeGameInformationOwner>>,
+    ) -> Result<Self, String> {
+        Self::new_with_lookup_owner(config, telemetry, Some(durable), lookup_policy_owner)
     }
 
     pub(super) fn allocated_lease_binding(
@@ -52,15 +61,33 @@ impl RuntimeV3Port {
         })
     }
 
+    #[cfg(test)]
     fn new(
         config: RuntimeConfig,
         telemetry: TelemetryHandle,
         durable: Option<durable::DurableHandle>,
     ) -> Result<Self, String> {
+        Self::new_with_lookup_owner(config, telemetry, durable, None)
+    }
+
+    fn new_with_lookup_owner(
+        config: RuntimeConfig,
+        telemetry: TelemetryHandle,
+        durable: Option<durable::DurableHandle>,
+        lookup_policy_owner: Option<Arc<game_information_owner::RuntimeGameInformationOwner>>,
+    ) -> Result<Self, String> {
         let gateway = GatewayClient::new(&config)?;
         Ok(Self {
             config,
             gateway,
+            lookup_binding_required: false,
+            lookup_binding: None,
+            lookup_binding_discovery_request: None,
+            lookup_policy_owner,
+            lookup_policy_binding: None,
+            lookup_session: None,
+            lookup_corpus: None,
+            lookup_replay_mode: false,
             mcp: None,
             seeded_mcp: None,
             seeded_receipt: None,

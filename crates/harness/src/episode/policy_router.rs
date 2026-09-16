@@ -8,6 +8,9 @@ use super::recovery::RecoveryOperation;
 use crate::exo::{Decision, ExoError, ExoSession};
 use crate::identity::ModelExecutionId;
 
+#[path = "policy_router_game_information.rs"]
+mod game_information;
+
 /// Inputs given to a provider for one current observation. The observation has already passed the
 /// fair-play firewall and the action set is host-generated.
 #[derive(Clone, Debug)]
@@ -52,6 +55,16 @@ impl DecisionInput {
 pub trait DecisionSource {
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError>;
 
+    /// Opt-in Runtime-v3 providers can receive bounded game-information tool
+    /// feedback through the already-owned MCP runtime port.
+    fn decide_with_game_information(
+        &mut self,
+        input: &DecisionInput,
+        _runtime: &mut dyn super::runner::EpisodeRuntimePort,
+    ) -> Result<Decision, PolicyError> {
+        self.decide(input)
+    }
+
     /// Routes an authored decision-profile/context binding to the provider
     /// boundary. Legacy sources inherit `decide`; bound providers can override
     /// this method to enforce or select the requested profile and context.
@@ -71,6 +84,10 @@ pub trait DecisionSource {
     /// Originating provider execution for the most recently returned action, if retained.
     fn model_execution_id(&self) -> Option<ModelExecutionId> {
         None
+    }
+
+    fn close(&mut self) -> Result<(), PolicyError> {
+        Ok(())
     }
 }
 
@@ -101,6 +118,10 @@ impl<T> ExoDecisionSource<T> {
 }
 
 impl<T: crate::exo::ExoTransport> DecisionSource for ExoDecisionSource<T> {
+    fn close(&mut self) -> Result<(), PolicyError> {
+        ExoDecisionSource::close(self).map_err(map_exo_error)
+    }
+
     fn action_completed(&mut self, settled: bool) {
         if !settled {
             self.plan = None;
@@ -232,44 +253,7 @@ impl PolicyRouter {
             .assert_matches(input.observation.state_id(), input.observation.generation())
             .map_err(|_| PolicyError::StaleCatalog)?;
         let decision = source.decide(input)?;
-        match decision {
-            Decision::Plan { .. } => Err(PolicyError::MalformedDecision),
-            Decision::Action {
-                action_id,
-                rationale,
-                confidence,
-            } => {
-                if input.legal_actions.find(&action_id).is_none() {
-                    return Err(PolicyError::IllegalAction);
-                }
-                Ok(PolicyChoice::Action {
-                    action_id,
-                    rationale,
-                    confidence,
-                })
-            }
-            Decision::Wait { rationale } => Ok(PolicyChoice::Wait { rationale }),
-            Decision::Reobserve { rationale } => Ok(PolicyChoice::Reobserve { rationale }),
-            Decision::Recovery {
-                kind,
-                operation_id,
-                rationale,
-            } => {
-                let operation = match kind.as_str() {
-                    "reobserve" => RecoveryOperation::Reobserve,
-                    "reconcile" => RecoveryOperation::Reconcile {
-                        operation_id: operation_id.ok_or(PolicyError::MissingOperation)?,
-                    },
-                    "release_lease" => RecoveryOperation::ReleaseLease,
-                    "stop_episode" => RecoveryOperation::StopEpisode,
-                    _ => return Err(PolicyError::MalformedDecision),
-                };
-                Ok(PolicyChoice::Recovery {
-                    operation,
-                    rationale,
-                })
-            }
-        }
+        Self::route_decision(decision, input)
     }
 }
 

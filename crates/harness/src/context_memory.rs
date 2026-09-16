@@ -50,3 +50,6 @@ pub use context_memory_impl::*;
 
 #[path = "context_memory/policy_owner.rs"]
 pub mod policy_owner;
+
+#[path = "private_sqlite.rs"]
+pub(crate) mod private_sqlite;

@@ -18,6 +18,9 @@ mod quota;
 #[path = "policy_store_write_tests.rs"]
 mod write_tests;
 
+#[path = "policy_store_runtime.rs"]
+mod private_runtime;
+
 /// Construction-time retention choice; not a request field or a grant to collect private data.
 pub enum PolicyStoreConsent {
     SyntheticOnly,
@@ -36,9 +39,11 @@ pub enum PolicyStoreFailpoint {
 pub(super) struct PolicyStore {
     connection: Connection,
     path: PathBuf,
+    private_guard: Option<crate::context_memory::private_sqlite::PrivateSqliteGuard>,
     key: [u8; 32],
     scope: MemoryScope,
     epoch: u64,
+    authority_lease_active: bool,
     pub failpoint: Option<PolicyStoreFailpoint>,
 }
 
@@ -55,43 +60,14 @@ impl PolicyStore {
         scope: MemoryScope,
         consent: PolicyStoreConsent,
     ) -> Result<Self, PolicyOwnerError> {
-        if key.iter().all(|byte| *byte == 0) {
-            return Err(PolicyOwnerError::PermissionDenied);
-        }
-        if let PolicyStoreConsent::ApprovedPrivate { policy_ref } = consent
-            && !valid_id(&policy_ref)
-        {
-            return Err(PolicyOwnerError::PermissionDenied);
-        }
+        validate_open(&key, &consent)?;
         check_file(path)?;
         let connection = Connection::open(path).map_err(|_| PolicyOwnerError::Unavailable)?;
-        connection
-            .busy_timeout(std::time::Duration::from_secs(1))
-            .map_err(|_| PolicyOwnerError::Unavailable)?;
-        check_pages(&connection)?;
-        let existing = has_schema(&connection)?;
-        if existing {
-            check_schema(&connection)?;
-        }
-        connection
-            .execute_batch(
-                "PRAGMA page_size=4096; PRAGMA max_page_count=8192;
-             PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA temp_store=MEMORY;",
-            )
-            .map_err(|_| PolicyOwnerError::Unavailable)?;
-        let mut store = Self {
-            connection,
-            path: path.to_owned(),
-            key,
-            scope,
-            epoch: 0,
-            failpoint: None,
-        };
-        store.claim(existing)?;
-        Ok(store)
+        Self::initialize(path, key, scope, connection, None)
     }
 
     fn claim(&mut self, existing: bool) -> Result<(), PolicyOwnerError> {
+        self.verify_path()?;
         // Authenticate before taking ownership. Re-read under IMMEDIATE so an intervening
         // committed old-owner write cannot be overwritten with an earlier authenticated copy.
         if existing {
@@ -136,7 +112,7 @@ impl PolicyStore {
     }
 
     fn load_unfenced(&self) -> Result<PolicyJournal, PolicyOwnerError> {
-        check_file(&self.path)?;
+        self.verify_path()?;
         let transaction = self
             .connection
             .unchecked_transaction()
@@ -167,7 +143,7 @@ impl PolicyStore {
         change: impl FnOnce(&mut PolicyJournal) -> Result<T, PolicyOwnerError>,
         before_commit: impl FnOnce() -> Result<(), PolicyOwnerError>,
     ) -> Result<T, PolicyOwnerError> {
-        check_file(&self.path)?;
+        self.verify_path()?;
         check_pages(&self.connection)?;
         check_schema(&self.connection)?;
         let transaction = self
@@ -206,7 +182,7 @@ impl PolicyStore {
         &mut self,
         action: impl FnOnce(&PolicyJournal) -> Result<T, PolicyOwnerError>,
     ) -> Result<T, PolicyOwnerError> {
-        check_file(&self.path)?;
+        self.verify_path()?;
         check_pages(&self.connection)?;
         check_schema(&self.connection)?;
         let transaction = self
@@ -229,6 +205,8 @@ impl PolicyStore {
         Ok(result)
     }
 }
+
+include!("policy_store_validate_open.rs");
 
 fn aad(scope: &MemoryScope) -> Result<Vec<u8>, PolicyOwnerError> {
     serde_json::to_vec(&(

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use authority::AuthorizedActor;
+use authority::{AuthorizedActor, AuthorizedPolicyState};
+use std::sync::MutexGuard;
 
 /// Local preparation inputs. There is intentionally no policy field.
 pub struct ActivePolicyPreparation {
@@ -16,6 +17,38 @@ pub struct ActivePolicyPreparation {
 pub struct PreparedActivePolicy {
     pub binding: ActivePolicyBinding,
     pub realized: RealizedSelection,
+}
+
+/// Authenticated owner snapshot for one selected game-information lookup policy.
+/// The binding carries the durable owner fence that must be revalidated before
+/// each query or feedback delivery.
+#[derive(Clone, Debug)]
+pub struct LookupPolicySnapshot {
+    pub binding: ActivePolicyBinding,
+    pub policy: MemoryPolicy,
+    pub corpus: MemoryCorpus,
+    pub capabilities: MemoryCapabilities,
+}
+
+/// Holds the selected-policy authority and journal lease through one lifecycle
+/// authorization boundary. Dropping the guard releases the journal transaction
+/// and both owner locks.
+pub struct LookupPolicyAuthorityGuard<'a> {
+    snapshot: LookupPolicySnapshot,
+    _authority: AuthorizedPolicyState<'a>,
+    store: MutexGuard<'a, PolicyStore>,
+}
+
+impl LookupPolicyAuthorityGuard<'_> {
+    pub fn snapshot(&self) -> &LookupPolicySnapshot {
+        &self.snapshot
+    }
+}
+
+impl Drop for LookupPolicyAuthorityGuard<'_> {
+    fn drop(&mut self) {
+        self.store.end_authority_lease();
+    }
 }
 
 impl MemoryPolicyOwner {
@@ -61,6 +94,93 @@ impl MemoryPolicyOwner {
                     })
                 })
             })
+    }
+
+    /// Loads the currently adopted policy and a bounded clone of its owner
+    /// corpus for a read-only lookup session. Caller-supplied policy bytes,
+    /// corpus data, or capabilities are never accepted.
+    pub fn lookup_snapshot(
+        &self,
+        access: PolicyAccess<'_>,
+        expected_binding: Option<&ActivePolicyBinding>,
+    ) -> Result<LookupPolicySnapshot, PolicyOwnerError> {
+        self.authority
+            .with_authorized(access, PolicyPermission::Select, |state, actor, clock| {
+                let mut store = self
+                    .store
+                    .lock()
+                    .map_err(|_| PolicyOwnerError::Unavailable)?;
+                store.read_lease(|journal| {
+                    let active = admitted_active(journal, state, actor, clock.now_seconds())?;
+                    if expected_binding.is_some_and(|expected| expected != &active.binding) {
+                        return Err(PolicyOwnerError::StaleReview);
+                    }
+                    Ok(LookupPolicySnapshot {
+                        binding: active.binding,
+                        policy: active.policy,
+                        corpus: state.corpus.clone(),
+                        capabilities: state.capabilities.clone(),
+                    })
+                })
+            })
+    }
+
+    /// Rechecks current selector and approver authority, active journal binding,
+    /// corpus generation, capability descriptor, and review fence against the
+    /// snapshot retained by a live lookup session.
+    pub fn revalidate_lookup_snapshot(
+        &self,
+        access: PolicyAccess<'_>,
+        expected: &ActivePolicyBinding,
+    ) -> Result<(), PolicyOwnerError> {
+        self.lookup_snapshot(access, Some(expected)).map(|_| ())
+    }
+
+    /// Acquires a linearizable selected-policy lease for a short lifecycle
+    /// boundary. The authenticated selector and approver grants, current
+    /// authority state, and durable active journal stay locked until drop.
+    pub fn lock_lookup_snapshot(
+        &self,
+        access: PolicyAccess<'_>,
+        expected: &ActivePolicyBinding,
+    ) -> Result<LookupPolicyAuthorityGuard<'_>, PolicyOwnerError> {
+        let authorized = self
+            .authority
+            .lock_authorized(access, PolicyPermission::Select)?;
+        let mut store = self
+            .store
+            .lock()
+            .map_err(|_| PolicyOwnerError::Unavailable)?;
+        let journal = store.begin_authority_lease()?;
+        let snapshot = (|| {
+            let active = admitted_active(
+                &journal,
+                &authorized.state,
+                &authorized.actor,
+                authorized.clock.now_seconds(),
+            )?;
+            if &active.binding != expected {
+                return Err(PolicyOwnerError::StaleReview);
+            }
+            Ok(LookupPolicySnapshot {
+                binding: active.binding,
+                policy: active.policy,
+                corpus: authorized.state.corpus.clone(),
+                capabilities: authorized.state.capabilities.clone(),
+            })
+        })();
+        let snapshot = match snapshot {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                store.end_authority_lease();
+                return Err(error);
+            }
+        };
+        Ok(LookupPolicyAuthorityGuard {
+            snapshot,
+            _authority: authorized,
+            store,
+        })
     }
 }
 

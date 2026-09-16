@@ -44,6 +44,8 @@ mod execution_types;
 mod lifecycle_ops;
 #[path = "service_live_provider_policy.rs"]
 mod live_provider_policy;
+#[path = "service_memory_policy_owner.rs"]
+mod memory_policy_owner_ops;
 #[path = "service_ops.rs"]
 mod ops;
 #[path = "service_provider_policy.rs"]
@@ -64,15 +66,14 @@ mod unavailable;
 pub use live_provider_policy::{
     LiveProviderPolicyPort, ProviderSessionPolicyBinding, UnavailableLiveProviderPolicyPort,
 };
+pub use memory_policy_owner_ops::*;
 pub use provider_session_support::UnavailableProviderSessionInspectionPort;
 pub use unavailable::{
     UnavailableAuthoringStore, UnavailableCapabilityPort, UnavailableContextInspectionPort,
     UnavailableDefinitionPort, UnavailableExecutionPort, UnavailableReplayPort,
 };
 
-/// A stable management error. The HTTP and CLI adapters map `class` to their
-/// respective status/exit-code contracts without exposing port implementation
-/// details or private payloads.
+/// Stable management errors map to status or exit code and omit private payloads.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ManagementError {
     pub class: ErrorClass,
@@ -238,6 +239,7 @@ pub struct ManagementService {
     provider_session_inspection: Arc<dyn ProviderSessionInspectionPort>,
     provider_session_policy: Arc<dyn super::provider_policy::ProviderSessionPolicyCommandPort>,
     live_provider_policy: Arc<dyn LiveProviderPolicyPort>,
+    memory_policy_owner: Arc<dyn MemoryPolicyOwnerManagementPort>,
 }
 
 impl ManagementService {
@@ -259,6 +261,9 @@ impl ManagementService {
                 super::provider_policy::UnavailableProviderSessionPolicyCommandPort,
             ),
             live_provider_policy: Arc::new(live_provider_policy::UnavailableLiveProviderPolicyPort),
+            memory_policy_owner: Arc::new(
+                memory_policy_owner_ops::UnavailableMemoryPolicyOwnerManagementPort,
+            ),
         }
     }
 

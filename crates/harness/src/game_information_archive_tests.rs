@@ -111,7 +111,7 @@ fn encrypted_restart_preserves_exact_source_and_replays_without_transport() -> T
     drop(corpus);
     {
         let store = DurableMemoryStore::open(path_text, binding.scope.clone(), [23; 32])?;
-        let (restored, corpus) = LookupSession::import_archive(
+        let (mut restored, corpus) = LookupSession::import_archive(
             &archive.manifest,
             &archive.sha256,
             binding,
@@ -125,6 +125,48 @@ fn encrypted_restart_preserves_exact_source_and_replays_without_transport() -> T
         let delivery = restored.replay(&record, &record.request, &corpus)?;
         assert_eq!(delivery.record.view_sha256, record.view_sha256);
         assert!(restored.capabilities.is_none());
+        struct ArchivedAgent {
+            request: Value,
+            received: bool,
+        }
+        impl LookupAgentPort for ArchivedAgent {
+            fn next_turn(
+                &mut self,
+                input: LookupAgentInput<'_>,
+            ) -> Result<LookupTurn, LookupError> {
+                if let LookupFeedback::Data { delivery, .. } = input.feedback {
+                    self.received = delivery.record.view_sha256.is_some();
+                }
+                Ok(if self.received {
+                    LookupTurn::Decide {
+                        action_id: "play:card-17".to_owned(),
+                    }
+                } else {
+                    LookupTurn::Query {
+                        operation_id: String::from("archive-operation"),
+                        request: serde_json::to_vec(&self.request)
+                            .map_err(|_| LookupError::Invalid)?,
+                    }
+                })
+            }
+        }
+        let legal = crate::EpisodeLegalActionSet::new(
+            "state-42",
+            42,
+            vec![crate::EpisodeLegalAction::new(
+                "play:card-17",
+                crate::ActionKind::PlayCard,
+            )?],
+        )?;
+        let mut agent = ArchivedAgent {
+            request: record.request.clone(),
+            received: false,
+        };
+        assert_eq!(
+            run_lookup_replay_tool_loop(&mut restored, &corpus, &mut agent, &legal, 2)?,
+            "play:card-17"
+        );
+        assert!(agent.received, "replay must deliver archived data to agent");
     }
     std::fs::remove_file(path)?;
     Ok(())

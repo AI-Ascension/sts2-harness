@@ -37,6 +37,39 @@ impl ManagementClient {
         path: &str,
         body: Option<&[u8]>,
     ) -> Result<ClientResponse, HttpError> {
+        self.request_json_inner(method, path, body, None)
+    }
+
+    /// Sends a policy-owner mutation with the bounded idempotency header used
+    /// by durable owner commands.
+    pub fn request_json_with_idempotency_key(
+        &self,
+        method: &str,
+        path: &str,
+        body: &[u8],
+        idempotency_key: &str,
+    ) -> Result<ClientResponse, HttpError> {
+        if idempotency_key.is_empty()
+            || idempotency_key.len() > 128
+            || !idempotency_key.bytes().enumerate().all(|(index, byte)| {
+                byte.is_ascii_alphanumeric() || (index > 0 && b"._:-".contains(&byte))
+            })
+        {
+            return Err(HttpError::new(
+                "invalid_idempotency_key",
+                "idempotency key is outside the supported bound",
+            ));
+        }
+        self.request_json_inner(method, path, Some(body), Some(idempotency_key))
+    }
+
+    fn request_json_inner(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+        idempotency_key: Option<&str>,
+    ) -> Result<ClientResponse, HttpError> {
         if method != "GET" && method != "POST" && method != "PUT" {
             return Err(HttpError::new(
                 "method_not_allowed",
@@ -70,9 +103,10 @@ impl ManagementClient {
         let mut stream =
             TcpStream::connect_timeout(&self.address, self.deadline).map_err(io_http_error)?;
         let head = format!(
-            "{method} {path} HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nAccept: application/json\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            "{method} {path} HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nAccept: application/json\r\nContent-Type: application/json\r\n{}Content-Length: {}\r\nConnection: close\r\n\r\n",
             self.address,
             self.bearer_token,
+            idempotency_key.map_or_else(String::new, |key| format!("Idempotency-Key: {key}\r\n")),
             body.len()
         );
         let mut request = head.into_bytes();
