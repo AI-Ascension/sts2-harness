@@ -8,6 +8,7 @@ use sts2_harness::{
 
 use super::config::RuntimeConfig;
 use super::runtime_v3_admission;
+use super::runtime_v3_lifecycle_config::{RuntimeLifecycleConfig, RuntimeLifecycleSecrets};
 
 #[path = "../support/ollama_options.rs"]
 mod ollama_options;
@@ -23,6 +24,8 @@ pub(super) struct RuntimeV3Settings {
     pub(super) exo: ExoConfig,
     pub(super) process: ExoProcessConfig,
     pub(super) admission: ExoRuntimeAdmission,
+    #[allow(dead_code)]
+    pub(super) lifecycle: Option<(RuntimeLifecycleConfig, RuntimeLifecycleSecrets)>,
 }
 
 impl RuntimeV3Settings {
@@ -43,11 +46,13 @@ impl RuntimeV3Settings {
             &config.instance_id,
         )?;
         let runner = runner_from_environment(config.map_context_enabled)?;
+        let lifecycle = RuntimeLifecycleConfig::from_environment()?;
         Ok(Self {
             runner,
             exo,
             process,
             admission,
+            lifecycle,
         })
     }
 }
