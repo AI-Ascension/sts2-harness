@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MIT
 
+use ledger::OperationRecord;
+
+const MAX_OPERATIONS: usize = 1_024;
+
 impl RuntimeV3Port {
     fn validate_current_action(
         &self,

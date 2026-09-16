@@ -54,6 +54,15 @@ pub(crate) struct DurableHandle {
 }
 
 impl DurableHandle {
+    pub(super) fn verify_branch_effective_seed(&self, branch_seed: &str) -> Result<(), String> {
+        if self.fingerprint.seed != branch_seed {
+            return Err(String::from(
+                "selected branch effective seed does not match its durable execution fingerprint",
+            ));
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     pub(in super::super) fn from_store_for_test(
         store: ExecutionStore,

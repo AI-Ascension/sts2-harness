@@ -18,8 +18,9 @@ pub(super) fn dispatch(
     if request.method == "GET" && request.path == "/v1/health" {
         return json_response(200, service.health());
     }
+    let bearer = parse_bearer(request.headers.get("authorization"))?;
     let actor = authenticator
-        .authenticate(parse_bearer(request.headers.get("authorization"))?)
+        .authenticate(bearer)
         .map_err(auth_http_error)?;
     let result: Result<Value, ManagementError> =
         (|| match (request.method.as_str(), request.path.as_str()) {
@@ -77,7 +78,7 @@ pub(super) fn dispatch(
                     .studio_create_draft(&actor, body)
                     .and_then(|value| json_value(&value))
             }
-            _ => dispatch_studio_or_run_route(&request, service, &actor),
+            _ => dispatch_studio_or_run_route(&request, service, &actor, bearer),
         })();
     match result {
         Ok(body) => json_response(200, body),
@@ -89,9 +90,21 @@ fn dispatch_studio_or_run_route(
     request: &HttpRequest,
     service: &ManagementService,
     actor: &super::super::auth::AuthContext,
+    bearer: Option<&str>,
 ) -> Result<Value, ManagementError> {
     if request.path.starts_with("/v1/studio/") {
         return dispatch_studio_route(request, service, actor);
+    }
+    if request.path.starts_with("/v1/memory-policy-owner") {
+        return super::routes_memory_owner::dispatch_memory_policy_owner_route(
+            request, service, actor, bearer,
+        )
+        .unwrap_or_else(|| {
+            Err(ManagementError::invalid(
+                "route_not_found",
+                "management route was not found",
+            ))
+        });
     }
     super::routes_run::dispatch_run_route(request, service, actor)
 }

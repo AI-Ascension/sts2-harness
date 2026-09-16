@@ -163,7 +163,9 @@ fn cancellation_kills_the_process_path_and_holds_the_decision_unknown()
     std::fs::write(
         &script,
         format!(
-            "#!/bin/sh\necho x >> '{}'\ncat >/dev/null\nsleep 5\n",
+            // Delayed readiness exercises cancellation after launch even when startup exceeds
+            // the former one-second polling window.
+            "#!/bin/sh\nsleep 2\necho x >> '{}'\ncat >/dev/null\nsleep 30\n",
             log.display()
         ),
     )?;
@@ -183,7 +185,7 @@ fn cancellation_kills_the_process_path_and_holds_the_decision_unknown()
         )?,
         cancellation,
         8 * 1024,
-        5_000,
+        20_000,
         3,
     )?;
     let replacement = ExecutionStore::open_in_memory()?;
@@ -207,14 +209,13 @@ fn cancellation_kills_the_process_path_and_holds_the_decision_unknown()
     .map_err(|error| format!("{error:?}"))?;
     let log_for_cancel = log.clone();
     let cancel = std::thread::spawn(move || {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
-        while !log_for_cancel.exists() && std::time::Instant::now() < deadline {
-            std::thread::yield_now();
-        }
+        let ready = wait_for_cancellation_fixture(&log_for_cancel);
         canceller.cancel();
+        ready
     });
-    assert!(transport.exchange(&fixture.input, 8 * 1024, 5_000).is_err());
-    cancel.join().map_err(|_| "canceller panicked")?;
+    let result = transport.exchange(&fixture.input, 8 * 1024, 20_000);
+    cancel.join().map_err(|_| "canceller panicked")??;
+    assert!(result.is_err());
     assert!(
         store
             .borrow()
@@ -223,6 +224,25 @@ fn cancellation_kills_the_process_path_and_holds_the_decision_unknown()
     );
     assert_eq!(std::fs::read_to_string(&log)?.lines().count(), 1);
     Ok(())
+}
+
+fn wait_for_cancellation_fixture(path: &std::path::Path) -> std::io::Result<()> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        match std::fs::read_to_string(path) {
+            Ok(contents) if contents == "x\n" => return Ok(()),
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "cancellation fixture did not publish its readiness marker",
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
 }
 
 #[test]

@@ -9,6 +9,9 @@ use serde_json::Value;
 
 use super::config::RuntimeConfig;
 
+#[path = "http_bytes.rs"]
+mod bytes;
+
 const MAX_BODY_BYTES: usize = 16 * 1024;
 const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 const MAX_HEADER_BYTES: usize = 8 * 1024;
@@ -20,19 +23,22 @@ pub(crate) struct GatewayClient {
 
 impl GatewayClient {
     pub(crate) fn new(config: &RuntimeConfig) -> Result<Self, String> {
-        let address = parse_address(&config.gateway_address)?;
-        if config.gateway_token.is_empty()
-            || config.gateway_token.len() > 256
-            || !config
-                .gateway_token
-                .bytes()
-                .all(|byte| byte.is_ascii_graphic())
+        Self::with_bearer(&config.gateway_address, &config.gateway_token)
+    }
+
+    pub(crate) fn with_bearer(address: &str, token: &str) -> Result<Self, String> {
+        let address = parse_address(address)?;
+        if token.is_empty()
+            || token.len() > 256
+            || !token.bytes().all(|byte| byte.is_ascii_graphic())
         {
-            return Err(String::from("gateway token is empty, unsafe, or oversized"));
+            return Err(String::from(
+                "gateway bearer is empty, unsafe, or oversized",
+            ));
         }
         Ok(Self {
             address,
-            token: config.gateway_token.clone(),
+            token: token.to_owned(),
         })
     }
 
@@ -46,6 +52,23 @@ impl GatewayClient {
         self.exchange(method, path, body, extra_headers, Duration::from_secs(5))
     }
 
+    pub(crate) fn request_bytes(
+        &self,
+        method: &str,
+        path: &str,
+        body: &Value,
+        extra_headers: BTreeMap<String, String>,
+    ) -> Result<Vec<u8>, String> {
+        bytes::exchange_bytes(
+            self,
+            method,
+            path,
+            body,
+            extra_headers,
+            Duration::from_secs(5),
+        )
+    }
+
     fn exchange(
         &self,
         method: &str,
@@ -54,48 +77,8 @@ impl GatewayClient {
         extra_headers: BTreeMap<String, String>,
         timeout: Duration,
     ) -> Result<Value, String> {
-        let deadline = Instant::now() + timeout;
-        validate_request(method, path, &extra_headers)?;
-        let bytes = if body.is_null() {
-            Vec::new()
-        } else {
-            serde_json::to_vec(body)
-                .map_err(|error| format!("request serialization failed: {error}"))?
-        };
-        if bytes.len() > MAX_BODY_BYTES {
-            return Err(String::from("gateway request body exceeds the bound"));
-        }
-        let mut headers = extra_headers;
-        headers.insert(
-            String::from("Authorization"),
-            format!("Bearer {}", self.token),
-        );
-        headers.insert(String::from("Host"), self.address.to_string());
-        headers.insert(String::from("Content-Length"), bytes.len().to_string());
-        if !bytes.is_empty() {
-            headers.insert(
-                String::from("Content-Type"),
-                String::from("application/json"),
-            );
-        }
-        let mut request = format!("{method} {path} HTTP/1.1\r\n");
-        for (name, value) in headers {
-            request.push_str(&format!("{name}: {value}\r\n"));
-        }
-        request.push_str("Connection: close\r\n\r\n");
-        if request.len() > MAX_HEADER_BYTES {
-            return Err(String::from("gateway request headers exceed the bound"));
-        }
-        let mut stream = TcpStream::connect_timeout(&self.address, remaining(deadline)?)
-            .map_err(|_| String::from("gateway connection failed"))?;
-        write_deadline(&mut stream, request.as_bytes(), deadline)?;
-        write_deadline(&mut stream, &bytes, deadline)?;
-        let response = read_response(&mut stream, deadline)?;
-        if !(200..300).contains(&response.status) {
-            return Err(format!("gateway returned HTTP {}", response.status));
-        }
-        serde_json::from_slice(&response.body)
-            .map_err(|_| String::from("gateway response was not JSON"))
+        let response = bytes::exchange_bytes(self, method, path, body, extra_headers, timeout)?;
+        super::gateway_json::parse(&response)
     }
 }
 

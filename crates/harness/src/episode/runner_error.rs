@@ -53,6 +53,7 @@ pub enum EpisodeRunnerError {
     InvalidConfiguration,
     InvalidIdentity,
     Launch(PortError),
+    GameInformationBinding(PortError),
     Observe(PortError),
     LegalActions(PortError),
     Dispatch(PortError),
@@ -89,6 +90,9 @@ impl std::fmt::Display for EpisodeRunnerError {
             Self::InvalidConfiguration => "episode runner configuration is invalid",
             Self::InvalidIdentity => "episode runner identity allocation failed",
             Self::Launch(_) => "episode launch failed",
+            Self::GameInformationBinding(_) => {
+                "episode game-information binding preparation failed"
+            }
             Self::Observe(_) => "episode observation failed",
             Self::LegalActions(_) => "episode legal-action request failed",
             Self::Dispatch(_) => "episode action dispatch failed",

@@ -16,6 +16,9 @@ use crate::exo::{Decision, ExoError, ExoSession};
 use crate::identity::ModelExecutionId;
 use crate::management::ContextRenderSource;
 
+#[path = "policy_router_game_information.rs"]
+mod game_information;
+
 /// Inputs given to a provider for one current observation. The observation has already passed the
 /// fair-play firewall and the action set is host-generated.
 #[derive(Clone, Debug)]
@@ -60,6 +63,16 @@ impl DecisionInput {
 pub trait DecisionSource {
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError>;
 
+    /// Opt-in Runtime-v3 providers can receive bounded game-information tool
+    /// feedback through the already-owned MCP runtime port.
+    fn decide_with_game_information(
+        &mut self,
+        input: &DecisionInput,
+        _runtime: &mut dyn super::runner::EpisodeRuntimePort,
+    ) -> Result<Decision, PolicyError> {
+        self.decide(input)
+    }
+
     /// Routes an authored decision-profile/context binding to the provider
     /// boundary. Legacy sources inherit `decide`; bound providers can override
     /// this method to enforce or select the requested profile and context.
@@ -101,6 +114,10 @@ pub trait DecisionSource {
     fn model_execution_id(&self) -> Option<ModelExecutionId> {
         None
     }
+
+    fn close(&mut self) -> Result<(), PolicyError> {
+        Ok(())
+    }
 }
 
 /// Connects the episode policy port to the bounded Exo session.
@@ -130,6 +147,10 @@ impl<T> ExoDecisionSource<T> {
 }
 
 impl<T: crate::exo::ExoTransport> DecisionSource for ExoDecisionSource<T> {
+    fn close(&mut self) -> Result<(), PolicyError> {
+        ExoDecisionSource::close(self).map_err(map_exo_error)
+    }
+
     fn action_completed(&mut self, settled: bool) {
         if !settled {
             self.plan = None;
@@ -242,8 +263,6 @@ impl<T: crate::exo::ExoTransport> DecisionSource for ExoDecisionSource<T> {
     }
 }
 
-/// A provider decision after binding to the current action set, or an explicit non-action
-/// directive that the coordinator must handle.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PolicyError {
     InputBlocked,

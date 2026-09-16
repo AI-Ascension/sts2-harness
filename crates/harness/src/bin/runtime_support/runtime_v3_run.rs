@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: MIT
 
-pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
+pub(super) fn run(
+    mut config: RuntimeConfig,
+    selector: Option<sts2_harness::BranchContinuationSelector>,
+) -> Result<(), String> {
     let runtime_profile = config.runtime_profile.clone();
-    let settings = RuntimeV3Settings::from_environment(&config)?;
     let resume_requested = std::env::args()
         .skip(1)
         .any(|argument| argument == "--resume")
         || std::env::var("STS2_RESUME").as_deref() == Ok("true");
+    let mut selected_branch =
+        select_branch_continuation(selector, resume_requested, &mut config)?;
+    let policy_preflight = game_information_owner::begin_memory_policy_preflight(&config)?;
+    let settings = RuntimeV3Settings::from_environment(&config)?;
     let telemetry_context = TelemetryContext::new(TelemetryContextInput {
         run_id: &config.run_id,
         episode_id: &config.episode_id,
@@ -39,7 +45,51 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
             return Err(error);
         }
     };
+    if let Some(selected) = selected_branch
+        .as_ref()
+        .filter(|selected| selected.is_resuming())
+    {
+        let verification = selected
+            .branch()
+            .effective_seed
+            .as_deref()
+            .ok_or_else(|| String::from("selected running branch has no effective seed"))
+            .and_then(|branch_seed| durable.verify_branch_effective_seed(branch_seed));
+        if let Err(error) = verification {
+            let close = durable.close();
+            let _ = telemetry_handle.failure(
+                "branch_continuation_seed",
+                super::runtime_v3_telemetry::FailureCode::Configuration,
+                false,
+                None,
+            );
+            let _ = telemetry_handle.run_finished(
+                GameOutcome::Unavailable,
+                TelemetryStage::Unknown,
+                if close.is_ok() {
+                    CleanupStatus::Clean
+                } else {
+                    CleanupStatus::Failed
+                },
+            );
+            finish_telemetry(telemetry);
+            return Err(match close {
+                Ok(()) => error,
+                Err(close_error) => {
+                    format!("{error}; execution store cleanup failed: {close_error}")
+                }
+            });
+        }
+    }
     if let ResumeState::Completed(completion) = state {
+        if let Some(mut selected) = selected_branch.take() {
+            if !selected.is_resuming() {
+                return Err(String::from(
+                    "a completed execution store cannot start a new selected branch continuation",
+                ));
+            }
+            selected.complete()?;
+        }
         return completed_resume::finish(durable, completion, telemetry_handle, telemetry);
     }
     if resume_requested && let Err(error) = durable.validate_pending_action_identity() {
@@ -58,7 +108,14 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         return Err(error);
     }
     let mut port =
-        match RuntimeV3Port::new_with_store(config.clone(), telemetry_handle.clone(), durable) {
+        match RuntimeV3Port::new_with_store_and_lookup_owner(
+            config.clone(),
+            telemetry_handle.clone(),
+            durable,
+            policy_preflight
+                .as_ref()
+                .map(|preflight| std::sync::Arc::clone(&preflight.owner)),
+        ) {
             Ok(port) => port,
             Err(error) => {
                 let _ = telemetry_handle.failure(
@@ -72,6 +129,9 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
                 return Err(error);
             }
         };
+    if let Some(selected) = selected_branch.take() {
+        return branch_continuation::run(selected, port, settings, telemetry_handle, telemetry);
+    }
     if std::env::var("STS2_COMBAT_DEMO").as_deref() != Ok("true") {
         let path = std::env::var("STS2_REPLAY_TRAJECTORY").unwrap_or_default();
         if !path.is_empty() {
@@ -113,26 +173,34 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
             return result.map(|_| ()).and(store_close);
         }
     }
-    let transport = select_provider_transport(
+    if std::env::var("STS2_COMBAT_DEMO").as_deref() == Ok("true") {
+        let transport = select_provider_transport(
+            &config,
+            &settings,
+            port.durable_handle()
+                .ok_or_else(|| String::from("runtime-v3 durable handle disappeared"))?,
+            port.lifecycle_authority_state(),
+        )?;
+        let provider = ExoProvider::new(transport, settings.exo.clone());
+        let source = ExoDecisionSource::new(ExoSession::new(provider));
+        return run_combat_demo(port, source, settings.runner, telemetry_handle, telemetry);
+    }
+    let mut source = decision_source(
         &config,
         &settings,
         port.durable_handle()
             .ok_or_else(|| String::from("runtime-v3 durable handle disappeared"))?,
         port.lifecycle_authority_state(),
+        policy_preflight.is_some(),
     )?;
-    let provider = ExoProvider::new(transport, settings.exo);
-    let mut source = ExoDecisionSource::new(ExoSession::new(provider));
-    if std::env::var("STS2_COMBAT_DEMO").as_deref() == Ok("true") {
-        return run_combat_demo(port, source, settings.runner, telemetry_handle, telemetry);
-    }
     let durable = port
         .durable_handle()
         .ok_or_else(|| String::from("runtime-v3 durable handle disappeared"))?;
     let mut recorder = if settings.lifecycle.is_some() {
-        recording::DecisionRecorder::new(&mut source, telemetry_handle.clone())
+        recording::DecisionRecorder::new(&mut *source, telemetry_handle.clone())
     } else {
         recording::DecisionRecorder::with_durable(
-            &mut source,
+            &mut *source,
             telemetry_handle.clone(),
             durable.clone(),
         )
@@ -228,4 +296,3 @@ fn select_provider_transport(
 ) -> Result<lifecycle::RuntimeTransport, String> {
     lifecycle::admit(config, settings, durable, authority_state)
 }
-

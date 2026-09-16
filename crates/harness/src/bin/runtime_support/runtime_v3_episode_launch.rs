@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: MIT
 
+use super::super::super::mcp::validate_or_release_allocation_with;
 use super::*;
+use std::collections::BTreeMap;
 
 pub(super) fn launch(port: &mut RuntimeV3Port) -> Result<(), sts2_harness::PortError> {
     if port.allocated {
+        if port.continuation_prelaunched {
+            port.continuation_prelaunched = false;
+            return Ok(());
+        }
         return Err(wire::port_error(
             "duplicate_launch",
             "episode is already allocated",
@@ -56,6 +62,20 @@ pub(super) fn launch(port: &mut RuntimeV3Port) -> Result<(), sts2_harness::PortE
             super::super::recovery::RecoveryContext::from_authority(authority, &port.config)
                 .map_err(|error| wire::port_error("recovery_authority_invalid", error, false))?,
         );
+    }
+    if let Some(context) = port.continuation_owner_claim.clone()
+        && let Err(error) = super::super::continuation_owner::claim_current_owner(
+            &port.config,
+            port.recovery_authority.as_ref(),
+            &context,
+        )
+    {
+        let release = port.release_lease_inner();
+        return Err(wire::port_error(
+            "continuation_owner_claim_failed",
+            wire::combine_cleanup(error, Ok(()), release),
+            false,
+        ));
     }
     if let Err(error) = port.launch_mcp() {
         return Err(wire::port_error("runtime_launch_failed", error, false));

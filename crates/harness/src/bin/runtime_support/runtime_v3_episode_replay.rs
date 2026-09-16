@@ -55,19 +55,48 @@ pub(super) fn run(
     if bytes.len() as u64 > MAX_BYTES {
         return Err("episode replay exceeds byte bound".into());
     }
-    let prefix = match std::env::var("STS2_REPLAY_PREFIX").as_deref() {
-        Ok("true") => true,
-        Ok("false") | Err(std::env::VarError::NotPresent) => false,
-        _ => return Err("STS2_REPLAY_PREFIX must be true or false".into()),
+    run_bytes(port, config, &bytes, None, None)
+}
+
+/// Replays a retained prefix on the live destination, then lets the same runner and port continue
+/// through the verified boundary with the normal decision source.
+pub(super) fn run_prefix_and_continue(
+    port: &mut RuntimeV3Port,
+    config: &EpisodeRunnerConfig,
+    bytes: &[u8],
+    continuation: &mut dyn DecisionSource,
+    on_boundary: &mut dyn FnMut() -> Result<(), String>,
+) -> Result<ReplayOutcome, String> {
+    run_bytes(port, config, bytes, Some(continuation), Some(on_boundary))
+}
+
+fn run_bytes<'a>(
+    port: &mut RuntimeV3Port,
+    config: &EpisodeRunnerConfig,
+    bytes: &[u8],
+    continuation: Option<&'a mut dyn DecisionSource>,
+    on_boundary: Option<&'a mut dyn FnMut() -> Result<(), String>>,
+) -> Result<ReplayOutcome, String> {
+    if bytes.len() as u64 > MAX_BYTES {
+        return Err("episode replay exceeds byte bound".into());
+    }
+    let prefix = if continuation.is_some() {
+        true
+    } else {
+        match std::env::var("STS2_REPLAY_PREFIX").as_deref() {
+            Ok("true") => true,
+            Ok("false") | Err(std::env::VarError::NotPresent) => false,
+            _ => return Err("STS2_REPLAY_PREFIX must be true or false".into()),
+        }
     };
     let trace = if prefix {
-        ReplayTrace::parse_mode(&bytes, true)?
+        ReplayTrace::parse_mode(bytes, true)?
     } else {
-        ReplayTrace::parse(&bytes)?
+        ReplayTrace::parse(bytes)?
     };
     trace.admit_seeded_receipt(port.config.seed_transport.as_ref())?;
-    let digest = sts2_harness::sha256_hex(&bytes);
-    let mut source = ReplaySource::new(trace);
+    let digest = sts2_harness::sha256_hex(bytes);
+    let mut source = ReplaySource::with_continuation(trace, continuation, on_boundary);
     println!(
         "{}",
         json!({"event":"episode_replay_started", "source_sha256":digest,
@@ -89,16 +118,21 @@ pub(super) fn run(
         );
         return Ok(ReplayOutcome::PrefixVerified);
     }
+    if let Some(error) = source.continuation_error.take() {
+        return Err(error);
+    }
     let report = result.map_err(|error| {
+        let category = error_category(&error);
         format!(
-            "episode replay failed: {}",
-            source
-                .failure
-                .map(str::to_owned)
-                .unwrap_or_else(|| error_category(&error))
+            "episode replay failed: {} ({category})",
+            source.failure.unwrap_or("replay did not complete")
         )
     })?;
-    source.finish(report.final_observation())?;
+    if source.continuation.is_none() {
+        source.finish(report.final_observation())?;
+    } else if !source.prefix_verified {
+        return Err("normal continuation started without a verified replay boundary".into());
+    }
     recording::complete(&report, &port.telemetry);
     println!(
         "{}",
@@ -119,12 +153,15 @@ fn error_category(error: &sts2_harness::EpisodeRunnerError) -> String {
             "host mutation did not settle".into()
         }
         sts2_harness::EpisodeRunnerError::StepLimitExceeded => "step budget exhausted".into(),
+        sts2_harness::EpisodeRunnerError::Cleanup(failure) => {
+            format!("episode cleanup failed after {}", failure.primary())
+        }
         // Runner Display implementations expose typed categories, not provider content.
         _ => error.to_string(),
     }
 }
 
-struct ReplaySource {
+struct ReplaySource<'a> {
     trace: ReplayTrace,
     cursor: usize,
     awaiting: bool,
@@ -133,10 +170,22 @@ struct ReplaySource {
     prefix_observation: Option<serde_json::Value>,
     observation_waits: u8,
     cards: CardBindings,
+    continuation: Option<&'a mut dyn DecisionSource>,
+    on_boundary: Option<&'a mut dyn FnMut() -> Result<(), String>>,
+    continuation_error: Option<String>,
 }
 
-impl ReplaySource {
+impl<'a> ReplaySource<'a> {
+    #[cfg(test)]
     fn new(trace: ReplayTrace) -> Self {
+        Self::with_continuation(trace, None, None)
+    }
+
+    fn with_continuation(
+        trace: ReplayTrace,
+        continuation: Option<&'a mut dyn DecisionSource>,
+        on_boundary: Option<&'a mut dyn FnMut() -> Result<(), String>>,
+    ) -> Self {
         Self {
             trace,
             cursor: 0,
@@ -146,6 +195,9 @@ impl ReplaySource {
             prefix_observation: None,
             observation_waits: 0,
             cards: CardBindings::default(),
+            continuation,
+            on_boundary,
+            continuation_error: None,
         }
     }
 
@@ -169,8 +221,14 @@ impl ReplaySource {
     }
 }
 
-impl DecisionSource for ReplaySource {
+impl DecisionSource for ReplaySource<'_> {
     fn action_completed(&mut self, settled: bool) {
+        if self.prefix_verified {
+            if let Some(continuation) = self.continuation.as_deref_mut() {
+                continuation.action_completed(settled);
+            }
+            return;
+        }
         if self.awaiting && settled {
             self.cursor += 1;
             self.awaiting = false;
@@ -187,6 +245,15 @@ impl DecisionSource for ReplaySource {
             if self.trace.prefix && self.finish(&input.observation).is_ok() {
                 self.prefix_verified = true;
                 self.prefix_observation = Some(input.observation.fair_play().as_value().clone());
+                if let Some(on_boundary) = self.on_boundary.as_deref_mut()
+                    && let Err(error) = on_boundary()
+                {
+                    self.continuation_error = Some(error);
+                    return Err(PolicyError::InputBlocked);
+                }
+                if let Some(continuation) = self.continuation.as_deref_mut() {
+                    return continuation.decide(input);
+                }
                 return Ok(Decision::Recovery {
                     kind: "stop_episode".into(),
                     operation_id: None,

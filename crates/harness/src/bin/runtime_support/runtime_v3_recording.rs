@@ -14,13 +14,13 @@ use super::durable::{DurableHandle, ProviderReservationToken};
 
 include!("runtime_v3_recording_stream.rs");
 
-pub(super) struct DecisionRecorder<'a, S> {
+pub(super) struct DecisionRecorder<'a, S: ?Sized> {
     source: &'a mut S,
     telemetry: TelemetryHandle,
     durable: Option<DurableHandle>,
 }
 
-impl<'a, S> DecisionRecorder<'a, S> {
+impl<'a, S: ?Sized> DecisionRecorder<'a, S> {
     pub(super) fn new(source: &'a mut S, telemetry: TelemetryHandle) -> Self {
         Self {
             source,
@@ -42,7 +42,7 @@ impl<'a, S> DecisionRecorder<'a, S> {
     }
 }
 
-impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
+impl<S: DecisionSource + ?Sized> DecisionSource for DecisionRecorder<'_, S> {
     fn model_execution_id(&self) -> Option<sts2_harness::ModelExecutionId> {
         self.source.model_execution_id()
     }
@@ -52,6 +52,30 @@ impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
     }
 
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError> {
+        self.decide_inner(input, |source, input| source.decide(input))
+    }
+
+    fn decide_with_game_information(
+        &mut self,
+        input: &DecisionInput,
+        runtime: &mut dyn sts2_harness::EpisodeRuntimePort,
+    ) -> Result<Decision, PolicyError> {
+        self.decide_inner(input, |source, input| {
+            source.decide_with_game_information(input, runtime)
+        })
+    }
+
+    fn close(&mut self) -> Result<(), PolicyError> {
+        self.source.close()
+    }
+}
+
+impl<S: DecisionSource + ?Sized> DecisionRecorder<'_, S> {
+    fn decide_inner(
+        &mut self,
+        input: &DecisionInput,
+        invoke: impl FnOnce(&mut S, &DecisionInput) -> Result<Decision, PolicyError>,
+    ) -> Result<Decision, PolicyError> {
         let mut reservation: Option<ProviderReservationToken> = None;
         let decision = if let Some(durable) = &self.durable {
             let admission = match durable.decision_admission_with_reuse(input) {
@@ -62,7 +86,7 @@ impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
                 DecisionAdmission::Reused(decision) => decision,
                 DecisionAdmission::Fresh(token) => {
                     reservation = Some(token);
-                    match self.source.decide(input) {
+                    match invoke(self.source, input) {
                         Ok(decision) => decision,
                         Err(error) => {
                             if let Some(token) = reservation.as_ref() {
@@ -92,7 +116,7 @@ impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
                 }
             }
         } else {
-            match self.source.decide(input) {
+            match invoke(self.source, input) {
                 Ok(decision) => decision,
                 Err(error) => {
                     let execution_id = self
@@ -160,9 +184,7 @@ impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
         );
         Ok(decision)
     }
-}
 
-impl<S> DecisionRecorder<'_, S> {
     /// Durable admission and persistence failures must stop the episode without reclassifying a
     /// local store boundary as malformed provider output. `InputBlocked` is the existing public
     /// fail-closed policy outcome for a decision that cannot safely proceed.

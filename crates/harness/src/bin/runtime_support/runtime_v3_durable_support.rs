@@ -95,20 +95,7 @@ pub(super) fn config_digest(
     sha256_json(&value)
 }
 
-fn exo_identity(_config: &RuntimeConfig, settings: &RuntimeV3Settings) -> Result<Value, String> {
-    Ok(json!({
-        "contract_version": EXO_CONTRACT_VERSION,
-        "source_revision": settings.exo.revision,
-        "package_digest": identity_axis("STS2_EXO_PACKAGE_DIGEST")?,
-        "extension_digest": identity_axis("STS2_EXO_EXTENSION_DIGEST")?,
-        "bridge_digest": identity_axis("STS2_EXO_BRIDGE_DIGEST")?,
-        "model_binding": identity_axis("STS2_EXO_MODEL_BINDING")?,
-        "prompt_digest": identity_axis("STS2_EXO_PROMPT_DIGEST")?,
-        "tool_digest": identity_axis("STS2_EXO_TOOL_DIGEST")?,
-        "config_digest": identity_axis("STS2_EXO_CONFIG_DIGEST")?,
-        "native_instance_id": identity_axis("STS2_EXO_NATIVE_INSTANCE_ID")?,
-    }))
-}
+include!("runtime_v3_durable_support_lookup_identity.rs");
 
 pub(super) fn decision_input_digest(input: &DecisionInput) -> Result<String, String> {
     let legal_actions: Vec<_> = input

@@ -27,6 +27,38 @@ pub(crate) struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
+    /// Loads the explicitly selected durable branch, if both selector variables are present.
+    ///
+    /// Experiment and branch identities are separate namespaces. A partial selector is rejected
+    /// so a runtime can never guess which experiment owns a branch.
+    pub(crate) fn branch_continuation_selector()
+    -> Result<Option<sts2_harness::BranchContinuationSelector>, String> {
+        let experiment_id = optional_identity("STS2_EXPERIMENT_ID")?;
+        let branch_id = optional_identity("STS2_BRANCH_ID")?;
+        Self::selector_from_values(experiment_id, branch_id)
+    }
+
+    fn selector_from_values(
+        experiment_id: Option<String>,
+        branch_id: Option<String>,
+    ) -> Result<Option<sts2_harness::BranchContinuationSelector>, String> {
+        match (experiment_id, branch_id) {
+            (None, None) => Ok(None),
+            (Some(experiment_id), Some(branch_id)) => {
+                sts2_harness::BranchContinuationSelector::new(experiment_id, branch_id)
+                    .map(Some)
+                    .map_err(|_| {
+                        String::from(
+                            "STS2_EXPERIMENT_ID or STS2_BRANCH_ID is empty, unsafe, or oversized",
+                        )
+                    })
+            }
+            _ => Err(String::from(
+                "STS2_EXPERIMENT_ID and STS2_BRANCH_ID must be set together",
+            )),
+        }
+    }
+
     pub(crate) fn recovery_value(&self, name: &str) -> Option<&str> {
         self.recovery_environment
             .iter()
@@ -99,10 +131,11 @@ impl RuntimeConfig {
             .collect(),
         };
         config.validate()?;
+        Self::branch_continuation_selector()?;
         Ok(config)
     }
 
-    fn validate(&self) -> Result<(), String> {
+    pub(crate) fn validate(&self) -> Result<(), String> {
         let config = self;
         for (name, value) in [
             ("STS2_INSTANCE_ID", &config.instance_id),
@@ -152,10 +185,42 @@ impl RuntimeConfig {
         }
         Ok(())
     }
+
+    pub(crate) fn lookup_binding_enabled(&self) -> Result<bool, String> {
+        flag_with_default("STS2_ENABLE_GAME_INFORMATION_LOOKUP_BINDING", false)
+    }
+
+    pub(crate) fn lookup_scope(&self) -> Result<(String, String, u64), String> {
+        let (project_id, agent_id) = self.lookup_scope_identity()?;
+        let authority_epoch = env_or_default("STS2_AUTHORITY_EPOCH", "1")?
+            .parse::<u64>()
+            .map_err(|_| String::from("STS2_AUTHORITY_EPOCH must be an integer"))?;
+        Ok((project_id, agent_id, authority_epoch))
+    }
+
+    pub(crate) fn lookup_scope_identity(&self) -> Result<(String, String), String> {
+        let project_id = env_or_default("STS2_PROJECT_ID", "project-runtime-0001")?;
+        let agent_id = env_or_default("STS2_AGENT_ID", "agent-runtime-0001")?;
+        if !safe_identity(&project_id) || !safe_identity(&agent_id) {
+            return Err(String::from(
+                "STS2_PROJECT_ID or STS2_AGENT_ID is empty, unsafe, or oversized",
+            ));
+        }
+        Ok((project_id, agent_id))
+    }
 }
 
 fn required(name: &str) -> Result<String, String> {
     std::env::var(name).map_err(|_| format!("{name} is required"))
+}
+
+fn optional_identity(name: &str) -> Result<Option<String>, String> {
+    match std::env::var(name) {
+        Ok(value) if !value.is_empty() => Ok(Some(value)),
+        Ok(_) => Err(format!("{name} must not be empty")),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!("{name} is not valid UTF-8")),
+    }
 }
 
 fn bounded_seconds(name: &str, default: &str) -> Result<u64, String> {
@@ -203,50 +268,5 @@ fn parse_flag(name: &str, value: &str) -> Result<bool, String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{RuntimeConfig, parse_flag};
-
-    #[test]
-    fn map_context_flag_defaults_off_and_accepts_only_exact_booleans() {
-        assert_eq!(parse_flag("X", "false"), Ok(false));
-        assert_eq!(parse_flag("X", "true"), Ok(true));
-        for value in ["", "1", "0", "yes", "TRUE", "True", " true"] {
-            assert!(
-                parse_flag("X", value).is_err(),
-                "{value:?} must be rejected"
-            );
-        }
-    }
-
-    #[test]
-    fn runtime_sessions_are_validated_independently() {
-        let mut config = RuntimeConfig {
-            seed_transport: None,
-            gateway_address: String::from("127.0.0.1:15525"),
-            gateway_token: String::from("synthetic-token"),
-            mcp_binary: String::from("mcp"),
-            runtime_profile: String::from("runtime-v3-gameplay"),
-            instance_id: String::from("instance-1"),
-            caller_id: String::from("harness"),
-            session_id: String::from("gateway-session-1"),
-            lease_id: String::from("lease-1"),
-            lease_epoch: 1,
-            mcp_session_id: String::from("mcp-session-independent"),
-            run_id: "run-1".into(),
-            episode_id: "episode-1".into(),
-            trajectory_id: "trajectory-1".into(),
-            trace_id: "trace-1".into(),
-            artifact_id: "artifact-1".into(),
-            wait_for_combat_seconds: 0,
-            settlement_timeout_seconds: 30,
-            map_context_enabled: false,
-            recovery_environment: Vec::new(),
-        };
-        assert!(config.validate().is_ok());
-        config.mcp_session_id = String::from("unsafe session");
-        assert!(config.validate().is_err());
-        config.mcp_session_id = String::from("mcp-session-independent");
-        config.session_id.clear();
-        assert!(config.validate().is_err());
-    }
-}
+#[path = "config_tests.rs"]
+mod tests;
