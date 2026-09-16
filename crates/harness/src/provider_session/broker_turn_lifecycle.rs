@@ -143,6 +143,16 @@ impl ProviderSessionBroker {
         }
         operation.state = NativeOperationState::Completed;
         operation.terminal_evidence_ref = Some(native_turn_ref.to_owned());
+        if let Some(binding) = self.bindings.get_mut(&binding_id)
+            && binding.state == BindingState::OneShotPendingNative
+        {
+            // The lifecycle owner reaches this point only after validating the v2 receipt and
+            // committing its durable result. The pending marker can therefore never be promoted
+            // by a configuration value or a pre-send broker operation.
+            binding.native_identity_pending = false;
+            binding.native_thread_ref = native_turn_ref.to_owned();
+            binding.state = BindingState::Active;
+        }
         self.histories.insert(binding_id, projected_items);
         self.inflight_turn = None;
         Ok(operation.clone())
