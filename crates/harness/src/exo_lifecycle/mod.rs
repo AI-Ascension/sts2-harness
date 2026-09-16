@@ -14,6 +14,7 @@ mod ports;
 mod process_effect;
 mod reconcile;
 mod recovery;
+mod runtime_transport;
 mod start;
 mod store_binding;
 #[cfg(all(test, unix))]
@@ -30,6 +31,7 @@ pub use ports::{
     OwnerClaim, SendPermit,
 };
 pub use process_effect::{LifecycleProcessEffect, LifecycleProcessHandle};
+pub use runtime_transport::{ExoLifecycleRuntimeTransport, LifecycleManifestFactory};
 pub use types::{
     AuthorityVector, InvocationManifest, JournalConfig, LifecycleEntry, LifecycleError,
     LifecyclePhase, MAX_INPUT_BYTES, MAX_LIFECYCLE_ENTRIES, NativeIdentity,

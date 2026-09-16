@@ -107,9 +107,7 @@ impl RuntimeLifecycleConfig {
     ) -> Result<(), String> {
         if policy.scope.project_id != self.project_id
             || policy.scope.agent_id != self.agent_id
-            || policy
-                .admit_for_profile(capabilities)
-                .is_err()
+            || policy.admit_for_profile(capabilities).is_err()
         {
             return Err(String::from(
                 "adopted provider-session policy is incompatible with lifecycle profile",
