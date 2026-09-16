@@ -275,16 +275,18 @@ impl ProviderSessionPolicyOwner {
             .journal
             .lock()
             .map_err(|_| ProviderSessionPolicyOwnerError::Store)?;
-        let result = f(&mut journal)?;
-        journal.revision = journal
+        let mut candidate = journal.clone();
+        let result = f(&mut candidate)?;
+        candidate.revision = candidate
             .revision
             .checked_add(1)
             .ok_or(ProviderSessionPolicyOwnerError::Conflict)?;
         let bytes =
-            serde_json::to_vec(&*journal).map_err(|_| ProviderSessionPolicyOwnerError::Store)?;
+            serde_json::to_vec(&candidate).map_err(|_| ProviderSessionPolicyOwnerError::Store)?;
         self.store
             .save_owner_journal(&bytes)
             .map_err(|_| ProviderSessionPolicyOwnerError::Store)?;
+        *journal = candidate;
         Ok(result)
     }
 }
