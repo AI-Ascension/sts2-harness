@@ -8,11 +8,16 @@
 //! deployment refuses the run while the runtime is still assembling settings, before it opens a
 //! durable store, a gateway connection, an MCP session or a provider.
 //!
-//! The envelope path also *inspects* the deployment it is about to launch: the bridge executable's
-//! exact bytes are hashed and cross-checked against `STS2_EXO_BRIDGE_DIGEST`, so a swapped bridge
-//! artifact fails admission instead of being admitted on the operator's declaration alone. The other
-//! pinned axes have no inspectable artifact at this seam, so they stay unbound and the reviewed
-//! preflight refuses them: a deployment the runtime cannot inspect is not admitted. See ADR 0032.
+//! The envelope path also *inspects* the one artifact it can read: the exact bytes of the bridge
+//! executable it is about to launch are hashed into the inspected identity. That hash does **not**
+//! yet decide admission. The pin mandates every identity axis (ADR 0031), only the bridge axis
+//! carries inspected bytes at this seam, and `preflight` evaluates the axes in order and returns on
+//! the first one that is unbound or mismatched — `package_digest` is evaluated first. The reviewed
+//! envelope therefore always refuses today with `UnboundIdentity("package_digest")` before the bridge
+//! pair is ever reached, so a swapped bridge fails only incidentally (as every deployment does), not
+//! because its bytes were cross-checked against `STS2_EXO_BRIDGE_DIGEST`. Binding the remaining axes,
+//! or refusing unbound pins before ordering the axes, is required before the bridge hash can decide
+//! anything. See ADR 0032.
 
 use sts2_harness::exo_admission::{
     AdmittedExoRuntimeTransport, ExoAdmissionMode, ExoAdmissionPlan, ExoInspectedArtifacts,
@@ -89,9 +94,11 @@ fn enveloped(
 }
 
 /// Inspects the artifacts the launch can bind to real bytes. The bridge executable is the only
-/// artifact whose bytes this seam can read, and it is hashed so the deployment is admitted for the
-/// bytes actually about to run, not for the operator's declaration. Every other axis stays unbound,
-/// and the reviewed preflight refuses a pin that no inspected artifact backs.
+/// artifact whose bytes this seam can read; it is read whole (bounded) and hashed into the inspected
+/// identity, so that identity reflects the bytes actually about to run rather than the operator's
+/// declaration. Every other axis stays unbound, and because the reviewed preflight evaluates those
+/// (starting with `package_digest`) first, the envelope refuses with `UnboundIdentity("package_digest")`
+/// before this hash is compared — so the bridge digest does not yet decide admission.
 fn inspected_artifacts(bridge_executable: &str) -> Result<ExoInspectedArtifacts, String> {
     let bridge = ExoInspectedArtifacts::read(bridge_executable).map_err(|error| {
         format!("Exo admission cannot inspect the bridge artifact {bridge_executable}: {error}")

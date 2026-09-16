@@ -57,9 +57,11 @@ descriptor advertised the operator's declaration rather than anything the harnes
 - To admit a real deployment, a later increment must inspect the remaining artifact bytes and obtain
   the non-byte axes from the bridge (for example a handshake) rather than from the operator's
   environment. Per-turn admission over a multi-turn episode remains open per ADR 0031.
-- The bytes of the bridge are read once per launch to compute the digest. A very large executable is
-  read whole; the local-provider digest check in `runtime_v3_settings` already bounds that read, and
-  unifying the two reads is left to the increment that inspects the remaining artifacts.
+- The bytes of the bridge are read once per launch to compute the digest. That admission read is
+  bounded to `ExoInspectedArtifacts::MAX_INSPECTED_ARTIFACT_BYTES` (128 MiB), the same bound the
+  local-provider digest check in `runtime_v3_settings` uses, so an oversized executable is an
+  admission error rather than an unbounded allocation. Unifying the two reads is left to the
+  increment that inspects the remaining artifacts.
 
 ## Evidence
 

@@ -44,9 +44,28 @@ pub struct ExoInspectedArtifacts {
 }
 
 impl ExoInspectedArtifacts {
+    /// The largest artifact this seam hashes in one read, matching the local-provider bridge digest
+    /// check in `runtime_v3_settings`.
+    pub const MAX_INSPECTED_ARTIFACT_BYTES: u64 = 128 * 1024 * 1024;
+
     /// Reads one artifact's exact bytes, so replacing the file changes the inspected digest.
+    ///
+    /// The read is bounded to [`Self::MAX_INSPECTED_ARTIFACT_BYTES`], the same bound the
+    /// local-provider bridge digest check uses, so an oversized artifact is an error rather than an
+    /// unbounded allocation.
     pub fn read(path: impl AsRef<Path>) -> std::io::Result<Vec<u8>> {
-        std::fs::read(path)
+        use std::io::Read as _;
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)?
+            .take(Self::MAX_INSPECTED_ARTIFACT_BYTES + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > Self::MAX_INSPECTED_ARTIFACT_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "inspected artifact exceeds the maximum hashed size",
+            ));
+        }
+        Ok(bytes)
     }
 
     /// The identity observed from the deployment actually on disk: every digest axis is computed

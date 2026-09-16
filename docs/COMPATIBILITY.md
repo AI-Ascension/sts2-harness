@@ -543,8 +543,11 @@ deployment identity (`STS2_EXO_PACKAGE_DIGEST`, `STS2_EXO_EXTENSION_DIGEST`,
 `STS2_EXO_NATIVE_INSTANCE_ID`, `STS2_EXO_MODEL_EXECUTION_ID`, `STS2_EXO_REQUEST_ID`,
 `STS2_EXO_TURN_ID`). A missing or unverified deployment ends the run while settings are assembled,
 before any gateway, MCP, provider or game effect, and no request bytes are emitted. Because the
-reviewed capability axes are not promoted on the bridge's behalf, `envelope` currently refuses with
-`RequiredCapability("evidence.turn_identity")`. The already-documented raw-wire development bridges
+reviewed capability axes are not promoted on the bridge's behalf, and the pin mandates identity axes
+this seam cannot inspect, so `envelope` currently refuses with `UnboundIdentity("package_digest")`.
+The identity comparison now precedes the capability gate, `package_digest` is evaluated first and is
+unbound because only the bridge executable is inspected, so the bridge digest is computed but does
+not yet decide admission. The already-documented raw-wire development bridges
 (`docs/OLLAMA_MODEL_SELECTION.md`, `experiments/live-combat/README.md`) must set
 `STS2_EXO_ADMISSION=legacy`, which is an explicit acknowledgement of an un-admitted bridge rather
 than an admission. Rollback is to set `legacy`; no wire field, schema, contract version or durable
