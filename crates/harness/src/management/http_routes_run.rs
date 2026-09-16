@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
+use super::super::contract::validate_identifier;
+
 use super::super::context_owner::ContextControlCommand;
 use super::routes::{decode_body_management, json_value};
 use super::*;
@@ -26,6 +28,11 @@ pub(super) fn dispatch_run_route(
     }
     let run_id = segments[3];
     validate_identifier("run_id", run_id).map_err(ManagementError::from)?;
+    if let Some(result) = super::routes_policy::dispatch_provider_policy_route(
+        request, service, actor, run_id, &segments,
+    ) {
+        return result;
+    }
     match (request.method.as_str(), segments.as_slice()) {
         ("GET", ["", "v1", "workflow-runs", _]) if request.query.is_empty() => service
             .status(actor, run_id)
