@@ -28,6 +28,8 @@ mod decision_admission;
 mod decision_replay;
 #[path = "runtime_v3_durable.rs"]
 mod durable;
+#[path = "runtime_v3_lifecycle.rs"]
+mod lifecycle;
 
 #[path = "runtime_v3_combat_demo.rs"]
 pub(crate) mod combat_demo;
@@ -122,20 +124,21 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
         finish_telemetry(telemetry);
         return Err(error);
     }
-    let mut port = match RuntimeV3Port::new_with_store(config, telemetry_handle.clone(), durable) {
-        Ok(port) => port,
-        Err(error) => {
-            let _ = telemetry_handle.failure(
-                "runtime_init",
-                super::runtime_v3_telemetry::FailureCode::Configuration,
-                false,
-                None,
-            );
-            let _ = recording::flush_replay_stream();
-            finish_telemetry(telemetry);
-            return Err(error);
-        }
-    };
+    let mut port =
+        match RuntimeV3Port::new_with_store(config.clone(), telemetry_handle.clone(), durable) {
+            Ok(port) => port,
+            Err(error) => {
+                let _ = telemetry_handle.failure(
+                    "runtime_init",
+                    super::runtime_v3_telemetry::FailureCode::Configuration,
+                    false,
+                    None,
+                );
+                let _ = recording::flush_replay_stream();
+                finish_telemetry(telemetry);
+                return Err(error);
+            }
+        };
     if std::env::var("STS2_COMBAT_DEMO").as_deref() != Ok("true") {
         let path = std::env::var("STS2_REPLAY_TRAJECTORY").unwrap_or_default();
         if !path.is_empty() {
@@ -177,7 +180,12 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
             return result.map(|_| ()).and(store_close);
         }
     }
-    let transport = super::runtime_v3_admission::admit(&settings.admission, settings.process)?;
+    let transport = lifecycle::admit(
+        &config,
+        &settings,
+        port.durable_handle()
+            .ok_or_else(|| String::from("runtime-v3 durable handle disappeared"))?,
+    )?;
     let provider = ExoProvider::new(transport, settings.exo);
     let mut source = ExoDecisionSource::new(ExoSession::new(provider));
     if std::env::var("STS2_COMBAT_DEMO").as_deref() == Ok("true") {

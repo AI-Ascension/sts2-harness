@@ -43,7 +43,11 @@ impl ProviderSessionBroker {
             return Err(SessionError::Unsupported);
         }
         let binding = self.ensure_binding_not_expired(binding_id)?;
-        if binding.state != BindingState::Held || !self.policy.allows_execution() {
+        if !matches!(
+            binding.state,
+            BindingState::Held | BindingState::OneShotPendingNative
+        ) || !self.policy.allows_execution()
+        {
             return Err(SessionError::HeldRequired);
         }
         if self.prepared.contains_key(prepared_id) {

@@ -33,6 +33,72 @@ pub enum StartOutcome<H> {
 }
 
 impl LifecycleOwner {
+    /// Uses this owner's broker to persist the one-shot binding, exact prepared input and native
+    /// operation before `start` can create a process.  The returned manifest is deliberately
+    /// completed from broker-assigned identities; callers never predict a native operation id.
+    pub fn prepare_one_shot_manifest(
+        &mut self,
+        mut manifest: InvocationManifest,
+        expires_at: &str,
+    ) -> Result<InvocationManifest, LifecycleError> {
+        self.check()?;
+        let binding_id = format!("lifecycle-binding-{}", manifest.execution_id);
+        let prepared_id = format!("lifecycle-prepared-{}", manifest.execution_id);
+        if self.broker.binding(&binding_id).is_err() {
+            self.broker
+                .admit_one_shot_binding(&self.token, &binding_id, expires_at)
+                .map_err(|_| LifecycleError::Held)?;
+        }
+        let binding = self
+            .broker
+            .binding(&binding_id)
+            .map_err(|_| LifecycleError::Held)?
+            .clone();
+        let prepared = match self.broker.prepare_turn(
+            &self.token,
+            &binding_id,
+            &prepared_id,
+            &manifest.request_id,
+            &manifest.host_turn_id,
+            &manifest.execution_id,
+            &manifest.host_turn_id,
+            manifest.input_digest.as_bytes().to_vec(),
+            br#"{"type":"object"}"#.to_vec(),
+            Vec::new(),
+            Vec::new(),
+            expires_at,
+        ) {
+            Ok(prepared) => prepared,
+            Err(crate::provider_session::SessionError::Conflict) => self
+                .broker
+                .prepared(&prepared_id)
+                .map_err(|_| LifecycleError::Held)?
+                .clone(),
+            Err(_) => return Err(LifecycleError::Held),
+        };
+        let operation = self
+            .broker
+            .admit_turn(
+                &self.token,
+                &binding_id,
+                &prepared.prepared_id,
+                &manifest.execution_id,
+            )
+            .map_err(|_| LifecycleError::Held)?;
+        manifest.binding_id = binding.binding_id;
+        manifest.prepared_id = prepared.prepared_id;
+        manifest.operation_id = operation.operation_id;
+        manifest.reservation_id = format!("provider-reservation-{}", manifest.operation_id);
+        manifest.provider_attempt_id = format!("provider-execution-{}", manifest.execution_id);
+        manifest.authority.owner_epoch = self.broker.owner_epoch();
+        manifest.authority.auth_epoch = self.broker.owner_epoch();
+        manifest.authority.session_epoch = binding.session_epoch;
+        manifest.authority.history_epoch = binding.history_epoch;
+        manifest.authority.compaction_epoch = binding.compaction_epoch;
+        manifest.authority.revocation_epoch = self.broker.revocation_epoch();
+        Ok(manifest)
+    }
+
     pub fn create(
         config: JournalConfig,
         key: [u8; 32],

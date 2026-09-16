@@ -260,6 +260,10 @@ impl DurableHandle {
     pub(super) fn lifecycle_lineage(&self) -> ExecutionLineage {
         self.lineage.clone()
     }
+
+    pub(super) fn lifecycle_config_digest(&self) -> String {
+        self.config_digest.clone()
+    }
 }
 
 #[derive(Clone)]

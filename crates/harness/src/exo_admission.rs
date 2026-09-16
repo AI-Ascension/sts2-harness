@@ -19,6 +19,7 @@
 
 use std::path::Path;
 
+use crate::ExoCapabilityState;
 use crate::exo::{
     EXO_CONTRACT_VERSION, EXO_SOURCE_REVISION, ExoCapabilityDescriptor, ExoIdentity,
     ExoIdentityError, ExoPreflightError, ExoTransport, ExoTransportError, ExoTrustedConfiguration,
@@ -26,7 +27,6 @@ use crate::exo::{
 };
 use crate::exo_admitted_transport::{ExoAdmissionError, ExoAdmittedTransport};
 use crate::exo_lifecycle::{ExoLifecycleRuntimeTransport, LifecycleManifestFactory};
-use crate::ExoCapabilityState;
 use crate::sha256_hex;
 
 /// The exact artifact bytes an operator inspected for one deployment.

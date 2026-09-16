@@ -75,9 +75,17 @@ impl<F: LifecycleManifestFactory> ExoLifecycleRuntimeTransport<F> {
     fn exchange_inner(&mut self, bytes: &[u8]) -> Result<Vec<u8>, LifecycleError> {
         let envelope = parse_bridge_request_envelope(bytes, super::MAX_INPUT_BYTES)
             .map_err(|_| LifecycleError::Invalid)?;
-        let manifest =
+        let mut manifest =
             self.manifests
                 .manifest(&envelope.request_id, &envelope.turn_id, &envelope.request)?;
+        manifest.input_digest = crate::sha256_hex(bytes);
+        manifest.input_length = bytes.len();
+        let manifest = if manifest.binding_id == "pending-binding" {
+            self.owner
+                .prepare_one_shot_manifest(manifest, "2099-01-01T00:00:00Z")?
+        } else {
+            manifest
+        };
         if manifest.execution_id != envelope.request.model_execution_id
             || manifest.request_id != envelope.request_id
             || manifest.host_turn_id != envelope.turn_id

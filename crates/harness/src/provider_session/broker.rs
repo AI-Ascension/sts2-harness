@@ -178,6 +178,10 @@ impl ProviderSessionBroker {
             .ok_or(SessionError::NotFound)
     }
 
+    pub fn prepared(&self, prepared_id: &str) -> Result<&PreparedSessionTurn, SessionError> {
+        self.prepared.get(prepared_id).ok_or(SessionError::NotFound)
+    }
+
     /// Revalidates the caller-owned serialization token.  Native IDs are never accepted here.
     pub fn authorize_owner(&self, owner_token: &str) -> Result<(), SessionError> {
         if owner_token == self.owner_token {
