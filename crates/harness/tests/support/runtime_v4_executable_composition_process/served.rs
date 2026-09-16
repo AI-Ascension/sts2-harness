@@ -1,109 +1,155 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use rusqlite::Connection;
+use sts2_harness::{ExecutionStore, OperationState, StoredOperation};
+
+#[path = "served/session.rs"]
+mod session;
+use session::{
+    WorkflowServiceConfig, response, served_runtime_run_id, submit_and_step_policy_gate,
+    wait_for_workflow_service, workflow_service_command,
+};
+
+type RestartScenarioResult = (Output, Option<Output>, Option<StoredOperation>);
 
 pub(crate) fn run_served_policy_gate(
     gateway_binary: &Path,
     mcp_binary: &Path,
     harness_binary: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    run_served_policy_gate_inner(gateway_binary, mcp_binary, harness_binary, false)
+}
+
+pub(crate) fn run_served_restart_refuses_duplicate_effect(
+    gateway_binary: &Path,
+    mcp_binary: &Path,
+    harness_binary: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    run_served_policy_gate_inner(gateway_binary, mcp_binary, harness_binary, true)
+}
+
+fn run_served_policy_gate_inner(
+    gateway_binary: &Path,
+    mcp_binary: &Path,
+    harness_binary: &Path,
+    restart_after_unknown: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let temporary = TempDir::new()?;
     let bridge = temporary.bridge()?;
-    let mod_server = ModServer::new(FixtureMode::Success)?;
+    let mod_server = ModServer::new(if restart_after_unknown {
+        FixtureMode::UnknownOperation
+    } else {
+        FixtureMode::Success
+    })?;
     let gateway_address = free_address()?;
     let workflow_address = free_address()?;
     let policy_store = temporary.path.join("served-provider-policy.sqlite3");
     let context_store = temporary.path.join("served-context.sqlite3");
     let execution_store = temporary.path.join("served-execution.sqlite3");
+    let workflow_store = temporary.path.join("served-workflow.sqlite3");
     let runtime_run_id = served_runtime_run_id()?;
     seed_adopted_runtime_policy(&policy_store, &runtime_run_id)?;
+    let service_config = WorkflowServiceConfig {
+        harness_binary,
+        mcp_binary,
+        bridge: &bridge,
+        gateway_address,
+        workflow_address,
+        policy_store: &policy_store,
+        context_store: &context_store,
+        execution_store: &execution_store,
+        workflow_store: &workflow_store,
+        runtime_run_id: &runtime_run_id,
+    };
     let mut gateway = gateway(gateway_binary, gateway_address, mod_server.address)?;
-    let result: Result<Output, Box<dyn std::error::Error>> = (|| {
+    let result: Result<RestartScenarioResult, Box<dyn std::error::Error>> = (|| {
         ready(&mut gateway, gateway_address)?;
-        let mut command = Command::new(harness_binary);
-        command
-            .arg("serve-workflow")
-            .env_clear()
-            .env("PATH", "/usr/bin:/bin")
-            .env("STS2_WORKFLOW_LISTEN", workflow_address.to_string())
-            .env(
-                "STS2_WORKFLOW_STORE",
-                temporary.path.join("workflow.sqlite3"),
+        let mut service = workflow_service_command(&service_config)?.spawn()?;
+        let first_attempt = (|| {
+            let client = wait_for_workflow_service(&mut service, workflow_address)?;
+            submit_and_step_policy_gate(&client, if restart_after_unknown { 3 } else { 4 })
+        })();
+        let first_output = stop(service)?;
+        let submission = first_attempt.map_err(|error| {
+            format!(
+                "first served workflow attempt failed: {error}; stdout={}; stderr={}",
+                String::from_utf8_lossy(&first_output.stdout),
+                String::from_utf8_lossy(&first_output.stderr),
             )
-            .env("STS2_WORKFLOW_AUTH_PROFILE", "served")
-            .env("STS2_WORKFLOW_TOKEN_SERVED", "served-workflow-token")
-            .env(
-                "STS2_WORKFLOW_PROVIDER_POLICY_CONFIG",
-                policy_config(&policy_store, &runtime_run_id)?,
-            )
-            .env(
-                "STS2_SERVED_PROVIDER_POLICY_KEY",
-                "1111111111111111111111111111111111111111111111111111111111111111",
-            )
-            .env(
-                "STS2_WORKFLOW_CONTEXT_OWNER_CONFIG",
-                serde_json::to_string(&json!({
-                    "schema_version":"ascension.workflow-context-owner-config.v1",
-                    "store_path":context_store,
-                    "key_reference":"STS2_SERVED_CONTEXT_OWNER_KEY",
-                    "owner_id":"served-context-owner",
-                    "owner_version":"v1",
-                    "context_ref":"context.live.v1",
-                    "limits":{"max_items":64,"max_notes":16,"max_context_bytes":131072,"max_objective_bytes":512,"max_control_events":64}
-                }))?,
-            )
-            .env(
-                "STS2_SERVED_CONTEXT_OWNER_KEY",
-                "2222222222222222222222222222222222222222222222222222222222222222",
-            )
-            .env("STS2_EXECUTION_STORE_PATH", execution_store)
-            .env("STS2_GATEWAY_ADDR", gateway_address.to_string())
-            .env("STS2_GATEWAY_TOKEN", "gateway-token")
-            .env("STS2_MCP_BINARY", mcp_binary)
-            .env("STS2_RUNTIME_PROFILE", "runtime-v4-expert")
-            .env("STS2_INSTANCE_ID", INSTANCE_ID)
-            .env("STS2_CALLER_ID", CALLER_ID)
-            .env("STS2_SESSION_ID", SESSION_ID)
-            .env("STS2_MCP_SESSION_ID", MCP_SESSION_ID)
-            .env("STS2_LEASE_ID", LEASE_ID)
-            .env("STS2_LEASE_EPOCH", LEASE_EPOCH.to_string())
-            .env("STS2_RUN_ID", &runtime_run_id)
-            .env("STS2_EPISODE_ID", "episode-served-policy-gate")
-            .env("STS2_TRAJECTORY_ID", "trajectory-served-policy-gate")
-            .env("STS2_TRACE_ID", "trace-served-policy-gate")
-            .env("STS2_ARTIFACT_ID", "artifact-served-policy-gate")
-            .env("STS2_EXO_REVISION", REVIEWED_EXO_REVISION)
-            // The bridge is a test-only raw-wire provider and is intentionally
-            // not a reviewed or paid/native provider.
-            .env("STS2_EXO_ADMISSION", "legacy")
-            .env("STS2_EXO_BRIDGE_BINARY", bridge)
-            .env("STS2_EXO_TIMEOUT_MILLIS", "2000")
-            .env("STS2_EXO_MAX_REQUEST_BYTES", "131072")
-            .env("STS2_EXO_MAX_RESPONSE_BYTES", "8192")
-            .env("STS2_OBJECTIVE", "exercise served policy gate")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let mut service = command.spawn()?;
-        let client = wait_for_workflow_service(&mut service, workflow_address)?;
-        let submission = submit_and_step_policy_gate(&client);
-        let output = stop(service)?;
-        submission?;
-        Ok(output)
+        })?;
+        if !restart_after_unknown {
+            return Ok((first_output, None, None));
+        }
+
+        let operation_id = submission
+            .operation_id
+            .as_deref()
+            .ok_or("unknown served run omitted its operation identity")?;
+        let operation = assert_durable_unknown(
+            &workflow_store,
+            &execution_store,
+            &submission.run_id,
+            operation_id,
+        )?;
+
+        let mut restarted_service = workflow_service_command(&service_config)?.spawn()?;
+        let restart_attempt: Result<(), Box<dyn std::error::Error>> = (|| {
+            let client = wait_for_workflow_service(&mut restarted_service, workflow_address)?;
+            let status_response = client.request_json(
+                "GET",
+                &format!("/v1/workflow-runs/{}", submission.run_id),
+                None,
+            )?;
+            let status: Value = response(status_response)?;
+            if status["run"]["status"] != "needs_operator"
+                || status["run"]["pending_operation"]["operation_id"] != operation_id
+                || status["run"]["pending_operation"]["state"] != "unknown"
+                || status["recovery_admission"]["kind"] != "reconciling"
+            {
+                return Err(
+                    format!("restarted service lost unknown workflow state: {status}").into(),
+                );
+            }
+            let command = CommandRequest {
+                schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
+                command_id: "served-step-after-restart".to_owned(),
+                run_id: submission.run_id.clone(),
+                expected_revision: submission.revision,
+                actor_scope: "profile:served".to_owned(),
+                kind: CommandKind::Step,
+                parameters: CommandParameters::default(),
+            };
+            let refused = client.request_json(
+                "POST",
+                &format!("/v1/workflow-runs/{}/commands", submission.run_id),
+                Some(&serde_json::to_vec(&command)?),
+            )?;
+            let body: Value = serde_json::from_slice(&refused.body)?;
+            if refused.status != 409 || body["error"]["code"] != "live_runtime_after_restart" {
+                return Err(format!(
+                    "restarted service did not refuse the live step: HTTP {} {body}",
+                    refused.status
+                )
+                .into());
+            }
+            Ok(())
+        })();
+        let restarted_output = stop(restarted_service)?;
+        restart_attempt?;
+        let operation_after_restart =
+            ExecutionStore::open_read_only(&execution_store)?.operation(operation_id)?;
+        if operation_after_restart != operation {
+            return Err("restart refusal changed the durable unknown operation record".into());
+        }
+        Ok((first_output, Some(restarted_output), Some(operation)))
     })();
     let gateway_output = stop(gateway)?;
     let ledger = mod_server.finish();
-    let service_output = result?;
-    if service_output.status.code() != Some(0)
-        && !service_output
-            .status
-            .signal()
-            .is_some_and(|signal| signal == 9)
-    {
-        return Err(format!(
-            "served workflow failed: {}",
-            String::from_utf8_lossy(&service_output.stderr)
-        )
-        .into());
+    let (service_output, restarted_output, operation) = result?;
+    assert_killed(&service_output, "first served workflow")?;
+    if let Some(output) = &restarted_output {
+        assert_killed(output, "restarted served workflow")?;
     }
     if gateway_output.status.code() != Some(0) && !gateway_output.status.signal().is_some() {
         return Err(format!("gateway cleanup failed: {}", gateway_output.status).into());
@@ -143,23 +189,93 @@ pub(crate) fn run_served_policy_gate(
         || actions[0].body["state_id"] != "live:7"
         || actions[0].body["generation"] != 7
         || action.body["action"]["action_id"] != ACTION_ID
-        || ledger
-            .requests
-            .iter()
-            .filter(|request| {
-                request.path == format!("/api/v4/runtime/expert-actions/{operation_id}")
-            })
-            .count()
-            != 1
-        || settled.len() != 1
+        || (operation.is_none()
+            && (ledger
+                .requests
+                .iter()
+                .filter(|request| {
+                    request.path == format!("/api/v4/runtime/expert-actions/{operation_id}")
+                })
+                .count()
+                != 1
+                || settled.len() != 1))
+        || (operation.is_some()
+            && (!settled.is_empty()
+                || !ledger.responses.iter().any(|response| {
+                    response.body["status"] == "unknown"
+                        && response.body["operation_id"] == operation_id
+                })
+                || operation.as_ref().is_some_and(|record| {
+                    record.state != OperationState::Unknown
+                        || record.intent.generation != 7
+                        || record.intent.action_id != ACTION_ID
+                })))
     {
         return Err(format!(
-            "adopted provider policy did not dispatch and settle one fenced action: {:?}",
+            "served provider policy did not preserve the expected fenced action outcome: {:?}",
             paths(&ledger)
         )
         .into());
     }
     Ok(())
+}
+
+fn assert_killed(output: &Output, process: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if output.status.code() != Some(0) && !output.status.signal().is_some_and(|signal| signal == 9)
+    {
+        return Err(format!(
+            "{process} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn assert_durable_unknown(
+    workflow_store: &Path,
+    execution_store: &Path,
+    workflow_run_id: &str,
+    operation_id: &str,
+) -> Result<StoredOperation, Box<dyn std::error::Error>> {
+    let connection = Connection::open(workflow_store)?;
+    let workflow_snapshot = connection
+        .query_row(
+            "SELECT snapshot FROM management_runs WHERE workflow_run_id = ?1",
+            [workflow_run_id],
+            |row| row.get::<_, Vec<u8>>(0),
+        )
+        .map_err(|error| format!("read persisted workflow snapshot: {error}"))?;
+    let snapshot: Value = serde_json::from_slice(&workflow_snapshot)?;
+    let workflow_event_count = connection
+        .query_row(
+            "SELECT COUNT(*) FROM management_events WHERE workflow_run_id = ?1",
+            [workflow_run_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|error| format!("read persisted workflow events: {error}"))?;
+    if snapshot["status"] != "needs_operator"
+        || snapshot["pending_operation"]["operation_id"] != operation_id
+        || snapshot["pending_operation"]["state"] != "unknown"
+        || workflow_event_count <= 0
+    {
+        return Err(
+            "workflow snapshot and event journal did not persist the unknown operation".into(),
+        );
+    }
+    drop(connection);
+
+    let operation = ExecutionStore::open_read_only(execution_store)?
+        .operation(operation_id)
+        .map_err(|error| format!("read persisted execution operation: {error}"))?;
+    if operation.state != OperationState::Unknown
+        || operation.intent.state_id != "live:7"
+        || operation.intent.generation != 7
+        || operation.intent.action_id != ACTION_ID
+    {
+        return Err("execution journal did not retain the original unknown operation".into());
+    }
+    Ok(operation)
 }
 
 fn policy_config(path: &Path, runtime_run_id: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -208,185 +324,6 @@ fn seed_adopted_runtime_policy(
         .adopt_imported(&sha256, 2)
         .map_err(|error| format!("adopt imported provider policy: {error}"))?;
     Ok(())
-}
-
-fn wait_for_workflow_service(
-    service: &mut Child,
-    address: SocketAddr,
-) -> Result<ManagementClient, Box<dyn std::error::Error>> {
-    let client = ManagementClient::new(address, "served-workflow-token")?;
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        if let Some(status) = service.try_wait()? {
-            return Err(format!("served workflow exited: {status}").into());
-        }
-        if client.request_json("GET", "/v1/health", None).is_ok() {
-            return Ok(client);
-        }
-        if Instant::now() >= deadline {
-            return Err("served workflow readiness deadline exceeded".into());
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn submit_and_step_policy_gate(
-    client: &ManagementClient,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let definition = served_definition()?;
-    let request_id = "served-policy-gate";
-    let digest = digest_value(&definition)?;
-    let catalog = response::<TargetCatalogResponse>(client.request_json(
-        "GET",
-        "/v1/workflow-targets",
-        None,
-    )?)?;
-    if catalog.schema_version != TARGET_CATALOG_SCHEMA_VERSION {
-        return Err("served workflow returned an invalid target catalog".into());
-    }
-    let target = catalog
-        .targets
-        .into_iter()
-        .next()
-        .ok_or("served target is absent")?;
-    let admission_request = TargetAdmissionRequest {
-        schema_version: TARGET_ADMISSION_SCHEMA_VERSION.to_owned(),
-        request_id: request_id.to_owned(),
-        workflow_definition_digest: digest,
-        target: RunTargetConfiguration {
-            instance_id: target.instance_id,
-            execution_profile: "live.workflow.v1".to_owned(),
-            execution_mode: sts2_harness::management::ExecutionMode::Live,
-            workflow_revision: "0.1.0".to_owned(),
-            compatibility_revision: target.compatibility_revision,
-            capability_revision: target.capability_revision,
-            game_profile: "sts2-live-v1".to_owned(),
-            save_profile: None,
-            inference_profile: None,
-            context_capability: None,
-            provider_capability: None,
-        },
-    };
-    let preflight = response::<TargetPreflightResponse>(client.request_json(
-        "POST",
-        "/v1/workflow-targets/preflight",
-        Some(&serde_json::to_vec(&admission_request)?),
-    )?)?;
-    let run = RunRequest {
-        schema_version: sts2_harness::management::MANAGEMENT_SCHEMA_VERSION.to_owned(),
-        request_id: request_id.to_owned(),
-        definition: Some(definition),
-        artifact_id: None,
-        instance_id: INSTANCE_ID.to_owned(),
-        profile: "live.workflow.v1".to_owned(),
-        admission: Some(preflight.admission),
-    };
-    let submitted = client.request_json(
-        "POST",
-        "/v1/workflow-runs",
-        Some(&serde_json::to_vec(&run)?),
-    )?;
-    if submitted.status != 200 {
-        return Err(format!(
-            "served policy gate did not accept submission: {}",
-            String::from_utf8_lossy(&submitted.body)
-        )
-        .into());
-    }
-    let snapshot: Value = serde_json::from_slice(&submitted.body)?;
-    let run_id = snapshot["workflow_run_id"]
-        .as_str()
-        .ok_or("served submission omitted workflow run identity")?;
-    let mut revision = snapshot["run_revision"]
-        .as_u64()
-        .ok_or("served submission omitted run revision")?;
-    for index in 1..=4 {
-        let command = CommandRequest {
-            schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
-            command_id: format!("served-step-{index}"),
-            run_id: run_id.to_owned(),
-            expected_revision: revision,
-            actor_scope: "profile:served".to_owned(),
-            kind: CommandKind::Step,
-            parameters: CommandParameters::default(),
-        };
-        let command = response::<CommandResponse>(client.request_json(
-            "POST",
-            &format!("/v1/workflow-runs/{run_id}/commands"),
-            Some(&serde_json::to_vec(&command)?),
-        )?)?;
-        if !matches!(
-            command.outcome,
-            sts2_harness::management::CommandOutcome::Applied
-                | sts2_harness::management::CommandOutcome::Pending
-        ) {
-            return Err(
-                format!("served step {index} was not applied: {:?}", command.outcome).into(),
-            );
-        }
-        if index == 2 {
-            let binding: Value = response(client.request_json(
-                "GET",
-                &format!("/v1/workflow-runs/{run_id}/executions/live.node.2/context-binding"),
-                None,
-            )?)?;
-            if binding["binding"]["workflow_run_id"] != run_id
-                || binding["binding"]["boundary"]["state_id"] != "live:7"
-                || binding["binding"]["boundary"]["generation"] != 7
-                || binding["binding"]["boundary"]["catalog_sha256"] == "catalog-unavailable"
-            {
-                return Err(
-                    "served context binding does not retain the launch observation/catalog".into(),
-                );
-            }
-        }
-        revision = command.run_revision;
-    }
-    Ok(())
-}
-
-fn served_runtime_run_id() -> Result<String, Box<dyn std::error::Error>> {
-    let definition = served_definition()?;
-    let digest = digest_value(&definition)?;
-    let request = RunRequest {
-        schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
-        request_id: "served-policy-gate".to_owned(),
-        definition: Some(definition),
-        artifact_id: None,
-        instance_id: INSTANCE_ID.to_owned(),
-        profile: "live.workflow.v1".to_owned(),
-        admission: None,
-    };
-    Ok(sts2_harness::management::live_run_id(&request, &digest)?)
-}
-
-fn served_definition() -> Result<Value, Box<dyn std::error::Error>> {
-    let mut definition: Value = serde_json::from_slice(include_bytes!(
-        "../../../../../conformance/workflow-v1/valid-strict.json"
-    ))?;
-    definition["annotations"]["synthetic"] = json!(false);
-    definition["game_profile"] = json!("sts2-live-v1");
-    definition["policy_ref"] = json!("policy.live.v1");
-    definition["graphs"][0]["nodes"][0]["config"]["projection_ref"] = json!("fair-play.live.v1");
-    definition["graphs"][0]["nodes"][1]["config"]["decision_profile_ref"] =
-        json!("decision.live.v1");
-    definition["graphs"][0]["nodes"][1]["config"]["context_ref"] = json!("context.live.v1");
-    definition["capabilities"]["required"][0] = json!("observe.fair-play.v1");
-    Ok(definition)
-}
-
-fn response<T: serde::de::DeserializeOwned>(
-    response: sts2_harness::management::ClientResponse,
-) -> Result<T, Box<dyn std::error::Error>> {
-    if response.status != 200 {
-        return Err(format!(
-            "unexpected HTTP {}: {}",
-            response.status,
-            String::from_utf8_lossy(&response.body)
-        )
-        .into());
-    }
-    Ok(serde_json::from_slice(&response.body)?)
 }
 
 pub(crate) fn paths(ledger: &DownstreamLedger) -> Vec<String> {
