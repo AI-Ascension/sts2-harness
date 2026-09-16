@@ -230,7 +230,8 @@ fn write_executable(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn std::error:
 pub(super) fn run_case(
     mismatch_observation: bool,
     mismatch_seed: bool,
-) -> Result<(bool, Vec<String>, String, String), Box<dyn std::error::Error>> {
+    pending_unknown: bool,
+) -> Result<(bool, Vec<String>, String, String, bool), Box<dyn std::error::Error>> {
     let temp = TempDir::new()?;
     seed_branch_and_boundary(
         temp.path(),
@@ -239,6 +240,7 @@ pub(super) fn run_case(
         } else {
             "seed:selected"
         },
+        pending_unknown,
     )?;
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let gateway_address = listener.local_addr()?.to_string();
@@ -341,10 +343,23 @@ pub(super) fn run_case(
         .clone();
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let unknown_operation_retained = {
+        let store = ExecutionStore::open(ExecutionStoreConfig::new(
+            temp.path().join("execution.sqlite3"),
+        ))?;
+        store
+            .pending_operations(EPISODE_ID)?
+            .iter()
+            .any(|operation| {
+                operation.intent.operation_id == "00000000-0000-4000-8000-000000000099"
+                    && operation.state == OperationState::Unknown
+            })
+    };
     Ok((
         provider_hit.exists(),
         gateway_paths,
         format!("{}{}", stdout, stderr),
         fs::read_to_string(mcp_log).unwrap_or_default(),
+        unknown_operation_retained,
     ))
 }

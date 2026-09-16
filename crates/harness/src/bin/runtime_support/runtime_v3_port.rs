@@ -151,6 +151,12 @@ impl RuntimeV3Port {
                 "selected-branch resume has no durable verified observation boundary",
             ));
         }
+        if let Some(operation) = durable.pending_operations()?.first() {
+            return Err(format!(
+                "selected-branch resume is blocked by unresolved durable operation {} ({:?}); reconcile it through the authoritative operation lookup before retrying",
+                operation.intent.operation_id, operation.state
+            ));
+        }
         let context = self
             .continuation_owner_claim
             .as_ref()

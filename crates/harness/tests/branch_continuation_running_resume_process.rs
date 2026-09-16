@@ -18,7 +18,7 @@ use sts2_harness::{
     BranchFork, BranchStrategy, CatalogEvidence, Checkpoint, DurableBranchDraft,
     DurableBranchStatus, EXO_SOURCE_REVISION, ExactArtifactStore, ExactStateDigest,
     ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig, OccurrenceId,
-    SqliteBranchStore,
+    OperationIntent, OperationState, SqliteBranchStore,
 };
 
 #[path = "support/completed_resume_process_support.rs"]
@@ -27,6 +27,9 @@ mod process_support;
 
 #[path = "support/branch_continuation_running_resume_case.rs"]
 mod process_case;
+
+#[path = "support/branch_continuation_running_resume_durable_fixture.rs"]
+mod durable_fixture;
 
 const EXPERIMENT_ID: &str = "experiment:running-resume-process";
 const ROOT_BRANCH_ID: &str = "branch:root";
@@ -156,6 +159,7 @@ fn owner(expiry: u64) -> Value {
 fn seed_branch_and_boundary(
     root: &Path,
     branch_seed: &str,
+    pending_unknown: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let branch_path = root.join("branches.sqlite3");
     let artifact_path = root.join("artifacts");
@@ -258,50 +262,7 @@ fn seed_branch_and_boundary(
     )?;
     drop(store);
 
-    seed_execution_boundary(root)?;
-    Ok(())
-}
-
-fn seed_execution_boundary(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let fingerprint = ExecutionFingerprint::new(
-        "seed:selected",
-        "build:selected",
-        "state:selected",
-        "config:selected",
-        "provider:selected",
-    )?;
-    let lineage = ExecutionLineage::new(RUN_ID, EPISODE_ID, ATTEMPT_ID, TRAJECTORY_ID)?;
-    let catalog = json!([{
-        "action_id":"combat.end-turn",
-        "action":{"kind":"end_turn"}
-    }]);
-    let catalog_raw = serde_json::to_vec(&catalog)?;
-    let observation = json!({
-        "state_id":"state:selected",
-        "generation":3,
-        "visible_seed":"seed:selected",
-        "player":{
-            "hp":50,"max_hp":50,"energy":3,"gold":10,
-            "hand":[],"deck":[],"discard":[],"exhaust":[]
-        },
-        "state":{"state":"combat","turn_index":4,"enemies":[]},
-        "legal_actions":catalog
-    });
-    let observation_raw = serde_json::to_vec(&observation)?;
-    let mut store =
-        ExecutionStore::open(ExecutionStoreConfig::new(root.join("execution.sqlite3")))?;
-    store.start_episode(&lineage, &fingerprint)?;
-    let checkpoint = Checkpoint::new_with_catalog(
-        lineage,
-        0,
-        "state:selected",
-        3,
-        fingerprint,
-        observation_raw,
-        CatalogEvidence::new(sts2_harness::sha256_hex(&catalog_raw), Some(catalog_raw)),
-    )?;
-    store.save_checkpoint(&checkpoint)?;
-    store.close()?;
+    durable_fixture::seed_execution_boundary(root, pending_unknown)?;
     Ok(())
 }
 
@@ -338,8 +299,8 @@ fn recovery_authority(owner: &Value) -> Value {
 #[test]
 fn running_prefix_resume_adopts_before_observation_and_gates_provider_on_boundary()
 -> Result<(), Box<dyn std::error::Error>> {
-    let (provider_after_match, matching_routes, matching_output, matching_mcp) =
-        process_case::run_case(false, false)?;
+    let (provider_after_match, matching_routes, matching_output, matching_mcp, _) =
+        process_case::run_case(false, false, false)?;
     assert!(
         provider_after_match,
         "matching boundary never reached the provider bridge: {matching_output}; routes={matching_routes:?}; MCP={matching_mcp}"
@@ -364,8 +325,8 @@ fn running_prefix_resume_adopts_before_observation_and_gates_provider_on_boundar
         "selected Running resume attempted a seeded start: {matching_mcp}"
     );
 
-    let (provider_after_mismatch, mismatch_routes, mismatch_output, mismatch_mcp) =
-        process_case::run_case(true, false)?;
+    let (provider_after_mismatch, mismatch_routes, mismatch_output, mismatch_mcp, _) =
+        process_case::run_case(true, false, false)?;
     assert!(
         !provider_after_mismatch,
         "provider ran before a mismatched live observation was refused: {mismatch_output}"
@@ -397,7 +358,8 @@ fn running_prefix_resume_adopts_before_observation_and_gates_provider_on_boundar
         seed_mismatch_routes,
         seed_mismatch_output,
         seed_mismatch_mcp,
-    ) = process_case::run_case(false, true)?;
+        _,
+    ) = process_case::run_case(false, true, false)?;
     assert!(
         !provider_after_seed_mismatch,
         "resume with a mismatched persisted effective seed reached the provider: {seed_mismatch_output}"
@@ -415,6 +377,35 @@ fn running_prefix_resume_adopts_before_observation_and_gates_provider_on_boundar
             "selected branch effective seed does not match its durable execution fingerprint"
         ),
         "seed identity mismatch was not rejected against the durable fingerprint: {seed_mismatch_output}"
+    );
+
+    let (
+        provider_after_pending,
+        pending_routes,
+        pending_output,
+        pending_mcp,
+        unknown_operation_retained,
+    ) = process_case::run_case(false, false, true)?;
+    assert!(
+        !provider_after_pending,
+        "provider ran while an operation remained unresolved: {pending_output}"
+    );
+    assert!(
+        pending_routes.is_empty(),
+        "resume contacted Gateway before refusing an unresolved durable operation: {pending_routes:?}"
+    );
+    assert!(
+        pending_mcp.is_empty(),
+        "resume contacted MCP before refusing an unresolved durable operation: {pending_mcp}"
+    );
+    assert!(
+        pending_output
+            .contains("selected-branch resume is blocked by unresolved durable operation"),
+        "pending operation was not refused with the fail-closed reason: {pending_output}"
+    );
+    assert!(
+        unknown_operation_retained,
+        "unknown operation was not retained for explicit authoritative reconciliation"
     );
     Ok(())
 }
