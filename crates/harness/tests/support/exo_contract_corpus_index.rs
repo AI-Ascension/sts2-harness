@@ -28,7 +28,7 @@ fn ac4_vector_corpus_index_enumerates_every_class_and_is_consumed() {
     let names = |key: &str| -> Vec<String> {
         conformance[key]
             .as_array()
-            .unwrap_or_else(|| panic!("{key} is an array"))
+            .unwrap_or_else(|| unreachable!("{key} is an array"))
             .iter()
             .map(|vector| {
                 vector["name"]
@@ -112,7 +112,7 @@ fn ac4_vector_corpus_index_enumerates_every_class_and_is_consumed() {
                 "decision_vectors" => &decision,
                 "envelope_vectors" => &envelope,
                 "capability_vectors" => &capability,
-                other => panic!("unknown corpus source {other}"),
+                other => unreachable!("unknown corpus source {other}"),
             };
             let declared: Vec<String> = source["vectors"]
                 .as_array()
