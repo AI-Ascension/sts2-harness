@@ -54,8 +54,9 @@ pub trait LiveRuntimeSessionFactory: Send + Sync {
     }
 }
 
-/// Immutable provenance captured from the runtime configuration and the
-/// already-admitted provider policy before a served session is exposed.
+/// Provenance captured from runtime configuration and admitted provider policy.
+/// For an enforcing context owner, the configured lease pair is replaced with
+/// the runtime's actual post-allocation lease before the first observation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RuntimeAuthorityBinding {
     pub instance_id: String,
@@ -222,6 +223,7 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
             provider_capabilities: self.provider_capabilities.clone(),
             context_observations: self.context_observations.clone(),
             context_control_limits: control_limits.cloned(),
+            active_policy_binding: None,
             authority_binding,
         }))
     }
@@ -269,8 +271,16 @@ struct ProductionLiveWorkflowSession {
     provider_capabilities: NativeCapabilities,
     context_observations: Option<Arc<dyn LiveContextObservationPort>>,
     context_control_limits: Option<super::super::ContextOwnerControlLimits>,
+    active_policy_binding: Option<(String, u64)>,
     authority_binding: RuntimeAuthorityBinding,
 }
 
 #[path = "production/session.rs"]
 mod session;
+
+#[cfg(test)]
+#[path = "production_policy_tests.rs"]
+mod policy_tests;
+#[cfg(test)]
+#[path = "production_tests.rs"]
+mod tests;

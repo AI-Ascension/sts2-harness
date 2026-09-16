@@ -22,7 +22,7 @@ impl LiveContextObservationPort for Owner {
                 "runtime authority binding does not match the requested instance",
             ));
         }
-        if binding.run_id != run_id || binding.lease_epoch == 0 {
+        if binding.run_id != run_id || binding.lease_id.is_empty() || binding.lease_epoch == 0 {
             return Err(ManagementError::conflict(
                 "context_owner_runtime_scope",
                 "runtime authority is not bound to the admitted workflow run",
@@ -51,7 +51,10 @@ impl LiveContextObservationPort for Owner {
             ManagementError::unavailable("context_owner_lock", "context owner is unavailable")
         })?;
         if let Some(entry) = current.get_mut(&run_id) {
-            if entry.actor != actor.subject || entry.runtime_lease_epoch != binding.lease_epoch {
+            if entry.actor != actor.subject
+                || entry.runtime_lease_id != binding.lease_id
+                || entry.runtime_lease_epoch != binding.lease_epoch
+            {
                 return Err(ManagementError::forbidden(
                     "context_owner_runtime_scope",
                     "actor or runtime lease cannot replace this context authority",
@@ -133,6 +136,7 @@ impl LiveContextObservationPort for Owner {
                 store,
                 actor: actor.subject.clone(),
                 catalog_generation: None,
+                runtime_lease_id: binding.lease_id.clone(),
                 runtime_lease_epoch: binding.lease_epoch,
                 admitted_control_limits: control_limits.clone(),
             },
@@ -149,7 +153,7 @@ impl LiveContextObservationPort for Owner {
         actions: &EpisodeLegalActionSet,
     ) -> Result<(), ManagementError> {
         let run_id = run_id(request, digest)?;
-        if binding.run_id != run_id || binding.lease_epoch == 0 {
+        if binding.run_id != run_id || binding.lease_id.is_empty() || binding.lease_epoch == 0 {
             return Err(ManagementError::conflict(
                 "context_owner_runtime_scope",
                 "runtime authority is not bound to the admitted workflow run",
@@ -164,7 +168,10 @@ impl LiveContextObservationPort for Owner {
                 "current runtime observation is unavailable",
             )
         })?;
-        if entry.actor != actor.subject || entry.runtime_lease_epoch != binding.lease_epoch {
+        if entry.actor != actor.subject
+            || entry.runtime_lease_id != binding.lease_id
+            || entry.runtime_lease_epoch != binding.lease_epoch
+        {
             return Err(ManagementError::conflict(
                 "context_owner_catalog_scope",
                 "actor or runtime authority cannot update this legal-action catalog",

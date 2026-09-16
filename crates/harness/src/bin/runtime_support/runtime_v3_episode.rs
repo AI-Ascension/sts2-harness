@@ -21,6 +21,11 @@ impl EpisodeRuntimePort for RuntimeV3Port {
     fn launch(&mut self) -> Result<(), sts2_harness::PortError> {
         episode_launch::launch(self)
     }
+    fn current_lease_binding(
+        &mut self,
+    ) -> Result<sts2_harness::RuntimeLeaseBinding, sts2_harness::PortError> {
+        self.allocated_lease_binding()
+    }
     fn observe(&mut self) -> Result<EpisodeObservation, sts2_harness::PortError> {
         self.observe_inner(false)
     }

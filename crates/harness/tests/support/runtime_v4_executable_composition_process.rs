@@ -13,9 +13,11 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use sts2_harness::management::{
     CommandKind, CommandParameters, CommandRequest, CommandResponse, MANAGEMENT_SCHEMA_VERSION,
-    ManagementClient, RunRequest, RunTargetConfiguration, TARGET_ADMISSION_SCHEMA_VERSION,
-    TARGET_CATALOG_SCHEMA_VERSION, TargetAdmissionRequest, TargetCatalogResponse,
-    TargetPreflightResponse, digest_value,
+    ManagementClient, PROVIDER_SESSION_POLICY_COMMAND_SCHEMA_VERSION,
+    ProviderSessionPolicyAdoptImportedRequest, ProviderSessionPolicyCommandResponse,
+    ProviderSessionPolicyViewResponse, RunRequest, RunTargetConfiguration,
+    TARGET_ADMISSION_SCHEMA_VERSION, TARGET_CATALOG_SCHEMA_VERSION, TargetAdmissionRequest,
+    TargetCatalogResponse, TargetPreflightResponse, digest_value,
 };
 use sts2_harness::provider_session::{
     NativeCapabilities, ProviderSessionMetadataStore, ProviderSessionPolicy,

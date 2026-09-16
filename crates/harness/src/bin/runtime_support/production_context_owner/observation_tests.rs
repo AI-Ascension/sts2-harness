@@ -96,19 +96,28 @@ fn stale_runtime_lease_cannot_replace_current_observation_before_effects() {
             &selected,
         )
         .expect("first");
-    let mut stale = binding.clone();
-    stale.lease_epoch = 2;
-    let error = owner
-        .record_observation(
-            &actor,
-            &request,
-            &digest,
-            &stale,
-            &observation(2),
-            &selected,
-        )
-        .expect_err("stale");
-    assert_eq!(error.code, "context_owner_runtime_scope");
+    for stale in [
+        RuntimeAuthorityBinding {
+            lease_id: "replacement-lease".into(),
+            ..binding.clone()
+        },
+        RuntimeAuthorityBinding {
+            lease_epoch: 2,
+            ..binding.clone()
+        },
+    ] {
+        let error = owner
+            .record_observation(
+                &actor,
+                &request,
+                &digest,
+                &stale,
+                &observation(2),
+                &selected,
+            )
+            .expect_err("stale lease");
+        assert_eq!(error.code, "context_owner_runtime_scope");
+    }
     let current = owner.current.lock().expect("lock");
     assert_eq!(
         current[&binding.run_id]

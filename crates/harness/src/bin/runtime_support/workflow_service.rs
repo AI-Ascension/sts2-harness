@@ -5,9 +5,10 @@ use std::sync::Arc;
 use serde::Deserialize;
 use serde_json::json;
 use sts2_harness::management::{
-    AuthContext, EnvironmentAuthenticator, ExecutionMode, LiveProviderPolicyPort,
-    LiveProviderSessionFactory, LiveRuntimeSessionFactory, LiveTargetCatalogPort,
-    LiveWorkflowSessionFactory, ManagementError, ProductionLiveWorkflowSessionFactory,
+    AuthContext, DurableProviderSessionPolicyCommandPort, EnvironmentAuthenticator, ExecutionMode,
+    LiveProviderPolicyPort, LiveProviderSessionFactory, LiveRuntimeSessionFactory,
+    LiveTargetCatalogPort, LiveWorkflowSessionFactory, ManagementError,
+    ProductionLiveWorkflowSessionFactory, ProviderSessionPolicyCommandPort,
     ProviderSessionPolicyOwnerPort, RunRequest, RuntimeAuthorityBinding, TargetAvailability,
     TargetCatalogResponse, TargetDescriptor,
 };
@@ -39,7 +40,10 @@ pub(super) fn serve() -> Result<(), String> {
     let owner = Arc::new(policy.open_owner()?);
     let provider_policy: Arc<dyn LiveProviderPolicyPort> =
         Arc::new(ProviderSessionPolicyOwnerPort::new(Arc::clone(&owner)));
-    sts2_harness::management::serve_live_with_provider_policy_and_context_owner(
+    let command_port: Arc<dyn ProviderSessionPolicyCommandPort> = Arc::new(
+        DurableProviderSessionPolicyCommandPort::new(Arc::clone(&owner)),
+    );
+    sts2_harness::management::serve_live_with_provider_policy_commands_and_context_owner(
         listen,
         &store,
         authenticator,
@@ -50,6 +54,7 @@ pub(super) fn serve() -> Result<(), String> {
             Arc::clone(&context_owner),
         )?,
         provider_policy,
+        command_port,
         context_owner,
     )
     .map_err(|error| error.to_string())

@@ -52,6 +52,7 @@ struct Current {
     store: ContextControlStore,
     actor: String,
     catalog_generation: Option<u64>,
+    runtime_lease_id: String,
     runtime_lease_epoch: u64,
     admitted_control_limits: ContextOwnerControlLimits,
 }

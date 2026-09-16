@@ -176,6 +176,7 @@ pub(super) fn submit_and_step_policy_gate(
     let run_id = snapshot["workflow_run_id"]
         .as_str()
         .ok_or("served submission omitted workflow run identity")?;
+    assert_served_policy_routes(client, run_id)?;
     let mut revision = snapshot["run_revision"]
         .as_u64()
         .ok_or("served submission omitted run revision")?;
@@ -252,6 +253,48 @@ pub(super) fn submit_and_step_policy_gate(
         revision,
         operation_id,
     })
+}
+
+fn assert_served_policy_routes(
+    client: &ManagementClient,
+    run_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = format!("/v1/workflow-runs/{run_id}/provider-session-policy");
+    let policy: ProviderSessionPolicyViewResponse =
+        response(client.request_json("GET", &path, None)?)?;
+    let active = policy
+        .value
+        .active
+        .ok_or("served policy owner has no active policy")?;
+    if policy.value.run_id != run_id
+        || policy.operation != "current"
+        || policy.effect_class != "local_metadata_only"
+        || policy.inference_calls != 0
+        || policy.game_effects != 0
+    {
+        return Err("served policy GET returned an invalid run-scoped view".into());
+    }
+    let command = ProviderSessionPolicyAdoptImportedRequest {
+        schema_version: PROVIDER_SESSION_POLICY_COMMAND_SCHEMA_VERSION.to_owned(),
+        policy_sha256: active.sha256.clone(),
+    };
+    let adopted: ProviderSessionPolicyCommandResponse = response(client.request_json(
+        "POST",
+        &format!(
+            "{path}/adoptions?expected_revision={}",
+            policy.value.revision
+        ),
+        Some(&serde_json::to_vec(&command)?),
+    )?)?;
+    if adopted.operation != "adopt"
+        || adopted.policy_sha256.as_deref() != Some(active.sha256.as_str())
+        || adopted.effect_class != "local_metadata_only"
+        || adopted.inference_calls != 0
+        || adopted.game_effects != 0
+    {
+        return Err("served policy command did not preserve the active run-scoped binding".into());
+    }
+    Ok(())
 }
 
 pub(super) fn served_runtime_run_id() -> Result<String, Box<dyn std::error::Error>> {

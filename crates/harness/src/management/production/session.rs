@@ -2,7 +2,35 @@
 
 use super::*;
 
+#[path = "session_policy.rs"]
+mod policy;
+
 impl ProductionLiveWorkflowSession {
+    fn refresh_authority_lease_binding(&mut self) -> Result<(), ManagementError> {
+        let lease = self
+            .runtime
+            .current_lease_binding()
+            .map_err(runtime_error("runtime_lease_binding_unavailable"))?;
+        if lease.instance_id != self.authority_binding.instance_id
+            || lease.session_id != self.authority_binding.session_id
+            || lease.run_id != self.authority_binding.run_id
+            || lease.lease_id.is_empty()
+            || lease.lease_epoch == 0
+        {
+            return Err(ManagementError::conflict(
+                "runtime_lease_binding_mismatch",
+                "post-launch gateway lease does not match the admitted runtime scope",
+            ));
+        }
+        self.authority_binding.lease_id = lease.lease_id;
+        self.authority_binding.lease_epoch = lease.lease_epoch;
+        super::validate_runtime_authority_binding(
+            &self.request,
+            &self.definition_digest,
+            &self.authority_binding,
+        )
+    }
+
     /// The host cannot be atomically locked across a provider request. A
     /// fresh read therefore fences the provider call, and the runtime repeats
     /// the read at dispatch while the gateway/MCP action envelope carries its
@@ -97,6 +125,9 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
         self.runtime
             .launch()
             .map_err(runtime_error("live_launch_failed"))?;
+        if self.context_observations.is_some() {
+            self.refresh_authority_lease_binding()?;
+        }
         let observation = self
             .runtime
             .observe()
@@ -110,13 +141,17 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
         self.launch_observation = Some(observation);
         let workflow_run_id =
             crate::management::live_run_id(&self.request, &self.definition_digest)?;
-        self.provider_policy.load_active_policy(
+        let active_policy = self.provider_policy.load_active_policy(
             &self.actor,
             &self.request,
             &workflow_run_id,
             &self.definition,
             &self.provider_capabilities,
         )?;
+        self.active_policy_binding = Some((
+            active_policy.policy_sha256,
+            active_policy.adoption_generation,
+        ));
         self.provider = Some(self.provider_factory.open_provider(
             &self.request,
             &self.actor,
@@ -170,7 +205,10 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
 
     fn decide(&mut self, input: &DecisionInput) -> Result<crate::Decision, ManagementError> {
         self.assert_current_observation(&input.observation)?;
-        self.provider_mut()?.decide(input).map_err(provider_error)
+        self.assert_active_policy_binding_current()?;
+        let decision = self.provider_mut()?.decide(input).map_err(provider_error)?;
+        self.assert_active_policy_binding_current()?;
+        Ok(decision)
     }
 
     fn decide_for(
@@ -180,9 +218,13 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
         context_ref: &str,
     ) -> Result<crate::Decision, ManagementError> {
         self.assert_current_observation(&input.observation)?;
-        self.provider_mut()?
+        self.assert_active_policy_binding_current()?;
+        let decision = self
+            .provider_mut()?
             .decide_for(input, decision_profile_ref, context_ref)
-            .map_err(provider_error)
+            .map_err(provider_error)?;
+        self.assert_active_policy_binding_current()?;
+        Ok(decision)
     }
 
     fn dispatch_action(

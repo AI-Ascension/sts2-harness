@@ -6,7 +6,7 @@ use sts2_harness::{
     ActionIdentity, BarrierError, BarrierPort, EpisodeLegalAction, EpisodeLegalActionSet,
     EpisodeObservation, EpisodeRunner, EpisodeRuntimePort, ExoDecisionSource, ExoProvider,
     ExoSession, PortError, ReceiptQueryIdentity, ReceiptQueryResult, RecoveryError, RecoveryPort,
-    ResumeState, ShutdownError, ShutdownPort, TransitionReceipt, WaitSample,
+    ResumeState, RuntimeLeaseBinding, ShutdownError, ShutdownPort, TransitionReceipt, WaitSample,
 };
 
 use super::config::RuntimeConfig;
@@ -61,6 +61,9 @@ mod shutdown;
 #[path = "runtime_v3_wait.rs"]
 mod wait;
 
+#[cfg(test)]
+#[path = "runtime_v3_allocation_launch_test.rs"]
+mod allocation_launch_tests;
 #[cfg(test)]
 #[path = "runtime_v3_lifecycle_test.rs"]
 mod lifecycle_tests;

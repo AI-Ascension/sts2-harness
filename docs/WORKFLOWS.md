@@ -67,13 +67,17 @@ harness → MCP → gateway process chain. The only synthetic component is a bou
 game-mod HTTP endpoint owned by the harness test fixture; it is downstream of the
 real peers and has no game, provider, or host authority.
 
-The executable test proves the fixed route/catalog sequence, distinct identities,
-lease epoch forwarding, unknown-operation reconciliation, and owned-process
-teardown. It deliberately sends a foreign identity envelope and a malformed
+The lane runs the generic runtime composition and the served `serve-workflow`
+positive and restart regressions against those same peers. The served positive
+case exercises run-scoped saved-policy GET and adoption commands, settles one
+action, and verifies the live context binding; the restart case persists an
+unknown operation, restarts against the same stores, and proves a later step is
+refused without a second effect. Both use the test-only local provider bridge.
+The generic case deliberately sends a foreign identity envelope and a malformed
 expert-state envelope; both must fail before an action is forwarded. Separate
 persisted-startup and cancellation-cleanup regressions remain required in the
-same lane. This is synthetic process-composition evidence, not native-host or
-game-effect evidence.
+same lane. This is synthetic process-composition evidence, not native-host,
+native-provider, or game-effect evidence.
 
 The ordinary pull-request and `main` paths use the immutable default peers. A
 coordinated candidate pair is permitted only through `workflow_dispatch` with

@@ -13,6 +13,7 @@ pub(crate) struct RuntimeV3SessionWorker {
 
 enum WorkerCommand {
     Launch(SyncSender<Result<(), PortError>>),
+    LeaseBinding(SyncSender<Result<RuntimeLeaseBinding, PortError>>),
     Observe(SyncSender<Result<EpisodeObservation, PortError>>),
     Projection(String, SyncSender<Result<EpisodeObservation, PortError>>),
     LegalActions(
@@ -129,6 +130,9 @@ fn worker_main(
             WorkerCommand::Launch(reply) => {
                 let _ = reply.send(port.launch());
             }
+            WorkerCommand::LeaseBinding(reply) => {
+                let _ = reply.send(port.allocated_lease_binding());
+            }
             WorkerCommand::Observe(reply) => {
                 let _ = reply.send(port.observe());
             }
@@ -174,6 +178,10 @@ impl EpisodeRuntimePort for RuntimeV3SessionWorker {
     fn launch(&mut self) -> Result<(), PortError> {
         let (tx, rx) = sync_channel(1);
         self.call(WorkerCommand::Launch(tx), rx)?
+    }
+    fn current_lease_binding(&mut self) -> Result<RuntimeLeaseBinding, PortError> {
+        let (tx, rx) = sync_channel(1);
+        self.call(WorkerCommand::LeaseBinding(tx), rx)?
     }
     fn observe(&mut self) -> Result<EpisodeObservation, PortError> {
         let (tx, rx) = sync_channel(1);

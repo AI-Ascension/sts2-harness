@@ -251,6 +251,10 @@ fn owner_error(error: ProviderSessionPolicyOwnerError) -> ManagementError {
             "provider_session_policy_owner_busy",
             "provider-session policy journal already has an authoritative owner",
         ),
+        ProviderSessionPolicyOwnerError::AdoptionGenerationExhausted => ManagementError::conflict(
+            "provider_session_policy_generation_exhausted",
+            "provider-session active-policy generation is exhausted",
+        ),
         ProviderSessionPolicyOwnerError::Store => ManagementError::store(
             "provider_session_policy_owner_store",
             "provider-session policy owner storage is unavailable",
