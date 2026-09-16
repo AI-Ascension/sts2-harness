@@ -38,6 +38,9 @@ mod exo_contract_projection;
 #[path = "support/exo_contract_conformance.rs"]
 mod exo_contract_conformance;
 
+#[path = "support/exo_contract_corpus_index.rs"]
+mod exo_contract_corpus_index;
+
 #[path = "support/exo_contract_capability.rs"]
 mod exo_contract_capability;
 
