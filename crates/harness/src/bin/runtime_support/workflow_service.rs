@@ -36,9 +36,15 @@ pub(super) fn serve() -> Result<(), String> {
     let context_owner = Arc::new(production_context_owner::Owner::open(
         production_context_owner::Configuration::from_environment()?,
     )?);
+    let runtime_config = RuntimeConfig::from_environment()?;
     let owner = Arc::new(policy.open_owner()?);
-    let provider_policy: Arc<dyn LiveProviderPolicyPort> =
-        Arc::new(ProviderSessionPolicyOwnerPort::new(Arc::clone(&owner)));
+    let provider_policy: Arc<dyn LiveProviderPolicyPort> = Arc::new(
+        ProviderSessionPolicyOwnerPort::for_runtime_run(
+            Arc::clone(&owner),
+            runtime_config.run_id.clone(),
+        )
+        .map_err(|error| error.to_string())?,
+    );
     sts2_harness::management::serve_live_with_provider_policy_and_context_owner(
         listen,
         &store,

@@ -35,12 +35,27 @@ pub struct ProviderSessionBrokerInspectionPort {
 /// current native capability descriptor before any provider session opens.
 pub struct ProviderSessionPolicyOwnerPort {
     owner: std::sync::Arc<ProviderSessionPolicyOwner>,
+    runtime_run_id: Option<String>,
 }
 
 impl ProviderSessionPolicyOwnerPort {
     #[must_use]
     pub fn new(owner: std::sync::Arc<ProviderSessionPolicyOwner>) -> Self {
-        Self { owner }
+        Self {
+            owner,
+            runtime_run_id: None,
+        }
+    }
+
+    pub fn for_runtime_run(
+        owner: std::sync::Arc<ProviderSessionPolicyOwner>,
+        runtime_run_id: String,
+    ) -> Result<Self, ManagementError> {
+        validate_identifier("runtime_run_id", &runtime_run_id)?;
+        Ok(Self {
+            owner,
+            runtime_run_id: Some(runtime_run_id),
+        })
     }
 }
 
@@ -64,7 +79,11 @@ impl LiveProviderPolicyPort for ProviderSessionPolicyOwnerPort {
                 format!("no admissible adopted provider-session policy is available: {error}"),
             )
         })?;
-        if policy.scope.run_id != request.request_id {
+        let expected_run_id = self
+            .runtime_run_id
+            .as_deref()
+            .unwrap_or(&request.request_id);
+        if policy.scope.run_id != expected_run_id {
             return Err(ManagementError::conflict(
                 "provider_session_policy_scope_mismatch",
                 "adopted provider-session policy is not scoped to this workflow submission",
