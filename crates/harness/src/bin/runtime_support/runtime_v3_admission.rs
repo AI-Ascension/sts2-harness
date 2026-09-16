@@ -17,15 +17,15 @@
 //! `IdentityMismatch("package_digest")` rather than being admitted on the declaration it is supposed
 //! to cross-check.
 //!
-//! The remaining identity axes have no inspected artifact at this seam. The pin mandates every axis
-//! (ADR 0031) and `preflight` evaluates them in order, returning on the first one that is unbound or
-//! mismatched, so a deployment whose located package matches its pin still refuses with
-//! `UnboundIdentity("extension_digest")`. The reviewed envelope therefore still refuses every
-//! deployment today, and `legacy` remains the only executable path. See ADR 0032.
+//! The exact launch configuration then supplies the independently verified extension, model route,
+//! prompt, tool and configuration identities. The gateway runtime supplies its configured instance
+//! identity. This uses the bridge's own loader and requires the package locator to resolve to the
+//! configured executor. Binding these axes does not promote unverified lifecycle capabilities:
+//! those remain a separate admission prerequisite. See ADR 0032.
 
 use sts2_harness::exo_admission::{
-    AdmittedExoRuntimeTransport, ExoAdmissionMode, ExoAdmissionPlan, ExoInspectedArtifacts,
-    ExoRuntimeAdmission,
+    AdmittedExoRuntimeTransport, ExoAdmissionMode, ExoAdmissionPlan, ExoAdmissionRefusal,
+    ExoInspectedArtifacts, ExoRuntimeAdmission,
 };
 use sts2_harness::{
     EXO_CONTRACT_VERSION, ExoContextMode, ExoIdentity, ExoLimits, ExoPlatform, ExoProcessConfig,
@@ -39,11 +39,12 @@ const PACKAGE_PATH: &str = "STS2_EXO_PACKAGE_PATH";
 const DEFAULT_PRIVATE_STATE_ROOT: &str = "/var/lib/sts2-harness/exo-runtime";
 
 pub(super) fn from_environment(
-    bridge_executable: &str,
+    process: &ExoProcessConfig,
     map_context_enabled: bool,
+    native_instance_id: &str,
 ) -> Result<ExoRuntimeAdmission, String> {
     match selected_mode(optional(ADMISSION_MODE)?.as_deref())? {
-        ExoAdmissionMode::Enveloped => enveloped(bridge_executable, map_context_enabled),
+        ExoAdmissionMode::Enveloped => enveloped(process, map_context_enabled, native_instance_id),
         ExoAdmissionMode::Legacy => Ok(ExoRuntimeAdmission::legacy()),
     }
 }
@@ -59,9 +60,13 @@ fn selected_mode(value: Option<&str>) -> Result<ExoAdmissionMode, String> {
 }
 
 fn enveloped(
-    bridge_executable: &str,
+    process: &ExoProcessConfig,
     map_context_enabled: bool,
+    native_instance_id: &str,
 ) -> Result<ExoRuntimeAdmission, String> {
+    if !std::path::Path::new(process.executable()).is_absolute() {
+        return Err("Exo envelope requires an absolute bridge executable path".to_owned());
+    }
     let trusted = ExoTrustedConfiguration {
         identity: ExoIdentity {
             source_revision: required("STS2_EXO_REVISION")?,
@@ -92,14 +97,72 @@ fn enveloped(
     // cannot have them inspected, and the seam must stay fail-closed rather than admit the
     // declaration alone.
     let package_path = required(PACKAGE_PATH)?;
-    let plan = ExoAdmissionPlan::inspected(
+    let artifacts = inspected_artifacts(process.executable(), &package_path)?;
+    let observed = artifacts.identity();
+    // Preserve early, discriminating package/bridge refusals before parsing further deployment
+    // configuration. Matching declarations alone are never used as inspected identity.
+    for (axis, actual, expected) in [
+        (
+            "package_digest",
+            observed.package_digest,
+            &trusted.identity.package_digest,
+        ),
+        (
+            "bridge_digest",
+            observed.bridge_digest,
+            &trusted.identity.bridge_digest,
+        ),
+    ] {
+        if &actual != expected {
+            return Err(String::from(ExoAdmissionRefusal::Preflight(
+                sts2_harness::ExoPreflightError::IdentityMismatch(axis),
+            )));
+        }
+    }
+    drop(artifacts);
+    let inspected = inspected_deployment(process, &package_path, native_instance_id)?;
+    let plan = ExoAdmissionPlan::new(
         trusted,
-        &inspected_artifacts(bridge_executable, &package_path)?,
+        inspected,
         required("STS2_EXO_MODEL_EXECUTION_ID")?,
         required("STS2_EXO_REQUEST_ID")?,
         required("STS2_EXO_TURN_ID")?,
     );
     ExoRuntimeAdmission::enveloped(plan).map_err(String::from)
+}
+
+fn inspected_deployment(
+    process: &ExoProcessConfig,
+    package_path: &str,
+    native_instance_id: &str,
+) -> Result<ExoIdentity, String> {
+    let [mode, path, digest] = process.arguments() else {
+        return Err(
+            "Exo envelope requires --run, absolute configuration path and digest".to_owned(),
+        );
+    };
+    if mode != "--run" || !std::path::Path::new(path).is_absolute() {
+        return Err(
+            "Exo envelope requires --run, absolute configuration path and digest".to_owned(),
+        );
+    }
+    let loaded = sts2_harness::exo_bridge_configuration::load(path)
+        .map_err(|code| format!("Exo deployment inspection refused: {code}"))?;
+    let package = std::fs::canonicalize(package_path)
+        .map_err(|_| "Exo package locator is unavailable".to_owned())?;
+    let executor = std::fs::canonicalize(&loaded.config.executor)
+        .map_err(|_| "Exo configured executor is unavailable".to_owned())?;
+    if &loaded.digest != digest || package != executor {
+        return Err(
+            "Exo deployment configuration or package locator does not match launch".to_owned(),
+        );
+    }
+    loaded
+        .inspected_identity(
+            std::path::Path::new(process.executable()),
+            native_instance_id,
+        )
+        .map_err(|code| format!("Exo deployment inspection refused: {code}"))
 }
 
 /// Inspects the artifacts the launch can bind to an explicit locator. The bridge executable and the
