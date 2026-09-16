@@ -83,9 +83,10 @@ bind.
   They confer no control, edit, capture or execution permission, and they do not make the owner
   authentic: the descriptor digest and catalog digest are integrity markers, and a caller crossing
   an owner boundary must still pin the expected owner/adapter/model revisions out of band.
-- Publishing the selected `max_control_events` does not yet enforce it in the control-transition
-  path, and the render path still has no production caller for `ContextEffectiveLimits::render_limits()`.
-  Both remain outstanding for #95, as do the saved-policy store with adoption history and the
-  Console/Studio journeys.
+- [ADR 0041](0041-selected-limit-enforcement-wiring.md) wires the selected `max_control_events` and
+  `ContextEffectiveLimits::render_limits()` to their production points of use
+  (`bind_context_control_authority`, `prepare_context_render`), which compose through this seam. The
+  saved-policy store with adoption history and the Console/Studio journeys remain outstanding for
+  #95.
 - Native/provider/deployment acceptance is not claimed: these checks are deterministic, synthetic
   and offline.

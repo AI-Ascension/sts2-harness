@@ -5,6 +5,14 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+/// Outer ceiling on recorded control transitions for one run.
+///
+/// The selected owner/profile advertises `max_control_events` and may narrow this bound; the
+/// harness maximum is the outer ceiling and is never raised. A journal that retains more
+/// transitions than the bound is refused at recovery, and a narrowed authority refuses to record
+/// beyond its selected bound instead of silently dropping the transition.
+pub const MAX_CONTROL_EVENTS: u64 = 4096;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum GateStatus {
     Running,
@@ -61,6 +69,7 @@ pub struct ControlAuthority {
     commands: BTreeMap<String, (String, ControlReceipt)>,
     events: Vec<ControlEvent>,
     next_id: u64,
+    max_control_events: u64,
 }
 
 impl ControlAuthority {
@@ -83,6 +92,7 @@ impl ControlAuthority {
             commands: BTreeMap::new(),
             events: Vec::new(),
             next_id: 1,
+            max_control_events: MAX_CONTROL_EVENTS,
         }
     }
 
@@ -92,6 +102,25 @@ impl ControlAuthority {
 
     pub fn events(&self) -> &[ControlEvent] {
         &self.events
+    }
+
+    /// The selected bound on recorded control transitions for this authority.
+    #[must_use]
+    pub fn max_control_events(&self) -> u64 {
+        self.max_control_events
+    }
+
+    /// Narrows recorded control transitions to the selected owner/profile bound.
+    ///
+    /// The harness maximum stays the outer ceiling, so a selected profile can only narrow:
+    /// `limit` must be non-zero and no greater than [`MAX_CONTROL_EVENTS`]. A refusal names the
+    /// exact reason and leaves the authority unchanged.
+    pub fn with_max_control_events(mut self, limit: u64) -> Result<Self, String> {
+        if limit == 0 || limit > MAX_CONTROL_EVENTS {
+            return Err("control_event_limit_invalid".to_owned());
+        }
+        self.max_control_events = limit;
+        Ok(self)
     }
 
     /// Admit one provider or game operation under the current plan epoch.
@@ -110,10 +139,11 @@ impl ControlAuthority {
         {
             return Err("operation_in_flight".to_owned());
         }
+        self.reserve_events(1)?;
         self.state
             .unresolved_operations
             .push(operation_id.to_owned());
-        self.event("operation.admitted", None, Some("awaiting_settlement"));
+        self.event("operation.admitted", None, Some("awaiting_settlement"))?;
         Ok(())
     }
 
@@ -129,14 +159,25 @@ impl ControlAuthority {
         else {
             return Err("unknown_operation".to_owned());
         };
+        // The safe-boundary event is published only when this settlement empties the ledger, so the
+        // reservation must account for both transitions before anything is mutated.
+        let events_needed = if self.state.pause_latched
+            && self.state.unresolved_operations.len() == 1
+            && self.state.status == GateStatus::PauseRequested
+        {
+            2
+        } else {
+            1
+        };
+        self.reserve_events(events_needed)?;
         self.state.unresolved_operations.remove(index);
-        self.event("operation.settled", None, None);
+        self.event("operation.settled", None, None)?;
         if self.state.pause_latched
             && self.state.unresolved_operations.is_empty()
             && self.state.status == GateStatus::PauseRequested
         {
             self.state.status = GateStatus::PausedReady;
-            self.event("pause.ready", None, Some("all_operations_settled"));
+            self.event("pause.ready", None, Some("all_operations_settled"))?;
         }
         Ok(())
     }
@@ -153,7 +194,8 @@ impl ControlAuthority {
         {
             return Err("unknown_operation".to_owned());
         }
-        self.event("operation.unknown", None, Some("reconciliation_required"));
+        self.reserve_events(1)?;
+        self.event("operation.unknown", None, Some("reconciliation_required"))?;
         Ok(())
     }
 
@@ -184,6 +226,7 @@ impl ControlAuthority {
         if self.state.stop_latched || self.state.pause_latched {
             return Err("already_paused".to_owned());
         }
+        self.reserve_events(1)?;
         self.state.pause_latched = true;
         self.state.gate_epoch = self.state.gate_epoch.saturating_add(1);
         self.bump_boundary();
@@ -194,7 +237,7 @@ impl ControlAuthority {
         };
         let receipt = self.receipt(idempotency_key, "pause_requested");
         self.persist_command(idempotency_key, "pause", &payload, &receipt);
-        self.event("pause.accepted", Some(&receipt.command_id), None);
+        self.event("pause.accepted", Some(&receipt.command_id), None)?;
         Ok(receipt)
     }
 
@@ -226,18 +269,19 @@ impl ControlAuthority {
         {
             return Err("preview_stale".to_owned());
         }
+        self.reserve_events(2)?;
         self.state.active_revision_id = format!("revision-{}", self.state.plan_epoch + 1);
         self.state.plan_epoch = self.state.plan_epoch.saturating_add(1);
         self.bump_boundary();
         self.state.status = GateStatus::PausedCommitted;
         let receipt = self.receipt(idempotency_key, "revision_committed");
         self.persist_command(idempotency_key, "commit", &payload, &receipt);
-        self.event("revision.committed", Some(&receipt.command_id), None);
+        self.event("revision.committed", Some(&receipt.command_id), None)?;
         self.event(
             "plan.retired",
             Some(&receipt.command_id),
             Some("plan_epoch_advanced"),
-        );
+        )?;
         Ok(receipt)
     }
 
@@ -264,33 +308,38 @@ impl ControlAuthority {
         if !self.state.boundary.external_eq(expected_boundary) {
             return Err("preview_stale".to_owned());
         }
+        self.reserve_events(1)?;
         self.state.pause_latched = false;
         self.state.gate_epoch = self.state.gate_epoch.saturating_add(1);
         self.bump_boundary();
         self.state.status = GateStatus::Running;
         let receipt = self.receipt(idempotency_key, "resume_accepted");
         self.persist_command(idempotency_key, "resume", &payload, &receipt);
-        self.event("resume.accepted", Some(&receipt.command_id), None);
+        self.event("resume.accepted", Some(&receipt.command_id), None)?;
         Ok(receipt)
     }
 
-    pub fn stop(&mut self) {
+    pub fn stop(&mut self) -> Result<(), String> {
+        self.reserve_events(1)?;
         self.state.stop_latched = true;
         self.state.pause_latched = true;
         self.state.status = GateStatus::Stopped;
         self.state.gate_epoch = self.state.gate_epoch.saturating_add(1);
         self.bump_boundary();
-        self.event("stop.latched", None, Some("stop_dominates_resume"));
+        self.event("stop.latched", None, Some("stop_dominates_resume"))?;
+        Ok(())
     }
 
-    pub fn advance_boundary(&mut self) {
+    pub fn advance_boundary(&mut self) -> Result<(), String> {
+        self.reserve_events(1)?;
         self.state.boundary.generation = self.state.boundary.generation.saturating_add(1);
         self.state.boundary.observation_sha256 =
             digest(format!("observation-{}", self.state.boundary.generation).as_bytes());
         if self.state.pause_latched {
             self.state.status = GateStatus::PausedStale;
         }
-        self.event("boundary.changed", None, Some("requires_reobserve"));
+        self.event("boundary.changed", None, Some("requires_reobserve"))?;
+        Ok(())
     }
 
     pub fn admit_plan(&self, plan_epoch: u64) -> Result<(), String> {
@@ -317,7 +366,9 @@ impl ControlAuthority {
     pub fn recover(journal: &[u8]) -> Result<Self, String> {
         let journal: Journal =
             serde_json::from_slice(journal).map_err(|_| "journal_decode".to_owned())?;
-        if journal.schema != CONTROL_JOURNAL_SCHEMA || journal.events.len() > 4096 {
+        if journal.schema != CONTROL_JOURNAL_SCHEMA
+            || journal.events.len() as u64 > MAX_CONTROL_EVENTS
+        {
             return Err("journal_invalid".to_owned());
         }
         if journal.owner_epoch != journal.state.boundary.controller_epoch {
@@ -344,7 +395,21 @@ impl ControlAuthority {
             commands: journal.commands,
             events: journal.events,
             next_id,
+            max_control_events: MAX_CONTROL_EVENTS,
         })
+    }
+
+    /// Recovers the authority under the selected control-transition bound.
+    ///
+    /// Recovery is the journal boundary: a journal that already retains more transitions than the
+    /// selected owner/profile accepts is refused with the precise `context_control_events_exhausted`
+    /// reason instead of being loaded and silently saturated later.
+    pub fn recover_bounded(journal: &[u8], max_control_events: u64) -> Result<Self, String> {
+        let authority = Self::recover(journal)?.with_max_control_events(max_control_events)?;
+        if authority.events.len() as u64 > authority.max_control_events {
+            return Err("context_control_events_exhausted".to_owned());
+        }
+        Ok(authority)
     }
 
     fn idempotent(
@@ -392,9 +457,26 @@ impl ControlAuthority {
         );
     }
 
-    fn event(&mut self, event_type: &str, command_id: Option<&str>, reason: Option<&str>) {
-        if self.events.len() >= 4096 {
-            return;
+    /// Reserves room for `count` recorded transitions before any state changes.
+    ///
+    /// Each mutator that records a transition reserves its capacity first, so an authority that has
+    /// reached its bound refuses without advancing the plan, the boundary or the operation ledger.
+    /// [`Self::event`] keeps its own guard as a defensive backstop rather than the primary check.
+    fn reserve_events(&self, count: u64) -> Result<(), String> {
+        if (self.events.len() as u64).saturating_add(count) > self.max_control_events {
+            return Err("context_control_events_exhausted".to_owned());
+        }
+        Ok(())
+    }
+
+    fn event(
+        &mut self,
+        event_type: &str,
+        command_id: Option<&str>,
+        reason: Option<&str>,
+    ) -> Result<(), String> {
+        if self.events.len() as u64 >= self.max_control_events {
+            return Err("context_control_events_exhausted".to_owned());
         }
         self.events.push(ControlEvent {
             sequence: self.events.len() as u64 + 1,
@@ -402,6 +484,7 @@ impl ControlAuthority {
             command_id: command_id.map(str::to_owned),
             reason: reason.map(str::to_owned),
         });
+        Ok(())
     }
 
     fn bump_boundary(&mut self) {

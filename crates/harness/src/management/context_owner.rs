@@ -13,7 +13,7 @@ use super::contract::{RunSnapshot, validate_digest, validate_identifier};
 use super::service::ManagementError;
 use crate::context_control::{
     ContextBoundary, ContextRenderLimits, MAX_CONTEXT_BYTES, MAX_CONTEXT_ITEMS, MAX_CONTEXT_NOTES,
-    MAX_OBJECTIVE_BYTES,
+    MAX_CONTROL_EVENTS, MAX_OBJECTIVE_BYTES,
 };
 use crate::sha256_hex;
 

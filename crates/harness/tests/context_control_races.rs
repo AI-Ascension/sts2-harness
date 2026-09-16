@@ -146,7 +146,7 @@ fn game_boundary_change_invalidates_the_final_resume_check() {
         .request_pause("pause-boundary-change", authority.state().control_version)
         .expect("pause");
     let expected_boundary = authority.state().boundary.clone();
-    authority.advance_boundary();
+    authority.advance_boundary().expect("boundary advanced");
     assert_eq!(
         authority.resume(
             "resume-boundary-change",

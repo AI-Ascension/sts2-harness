@@ -51,8 +51,8 @@ refactor keeps the existing error codes for the checks it moves. A foreign owner
 disabled descriptor, a non-available binding, a non-published binding identity, a grant or
 continuity escalation, an oversized descriptor and a stale descriptor/catalog digest are refused
 before any advertised value is reported; an unattached owner stays explicitly unavailable. The
-projection is observation-only and does not enforce `max_control_events` in the control-transition
-path.
+projection itself is observation-only; the enforcement of the selected limits is wired separately
+by [ADR 0041](decisions/0041-selected-limit-enforcement-wiring.md).
 
 ## Selected context-control limit enforcement
 
@@ -61,8 +61,9 @@ path.
 binding actually advertises (`max_items`, `max_notes`, `max_objective_bytes`, `max_context_bytes`)
 rather than only the harness maxima, reporting `ExceedsSelectedLimit` with the offending limit name.
 This is `additive-compatible`: `enabled`, `enabled_at` and `legacy` are unchanged and the harness
-maxima are untouched. `max_control_events` enforcement belongs to the control-transition path and
-remains outstanding.
+maxima are untouched. [ADR 0041](decisions/0041-selected-limit-enforcement-wiring.md) wires the
+render entry point and `max_control_events` to their production points of use, so the selected
+limits are enforced rather than only validated.
 
 ## Saved provider-session policy migration
 

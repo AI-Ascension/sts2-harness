@@ -19,7 +19,9 @@ pub use render::{
     ContextRenderError, ContextRenderLimits, ContextRenderer, ManagedRenderInput, PreparedContext,
     ollama_user_content,
 };
-pub use state::{ControlAuthority, ControlEvent, ControlReceipt, ControlState, GateStatus};
+pub use state::{
+    ControlAuthority, ControlEvent, ControlReceipt, ControlState, GateStatus, MAX_CONTROL_EVENTS,
+};
 pub use store::ContextControlStore;
 pub use store_types::{
     CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION, DurableControlStoreError, DurableStoreFailpoint,

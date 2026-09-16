@@ -291,7 +291,7 @@ fn control_authority_recovers_pause_and_fences_boundary_changes() {
         .resume("resume-1", recovered.state().control_version, &expected)
         .expect("resume after recovery");
     assert_ne!(resumed.command_id, paused.command_id);
-    recovered.advance_boundary();
+    recovered.advance_boundary().expect("boundary advanced");
     let error = recovered
         .resume(
             "resume-stale-1",

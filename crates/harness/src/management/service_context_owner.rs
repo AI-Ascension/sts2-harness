@@ -11,6 +11,12 @@ use super::super::context_owner::{
 };
 use super::support::authorize;
 use super::{AuthContext, ManagementError, ManagementService, RunSnapshot, validate_identifier};
+use crate::context_control::{
+    ContextBoundary, ContextDraft, ContextItem, ContextRenderError, ControlAuthority,
+    ManagedRenderInput, PreparedContext,
+};
+use crate::exo::ExoConfig;
+use std::collections::BTreeMap;
 
 impl ManagementService {
     pub fn with_context_owner_port(mut self, port: Arc<dyn ContextOwnerPort>) -> Self {
@@ -163,10 +169,76 @@ impl ManagementService {
     ) -> Result<ContextOwnerEffectiveLimitsView, ManagementError> {
         validate_identifier("run_id", run_id)?;
         authorize(actor, "workflow:read", Some(run_id))?;
+        self.composed_context_limits(actor, run_id)
+    }
+
+    /// Prepares the managed render for a run's current binding under the limits
+    /// that binding advertised.
+    ///
+    /// This is the production render point for a composed, authenticated owner:
+    /// the run's current binding and its admitting descriptor are composed
+    /// fail-closed exactly as the read-only limits projection composes them, and
+    /// the resulting **selected** limits are enforced by the renderer before any
+    /// inference or retention. A draft the harness maxima could prepare but this
+    /// owner does not accept is refused with
+    /// `ManagementError` code `context_render_limit_exceeded` naming the limit;
+    /// an unattached owner or an unusable binding stays explicitly unavailable
+    /// rather than falling back to the harness maxima.
+    #[allow(clippy::too_many_arguments)]
+    pub fn prepare_context_render(
+        &self,
+        actor: &AuthContext,
+        run_id: &str,
+        boundary: &ContextBoundary,
+        request: ManagedRenderInput,
+        draft: &ContextDraft,
+        registry: &BTreeMap<String, ContextItem>,
+        config: &ExoConfig,
+        now: u64,
+    ) -> Result<PreparedContext, ManagementError> {
+        validate_identifier("run_id", run_id)?;
+        authorize(actor, "workflow:control", Some(run_id))?;
+        let view = self.composed_context_limits(actor, run_id)?;
+        view.prepare_managed_render(boundary, request, draft, registry, config, now)
+            .map_err(context_render_error)
+    }
+
+    /// Applies a run's selected control-transition bound to a harness control
+    /// authority.
+    ///
+    /// The control-transition path records pause, resume, commit and boundary
+    /// transitions through this authority. The owner's advertised
+    /// `max_control_events` narrows how many transitions may be retained, so a
+    /// binding that accepts fewer transitions than the harness maximum refuses
+    /// with `context_control_events_exhausted` instead of saturating silently.
+    /// Composition failures (unattached owner, unusable binding, tampered
+    /// descriptor) are refused before any bound is applied.
+    pub fn bind_context_control_authority(
+        &self,
+        actor: &AuthContext,
+        run_id: &str,
+        authority: ControlAuthority,
+    ) -> Result<ControlAuthority, ManagementError> {
+        validate_identifier("run_id", run_id)?;
+        authorize(actor, "workflow:control", Some(run_id))?;
+        let view = self.composed_context_limits(actor, run_id)?;
+        view.bind_control_authority(authority)
+    }
+
+    /// Composes the run's current binding with the catalog that admits it.
+    ///
+    /// Shared by the read-only effective-limits projection and the two
+    /// enforcement entry points above, so what a caller can observe and what a
+    /// caller must respect come from one fail-closed composition.
+    fn composed_context_limits(
+        &self,
+        actor: &AuthContext,
+        run_id: &str,
+    ) -> Result<ContextOwnerEffectiveLimitsView, ManagementError> {
         if !self.context_owner.is_available() {
             return Err(ManagementError::unavailable(
                 "context_owner_unavailable",
-                "effective context limits require an attached authoritative context owner",
+                "selected context limits require an attached authoritative context owner",
             ));
         }
         let snapshot = self.store.get_run(run_id)?.ok_or_else(|| {
@@ -176,5 +248,19 @@ impl ManagementService {
         let catalog = self.context_owner.catalog(actor)?;
         catalog.validate()?;
         ContextOwnerEffectiveLimitsView::compose(&catalog, &binding)
+    }
+}
+
+/// Classifies a render refusal for the management surface.
+///
+/// A selected-limit refusal keeps its own code so a caller can tell "the owner
+/// selected less than this" apart from "the harness bound was exceeded".
+fn context_render_error(error: ContextRenderError) -> ManagementError {
+    match error {
+        ContextRenderError::ExceedsSelectedLimit(limit) => ManagementError::capability(
+            "context_render_limit_exceeded",
+            format!("prepared context exceeds the selected owner limit: {limit}"),
+        ),
+        other => ManagementError::invalid("context_render_invalid", other.to_string()),
     }
 }

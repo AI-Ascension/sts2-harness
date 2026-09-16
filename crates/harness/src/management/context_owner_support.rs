@@ -149,7 +149,7 @@ pub(crate) fn validate_limits(limits: &ContextEffectiveLimits) -> Result<(), Man
         || limits.max_objective_bytes == 0
         || limits.max_objective_bytes > MAX_OBJECTIVE_BYTES as u64
         || limits.max_control_events == 0
-        || limits.max_control_events > 4096
+        || limits.max_control_events > MAX_CONTROL_EVENTS
     {
         return Err(ManagementError::invalid(
             "context_effective_limits_invalid",

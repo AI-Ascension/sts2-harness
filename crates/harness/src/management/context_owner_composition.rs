@@ -11,6 +11,12 @@
 //! limits the same run was admitted under.
 
 use super::*;
+use crate::context_control::{
+    ContextBoundary, ContextDraft, ContextItem, ContextRenderError, ContextRenderLimits,
+    ContextRenderer, ControlAuthority, ManagedRenderInput, PreparedContext,
+};
+use crate::exo::ExoConfig;
+use std::collections::BTreeMap;
 
 /// HTTP-visible schema for the composed effective-limits projection.
 pub const CONTEXT_OWNER_EFFECTIVE_LIMITS_VIEW_SCHEMA: &str =
@@ -74,6 +80,57 @@ impl ContextOwnerEffectiveLimitsView {
             model_revision: binding.boundary.model_revision.clone(),
             effective_limits: descriptor.effective_limits.clone(),
         })
+    }
+
+    /// The selected render limits this binding advertised.
+    ///
+    /// The advertised values were bounded by the harness maxima when the catalog was validated, so
+    /// this conversion can only narrow the renderer's outer bound.
+    #[must_use]
+    pub fn render_limits(&self) -> ContextRenderLimits {
+        self.effective_limits.render_limits()
+    }
+
+    /// Prepares a managed render under the limits this binding advertised.
+    ///
+    /// This is the production caller of `ContextRenderer::enabled_at_with_limits`: the composed,
+    /// authenticated owner limits travel into the renderer, so a draft the harness could prepare
+    /// but this owner does not accept is refused with `ContextRenderError::ExceedsSelectedLimit`
+    /// naming the limit, before any inference or retention. The harness-maxima checks still run
+    /// first and are unchanged.
+    pub fn prepare_managed_render(
+        &self,
+        boundary: &ContextBoundary,
+        request: ManagedRenderInput,
+        draft: &ContextDraft,
+        registry: &BTreeMap<String, ContextItem>,
+        config: &ExoConfig,
+        now: u64,
+    ) -> Result<PreparedContext, ContextRenderError> {
+        ContextRenderer::enabled_at_with_limits(
+            boundary,
+            request,
+            draft,
+            registry,
+            config,
+            now,
+            &self.render_limits(),
+        )
+    }
+
+    /// Applies the selected control-transition bound to a harness control authority.
+    ///
+    /// The advertised `max_control_events` narrows the authority's recorded-transition bound, so
+    /// the control-transition path refuses past what this owner accepted instead of saturating
+    /// silently at the harness maximum. Only a validated descriptor can reach this method; a
+    /// refusal here is explicit rather than a silent clamp.
+    pub fn bind_control_authority(
+        &self,
+        authority: ControlAuthority,
+    ) -> Result<ControlAuthority, ManagementError> {
+        authority
+            .with_max_control_events(self.effective_limits.max_control_events)
+            .map_err(|code| ManagementError::invalid("context_control_event_limit_invalid", code))
     }
 }
 

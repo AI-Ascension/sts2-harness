@@ -46,5 +46,6 @@ harness maxima are neither raised nor lowered.
 - Enforcement happens at preparation time, so an over-limit draft is refused before any provider
   call or retention; nothing is clamped or silently truncated.
 - `max_control_events` applies to recorded control transitions rather than to rendering, so
-  enforcing it belongs to the control-transition path and remains outstanding, along with
-  authenticated owner/consumer composition and the Console/Studio journeys. #95 stays open.
+  enforcing it belongs to the control-transition path. [ADR 0041](0041-selected-limit-enforcement-wiring.md)
+  wires this render entry point and that bound to the composed owner seam; the saved-policy store
+  with adoption history and the Console/Studio journeys remain outstanding. #95 stays open.
