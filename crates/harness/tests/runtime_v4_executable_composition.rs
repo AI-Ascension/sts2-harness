@@ -46,7 +46,7 @@ fn executable_runtime_v4_composes_unknown_reconcile_and_foreign_state_fence()
 
 #[test]
 #[ignore = "operator-only test; requires explicitly built gateway, MCP, and harness binaries"]
-fn served_workflow_reaches_runtime_peers_before_unadopted_provider_is_refused()
+fn served_workflow_settles_action_with_adopted_provider_policy()
 -> Result<(), Box<dyn std::error::Error>> {
     let gateway = executable("STS2_GATEWAY_BINARY")?;
     let mcp = executable("STS2_MCP_BINARY")?;
