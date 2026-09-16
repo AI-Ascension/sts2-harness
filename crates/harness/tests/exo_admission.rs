@@ -281,6 +281,35 @@ fn inspected_bridge_bytes_that_do_not_match_the_pin_refuse_before_any_dispatch()
     assert_eq!(recording.borrow().closes, 0);
 }
 
+/// Binding one axis to inspected bytes does not relax the others: with the package pair matching the
+/// pin, the next axis no artifact backs is still refused as unbound, so the binding cannot be widened
+/// into blanket admission.
+#[test]
+fn a_matching_package_binding_leaves_every_other_unbound_axis_refused() {
+    let artifacts = ExoInspectedArtifacts {
+        package: Some(b"package bytes".to_vec()),
+        bridge: Some(b"bridge bytes".to_vec()),
+        ..ExoInspectedArtifacts::default()
+    };
+    let mut configured = trusted(complete_identity());
+    configured.identity.package_digest = Some(sts2_harness::sha256_hex(b"package bytes"));
+    configured.identity.bridge_digest = Some(sts2_harness::sha256_hex(b"bridge bytes"));
+    let plan = inspected_plan(configured, &artifacts);
+
+    let refusal = plan.validate().expect_err("an unbound axis must refuse");
+    assert!(
+        matches!(
+            refusal,
+            ExoAdmissionRefusal::Preflight(ExoPreflightError::UnboundIdentity("extension_digest"))
+        ),
+        "the matched package must not admit the unbound extension axis, got {refusal}"
+    );
+    let recording = Rc::new(RefCell::new(Recording::default()));
+    assert!(plan.admit(recording_transport(&recording)).is_err());
+    assert_eq!(recording.borrow().exchanges, 0);
+    assert_eq!(recording.borrow().closes, 0);
+}
+
 /// A pinned axis that the inspection did not bind cannot be admitted from the operator's declaration
 /// alone: preflight refuses it as unbound, so an uninspected artifact never reaches a model or game
 /// effect.
