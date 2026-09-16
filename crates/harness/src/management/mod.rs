@@ -91,3 +91,25 @@ pub use store::{
     WorkflowStore,
 };
 pub use workflow_ports::{synthetic_file_store, synthetic_sqlite_store, synthetic_store};
+
+/// Starts a served-live management endpoint from a binary that owns concrete
+/// runtime and provider adapters. The ordinary CLI retains synthetic mode.
+pub fn serve_live(
+    listen: std::net::SocketAddr,
+    store_path: &str,
+    authenticator: std::sync::Arc<dyn Authenticator>,
+    factory: std::sync::Arc<dyn LiveWorkflowSessionFactory>,
+) -> Result<(), ManagementError> {
+    let store = SqliteWorkflowStore::open(store_path)
+        .map_err(|error| ManagementError::store("workflow_store_open", error.to_string()))?;
+    let store: std::sync::Arc<dyn WorkflowStore> = std::sync::Arc::new(store);
+    let service = std::sync::Arc::new(live_store(store, factory, LiveWorkflowOptions::default())?);
+    let config = ServerConfig::new(listen, authenticator)
+        .map_err(|error| ManagementError::invalid("workflow_server_config", error.to_string()))?;
+    let server = ManagementServer::start(config, service).map_err(|error| {
+        ManagementError::unavailable("workflow_server_start", error.to_string())
+    })?;
+    server
+        .wait()
+        .map_err(|error| ManagementError::unavailable("workflow_server_wait", error.to_string()))
+}

@@ -16,6 +16,7 @@ mod runtime_v3_telemetry;
 mod runtime_v3_wire;
 mod seed_transport;
 mod v1_projection;
+mod workflow_service;
 
 pub(crate) use config::RuntimeConfig;
 
@@ -32,6 +33,10 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
     } else {
         mcp::run(config)
     }
+}
+
+pub(crate) fn serve_workflow() -> Result<(), String> {
+    workflow_service::serve()
 }
 
 /// Reconciles half-created durable continuation branches before any episode is admitted or resumed.
