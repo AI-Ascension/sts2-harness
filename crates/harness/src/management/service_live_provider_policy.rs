@@ -24,6 +24,7 @@ pub trait LiveProviderPolicyPort: Send + Sync {
         &self,
         actor: &AuthContext,
         request: &RunRequest,
+        workflow_run_id: &str,
         definition: &WorkflowDefinition,
         capabilities: &NativeCapabilities,
     ) -> Result<ProviderSessionPolicyBinding, ManagementError>;
@@ -38,6 +39,7 @@ impl LiveProviderPolicyPort for UnavailableLiveProviderPolicyPort {
         &self,
         _actor: &AuthContext,
         _request: &RunRequest,
+        _workflow_run_id: &str,
         _definition: &crate::workflow::WorkflowDefinition,
         _capabilities: &crate::provider_session::NativeCapabilities,
     ) -> Result<ProviderSessionPolicyBinding, ManagementError> {

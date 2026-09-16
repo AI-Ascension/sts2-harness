@@ -13,8 +13,22 @@ fn path(label: &str) -> std::path::PathBuf {
         "sts2-provider-policy-owner-{label}-{}",
         uuid::Uuid::new_v4()
     ));
-    std::fs::create_dir_all(&directory).expect("directory");
+    create_private_test_directory(&directory).expect("private directory");
     directory.join("owner.bin")
+}
+
+fn create_private_test_directory(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt as _;
+
+        let mut builder = std::fs::DirBuilder::new();
+        builder.mode(0o700).create(path)
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir(path)
+    }
 }
 
 fn store(path: &std::path::Path, scope: SessionScope) -> ProviderSessionMetadataStore {

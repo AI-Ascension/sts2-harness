@@ -171,26 +171,31 @@ impl ProviderSessionPolicyOwner {
             if journal.revision != expected_revision {
                 return Err(ProviderSessionPolicyOwnerError::Conflict);
             }
+            let target_sha256 = journal
+                .proposals
+                .iter()
+                .find(|item| item.id == id && item.digest == digest)
+                .map(|item| item.target_sha256.clone())
+                .ok_or(ProviderSessionPolicyOwnerError::Missing)?;
+            let target = journal
+                .policies
+                .iter()
+                .find(|item| item.sha256 == target_sha256)
+                .ok_or(ProviderSessionPolicyOwnerError::Missing)?;
+            let target_bytes = target.bytes.clone();
             let proposal = journal
                 .proposals
                 .iter_mut()
                 .find(|item| item.id == id && item.digest == digest)
                 .ok_or(ProviderSessionPolicyOwnerError::Missing)?;
-            let target = journal
-                .policies
-                .iter()
-                .find(|item| item.sha256 == proposal.target_sha256)
-                .ok_or(ProviderSessionPolicyOwnerError::Missing)?;
-            let policy: ProviderSessionPolicy = serde_json::from_slice(&target.bytes)
-                .map_err(|_| ProviderSessionPolicyOwnerError::Invalid)?;
             proposal
                 .migration
-                .adopt(&policy, &self.capabilities, approval_ref)
+                .adopt_retained_bytes(&target_bytes, &self.capabilities, approval_ref)
                 .map_err(|_| ProviderSessionPolicyOwnerError::Invalid)?;
             if proposal.migration.state != SessionPolicyMigrationState::Adopted {
                 return Err(ProviderSessionPolicyOwnerError::NotAdopted);
             }
-            journal.active_sha256 = Some(proposal.target_sha256.clone());
+            journal.active_sha256 = Some(target_sha256);
             Ok(((), true))
         })
     }
