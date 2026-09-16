@@ -1,4 +1,4 @@
-# ADR 0022: Recorded context binding history
+# ADR 0040: Recorded context binding history
 
 ## Status
 

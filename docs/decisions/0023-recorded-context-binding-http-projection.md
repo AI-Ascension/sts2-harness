@@ -7,7 +7,7 @@ composition or feature closure is approved here.
 
 ## Context
 
-ADR 0022 introduced the private `ascension.harness.context-binding-history.v1` record and a
+ADR 0040 introduced the private `ascension.harness.context-binding-history.v1` record and a
 library-only historical read (`ManagementService::recorded_context_binding`). It deliberately
 left the HTTP projection undefined and required any such projection to be separately versioned
 rather than silently inferring an owner/consumer contract.
@@ -56,5 +56,5 @@ rejected by stores that cannot commit history atomically.
   fresh epoch, provider execution or native game state.
 - Receipt recovery for lost owner replies and Console/Studio consumer adoption remain outstanding;
   #100 stays open.
-- The 16,384-byte per-record and 256-records-per-run bounds from ADR 0022 continue to apply, and
+- The 16,384-byte per-record and 256-records-per-run bounds from ADR 0040 continue to apply, and
   the management response-size bound still caps the projection.

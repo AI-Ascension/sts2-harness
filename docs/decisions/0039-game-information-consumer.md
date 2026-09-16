@@ -1,4 +1,4 @@
-# ADR 0021: scoped game-information lookup consumer
+# ADR 0039: scoped game-information lookup consumer
 
 Status: accepted for the harness-owned consumer and deterministic tool-loop contract.
 Owner: sts2-harness. Related issue: [#127](https://github.com/AI-Ascension/sts2-harness/issues/127).

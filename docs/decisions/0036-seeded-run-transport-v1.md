@@ -1,4 +1,4 @@
-# ADR 0011: Seeded-run transport and startup handoff
+# ADR 0036: Seeded-run transport and startup handoff
 
 - **Status:** accepted for the harness seeded-run-v1 integration
 - **Owners:** harness coordinator; gateway, MCP, and game-mod owners retain their boundaries
