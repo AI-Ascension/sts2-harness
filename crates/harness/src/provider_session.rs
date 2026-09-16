@@ -16,7 +16,9 @@ mod types;
 
 pub use broker::{BrokerSnapshot, ProviderSessionBroker};
 pub use policy_owner::{
-    ProviderSessionPolicyOwner, ProviderSessionPolicyOwnerError, ProviderSessionPolicyRecord,
+    ProviderSessionPolicyMetadata, ProviderSessionPolicyOwner, ProviderSessionPolicyOwnerError,
+    ProviderSessionPolicyOwnerMetadata, ProviderSessionPolicyProposalMetadata,
+    ProviderSessionPolicyRecord,
 };
 pub use protocol::{
     NativeFrame, NativeFrameKind, NativePeerError, NativeResponse, parse_native_frame,
