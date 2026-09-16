@@ -59,6 +59,20 @@ pub trait EpisodeRuntimePort: BarrierPort + RecoveryPort + ShutdownPort {
         Ok(())
     }
 
+    /// Refreshes an enabled owner-issued game-information observation before a
+    /// provider can make a decision from the matching observation generation.
+    ///
+    /// Adapters without the additive lookup-binding route remain compatible.
+    /// Enabled adapters must reject stale, mixed, or unavailable observations
+    /// before invoking a decision source.
+    fn refresh_game_information_binding(
+        &mut self,
+        _state_id: &str,
+        _generation: u64,
+    ) -> Result<(), PortError> {
+        Ok(())
+    }
+
     fn observe(&mut self) -> Result<EpisodeObservation, PortError>;
 
     /// Reads the authored projection binding through the runtime boundary.

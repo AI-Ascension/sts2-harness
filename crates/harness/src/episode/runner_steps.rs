@@ -193,6 +193,8 @@ impl EpisodeRunner {
         legal_actions
             .assert_matches(observation.state_id(), observation.generation())
             .map_err(EpisodeRunnerError::ActionSet)?;
+        port.refresh_game_information_binding(observation.state_id(), observation.generation())
+            .map_err(EpisodeRunnerError::LegalActions)?;
         let execution_id = ModelExecutionId::new(u64::from(step + 1))
             .ok_or(EpisodeRunnerError::InvalidIdentity)?;
         let mut input = DecisionInput::new(

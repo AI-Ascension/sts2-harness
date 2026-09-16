@@ -47,6 +47,14 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         self.initialize_game_information_binding()
     }
 
+    fn refresh_game_information_binding(
+        &mut self,
+        state_id: &str,
+        generation: u64,
+    ) -> Result<(), sts2_harness::PortError> {
+        RuntimeV3Port::refresh_game_information_binding(self, state_id, generation)
+    }
+
     fn legal_actions(
         &mut self,
         state_id: &str,

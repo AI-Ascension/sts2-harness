@@ -61,6 +61,8 @@ impl RuntimeV3Port {
         Ok(Self {
             config,
             gateway,
+            lookup_binding_required: false,
+            lookup_binding: None,
             mcp: None,
             seeded_mcp: None,
             seeded_receipt: None,
