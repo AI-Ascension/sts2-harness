@@ -14,6 +14,8 @@ mod history;
 mod interrupts;
 #[path = "broker_maintenance.rs"]
 mod maintenance;
+#[path = "broker_one_shot.rs"]
+mod one_shot;
 #[path = "broker_retirement.rs"]
 mod retirement;
 #[path = "broker_snapshot.rs"]
