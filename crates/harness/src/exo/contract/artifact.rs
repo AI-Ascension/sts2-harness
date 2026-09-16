@@ -110,6 +110,12 @@ pub fn verify_exo_bridge_artifact() -> Result<(), ExoArtifactError> {
     }) {
         return Err(ExoArtifactError::Fixture);
     }
+    if conformance
+        .get("corpus_index")
+        .is_none_or(|index| !corpus_index_is_complete(index))
+    {
+        return Err(ExoArtifactError::Fixture);
+    }
     let checksums = [
         ("README.md", README_BYTES),
         ("manifest.json", MANIFEST_BYTES),
@@ -123,7 +129,7 @@ pub fn verify_exo_bridge_artifact() -> Result<(), ExoArtifactError> {
     let sums = [
         (
             checksums[0].0,
-            "c471706814635a5bc70b7115212f770cc0954abb1bf1f5a8882e268f957cc666",
+            "93ffed66fe38dddd94dad4cb4660a9559ba6b9347e31082ab6e54b95c3e89892",
         ),
         (
             checksums[1].0,
@@ -135,7 +141,7 @@ pub fn verify_exo_bridge_artifact() -> Result<(), ExoArtifactError> {
         ),
         (
             checksums[3].0,
-            "19b78b6d0184ececd2d6b116255ece2836c1ffb829ceb095533e59ad4677f5bf",
+            "236330f8d7ba92b50be736bd4ba6a98ef0e3612d9d94ec7d3aab3b75a93b613e",
         ),
         (
             checksums[4].0,
@@ -164,6 +170,43 @@ pub fn verify_exo_bridge_artifact() -> Result<(), ExoArtifactError> {
         return Err(ExoArtifactError::Checksum);
     }
     Ok(())
+}
+
+/// Requires the corpus index marker and every issue-139 AC4 vector class.
+fn corpus_index_is_complete(index: &Value) -> bool {
+    let class_names_are_present =
+        index
+            .get("classes")
+            .and_then(Value::as_array)
+            .is_some_and(|classes| {
+                [
+                    "semantic_decision_variant",
+                    "ordinary_and_map_request_bound",
+                    "wrong_correlation",
+                    "incompatible_schema_version",
+                    "explicitly_unavailable_capability",
+                ]
+                .iter()
+                .all(|required| {
+                    classes.iter().any(|class| {
+                        class.get("class").and_then(Value::as_str) == Some(*required)
+                            && class.get("sources").and_then(Value::as_array).is_some_and(
+                                |sources| {
+                                    sources.iter().any(|source| {
+                                        source
+                                            .get("vectors")
+                                            .and_then(Value::as_array)
+                                            .is_some_and(|vectors| !vectors.is_empty())
+                                    })
+                                },
+                            )
+                    })
+                })
+            });
+    index.get("corpus_index_schema").and_then(Value::as_str)
+        == Some("sts2.exo-bridge-corpus-index-v1")
+        && index.get("contract_version").and_then(Value::as_str) == Some(EXO_CONTRACT_VERSION)
+        && class_names_are_present
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

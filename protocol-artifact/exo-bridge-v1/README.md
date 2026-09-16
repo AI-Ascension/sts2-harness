@@ -117,6 +117,16 @@ distinct payloads, and multibyte text over the parser byte bound, alongside stan
 boundaries, every semantic decision, wrong schema/wire, swapped package identity, failed outcomes,
 and capability downgrades.
 
+`conformance.json` also carries a machine-readable `corpus_index`: it maps every vector to one
+named class with an acceptance marker (`issue-139-ac4` for the five contract-vector classes:
+semantic decision variants, ordinary and map request bounds, wrong correlation, incompatible
+schema versions, and explicitly unavailable capabilities) and records per-source totals. The
+named witness test `ac4_vector_corpus_index_enumerates_every_class_and_is_consumed` asserts that
+each class member list matches the corpus in order, that the index enumerates every vector exactly
+once with matching totals, that each AC4 class is present, and that the returned consumption
+record of the production executors equals the whole corpus. A dropped, renamed, or unparsed vector
+therefore fails that test rather than silently passing.
+
 The same observation union also closes `harness_projection_observation`: the Runtime-v4 expert
 shape plus the pinned `harness_projection` marker and the REST selector's projected `select_card`,
 `select_player`, `confirm_selection`, and `cancel_selection` legal actions. This matches

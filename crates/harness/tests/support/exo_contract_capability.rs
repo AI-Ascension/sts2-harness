@@ -3,7 +3,8 @@
 use super::*;
 use serde_json::Value;
 
-pub(super) fn execute_capability_vectors(vectors: &[Value]) {
+pub(super) fn execute_capability_vectors(vectors: &[Value]) -> Vec<String> {
+    let mut consumed = Vec::new();
     let base = ExoCapabilityDescriptor::source_review().expect("source descriptor");
     let identity = complete_identity();
     let trusted = ExoTrustedConfiguration {
@@ -17,6 +18,12 @@ pub(super) fn execute_capability_vectors(vectors: &[Value]) {
     };
     for vector in vectors {
         let field = vector["field"].as_str().expect("capability vector field");
+        consumed.push(
+            vector["name"]
+                .as_str()
+                .expect("capability vector name")
+                .to_owned(),
+        );
         if field.starts_with("evidence.") || field.starts_with("lifecycle.") {
             assert_eq!(
                 vector["downgrade"].as_str(),
@@ -128,6 +135,22 @@ pub(super) fn execute_capability_vectors(vectors: &[Value]) {
                 );
                 continue;
             }
+            "profile_support.standard" => {
+                assert_eq!(
+                    vector["expect"].as_str(),
+                    Some("invalid_descriptor_standard"),
+                    "{field} must record an explicit unsupported-standard expectation"
+                );
+                descriptor.profile_support.standard = ExoCapabilityState::Unsupported;
+                assert_eq!(
+                    preflight_with_identity(descriptor, &trusted),
+                    Err(ExoPreflightError::InvalidDescriptor(
+                        ExoDescriptorError::StandardUnavailable
+                    )),
+                    "{field} must reject an unavailable standard profile before preflight"
+                );
+                continue;
+            }
             other => unreachable!("unhandled capability conformance vector {other}"),
         };
         assert_eq!(
@@ -135,4 +158,5 @@ pub(super) fn execute_capability_vectors(vectors: &[Value]) {
             Err(ExoPreflightError::RequiredCapability(required))
         );
     }
+    consumed
 }

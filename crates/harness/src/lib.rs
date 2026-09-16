@@ -61,6 +61,7 @@ mod execution_cancellation;
 mod exo;
 pub mod exo_admission;
 mod exo_admitted_transport;
+pub mod exo_bridge_configuration;
 pub mod exo_lifecycle;
 pub mod exo_lookup_process;
 pub mod exo_lookup_wire;

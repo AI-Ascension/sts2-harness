@@ -14,7 +14,9 @@
     {"name": "map_over_bound", "fixture": "generated:exo_contract_map", "bound": 393443, "padding": "utf8_space_plus_one", "expected": "too_large"},
     {"name": "envelope_overhead_standard", "fixture": "golden/request.json", "bound": 131072, "expected": "too_large"},
     {"name": "envelope_overhead_map", "fixture": "generated:exo_contract_map", "bound": 393443, "expected": "too_large"},
+    {"name": "map_request_over_ordinary_bound", "fixture": "generated:exo_contract_map", "bound": 131072, "expected": "too_large"},
     {"name": "wrong_schema", "fixture": "golden/request.json", "expected": "invalid_request"},
+    {"name": "map_wrong_schema", "fixture": "generated:exo_contract_map", "bound": 393443, "expected": "invalid_request"},
     {"name": "swapped_package", "fixture": "golden/capability-source.json", "expected": "identity_mismatch"},
     {"name": "expert_request_valid", "fixture": "generated:exo_contract_expert", "mutation": "none", "schema_expected": "accepted", "parser_expected": "accepted", "expected": "accepted"},
     {"name": "expert_request_schema_digest_zero", "fixture": "generated:exo_contract_expert", "mutation": "schema_digest_zero", "schema_expected": "rejected", "parser_expected": "rejected", "expected": "invalid_request"},
@@ -31,12 +33,14 @@
     {"name": "recovery_reobserve", "decision": "recovery", "recovery_kind": "reobserve", "expected": "accepted"},
     {"name": "recovery_reconcile", "decision": "recovery", "recovery_kind": "reconcile", "expected": "accepted"},
     {"name": "recovery_release_lease", "decision": "recovery", "recovery_kind": "release_lease", "expected": "accepted"},
-    {"name": "recovery_stop_episode", "decision": "recovery", "recovery_kind": "stop_episode", "expected": "accepted"}
+    {"name": "recovery_stop_episode", "decision": "recovery", "recovery_kind": "stop_episode", "expected": "accepted"},
+    {"name": "unknown_decision_kind", "decision": "unknown", "expected": "rejected"}
   ],
   "envelope_vectors": [
     {"name": "wrong_wire_version", "expected": "version_mismatch"},
     {"name": "wrong_request_id", "expected": "identity_mismatch"},
     {"name": "wrong_turn_id", "expected": "identity_mismatch"},
+    {"name": "wrong_control_identity", "expected": "identity_mismatch"},
     {"name": "cancelled", "expected": "cancelled"},
     {"name": "failed", "expected": "remote_failure"},
     {"name": "duplicate_field", "expected": "duplicate_field"},
@@ -56,8 +60,50 @@
     {"name": "profile_expert", "field": "profile_support.expert", "expect": "profile_unsupported"},
     {"name": "context_continuity", "field": "context_modes.continuity", "expect": "context_unsupported"},
     {"name": "capability_schema_version", "field": "schema_version", "expect": "invalid_descriptor_schema"},
-    {"name": "capability_contract_version", "field": "contract_version", "expect": "invalid_descriptor_contract"}
+    {"name": "capability_contract_version", "field": "contract_version", "expect": "invalid_descriptor_contract"},
+    {"name": "profile_standard", "field": "profile_support.standard", "expect": "invalid_descriptor_standard"}
   ],
+  "corpus_index": {
+    "corpus_index_schema": "sts2.exo-bridge-corpus-index-v1",
+    "contract_version": "sts2-exo-bridge-v1",
+    "classes": [
+      {"class": "semantic_decision_variant", "acceptance": "issue-139-ac4", "sources": [
+        {"source": "decision_vectors", "vectors": ["plan", "action", "wait", "reobserve", "recovery_reobserve", "recovery_reconcile", "recovery_release_lease", "recovery_stop_episode", "unknown_decision_kind"]}
+      ]},
+      {"class": "ordinary_and_map_request_bound", "acceptance": "issue-139-ac4", "sources": [
+        {"source": "request_vectors", "vectors": ["standard_at_bound", "standard_over_bound", "map_at_bound", "map_over_bound", "envelope_overhead_standard", "envelope_overhead_map", "map_request_over_ordinary_bound"]}
+      ]},
+      {"class": "wrong_correlation", "acceptance": "issue-139-ac4", "sources": [
+        {"source": "envelope_vectors", "vectors": ["wrong_request_id", "wrong_turn_id", "wrong_control_identity"]}
+      ]},
+      {"class": "incompatible_schema_version", "acceptance": "issue-139-ac4", "sources": [
+        {"source": "request_vectors", "vectors": ["wrong_schema", "map_wrong_schema"]},
+        {"source": "envelope_vectors", "vectors": ["wrong_wire_version"]},
+        {"source": "capability_vectors", "vectors": ["capability_schema_version", "capability_contract_version"]}
+      ]},
+      {"class": "explicitly_unavailable_capability", "acceptance": "issue-139-ac4", "sources": [
+        {"source": "capability_vectors", "vectors": ["terminal_decision", "turn_identity", "graceful_eof", "idempotency", "cancellation", "recovery", "profile_map", "profile_expert", "context_continuity", "profile_standard"]}
+      ]},
+      {"class": "swapped_package_identity", "acceptance": "issue-139-ac3", "sources": [
+        {"source": "request_vectors", "vectors": ["swapped_package"]}
+      ]},
+      {"class": "expert_request_semantics", "acceptance": "issue-139-ac3", "sources": [
+        {"source": "request_vectors", "vectors": ["expert_request_valid", "expert_request_schema_digest_zero", "expert_request_empty_legal_actions", "expert_request_player_hp_above_max", "expert_request_duplicate_action_id", "expert_request_multibyte_text_over_utf8_bound"]}
+      ]},
+      {"class": "wire_framing_error", "acceptance": "issue-139-ac1", "sources": [
+        {"source": "envelope_vectors", "vectors": ["duplicate_field", "nested_duplicate_field", "nested_unknown_field", "trailing_bytes", "invalid_utf8"]}
+      ]},
+      {"class": "lifecycle_outcome", "acceptance": "issue-139-ac1", "sources": [
+        {"source": "envelope_vectors", "vectors": ["cancelled", "failed"]}
+      ]}
+    ],
+    "totals": {
+      "request_vectors": 16,
+      "decision_vectors": 9,
+      "envelope_vectors": 11,
+      "capability_vectors": 12
+    }
+  },
   "fixtures": [
     "golden/capability-source.json",
     "golden/request.json",
