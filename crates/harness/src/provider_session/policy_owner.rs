@@ -70,6 +70,8 @@ pub struct ProviderSessionPolicyOwner {
     journal: Mutex<Journal>,
 }
 
+#[path = "policy_owner/change.rs"]
+mod change;
 #[path = "policy_owner/owner_impl.rs"]
 mod owner_impl;
 
