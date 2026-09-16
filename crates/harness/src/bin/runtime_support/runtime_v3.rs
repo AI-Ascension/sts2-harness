@@ -3,8 +3,8 @@
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use sts2_harness::{
-    EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, ExoDecisionSource,
-    ExoProcessTransport, ExoProvider, ExoSession, ResumeState, TransitionReceipt,
+    EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, ExoDecisionSource, ExoProvider,
+    ExoSession, ResumeState, TransitionReceipt,
 };
 
 use super::config::RuntimeConfig;
@@ -177,7 +177,7 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
             return result.map(|_| ()).and(store_close);
         }
     }
-    let transport = ExoProcessTransport::new(settings.process);
+    let transport = super::runtime_v3_admission::admit(&settings.admission, settings.process)?;
     let provider = ExoProvider::new(transport, settings.exo);
     let mut source = ExoDecisionSource::new(ExoSession::new(provider));
     if std::env::var("STS2_COMBAT_DEMO").as_deref() == Ok("true") {

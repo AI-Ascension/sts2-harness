@@ -247,6 +247,9 @@ pub(crate) fn run_scenario_with_style(
             .env("STS2_ARTIFACT_ID", "artifact-rest-executable-composition")
             .env("STS2_EXO_REVISION", bridge_revision)
             .env("STS2_PROVIDER_KIND", "openai-astra")
+            // The Astra probe is a raw-wire bridge: acknowledge it explicitly instead of claiming
+            // the reviewed one-turn envelope admission.
+            .env("STS2_EXO_ADMISSION", "legacy")
             .env("STS2_LIVE_EPISODE", "true")
             .env("STS2_EXO_BRIDGE_BINARY", bridge)
             .env("STS2_EXO_TIMEOUT_MILLIS", "2000")

@@ -205,8 +205,13 @@ compatibility axes. The selected executor path is the extension's
 `defineHarness.runTurn` → `runResponsesHarnessTurn` → `ResponsesRuntime.complete` chain; HTTP
 substrate requests, `/health`, and the human-facing CLI are not fallback executors.
 
-The closed capability/preflight descriptor and request/turn envelope are source/component
-contracts. Standard/fresh/Linux x86_64 and strict terminal decision parsing are source-derived;
+The closed capability/preflight descriptor and request/turn envelope drive the production
+admission gate recorded in [ADR 0031](decisions/0031-runtime-exo-admission-gate.md). The reviewed
+`STS2_EXO_ADMISSION=envelope` mode refuses the run while a required capability, digest, revision,
+route or schema is not admitted, and it refuses before the durable store, the gateway, the MCP
+session, the provider or any game effect exists; `STS2_EXO_ADMISSION=legacy` is an explicit
+operator acknowledgement of an un-admitted raw-wire bridge. Standard/fresh/Linux x86_64 and strict
+terminal decision parsing are source-derived;
 map/expert, continuity, cancellation/recovery, event/usage, replay, native package/model
 identity, live Exo connectivity, and STS2 gameplay remain `unverified` until the real pinned
 executor spike records them. The required `runtime`, `provider`, and `endpoint` identity axes are
@@ -521,3 +526,22 @@ is now bounded by the same interval the map publication lock already uses: 32 at
 about 160 ms nominal and 162-172 ms as measured, after which a contended acquisition still fails
 closed with `Busy`. On the contended `create` path the caller's authority guard is held for the
 length of that wait before the call fails.
+
+## Runtime Exo admission gate
+
+[ADR 0031](decisions/0031-runtime-exo-admission-gate.md) wires the ADR 0017 preflight and the
+`ExoAdmittedTransport` envelope into the runtime-v3 transport seam. This is `breaking` for
+operator configuration: `STS2_EXO_ADMISSION` now selects the admission mode, the reviewed
+`envelope` mode is the default when it is absent, and it requires the complete operator-trusted
+deployment identity (`STS2_EXO_PACKAGE_DIGEST`, `STS2_EXO_EXTENSION_DIGEST`,
+`STS2_EXO_BRIDGE_DIGEST`, `STS2_EXO_MODEL_BINDING`, `STS2_EXO_PROVIDER`, `STS2_EXO_ENDPOINT`,
+`STS2_EXO_PROMPT_DIGEST`, `STS2_EXO_TOOL_DIGEST`, `STS2_EXO_CONFIG_DIGEST`,
+`STS2_EXO_NATIVE_INSTANCE_ID`, `STS2_EXO_MODEL_EXECUTION_ID`, `STS2_EXO_REQUEST_ID`,
+`STS2_EXO_TURN_ID`). A missing or unverified deployment ends the run while settings are assembled,
+before any gateway, MCP, provider or game effect, and no request bytes are emitted. Because the
+reviewed capability axes are not promoted on the bridge's behalf, `envelope` currently refuses with
+`RequiredCapability("evidence.turn_identity")`. The already-documented raw-wire development bridges
+(`docs/OLLAMA_MODEL_SELECTION.md`, `experiments/live-combat/README.md`) must set
+`STS2_EXO_ADMISSION=legacy`, which is an explicit acknowledgement of an un-admitted bridge rather
+than an admission. Rollback is to set `legacy`; no wire field, schema, contract version or durable
+record changes. Per-turn envelope admission for a multi-turn episode remains open.

@@ -7,6 +7,19 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Invoke the pinned-Exo **capability preflight at the runtime transport seam** so a missing,
+  malformed, unknown or unverified deployment fails closed before a model or game effect.
+  `STS2_EXO_ADMISSION` selects the mode: `envelope` (the default when unset) assembles the
+  operator-trusted identity, refuses the run while settings are still being assembled when a
+  capability, digest, revision, route or schema is not admitted, and then admits a correlated turn
+  through `ExoAdmittedTransport`; `legacy` is the explicit acknowledgement of an un-admitted
+  raw-wire bridge and preserves the previous behaviour. Compatibility: `breaking` for operator
+  configuration only — no wire field, schema, contract version or durable record changes, the
+  reviewed capability axes are not promoted on the bridge's behalf (so `envelope` currently refuses
+  with `RequiredCapability("evidence.turn_identity")`), and the raw-wire development bridges need
+  `STS2_EXO_ADMISSION=legacy`. Per-turn envelope admission for a multi-turn episode remains open.
+  See [ADR 0031](docs/decisions/0031-runtime-exo-admission-gate.md). Refs #139.
+
 - Keep a **cancel** pending as `NeedsOperator` while a live operation's settlement is still unknown,
   instead of stopping the episode and marking the run cancelled. `CommandKind::Cancel` reconciles
   first, and when reconciliation reports `ErrorClass::Unresolved` it returns

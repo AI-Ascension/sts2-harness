@@ -6,6 +6,7 @@ mod mcp;
 mod mcp_process;
 mod response_validation;
 mod runtime_v3;
+mod runtime_v3_admission;
 mod runtime_v3_parse;
 mod runtime_v3_settings;
 mod runtime_v3_telemetry;
