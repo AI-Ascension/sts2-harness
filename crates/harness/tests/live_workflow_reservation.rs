@@ -26,63 +26,6 @@ struct ReservationObservingFactory {
     opens: Arc<AtomicUsize>,
 }
 
-struct StaleFenceFactory {
-    inner: support::FakeFactory,
-    checks: Arc<AtomicUsize>,
-}
-
-impl StaleFenceFactory {
-    fn new() -> (Self, Arc<AtomicUsize>) {
-        let checks = Arc::new(AtomicUsize::new(0));
-        (
-            Self {
-                inner: support::FakeFactory::new(false),
-                checks: Arc::clone(&checks),
-            },
-            checks,
-        )
-    }
-}
-
-impl LiveWorkflowSessionFactory for StaleFenceFactory {
-    fn capabilities(&self) -> serde_json::Value {
-        self.inner.capabilities()
-    }
-
-    fn target_catalog(
-        &self,
-        actor: &AuthContext,
-    ) -> Result<TargetCatalogResponse, ManagementError> {
-        self.inner.target_catalog(actor)
-    }
-
-    fn revalidate_fence(
-        &self,
-        _request: &RunRequest,
-        _actor: &AuthContext,
-        _definition: &sts2_harness::workflow::WorkflowDefinition,
-        _definition_digest: &str,
-        _admission: &sts2_harness::management::TargetAdmissionBinding,
-    ) -> Result<(), ManagementError> {
-        self.checks.fetch_add(1, Ordering::SeqCst);
-        Err(ManagementError::conflict(
-            "gateway_lease_stale",
-            "gateway rejected the stale lease or generation fence",
-        ))
-    }
-
-    fn open(
-        &self,
-        request: &RunRequest,
-        actor: &AuthContext,
-        definition: &sts2_harness::workflow::WorkflowDefinition,
-        definition_digest: &str,
-    ) -> Result<Box<dyn LiveWorkflowSession>, ManagementError> {
-        self.inner
-            .open(request, actor, definition, definition_digest)
-    }
-}
-
 impl ReservationObservingFactory {
     fn new(store: Arc<dyn WorkflowStore>) -> (Self, Arc<AtomicUsize>) {
         let opens = Arc::new(AtomicUsize::new(0));
@@ -183,36 +126,6 @@ fn direct_live_submit_paths_fail_closed_without_a_reservation() {
     assert!(
         factory.entries().is_empty(),
         "direct bypasses must not open or launch a live session"
-    );
-}
-
-#[test]
-fn stale_gateway_fence_is_refused_before_reservation_or_session_open() {
-    let store = Arc::new(MemoryWorkflowStore::new());
-    let (factory, checks) = StaleFenceFactory::new();
-    let factory = Arc::new(factory);
-    let service = live_service(
-        Arc::clone(&store) as Arc<dyn WorkflowStore>,
-        Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
-        LiveWorkflowOptions::default(),
-    )
-    .expect("service");
-    let request = request("request-stale-fence", definition(false));
-    let run_id = run_id_for(&request);
-
-    let error = service
-        .submit_run(&actor(), request)
-        .expect_err("stale fence must fail before the live session opens");
-
-    assert_eq!(error.code, "gateway_lease_stale");
-    assert_eq!(checks.load(Ordering::SeqCst), 1);
-    assert!(
-        factory.inner.entries().is_empty(),
-        "a stale gateway fence must prevent every live session effect"
-    );
-    assert!(
-        store.get_run(&run_id).expect("read store").is_none(),
-        "a stale fence must fail before creating a durable live reservation"
     );
 }
 

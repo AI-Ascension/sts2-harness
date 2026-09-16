@@ -7,9 +7,10 @@
 //! into one management session; it deliberately has no game transport.
 
 use serde_json::Value;
+use std::sync::Arc;
 
 use super::super::auth::AuthContext;
-use super::super::contract::{RunRequest, TargetAdmissionBinding, TargetCatalogResponse};
+use super::super::contract::{RunRequest, TargetCatalogResponse};
 use super::super::service::ManagementError;
 use super::session::{LiveWorkflowSession, LiveWorkflowSessionFactory};
 use crate::episode::{
@@ -26,19 +27,10 @@ pub trait LiveTargetCatalogPort: Send + Sync {
 
 /// Opens the existing gateway/MCP runtime composition for one admitted run.
 ///
-/// `revalidate_fence` must read the current gateway lease/generation and
-/// refuse a stale admission before `open_runtime` can allocate, launch MCP,
-/// or dispatch a game-facing operation.
+/// The runtime allocates its lease in `launch`. Its first authoritative MCP
+/// observation is retained by the served session as the generation fence
+/// before the provider can be opened or an action can be dispatched.
 pub trait LiveRuntimeSessionFactory: Send + Sync {
-    fn revalidate_fence(
-        &self,
-        request: &RunRequest,
-        actor: &AuthContext,
-        definition: &WorkflowDefinition,
-        definition_digest: &str,
-        admission: &TargetAdmissionBinding,
-    ) -> Result<(), ManagementError>;
-
     fn open_runtime(
         &self,
         request: &RunRequest,
@@ -64,17 +56,17 @@ pub trait LiveProviderSessionFactory: Send + Sync {
 /// existing gateway/MCP runtime, and the provider session.
 pub struct ProductionLiveWorkflowSessionFactory {
     capabilities: Value,
-    catalog: Box<dyn LiveTargetCatalogPort>,
-    runtime: Box<dyn LiveRuntimeSessionFactory>,
-    provider: Box<dyn LiveProviderSessionFactory>,
+    catalog: Arc<dyn LiveTargetCatalogPort>,
+    runtime: Arc<dyn LiveRuntimeSessionFactory>,
+    provider: Arc<dyn LiveProviderSessionFactory>,
 }
 
 impl ProductionLiveWorkflowSessionFactory {
     pub fn new(
         capabilities: Value,
-        catalog: Box<dyn LiveTargetCatalogPort>,
-        runtime: Box<dyn LiveRuntimeSessionFactory>,
-        provider: Box<dyn LiveProviderSessionFactory>,
+        catalog: Arc<dyn LiveTargetCatalogPort>,
+        runtime: Arc<dyn LiveRuntimeSessionFactory>,
+        provider: Arc<dyn LiveProviderSessionFactory>,
     ) -> Result<Self, ManagementError> {
         super::validation::validate_capability_manifest(&capabilities)?;
         Ok(Self {
@@ -98,18 +90,6 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
         self.catalog.target_catalog(actor)
     }
 
-    fn revalidate_fence(
-        &self,
-        request: &RunRequest,
-        actor: &AuthContext,
-        definition: &WorkflowDefinition,
-        definition_digest: &str,
-        admission: &TargetAdmissionBinding,
-    ) -> Result<(), ManagementError> {
-        self.runtime
-            .revalidate_fence(request, actor, definition, definition_digest, admission)
-    }
-
     fn open(
         &self,
         request: &RunRequest,
@@ -120,29 +100,53 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
         let runtime = self
             .runtime
             .open_runtime(request, actor, definition, definition_digest)?;
-        let provider =
-            self.provider
-                .open_provider(request, actor, definition, definition_digest)?;
         Ok(Box::new(ProductionLiveWorkflowSession {
             runtime,
-            provider,
+            provider: None,
+            provider_factory: Arc::clone(&self.provider),
+            request: request.clone(),
+            actor: actor.clone(),
+            definition: definition.clone(),
+            definition_digest: definition_digest.to_owned(),
+            launch_observation: None,
         }))
     }
 }
 
 struct ProductionLiveWorkflowSession {
     runtime: Box<dyn EpisodeRuntimePort + Send>,
-    provider: Box<dyn DecisionSource + Send>,
+    provider: Option<Box<dyn DecisionSource + Send>>,
+    provider_factory: Arc<dyn LiveProviderSessionFactory>,
+    request: RunRequest,
+    actor: AuthContext,
+    definition: WorkflowDefinition,
+    definition_digest: String,
+    launch_observation: Option<EpisodeObservation>,
 }
 
 impl LiveWorkflowSession for ProductionLiveWorkflowSession {
     fn launch(&mut self) -> Result<(), ManagementError> {
         self.runtime
             .launch()
-            .map_err(runtime_error("live_launch_failed"))
+            .map_err(runtime_error("live_launch_failed"))?;
+        let observation = self
+            .runtime
+            .observe()
+            .map_err(runtime_error("live_launch_fence_failed"))?;
+        self.launch_observation = Some(observation);
+        self.provider = Some(self.provider_factory.open_provider(
+            &self.request,
+            &self.actor,
+            &self.definition,
+            &self.definition_digest,
+        )?);
+        Ok(())
     }
 
     fn observe(&mut self) -> Result<EpisodeObservation, ManagementError> {
+        if let Some(observation) = self.launch_observation.take() {
+            return Ok(observation);
+        }
         self.runtime
             .observe()
             .map_err(runtime_error("live_observe_failed"))
@@ -168,7 +172,8 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
     }
 
     fn decide(&mut self, input: &DecisionInput) -> Result<crate::Decision, ManagementError> {
-        self.provider.decide(input).map_err(provider_error)
+        self.assert_current_observation(&input.observation)?;
+        self.provider_mut()?.decide(input).map_err(provider_error)
     }
 
     fn decide_for(
@@ -177,7 +182,8 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
         decision_profile_ref: &str,
         context_ref: &str,
     ) -> Result<crate::Decision, ManagementError> {
-        self.provider
+        self.assert_current_observation(&input.observation)?;
+        self.provider_mut()?
             .decide_for(input, decision_profile_ref, context_ref)
             .map_err(provider_error)
     }
@@ -187,6 +193,18 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
         identity: &ActionIdentity,
         action: &EpisodeLegalAction,
     ) -> Result<TransitionReceipt, ManagementError> {
+        let observation = self
+            .runtime
+            .observe()
+            .map_err(runtime_error("live_action_fence_failed"))?;
+        if observation.state_id() != identity.state_id
+            || observation.generation() != identity.generation
+        {
+            return Err(ManagementError::conflict(
+                "live_action_generation_stale",
+                "the gateway/MCP observation changed before action dispatch; re-observe is required",
+            ));
+        }
         self.runtime
             .dispatch_action(identity, action)
             .map_err(runtime_error("live_dispatch_failed"))
@@ -221,11 +239,51 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
     }
 
     fn action_completed(&mut self, settled: bool) {
-        self.provider.action_completed(settled);
+        if let Some(provider) = self.provider.as_mut() {
+            provider.action_completed(settled);
+        }
     }
 
     fn model_execution_id(&self) -> Option<crate::ModelExecutionId> {
-        self.provider.model_execution_id()
+        self.provider
+            .as_ref()
+            .and_then(|provider| provider.model_execution_id())
+    }
+}
+
+impl ProductionLiveWorkflowSession {
+    /// The host cannot be atomically locked across a provider request. A
+    /// fresh read therefore fences the provider call, and the runtime repeats
+    /// the read at dispatch while the gateway/MCP action envelope carries its
+    /// authoritative lease and generation fence.
+    fn assert_current_observation(
+        &mut self,
+        expected: &EpisodeObservation,
+    ) -> Result<(), ManagementError> {
+        let current = self
+            .runtime
+            .observe()
+            .map_err(runtime_error("live_provider_fence_failed"))?;
+        if current.state_id() != expected.state_id()
+            || current.generation() != expected.generation()
+        {
+            return Err(ManagementError::conflict(
+                "live_provider_generation_stale",
+                "the gateway/MCP observation changed before provider inference; re-observe is required",
+            ));
+        }
+        Ok(())
+    }
+
+    fn provider_mut(
+        &mut self,
+    ) -> Result<&mut (dyn DecisionSource + Send + 'static), ManagementError> {
+        self.provider.as_deref_mut().ok_or_else(|| {
+            ManagementError::unavailable(
+                "provider_session_not_open",
+                "provider construction must follow the authoritative launch observation",
+            )
+        })
     }
 }
 

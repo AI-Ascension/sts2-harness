@@ -217,21 +217,6 @@ pub trait LiveWorkflowSessionFactory: Send + Sync {
         ))
     }
 
-    /// Rechecks the gateway-owned lease/generation fence immediately before
-    /// this factory is allowed to open a live session. Generic test factories
-    /// retain a no-op compatibility implementation; served production
-    /// factories must override it and query their authoritative runtime port.
-    fn revalidate_fence(
-        &self,
-        _request: &RunRequest,
-        _actor: &AuthContext,
-        _definition: &crate::workflow::WorkflowDefinition,
-        _definition_digest: &str,
-        _admission: &crate::management::TargetAdmissionBinding,
-    ) -> Result<(), ManagementError> {
-        Ok(())
-    }
-
     fn open(
         &self,
         request: &RunRequest,

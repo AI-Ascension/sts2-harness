@@ -247,14 +247,8 @@ impl LiveWorkflowExecutionPort {
             snapshot: snapshot.clone(),
             initial_events: vec![event.clone()],
         };
-        // Fence before even recording a new live reservation. The second
-        // check below closes the reservation-to-launch drift window.
-        self.factory
-            .revalidate_fence(request, actor, &definition, definition_digest, admission)?;
         reserve.reserve(&admission_result)?;
         admission::validate_live_catalog(self.factory.as_ref(), actor, admission)?;
-        self.factory
-            .revalidate_fence(request, actor, &definition, definition_digest, admission)?;
         let mut session = self
             .factory
             .open(request, actor, &definition, definition_digest)?;
