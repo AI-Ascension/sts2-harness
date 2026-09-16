@@ -66,6 +66,7 @@ pub(super) fn write_fixture(root: &Path, malformed: bool) -> Result<(), String> 
 }
 
 #[test]
+#[cfg(unix)]
 fn export_is_deterministic_and_redacts_source_text() -> Result<(), String> {
     let input = root("deterministic-input");
     write_fixture(&input, false)?;
@@ -104,6 +105,7 @@ fn export_is_deterministic_and_redacts_source_text() -> Result<(), String> {
 }
 
 #[test]
+#[cfg(unix)]
 fn malformed_tail_preserves_prefix_in_partial_bundle() -> Result<(), String> {
     let input = root("malformed-input");
     let output = root("malformed.zip");
@@ -128,6 +130,7 @@ fn missing_final_result_refuses_premature_export() -> Result<(), String> {
 }
 
 #[test]
+#[cfg(unix)]
 fn controller_finalizer_runs_only_after_result_is_finalized() -> Result<(), String> {
     let input = root("controller-finalizer-input");
     let premature = root("controller-premature.zip");
@@ -150,6 +153,7 @@ fn controller_finalizer_runs_only_after_result_is_finalized() -> Result<(), Stri
 }
 
 #[test]
+#[cfg(unix)]
 fn synthetic_bundle_passes_pinned_protocol_validator() -> Result<(), String> {
     let Some(validator) = std::env::var_os("STS2_RECORDED_RUN_VALIDATOR") else {
         return Ok(());
@@ -170,4 +174,17 @@ fn synthetic_bundle_passes_pinned_protocol_validator() -> Result<(), String> {
     let _ = fs::remove_dir_all(&input);
     let _ = fs::remove_file(&output);
     Ok(())
+}
+
+#[test]
+#[cfg(not(unix))]
+fn unsupported_snapshot_platform_refuses_without_creating_output() -> Result<(), String> {
+    let input = root("unsupported-input");
+    let output = root("unsupported.zip");
+    write_fixture(&input, false)?;
+    assert!(!output.exists());
+    let error = export_directory(&input, &output).expect_err("unsupported snapshot reader");
+    assert_eq!(error, "source_snapshot_platform_unsupported");
+    assert!(!output.exists());
+    fs::remove_dir_all(input).map_err(|error| error.to_string())
 }

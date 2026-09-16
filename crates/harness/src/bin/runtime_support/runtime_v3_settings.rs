@@ -38,8 +38,9 @@ impl RuntimeV3Settings {
         // Admission inspects the exact bridge executable it is about to launch, so the process
         // configuration is assembled first.
         let admission = runtime_v3_admission::from_environment(
-            process.executable(),
+            &process,
             config.map_context_enabled,
+            &config.instance_id,
         )?;
         let runner = runner_from_environment(config.map_context_enabled)?;
         Ok(Self {

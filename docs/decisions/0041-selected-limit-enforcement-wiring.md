@@ -54,10 +54,9 @@ and the harness maxima are neither raised nor lowered.
   control authority is refused before any provider call or retention, and nothing is clamped or
   silently truncated. Each transition reserves its recorded-event capacity before it mutates state,
   so a refusal at the bound leaves the plan, boundary, receipts and operation ledger unchanged.
-- The saved provider-session policy store with adoption history (ADR 0027) is still
-  library-only: no durable provider-session policy store exists in the harness, so
-  `SessionPolicyMigrationProposal` cannot be wired to a point of use in this slice and remains
-  outstanding for #95, as do the Console/Studio journeys.
+- The authenticated saved-policy owner API and bounded encrypted history are specified in
+  [ADR 0042](0042-provider-session-policy-http-owner.md). Its served live composition and
+  Console/Studio journeys remain separate acceptance work for #95.
 - These entry points have no in-repo route or runtime caller yet: the existing control path
   (`management/workflow_ports.rs`) and the durable control store still build unbounded authorities,
   so wiring them is adoption work tracked by #95 rather than something this slice completes.

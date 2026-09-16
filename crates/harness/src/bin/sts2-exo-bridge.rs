@@ -2,9 +2,8 @@
 
 //! Explicit single-turn Exo process entrypoint. Full episode admission remains separately gated.
 
-#[path = "support/exo_bridge_config.rs"]
 #[cfg(target_os = "linux")]
-mod config;
+use sts2_harness::exo_bridge_configuration as config;
 #[path = "support/exo_bridge_lookup.rs"]
 #[cfg(target_os = "linux")]
 mod lookup;

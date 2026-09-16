@@ -3,14 +3,20 @@
 //! Durable, explicit adoption history for saved provider-session policies.
 
 use super::{
-    NativeCapabilities, ProviderSessionMetadataStore, ProviderSessionMetadataStoreError,
-    ProviderSessionPolicy, SessionPolicyMigrationProposal, SessionPolicyMigrationState,
-    SessionScope,
+    NativeCapabilities, PolicyOwnerLease, ProviderSessionMetadataStore,
+    ProviderSessionMetadataStoreError, ProviderSessionPolicy, SessionPolicyMigrationProposal,
+    SessionPolicyMigrationState, SessionScope,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
+mod commands;
+mod journal;
 mod metadata;
+#[cfg(test)]
+#[path = "policy_owner/tests.rs"]
+mod tests;
+use journal::validate_journal;
 pub use metadata::{
     ProviderSessionPolicyMetadata, ProviderSessionPolicyOwnerMetadata,
     ProviderSessionPolicyProposalMetadata,
@@ -52,6 +58,8 @@ pub enum ProviderSessionPolicyOwnerError {
     Missing,
     Conflict,
     NotAdopted,
+    /// Another live policy owner holds this journal's exclusive lease.
+    Busy,
     Store,
 }
 
@@ -67,18 +75,61 @@ pub struct ProviderSessionPolicyOwner {
     store: ProviderSessionMetadataStore,
     scope: SessionScope,
     capabilities: NativeCapabilities,
+    _lease: PolicyOwnerLease,
     journal: Mutex<Journal>,
 }
 
-#[path = "policy_owner/change.rs"]
-mod change;
-#[path = "policy_owner/owner_impl.rs"]
-mod owner_impl;
+impl ProviderSessionPolicyOwner {
+    /// Opens the single authoritative owner for this durable journal.
+    ///
+    /// The capability descriptor is structurally validated before the journal is loaded. A
+    /// competing live owner returns `Busy`; callers must use the already open owner instance.
+    pub fn open(
+        store: ProviderSessionMetadataStore,
+        scope: SessionScope,
+        capabilities: NativeCapabilities,
+    ) -> Result<Self, ProviderSessionPolicyOwnerError> {
+        if !scope.valid() || store.mode() != super::ProviderSessionMetadataMode::EncryptedPersistent
+        {
+            return Err(ProviderSessionPolicyOwnerError::Invalid);
+        }
+        capabilities
+            .validate()
+            .map_err(|_| ProviderSessionPolicyOwnerError::Invalid)?;
+        let lease = store
+            .acquire_owner_journal_lease()
+            .map_err(|error| match error {
+                ProviderSessionMetadataStoreError::Busy => ProviderSessionPolicyOwnerError::Busy,
+                _ => ProviderSessionPolicyOwnerError::Store,
+            })?;
+        let journal = match store.load_owner_journal() {
+            Ok(bytes) => serde_json::from_slice(&bytes)
+                .map_err(|_| ProviderSessionPolicyOwnerError::Store)?,
+            Err(ProviderSessionMetadataStoreError::NotFound) => Journal {
+                schema: SCHEMA.to_owned(),
+                revision: 1,
+                policies: Vec::new(),
+                proposals: Vec::new(),
+                active_sha256: None,
+            },
+            Err(_) => return Err(ProviderSessionPolicyOwnerError::Store),
+        };
+        lease
+            .verify()
+            .map_err(|_| ProviderSessionPolicyOwnerError::Store)?;
+        validate_journal(&journal, &scope, &capabilities)?;
+        Ok(Self {
+            store,
+            scope,
+            capabilities,
+            _lease: lease,
+            journal: Mutex::new(journal),
+        })
+    }
 
-#[path = "policy_owner/journal.rs"]
-mod journal;
-use journal::{persist_candidate, validate_journal};
-
-#[cfg(test)]
-#[path = "policy_owner/tests.rs"]
-mod tests;
+    pub(super) fn verify_lease(&self) -> Result<(), ProviderSessionPolicyOwnerError> {
+        self._lease
+            .verify()
+            .map_err(|_| ProviderSessionPolicyOwnerError::Store)
+    }
+}

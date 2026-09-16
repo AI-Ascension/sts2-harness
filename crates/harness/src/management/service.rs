@@ -14,14 +14,16 @@ use super::contract::{
     ContextWorkflowIdentity, ContractError, Diagnostic, DiffRequest, DiffResponse, ErrorBody,
     ErrorClass, ErrorResponse, EventPage, ExportRequest, ExportResponse, HealthResponse,
     InspectRequest, InspectResponse, MANAGEMENT_SCHEMA_VERSION, OutputFormat,
-    PROVIDER_SESSION_LIST_SCHEMA_VERSION, ProviderSessionBindingSummary,
-    ProviderSessionListResponse, ProviderSessionListValue, ProviderSessionOperationSummary,
-    REPLAY_SCHEMA_VERSION, RUN_SCHEMA_VERSION, RecoveryAdmission, ReplayDivergence, ReplayRequest,
-    ReplayResponse, RunEvent, RunRequest, RunSnapshot, RunSubmissionResponse,
-    RunTargetConfiguration, STATUS_SCHEMA_VERSION, StatusResponse, TARGET_ADMISSION_SCHEMA_VERSION,
-    TargetAdmissionBinding, TargetAdmissionRequest, TargetAvailability, TargetCatalogResponse,
-    TargetDescriptor, TargetPreflightResponse, ValidateRequest, ValidateResponse,
-    WorkflowRunStatus, digest_value, schema_is, validate_digest, validate_identifier,
+    PROVIDER_SESSION_LIST_SCHEMA_VERSION, PROVIDER_SESSION_POLICY_VIEW_SCHEMA_VERSION,
+    ProviderSessionBindingSummary, ProviderSessionListResponse, ProviderSessionListValue,
+    ProviderSessionOperationSummary, ProviderSessionPolicyCommandResponse,
+    ProviderSessionPolicyViewResponse, REPLAY_SCHEMA_VERSION, RUN_SCHEMA_VERSION,
+    RecoveryAdmission, ReplayDivergence, ReplayRequest, ReplayResponse, RunEvent, RunRequest,
+    RunSnapshot, RunSubmissionResponse, RunTargetConfiguration, STATUS_SCHEMA_VERSION,
+    StatusResponse, TARGET_ADMISSION_SCHEMA_VERSION, TargetAdmissionBinding,
+    TargetAdmissionRequest, TargetAvailability, TargetCatalogResponse, TargetDescriptor,
+    TargetPreflightResponse, ValidateRequest, ValidateResponse, WorkflowRunStatus, digest_value,
+    schema_is, validate_digest, validate_identifier,
 };
 use super::store::{
     CommandAcceptance, CommandApplication as StoredCommandApplication, FileWorkflowStore,
@@ -30,6 +32,8 @@ use super::store::{
 
 #[path = "service_authoring.rs"]
 mod authoring_ops;
+#[path = "service_constructors.rs"]
+mod constructors;
 #[path = "service_context_history.rs"]
 mod context_history;
 #[path = "service_context_owner.rs"]
@@ -42,6 +46,8 @@ mod lifecycle_ops;
 mod live_provider_policy;
 #[path = "service_ops.rs"]
 mod ops;
+#[path = "service_provider_policy.rs"]
+mod provider_policy_ops;
 #[path = "service_provider_session.rs"]
 mod provider_session_support;
 #[path = "service_read.rs"]
@@ -55,7 +61,9 @@ mod target_admission;
 #[path = "service_unavailable.rs"]
 mod unavailable;
 
-pub use live_provider_policy::UnavailableLiveProviderPolicyPort;
+pub use live_provider_policy::{
+    LiveProviderPolicyPort, ProviderSessionPolicyBinding, UnavailableLiveProviderPolicyPort,
+};
 pub use provider_session_support::UnavailableProviderSessionInspectionPort;
 pub use unavailable::{
     UnavailableAuthoringStore, UnavailableCapabilityPort, UnavailableContextInspectionPort,
@@ -217,8 +225,6 @@ pub struct ProviderSessionInspectionResult {
     pub next_cursor: Option<String>,
 }
 
-pub use live_provider_policy::{LiveProviderPolicyPort, ProviderSessionPolicyBinding};
-
 pub struct ManagementService {
     store: Arc<dyn WorkflowStore>,
     authoring: Arc<dyn AuthoringStore>,
@@ -230,6 +236,7 @@ pub struct ManagementService {
     context_owner: Arc<dyn ContextOwnerPort>,
     context_binding_history: bool,
     provider_session_inspection: Arc<dyn ProviderSessionInspectionPort>,
+    provider_session_policy: Arc<dyn super::provider_policy::ProviderSessionPolicyCommandPort>,
     live_provider_policy: Arc<dyn LiveProviderPolicyPort>,
 }
 
@@ -248,27 +255,11 @@ impl ManagementService {
             provider_session_inspection: Arc::new(
                 provider_session_support::UnavailableProviderSessionInspectionPort,
             ),
+            provider_session_policy: Arc::new(
+                super::provider_policy::UnavailableProviderSessionPolicyCommandPort,
+            ),
             live_provider_policy: Arc::new(live_provider_policy::UnavailableLiveProviderPolicyPort),
         }
-    }
-
-    pub fn in_memory() -> Self {
-        Self::new(Arc::new(MemoryWorkflowStore::new()))
-            .with_authoring_store(Arc::new(MemoryAuthoringStore::new()))
-    }
-
-    pub fn file_store(store: FileWorkflowStore) -> Self {
-        Self::new(Arc::new(store))
-    }
-
-    pub fn with_definition_port(mut self, port: Arc<dyn DefinitionPort>) -> Self {
-        self.definitions = port;
-        self
-    }
-
-    pub fn with_authoring_store(mut self, store: Arc<dyn AuthoringStore>) -> Self {
-        self.authoring = store;
-        self
     }
 
     pub fn with_execution_port(mut self, port: Arc<dyn WorkflowExecutionPort>) -> Self {
@@ -284,22 +275,5 @@ impl ManagementService {
     pub fn with_capability_port(mut self, port: Arc<dyn CapabilityPort>) -> Self {
         self.capabilities = port;
         self
-    }
-
-    pub fn with_provider_session_inspection_port(
-        mut self,
-        port: Arc<dyn ProviderSessionInspectionPort>,
-    ) -> Self {
-        self.provider_session_inspection = port;
-        self
-    }
-
-    pub fn with_live_provider_policy_port(mut self, port: Arc<dyn LiveProviderPolicyPort>) -> Self {
-        self.live_provider_policy = port;
-        self
-    }
-
-    pub fn live_provider_policy_port(&self) -> &dyn LiveProviderPolicyPort {
-        self.live_provider_policy.as_ref()
     }
 }

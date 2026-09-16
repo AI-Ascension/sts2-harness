@@ -21,6 +21,57 @@ use std::collections::BTreeMap;
 /// HTTP-visible schema for the composed effective-limits projection.
 pub const CONTEXT_OWNER_EFFECTIVE_LIMITS_VIEW_SCHEMA: &str =
     "ascension.harness.context-owner-effective-limits-view.v1";
+/// Schema for the bounded control limit preflight used before a workflow has a
+/// runtime-allocated invocation identity.
+pub const CONTEXT_OWNER_CONTROL_LIMITS_SCHEMA: &str =
+    "ascension.harness.context-owner-control-limits.v1";
+
+/// Owner-published control bound admitted for a workflow definition before it
+/// has a current invocation binding.
+///
+/// This deliberately is not a [`ContextOwnerBinding`]. A binding must name the
+/// runtime-allocated run, graph, node and node-execution identities, none of
+/// which exists during submission. Callers must re-resolve and compose the
+/// current binding before an effect or restart recovery; this value only
+/// constrains creation of the initial control authority.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ContextOwnerControlLimits {
+    pub schema_version: String,
+    pub owner_id: String,
+    pub owner_version: String,
+    pub catalog_digest: String,
+    pub max_control_events: u64,
+}
+
+impl ContextOwnerControlLimits {
+    /// Selects the narrowest control-event bound among every context-bound
+    /// node in a definition. A workflow can transition to any admitted node,
+    /// so using the minimum prevents a later descriptor from silently
+    /// widening a journal that was started before its invocation existed.
+    pub fn from_descriptors(
+        catalog: &ContextBindingCatalog,
+        descriptors: &[&ContextBindingDescriptor],
+    ) -> Result<Self, ManagementError> {
+        catalog.validate()?;
+        let max_control_events = descriptors
+            .iter()
+            .map(|descriptor| descriptor.effective_limits.max_control_events)
+            .min()
+            .ok_or_else(|| {
+                ManagementError::capability(
+                    "context_binding_unsupported",
+                    "workflow has no context-bound descriptor for control preflight",
+                )
+            })?;
+        Ok(Self {
+            schema_version: CONTEXT_OWNER_CONTROL_LIMITS_SCHEMA.to_owned(),
+            owner_id: catalog.owner_id.clone(),
+            owner_version: catalog.owner_version.clone(),
+            catalog_digest: catalog.catalog_digest.clone(),
+            max_control_events,
+        })
+    }
+}
 
 /// Bounded, versioned projection of the effective limits the authoritative
 /// owner currently admits for one workflow run.

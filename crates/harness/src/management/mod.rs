@@ -12,6 +12,7 @@ mod contract;
 mod contract_authoring;
 mod http;
 mod live_workflow;
+mod provider_policy;
 mod provider_session_inspection;
 mod service;
 mod store;
@@ -50,16 +51,22 @@ pub use contract::{
     InspectRequest, InspectResponse, MANAGEMENT_SCHEMA_VERSION, MAX_CONNECTIONS,
     MAX_EVENTS_PER_PAGE, MAX_HEADER_BYTES, MAX_IDENTIFIER_BYTES, MAX_JSON_BYTES, MAX_JSON_DEPTH,
     MAX_JSON_ITEMS, MAX_PATH_BYTES, MAX_RESPONSE_BYTES, MAX_STORE_BYTES, MAX_STRING_BYTES,
-    OutputFormat, PROVIDER_SESSION_LIST_SCHEMA_VERSION, PendingOperation, PendingOperationState,
-    PersistedCommand, PersistedRun, PersistedStore, ProviderSessionBindingSummary,
-    ProviderSessionListResponse, ProviderSessionListValue, ProviderSessionOperationSummary,
-    REPLAY_SCHEMA_VERSION, REQUEST_DEADLINE_MILLIS, RUN_SCHEMA_VERSION, RecoveryAdmission,
-    ReplayDivergence, ReplayResponse, RunEvent, RunRequest, RunSnapshot, RunSubmissionResponse,
-    RunTargetConfiguration, STATUS_SCHEMA_VERSION, StatusResponse, SubmissionIndex,
-    TARGET_ADMISSION_SCHEMA_VERSION, TARGET_CATALOG_SCHEMA_VERSION, TargetAdmissionBinding,
-    TargetAdmissionRequest, TargetAvailability, TargetCatalogResponse, TargetDescriptor,
-    TargetPreflightResponse, ValidateRequest, ValidateResponse, WorkflowRunStatus, decode_strict,
-    decode_value, digest_value, validate_digest, validate_identifier,
+    OutputFormat, PROVIDER_SESSION_LIST_SCHEMA_VERSION,
+    PROVIDER_SESSION_POLICY_COMMAND_SCHEMA_VERSION, PROVIDER_SESSION_POLICY_VIEW_SCHEMA_VERSION,
+    PendingOperation, PendingOperationState, PersistedCommand, PersistedRun, PersistedStore,
+    ProviderSessionBindingSummary, ProviderSessionListResponse, ProviderSessionListValue,
+    ProviderSessionOperationSummary, ProviderSessionPolicyAdoptImportedRequest,
+    ProviderSessionPolicyApprovalRequest, ProviderSessionPolicyBindingMetadata,
+    ProviderSessionPolicyCommandResponse, ProviderSessionPolicyHistoryMetadata,
+    ProviderSessionPolicyProposalMetadata, ProviderSessionPolicyViewResponse,
+    ProviderSessionPolicyViewValue, REPLAY_SCHEMA_VERSION, REQUEST_DEADLINE_MILLIS,
+    RUN_SCHEMA_VERSION, RecoveryAdmission, ReplayDivergence, ReplayResponse, RunEvent, RunRequest,
+    RunSnapshot, RunSubmissionResponse, RunTargetConfiguration, STATUS_SCHEMA_VERSION,
+    StatusResponse, SubmissionIndex, TARGET_ADMISSION_SCHEMA_VERSION,
+    TARGET_CATALOG_SCHEMA_VERSION, TargetAdmissionBinding, TargetAdmissionRequest,
+    TargetAvailability, TargetCatalogResponse, TargetDescriptor, TargetPreflightResponse,
+    ValidateRequest, ValidateResponse, WorkflowRunStatus, decode_strict, decode_value,
+    digest_value, validate_digest, validate_identifier,
 };
 pub use contract_authoring::{
     STUDIO_SCHEMA_VERSION, StudioCreateDraftRequest, StudioDefinitionRecord,
@@ -76,6 +83,11 @@ pub use live_workflow::{
     LiveTargetCatalogPort, LiveWorkflowExecutionPort, LiveWorkflowFactory, LiveWorkflowOptions,
     LiveWorkflowSession, LiveWorkflowSessionFactory, ProductionLiveWorkflowSessionFactory,
     RuntimeAuthorityBinding, live_run_id, live_store, live_store_with_provider_policy,
+};
+pub use provider_policy::{
+    DurableProviderSessionPolicyCommandPort, ProviderSessionPolicyCommandPort,
+    ProviderSessionPolicyOwnerCommand, ProviderSessionPolicyOwnerCommandResult,
+    UnavailableProviderSessionPolicyCommandPort,
 };
 pub use provider_session_inspection::{
     ProviderSessionBrokerInspectionPort, ProviderSessionPolicyOwnerPort,

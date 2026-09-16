@@ -198,7 +198,13 @@ impl ManagementService {
     ) -> Result<PreparedContext, ManagementError> {
         validate_identifier("run_id", run_id)?;
         authorize(actor, "workflow:control", Some(run_id))?;
-        let view = self.composed_context_limits(actor, run_id)?;
+        let (view, binding) = self.current_context_composition(actor, run_id)?;
+        if boundary != &binding.boundary {
+            return Err(ManagementError::conflict(
+                "context_render_boundary_mismatch",
+                "render boundary is not the current authoritative owner boundary",
+            ));
+        }
         view.prepare_managed_render(boundary, request, draft, registry, config, now)
             .map_err(context_render_error)
     }
@@ -221,7 +227,13 @@ impl ManagementService {
     ) -> Result<ControlAuthority, ManagementError> {
         validate_identifier("run_id", run_id)?;
         authorize(actor, "workflow:control", Some(run_id))?;
-        let view = self.composed_context_limits(actor, run_id)?;
+        let (view, binding) = self.current_context_composition(actor, run_id)?;
+        if authority.state().boundary != binding.boundary {
+            return Err(ManagementError::conflict(
+                "context_control_boundary_mismatch",
+                "control authority boundary is not the current authoritative owner boundary",
+            ));
+        }
         view.bind_control_authority(authority)
     }
 
@@ -235,6 +247,19 @@ impl ManagementService {
         actor: &AuthContext,
         run_id: &str,
     ) -> Result<ContextOwnerEffectiveLimitsView, ManagementError> {
+        self.current_context_composition(actor, run_id)
+            .map(|(view, _)| view)
+    }
+
+    /// Resolves both halves of the current owner composition. Callers which
+    /// execute a render or control transition must retain the binding so they
+    /// can prove their supplied boundary is the same boundary the owner
+    /// currently attached to this run.
+    fn current_context_composition(
+        &self,
+        actor: &AuthContext,
+        run_id: &str,
+    ) -> Result<(ContextOwnerEffectiveLimitsView, ContextOwnerBinding), ManagementError> {
         if !self.context_owner.is_available() {
             return Err(ManagementError::unavailable(
                 "context_owner_unavailable",
@@ -247,7 +272,8 @@ impl ManagementService {
         let binding = self.current_context_binding(actor, &snapshot)?;
         let catalog = self.context_owner.catalog(actor)?;
         catalog.validate()?;
-        ContextOwnerEffectiveLimitsView::compose(&catalog, &binding)
+        let view = ContextOwnerEffectiveLimitsView::compose(&catalog, &binding)?;
+        Ok((view, binding))
     }
 }
 

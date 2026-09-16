@@ -305,22 +305,55 @@ fn an_absent_or_empty_package_locator_fails_before_gateway_mcp_or_provider_calls
     Ok(())
 }
 
-/// With the package axis located and matching, the envelope still refuses, but only for the axes
-/// this seam cannot inspect — proving the package binding itself no longer fails and that an
-/// unbound axis is still refused rather than admitted.
+/// Matching package bytes alone cannot authorize an uninspected bridge configuration.
 #[test]
-fn a_matching_package_binding_still_refuses_the_next_unbound_axis() -> Result<(), String> {
+fn a_matching_package_binding_requires_the_actual_launch_configuration() -> Result<(), String> {
     let fixture = Fixture::new()?;
-    let output = run_child(fixture.command_with_matching_package_identity())?;
+    let mut command = fixture.command_with_matching_package_identity();
+    let bridge_bytes = fs::read(&fixture.bridge).map_err(|error| error.to_string())?;
+    command.env(
+        "STS2_EXO_BRIDGE_DIGEST",
+        sts2_harness::sha256_hex(bridge_bytes),
+    );
+    let output = run_child(command)?;
     assert_failure_contains(
         &output,
-        "the inspected Exo deployment did not bind the pinned extension_digest identity",
+        "Exo envelope requires --run, absolute configuration path and digest",
     )?;
     fixture.assert_no_gateway_connection()?;
     if fixture.counter.exists() {
         return Err(String::from(
-            "an unbound axis invoked an MCP or provider boundary",
+            "an uninspected configuration invoked an MCP or provider boundary",
         ));
+    }
+    Ok(())
+}
+
+#[test]
+fn relative_bridge_cannot_change_identity_through_working_directory() -> Result<(), String> {
+    let fixture = Fixture::new()?;
+    let workdir = fixture.root.join("different-launch-directory");
+    fs::create_dir(&workdir).map_err(|error| error.to_string())?;
+    write_probe(
+        &workdir.join("provider-probe.sh"),
+        "different-provider",
+        &fixture.counter,
+    )?;
+    let inspected = fs::read(&fixture.bridge).map_err(|error| error.to_string())?;
+    let mut command = fixture.command_with_matching_package_identity();
+    command
+        .current_dir(&fixture.root)
+        .env("STS2_EXO_BRIDGE_BINARY", "./provider-probe.sh")
+        .env("STS2_EXO_BRIDGE_WORKDIR", &workdir)
+        .env("STS2_EXO_BRIDGE_DIGEST", digest_bytes(&inspected));
+    let output = run_child(command)?;
+    assert_failure_contains(
+        &output,
+        "Exo envelope requires an absolute bridge executable path",
+    )?;
+    fixture.assert_no_gateway_connection()?;
+    if fixture.counter.exists() || fixture.store.exists() {
+        return Err("relative bridge refusal reached a durable or process boundary".to_owned());
     }
     Ok(())
 }
