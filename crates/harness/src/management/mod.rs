@@ -75,7 +75,9 @@ pub use live_workflow::{
     LiveWorkflowExecutionPort, LiveWorkflowFactory, LiveWorkflowOptions, LiveWorkflowSession,
     LiveWorkflowSessionFactory, live_store,
 };
-pub use provider_session_inspection::ProviderSessionBrokerInspectionPort;
+pub use provider_session_inspection::{
+    ProviderSessionBrokerInspectionPort, ProviderSessionPolicyOwnerPort,
+};
 pub use service::{
     CapabilityPort, CommandApplication, CommandContext, ContextInspectionPort,
     ContextInspectionResult, DefinitionPort, DiffResult, InspectionResult, LiveProviderPolicyPort,
