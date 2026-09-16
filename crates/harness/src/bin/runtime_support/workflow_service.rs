@@ -50,7 +50,7 @@ fn factory(
     provider_capabilities: NativeCapabilities,
 ) -> Result<Arc<dyn LiveWorkflowSessionFactory>, String> {
     Ok(Arc::new(ProductionLiveWorkflowSessionFactory::new(
-        json!({"schema_version":"ascension.capabilities/v1","capabilities":["workflow.live","workflow.node.observe.v1","workflow.node.decide.v1","workflow.node.execute_action.v1","workflow.node.terminal.v1","workflow.execution.fence.mcp-observation.v1"]}),
+        json!({"schema_version":"ascension.capabilities/v1","capabilities":["workflow.live","workflow.node.observe.v1","workflow.node.decide.v1","workflow.node.execute_action.v1","workflow.node.terminal.v1","workflow.execution.fence.mcp-observation.v1","observe.fair-play.v1","actions.catalog.v1","actions.settlement.v1","workflow.projection.fair-play.live.v1","workflow.provider.decision.live.v1","workflow.context.context.live.v1"]}),
         Arc::new(Catalog),
         Arc::new(Runtime),
         Arc::new(Provider),
@@ -184,6 +184,12 @@ impl LiveTargetCatalogPort for Catalog {
                 capabilities: vec![
                     "workflow.live".to_owned(),
                     "workflow.execution.fence.mcp-observation.v1".to_owned(),
+                    "observe.fair-play.v1".to_owned(),
+                    "actions.catalog.v1".to_owned(),
+                    "actions.settlement.v1".to_owned(),
+                    "workflow.projection.fair-play.live.v1".to_owned(),
+                    "workflow.provider.decision.live.v1".to_owned(),
+                    "workflow.context.context.live.v1".to_owned(),
                 ],
                 game_profiles: vec!["sts2-live-v1".to_owned()],
                 save_profiles: Vec::new(),

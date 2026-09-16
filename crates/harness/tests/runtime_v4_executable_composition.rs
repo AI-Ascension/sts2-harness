@@ -10,7 +10,7 @@ mod process;
 use fixture::FixtureMode;
 use process::{
     TempDir, assert_foreign_state_rejected, assert_malformed_envelope_rejected, assert_success,
-    executable, run_scenario, write_evidence,
+    executable, run_scenario, run_served_policy_gate, write_evidence,
 };
 
 #[test]
@@ -42,4 +42,14 @@ fn executable_runtime_v4_composes_unknown_reconcile_and_foreign_state_fence()
     )?;
     assert_malformed_envelope_rejected(&malformed)?;
     write_evidence(&success, &foreign, &operation)
+}
+
+#[test]
+#[ignore = "operator-only test; requires explicitly built gateway, MCP, and harness binaries"]
+fn served_workflow_reaches_runtime_peers_before_unadopted_provider_is_refused()
+-> Result<(), Box<dyn std::error::Error>> {
+    let gateway = executable("STS2_GATEWAY_BINARY")?;
+    let mcp = executable("STS2_MCP_BINARY")?;
+    let harness = executable("STS2_HARNESS_RUNTIME_BINARY")?;
+    run_served_policy_gate(&gateway, &mcp, &harness)
 }

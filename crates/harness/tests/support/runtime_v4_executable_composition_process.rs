@@ -3,6 +3,7 @@
 use std::fs;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -10,6 +11,15 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use sts2_harness::management::{
+    CommandKind, CommandRequest, ManagementClient, RunRequest, RunTargetConfiguration,
+    TARGET_ADMISSION_SCHEMA_VERSION, TARGET_CATALOG_SCHEMA_VERSION, TargetAdmissionRequest,
+    TargetCatalogResponse, TargetPreflightResponse, digest_value,
+};
+use sts2_harness::provider_session::{
+    NativeCapabilities, ProviderSessionMetadataStore, ProviderSessionPolicy,
+    ProviderSessionPolicyOwner, SessionScope,
+};
 
 use super::fixture::{
     ACTION_ID, CALLER_ID, DownstreamLedger, FixtureMode, INSTANCE_ID, LEASE_EPOCH, LEASE_ID,
@@ -35,6 +45,7 @@ impl TempDir {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir(&path)?;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
         Ok(Self { path })
     }
 
@@ -203,6 +214,308 @@ pub(crate) fn run_scenario(
         gateway: gateway_output,
         ledger: mod_server.finish(),
     })
+}
+
+/// Starts the actual `serve-workflow` binary against the pinned gateway/MCP
+/// processes. The provider-policy store is deliberately seeded with an
+/// adopted policy for a different request, proving that runtime allocation and
+/// first MCP observation precede the scoped provider-policy refusal.
+pub(crate) fn run_served_policy_gate(
+    gateway_binary: &Path,
+    mcp_binary: &Path,
+    harness_binary: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temporary = TempDir::new()?;
+    let bridge = temporary.bridge()?;
+    let mod_server = ModServer::new(FixtureMode::Success)?;
+    let gateway_address = free_address()?;
+    let workflow_address = free_address()?;
+    let policy_store = temporary.path.join("served-provider-policy.sqlite3");
+    let execution_store = temporary.path.join("served-execution.sqlite3");
+    seed_other_request_policy(&policy_store)?;
+    let mut gateway = gateway(gateway_binary, gateway_address, mod_server.address)?;
+    let result = (|| {
+        ready(&mut gateway, gateway_address)?;
+        let mut command = Command::new(harness_binary);
+        command
+            .arg("serve-workflow")
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("STS2_WORKFLOW_LISTEN", workflow_address.to_string())
+            .env(
+                "STS2_WORKFLOW_STORE",
+                temporary.path.join("workflow.sqlite3"),
+            )
+            .env("STS2_WORKFLOW_AUTH_PROFILE", "served")
+            .env("STS2_WORKFLOW_TOKEN_SERVED", "served-workflow-token")
+            .env(
+                "STS2_WORKFLOW_PROVIDER_POLICY_CONFIG",
+                policy_config(&policy_store)?,
+            )
+            .env(
+                "STS2_SERVED_PROVIDER_POLICY_KEY",
+                "1111111111111111111111111111111111111111111111111111111111111111",
+            )
+            .env("STS2_EXECUTION_STORE_PATH", execution_store)
+            .env("STS2_GATEWAY_ADDR", gateway_address.to_string())
+            .env("STS2_GATEWAY_TOKEN", "gateway-token")
+            .env("STS2_MCP_BINARY", mcp_binary)
+            .env("STS2_RUNTIME_PROFILE", "runtime-v4-expert")
+            .env("STS2_INSTANCE_ID", INSTANCE_ID)
+            .env("STS2_CALLER_ID", CALLER_ID)
+            .env("STS2_SESSION_ID", SESSION_ID)
+            .env("STS2_MCP_SESSION_ID", MCP_SESSION_ID)
+            .env("STS2_LEASE_ID", LEASE_ID)
+            .env("STS2_LEASE_EPOCH", LEASE_EPOCH.to_string())
+            .env("STS2_RUN_ID", "run-served-policy-gate")
+            .env("STS2_EPISODE_ID", "episode-served-policy-gate")
+            .env("STS2_TRAJECTORY_ID", "trajectory-served-policy-gate")
+            .env("STS2_TRACE_ID", "trace-served-policy-gate")
+            .env("STS2_ARTIFACT_ID", "artifact-served-policy-gate")
+            .env("STS2_EXO_REVISION", REVIEWED_EXO_REVISION)
+            // The bridge is a test-only raw-wire provider and is intentionally
+            // not a reviewed or paid/native provider.
+            .env("STS2_EXO_ADMISSION", "legacy")
+            .env("STS2_EXO_BRIDGE_BINARY", bridge)
+            .env("STS2_EXO_TIMEOUT_MILLIS", "2000")
+            .env("STS2_EXO_MAX_REQUEST_BYTES", "131072")
+            .env("STS2_EXO_MAX_RESPONSE_BYTES", "8192")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut service = command.spawn()?;
+        let client = wait_for_workflow_service(&mut service, workflow_address)?;
+        submit_and_step_policy_gate(&client)?;
+        stop(service)
+    })();
+    let gateway_output = stop(gateway)?;
+    let ledger = mod_server.finish();
+    let service_output = result?;
+    if service_output.status.code() != Some(0)
+        && !service_output
+            .status
+            .signal()
+            .is_some_and(|signal| signal == 9)
+    {
+        return Err(format!(
+            "served workflow failed: {}",
+            String::from_utf8_lossy(&service_output.stderr)
+        )
+        .into());
+    }
+    if gateway_output.status.code() != Some(0) && !gateway_output.status.signal().is_some() {
+        return Err(format!("gateway cleanup failed: {}", gateway_output.status).into());
+    }
+    if !ledger.errors.is_empty() {
+        return Err(format!("served fixture failed: {:?}", ledger.errors).into());
+    }
+    if !ledger
+        .requests
+        .iter()
+        .any(|request| request.path == "/api/v4/runtime/expert-state")
+    {
+        return Err("served workflow did not reach the authoritative MCP observation".into());
+    }
+    if ledger
+        .requests
+        .iter()
+        .any(|request| request.path == "/api/v4/runtime/expert-action")
+    {
+        return Err("unadopted provider policy reached an action".into());
+    }
+    Ok(())
+}
+
+fn policy_config(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let capabilities = NativeCapabilities::fixture();
+    Ok(serde_json::to_string(&json!({
+        "schema_version": "ascension.workflow-provider-policy-config.v1",
+        "store_path": path,
+        "key_reference": "STS2_SERVED_PROVIDER_POLICY_KEY",
+        "scope": policy_scope("other-request")?,
+        "capabilities": capabilities,
+        "selected_profile": "codex-app-server-fixture-v1"
+    }))?)
+}
+
+fn policy_scope(request_id: &str) -> Result<SessionScope, Box<dyn std::error::Error>> {
+    SessionScope::new(
+        "served-policy-project",
+        request_id,
+        "served-policy-episode",
+        "served-policy-agent",
+    )
+    .map_err(|error| format!("fixture provider-policy scope is invalid: {error}").into())
+}
+
+fn seed_other_request_policy(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let scope = policy_scope("other-request")?;
+    let mut capabilities = NativeCapabilities::fixture();
+    capabilities.effective_limits.max_completed_turns = 1;
+    capabilities.binding.descriptor_sha256 = capabilities.descriptor_digest();
+    let store = ProviderSessionMetadataStore::encrypted(path, [0x11; 32], scope.clone())
+        .map_err(|error| format!("create provider-policy store: {error}"))?;
+    let owner = ProviderSessionPolicyOwner::open(store, scope.clone(), capabilities.clone())
+        .map_err(|error| format!("open provider-policy owner: {error}"))?;
+    let mut source = ProviderSessionPolicy::disabled(scope.clone());
+    source.profile_sha256 = capabilities.profile_sha256.clone();
+    source.max_completed_turns = 2;
+    let source = serde_json::to_vec(&source)?;
+    let source_sha256 = owner
+        .import(source)
+        .map_err(|error| format!("import provider policy: {error}"))?;
+    let mut target = ProviderSessionPolicy::disabled(scope);
+    target.profile_sha256 = capabilities.profile_sha256.clone();
+    target.version = 2;
+    target.epoch = 2;
+    let digest = owner
+        .propose(
+            "served-policy-proposal",
+            &source_sha256,
+            serde_json::to_vec(&target)?,
+            2,
+        )
+        .map_err(|error| format!("propose provider policy: {error}"))?;
+    owner
+        .approve("served-policy-proposal", &digest, "served-policy-approval")
+        .map_err(|error| format!("approve provider policy: {error}"))?;
+    owner
+        .adopt(
+            "served-policy-proposal",
+            &digest,
+            "served-policy-approval",
+            4,
+        )
+        .map_err(|error| format!("adopt provider policy: {error}"))?;
+    Ok(())
+}
+
+fn wait_for_workflow_service(
+    service: &mut Child,
+    address: SocketAddr,
+) -> Result<ManagementClient, Box<dyn std::error::Error>> {
+    let client = ManagementClient::new(address, "served-workflow-token")?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(status) = service.try_wait()? {
+            return Err(format!("served workflow exited: {status}").into());
+        }
+        if client.request_json("GET", "/v1/health", None).is_ok() {
+            return Ok(client);
+        }
+        if Instant::now() >= deadline {
+            return Err("served workflow readiness deadline exceeded".into());
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn submit_and_step_policy_gate(
+    client: &ManagementClient,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut definition: Value = serde_json::from_slice(include_bytes!(
+        "../../../../conformance/workflow-v1/valid-strict.json"
+    ))?;
+    definition["annotations"]["synthetic"] = json!(false);
+    definition["game_profile"] = json!("sts2-live-v1");
+    definition["policy_ref"] = json!("policy.live.v1");
+    definition["graphs"][0]["nodes"][0]["config"]["projection_ref"] = json!("fair-play.live.v1");
+    definition["graphs"][0]["nodes"][1]["config"]["decision_profile_ref"] =
+        json!("decision.live.v1");
+    definition["graphs"][0]["nodes"][1]["config"]["context_ref"] = json!("context.live.v1");
+    definition["capabilities"]["required"][0] = json!("observe.fair-play.v1");
+    let request_id = "served-policy-gate";
+    let digest = digest_value(&definition)?;
+    let catalog = response::<TargetCatalogResponse>(client.request_json(
+        "GET",
+        "/v1/workflow-targets",
+        None,
+    )?)?;
+    if catalog.schema_version != TARGET_CATALOG_SCHEMA_VERSION {
+        return Err("served workflow returned an invalid target catalog".into());
+    }
+    let target = catalog
+        .targets
+        .into_iter()
+        .next()
+        .ok_or("served target is absent")?;
+    let admission_request = TargetAdmissionRequest {
+        schema_version: TARGET_ADMISSION_SCHEMA_VERSION.to_owned(),
+        request_id: request_id.to_owned(),
+        workflow_definition_digest: digest,
+        target: RunTargetConfiguration {
+            instance_id: target.instance_id,
+            execution_profile: "live.workflow.v1".to_owned(),
+            execution_mode: sts2_harness::management::ExecutionMode::Live,
+            workflow_revision: "0.1.0".to_owned(),
+            compatibility_revision: target.compatibility_revision,
+            capability_revision: target.capability_revision,
+            game_profile: "sts2-live-v1".to_owned(),
+            save_profile: None,
+            inference_profile: None,
+            context_capability: None,
+            provider_capability: None,
+        },
+    };
+    let preflight = response::<TargetPreflightResponse>(client.request_json(
+        "POST",
+        "/v1/workflow-targets/preflight",
+        Some(&serde_json::to_vec(&admission_request)?),
+    )?)?;
+    let run = RunRequest {
+        schema_version: sts2_harness::management::MANAGEMENT_SCHEMA_VERSION.to_owned(),
+        request_id: request_id.to_owned(),
+        definition: Some(definition),
+        artifact_id: None,
+        instance_id: INSTANCE_ID.to_owned(),
+        profile: "live.workflow.v1".to_owned(),
+        admission: Some(preflight.admission),
+    };
+    let submitted: Value = response(client.request_json(
+        "POST",
+        "/v1/workflow-runs",
+        Some(&serde_json::to_vec(&run)?),
+    )?)?;
+    let run_id = submitted["workflow_run_id"]
+        .as_str()
+        .ok_or("served run ID is absent")?;
+    let command = CommandRequest {
+        schema_version: sts2_harness::management::MANAGEMENT_SCHEMA_VERSION.to_owned(),
+        command_id: "served-policy-step".to_owned(),
+        run_id: run_id.to_owned(),
+        expected_revision: 1,
+        actor_scope: "served".to_owned(),
+        kind: CommandKind::Step,
+        parameters: Default::default(),
+    };
+    let reply = client.request_json(
+        "POST",
+        &format!("/v1/workflow-runs/{run_id}/commands"),
+        Some(&serde_json::to_vec(&command)?),
+    )?;
+    if reply.status != 409
+        || !String::from_utf8_lossy(&reply.body).contains("provider_session_policy_scope_mismatch")
+    {
+        return Err(format!(
+            "served policy gate did not refuse at launch: {}",
+            String::from_utf8_lossy(&reply.body)
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn response<T: serde::de::DeserializeOwned>(
+    response: sts2_harness::management::ClientResponse,
+) -> Result<T, Box<dyn std::error::Error>> {
+    if response.status != 200 {
+        return Err(format!(
+            "unexpected HTTP {}: {}",
+            response.status,
+            String::from_utf8_lossy(&response.body)
+        )
+        .into());
+    }
+    Ok(serde_json::from_slice(&response.body)?)
 }
 
 fn paths(ledger: &DownstreamLedger) -> Vec<String> {

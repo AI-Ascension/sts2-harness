@@ -53,6 +53,21 @@ pub trait LiveProviderSessionFactory: Send + Sync {
     ) -> Result<Box<dyn DecisionSource + Send>, ManagementError>;
 }
 
+/// Receives the authoritative MCP observation used by the served context
+/// owner. It is intentionally observation-only: context control and recovery
+/// remain unavailable until their owning runtime delegation exists.
+pub trait LiveContextObservationPort: Send + Sync {
+    fn record_observation(
+        &self,
+        actor: &AuthContext,
+        request: &RunRequest,
+        definition_digest: &str,
+        observation: &EpisodeObservation,
+    ) -> Result<(), ManagementError>;
+
+    fn invalidate(&self, actor: &AuthContext, request: &RunRequest);
+}
+
 /// Concrete served factory joining authoritative target discovery, the
 /// existing gateway/MCP runtime, and the provider session.
 pub struct ProductionLiveWorkflowSessionFactory {
@@ -62,6 +77,7 @@ pub struct ProductionLiveWorkflowSessionFactory {
     provider: Arc<dyn LiveProviderSessionFactory>,
     provider_policy: Arc<dyn LiveProviderPolicyPort>,
     provider_capabilities: NativeCapabilities,
+    context_observations: Option<Arc<dyn LiveContextObservationPort>>,
 }
 
 impl ProductionLiveWorkflowSessionFactory {
@@ -87,7 +103,16 @@ impl ProductionLiveWorkflowSessionFactory {
             provider,
             provider_policy,
             provider_capabilities,
+            context_observations: None,
         })
+    }
+
+    pub fn with_context_observations(
+        mut self,
+        observations: Arc<dyn LiveContextObservationPort>,
+    ) -> Self {
+        self.context_observations = Some(observations);
+        self
     }
 }
 
@@ -124,6 +149,7 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
             launch_observation: None,
             provider_policy: Arc::clone(&self.provider_policy),
             provider_capabilities: self.provider_capabilities.clone(),
+            context_observations: self.context_observations.clone(),
         }))
     }
 }
@@ -139,6 +165,7 @@ struct ProductionLiveWorkflowSession {
     launch_observation: Option<EpisodeObservation>,
     provider_policy: Arc<dyn LiveProviderPolicyPort>,
     provider_capabilities: NativeCapabilities,
+    context_observations: Option<Arc<dyn LiveContextObservationPort>>,
 }
 
 impl LiveWorkflowSession for ProductionLiveWorkflowSession {
@@ -150,6 +177,7 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
             .runtime
             .observe()
             .map_err(runtime_error("live_launch_fence_failed"))?;
+        self.record_context_observation(&observation)?;
         self.launch_observation = Some(observation);
         self.provider_policy.load_active_policy(
             &self.actor,
@@ -170,18 +198,24 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
         if let Some(observation) = self.launch_observation.take() {
             return Ok(observation);
         }
-        self.runtime
+        let observation = self
+            .runtime
             .observe()
-            .map_err(runtime_error("live_observe_failed"))
+            .map_err(runtime_error("live_observe_failed"))?;
+        self.record_context_observation(&observation)?;
+        Ok(observation)
     }
 
     fn observe_projection(
         &mut self,
         projection_ref: &str,
     ) -> Result<EpisodeObservation, ManagementError> {
-        self.runtime
+        let observation = self
+            .runtime
             .observe_projection(projection_ref)
-            .map_err(runtime_error("live_observe_failed"))
+            .map_err(runtime_error("live_observe_failed"))?;
+        self.record_context_observation(&observation)?;
+        Ok(observation)
     }
 
     fn legal_actions(
@@ -220,6 +254,7 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
             .runtime
             .observe()
             .map_err(runtime_error("live_action_fence_failed"))?;
+        self.record_context_observation(&observation)?;
         if observation.state_id() != identity.state_id
             || observation.generation() != identity.generation
         {
@@ -238,11 +273,18 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
         operation_id: &str,
         wait_for_millis: u32,
     ) -> Result<WaitSample, ManagementError> {
-        self.runtime
+        let result = self
+            .runtime
             .wait_for_transition(operation_id, wait_for_millis)
             .map_err(|error| {
                 ManagementError::unresolved("live_transition_wait_failed", error.to_string())
-            })
+            });
+        if let Ok(sample) = &result
+            && let Some(observation) = sample.observation()
+        {
+            self.record_context_observation(observation)?;
+        }
+        result
     }
 
     fn reconcile(&mut self, operation_id: &str) -> Result<TransitionReceipt, ManagementError> {
@@ -252,11 +294,13 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
     }
 
     fn release_lease(&mut self) -> Result<(), ManagementError> {
+        self.invalidate_context_observation();
         RecoveryPort::release_lease(&mut *self.runtime)
             .map_err(|error| ManagementError::unavailable("live_release_failed", error.to_string()))
     }
 
     fn stop_episode(&mut self) -> Result<(), ManagementError> {
+        self.invalidate_context_observation();
         RecoveryPort::stop_episode(&mut *self.runtime)
             .map_err(|error| ManagementError::unavailable("live_stop_failed", error.to_string()))
     }
@@ -287,6 +331,7 @@ impl ProductionLiveWorkflowSession {
             .runtime
             .observe()
             .map_err(runtime_error("live_provider_fence_failed"))?;
+        self.record_context_observation(&current)?;
         if current.state_id() != expected.state_id()
             || current.generation() != expected.generation()
         {
@@ -307,6 +352,27 @@ impl ProductionLiveWorkflowSession {
                 "provider construction must follow the authoritative launch observation",
             )
         })
+    }
+
+    fn record_context_observation(
+        &self,
+        observation: &EpisodeObservation,
+    ) -> Result<(), ManagementError> {
+        if let Some(owner) = &self.context_observations {
+            owner.record_observation(
+                &self.actor,
+                &self.request,
+                &self.definition_digest,
+                observation,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn invalidate_context_observation(&self) {
+        if let Some(owner) = &self.context_observations {
+            owner.invalidate(&self.actor, &self.request);
+        }
     }
 }
 

@@ -72,10 +72,10 @@ pub use http::{
 };
 pub use live_workflow::{
     EpisodeRuntimeSession, LIVE_WORKFLOW_CAPABILITY, LIVE_WORKFLOW_PROFILE,
-    LiveProviderSessionFactory, LiveRuntimeSessionFactory, LiveTargetCatalogPort,
-    LiveWorkflowExecutionPort, LiveWorkflowFactory, LiveWorkflowOptions, LiveWorkflowSession,
-    LiveWorkflowSessionFactory, ProductionLiveWorkflowSessionFactory, live_store,
-    live_store_with_provider_policy,
+    LiveContextObservationPort, LiveProviderSessionFactory, LiveRuntimeSessionFactory,
+    LiveTargetCatalogPort, LiveWorkflowExecutionPort, LiveWorkflowFactory, LiveWorkflowOptions,
+    LiveWorkflowSession, LiveWorkflowSessionFactory, ProductionLiveWorkflowSessionFactory,
+    live_store, live_store_with_provider_policy,
 };
 pub use provider_session_inspection::{
     ProviderSessionBrokerInspectionPort, ProviderSessionPolicyOwnerPort,
