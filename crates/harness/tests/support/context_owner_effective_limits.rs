@@ -136,7 +136,7 @@ pub fn catalog_for(scenario: Scenario) -> ContextBindingCatalog {
     }
 }
 
-fn boundary(run_id: &str) -> ContextBoundary {
+pub fn owner_boundary(run_id: &str) -> ContextBoundary {
     ContextBoundary {
         run_id: run_id.to_owned(),
         episode_id: "test.episode.1".to_owned(),
@@ -181,7 +181,7 @@ pub fn binding_for(
         graph_id: "main".to_owned(),
         node_id: "decide".to_owned(),
         node_execution_id: "test.node.1".to_owned(),
-        boundary: boundary(answer_for),
+        boundary: owner_boundary(answer_for),
         lease_epoch: 1,
         snapshot_id: "test.snapshot.1".to_owned(),
         approved_revision_id: "test.revision.1".to_owned(),
