@@ -3,8 +3,10 @@
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use sts2_harness::{
-    EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner, ExoDecisionSource, ExoProvider,
-    ExoSession, ResumeState, TransitionReceipt,
+    ActionIdentity, BarrierError, BarrierPort, EpisodeLegalAction, EpisodeLegalActionSet,
+    EpisodeObservation, EpisodeRunner, EpisodeRuntimePort, ExoDecisionSource, ExoProvider,
+    ExoSession, PortError, ReceiptQueryIdentity, ReceiptQueryResult, RecoveryError, RecoveryPort,
+    ResumeState, RuntimeLeaseBinding, ShutdownError, ShutdownPort, TransitionReceipt, WaitSample,
 };
 
 use super::config::RuntimeConfig;
@@ -60,10 +62,17 @@ mod shutdown;
 mod wait;
 
 #[cfg(test)]
+#[path = "runtime_v3_allocation_launch_test.rs"]
+mod allocation_launch_tests;
+#[cfg(test)]
 #[path = "runtime_v3_lifecycle_test.rs"]
 mod lifecycle_tests;
 
 include!("runtime_v3_run_combat.rs");
+
+#[path = "runtime_v3/authority.rs"]
+mod authority;
+pub(crate) use authority::authority_configuration_digest;
 
 pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     let runtime_profile = config.runtime_profile.clone();
@@ -274,36 +283,11 @@ pub(super) fn run(config: RuntimeConfig) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) struct RuntimeV3Port {
-    config: RuntimeConfig,
-    gateway: GatewayClient,
-    mcp: Option<McpProcess>,
-    seeded_mcp: Option<McpProcess>,
-    seeded_receipt: Option<Value>,
-    expert_mcp: Option<McpProcess>,
-    allocated: bool,
-    released: bool,
-    next_rpc_id: u64,
-    expert_next_rpc_id: u64,
-    generation: u64,
-    current_state: Option<String>,
-    current_actions: Option<EpisodeLegalActionSet>,
-    catalog: Option<Value>,
-    catalog_raw: Option<Vec<u8>>,
-    payloads: BTreeMap<String, Value>,
-    rest_selector_actions: Option<EpisodeLegalActionSet>,
-    rest_selector_payloads: BTreeMap<String, Value>,
-    rest_selector_value: Option<Value>,
-    operations: BTreeMap<String, ledger::OperationRecord>,
-    reconnect_attempts: u8,
-    telemetry: TelemetryHandle,
-    durable: Option<durable::DurableHandle>,
-    last_response_text: Option<String>,
-    recovery_authority: Option<allocation_context::RecoveryAuthority>,
-    recovery: Option<McpProcess>,
-    recovery_context: Option<recovery::RecoveryContext>,
-    recovery_rpc_id: u64,
-}
+include!("runtime_v3_state.rs");
+
+#[path = "runtime_v3_worker.rs"]
+mod worker;
+pub(crate) use worker::RuntimeV3SessionWorker;
 
 include!("runtime_v3_port.rs");
 include!("runtime_v3_observation.rs");

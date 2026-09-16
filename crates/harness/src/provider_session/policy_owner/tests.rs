@@ -4,11 +4,11 @@
 
 use super::*;
 
-fn scope() -> SessionScope {
+pub(super) fn scope() -> SessionScope {
     SessionScope::new("project", "run.policy-owner", "episode", "agent").expect("scope")
 }
 
-fn path(label: &str) -> std::path::PathBuf {
+pub(super) fn path(label: &str) -> std::path::PathBuf {
     let directory = std::env::temp_dir().join(format!(
         "sts2-provider-policy-owner-{label}-{}",
         uuid::Uuid::new_v4()
@@ -31,11 +31,11 @@ fn create_private_test_directory(path: &std::path::Path) -> std::io::Result<()> 
     }
 }
 
-fn store(path: &std::path::Path, scope: SessionScope) -> ProviderSessionMetadataStore {
+pub(super) fn store(path: &std::path::Path, scope: SessionScope) -> ProviderSessionMetadataStore {
     ProviderSessionMetadataStore::encrypted(path, [11; 32], scope).expect("store")
 }
 
-fn valid_policy(scope: SessionScope) -> ProviderSessionPolicy {
+pub(super) fn valid_policy(scope: SessionScope) -> ProviderSessionPolicy {
     let mut policy = ProviderSessionPolicy::disabled(scope);
     policy.mode = super::super::ProviderSessionMode::FixtureOnly;
     policy.credential_realm_ref = "fixture-realm".to_owned();

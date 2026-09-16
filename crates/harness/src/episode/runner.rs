@@ -16,6 +16,7 @@ use super::legal_actions::{EpisodeLegalAction, EpisodeLegalActionSet};
 use super::observation::{EpisodeObservation, EpisodeStage};
 use super::protected::ProtectedEpisodePort;
 use super::recovery::{RecoveryController, RecoveryPort};
+use super::runtime_lease_binding::RuntimeLeaseBinding;
 use super::shutdown::{EpisodeShutdown, ShutdownPort};
 use super::stability_barrier::{BarrierPort, StabilityBarrier};
 use super::transition::TransitionReceipt;
@@ -36,6 +37,17 @@ const MAX_CONSTRAINTS: usize = 32;
 /// an alternate action authority to the runner.
 pub trait EpisodeRuntimePort: BarrierPort + RecoveryPort + ShutdownPort {
     fn launch(&mut self) -> Result<(), PortError>;
+
+    /// Returns the lease identity actually installed by the runtime after
+    /// launch allocation. Implementations without an authoritative allocation
+    /// handoff fail closed when a consumer requires this provenance.
+    fn current_lease_binding(&mut self) -> Result<RuntimeLeaseBinding, PortError> {
+        Err(PortError::new(
+            "runtime_lease_binding_unavailable",
+            "runtime did not expose its post-launch gateway lease binding",
+            false,
+        ))
+    }
 
     fn observe(&mut self) -> Result<EpisodeObservation, PortError>;
 

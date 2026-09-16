@@ -133,9 +133,9 @@ pub use episode::{
     ProtectedEpisodePort, ReceiptQueryActionKind, ReceiptQueryCoordinate, ReceiptQueryError,
     ReceiptQueryIdentity, ReceiptQueryIdentityError, ReceiptQueryLocation, ReceiptQueryReceipt,
     ReceiptQueryResult, ReceiptQueryStatus, RecoveryController, RecoveryError, RecoveryOperation,
-    RecoveryPort, RecoveryResult, RunSetupCoordinator, SetupPort, ShutdownError, ShutdownPort,
-    StabilityBarrier, TransitionReceipt, VerifiedTransition, WaitOutcome, WaitSample,
-    verify_settlement,
+    RecoveryPort, RecoveryResult, RunSetupCoordinator, RuntimeLeaseBinding, SetupPort,
+    ShutdownError, ShutdownPort, StabilityBarrier, TransitionReceipt, VerifiedTransition,
+    WaitOutcome, WaitSample, verify_settlement,
 };
 pub use error::{CloseFailure, CloseReport, Component, HarnessError, PortError, ProviderError};
 pub use evaluation::{

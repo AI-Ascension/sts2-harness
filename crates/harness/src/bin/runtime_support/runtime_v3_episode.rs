@@ -14,99 +14,34 @@ use ledger::OperationRecord;
 
 const MAX_OPERATIONS: usize = 1_024;
 
+#[path = "runtime_v3_episode_launch.rs"]
+mod episode_launch;
+
 impl EpisodeRuntimePort for RuntimeV3Port {
     fn launch(&mut self) -> Result<(), sts2_harness::PortError> {
-        if self.allocated {
-            return Err(wire::port_error(
-                "duplicate_launch",
-                "episode is already allocated",
-                false,
-            ));
-        }
-        // Allocation may commit even when its response is lost. Own cleanup before sending.
-        self.allocated = true;
-        let allocation = self.gateway.request(
-            "POST",
-            "/v1/sessions/allocate",
-            &json!({
-                "instance_id": self.config.instance_id,
-                "caller_id": self.config.caller_id,
-                "session_id": self.config.session_id
-            }),
-            BTreeMap::from([(
-                String::from("x-mcp-session-id"),
-                self.config.mcp_session_id.clone(),
-            )]),
-        );
-        let code = if allocation.is_err() {
-            "gateway_allocate_failed"
-        } else {
-            "gateway_allocate_invalid"
-        };
-        let allocation = validate_or_release_allocation_with(
-            allocation,
-            &self.config,
-            allocation_context::validate,
-            |headers| {
-                let response = self.gateway.request(
-                    "POST",
-                    &format!("/v1/instances/{}/release", self.config.instance_id),
-                    &json!({}),
-                    headers,
-                );
-                self.released = response
-                    .as_ref()
-                    .is_ok_and(|value| value["status"] == "released");
-                response
-            },
-        )
-        .map_err(|error| wire::port_error(code, error, false))?;
-        allocation.apply_current_lease(&mut self.config);
-        self.recovery_authority = allocation.recovery_authority;
-        if let Some(authority) = self.recovery_authority.as_ref() {
-            self.recovery_context = Some(
-                super::recovery::RecoveryContext::from_authority(authority, &self.config).map_err(
-                    |error| wire::port_error("recovery_authority_invalid", error, false),
-                )?,
-            );
-        }
-        if let Err(error) = self.launch_mcp() {
-            return Err(wire::port_error("runtime_launch_failed", error, false));
-        }
-        if let Err(error) = self.reconcile_pending_operations() {
-            let close = self.close_mcp_processes();
-            let release = self.release_lease_inner();
-            return Err(wire::port_error(
-                "runtime_resume_failed",
-                wire::combine_cleanup(error, close, release),
-                false,
-            ));
-        }
-        if self.config.seed_transport.is_some() {
-            if let Err(error) = self.prime_seed_generation() {
-                let close = self.close_mcp_processes();
-                let release = self.release_lease_inner();
-                return Err(wire::port_error(
-                    "seeded_run_preflight_failed",
-                    wire::combine_cleanup(error, close, release),
-                    false,
-                ));
-            }
-            if let Err(error) = self.launch_seeded_run() {
-                let close = self.close_mcp_processes();
-                let release = self.release_lease_inner();
-                return Err(wire::port_error(
-                    "seeded_run_failed",
-                    wire::combine_cleanup(error, close, release),
-                    false,
-                ));
-            }
-        }
-        Ok(())
+        episode_launch::launch(self)
     }
-
+    fn current_lease_binding(
+        &mut self,
+    ) -> Result<sts2_harness::RuntimeLeaseBinding, sts2_harness::PortError> {
+        self.allocated_lease_binding()
+    }
     fn observe(&mut self) -> Result<EpisodeObservation, sts2_harness::PortError> {
         self.observe_inner(false)
+    }
+
+    fn observe_projection(
+        &mut self,
+        reference: &str,
+    ) -> Result<EpisodeObservation, sts2_harness::PortError> {
+        if reference != "fair-play.live.v1" {
+            return Err(wire::port_error(
+                "projection_binding_unavailable",
+                format!("runtime does not support authored projection {reference}"),
+                false,
+            ));
+        }
+        self.observe()
     }
 
     fn legal_actions(

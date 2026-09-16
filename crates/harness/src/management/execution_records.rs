@@ -116,7 +116,10 @@ pub(super) fn snapshot_from_runtime(
     }
 }
 
-pub(super) fn live_run_id(
+/// Deterministically binds a live runtime configuration to the admitted
+/// management submission. The runtime, provider-policy owner, and context
+/// authority must all use this exact namespace rather than a caller alias.
+pub fn live_run_id(
     request: &RunRequest,
     definition_digest: &str,
 ) -> Result<String, ManagementError> {
