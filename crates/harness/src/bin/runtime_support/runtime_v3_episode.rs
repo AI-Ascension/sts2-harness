@@ -14,6 +14,8 @@ use ledger::OperationRecord;
 
 const MAX_OPERATIONS: usize = 1_024;
 
+include!("runtime_v3_episode_legal_actions.rs");
+
 #[path = "runtime_v3_episode_launch.rs"]
 mod episode_launch;
 
@@ -49,77 +51,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         state_id: &str,
         generation: u64,
     ) -> Result<EpisodeLegalActionSet, sts2_harness::PortError> {
-        let mut arguments = self.context(generation);
-        if let Value::Object(object) = &mut arguments {
-            object.insert(String::from("state_id"), Value::String(state_id.to_owned()));
-        }
-        let value = match self.call_tool_classified("sts2.legal_actions", arguments) {
-            Ok(value) => value,
-            Err(RuntimeV3ToolError::Transient(error)) => {
-                return Err(wire::port_error(
-                    "catalog_reobserve",
-                    format!("legal-action catalog transport failed: {error}"),
-                    true,
-                ));
-            }
-            Err(RuntimeV3ToolError::Terminal(error)) => {
-                return Err(wire::port_error("legal_actions_failed", error, false));
-            }
-        };
-        if wire::catalog_reobserve(&value) {
-            return Err(wire::port_error(
-                "catalog_reobserve",
-                "host requires a fresh observation before reading legal actions",
-                true,
-            ));
-        }
-        let response_text = self.last_response_text.clone().ok_or_else(|| {
-            wire::port_error("legal_actions_invalid", "MCP response text missing", false)
-        })?;
-        let parsed = parse::action_set_with_catalog_text(
-            &value,
-            &response_text,
-            "legal_actions_response",
-            &self.config,
-        )
-        .map_err(|error| wire::port_error("legal_actions_invalid", error, false))?;
-        let actions = parsed.actions;
-        let payloads = parsed.payloads;
-        self.catalog = Some(parsed.catalog);
-        self.catalog_raw = Some(parsed.catalog_raw);
-        self.generation = actions.generation();
-        self.current_state = Some(actions.state_id().to_owned());
-        self.current_actions = Some(actions.clone());
-        self.payloads = payloads;
-        if self.is_expert_profile() {
-            let actions = self.expert_catalog(state_id, generation)?;
-            if self.is_rest_profile()
-                && self
-                    .rest_selector_actions
-                    .as_ref()
-                    .is_some_and(|selector| selector.assert_matches(state_id, generation).is_ok())
-            {
-                let selector = self.rest_selector_actions.clone().ok_or_else(|| {
-                    wire::port_error("rest_selector_invalid", "selector disappeared", false)
-                })?;
-                self.current_actions = Some(selector.clone());
-                self.payloads = self.rest_selector_payloads.clone();
-                let (catalog, catalog_raw) =
-                    super::expert::composed_catalog(&selector, &self.rest_selector_payloads)
-                        .map_err(|error| {
-                            wire::port_error("expert_legal_actions_invalid", error, false)
-                        })?;
-                self.catalog = Some(catalog);
-                self.catalog_raw = Some(catalog_raw);
-                return Ok(selector);
-            }
-            let (catalog, catalog_raw) = super::expert::composed_catalog(&actions, &self.payloads)
-                .map_err(|error| wire::port_error("expert_legal_actions_invalid", error, false))?;
-            self.catalog = Some(catalog);
-            self.catalog_raw = Some(catalog_raw);
-            return Ok(actions);
-        }
-        Ok(actions)
+        read_runtime_legal_actions(self, state_id, generation)
     }
 
     fn map_snapshot(

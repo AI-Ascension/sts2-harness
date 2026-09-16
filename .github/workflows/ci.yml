@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  STS2_EXO_TEST_SOURCE: ${{ github.workspace }}/target/exo-test-source
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -22,6 +25,21 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
+
+      - name: Read reviewed Exo source revision
+        id: exo-revision
+        run: |
+          revision="$(sed -n 's/^pub const EXO_SOURCE_REVISION: &str = "\([0-9a-f]\{40\}\)";$/\1/p' crates/harness/src/exo/contract/mod.rs)"
+          test "${#revision}" -eq 40
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+
+      - name: Check out reviewed Exo source for lifecycle fixtures
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: exoharness/exo
+          ref: ${{ steps.exo-revision.outputs.revision }}
+          path: target/exo-test-source
           persist-credentials: false
 
       - name: Verify whitespace and fair-play source

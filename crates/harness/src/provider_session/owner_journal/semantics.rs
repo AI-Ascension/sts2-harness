@@ -61,16 +61,21 @@ fn phase(
     use NativeOperationState as State;
     let historical = entry.claim_epoch < snapshot.claim_epoch;
     let active = binding.state == BindingState::Active && binding.game_dispatch_capability;
+    let pending_one_shot = snapshot.broker.capabilities.profile_id == "sts2-exo-lifecycle-v2"
+        && binding.state == BindingState::OneShotPendingNative
+        && binding.game_dispatch_capability;
     let recovering = binding.state == BindingState::Recovering && !binding.game_dispatch_capability;
     let compatible = match entry.phase {
         Phase::Prepared | Phase::Admitted => {
             if historical {
                 operation.state == State::Unknown && recovering
             } else {
-                operation.state == State::IntentPersisted && active
+                operation.state == State::IntentPersisted && (active || pending_one_shot)
             }
         }
-        Phase::Sent => !historical && operation.state == State::Sent && active,
+        Phase::Sent => {
+            !historical && operation.state == State::Sent && (active || pending_one_shot)
+        }
         Phase::Unknown | Phase::Fenced => operation.state == State::Unknown && recovering,
         Phase::Completed => {
             if let Some(native) = &entry.native {

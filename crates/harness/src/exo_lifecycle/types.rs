@@ -85,6 +85,7 @@ pub struct AuthorityVector {
     pub lease_epoch: u64,
     pub state_id: String,
     pub generation: u64,
+    /// Digest of the actual host-owned MCP legal-action catalog bytes.
     pub catalog_digest: String,
 }
 

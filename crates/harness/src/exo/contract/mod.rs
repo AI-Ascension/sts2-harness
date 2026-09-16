@@ -5,7 +5,7 @@ mod descriptor;
 mod identity;
 mod preflight;
 mod restricted;
-mod strict;
+pub(crate) mod strict;
 mod wire;
 mod wire_types;
 
