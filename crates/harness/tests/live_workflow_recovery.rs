@@ -65,7 +65,7 @@ fn restart_with_durable_intent_fails_closed_without_redispatch() {
 }
 
 #[test]
-fn store_failure_after_live_launch_rolls_back_admission_without_a_leaked_run() {
+fn duplicate_live_identity_is_refused_before_any_live_effect() {
     let seed_store = Arc::new(MemoryWorkflowStore::new());
     let seed_factory = Arc::new(FakeFactory::new(false));
     let seed_service = live_service(
@@ -99,12 +99,16 @@ fn store_failure_after_live_launch_rolls_back_admission_without_a_leaked_run() {
         )
         .expect("seed cleanup");
 
+    // Re-home the seeded run under a different request id. The submission below
+    // recomputes the same live run identity from the same definition, so the
+    // durable reservation collides with the run already retained here.
+    let seeded_run_id = seeded_snapshot.workflow_run_id.clone();
     let store = Arc::new(MemoryWorkflowStore::new());
     store
         .create_run(
             "request-live-store-conflict",
             "fixture-store-conflict",
-            seeded_snapshot,
+            seeded_snapshot.clone(),
             seeded_events,
         )
         .expect("seed duplicate run");
@@ -115,20 +119,32 @@ fn store_failure_after_live_launch_rolls_back_admission_without_a_leaked_run() {
         LiveWorkflowOptions::default(),
     )
     .expect("service");
+    // The reservation boundary rejects the colliding identity while writing the
+    // durable snapshot (`crates/harness/src/management/store_ops_run.rs:24-29`
+    // returns `duplicate_run`), which is reached from
+    // `crates/harness/src/management/execution.rs:250` before `factory.open`
+    // (`:253`) and `session.launch` (`:255`). No live session is ever opened, so
+    // no live run can leak, and the refusal is not a silent success.
     let error = service
         .submit_run(&actor, request.clone())
-        .expect_err("store failure");
+        .expect_err("duplicate identity must be refused");
     assert_eq!(error.code, "duplicate_run");
-    assert_eq!(factory.entries(), ["launch", "stop", "release"]);
+    assert!(factory.entries().is_empty());
+    // The refused submission leaves the retained run byte-identical, so the
+    // refusal is never recorded as a silent success.
+    let retained = store
+        .get_run(&seeded_run_id)
+        .expect("durable read")
+        .expect("retained run");
+    assert_eq!(retained, seeded_snapshot);
 
+    // A retry reaches the same boundary and is refused identically: the failed
+    // submission is never retained as a successful one.
     let retry_error = service
         .submit_run(&actor, request)
-        .expect_err("store failure remains deterministic");
+        .expect_err("duplicate identity remains refused");
     assert_eq!(retry_error.code, "duplicate_run");
-    assert_eq!(
-        factory.entries(),
-        ["launch", "stop", "release", "launch", "stop", "release"]
-    );
+    assert!(factory.entries().is_empty());
 }
 
 #[test]
