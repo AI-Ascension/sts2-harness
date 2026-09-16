@@ -243,6 +243,23 @@ impl DurableHandle {
             .close()
             .map_err(|error| format!("cannot close runtime-v3 execution store: {error}"))
     }
+
+    /// The lifecycle owner is deliberately given this exact owner-local store handle, never a
+    /// second journal or a reopened database connection. Callers must retain the `Rc` on this
+    /// runtime worker and keep every borrow short.
+    pub(super) fn lifecycle_store(&self) -> Rc<RefCell<ExecutionStore>> {
+        self.store.clone()
+    }
+
+    /// Fingerprint paired with [`Self::lifecycle_store`]. A lifecycle send validates it against
+    /// the already-admitted episode before it can persist its provider reservation.
+    pub(super) fn lifecycle_fingerprint(&self) -> ExecutionFingerprint {
+        self.fingerprint.clone()
+    }
+
+    pub(super) fn lifecycle_lineage(&self) -> ExecutionLineage {
+        self.lineage.clone()
+    }
 }
 
 #[derive(Clone)]
