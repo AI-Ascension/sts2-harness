@@ -132,6 +132,29 @@ pub fn serve_live_with_provider_policy(
     serve_live_service(listen, authenticator, service)
 }
 
+pub fn serve_live_with_provider_policy_and_context_owner(
+    listen: std::net::SocketAddr,
+    store_path: &str,
+    authenticator: std::sync::Arc<dyn Authenticator>,
+    factory: std::sync::Arc<dyn LiveWorkflowSessionFactory>,
+    provider_policy: std::sync::Arc<dyn LiveProviderPolicyPort>,
+    context_owner: std::sync::Arc<dyn ContextOwnerPort>,
+) -> Result<(), ManagementError> {
+    let store = SqliteWorkflowStore::open(store_path)
+        .map_err(|error| ManagementError::store("workflow_store_open", error.to_string()))?;
+    let store: std::sync::Arc<dyn WorkflowStore> = std::sync::Arc::new(store);
+    let service = std::sync::Arc::new(
+        live_store_with_provider_policy(
+            store,
+            factory,
+            LiveWorkflowOptions::default(),
+            provider_policy,
+        )?
+        .with_context_owner_port(context_owner),
+    );
+    serve_live_service(listen, authenticator, service)
+}
+
 fn serve_live_service(
     listen: std::net::SocketAddr,
     authenticator: std::sync::Arc<dyn Authenticator>,

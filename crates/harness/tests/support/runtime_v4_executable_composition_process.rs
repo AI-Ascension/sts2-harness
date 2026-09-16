@@ -231,6 +231,7 @@ pub(crate) fn run_served_policy_gate(
     let gateway_address = free_address()?;
     let workflow_address = free_address()?;
     let policy_store = temporary.path.join("served-provider-policy.sqlite3");
+    let context_store = temporary.path.join("served-context.sqlite3");
     let execution_store = temporary.path.join("served-execution.sqlite3");
     seed_other_request_policy(&policy_store)?;
     let mut gateway = gateway(gateway_binary, gateway_address, mod_server.address)?;
@@ -255,6 +256,22 @@ pub(crate) fn run_served_policy_gate(
             .env(
                 "STS2_SERVED_PROVIDER_POLICY_KEY",
                 "1111111111111111111111111111111111111111111111111111111111111111",
+            )
+            .env(
+                "STS2_WORKFLOW_CONTEXT_OWNER_CONFIG",
+                serde_json::to_string(&json!({
+                    "schema_version":"ascension.workflow-context-owner-config.v1",
+                    "store_path":context_store,
+                    "key_reference":"STS2_SERVED_CONTEXT_OWNER_KEY",
+                    "owner_id":"served-context-owner",
+                    "owner_version":"v1",
+                    "context_ref":"context.live.v1",
+                    "limits":{"max_items":64,"max_notes":16,"max_context_bytes":131072,"max_objective_bytes":512,"max_control_events":64}
+                }))?,
+            )
+            .env(
+                "STS2_SERVED_CONTEXT_OWNER_KEY",
+                "2222222222222222222222222222222222222222222222222222222222222222",
             )
             .env("STS2_EXECUTION_STORE_PATH", execution_store)
             .env("STS2_GATEWAY_ADDR", gateway_address.to_string())

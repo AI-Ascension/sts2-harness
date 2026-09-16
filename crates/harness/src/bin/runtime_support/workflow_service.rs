@@ -17,6 +17,7 @@ use sts2_harness::provider_session::{
 use sts2_harness::workflow::WorkflowDefinition;
 use zeroize::Zeroize;
 
+use super::production_context_owner;
 use super::{RuntimeConfig, runtime_v3, runtime_v3_admission, runtime_v3_settings};
 
 pub(super) fn serve() -> Result<(), String> {
@@ -32,15 +33,23 @@ pub(super) fn serve() -> Result<(), String> {
     let authenticator =
         Arc::new(EnvironmentAuthenticator::from_profile(&profile).map_err(|e| e.to_string())?);
     let policy = ProviderPolicyConfiguration::from_environment()?;
+    let context_owner = Arc::new(production_context_owner::Owner::open(
+        production_context_owner::Configuration::from_environment()?,
+    )?);
     let owner = Arc::new(policy.open_owner()?);
     let provider_policy: Arc<dyn LiveProviderPolicyPort> =
         Arc::new(ProviderSessionPolicyOwnerPort::new(Arc::clone(&owner)));
-    sts2_harness::management::serve_live_with_provider_policy(
+    sts2_harness::management::serve_live_with_provider_policy_and_context_owner(
         listen,
         &store,
         authenticator,
-        factory(Arc::clone(&provider_policy), policy.capabilities)?,
+        factory(
+            Arc::clone(&provider_policy),
+            policy.capabilities,
+            Arc::clone(&context_owner),
+        )?,
         provider_policy,
+        context_owner,
     )
     .map_err(|error| error.to_string())
 }
@@ -48,6 +57,7 @@ pub(super) fn serve() -> Result<(), String> {
 fn factory(
     provider_policy: Arc<dyn LiveProviderPolicyPort>,
     provider_capabilities: NativeCapabilities,
+    context_owner: Arc<production_context_owner::Owner>,
 ) -> Result<Arc<dyn LiveWorkflowSessionFactory>, String> {
     Ok(Arc::new(ProductionLiveWorkflowSessionFactory::new(
         json!({"schema_version":"ascension.capabilities/v1","capabilities":["workflow.live","workflow.node.observe.v1","workflow.node.decide.v1","workflow.node.execute_action.v1","workflow.node.terminal.v1","workflow.execution.fence.mcp-observation.v1","observe.fair-play.v1","actions.catalog.v1","actions.settlement.v1","workflow.projection.fair-play.live.v1","workflow.provider.decision.live.v1","workflow.context.context.live.v1"]}),
@@ -56,7 +66,8 @@ fn factory(
         Arc::new(Provider),
         provider_policy,
         provider_capabilities,
-    ).map_err(|error| error.to_string())?))
+    ).map_err(|error| error.to_string())?
+        .with_context_observations(context_owner)))
 }
 
 const PROVIDER_POLICY_CONFIGURATION_SCHEMA: &str = "ascension.workflow-provider-policy-config.v1";
