@@ -70,13 +70,13 @@ fn held_binding(broker: &mut ProviderSessionBroker) -> SessionBinding {
         .expect("binding")
 }
 
-pub struct Guard<'a>(MutexGuard<'a, bool>);
+pub struct Guard<'a>(MutexGuard<'a, bool>, Option<MutexGuard<'a, String>>);
 impl AuthorityGuard for Guard<'_> {}
 
-#[derive(Default)]
 pub struct Authority {
     pub revoked: Mutex<bool>,
     pub legacy_quiesced: Mutex<bool>,
+    current_catalog_digest: Mutex<String>,
 }
 impl LifecycleAuthorityPort for Authority {
     fn claim<'a>(
@@ -92,16 +92,25 @@ impl LifecycleAuthorityPort for Authority {
     }
     fn admit<'a>(
         &'a self,
-        _: &InvocationManifest,
+        manifest: &InvocationManifest,
     ) -> Result<Box<dyn AuthorityGuard + 'a>, LifecycleError> {
-        self.guard()
+        self.guard_manifest(manifest)
     }
     fn consume<'a>(
         &'a self,
-        _: &InvocationManifest,
+        manifest: &InvocationManifest,
         _: &str,
     ) -> Result<Box<dyn AuthorityGuard + 'a>, LifecycleError> {
-        self.guard()
+        self.guard_manifest(manifest)
+    }
+}
+impl Default for Authority {
+    fn default() -> Self {
+        Self {
+            revoked: Mutex::new(false),
+            legacy_quiesced: Mutex::new(false),
+            current_catalog_digest: Mutex::new(sha256_hex(authoritative_catalog())),
+        }
     }
 }
 impl Authority {
@@ -110,8 +119,27 @@ impl Authority {
         if *guard {
             return Err(LifecycleError::Fenced);
         }
-        Ok(Box::new(Guard(guard)))
+        Ok(Box::new(Guard(guard, None)))
     }
+
+    fn guard_manifest(
+        &self,
+        manifest: &InvocationManifest,
+    ) -> Result<Box<dyn AuthorityGuard + '_>, LifecycleError> {
+        let revoked = self.revoked.lock().expect("authority");
+        if *revoked {
+            return Err(LifecycleError::Fenced);
+        }
+        let catalog = self.current_catalog_digest.lock().expect("catalog");
+        if manifest.authority.catalog_digest != *catalog {
+            return Err(LifecycleError::Stale);
+        }
+        Ok(Box::new(Guard(revoked, Some(catalog))))
+    }
+}
+
+fn authoritative_catalog() -> &'static [u8] {
+    br#"{"tools":[{"name":"combat.end-turn"}]}"#
 }
 
 pub struct Fixture {
@@ -278,9 +306,7 @@ fn manifest(
             lease_epoch: 1,
             state_id: request.state_id.clone(),
             generation: request.generation,
-            catalog_digest: sha256_hex(
-                serde_json::to_vec(&request.legal_action_ids).expect("catalog fixture"),
-            ),
+            catalog_digest: sha256_hex(authoritative_catalog()),
         },
     }
 }

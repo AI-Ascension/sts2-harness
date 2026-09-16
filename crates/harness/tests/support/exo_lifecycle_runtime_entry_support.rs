@@ -16,6 +16,8 @@ const EXO_SOURCE: &str = "/tmp/sts2-exo-source-b068";
 mod fixture;
 #[path = "exo_lifecycle_runtime_entry_peers.rs"]
 mod peers;
+#[path = "exo_lifecycle_runtime_entry_receipt.rs"]
+mod receipt;
 #[path = "exo_lifecycle_runtime_entry_runner.rs"]
 mod runner;
 

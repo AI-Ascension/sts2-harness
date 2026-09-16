@@ -8,10 +8,15 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use sts2_harness::exo_lifecycle::EXO_LIFECYCLE_WIRE_V2;
 use sts2_harness::provider_session::{
-    NativeCapabilities, ProviderSessionMetadataStore, ProviderSessionMode, ProviderSessionPolicy,
+    ProviderSessionMetadataStore, ProviderSessionMode, ProviderSessionPolicy,
     ProviderSessionPolicyOwner, SessionScope,
 };
 use sts2_harness::{EXO_SOURCE_REVISION, sha256_hex};
+
+#[path = "exo_lifecycle_runtime_entry_fixture_helpers.rs"]
+mod helpers;
+pub(super) use helpers::lifecycle_capabilities;
+use helpers::{required_axis, write_executable};
 
 use super::peers;
 use super::{
@@ -30,6 +35,7 @@ pub(super) struct Fixture {
     pub(super) journal: PathBuf,
     pub(super) action_log: PathBuf,
     pub(super) effect_log: PathBuf,
+    pub(super) input_log: PathBuf,
     pub(super) execution_store: PathBuf,
     pub(super) inspected_identity: sts2_harness::ExoIdentity,
     pub(super) bridge_config_digest: String,
@@ -60,13 +66,15 @@ impl Fixture {
         let journal = root.join("lifecycle-journal");
         let action_log = root.join("dispatched-action.json");
         let effect_log = root.join("provider-effect-started");
+        let input_log = root.join("provider-input.bin");
         let execution_store = root.join("execution.sqlite3");
 
         let extension = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../experiments/exo-agent/extension/src/index.ts");
         let node = PathBuf::from("/usr/local/bin/node");
         let executor_script = format!(
-            "#!/bin/sh\ncat >/dev/null\nprintf 'provider-effect\\n' >> '{}'\nprintf '%s' '{}'\n",
+            "#!/bin/sh\ncat > '{}'\nprintf 'provider-effect\\n' >> '{}'\nprintf '%s' '{}'\n",
+            input_log.display(),
             effect_log.display(),
             json!({
                 "wire_version": EXO_LIFECYCLE_WIRE_V2,
@@ -136,6 +144,7 @@ impl Fixture {
             journal,
             action_log,
             effect_log,
+            input_log,
             execution_store,
             inspected_identity,
             bridge_config_digest,
@@ -278,37 +287,4 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.root);
     }
-}
-
-fn lifecycle_capabilities(
-    identity: &sts2_harness::ExoIdentity,
-) -> Result<NativeCapabilities, String> {
-    let executor = required_axis(identity.package_digest.as_deref())?.to_owned();
-    let configuration = required_axis(identity.config_digest.as_deref())?;
-    let profile = sha256_hex(
-        serde_json::to_vec(&json!({
-            "adapter":"sts2-exo-lifecycle-v2",
-            "configuration_sha256":configuration,
-            "executor_sha256":executor,
-            "wire":EXO_LIFECYCLE_WIRE_V2
-        }))
-        .map_err(|error| error.to_string())?,
-    );
-    NativeCapabilities::reviewed_exo_lifecycle(
-        "sts2-exo-lifecycle-v2",
-        profile,
-        executor,
-        sha256_hex(EXO_LIFECYCLE_WIRE_V2),
-    )
-    .map_err(|error| error.to_string())
-}
-
-fn required_axis(value: Option<&str>) -> Result<&str, String> {
-    value.ok_or_else(|| String::from("inspected deployment identity omitted an axis"))
-}
-
-fn write_executable(path: &Path, source: &str) -> Result<(), String> {
-    std::fs::write(path, source).map_err(|error| error.to_string())?;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
-        .map_err(|error| error.to_string())
 }

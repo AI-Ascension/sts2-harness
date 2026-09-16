@@ -112,5 +112,6 @@ pub fn run_offline_lifecycle_entry() -> Result<(), String> {
             "the shipped runtime did not issue exactly one lifecycle provider effect: {effects:?}"
         ));
     }
+    super::receipt::assert_persisted_receipt(&fixture)?;
     Ok(())
 }
