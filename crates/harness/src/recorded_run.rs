@@ -50,6 +50,7 @@ use recorded_run_support::{
 use recorded_run_trajectory::trajectory_record;
 
 const FORMAT: &str = "seed-readiness-controller-release-v2";
+#[cfg(unix)]
 const MAX_FILE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_LINE_BYTES: usize = 1024 * 1024;
 const COMMON: &str = "ai-ascension.recorded-run.common.v1";
