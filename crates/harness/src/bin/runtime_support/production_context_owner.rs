@@ -28,6 +28,13 @@ pub(super) struct Configuration {
     pub owner_version: String,
     pub context_ref: String,
     pub limits: ContextEffectiveLimits,
+    pub episode_id: String,
+    pub agent_id: String,
+    pub catalog_digest: String,
+    pub adapter_revision: String,
+    pub model_revision: String,
+    pub configuration_digest: String,
+    pub output_schema_digest: String,
 }
 
 pub(super) struct Owner {
@@ -53,6 +60,8 @@ impl Configuration {
             || value.owner_version.is_empty()
             || value.context_ref.is_empty()
             || value.key_reference.is_empty()
+            || value.episode_id.is_empty()
+            || value.agent_id.is_empty()
         {
             return Err(String::from(
                 "STS2_WORKFLOW_CONTEXT_OWNER_CONFIG is invalid",
@@ -131,20 +140,20 @@ impl LiveContextObservationPort for Owner {
         let run_id = run_id(request, digest)?;
         let boundary = ContextBoundary {
             run_id: run_id.clone(),
-            episode_id: request.request_id.clone(),
-            agent_id: actor.subject.clone(),
+            episode_id: self.configuration.episode_id.clone(),
+            agent_id: self.configuration.agent_id.clone(),
             state_id: observation.state_id().into(),
             generation: observation.generation(),
-            observation_sha256: sha256_hex(format!(
-                "{}:{}",
-                observation.state_id(),
-                observation.generation()
-            )),
-            catalog_sha256: sha256_hex("runtime-v3-mcp-catalog"),
-            adapter_revision: "runtime-v3-mcp".into(),
-            model_revision: "exo.runtime-v3".into(),
-            configuration_sha256: sha256_hex(self.configuration.owner_id.as_bytes()),
-            output_schema_sha256: sha256_hex("context-owner-metadata-v1"),
+            observation_sha256: sha256_hex(
+                serde_json::to_vec(observation.fair_play().as_value()).map_err(|error| {
+                    ManagementError::invalid("context_observation_encode", error.to_string())
+                })?,
+            ),
+            catalog_sha256: self.configuration.catalog_digest.clone(),
+            adapter_revision: self.configuration.adapter_revision.clone(),
+            model_revision: self.configuration.model_revision.clone(),
+            configuration_sha256: self.configuration.configuration_digest.clone(),
+            output_schema_sha256: self.configuration.output_schema_digest.clone(),
             controller_epoch: 1,
             gate_epoch: 1,
             control_version: 1,
