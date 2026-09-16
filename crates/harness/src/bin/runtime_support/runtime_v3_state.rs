@@ -3,6 +3,13 @@
 pub(super) struct RuntimeV3Port {
     config: RuntimeConfig,
     gateway: GatewayClient,
+    lookup_binding_required: bool,
+    lookup_binding: Option<sts2_harness::game_information_binding::LookupBindingSession>,
+    lookup_policy_owner: Option<std::sync::Arc<game_information_owner::RuntimeGameInformationOwner>>,
+    lookup_policy_binding: Option<sts2_harness::context_memory::policy_owner::ActivePolicyBinding>,
+    lookup_session: Option<sts2_harness::game_information::LookupSession>,
+    lookup_corpus: Option<sts2_harness::context_memory::MemoryCorpus>,
+    lookup_replay_mode: bool,
     mcp: Option<McpProcess>,
     seeded_mcp: Option<McpProcess>,
     seeded_receipt: Option<Value>,

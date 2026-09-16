@@ -67,6 +67,22 @@ impl MemoryPolicyOwner {
         })
     }
 
+    /// Opens the runtime-owned policy journal with private, no-follow SQLite handling.
+    pub fn open_private(
+        path: impl AsRef<Path>,
+        key: [u8; 32],
+        authority: Arc<MemoryPolicyAuthority>,
+        consent: PolicyStoreConsent,
+    ) -> Result<Self, PolicyOwnerError> {
+        let store = authority.inspect(|state| {
+            PolicyStore::open_private(path.as_ref(), key, state.corpus.scope().clone(), consent)
+        })?;
+        Ok(Self {
+            authority,
+            store: Mutex::new(store),
+        })
+    }
+
     /// Only trusted test composition can inject a persistence failure.
     pub fn set_failpoint(
         &self,

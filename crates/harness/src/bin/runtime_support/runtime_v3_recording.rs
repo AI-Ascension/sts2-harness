@@ -14,13 +14,13 @@ use super::durable::{DurableHandle, ProviderReservationToken};
 
 include!("runtime_v3_recording_stream.rs");
 
-pub(super) struct DecisionRecorder<'a, S> {
+pub(super) struct DecisionRecorder<'a, S: ?Sized> {
     source: &'a mut S,
     telemetry: TelemetryHandle,
     durable: Option<DurableHandle>,
 }
 
-impl<'a, S> DecisionRecorder<'a, S> {
+impl<'a, S: ?Sized> DecisionRecorder<'a, S> {
     pub(super) fn new(source: &'a mut S, telemetry: TelemetryHandle) -> Self {
         Self {
             source,
@@ -42,7 +42,7 @@ impl<'a, S> DecisionRecorder<'a, S> {
     }
 }
 
-impl<S: DecisionSource> DecisionSource for DecisionRecorder<'_, S> {
+impl<S: DecisionSource + ?Sized> DecisionSource for DecisionRecorder<'_, S> {
     fn model_execution_id(&self) -> Option<sts2_harness::ModelExecutionId> {
         self.source.model_execution_id()
     }

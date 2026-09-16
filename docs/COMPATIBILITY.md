@@ -18,7 +18,7 @@ It uses the gateway-owned discovery/observe route only when explicitly enabled, 
 overrides, and fails closed on unavailable native adapters or exhausted re-observation. This does
 not add a complete content-manifest transport; its missing package/version/order/inventory and
 override fields require a separately versioned contract. See
-[ADR 0042](decisions/0042-game-information-lookup-binding-route.md).
+[ADR 0043](decisions/0043-game-information-lookup-binding-route.md).
 
 ## Benchmark manifest foundation
 

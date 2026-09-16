@@ -1,4 +1,4 @@
-# ADR 0042: game-information lookup-binding route
+# ADR 0043: game-information lookup-binding route
 
 ## Status
 

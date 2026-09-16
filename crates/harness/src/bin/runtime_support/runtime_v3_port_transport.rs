@@ -195,10 +195,26 @@ impl RuntimeV3Port {
     fn close_mcp_processes(&mut self) -> Result<(), String> {
         self.lifecycle_authority.clear_turn();
         let mut failure = None;
+        if !self.lookup_replay_mode
+            && let (
+                Some(owner),
+                Some(expected),
+                Some(session),
+                Some(corpus),
+            ) = (
+                self.lookup_policy_owner.as_ref(),
+                self.lookup_policy_binding.as_ref(),
+                self.lookup_session.as_ref(),
+                self.lookup_corpus.as_ref(),
+            )
+            && let Err(error) = owner.persist_lookup_archive(expected, session, corpus)
+        {
+            failure = Some(error);
+        }
         if let Some(mcp) = self.seeded_mcp.as_mut()
             && let Err(error) = mcp.close()
         {
-            failure = Some(error);
+            failure.get_or_insert(error);
         }
         if let Some(mcp) = self.expert_mcp.as_mut()
             && let Err(error) = mcp.close()

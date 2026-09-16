@@ -236,7 +236,8 @@ impl EpisodeRunner {
             })?;
             input = input.with_map_context(context);
         }
-        let choice = PolicyRouter::choose(source, &input).map_err(EpisodeRunnerError::Policy)?;
+        let choice = PolicyRouter::choose_with_game_information(source, &input, port)
+            .map_err(EpisodeRunnerError::Policy)?;
         Ok((legal_actions, choice))
     }
 }

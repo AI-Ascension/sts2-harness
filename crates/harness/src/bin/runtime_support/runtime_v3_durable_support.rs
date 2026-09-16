@@ -74,13 +74,13 @@ pub(super) fn config_digest(
         "trace_id": config.trace_id,
         "artifact_id": config.artifact_id,
         "settlement_timeout_seconds": config.settlement_timeout_seconds,
-        "exo_revision": settings.exo.revision,
-        "exo_identity": exo_identity(config, settings)?,
-        "exo_max_request_bytes": settings.exo.max_request_bytes,
-        "exo_max_response_bytes": settings.exo.max_response_bytes,
-        "exo_timeout_millis": settings.exo.timeout_millis,
-        "exo_forward_visible_seed": settings.exo.forward_visible_seed,
-        "exo_bridge": {
+        "decision_source_revision": settings.exo.revision,
+        "decision_source_identity": exo_identity(config, settings)?,
+        "decision_max_request_bytes": settings.exo.max_request_bytes,
+        "decision_max_response_bytes": settings.exo.max_response_bytes,
+        "decision_timeout_millis": settings.exo.timeout_millis,
+        "decision_forward_visible_seed": settings.exo.forward_visible_seed,
+        "decision_process": {
             "executable": settings.process.executable(),
             "arguments": settings.process.arguments(),
             "working_directory": settings.process.working_directory(),
@@ -95,20 +95,7 @@ pub(super) fn config_digest(
     sha256_json(&value)
 }
 
-fn exo_identity(_config: &RuntimeConfig, settings: &RuntimeV3Settings) -> Result<Value, String> {
-    Ok(json!({
-        "contract_version": EXO_CONTRACT_VERSION,
-        "source_revision": settings.exo.revision,
-        "package_digest": identity_axis("STS2_EXO_PACKAGE_DIGEST")?,
-        "extension_digest": identity_axis("STS2_EXO_EXTENSION_DIGEST")?,
-        "bridge_digest": identity_axis("STS2_EXO_BRIDGE_DIGEST")?,
-        "model_binding": identity_axis("STS2_EXO_MODEL_BINDING")?,
-        "prompt_digest": identity_axis("STS2_EXO_PROMPT_DIGEST")?,
-        "tool_digest": identity_axis("STS2_EXO_TOOL_DIGEST")?,
-        "config_digest": identity_axis("STS2_EXO_CONFIG_DIGEST")?,
-        "native_instance_id": identity_axis("STS2_EXO_NATIVE_INSTANCE_ID")?,
-    }))
-}
+include!("runtime_v3_durable_support_lookup_identity.rs");
 
 pub(super) fn decision_input_digest(input: &DecisionInput) -> Result<String, String> {
     let legal_actions: Vec<_> = input

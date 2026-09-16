@@ -12,10 +12,21 @@ pub struct DurableMemoryStore {
     connection: Connection,
     scope: MemoryScope,
     key: [u8; 32],
+    private_guard: Option<crate::context_memory::private_sqlite::PrivateSqliteGuard>,
 }
 
 impl DurableMemoryStore {
     pub fn open(
+        path: &str,
+        scope: MemoryScope,
+        key: [u8; 32],
+    ) -> Result<Self, MemoryError> {
+        Self::open_inner(path, scope, key, None)
+    }
+
+    /// Opens a production owner corpus store beneath a private owned directory.
+    /// The retained no-follow guard is checked before every operation.
+    pub fn open_private(
         path: &str,
         scope: MemoryScope,
         key: [u8; 32],
@@ -26,7 +37,33 @@ impl DurableMemoryStore {
         if key.iter().all(|byte| *byte == 0) {
             return Err(MemoryError::PermissionDenied);
         }
-        let connection = Connection::open(path).map_err(|_| MemoryError::Unsupported)?;
+        let (connection, guard) = crate::context_memory::private_sqlite::PrivateSqliteGuard::open(
+            std::path::Path::new(path),
+            64 * 1024 * 1024,
+        )
+        .map_err(|_| MemoryError::Unsupported)?;
+        Self::open_inner(path, scope, key, Some((connection, guard)))
+    }
+
+    fn open_inner(
+        path: &str,
+        scope: MemoryScope,
+        key: [u8; 32],
+        private: Option<(Connection, crate::context_memory::private_sqlite::PrivateSqliteGuard)>,
+    ) -> Result<Self, MemoryError> {
+        if !scope.valid() {
+            return Err(MemoryError::InvalidScope);
+        }
+        if key.iter().all(|byte| *byte == 0) {
+            return Err(MemoryError::PermissionDenied);
+        }
+        let (connection, private_guard) = match private {
+            Some((connection, guard)) => (connection, Some(guard)),
+            None => (
+                Connection::open(path).map_err(|_| MemoryError::Unsupported)?,
+                None,
+            ),
+        };
         connection
             .execute_batch(
                 "PRAGMA foreign_keys = ON;
@@ -52,6 +89,7 @@ impl DurableMemoryStore {
             connection,
             scope,
             key,
+            private_guard,
         })
     }
 
@@ -92,6 +130,7 @@ impl DurableMemoryStore {
     }
 
     pub fn publish(&mut self, entry: MemoryEntry) -> Result<AdmissionOutcome, MemoryError> {
+        self.verify_private_path()?;
         entry.validate()?;
         if entry.scope != self.scope {
             return Err(MemoryError::InvalidScope);
@@ -176,6 +215,7 @@ impl DurableMemoryStore {
     }
 
     pub fn load_corpus(&self) -> Result<MemoryCorpus, MemoryError> {
+        self.verify_private_path()?;
         let mut corpus = MemoryCorpus::with_limits(self.scope.clone(), MAX_ENTRIES_PER_RUN, MAX_CORPUS_BYTES)?;
         self.load_revocation_ledger(&mut corpus)?;
         let mut statement = self
@@ -210,4 +250,12 @@ impl DurableMemoryStore {
         Ok(corpus)
     }
 
+    fn verify_private_path(&self) -> Result<(), MemoryError> {
+        self.private_guard
+            .as_ref()
+            .map(crate::context_memory::private_sqlite::PrivateSqliteGuard::verify)
+            .transpose()
+            .map(|_| ())
+            .map_err(|_| MemoryError::Unsupported)
+    }
 }

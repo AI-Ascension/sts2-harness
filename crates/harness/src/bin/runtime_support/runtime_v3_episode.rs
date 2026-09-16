@@ -1,29 +1,40 @@
 // SPDX-License-Identifier: MIT
 
-use std::collections::BTreeMap;
-
 use serde_json::{Value, json};
+use sts2_harness::game_information::LookupAgentPort;
 use sts2_harness::{
     ActionIdentity, EpisodeLegalAction, EpisodeLegalActionSet, EpisodeObservation,
-    EpisodeRuntimePort, TransitionReceipt,
+    EpisodeRuntimePort, PolicyError, TransitionReceipt,
 };
 
-use super::super::mcp::validate_or_release_allocation_with;
 use super::{RuntimeV3Port, RuntimeV3ToolError, allocation_context, ledger, parse, wire};
 
 include!("runtime_v3_episode_legal_actions.rs");
 
 #[path = "runtime_v3_episode_launch.rs"]
 mod episode_launch;
+#[path = "runtime_v3_episode_lookup_agent.rs"]
+mod lookup_agent;
+#[path = "runtime_v3_episode_lookup_hooks.rs"]
+mod lookup_hooks;
 
 impl EpisodeRuntimePort for RuntimeV3Port {
     fn launch(&mut self) -> Result<(), sts2_harness::PortError> {
         episode_launch::launch(self)
     }
+
     fn current_lease_binding(
         &mut self,
     ) -> Result<sts2_harness::RuntimeLeaseBinding, sts2_harness::PortError> {
         self.allocated_lease_binding()
+    }
+
+    fn run_game_information_lookup(
+        &mut self,
+        legal_actions: &EpisodeLegalActionSet,
+        agent: &mut dyn LookupAgentPort,
+    ) -> Result<String, PolicyError> {
+        lookup_hooks::run_game_information_lookup(self, legal_actions, agent)
     }
     fn observe(&mut self) -> Result<EpisodeObservation, sts2_harness::PortError> {
         self.observe_inner(false)
@@ -44,7 +55,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
     }
 
     fn prepare_game_information_binding(&mut self) -> Result<(), sts2_harness::PortError> {
-        self.initialize_game_information_binding()
+        lookup_hooks::prepare_game_information_binding(self)
     }
 
     fn refresh_game_information_binding(
@@ -52,7 +63,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         state_id: &str,
         generation: u64,
     ) -> Result<(), sts2_harness::PortError> {
-        RuntimeV3Port::refresh_game_information_binding(self, state_id, generation)
+        lookup_hooks::refresh_game_information_binding(self, state_id, generation)
     }
 
     fn legal_actions(
@@ -86,6 +97,13 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         identity: &ActionIdentity,
         action: &EpisodeLegalAction,
     ) -> Result<TransitionReceipt, sts2_harness::PortError> {
+        self.validate_lookup_owner_now().map_err(|_| {
+            wire::port_error(
+                "memory_policy_revalidation",
+                "selected memory policy changed before action dispatch",
+                false,
+            )
+        })?;
         self.validate_current_action(identity, action)?;
         let payload = self.current_payload(action)?;
         self.retain_operation(identity, action, &payload)?;

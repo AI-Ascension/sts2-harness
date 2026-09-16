@@ -21,6 +21,7 @@ use super::shutdown::{EpisodeShutdown, ShutdownPort};
 use super::stability_barrier::{BarrierPort, StabilityBarrier};
 use super::transition::TransitionReceipt;
 use crate::error::PortError;
+use crate::game_information::LookupAgentPort;
 use crate::identity::ModelExecutionId;
 use serde_json::Value;
 
@@ -47,6 +48,16 @@ pub trait EpisodeRuntimePort: BarrierPort + RecoveryPort + ShutdownPort {
             "runtime did not expose its post-launch gateway lease binding",
             false,
         ))
+    }
+
+    /// Runs the additive selected-policy tool loop against the already-open
+    /// owner and existing MCP session. Adapters without that opt-in path fail closed.
+    fn run_game_information_lookup(
+        &mut self,
+        _legal_actions: &EpisodeLegalActionSet,
+        _agent: &mut dyn LookupAgentPort,
+    ) -> Result<String, crate::episode::PolicyError> {
+        Err(crate::episode::PolicyError::ProviderUnavailable)
     }
 
     /// Resolves the enabled owner-backed game-information binding after lease

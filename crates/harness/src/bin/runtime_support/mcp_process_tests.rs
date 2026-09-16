@@ -46,6 +46,23 @@ fn child_environment_preserves_distinct_gateway_and_mcp_sessions() {
             Some(&Some(std::ffi::OsStr::new(expected)))
         );
     }
+    for name in [
+        "STS2_LOOKUP_CORPUS_STORE_KEY_HEX",
+        "STS2_LOOKUP_POLICY_STORE_KEY_HEX",
+        "STS2_LOOKUP_ARCHIVE_STORE_KEY_HEX",
+        "STS2_WORKFLOW_TOKEN_LOOKUP_OWNER",
+        "STS2_LOOKUP_OWNER_CONFIG",
+    ] {
+        assert!(
+            !environment.contains_key(std::ffi::OsStr::new(name)),
+            "MCP spawn configuration must not copy {name}"
+        );
+    }
+    assert_eq!(
+        environment.get(std::ffi::OsStr::new("STS2_GATEWAY_TOKEN")),
+        Some(&Some(std::ffi::OsStr::new("synthetic-token"))),
+        "the MCP child receives its own explicit gateway credential"
+    );
 }
 
 #[test]
