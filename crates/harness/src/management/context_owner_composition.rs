@@ -130,7 +130,14 @@ impl ContextOwnerEffectiveLimitsView {
     ) -> Result<ControlAuthority, ManagementError> {
         authority
             .with_max_control_events(self.effective_limits.max_control_events)
-            .map_err(|code| ManagementError::invalid("context_control_event_limit_invalid", code))
+            .map_err(|code| {
+                let reason = if code == "context_control_events_exhausted" {
+                    "context_control_events_exhausted"
+                } else {
+                    "context_control_event_limit_invalid"
+                };
+                ManagementError::invalid(reason, code)
+            })
     }
 }
 

@@ -64,6 +64,9 @@ This is `additive-compatible`: `enabled`, `enabled_at` and `legacy` are unchange
 maxima are untouched. [ADR 0041](decisions/0041-selected-limit-enforcement-wiring.md) wires the
 render entry point and `max_control_events` to their production points of use, so the selected
 limits are enforced rather than only validated.
+Applying a selected event bound also rejects an authority whose retained journal already exceeds
+that bound with `context_control_events_exhausted`, matching bounded recovery. A journal exactly
+at the selected bound remains admissible; existing events are never silently discarded.
 
 ## Saved provider-session policy migration
 

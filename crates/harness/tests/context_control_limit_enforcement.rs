@@ -236,6 +236,34 @@ fn the_production_control_transition_refuses_past_the_selected_event_bound() {
 }
 
 #[test]
+fn the_production_control_binding_refuses_an_existing_over_bound_journal() {
+    let service = described_service(Scenario::Matching);
+    let run = run_id(&service);
+    let selected = selected_limits();
+    let mut authority = ControlAuthority::new(boundary(), "revision-1");
+    for index in 0..selected.max_control_events / 2 {
+        let operation_id = format!("operation-{index}");
+        authority
+            .admit_operation(&operation_id, 1)
+            .expect("admitted");
+        authority.settle_operation(&operation_id).expect("settled");
+    }
+    let bounded = service
+        .bind_context_control_authority(&actor(), &run, authority.clone())
+        .expect("an existing journal exactly at the bound remains admissible");
+    assert_eq!(bounded.events(), authority.events());
+    authority
+        .admit_operation("one-over", 1)
+        .expect("harness bound");
+    let journal = authority.export_journal().expect("journal");
+    let error = service
+        .bind_context_control_authority(&actor(), &run, authority.clone())
+        .expect_err("existing retained events above the selected bound must be refused");
+    assert_eq!(error.code, "context_control_events_exhausted");
+    assert_eq!(authority.export_journal().expect("journal"), journal);
+}
+
+#[test]
 fn the_selected_bound_also_governs_recovery_from_a_journal() {
     let selected = selected_limits();
     let mut authority = ControlAuthority::new(boundary(), "revision-1")

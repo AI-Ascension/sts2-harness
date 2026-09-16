@@ -119,6 +119,9 @@ impl ControlAuthority {
         if limit == 0 || limit > MAX_CONTROL_EVENTS {
             return Err("control_event_limit_invalid".to_owned());
         }
+        if self.events.len() as u64 > limit {
+            return Err("context_control_events_exhausted".to_owned());
+        }
         self.max_control_events = limit;
         Ok(self)
     }
@@ -405,11 +408,7 @@ impl ControlAuthority {
     /// selected owner/profile accepts is refused with the precise `context_control_events_exhausted`
     /// reason instead of being loaded and silently saturated later.
     pub fn recover_bounded(journal: &[u8], max_control_events: u64) -> Result<Self, String> {
-        let authority = Self::recover(journal)?.with_max_control_events(max_control_events)?;
-        if authority.events.len() as u64 > authority.max_control_events {
-            return Err("context_control_events_exhausted".to_owned());
-        }
-        Ok(authority)
+        Self::recover(journal)?.with_max_control_events(max_control_events)
     }
 
     fn idempotent(
