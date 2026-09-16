@@ -7,6 +7,10 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Refuse recorded-run export explicitly on non-Unix platforms, where its descriptor-relative
+  no-follow snapshot reader is unavailable, instead of preventing the whole harness from compiling.
+  The Unix snapshot checks remain intact. This does not certify Windows runtime behavior.
+
 - Bind the **package axis** of the runtime Exo admission identity to an inspected artifact. The
   reviewed `envelope` mode now requires `STS2_EXO_PACKAGE_PATH`, reads the exact bytes it locates
   through the existing bounded inspection read, and hashes them into `package_digest`, so a swapped

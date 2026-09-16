@@ -21,7 +21,8 @@ mod recorded_run_observation;
 mod recorded_run_projection;
 #[path = "recorded_run_seed.rs"]
 pub(crate) mod recorded_run_seed;
-#[path = "recorded_run_snapshot.rs"]
+#[cfg_attr(unix, path = "recorded_run_snapshot.rs")]
+#[cfg_attr(not(unix), path = "recorded_run_snapshot_unsupported.rs")]
 mod recorded_run_snapshot;
 #[path = "recorded_run_support.rs"]
 mod recorded_run_support;
@@ -30,7 +31,7 @@ mod recorded_run_trajectory;
 #[cfg(test)]
 #[path = "recorded_run_review_tests.rs"]
 mod review_tests;
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[path = "recorded_run_snapshot_tests.rs"]
 mod snapshot_tests;
 #[cfg(test)]
