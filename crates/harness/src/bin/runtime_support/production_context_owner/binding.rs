@@ -79,6 +79,8 @@ impl ContextOwnerPort for Owner {
         actor: &AuthContext,
         request: &ContextBindingRequest,
     ) -> Result<ContextOwnerBinding, ManagementError> {
+        let catalog = self.catalog(actor)?;
+        catalog.validate()?;
         let descriptor = self.descriptor()?;
         if request.context_ref != descriptor.context_ref
             || request.node_kind != "decide"
@@ -90,10 +92,10 @@ impl ContextOwnerPort for Owner {
                 "context binding is not current",
             ));
         }
-        let current = self.current.lock().map_err(|_| {
+        let mut current = self.current.lock().map_err(|_| {
             ManagementError::unavailable("context_owner_lock", "context owner is unavailable")
         })?;
-        let entry = current.get(&request.workflow_run_id).ok_or_else(|| {
+        let entry = current.get_mut(&request.workflow_run_id).ok_or_else(|| {
             ManagementError::unavailable(
                 "context_owner_observation_missing",
                 "current runtime observation is unavailable",
@@ -111,8 +113,9 @@ impl ContextOwnerPort for Owner {
                 "actor cannot bind this context authority",
             ));
         }
+        self.validate_control_limits_in_catalog(&catalog, &entry.admitted_control_limits)?;
         let state = entry.authority.state();
-        Ok(ContextOwnerBinding {
+        let binding = ContextOwnerBinding {
             schema_version: sts2_harness::management::CONTEXT_OWNER_BINDING_SCHEMA_VERSION.into(),
             owner_id: self.configuration.owner_id.clone(),
             owner_version: self.configuration.owner_version.clone(),
@@ -136,7 +139,34 @@ impl ContextOwnerPort for Owner {
             plan_epoch: state.plan_epoch,
             grants: descriptor.grants,
             continuity: descriptor.continuity,
-        })
+        };
+        let selected_limits = &entry.admitted_control_limits;
+        // This owner publishes `configuration.limits` in its descriptor, so
+        // the catalog check above also bounds the composed current binding.
+        ContextOwnerEffectiveLimitsView::compose(&catalog, &binding)?;
+        let authority = entry
+            .authority
+            .clone()
+            .with_max_control_events(selected_limits.max_control_events)
+            .map_err(|code| {
+                let reason = if code == "context_control_events_exhausted" {
+                    "context_control_events_exhausted"
+                } else {
+                    "context_control_event_limit_invalid"
+                };
+                ManagementError::conflict(
+                    reason,
+                    "current context control authority exceeds the admitted run limit",
+                )
+            })?;
+        entry.authority = authority;
+        entry
+            .store
+            .persist(&entry.authority, StoreMode::Enabled)
+            .map_err(|error| {
+                ManagementError::unavailable("context_owner_persist", error.to_string())
+            })?;
+        Ok(binding)
     }
 
     fn control(
@@ -151,6 +181,9 @@ impl ContextOwnerPort for Owner {
                 "actor cannot control this context authority",
             ));
         }
+        let catalog = self.catalog(actor)?;
+        catalog.validate()?;
+        ContextOwnerEffectiveLimitsView::compose(&catalog, binding)?;
         let mut current = self.current.lock().map_err(|_| {
             ManagementError::unavailable("context_owner_lock", "context owner is unavailable")
         })?;
@@ -166,6 +199,28 @@ impl ContextOwnerPort for Owner {
                 "context control binding is stale",
             ));
         }
+        self.validate_control_limits_in_catalog(&catalog, &entry.admitted_control_limits)?;
+        entry.authority = entry
+            .authority
+            .clone()
+            .with_max_control_events(entry.admitted_control_limits.max_control_events)
+            .map_err(|code| {
+                let reason = if code == "context_control_events_exhausted" {
+                    "context_control_events_exhausted"
+                } else {
+                    "context_control_event_limit_invalid"
+                };
+                ManagementError::conflict(
+                    reason,
+                    "current context control authority exceeds the admitted run limit",
+                )
+            })?;
+        entry
+            .store
+            .persist(&entry.authority, StoreMode::Enabled)
+            .map_err(|error| {
+                ManagementError::unavailable("context_owner_persist", error.to_string())
+            })?;
         let receipt = match command {
             sts2_harness::management::ContextControlCommand::Pause {
                 idempotency_key,
@@ -198,7 +253,14 @@ impl ContextOwnerPort for Owner {
                 expected_boundary,
             ),
         }
-        .map_err(|error| ManagementError::conflict("context_owner_control_refused", error))?;
+        .map_err(|error| {
+            let code = if error == "context_control_events_exhausted" {
+                "context_control_events_exhausted"
+            } else {
+                "context_owner_control_refused"
+            };
+            ManagementError::conflict(code, error)
+        })?;
         entry
             .store
             .persist(&entry.authority, StoreMode::Enabled)

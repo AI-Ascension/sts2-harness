@@ -86,9 +86,9 @@ pub trait LiveProviderSessionFactory: Send + Sync {
     ) -> Result<Box<dyn DecisionSource + Send>, ManagementError>;
 }
 
-/// Receives the authoritative MCP observation used by the served context
-/// owner. It is intentionally observation-only: context control and recovery
-/// remain unavailable until their owning runtime delegation exists.
+/// Receives the authoritative MCP observation and the run-reservation control
+/// bound used by the served context owner. The owner composes its current
+/// invocation binding before any delegated control effect.
 pub trait LiveContextObservationPort: Send + Sync {
     fn record_observation(
         &self,
@@ -97,6 +97,7 @@ pub trait LiveContextObservationPort: Send + Sync {
         definition_digest: &str,
         binding: &RuntimeAuthorityBinding,
         observation: &EpisodeObservation,
+        control_limits: &super::super::ContextOwnerControlLimits,
     ) -> Result<(), ManagementError>;
 
     fn record_legal_actions(
@@ -178,6 +179,29 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
         definition: &WorkflowDefinition,
         definition_digest: &str,
     ) -> Result<Box<dyn LiveWorkflowSession>, ManagementError> {
+        self.open_admitted(request, actor, definition, definition_digest, None)
+    }
+
+    fn open_admitted(
+        &self,
+        request: &RunRequest,
+        actor: &AuthContext,
+        definition: &WorkflowDefinition,
+        definition_digest: &str,
+        control_limits: Option<&super::super::ContextOwnerControlLimits>,
+    ) -> Result<Box<dyn LiveWorkflowSession>, ManagementError> {
+        if self.context_observations.is_some() && control_limits.is_none() {
+            return Err(ManagementError::capability(
+                "selected_context_control_limits_required",
+                "served context observations require the admitted control limits",
+            ));
+        }
+        if control_limits.is_some() && self.context_observations.is_none() {
+            return Err(ManagementError::capability(
+                "selected_context_control_owner_unavailable",
+                "admitted context control limits have no attached enforcing owner",
+            ));
+        }
         let authority_binding =
             self.runtime
                 .authority_binding(request, actor, definition, definition_digest)?;
@@ -197,6 +221,7 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
             provider_policy: Arc::clone(&self.provider_policy),
             provider_capabilities: self.provider_capabilities.clone(),
             context_observations: self.context_observations.clone(),
+            context_control_limits: control_limits.cloned(),
             authority_binding,
         }))
     }
@@ -243,6 +268,7 @@ struct ProductionLiveWorkflowSession {
     provider_policy: Arc<dyn LiveProviderPolicyPort>,
     provider_capabilities: NativeCapabilities,
     context_observations: Option<Arc<dyn LiveContextObservationPort>>,
+    context_control_limits: Option<super::super::ContextOwnerControlLimits>,
     authority_binding: RuntimeAuthorityBinding,
 }
 

@@ -249,9 +249,13 @@ impl LiveWorkflowExecutionPort {
         };
         reserve.reserve(&admission_result)?;
         admission::validate_live_catalog(self.factory.as_ref(), actor, admission)?;
-        let mut session = self
-            .factory
-            .open(request, actor, &definition, definition_digest)?;
+        let mut session = self.factory.open_admitted(
+            request,
+            actor,
+            &definition,
+            definition_digest,
+            reserve.context_control_limits(),
+        )?;
         if let Err(error) = session.launch() {
             let stop_error = session.stop_episode().err();
             let release_error = session.release_lease().err();

@@ -49,6 +49,12 @@ impl ProductionLiveWorkflowSession {
                 &self.definition_digest,
                 &self.authority_binding,
                 observation,
+                self.context_control_limits.as_ref().ok_or_else(|| {
+                    ManagementError::capability(
+                        "selected_context_control_limits_required",
+                        "served context observation has no admitted control limits",
+                    )
+                })?,
             )?;
         }
         Ok(())

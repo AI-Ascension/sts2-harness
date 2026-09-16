@@ -28,15 +28,15 @@ pub use auth::{
 pub use authoring::{AuthoringStore, MemoryAuthoringStore, PublishResult};
 pub use context_owner::{
     CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, CONTEXT_OWNER_BINDING_SCHEMA_VERSION,
-    CONTEXT_OWNER_CATALOG_SCHEMA_VERSION, CONTEXT_OWNER_EFFECTIVE_LIMITS_VIEW_SCHEMA,
-    CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION, CONTEXT_OWNER_RECEIPT_V1_SCHEMA_VERSION,
-    ContextBindingCatalog, ContextBindingContinuity, ContextBindingDescriptor,
-    ContextBindingGrants, ContextBindingOperation, ContextBindingRequest, ContextBindingSource,
-    ContextBindingState, ContextControlCommand, ContextControlCommandKind, ContextControlReceipt,
-    ContextEffectiveLimits, ContextOwnerAssociationView, ContextOwnerBinding,
-    ContextOwnerEffectiveLimitsView, ContextOwnerPort, MAX_CONTEXT_BINDINGS,
-    MAX_CONTEXT_NODE_KINDS, MAX_CONTEXT_OPERATIONS, MAX_CONTEXT_SOURCES,
-    UnavailableContextOwnerPort, compose_context_owner_binding,
+    CONTEXT_OWNER_CATALOG_SCHEMA_VERSION, CONTEXT_OWNER_CONTROL_LIMITS_SCHEMA,
+    CONTEXT_OWNER_EFFECTIVE_LIMITS_VIEW_SCHEMA, CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION,
+    CONTEXT_OWNER_RECEIPT_V1_SCHEMA_VERSION, ContextBindingCatalog, ContextBindingContinuity,
+    ContextBindingDescriptor, ContextBindingGrants, ContextBindingOperation, ContextBindingRequest,
+    ContextBindingSource, ContextBindingState, ContextControlCommand, ContextControlCommandKind,
+    ContextControlReceipt, ContextEffectiveLimits, ContextOwnerAssociationView,
+    ContextOwnerBinding, ContextOwnerControlLimits, ContextOwnerEffectiveLimitsView,
+    ContextOwnerPort, MAX_CONTEXT_BINDINGS, MAX_CONTEXT_NODE_KINDS, MAX_CONTEXT_OPERATIONS,
+    MAX_CONTEXT_SOURCES, UnavailableContextOwnerPort, compose_context_owner_binding,
 };
 pub use contract::ReplayRequest as ManagementReplayRequest;
 pub use contract::{

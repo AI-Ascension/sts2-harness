@@ -6,10 +6,12 @@ use std::sync::Mutex;
 use serde::Deserialize;
 use sts2_harness::context_control::{ContextControlStore, ControlAuthority};
 use sts2_harness::management::{
-    AuthContext, ContextBindingCatalog, ContextBindingContinuity, ContextBindingDescriptor,
-    ContextBindingGrants, ContextBindingOperation, ContextBindingRequest, ContextBindingState,
-    ContextEffectiveLimits, ContextOwnerBinding, ContextOwnerPort, LiveContextObservationPort,
-    ManagementError, RunRequest, RuntimeAuthorityBinding,
+    AuthContext, CONTEXT_OWNER_CONTROL_LIMITS_SCHEMA, ContextBindingCatalog,
+    ContextBindingContinuity, ContextBindingDescriptor, ContextBindingGrants,
+    ContextBindingOperation, ContextBindingRequest, ContextBindingState, ContextEffectiveLimits,
+    ContextOwnerBinding, ContextOwnerControlLimits, ContextOwnerEffectiveLimitsView,
+    ContextOwnerPort, LiveContextObservationPort, ManagementError, RunRequest,
+    RuntimeAuthorityBinding,
 };
 use sts2_harness::{EpisodeLegalActionSet, EpisodeObservation};
 use zeroize::Zeroize;
@@ -51,6 +53,7 @@ struct Current {
     actor: String,
     catalog_generation: Option<u64>,
     runtime_lease_epoch: u64,
+    admitted_control_limits: ContextOwnerControlLimits,
 }
 
 impl Owner {
@@ -63,6 +66,36 @@ impl Owner {
         };
         key.zeroize();
         Ok(result)
+    }
+
+    fn validate_control_limits(
+        &self,
+        actor: &AuthContext,
+        limits: &ContextOwnerControlLimits,
+    ) -> Result<(), ManagementError> {
+        let catalog = self.catalog(actor)?;
+        catalog.validate()?;
+        self.validate_control_limits_in_catalog(&catalog, limits)
+    }
+
+    fn validate_control_limits_in_catalog(
+        &self,
+        catalog: &ContextBindingCatalog,
+        limits: &ContextOwnerControlLimits,
+    ) -> Result<(), ManagementError> {
+        if limits.schema_version != CONTEXT_OWNER_CONTROL_LIMITS_SCHEMA
+            || limits.owner_id != catalog.owner_id
+            || limits.owner_version != catalog.owner_version
+            || limits.catalog_digest != catalog.catalog_digest
+            || limits.max_control_events == 0
+            || limits.max_control_events > self.configuration.limits.max_control_events
+        {
+            return Err(ManagementError::conflict(
+                "context_control_limits_stale",
+                "admitted control limits do not match the current owner catalog",
+            ));
+        }
+        Ok(())
     }
 }
 

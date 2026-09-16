@@ -12,7 +12,9 @@ impl LiveContextObservationPort for Owner {
         digest: &str,
         binding: &RuntimeAuthorityBinding,
         observation: &EpisodeObservation,
+        control_limits: &ContextOwnerControlLimits,
     ) -> Result<(), ManagementError> {
+        self.validate_control_limits(actor, control_limits)?;
         let run_id = run_id(request, digest)?;
         if binding.instance_id != request.instance_id {
             return Err(ManagementError::conflict(
@@ -55,6 +57,12 @@ impl LiveContextObservationPort for Owner {
                     "actor or runtime lease cannot replace this context authority",
                 ));
             }
+            if entry.admitted_control_limits != *control_limits {
+                return Err(ManagementError::conflict(
+                    "context_control_limits_changed",
+                    "live observation cannot replace the admitted control limits",
+                ));
+            }
             let retains_catalog = entry.catalog_generation == Some(observation.generation())
                 && entry.authority.state().boundary.state_id == observation.state_id();
             entry
@@ -91,11 +99,13 @@ impl LiveContextObservationPort for Owner {
                     ));
                 }
                 authority
+                    .with_max_control_events(control_limits.max_control_events)
+                    .map_err(control_limit_error)?
             }
             Err(sts2_harness::context_control::DurableControlStoreError::Missing) => {
                 let authority = ControlAuthority::new(boundary.clone(), "context.revision.1")
-                    .with_max_control_events(self.configuration.limits.max_control_events)
-                    .map_err(|e| ManagementError::invalid("context_owner_limits", e))?;
+                    .with_max_control_events(control_limits.max_control_events)
+                    .map_err(control_limit_error)?;
                 store.persist(&authority, StoreMode::Enabled).map_err(|e| {
                     ManagementError::unavailable("context_owner_persist", e.to_string())
                 })?;
@@ -124,6 +134,7 @@ impl LiveContextObservationPort for Owner {
                 actor: actor.subject.clone(),
                 catalog_generation: None,
                 runtime_lease_epoch: binding.lease_epoch,
+                admitted_control_limits: control_limits.clone(),
             },
         );
         Ok(())
@@ -195,6 +206,18 @@ impl LiveContextObservationPort for Owner {
             });
         }
     }
+}
+
+fn control_limit_error(error: String) -> ManagementError {
+    let code = if error == "context_control_events_exhausted" {
+        "context_control_events_exhausted"
+    } else {
+        "context_control_event_limit_invalid"
+    };
+    ManagementError::conflict(
+        code,
+        "durable context authority exceeds the admitted control-event limit",
+    )
 }
 
 #[cfg(test)]
