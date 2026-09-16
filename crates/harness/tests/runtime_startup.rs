@@ -328,3 +328,32 @@ fn a_matching_package_binding_requires_the_actual_launch_configuration() -> Resu
     }
     Ok(())
 }
+
+#[test]
+fn relative_bridge_cannot_change_identity_through_working_directory() -> Result<(), String> {
+    let fixture = Fixture::new()?;
+    let workdir = fixture.root.join("different-launch-directory");
+    fs::create_dir(&workdir).map_err(|error| error.to_string())?;
+    write_probe(
+        &workdir.join("provider-probe.sh"),
+        "different-provider",
+        &fixture.counter,
+    )?;
+    let inspected = fs::read(&fixture.bridge).map_err(|error| error.to_string())?;
+    let mut command = fixture.command_with_matching_package_identity();
+    command
+        .current_dir(&fixture.root)
+        .env("STS2_EXO_BRIDGE_BINARY", "./provider-probe.sh")
+        .env("STS2_EXO_BRIDGE_WORKDIR", &workdir)
+        .env("STS2_EXO_BRIDGE_DIGEST", digest_bytes(&inspected));
+    let output = run_child(command)?;
+    assert_failure_contains(
+        &output,
+        "Exo envelope requires an absolute bridge executable path",
+    )?;
+    fixture.assert_no_gateway_connection()?;
+    if fixture.counter.exists() || fixture.store.exists() {
+        return Err("relative bridge refusal reached a durable or process boundary".to_owned());
+    }
+    Ok(())
+}

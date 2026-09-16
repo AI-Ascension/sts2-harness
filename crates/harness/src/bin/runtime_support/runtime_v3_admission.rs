@@ -64,6 +64,9 @@ fn enveloped(
     map_context_enabled: bool,
     native_instance_id: &str,
 ) -> Result<ExoRuntimeAdmission, String> {
+    if !std::path::Path::new(process.executable()).is_absolute() {
+        return Err("Exo envelope requires an absolute bridge executable path".to_owned());
+    }
     let trusted = ExoTrustedConfiguration {
         identity: ExoIdentity {
             source_revision: required("STS2_EXO_REVISION")?,
