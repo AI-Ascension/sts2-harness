@@ -279,7 +279,7 @@ fn manifest(
             state_id: request.state_id.clone(),
             generation: request.generation,
             catalog_digest: sha256_hex(
-                serde_json::to_vec(&request.legal_action_ids).expect("catalog"),
+                serde_json::to_vec(&request.legal_action_ids).expect("catalog fixture"),
             ),
         },
     }

@@ -25,9 +25,10 @@ impl RuntimeV3Port {
         &self,
         observation: &sts2_harness::EpisodeObservation,
         actions: &sts2_harness::EpisodeLegalActionSet,
+        catalog_raw: &[u8],
     ) -> Result<(), String> {
         self.lifecycle_authority
-            .observe(observation, actions)
+            .observe(observation, actions, catalog_raw)
             .map_err(|_| String::from("runtime authority rejected the MCP observation"))
     }
 
@@ -35,8 +36,15 @@ impl RuntimeV3Port {
         &self,
         actions: &sts2_harness::EpisodeLegalActionSet,
     ) -> Result<(), sts2_harness::PortError> {
+        let catalog_raw = self.catalog_raw.as_deref().ok_or_else(|| {
+            wire::port_error(
+                "lifecycle_authority_invalid",
+                "runtime authority has no retained legal-action catalog bytes",
+                false,
+            )
+        })?;
         self.lifecycle_authority
-            .update_catalog(actions)
+            .update_catalog(actions, catalog_raw)
             .map_err(|_| {
                 wire::port_error(
                     "lifecycle_authority_invalid",

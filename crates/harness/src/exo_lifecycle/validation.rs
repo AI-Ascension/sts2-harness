@@ -20,9 +20,6 @@ pub(super) fn input(
         || request.provider_revision != manifest.model_revision
         || request.state_id != manifest.authority.state_id
         || request.generation != manifest.authority.generation
-        || crate::sha256_hex(
-            serde_json::to_vec(&request.legal_action_ids).map_err(|_| LifecycleError::Invalid)?,
-        ) != manifest.authority.catalog_digest
     {
         return Err(LifecycleError::Invalid);
     }

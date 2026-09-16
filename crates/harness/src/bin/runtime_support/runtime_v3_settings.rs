@@ -38,15 +38,17 @@ impl RuntimeV3Settings {
             string_list("STS2_EXO_INHERITED_ENV_JSON")?,
         )
         .map_err(|error| format!("Exo bridge process configuration is invalid: {error}"))?;
+        let lifecycle = RuntimeLifecycleConfig::from_environment()?;
         // Admission inspects the exact bridge executable it is about to launch, so the process
-        // configuration is assembled first.
+        // configuration is assembled first. Lifecycle capability promotion is deferred until
+        // its durable receipt adapter has been built.
         let admission = runtime_v3_admission::from_environment(
             &process,
             config.map_context_enabled,
             &config.instance_id,
+            lifecycle.is_some(),
         )?;
         let runner = runner_from_environment(config.map_context_enabled)?;
-        let lifecycle = RuntimeLifecycleConfig::from_environment()?;
         Ok(Self {
             runner,
             exo,

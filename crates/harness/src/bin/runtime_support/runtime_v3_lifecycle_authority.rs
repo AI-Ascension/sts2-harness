@@ -10,12 +10,28 @@ use sts2_harness::{
     EpisodeLegalActionSet, EpisodeObservation, ExecutionLineage, ExoDecisionRequest,
 };
 
+/// Optional additive fence for a separately owned policy authority.
+///
+/// The runtime snapshot lock is acquired before this callback. Implementations may acquire their
+/// own policy-owner locks, but must not call back into `RuntimeLifecycleAuthorityState` or perform
+/// provider/store I/O. The returned guard stays live through the corresponding send or consume
+/// boundary and is released before the runtime snapshot lock.
+pub(super) trait RuntimeLifecycleFence: Send + Sync {
+    fn validate<'a>(
+        &'a self,
+        manifest: &InvocationManifest,
+        result_digest: Option<&str>,
+    ) -> Result<Box<dyn AuthorityGuard + 'a>, LifecycleError>;
+}
+
 #[derive(Clone, Default)]
 pub(super) struct RuntimeLifecycleAuthorityState(Arc<Mutex<AuthoritySnapshot>>);
 
 #[derive(Default)]
 struct AuthoritySnapshot {
     enabled: bool,
+    fence_frozen: bool,
+    fence: Option<Arc<dyn RuntimeLifecycleFence>>,
     lease: Option<LeaseAuthority>,
     turn: Option<TurnAuthority>,
 }
@@ -32,9 +48,30 @@ pub(super) struct TurnAuthority {
     pub(super) state_id: String,
     pub(super) generation: u64,
     pub(super) catalog_digest: String,
+    pub(super) action_ids_digest: String,
 }
 
 impl RuntimeLifecycleAuthorityState {
+    pub(super) fn set_fence(
+        &self,
+        fence: Arc<dyn RuntimeLifecycleFence>,
+    ) -> Result<(), LifecycleError> {
+        let mut state = self.0.lock().map_err(|_| LifecycleError::Fenced)?;
+        if state.fence_frozen || state.fence.is_some() {
+            return Err(LifecycleError::Fenced);
+        }
+        state.fence = Some(fence);
+        Ok(())
+    }
+
+    pub(super) fn freeze_fence(
+        &self,
+    ) -> Result<Option<Arc<dyn RuntimeLifecycleFence>>, LifecycleError> {
+        let mut state = self.0.lock().map_err(|_| LifecycleError::Fenced)?;
+        state.fence_frozen = true;
+        Ok(state.fence.clone())
+    }
+
     pub(super) fn enable(&self) -> Result<(), LifecycleError> {
         let mut state = self.0.lock().map_err(|_| LifecycleError::Fenced)?;
         if !state.enabled {
@@ -65,6 +102,7 @@ impl RuntimeLifecycleAuthorityState {
         &self,
         observation: &EpisodeObservation,
         actions: &EpisodeLegalActionSet,
+        catalog_raw: &[u8],
     ) -> Result<(), LifecycleError> {
         let mut state = self.0.lock().map_err(|_| LifecycleError::Fenced)?;
         if !state.enabled {
@@ -75,13 +113,15 @@ impl RuntimeLifecycleAuthorityState {
         {
             return Err(LifecycleError::Stale);
         }
-        let catalog_digest = catalog_digest(actions)?;
+        let catalog_digest = catalog_digest(catalog_raw)?;
+        let action_ids_digest = action_ids_digest(actions)?;
         let lease = state.lease.clone().ok_or(LifecycleError::Fenced)?;
         state.turn = Some(TurnAuthority {
             lease,
             state_id: observation.state_id().to_owned(),
             generation: observation.generation(),
             catalog_digest,
+            action_ids_digest,
         });
         Ok(())
     }
@@ -89,17 +129,20 @@ impl RuntimeLifecycleAuthorityState {
     pub(super) fn update_catalog(
         &self,
         actions: &EpisodeLegalActionSet,
+        catalog_raw: &[u8],
     ) -> Result<(), LifecycleError> {
         let mut state = self.0.lock().map_err(|_| LifecycleError::Fenced)?;
         if !state.enabled {
             return Ok(());
         }
-        let catalog_digest = catalog_digest(actions)?;
+        let catalog_digest = catalog_digest(catalog_raw)?;
+        let action_ids_digest = action_ids_digest(actions)?;
         let turn = state.turn.as_mut().ok_or(LifecycleError::Fenced)?;
         if turn.state_id != actions.state_id() || turn.generation != actions.generation() {
             return Err(LifecycleError::Stale);
         }
         turn.catalog_digest = catalog_digest;
+        turn.action_ids_digest = action_ids_digest;
         Ok(())
     }
 
@@ -111,7 +154,7 @@ impl RuntimeLifecycleAuthorityState {
         let turn = state.turn.as_ref().ok_or(LifecycleError::Fenced)?;
         if request.state_id != turn.state_id
             || request.generation != turn.generation
-            || catalog_digest_ids(&request.legal_action_ids)? != turn.catalog_digest
+            || catalog_digest_ids(&request.legal_action_ids)? != turn.action_ids_digest
         {
             return Err(LifecycleError::Stale);
         }
@@ -137,6 +180,8 @@ impl RuntimeLifecycleAuthorityState {
         lineage: &ExecutionLineage,
         config_digest: &str,
         manifest: &InvocationManifest,
+        fence: Option<&'a dyn RuntimeLifecycleFence>,
+        result_digest: Option<&str>,
     ) -> Result<AuthorityGuardBox<'a>, LifecycleError> {
         let state = self.0.lock().map_err(|_| LifecycleError::Fenced)?;
         if !state.enabled {
@@ -157,14 +202,28 @@ impl RuntimeLifecycleAuthorityState {
         {
             return Err(LifecycleError::Stale);
         }
-        Ok(Box::new(StateGuard { _state: state }))
+        let fence_guard = fence
+            .map(|fence| fence.validate(manifest, result_digest))
+            .transpose()?;
+        Ok(Box::new(StateGuard {
+            state: Some(state),
+            fence: fence_guard,
+        }))
     }
 }
 
 type AuthorityGuardBox<'a> = Box<dyn AuthorityGuard + 'a>;
 
 struct StateGuard<'a> {
-    _state: MutexGuard<'a, AuthoritySnapshot>,
+    state: Option<MutexGuard<'a, AuthoritySnapshot>>,
+    fence: Option<Box<dyn AuthorityGuard + 'a>>,
+}
+impl Drop for StateGuard<'_> {
+    fn drop(&mut self) {
+        // The policy fence was acquired after the runtime snapshot lock, so release it first.
+        drop(self.fence.take());
+        drop(self.state.take());
+    }
 }
 impl AuthorityGuard for StateGuard<'_> {}
 
@@ -177,6 +236,7 @@ pub(super) struct RuntimeAuthority {
     pub(super) lineage: ExecutionLineage,
     pub(super) config_digest: String,
     pub(super) owner_binding_digest: String,
+    pub(super) fence: Option<Arc<dyn RuntimeLifecycleFence>>,
 }
 
 impl LifecycleAuthorityPort for RuntimeAuthority {
@@ -196,8 +256,14 @@ impl LifecycleAuthorityPort for RuntimeAuthority {
         &'a self,
         manifest: &InvocationManifest,
     ) -> Result<Box<dyn AuthorityGuard + 'a>, LifecycleError> {
-        self.state
-            .lock_for_manifest(&self.scope, &self.lineage, &self.config_digest, manifest)
+        self.state.lock_for_manifest(
+            &self.scope,
+            &self.lineage,
+            &self.config_digest,
+            manifest,
+            self.fence.as_deref(),
+            None,
+        )
     }
 
     fn consume<'a>(
@@ -212,11 +278,25 @@ impl LifecycleAuthorityPort for RuntimeAuthority {
         {
             return Err(LifecycleError::Invalid);
         }
-        self.admit(manifest)
+        self.state.lock_for_manifest(
+            &self.scope,
+            &self.lineage,
+            &self.config_digest,
+            manifest,
+            self.fence.as_deref(),
+            Some(result_digest),
+        )
     }
 }
 
-fn catalog_digest(actions: &EpisodeLegalActionSet) -> Result<String, LifecycleError> {
+fn catalog_digest(catalog_raw: &[u8]) -> Result<String, LifecycleError> {
+    if catalog_raw.is_empty() {
+        return Err(LifecycleError::Invalid);
+    }
+    Ok(sts2_harness::sha256_hex(catalog_raw))
+}
+
+fn action_ids_digest(actions: &EpisodeLegalActionSet) -> Result<String, LifecycleError> {
     let ids: Vec<_> = actions
         .actions()
         .iter()
@@ -232,19 +312,5 @@ fn catalog_digest_ids(ids: &[String]) -> Result<String, LifecycleError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn catalog_digest_matches_the_provider_request_projection() {
-        let ids = vec![String::from("combat.end-turn"), String::from("combat.play")];
-        assert_eq!(
-            catalog_digest_ids(&ids).expect("catalog digest"),
-            sts2_harness::sha256_hex(
-                serde_json::to_vec(&json!(["combat.end-turn", "combat.play"]))
-                    .expect("encoded ids")
-            )
-        );
-    }
-}
+#[path = "runtime_v3_lifecycle_authority_tests.rs"]
+mod tests;

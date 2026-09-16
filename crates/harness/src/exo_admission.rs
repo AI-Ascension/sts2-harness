@@ -291,6 +291,13 @@ impl ExoRuntimeAdmission {
         Ok(Self::Enveloped(Box::new(plan)))
     }
 
+    /// Defers capability validation until the lifecycle adapter has supplied its durable,
+    /// receipt-bound implementation. Generic admission still validates if it receives this value.
+    #[must_use]
+    pub fn enveloped_lifecycle(plan: ExoAdmissionPlan) -> Self {
+        Self::Enveloped(Box::new(plan))
+    }
+
     /// Records the explicit, un-admitted raw-wire acknowledgement.
     #[must_use]
     pub fn legacy() -> Self {

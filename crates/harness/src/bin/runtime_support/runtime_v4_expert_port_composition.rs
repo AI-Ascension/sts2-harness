@@ -283,7 +283,7 @@ impl RuntimeV3Port {
         self.current_actions = Some(composed.actions.clone());
         let (catalog, catalog_raw) = composed_catalog(&composed.actions, &composed.payloads)?;
         self.catalog = Some(catalog);
-        self.catalog_raw = Some(catalog_raw);
+        self.catalog_raw = Some(catalog_raw.clone());
         self.payloads = composed.payloads.clone();
         self.retain_rest_selector();
         if let Some(durable) = &self.durable {
@@ -294,7 +294,7 @@ impl RuntimeV3Port {
             durable.verify_resume_boundary_with_catalog(&composed.observation, catalog_raw)?;
             durable.checkpoint_raw(&composed.observation, catalog_raw)?;
         }
-        self.observe_lifecycle_authority(&composed.observation, &composed.actions)?;
+        self.observe_lifecycle_authority(&composed.observation, &composed.actions, &catalog_raw)?;
         Ok(())
     }
 }

@@ -1,9 +1,42 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Value, json};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
 use sts2_harness::ExoTransport;
+use sts2_harness::exo_lifecycle::{AuthorityGuard, InvocationManifest, LifecycleError};
 
+use super::super::super::lifecycle_authority::RuntimeLifecycleFence;
 use super::Fixture;
+
+struct RecordingFence {
+    calls: Arc<Mutex<Vec<Option<String>>>>,
+    releases: Arc<AtomicUsize>,
+}
+
+struct RecordingFenceGuard(Arc<AtomicUsize>);
+impl AuthorityGuard for RecordingFenceGuard {}
+impl Drop for RecordingFenceGuard {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+impl RuntimeLifecycleFence for RecordingFence {
+    fn validate<'a>(
+        &'a self,
+        _manifest: &InvocationManifest,
+        result_digest: Option<&str>,
+    ) -> Result<Box<dyn AuthorityGuard + 'a>, LifecycleError> {
+        self.calls
+            .lock()
+            .map_err(|_| LifecycleError::Fenced)?
+            .push(result_digest.map(str::to_owned));
+        Ok(Box::new(RecordingFenceGuard(self.releases.clone())))
+    }
+}
 
 #[test]
 fn inspected_runtime_admission_executes_one_valid_durable_exchange() {
@@ -31,6 +64,38 @@ fn inspected_runtime_admission_executes_one_valid_durable_exchange() {
             .lines()
             .count(),
         1
+    );
+}
+
+#[test]
+fn configured_runtime_fence_is_held_across_send_and_result_consumption() {
+    let fixture = Fixture::new();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let releases = Arc::new(AtomicUsize::new(0));
+    fixture
+        .authority_state
+        .set_fence(Arc::new(RecordingFence {
+            calls: calls.clone(),
+            releases: releases.clone(),
+        }))
+        .expect("register lifecycle fence before build");
+    let mut transport = fixture.admit().expect("actual lifecycle admission");
+    let bytes = serde_json::to_vec(&fixture.request).expect("request");
+    transport
+        .exchange(&bytes, 8192, 1000)
+        .expect("fenced exchange");
+    let stored = fixture
+        .durable
+        .lifecycle_store()
+        .borrow()
+        .decision("execution-11")
+        .expect("durable lifecycle result")
+        .result_payload
+        .expect("stored response bytes");
+    assert_eq!(releases.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        *calls.lock().expect("recorded fence calls"),
+        vec![None, Some(sts2_harness::sha256_hex(stored))]
     );
 }
 

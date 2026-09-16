@@ -268,7 +268,7 @@ impl Fixture {
     }
 
     fn admit(&self) -> Result<RuntimeTransport, String> {
-        super::admit(
+        super::super::select_provider_transport(
             &self.config,
             &self.settings,
             self.durable.clone(),

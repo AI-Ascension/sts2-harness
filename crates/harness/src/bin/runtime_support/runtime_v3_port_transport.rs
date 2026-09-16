@@ -152,7 +152,7 @@ impl RuntimeV3Port {
         if !self.is_expert_profile()
             && let Some(actions) = self.current_actions.as_ref()
         {
-            self.observe_lifecycle_authority(&parsed.observation, actions)?;
+            self.observe_lifecycle_authority(&parsed.observation, actions, &parsed.catalog_raw)?;
         }
         Ok(parsed.observation)
     }

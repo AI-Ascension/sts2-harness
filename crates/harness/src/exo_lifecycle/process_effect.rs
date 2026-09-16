@@ -90,21 +90,20 @@ impl EffectPort for LifecycleProcessEffect {
         let timeout = self.timeout_millis;
         let completed_units = self.completed_units;
         let operation_id = permit.operation_id().to_owned();
+        let context = ExchangeContext {
+            config,
+            maximum,
+            timeout_millis: timeout,
+            cancellation: cancellation.clone(),
+            request_id: envelope.request_id,
+            turn_id: envelope.turn_id,
+            operation_id,
+            completed_units,
+        };
         std::thread::Builder::new()
             .name(String::from("exo-lifecycle-effect"))
             .spawn(move || {
-                let result = exchange(
-                    config,
-                    bytes,
-                    maximum,
-                    timeout,
-                    cancellation.clone(),
-                    &envelope.request_id,
-                    &envelope.turn_id,
-                    &operation_id,
-                    completed_units,
-                    started_sender,
-                );
+                let result = exchange(context, bytes, started_sender);
                 let _ = sender.send(result);
             })
             .map_err(|_| LifecycleError::Unavailable)?;
@@ -133,25 +132,36 @@ impl EffectHandle for LifecycleProcessHandle {
     }
 }
 
-fn exchange(
+struct ExchangeContext {
     config: ExoProcessConfig,
-    input: Vec<u8>,
     maximum: usize,
     timeout_millis: u32,
     cancellation: ExecutionCancellation,
-    request_id: &str,
-    turn_id: &str,
-    operation_id: &str,
+    request_id: String,
+    turn_id: String,
+    operation_id: String,
     completed_units: u64,
+}
+
+fn exchange(
+    context: ExchangeContext,
+    input: Vec<u8>,
     started: std::sync::mpsc::SyncSender<Result<(), LifecycleError>>,
 ) -> Result<EffectCompletion, LifecycleError> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|_| LifecycleError::Unavailable)?;
-    runtime.block_on(exchange_async(
+    runtime.block_on(exchange_async(context, input, started))
+}
+
+async fn exchange_async(
+    context: ExchangeContext,
+    input: Vec<u8>,
+    started: std::sync::mpsc::SyncSender<Result<(), LifecycleError>>,
+) -> Result<EffectCompletion, LifecycleError> {
+    let ExchangeContext {
         config,
-        input,
         maximum,
         timeout_millis,
         cancellation,
@@ -159,22 +169,7 @@ fn exchange(
         turn_id,
         operation_id,
         completed_units,
-        started,
-    ))
-}
-
-async fn exchange_async(
-    config: ExoProcessConfig,
-    input: Vec<u8>,
-    maximum: usize,
-    timeout_millis: u32,
-    cancellation: ExecutionCancellation,
-    request_id: &str,
-    turn_id: &str,
-    operation_id: &str,
-    completed_units: u64,
-    started: std::sync::mpsc::SyncSender<Result<(), LifecycleError>>,
-) -> Result<EffectCompletion, LifecycleError> {
+    } = context;
     let mut command = Command::new(config.executable());
     command
         .args(config.arguments())
@@ -224,15 +219,15 @@ async fn exchange_async(
             return Err(error);
         }
     };
-    let (_, native) = super::parse_lifecycle_response(&bytes, request_id, turn_id)
+    let (_, native) = super::parse_lifecycle_response(&bytes, &request_id, &turn_id)
         .map_err(|_| LifecycleError::Invalid)?;
     let envelope: super::ExoLifecycleResponse =
         serde_json::from_slice(&bytes).map_err(|_| LifecycleError::Invalid)?;
     let decision = serde_json::to_vec(envelope.decision.as_ref().ok_or(LifecycleError::Invalid)?)
         .map_err(|_| LifecycleError::Invalid)?;
     let response = encode_bridge_response(
-        request_id,
-        turn_id,
+        &request_id,
+        &turn_id,
         crate::ExoWireOutcome::Decision,
         Some(&decision),
         None,

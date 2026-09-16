@@ -29,7 +29,11 @@ type RuntimeManifestFactory = Box<
 >;
 type RuntimeLifecycleTransport = ExoLifecycleRuntimeTransport<RuntimeManifestFactory>;
 
-pub(super) struct RuntimeTransport(Box<dyn ExoTransport>);
+pub(super) struct RuntimeTransport {
+    inner: Box<dyn ExoTransport>,
+    // The policy owner holds the provider-session journal's exclusive lifetime lease.
+    _policy_owner: Option<ProviderSessionPolicyOwner>,
+}
 impl ExoTransport for RuntimeTransport {
     fn exchange(
         &mut self,
@@ -37,10 +41,13 @@ impl ExoTransport for RuntimeTransport {
         max_response_bytes: usize,
         timeout_millis: u32,
     ) -> Result<Vec<u8>, sts2_harness::ExoTransportError> {
-        self.0.exchange(request, max_response_bytes, timeout_millis)
+        self.inner
+            .exchange(request, max_response_bytes, timeout_millis)
     }
     fn close(&mut self) -> Result<(), sts2_harness::ExoTransportError> {
-        self.0.close()
+        let result = self.inner.close();
+        drop(self._policy_owner.take());
+        result
     }
 }
 
@@ -58,9 +65,12 @@ pub(super) fn admit(
             &settings.admission,
             settings.process.clone(),
         )
-        .map(|transport| RuntimeTransport(Box::new(transport)));
+        .map(|transport| RuntimeTransport {
+            inner: Box::new(transport),
+            _policy_owner: None,
+        });
     };
-    let transport = build(
+    let (transport, policy_owner) = build(
         config,
         settings,
         durable,
@@ -71,10 +81,9 @@ pub(super) fn admit(
     match &settings.admission {
         ExoRuntimeAdmission::Enveloped(plan) => plan
             .admit_lifecycle(transport)
-            .map(|transport| {
-                RuntimeTransport(Box::new(AdmittedExoRuntimeTransport::Enveloped(Box::new(
-                    transport,
-                ))))
+            .map(|transport| RuntimeTransport {
+                inner: Box::new(AdmittedExoRuntimeTransport::Enveloped(Box::new(transport))),
+                _policy_owner: Some(policy_owner),
             })
             .map_err(String::from),
         ExoRuntimeAdmission::Legacy => Err(String::from(
@@ -90,10 +99,13 @@ fn build(
     authority_state: RuntimeLifecycleAuthorityState,
     lifecycle: &RuntimeLifecycleConfig,
     secrets: &RuntimeLifecycleSecrets,
-) -> Result<RuntimeLifecycleTransport, String> {
+) -> Result<(RuntimeLifecycleTransport, ProviderSessionPolicyOwner), String> {
     authority_state
         .enable()
         .map_err(|_| String::from("cannot enable runtime lifecycle authority"))?;
+    let lifecycle_fence = authority_state
+        .freeze_fence()
+        .map_err(|_| String::from("cannot freeze runtime lifecycle fence"))?;
     let scope = SessionScope::new(
         lifecycle.project_id.clone(),
         config.run_id.clone(),
@@ -141,6 +153,7 @@ fn build(
         lineage: durable.lifecycle_lineage(),
         config_digest: durable.lifecycle_config_digest(),
         owner_binding_digest: owner_binding_digest.clone(),
+        fence: lifecycle_fence,
     });
     let journal = JournalConfig {
         directory: lifecycle.directory.clone(),
@@ -226,7 +239,7 @@ fn build(
             })
         },
     );
-    ExoLifecycleRuntimeTransport::new(
+    let transport = ExoLifecycleRuntimeTransport::new(
         owner,
         durable.lifecycle_store(),
         durable.lifecycle_fingerprint(),
@@ -235,7 +248,8 @@ fn build(
         Arc::new(std::time::SystemTime::now),
         manifests,
     )
-    .map_err(|_| String::from("lifecycle provider-session TTL is invalid"))
+    .map_err(|_| String::from("lifecycle provider-session TTL is invalid"))?;
+    Ok((transport, policies))
 }
 
 #[cfg(all(test, unix))]
