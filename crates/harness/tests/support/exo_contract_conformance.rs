@@ -8,31 +8,200 @@ use serde_json::{Value, json};
 fn conformance_vectors_execute_against_rust_contract() {
     let vectors: Value =
         serde_json::from_slice(CONFORMANCE).expect("conformance vectors are valid JSON");
-    execute_request_vectors(
+    let _ = execute_request_vectors(
         vectors["request_vectors"]
             .as_array()
             .expect("request vectors"),
     );
-    execute_decision_vectors(
+    let _ = execute_decision_vectors(
         vectors["decision_vectors"]
             .as_array()
             .expect("decision vectors"),
     );
-    execute_envelope_vectors(
+    let _ = execute_envelope_vectors(
         vectors["envelope_vectors"]
             .as_array()
             .expect("envelope vectors"),
     );
-    execute_capability_vectors(
+    let _ = execute_capability_vectors(
         vectors["capability_vectors"]
             .as_array()
             .expect("capability vectors"),
     );
 }
 
-fn execute_request_vectors(vectors: &[Value]) {
+#[test]
+fn ac4_vector_corpus_index_enumerates_every_class_and_is_consumed() {
+    let conformance: Value =
+        serde_json::from_slice(CONFORMANCE).expect("conformance vectors are valid JSON");
+    let index = conformance
+        .get("corpus_index")
+        .expect("conformance vector corpus declares an index")
+        .clone();
+    assert_eq!(
+        index["corpus_index_schema"].as_str(),
+        Some("sts2.exo-bridge-corpus-index-v1"),
+        "corpus index schema marker"
+    );
+    assert_eq!(
+        index["contract_version"].as_str(),
+        Some("sts2-exo-bridge-v1"),
+        "corpus index contract version"
+    );
+    let names = |key: &str| -> Vec<String> {
+        conformance[key]
+            .as_array()
+            .unwrap_or_else(|| panic!("{key} is an array"))
+            .iter()
+            .map(|vector| {
+                vector["name"]
+                    .as_str()
+                    .expect("conformance vector name")
+                    .to_owned()
+            })
+            .collect()
+    };
+    let request = names("request_vectors");
+    let decision = names("decision_vectors");
+    let envelope = names("envelope_vectors");
+    let capability = names("capability_vectors");
+    let mut corpus: Vec<String> = [
+        request.clone(),
+        decision.clone(),
+        envelope.clone(),
+        capability.clone(),
+    ]
+    .concat();
+    corpus.sort();
+
+    let consumed: Vec<String> = [
+        execute_request_vectors(
+            conformance["request_vectors"]
+                .as_array()
+                .expect("request vectors"),
+        ),
+        execute_decision_vectors(
+            conformance["decision_vectors"]
+                .as_array()
+                .expect("decision vectors"),
+        ),
+        execute_envelope_vectors(
+            conformance["envelope_vectors"]
+                .as_array()
+                .expect("envelope vectors"),
+        ),
+        execute_capability_vectors(
+            conformance["capability_vectors"]
+                .as_array()
+                .expect("capability vectors"),
+        ),
+    ]
+    .concat();
+    let mut consumed_sorted = consumed.clone();
+    consumed_sorted.sort();
+    consumed_sorted.dedup();
+    assert_eq!(
+        consumed_sorted.len(),
+        consumed.len(),
+        "a corpus vector was consumed more than once"
+    );
+    assert_eq!(
+        consumed_sorted, corpus,
+        "a corpus vector was not consumed by the production validator"
+    );
+
+    let classes = index["classes"].as_array().expect("corpus index classes");
+    assert!(!classes.is_empty(), "corpus index declares no classes");
+    let mut indexed: Vec<String> = Vec::new();
+    let mut ac4_classes: Vec<String> = Vec::new();
+    let mut totals = std::collections::BTreeMap::new();
+    for class in classes {
+        let class_name = class["class"].as_str().expect("corpus index class name");
+        assert!(
+            class
+                .get("acceptance")
+                .and_then(Value::as_str)
+                .is_none_or(|acceptance| !acceptance.is_empty()),
+            "{class_name} has an empty acceptance marker"
+        );
+        if class["acceptance"].as_str() == Some("issue-139-ac4") {
+            ac4_classes.push(class_name.to_owned());
+        }
+        let mut members = 0_usize;
+        for source in class["sources"].as_array().expect("class sources") {
+            let key = source["source"].as_str().expect("class source key");
+            let available = match key {
+                "request_vectors" => &request,
+                "decision_vectors" => &decision,
+                "envelope_vectors" => &envelope,
+                "capability_vectors" => &capability,
+                other => panic!("unknown corpus source {other}"),
+            };
+            let declared: Vec<String> = source["vectors"]
+                .as_array()
+                .expect("class source vectors")
+                .iter()
+                .map(|vector| vector.as_str().expect("class vector name").to_owned())
+                .collect();
+            assert!(
+                !declared.is_empty(),
+                "{class_name}/{key} declares no vectors"
+            );
+            let filtered: Vec<String> = available
+                .iter()
+                .filter(|name| declared.contains(name))
+                .cloned()
+                .collect();
+            assert_eq!(
+                filtered, declared,
+                "{class_name}/{key} index members do not match the corpus order"
+            );
+            members += declared.len();
+            indexed.extend(declared);
+        }
+        assert!(members > 0, "{class_name} indexes no corpus vector");
+        totals.insert(class_name.to_owned(), members);
+    }
+    let mut indexed_sorted = indexed.clone();
+    indexed_sorted.sort();
+    assert_eq!(
+        indexed_sorted, corpus,
+        "the corpus index must enumerate every conformance vector exactly once"
+    );
+    for required in [
+        "semantic_decision_variant",
+        "ordinary_and_map_request_bound",
+        "wrong_correlation",
+        "incompatible_schema_version",
+        "explicitly_unavailable_capability",
+    ] {
+        assert!(
+            ac4_classes.iter().any(|class| class == required),
+            "AC4 class is absent from the corpus index: {required}"
+        );
+    }
+    let declared_totals = index["totals"]
+        .as_object()
+        .expect("corpus index totals are an object");
+    for (key, corpus_names) in [
+        ("request_vectors", &request),
+        ("decision_vectors", &decision),
+        ("envelope_vectors", &envelope),
+        ("capability_vectors", &capability),
+    ] {
+        assert_eq!(
+            declared_totals[key].as_u64(),
+            Some(corpus_names.len() as u64),
+            "{key} total count"
+        );
+    }
+}
+
+fn execute_request_vectors(vectors: &[Value]) -> Vec<String> {
+    let mut consumed = Vec::new();
     for vector in vectors {
         let name = vector["name"].as_str().expect("request vector name");
+        consumed.push(name.to_owned());
         let expected = vector["expected"]
             .as_str()
             .expect("request vector expected");
@@ -77,21 +246,34 @@ fn execute_request_vectors(vectors: &[Value]) {
                     .as_u64()
                     .and_then(|value| usize::try_from(value).ok())
                     .expect("envelope vector bound");
-                let frame = pad_frame(&source, bound);
-                assert_envelope_over_bound(frame, bound, bound);
-                if fixture == "golden/request.json" {
+                if source.len() > bound {
+                    assert_eq!(
+                        parse_bridge_request(&source, bound),
+                        Err(ExoWireError::TooLarge),
+                        "{name} fixture escaped its caller bound"
+                    );
+                    assert_envelope_over_bound(source.clone(), bound, bound);
+                } else {
                     let frame = pad_frame(&source, bound);
-                    assert_envelope_over_bound(frame, bound, EXO_MAX_MAP_REQUEST_BYTES);
+                    assert_envelope_over_bound(frame, bound, bound);
+                    if fixture == "golden/request.json" {
+                        let frame = pad_frame(&source, bound);
+                        assert_envelope_over_bound(frame, bound, EXO_MAX_MAP_REQUEST_BYTES);
+                    }
                 }
             }
             "invalid_request" => {
+                let bound = vector["bound"]
+                    .as_u64()
+                    .and_then(|value| usize::try_from(value).ok())
+                    .unwrap_or(EXO_MAX_STANDARD_REQUEST_BYTES);
                 let mut wrong_schema: Value =
                     serde_json::from_slice(&source).expect("request fixture is JSON");
                 wrong_schema["schema"] = json!("wrong-schema-v0");
                 let wrong_schema =
                     serde_json::to_vec(&wrong_schema).expect("wrong schema serializes");
                 assert_eq!(
-                    parse_bridge_request(&wrong_schema, EXO_MAX_STANDARD_REQUEST_BYTES),
+                    parse_bridge_request(&wrong_schema, bound),
                     Err(ExoWireError::InvalidRequest),
                     "{name} expected invalid request"
                 );
@@ -120,6 +302,7 @@ fn execute_request_vectors(vectors: &[Value]) {
             other => unreachable!("unhandled request result {other}"),
         }
     }
+    consumed
 }
 
 fn execute_expert_request_vector(vector: &Value) {
@@ -163,9 +346,22 @@ fn apply_padding(source: &[u8], bound: usize, padding: &str) -> Vec<u8> {
     }
 }
 
-fn execute_decision_vectors(vectors: &[Value]) {
+fn execute_decision_vectors(vectors: &[Value]) -> Vec<String> {
+    let mut consumed = Vec::new();
     for vector in vectors {
         let name = vector["name"].as_str().expect("decision vector name");
+        consumed.push(name.to_owned());
+        if vector["expected"].as_str() == Some("rejected") {
+            let decision = match vector["decision"].as_str().expect("decision kind") {
+                "unknown" => br#"{"decision":"teleport","rationale":"out of union"}"#.to_vec(),
+                other => unreachable!("unhandled rejected decision conformance kind {other}"),
+            };
+            assert!(
+                parse_bridge_decision(&decision).is_err(),
+                "{name} out-of-union decision was accepted"
+            );
+            continue;
+        }
         assert_eq!(
             vector["expected"].as_str(),
             Some("accepted"),
@@ -203,9 +399,11 @@ fn execute_decision_vectors(vectors: &[Value]) {
             "{name} decision rejected"
         );
     }
+    consumed
 }
 
-fn execute_envelope_vectors(vectors: &[Value]) {
+fn execute_envelope_vectors(vectors: &[Value]) -> Vec<String> {
+    let mut consumed = Vec::new();
     let failed = encode_bridge_response(
         "request-failed",
         "turn-failed",
@@ -216,6 +414,7 @@ fn execute_envelope_vectors(vectors: &[Value]) {
     .expect("failed response encodes");
     for vector in vectors {
         let name = vector["name"].as_str().expect("envelope vector name");
+        consumed.push(name.to_owned());
         let expected = vector["expected"]
             .as_str()
             .expect("envelope vector expected");
@@ -243,6 +442,22 @@ fn execute_envelope_vectors(vectors: &[Value]) {
                 assert_eq!(
                     parse_bridge_decision_envelope(&failed, "request-failed", "other-turn"),
                     Err(ExoWireError::IdentityMismatch)
+                );
+            }
+            "wrong_control_identity" => {
+                assert_eq!(expected, "identity_mismatch");
+                let expected_identity = control_identity("run-1");
+                let mut actual = control_identity("run-1");
+                actual.turn_id = String::from("turn-2");
+                assert_eq!(
+                    verify_control_identity(&actual, &expected_identity),
+                    Err(ExoWireError::IdentityMismatch),
+                    "{name} must reject a mismatched control identity"
+                );
+                let same = control_identity("run-1");
+                assert!(
+                    verify_control_identity(&same, &expected_identity).is_ok(),
+                    "{name} control identity baseline is not self-consistent"
                 );
             }
             "cancelled" => {
@@ -315,6 +530,7 @@ fn execute_envelope_vectors(vectors: &[Value]) {
             other => unreachable!("unhandled envelope conformance vector {other}"),
         }
     }
+    consumed
 }
 
 fn assert_envelope_over_bound(frame: Vec<u8>, profile_limit: usize, caller_limit: usize) {
