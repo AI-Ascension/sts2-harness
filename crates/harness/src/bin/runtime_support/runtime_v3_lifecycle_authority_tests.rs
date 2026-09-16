@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::expect_used)]
+
 use super::*;
 use serde_json::json;
 use sts2_harness::exo_lifecycle::AuthorityVector;
@@ -81,7 +83,6 @@ fn same_action_ids_do_not_authorize_a_changed_owned_catalog() {
     let state = RuntimeLifecycleAuthorityState::default();
     *state.0.lock().expect("runtime authority lock") = AuthoritySnapshot {
         enabled: true,
-        fence_frozen: false,
         fence: None,
         lease: Some(lease),
         turn: Some(turn),

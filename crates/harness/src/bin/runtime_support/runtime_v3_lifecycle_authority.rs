@@ -24,13 +24,12 @@ pub(super) trait RuntimeLifecycleFence: Send + Sync {
     ) -> Result<Box<dyn AuthorityGuard + 'a>, LifecycleError>;
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(super) struct RuntimeLifecycleAuthorityState(Arc<Mutex<AuthoritySnapshot>>);
 
 #[derive(Default)]
 struct AuthoritySnapshot {
     enabled: bool,
-    fence_frozen: bool,
     fence: Option<Arc<dyn RuntimeLifecycleFence>>,
     lease: Option<LeaseAuthority>,
     turn: Option<TurnAuthority>,
@@ -52,23 +51,17 @@ pub(super) struct TurnAuthority {
 }
 
 impl RuntimeLifecycleAuthorityState {
-    pub(super) fn set_fence(
-        &self,
-        fence: Arc<dyn RuntimeLifecycleFence>,
-    ) -> Result<(), LifecycleError> {
-        let mut state = self.0.lock().map_err(|_| LifecycleError::Fenced)?;
-        if state.fence_frozen || state.fence.is_some() {
-            return Err(LifecycleError::Fenced);
-        }
-        state.fence = Some(fence);
-        Ok(())
+    pub(super) fn new(fence: Option<Arc<dyn RuntimeLifecycleFence>>) -> Self {
+        Self(Arc::new(Mutex::new(AuthoritySnapshot {
+            fence,
+            ..AuthoritySnapshot::default()
+        })))
     }
 
-    pub(super) fn freeze_fence(
+    pub(super) fn lifecycle_fence(
         &self,
     ) -> Result<Option<Arc<dyn RuntimeLifecycleFence>>, LifecycleError> {
-        let mut state = self.0.lock().map_err(|_| LifecycleError::Fenced)?;
-        state.fence_frozen = true;
+        let state = self.0.lock().map_err(|_| LifecycleError::Fenced)?;
         Ok(state.fence.clone())
     }
 
@@ -209,6 +202,12 @@ impl RuntimeLifecycleAuthorityState {
             state: Some(state),
             fence: fence_guard,
         }))
+    }
+}
+
+impl Default for RuntimeLifecycleAuthorityState {
+    fn default() -> Self {
+        Self::new(None)
     }
 }
 

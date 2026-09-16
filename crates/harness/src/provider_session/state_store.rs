@@ -6,6 +6,9 @@
 //! bounded `BrokerSnapshot` journal owned by this crate. Native persistent operation must still
 //! supply an independently verified encrypted state boundary before an enabled profile is allowed.
 
+mod owner_lease;
+pub(crate) use owner_lease::PolicyOwnerLease;
+
 use super::{
     MAX_HISTORY_BYTES, NativeCapabilities, ProviderSessionBroker, ProviderSessionPolicy,
     SessionError, SessionScope,
@@ -42,6 +45,8 @@ pub enum ProviderSessionMetadataStoreError {
     Capacity,
     Corrupt,
     Crypto,
+    /// The exclusive policy-owner lease is held by another live owner.
+    Busy,
     Io,
     Unsupported,
     Session(SessionError),
@@ -60,6 +65,7 @@ impl std::fmt::Display for ProviderSessionMetadataStoreError {
             Self::Capacity => formatter.write_str("provider metadata store is over its bound"),
             Self::Corrupt => formatter.write_str("provider metadata store envelope is corrupt"),
             Self::Crypto => formatter.write_str("provider metadata store authentication failed"),
+            Self::Busy => formatter.write_str("provider metadata journal already has an owner"),
             Self::Io => formatter.write_str("provider metadata store filesystem operation failed"),
             Self::Unsupported => formatter.write_str("provider metadata store mode is unsupported"),
             Self::Session(error) => error.fmt(formatter),
@@ -253,6 +259,20 @@ impl ProviderSessionMetadataStore {
             return Err(ProviderSessionMetadataStoreError::Capacity);
         }
         Ok(bytes)
+    }
+
+    pub(crate) fn acquire_owner_journal_lease(
+        &self,
+    ) -> Result<PolicyOwnerLease, ProviderSessionMetadataStoreError> {
+        if self.mode == ProviderSessionMetadataMode::Volatile {
+            return Err(ProviderSessionMetadataStoreError::Unsupported);
+        }
+        let path = self
+            .path
+            .as_deref()
+            .ok_or(ProviderSessionMetadataStoreError::Unsupported)?;
+        validate_store_path(path)?;
+        PolicyOwnerLease::acquire(path)
     }
 
     fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, ProviderSessionMetadataStoreError> {

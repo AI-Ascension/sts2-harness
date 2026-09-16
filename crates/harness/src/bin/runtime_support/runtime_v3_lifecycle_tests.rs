@@ -3,6 +3,7 @@
 #![allow(clippy::expect_used)]
 
 use std::os::unix::fs::PermissionsExt;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::{Value, json};
@@ -17,6 +18,7 @@ use sts2_harness::{
     ExoRuntime, ExoTrustedConfiguration, sha256_hex,
 };
 
+use super::super::lifecycle_authority::RuntimeLifecycleFence;
 use super::super::{RuntimeV3Port, allocation_context, parse};
 use super::*;
 use crate::runtime_support::runtime_v3_telemetry::TelemetryHandle;
@@ -43,6 +45,17 @@ impl Fixture {
     }
 
     fn new_with_blocked_effect(blocked_effect: bool) -> Self {
+        Self::new_with_blocked_effect_and_fence(blocked_effect, None)
+    }
+
+    fn new_with_fence(fence: Arc<dyn RuntimeLifecycleFence>) -> Self {
+        Self::new_with_blocked_effect_and_fence(false, Some(fence))
+    }
+
+    fn new_with_blocked_effect_and_fence(
+        blocked_effect: bool,
+        fence: Option<Arc<dyn RuntimeLifecycleFence>>,
+    ) -> Self {
         let root = scratch_root();
         std::fs::create_dir(&root).expect("private scratch root");
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))
@@ -199,7 +212,7 @@ impl Fixture {
             config_digest,
         )
         .expect("durable");
-        let authority_state = RuntimeLifecycleAuthorityState::default();
+        let authority_state = RuntimeLifecycleAuthorityState::new(fence);
         authority_state
             .enable()
             .expect("enable lifecycle authority");

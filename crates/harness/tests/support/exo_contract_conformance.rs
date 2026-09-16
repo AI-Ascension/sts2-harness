@@ -8,31 +8,33 @@ use serde_json::{Value, json};
 fn conformance_vectors_execute_against_rust_contract() {
     let vectors: Value =
         serde_json::from_slice(CONFORMANCE).expect("conformance vectors are valid JSON");
-    execute_request_vectors(
+    let _ = execute_request_vectors(
         vectors["request_vectors"]
             .as_array()
             .expect("request vectors"),
     );
-    execute_decision_vectors(
+    let _ = execute_decision_vectors(
         vectors["decision_vectors"]
             .as_array()
             .expect("decision vectors"),
     );
-    execute_envelope_vectors(
+    let _ = execute_envelope_vectors(
         vectors["envelope_vectors"]
             .as_array()
             .expect("envelope vectors"),
     );
-    execute_capability_vectors(
+    let _ = execute_capability_vectors(
         vectors["capability_vectors"]
             .as_array()
             .expect("capability vectors"),
     );
 }
 
-fn execute_request_vectors(vectors: &[Value]) {
+pub(super) fn execute_request_vectors(vectors: &[Value]) -> Vec<String> {
+    let mut consumed = Vec::new();
     for vector in vectors {
         let name = vector["name"].as_str().expect("request vector name");
+        consumed.push(name.to_owned());
         let expected = vector["expected"]
             .as_str()
             .expect("request vector expected");
@@ -77,21 +79,34 @@ fn execute_request_vectors(vectors: &[Value]) {
                     .as_u64()
                     .and_then(|value| usize::try_from(value).ok())
                     .expect("envelope vector bound");
-                let frame = pad_frame(&source, bound);
-                assert_envelope_over_bound(frame, bound, bound);
-                if fixture == "golden/request.json" {
+                if source.len() > bound {
+                    assert_eq!(
+                        parse_bridge_request(&source, bound),
+                        Err(ExoWireError::TooLarge),
+                        "{name} fixture escaped its caller bound"
+                    );
+                    assert_envelope_over_bound(source.clone(), bound, bound);
+                } else {
                     let frame = pad_frame(&source, bound);
-                    assert_envelope_over_bound(frame, bound, EXO_MAX_MAP_REQUEST_BYTES);
+                    assert_envelope_over_bound(frame, bound, bound);
+                    if fixture == "golden/request.json" {
+                        let frame = pad_frame(&source, bound);
+                        assert_envelope_over_bound(frame, bound, EXO_MAX_MAP_REQUEST_BYTES);
+                    }
                 }
             }
             "invalid_request" => {
+                let bound = vector["bound"]
+                    .as_u64()
+                    .and_then(|value| usize::try_from(value).ok())
+                    .unwrap_or(EXO_MAX_STANDARD_REQUEST_BYTES);
                 let mut wrong_schema: Value =
                     serde_json::from_slice(&source).expect("request fixture is JSON");
                 wrong_schema["schema"] = json!("wrong-schema-v0");
                 let wrong_schema =
                     serde_json::to_vec(&wrong_schema).expect("wrong schema serializes");
                 assert_eq!(
-                    parse_bridge_request(&wrong_schema, EXO_MAX_STANDARD_REQUEST_BYTES),
+                    parse_bridge_request(&wrong_schema, bound),
                     Err(ExoWireError::InvalidRequest),
                     "{name} expected invalid request"
                 );
@@ -120,6 +135,7 @@ fn execute_request_vectors(vectors: &[Value]) {
             other => unreachable!("unhandled request result {other}"),
         }
     }
+    consumed
 }
 
 fn execute_expert_request_vector(vector: &Value) {
@@ -163,9 +179,22 @@ fn apply_padding(source: &[u8], bound: usize, padding: &str) -> Vec<u8> {
     }
 }
 
-fn execute_decision_vectors(vectors: &[Value]) {
+pub(super) fn execute_decision_vectors(vectors: &[Value]) -> Vec<String> {
+    let mut consumed = Vec::new();
     for vector in vectors {
         let name = vector["name"].as_str().expect("decision vector name");
+        consumed.push(name.to_owned());
+        if vector["expected"].as_str() == Some("rejected") {
+            let decision = match vector["decision"].as_str().expect("decision kind") {
+                "unknown" => br#"{"decision":"teleport","rationale":"out of union"}"#.to_vec(),
+                other => unreachable!("unhandled rejected decision conformance kind {other}"),
+            };
+            assert!(
+                parse_bridge_decision(&decision).is_err(),
+                "{name} out-of-union decision was accepted"
+            );
+            continue;
+        }
         assert_eq!(
             vector["expected"].as_str(),
             Some("accepted"),
@@ -203,9 +232,11 @@ fn execute_decision_vectors(vectors: &[Value]) {
             "{name} decision rejected"
         );
     }
+    consumed
 }
 
-fn execute_envelope_vectors(vectors: &[Value]) {
+pub(super) fn execute_envelope_vectors(vectors: &[Value]) -> Vec<String> {
+    let mut consumed = Vec::new();
     let failed = encode_bridge_response(
         "request-failed",
         "turn-failed",
@@ -216,6 +247,7 @@ fn execute_envelope_vectors(vectors: &[Value]) {
     .expect("failed response encodes");
     for vector in vectors {
         let name = vector["name"].as_str().expect("envelope vector name");
+        consumed.push(name.to_owned());
         let expected = vector["expected"]
             .as_str()
             .expect("envelope vector expected");
@@ -243,6 +275,22 @@ fn execute_envelope_vectors(vectors: &[Value]) {
                 assert_eq!(
                     parse_bridge_decision_envelope(&failed, "request-failed", "other-turn"),
                     Err(ExoWireError::IdentityMismatch)
+                );
+            }
+            "wrong_control_identity" => {
+                assert_eq!(expected, "identity_mismatch");
+                let expected_identity = control_identity("run-1");
+                let mut actual = control_identity("run-1");
+                actual.turn_id = String::from("turn-2");
+                assert_eq!(
+                    verify_control_identity(&actual, &expected_identity),
+                    Err(ExoWireError::IdentityMismatch),
+                    "{name} must reject a mismatched control identity"
+                );
+                let same = control_identity("run-1");
+                assert!(
+                    verify_control_identity(&same, &expected_identity).is_ok(),
+                    "{name} control identity baseline is not self-consistent"
                 );
             }
             "cancelled" => {
@@ -315,6 +363,7 @@ fn execute_envelope_vectors(vectors: &[Value]) {
             other => unreachable!("unhandled envelope conformance vector {other}"),
         }
     }
+    consumed
 }
 
 fn assert_envelope_over_bound(frame: Vec<u8>, profile_limit: usize, caller_limit: usize) {

@@ -197,22 +197,6 @@ fn civil_from_days(days: i64) -> Option<(i64, i64, i64)> {
     Some((year, month, day))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{LifecycleError, binding_expiry};
-    use std::time::{Duration, UNIX_EPOCH};
-
-    #[test]
-    fn binding_expiry_uses_injected_time_and_bounded_ttl() {
-        let now = UNIX_EPOCH + Duration::from_secs(1_790_000_000);
-        assert_eq!(
-            binding_expiry(now, 60).expect("expiry"),
-            "2026-09-21T14:14:20Z"
-        );
-        assert_eq!(binding_expiry(now, 0), Err(LifecycleError::Invalid));
-    }
-}
-
 impl<F: LifecycleManifestFactory> ExoTransport for ExoLifecycleRuntimeTransport<F> {
     fn exchange(
         &mut self,
@@ -232,6 +216,20 @@ impl<F: LifecycleManifestFactory> ExoTransport for ExoLifecycleRuntimeTransport<
 
     fn close(&mut self) -> Result<(), ExoTransportError> {
         self.closed = true;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LifecycleError, binding_expiry};
+    use std::time::{Duration, UNIX_EPOCH};
+
+    #[test]
+    fn binding_expiry_uses_injected_time_and_bounded_ttl() -> Result<(), LifecycleError> {
+        let now = UNIX_EPOCH + Duration::from_secs(1_790_000_000);
+        assert_eq!(binding_expiry(now, 60)?, "2026-09-21T14:14:20Z");
+        assert_eq!(binding_expiry(now, 0), Err(LifecycleError::Invalid));
         Ok(())
     }
 }

@@ -11,7 +11,9 @@ fn inspected_deployment(
                 .to_owned(),
         );
     };
-    if !matches!(mode.as_str(), "--run" | "--run-v2") || !std::path::Path::new(path).is_absolute() {
+    if !matches!(mode.as_str(), "--run" | "--run-v2")
+        || !std::path::Path::new(path).is_absolute()
+    {
         return Err(
             "Exo envelope requires --run or --run-v2, absolute configuration path and digest"
                 .to_owned(),

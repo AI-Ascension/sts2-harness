@@ -69,16 +69,12 @@ fn inspected_runtime_admission_executes_one_valid_durable_exchange() {
 
 #[test]
 fn configured_runtime_fence_is_held_across_send_and_result_consumption() {
-    let fixture = Fixture::new();
     let calls = Arc::new(Mutex::new(Vec::new()));
     let releases = Arc::new(AtomicUsize::new(0));
-    fixture
-        .authority_state
-        .set_fence(Arc::new(RecordingFence {
-            calls: calls.clone(),
-            releases: releases.clone(),
-        }))
-        .expect("register lifecycle fence before build");
+    let fixture = Fixture::new_with_fence(Arc::new(RecordingFence {
+        calls: calls.clone(),
+        releases: releases.clone(),
+    }));
     let mut transport = fixture.admit().expect("actual lifecycle admission");
     let bytes = serde_json::to_vec(&fixture.request).expect("request");
     transport

@@ -104,8 +104,8 @@ fn build(
         .enable()
         .map_err(|_| String::from("cannot enable runtime lifecycle authority"))?;
     let lifecycle_fence = authority_state
-        .freeze_fence()
-        .map_err(|_| String::from("cannot freeze runtime lifecycle fence"))?;
+        .lifecycle_fence()
+        .map_err(|_| String::from("cannot load runtime lifecycle fence"))?;
     let scope = SessionScope::new(
         lifecycle.project_id.clone(),
         config.run_id.clone(),

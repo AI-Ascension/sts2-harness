@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #![cfg(target_os = "linux")]
+#![allow(clippy::expect_used)]
 
 #[path = "support/exo_lifecycle_runtime_entry_support.rs"]
 mod support;

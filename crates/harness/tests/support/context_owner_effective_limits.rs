@@ -136,7 +136,7 @@ pub fn catalog_for(scenario: Scenario) -> ContextBindingCatalog {
     }
 }
 
-pub fn owner_boundary(run_id: &str) -> ContextBoundary {
+pub fn boundary(run_id: &str) -> ContextBoundary {
     ContextBoundary {
         run_id: run_id.to_owned(),
         episode_id: "test.episode.1".to_owned(),
@@ -153,6 +153,10 @@ pub fn owner_boundary(run_id: &str) -> ContextBoundary {
         gate_epoch: 1,
         control_version: 1,
     }
+}
+
+pub fn owner_boundary(run_id: &str) -> ContextBoundary {
+    boundary(run_id)
 }
 
 pub fn binding_for(
