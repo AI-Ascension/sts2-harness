@@ -4,10 +4,15 @@ use super::*;
 use serde_json::Value;
 use std::sync::Arc;
 use sts2_harness::management::{
-    Budget, CleanupState, Cursor, EventClassification, EventPayload, EventType, GameOutcome,
-    ManagementClient, ManagementServer, ManagementService, MemoryWorkflowStore, RUN_SCHEMA_VERSION,
-    RunEvent, RunSnapshot, ServerConfig, StaticAuthenticator, WorkflowRunStatus, WorkflowStore,
+    Budget, CleanupState, Cursor, EventClassification, EventPayload, EventType, ExecutionMode,
+    GameOutcome, ManagementClient, ManagementServer, ManagementService, MemoryWorkflowStore,
+    RUN_SCHEMA_VERSION, RunEvent, RunSnapshot, RunTargetConfiguration, ServerConfig,
+    StaticAuthenticator, TARGET_ADMISSION_SCHEMA_VERSION, TargetAdmissionBinding,
+    WorkflowRunStatus, WorkflowStore,
 };
+
+#[path = "association_receipt_commit_test.rs"]
+mod commit_test;
 
 fn admitted_snapshot(
     request: &RunRequest,
@@ -29,7 +34,26 @@ fn admitted_snapshot(
         pending_operation: None,
         budget: Budget::default(),
         cleanup: CleanupState::NotStarted,
-        admission: None,
+        admission: Some(TargetAdmissionBinding {
+            schema_version: TARGET_ADMISSION_SCHEMA_VERSION.into(),
+            request_id: request.request_id.clone(),
+            workflow_definition_digest: digest.into(),
+            target: RunTargetConfiguration {
+                instance_id: request.instance_id.clone(),
+                execution_profile: "live".into(),
+                execution_mode: ExecutionMode::Live,
+                workflow_revision: "workflow-v1".into(),
+                compatibility_revision: "compatibility-v1".into(),
+                capability_revision: "capability-v1".into(),
+                game_profile: "game-profile".into(),
+                save_profile: None,
+                inference_profile: None,
+                context_capability: None,
+                provider_capability: None,
+            },
+            descriptor_digest: "e".repeat(64),
+            catalog_revision: "catalog-v1".into(),
+        }),
         execution_mode: Some(sts2_harness::management::ExecutionMode::Live),
     }
 }
@@ -127,6 +151,58 @@ fn authenticated_http_exposes_fresh_association_and_recovers_receipt_after_resta
     let binding = owner
         .bind(&actor, &binding_request)
         .expect("current invocation binding");
+    let active_owner = Arc::new(owner);
+    let snapshot = admitted_snapshot(&request, &digest, &binding_request);
+    let service = management_service(Arc::clone(&active_owner), &snapshot);
+    let mut foreign_instance_request = binding_request.clone();
+    foreign_instance_request.instance_id = "foreign-instance".into();
+    assert_eq!(
+        active_owner
+            .bind(&actor, &foreign_instance_request)
+            .expect_err("owner must reject an untrusted instance")
+            .code,
+        "context_owner_instance"
+    );
+    let body = serde_json::to_vec(&foreign_instance_request).expect("foreign binding JSON");
+    let (status, value) = management_http(
+        &service,
+        "owner-token",
+        owner_authenticator(&actor),
+        "POST",
+        "/v1/context-bindings/bind",
+        Some(&body),
+    );
+    assert_eq!(
+        status, 409,
+        "foreign instance bind must be refused: {value}"
+    );
+    assert_eq!(
+        value.pointer("/error/code").and_then(Value::as_str),
+        Some("context_binding_instance_mismatch")
+    );
+
+    let association_path = format!(
+        "/v1/workflow-runs/{}/context-owner-association",
+        snapshot.workflow_run_id
+    );
+    let (status, association) = management_http(
+        &service,
+        "owner-token",
+        owner_authenticator(&actor),
+        "GET",
+        &association_path,
+        None,
+    );
+    assert_eq!(
+        status, 200,
+        "true association remains available: {association}"
+    );
+    assert_eq!(
+        association
+            .pointer("/binding/instance_id")
+            .and_then(Value::as_str),
+        Some(request.instance_id.as_str())
+    );
     assert_eq!(
         binding.lease_epoch, 7,
         "binding must carry gateway lease epoch"
@@ -135,18 +211,11 @@ fn authenticated_http_exposes_fresh_association_and_recovers_receipt_after_resta
         idempotency_key: "pause.restart.case".into(),
         expected_control_version: binding.boundary.control_version,
     };
-    let receipt = owner
+    let receipt = active_owner
         .control(&actor, &binding, &command)
         .expect("accepted control command");
     assert_eq!(receipt.effect, "pause_requested");
 
-    let snapshot = admitted_snapshot(&request, &digest, &binding_request);
-    let active_owner = Arc::new(owner);
-    let service = management_service(Arc::clone(&active_owner), &snapshot);
-    let association_path = format!(
-        "/v1/workflow-runs/{}/context-owner-association",
-        snapshot.workflow_run_id
-    );
     let (status, value) = management_http(
         &service,
         "owner-token",
@@ -276,85 +345,4 @@ fn authenticated_http_exposes_fresh_association_and_recovers_receipt_after_resta
         .bind(&actor, &binding_request)
         .expect("live writer remains unfenced");
     assert_eq!(rebound.boundary.controller_epoch, receipt.controller_epoch);
-}
-
-#[test]
-fn committed_revision_receipt_recovers_its_resulting_revision() {
-    let (owner, actor, request, runtime_binding, digest, selected) = setup();
-    owner
-        .record_observation(
-            &actor,
-            &request,
-            &digest,
-            &runtime_binding,
-            &observation(1),
-            &selected,
-        )
-        .expect("observation");
-    let actions = EpisodeLegalActionSet::new(
-        "combat-1",
-        1,
-        vec![EpisodeLegalAction::new("combat.end-turn", ActionKind::EndTurn).expect("action")],
-    )
-    .expect("actions");
-    owner
-        .record_legal_actions(&actor, &request, &digest, &runtime_binding, &actions)
-        .expect("catalog");
-    let catalog = owner.catalog(&actor).expect("catalog");
-    let descriptor = &catalog.descriptors[0];
-    let binding_request = ContextBindingRequest {
-        workflow_run_id: runtime_binding.run_id.clone(),
-        definition_digest: digest.clone(),
-        instance_id: request.instance_id.clone(),
-        graph_id: "graph-1".into(),
-        node_id: "node-1".into(),
-        node_execution_id: "execution-1".into(),
-        node_kind: "decide".into(),
-        context_ref: descriptor.context_ref.clone(),
-        binding_id: descriptor.binding_id.clone(),
-        binding_version: descriptor.version,
-        binding_digest: descriptor.digest.clone(),
-    };
-    let initial_binding = owner.bind(&actor, &binding_request).expect("binding");
-    let pause = ContextControlCommand::Pause {
-        idempotency_key: "commit-receipt-pause".into(),
-        expected_control_version: initial_binding.boundary.control_version,
-    };
-    owner
-        .control(&actor, &initial_binding, &pause)
-        .expect("pause");
-    let paused_binding = owner
-        .bind(&actor, &binding_request)
-        .expect("paused binding");
-    let manifest = "e".repeat(64);
-    let commit = ContextControlCommand::Commit {
-        idempotency_key: "commit-receipt-commit".into(),
-        expected_control_version: paused_binding.boundary.control_version,
-        expected_revision_id: paused_binding.approved_revision_id.clone(),
-        expected_boundary: paused_binding.boundary.clone(),
-        preview_manifest_digest: manifest.clone(),
-        approved_manifest_digest: manifest,
-    };
-    let receipt = owner
-        .control(&actor, &paused_binding, &commit)
-        .expect("commit accepted and durably recorded");
-    assert_eq!(receipt.effect, "revision_committed");
-    assert_eq!(receipt.revision_id.as_deref(), Some("revision-2"));
-    receipt
-        .validate_for(&paused_binding, &commit)
-        .expect("exact commit receipt");
-
-    let snapshot = admitted_snapshot(&request, &digest, &binding_request);
-    let restarted = Owner {
-        configuration: owner.configuration.clone(),
-        key: owner.key,
-        current: Mutex::new(BTreeMap::new()),
-    };
-    let recovered = restarted
-        .recover_control_receipt(&actor, &snapshot, &commit)
-        .expect("historical lookup")
-        .expect("recorded commit receipt");
-    assert_eq!(recovered.receipt, receipt);
-    assert_eq!(recovered.binding, paused_binding);
-    assert!(restarted.current.lock().expect("current lock").is_empty());
 }

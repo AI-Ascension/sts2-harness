@@ -53,6 +53,7 @@ struct Current {
     actor: String,
     binding_request: Option<ContextBindingRequest>,
     catalog_generation: Option<u64>,
+    runtime_instance_id: String,
     runtime_lease_id: String,
     runtime_lease_epoch: u64,
     admitted_control_limits: ContextOwnerControlLimits,

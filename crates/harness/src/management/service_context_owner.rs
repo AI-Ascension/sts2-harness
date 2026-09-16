@@ -6,9 +6,7 @@ use super::super::context_owner::{
     CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, ContextControlCommand, ContextControlReceipt,
     ContextOwnerAssociationView, ContextOwnerEffectiveLimitsView,
 };
-use super::super::context_owner::{
-    ContextBindingCatalog, ContextBindingRequest, ContextOwnerBinding, ContextOwnerPort,
-};
+use super::super::context_owner::{ContextBindingCatalog, ContextOwnerBinding, ContextOwnerPort};
 use super::support::authorize;
 use super::{AuthContext, ManagementError, ManagementService, RunSnapshot, validate_identifier};
 use crate::context_control::{
@@ -17,6 +15,9 @@ use crate::context_control::{
 };
 use crate::exo::ExoConfig;
 use std::collections::BTreeMap;
+
+#[path = "service_context_owner_binding.rs"]
+mod binding;
 
 impl ManagementService {
     pub fn with_context_owner_port(mut self, port: Arc<dyn ContextOwnerPort>) -> Self {
@@ -39,37 +40,6 @@ impl ManagementService {
         let catalog = self.context_owner.catalog(actor)?;
         catalog.validate()?;
         Ok(catalog)
-    }
-
-    /// Establishes an owner-issued binding for one context-bound invocation.
-    /// Only bounded identities are exchanged; no context bytes or effects are
-    /// reachable from this path.
-    pub fn bind_context(
-        &self,
-        actor: &AuthContext,
-        request: ContextBindingRequest,
-    ) -> Result<ContextOwnerBinding, ManagementError> {
-        authorize(actor, "workflow:read", Some(&request.workflow_run_id))?;
-        let binding = self.context_owner.bind(actor, &request)?;
-        // The owner response must be the exact binding for the requested
-        // invocation; a miscorrelated owner response fails closed.
-        if binding.workflow_run_id != request.workflow_run_id
-            || binding.definition_digest != request.definition_digest
-            || binding.graph_id != request.graph_id
-            || binding.node_id != request.node_id
-            || binding.node_execution_id != request.node_execution_id
-            || binding.context_ref != request.context_ref
-            || binding.binding_id != request.binding_id
-            || binding.binding_version != request.binding_version
-            || binding.binding_digest != request.binding_digest
-        {
-            return Err(ManagementError::conflict(
-                "context_binding_mismatch",
-                "context owner returned a binding for a different invocation",
-            ));
-        }
-        binding.validate(None)?;
-        Ok(binding)
     }
 
     /// Recovers the receipt the authoritative owner already issued for `command`,
@@ -135,6 +105,16 @@ impl ManagementService {
             return Err(ManagementError::conflict(
                 "context_binding_mismatch",
                 "context owner returned a binding for a different workflow run",
+            ));
+        }
+        if snapshot
+            .admission
+            .as_ref()
+            .is_some_and(|admission| admission.target.instance_id != binding.instance_id)
+        {
+            return Err(ManagementError::conflict(
+                "context_binding_instance_mismatch",
+                "current context binding does not match the admitted workflow target",
             ));
         }
         Ok(binding)

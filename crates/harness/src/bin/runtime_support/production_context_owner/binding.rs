@@ -156,6 +156,12 @@ impl ContextOwnerPort for Owner {
                 "actor cannot bind this context authority",
             ));
         }
+        if request.instance_id != entry.runtime_instance_id {
+            return Err(ManagementError::conflict(
+                "context_owner_instance",
+                "context binding instance does not match the trusted runtime instance",
+            ));
+        }
         self.validate_control_limits_in_catalog(&catalog, &entry.admitted_control_limits)?;
         let binding = self.binding_for_request(request, entry, &catalog)?;
         let selected_limits = &entry.admitted_control_limits;

@@ -26,6 +26,7 @@ impl Owner {
             ));
         }
         if entry.catalog_generation != Some(entry.authority.state().boundary.generation)
+            || entry.runtime_instance_id.is_empty()
             || entry.runtime_lease_id.is_empty()
             || entry.runtime_lease_epoch == 0
         {
@@ -43,10 +44,11 @@ impl Owner {
         })?;
         if request.workflow_run_id != snapshot.workflow_run_id
             || request.definition_digest != snapshot.definition_digest
+            || request.instance_id != entry.runtime_instance_id
         {
             return Err(ManagementError::conflict(
                 "context_owner_association_scope",
-                "current context binding does not match the admitted workflow run",
+                "current context binding does not match the admitted workflow target and run",
             ));
         }
         let binding = self.binding_for_request(request, entry, &catalog)?;
