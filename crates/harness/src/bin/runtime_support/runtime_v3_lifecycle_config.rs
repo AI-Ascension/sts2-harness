@@ -2,9 +2,9 @@
 
 use serde::Deserialize;
 use std::path::PathBuf;
-use sts2_harness::{
-    EXO_LIFECYCLE_WIRE_V2, ExoIdentity, NativeCapabilities, ProviderSessionPolicy,
-};
+use sts2_harness::ExoIdentity;
+use sts2_harness::exo_lifecycle::EXO_LIFECYCLE_WIRE_V2;
+use sts2_harness::provider_session::{NativeCapabilities, ProviderSessionPolicy};
 
 const CONFIG_ENV: &str = "STS2_EXO_LIFECYCLE_CONFIG";
 const SCHEMA: &str = "sts2.exo-lifecycle-runtime-v1";

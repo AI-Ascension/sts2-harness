@@ -341,3 +341,25 @@ fn allowlisted_method(value: &str) -> bool {
             | "thread/compact/start"
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::NativeCapabilities;
+
+    #[test]
+    fn reviewed_exo_lifecycle_advertises_only_implemented_one_shot_methods() {
+        let capabilities = NativeCapabilities::reviewed_exo_lifecycle(
+            "sts2-exo-lifecycle-v2",
+            "1".repeat(64),
+            "2".repeat(64),
+            "3".repeat(64),
+        )
+        .expect("reviewed profile");
+        assert_eq!(
+            capabilities.enabled_methods,
+            ["initialize", "thread/start", "turn/start", "turn/interrupt"]
+        );
+        assert_ne!(capabilities.profile_id, "codex-app-server-fixture-v1");
+        assert!(capabilities.validate().is_ok());
+    }
+}
