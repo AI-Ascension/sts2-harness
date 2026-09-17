@@ -16,6 +16,18 @@ claim a released harness version or runtime compatibility.
   skipped, and the response selector must echo the request selector exactly. No schema, digest,
   route or durable record changes. Refs #127.
 
+- Submit **context-owner control commands over management HTTP**.
+  `POST /v1/workflow-runs/{run_id}/context-control-commands` forwards one `pause`/`commit`/`resume`
+  `ContextControlCommand` to the authoritative context owner for the run's current binding under
+  scoped `workflow:control` and returns the owner's `ascension.context-control.owner-receipt.v2`.
+  The harness mints no authority: an exact duplicate returns the recorded receipt without a second
+  effect, and a stale control version, boundary or revision fence is refused with a typed conflict
+  before the owner is called. A served profile may also set `STS2_WORKFLOW_TOKEN_<PROFILE>_READ`
+  to mint a `workflow:read`-only companion token for the same subject, so a metadata-only caller is
+  refused with `missing_scope` on content writes, adoption and control. Compatibility:
+  additive-compatible; see [ADR 0048](docs/decisions/0048-context-owner-control-commands.md).
+  Refs AI-Ascension/ascension-context-console#18.
+
 - Consume the gateway's negotiated **repeated-episode lease profile** so a harness run can
   complete two episodes against one gateway deployment. The gateway permanently revokes its local
   lease context on a successful `release`, so a second episode could never be admitted

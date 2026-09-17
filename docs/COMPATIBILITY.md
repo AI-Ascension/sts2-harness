@@ -126,6 +126,8 @@ receipt must match the exact owner/invocation/binding/command identity. It does 
 recreate a current association, and it grants no new control authority. Unsupported, unrecorded,
 mismatched and unavailable outcomes stay distinct.
 
+[ADR 0048](decisions/0048-context-owner-control-commands.md) adds `POST /v1/workflow-runs/{run_id}/context-control-commands` (`workflow:control`), submitting one `pause`/`commit`/`resume` `ContextControlCommand` to the authoritative owner for the run's current binding and returning its v2 receipt; optional `STS2_WORKFLOW_TOKEN_<PROFILE>_READ` mints a `workflow:read`-only companion token. `additive-compatible`: no existing route, record, schema, digest or default changes; the harness mints no authority — an exact duplicate returns the recorded receipt and a stale fence/boundary/revision is refused (409, no receipt) before the owner is called. Synthetic in-process evidence only.
+
 ## Recorded context-binding HTTP projection
 
 [ADR 0023](decisions/0023-recorded-context-binding-http-projection.md) adds one read-only

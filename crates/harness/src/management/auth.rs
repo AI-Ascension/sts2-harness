@@ -165,18 +165,51 @@ pub struct EnvironmentAuthenticator {
 }
 
 impl EnvironmentAuthenticator {
+    /// Reads the profile's credentials from the process environment; see
+    /// [`Self::from_profile_with`] for the variables and the scopes they mint.
     pub fn from_profile(profile: &str) -> Result<Self, AuthError> {
+        Self::from_profile_with(profile, |name| env::var(name).ok())
+    }
+
+    /// Builds the profile's credentials from an explicit variable lookup, so a
+    /// composition or test can supply tokens without touching the process
+    /// environment.
+    ///
+    /// `STS2_WORKFLOW_TOKEN_<PROFILE>` is required and mints the profile subject
+    /// with `workflow:*`. `STS2_WORKFLOW_TOKEN_<PROFILE>_READ` is optional and,
+    /// when set, mints a companion credential for the **same** profile subject
+    /// carrying `workflow:read` only, so a served process can hand a
+    /// metadata-only caller a token that the scope guards refuse for content
+    /// writes, adoption and control. The companion must differ from the primary
+    /// token; an equal or out-of-bound value is a configuration error.
+    pub fn from_profile_with(
+        profile: &str,
+        lookup: impl Fn(&str) -> Option<String>,
+    ) -> Result<Self, AuthError> {
         validate_identifier("auth_profile", profile).map_err(AuthError::invalid)?;
         let env_name = credential_environment_name(profile)?;
-        let token = env::var(&env_name).map_err(|_| {
+        let token = lookup(&env_name).ok_or_else(|| {
             AuthError::Configuration(format!(
                 "credential environment variable {env_name} is not set"
             ))
         })?;
-        let context = AuthContext::new(format!("profile:{profile}"), ["workflow:*".to_owned()])?;
+        let subject = format!("profile:{profile}");
+        let context = AuthContext::new(subject.clone(), ["workflow:*".to_owned()])?;
+        let mut inner = StaticAuthenticator::single(token, context)?;
+        let read_env_name = read_companion_environment_name(&env_name);
+        if let Some(read_token) = lookup(&read_env_name) {
+            let read_context = AuthContext::new(subject, ["workflow:read".to_owned()])?;
+            inner = inner
+                .with_credential(read_token, read_context)
+                .map_err(|error| {
+                    AuthError::Configuration(format!(
+                        "read companion credential {read_env_name} is not usable: {error}"
+                    ))
+                })?;
+        }
         Ok(Self {
             profile: profile.to_owned(),
-            inner: StaticAuthenticator::single(token, context)?,
+            inner,
         })
     }
 
@@ -207,6 +240,10 @@ fn credential_environment_name(profile: &str) -> Result<String, AuthError> {
     Ok(name)
 }
 
+fn read_companion_environment_name(primary: &str) -> String {
+    format!("{primary}_READ")
+}
+
 fn constant_time_equal(left: &str, right: &str) -> bool {
     let left_bytes = left.as_bytes();
     let right_bytes = right.as_bytes();
@@ -218,4 +255,54 @@ fn constant_time_equal(left: &str, right: &str) -> bool {
         difference |= usize::from(left_byte ^ right_byte);
     }
     difference == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lookup(name: &str) -> Option<String> {
+        match name {
+            "STS2_WORKFLOW_TOKEN_CONSOLE_LIVE" => Some("primary-token".to_owned()),
+            "STS2_WORKFLOW_TOKEN_CONSOLE_LIVE_READ" => Some("read-token".to_owned()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn profile_read_companion_token_has_read_scope_only() -> Result<(), AuthError> {
+        let authenticator = EnvironmentAuthenticator::from_profile_with("console-live", lookup)?;
+        let read = authenticator.authenticate(Some("read-token"))?;
+        assert_eq!(read.subject, "profile:console-live");
+        assert_eq!(read.scopes().collect::<Vec<_>>(), vec!["workflow:read"]);
+        assert!(read.can("workflow:read"));
+        assert!(!read.can("workflow:control"));
+        assert!(!read.can("workflow:content:write"));
+        assert!(!read.can("workflow:*"));
+        let primary = authenticator.authenticate(Some("primary-token"))?;
+        assert_eq!(primary.subject, read.subject);
+        assert!(primary.can("workflow:control"));
+        Ok(())
+    }
+
+    #[test]
+    fn profile_without_read_companion_mints_one_credential() -> Result<(), AuthError> {
+        let authenticator = EnvironmentAuthenticator::from_profile_with("console-live", |name| {
+            (name == "STS2_WORKFLOW_TOKEN_CONSOLE_LIVE").then(|| "primary-token".to_owned())
+        })?;
+        assert!(authenticator.authenticate(Some("primary-token")).is_ok());
+        assert_eq!(
+            authenticator.authenticate(Some("read-token")),
+            Err(AuthError::InvalidCredentials)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn read_companion_token_must_differ_from_the_primary_token() {
+        let result = EnvironmentAuthenticator::from_profile_with("console-live", |_| {
+            Some("same-token".to_owned())
+        });
+        assert!(matches!(result, Err(AuthError::Configuration(_))));
+    }
 }

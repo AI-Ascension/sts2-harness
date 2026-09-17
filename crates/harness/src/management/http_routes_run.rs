@@ -125,6 +125,14 @@ pub(super) fn dispatch_run_route(
                 .recover_context_control_receipt(actor, run_id, &command)
                 .and_then(|value| json_value(&value))
         }
+        ("POST", ["", "v1", "workflow-runs", _, "context-control-commands"])
+            if request.query.is_empty() =>
+        {
+            let command: ContextControlCommand = decode_body_management(&request.body)?;
+            service
+                .submit_context_control_command(actor, run_id, &command)
+                .and_then(|value| json_value(&value))
+        }
         ("GET", ["", "v1", "workflow-runs", _, "provider-sessions"])
             if request.query.is_empty() =>
         {

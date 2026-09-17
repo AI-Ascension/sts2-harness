@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use super::super::context_owner::{
-    CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, ContextControlCommand, ContextControlReceipt,
-    ContextOwnerAssociationView, ContextOwnerEffectiveLimitsView, ContextOwnerRenderRequest,
+    CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, ContextControlReceipt, ContextOwnerAssociationView,
+    ContextOwnerEffectiveLimitsView, ContextOwnerRenderRequest,
 };
 use super::super::context_owner::{ContextBindingCatalog, ContextOwnerBinding, ContextOwnerPort};
 use super::support::authorize;
@@ -21,6 +21,9 @@ mod context_source;
 
 #[path = "service_context_owner_binding.rs"]
 mod binding;
+
+#[path = "service_context_owner_control.rs"]
+mod control;
 
 impl ManagementService {
     pub fn with_context_owner_port(mut self, port: Arc<dyn ContextOwnerPort>) -> Self {
@@ -43,56 +46,6 @@ impl ManagementService {
         let catalog = self.context_owner.catalog(actor)?;
         catalog.validate()?;
         Ok(catalog)
-    }
-
-    /// Recovers the receipt the authoritative owner already issued for `command`,
-    /// for a caller whose reply was lost or ambiguous.
-    ///
-    /// This path never re-issues, re-applies or infers an effect. It requires
-    /// current scoped `workflow:read` for the run and exact owner-issued
-    /// historical evidence for the supplied command. Receipt recovery does not
-    /// assert that the old binding is a current runtime association. A recovered
-    /// receipt must satisfy exact owner/invocation/binding/command identity
-    /// before it is returned, so a receipt for one command cannot be replayed as
-    /// another.
-    pub fn recover_context_control_receipt(
-        &self,
-        actor: &AuthContext,
-        run_id: &str,
-        command: &ContextControlCommand,
-    ) -> Result<ContextControlReceipt, ManagementError> {
-        validate_identifier("run_id", run_id)?;
-        authorize(actor, "workflow:read", Some(run_id))?;
-        let snapshot = self.store.get_run(run_id)?.ok_or_else(|| {
-            ManagementError::invalid("run_not_found", "workflow run was not found")
-        })?;
-        let recovery = self
-            .context_owner
-            .recover_control_receipt(actor, &snapshot, command)?
-            .ok_or_else(|| {
-                ManagementError::invalid(
-                    "context_control_receipt_not_recorded",
-                    "the context owner has no recorded receipt for the supplied command",
-                )
-            })?;
-        let binding = recovery.binding;
-        binding.validate(None)?;
-        if binding.workflow_run_id != snapshot.workflow_run_id
-            || binding.definition_digest != snapshot.definition_digest
-        {
-            return Err(ManagementError::conflict(
-                "context_control_receipt_scope",
-                "historical receipt evidence is not attached to the admitted workflow run",
-            ));
-        }
-        if !binding.continuity.receipt_recovery {
-            return Err(ManagementError::unavailable(
-                "context_control_receipt_recovery_unsupported",
-                "the historical binding does not advertise receipt recovery",
-            ));
-        }
-        recovery.receipt.validate_for(&binding, command)?;
-        Ok(recovery.receipt)
     }
 
     /// Resolves the authoritative owner's current association for one run and
