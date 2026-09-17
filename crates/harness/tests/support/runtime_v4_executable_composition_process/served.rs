@@ -15,6 +15,10 @@ use session::{
 mod context_source;
 pub(crate) use context_source::run_served_context_source_adoption;
 
+#[path = "served/acceptance.rs"]
+mod acceptance;
+pub(crate) use acceptance::run_served_peer_acceptance;
+
 type RestartScenarioResult = (Output, Option<Output>, Option<StoredOperation>);
 
 pub(crate) fn run_served_policy_gate(
@@ -66,6 +70,9 @@ fn run_served_policy_gate_inner(
         workflow_store: &workflow_store,
         runtime_run_id: &runtime_run_id,
         context_owner_config: None,
+        instance_id: INSTANCE_ID,
+        lease_id: LEASE_ID,
+        lease_epoch: LEASE_EPOCH,
     };
     let mut gateway = gateway(gateway_binary, gateway_address, mod_server.address)?;
     let result: Result<RestartScenarioResult, Box<dyn std::error::Error>> = (|| {
