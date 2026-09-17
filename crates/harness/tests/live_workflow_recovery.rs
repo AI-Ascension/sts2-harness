@@ -341,6 +341,7 @@ fn cancel_consumes_a_reconciled_pending_operation_before_cleanup() {
     assert_eq!(snapshot.status, WorkflowRunStatus::Cancelled);
     assert!(snapshot.pending_operation.is_none());
     assert!(factory.entries().contains(&"reconcile".to_owned()));
+    assert_eq!(factory.completions(), [true]);
 }
 
 #[test]

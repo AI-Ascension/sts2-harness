@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::collections::{BTreeMap, btree_map::Entry};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use super::super::auth::AuthContext;
@@ -276,7 +276,7 @@ impl LiveWorkflowExecutionPort {
             }
             return Err(error);
         }
-        let run = LiveRun {
+        let mut run = LiveRun {
             runtime,
             definition_digest: definition_digest.to_owned(),
             run_id: run_id.clone(),
@@ -298,19 +298,15 @@ impl LiveWorkflowExecutionPort {
             context_binding: None,
         };
         let mut runs = self.runs.lock().map_err(lock_error)?;
-        match runs.entry(run_id) {
-            Entry::Vacant(entry) => {
-                entry.insert(Arc::new(Mutex::new(run)));
-            }
-            Entry::Occupied(_) => {
-                let mut run = run;
-                let _ = cleanup_session(&mut run, true);
-                return Err(ManagementError::conflict(
-                    "live_duplicate_run",
-                    "live run identity was already admitted",
-                ));
-            }
+        if runs.contains_key(&run_id) {
+            drop(runs);
+            let _ = cleanup_session(&mut run, true);
+            return Err(ManagementError::conflict(
+                "live_duplicate_run",
+                "live run identity was already admitted",
+            ));
         }
+        runs.insert(run_id, Arc::new(Mutex::new(run)));
         let mut admission_result = admission_result;
         admission_result.snapshot.status = super::super::contract::WorkflowRunStatus::Running;
         Ok(admission_result)

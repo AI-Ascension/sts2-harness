@@ -10,6 +10,7 @@ use crate::workflow::{RuntimeFault, RuntimeStatus};
 use super::execution_records::{application, cleanup_session, management_status, runtime_error};
 use super::node::LiveNodeExecutor;
 use super::node_recovery::reconcile_pending;
+use crate::episode::DispatchStatus;
 
 pub(super) fn apply_command(
     owner: &super::execution::LiveWorkflowExecutionPort,
@@ -79,14 +80,17 @@ pub(super) fn apply_command(
                     revision,
                 ));
             }
-            if run
+            let resolved_status = run
                 .state
                 .pending
                 .as_ref()
-                .is_some_and(|pending| pending.resolved.is_some())
-            {
+                .and_then(|pending| pending.resolved.as_ref())
+                .map(|receipt| receipt.status());
+            if let Some(status) = resolved_status {
                 run.state.pending = None;
-                run.state.session.action_completed(true);
+                run.state
+                    .session
+                    .action_completed(status == DispatchStatus::Settled);
             }
             let cleanup_error = cleanup_session(run, true).err();
             run.cancelled = true;

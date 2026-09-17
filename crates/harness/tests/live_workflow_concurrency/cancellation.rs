@@ -4,11 +4,14 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use sts2_harness::DispatchStatus;
 use sts2_harness::management::{
-    CommandKind, CommandOutcome, PendingOperationState, WorkflowRunStatus,
+    CommandKind, CommandOutcome, LiveWorkflowOptions, LiveWorkflowSessionFactory,
+    MemoryWorkflowStore, PendingOperationState, WorkflowRunStatus,
 };
 
 use super::{GateRelease, SessionGate, command, command_with_timeout, gated_service};
+use crate::support::FakeFactory;
 use crate::support::{actor, definition, request};
 
 #[test]
@@ -268,4 +271,34 @@ fn cancel_after_an_accepted_barrier_timeout_reconciles_the_same_operation() {
             "release"
         ]
     );
+}
+
+#[test]
+fn cancel_reports_non_settled_reconciliation_without_completing_provider_action() {
+    for status in [DispatchStatus::Rejected, DispatchStatus::Cancelled] {
+        let factory = Arc::new(FakeFactory::reconciled(status));
+        let service = crate::support::live_service(
+            Arc::new(MemoryWorkflowStore::new()),
+            Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
+            LiveWorkflowOptions::default(),
+        )
+        .expect("service");
+        let actor = actor();
+        let run_id = service
+            .submit_run(
+                &actor,
+                request("request-live-cancel-non-settled", definition(false)),
+            )
+            .expect("submit")
+            .workflow_run_id;
+        for (id, revision) in [("observe", 1), ("decide", 2), ("action", 3)] {
+            service
+                .command(&actor, command(&run_id, id, revision, CommandKind::Step))
+                .expect("step");
+        }
+        service
+            .command(&actor, command(&run_id, "cancel", 4, CommandKind::Cancel))
+            .expect("cancel");
+        assert_eq!(factory.completions(), [false]);
+    }
 }
