@@ -86,6 +86,10 @@ impl LiveContextObservationPort for Owner {
             entry.catalog_generation = retains_catalog.then_some(observation.generation());
             return Ok(());
         }
+        super::lease_fence::admit_trusted_lease(
+            &super::lease_fence::trusted_lease_path(&self.configuration.store_path, &run_id),
+            binding,
+        )?;
         let mut store = ContextControlStore::open(
             scoped_store_path(&self.configuration.store_path, &run_id),
             self.key,
