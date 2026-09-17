@@ -20,6 +20,13 @@ not add a complete content-manifest transport; its missing package/version/order
 override fields require a separately versioned contract. See
 [ADR 0043](decisions/0043-game-information-lookup-binding-route.md).
 
+The additive live-observation bootstrap consumer pins `game-information-live-observation-bootstrap-v1` at
+digest `6041a282ffda8757af4e3eb6ab551e082f136fe53138ab8ac17db9fab52765c2` and consumes the shared conformance
+case (sha256 `b16ed9ebd584131d72bca3fb3978fd5d32e44a5e9d695e98d10f58b99fb01469`) with its invalid fixtures
+`cross-run` `50729b0b…`, `duplicate-visible-entity` `b7ab7a81…`, `foreign-instance` `87ec2981…`, `foreign-manifest`
+`e9b5bb77…`, `missing-native-ref` `549d5bc1…`, `selector-instance-mismatch` `a3e585eb…`, `stale-generation`
+`719210fb…` (full digests in `SHA256SUMS`); a `not_observable` error maps to a typed missing-capability result.
+
 ## Benchmark manifest foundation
 
 `benchmark_manifest` adds a private `ascension.benchmark-manifest.v1` owner format and

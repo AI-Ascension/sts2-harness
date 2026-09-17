@@ -125,8 +125,12 @@ pub fn validate_request(value: &Value) -> Result<(), BootstrapError> {
 }
 
 /// Validates a response and returns the exact selected native snapshot reference.
-/// An omitted occurrence is accepted only when the definition resolves to one
-/// visible entity; no arbitrary item is selected from an ambiguous response.
+/// The response selector must echo the request selector exactly and every
+/// visible entity must carry the selected definition inside the attested
+/// scope; a foreign manifest or occurrence fails closed instead of being
+/// skipped. An omitted occurrence is accepted only when the definition
+/// resolves to one visible entity; no arbitrary item is selected from an
+/// ambiguous response.
 pub fn select_snapshot(request: &Value, response: &Value) -> Result<Value, BootstrapError> {
     validate_request(request)?;
     if serde_json::to_vec(response)
@@ -200,9 +204,7 @@ pub fn select_snapshot(request: &Value, response: &Value) -> Result<Value, Boots
     if !response_selector["instance_ref"].is_null() {
         validate_instance(&response_selector["instance_ref"])?;
     }
-    if !request_selector["instance_ref"].is_null()
-        && response_selector["instance_ref"] != request_selector["instance_ref"]
-    {
+    if response_selector["instance_ref"] != request_selector["instance_ref"] {
         return Err(BootstrapError::Scope);
     }
     let parent = response["parent_observation"]
@@ -263,7 +265,7 @@ pub fn select_snapshot(request: &Value, response: &Value) -> Result<Value, Boots
         if definition["content_manifest_id"].as_str() != scope_manifest
             || Value::Object(definition.clone()) != request_selector["definition_ref"]
         {
-            continue;
+            return Err(BootstrapError::Scope);
         }
         let occurrence = request_selector["instance_ref"].as_object();
         if occurrence.is_some_and(|expected| &Value::Object(expected.clone()) != instance) {

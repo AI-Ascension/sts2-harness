@@ -7,6 +7,15 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Consume the shared `game-information-live-observation-bootstrap-v1` conformance case and its
+  seven invalid fixtures (copied byte-identically from sts2-protocol, `SHA256SUMS` extended) and
+  drive the `error-native-unavailable.json` golden through the MCP bootstrap boundary: a
+  `not_observable` error is the typed missing-capability result, installs no snapshot, retains no
+  producer text and delivers nothing to the agent. Safety correction in bootstrap snapshot
+  selection: a visible entity carrying a foreign content manifest is now rejected instead of
+  skipped, and the response selector must echo the request selector exactly. No schema, digest,
+  route or durable record changes. Refs #127.
+
 - Consume the gateway's negotiated **repeated-episode lease profile** so a harness run can
   complete two episodes against one gateway deployment. The gateway permanently revokes its local
   lease context on a successful `release`, so a second episode could never be admitted

@@ -5,6 +5,8 @@ use crate::context_memory::*;
 use serde_json::json;
 #[path = "game_information_agent_tests.rs"]
 mod agent_tests;
+#[path = "game_information_bootstrap_conformance_tests.rs"]
+mod bootstrap_conformance_tests;
 #[path = "game_information_failure_tests.rs"]
 mod failure_tests;
 #[cfg(unix)]
