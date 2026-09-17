@@ -30,6 +30,10 @@ use crate::sha256_hex;
 use serde_json::{Map, Value};
 
 /// Upper bound on one projected model-view payload.
+///
+/// The bound is half the fair-play observation bound, so a projection can be a strict subset of what
+/// the host already validated. It is reachable in practice: a full-size hand of cards carrying
+/// near-maximum text stays inside the observation bound yet projects past this one.
 pub const MAX_MODEL_VIEW_BYTES: usize = 64 * 1024;
 
 /// A source value that already passed fair-play validation at admission.
@@ -139,6 +143,11 @@ pub fn project_model_view(
     crate::exo::SanitizedObservation::new(source.0.clone())
         .map_err(|_| ModelViewProjectionError::SourceInvalid)?;
 
+    // The recipe envelope and every declared path are re-validated here rather than trusted from
+    // construction time: a recipe that arrived by deserialization never passed through
+    // [`ModelViewProjection::new`], and an edited revision must not be able to borrow an earlier
+    // verdict on the strength of an unchanged field list.
+    recipe.validate()?;
     let resolved = recipe.resolved_fields()?;
     let mut output = Map::new();
     for field in &resolved {
