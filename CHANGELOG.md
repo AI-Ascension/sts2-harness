@@ -51,6 +51,14 @@ claim a released harness version or runtime compatibility.
   additive-compatible; see [ADR 0048](docs/decisions/0048-context-owner-control-commands.md).
   Refs AI-Ascension/ascension-context-console#18.
 
+- Execute independent read-only analyses of an admitted dynamic plan under an **owner-enforced
+  in-flight cap** from `WorkflowLimits::max_parallel_analyses`, joined by node identity:
+  `execute_plan_bounded` records each node `Settled`, `Failed` or `Unknown` in a `JoinedResult`
+  whose `join_digest` is identical for every completion order, never dispatches a node whose
+  declared input did not settle, and records an unwinding branch as `BranchLost` rather than
+  stalling. `ParallelCap::SERIAL` keeps cap=1 compatible and `execute_plan` is unchanged; this is
+  additive, and budget reservation, cancel/restart and browser branch state remain open. See [ADR 0049](docs/decisions/0049-bounded-parallel-analysis-join.md). Refs #98.
+
 - Consume the gateway's negotiated **repeated-episode lease profile** so a harness run can
   complete two episodes against one gateway deployment. The gateway permanently revokes its local
   lease context on a successful `release`, so a second episode could never be admitted
