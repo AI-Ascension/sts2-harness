@@ -1,0 +1,19 @@
+[package]
+name = "sts2-exact-restore-conformance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "sts2-exact-restore-conformance"
+path = "src/main.rs"
+
+[dependencies]
+serde_json.workspace = true
+sha2.workspace = true
+uuid = { version = "=1.26.1", features = ["v4"] }
+
+[lints]
+workspace = true

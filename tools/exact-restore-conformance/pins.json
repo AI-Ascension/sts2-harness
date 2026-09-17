@@ -1,0 +1,11 @@
+{
+  "schema": "sts2.exact-restore-conformance-pins.v1",
+  "gateway_repository": "AI-Ascension/sts2-gateway",
+  "gateway_revision": "e76dcd3f5ee6a5a892c7df4cd9fbbc15ba269cac",
+  "mcp_repository": "AI-Ascension/sts2-mcp-server",
+  "mcp_revision": "46c04c1fec200984e0d575467f8dc5c82ef075d1",
+  "mod_repository": "AI-Ascension/sts2-game-mod",
+  "mod_revision": "a1064b8ee68a947d1894496e794d06ec8ed265f8",
+  "status": "candidate",
+  "note": "Update gateway_revision after the host-correlation hotfix is merged; the workflow verifies each checkout HEAD against these pins."
+}

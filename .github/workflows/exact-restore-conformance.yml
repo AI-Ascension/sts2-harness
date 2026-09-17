@@ -1,0 +1,97 @@
+name: Exact-restore peer conformance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-restore:
+    name: Positive, refusal, and unknown exact restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RUSTFLAGS: ""
+    steps:
+      - name: Check out Harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: harness
+          persist-credentials: false
+
+      - name: Resolve immutable peer revisions
+        id: pins
+        working-directory: harness
+        run: |
+          gateway="$(jq -r .gateway_revision tools/exact-restore-conformance/pins.json)"
+          mcp="$(jq -r .mcp_revision tools/exact-restore-conformance/pins.json)"
+          mod="$(jq -r .mod_revision tools/exact-restore-conformance/pins.json)"
+          printf '%s\n' "$gateway" "$mcp" "$mod" | grep -Eq '^[0-9a-f]{40}$'
+          printf 'gateway=%s\nmcp=%s\nmod=%s\n' "$gateway" "$mcp" "$mod" >> "$GITHUB_OUTPUT"
+
+      - name: Check out Gateway, MCP, and game-mod
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AI-Ascension/sts2-gateway
+          ref: ${{ steps.pins.outputs.gateway }}
+          path: gateway
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AI-Ascension/sts2-mcp-server
+          ref: ${{ steps.pins.outputs.mcp }}
+          path: mcp
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AI-Ascension/sts2-game-mod
+          ref: ${{ steps.pins.outputs.mod }}
+          path: game-mod
+          persist-credentials: false
+
+      - name: Verify checked out peer provenance
+        working-directory: harness
+        run: |
+          test "$(git -C "$GITHUB_WORKSPACE/gateway" rev-parse HEAD)" = "$(jq -r .gateway_revision tools/exact-restore-conformance/pins.json)"
+          test "$(git -C "$GITHUB_WORKSPACE/mcp" rev-parse HEAD)" = "$(jq -r .mcp_revision tools/exact-restore-conformance/pins.json)"
+          test "$(git -C "$GITHUB_WORKSPACE/game-mod" rev-parse HEAD)" = "$(jq -r .mod_revision tools/exact-restore-conformance/pins.json)"
+
+      - name: Install reviewed Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --no-self-update
+
+      - name: Check out reviewed Exo source
+        id: exo
+        working-directory: harness
+        run: |
+          revision="$(sed -n 's/^pub const EXO_SOURCE_REVISION: &str = "\([0-9a-f]\{40\}\)";$/\1/p' crates/harness/src/exo/contract/mod.rs)"
+          test "${#revision}" -eq 40
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+          git -C "$GITHUB_WORKSPACE" clone --no-checkout \
+            https://github.com/exoharness/exo.git "$GITHUB_WORKSPACE/exo-test-source"
+          git -C "$GITHUB_WORKSPACE/exo-test-source" checkout --detach "$revision"
+
+      - name: Build immutable peers and Harness
+        run: |
+          cargo build --locked --jobs 2 --manifest-path gateway/Cargo.toml --bin sts2-gateway-runtime
+          cargo build --locked --jobs 2 --manifest-path mcp/Cargo.toml --bin sts2-mcp-server
+          cargo build --locked --jobs 2 --manifest-path game-mod/Cargo.toml -p sts2-game-mod --example exact_restore_peer
+          cargo build --locked --jobs 2 --manifest-path harness/Cargo.toml --bin sts2-harness-runtime
+          cargo test --locked --jobs 2 --manifest-path harness/Cargo.toml --bin sts2-harness-runtime \
+            actual_production_entrypoint_exact_restore_matrix_case --no-run -- --ignored --exact
+          cargo build --locked --jobs 2 --manifest-path harness/Cargo.toml --bin sts2-exact-restore-conformance
+
+      - name: Run all three exact-restore outcomes
+        env:
+          STS2_EXO_TEST_SOURCE: ${{ github.workspace }}/exo-test-source
+        run: |
+          ./harness/target/debug/sts2-exact-restore-conformance \
+            --pins harness/tools/exact-restore-conformance/pins.json \
+            --harness-root "$GITHUB_WORKSPACE/harness" \
+            --harness-bin "$GITHUB_WORKSPACE/harness/target/debug/sts2-harness-runtime" \
+            --mcp-bin "$GITHUB_WORKSPACE/mcp/target/debug/sts2-mcp-server" \
+            --gateway-bin "$GITHUB_WORKSPACE/gateway/target/debug/sts2-gateway-runtime" \
+            --mod-bin "$GITHUB_WORKSPACE/game-mod/target/debug/examples/exact_restore_peer"

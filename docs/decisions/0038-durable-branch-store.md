@@ -34,21 +34,23 @@ ownership relationships.
 The lifecycle is `pending`, `restoring`, `replaying`, `ready`, `running`, `held`, `completed`,
 `failed`, `unknown`, and `archived`. Readiness requires strategy-specific evidence:
 `exact_restore` requires `exact_restore_receipt`, while `prefix_replay` requires
-`prefix_replay_boundary`. These labels are not interchangeable. Startup reconciliation resolves every
-half-created row deterministically: a `pending` fork intent that never started a strategy is
-archived, while a `restoring`, `replaying`, or `unknown` attempt fails closed as `failed`; it never
-retries an uncertain effect or allocates a destination.
+`prefix_replay_boundary`. These labels are not interchangeable. Generic store reconciliation resolves
+every half-created row deterministically: a `pending` fork intent that never started a strategy is
+archived, while a `restoring`, `replaying`, or `unknown` row without an owning runtime route fails
+closed as `failed`; it never retries an uncertain effect or allocates a destination. The runtime
+exact-restore route retains an `unknown` effect for same-operation lookup reconciliation, as defined
+by ADR 0045.
 
 Selecting a `ready` branch for a fresh continuation uses a metadata-CAS transition back to its
 strategy preparation state (`restoring` or `replaying`) before any destination effect. That
 transition clears the previous strategy assurance; the runtime must publish fresh destination
 evidence and return through `ready` before it admits live decisions. A crash in this selected
 attempt while it is `restoring` or `replaying` is resolved by the same fail-closed startup policy
-and never repeats the effect. A branch left `running` is refused by explicit selection and remains
-non-executable: automatic recovery requires persisted ownership evidence tying the continuation
-operation to the destination's current lease/session fence. That evidence is not currently exposed
-by the gateway/runtime owner, so startup does not mark a potentially live sibling failed or replay
-it. Operator reconciliation is required until that owner contract exists.
+and never repeats the effect. A branch left `running` is refused by fresh explicit selection. Resume
+is allowed only through the runtime owner route after persisted ownership evidence ties the
+continuation operation to the destination's current lease/session fence and an exact branch retains
+one verified destination receipt. Prefix and exact resumes use a durable `BoundaryVerified` claim;
+missing, stale, or foreign owner evidence remains a refusal and never replays a live sibling.
 
 Reads provide stable branch-ID pagination, root-first ancestry, and append-only event cursors. Rename,
 assurance, lifecycle, and artifact mutations use operation IDs plus a metadata CAS revision.

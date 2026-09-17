@@ -1049,6 +1049,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sts2-exact-restore-conformance"
+version = "0.0.0"
+dependencies = [
+ "serde_json",
+ "sha2",
+ "uuid",
+]
+
+[[package]]
 name = "sts2-expert-state-package"
 version = "0.0.0"
 dependencies = [
