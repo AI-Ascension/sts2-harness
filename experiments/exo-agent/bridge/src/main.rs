@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod lookup_runtime;
+mod lookup_bootstrap;
 mod lookup_turn;
 mod lookup_wire;
 mod turn;
@@ -60,7 +61,10 @@ async fn main() {
 async fn run() -> Result<(), &'static str> {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
     if arguments == ["--lookup"] {
-        return lookup_turn::run().await;
+        return lookup_turn::run(false).await;
+    }
+    if arguments == ["--lookup-bootstrap"] {
+        return lookup_turn::run(true).await;
     }
     if !arguments.is_empty() {
         return Err("exo_executor_arguments");

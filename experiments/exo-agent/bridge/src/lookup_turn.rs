@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use tokio::io::BufReader;
 
-pub async fn run() -> Result<(), &'static str> {
+pub async fn run(bootstrap_profile: bool) -> Result<(), &'static str> {
     let mut reader = BufReader::new(tokio::io::stdin());
     let bytes = tokio::time::timeout(Duration::from_secs(5), wire::read_line(&mut reader))
         .await
@@ -35,6 +35,7 @@ pub async fn run() -> Result<(), &'static str> {
         invocation.request_id.clone(),
         invocation.host_turn_id.clone(),
         reader,
+        bootstrap_profile,
     ));
     tokio::time::timeout(timeout, execute(invocation, relay))
         .await
@@ -190,7 +191,7 @@ pub(super) fn validate_events(
                     || request.namespace.is_some()
                     || !matches!(
                         request.function_name.as_str(),
-                        "sts2_lookup_query" | "sts2_lookup_read"
+                        "sts2_lookup_query" | "sts2_lookup_bootstrap" | "sts2_lookup_read"
                     )
                     || serde_json::to_vec(&request.arguments)
                         .map_err(|_| "exo_lookup_event")?

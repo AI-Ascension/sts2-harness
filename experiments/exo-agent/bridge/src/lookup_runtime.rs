@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-use crate::lookup_wire::{self as wire, Frame, Payload};
+use crate::{lookup_bootstrap, lookup_wire::{self as wire, Frame, Payload}};
 use async_trait::async_trait;
 use executor::{AgentConfig, ConversationConfig, ToolRuntime};
 use exoharness::{AgentHandle, ConversationHandle, ToolRequest, ToolResult, TurnHandle};
@@ -13,6 +13,7 @@ use tokio::{
 pub struct LookupRuntime {
     request_id: String,
     turn_id: String,
+    bootstrap_profile: bool,
     channel: Mutex<Channel>,
 }
 struct Channel {
@@ -23,10 +24,16 @@ struct Channel {
 }
 
 impl LookupRuntime {
-    pub fn new(request_id: String, turn_id: String, input: BufReader<Stdin>) -> Self {
+    pub fn new(
+        request_id: String,
+        turn_id: String,
+        input: BufReader<Stdin>,
+        bootstrap_profile: bool,
+    ) -> Self {
         Self {
             request_id,
             turn_id,
+            bootstrap_profile,
             channel: Mutex::new(Channel {
                 input,
                 output: tokio::io::stdout(),
@@ -64,11 +71,12 @@ impl LookupRuntime {
             return Err("exo_lookup_tool_bound");
         }
         channel.failed = true; // Remains failed on every validation, I/O or cancellation exit.
-        let payload = tool_payload(request)?;
+        let payload = tool_payload_with_profile(request, self.bootstrap_profile)?;
+        let version = wire::version_for_payload(&payload);
         channel.tools += 1;
         let sequence = channel.tools;
         let frame = Frame {
-            wire_version: wire::VERSION.into(),
+            wire_version: version.into(),
             request_id: self.request_id.clone(),
             turn_id: self.turn_id.clone(),
             sequence,
@@ -76,7 +84,13 @@ impl LookupRuntime {
         };
         wire::write_frame(&mut channel.output, &frame).await?;
         let bytes = wire::read_line(&mut channel.input).await?;
-        let value = wire::feedback(&bytes, &self.request_id, &self.turn_id, sequence)?;
+        let value = wire::feedback_for_version(
+            &bytes,
+            &self.request_id,
+            &self.turn_id,
+            sequence,
+            version,
+        )?;
         channel.failed = false;
         Ok(value)
     }
@@ -89,7 +103,15 @@ struct ReadArguments {
     offset: usize,
 }
 
+#[cfg(test)]
 fn tool_payload(request: &ToolRequest) -> Result<Payload, &'static str> {
+    tool_payload_with_profile(request, false)
+}
+
+fn tool_payload_with_profile(
+    request: &ToolRequest,
+    bootstrap_profile: bool,
+) -> Result<Payload, &'static str> {
     if request.namespace.is_some()
         || serde_json::to_vec(&request.arguments)
             .map_err(|_| "exo_lookup_arguments")?
@@ -101,6 +123,12 @@ fn tool_payload(request: &ToolRequest) -> Result<Payload, &'static str> {
     let arguments = Value::Object(request.arguments.clone());
     match request.function_name.as_str() {
         "sts2_lookup_query" => Ok(Payload::Query { arguments }),
+        "sts2_lookup_bootstrap" => {
+            if !bootstrap_profile {
+                return Err("exo_lookup_tool_denied");
+            }
+            lookup_bootstrap::payload(arguments)
+        }
         "sts2_lookup_read" => {
             let read: ReadArguments =
                 serde_json::from_value(arguments).map_err(|_| "exo_lookup_arguments")?;
