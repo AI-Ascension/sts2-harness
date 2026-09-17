@@ -18,6 +18,7 @@ const LOOKUPS: [&str; 6] = [
     "sts2.game_information_detail",
     "sts2.game_information_availability",
 ];
+const LOOKUP_BINDING: &str = "sts2.game_information_binding";
 
 /// Admit a mixed catalog without changing any closed legacy catalog.
 /// Lookup capability intersection is subsequently verified by LookupSession negotiation.
@@ -35,6 +36,15 @@ pub(super) fn validate(response: &Value) -> Result<(), String> {
     let tools = result["tools"]
         .as_array()
         .ok_or_else(|| "MCP lookup catalog omitted tools".to_owned())?;
+    if std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true") {
+        eprintln!(
+            "MCP negotiated tools: {:?}",
+            tools
+                .iter()
+                .map(|tool| tool["name"].clone())
+                .collect::<Vec<_>>()
+        );
+    }
     if tools.len() > 14 {
         return Err("MCP lookup catalog exceeds supported surface".to_owned());
     }
@@ -46,12 +56,15 @@ pub(super) fn validate(response: &Value) -> Result<(), String> {
         if !names.insert(name)
             || !(GAMEPLAY.contains(&name)
                 || LOOKUPS.contains(&name)
+                || name == LOOKUP_BINDING
                 || matches!(name, "sts2.capabilities" | "sts2.map_snapshot"))
         {
             return Err("MCP lookup catalog has a duplicate or unsupported tool".to_owned());
         }
         if LOOKUPS.contains(&name) {
             validate_lookup(tool)?;
+        } else if name == LOOKUP_BINDING {
+            validate_binding(tool)?;
         }
     }
     if GAMEPLAY.iter().any(|name| !names.contains(name)) || !names.contains("sts2.capabilities") {
@@ -73,6 +86,22 @@ fn validate_lookup(tool: &Value) -> Result<(), String> {
         )
     {
         return Err("MCP lookup descriptor has unsupported authority or revision".to_owned());
+    }
+    Ok(())
+}
+
+fn validate_binding(tool: &Value) -> Result<(), String> {
+    let meta = &tool["_meta"]["sts2"];
+    if tool["annotations"]["readOnlyHint"] != true
+        || tool["annotations"]["destructiveHint"] != false
+        || tool["annotations"]["idempotentHint"] != true
+        || tool["inputSchema"]["additionalProperties"] != false
+        || meta["revision"] != "game-information-lookup-binding-v1-mcp"
+        || meta["feature"] != "static_reference"
+    {
+        return Err(
+            "MCP lookup-binding descriptor has unsupported authority or revision".to_owned(),
+        );
     }
     Ok(())
 }

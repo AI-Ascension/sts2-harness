@@ -8,6 +8,10 @@
 
 use serde::{Deserialize, Serialize};
 
+#[path = "context_owner_source.rs"]
+mod source;
+pub use source::*;
+
 use super::auth::AuthContext;
 use super::contract::{RunSnapshot, validate_digest, validate_identifier};
 use super::service::ManagementError;
@@ -24,11 +28,6 @@ pub const CONTEXT_OWNER_CATALOG_SCHEMA_VERSION: &str = "ascension.context-contro
 pub const CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION: &str = "ascension.context-control.owner-receipt.v2";
 pub const CONTEXT_OWNER_RECEIPT_V1_SCHEMA_VERSION: &str =
     "ascension.context-control.owner-receipt.v1";
-pub const MAX_CONTEXT_BINDINGS: usize = 128;
-pub const MAX_CONTEXT_SOURCES: usize = 16;
-pub const MAX_CONTEXT_OPERATIONS: usize = 16;
-pub const MAX_CONTEXT_NODE_KINDS: usize = 16;
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum ContextBindingState {

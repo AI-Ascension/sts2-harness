@@ -42,8 +42,9 @@ Behavior:
 - a binding whose `workflow_run_id` does not match the requested run fails closed with
   `409 context_binding_mismatch` rather than being returned.
 
-The binding is resolved through one shared helper (`ManagementService::current_context_binding`) also
-used by control-receipt recovery, so both paths enforce identical run-identity fencing.
+The binding is resolved through one shared helper (`ManagementService::current_context_binding`) for
+the current-association and live-control paths. Historical receipt recovery uses a separate
+persisted-evidence path and must not fabricate a current association after restart.
 
 ## Compatibility
 

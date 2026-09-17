@@ -14,11 +14,27 @@ pub(super) struct WorkflowServiceConfig<'a> {
     pub(super) execution_store: &'a Path,
     pub(super) workflow_store: &'a Path,
     pub(super) runtime_run_id: &'a str,
+    pub(super) context_owner_config: Option<&'a str>,
+    pub(super) instance_id: &'a str,
+    pub(super) lease_id: &'a str,
+    pub(super) lease_epoch: u64,
 }
 
 pub(super) fn workflow_service_command(
     config: &WorkflowServiceConfig<'_>,
 ) -> Result<Command, Box<dyn std::error::Error>> {
+    let default_context_owner_config = serde_json::to_string(&json!({
+        "schema_version":"ascension.workflow-context-owner-config.v1",
+        "store_path":config.context_store,
+        "key_reference":"STS2_SERVED_CONTEXT_OWNER_KEY",
+        "owner_id":"served-context-owner",
+        "owner_version":"v1",
+        "context_ref":"context.live.v1",
+        "limits":{"max_items":64,"max_notes":16,"max_context_bytes":131072,"max_objective_bytes":512,"max_control_events":64}
+    }))?;
+    let context_owner_config = config
+        .context_owner_config
+        .unwrap_or(&default_context_owner_config);
     let mut command = Command::new(config.harness_binary);
     command
         .arg("serve-workflow")
@@ -36,18 +52,7 @@ pub(super) fn workflow_service_command(
             "STS2_SERVED_PROVIDER_POLICY_KEY",
             "1111111111111111111111111111111111111111111111111111111111111111",
         )
-        .env(
-            "STS2_WORKFLOW_CONTEXT_OWNER_CONFIG",
-            serde_json::to_string(&json!({
-                "schema_version":"ascension.workflow-context-owner-config.v1",
-                "store_path":config.context_store,
-                "key_reference":"STS2_SERVED_CONTEXT_OWNER_KEY",
-                "owner_id":"served-context-owner",
-                "owner_version":"v1",
-                "context_ref":"context.live.v1",
-                "limits":{"max_items":64,"max_notes":16,"max_context_bytes":131072,"max_objective_bytes":512,"max_control_events":64}
-            }))?,
-        )
+        .env("STS2_WORKFLOW_CONTEXT_OWNER_CONFIG", context_owner_config)
         .env(
             "STS2_SERVED_CONTEXT_OWNER_KEY",
             "2222222222222222222222222222222222222222222222222222222222222222",
@@ -57,12 +62,12 @@ pub(super) fn workflow_service_command(
         .env("STS2_GATEWAY_TOKEN", "gateway-token")
         .env("STS2_MCP_BINARY", config.mcp_binary)
         .env("STS2_RUNTIME_PROFILE", "runtime-v4-expert")
-        .env("STS2_INSTANCE_ID", INSTANCE_ID)
+        .env("STS2_INSTANCE_ID", config.instance_id)
         .env("STS2_CALLER_ID", CALLER_ID)
         .env("STS2_SESSION_ID", SESSION_ID)
         .env("STS2_MCP_SESSION_ID", MCP_SESSION_ID)
-        .env("STS2_LEASE_ID", LEASE_ID)
-        .env("STS2_LEASE_EPOCH", LEASE_EPOCH.to_string())
+        .env("STS2_LEASE_ID", config.lease_id)
+        .env("STS2_LEASE_EPOCH", config.lease_epoch.to_string())
         .env("STS2_RUN_ID", config.runtime_run_id)
         .env("STS2_EPISODE_ID", "episode-served-policy-gate")
         .env("STS2_TRAJECTORY_ID", "trajectory-served-policy-gate")
@@ -112,74 +117,9 @@ pub(super) fn submit_and_step_policy_gate(
     client: &ManagementClient,
     steps: u64,
 ) -> Result<SubmittedRun, Box<dyn std::error::Error>> {
-    let definition = served_definition()?;
-    let request_id = "served-policy-gate";
-    let digest = digest_value(&definition)?;
-    let catalog = response::<TargetCatalogResponse>(client.request_json(
-        "GET",
-        "/v1/workflow-targets",
-        None,
-    )?)?;
-    if catalog.schema_version != TARGET_CATALOG_SCHEMA_VERSION {
-        return Err("served workflow returned an invalid target catalog".into());
-    }
-    let target = catalog
-        .targets
-        .into_iter()
-        .next()
-        .ok_or("served target is absent")?;
-    let admission_request = TargetAdmissionRequest {
-        schema_version: TARGET_ADMISSION_SCHEMA_VERSION.to_owned(),
-        request_id: request_id.to_owned(),
-        workflow_definition_digest: digest,
-        target: RunTargetConfiguration {
-            instance_id: target.instance_id,
-            execution_profile: "live.workflow.v1".to_owned(),
-            execution_mode: sts2_harness::management::ExecutionMode::Live,
-            workflow_revision: "0.1.0".to_owned(),
-            compatibility_revision: target.compatibility_revision,
-            capability_revision: target.capability_revision,
-            game_profile: "sts2-live-v1".to_owned(),
-            save_profile: None,
-            inference_profile: None,
-            context_capability: None,
-            provider_capability: None,
-        },
-    };
-    let preflight = response::<TargetPreflightResponse>(client.request_json(
-        "POST",
-        "/v1/workflow-targets/preflight",
-        Some(&serde_json::to_vec(&admission_request)?),
-    )?)?;
-    let run = RunRequest {
-        schema_version: sts2_harness::management::MANAGEMENT_SCHEMA_VERSION.to_owned(),
-        request_id: request_id.to_owned(),
-        definition: Some(definition),
-        artifact_id: None,
-        instance_id: INSTANCE_ID.to_owned(),
-        profile: "live.workflow.v1".to_owned(),
-        admission: Some(preflight.admission),
-    };
-    let submitted = client.request_json(
-        "POST",
-        "/v1/workflow-runs",
-        Some(&serde_json::to_vec(&run)?),
-    )?;
-    if submitted.status != 200 {
-        return Err(format!(
-            "served policy gate did not accept submission: {}",
-            String::from_utf8_lossy(&submitted.body)
-        )
-        .into());
-    }
-    let snapshot: Value = serde_json::from_slice(&submitted.body)?;
-    let run_id = snapshot["workflow_run_id"]
-        .as_str()
-        .ok_or("served submission omitted workflow run identity")?;
-    assert_served_policy_routes(client, run_id)?;
-    let mut revision = snapshot["run_revision"]
-        .as_u64()
-        .ok_or("served submission omitted run revision")?;
+    let submitted = submit_policy_gate(client)?;
+    let run_id = submitted.run_id.as_str();
+    let mut revision = submitted.revision;
     for index in 1..=steps {
         let command = CommandRequest {
             schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
@@ -249,9 +189,99 @@ pub(super) fn submit_and_step_policy_gate(
         return Err(format!("served workflow did not retain Unknown at step 3: {status}").into());
     }
     Ok(SubmittedRun {
-        run_id: run_id.to_owned(),
+        run_id: submitted.run_id,
         revision,
         operation_id,
+    })
+}
+
+pub(super) fn submit_policy_gate(
+    client: &ManagementClient,
+) -> Result<SubmittedRun, Box<dyn std::error::Error>> {
+    submit_policy_gate_with(
+        client,
+        served_definition()?,
+        INSTANCE_ID,
+        "served-policy-gate",
+    )
+}
+
+pub(super) fn submit_policy_gate_with(
+    client: &ManagementClient,
+    definition: Value,
+    instance_id: &str,
+    request_id: &str,
+) -> Result<SubmittedRun, Box<dyn std::error::Error>> {
+    let digest = digest_value(&definition)?;
+    let catalog = response::<TargetCatalogResponse>(client.request_json(
+        "GET",
+        "/v1/workflow-targets",
+        None,
+    )?)?;
+    if catalog.schema_version != TARGET_CATALOG_SCHEMA_VERSION {
+        return Err("served workflow returned an invalid target catalog".into());
+    }
+    let target = catalog
+        .targets
+        .into_iter()
+        .next()
+        .ok_or("served target is absent")?;
+    let admission_request = TargetAdmissionRequest {
+        schema_version: TARGET_ADMISSION_SCHEMA_VERSION.to_owned(),
+        request_id: request_id.to_owned(),
+        workflow_definition_digest: digest,
+        target: RunTargetConfiguration {
+            instance_id: target.instance_id,
+            execution_profile: "live.workflow.v1".to_owned(),
+            execution_mode: sts2_harness::management::ExecutionMode::Live,
+            workflow_revision: "0.1.0".to_owned(),
+            compatibility_revision: target.compatibility_revision,
+            capability_revision: target.capability_revision,
+            game_profile: "sts2-live-v1".to_owned(),
+            save_profile: None,
+            inference_profile: None,
+            context_capability: None,
+            provider_capability: None,
+        },
+    };
+    let preflight = response::<TargetPreflightResponse>(client.request_json(
+        "POST",
+        "/v1/workflow-targets/preflight",
+        Some(&serde_json::to_vec(&admission_request)?),
+    )?)?;
+    let run = RunRequest {
+        schema_version: sts2_harness::management::MANAGEMENT_SCHEMA_VERSION.to_owned(),
+        request_id: request_id.to_owned(),
+        definition: Some(definition),
+        artifact_id: None,
+        instance_id: instance_id.to_owned(),
+        profile: "live.workflow.v1".to_owned(),
+        admission: Some(preflight.admission),
+    };
+    let submitted = client.request_json(
+        "POST",
+        "/v1/workflow-runs",
+        Some(&serde_json::to_vec(&run)?),
+    )?;
+    if submitted.status != 200 {
+        return Err(format!(
+            "served workflow did not accept submission: {}",
+            String::from_utf8_lossy(&submitted.body)
+        )
+        .into());
+    }
+    let snapshot: Value = serde_json::from_slice(&submitted.body)?;
+    let run_id = snapshot["workflow_run_id"]
+        .as_str()
+        .ok_or("served submission omitted workflow run identity")?;
+    assert_served_policy_routes(client, run_id)?;
+    let revision = snapshot["run_revision"]
+        .as_u64()
+        .ok_or("served submission omitted run revision")?;
+    Ok(SubmittedRun {
+        run_id: run_id.to_owned(),
+        revision,
+        operation_id: None,
     })
 }
 
@@ -298,14 +328,21 @@ fn assert_served_policy_routes(
 }
 
 pub(super) fn served_runtime_run_id() -> Result<String, Box<dyn std::error::Error>> {
-    let definition = served_definition()?;
+    served_runtime_run_id_with(served_definition()?, INSTANCE_ID, "served-policy-gate")
+}
+
+pub(super) fn served_runtime_run_id_with(
+    definition: Value,
+    instance_id: &str,
+    request_id: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
     let digest = digest_value(&definition)?;
     let request = RunRequest {
         schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
-        request_id: "served-policy-gate".to_owned(),
+        request_id: request_id.to_owned(),
         definition: Some(definition),
         artifact_id: None,
-        instance_id: INSTANCE_ID.to_owned(),
+        instance_id: instance_id.to_owned(),
         profile: "live.workflow.v1".to_owned(),
         admission: None,
     };

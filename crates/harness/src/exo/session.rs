@@ -26,6 +26,11 @@ impl<T> ExoSession<T> {
         self.provider.into_transport()
     }
 
+    #[must_use]
+    pub fn config(&self) -> &super::ExoConfig {
+        self.provider.config()
+    }
+
     /// Adds the optional read-only capture sideband while leaving the provider payload unchanged.
     #[must_use]
     pub fn with_capture(mut self, capture: Box<dyn crate::context_capture::CapturePort>) -> Self {

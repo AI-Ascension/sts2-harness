@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted for scoped implementation of Harness #95. No consumer adoption, saved-policy store,
-Console/Studio journey or feature closure is approved here.
+Accepted for scoped implementation of Harness #95. Production served rendering and source adoption
+are covered by [ADR 0044](0044-served-managed-context-source.md). Console/Studio and native provider
+acceptance remain separate.
 
 ## Context
 
@@ -23,7 +24,9 @@ and what the harness enforces cannot diverge:
 
 - `ManagementService::prepare_context_render` resolves the run's **current** binding and its
   admitting descriptor, then renders through `ContextOwnerEffectiveLimitsView::prepare_managed_render`
-  → `ContextRenderer::enabled_at_with_limits(..., view.render_limits())`. An over-limit draft is
+  → `ContextRenderer::enabled_at_with_limits(..., view.render_limits())`. The production served
+  owner also resolves the exact live decision input and current immutable source, then passes the
+  composed `view.render_limits()` to the actual Exo prepared-request path. An over-limit draft is
   refused with `context_render_limit_exceeded` naming the limit, before any provider call or
   retention. An unattached owner or an unusable binding stays explicitly unavailable rather than
   falling back to the harness maxima.
@@ -55,10 +58,10 @@ and the harness maxima are neither raised nor lowered.
   silently truncated. Each transition reserves its recorded-event capacity before it mutates state,
   so a refusal at the bound leaves the plan, boundary, receipts and operation ledger unchanged.
 - The authenticated saved-policy owner API and bounded encrypted history are specified in
-  [ADR 0042](0042-provider-session-policy-http-owner.md). Its served live composition and
-  Console/Studio journeys remain separate acceptance work for #95.
-- These entry points have no in-repo route or runtime caller yet: the existing control path
-  (`management/workflow_ports.rs`) and the durable control store still build unbounded authorities,
-  so wiring them is adoption work tracked by #95 rather than something this slice completes.
+  [ADR 0042](0042-provider-session-policy-http-owner.md). Served managed-source publication,
+  adoption and rendering are specified in [ADR 0044](0044-served-managed-context-source.md).
+- The served `serve-workflow` composition consumes selected event and render limits at the
+  production owner and provider boundaries. The separate library workflow ports retain their
+  existing compatibility defaults unless an enforcing owner is attached.
 - Native/provider/deployment acceptance is not claimed: these checks are deterministic, synthetic
   and offline.

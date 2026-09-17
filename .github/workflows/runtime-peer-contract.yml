@@ -119,6 +119,38 @@ jobs:
           STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
         run: cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_restart_refuses_unknown_effect_without_redispatch
 
+      - name: Exercise served context-source adoption and pre-provider refusal
+        working-directory: harness
+        env:
+          STS2_GATEWAY_BINARY: ${{ github.workspace }}/gateway/target/debug/sts2-gateway-runtime
+          STS2_MCP_BINARY: ${{ github.workspace }}/mcp/target/debug/sts2-mcp-server
+          STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
+        run: cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_workflow_adopts_context_source_before_managed_decision
+
+      - name: Exercise served cancellation reconciliation against pinned peers
+        working-directory: harness
+        env:
+          STS2_GATEWAY_BINARY: ${{ github.workspace }}/gateway/target/debug/sts2-gateway-runtime
+          STS2_MCP_BINARY: ${{ github.workspace }}/mcp/target/debug/sts2-mcp-server
+          STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
+        run: cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_cancel_reconciles_an_accepted_unsettled_action
+
+      - name: Exercise served peer-negative and authored-graph acceptance
+        working-directory: harness
+        env:
+          STS2_GATEWAY_BINARY: ${{ github.workspace }}/gateway/target/debug/sts2-gateway-runtime
+          STS2_MCP_BINARY: ${{ github.workspace }}/mcp/target/debug/sts2-mcp-server
+          STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
+        run: cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_peer_acceptance_rejects_bad_bindings_and_tracks_authored_graph
+
+      - name: Exercise served context receipt recovery after process restart
+        working-directory: harness
+        env:
+          STS2_GATEWAY_BINARY: ${{ github.workspace }}/gateway/target/debug/sts2-gateway-runtime
+          STS2_MCP_BINARY: ${{ github.workspace }}/mcp/target/debug/sts2-mcp-server
+          STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
+        run: cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_workflow_recovers_context_receipt_after_process_restart
+
       - name: Exercise hostile startup and cancellation cleanup regressions
         working-directory: harness
         run: |

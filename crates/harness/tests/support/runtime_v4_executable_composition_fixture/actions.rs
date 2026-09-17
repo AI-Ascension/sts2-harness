@@ -30,6 +30,34 @@ pub(super) fn unknown_action(request: &Value) -> Result<(u16, Value), String> {
     Ok((503, response))
 }
 
+pub(super) fn accepted_action(request: &Value) -> Result<(u16, Value), String> {
+    if request["action"]["action_id"] != ACTION_ID {
+        return Err(String::from(
+            "expert action was not the host-generated potion action",
+        ));
+    }
+    let mut response = golden_action()?;
+    for (field, value) in [
+        ("correlation_id", request["correlation_id"].clone()),
+        ("instance_id", json!(INSTANCE_ID)),
+        ("session_id", json!(SESSION_ID)),
+        ("lease_id", json!(LEASE_ID)),
+        ("lease_epoch", json!(LEASE_EPOCH)),
+        ("generation", json!(7)),
+        ("state_id", json!("live:7")),
+        ("operation_id", request["operation_id"].clone()),
+        ("kind", json!("action_response")),
+        ("action", request["action"].clone()),
+        ("status", json!("accepted")),
+        ("observation", Value::Null),
+        ("transition", Value::Null),
+        ("error_code", Value::Null),
+    ] {
+        response[field] = value;
+    }
+    Ok((200, response))
+}
+
 pub(super) fn settled_action(
     path: &str,
     headers: &BTreeMap<String, String>,

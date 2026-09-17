@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: AI-Ascension/ascension-workflow-studio
-          ref: 31c5e5f407ab17fb0363374dd1d926c25e6350ea
+          ref: b316e0e9c535b8544f41f58baa6faf1095ff7b16
           path: studio
           persist-credentials: false
 
@@ -91,3 +91,12 @@ jobs:
           if test -f "$RUNNER_TEMP/studio-contract.log"; then
             cat "$RUNNER_TEMP/studio-contract.log"
           fi
+
+      - name: Retain synthetic consumer failure evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: studio-consumer-failure-${{ github.sha }}-${{ github.run_attempt }}
+          path: studio/test-results
+          if-no-files-found: ignore
+          retention-days: 7

@@ -309,6 +309,42 @@ fn unresolved_cancel_keeps_pending_identity_and_live_session() {
 }
 
 #[test]
+fn cancel_consumes_a_reconciled_pending_operation_before_cleanup() {
+    let factory = Arc::new(FakeFactory::new(true));
+    let service = live_service(
+        Arc::new(MemoryWorkflowStore::new()),
+        Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
+        LiveWorkflowOptions::default(),
+    )
+    .expect("service");
+    let actor = actor();
+    let run_id = service
+        .submit_run(
+            &actor,
+            request("request-live-cancel-resolved", definition(false)),
+        )
+        .expect("submit")
+        .workflow_run_id;
+    for (id, revision) in [("observe", 1), ("decide", 2), ("action", 3)] {
+        service
+            .command(&actor, command(&run_id, id, revision, CommandKind::Step))
+            .expect("step");
+    }
+    let cancelled = service
+        .command(&actor, command(&run_id, "cancel", 4, CommandKind::Cancel))
+        .expect("cancel");
+    assert_eq!(
+        cancelled.outcome,
+        sts2_harness::management::CommandOutcome::Applied
+    );
+    let snapshot = service.status(&actor, &run_id).expect("status").run;
+    assert_eq!(snapshot.status, WorkflowRunStatus::Cancelled);
+    assert!(snapshot.pending_operation.is_none());
+    assert!(factory.entries().contains(&"reconcile".to_owned()));
+    assert_eq!(factory.completions(), [true]);
+}
+
+#[test]
 fn launch_failure_releases_partial_session() {
     let factory = Arc::new(FakeFactory::launch_error());
     let service = live_service(

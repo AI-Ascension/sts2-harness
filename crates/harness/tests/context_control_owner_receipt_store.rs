@@ -6,8 +6,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use sts2_harness::context_control::{
-    ContextBoundary, ContextControlStore, ControlAuthority, DurableContextOwnerControlReceipt,
-    DurableControlStoreError, DurableStoreFailpoint, StoreMode,
+    ContextBoundary, ContextControlStore, ContextDraft, ContextSourceDocument, ControlAuthority,
+    DurableActiveContextSource, DurableContextOwnerControlReceipt, DurableContextSourceSnapshot,
+    DurableControlStoreError, DurableStoreFailpoint, StoreMode, context_source_digest,
 };
 use sts2_harness::management::{
     CONTEXT_OWNER_BINDING_SCHEMA_VERSION, CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION,
@@ -260,5 +261,116 @@ fn exact_encrypted_receipt_is_atomic_and_read_does_not_claim_the_live_writer() {
         Err(DurableControlStoreError::OwnerReceiptConflict)
     );
 
+    let _ = fs::remove_dir_all(path.parent().expect("fixture parent"));
+}
+
+#[test]
+fn source_activation_and_adoption_receipt_commit_atomically_after_encrypted_publication() {
+    let path = store_path();
+    let initial_binding = binding();
+    let initial = ControlAuthority::new(
+        initial_binding.boundary.clone(),
+        initial_binding.approved_revision_id.clone(),
+    );
+    let mut live_store =
+        ContextControlStore::create(&path, KEY, RUN_ID, &initial, StoreMode::Enabled)
+            .expect("create authority store");
+    let document = ContextSourceDocument {
+        draft: ContextDraft::new("draft.1", initial.state().active_revision_id.clone()),
+        items: Default::default(),
+    };
+    let digest = context_source_digest(&document).expect("source digest");
+    let source = DurableContextSourceSnapshot {
+        source_id: "strategy".into(),
+        version: 1,
+        digest: digest.clone(),
+        document,
+    };
+    live_store
+        .publish_context_source(&source)
+        .expect("publish encrypted immutable source");
+    assert!(
+        !fs::read(&path)
+            .expect("read encrypted database")
+            .windows(b"draft.1".len())
+            .any(|window| window == b"draft.1"),
+        "source plaintext must not appear in the database"
+    );
+
+    let command = ContextControlCommand::Commit {
+        idempotency_key: "adopt-source-1".into(),
+        expected_control_version: initial_binding.boundary.control_version,
+        expected_revision_id: initial.state().active_revision_id.clone(),
+        expected_boundary: initial_binding.boundary.clone(),
+        preview_manifest_digest: digest.clone(),
+        approved_manifest_digest: digest.clone(),
+    };
+    let mut adopted = initial.clone();
+    let outcome = adopted
+        .adopt_source_revision(
+            "adopt-source-1",
+            initial_binding.boundary.control_version,
+            &initial.state().active_revision_id,
+            &initial_binding.boundary,
+            &source.source_id,
+            source.version,
+            &source.digest,
+        )
+        .expect("source adoption transition");
+    let mut adoption_receipt = receipt(&initial_binding, &command, outcome, &adopted);
+    adoption_receipt.revision_id = Some(adopted.state().active_revision_id.clone());
+    let adoption_record = record(initial_binding, command.clone(), adoption_receipt);
+    let activation = DurableActiveContextSource {
+        source_id: source.source_id.clone(),
+        version: source.version,
+        digest: source.digest.clone(),
+        active_revision_id: adopted.state().active_revision_id.clone(),
+    };
+    let historical_reader =
+        ContextControlStore::open(&path, KEY, RUN_ID).expect("open historical reader");
+
+    live_store.set_failpoint(Some(DurableStoreFailpoint::BeforeCommit));
+    assert_eq!(
+        live_store.persist_with_owner_control_receipt_and_source(
+            &adopted,
+            StoreMode::Enabled,
+            &adoption_record,
+            &activation,
+        ),
+        Err(DurableControlStoreError::Failpoint)
+    );
+    assert_eq!(
+        historical_reader
+            .lookup_owner_control_receipt(OWNER_ID, ACTOR, &command)
+            .expect("receipt lookup after rollback"),
+        None
+    );
+    assert_eq!(
+        historical_reader
+            .active_context_source(initial.state().active_revision_id.as_str())
+            .expect("active source after rollback"),
+        None
+    );
+
+    live_store
+        .persist_with_owner_control_receipt_and_source(
+            &adopted,
+            StoreMode::Enabled,
+            &adoption_record,
+            &activation,
+        )
+        .expect("atomically commit authority, receipt, and active source");
+    assert_eq!(
+        historical_reader
+            .lookup_owner_control_receipt(OWNER_ID, ACTOR, &command)
+            .expect("committed receipt lookup"),
+        Some(adoption_record)
+    );
+    let (stored_activation, stored_source) = historical_reader
+        .active_context_source(&activation.active_revision_id)
+        .expect("committed source lookup")
+        .expect("active source");
+    assert_eq!(stored_activation, activation);
+    assert_eq!(stored_source, source);
     let _ = fs::remove_dir_all(path.parent().expect("fixture parent"));
 }

@@ -47,6 +47,10 @@ pub struct CommandRequest {
 pub enum CommandOutcome {
     Accepted,
     Applied,
+    /// The command was not accepted because another command for the run is
+    /// still applying. This response has no sequence and does not queue or
+    /// latch the requested control. Clients must refresh the run and submit a
+    /// new command at its current revision.
     Pending,
     Duplicate,
 }

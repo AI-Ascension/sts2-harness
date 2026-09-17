@@ -23,6 +23,7 @@ pub struct ManagedRenderInput {
     pub legal_action_ids: Vec<String>,
     pub objective: String,
     pub hard_constraints: Vec<String>,
+    pub map_context: Option<Value>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -57,6 +58,10 @@ impl PreparedContext {
             .map(|fields| fields.execution_id.as_str())
     }
 
+    pub fn matches_input(&self, input: &ManagedRenderInput) -> bool {
+        self.model_input.as_ref() == Some(input)
+    }
+
     /// Converts the frozen management input into the real Exo request type. The caller must use
     /// the reserved execution identity from the preview; changing it invalidates the bytes.
     pub fn exo_request(
@@ -85,29 +90,68 @@ impl PreparedContext {
             .get("objective")
             .and_then(Value::as_str)
             .ok_or(ExoError::InvalidRequest)?;
-        let request = ExoDecisionRequest::new_with_management(
-            execution_id,
-            self.provider_revision.clone(),
-            fields.state_id.clone(),
-            fields.generation,
-            observation,
-            fields.legal_action_ids.clone(),
-            effective_objective,
-            value
-                .get("hard_constraints")
-                .and_then(Value::as_array)
-                .ok_or(ExoError::InvalidRequest)?
-                .iter()
-                .map(|value| {
-                    value
-                        .as_str()
-                        .map(str::to_owned)
-                        .ok_or(ExoError::InvalidRequest)
-                })
-                .collect::<Result<Vec<_>, _>>()?,
-            self.max_response_bytes,
-            context,
-        )?;
+        let map_context = match fields.map_context.as_ref() {
+            Some(value) => Some(
+                crate::episode::map::MapDecisionContext::from_exo_value(
+                    value,
+                    &fields.state_id,
+                    fields.generation,
+                    &fields.legal_action_ids,
+                )
+                .map_err(|_| ExoError::InvalidRequest)?,
+            ),
+            None => None,
+        };
+        let request = if let Some(map_context) = map_context {
+            ExoDecisionRequest::new_with_map_and_management(
+                execution_id,
+                self.provider_revision.clone(),
+                fields.state_id.clone(),
+                fields.generation,
+                observation,
+                fields.legal_action_ids.clone(),
+                effective_objective,
+                value
+                    .get("hard_constraints")
+                    .and_then(Value::as_array)
+                    .ok_or(ExoError::InvalidRequest)?
+                    .iter()
+                    .map(|value| {
+                        value
+                            .as_str()
+                            .map(str::to_owned)
+                            .ok_or(ExoError::InvalidRequest)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                self.max_response_bytes,
+                map_context,
+                context,
+            )?
+        } else {
+            ExoDecisionRequest::new_with_management(
+                execution_id,
+                self.provider_revision.clone(),
+                fields.state_id.clone(),
+                fields.generation,
+                observation,
+                fields.legal_action_ids.clone(),
+                effective_objective,
+                value
+                    .get("hard_constraints")
+                    .and_then(Value::as_array)
+                    .ok_or(ExoError::InvalidRequest)?
+                    .iter()
+                    .map(|value| {
+                        value
+                            .as_str()
+                            .map(str::to_owned)
+                            .ok_or(ExoError::InvalidRequest)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                self.max_response_bytes,
+                context,
+            )?
+        };
         let encoded = request.encode(config.max_request_bytes)?;
         let encoded_value =
             serde_json::from_slice::<Value>(&encoded).map_err(|_| ExoError::InvalidRequest)?;
@@ -392,21 +436,53 @@ impl ContextRenderer {
                 "authority": "host-owned"
             }
         });
-        let input_value = json!({
-            "schema": "sts2.exo-decision-v1",
-            "provider_revision": config.revision,
-            "model_execution_id": request.execution_id,
-            "state_id": request.state_id,
-            "generation": request.generation,
-            "observation": request.observation,
-            "legal_action_ids": request.legal_action_ids,
-            "objective": objective_text,
-            "hard_constraints": request.hard_constraints,
-            "max_response_bytes": config.max_response_bytes,
-            "management_profile": ManagementProfile::Enabled.as_str(),
-            "management_context": managed_context
-        });
-        let input = serde_json::to_vec(&input_value).map_err(|_| ContextRenderError::Encode)?;
+        let observation = SanitizedObservation::new(request.observation.clone())
+            .map_err(|_| ContextRenderError::InvalidInput("managed observation is invalid"))?;
+        let observation = if config.forward_visible_seed {
+            observation
+        } else {
+            observation.without_visible_seed()
+        };
+        let provider_request = if let Some(map_value) = request.map_context.as_ref() {
+            let map_context = crate::episode::map::MapDecisionContext::from_exo_value(
+                map_value,
+                &request.state_id,
+                request.generation,
+                &request.legal_action_ids,
+            )
+            .map_err(|_| ContextRenderError::InvalidInput("managed map context is invalid"))?;
+            ExoDecisionRequest::new_with_map_and_management(
+                parse_execution_id(&request.execution_id)?,
+                config.revision.clone(),
+                request.state_id.clone(),
+                request.generation,
+                observation,
+                request.legal_action_ids.clone(),
+                objective_text,
+                request.hard_constraints.clone(),
+                config.max_response_bytes,
+                map_context,
+                managed_context.clone(),
+            )
+            .map_err(|_| ContextRenderError::InvalidInput("managed provider request is invalid"))?
+        } else {
+            ExoDecisionRequest::new_with_management(
+                parse_execution_id(&request.execution_id)?,
+                config.revision.clone(),
+                request.state_id.clone(),
+                request.generation,
+                observation,
+                request.legal_action_ids.clone(),
+                objective_text,
+                request.hard_constraints.clone(),
+                config.max_response_bytes,
+                managed_context.clone(),
+            )
+            .map_err(|_| ContextRenderError::InvalidInput("managed provider request is invalid"))?
+        };
+        let input = provider_request
+            .encode(config.max_request_bytes)
+            .map_err(|_| ContextRenderError::TooLarge)?;
         let output_schema = OUTPUT_SCHEMA.to_vec();
         let configuration = serde_json::to_vec(&json!({
             "profile": ManagementProfile::Enabled.as_str(),
@@ -494,6 +570,16 @@ fn validate_request(request: &ManagedRenderInput) -> Result<(), ContextRenderErr
 
 fn reference_key(reference: &super::types::ContextItemRef) -> String {
     format!("{}:{}", reference.item_id, reference.version)
+}
+
+fn parse_execution_id(value: &str) -> Result<ModelExecutionId, ContextRenderError> {
+    value
+        .strip_prefix("model-execution-")
+        .and_then(|number| number.parse::<u64>().ok())
+        .and_then(ModelExecutionId::new)
+        .ok_or(ContextRenderError::InvalidInput(
+            "managed execution identity is invalid",
+        ))
 }
 
 fn valid_attributed_to(value: &str) -> bool {
