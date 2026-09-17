@@ -211,6 +211,9 @@ pub(super) fn run(
     let report = match result {
         Ok(report) => report,
         Err(error) => {
+            if std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true") {
+                eprintln!("runtime-v3 episode primary error: {error:?}");
+            }
             durable.mark_interrupted_unknown("runtime-v3 episode failed");
             recording::episode_failure(&error, &telemetry_handle);
             if source_close.is_err() {
