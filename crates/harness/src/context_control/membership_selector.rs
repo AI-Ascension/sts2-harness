@@ -62,8 +62,10 @@ impl ContextMembershipSelector {
 
     /// Stable digest over the canonical encoding of this selector.
     ///
-    /// The render fence compares this value before and after inference, so a selector widened
-    /// mid-inference is refused exactly like a changed source.
+    /// The owner records this digest on the render source identity, so the live fence re-derives
+    /// the identity from the current configuration before and after inference and refuses when the
+    /// digest moved — a selector changed mid-inference is refused exactly like a changed source.
+    /// The digest is computed once per resolution, not re-encoded inside the comparison.
     pub fn digest(&self) -> Result<String, ContextMembershipError> {
         let encoded = serde_json::to_vec(self).map_err(|_| ContextMembershipError::Encode)?;
         Ok(sha256_hex(&encoded))
