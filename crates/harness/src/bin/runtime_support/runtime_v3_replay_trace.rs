@@ -266,6 +266,7 @@ fn failure_code_name(value: &str) -> Option<&'static str> {
         "provider_unavailable" => "provider_unavailable",
         "provider_malformed" => "provider_malformed",
         "provider_closed" => "provider_closed",
+        "context_render_limit_exceeded" => "context_render_limit_exceeded",
         "rejected" => "rejected",
         "unknown_outcome" => "unknown_outcome",
         "cleanup" => "cleanup",

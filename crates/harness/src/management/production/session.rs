@@ -2,6 +2,9 @@
 
 use super::*;
 
+#[path = "session_managed.rs"]
+mod managed;
+
 #[path = "session_policy.rs"]
 mod policy;
 
@@ -118,6 +121,12 @@ pub(super) fn runtime_error(
 }
 
 pub(super) fn provider_error(error: crate::episode::PolicyError) -> ManagementError {
+    if let crate::episode::PolicyError::SelectedContextLimit(limit) = error {
+        return ManagementError::capability(
+            "context_render_limit_exceeded",
+            format!("prepared context exceeds the selected owner limit: {limit}"),
+        );
+    }
     ManagementError::unavailable("provider_decision_failed", error.to_string())
 }
 impl LiveWorkflowSession for ProductionLiveWorkflowSession {
@@ -219,6 +228,19 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
     ) -> Result<crate::Decision, ManagementError> {
         self.assert_current_observation(&input.observation)?;
         self.assert_active_policy_binding_current()?;
+        if let Some(render) = self
+            .context_render
+            .as_ref()
+            .filter(|render| render.render_required())
+            .cloned()
+        {
+            return self.decide_with_managed_context(
+                input,
+                decision_profile_ref,
+                context_ref,
+                render,
+            );
+        }
         let decision = self
             .provider_mut()?
             .decide_for(input, decision_profile_ref, context_ref)

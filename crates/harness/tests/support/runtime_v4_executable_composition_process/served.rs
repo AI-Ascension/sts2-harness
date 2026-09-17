@@ -11,6 +11,10 @@ use session::{
     wait_for_workflow_service, workflow_service_command,
 };
 
+#[path = "served/context_source.rs"]
+mod context_source;
+pub(crate) use context_source::run_served_context_source_adoption;
+
 type RestartScenarioResult = (Output, Option<Output>, Option<StoredOperation>);
 
 pub(crate) fn run_served_policy_gate(
@@ -61,6 +65,7 @@ fn run_served_policy_gate_inner(
         execution_store: &execution_store,
         workflow_store: &workflow_store,
         runtime_run_id: &runtime_run_id,
+        context_owner_config: None,
     };
     let mut gateway = gateway(gateway_binary, gateway_address, mod_server.address)?;
     let result: Result<RestartScenarioResult, Box<dyn std::error::Error>> = (|| {

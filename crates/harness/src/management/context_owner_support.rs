@@ -3,6 +3,7 @@
 //! Port and bounded metadata support for the context owner contract.
 
 use super::*;
+use crate::context_control::ContextSourceDocument;
 
 impl ContextEffectiveLimits {
     /// The selected limits a managed render must respect.
@@ -41,6 +42,17 @@ pub trait ContextOwnerPort: Send + Sync {
         ))
     }
 
+    fn source_status(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+    ) -> Result<ContextOwnerSourceStatus, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_source_status_unavailable",
+            "current context source status is not attached to this owner",
+        ))
+    }
+
     fn control(
         &self,
         _actor: &AuthContext,
@@ -68,6 +80,39 @@ pub trait ContextOwnerPort: Send + Sync {
             "context_owner_receipt_recovery_unavailable",
             "context control receipt recovery is not attached to this owner",
         ))
+    }
+
+    /// Persists an explicitly published immutable source for a run. Source content is encrypted
+    /// by the owner and returned only to the owner-local render port.
+    fn publish_source(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+        _source_id: &str,
+        _document: &ContextSourceDocument,
+    ) -> Result<ContextBindingSource, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_source_publication_unavailable",
+            "owner context source publication is not attached",
+        ))
+    }
+
+    /// Explicitly adopts a previously published source as the next durable authority revision.
+    fn adopt_source(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+        _source_id: &str,
+        _request: &ContextSourceAdoptionRequest,
+    ) -> Result<ContextControlReceipt, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_source_adoption_unavailable",
+            "owner context source adoption is not attached",
+        ))
+    }
+
+    fn render_required(&self) -> bool {
+        false
     }
 
     /// Recovers historical receipt evidence without asserting a current association.

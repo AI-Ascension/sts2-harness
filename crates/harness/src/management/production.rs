@@ -6,6 +6,10 @@
 //! respective adapters.  This module joins those already-authoritative ports
 //! into one management session; it deliberately has no game transport.
 
+#[path = "production_context_ports.rs"]
+mod context_ports;
+pub use context_ports::{LiveContextObservationPort, LiveContextRenderPort};
+
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -87,32 +91,6 @@ pub trait LiveProviderSessionFactory: Send + Sync {
     ) -> Result<Box<dyn DecisionSource + Send>, ManagementError>;
 }
 
-/// Receives the authoritative MCP observation and the run-reservation control
-/// bound used by the served context owner. The owner composes its current
-/// invocation binding before any delegated control effect.
-pub trait LiveContextObservationPort: Send + Sync {
-    fn record_observation(
-        &self,
-        actor: &AuthContext,
-        request: &RunRequest,
-        definition_digest: &str,
-        binding: &RuntimeAuthorityBinding,
-        observation: &EpisodeObservation,
-        control_limits: &super::super::ContextOwnerControlLimits,
-    ) -> Result<(), ManagementError>;
-
-    fn record_legal_actions(
-        &self,
-        actor: &AuthContext,
-        request: &RunRequest,
-        definition_digest: &str,
-        binding: &RuntimeAuthorityBinding,
-        actions: &EpisodeLegalActionSet,
-    ) -> Result<(), ManagementError>;
-
-    fn invalidate(&self, actor: &AuthContext, request: &RunRequest, definition_digest: &str);
-}
-
 /// Concrete served factory joining authoritative target discovery, the
 /// existing gateway/MCP runtime, and the provider session.
 pub struct ProductionLiveWorkflowSessionFactory {
@@ -123,6 +101,7 @@ pub struct ProductionLiveWorkflowSessionFactory {
     provider_policy: Arc<dyn LiveProviderPolicyPort>,
     provider_capabilities: NativeCapabilities,
     context_observations: Option<Arc<dyn LiveContextObservationPort>>,
+    context_render: Option<Arc<dyn LiveContextRenderPort>>,
 }
 
 impl ProductionLiveWorkflowSessionFactory {
@@ -149,6 +128,7 @@ impl ProductionLiveWorkflowSessionFactory {
             provider_policy,
             provider_capabilities,
             context_observations: None,
+            context_render: None,
         })
     }
 
@@ -157,6 +137,11 @@ impl ProductionLiveWorkflowSessionFactory {
         observations: Arc<dyn LiveContextObservationPort>,
     ) -> Self {
         self.context_observations = Some(observations);
+        self
+    }
+
+    pub fn with_context_render_port(mut self, render: Arc<dyn LiveContextRenderPort>) -> Self {
+        self.context_render = Some(render);
         self
     }
 }
@@ -203,6 +188,17 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
                 "admitted context control limits have no attached enforcing owner",
             ));
         }
+        if self
+            .context_render
+            .as_ref()
+            .is_some_and(|render| render.render_required())
+            && (self.context_observations.is_none() || control_limits.is_none())
+        {
+            return Err(ManagementError::capability(
+                "selected_context_render_owner_unavailable",
+                "managed rendering requires the admitted observation and control owner",
+            ));
+        }
         let authority_binding =
             self.runtime
                 .authority_binding(request, actor, definition, definition_digest)?;
@@ -222,6 +218,7 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
             provider_policy: Arc::clone(&self.provider_policy),
             provider_capabilities: self.provider_capabilities.clone(),
             context_observations: self.context_observations.clone(),
+            context_render: self.context_render.clone(),
             context_control_limits: control_limits.cloned(),
             active_policy_binding: None,
             authority_binding,
@@ -270,6 +267,7 @@ struct ProductionLiveWorkflowSession {
     provider_policy: Arc<dyn LiveProviderPolicyPort>,
     provider_capabilities: NativeCapabilities,
     context_observations: Option<Arc<dyn LiveContextObservationPort>>,
+    context_render: Option<Arc<dyn LiveContextRenderPort>>,
     context_control_limits: Option<super::super::ContextOwnerControlLimits>,
     active_policy_binding: Option<(String, u64)>,
     authority_binding: RuntimeAuthorityBinding,

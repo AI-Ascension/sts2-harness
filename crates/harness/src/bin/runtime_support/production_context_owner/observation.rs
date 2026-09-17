@@ -29,7 +29,7 @@ impl LiveContextObservationPort for Owner {
             ));
         }
         let fair_play = observation.fair_play().as_value();
-        let boundary = ContextBoundary {
+        let mut boundary = ContextBoundary {
             run_id: run_id.clone(),
             episode_id: binding.episode_id.clone(),
             agent_id: binding.agent_id.clone(),
@@ -52,6 +52,8 @@ impl LiveContextObservationPort for Owner {
         })?;
         if let Some(entry) = current.get_mut(&run_id) {
             if entry.actor != actor.subject
+                || entry.definition_digest != digest
+                || entry.runtime_instance_id != binding.instance_id
                 || entry.runtime_lease_id != binding.lease_id
                 || entry.runtime_lease_epoch != binding.lease_epoch
             {
@@ -68,6 +70,9 @@ impl LiveContextObservationPort for Owner {
             }
             let retains_catalog = entry.catalog_generation == Some(observation.generation())
                 && entry.authority.state().boundary.state_id == observation.state_id();
+            if retains_catalog {
+                boundary.catalog_sha256 = entry.authority.state().boundary.catalog_sha256.clone();
+            }
             entry
                 .authority
                 .record_observation_boundary(boundary)
@@ -135,6 +140,7 @@ impl LiveContextObservationPort for Owner {
                 authority,
                 store,
                 actor: actor.subject.clone(),
+                definition_digest: digest.to_owned(),
                 binding_request: None,
                 catalog_generation: None,
                 runtime_instance_id: binding.instance_id.clone(),

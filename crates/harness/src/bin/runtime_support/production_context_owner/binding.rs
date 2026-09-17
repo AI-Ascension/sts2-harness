@@ -28,10 +28,32 @@ impl Owner {
             || value.limits.max_context_bytes > 128 * 1024
             || value.limits.max_objective_bytes > 512
             || value.limits.max_control_events > 4096
+            || value.sources.len() > 16
+            || (value.render_required && value.sources.is_empty())
         {
             return Err(String::from(
                 "STS2_WORKFLOW_CONTEXT_OWNER_CONFIG is invalid",
             ));
+        }
+        let mut source_ids = std::collections::BTreeSet::new();
+        for source in &value.sources {
+            if source.source_id.is_empty()
+                || source.source_id.len() > 128
+                || !source.source_id.bytes().enumerate().all(|(index, byte)| {
+                    byte.is_ascii_alphanumeric() || (index > 0 && b"._:-".contains(&byte))
+                })
+                || source.version == 0
+                || source.digest.len() != 64
+                || !source
+                    .digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+                || !source_ids.insert(source.source_id.as_str())
+            {
+                return Err(String::from(
+                    "STS2_WORKFLOW_CONTEXT_OWNER_CONFIG contains an invalid source",
+                ));
+            }
         }
         Ok(value)
     }
@@ -44,7 +66,7 @@ impl Owner {
             digest: String::new(),
             context_ref: self.configuration.context_ref.clone(),
             node_kinds: vec!["decide".into()],
-            sources: Vec::new(),
+            sources: self.configuration.sources.clone(),
             operations: vec![
                 ContextBindingOperation::Pause,
                 ContextBindingOperation::Commit,
@@ -58,7 +80,7 @@ impl Owner {
             },
             grants: ContextBindingGrants {
                 metadata_read: true,
-                content_read: false,
+                content_read: self.configuration.render_required,
                 edit: false,
                 control: true,
             },
@@ -67,7 +89,7 @@ impl Owner {
         .seal()
     }
 
-    fn binding_for_request(
+    pub(super) fn binding_for_request(
         &self,
         request: &ContextBindingRequest,
         entry: &Current,
@@ -200,6 +222,38 @@ impl ContextOwnerPort for Owner {
         snapshot: &sts2_harness::management::RunSnapshot,
     ) -> Result<ContextOwnerBinding, ManagementError> {
         self.current_association(actor, snapshot)
+    }
+
+    fn source_status(
+        &self,
+        actor: &AuthContext,
+        snapshot: &sts2_harness::management::RunSnapshot,
+    ) -> Result<ContextOwnerSourceStatus, ManagementError> {
+        self.source_status_current(actor, snapshot)
+    }
+
+    fn publish_source(
+        &self,
+        actor: &AuthContext,
+        snapshot: &sts2_harness::management::RunSnapshot,
+        source_id: &str,
+        document: &sts2_harness::context_control::ContextSourceDocument,
+    ) -> Result<ContextBindingSource, ManagementError> {
+        self.publish_source_current(actor, snapshot, source_id, document)
+    }
+
+    fn adopt_source(
+        &self,
+        actor: &AuthContext,
+        snapshot: &sts2_harness::management::RunSnapshot,
+        source_id: &str,
+        request: &sts2_harness::management::ContextSourceAdoptionRequest,
+    ) -> Result<sts2_harness::management::ContextControlReceipt, ManagementError> {
+        self.adopt_source_current(actor, snapshot, source_id, request)
+    }
+
+    fn render_required(&self) -> bool {
+        self.configuration.render_required
     }
 
     fn control(

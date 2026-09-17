@@ -120,6 +120,36 @@ impl ExoDecisionRequest {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_with_map_and_management(
+        execution_id: ModelExecutionId,
+        provider_revision: impl Into<String>,
+        state_id: impl Into<String>,
+        generation: u64,
+        observation: SanitizedObservation,
+        legal_action_ids: Vec<String>,
+        objective: impl Into<String>,
+        hard_constraints: Vec<String>,
+        max_response_bytes: usize,
+        map_context: MapDecisionContext,
+        management_context: serde_json::Value,
+    ) -> Result<Self, ExoError> {
+        Self::new_inner_with_management(
+            execution_id,
+            provider_revision,
+            state_id,
+            generation,
+            observation,
+            legal_action_ids,
+            objective,
+            hard_constraints,
+            max_response_bytes,
+            Some(map_context.to_wire()),
+            Some("management-enabled".to_owned()),
+            Some(management_context),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn new_inner(
         execution_id: ModelExecutionId,
         provider_revision: impl Into<String>,

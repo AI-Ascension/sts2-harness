@@ -8,10 +8,11 @@ use sts2_harness::context_control::{ContextControlStore, ControlAuthority};
 use sts2_harness::management::{
     AuthContext, CONTEXT_OWNER_CONTROL_LIMITS_SCHEMA, ContextBindingCatalog,
     ContextBindingContinuity, ContextBindingDescriptor, ContextBindingGrants,
-    ContextBindingOperation, ContextBindingRequest, ContextBindingState, ContextEffectiveLimits,
-    ContextOwnerBinding, ContextOwnerControlLimits, ContextOwnerEffectiveLimitsView,
-    ContextOwnerPort, LiveContextObservationPort, ManagementError, RunRequest,
-    RuntimeAuthorityBinding,
+    ContextBindingOperation, ContextBindingRequest, ContextBindingSource, ContextBindingState,
+    ContextEffectiveLimits, ContextOwnerBinding, ContextOwnerControlLimits,
+    ContextOwnerEffectiveLimitsView, ContextOwnerPort, ContextOwnerSourceStatus,
+    ContextRenderSource, ContextRenderSourceIdentity, LiveContextObservationPort,
+    LiveContextRenderPort, ManagementError, RunRequest, RuntimeAuthorityBinding,
 };
 use sts2_harness::{EpisodeLegalActionSet, EpisodeObservation};
 use zeroize::Zeroize;
@@ -22,6 +23,12 @@ const SCHEMA: &str = "ascension.workflow-context-owner-config.v1";
 mod binding;
 #[path = "production_context_owner/observation.rs"]
 mod observation;
+#[path = "production_context_owner/source.rs"]
+mod source;
+#[path = "production_context_owner/source_status.rs"]
+mod source_status;
+#[path = "production_context_owner/source_support.rs"]
+mod source_support;
 
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -33,6 +40,10 @@ pub(super) struct Configuration {
     pub owner_version: String,
     pub context_ref: String,
     pub limits: ContextEffectiveLimits,
+    #[serde(default)]
+    pub render_required: bool,
+    #[serde(default)]
+    pub sources: Vec<ContextBindingSource>,
 }
 
 impl Configuration {
@@ -51,6 +62,7 @@ struct Current {
     authority: ControlAuthority,
     store: ContextControlStore,
     actor: String,
+    definition_digest: String,
     binding_request: Option<ContextBindingRequest>,
     catalog_generation: Option<u64>,
     runtime_instance_id: String,

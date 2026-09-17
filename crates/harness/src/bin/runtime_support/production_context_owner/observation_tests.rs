@@ -32,6 +32,8 @@ fn setup() -> (
             max_objective_bytes: 1,
             max_control_events: 64,
         },
+        render_required: false,
+        sources: Vec::new(),
     };
     let request = RunRequest {
         schema_version: MANAGEMENT_SCHEMA_VERSION.into(),
@@ -154,6 +156,50 @@ fn stale_catalog_generation_cannot_make_current_boundary_bindable() {
     assert_eq!(error.code, "context_owner_catalog_stale");
     let current = owner.current.lock().expect("lock");
     assert_eq!(current[&binding.run_id].catalog_generation, None);
+}
+
+#[test]
+fn same_generation_observation_refresh_preserves_current_catalog_digest() {
+    let (owner, actor, request, binding, digest, selected) = setup();
+    owner
+        .record_observation(
+            &actor,
+            &request,
+            &digest,
+            &binding,
+            &observation(1),
+            &selected,
+        )
+        .expect("observation");
+    let actions = EpisodeLegalActionSet::new(
+        "combat-1",
+        1,
+        vec![EpisodeLegalAction::new("combat.end-turn", ActionKind::EndTurn).expect("action")],
+    )
+    .expect("actions");
+    owner
+        .record_legal_actions(&actor, &request, &digest, &binding, &actions)
+        .expect("catalog");
+    let catalog_digest = legal_catalog_digest(&actions).expect("catalog digest");
+
+    owner
+        .record_observation(
+            &actor,
+            &request,
+            &digest,
+            &binding,
+            &observation(1),
+            &selected,
+        )
+        .expect("same-boundary refresh");
+
+    let current = owner.current.lock().expect("lock");
+    let entry = &current[&binding.run_id];
+    assert_eq!(entry.catalog_generation, Some(1));
+    assert_eq!(
+        entry.authority.state().boundary.catalog_sha256,
+        catalog_digest
+    );
 }
 
 #[test]
