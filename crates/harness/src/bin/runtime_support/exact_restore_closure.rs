@@ -228,12 +228,14 @@ fn verify_checkpoint(
     }
 }
 
+type DistinctPayloads = (BTreeMap<String, Vec<u8>>, u64, usize);
+
 fn distinct_payloads(
     manifest_size: usize,
     canonical_digest: &str,
     canonical_bytes: &[u8],
     restore_bytes: &[(String, Vec<u8>)],
-) -> Result<(BTreeMap<String, Vec<u8>>, u64, usize), String> {
+) -> Result<DistinctPayloads, String> {
     let mut payloads = BTreeMap::from([(canonical_digest.to_owned(), canonical_bytes.to_vec())]);
     for (digest, bytes) in restore_bytes {
         if let Some(prior) = payloads.get(digest) {
