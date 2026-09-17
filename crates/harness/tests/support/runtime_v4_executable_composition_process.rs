@@ -115,6 +115,24 @@ pub(super) fn gateway(
     address: SocketAddr,
     mod_address: SocketAddr,
 ) -> Result<Child, Box<dyn std::error::Error>> {
+    gateway_with_identity(
+        binary,
+        address,
+        mod_address,
+        INSTANCE_ID,
+        LEASE_ID,
+        LEASE_EPOCH,
+    )
+}
+
+pub(super) fn gateway_with_identity(
+    binary: &Path,
+    address: SocketAddr,
+    mod_address: SocketAddr,
+    instance_id: &str,
+    lease_id: &str,
+    lease_epoch: u64,
+) -> Result<Child, Box<dyn std::error::Error>> {
     let mut command = Command::new(binary);
     command
         .env_clear()
@@ -122,12 +140,12 @@ pub(super) fn gateway(
         .env("STS2_MOD_ADDR", mod_address.to_string())
         .env("STS2_GATEWAY_TOKEN", "gateway-token")
         .env("STS2_MOD_TOKEN", "mod-token")
-        .env("STS2_INSTANCE_ID", INSTANCE_ID)
+        .env("STS2_INSTANCE_ID", instance_id)
         .env("STS2_CALLER_ID", CALLER_ID)
         .env("STS2_SESSION_ID", SESSION_ID)
         .env("STS2_MCP_SESSION_ID", MCP_SESSION_ID)
-        .env("STS2_LEASE_ID", LEASE_ID)
-        .env("STS2_LEASE_EPOCH", LEASE_EPOCH.to_string())
+        .env("STS2_LEASE_ID", lease_id)
+        .env("STS2_LEASE_EPOCH", lease_epoch.to_string())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     use std::os::unix::process::CommandExt;
@@ -260,7 +278,8 @@ pub(crate) fn run_scenario(
 mod served;
 pub(crate) use served::{
     paths, run_served_context_receipt_recovery, run_served_context_source_adoption,
-    run_served_policy_gate, run_served_restart_refuses_duplicate_effect,
+    run_served_peer_acceptance, run_served_policy_gate,
+    run_served_restart_refuses_duplicate_effect,
 };
 
 #[path = "runtime_v4_executable_composition_process/assertions.rs"]

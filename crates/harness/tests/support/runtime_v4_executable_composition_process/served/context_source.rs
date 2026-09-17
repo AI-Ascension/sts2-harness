@@ -63,6 +63,9 @@ fn run_context_source_scenario(
         workflow_store: &workflow_store,
         runtime_run_id: &runtime_run_id,
         context_owner_config: Some(&context_owner_config),
+        instance_id: INSTANCE_ID,
+        lease_id: LEASE_ID,
+        lease_epoch: LEASE_EPOCH,
     };
     let mut gateway_process = gateway(gateway_binary, gateway_address, mod_server.address)?;
     let result: Result<bool, Box<dyn std::error::Error>> = (|| {

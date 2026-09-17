@@ -15,6 +15,9 @@ pub(super) struct WorkflowServiceConfig<'a> {
     pub(super) workflow_store: &'a Path,
     pub(super) runtime_run_id: &'a str,
     pub(super) context_owner_config: Option<&'a str>,
+    pub(super) instance_id: &'a str,
+    pub(super) lease_id: &'a str,
+    pub(super) lease_epoch: u64,
 }
 
 pub(super) fn workflow_service_command(
@@ -59,12 +62,12 @@ pub(super) fn workflow_service_command(
         .env("STS2_GATEWAY_TOKEN", "gateway-token")
         .env("STS2_MCP_BINARY", config.mcp_binary)
         .env("STS2_RUNTIME_PROFILE", "runtime-v4-expert")
-        .env("STS2_INSTANCE_ID", INSTANCE_ID)
+        .env("STS2_INSTANCE_ID", config.instance_id)
         .env("STS2_CALLER_ID", CALLER_ID)
         .env("STS2_SESSION_ID", SESSION_ID)
         .env("STS2_MCP_SESSION_ID", MCP_SESSION_ID)
-        .env("STS2_LEASE_ID", LEASE_ID)
-        .env("STS2_LEASE_EPOCH", LEASE_EPOCH.to_string())
+        .env("STS2_LEASE_ID", config.lease_id)
+        .env("STS2_LEASE_EPOCH", config.lease_epoch.to_string())
         .env("STS2_RUN_ID", config.runtime_run_id)
         .env("STS2_EPISODE_ID", "episode-served-policy-gate")
         .env("STS2_TRAJECTORY_ID", "trajectory-served-policy-gate")
@@ -195,8 +198,20 @@ pub(super) fn submit_and_step_policy_gate(
 pub(super) fn submit_policy_gate(
     client: &ManagementClient,
 ) -> Result<SubmittedRun, Box<dyn std::error::Error>> {
-    let definition = served_definition()?;
-    let request_id = "served-policy-gate";
+    submit_policy_gate_with(
+        client,
+        served_definition()?,
+        INSTANCE_ID,
+        "served-policy-gate",
+    )
+}
+
+pub(super) fn submit_policy_gate_with(
+    client: &ManagementClient,
+    definition: Value,
+    instance_id: &str,
+    request_id: &str,
+) -> Result<SubmittedRun, Box<dyn std::error::Error>> {
     let digest = digest_value(&definition)?;
     let catalog = response::<TargetCatalogResponse>(client.request_json(
         "GET",
@@ -239,7 +254,7 @@ pub(super) fn submit_policy_gate(
         request_id: request_id.to_owned(),
         definition: Some(definition),
         artifact_id: None,
-        instance_id: INSTANCE_ID.to_owned(),
+        instance_id: instance_id.to_owned(),
         profile: "live.workflow.v1".to_owned(),
         admission: Some(preflight.admission),
     };
@@ -313,14 +328,21 @@ fn assert_served_policy_routes(
 }
 
 pub(super) fn served_runtime_run_id() -> Result<String, Box<dyn std::error::Error>> {
-    let definition = served_definition()?;
+    served_runtime_run_id_with(served_definition()?, INSTANCE_ID, "served-policy-gate")
+}
+
+pub(super) fn served_runtime_run_id_with(
+    definition: Value,
+    instance_id: &str,
+    request_id: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
     let digest = digest_value(&definition)?;
     let request = RunRequest {
         schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
-        request_id: "served-policy-gate".to_owned(),
+        request_id: request_id.to_owned(),
         definition: Some(definition),
         artifact_id: None,
-        instance_id: INSTANCE_ID.to_owned(),
+        instance_id: instance_id.to_owned(),
         profile: "live.workflow.v1".to_owned(),
         admission: None,
     };
