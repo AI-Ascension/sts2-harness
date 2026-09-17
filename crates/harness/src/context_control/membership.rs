@@ -91,7 +91,9 @@ impl MembershipContinuity {
     /// A binding that advertises provider-session continuity keeps provider-side history this
     /// invocation cannot reconstitute, so effective absence is not executable and the result is
     /// [`MembershipContinuity::OpaquePersistent`]. A binding that does not is fresh for every
-    /// invocation, which is the only case that may claim executable absence.
+    /// invocation, so the result is [`MembershipContinuity::Stateless`]; effective absence is
+    /// refused for that continuity too until the render path can omit the observation from the
+    /// bytes it sends.
     #[must_use]
     pub fn from_provider_session_continuity(provider_session_continuity: bool) -> Self {
         if provider_session_continuity {
@@ -372,8 +374,9 @@ impl Display for ContextMembershipError {
             Self::TooManyItems { bound } => {
                 write!(formatter, "effective context exceeds the bound of {bound}")
             }
-            Self::EffectiveAbsenceUnsupported => formatter
-                .write_str("effective absence is not executable for this provider continuity"),
+            Self::EffectiveAbsenceUnsupported => {
+                formatter.write_str("effective absence is not executable for any continuity yet")
+            }
             Self::PolicyChanged => {
                 formatter.write_str("membership policy changed since the set was prepared")
             }

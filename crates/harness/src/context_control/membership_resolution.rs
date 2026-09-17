@@ -335,7 +335,8 @@ fn enforce_dispatch_gates(
 ///
 /// This is the entry point a caller uses *before* claiming a dispatch. It fails closed on revoked or
 /// expired content, on owner prerequisites the policy tried to exclude, on bounds, and on effective
-/// absence a persistent adapter cannot execute.
+/// absence, which no continuity can execute yet because the render path still ships the
+/// observation.
 pub fn prevalidate_and_bind(
     policy: &ContextMembershipPolicy,
     draft: &ContextDraft,
