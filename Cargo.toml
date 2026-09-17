@@ -2,6 +2,7 @@
 members = [
     "tools/repo-policy",
     "tools/patch-diff",
+    "tools/exact-restore-conformance",
     "crates/harness",
     "crates/windows-worker-boundary",
     "tools/sts2-expert-state-package",

@@ -22,6 +22,7 @@ pub(super) struct RuntimeV3Port {
     continuation_adopted: bool,
     continuation_boundary_verified: bool,
     continuation_adopted_owner: Option<Value>,
+    exact_restore_selected: bool,
     next_rpc_id: u64,
     expert_next_rpc_id: u64,
     generation: u64,

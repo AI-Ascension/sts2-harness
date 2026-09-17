@@ -1,0 +1,141 @@
+name: Exact-restore peer conformance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-restore:
+    name: Positive, refusal, and unknown exact restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      RUSTFLAGS: ""
+      # --manifest-path does not select the target repository's rust-toolchain.toml.
+      # Prebuild and in-repository test execution must use the same compiler.
+      RUSTUP_TOOLCHAIN: "1.97.1"
+    steps:
+      - name: Check out Harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: harness
+          persist-credentials: false
+
+      - name: Initialize evidence directory
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/exact-restore-conformance-artifacts"
+          printf '%s\n' "workflow=${GITHUB_WORKFLOW}" "run_id=${GITHUB_RUN_ID}" \
+            > "$GITHUB_WORKSPACE/exact-restore-conformance-artifacts/workflow-started.txt"
+
+      - name: Resolve immutable peer revisions
+        id: pins
+        working-directory: harness
+        run: |
+          gateway="$(jq -r .gateway_revision tools/exact-restore-conformance/pins.json)"
+          mcp="$(jq -r .mcp_revision tools/exact-restore-conformance/pins.json)"
+          mod="$(jq -r .mod_revision tools/exact-restore-conformance/pins.json)"
+          [[ "$gateway" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$mcp" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$mod" =~ ^[0-9a-f]{40}$ ]]
+          printf 'gateway=%s\nmcp=%s\nmod=%s\n' "$gateway" "$mcp" "$mod" >> "$GITHUB_OUTPUT"
+
+      - name: Check out Gateway, MCP, and game-mod
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AI-Ascension/sts2-gateway
+          ref: ${{ steps.pins.outputs.gateway }}
+          path: gateway
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AI-Ascension/sts2-mcp-server
+          ref: ${{ steps.pins.outputs.mcp }}
+          path: mcp
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AI-Ascension/sts2-game-mod
+          ref: ${{ steps.pins.outputs.mod }}
+          path: game-mod
+          persist-credentials: false
+
+      - name: Verify checked out peer provenance
+        working-directory: harness
+        run: |
+          gateway="$(jq -r .gateway_revision tools/exact-restore-conformance/pins.json)"
+          mcp="$(jq -r .mcp_revision tools/exact-restore-conformance/pins.json)"
+          mod="$(jq -r .mod_revision tools/exact-restore-conformance/pins.json)"
+          harness="$(git rev-parse HEAD)"
+          test "$(git -C "$GITHUB_WORKSPACE/gateway" rev-parse HEAD)" = "$gateway"
+          test "$(git -C "$GITHUB_WORKSPACE/mcp" rev-parse HEAD)" = "$mcp"
+          test "$(git -C "$GITHUB_WORKSPACE/game-mod" rev-parse HEAD)" = "$mod"
+          jq -n --arg harness "$harness" --arg gateway "$gateway" --arg mcp "$mcp" --arg mod "$mod" \
+            --arg exo "$(sed -n 's/^pub const EXO_SOURCE_REVISION: &str = "\([0-9a-f]\{40\}\)";$/\1/p' crates/harness/src/exo/contract/mod.rs)" \
+            '{schema:"sts2.exact-restore-source-provenance.v1",harness_revision:$harness,gateway_revision:$gateway,mcp_revision:$mcp,mod_revision:$mod,exo_revision:$exo}' \
+            > "$GITHUB_WORKSPACE/exact-restore-conformance-artifacts/source-revisions.json"
+
+      - name: Install reviewed Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt --no-self-update
+
+      - name: Check out reviewed Exo source
+        id: exo
+        working-directory: harness
+        run: |
+          revision="$(sed -n 's/^pub const EXO_SOURCE_REVISION: &str = "\([0-9a-f]\{40\}\)";$/\1/p' crates/harness/src/exo/contract/mod.rs)"
+          test "${#revision}" -eq 40
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+          git -C "$GITHUB_WORKSPACE" clone --no-checkout \
+            https://github.com/exoharness/exo.git "$GITHUB_WORKSPACE/exo-test-source"
+          git -C "$GITHUB_WORKSPACE/exo-test-source" checkout --detach "$revision"
+
+      - name: Build immutable peers and Harness
+        run: |
+          cargo build --locked --jobs 2 --manifest-path gateway/Cargo.toml --bin sts2-gateway-runtime
+          cargo build --locked --jobs 2 --manifest-path mcp/Cargo.toml --bin sts2-mcp-server
+          cargo build --locked --jobs 2 --manifest-path game-mod/Cargo.toml -p sts2-game-mod --example exact_restore_peer
+          cargo build --locked --jobs 2 --manifest-path harness/Cargo.toml --bin sts2-harness-runtime
+          cargo test --locked --jobs 2 --manifest-path harness/Cargo.toml --bin sts2-harness-runtime \
+            actual_production_entrypoint_exact_restore_matrix_case --no-run -- --ignored --exact
+          cargo build --locked --jobs 2 --manifest-path harness/Cargo.toml --bin sts2-exact-restore-conformance
+
+      - name: Record binary provenance
+        run: |
+          hash_binary() {
+            local label="$1"
+            local path="$2"
+            printf '%s  %s\n' "$(sha256sum "$path" | cut -d' ' -f1)" "$label"
+          }
+          {
+            hash_binary harness/target/debug/sts2-harness-runtime harness/target/debug/sts2-harness-runtime
+            hash_binary harness/target/debug/sts2-exact-restore-conformance harness/target/debug/sts2-exact-restore-conformance
+            hash_binary mcp/target/debug/sts2-mcp-server mcp/target/debug/sts2-mcp-server
+            hash_binary gateway/target/debug/sts2-gateway-runtime gateway/target/debug/sts2-gateway-runtime
+            hash_binary game-mod/target/debug/examples/exact_restore_peer game-mod/target/debug/examples/exact_restore_peer
+          } > "$GITHUB_WORKSPACE/exact-restore-conformance-artifacts/binary-sha256sums.txt"
+
+      - name: Run all three exact-restore outcomes
+        env:
+          STS2_EXO_TEST_SOURCE: ${{ github.workspace }}/exo-test-source
+        run: |
+          ./harness/target/debug/sts2-exact-restore-conformance \
+            --pins harness/tools/exact-restore-conformance/pins.json \
+            --artifact-root "$GITHUB_WORKSPACE/exact-restore-conformance-artifacts" \
+            --harness-root "$GITHUB_WORKSPACE/harness" \
+            --harness-bin "$GITHUB_WORKSPACE/harness/target/debug/sts2-harness-runtime" \
+            --mcp-bin "$GITHUB_WORKSPACE/mcp/target/debug/sts2-mcp-server" \
+            --gateway-bin "$GITHUB_WORKSPACE/gateway/target/debug/sts2-gateway-runtime" \
+            --mod-bin "$GITHUB_WORKSPACE/game-mod/target/debug/examples/exact_restore_peer"
+
+      - name: Upload sanitized conformance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exact-restore-conformance-${{ github.run_id }}
+          path: ${{ github.workspace }}/exact-restore-conformance-artifacts
+          if-no-files-found: error
+          retention-days: 14

@@ -98,6 +98,7 @@ impl RuntimeV3Port {
             continuation_adopted: false,
             continuation_boundary_verified: false,
             continuation_adopted_owner: None,
+            exact_restore_selected: false,
             next_rpc_id: 1,
             expert_next_rpc_id: 1,
             generation: 0,
@@ -132,6 +133,7 @@ impl RuntimeV3Port {
     fn arm_continuation_owner_claim(
         &mut self,
         context: continuation_owner::ContinuationOwnerClaimContext,
+        exact_restore_selected: bool,
     ) -> Result<(), String> {
         if self.allocated || self.continuation_owner_claim.is_some() {
             return Err(String::from(
@@ -139,6 +141,22 @@ impl RuntimeV3Port {
             ));
         }
         self.continuation_owner_claim = Some(context);
+        self.exact_restore_selected = exact_restore_selected;
+        Ok(())
+    }
+
+    pub(super) fn launch_gameplay_after_exact_restore(&mut self) -> Result<(), String> {
+        if !self.exact_restore_selected || !self.allocated || self.released {
+            return Err(String::from(
+                "gameplay launch is not bound to an active exact-restore destination",
+            ));
+        }
+        self.launch_mcp()?;
+        // EpisodeRunner::run performs the normal launch handshake. Mark the
+        // already allocated, owner-fenced exact destination as prelaunched so
+        // that handshake consumes this launch exactly once instead of trying
+        // to allocate or restore a second destination.
+        self.continuation_prelaunched = true;
         Ok(())
     }
 
