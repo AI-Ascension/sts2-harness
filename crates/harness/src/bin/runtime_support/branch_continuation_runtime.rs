@@ -221,6 +221,31 @@ impl SelectedBranchContinuation {
         bytes: &[u8],
         closure: &super::exact_restore::VerifiedClosure,
     ) -> Result<(), String> {
+        let receipt: serde_json::Value = serde_json::from_slice(bytes)
+            .map_err(|error| format!("persisted exact-restore receipt is invalid JSON: {error}"))?;
+        let receipt_frame = serde_json::json!({
+            "contract": super::exact_restore::NEUTRAL_CONTRACT,
+            "schema_digest": super::exact_restore::NEUTRAL_SCHEMA_DIGEST,
+            "message_id": "00000000-0000-4000-8000-000000000010",
+            "correlation_id": "00000000-0000-4000-8000-000000000011",
+            "kind": "exact_restore_commit_response",
+            "payload": {
+                "operation_id": receipt["operation_id"],
+                "result": "RESTORE_VERIFIED",
+                "state": "RESTORE_VERIFIED",
+                "expected_owner": receipt["destination_owner"],
+                "request_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "receipt": receipt
+            }
+        });
+        if !super::exact_restore::valid_schema(
+            super::exact_restore::neutral_validator()?,
+            &receipt_frame,
+        ) {
+            return Err(String::from(
+                "persisted exact-restore receipt does not satisfy its closed response schema",
+            ));
+        }
         self.verify_persisted_exact_receipt_revision(bytes)?;
         super::exact_restore::operation::verify_persisted_receipt(bytes, self, closure)
     }

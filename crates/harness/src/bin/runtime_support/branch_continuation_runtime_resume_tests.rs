@@ -357,12 +357,24 @@ fn exact_restore_running_resume_reopens_full_receipt_without_repeating_restore()
     let claim = selected.prepare_owner_claim()?;
     selected.claim_exact_restore()?;
 
-    let mut receipt =
+    let begin_payload =
         closure.begin_payload_for_test(&selected, &claim.operation_id, owner.clone())?;
-    receipt["state"] = serde_json::json!("RESTORE_VERIFIED");
-    receipt["destination_owner"] = owner.clone();
-    receipt["recaptured_exact_state_digest"] =
-        serde_json::json!(closure.exact_state_digest.clone());
+    let mut receipt = serde_json::json!({
+        "operation_id": claim.operation_id,
+        "branch": begin_payload["branch"],
+        "destination_owner": owner,
+        "checkpoint_id": closure.checkpoint_id,
+        "exact_state_digest": closure.exact_state_digest,
+        "manifest_digest": closure.manifest_digest,
+        "closure_digest": closure.closure_digest,
+        "compatibility_digest": closure.compatibility_digest,
+        "coverage_contract_digest": closure.coverage_contract_digest,
+        "aggregate_closure_bytes": closure.aggregate_closure_bytes,
+        "artifact_reference_count": closure.artifact_reference_count,
+        "distinct_blob_count": closure.distinct_blob_count,
+        "boundary": closure.boundary,
+        "recaptured_exact_state_digest": closure.exact_state_digest,
+    });
     let unsigned = super::super::exact_restore::canonical_bytes(&receipt)?;
     receipt["receipt_digest"] =
         serde_json::json!(format!("sha256:{}", sts2_harness::sha256_hex(&unsigned)));
@@ -453,7 +465,8 @@ fn exact_restore_running_resume_reopens_full_receipt_without_repeating_restore()
 
     // A foreign owner fence is refused by the full receipt verifier, even with a valid digest.
     let mut tampered_owner: serde_json::Value = serde_json::from_slice(&receipt_bytes)?;
-    tampered_owner["destination_owner"]["lease_id"] = serde_json::json!("foreign-lease");
+    tampered_owner["destination_owner"]["lease_id"] =
+        serde_json::json!("00000000-0000-4000-8000-000000000099");
     let mut unsigned = tampered_owner.clone();
     unsigned
         .as_object_mut()
