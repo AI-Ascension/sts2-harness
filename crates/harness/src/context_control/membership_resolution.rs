@@ -9,9 +9,8 @@
 
 use super::{
     ContextMembershipError, ContextMembershipPolicy, ContextMembershipScope, EffectiveMembership,
-    MAX_CONTEXT_ITEMS, MembershipCheckContext, MembershipContinuity, MembershipDecision,
-    MembershipDispatchView, MembershipDisposition, MembershipReasonCode, PreparedMembership,
-    SHARED_MEMBERSHIP_KINDS,
+    MAX_CONTEXT_ITEMS, MembershipCheckContext, MembershipDecision, MembershipDispatchView,
+    MembershipDisposition, MembershipReasonCode, PreparedMembership, SHARED_MEMBERSHIP_KINDS,
 };
 use crate::context_control::types::{ContextDraft, ContextItem, ContextItemRef};
 use crate::sha256_hex;
@@ -288,9 +287,22 @@ fn enforce_dispatch_gates(
             });
         }
     }
-    if !policy.model_view.observation_visible
-        && check.continuity == MembershipContinuity::OpaquePersistent
-    {
+    // Fail closed: every continuity that reaches this gate is refused.
+    //
+    // Effective absence is honoured only when the observation is genuinely omitted from the bytes
+    // the provider receives. The render path builds the provider request from `ManagedRenderInput`,
+    // which always carries the observation (`render.rs` `enabled_at_with_limits` ->
+    // `ollama_user_content`), so an invocation admitted with `observation_visible == false` would
+    // still ship the observation. That is the fail-open this gate exists to prevent, and it is why
+    // the previous `OpaquePersistent`-only check was unsafe: it refused only the continuity whose
+    // history an adapter keeps, while the *stateless* case — the only one that could execute
+    // absence — was admitted and then leaked the observation anyway.
+    //
+    // `MembershipContinuity` is deliberately not consulted here. Until an omission wireform exists
+    // that the render path actually consumes, no continuity can substantiate absence, so the
+    // request is refused instead of claimed. The existing `EffectiveAbsenceUnsupported` variant and
+    // its stable reason code are reused so callers keep their precise pre-dispatch classification.
+    if !policy.model_view.observation_visible {
         return Err(ContextMembershipError::EffectiveAbsenceUnsupported);
     }
     let draft_keys: BTreeSet<(&str, u64)> = draft
