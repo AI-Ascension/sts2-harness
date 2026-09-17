@@ -100,7 +100,9 @@ pub(super) fn start_runtime_child(
     gateway_address: SocketAddr,
     config_path: &std::path::Path,
     config_sha: &str,
-    mcp_script: &std::path::Path,
+    mcp_binary: &std::path::Path,
+    runtime_binary: Option<&std::path::Path>,
+    gateway_token: &str,
     agent_script: &std::path::Path,
     python: &std::path::Path,
     python_sha: &str,
@@ -111,16 +113,25 @@ pub(super) fn start_runtime_child(
 ) -> Child {
     let args = vec![agent_script.to_string_lossy().to_string()];
     let args_json = serde_json::to_string(&args).expect("lookup process args");
-    Command::new(std::env::current_exe().expect("current test binary"))
-        .arg("--exact")
-        .arg(CHILD_TEST)
-        .arg("--nocapture")
-        .env("STS2_LOOKUP_ENTRY_CHILD", "true")
+    let mut command = match runtime_binary {
+        Some(binary) => Command::new(binary),
+        None => Command::new(std::env::current_exe().expect("current test binary")),
+    };
+    command.env_clear().env("PATH", "/usr/bin:/bin");
+    if runtime_binary.is_none() {
+        command
+            .arg("--exact")
+            .arg(CHILD_TEST)
+            .arg("--nocapture")
+            .env("STS2_LOOKUP_ENTRY_CHILD", "true");
+    }
+    command
         .env("STS2_RUNTIME_PROFILE", "negotiated-composition-v1")
+        .env("STS2_LIVE_EPISODE", "true")
         .env("STS2_ENABLE_GAME_INFORMATION_LOOKUP_BINDING", "true")
         .env("STS2_GATEWAY_ADDR", gateway_address.to_string())
-        .env("STS2_GATEWAY_TOKEN", "synthetic-gateway-token")
-        .env("STS2_MCP_BINARY", mcp_script)
+        .env("STS2_GATEWAY_TOKEN", gateway_token)
+        .env("STS2_MCP_BINARY", mcp_binary)
         .env("STS2_INSTANCE_ID", "instance-1")
         .env("STS2_CALLER_ID", "harness")
         .env("STS2_SESSION_ID", "session-1")
@@ -168,7 +179,6 @@ pub(super) fn start_runtime_child(
                 "entry-attempt-first"
             },
         )
-        .env("PATH", "/usr/bin:/bin")
         .spawn()
         .expect("start isolated actual runtime test process")
 }
