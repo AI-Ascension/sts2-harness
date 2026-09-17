@@ -6,6 +6,7 @@
 //! records control decisions, while the game host remains the authority for observations, legal
 //! actions, and mutations.
 
+mod membership;
 mod render;
 mod state;
 mod store;
@@ -17,6 +18,14 @@ mod store_schema;
 mod store_types;
 mod types;
 
+pub use membership::{
+    CONTEXT_MEMBERSHIP_POLICY_SCHEMA, ContextMembershipBroaderScope, ContextMembershipError,
+    ContextMembershipPolicy, ContextMembershipScope, ContextModelView, EffectiveMembership,
+    MAX_MEMBERSHIP_AUTHORIZED_AGENTS, MAX_MEMBERSHIP_WIDER_ITEMS, MembershipCheckContext,
+    MembershipContinuity, MembershipDecision, MembershipDispatchView, MembershipDisposition,
+    MembershipReasonCode, PreparedMembership, SHARED_MEMBERSHIP_KINDS, prevalidate_and_bind,
+    resolve_membership,
+};
 pub use render::{
     ContextRenderError, ContextRenderLimits, ContextRenderer, ManagedRenderInput, PreparedContext,
     ollama_user_content,
