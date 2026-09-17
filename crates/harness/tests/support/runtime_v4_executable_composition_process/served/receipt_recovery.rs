@@ -16,11 +16,15 @@ use sts2_harness::management::{
     ContextSourceUpload,
 };
 
+#[path = "receipt_boundary_negatives.rs"]
+mod boundary_negatives;
+
 pub(crate) fn run_served_context_receipt_recovery(
     gateway_binary: &Path,
     mcp_binary: &Path,
     harness_binary: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    boundary_negatives::run_receipt_boundary_negatives(gateway_binary, mcp_binary, harness_binary)?;
     let temporary = TempDir::new()?;
     let provider_capture = temporary.path.join("receipt-provider-request.json");
     let bridge = temporary.bridge_capturing(&provider_capture)?;
