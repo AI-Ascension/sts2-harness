@@ -8,7 +8,10 @@
 //! contacted.
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic, dead_code)]
 
-use super::managed_render_tests::{render_fixture, render_test_session, selected_limits};
+use super::managed_render_tests::{
+    RenderState, render_fixture, render_test_session, render_test_session_with_state,
+    selected_limits,
+};
 use super::*;
 use crate::context_control::{
     ContextMembershipSelector, ContextModelView, MembershipContinuity, MembershipDisposition,
@@ -298,4 +301,55 @@ fn opaque_provider_history_rejects_effective_absence() {
         error.message
     );
     assert_eq!(exchanges.load(Ordering::SeqCst), 0);
+}
+
+// The selector digest travels with the source identity, so a selector that changes while a request
+// is in flight is fenced exactly like a changed source. Only `membership_digest` is mutated here, so
+// this fails if the field stops participating in the live before/after-inference comparison.
+#[test]
+fn a_selector_change_during_inference_fences_the_provider_result() {
+    let (document, _) = history_document();
+    let (source, config) = membership_source(
+        document,
+        "invocation-1",
+        Some(ContextMembershipSelector::include()),
+    );
+    assert!(
+        source.identity.membership_digest.is_some(),
+        "a selector in force must contribute a fenced digest"
+    );
+
+    let render_state = Arc::new(std::sync::Mutex::new(RenderState { source }));
+    // The owner re-binds a different selector while the request is in flight. Only the fenced
+    // digest changes, so a refusal can only come from the membership digest being compared.
+    let widened_state = Arc::clone(&render_state);
+    let on_exchange: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        widened_state
+            .lock()
+            .expect("render state")
+            .source
+            .identity
+            .membership_digest = Some("f".repeat(64));
+    });
+    let (mut session, _, exchanges, _) = render_test_session_with_state(
+        render_state,
+        config,
+        ContextRenderLimits::harness_maxima(),
+        Default::default(),
+        Some(on_exchange),
+    );
+
+    let error = session
+        .decide_for(&input(), "decision.live.v1", "context.live.v1")
+        .expect_err("a selector changed during inference must fence the result");
+    assert_eq!(
+        error.code, "context_render_source_stale",
+        "the refusal must be the source fence: {}",
+        error.message
+    );
+    assert_eq!(
+        exchanges.load(Ordering::SeqCst),
+        1,
+        "the fence must be evaluated against the bytes already sent"
+    );
 }

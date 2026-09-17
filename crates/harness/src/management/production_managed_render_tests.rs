@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub(super) struct RenderState {
-    source: ContextRenderSource,
+    pub(super) source: ContextRenderSource,
 }
 
 struct RenderPort {
@@ -205,8 +205,22 @@ pub(super) fn render_test_session(
     stale: Arc<std::sync::atomic::AtomicBool>,
     on_exchange: Option<Arc<dyn Fn() + Send + Sync>>,
 ) -> RenderTestSession {
-    let (mut session, _, _) = make_session(Change::HistoryOnlyDuringInference);
     let render_state = Arc::new(Mutex::new(RenderState { source }));
+    render_test_session_with_state(render_state, config, limits, stale, on_exchange)
+}
+
+/// Builds a served session over a caller-owned render state.
+///
+/// Exposing the state lets a test mutate exactly one fenced identity field during inference, so it
+/// can prove that field participates in the live comparison rather than only being stored.
+pub(super) fn render_test_session_with_state(
+    render_state: Arc<Mutex<RenderState>>,
+    config: ExoConfig,
+    limits: ContextRenderLimits,
+    stale: Arc<std::sync::atomic::AtomicBool>,
+    on_exchange: Option<Arc<dyn Fn() + Send + Sync>>,
+) -> RenderTestSession {
+    let (mut session, _, _) = make_session(Change::HistoryOnlyDuringInference);
     session.context_render = Some(Arc::new(RenderPort {
         state: Arc::clone(&render_state),
         stale,
