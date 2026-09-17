@@ -19,6 +19,10 @@ pub(crate) use context_source::run_served_context_source_adoption;
 mod cancellation;
 pub(crate) use cancellation::run_served_cancel_after_accepted_barrier;
 
+#[path = "served/policy_rebind.rs"]
+mod policy_rebind;
+pub(crate) use policy_rebind::run_served_policy_rebind_after_idle_adoption;
+
 #[path = "served/acceptance.rs"]
 mod acceptance;
 pub(crate) use acceptance::run_served_peer_acceptance;

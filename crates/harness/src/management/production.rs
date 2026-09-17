@@ -221,6 +221,7 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
             context_render: self.context_render.clone(),
             context_control_limits: control_limits.cloned(),
             active_policy_binding: None,
+            policy_change_fenced: false,
             authority_binding,
         }))
     }
@@ -270,6 +271,7 @@ struct ProductionLiveWorkflowSession {
     context_render: Option<Arc<dyn LiveContextRenderPort>>,
     context_control_limits: Option<super::super::ContextOwnerControlLimits>,
     active_policy_binding: Option<(String, u64)>,
+    policy_change_fenced: bool,
     authority_binding: RuntimeAuthorityBinding,
 }
 

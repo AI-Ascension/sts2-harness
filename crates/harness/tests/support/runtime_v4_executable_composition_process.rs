@@ -280,7 +280,7 @@ mod served;
 pub(crate) use served::{
     paths, run_served_cancel_after_accepted_barrier, run_served_context_receipt_recovery,
     run_served_context_source_adoption, run_served_peer_acceptance, run_served_policy_gate,
-    run_served_restart_refuses_duplicate_effect,
+    run_served_policy_rebind_after_idle_adoption, run_served_restart_refuses_duplicate_effect,
 };
 
 #[path = "runtime_v4_executable_composition_process/assertions.rs"]
