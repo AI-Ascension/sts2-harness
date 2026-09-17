@@ -28,10 +28,12 @@ Define receipt recovery as a read-only lookup, never a re-issue:
    `Ok(Some(receipt))` for a recorded command, `Ok(None)` when the owner has no receipt for that exact
    command, and `Err` for owner failures. The default implementation fails closed with
    `503 context_owner_receipt_recovery_unavailable`, so existing owners are unaffected (additive).
-2. `ManagementService::recover_context_control_receipt(actor, run_id, command)` requires current scoped
-   `workflow:read` for the run, resolves the owner's **current** association for that run, and refuses
-   to ask an owner that does not advertise `receipt_recovery`
-   (`503 context_control_receipt_recovery_unsupported`).
+2. `ManagementService::recover_context_control_receipt(actor, run_id, command)` requires current
+   scoped `workflow:read` for the run and asks the owner for persisted historical evidence. The
+   owner may return the original binding and receipt after restart without claiming that binding is
+   current. A binding that does not advertise `receipt_recovery` is refused
+   (`503 context_control_receipt_recovery_unsupported`), while the separate current-association
+   route remains unavailable when no live owner association exists.
 3. A recovered receipt must satisfy `ContextControlReceipt::validate_for(binding, command)` — exact
    owner, invocation, binding id/digest, command variant, idempotency key, effect and resulting
    boundary. A receipt for another invocation or command is rejected (`409
