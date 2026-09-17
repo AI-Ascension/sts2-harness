@@ -161,6 +161,13 @@ for line in sys.stdin:
             String::from_utf8_lossy(&output.stderr)
         );
     }
+    assert!(
+        output.status.success(),
+        "exact-restore child exited {}; stdout={}; stderr={}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
     let branch = SqliteBranchStore::open(&branch_path)?
         .get("experiment:exact-restore-fixture", "branch:selected")?
         .ok_or("selected branch disappeared")?;
