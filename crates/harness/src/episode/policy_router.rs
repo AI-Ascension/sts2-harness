@@ -274,6 +274,8 @@ pub enum PolicyError {
     ProviderMalformed,
     ProviderClosed,
     SelectedContextLimit(&'static str),
+    /// A per-invocation membership gate refused this dispatch before any provider exchange.
+    MembershipRefused(&'static str),
 }
 
 impl std::fmt::Display for PolicyError {
@@ -294,6 +296,7 @@ impl std::fmt::Display for PolicyError {
             Self::ProviderMalformed => "provider request or response is malformed",
             Self::ProviderClosed => "provider session is closed",
             Self::SelectedContextLimit(_) => "managed context exceeds selected owner limit",
+            Self::MembershipRefused(code) => code,
         })
     }
 }

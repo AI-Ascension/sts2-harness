@@ -66,6 +66,40 @@ including a policy that no longer matches the digest that prepared the set.
 Revocation, expiry, digest mismatch, and the mandatory-plus-pin and effective
 item bounds are enforced at preparation, before dispatch.
 
+## The boundary is consumed by the production render path
+
+A resolved policy only changes behaviour if the live render consults it. The
+production seam is `render_with_membership`, reached by both the live managed
+dispatch path and the composed owner render path (`prepare_managed_render`). It
+resolves and gates the effective set with `prevalidate_and_bind` **before** any
+provider bytes exist, projects `effective.model_visible` onto a clone of the
+draft, narrows the draft's pins to model-visible ids so a pin can never name a
+prerequisite the model cannot see, and only then delegates to
+`ContextRenderer::enabled_at_with_limits`. An effective set the selected owner
+limits cannot accept is still refused with `ExceedsSelectedLimit`, because the
+owner bound composes with the membership bound rather than being replaced by it.
+
+The owner contributes `ContextMembershipSelector` — disposition, overrides, pin
+inheritance, wider scope, and model view, all independent of the invocation —
+and `bind` mints the finished policy against the invocation identity and the
+draft's `base_revision_id`. The identity is therefore never supplied by a
+selector, and a selector cannot carry a default or override belonging to another
+invocation. An invocation with no selector in force renders exactly the bytes it
+rendered before this boundary existed.
+
+`MembershipContinuity` is derived from the selected binding's
+`provider_session_continuity`, not asserted by a caller: a binding that keeps
+provider-side history yields `OpaquePersistent`, and one that does not yields
+`Stateless`. A caller therefore cannot claim executable absence for an adapter
+that cannot reconstitute it.
+
+`ContextMembershipScope::branch_id` is optional. The live render seam is driven
+by an admitted run, episode, and agent; durable branch continuation is selected
+by a separate runtime entry point and is never projected onto the render source.
+Absence is encoded as `None` rather than a fabricated id, so branch scope is
+enforced honestly rather than satisfied by a placeholder. Real per-branch
+isolation remains its own work item (harness #118).
+
 ## Evidence
 
 The decision is exercised by deterministic synthetic fixtures only; no provider,

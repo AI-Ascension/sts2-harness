@@ -47,7 +47,7 @@ pub fn scope() -> ContextMembershipScope {
         run_id: "run-1".to_owned(),
         episode_id: "episode-1".to_owned(),
         agent_id: "agent-1".to_owned(),
-        branch_id: "branch-1".to_owned(),
+        branch_id: Some("branch-1".to_owned()),
     }
 }
 

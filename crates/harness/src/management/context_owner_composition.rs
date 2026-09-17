@@ -12,8 +12,9 @@
 
 use super::*;
 use crate::context_control::{
-    ContextBoundary, ContextDraft, ContextItem, ContextRenderError, ContextRenderLimits,
-    ContextRenderer, ControlAuthority, ManagedRenderInput, PreparedContext,
+    ContextBoundary, ContextDraft, ContextItem, ContextMembershipSelector, ContextRenderLimits,
+    ControlAuthority, ManagedRenderInput, MembershipContinuity, MembershipRenderError,
+    MembershipRenderRequest, PreparedContext, render_with_membership,
 };
 use crate::exo::ExoConfig;
 use std::collections::BTreeMap;
@@ -25,6 +26,23 @@ pub const CONTEXT_OWNER_EFFECTIVE_LIMITS_VIEW_SCHEMA: &str =
 /// runtime-allocated invocation identity.
 pub const CONTEXT_OWNER_CONTROL_LIMITS_SCHEMA: &str =
     "ascension.harness.context-owner-control-limits.v1";
+
+/// The owner-scoped inputs for one managed render under this binding's selected limits.
+///
+/// The invocation identity and continuity come from the composed binding rather than from the
+/// caller, so they travel together with the draft they describe and cannot be substituted.
+pub struct ContextOwnerRenderRequest<'a> {
+    pub boundary: &'a ContextBoundary,
+    pub request: ManagedRenderInput,
+    pub draft: &'a ContextDraft,
+    pub registry: &'a BTreeMap<String, ContextItem>,
+    pub config: &'a ExoConfig,
+    pub now: u64,
+    /// The invocation identity minted by the owner binding.
+    pub invocation_id: &'a str,
+    pub membership: Option<&'a ContextMembershipSelector>,
+    pub continuity: MembershipContinuity,
+}
 
 /// Owner-published control bound admitted for a workflow definition before it
 /// has a current invocation binding.
@@ -146,29 +164,43 @@ impl ContextOwnerEffectiveLimitsView {
 
     /// Prepares a managed render under the limits this binding advertised.
     ///
-    /// This is the production caller of `ContextRenderer::enabled_at_with_limits`: the composed,
-    /// authenticated owner limits travel into the renderer, so a draft the harness could prepare
-    /// but this owner does not accept is refused with `ContextRenderError::ExceedsSelectedLimit`
-    /// naming the limit, before any inference or retention. The harness-maxima checks still run
-    /// first and are unchanged.
+    /// This seam and the live dispatch seam both consult the per-invocation membership boundary, so
+    /// a selector in force narrows the published bytes on either path. The composed, authenticated
+    /// owner limits still travel into the renderer, so a draft the harness could prepare but this
+    /// owner does not accept is refused with `ContextRenderError::ExceedsSelectedLimit` naming the
+    /// limit, before any inference or retention. The harness-maxima checks still run first.
     pub fn prepare_managed_render(
         &self,
-        boundary: &ContextBoundary,
-        request: ManagedRenderInput,
-        draft: &ContextDraft,
-        registry: &BTreeMap<String, ContextItem>,
-        config: &ExoConfig,
-        now: u64,
-    ) -> Result<PreparedContext, ContextRenderError> {
-        ContextRenderer::enabled_at_with_limits(
+        inputs: ContextOwnerRenderRequest<'_>,
+    ) -> Result<PreparedContext, MembershipRenderError> {
+        let ContextOwnerRenderRequest {
             boundary,
             request,
             draft,
             registry,
             config,
             now,
-            &self.render_limits(),
-        )
+            invocation_id,
+            membership,
+            continuity,
+        } = inputs;
+        let document = crate::context_control::ContextSourceDocument {
+            draft: draft.clone(),
+            items: registry.clone(),
+        };
+        render_with_membership(MembershipRenderRequest {
+            boundary,
+            request,
+            document: &document,
+            config,
+            now,
+            limits: &self.render_limits(),
+            policy: membership
+                .map(|selector| selector.bind(invocation_id, &draft.base_revision_id))
+                .as_ref(),
+            continuity,
+        })
+        .map(|(prepared, _)| prepared)
     }
 
     /// Applies the selected control-transition bound to a harness control authority.

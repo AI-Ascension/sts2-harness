@@ -116,6 +116,7 @@ fn the_production_render_point_refuses_a_draft_above_the_selected_item_limit() {
             &registry,
             &config,
             1,
+            None,
         )
         .expect_err("a draft above the selected item limit must be refused");
     assert_eq!(error.code, "context_render_limit_exceeded");
@@ -146,6 +147,7 @@ fn the_production_render_point_refuses_a_render_the_harness_maxima_would_accept(
             &registry,
             &config,
             1,
+            None,
         )
         .expect_err("the selected context byte limit must refuse this draft");
     assert_eq!(error.code, "context_render_limit_exceeded");
@@ -178,6 +180,7 @@ fn the_production_render_point_uses_the_selected_objective_limit() {
             &registry,
             &config,
             1,
+            None,
         )
         .expect_err("the selected objective limit must refuse this input");
     assert_eq!(error.code, "context_render_limit_exceeded");
@@ -312,6 +315,7 @@ fn production_enforcement_refuses_an_authority_or_render_for_another_owner_bound
             &registry,
             &config,
             1,
+            None,
         )
         .expect_err("a foreign render boundary must be refused before preparation");
     assert_eq!(render_error.code, "context_render_boundary_mismatch");

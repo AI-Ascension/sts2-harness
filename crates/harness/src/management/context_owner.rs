@@ -310,7 +310,7 @@ mod support;
 pub use binding::{ContextBindingRequest, ContextOwnerBinding};
 pub use composition::{
     CONTEXT_OWNER_EFFECTIVE_LIMITS_VIEW_SCHEMA, ContextOwnerEffectiveLimitsView,
-    compose_context_owner_binding,
+    ContextOwnerRenderRequest, compose_context_owner_binding,
 };
 pub use receipt::{ContextControlCommand, ContextControlCommandKind, ContextControlReceipt};
 pub use support::{ContextControlReceiptRecovery, ContextOwnerPort, UnavailableContextOwnerPort};

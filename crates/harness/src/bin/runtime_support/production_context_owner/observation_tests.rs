@@ -34,6 +34,7 @@ fn setup() -> (
         },
         render_required: false,
         sources: Vec::new(),
+        membership: None,
     };
     let request = RunRequest {
         schema_version: MANAGEMENT_SCHEMA_VERSION.into(),

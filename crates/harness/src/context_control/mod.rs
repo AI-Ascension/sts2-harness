@@ -7,6 +7,7 @@
 //! actions, and mutations.
 
 mod membership;
+mod membership_render;
 mod render;
 mod state;
 mod store;
@@ -20,11 +21,15 @@ mod types;
 
 pub use membership::{
     CONTEXT_MEMBERSHIP_POLICY_SCHEMA, ContextMembershipBroaderScope, ContextMembershipError,
-    ContextMembershipPolicy, ContextMembershipScope, ContextModelView, EffectiveMembership,
-    MAX_MEMBERSHIP_AUTHORIZED_AGENTS, MAX_MEMBERSHIP_WIDER_ITEMS, MembershipCheckContext,
-    MembershipContinuity, MembershipDecision, MembershipDispatchView, MembershipDisposition,
-    MembershipReasonCode, PreparedMembership, SHARED_MEMBERSHIP_KINDS, prevalidate_and_bind,
-    resolve_membership,
+    ContextMembershipPolicy, ContextMembershipScope, ContextMembershipSelector, ContextModelView,
+    EffectiveMembership, MAX_MEMBERSHIP_AUTHORIZED_AGENTS, MAX_MEMBERSHIP_WIDER_ITEMS,
+    MembershipCheckContext, MembershipContinuity, MembershipDecision, MembershipDispatchView,
+    MembershipDisposition, MembershipReasonCode, PreparedMembership, SHARED_MEMBERSHIP_KINDS,
+    prevalidate_and_bind, resolve_membership,
+};
+pub use membership_render::{
+    MembershipRenderError, MembershipRenderRequest, membership_check_from_boundary,
+    membership_scope_from_boundary, render_with_membership,
 };
 pub use render::{
     ContextRenderError, ContextRenderLimits, ContextRenderer, ManagedRenderInput, PreparedContext,

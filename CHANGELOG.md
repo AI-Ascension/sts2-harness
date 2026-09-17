@@ -7,6 +7,23 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Wire the per-invocation **context membership boundary** into the production render path so a
+  policy actually changes published application bytes. `ContextMembershipSelector` is the
+  owner-configured half (disposition, overrides, pin inheritance, wider scope, model view) and
+  `bind` mints the versioned `ascension.context-control.membership.v1` policy for one invocation of
+  one draft revision, so a default or override cannot silently carry another invocation's identity.
+  The live managed dispatch seam and the composed owner render seam both resolve and gate the
+  effective set before any provider bytes exist, project the model-visible subset onto a cloned
+  draft, narrow pins to model-visible ids, and then delegate to the renderer so the selected owner
+  limits still compose with (narrow) the membership bound instead of replacing it. An invocation
+  without a selector renders today's exact bytes. `MembershipContinuity` is derived from the
+  binding's `provider_session_continuity`, so effective absence is refused unless the provider is
+  genuinely fresh for the invocation. Refusals name the precise pre-dispatch gate
+  (`context_membership_*`) rather than a generic provider failure.
+  Compatibility: additive — no existing field, route, durable record, or published schema changes.
+  Owner continuations gain optional `membership` configuration; absence preserves current behaviour.
+  See [ADR 0046](docs/decisions/0046-invocation-context-membership.md). Refs #106.
+
 - Enforce a versioned, per-invocation **context membership policy** so one invocation can include,
   exclude, or inherit collected context independently of the persisted draft. `resolve_membership`
   records a typed reason per reference and binds the decision with a policy digest; scope is carried

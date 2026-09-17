@@ -36,18 +36,45 @@ impl<T: crate::exo::ExoTransport> ExoDecisionSource<T> {
                 .map_context()
                 .map(crate::episode::map::MapDecisionContext::to_wire),
         };
-        crate::context_control::ContextRenderer::enabled_at_with_limits(
-            &source.boundary,
-            input_for_render,
-            &source.document.draft,
-            &source.document.items,
-            self.session.config(),
-            source.now,
-            &source.limits,
+        Self::render_managed_context(source, input_for_render, &self.session)
+    }
+
+    /// Renders one managed request through the membership boundary.
+    ///
+    /// The invocation's selector is bound to this exact invocation identity and draft revision, so
+    /// the effective set is gated before any provider bytes exist. Continuity comes from the
+    /// selected binding, so effective absence is refused unless the provider is genuinely fresh for
+    /// this invocation. Failures before dispatch surface as precise policy errors.
+    fn render_managed_context(
+        source: &ContextRenderSource,
+        input_for_render: ManagedRenderInput,
+        session: &ExoSession<T>,
+    ) -> Result<PreparedContext, PolicyError> {
+        let policy = source.membership.as_ref().map(|selector| {
+            selector.bind(
+                &source.identity.invocation_id,
+                &source.document.draft.base_revision_id,
+            )
+        });
+        crate::context_control::render_with_membership(
+            crate::context_control::MembershipRenderRequest {
+                boundary: &source.boundary,
+                request: input_for_render,
+                document: &source.document,
+                config: session.config(),
+                now: source.now,
+                limits: &source.limits,
+                policy: policy.as_ref(),
+                continuity: source.continuity,
+            },
         )
+        .map(|(prepared, _)| prepared)
         .map_err(|error| match error {
-            crate::context_control::ContextRenderError::ExceedsSelectedLimit(limit) => {
-                PolicyError::SelectedContextLimit(limit)
+            crate::context_control::MembershipRenderError::Render(
+                crate::context_control::ContextRenderError::ExceedsSelectedLimit(limit),
+            ) => PolicyError::SelectedContextLimit(limit),
+            crate::context_control::MembershipRenderError::Membership(membership) => {
+                PolicyError::MembershipRefused(membership.reason_code())
             }
             _ => PolicyError::ProviderMalformed,
         })

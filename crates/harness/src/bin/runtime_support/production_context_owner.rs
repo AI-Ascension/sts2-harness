@@ -46,6 +46,9 @@ pub(super) struct Configuration {
     pub render_required: bool,
     #[serde(default)]
     pub sources: Vec<ContextBindingSource>,
+    /// Owner-configured per-invocation inclusion selector, if this owner enforces one.
+    #[serde(default)]
+    pub membership: Option<sts2_harness::context_control::ContextMembershipSelector>,
 }
 
 impl Configuration {
