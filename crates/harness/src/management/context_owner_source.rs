@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 use super::ContextBindingSource;
-use crate::context_control::{ContextBoundary, ContextRenderLimits, ContextSourceDocument};
+use crate::context_control::{
+    ContextBoundary, ContextMembershipSelector, ContextRenderLimits, ContextSourceDocument,
+    MembershipContinuity,
+};
 use serde::{Deserialize, Serialize};
 
 pub const CONTEXT_SOURCE_UPLOAD_SCHEMA_VERSION: &str =
@@ -68,6 +71,13 @@ pub struct ContextRenderSource {
     pub boundary: ContextBoundary,
     pub limits: ContextRenderLimits,
     pub document: ContextSourceDocument,
+    /// The owner's selector for this invocation, if a membership policy is in force.
+    ///
+    /// The selector is bound to the invocation identity at render time; it is deliberately not a
+    /// finished policy, so it can never carry another invocation's identity.
+    pub membership: Option<ContextMembershipSelector>,
+    /// The continuity the selected binding can actually execute for this invocation.
+    pub continuity: MembershipContinuity,
     /// Owner-issued Unix time used only for source expiry validation.
     pub now: u64,
     /// Earliest expiry of any selected source item.
@@ -92,5 +102,8 @@ pub struct ContextRenderSourceIdentity {
     pub source_id: String,
     pub source_version: u64,
     pub source_digest: String,
+    /// Digest of the selector in force, so a selector change during inference is fenced like any
+    /// other source change. Absent when no membership policy is in force.
+    pub membership_digest: Option<String>,
     pub boundary: ContextBoundary,
 }

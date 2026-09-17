@@ -101,6 +101,7 @@ fn production_owner_activates_adopted_source_and_returns_descriptor_selected_lim
         limits,
         render_required: true,
         sources: vec![source.clone()],
+        membership: None,
     };
     let owner = Owner {
         configuration,

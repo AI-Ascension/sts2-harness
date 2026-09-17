@@ -51,6 +51,7 @@ impl From<&PolicyError> for FailureCode {
             PolicyError::ProviderMalformed => Self::ProviderMalformed,
             PolicyError::ProviderClosed => Self::ProviderClosed,
             PolicyError::SelectedContextLimit(_) => Self::ContextRenderLimit,
+            PolicyError::MembershipRefused(_) => Self::Rejected,
         }
     }
 }

@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
-struct RenderState {
+pub(super) struct RenderState {
     source: ContextRenderSource,
 }
 
@@ -116,7 +116,7 @@ impl ExoTransport for PreparedRecordingTransport {
     }
 }
 
-fn render_fixture() -> (ContextRenderSource, ExoConfig) {
+pub(super) fn render_fixture() -> (ContextRenderSource, ExoConfig) {
     let mut items = BTreeMap::new();
     let mut draft = ContextDraft::new("draft-1", "revision-1");
     for (item_id, bytes) in [
@@ -169,6 +169,7 @@ fn render_fixture() -> (ContextRenderSource, ExoConfig) {
         source_id: "strategy".to_owned(),
         source_version: 1,
         source_digest: "9".repeat(64),
+        membership_digest: None,
         boundary: boundary.clone(),
     };
     let source = ContextRenderSource {
@@ -179,6 +180,8 @@ fn render_fixture() -> (ContextRenderSource, ExoConfig) {
         boundary,
         limits: ContextRenderLimits::harness_maxima(),
         document,
+        membership: None,
+        continuity: crate::context_control::MembershipContinuity::Stateless,
         now: 1,
         valid_until: 100,
         identity,
@@ -188,14 +191,14 @@ fn render_fixture() -> (ContextRenderSource, ExoConfig) {
     (source, config)
 }
 
-type RenderTestSession = (
+pub(super) type RenderTestSession = (
     ProductionLiveWorkflowSession,
     Arc<Mutex<RenderState>>,
     Arc<AtomicUsize>,
     Arc<Mutex<Vec<Vec<u8>>>>,
 );
 
-fn render_test_session(
+pub(super) fn render_test_session(
     source: ContextRenderSource,
     config: ExoConfig,
     limits: ContextRenderLimits,
@@ -229,7 +232,7 @@ fn render_test_session(
     (session, render_state, exchanges, requests)
 }
 
-fn selected_limits(max_items: usize) -> ContextRenderLimits {
+pub(super) fn selected_limits(max_items: usize) -> ContextRenderLimits {
     ContextRenderLimits {
         max_items,
         ..ContextRenderLimits::harness_maxima()

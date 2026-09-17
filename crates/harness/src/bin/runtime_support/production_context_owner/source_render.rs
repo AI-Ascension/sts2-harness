@@ -174,6 +174,7 @@ impl Owner {
                 )
             })?;
         let advertised = self.advertised_source(&active.source_id)?;
+        let membership = self.configuration.membership.clone();
         if active.version != advertised.version
             || active.digest != advertised.digest
             || active.active_revision_id != state.active_revision_id
@@ -207,6 +208,13 @@ impl Owner {
             source_id: active.source_id.clone(),
             source_version: active.version,
             source_digest: active.digest.clone(),
+            membership_digest: membership
+                .as_ref()
+                .map(sts2_harness::context_control::ContextMembershipSelector::digest)
+                .transpose()
+                .map_err(|error| {
+                    ManagementError::invalid("context_membership_encode", error.to_string())
+                })?,
             boundary: state.boundary.clone(),
         };
         Ok(ContextRenderSource {
@@ -217,6 +225,10 @@ impl Owner {
             boundary: state.boundary.clone(),
             limits: view.render_limits(),
             document: source.document,
+            membership,
+            continuity: sts2_harness::context_control::MembershipContinuity::from_provider_session_continuity(
+                binding.continuity.provider_session_continuity,
+            ),
             now,
             valid_until,
             identity: source_identity,

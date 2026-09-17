@@ -34,8 +34,11 @@ use std::fmt::{Display, Formatter};
 
 #[path = "membership_resolution.rs"]
 mod resolution;
+#[path = "membership_selector.rs"]
+mod selector;
 
 pub use resolution::{prevalidate_and_bind, resolve_membership};
+pub use selector::ContextMembershipSelector;
 
 /// Schema identity for the versioned per-invocation membership policy.
 pub const CONTEXT_MEMBERSHIP_POLICY_SCHEMA: &str = "ascension.context-control.membership.v1";
@@ -76,6 +79,23 @@ pub enum MembershipContinuity {
     OpaquePersistent,
 }
 
+impl MembershipContinuity {
+    /// Derives the executable continuity from the invocation's selected binding.
+    ///
+    /// A binding that advertises provider-session continuity keeps provider-side history this
+    /// invocation cannot reconstitute, so effective absence is not executable and the result is
+    /// [`MembershipContinuity::OpaquePersistent`]. A binding that does not is fresh for every
+    /// invocation, which is the only case that may claim executable absence.
+    #[must_use]
+    pub fn from_provider_session_continuity(provider_session_continuity: bool) -> Self {
+        if provider_session_continuity {
+            Self::OpaquePersistent
+        } else {
+            Self::Stateless
+        }
+    }
+}
+
 /// Why one included or excluded reference acquired its outcome.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -95,13 +115,21 @@ pub enum MembershipReasonCode {
 }
 
 /// The invocation identity a membership decision is made on behalf of.
+///
+/// `branch_id` is optional because a branch identity is not always reachable. The live managed
+/// render seam is driven by an admitted workflow run, its episode and its agent; durable branch
+/// continuation is selected by the separate runtime entry point and is never projected onto the
+/// context render source. Absence is therefore encoded as `None` rather than filled with a
+/// fabricated id, so scope enforcement is honestly agent-and-kind based for branchless
+/// invocations. Real per-branch isolation remains owned by its own work item.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ContextMembershipScope {
     pub run_id: String,
     pub episode_id: String,
     pub agent_id: String,
-    pub branch_id: String,
+    #[serde(default)]
+    pub branch_id: Option<String>,
 }
 
 impl ContextMembershipScope {
@@ -111,7 +139,10 @@ impl ContextMembershipScope {
         valid_id(&self.run_id)
             && valid_id(&self.episode_id)
             && valid_id(&self.agent_id)
-            && valid_id(&self.branch_id)
+            && self
+                .branch_id
+                .as_ref()
+                .is_none_or(|branch| valid_id(branch))
     }
 }
 
@@ -346,3 +377,27 @@ impl Display for ContextMembershipError {
 }
 
 impl std::error::Error for ContextMembershipError {}
+
+impl ContextMembershipError {
+    /// A stable, precise reason code for this refusal.
+    ///
+    /// Callers report this code so a refused dispatch names the exact gate that failed rather than
+    /// a generic provider failure.
+    #[must_use]
+    pub const fn reason_code(&self) -> &'static str {
+        match self {
+            Self::InvalidInput(_) => "context_membership_invalid_input",
+            Self::SiblingScopeLeak { .. } => "context_membership_sibling_scope_leak",
+            Self::WiderScopeNotAuthorized { .. } => "context_membership_wider_scope_not_authorized",
+            Self::ProtectedPrerequisiteExcluded { .. } => {
+                "context_membership_protected_prerequisite_excluded"
+            }
+            Self::RevokedOrExpired { .. } => "context_membership_revoked_or_expired",
+            Self::MandatoryPinOverflow { .. } => "context_membership_mandatory_pin_overflow",
+            Self::TooManyItems { .. } => "context_membership_too_many_items",
+            Self::EffectiveAbsenceUnsupported => "context_membership_effective_absence_unsupported",
+            Self::PolicyChanged => "context_membership_policy_changed",
+            Self::Encode => "context_membership_encode",
+        }
+    }
+}

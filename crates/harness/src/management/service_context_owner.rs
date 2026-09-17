@@ -4,14 +4,14 @@ use std::sync::Arc;
 
 use super::super::context_owner::{
     CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, ContextControlCommand, ContextControlReceipt,
-    ContextOwnerAssociationView, ContextOwnerEffectiveLimitsView,
+    ContextOwnerAssociationView, ContextOwnerEffectiveLimitsView, ContextOwnerRenderRequest,
 };
 use super::super::context_owner::{ContextBindingCatalog, ContextOwnerBinding, ContextOwnerPort};
 use super::support::authorize;
 use super::{AuthContext, ManagementError, ManagementService, RunSnapshot, validate_identifier};
 use crate::context_control::{
     ContextBoundary, ContextDraft, ContextItem, ContextRenderError, ControlAuthority,
-    ManagedRenderInput, PreparedContext,
+    ManagedRenderInput, MembershipContinuity, MembershipRenderError, PreparedContext,
 };
 use crate::exo::ExoConfig;
 use std::collections::BTreeMap;
@@ -188,6 +188,7 @@ impl ManagementService {
         registry: &BTreeMap<String, ContextItem>,
         config: &ExoConfig,
         now: u64,
+        membership: Option<&crate::context_control::ContextMembershipSelector>,
     ) -> Result<PreparedContext, ManagementError> {
         validate_identifier("run_id", run_id)?;
         authorize(actor, "workflow:control", Some(run_id))?;
@@ -198,8 +199,24 @@ impl ManagementService {
                 "render boundary is not the current authoritative owner boundary",
             ));
         }
-        view.prepare_managed_render(boundary, request, draft, registry, config, now)
-            .map_err(context_render_error)
+        // The invocation identity and the executable continuity both come from this run's current
+        // binding, so a caller cannot substitute either, and no selector can carry another
+        // invocation's identity or claim absence an opaque provider cannot execute.
+        let continuity = MembershipContinuity::from_provider_session_continuity(
+            binding.continuity.provider_session_continuity,
+        );
+        view.prepare_managed_render(ContextOwnerRenderRequest {
+            boundary,
+            request,
+            draft,
+            registry,
+            config,
+            now,
+            invocation_id: &binding.invocation_id,
+            membership,
+            continuity,
+        })
+        .map_err(context_render_error)
     }
 
     /// Applies a run's selected control-transition bound to a harness control
@@ -274,12 +291,18 @@ impl ManagementService {
 ///
 /// A selected-limit refusal keeps its own code so a caller can tell "the owner
 /// selected less than this" apart from "the harness bound was exceeded".
-fn context_render_error(error: ContextRenderError) -> ManagementError {
+fn context_render_error(error: MembershipRenderError) -> ManagementError {
     match error {
-        ContextRenderError::ExceedsSelectedLimit(limit) => ManagementError::capability(
-            "context_render_limit_exceeded",
-            format!("prepared context exceeds the selected owner limit: {limit}"),
-        ),
+        MembershipRenderError::Render(ContextRenderError::ExceedsSelectedLimit(limit)) => {
+            ManagementError::capability(
+                "context_render_limit_exceeded",
+                format!("prepared context exceeds the selected owner limit: {limit}"),
+            )
+        }
+        // A membership refusal names the exact pre-dispatch gate that failed.
+        MembershipRenderError::Membership(refusal) => {
+            ManagementError::capability(refusal.reason_code(), refusal.to_string())
+        }
         other => ManagementError::invalid("context_render_invalid", other.to_string()),
     }
 }
