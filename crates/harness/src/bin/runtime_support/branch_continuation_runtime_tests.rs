@@ -269,6 +269,7 @@ fn running_branch_is_refused_without_changing_its_owner_state()
 }
 
 include!("branch_continuation_runtime_resume_tests.rs");
+include!("branch_continuation_runtime_receipt_resume_tests.rs");
 
 #[test]
 fn selected_child_run_identities_are_bound_before_runtime_admission() -> Result<(), String> {

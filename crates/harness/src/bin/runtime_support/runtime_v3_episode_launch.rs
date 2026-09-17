@@ -77,6 +77,9 @@ pub(super) fn launch(port: &mut RuntimeV3Port) -> Result<(), sts2_harness::PortE
             false,
         ));
     }
+    if port.exact_restore_selected {
+        return Ok(());
+    }
     if let Err(error) = port.launch_mcp() {
         return Err(wire::port_error("runtime_launch_failed", error, false));
     }

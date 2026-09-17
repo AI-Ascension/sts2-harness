@@ -43,16 +43,17 @@ pub fn admit_branch_continuation(
     })
 }
 
-/// Admits a selected running prefix branch for explicit execution-store resume.
+/// Admits a selected running branch for explicit execution-store resume.
 ///
-/// This path requires the prefix boundary assurance and every retained artifact to remain
-/// available. It does not replay the prefix. A runtime caller must additionally prove the same
-/// live gateway owner and historical continuation claim before opening the decision path.
+/// This path requires the strategy-specific verified boundary assurance and every retained
+/// artifact to remain available. It does not replay a prefix or reapply an exact restore. A
+/// runtime caller must additionally prove the same live gateway owner and historical continuation
+/// claim before opening the decision path.
 ///
 /// # Errors
 ///
-/// Returns a typed error when the branch is not running, is not a prefix-replay branch, lacks its
-/// verified prefix boundary, or has unavailable retained artifacts.
+/// Returns a typed error when the branch is not running, lacks its strategy assurance, or has
+/// unavailable retained artifacts.
 pub fn admit_running_branch_continuation(
     store: &SqliteBranchStore,
     selector: &BranchContinuationSelector,
@@ -69,23 +70,13 @@ pub fn admit_running_branch_continuation(
             status: branch.status,
         });
     }
-    if branch.strategy != BranchStrategy::PrefixReplay {
-        return Err(
-            BranchContinuationAdmissionError::InvalidStrategyDescriptor {
-                strategy: branch.strategy,
-            },
-        );
-    }
     let strategy = strategy_plan(&branch)?;
-    if !matches!(
-        strategy,
-        BranchContinuationStrategyPlan::PrefixReplay { .. }
-    ) {
-        return Err(
-            BranchContinuationAdmissionError::InvalidStrategyDescriptor {
-                strategy: branch.strategy,
-            },
-        );
+    if branch.strategy == BranchStrategy::ExactRestore {
+        // A Running exact branch is playable only after the independently
+        // verified destination receipt was retained. The source checkpoint
+        // assurance alone describes the input artifact and cannot authorize
+        // a resumed destination.
+        unique_artifact(&branch.artifacts, BranchArtifactRole::ContextSnapshot)?;
     }
     let artifacts = store
         .artifact_availability(selector.experiment_id(), selector.branch_id(), resolver)

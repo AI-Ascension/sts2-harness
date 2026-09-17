@@ -211,6 +211,88 @@ fn concurrent_creates_share_the_same_capacity_and_scope() -> Result<(), BranchSt
 }
 
 #[test]
+fn concurrent_identical_creates_share_one_idempotent_child() -> Result<(), BranchStoreError> {
+    let path = temp_path("concurrent-identical");
+    let _ = std::fs::remove_file(&path);
+    let store = SqliteBranchStore::open(&path)?;
+    store.create(
+        "operation:concurrent-identical-root",
+        draft(
+            "branch:root",
+            None,
+            "occurrence:root",
+            None,
+            BranchStrategy::ExactRestore,
+        ),
+    )?;
+    drop(store);
+
+    let left = std::sync::Arc::new(SqliteBranchStore::open(&path)?);
+    let right = std::sync::Arc::new(SqliteBranchStore::open(&path)?);
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+    let payload = draft(
+        "branch:concurrent-identical",
+        Some("branch:root"),
+        "occurrence:concurrent-identical",
+        Some("occurrence:root"),
+        BranchStrategy::PrefixReplay,
+    );
+    let left_thread = {
+        let store = std::sync::Arc::clone(&left);
+        let barrier = std::sync::Arc::clone(&barrier);
+        let payload = payload.clone();
+        std::thread::spawn(move || {
+            barrier.wait();
+            store.create("operation:concurrent-identical", payload)
+        })
+    };
+    let right_thread = {
+        let store = std::sync::Arc::clone(&right);
+        let barrier = std::sync::Arc::clone(&barrier);
+        std::thread::spawn(move || {
+            barrier.wait();
+            store.create("operation:concurrent-identical", payload)
+        })
+    };
+    barrier.wait();
+    let left_branch = left_thread
+        .join()
+        .map_err(|_| BranchStoreError::Corrupt)??;
+    let right_branch = right_thread
+        .join()
+        .map_err(|_| BranchStoreError::Corrupt)??;
+    assert_eq!(left_branch, right_branch);
+    assert_eq!(left_branch.branch_id, "branch:concurrent-identical");
+    assert_eq!(left_branch.parent_branch_id.as_deref(), Some("branch:root"));
+
+    drop(left);
+    drop(right);
+    let reopened = SqliteBranchStore::open(&path)?;
+    let page = reopened.list("experiment:durable", None, MAX_BRANCHES as u64)?;
+    assert_eq!(
+        page.branches
+            .iter()
+            .filter(|branch| branch.branch_id == "branch:concurrent-identical")
+            .count(),
+        1
+    );
+    let events = reopened.events("experiment:durable", 0, MAX_BRANCHES as u64)?;
+    assert_eq!(
+        events
+            .events
+            .iter()
+            .filter(|event| {
+                event.branch_id == "branch:concurrent-identical"
+                    && event.operation_id == "operation:concurrent-identical"
+            })
+            .count(),
+        1
+    );
+    std::fs::remove_file(path).map_err(|error| BranchStoreError::Persistence(error.to_string()))?;
+    Ok(())
+}
+
+#[test]
 fn artifact_identity_is_shared_across_roles_and_experiments() -> Result<(), BranchStoreError> {
     let store = SqliteBranchStore::open_in_memory()?;
     store.create(

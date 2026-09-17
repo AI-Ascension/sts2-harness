@@ -15,7 +15,7 @@ fn select_branch_continuation(
     }
     let artifact_path = super::branch_continuation_runtime::artifact_store_path()?;
     let branch_store = super::continuation_branch_store_path()?;
-    let selected = if resume_requested {
+    let mut selected = if resume_requested {
         super::branch_continuation_runtime::SelectedBranchContinuation::load_for_resume(
             &selector,
             &branch_store,
@@ -28,13 +28,22 @@ fn select_branch_continuation(
             &artifact_path,
         )?
     };
-    if matches!(
-        selected.strategy(),
-        sts2_harness::BranchContinuationStrategyPlan::ExactRestore { .. }
-    ) {
-        return Err(String::from(
-            "exact branch continuation is unavailable: no fixed game-mod/MCP/gateway restore route is installed",
-        ));
+    if selected.is_exact_restore() {
+        if config.seed_transport.is_some() {
+            return Err(String::from(
+                "exact restore cannot use a new seed transport or initialize a seeded host",
+            ));
+        }
+        let pins = super::exact_restore::ProfilePins::from_environment()?;
+        let closure = super::exact_restore::VerifiedClosure::prepare(
+            &selected,
+            &artifact_path,
+            pins,
+        )?;
+        if selected.is_resuming() {
+            selected.verify_persisted_exact_receipt(&closure)?;
+        }
+        selected.install_exact_restore(closure)?;
     }
     super::branch_continuation_runtime::bind_branch_identities(&selected, config)?;
     Ok(Some(selected))

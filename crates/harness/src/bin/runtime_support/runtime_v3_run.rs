@@ -11,7 +11,14 @@ pub(super) fn run(
         || std::env::var("STS2_RESUME").as_deref() == Ok("true");
     let mut selected_branch =
         select_branch_continuation(selector, resume_requested, &mut config)?;
-    let policy_preflight = game_information_owner::begin_memory_policy_preflight(&config)?;
+    let policy_preflight = if selected_branch
+        .as_ref()
+        .is_some_and(|selected| selected.is_exact_restore())
+    {
+        None
+    } else {
+        game_information_owner::begin_memory_policy_preflight(&config)?
+    };
     let settings = RuntimeV3Settings::from_environment(&config)?;
     let telemetry_context = TelemetryContext::new(TelemetryContextInput {
         run_id: &config.run_id,
@@ -291,11 +298,4 @@ pub(super) fn run(
     Ok(())
 }
 
-fn select_provider_transport(
-    config: &RuntimeConfig,
-    settings: &RuntimeV3Settings,
-    durable: durable::DurableHandle,
-    authority_state: lifecycle_authority::RuntimeLifecycleAuthorityState,
-) -> Result<lifecycle::RuntimeTransport, String> {
-    lifecycle::admit(config, settings, durable, authority_state)
-}
+include!("runtime_v3_run_transport.rs");

@@ -60,11 +60,16 @@ impl McpProcess {
         } else {
             MAX_RESPONSE_BYTES
         };
-        Self::spawn_command_with_response_limit(
-            Self::configured_command_for_profile(config, profile),
-            EXCHANGE_TIMEOUT,
-            max_response_bytes,
-        )
+        let mut command = Self::configured_command_for_profile(config, profile);
+        if profile == "exact-restore-v1" {
+            let token = config
+                .recovery_value("STS2_RECOVERY_TOKEN")
+                .ok_or_else(|| {
+                    String::from("STS2_RECOVERY_TOKEN is required for exact-restore MCP")
+                })?;
+            command.env("STS2_RECOVERY_TOKEN", token);
+        }
+        Self::spawn_command_with_response_limit(command, EXCHANGE_TIMEOUT, max_response_bytes)
     }
 
     pub(super) fn spawn_recovery(

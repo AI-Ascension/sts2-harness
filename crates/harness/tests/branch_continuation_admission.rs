@@ -9,7 +9,7 @@ use sts2_harness::{
     BranchAssurance, BranchContinuationAdmissionError, BranchContinuationSelector,
     BranchContinuationStrategyPlan, BranchFork, BranchStoreError, BranchStrategy,
     DurableBranchDraft, DurableBranchStatus, ExactStateDigest, OccurrenceId, SqliteBranchStore,
-    admit_branch_continuation,
+    admit_branch_continuation, admit_running_branch_continuation,
 };
 
 const EXPERIMENT: &str = "experiment:continuation-admission";
@@ -194,6 +194,46 @@ fn exact_restore_selection_returns_its_scoped_restore_plan()
         }
     );
     assert!(admission.artifacts.all_available());
+    Ok(())
+}
+
+#[test]
+fn running_exact_restore_requires_a_retained_destination_receipt()
+-> Result<(), Box<dyn std::error::Error>> {
+    let store = SqliteBranchStore::open_in_memory()?;
+    create_root(&store)?;
+    let checkpoint = artifact(
+        "artifact:checkpoint:running",
+        BranchArtifactRole::Checkpoint,
+    );
+    create_ready_branch(
+        &store,
+        "branch:running-exact",
+        BranchStrategy::ExactRestore,
+        vec![checkpoint.clone()],
+    )?;
+    let ready = store
+        .get(EXPERIMENT, "branch:running-exact")?
+        .expect("running exact fixture");
+    store.transition(
+        "operation:running-exact",
+        EXPERIMENT,
+        "branch:running-exact",
+        ready.metadata_revision,
+        DurableBranchStatus::Running,
+    )?;
+    let resolver = FixtureResolver {
+        states: [(checkpoint.artifact_id, BranchArtifactState::Available)].into(),
+    };
+    let selector = BranchContinuationSelector::new(EXPERIMENT, "branch:running-exact")?;
+    let error = admit_running_branch_continuation(&store, &selector, &resolver)
+        .expect_err("running exact branch without receipt must be refused");
+    assert!(matches!(
+        error,
+        BranchContinuationAdmissionError::MissingStrategyArtifact {
+            role: BranchArtifactRole::ContextSnapshot
+        }
+    ));
     Ok(())
 }
 

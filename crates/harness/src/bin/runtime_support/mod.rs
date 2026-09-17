@@ -5,6 +5,7 @@ use sts2_harness::DurableBranchStatus;
 pub(super) mod branch_continuation_runtime;
 mod config;
 mod continuation_branches;
+pub(super) mod exact_restore;
 mod gateway_json;
 mod http;
 mod mcp;
