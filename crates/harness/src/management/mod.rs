@@ -30,13 +30,16 @@ pub use context_owner::{
     CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, CONTEXT_OWNER_BINDING_SCHEMA_VERSION,
     CONTEXT_OWNER_CATALOG_SCHEMA_VERSION, CONTEXT_OWNER_CONTROL_LIMITS_SCHEMA,
     CONTEXT_OWNER_EFFECTIVE_LIMITS_VIEW_SCHEMA, CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION,
-    CONTEXT_OWNER_RECEIPT_V1_SCHEMA_VERSION, ContextBindingCatalog, ContextBindingContinuity,
-    ContextBindingDescriptor, ContextBindingGrants, ContextBindingOperation, ContextBindingRequest,
-    ContextBindingSource, ContextBindingState, ContextControlCommand, ContextControlCommandKind,
-    ContextControlReceipt, ContextControlReceiptRecovery, ContextEffectiveLimits,
-    ContextOwnerAssociationView, ContextOwnerBinding, ContextOwnerControlLimits,
-    ContextOwnerEffectiveLimitsView, ContextOwnerPort, MAX_CONTEXT_BINDINGS,
-    MAX_CONTEXT_NODE_KINDS, MAX_CONTEXT_OPERATIONS, MAX_CONTEXT_SOURCES,
+    CONTEXT_OWNER_RECEIPT_V1_SCHEMA_VERSION, CONTEXT_OWNER_SOURCE_STATUS_SCHEMA_VERSION,
+    CONTEXT_SOURCE_ADOPTION_SCHEMA_VERSION, CONTEXT_SOURCE_UPLOAD_SCHEMA_VERSION,
+    ContextBindingCatalog, ContextBindingContinuity, ContextBindingDescriptor,
+    ContextBindingGrants, ContextBindingOperation, ContextBindingRequest, ContextBindingSource,
+    ContextBindingState, ContextControlCommand, ContextControlCommandKind, ContextControlReceipt,
+    ContextControlReceiptRecovery, ContextEffectiveLimits, ContextOwnerAssociationView,
+    ContextOwnerBinding, ContextOwnerControlLimits, ContextOwnerEffectiveLimitsView,
+    ContextOwnerPort, ContextOwnerSourceStatus, ContextRenderSource, ContextRenderSourceIdentity,
+    ContextSourceAdoptionRequest, ContextSourcePublication, ContextSourceUpload,
+    MAX_CONTEXT_BINDINGS, MAX_CONTEXT_NODE_KINDS, MAX_CONTEXT_OPERATIONS, MAX_CONTEXT_SOURCES,
     UnavailableContextOwnerPort, compose_context_owner_binding,
 };
 pub use contract::ReplayRequest as ManagementReplayRequest;
@@ -80,11 +83,11 @@ pub use http::{
 };
 pub use live_workflow::{
     EpisodeRuntimeSession, LIVE_WORKFLOW_CAPABILITY, LIVE_WORKFLOW_PROFILE,
-    LiveContextObservationPort, LiveProviderSessionFactory, LiveRuntimeSessionFactory,
-    LiveTargetCatalogPort, LiveWorkflowExecutionPort, LiveWorkflowFactory, LiveWorkflowOptions,
-    LiveWorkflowSession, LiveWorkflowSessionFactory, ProductionLiveWorkflowSessionFactory,
-    RuntimeAuthorityBinding, live_run_id, live_store, live_store_with_provider_policy,
-    live_store_with_provider_policy_and_command_port,
+    LiveContextObservationPort, LiveContextRenderPort, LiveProviderSessionFactory,
+    LiveRuntimeSessionFactory, LiveTargetCatalogPort, LiveWorkflowExecutionPort,
+    LiveWorkflowFactory, LiveWorkflowOptions, LiveWorkflowSession, LiveWorkflowSessionFactory,
+    ProductionLiveWorkflowSessionFactory, RuntimeAuthorityBinding, live_run_id, live_store,
+    live_store_with_provider_policy, live_store_with_provider_policy_and_command_port,
 };
 pub use provider_policy::{
     DurableProviderSessionPolicyCommandPort, ProviderSessionPolicyCommandPort,

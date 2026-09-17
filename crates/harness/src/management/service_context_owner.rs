@@ -16,6 +16,9 @@ use crate::context_control::{
 use crate::exo::ExoConfig;
 use std::collections::BTreeMap;
 
+#[path = "service_context_source.rs"]
+mod context_source;
+
 #[path = "service_context_owner_binding.rs"]
 mod binding;
 

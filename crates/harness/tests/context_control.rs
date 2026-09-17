@@ -48,6 +48,7 @@ fn render_input() -> ManagedRenderInput {
         legal_action_ids: vec!["combat.end-turn".to_owned()],
         objective: "survive".to_owned(),
         hard_constraints: vec!["visible state only".to_owned()],
+        map_context: None,
     }
 }
 

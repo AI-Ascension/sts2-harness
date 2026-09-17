@@ -1,12 +1,20 @@
 // SPDX-License-Identifier: MIT
 
+#[path = "policy_router_choice.rs"]
+mod choice;
+#[path = "policy_router_managed.rs"]
+mod managed_render;
+pub use choice::{PolicyChoice, PolicyRouter};
+
 use super::action_plan::ActionPlan;
 use super::legal_actions::EpisodeLegalActionSet;
 use super::map::MapDecisionContext;
 use super::observation::EpisodeObservation;
 use super::recovery::RecoveryOperation;
+use crate::context_control::{ManagedRenderInput, PreparedContext};
 use crate::exo::{Decision, ExoError, ExoSession};
 use crate::identity::ModelExecutionId;
+use crate::management::ContextRenderSource;
 
 #[path = "policy_router_game_information.rs"]
 mod game_information;
@@ -73,6 +81,27 @@ pub trait DecisionSource {
         _input: &DecisionInput,
         _decision_profile_ref: &str,
         _context_ref: &str,
+    ) -> Result<Decision, PolicyError> {
+        Err(PolicyError::ProviderUnavailable)
+    }
+
+    /// Prepares immutable managed-context bytes for the exact provider input.
+    /// Sources without this capability fail closed for render-required owners.
+    fn prepare_managed_context(
+        &mut self,
+        _input: &DecisionInput,
+        _source: &ContextRenderSource,
+    ) -> Result<PreparedContext, PolicyError> {
+        Err(PolicyError::ProviderUnavailable)
+    }
+
+    /// Sends the exact prepared bytes associated with this decision input.
+    fn decide_prepared_for(
+        &mut self,
+        _input: &DecisionInput,
+        _decision_profile_ref: &str,
+        _context_ref: &str,
+        _prepared: &PreparedContext,
     ) -> Result<Decision, PolicyError> {
         Err(PolicyError::ProviderUnavailable)
     }
@@ -148,6 +177,24 @@ impl<T: crate::exo::ExoTransport> DecisionSource for ExoDecisionSource<T> {
         self.decide(input)
     }
 
+    fn prepare_managed_context(
+        &mut self,
+        input: &DecisionInput,
+        source: &ContextRenderSource,
+    ) -> Result<PreparedContext, PolicyError> {
+        self.prepare_managed_context_impl(input, source)
+    }
+
+    fn decide_prepared_for(
+        &mut self,
+        input: &DecisionInput,
+        decision_profile_ref: &str,
+        context_ref: &str,
+        prepared: &PreparedContext,
+    ) -> Result<Decision, PolicyError> {
+        self.decide_prepared_for_impl(input, decision_profile_ref, context_ref, prepared)
+    }
+
     fn decide(&mut self, input: &DecisionInput) -> Result<Decision, PolicyError> {
         input
             .observation
@@ -216,47 +263,6 @@ impl<T: crate::exo::ExoTransport> DecisionSource for ExoDecisionSource<T> {
     }
 }
 
-/// A provider decision after binding to the current action set, or an explicit non-action
-/// directive that the coordinator must handle.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum PolicyChoice {
-    Action {
-        action_id: String,
-        rationale: String,
-        confidence: Option<u8>,
-    },
-    Wait {
-        rationale: String,
-    },
-    Reobserve {
-        rationale: String,
-    },
-    Recovery {
-        operation: RecoveryOperation,
-        rationale: String,
-    },
-}
-
-pub struct PolicyRouter;
-
-impl PolicyRouter {
-    pub fn choose<S: DecisionSource>(
-        source: &mut S,
-        input: &DecisionInput,
-    ) -> Result<PolicyChoice, PolicyError> {
-        input
-            .observation
-            .assert_actionable()
-            .map_err(|_| PolicyError::InputBlocked)?;
-        input
-            .legal_actions
-            .assert_matches(input.observation.state_id(), input.observation.generation())
-            .map_err(|_| PolicyError::StaleCatalog)?;
-        let decision = source.decide(input)?;
-        Self::route_decision(decision, input)
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PolicyError {
     InputBlocked,
@@ -267,10 +273,17 @@ pub enum PolicyError {
     ProviderUnavailable,
     ProviderMalformed,
     ProviderClosed,
+    SelectedContextLimit(&'static str),
 }
 
 impl std::fmt::Display for PolicyError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Self::SelectedContextLimit(limit) = self {
+            return write!(
+                formatter,
+                "managed context exceeds selected owner limit: {limit}"
+            );
+        }
         formatter.write_str(match self {
             Self::InputBlocked => "episode input is blocked",
             Self::StaleCatalog => "legal-action catalog is stale",
@@ -280,6 +293,7 @@ impl std::fmt::Display for PolicyError {
             Self::ProviderUnavailable => "provider is unavailable",
             Self::ProviderMalformed => "provider request or response is malformed",
             Self::ProviderClosed => "provider session is closed",
+            Self::SelectedContextLimit(_) => "managed context exceeds selected owner limit",
         })
     }
 }

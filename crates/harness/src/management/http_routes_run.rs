@@ -44,6 +44,13 @@ pub(super) fn dispatch_run_route(
                 .current_context_owner_association(actor, run_id)
                 .and_then(|value| json_value(&value))
         }
+        ("GET", ["", "v1", "workflow-runs", _, "context-owner-source-status"])
+            if request.query.is_empty() =>
+        {
+            service
+                .current_context_source_status(actor, run_id)
+                .and_then(|value| json_value(&value))
+        }
         (
             "GET",
             [
@@ -59,6 +66,35 @@ pub(super) fn dispatch_run_route(
         ("GET", ["", "v1", "workflow-runs", _, "context"]) if request.query.is_empty() => service
             .context_association(actor, run_id)
             .and_then(|value| json_value(&value)),
+        ("PUT", ["", "v1", "workflow-runs", _, "context-sources", source_id])
+            if request.query.is_empty() =>
+        {
+            validate_identifier("context_source_id", source_id).map_err(ManagementError::from)?;
+            let upload: super::super::context_owner::ContextSourceUpload =
+                decode_body_management(&request.body)?;
+            service
+                .publish_context_source(actor, run_id, source_id, upload)
+                .and_then(|value| json_value(&value))
+        }
+        (
+            "POST",
+            [
+                "",
+                "v1",
+                "workflow-runs",
+                _,
+                "context-sources",
+                source_id,
+                "adopt",
+            ],
+        ) if request.query.is_empty() => {
+            validate_identifier("context_source_id", source_id).map_err(ManagementError::from)?;
+            let adoption: super::super::context_owner::ContextSourceAdoptionRequest =
+                decode_body_management(&request.body)?;
+            service
+                .adopt_context_source(actor, run_id, source_id, adoption)
+                .and_then(|value| json_value(&value))
+        }
         (
             "GET",
             [

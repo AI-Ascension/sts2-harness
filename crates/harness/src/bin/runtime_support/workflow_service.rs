@@ -66,6 +66,8 @@ fn factory(
     provider_capabilities: NativeCapabilities,
     context_owner: Arc<production_context_owner::Owner>,
 ) -> Result<Arc<dyn LiveWorkflowSessionFactory>, String> {
+    let observations: Arc<dyn sts2_harness::LiveContextObservationPort> = context_owner.clone();
+    let render: Arc<dyn sts2_harness::LiveContextRenderPort> = context_owner.clone();
     Ok(Arc::new(ProductionLiveWorkflowSessionFactory::new(
         json!({"schema_version":"ascension.capabilities/v1","capabilities":["workflow.live","workflow.node.observe.v1","workflow.node.decide.v1","workflow.node.execute_action.v1","workflow.node.terminal.v1","workflow.execution.fence.mcp-observation.v1","observe.fair-play.v1","actions.catalog.v1","actions.settlement.v1","workflow.projection.fair-play.live.v1","workflow.provider.decision.live.v1","workflow.context.context.live.v1"]}),
         Arc::new(Catalog),
@@ -77,7 +79,8 @@ fn factory(
         provider_policy,
         provider_capabilities,
     ).map_err(|error| error.to_string())?
-        .with_context_observations(context_owner)))
+        .with_context_observations(observations)
+        .with_context_render_port(render)))
 }
 
 #[path = "workflow_service_policy.rs"]

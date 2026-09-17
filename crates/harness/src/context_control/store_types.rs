@@ -4,11 +4,13 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
+use super::types::ContextSourceDocument;
 use crate::management::{ContextControlCommand, ContextControlReceipt, ContextOwnerBinding};
 
 pub const CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION: i64 = 1;
 pub(super) const STORE_SCHEMA: &str = "ascension.context-control.sqlite.v1";
 pub(super) const AAD: &[u8] = b"ascension.context-control.sqlite.v1\0";
+pub(super) const MAX_CONTEXT_SOURCE_BYTES: usize = 1024 * 1024;
 pub(super) const MAX_JOURNAL_BYTES: usize = 2 * 1024 * 1024;
 pub(super) const MAX_SNAPSHOT_BYTES: usize = 4 * 1024 * 1024;
 pub(super) const MAX_EVENTS: usize = 4096;
@@ -27,6 +29,24 @@ pub struct DurableContextOwnerControlReceipt {
     pub binding: ContextOwnerBinding,
     pub command: ContextControlCommand,
     pub receipt: ContextControlReceipt,
+}
+
+/// Owner-published immutable bytes retained encrypted by the control store.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DurableContextSourceSnapshot {
+    pub source_id: String,
+    pub version: u64,
+    pub digest: String,
+    pub document: ContextSourceDocument,
+}
+
+/// Typed active-source pointer committed with the authority journal and receipt.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DurableActiveContextSource {
+    pub source_id: String,
+    pub version: u64,
+    pub digest: String,
+    pub active_revision_id: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -88,6 +108,8 @@ pub enum DurableControlStoreError {
     Failpoint,
     SnapshotConflict,
     InvalidSnapshotId,
+    SourceConflict,
+    InvalidSourceId,
     OwnerReceiptConflict,
 }
 
@@ -110,6 +132,8 @@ impl Display for DurableControlStoreError {
             Self::Failpoint => "control store failpoint rejected the transaction",
             Self::SnapshotConflict => "phase1 snapshot already has different bytes",
             Self::InvalidSnapshotId => "phase1 snapshot identity is invalid",
+            Self::SourceConflict => "context source identity already has different bytes",
+            Self::InvalidSourceId => "context source identity is invalid",
             Self::OwnerReceiptConflict => {
                 "context control idempotency key is already bound to different receipt evidence"
             }
