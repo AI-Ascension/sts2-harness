@@ -12,7 +12,7 @@ mod pins;
 mod protocol;
 
 #[path = "exact_restore_operation.rs"]
-mod operation;
+pub(crate) mod operation;
 
 pub(super) use closure::{TransferBlob, VerifiedClosure};
 pub(crate) use operation::execute;

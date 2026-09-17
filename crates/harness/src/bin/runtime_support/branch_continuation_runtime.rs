@@ -179,6 +179,31 @@ impl SelectedBranchContinuation {
         Ok(())
     }
 
+    pub(crate) fn verify_persisted_exact_receipt(
+        &self,
+        closure: &super::exact_restore::VerifiedClosure,
+    ) -> Result<(), String> {
+        let receipt = self
+            .admission
+            .branch
+            .artifacts
+            .iter()
+            .filter(|artifact| artifact.role == BranchArtifactRole::ContextSnapshot)
+            .collect::<Vec<_>>();
+        if receipt.len() != 1 {
+            return Err(String::from(
+                "running exact branch must retain exactly one destination receipt",
+            ));
+        }
+        let digest = BlobDigest::parse(&receipt[0].artifact_id)
+            .map_err(|_| String::from("persisted exact-restore receipt is not a verified blob"))?;
+        let artifacts = ExactArtifactStore::new(&self.artifact_store_path);
+        let bytes = artifacts
+            .read_blob(&digest)
+            .map_err(|error| format!("cannot read persisted exact-restore receipt: {error}"))?;
+        super::exact_restore::operation::verify_persisted_receipt(&bytes, self, closure)
+    }
+
     pub(crate) fn is_exact_restore(&self) -> bool {
         matches!(
             self.admission.strategy,

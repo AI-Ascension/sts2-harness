@@ -71,6 +71,13 @@ pub fn admit_running_branch_continuation(
         });
     }
     let strategy = strategy_plan(&branch)?;
+    if branch.strategy == BranchStrategy::ExactRestore {
+        // A Running exact branch is playable only after the independently
+        // verified destination receipt was retained. The source checkpoint
+        // assurance alone describes the input artifact and cannot authorize
+        // a resumed destination.
+        unique_artifact(&branch.artifacts, BranchArtifactRole::ContextSnapshot)?;
+    }
     let artifacts = store
         .artifact_availability(selector.experiment_id(), selector.branch_id(), resolver)
         .map_err(BranchContinuationAdmissionError::Store)?;

@@ -6,7 +6,7 @@ use super::super::super::super::branch_continuation_runtime::SelectedBranchConti
 use super::super::super::{VerifiedClosure, branch_payload, canonical_bytes};
 use super::super::{failure, uncertain};
 
-pub(super) fn verify_receipt<'a>(
+pub(crate) fn verify_receipt<'a>(
     receipt: &'a Value,
     selected: &SelectedBranchContinuation,
     closure: &VerifiedClosure,

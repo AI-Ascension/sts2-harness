@@ -72,6 +72,21 @@ pub(crate) fn execute(
     }
 }
 
+pub(crate) fn verify_persisted_receipt(
+    receipt_bytes: &[u8],
+    selected: &SelectedBranchContinuation,
+    closure: &super::VerifiedClosure,
+) -> Result<(), String> {
+    let receipt: Value = serde_json::from_slice(receipt_bytes)
+        .map_err(|error| format!("persisted exact-restore receipt is invalid JSON: {error}"))?;
+    let (operation_id, expected_owner) = selected
+        .exact_restore_owner()
+        .map_err(|message| format!("persisted exact-restore owner is invalid: {message}"))?;
+    flow::receipt::verify_receipt(&receipt, selected, closure, &expected_owner, &operation_id)
+        .map(|_| ())
+        .map_err(|error| error.message)
+}
+
 pub(super) fn failure(
     safety: FailureSafety,
     message: impl Into<String>,

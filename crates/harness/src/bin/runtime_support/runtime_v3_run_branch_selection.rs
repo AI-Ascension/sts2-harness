@@ -40,6 +40,9 @@ fn select_branch_continuation(
             &artifact_path,
             pins,
         )?;
+        if selected.is_resuming() {
+            selected.verify_persisted_exact_receipt(&closure)?;
+        }
         selected.install_exact_restore(closure)?;
     }
     super::branch_continuation_runtime::bind_branch_identities(&selected, config)?;

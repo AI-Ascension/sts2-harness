@@ -8,7 +8,7 @@ use super::super::{MAX_CHUNK_BYTES, VerifiedClosure, branch_payload, encode_base
 use super::transport::{exchange, request_frame};
 
 #[path = "exact_restore_operation_receipt.rs"]
-mod receipt;
+pub(super) mod receipt;
 use super::{is_error_response, not_started, phase_error, uncertain};
 use receipt::{classify_error_response, classify_lookup_error_response, verify_receipt};
 

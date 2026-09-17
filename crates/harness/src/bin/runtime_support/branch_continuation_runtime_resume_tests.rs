@@ -159,6 +159,19 @@ fn exact_restore_resume_reuses_verified_receipt_without_reclaiming_restore()
         ready.metadata_revision,
         DurableBranchStatus::Running,
     )?;
+    let receipt_blob = artifacts.stage_blob(
+        br#"{"operation_id":"receipt-operation","state":"RESTORE_VERIFIED"}"#,
+    )?;
+    store.attach_artifact(
+        "operation:attach-exact-receipt-for-resume-test",
+        EXPERIMENT,
+        "branch:selected",
+        running.metadata_revision,
+        sts2_harness::BranchArtifactReference {
+            artifact_id: receipt_blob.as_str().to_owned(),
+            role: BranchArtifactRole::ContextSnapshot,
+        },
+    )?;
     let claim = store.prepare_continuation_claim(EXPERIMENT, "branch:selected")?;
     let owner = serde_json::json!({
         "deployment_id":"00000000-0000-4000-8000-000000000001",
@@ -214,7 +227,7 @@ fn exact_restore_resume_reuses_verified_receipt_without_reclaiming_restore()
             .get(EXPERIMENT, "branch:selected")?
             .expect("selected branch remains")
             .metadata_revision,
-        running.metadata_revision
+        running.metadata_revision + 1
     );
     Ok(())
 }

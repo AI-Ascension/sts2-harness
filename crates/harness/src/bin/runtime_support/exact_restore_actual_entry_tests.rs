@@ -58,14 +58,7 @@ for line in sys.stdin:
             "rationale": "deterministic exact-restore continuation",
             "confidence": 90
         }},
-        "error_code": None,
-        "native": {{
-            "agent_id": "exact-restore-fixture",
-            "conversation_id": "exact-restore-fixture",
-            "session_id": request.get("session_id", "exact-restore"),
-            "turn_id": request.get("turn_id"),
-            "event_cursor": request.get("request_id")
-        }}
+        "error_code": None
     }}
     with open(LOG, "a", encoding="utf-8") as output:
         output.write(json.dumps({{"request": request, "response": response}},
@@ -161,18 +154,18 @@ for line in sys.stdin:
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    assert!(
-        output.status.success(),
-        "exact-restore child exited {}; stdout={}; stderr={}",
-        output.status,
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
     let branch = SqliteBranchStore::open(&branch_path)?
         .get("experiment:exact-restore-fixture", "branch:selected")?
         .ok_or("selected branch disappeared")?;
     match required("STS2_EXACT_EXPECTED_OUTCOME")?.as_str() {
         "positive" => {
+            assert!(
+                output.status.success(),
+                "positive exact-restore child exited {}; stdout={}; stderr={}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
             assert_eq!(branch.status, DurableBranchStatus::Completed);
             assert_eq!(branch.assurance, BranchAssurance::ExactRestoreReceipt);
             assert!(branch
@@ -192,6 +185,12 @@ for line in sys.stdin:
             assert_eq!(effects["action_id"], "combat.end-turn");
         }
         "refused" => {
+            assert!(
+                !output.status.success(),
+                "native-unsupported begin unexpectedly succeeded; stdout={}; stderr={}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
             assert_eq!(branch.status, DurableBranchStatus::Failed);
             assert_ne!(branch.assurance, BranchAssurance::ExactRestoreReceipt);
             assert!(!branch
@@ -199,7 +198,15 @@ for line in sys.stdin:
                 .iter()
                 .any(|artifact| artifact.role == BranchArtifactRole::ContextSnapshot));
         }
-        "unknown" => assert_eq!(branch.status, DurableBranchStatus::Unknown),
+        "unknown" => {
+            assert!(
+                !output.status.success(),
+                "uncertain exact-restore child unexpectedly succeeded; stdout={}; stderr={}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(branch.status, DurableBranchStatus::Unknown);
+        }
         other => return Err(format!("unknown expected outcome {other}").into()),
     }
     let _post_restore_status = output.status;
