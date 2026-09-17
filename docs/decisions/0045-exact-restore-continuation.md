@@ -69,7 +69,7 @@ and Harness, then runs the Rust
 `tools/exact-restore-conformance` launcher for positive, refused, and unknown
 outcomes. It uploads retained sanitized child logs, synthetic effect counters,
 the positive runtime action/settlement ledger, source revisions, and binary
-hashes on every run. The positive outcome remains blocked until the pinned
-Gateway typed translation is available; that is recorded as a conformance
+hashes on every run. The positive outcome is required alongside refusal and
+unknown; any typed-translation or peer mismatch is recorded as a conformance
 failure rather than treated as a pass. An environment that omits a required
 peer binary is a configuration failure, not a skipped exact-restore result.
