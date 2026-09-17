@@ -201,7 +201,7 @@ impl ManagementService {
         }
         // The invocation identity and the executable continuity both come from this run's current
         // binding, so a caller cannot substitute either, and no selector can carry another
-        // invocation's identity or claim absence an opaque provider cannot execute.
+        // invocation's identity or claim absence that no continuity can execute yet.
         let continuity = MembershipContinuity::from_provider_session_continuity(
             binding.continuity.provider_session_continuity,
         );

@@ -102,8 +102,9 @@ rendered before this boundary existed.
 `MembershipContinuity` is derived from the selected binding's
 `provider_session_continuity`, not asserted by a caller: a binding that keeps
 provider-side history yields `OpaquePersistent`, and one that does not yields
-`Stateless`. A caller therefore cannot claim executable absence for an adapter
-that cannot reconstitute it.
+`Stateless`. A caller therefore cannot claim executable absence for either
+continuity: the managed render path has no omission wireform, so it would report
+`observation_visible == false` while still shipping the observation.
 
 `ContextMembershipScope::branch_id` is optional. The live render seam is driven
 by an admitted run, episode, and agent; durable branch continuation is selected
