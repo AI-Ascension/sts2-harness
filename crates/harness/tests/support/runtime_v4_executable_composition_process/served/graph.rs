@@ -157,15 +157,64 @@ fn run_graph(
     if gateway_output.status.code() != Some(0) && !gateway_output.status.signal().is_some() {
         return Err("graph gateway cleanup failed".into());
     }
-    Ok((
-        value.0,
-        value.1,
-        ledger
-            .requests
-            .iter()
-            .filter(|request| request.path == "/api/v4/runtime/expert-state")
-            .count(),
-    ))
+    let expert_states = validate_graph_ledger(&ledger)?;
+    Ok((value.0, value.1, expert_states))
+}
+
+fn validate_graph_ledger(ledger: &DownstreamLedger) -> Result<usize, Box<dyn std::error::Error>> {
+    if !ledger.errors.is_empty() {
+        return Err(format!("graph fixture failed: {:?}", ledger.errors).into());
+    }
+    let actions: Vec<_> = ledger
+        .requests
+        .iter()
+        .enumerate()
+        .filter(|(_, request)| request.path == "/api/v4/runtime/expert-action")
+        .collect();
+    if actions.len() != 1 {
+        return Err(format!(
+            "graph dispatched {} expert actions instead of exactly one",
+            actions.len()
+        )
+        .into());
+    }
+    let (action_index, action) = actions[0];
+    let operation_id = action.body["operation_id"]
+        .as_str()
+        .ok_or("graph action omitted its operation identity")?;
+    if action.body["action"]["action_id"] != ACTION_ID {
+        return Err("graph action did not preserve the selected action identity".into());
+    }
+    let settlement_path = format!("/api/v4/runtime/expert-actions/{operation_id}");
+    let settlements: Vec<_> = ledger
+        .requests
+        .iter()
+        .enumerate()
+        .filter(|(_, request)| request.path == settlement_path)
+        .collect();
+    if settlements.is_empty() {
+        return Err("graph completed without polling settlement for its action".into());
+    }
+    if settlements.iter().any(|(index, _)| *index <= action_index) {
+        return Err("graph settlement poll did not follow the dispatched operation".into());
+    }
+    let settled = ledger
+        .responses
+        .iter()
+        .filter(|response| {
+            response.body["status"] == "settled"
+                && response.body["operation_id"] == operation_id
+                && response.body["action"]["action_id"] == ACTION_ID
+        })
+        .count();
+    if settled == 0 {
+        return Err("graph settlement poll never returned the dispatched operation".into());
+    }
+    Ok(ledger
+        .requests
+        .iter()
+        .filter(|request| request.path == "/api/v4/runtime/expert-state")
+        .count())
 }
 
 pub(super) fn add_observe_node(definition: &mut Value) -> Result<(), Box<dyn std::error::Error>> {
