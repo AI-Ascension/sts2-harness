@@ -124,6 +124,73 @@ pub(super) fn serve_gateway(listener: TcpListener) -> Result<Vec<String>, String
                 binding["observation"]["state_generation"] = json!(STATE_GENERATION);
             }
             binding
+        } else if path == "/v1/instances/instance-1/game-information/live-observation-bootstrap" {
+            let correlation = body["correlation_id"]
+                .as_str()
+                .ok_or("bootstrap correlation missing")?;
+            let scope = body["scope"].clone();
+            let definition = body["selector"]["definition_ref"].clone();
+            let instance = json!({
+                "instance_id": "instance-1",
+                "run_id": RUN,
+                "epoch": 7,
+                "entity_kind": "card",
+                "entity_id": "card-17"
+            });
+            let snapshot = json!({
+                "snapshot_id": "entry-snapshot-41",
+                "instance_ref": instance,
+                "state_generation": STATE_GENERATION
+            });
+            json!({
+                "protocol_version":"game-information-live-observation-bootstrap-v1",
+                "schema_digest":"6041a282ffda8757af4e3eb6ab551e082f136fe53138ab8ac17db9fab52765c2",
+                "provenance":{"artifact":"sts2-protocol/game-information-live-observation-bootstrap-v1",
+                    "source":"schemas/game-information-live-observation-bootstrap-v1.schema.json","generator":"hand-authored"},
+                "correlation_id":correlation,"kind":"bootstrap_response",
+                "scope":scope,
+                "selector":{"definition_ref":definition,"instance_ref":null},
+                "limits":{"max_visible_entities":64,"max_item_bytes":65536,"max_message_bytes":262144},
+                "parent_observation":{"instance_ref":instance,"snapshot_ref":snapshot,
+                    "state_generation":STATE_GENERATION},
+                "visible_entities":[{"definition_ref":definition,"instance_ref":instance,
+                    "snapshot_ref":snapshot}],
+                "owner_provenance":{"native_snapshot_owner":"sts2-game-mod",
+                    "content_manifest_owner":"sts2-game-mod","instance_fence_owner":"sts2-gateway",
+                    "authority_epoch_owner":"sts2-harness","instance_ref_epoch_owner":"sts2-game-mod",
+                    "transport_lease_epoch_role":"fence_only"},
+                "error":null
+            })
+        } else if path == "/v1/instances/instance-1/game-information/detail" {
+            let query = body.get("query").cloned().ok_or("detail query missing")?;
+            let mut page = json!({
+                "items":[],"final_page":true,"next_cursor":null,"cursor_binding":null,
+                "coverage":"complete","total_count_known":true,"total_count":0,
+                "ordering":{"key":"definition_ref","direction":"ascending",
+                    "algorithm":"identity_bytes","deterministic":true},
+                "limits":query["limits"]
+            });
+            let page_without_accounting =
+                serde_json::to_vec(&page).map_err(|error| error.to_string())?;
+            page["accounting"] = json!({
+                "item_count":0,"item_bytes":0,"payload_bytes":2,
+                "page_bytes":page_without_accounting.len(),"text_bytes":0
+            });
+            let correlation =
+                header(&headers, "x-sts2-correlation-id").ok_or("detail correlation missing")?;
+            json!({
+                "protocol_version":"game-information-query-v1",
+                "schema_digest":"376845b0c86b4afcd2c79ffba753eb7e7e416f5410da26b4dae970cfee2221d9",
+                "provenance":{"artifact":"sts2-protocol/game-information-query-v1",
+                    "source":"schemas/game-information-query-v1.schema.json","generator":"hand-authored"},
+                "correlation_id":correlation,"kind":"query_response",
+                "query":query,
+                "result":{"read_only":true,
+                    "parent_observation":query["parent_observation"],
+                    "result_generation":query["binding"]["snapshot_ref"]["state_generation"],
+                    "page":page},
+                "capabilities":null,"error":null
+            })
         } else if path == "/v1/instances/instance-1/release" {
             let response = json!({"status":"released"});
             write_http(&mut stream, &response)?;

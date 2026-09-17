@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: MIT
 use super::*;
 use crate::EpisodeLegalActionSet;
+include!("game_information_agent_bootstrap.rs");
 
 /// Additive harness agent contract. Existing closed Exo terminal-decision profiles are unchanged.
 #[derive(Clone, Debug)]
 pub enum LookupTurn {
     Query {
+        operation_id: String,
+        request: Vec<u8>,
+    },
+    Bootstrap {
         operation_id: String,
         request: Vec<u8>,
     },
@@ -25,6 +30,10 @@ pub enum LookupFeedback {
     Data {
         record_ordinal: usize,
         delivery: Box<LookupDelivery>,
+    },
+    Bootstrap {
+        record_ordinal: usize,
+        response: Value,
     },
     Bytes {
         record_ordinal: usize,
@@ -62,16 +71,20 @@ pub fn run_lookup_tool_loop<A: LookupAgentPort, M: LookupMcpPort>(
     if max_turns == 0 || max_turns > 32 {
         return Err(LookupError::Bounds);
     }
-    let binding = session.binding.clone();
-    if binding.snapshot.as_ref().is_some_and(|snapshot| {
+    if session.binding.snapshot.as_ref().is_some_and(|snapshot| {
         snapshot["state_generation"].as_u64() != Some(legal_actions.generation())
     }) {
         return Err(LookupError::Reobserve);
     }
     let mut feedback = LookupFeedback::Start;
     for remaining in (0..max_turns).rev() {
+        if session.binding.snapshot.as_ref().is_some_and(|snapshot| {
+            snapshot["state_generation"].as_u64() != Some(legal_actions.generation())
+        }) {
+            return Err(LookupError::Reobserve);
+        }
         let turn = agent.next_turn(LookupAgentInput {
-            binding: &binding,
+            binding: &session.binding,
             legal_actions,
             feedback: &feedback,
             remaining_turns: remaining,
@@ -85,6 +98,7 @@ pub fn run_lookup_tool_loop<A: LookupAgentPort, M: LookupMcpPort>(
                 .then_some(action_id)
                 .ok_or(LookupError::Invalid);
         }
+        let binding = session.binding.clone();
         feedback = handle_read(session, corpus, mcp, &binding, turn);
     }
     Err(LookupError::Bounds)
@@ -102,16 +116,20 @@ pub fn run_lookup_replay_tool_loop<A: LookupAgentPort>(
     if max_turns == 0 || max_turns > 32 {
         return Err(LookupError::Bounds);
     }
-    let binding = session.binding.clone();
-    if binding.snapshot.as_ref().is_some_and(|snapshot| {
+    if session.binding.snapshot.as_ref().is_some_and(|snapshot| {
         snapshot["state_generation"].as_u64() != Some(legal_actions.generation())
     }) {
         return Err(LookupError::Reobserve);
     }
     let mut feedback = LookupFeedback::Start;
     for remaining in (0..max_turns).rev() {
+        if session.binding.snapshot.as_ref().is_some_and(|snapshot| {
+            snapshot["state_generation"].as_u64() != Some(legal_actions.generation())
+        }) {
+            return Err(LookupError::Reobserve);
+        }
         let turn = agent.next_turn(LookupAgentInput {
-            binding: &binding,
+            binding: &session.binding,
             legal_actions,
             feedback: &feedback,
             remaining_turns: remaining,
@@ -161,6 +179,56 @@ pub fn run_lookup_replay_tool_loop<A: LookupAgentPort>(
                     Err(error) => LookupFeedback::Error(error),
                 };
             }
+            LookupTurn::Bootstrap {
+                operation_id,
+                request,
+            } => {
+                let record_ordinal = session.bootstrap_replay_cursor;
+                let record = session
+                    .bootstrap_records()
+                    .get(record_ordinal)
+                    .ok_or(LookupError::Divergence)?;
+                let request = validation::decode_strict(&request)?;
+                if record.operation_id != operation_id
+                    || without_correlation(&record.request) != without_correlation(&request)
+                {
+                    return Err(LookupError::Divergence);
+                }
+                let response = record
+                    .response
+                    .clone()
+                    .ok_or_else(|| record.error.clone().unwrap_or(LookupError::Divergence))?;
+                let response_scope = response["scope"]
+                    .as_object()
+                    .ok_or(LookupError::Divergence)?;
+                if response_scope["run_id"] != session.binding.scope.run_id
+                    || response_scope["authority_epoch"] != session.binding.authority_epoch
+                    || response_scope["content_manifest_id"] != session.binding.content_manifest_id
+                    || response_scope["locale"] != session.binding.locale
+                {
+                    return Err(LookupError::Divergence);
+                }
+                let mut validated_request = request.clone();
+                validated_request["scope"] = response["scope"].clone();
+                validated_request["correlation_id"] = response["correlation_id"].clone();
+                let snapshot =
+                    crate::game_information_binding::game_information_bootstrap::select_snapshot(
+                        &validated_request,
+                        &response,
+                    )
+                    .map_err(|_| LookupError::Divergence)?;
+                if record.binding.snapshot.as_ref() != Some(&snapshot) {
+                    return Err(LookupError::Divergence);
+                }
+                session.bootstrap_replay_cursor = session
+                    .bootstrap_replay_cursor
+                    .checked_add(1)
+                    .ok_or(LookupError::Bounds)?;
+                feedback = LookupFeedback::Bootstrap {
+                    record_ordinal,
+                    response,
+                };
+            }
             LookupTurn::ReadRetained {
                 record_ordinal,
                 offset,
@@ -208,6 +276,10 @@ fn handle_read<M: LookupMcpPort>(
             },
             Err(error) => LookupFeedback::Error(error),
         },
+        LookupTurn::Bootstrap {
+            operation_id,
+            request,
+        } => handle_bootstrap(session, mcp, operation_id, request),
         LookupTurn::ReadRetained {
             record_ordinal,
             offset,

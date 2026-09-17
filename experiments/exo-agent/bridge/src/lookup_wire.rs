@@ -9,6 +9,7 @@ use std::fmt;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub const VERSION: &str = "sts2.exo-lookup-wire-v1";
+pub const BOOTSTRAP_VERSION: &str = "sts2.exo-lookup-wire-v2-bootstrap";
 pub const FRAME_BYTES: usize = 196_608;
 pub const TOOL_BYTES: usize = 16_384;
 pub const FEEDBACK_BYTES: usize = 7_000;
@@ -30,6 +31,9 @@ pub enum Payload {
         request: Value,
     },
     Query {
+        arguments: Value,
+    },
+    Bootstrap {
         arguments: Value,
     },
     ReadRetained {
@@ -82,14 +86,36 @@ pub fn decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, &'stati
     serde_json::from_value(value.0).map_err(|_| "exo_lookup_shape")
 }
 
+pub fn decode_frame(bytes: &[u8]) -> Result<Frame, &'static str> {
+    let frame: Frame = decode(bytes)?;
+    match (frame.wire_version.as_str(), &frame.payload) {
+        (VERSION, Payload::Bootstrap { .. }) => Err("exo_lookup_wire_version"),
+        (BOOTSTRAP_VERSION, Payload::Bootstrap { .. })
+        | (BOOTSTRAP_VERSION, Payload::Feedback { .. })
+        | (VERSION, _) => Ok(frame),
+        _ => Err("exo_lookup_wire_version"),
+    }
+}
+
+#[cfg(test)]
 pub fn feedback(
     bytes: &[u8],
     request: &str,
     turn: &str,
     sequence: u64,
 ) -> Result<Value, &'static str> {
-    let frame: Frame = decode(bytes)?;
-    if frame.wire_version != VERSION
+    feedback_for_version(bytes, request, turn, sequence, VERSION)
+}
+
+pub fn feedback_for_version(
+    bytes: &[u8],
+    request: &str,
+    turn: &str,
+    sequence: u64,
+    version: &str,
+) -> Result<Value, &'static str> {
+    let frame = decode_frame(bytes)?;
+    if frame.wire_version != version
         || frame.request_id != request
         || frame.turn_id != turn
         || frame.sequence != sequence
@@ -108,6 +134,13 @@ pub fn feedback(
         return Err("exo_lookup_feedback_bound");
     }
     Ok(value)
+}
+
+pub fn version_for_payload(payload: &Payload) -> &'static str {
+    match payload {
+        Payload::Bootstrap { .. } => BOOTSTRAP_VERSION,
+        _ => VERSION,
+    }
 }
 
 pub async fn write_frame(
@@ -205,6 +238,53 @@ mod tests {
         let mut value = serde_json::to_value(frame)?;
         value["payload"]["value"] = json!("x".repeat(FEEDBACK_BYTES));
         assert!(feedback(&serde_json::to_vec(&value)?, "request", "turn", 1).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn bootstrap_payload_requires_additive_wire_version() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let frame = Frame {
+            wire_version: BOOTSTRAP_VERSION.into(),
+            request_id: "request".into(),
+            turn_id: "turn".into(),
+            sequence: 1,
+            payload: Payload::Bootstrap {
+                arguments: json!({
+                    "operation_id":"bootstrap-1",
+                    "definition_ref":{
+                        "content_manifest_id":"content-1","entity_kind":"card",
+                        "namespaced_id":"ironclad:strike","variant":null
+                    },
+                    "instance_ref":null
+                }),
+            },
+        };
+        let bytes = serde_json::to_vec(&frame)?;
+        assert_eq!(
+            version_for_payload(&frame.payload),
+            BOOTSTRAP_VERSION
+        );
+        assert!(decode_frame(&bytes).is_ok());
+        let mut legacy = serde_json::to_value(frame)?;
+        legacy["wire_version"] = json!(VERSION);
+        assert!(decode_frame(&serde_json::to_vec(&legacy)?).is_err());
+        assert!(feedback_for_version(
+            &serde_json::to_vec(&Frame {
+                wire_version: VERSION.into(),
+                request_id: "request".into(),
+                turn_id: "turn".into(),
+                sequence: 1,
+                payload: Payload::Feedback {
+                    value: json!({"bootstrap":"response"}),
+                },
+            })?,
+            "request",
+            "turn",
+            1,
+            BOOTSTRAP_VERSION,
+        )
+        .is_err());
         Ok(())
     }
     #[tokio::test]

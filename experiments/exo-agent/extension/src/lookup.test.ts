@@ -9,7 +9,7 @@ vi.mock("@exo/harness", () => ({
 vi.mock("@exo/model-runtime/turn-loop", () => ({
   runResponsesHarnessTurn: (...args: unknown[]) => mocks.run(...args),
 }));
-import harness, { finalActionSchema, lookupInstructions, queryParameters } from "./lookup";
+import harness, { bootstrapParameters, finalActionSchema, lookupInstructions, queryParameters } from "./lookup";
 
 const originalFetch = globalThis.fetch;
 const endpoint = "http://127.0.0.1:12345";
@@ -204,7 +204,7 @@ describe("owned Exo lookup extension", () => {
     expect(forwarded).toHaveBeenCalledTimes(1);
   });
 
-  it("registers exactly two owned tools and uses a closed action-only final schema", async () => {
+  it("keeps the legacy profile at two owned tools and uses a closed action-only final schema", async () => {
     install(async (tools, options) => {
       expect(tools.map((tool) => tool.definition.name)).toEqual(["sts2_lookup_query", "sts2_lookup_read"]);
       expect(tools.map((tool) => tool.source)).toEqual(["library", "library"]);
@@ -217,6 +217,82 @@ describe("owned Exo lookup extension", () => {
       await model();
     });
     await harness.runTurn(context());
+  });
+
+  it("forwards one exact bootstrap selector through the owned tool callback", async () => {
+    const owner = context();
+    vi.stubEnv("STS2_EXO_LOOKUP_BOOTSTRAP", "1");
+    const args = {
+      operation_id: "bootstrap-1",
+      definition_ref: {
+        content_manifest_id: "content-1", entity_kind: "card",
+        namespaced_id: "ironclad:strike", variant: null,
+      },
+      instance_ref: {
+        entity_id: "card-17", entity_kind: "card", epoch: 7,
+        instance_id: "instance-1", run_id: "run-42",
+      },
+    };
+    const callback = vi.fn(async () => ({
+      kind: "bootstrap_response", selector: { definition_ref: args.definition_ref, instance_ref: args.instance_ref },
+    }));
+    owner.executeTool = callback;
+    install(async (tools) => {
+      expect(tools[2].definition.parameters).toBe(bootstrapParameters);
+      await model();
+      await execute(tools[2], args, owner, "bootstrap-call");
+      expect(callback).toHaveBeenCalledWith({
+        functionName: "sts2_lookup_bootstrap", arguments: args,
+      });
+    });
+    await harness.runTurn(owner);
+  });
+
+  it.each([
+    {
+      label: "wildcard definition",
+      args: {
+        operation_id: "bootstrap-1",
+        definition_ref: {
+          content_manifest_id: "content-1", entity_kind: "card",
+          namespaced_id: "*", variant: null,
+        },
+        instance_ref: null,
+      },
+    },
+    {
+      label: "incomplete occurrence",
+      args: {
+        operation_id: "bootstrap-1",
+        definition_ref: {
+          content_manifest_id: "content-1", entity_kind: "card",
+          namespaced_id: "ironclad:strike", variant: null,
+        },
+        instance_ref: {},
+      },
+    },
+    {
+      label: "oversized operation",
+      args: {
+        operation_id: "x".repeat(65),
+        definition_ref: {
+          content_manifest_id: "content-1", entity_kind: "card",
+          namespaced_id: "ironclad:strike", variant: null,
+        },
+        instance_ref: null,
+      },
+    },
+  ])("rejects %s bootstrap selectors before invoking the owner", async ({ args }) => {
+    const owner = context();
+    vi.stubEnv("STS2_EXO_LOOKUP_BOOTSTRAP", "1");
+    const callback = vi.fn(async () => ({ data: "must not run" }));
+    owner.executeTool = callback;
+    install(async (tools) => {
+      await model();
+      await expect(execute(tools[2], args, owner, "bootstrap-invalid")).rejects.toThrow("sts2_lookup_arguments_invalid");
+    });
+    await expect(harness.runTurn(owner)).rejects.toThrow("sts2_lookup_turn_failed");
+    expect(callback).not.toHaveBeenCalled();
   });
 
   it("rejects inherited modules, tool creation and unsupported round budgets before execution", async () => {

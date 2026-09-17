@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-use super::super::{INSTANCE, LEASE, LEASE_EPOCH, LOCALE, MANIFEST, SESSION};
+use super::super::{INSTANCE, LOCALE, MANIFEST};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+#[path = "runtime_v3_game_information_entry_live_peer_gameplay.rs"]
+mod gameplay;
+use gameplay::{gameplay_dispatch, gameplay_state, gameplay_wait};
 
 static OBSERVATION_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
@@ -29,6 +33,13 @@ pub(super) fn downstream_response(
         ("POST", "/api/v1/game-information/list") => {
             Ok((200, game_information_page(request, correlation)?))
         }
+        ("POST", "/api/v1/game-information/detail") => {
+            Ok((200, game_information_page(request, correlation)?))
+        }
+        ("POST", "/api/v1/game-information/live-observation-bootstrap") => Ok((
+            200,
+            live_observation_bootstrap(request, correlation, mismatch_manifest)?,
+        )),
         ("GET", "/api/v3/runtime/state") => {
             Ok((200, gameplay_state("state_response", correlation)))
         }
@@ -174,88 +185,63 @@ fn game_information_page(request: &Value, correlation: &str) -> Result<Value, St
     }))
 }
 
-fn gameplay_state(kind: &str, correlation: &str) -> Value {
-    let mut response: Value = serde_json::from_str(include_str!(
-        "../../../../../protocol-artifact/runtime-v3-gameplay/golden/state-response.json"
-    ))
-    .expect("Runtime-v3 state golden is valid");
-    response["correlation_id"] = json!(correlation);
-    response["instance_id"] = json!(INSTANCE);
-    response["session_id"] = json!(SESSION);
-    response["lease_id"] = json!(LEASE);
-    response["lease_epoch"] = json!(LEASE_EPOCH);
-    response["kind"] = json!(kind);
-    response["generation"] = json!(0);
-    response["state_id"] = json!("combat-1");
-    response["observation"]["state_id"] = json!("combat-1");
-    response["observation"]["generation"] = json!(0);
-    response["observation"]["state"] = json!({"state":"combat","turn_index":1,"enemies":[]});
-    response["legal_actions"] = json!([
-        {"action_id":"combat.end-turn","action":{"kind":"end_turn"}}
-    ]);
-    if kind == "legal_actions_response" {
-        response["observation"] = Value::Null;
-    }
-    response
-}
-
-fn gameplay_dispatch(request: &Value, correlation: &str) -> Result<Value, String> {
-    let mut response: Value = serde_json::from_str(include_str!(
-        "../../../../../protocol-artifact/runtime-v3-gameplay/golden/dispatch-action-settled.json"
-    ))
-    .map_err(|_| String::from("Runtime-v3 settled golden could not be read"))?;
-    response["correlation_id"] = json!(correlation);
-    response["instance_id"] = json!(request["instance_id"]);
-    response["session_id"] = json!(request["session_id"]);
-    response["lease_id"] = json!(request["lease_id"]);
-    response["lease_epoch"] = request["lease_epoch"].clone();
-    response["operation_id"] = request["operation_id"].clone();
-    response["state_id"] = request["state_id"].clone();
-    response["generation"] = json!(1);
-    // Runtime-v3 response envelopes keep the submitted action on the request
-    // side; a settled response must leave this field null per the schema.
-    response["action"] = Value::Null;
-    response["observation"]["state_id"] = request["state_id"].clone();
-    response["observation"]["generation"] = json!(1);
-    response["observation"]["state"] = json!({"state":"victory"});
-    response["transition"]["state_id"] = request["state_id"].clone();
-    let from_generation = request["generation"]
-        .as_u64()
-        .unwrap_or(1)
-        .saturating_sub(1);
-    response["transition"]["from_generation"] = json!(from_generation);
-    response["transition"]["to_generation"] = json!(1);
-    Ok(response)
-}
-
-fn gameplay_wait(request: &Value, correlation: &str) -> Result<Value, String> {
-    let mut response: Value = serde_json::from_str(include_str!(
-        "../../../../../protocol-artifact/runtime-v3-gameplay/golden/dispatch-action-settled.json"
-    ))
-    .map_err(|_| String::from("Runtime-v3 wait golden could not be read"))?;
-    response["correlation_id"] = json!(correlation);
-    response["instance_id"] = json!(request["instance_id"]);
-    response["session_id"] = json!(request["session_id"]);
-    response["lease_id"] = json!(request["lease_id"]);
-    response["lease_epoch"] = request["lease_epoch"].clone();
-    response["operation_id"] = request["operation_id"].clone();
-    response["state_id"] = json!("combat-1");
-    response["generation"] = json!(1);
-    response["kind"] = json!("wait_response");
-    response["status"] = json!("settled");
-    response["wait_for_millis"] = Value::Null;
-    response["wait_outcome"] = json!("successor");
-    response["action"] = Value::Null;
-    response["observation"]["state_id"] = json!("combat-1");
-    response["observation"]["generation"] = json!(1);
-    response["observation"]["state"] = json!({"state":"victory"});
-    let from_generation = request["generation"]
-        .as_u64()
-        .unwrap_or(1)
-        .saturating_sub(1);
-    response["transition"]["from_generation"] = json!(from_generation);
-    response["transition"]["to_generation"] = json!(1);
-    response["transition"]["state_id"] = json!("combat-1");
-    response["transition"]["effect_kind"] = json!("end_turn.settled");
-    Ok(response)
+fn live_observation_bootstrap(
+    request: &Value,
+    correlation: &str,
+    mismatch_manifest: bool,
+) -> Result<Value, String> {
+    let manifest = if mismatch_manifest {
+        "foreign-content"
+    } else {
+        MANIFEST
+    };
+    let definition = request
+        .get("selector")
+        .and_then(|selector| selector.get("definition_ref"))
+        .or_else(|| request.get("definition_ref"))
+        .cloned()
+        .unwrap_or_else(|| {
+            json!({"content_manifest_id":manifest,"entity_kind":"card",
+                "namespaced_id":"ironclad:strike","variant":null})
+        });
+    let scope = request.get("scope").cloned().unwrap_or_else(|| {
+        json!({
+            "instance_id": request["instance_id"],
+            "run_id": request["run_id"],
+            "authority_epoch": request["authority_epoch"],
+            "content_manifest_id": request["content_manifest_id"],
+            "locale": request["locale"]
+        })
+    });
+    let instance = json!({
+        "instance_id": INSTANCE,
+        "run_id": scope["run_id"],
+        "epoch": 7,
+        "entity_kind": "card",
+        "entity_id": "card-17"
+    });
+    let snapshot = json!({
+        "snapshot_id": "peer-snapshot-1",
+        "instance_ref": instance,
+        "state_generation": 0
+    });
+    Ok(json!({
+        "protocol_version":"game-information-live-observation-bootstrap-v1",
+        "schema_digest":"6041a282ffda8757af4e3eb6ab551e082f136fe53138ab8ac17db9fab52765c2",
+        "provenance":{"artifact":"sts2-protocol/game-information-live-observation-bootstrap-v1",
+            "source":"schemas/game-information-live-observation-bootstrap-v1.schema.json","generator":"hand-authored"},
+        "correlation_id":correlation,"kind":"bootstrap_response",
+        "scope":{"instance_id":INSTANCE,"run_id":scope["run_id"],
+            "authority_epoch":scope["authority_epoch"],
+            "content_manifest_id":manifest,"locale":LOCALE},
+        "selector":{"definition_ref":definition,"instance_ref":null},
+        "limits":{"max_visible_entities":64,"max_item_bytes":65536,"max_message_bytes":262144},
+        "parent_observation":{"instance_ref":instance,"snapshot_ref":snapshot,"state_generation":0},
+        "visible_entities":[{"definition_ref":definition,"instance_ref":instance,"snapshot_ref":snapshot}],
+        "owner_provenance":{"native_snapshot_owner":"sts2-game-mod",
+            "content_manifest_owner":"sts2-game-mod","instance_fence_owner":"sts2-gateway",
+            "authority_epoch_owner":"sts2-harness","instance_ref_epoch_owner":"sts2-game-mod",
+            "transport_lease_epoch_role":"fence_only"},
+        "error":null
+    }))
 }

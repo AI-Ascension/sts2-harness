@@ -14,7 +14,10 @@ mod admission;
 mod mcp;
 #[path = "game_information_records.rs"]
 mod records;
-pub use mcp::{LookupMcpContext, LookupMcpPort, call_capabilities_mcp, call_lookup_mcp};
+pub use mcp::{
+    LookupMcpContext, LookupMcpPort, call_capabilities_mcp, call_live_observation_bootstrap_mcp,
+    call_lookup_mcp,
+};
 #[path = "game_information_agent.rs"]
 mod agent;
 pub use agent::{
@@ -91,7 +94,7 @@ pub struct LookupBinding {
     pub snapshot: Option<Value>,
 }
 impl LookupBinding {
-    pub(super) fn same_owner(&self, other: &Self) -> bool {
+    pub fn same_owner(&self, other: &Self) -> bool {
         self.scope == other.scope
             && self.game_profile == other.game_profile
             && self.content_manifest_id == other.content_manifest_id
@@ -116,6 +119,8 @@ pub struct LookupRecord {
     pub error: Option<LookupError>,
 }
 
+include!("game_information_bootstrap_session.rs");
+
 /// Structured data only; a reference means full retained bytes require explicit bounded reads.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LookupDelivery {
@@ -129,8 +134,10 @@ pub struct LookupSession {
     policy: MemoryPolicy,
     capabilities: Option<Value>,
     records: Vec<LookupRecord>,
+    bootstrap_records: Vec<LookupBootstrapRecord>,
     pages: BTreeMap<String, (Value, Value, usize)>,
     replay_cursor: usize,
+    bootstrap_replay_cursor: usize,
     now: String,
     expires_at: String,
 }
@@ -158,8 +165,10 @@ impl LookupSession {
             policy,
             capabilities: None,
             records: Vec::new(),
+            bootstrap_records: Vec::new(),
             pages: BTreeMap::new(),
             replay_cursor: 0,
+            bootstrap_replay_cursor: 0,
             now: now.to_owned(),
             expires_at: expires_at.to_owned(),
         })
@@ -194,13 +203,6 @@ impl LookupSession {
         self.capabilities = None;
         self.pages.clear();
         self.binding.snapshot = None;
-    }
-
-    /// Install an owner-validated current observation snapshot. Outstanding page chains cannot
-    /// survive an observation change. This method is not exposed as an agent tool.
-    pub fn observe_snapshot(&mut self, snapshot: Value) {
-        self.binding.snapshot = Some(snapshot);
-        self.pages.clear();
     }
 
     /// Executes exactly one admitted MCP read, retains complete validated bytes before delivery.

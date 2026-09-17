@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: MIT
 //! Owned duplex subprocess adapter for the additive lookup agent protocol.
-use std::process::Stdio;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
 use crate::ExoProcessConfig;
 use crate::exo_lookup_wire::{
-    EXO_LOOKUP_FRAME_BYTES, EXO_LOOKUP_WIRE, ExoLookupFrame, ExoLookupPayload,
+    EXO_LOOKUP_BOOTSTRAP_WIRE, EXO_LOOKUP_WIRE, ExoLookupFrame, ExoLookupPayload,
 };
 use crate::game_information::{
     LookupAgentInput, LookupAgentPort, LookupError, LookupFeedback, LookupTurn,
 };
+
+#[path = "exo_lookup_process_supervisor.rs"]
+mod supervisor;
 
 /// One bounded model turn with read-only tool round trips. Dropping joins the owned supervisor.
 pub struct ExoLookupProcess {
@@ -28,6 +28,8 @@ pub struct ExoLookupProcess {
     cancel: tokio::sync::watch::Sender<bool>,
     binding: Option<crate::game_information::LookupBinding>,
     byte_budget: Option<usize>,
+    bootstrap_feedback_pending: bool,
+    bootstrap_profile: bool,
 }
 
 impl ExoLookupProcess {
@@ -38,6 +40,28 @@ impl ExoLookupProcess {
         request: serde_json::Value,
         timeout: Duration,
     ) -> Result<Self, LookupError> {
+        Self::new_mode(config, request_id, turn_id, request, timeout, false)
+    }
+
+    /// Explicit bootstrap-capable provider profile. Legacy `new` stays v1.
+    pub fn new_bootstrap(
+        config: ExoProcessConfig,
+        request_id: String,
+        turn_id: String,
+        request: serde_json::Value,
+        timeout: Duration,
+    ) -> Result<Self, LookupError> {
+        Self::new_mode(config, request_id, turn_id, request, timeout, true)
+    }
+
+    fn new_mode(
+        config: ExoProcessConfig,
+        request_id: String,
+        turn_id: String,
+        request: serde_json::Value,
+        timeout: Duration,
+        bootstrap_profile: bool,
+    ) -> Result<Self, LookupError> {
         if timeout.is_zero() || timeout > Duration::from_secs(120) {
             return Err(LookupError::Bounds);
         }
@@ -47,7 +71,11 @@ impl ExoLookupProcess {
         )
         .map_err(|_| LookupError::Invalid)?;
         ExoLookupFrame {
-            wire_version: EXO_LOOKUP_WIRE.into(),
+            wire_version: if bootstrap_profile {
+                EXO_LOOKUP_BOOTSTRAP_WIRE.into()
+            } else {
+                EXO_LOOKUP_WIRE.into()
+            },
             request_id: request_id.clone(),
             turn_id: turn_id.clone(),
             sequence: 0,
@@ -69,8 +97,9 @@ impl ExoLookupProcess {
                     .build()
                     .map_err(|_| LookupError::Transport)
                     .and_then(|runtime| {
-                        runtime
-                            .block_on(supervise(config, commands, &responses, cancelled, deadline))
+                        runtime.block_on(supervisor::supervise(
+                            config, commands, &responses, cancelled, deadline,
+                        ))
                     });
                 if let Err(error) = result {
                     let _ = responses.try_send(Err(error));
@@ -89,6 +118,8 @@ impl ExoLookupProcess {
             cancel,
             binding: None,
             byte_budget: None,
+            bootstrap_feedback_pending: false,
+            bootstrap_profile,
         })
     }
 
@@ -96,13 +127,29 @@ impl ExoLookupProcess {
         if self.closed {
             return Err(LookupError::Invalid);
         }
+        let bootstrap_wire = self.bootstrap_profile
+            && matches!(&payload, ExoLookupPayload::Start { .. })
+            || matches!(&payload, ExoLookupPayload::Bootstrap { .. })
+            || (self.bootstrap_feedback_pending
+                && matches!(&payload, ExoLookupPayload::Feedback { .. }));
         let frame = ExoLookupFrame {
-            wire_version: EXO_LOOKUP_WIRE.into(),
+            wire_version: if bootstrap_wire {
+                EXO_LOOKUP_BOOTSTRAP_WIRE.into()
+            } else {
+                EXO_LOOKUP_WIRE.into()
+            },
             request_id: self.request_id.clone(),
             turn_id: self.turn_id.clone(),
             sequence: self.sequence,
             payload,
         };
+        if matches!(frame.payload, ExoLookupPayload::Bootstrap { .. }) {
+            self.bootstrap_feedback_pending = true;
+        } else if self.bootstrap_feedback_pending
+            && matches!(frame.payload, ExoLookupPayload::Feedback { .. })
+        {
+            self.bootstrap_feedback_pending = false;
+        }
         self.sender
             .as_ref()
             .ok_or(LookupError::Transport)?
@@ -122,7 +169,7 @@ impl LookupAgentPort for ExoLookupProcess {
             if self
                 .binding
                 .as_ref()
-                .is_some_and(|binding| binding != input.binding)
+                .is_some_and(|binding| !binding.same_owner(input.binding))
                 || self
                     .byte_budget
                     .is_some_and(|budget| budget != input.optional_byte_budget)
@@ -162,6 +209,12 @@ impl LookupAgentPort for ExoLookupProcess {
                 ExoLookupPayload::Query { arguments } => {
                     crate::exo_lookup_wire::query_turn(arguments, &input)
                 }
+                ExoLookupPayload::Bootstrap { arguments } => {
+                    if !self.bootstrap_profile {
+                        return Err(LookupError::Invalid);
+                    }
+                    crate::exo_lookup_wire::bootstrap_turn(arguments)
+                }
                 ExoLookupPayload::ReadRetained {
                     record_ordinal,
                     offset,
@@ -199,81 +252,4 @@ impl Drop for ExoLookupProcess {
             let _ = worker.join();
         }
     }
-}
-
-async fn supervise(
-    config: ExoProcessConfig,
-    commands: Receiver<Vec<u8>>,
-    responses: &SyncSender<Result<Vec<u8>, LookupError>>,
-    mut cancelled: tokio::sync::watch::Receiver<bool>,
-    deadline: Instant,
-) -> Result<(), LookupError> {
-    let mut command = tokio::process::Command::new(config.executable());
-    command
-        .args(config.arguments())
-        .env_clear()
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true);
-    #[cfg(target_os = "linux")]
-    command.process_group(0);
-    if let Some(cwd) = config.working_directory() {
-        command.current_dir(cwd);
-    }
-    for name in config.inherited_environment() {
-        if let Some(value) = std::env::var_os(name) {
-            command.env(name, value);
-        }
-    }
-    let mut child = command.spawn().map_err(|_| LookupError::Transport)?;
-    let mut stdin = child.stdin.take().ok_or(LookupError::Transport)?;
-    let mut stdout = child.stdout.take().ok_or(LookupError::Transport)?;
-    let result = async {
-        while let Ok(bytes) =
-            commands.recv_timeout(deadline.saturating_duration_since(Instant::now()))
-        {
-            let io = tokio::time::timeout_at(deadline.into(), async {
-                stdin
-                    .write_all(&bytes)
-                    .await
-                    .map_err(|_| LookupError::Transport)?;
-                stdin.flush().await.map_err(|_| LookupError::Transport)?;
-                let mut line = Vec::new();
-                loop {
-                    let byte = stdout.read_u8().await.map_err(|_| LookupError::Transport)?;
-                    if byte == b'\n' {
-                        return Ok(line);
-                    }
-                    if line.len() >= EXO_LOOKUP_FRAME_BYTES {
-                        return Err(LookupError::Bounds);
-                    }
-                    line.push(byte);
-                }
-            });
-            let response = tokio::select! {
-                result = io => result.map_err(|_|LookupError::Transport)??,
-                _ = cancelled.changed() => return Err(LookupError::Transport),
-            };
-            responses
-                .send(Ok(response))
-                .map_err(|_| LookupError::Transport)?;
-        }
-        Ok(())
-    }
-    .await;
-    drop(stdin);
-    // EOF lets the bridge cancel and reap its separately owned executor group.
-    tokio::time::sleep(Duration::from_millis(250)).await;
-    #[cfg(target_os = "linux")]
-    if let Some(pid) = child
-        .id()
-        .and_then(|id| i32::try_from(id).ok())
-        .and_then(rustix::process::Pid::from_raw)
-    {
-        let _ = rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
-    }
-    let _ = child.start_kill();
-    let _ = tokio::time::timeout(Duration::from_secs(1), child.wait()).await;
-    result
 }

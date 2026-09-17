@@ -22,8 +22,8 @@ jobs:
       CARGO_BUILD_JOBS: '2'
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
-      GATEWAY_REVISION: e76dcd3f5ee6a5a892c7df4cd9fbbc15ba269cac
-      MCP_REVISION: 46c04c1fec200984e0d575467f8dc5c82ef075d1
+      GATEWAY_REVISION: 20744f659c66629b4c55c6484601b93378917a6b
+      MCP_REVISION: 25268f6895408973b7cc1429aec15e1b0a51dea2
     steps:
       - name: Check out candidate harness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -68,6 +68,7 @@ jobs:
           STS2_MCP_BINARY: ${{ github.workspace }}/mcp/target/debug/sts2-mcp-server
           STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
           STS2_LIVE_EPISODE: 'true'
+          STS2_EXO_LOOKUP_BOOTSTRAP: 'true'
         run: |
           cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
             'runtime_support::runtime_v3::game_information_owner::owner_management_tests::entry_tests::runtime_entry_adopts_queries_and_replays_through_real_gateway_and_mcp_processes' \
@@ -82,6 +83,7 @@ jobs:
           STS2_MCP_BINARY: ${{ github.workspace }}/mcp/target/debug/sts2-mcp-server
           STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
           STS2_LIVE_EPISODE: 'true'
+          STS2_EXO_LOOKUP_BOOTSTRAP: 'true'
         run: |
           cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
             'runtime_support::runtime_v3::game_information_owner::owner_management_tests::entry_tests::runtime_entry_refuses_foreign_manifest_before_query_or_agent_delivery' \

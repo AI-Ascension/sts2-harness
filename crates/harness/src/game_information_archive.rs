@@ -28,6 +28,7 @@ struct Manifest {
     schema_digest: String,
     binding: LookupBinding,
     records: Vec<LookupRecord>,
+    bootstrap_records: Vec<LookupBootstrapRecord>,
 }
 
 impl LookupSession {
@@ -44,6 +45,7 @@ impl LookupSession {
             schema_digest: SCHEMA_DIGEST.to_owned(),
             binding: self.binding.clone(),
             records: self.records.clone(),
+            bootstrap_records: self.bootstrap_records.clone(),
         };
         validate_manifest(&manifest, &self.binding)?;
         let bytes = serde_json::to_vec(&manifest).map_err(|_| LookupError::Invalid)?;
@@ -54,6 +56,24 @@ impl LookupSession {
         for record in &manifest.records {
             if record.error.is_none() {
                 self.replay(record, &record.request, corpus)?;
+            }
+        }
+        for record in &manifest.bootstrap_records {
+            if record.schema != "ascension.game-information-bootstrap-record.v1"
+                || !record.binding.same_owner(&self.binding)
+                || record.operation_id.is_empty()
+                || record.operation_id.len() > 128
+                || record.response.is_none() == record.error.is_none()
+            {
+                return Err(LookupError::Divergence);
+            }
+            if let Some(response) = &record.response {
+                let request =
+                    owner_normalized_bootstrap_request(&record.request, response, &self.binding)?;
+                crate::game_information_binding::game_information_bootstrap::select_snapshot(
+                    &request, response,
+                )
+                .map_err(|_| LookupError::Divergence)?;
             }
         }
         let mut dependencies = BTreeMap::new();
@@ -124,12 +144,16 @@ impl LookupSession {
             .load_corpus()
             .map_err(|_| LookupError::MissingRetention)?;
         let mut session = Self::new(binding, policy, &corpus, now, expires_at)?;
+        // The archived native attestation is replay evidence, never a new
+        // authority grant. The current owner identity was checked above.
+        session.binding.snapshot = manifest.binding.snapshot.clone();
         for record in &manifest.records {
             if record.error.is_none() {
                 session.replay(record, &record.request, &corpus)?;
             }
         }
         session.records = manifest.records;
+        session.bootstrap_records = manifest.bootstrap_records;
         Ok((session, corpus))
     }
 }
@@ -167,11 +191,14 @@ fn validate_manifest(manifest: &Manifest, binding: &LookupBinding) -> Result<(),
     if manifest.schema != ARCHIVE_SCHEMA
         || manifest.protocol_profile != PROFILE
         || manifest.schema_digest != SCHEMA_DIGEST
-        || manifest.binding != *binding
+        || !manifest.binding.same_owner(binding)
     {
         return Err(LookupError::Divergence);
     }
     if manifest.records.is_empty() || manifest.records.len() > MAX_ARCHIVE_RECORDS {
+        return Err(LookupError::Bounds);
+    }
+    if manifest.bootstrap_records.len() > MAX_ARCHIVE_RECORDS {
         return Err(LookupError::Bounds);
     }
     let mut identities = BTreeSet::new();
@@ -214,5 +241,49 @@ fn validate_manifest(manifest: &Manifest, binding: &LookupBinding) -> Result<(),
             return Err(LookupError::MissingRetention);
         }
     }
+    for record in &manifest.bootstrap_records {
+        if record.schema != "ascension.game-information-bootstrap-record.v1"
+            || !record.binding.same_owner(binding)
+            || record.operation_id.is_empty()
+            || record.operation_id.len() > 128
+            || record.response.is_none() == record.error.is_none()
+        {
+            return Err(LookupError::Divergence);
+        }
+        if let Some(response) = &record.response {
+            let request = owner_normalized_bootstrap_request(&record.request, response, binding)?;
+            crate::game_information_binding::game_information_bootstrap::select_snapshot(
+                &request, response,
+            )
+            .map_err(|_| LookupError::Divergence)?;
+        }
+    }
     Ok(())
+}
+
+/// Rebinds only the transport-owned request fields before replay validation.
+/// The response cannot choose a different run, manifest, locale, or authority
+/// and then validate itself against those claims.
+fn owner_normalized_bootstrap_request(
+    request: &Value,
+    response: &Value,
+    binding: &LookupBinding,
+) -> Result<Value, LookupError> {
+    let scope = response["scope"]
+        .as_object()
+        .ok_or(LookupError::Divergence)?;
+    if scope["run_id"] != binding.scope.run_id
+        || scope["authority_epoch"] != binding.authority_epoch
+        || scope["content_manifest_id"] != binding.content_manifest_id
+        || scope["locale"] != binding.locale
+    {
+        return Err(LookupError::Divergence);
+    }
+    let correlation = response["correlation_id"]
+        .as_str()
+        .ok_or(LookupError::Divergence)?;
+    let mut normalized = request.clone();
+    normalized["scope"] = response["scope"].clone();
+    normalized["correlation_id"] = Value::String(correlation.to_owned());
+    Ok(normalized)
 }

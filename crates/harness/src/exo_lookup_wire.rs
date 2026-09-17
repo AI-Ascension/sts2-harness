@@ -6,6 +6,9 @@ use serde_json::{Value, json};
 use crate::game_information::{LookupAgentInput, LookupError, LookupFeedback, LookupTurn};
 
 pub const EXO_LOOKUP_WIRE: &str = "sts2.exo-lookup-wire-v1";
+/// Additive frame pin for the bootstrap-capable provider bridge. The closed
+/// terminal lookup wire above remains byte-for-byte compatible.
+pub const EXO_LOOKUP_BOOTSTRAP_WIRE: &str = "sts2.exo-lookup-wire-v2-bootstrap";
 pub const EXO_LOOKUP_FRAME_BYTES: usize = 196_608;
 pub const EXO_LOOKUP_TOOL_BYTES: usize = 16_384;
 pub const EXO_LOOKUP_FEEDBACK_BYTES: usize = 7_000;
@@ -31,6 +34,9 @@ pub enum ExoLookupPayload {
     Query {
         arguments: Value,
     },
+    Bootstrap {
+        arguments: Value,
+    },
     ReadRetained {
         record_ordinal: usize,
         offset: usize,
@@ -53,10 +59,17 @@ impl ExoLookupFrame {
         }
         let value = crate::game_information_validation::decode_strict(bytes)?;
         let frame: Self = serde_json::from_value(value).map_err(|_| LookupError::Invalid)?;
-        if frame.wire_version != EXO_LOOKUP_WIRE
-            || frame.sequence > 33
+        if !matches!(
+            frame.wire_version.as_str(),
+            EXO_LOOKUP_WIRE | EXO_LOOKUP_BOOTSTRAP_WIRE
+        ) || frame.sequence > 33
             || !valid_id(&frame.request_id)
             || !valid_id(&frame.turn_id)
+        {
+            return Err(LookupError::Invalid);
+        }
+        if matches!(frame.payload, ExoLookupPayload::Bootstrap { .. })
+            && frame.wire_version != EXO_LOOKUP_BOOTSTRAP_WIRE
         {
             return Err(LookupError::Invalid);
         }
@@ -102,6 +115,14 @@ struct QueryArguments {
     operation_id: String,
     mode: String,
     query: QueryParts,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BootstrapArguments {
+    operation_id: String,
+    definition_ref: Value,
+    instance_ref: Option<Value>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -179,6 +200,31 @@ pub(crate) fn query_turn(
     })
 }
 
+pub(crate) fn bootstrap_turn(arguments: Value) -> Result<LookupTurn, LookupError> {
+    if serde_json::to_vec(&arguments)
+        .map_err(|_| LookupError::Invalid)?
+        .len()
+        > EXO_LOOKUP_TOOL_BYTES
+    {
+        return Err(LookupError::Bounds);
+    }
+    let args: BootstrapArguments =
+        serde_json::from_value(arguments).map_err(|_| LookupError::Invalid)?;
+    if !valid_id(&args.operation_id) || args.operation_id.len() > 64 {
+        return Err(LookupError::Invalid);
+    }
+    let request = crate::game_information_binding::game_information_bootstrap::request(
+        "pending",
+        Value::Null,
+        args.definition_ref,
+        args.instance_ref,
+    );
+    Ok(LookupTurn::Bootstrap {
+        operation_id: args.operation_id,
+        request: serde_json::to_vec(&request).map_err(|_| LookupError::Invalid)?,
+    })
+}
+
 /// Compact bounded feedback survives upstream's 8,000-character tool-result wrapper.
 pub(crate) fn feedback_value(
     feedback: &LookupFeedback,
@@ -205,6 +251,20 @@ pub(crate) fn feedback_value(
                 "delivery":"retained","byte_length":delivery.record.source_bytes,
                 "source_sha256":delivery.record.source_sha256}})
             }
+        }
+        LookupFeedback::Bootstrap {
+            record_ordinal,
+            response,
+        } => {
+            let value = json!({"record_ordinal":record_ordinal,"bootstrap":response});
+            if serde_json::to_vec(&value)
+                .map_err(|_| LookupError::Invalid)?
+                .len()
+                > maximum
+            {
+                return Err(LookupError::Bounds);
+            }
+            value
         }
         LookupFeedback::Bytes {
             record_ordinal,

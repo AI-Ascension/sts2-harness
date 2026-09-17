@@ -9,6 +9,7 @@ use sts2_harness::game_information_binding::{
 };
 use serde_json::json;
 
+include!("runtime_v3_game_information_bootstrap.rs");
 include!("runtime_v3_game_information_mcp.rs");
 
 impl LookupBindingPort for RuntimeV3Port {
@@ -228,6 +229,7 @@ impl RuntimeV3Port {
                 false,
             )
         })?;
+        let previous_observation = binding.observation().cloned();
         let observation = binding
             .observe(self)
             .map(|observation| observation.state_generation);
@@ -239,6 +241,22 @@ impl RuntimeV3Port {
                 false,
             )
         })?;
+        let observation_changed = previous_observation
+            .as_ref()
+            .zip(
+            self.lookup_binding
+                .as_ref()
+                .and_then(LookupBindingSession::observation),
+        )
+        .is_some_and(|(previous, current)| {
+                previous.snapshot_id != current.snapshot_id
+                    || previous.state_generation != current.state_generation
+        });
+        if observation_changed
+            && let Some(session) = self.lookup_session.as_mut()
+        {
+            session.invalidate_live_snapshot();
+        }
         if observed_generation != generation {
             return Err(wire::port_error(
                 "catalog_reobserve",

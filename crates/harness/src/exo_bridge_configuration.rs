@@ -135,6 +135,27 @@ impl Loaded {
         value["max_model_writes"] = json!(33);
         Ok(value)
     }
+
+    /// Description for the explicitly selected additive bootstrap profile.
+    ///
+    /// The legacy lookup description remains byte-compatible and advertises
+    /// only the closed v1 query/read surface.  Callers must select this
+    /// profile explicitly before the relay accepts v2 Bootstrap frames.
+    pub fn lookup_bootstrap_description(&self) -> Result<Value, &'static str> {
+        let mut value = self.lookup_description()?;
+        value["schema"] = json!("sts2.exo-lookup-capability-v2-bootstrap");
+        value["wire_version"] = json!(crate::exo_lookup_wire::EXO_LOOKUP_BOOTSTRAP_WIRE);
+        value["profile"] = json!("bootstrap");
+        value["tools"] = json!([
+            "sts2_lookup_query",
+            "sts2_lookup_read",
+            "sts2_lookup_bootstrap"
+        ]);
+        value["tool_digest"] = json!(sha256_hex(
+            b"sts2_lookup_query\nsts2_lookup_read\nsts2_lookup_bootstrap\n"
+        ));
+        Ok(value)
+    }
     pub fn validate_route(&self, synthetic: bool) -> Result<(), &'static str> {
         if synthetic {
             let port = self
