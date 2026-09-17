@@ -15,6 +15,10 @@ use session::{
 mod context_source;
 pub(crate) use context_source::run_served_context_source_adoption;
 
+#[path = "served/cancellation.rs"]
+mod cancellation;
+pub(crate) use cancellation::run_served_cancel_after_accepted_barrier;
+
 type RestartScenarioResult = (Output, Option<Output>, Option<StoredOperation>);
 
 pub(crate) fn run_served_policy_gate(

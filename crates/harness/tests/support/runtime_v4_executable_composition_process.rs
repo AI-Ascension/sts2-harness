@@ -197,6 +197,7 @@ pub(crate) fn run_scenario(
             path.join(match mode {
                 FixtureMode::Success => "execution-success.sqlite3",
                 FixtureMode::UnknownOperation => "execution-unknown.sqlite3",
+                FixtureMode::AcceptedBarrierThenSettled => "execution-accepted-barrier.sqlite3",
                 FixtureMode::ForeignExpertState => "execution-foreign.sqlite3",
                 FixtureMode::MalformedExpertState => "execution-malformed.sqlite3",
             })
@@ -259,8 +260,8 @@ pub(crate) fn run_scenario(
 #[path = "runtime_v4_executable_composition_process/served.rs"]
 mod served;
 pub(crate) use served::{
-    paths, run_served_context_source_adoption, run_served_policy_gate,
-    run_served_restart_refuses_duplicate_effect,
+    paths, run_served_cancel_after_accepted_barrier, run_served_context_source_adoption,
+    run_served_policy_gate, run_served_restart_refuses_duplicate_effect,
 };
 
 #[path = "runtime_v4_executable_composition_process/assertions.rs"]
