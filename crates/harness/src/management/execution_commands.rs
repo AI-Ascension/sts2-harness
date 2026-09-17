@@ -2,7 +2,8 @@
 
 use super::super::context_owner::{ContextBindingRequest, compose_context_owner_binding};
 use super::super::contract::{
-    CommandKind, CommandOutcome, ErrorClass, PendingOperation, WorkflowRunStatus,
+    CommandKind, CommandOutcome, ErrorClass, LIVE_EXECUTION_FAILED, PendingOperation,
+    WorkflowRunStatus,
 };
 use super::super::service::{CommandApplication, CommandContext, ManagementError};
 use crate::workflow::{RuntimeFault, RuntimeStatus};
@@ -182,7 +183,7 @@ pub(super) fn apply_command(
                             run,
                             status,
                             CommandOutcome::Applied,
-                            "live_execution_failed",
+                            LIVE_EXECUTION_FAILED,
                             revision,
                         ));
                     }

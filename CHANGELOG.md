@@ -7,6 +7,21 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Stop reporting a **failed live command as settled**. A command that faults before executing
+  anything (`live_execution_failed`) is still `CommandOutcome::Applied` — the command was processed
+  and its response vocabulary is unchanged — but its event is no longer classified `settled`. The
+  run fails, the cursor stays on the same node, and no provider call is consumed, so a `settled`
+  classification presented a failure as forward progress to consumers that treat a settled step as
+  completed. Classification is now derived from the outcome *and* the reason code in one shared
+  place (`CommandOutcome::classification`) for both the memory and SQLite event writers, replacing
+  two copies of the mapping. A new `CommandOutcome` variant was rejected because it would extend the
+  closed `ascension.management/v1` outcome set without the version negotiation a published consumer
+  change requires; the event classification enum already publishes `rejected`
+  (`ascension.workflow-event/v1`). Compatibility: `safety-correction` to an unreleased candidate —
+  one failure path now emits `rejected` instead of `settled`, and no field, route, durable record,
+  or published schema changes. See
+  [ADR 0047](docs/decisions/0047-failed-command-event-classification.md). Refs #260.
+
 - Wire the per-invocation **context membership boundary** into the production render path so a
   policy actually changes published application bytes. `ContextMembershipSelector` is the
   owner-configured half (disposition, overrides, pin inheritance, wider scope, model view) and
