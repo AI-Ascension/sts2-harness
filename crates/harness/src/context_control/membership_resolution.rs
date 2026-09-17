@@ -9,9 +9,8 @@
 
 use super::{
     ContextMembershipError, ContextMembershipPolicy, ContextMembershipScope, EffectiveMembership,
-    MAX_CONTEXT_ITEMS, MembershipCheckContext, MembershipContinuity, MembershipDecision,
-    MembershipDispatchView, MembershipDisposition, MembershipReasonCode, PreparedMembership,
-    SHARED_MEMBERSHIP_KINDS,
+    MAX_CONTEXT_ITEMS, MembershipCheckContext, MembershipDecision, MembershipDispatchView,
+    MembershipDisposition, MembershipReasonCode, PreparedMembership, SHARED_MEMBERSHIP_KINDS,
 };
 use crate::context_control::types::{ContextDraft, ContextItem, ContextItemRef};
 use crate::sha256_hex;
@@ -288,9 +287,14 @@ fn enforce_dispatch_gates(
             });
         }
     }
-    if !policy.model_view.observation_visible
-        && check.continuity == MembershipContinuity::OpaquePersistent
-    {
+    // Fail closed. Effective absence is not executable for any continuity today: the provider
+    // request schema (`sts2.exo-decision-v1`) makes `observation` a required, state-bound field and
+    // its validation requires the observation to carry the same `state_id`/`generation` and to be
+    // the source of `legal_action_ids`, so a request that omits the observation cannot be built,
+    // let alone validated. An admitted `observation_visible: false` would therefore ship a
+    // `dispatch_view` that says the observation is hidden while the prepared bytes still contain
+    // it. Refusing here keeps the selector truthful until a versioned omission wireform exists.
+    if !policy.model_view.observation_visible {
         return Err(ContextMembershipError::EffectiveAbsenceUnsupported);
     }
     let draft_keys: BTreeSet<(&str, u64)> = draft

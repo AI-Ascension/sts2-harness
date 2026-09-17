@@ -273,7 +273,7 @@ fn protected_and_overflow_gates_fail_before_dispatch() {
     assert_eq!(exchanges.load(Ordering::SeqCst), 0);
 }
 
-// AC4: effective absence is refused for provider history a selector cannot erase.
+// AC4: effective absence is refused, and refused *before* dispatch.
 #[test]
 fn opaque_provider_history_rejects_effective_absence() {
     let (document, _) = history_document();
@@ -301,6 +301,45 @@ fn opaque_provider_history_rejects_effective_absence() {
         error.message
     );
     assert_eq!(exchanges.load(Ordering::SeqCst), 0);
+}
+
+// AC4, fail-closed counterpart: `observation_visible: false` must never reach a provider whose
+// prepared bytes still carry the observation. The provider request schema makes `observation` a
+// required, state-bound field, so no continuity can execute effective absence today; a stateless
+// selector must be refused exactly like an opaque one, before any exchange, rather than being
+// admitted while the served bytes contradict `dispatch_view.observation_visible`.
+#[test]
+fn stateless_provider_rejects_unexecutable_effective_absence() {
+    let (document, _) = history_document();
+    let hidden = ContextMembershipSelector {
+        model_view: ContextModelView {
+            observation_visible: false,
+        },
+        ..ContextMembershipSelector::include()
+    };
+    // `membership_source` already binds stateless continuity, which previously admitted the policy.
+    let (source, config) = membership_source(document, "invocation-1", Some(hidden));
+    assert_eq!(source.continuity, MembershipContinuity::Stateless);
+    let (mut session, _, exchanges, requests) = render_test_session(
+        source,
+        config,
+        ContextRenderLimits::harness_maxima(),
+        Default::default(),
+        None,
+    );
+    let error = session
+        .decide_for(&input(), "decision.live.v1", "context.live.v1")
+        .expect_err("effective absence is not executable for any continuity today");
+    assert!(
+        error.message.contains("effective_absence_unsupported"),
+        "the refusal must name the absence gate: {}",
+        error.message
+    );
+    assert_eq!(exchanges.load(Ordering::SeqCst), 0);
+    assert!(
+        requests.lock().expect("recorded requests").is_empty(),
+        "a refused invocation must not reach the provider"
+    );
 }
 
 // The selector digest travels with the source identity, so a selector that changes while a request

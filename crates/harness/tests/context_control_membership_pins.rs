@@ -93,7 +93,7 @@ fn unpin_affects_only_future_input() {
     assert!(!narrowed.effective.pins.contains(&"history-1".to_owned()));
 }
 
-// 5. Effective absence of the observation is refused for a continuity that cannot execute it.
+// 5. Effective absence of the observation is refused for every continuity.
 #[test]
 fn opaque_history_rejects_effective_absence() {
     let (registry, references) = registry_history(&["alpha"]);
@@ -112,11 +112,14 @@ fn opaque_history_rejects_effective_absence() {
         "a selector cannot erase provider history"
     );
 
-    // The same policy is admissible only when continuity can actually execute it.
-    let prepared =
-        prevalidate_and_bind(&hidden, &draft, &registry, NOW, &check(), MAX_CONTEXT_ITEMS)
-            .expect("stateless continuity can execute effective absence");
-    assert!(!prepared.dispatch_view.observation_visible);
+    // Fail closed: effective absence is not executable for stateless continuity either, because the
+    // provider request schema makes `observation` a required, state-bound field. Admitting the
+    // selector while the observation still ships would make the dispatch view untrue.
+    assert_eq!(
+        prevalidate_and_bind(&hidden, &draft, &registry, NOW, &check(), MAX_CONTEXT_ITEMS),
+        Err(ContextMembershipError::EffectiveAbsenceUnsupported),
+        "effective absence is not executable without a versioned omission wireform"
+    );
 }
 
 // 6. The policy digest is stable for one policy and changes for any field.

@@ -332,7 +332,8 @@ pub enum ContextMembershipError {
     MandatoryPinOverflow { bound: usize },
     /// The effective set exceeds the bound this invocation may carry.
     TooManyItems { bound: usize },
-    /// Effective absence was requested for a continuity that cannot execute it.
+    /// Effective absence was requested, but no continuity can execute it without a versioned
+    /// omission wireform.
     EffectiveAbsenceUnsupported,
     /// The revalidated policy is not the policy that prepared the bound set.
     PolicyChanged,
@@ -366,8 +367,9 @@ impl Display for ContextMembershipError {
             Self::TooManyItems { bound } => {
                 write!(formatter, "effective context exceeds the bound of {bound}")
             }
-            Self::EffectiveAbsenceUnsupported => formatter
-                .write_str("effective absence is not executable for this provider continuity"),
+            Self::EffectiveAbsenceUnsupported => formatter.write_str(
+                "effective absence is not executable without a versioned omission wireform",
+            ),
             Self::PolicyChanged => {
                 formatter.write_str("membership policy changed since the set was prepared")
             }
