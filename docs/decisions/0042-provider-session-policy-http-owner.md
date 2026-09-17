@@ -83,6 +83,6 @@ these routes.
 - `serve-workflow` attaches the same trusted policy owner to its command port and pre-provider
   admission boundary, so live decisions revalidate the adopted active policy. Managed context source
   publication and rendering use a separate owner contract described in
-  [ADR 0043](0043-served-managed-context-source.md).
+  [ADR 0044](0044-served-managed-context-source.md).
 - Provider execution, native compatibility and Console/Studio journeys remain unverified until
   their respective production callers and acceptance evidence are complete.

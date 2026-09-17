@@ -3,7 +3,7 @@
 ## Status
 
 Accepted for scoped implementation of Harness #95. Production served rendering and source adoption
-are covered by [ADR 0043](0043-served-managed-context-source.md). Console/Studio and native provider
+are covered by [ADR 0044](0044-served-managed-context-source.md). Console/Studio and native provider
 acceptance remain separate.
 
 ## Context
@@ -59,7 +59,7 @@ and the harness maxima are neither raised nor lowered.
   so a refusal at the bound leaves the plan, boundary, receipts and operation ledger unchanged.
 - The authenticated saved-policy owner API and bounded encrypted history are specified in
   [ADR 0042](0042-provider-session-policy-http-owner.md). Served managed-source publication,
-  adoption and rendering are specified in [ADR 0043](0043-served-managed-context-source.md).
+  adoption and rendering are specified in [ADR 0044](0044-served-managed-context-source.md).
 - The served `serve-workflow` composition consumes selected event and render limits at the
   production owner and provider boundaries. The separate library workflow ports retain their
   existing compatibility defaults unless an enforcing owner is attached.

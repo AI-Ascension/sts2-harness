@@ -146,7 +146,7 @@ fn render_fixture() -> (ContextRenderSource, ExoConfig) {
         generation: 1,
         observation_sha256: "a".repeat(64),
         catalog_sha256: "b".repeat(64),
-        adapter_revision: "b06869ab789dee3f80ca474b5fa89dbe47ccb859".to_owned(),
+        adapter_revision: crate::EXO_SOURCE_REVISION.to_owned(),
         model_revision: "test-model".to_owned(),
         configuration_sha256: "c".repeat(64),
         output_schema_sha256: "d".repeat(64),
@@ -183,13 +183,8 @@ fn render_fixture() -> (ContextRenderSource, ExoConfig) {
         valid_until: 100,
         identity,
     };
-    let config = ExoConfig::new(
-        "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
-        64 * 1024,
-        1024,
-        1_000,
-    )
-    .expect("Exo config");
+    let config =
+        ExoConfig::new(crate::EXO_SOURCE_REVISION, 64 * 1024, 1024, 1_000).expect("Exo config");
     (source, config)
 }
 
