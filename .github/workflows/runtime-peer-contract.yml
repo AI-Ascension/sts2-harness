@@ -131,3 +131,104 @@ jobs:
           if test -d "$RUNNER_TEMP/runtime-peer-contract"; then
             find "$RUNNER_TEMP/runtime-peer-contract" -type f -maxdepth 1 -print -exec sed -n '1,160p' {} \;
           fi
+
+  runtime-game-information-entry:
+    name: Game-information entry against negotiated runtime peers
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      # These are full immutable revisions of the reviewed negotiated peers.
+      GATEWAY_REVISION: d76dcd3f5ee6a5a892c7df4cd9fbbc15ba269cac
+      MCP_REVISION: 35cb9d7fee545fbf07559f95e619963698f3ff0d
+    steps:
+      - name: Check out candidate harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: harness
+          persist-credentials: false
+
+      - name: Check out exact Gateway peer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AI-Ascension/sts2-gateway
+          ref: ${{ env.GATEWAY_REVISION }}
+          path: gateway
+          persist-credentials: false
+
+      - name: Check out exact MCP peer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: AI-Ascension/sts2-mcp-server
+          ref: ${{ env.MCP_REVISION }}
+          path: mcp
+          persist-credentials: false
+
+      - name: Verify immutable peer revisions
+        run: |
+          test "$(git -C gateway rev-parse HEAD)" = "$GATEWAY_REVISION"
+          test "$(git -C mcp rev-parse HEAD)" = "$MCP_REVISION"
+
+      - name: Build candidate and negotiated runtime peers
+        run: |
+          cargo build --locked -j 2 --manifest-path harness/Cargo.toml --bin sts2-harness-runtime
+          cargo build --locked -j 2 --manifest-path gateway/Cargo.toml --bin sts2-gateway-runtime
+          cargo build --locked -j 2 --manifest-path mcp/Cargo.toml --bin sts2-mcp-server
+
+      - name: Prepare game-information entry evidence directory
+        run: mkdir -p "$RUNNER_TEMP/runtime-game-information-entry"
+
+      - name: Exercise actual game-information entry and replay
+        working-directory: harness
+        env:
+          STS2_GATEWAY_BINARY: ${{ github.workspace }}/gateway/target/debug/sts2-gateway-runtime
+          STS2_MCP_BINARY: ${{ github.workspace }}/mcp/target/debug/sts2-mcp-server
+          STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
+          STS2_LIVE_EPISODE: 'true'
+        run: |
+          cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
+            'runtime_support::runtime_v3::game_information_owner::owner_management_tests::entry_tests::runtime_entry_adopts_queries_and_replays_through_real_gateway_and_mcp_processes' \
+            -- --ignored --exact --nocapture \
+            2>&1 | tee "$RUNNER_TEMP/runtime-game-information-entry/positive.log"
+
+      - name: Exercise foreign-manifest refusal
+        if: always()
+        working-directory: harness
+        env:
+          STS2_GATEWAY_BINARY: ${{ github.workspace }}/gateway/target/debug/sts2-gateway-runtime
+          STS2_MCP_BINARY: ${{ github.workspace }}/mcp/target/debug/sts2-mcp-server
+          STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
+          STS2_LIVE_EPISODE: 'true'
+        run: |
+          cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
+            'runtime_support::runtime_v3::game_information_owner::owner_management_tests::entry_tests::runtime_entry_refuses_foreign_manifest_before_query_or_agent_delivery' \
+            -- --ignored --exact --nocapture \
+            2>&1 | tee "$RUNNER_TEMP/runtime-game-information-entry/negative.log"
+
+      - name: Record peer and fixture-log checksums
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/runtime-game-information-entry"
+          : > "$RUNNER_TEMP/runtime-game-information-entry/SHA256SUMS"
+          for file in \
+            gateway/target/debug/sts2-gateway-runtime \
+            mcp/target/debug/sts2-mcp-server \
+            harness/target/debug/sts2-harness-runtime \
+            "$RUNNER_TEMP/runtime-game-information-entry/positive.log" \
+            "$RUNNER_TEMP/runtime-game-information-entry/negative.log"
+          do
+            if test -f "$file"; then
+              sha256sum "$file" >> "$RUNNER_TEMP/runtime-game-information-entry/SHA256SUMS"
+            fi
+          done
+          cat "$RUNNER_TEMP/runtime-game-information-entry/SHA256SUMS"
+
+      - name: Upload game-information entry evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runtime-game-information-entry-evidence
+          path: ${{ runner.temp }}/runtime-game-information-entry
+          if-no-files-found: error
