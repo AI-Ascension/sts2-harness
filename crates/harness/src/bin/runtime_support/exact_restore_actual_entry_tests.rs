@@ -49,8 +49,8 @@ for line in sys.stdin:
     request = json.loads(line)
     response = {{
         "wire_version": "sts2.exo-bridge-wire-v2",
-        "request_id": request.get("request_id"),
-        "turn_id": request.get("turn_id"),
+        "request_id": "exact-restore-request",
+        "turn_id": "exact-restore-turn",
         "outcome": "decision",
         "decision": {{
             "decision": "action",
@@ -142,6 +142,8 @@ for line in sys.stdin:
         .env("STS2_EXO_BRIDGE_BINARY", &bridge)
         .env("STS2_EXO_BRIDGE_ARGS_JSON", "[]")
         .env("STS2_EXO_INHERITED_ENV_JSON", "[]")
+        .env("STS2_EXO_REQUEST_ID", "exact-restore-request")
+        .env("STS2_EXO_TURN_ID", "exact-restore-turn")
         .env("STS2_OBJECTIVE", "exact restore integration")
         .env("STS2_MAX_STEPS", "1");
     let output = process_support::run_child_with_timeout(command, Duration::from_secs(20))
