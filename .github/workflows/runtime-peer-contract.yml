@@ -140,7 +140,8 @@ jobs:
       CARGO_BUILD_JOBS: '2'
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
-      # These are full immutable revisions of the reviewed negotiated peers.
+      # These are full immutable revisions of the coordinated negotiated peers.
+      # Update MCP_REVISION to the reviewed follow-up SHA before PR freeze.
       GATEWAY_REVISION: e76dcd3f5ee6a5a892c7df4cd9fbbc15ba269cac
       MCP_REVISION: 35cb9d7fee545fbf07559f95e619963698f3ff0d
     steps:
