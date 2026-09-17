@@ -1052,6 +1052,7 @@ dependencies = [
 name = "sts2-exact-restore-conformance"
 version = "0.0.0"
 dependencies = [
+ "rustix",
  "serde_json",
  "sha2",
  "uuid",

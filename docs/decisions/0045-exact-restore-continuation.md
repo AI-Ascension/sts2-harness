@@ -63,11 +63,13 @@ The deterministic unit matrix covers neutral MCP schema/correlation rejection,
 native refusal, unknown-effect retention, receipt revision tampering, and
 paginated claim history. The actual entrypoint test is ignored by default
 because it requires pinned Gateway, MCP, and test-only Mod executables. The
-operator launcher
-`coordination/exact116-peer-launcher-20260917.py` performs Gateway bootstrap,
-host-fence, allocation, owner installation, then runs positive, refused, and
-unknown cases against those immutable binaries. It retains child logs,
-synthetic effect counters, and the positive runtime action/settlement ledger.
-The CI runtime-peer lane must pass the exact Harness quality gates before
-publishing a peer revision; an environment that omits a required peer binary
-is a configuration failure, not a skipped exact-restore result.
+checked-in `.github/workflows/exact-restore-conformance.yml` resolves and
+verifies immutable Gateway, MCP, Mod, and Exo revisions, builds those peers
+and Harness, then runs the Rust
+`tools/exact-restore-conformance` launcher for positive, refused, and unknown
+outcomes. It uploads retained sanitized child logs, synthetic effect counters,
+the positive runtime action/settlement ledger, source revisions, and binary
+hashes on every run. The positive outcome remains blocked until the pinned
+Gateway typed translation is available; that is recorded as a conformance
+failure rather than treated as a pass. An environment that omits a required
+peer binary is a configuration failure, not a skipped exact-restore result.

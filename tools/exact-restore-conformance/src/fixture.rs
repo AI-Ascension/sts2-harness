@@ -6,6 +6,7 @@ mod support;
 mod transport;
 pub(crate) use support::Paths;
 pub(crate) use support::run_case;
+pub(crate) use support::write_binary_provenance;
 use transport::{
     base64, bootstrap, free_port, hex, host_fence, required_string, required_u64, run_harness,
 };
@@ -49,7 +50,7 @@ fn run_case_inner(paths: &Paths, outcome: &str, root: &Path) -> Result<(), Strin
     let mod_address = format!("127.0.0.1:{}", free_port()?);
     let exact_store = root.join("exact-store");
     let recovery_store = root.join("recovery-store.sqlite");
-    fs::create_dir_all(&exact_store).map_err(|error| format!("create exact store: {error}"))?;
+    support::create_private_store(&exact_store)?;
     let owner_path = root.join("owner-initial.json");
     let owner = json!({
         "fence": {

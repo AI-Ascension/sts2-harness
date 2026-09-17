@@ -114,6 +114,11 @@ pub(super) fn run_harness(
         .arg("runtime_support::exact_restore::tests::actual_production_entrypoint_exact_restore_matrix_case")
         .arg("--").arg("--ignored").arg("--exact")
         .stdout(Stdio::from(output)).stderr(Stdio::from(error));
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
     let mut child = command
         .spawn()
         .map_err(|error| format!("spawn harness test: {error}"))?;
@@ -123,6 +128,13 @@ pub(super) fn run_harness(
             return Ok(status.code().unwrap_or(1));
         }
         if Instant::now() >= deadline {
+            #[cfg(unix)]
+            if let Ok(pid) = i32::try_from(child.id())
+                .map_err(|_| ())
+                .and_then(|id| rustix::process::Pid::from_raw(id).ok_or(()))
+            {
+                let _ = rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
+            }
             let _ = child.kill();
             let _ = child.wait();
             return Err(String::from(

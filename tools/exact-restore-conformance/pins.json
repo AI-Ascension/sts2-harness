@@ -1,11 +1,11 @@
 {
   "schema": "sts2.exact-restore-conformance-pins.v1",
   "gateway_repository": "AI-Ascension/sts2-gateway",
-  "gateway_revision": "e76dcd3f5ee6a5a892c7df4cd9fbbc15ba269cac",
+  "gateway_revision": "85f6b71c47d52fbff259cfe77be13c6a80c92b58",
   "mcp_repository": "AI-Ascension/sts2-mcp-server",
   "mcp_revision": "46c04c1fec200984e0d575467f8dc5c82ef075d1",
   "mod_repository": "AI-Ascension/sts2-game-mod",
-  "mod_revision": "0743615fbddef41ac625c82b19b4596f5603a949",
+  "mod_revision": "1787acaeba4d9cd076e16fd6a3421bd78d2bc915",
   "status": "candidate",
-  "note": "Update gateway_revision after the host-correlation hotfix is merged; the workflow verifies each checkout HEAD against these pins."
+  "note": "The positive outcome remains blocked until the pinned Gateway typed translation is available; refusal and unknown outcomes remain required."
 }

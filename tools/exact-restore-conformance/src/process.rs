@@ -29,6 +29,11 @@ impl PeerProcess {
             .stdin(Stdio::null())
             .stdout(Stdio::from(output))
             .stderr(Stdio::from(error));
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
         let child = command
             .spawn()
             .map_err(|error| format!("spawn {}: {error}", executable.display()))?;
@@ -60,6 +65,13 @@ impl PeerProcess {
 impl Drop for PeerProcess {
     fn drop(&mut self) {
         if self.child.try_wait().ok().flatten().is_none() {
+            #[cfg(unix)]
+            if let Ok(pid) = i32::try_from(self.child.id())
+                .map_err(|_| ())
+                .and_then(|id| rustix::process::Pid::from_raw(id).ok_or(()))
+            {
+                let _ = rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
+            }
             let _ = self.child.kill();
         }
         let _ = self.child.wait();
