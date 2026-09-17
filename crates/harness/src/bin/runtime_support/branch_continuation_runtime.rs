@@ -125,7 +125,15 @@ impl SelectedBranchContinuation {
                 )
             }
         };
-        let operation_id = operation_id(selector, admission.branch.metadata_revision);
+        let operation_id = if resuming
+            && matches!(
+                admission.strategy,
+                BranchContinuationStrategyPlan::ExactRestore { .. }
+            ) {
+            resume_exact_operation_id(&store, selector)?
+        } else {
+            operation_id(selector, admission.branch.metadata_revision)
+        };
         let metadata_revision = admission.branch.metadata_revision;
         Ok(Self {
             store,
@@ -207,18 +215,29 @@ impl SelectedBranchContinuation {
             .as_u64()
             .ok_or_else(|| String::from("persisted exact-restore receipt omits branch revision"))?;
         let claim_operation = operation_suffix(&self.operation_id, "claim-restore");
-        let claim_event = self
-            .store
-            .events(&self.admission.branch.experiment_id, 0, 256)
-            .map_err(|error| format!("cannot read exact-restore claim history: {error}"))?
-            .events
-            .into_iter()
-            .find(|event| {
+        let mut cursor = 0_u64;
+        let mut claim_event = None;
+        for _ in 0..4096 {
+            let page = self
+                .store
+                .events(&self.admission.branch.experiment_id, cursor, 256)
+                .map_err(|error| format!("cannot read exact-restore claim history: {error}"))?;
+            let page_empty = page.events.is_empty();
+            claim_event = page.events.into_iter().find(|event| {
                 event.branch_id == self.admission.branch.branch_id
                     && event.operation_id == claim_operation
                     && event.status == DurableBranchStatus::Restoring
-            })
-            .ok_or_else(|| String::from("exact-restore claim history is missing"))?;
+            });
+            if claim_event.is_some() || page_empty || page.next_after_sequence <= cursor {
+                break;
+            }
+            cursor = page.next_after_sequence;
+            if page.newest_sequence.is_some_and(|newest| cursor >= newest) {
+                break;
+            }
+        }
+        let claim_event =
+            claim_event.ok_or_else(|| String::from("exact-restore claim history is missing"))?;
         if claim_event.metadata_revision != receipt_revision {
             return Err(String::from(
                 "persisted exact-restore receipt branch revision does not match its claim history",
@@ -247,12 +266,49 @@ include!("branch_continuation_runtime_binding.rs");
 
 include!("branch_continuation_runtime_artifact_path.rs");
 
-fn operation_id(selector: &BranchContinuationSelector, _revision: u64) -> String {
-    let identity = format!("{}\0{}", selector.experiment_id(), selector.branch_id());
+fn operation_id(selector: &BranchContinuationSelector, revision: u64) -> String {
+    let identity = format!(
+        "{}\0{}\0{revision}",
+        selector.experiment_id(),
+        selector.branch_id()
+    );
     format!(
         "{CONTINUATION_OPERATION_PREFIX}:{}",
         sts2_harness::sha256_hex(identity.as_bytes())
     )
+}
+
+fn resume_exact_operation_id(
+    store: &SqliteBranchStore,
+    selector: &BranchContinuationSelector,
+) -> Result<String, String> {
+    let suffix = ":claim-restore";
+    let mut cursor = 0_u64;
+    for _ in 0..4096 {
+        let page = store
+            .events(selector.experiment_id(), cursor, 256)
+            .map_err(|error| format!("cannot read exact-restore operation history: {error}"))?;
+        for event in &page.events {
+            if event.branch_id == selector.branch_id()
+                && event
+                    .operation_id
+                    .starts_with(CONTINUATION_OPERATION_PREFIX)
+                && event.operation_id.ends_with(suffix)
+            {
+                return Ok(event.operation_id.trim_end_matches(suffix).to_owned());
+            }
+        }
+        if page.events.is_empty() || page.next_after_sequence <= cursor {
+            break;
+        }
+        cursor = page.next_after_sequence;
+        if page.newest_sequence.is_some_and(|newest| cursor >= newest) {
+            break;
+        }
+    }
+    Err(String::from(
+        "running exact branch has no persisted exact-restore operation identity",
+    ))
 }
 
 fn operation_suffix(base: &str, suffix: &str) -> String {

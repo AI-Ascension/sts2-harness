@@ -152,12 +152,52 @@ fn exact_restore_resume_reuses_verified_receipt_without_reclaiming_restore()
     let ready = store
         .get(EXPERIMENT, "branch:selected")?
         .expect("selected branch");
-    let running = store.transition(
-        "operation:publish-exact-running-for-resume-test",
+    for index in 0..62 {
+        let branch_id = format!("branch:history-noise-{index}");
+        let blob = artifacts.stage_blob(format!("noise-{index}").as_bytes())?;
+        let noise = store.create(
+            &format!("operation:create-{branch_id}"),
+            draft(
+                &branch_id,
+                Some(ROOT),
+                BranchStrategy::PrefixReplay,
+                vec![sts2_harness::BranchArtifactReference {
+                    artifact_id: blob.as_str().to_owned(),
+                    role: BranchArtifactRole::ReplayPrefix,
+                }],
+            ),
+        )?;
+        let noise = store.transition(
+            &format!("operation:replay-{branch_id}"),
+            EXPERIMENT,
+            &branch_id,
+            noise.metadata_revision,
+            DurableBranchStatus::Replaying,
+        )?;
+        let noise = store.set_assurance(
+            &format!("operation:assure-{branch_id}"),
+            EXPERIMENT,
+            &branch_id,
+            noise.metadata_revision,
+            BranchAssurance::PrefixReplayBoundary,
+        )?;
+        store.transition(
+            &format!("operation:ready-{branch_id}"),
+            EXPERIMENT,
+            &branch_id,
+            noise.metadata_revision,
+            DurableBranchStatus::Ready,
+        )?;
+    }
+    let selector =
+        BranchContinuationSelector::new(EXPERIMENT, "branch:selected").expect("selector");
+    let operation_id = super::operation_id(&selector, ready.metadata_revision);
+    let restoring = store.transition(
+        &format!("{operation_id}:claim-restore"),
         EXPERIMENT,
         "branch:selected",
         ready.metadata_revision,
-        DurableBranchStatus::Running,
+        DurableBranchStatus::Restoring,
     )?;
     let receipt_blob = artifacts.stage_blob(
         br#"{"operation_id":"receipt-operation","state":"RESTORE_VERIFIED"}"#,
@@ -166,11 +206,32 @@ fn exact_restore_resume_reuses_verified_receipt_without_reclaiming_restore()
         "operation:attach-exact-receipt-for-resume-test",
         EXPERIMENT,
         "branch:selected",
-        running.metadata_revision,
+        restoring.metadata_revision,
         sts2_harness::BranchArtifactReference {
             artifact_id: receipt_blob.as_str().to_owned(),
             role: BranchArtifactRole::ContextSnapshot,
         },
+    )?;
+    let assured = store.set_assurance(
+        &format!("{operation_id}:restore-assurance"),
+        EXPERIMENT,
+        "branch:selected",
+        restoring.metadata_revision + 1,
+        BranchAssurance::ExactRestoreReceipt,
+    )?;
+    let ready = store.transition(
+        &format!("{operation_id}:restore-ready"),
+        EXPERIMENT,
+        "branch:selected",
+        assured.metadata_revision,
+        DurableBranchStatus::Ready,
+    )?;
+    let running = store.transition(
+        &format!("{operation_id}:restore-running"),
+        EXPERIMENT,
+        "branch:selected",
+        ready.metadata_revision,
+        DurableBranchStatus::Running,
     )?;
     let claim = store.prepare_continuation_claim(EXPERIMENT, "branch:selected")?;
     let owner = serde_json::json!({
@@ -198,8 +259,6 @@ fn exact_restore_resume_reuses_verified_receipt_without_reclaiming_restore()
         BranchContinuationClaimState::BoundaryVerified,
     )?;
 
-    let selector =
-        BranchContinuationSelector::new(EXPERIMENT, "branch:selected").expect("selector");
     let mut resumed =
         SelectedBranchContinuation::load_for_resume(&selector, &branch_store, &artifact_path)?;
     assert!(resumed.is_resuming());
@@ -227,7 +286,7 @@ fn exact_restore_resume_reuses_verified_receipt_without_reclaiming_restore()
             .get(EXPERIMENT, "branch:selected")?
             .expect("selected branch remains")
             .metadata_revision,
-        running.metadata_revision + 1
+        running.metadata_revision
     );
     Ok(())
 }
