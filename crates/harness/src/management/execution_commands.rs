@@ -79,6 +79,15 @@ pub(super) fn apply_command(
                     revision,
                 ));
             }
+            if run
+                .state
+                .pending
+                .as_ref()
+                .is_some_and(|pending| pending.resolved.is_some())
+            {
+                run.state.pending = None;
+                run.state.session.action_completed(true);
+            }
             let cleanup_error = cleanup_session(run, true).err();
             run.cancelled = true;
             if let Some(error) = reconcile_error {
