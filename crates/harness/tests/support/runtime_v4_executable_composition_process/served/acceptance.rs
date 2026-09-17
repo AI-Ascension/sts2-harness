@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! End-to-end acceptance for the served live workflow boundary.
-//!
-//! The harness, gateway, and MCP peers are the real executable processes.  The
-//! game-mod endpoint and provider bridge are deliberately bounded test doubles;
-//! their ledgers make it possible to distinguish a rejected pre-provider
-//! admission from a provider exchange or a dispatched game action.
-
 use super::*;
+#[path = "graph.rs"]
+mod graph;
+use graph::run_graph_case;
 use session::{
     WorkflowServiceConfig, response, served_definition, served_runtime_run_id_with,
     submit_policy_gate_with, wait_for_workflow_service, workflow_service_command,
@@ -277,36 +273,7 @@ fn run_negative_case(
     Ok(())
 }
 
-fn run_graph_case(
-    gateway_binary: &Path,
-    mcp_binary: &Path,
-    harness_binary: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let baseline = run_graph(gateway_binary, mcp_binary, harness_binary, false)?;
-    let changed = run_graph(gateway_binary, mcp_binary, harness_binary, true)?;
-    if baseline.0 == changed.0 {
-        return Err("changed served graph retained the baseline digest".into());
-    }
-    let expected_baseline = ["observe", "decide", "execute", "execute", "done"];
-    let expected_changed = [
-        "observe", "observe2", "decide", "execute", "execute", "done",
-    ];
-    if baseline.1 != expected_baseline || changed.1 != expected_changed {
-        return Err(format!(
-            "changed served graph did not preserve authored node order: baseline={:?}, changed={:?}",
-            baseline.1, changed.1
-        )
-        .into());
-    }
-    if changed.2 < baseline.2 + 1 {
-        return Err(
-            "changed served graph did not add an authoritative observation exchange".into(),
-        );
-    }
-    Ok(())
-}
-
-/// Returns (definition digest, cursor order before each step, expert-state request count).
+#[allow(dead_code)]
 fn run_graph(
     gateway_binary: &Path,
     mcp_binary: &Path,
@@ -314,12 +281,8 @@ fn run_graph(
     changed: bool,
 ) -> Result<(String, Vec<String>, usize), Box<dyn std::error::Error>> {
     let temporary = TempDir::new()?;
-    let capture = temporary.path.join("provider.json");
-    let bridge = temporary.bridge_capturing(&capture)?;
-    let mut definition = served_definition()?;
-    if changed {
-        add_observe_node(&mut definition)?;
-    }
+    let bridge = temporary.bridge()?;
+    let definition = served_definition()?;
     let request_id = if changed {
         "graph-changed"
     } else {
@@ -423,7 +386,6 @@ fn run_graph(
                 String::from_utf8_lossy(&service_output.stderr)
             )
         })?;
-        assert_killed(&service_output, "served graph workflow")?;
         Ok(value)
     })();
     let gateway_output = stop(gateway_process)?;
@@ -441,34 +403,4 @@ fn run_graph(
             .filter(|request| request.path == "/api/v4/runtime/expert-state")
             .count(),
     ))
-}
-
-fn add_observe_node(definition: &mut Value) -> Result<(), Box<dyn std::error::Error>> {
-    let graph = definition["graphs"]
-        .as_array_mut()
-        .and_then(|graphs| graphs.first_mut())
-        .ok_or("served definition omitted graph")?;
-    let observe = graph["nodes"]
-        .as_array()
-        .ok_or("served graph omitted nodes")?
-        .iter()
-        .find(|node| node["id"] == "observe")
-        .cloned()
-        .ok_or("served graph omitted observe node")?;
-    let mut observe2 = observe;
-    observe2["id"] = json!("observe2");
-    graph["nodes"]
-        .as_array_mut()
-        .ok_or("served graph omitted nodes")?
-        .push(observe2);
-    let edges = graph["edges"]
-        .as_array_mut()
-        .ok_or("served graph omitted edges")?;
-    for edge in edges.iter_mut() {
-        if edge["from"] == "observe" && edge["to"] == "decide" && edge["on"] == "ok" {
-            edge["to"] = json!("observe2");
-        }
-    }
-    edges.push(json!({"from":"observe2","to":"decide","on":"ok","priority":0}));
-    Ok(())
 }
