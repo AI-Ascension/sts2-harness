@@ -26,9 +26,21 @@ pub(crate) fn verify_receipt<'a>(
         "sha256:{}",
         sts2_harness::sha256_hex(&canonical_bytes(&unsigned).map_err(uncertain)?)
     );
+    let mut expected_branch = branch_payload(selected);
+    // Attaching the retained receipt and publishing Ready/Running advance the
+    // branch metadata CAS revision after the host receipt was created. The
+    // revision is a storage concurrency token, not branch identity, so resume
+    // compares it only after normalizing that mutable field.
+    if let (Some(expected), Some(receipt_branch)) = (
+        expected_branch.as_object_mut(),
+        receipt["branch"].as_object(),
+    ) && let Some(revision) = receipt_branch.get("metadata_revision")
+    {
+        expected.insert("metadata_revision".to_owned(), revision.clone());
+    }
     if supplied != actual
         || receipt["operation_id"] != operation_id
-        || receipt["branch"] != branch_payload(selected)
+        || receipt["branch"] != expected_branch
         || receipt["destination_owner"] != *expected_owner
         || receipt["checkpoint_id"] != closure.checkpoint_id
         || receipt["exact_state_digest"] != closure.exact_state_digest
