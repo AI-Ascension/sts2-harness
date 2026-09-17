@@ -114,9 +114,10 @@ harness-issued control authority.
 recorded `ascension.context-control.owner-receipt.v2` for a retained `pause`/`commit`/`resume`
 command. This is `additive-compatible`: the port method has a failing default, no existing owner,
 binding, receipt or digest changes, and nothing is re-issued, re-applied or inferred. Recovery
-requires the current association to advertise `receipt_recovery` and the receipt to match the exact
-owner/invocation/binding/command identity; unsupported, unrecorded, mismatched and unavailable
-outcomes stay distinct.
+requires scoped read authorization and an owner that can return persisted historical evidence; the
+receipt must match the exact owner/invocation/binding/command identity. It does not require or
+recreate a current association, and it grants no new control authority. Unsupported, unrecorded,
+mismatched and unavailable outcomes stay distinct.
 
 ## Recorded context-binding HTTP projection
 
