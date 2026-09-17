@@ -208,8 +208,21 @@ impl SelectedBranchContinuation {
         let bytes = artifacts
             .read_blob(&digest)
             .map_err(|error| format!("cannot read persisted exact-restore receipt: {error}"))?;
-        self.verify_persisted_exact_receipt_revision(&bytes)?;
-        super::exact_restore::operation::verify_persisted_receipt(&bytes, self, closure)
+        self.verify_exact_restore_receipt_bytes(&bytes, closure)
+    }
+
+    /// Verifies receipt bytes against the durable claim, owner fence, and admitted closure.
+    ///
+    /// This is also used by the resume-boundary tests with tampered in-memory bytes. Keeping
+    /// the revision and full receipt checks together prevents a caller from validating only the
+    /// mutable branch CAS token while skipping the destination identity and closure binding.
+    pub(crate) fn verify_exact_restore_receipt_bytes(
+        &self,
+        bytes: &[u8],
+        closure: &super::exact_restore::VerifiedClosure,
+    ) -> Result<(), String> {
+        self.verify_persisted_exact_receipt_revision(bytes)?;
+        super::exact_restore::operation::verify_persisted_receipt(bytes, self, closure)
     }
 
     pub(crate) fn verify_persisted_exact_receipt_revision(

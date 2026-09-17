@@ -4,7 +4,14 @@ impl SelectedBranchContinuation {
     pub(crate) fn prepare_owner_claim(
         &mut self,
     ) -> Result<sts2_harness::BranchContinuationClaim, String> {
-        let claim = match self.owner_claim.clone() {
+        let claim = match self
+            .store
+            .continuation_claim(
+                &self.admission.branch.experiment_id,
+                &self.admission.branch.branch_id,
+            )
+            .map_err(|error| format!("cannot read selected branch owner-claim intent: {error}"))?
+        {
             Some(claim) => claim,
             None => self
                 .store
@@ -16,6 +23,15 @@ impl SelectedBranchContinuation {
                     format!("cannot persist selected branch owner-claim intent: {error}")
                 })?,
         };
+        if self
+            .owner_claim
+            .as_ref()
+            .is_some_and(|prior| prior.operation_id != claim.operation_id)
+        {
+            return Err(String::from(
+                "selected branch owner operation changed after preparation",
+            ));
+        }
         self.owner_claim = Some(claim.clone());
         Ok(claim)
     }

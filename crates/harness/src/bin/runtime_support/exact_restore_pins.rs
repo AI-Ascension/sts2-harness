@@ -10,6 +10,17 @@ pub(crate) struct ProfilePins {
 }
 
 impl ProfilePins {
+    #[cfg(test)]
+    pub(crate) fn from_values(
+        compatibility_digest: String,
+        coverage_contract_digest: String,
+    ) -> Self {
+        Self {
+            compatibility_digest,
+            coverage_contract_digest,
+        }
+    }
+
     pub(crate) fn from_environment() -> Result<Self, String> {
         let compatibility_digest = required_pin(COMPATIBILITY_ENV)?;
         let coverage_contract_digest = required_pin(COVERAGE_ENV)?;

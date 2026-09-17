@@ -128,16 +128,16 @@ fn fixture_workspace() -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(path)
 }
 
-struct PublishedFixture {
-    branch_path: PathBuf,
-    artifact_path: PathBuf,
-    checkpoint: String,
-    payload: String,
-    compatibility: String,
-    coverage: String,
+pub(crate) struct PublishedFixture {
+    pub(crate) branch_path: PathBuf,
+    pub(crate) artifact_path: PathBuf,
+    pub(crate) checkpoint: String,
+    pub(crate) payload: String,
+    pub(crate) compatibility: String,
+    pub(crate) coverage: String,
 }
 
-fn publish_fixture(root: &Path) -> Result<PublishedFixture, Box<dyn std::error::Error>> {
+pub(crate) fn publish_fixture(root: &Path) -> Result<PublishedFixture, Box<dyn std::error::Error>> {
     let artifact_path = root.join("artifacts");
     let branch_path = root.join("branches.sqlite3");
     let store = ExactArtifactStore::new(&artifact_path);

@@ -69,3 +69,6 @@ pub(super) fn branch_payload(
 #[cfg(test)]
 #[path = "exact_restore_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+pub(crate) use tests::publish_fixture;

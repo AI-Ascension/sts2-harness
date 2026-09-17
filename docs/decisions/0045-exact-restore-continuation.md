@@ -28,10 +28,15 @@ stand in for it.
 Native capability refusal is a pre-effect failure. The branch is marked
 `failed`, no chunk or gameplay effect is accepted, and the next startup does
 not retry that operation automatically. A transport or commit response that
-could have crossed the host-effect boundary is `unknown`; the branch remains
-`unknown` until the same operation is reconciled by `lookup`. A denied or
-stale-owner lookup cannot turn that uncertainty into `failed`, and the Harness
-never blindly commits or creates a replacement operation.
+could have crossed the host-effect boundary is `unknown`. Startup selection
+refuses `unknown` (and an in-flight `restoring` claim) and requires an
+explicit owner reconciliation procedure; it does not perform an automatic
+lookup on startup. During an initial restore attempt, an ambiguous commit
+response may use a same-operation, read-only `lookup`; if uncertainty remains,
+later reconciliation requires owner action and is not an automatic startup
+retry. A denied or stale-owner lookup cannot turn the prior uncertainty into
+`failed`, and the Harness never blindly commits or creates a replacement
+operation.
 
 ## Restart and continuation
 

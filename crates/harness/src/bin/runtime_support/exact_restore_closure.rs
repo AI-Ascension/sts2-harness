@@ -207,6 +207,16 @@ impl VerifiedClosure {
             "aggregate_closure_bytes": self.aggregate_closure_bytes,
         }))
     }
+
+    #[cfg(test)]
+    pub(crate) fn begin_payload_for_test(
+        &self,
+        selected: &SelectedBranchContinuation,
+        operation_id: &str,
+        expected_owner: Value,
+    ) -> Result<Value, String> {
+        self.begin_payload(selected, operation_id, expected_owner)
+    }
 }
 
 fn verify_checkpoint(
