@@ -41,7 +41,7 @@ impl MemoryQuery {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RetrievalResult {
     pub source: MemoryRef,
@@ -67,7 +67,7 @@ pub struct ExclusionReason {
     pub reason: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RetrievalResponse {
     pub schema: String,
@@ -150,7 +150,7 @@ pub enum SourceReconstruction {
     Unavailable,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryProposal {
     pub schema: String,
