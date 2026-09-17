@@ -99,6 +99,7 @@ fn config_for_script(script: &Path, response: &str) -> RuntimeConfig {
         mcp_session_id: String::from("mcp-session-1"),
         lease_id: String::from("lease-1"),
         lease_epoch: 1,
+        episode_profile: false,
         run_id: String::from("run-1"),
         episode_id: String::from("episode-1"),
         trajectory_id: String::from("trajectory-1"),

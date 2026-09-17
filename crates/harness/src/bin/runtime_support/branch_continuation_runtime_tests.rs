@@ -289,6 +289,7 @@ fn selected_child_run_identities_are_bound_before_runtime_admission() -> Result<
         session_id: String::from("session-1"),
         lease_id: String::from("lease-1"),
         lease_epoch: 1,
+        episode_profile: false,
         mcp_session_id: String::from("mcp-session-1"),
         run_id: String::from("run:parent"),
         episode_id: String::from("episode:parent"),

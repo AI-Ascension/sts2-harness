@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use super::mcp::{apply_episode_profile, confirm_episode_profile_witness};
+
 impl RuntimeV3Port {
     fn call_tool_with_text(
         &mut self,
@@ -239,15 +241,25 @@ impl RuntimeV3Port {
         if !self.allocated || self.released {
             return Ok(());
         }
+        // The repeated-episode profile may only be armed by a release that
+        // completes an episode; every cleanup path keeps the gateway default.
+        let completes_episode = self.episode_completed;
+        let mut headers = identity_headers(&self.config, &release_correlation());
+        apply_episode_profile(&mut headers, self.config.episode_profile && completes_episode);
         let response = self.gateway.request(
             "POST",
             &format!("/v1/instances/{}/release", self.config.instance_id),
             &Value::Null,
-            identity_headers(&self.config, &release_correlation()),
+            headers,
         )?;
         if response.get("status").and_then(Value::as_str) != Some("released") {
             return Err(String::from("gateway release did not return released status"));
         }
+        confirm_episode_profile_witness(
+            &response,
+            self.config.episode_profile && completes_episode,
+            self.config.lease_epoch,
+        )?;
         self.released = true;
         Ok(())
     }

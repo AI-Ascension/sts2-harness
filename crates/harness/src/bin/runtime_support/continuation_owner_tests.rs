@@ -271,6 +271,7 @@ fn setup() -> Result<
         session_id: String::from("gateway-session"),
         lease_id: LEASE.to_owned(),
         lease_epoch: 8,
+        episode_profile: false,
         mcp_session_id: String::from("mcp-session"),
         run_id: String::from("run:selected"),
         episode_id: String::from("episode:selected"),

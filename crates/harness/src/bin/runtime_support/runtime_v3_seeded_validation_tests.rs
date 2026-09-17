@@ -24,6 +24,7 @@ fn config() -> RuntimeConfig {
         session_id: String::from("session-1"),
         lease_id: String::from("lease-1"),
         lease_epoch: 1,
+        episode_profile: false,
         mcp_session_id: String::from("mcp-session-1"),
         run_id: String::from("run-1"),
         episode_id: String::from("episode-1"),

@@ -7,6 +7,22 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Consume the gateway's negotiated **repeated-episode lease profile** so a harness run can
+  complete two episodes against one gateway deployment. The gateway permanently revokes its local
+  lease context on a successful `release`, so a second episode could never be admitted
+  (AI-Ascension/sts2-gateway#67). A run that opts in with `STS2_EPISODE_PROFILE=true` sends
+  `x-sts2-episode-profile: repeated-episode-lease-v1` on the release that completes an episode and
+  requires the gateway's exact witness back (`profile`, `capability`, `schema_digest`,
+  `released_epoch`); a missing or mismatched witness fails the run instead of silently degrading to
+  the single-episode default. The profile is armed **only** for a completed episode: the episode
+  runner marks completion solely on a successful terminal outcome, so every failure, cleanup, and
+  restart path keeps the gateway's fail-closed permanent revocation. The witness is required only
+  when this build negotiated it, so a run that does not opt in sends no header and its release body
+  stays byte-identical. Compatibility: opt-in and additive — no field, route, durable record, or
+  published schema changes, and the profile is off by default. See
+  [gateway ADR 0033](https://github.com/AI-Ascension/sts2-gateway/blob/main/docs/decisions/0033-repeated-episode-lease-profile.md).
+  Refs AI-Ascension/sts2-gateway#67.
+
 - Stop reporting a **failed live command as settled**. A command that faults before executing
   anything (`live_execution_failed`) is still `CommandOutcome::Applied` — the command was processed
   and its response vocabulary is unchanged — but its event is no longer classified `settled`. The

@@ -20,6 +20,7 @@ mod lookup_binding_tests {
             session_id: "session-1".into(),
             lease_id: "lease-1".into(),
             lease_epoch: 1,
+            episode_profile: false,
             mcp_session_id: "mcp-session-1".into(),
             run_id: "run-42".into(),
             episode_id: "episode-7".into(),
