@@ -57,6 +57,9 @@ pub(crate) fn run_served_context_receipt_recovery(
         workflow_store: &workflow_store,
         runtime_run_id: &runtime_run_id,
         context_owner_config: Some(&context_owner_config),
+        instance_id: INSTANCE_ID,
+        lease_id: LEASE_ID,
+        lease_epoch: LEASE_EPOCH,
     };
     let mut gateway = gateway(gateway_binary, gateway_address, mod_server.address)?;
     let result: Result<(), Box<dyn std::error::Error>> = (|| {
@@ -389,18 +392,6 @@ fn assert_not_recorded(
         return Err(format!(
             "{label} was incorrectly accepted: HTTP {} {body}",
             response.status
-        )
-        .into());
-    }
-    Ok(())
-}
-
-fn assert_killed(output: &Output, process: &str) -> Result<(), Box<dyn std::error::Error>> {
-    if output.status.code() != Some(0) && !output.status.signal().is_some_and(|signal| signal == 9)
-    {
-        return Err(format!(
-            "{process} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
         )
         .into());
     }

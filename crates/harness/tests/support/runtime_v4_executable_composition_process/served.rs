@@ -19,6 +19,10 @@ pub(crate) use context_source::run_served_context_source_adoption;
 mod cancellation;
 pub(crate) use cancellation::run_served_cancel_after_accepted_barrier;
 
+#[path = "served/acceptance.rs"]
+mod acceptance;
+pub(crate) use acceptance::run_served_peer_acceptance;
+
 #[path = "served/receipt_recovery.rs"]
 mod receipt_recovery;
 pub(crate) use receipt_recovery::run_served_context_receipt_recovery;
@@ -74,6 +78,9 @@ fn run_served_policy_gate_inner(
         workflow_store: &workflow_store,
         runtime_run_id: &runtime_run_id,
         context_owner_config: None,
+        instance_id: INSTANCE_ID,
+        lease_id: LEASE_ID,
+        lease_epoch: LEASE_EPOCH,
     };
     let mut gateway = gateway(gateway_binary, gateway_address, mod_server.address)?;
     let result: Result<RestartScenarioResult, Box<dyn std::error::Error>> = (|| {

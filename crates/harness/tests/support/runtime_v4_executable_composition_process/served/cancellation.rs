@@ -45,6 +45,9 @@ pub(crate) fn run_served_cancel_after_accepted_barrier(
         workflow_store: &workflow_store,
         runtime_run_id: &runtime_run_id,
         context_owner_config: None,
+        instance_id: INSTANCE_ID,
+        lease_id: LEASE_ID,
+        lease_epoch: LEASE_EPOCH,
     };
     let mut gateway_process = gateway(gateway_binary, gateway_address, mod_server.address)?;
     let result: Result<(), Box<dyn std::error::Error>> = (|| {
