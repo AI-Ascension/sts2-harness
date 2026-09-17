@@ -14,7 +14,7 @@ use sts2_harness::management::{
 };
 use sts2_harness::{
     ActionIdentity, Decision, DecisionInput, EpisodeLegalAction, EpisodeLegalActionSet,
-    EpisodeObservation, TransitionReceipt, WaitSample,
+    EpisodeObservation, TransitionReceipt, WaitOutcome, WaitSample,
 };
 
 #[path = "support/live_workflow.rs"]
@@ -32,6 +32,7 @@ use support::*;
 /// described.
 struct SessionGate {
     target: String,
+    consumed: Mutex<bool>,
     entered: Mutex<bool>,
     entered_cv: Condvar,
     release: Mutex<bool>,
@@ -42,6 +43,7 @@ impl SessionGate {
     fn new(target: &str) -> Self {
         Self {
             target: target.to_owned(),
+            consumed: Mutex::new(false),
             entered: Mutex::new(false),
             entered_cv: Condvar::new(),
             release: Mutex::new(false),
@@ -53,6 +55,12 @@ impl SessionGate {
         if operation != self.target {
             return;
         }
+        let mut consumed = self.consumed.lock().expect("gate consumed");
+        if *consumed {
+            return;
+        }
+        *consumed = true;
+        drop(consumed);
         let mut entered = self.entered.lock().expect("gate entered");
         *entered = true;
         self.entered_cv.notify_all();
@@ -120,6 +128,7 @@ fn command_with_timeout(
 struct GatedSession {
     inner: Box<dyn LiveWorkflowSession>,
     gate: Arc<SessionGate>,
+    timeout_after_wait_gate: bool,
 }
 
 impl LiveWorkflowSession for GatedSession {
@@ -176,6 +185,10 @@ impl LiveWorkflowSession for GatedSession {
         operation_id: &str,
         wait_for_millis: u32,
     ) -> Result<WaitSample, ManagementError> {
+        self.gate.block_if("wait");
+        if self.timeout_after_wait_gate {
+            return Ok(WaitSample::new(WaitOutcome::Timeout, None));
+        }
         self.inner
             .wait_for_transition(operation_id, wait_for_millis)
     }
@@ -211,6 +224,7 @@ impl LiveWorkflowSession for GatedSession {
 
 fn gated_service(
     gate: &Arc<SessionGate>,
+    timeout_after_wait_gate: bool,
 ) -> (
     Arc<sts2_harness::management::ManagementService>,
     Arc<FakeFactory>,
@@ -219,6 +233,7 @@ fn gated_service(
     let factory = Arc::new(GatedFactory {
         inner: Arc::clone(&inner),
         gate: Arc::clone(gate),
+        timeout_after_wait_gate,
     });
     let service = live_service(
         Arc::new(MemoryWorkflowStore::new()),
@@ -232,7 +247,7 @@ fn gated_service(
 #[test]
 fn concurrent_command_at_the_same_revision_is_deferred_and_applied_once() {
     let gate = Arc::new(SessionGate::new("observe"));
-    let (service, factory) = gated_service(&gate);
+    let (service, factory) = gated_service(&gate, false);
     let actor = actor();
     let submitted = service
         .submit_run(
@@ -289,9 +304,67 @@ fn concurrent_command_at_the_same_revision_is_deferred_and_applied_once() {
 }
 
 #[test]
+fn a_busy_live_run_does_not_block_another_runs_command() {
+    let gate = Arc::new(SessionGate::new("observe"));
+    let (service, factory) = gated_service(&gate, false);
+    let actor = actor();
+    let first = service
+        .submit_run(
+            &actor,
+            request("request-live-independent-first", definition(false)),
+        )
+        .expect("submit first");
+    let second = service
+        .submit_run(
+            &actor,
+            request("request-live-independent-second", definition(false)),
+        )
+        .expect("submit second");
+
+    let stepping = {
+        let service = Arc::clone(&service);
+        let actor = actor.clone();
+        let run_id = first.workflow_run_id.clone();
+        thread::spawn(move || {
+            service.command(&actor, command(&run_id, "first-step", 1, CommandKind::Step))
+        })
+    };
+    let _release = GateRelease(Arc::clone(&gate));
+    assert!(
+        gate.wait_entered(Duration::from_secs(10)),
+        "first worker did not reach the gated observe port"
+    );
+
+    // The registry is not held through the first run's port call. The second
+    // run can acquire only its own state and complete its independent step.
+    let independent = command_with_timeout(
+        &service,
+        &actor,
+        command(&second.workflow_run_id, "second-step", 1, CommandKind::Step),
+        Duration::from_secs(10),
+    )
+    .expect("independent command");
+    assert_eq!(independent.outcome, CommandOutcome::Applied);
+    assert_eq!(independent.run_revision, 2);
+
+    gate.release();
+    let blocked = stepping.join().expect("join").expect("first command");
+    assert_eq!(blocked.outcome, CommandOutcome::Applied);
+    assert_eq!(blocked.run_revision, 2);
+    assert_eq!(
+        factory
+            .entries()
+            .iter()
+            .filter(|entry| entry.as_str() == "observe")
+            .count(),
+        2
+    );
+}
+
+#[test]
 fn cancellation_during_an_in_flight_step_is_deferred_then_dominates() {
     let gate = Arc::new(SessionGate::new("observe"));
-    let (service, factory) = gated_service(&gate);
+    let (service, factory) = gated_service(&gate, false);
     let actor = actor();
     let submitted = service
         .submit_run(
@@ -392,5 +465,97 @@ fn cancellation_during_an_in_flight_step_is_deferred_then_dominates() {
             .filter(|entry| entry.as_str() == "observe")
             .count(),
         1
+    );
+}
+
+#[test]
+fn cancel_after_an_accepted_barrier_timeout_reconciles_the_same_operation() {
+    let gate = Arc::new(SessionGate::new("wait"));
+    let (service, factory) = gated_service(&gate, true);
+    let actor = actor();
+    let submitted = service
+        .submit_run(
+            &actor,
+            request("request-live-cancel-accepted-barrier", definition(false)),
+        )
+        .expect("submit");
+    let run_id = submitted.workflow_run_id;
+    for (id, revision) in [("observe", 1), ("decide", 2)] {
+        service
+            .command(&actor, command(&run_id, id, revision, CommandKind::Step))
+            .expect("prepare action");
+    }
+
+    let stepping = {
+        let service = Arc::clone(&service);
+        let actor = actor.clone();
+        let run_id = run_id.clone();
+        thread::spawn(move || {
+            service.command(
+                &actor,
+                command(&run_id, "accepted-action", 3, CommandKind::Step),
+            )
+        })
+    };
+    let _release = GateRelease(Arc::clone(&gate));
+    assert!(
+        gate.wait_entered(Duration::from_secs(10)),
+        "accepted action did not reach its settlement barrier"
+    );
+
+    // A concurrent cancellation remains a durable-command fence response; it
+    // cannot run cleanup against a session whose accepted action is still at
+    // the barrier.
+    let deferred = command_with_timeout(
+        &service,
+        &actor,
+        command(&run_id, "cancel-during-barrier", 3, CommandKind::Cancel),
+        Duration::from_secs(10),
+    )
+    .expect("cancel while accepted action is in flight");
+    assert_eq!(deferred.outcome, CommandOutcome::Pending);
+    assert_eq!(deferred.run_revision, 3);
+
+    gate.release();
+    let pending = stepping.join().expect("join").expect("accepted action");
+    assert_eq!(pending.outcome, CommandOutcome::Pending);
+    assert_eq!(pending.run_revision, 4);
+    let pending_operation = service
+        .status(&actor, &run_id)
+        .expect("status")
+        .run
+        .pending_operation
+        .expect("accepted operation retained for reconciliation");
+    assert_eq!(
+        pending_operation.classification,
+        sts2_harness::management::PendingOperationState::Accepted
+    );
+
+    // A cancellation at the refreshed revision reconciles the retained
+    // operation identity before it stops and releases the live session.
+    let cancelled = service
+        .command(
+            &actor,
+            command(&run_id, "cancel-after-barrier", 4, CommandKind::Cancel),
+        )
+        .expect("cancel after reconciliation");
+    assert_eq!(cancelled.outcome, CommandOutcome::Applied);
+    assert_eq!(cancelled.run_revision, 5);
+    assert_eq!(
+        service.status(&actor, &run_id).expect("status").run.status,
+        WorkflowRunStatus::Cancelled
+    );
+    assert_eq!(
+        factory.entries(),
+        [
+            "launch",
+            "observe",
+            "legal_actions",
+            "decide",
+            "dispatch",
+            "reconcile",
+            "stop",
+            "release"
+        ]
     );
 }

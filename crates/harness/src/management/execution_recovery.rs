@@ -47,8 +47,10 @@ pub(super) fn abort(
     run_id: &str,
 ) -> Result<(), ManagementError> {
     let mut runs = owner.runs.lock().map_err(lock_error)?;
-    let Some(mut run) = runs.remove(run_id) else {
+    let Some(run) = runs.remove(run_id) else {
         return Ok(());
     };
+    drop(runs);
+    let mut run = run.lock().map_err(lock_error)?;
     cleanup_session(&mut run, true)
 }

@@ -69,7 +69,10 @@ pub(super) struct PendingDispatch {
 pub struct LiveWorkflowExecutionPort {
     factory: Arc<dyn LiveWorkflowSessionFactory>,
     options: LiveWorkflowOptions,
-    runs: Mutex<BTreeMap<String, LiveRun>>,
+    /// The map only owns run lookup and admission/removal. Each run owns its
+    /// own session lock, so a slow boundary call for one run never stalls a
+    /// command, recovery check, or cleanup for another run.
+    runs: Mutex<BTreeMap<String, Arc<Mutex<LiveRun>>>>,
 }
 
 impl LiveWorkflowExecutionPort {
@@ -85,8 +88,14 @@ impl LiveWorkflowExecutionPort {
         })
     }
 
-    pub(super) fn runs(&self) -> &Mutex<BTreeMap<String, LiveRun>> {
-        &self.runs
+    pub(super) fn run(&self, run_id: &str) -> Result<Arc<Mutex<LiveRun>>, ManagementError> {
+        let runs = self.runs.lock().map_err(lock_error)?;
+        runs.get(run_id).cloned().ok_or_else(|| {
+            ManagementError::unresolved(
+                "live_runtime_after_restart",
+                "live session is unavailable after service restart",
+            )
+        })
     }
 }
 
@@ -291,7 +300,7 @@ impl LiveWorkflowExecutionPort {
         let mut runs = self.runs.lock().map_err(lock_error)?;
         match runs.entry(run_id) {
             Entry::Vacant(entry) => {
-                entry.insert(run);
+                entry.insert(Arc::new(Mutex::new(run)));
             }
             Entry::Occupied(_) => {
                 let mut run = run;

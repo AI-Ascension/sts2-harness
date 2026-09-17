@@ -16,16 +16,14 @@ pub(super) fn apply_command(
     context: CommandContext,
     record_intent: Option<&dyn Fn(PendingOperation) -> Result<(), ManagementError>>,
 ) -> Result<CommandApplication, ManagementError> {
-    let mut runs = owner
-        .runs()
+    // Only hold the run's own lock across session calls. The registry lock is
+    // released after lookup so a bounded wait or reconciliation in this run
+    // cannot block unrelated live workflows.
+    let run_handle = owner.run(&context.request.run_id)?;
+    let mut run = run_handle
         .lock()
         .map_err(super::execution_records::lock_error)?;
-    let run = runs.get_mut(&context.request.run_id).ok_or_else(|| {
-        ManagementError::unresolved(
-            "live_runtime_after_restart",
-            "live session is unavailable after service restart",
-        )
-    })?;
+    let run = &mut *run;
     if run.definition_digest != context.snapshot.definition_digest {
         return Err(ManagementError::conflict(
             "live_identity_mismatch",

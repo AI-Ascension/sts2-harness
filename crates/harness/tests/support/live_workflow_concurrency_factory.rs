@@ -7,6 +7,7 @@ use super::*;
 pub(super) struct GatedFactory {
     pub(super) inner: Arc<FakeFactory>,
     pub(super) gate: Arc<SessionGate>,
+    pub(super) timeout_after_wait_gate: bool,
 }
 
 impl LiveWorkflowSessionFactory for GatedFactory {
@@ -34,6 +35,7 @@ impl LiveWorkflowSessionFactory for GatedFactory {
         Ok(Box::new(GatedSession {
             inner,
             gate: Arc::clone(&self.gate),
+            timeout_after_wait_gate: self.timeout_after_wait_gate,
         }))
     }
 
@@ -55,6 +57,7 @@ impl LiveWorkflowSessionFactory for GatedFactory {
         Ok(Box::new(GatedSession {
             inner,
             gate: Arc::clone(&self.gate),
+            timeout_after_wait_gate: self.timeout_after_wait_gate,
         }))
     }
 }
