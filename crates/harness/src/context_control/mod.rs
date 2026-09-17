@@ -8,6 +8,15 @@
 
 mod membership;
 mod membership_render;
+mod model_view;
+mod model_view_catalog;
+mod model_view_elements;
+mod model_view_error;
+mod model_view_fields;
+mod model_view_path;
+mod model_view_projection;
+mod model_view_sentinels;
+mod model_view_walk;
 mod render;
 mod state;
 mod store;
@@ -30,6 +39,24 @@ pub use membership::{
 pub use membership_render::{
     MembershipRenderError, MembershipRenderRequest, membership_check_from_boundary,
     membership_scope_from_boundary, render_with_membership,
+};
+pub use model_view::{
+    ALL_ITEMS_MARKER, MODEL_VIEW_PROJECTION_SCHEMA, ModelViewProjection, ModelViewSelectorRegistry,
+    PathSegment, ProjectedField, ReadStep, ViewFieldPath,
+};
+pub use model_view_catalog::{
+    ElementKind, FIELD_CATALOG, FieldPresence, FieldProtection, FieldShape, FieldSpec, FieldType,
+    MAX_MODEL_VIEW_FIELDS, MAX_MODEL_VIEW_PATH_SEGMENTS, MAX_PROJECTED_COLLECTION,
+    ModelFieldMetadata, ViewContext, catalog_metadata, declared_names, spec,
+};
+pub use model_view_error::ModelViewProjectionError;
+pub use model_view_path::display_path;
+pub use model_view_projection::{
+    AdmittedSourceObservation, MAX_MODEL_VIEW_BYTES, ModelViewApproval, PreparedModelView,
+    project_model_view,
+};
+pub use model_view_sentinels::{
+    catalog_paths, excluded_sentinel_paths, fair_play_verdict, reject_excluded_sentinels,
 };
 pub use render::{
     ContextRenderError, ContextRenderLimits, ContextRenderer, ManagedRenderInput, PreparedContext,
