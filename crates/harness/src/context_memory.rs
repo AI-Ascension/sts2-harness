@@ -44,6 +44,7 @@ mod context_memory_impl {
     include!("context_memory/concurrency.rs");
     include!("context_memory/security.rs");
     include!("context_memory/tests.rs");
+    include!("context_memory/resume_tests.rs");
 }
 
 pub use context_memory_impl::*;

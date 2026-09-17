@@ -5,7 +5,7 @@
 
 pub const MEMORY_RESUME_SCHEMA: &str = "ascension.context-memory.resume.v1";
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PreparedResume {
     pub schema: String,
@@ -21,12 +21,41 @@ pub struct PreparedResume {
     consumed: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+// Debug is allowlisted. `rendered_bytes` is the one-shot prepared input this module exists to
+// consume; it is deliberately non-public, and `#[serde(skip)]` keeps it out of serialized output,
+// but serde attributes do not apply to Debug, so the derive published it. Format only the fixed
+// schema, the revocation epoch and the shape; the prepared bytes, the content digest and the
+// caller-controlled identifiers stay out of both ordinary and alternate formatting.
+impl std::fmt::Debug for PreparedResume {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PreparedResume")
+            .field("schema", &self.schema)
+            .field("revocation_epoch", &self.revocation_epoch)
+            .field("rendered_byte_count", &self.rendered_bytes.len())
+            .field("consumed", &self.consumed)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub struct ResumeSubmission {
     pub approval_id: String,
     pub phase2_revision_id: String,
     pub prepared_manifest_sha256: String,
     pub rendered_bytes: Vec<u8>,
+}
+
+// `ResumeSubmission` hands the same prepared bytes back to the single Phase 2 caller. Keep the
+// bytes and the caller-controlled identifiers out of both ordinary and alternate formatting, and
+// finish non-exhaustively so a later sensitive field cannot silently re-enter the format path.
+impl std::fmt::Debug for ResumeSubmission {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ResumeSubmission")
+            .field("rendered_byte_count", &self.rendered_bytes.len())
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -35,9 +64,20 @@ pub enum ResumeOutcome {
     AlreadySubmitted,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
 pub struct FirstResumeLedger {
     prepared: BTreeMap<String, PreparedResume>,
+}
+
+// The ledger derives Debug over a map of `PreparedResume`, so the derived recursion formatted
+// every held prepared input. Report only the count instead of recursing into the entries.
+impl std::fmt::Debug for FirstResumeLedger {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("FirstResumeLedger")
+            .field("prepared_count", &self.prepared.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl FirstResumeLedger {
