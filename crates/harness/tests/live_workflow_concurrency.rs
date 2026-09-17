@@ -283,6 +283,7 @@ fn concurrent_command_at_the_same_revision_is_deferred_and_applied_once() {
     .expect("concurrent command");
     assert_eq!(deferred.outcome, CommandOutcome::Pending);
     assert_eq!(deferred.run_revision, 1);
+    assert_eq!(deferred.sequence, None);
 
     gate.release();
     let applied = racing.join().expect("join").expect("first command");
@@ -403,6 +404,7 @@ fn cancellation_during_an_in_flight_step_is_deferred_then_dominates() {
     .expect("cancel while in flight");
     assert_eq!(deferred.outcome, CommandOutcome::Pending);
     assert_eq!(deferred.run_revision, 1);
+    assert_eq!(deferred.sequence, None);
 
     gate.release();
     let stepped = stepping.join().expect("join").expect("step");
@@ -515,6 +517,7 @@ fn cancel_after_an_accepted_barrier_timeout_reconciles_the_same_operation() {
     .expect("cancel while accepted action is in flight");
     assert_eq!(deferred.outcome, CommandOutcome::Pending);
     assert_eq!(deferred.run_revision, 3);
+    assert_eq!(deferred.sequence, None);
 
     gate.release();
     let pending = stepping.join().expect("join").expect("accepted action");
