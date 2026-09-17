@@ -13,7 +13,8 @@ use process::{
     executable, run_scenario, run_served_cancel_after_accepted_barrier,
     run_served_context_receipt_recovery, run_served_context_source_adoption,
     run_served_peer_acceptance, run_served_policy_gate,
-    run_served_restart_refuses_duplicate_effect, write_evidence,
+    run_served_policy_rebind_after_idle_adoption, run_served_restart_refuses_duplicate_effect,
+    write_evidence,
 };
 
 #[test]
@@ -62,6 +63,17 @@ fn served_workflow_settles_action_with_adopted_provider_policy()
 fn served_restart_refuses_unknown_effect_without_redispatch()
 -> Result<(), Box<dyn std::error::Error>> {
     run_served_restart_refuses_duplicate_effect(
+        &executable("STS2_GATEWAY_BINARY")?,
+        &executable("STS2_MCP_BINARY")?,
+        &executable("STS2_HARNESS_RUNTIME_BINARY")?,
+    )
+}
+
+#[test]
+#[ignore = "operator-only test; requires explicitly built gateway, MCP, and harness binaries"]
+fn served_decision_survives_changed_policy_adopted_while_idle()
+-> Result<(), Box<dyn std::error::Error>> {
+    run_served_policy_rebind_after_idle_adoption(
         &executable("STS2_GATEWAY_BINARY")?,
         &executable("STS2_MCP_BINARY")?,
         &executable("STS2_HARNESS_RUNTIME_BINARY")?,

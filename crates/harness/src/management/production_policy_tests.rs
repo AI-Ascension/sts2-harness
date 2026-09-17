@@ -271,6 +271,7 @@ fn make_session(
         context_render: None,
         context_control_limits: None,
         active_policy_binding: Some(("a".repeat(64), 0)),
+        policy_change_fenced: false,
         authority_binding: RuntimeAuthorityBinding {
             instance_id: "test-instance".to_owned(),
             session_id: "test-session".to_owned(),
@@ -289,6 +290,15 @@ fn make_session(
         },
     };
     (session, calls, active)
+}
+
+/// Records a policy adoption landing while the run is idle: the active sha and
+/// adoption generation both move, as the durable owner does on a real adopt.
+fn adopt(active: &Arc<Mutex<ActivePolicy>>, sha256: &str, generation: u64) {
+    let mut active = active.lock().expect("policy lock");
+    active.sha256 = sha256.to_owned();
+    active.generation = generation;
+    active.journal_revision = active.journal_revision.saturating_add(1);
 }
 
 fn input() -> DecisionInput {
@@ -337,6 +347,49 @@ fn adoption_during_inference_discards_result_and_fences_next_decision() {
     let error = session
         .decide_for(&input(), "decision.live.v1", "context.live.v1")
         .expect_err("session remains fenced");
+    assert_eq!(error.code, "provider_session_policy_changed");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+/// Adoption that lands while the run is idle (no in-flight `decide`) must be
+/// picked up by the next decision instead of fencing the run for its lifetime.
+/// Nothing was inferred under the superseded policy, so there is no stale result
+/// to discard; issue #255.
+#[test]
+fn adopted_policy_before_idle_decide_is_picked_up_without_fencing() {
+    let (mut session, calls, active) = make_session(Change::HistoryOnlyDuringInference);
+    adopt(&active, &"b".repeat(64), 1);
+
+    let decision = session.decide(&input()).expect("idle adoption is admitted");
+    assert!(matches!(decision, Decision::Wait { .. }));
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+    // The adopted identity is now the retained binding, so a second decision on
+    // the unchanged active policy keeps passing.
+    let decision = session
+        .decide_for(&input(), "decision.live.v1", "context.live.v1")
+        .expect("unchanged adopted policy stays admitted");
+    assert!(matches!(decision, Decision::Wait { .. }));
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+/// A rebind at admission must not disable the in-flight discard fence: if the
+/// policy changes again while the provider call is running, that result is still
+/// discarded and the session stays fenced even after re-adopting the original
+/// identity.
+#[test]
+fn in_flight_change_after_idle_rebind_still_fences_and_stays_fenced() {
+    let (mut session, calls, active) = make_session(Change::AdoptDuringInference);
+    adopt(&active, &"b".repeat(64), 1);
+
+    let error = session.decide(&input()).expect_err("in-flight change");
+    assert_eq!(error.code, "provider_session_policy_changed");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+    adopt(&active, &"b".repeat(64), 1);
+    let error = session
+        .decide_for(&input(), "decision.live.v1", "context.live.v1")
+        .expect_err("fence is sticky");
     assert_eq!(error.code, "provider_session_policy_changed");
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }

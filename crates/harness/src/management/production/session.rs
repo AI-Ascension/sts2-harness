@@ -214,7 +214,7 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
 
     fn decide(&mut self, input: &DecisionInput) -> Result<crate::Decision, ManagementError> {
         self.assert_current_observation(&input.observation)?;
-        self.assert_active_policy_binding_current()?;
+        self.admit_active_policy_binding()?;
         let decision = self.provider_mut()?.decide(input).map_err(provider_error)?;
         self.assert_active_policy_binding_current()?;
         Ok(decision)
@@ -227,7 +227,7 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
         context_ref: &str,
     ) -> Result<crate::Decision, ManagementError> {
         self.assert_current_observation(&input.observation)?;
-        self.assert_active_policy_binding_current()?;
+        self.admit_active_policy_binding()?;
         if let Some(render) = self
             .context_render
             .as_ref()
