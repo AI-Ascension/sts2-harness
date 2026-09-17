@@ -51,6 +51,17 @@ impl LookupSession {
         {
             return Err(LookupError::Bounds);
         }
+        let mut validated_request = request.clone();
+        validated_request["scope"] = response["scope"].clone();
+        let selected =
+            crate::game_information_binding::game_information_bootstrap::select_snapshot(
+                &validated_request,
+                &response,
+            )
+            .map_err(|_| LookupError::Invalid)?;
+        if selected != snapshot {
+            return Err(LookupError::Scope);
+        }
         self.binding.snapshot = Some(snapshot);
         self.pages.clear();
         let ordinal = self.bootstrap_records.len();
