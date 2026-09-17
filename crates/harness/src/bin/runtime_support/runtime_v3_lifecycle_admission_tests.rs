@@ -126,13 +126,16 @@ fn swapped_inspected_executor_refuses_actual_admission_before_effect() {
 
 #[test]
 fn authority_revocation_after_send_prevents_result_consumption() {
-    let fixture = Fixture::new_with_blocked_effect(true);
+    let fixture = Fixture::new_with_blocked_effect_timeout(5_000);
     let mut transport = fixture.admit().expect("actual lifecycle admission");
     let authority = fixture.authority_state.clone();
     let calls = fixture.calls.clone();
     let release = fixture.release.clone();
     let invalidator = std::thread::spawn(move || {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        // The workspace runtime test binary starts many process fixtures concurrently. Keep the
+        // readiness and process-effect bounds finite while allowing a loaded runner to schedule
+        // this child.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while !calls.exists() {
             if std::time::Instant::now() >= deadline {
                 return Err(String::from("lifecycle process did not start"));
