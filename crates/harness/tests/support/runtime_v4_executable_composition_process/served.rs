@@ -19,6 +19,10 @@ pub(crate) use context_source::run_served_context_source_adoption;
 mod cancellation;
 pub(crate) use cancellation::run_served_cancel_after_accepted_barrier;
 
+#[path = "served/receipt_recovery.rs"]
+mod receipt_recovery;
+pub(crate) use receipt_recovery::run_served_context_receipt_recovery;
+
 type RestartScenarioResult = (Output, Option<Output>, Option<StoredOperation>);
 
 pub(crate) fn run_served_policy_gate(

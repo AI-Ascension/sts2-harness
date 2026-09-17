@@ -11,8 +11,8 @@ use fixture::FixtureMode;
 use process::{
     TempDir, assert_foreign_state_rejected, assert_malformed_envelope_rejected, assert_success,
     executable, run_scenario, run_served_cancel_after_accepted_barrier,
-    run_served_context_source_adoption, run_served_policy_gate,
-    run_served_restart_refuses_duplicate_effect, write_evidence,
+    run_served_context_receipt_recovery, run_served_context_source_adoption,
+    run_served_policy_gate, run_served_restart_refuses_duplicate_effect, write_evidence,
 };
 
 #[test]
@@ -83,6 +83,17 @@ fn served_cancel_reconciles_an_accepted_unsettled_action() -> Result<(), Box<dyn
 fn served_workflow_adopts_context_source_before_managed_decision()
 -> Result<(), Box<dyn std::error::Error>> {
     run_served_context_source_adoption(
+        &executable("STS2_GATEWAY_BINARY")?,
+        &executable("STS2_MCP_BINARY")?,
+        &executable("STS2_HARNESS_RUNTIME_BINARY")?,
+    )
+}
+
+#[test]
+#[ignore = "operator-only test; requires explicitly built gateway, MCP, and harness binaries"]
+fn served_workflow_recovers_context_receipt_after_process_restart()
+-> Result<(), Box<dyn std::error::Error>> {
+    run_served_context_receipt_recovery(
         &executable("STS2_GATEWAY_BINARY")?,
         &executable("STS2_MCP_BINARY")?,
         &executable("STS2_HARNESS_RUNTIME_BINARY")?,

@@ -32,9 +32,10 @@ pub const CONTEXT_OWNER_CONTROL_LIMITS_SCHEMA: &str =
 /// This deliberately is not a [`ContextOwnerBinding`]. A binding must name the
 /// runtime-allocated run, graph, node and node-execution identities, none of
 /// which exists during submission. Callers must re-resolve and compose the
-/// current binding before a control effect or restart recovery; this value
-/// constrains the authority's durable event bound but never grants that
-/// invocation authority by itself.
+/// current binding before a control effect. Historical receipt recovery
+/// validates its persisted binding separately; this value constrains the
+/// authority's durable event bound but never grants invocation authority by
+/// itself.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContextOwnerControlLimits {
     pub schema_version: String,
