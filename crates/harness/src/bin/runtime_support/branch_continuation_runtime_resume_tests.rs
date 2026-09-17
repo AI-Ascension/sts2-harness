@@ -199,9 +199,15 @@ fn exact_restore_resume_reuses_verified_receipt_without_reclaiming_restore()
         ready.metadata_revision,
         DurableBranchStatus::Restoring,
     )?;
-    let receipt_blob = artifacts.stage_blob(
-        br#"{"operation_id":"receipt-operation","state":"RESTORE_VERIFIED"}"#,
-    )?;
+    let receipt_bytes = serde_json::json!({
+        "operation_id": "receipt-operation",
+        "state": "RESTORE_VERIFIED",
+        "branch": {
+            "metadata_revision": restoring.metadata_revision,
+        },
+    });
+    let receipt_bytes = serde_json::to_vec(&receipt_bytes)?;
+    let receipt_blob = artifacts.stage_blob(&receipt_bytes)?;
     store.attach_artifact(
         "operation:attach-exact-receipt-for-resume-test",
         EXPERIMENT,
@@ -274,6 +280,15 @@ fn exact_restore_resume_reuses_verified_receipt_without_reclaiming_restore()
             .map(|claim| claim.state),
         Some(BranchContinuationClaimState::BoundaryVerified)
     );
+    resumed.verify_persisted_exact_receipt_revision(&receipt_bytes)?;
+    let mut tampered_receipt: serde_json::Value = serde_json::from_slice(&receipt_bytes)?;
+    tampered_receipt["branch"]["metadata_revision"] =
+        serde_json::json!(restoring.metadata_revision + 1);
+    let tampered_receipt = serde_json::to_vec(&tampered_receipt)?;
+    let error = resumed
+        .verify_persisted_exact_receipt_revision(&tampered_receipt)
+        .expect_err("a receipt with a changed original revision must be refused");
+    assert!(error.contains("does not match its claim history"));
     resumed.claim_resume()?;
     assert_eq!(
         store

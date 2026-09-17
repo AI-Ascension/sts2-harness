@@ -3,8 +3,7 @@
 //! Runtime selection, artifact loading, and CAS lifecycle for durable branch continuations.
 //!
 //! Strategy effects cross a typed port. Running prefix branches resume only after a durable
-//! verified-boundary claim matches the live Gateway owner fence. The exact-restore route remains
-//! unavailable until the fixed game-mod/MCP/Gateway restore operation is implemented.
+//! verified-boundary claim matches the live Gateway owner fence, including exact-restore receipts.
 
 use std::path::{Path, PathBuf};
 
@@ -209,7 +208,15 @@ impl SelectedBranchContinuation {
         let bytes = artifacts
             .read_blob(&digest)
             .map_err(|error| format!("cannot read persisted exact-restore receipt: {error}"))?;
-        let receipt: serde_json::Value = serde_json::from_slice(&bytes)
+        self.verify_persisted_exact_receipt_revision(&bytes)?;
+        super::exact_restore::operation::verify_persisted_receipt(&bytes, self, closure)
+    }
+
+    pub(crate) fn verify_persisted_exact_receipt_revision(
+        &self,
+        bytes: &[u8],
+    ) -> Result<(), String> {
+        let receipt: serde_json::Value = serde_json::from_slice(bytes)
             .map_err(|error| format!("persisted exact-restore receipt is invalid JSON: {error}"))?;
         let receipt_revision = receipt["branch"]["metadata_revision"]
             .as_u64()
@@ -243,7 +250,7 @@ impl SelectedBranchContinuation {
                 "persisted exact-restore receipt branch revision does not match its claim history",
             ));
         }
-        super::exact_restore::operation::verify_persisted_receipt(&bytes, self, closure)
+        Ok(())
     }
 
     pub(crate) fn is_exact_restore(&self) -> bool {

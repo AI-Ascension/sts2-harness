@@ -37,7 +37,7 @@ fn base64_chunks_preserve_empty_and_padding_cases() {
 }
 
 #[test]
-fn wrapper_binds_the_exact_inner_message_identity() {
+fn wrapper_binds_the_exact_inner_message_identity() -> Result<(), Box<dyn std::error::Error>> {
     let frame = json!({
         "contract": NEUTRAL_CONTRACT,
         "schema_digest": NEUTRAL_SCHEMA_DIGEST,
@@ -55,17 +55,16 @@ fn wrapper_binds_the_exact_inner_message_identity() {
             }
         }
     });
-    let wrapper = wrapper_request(&frame, "harness-principal").expect("wrapper");
-    assert!(valid_schema(
-        wrapper_validator().expect("wrapper validator"),
-        &wrapper
-    ));
+    let wrapper = wrapper_request(&frame, "harness-principal")?;
+    let validator = wrapper_validator()?;
+    assert!(valid_schema(validator, &wrapper));
     assert_eq!(wrapper["message_id"], frame["message_id"]);
     assert_eq!(wrapper["correlation_id"], frame["correlation_id"]);
     assert_eq!(wrapper["payload"]["frame"], frame);
+    Ok(())
 }
 
-fn synthetic_state(payload: &[u8]) -> ExactStateDigest {
+fn synthetic_state(payload: &[u8]) -> Result<ExactStateDigest, Box<dyn std::error::Error>> {
     let mut hash = Sha256::new();
     hash.update(b"AI-ASCENSION/EXACT-STATE/v1\0");
     hash.update(payload);
@@ -74,7 +73,9 @@ fn synthetic_state(payload: &[u8]) -> ExactStateDigest {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
-    ExactStateDigest::parse(&format!("asc-state:v1:sha256:{digest}")).expect("state")
+    Ok(ExactStateDigest::parse(&format!(
+        "asc-state:v1:sha256:{digest}"
+    ))?)
 }
 
 fn synthetic_draft(
@@ -82,17 +83,21 @@ fn synthetic_draft(
     parent_branch_id: Option<&str>,
     state: &ExactStateDigest,
     artifacts: Vec<BranchArtifactReference>,
-) -> DurableBranchDraft {
-    DurableBranchDraft {
+) -> Result<DurableBranchDraft, Box<dyn std::error::Error>> {
+    let occurrence_id = OccurrenceId::parse(&format!("occurrence:{branch_id}"))
+        .map_err(|error| format!("occurrence id: {error:?}"))?;
+    let parent_occurrence_id = parent_branch_id
+        .map(|_| OccurrenceId::parse("occurrence:branch:root"))
+        .transpose()
+        .map_err(|error| format!("parent occurrence id: {error:?}"))?;
+    Ok(DurableBranchDraft {
         experiment_id: String::from("experiment:exact-restore-fixture"),
         root_branch_id: String::from("branch:root"),
         branch_id: branch_id.to_owned(),
         parent_branch_id: parent_branch_id.map(str::to_owned),
         fork: BranchFork {
-            occurrence_id: OccurrenceId::parse(&format!("occurrence:{branch_id}"))
-                .expect("occurrence"),
-            parent_occurrence_id: parent_branch_id
-                .map(|_| OccurrenceId::parse("occurrence:branch:root").expect("parent")),
+            occurrence_id,
+            parent_occurrence_id,
             state_digest: state.clone(),
         },
         strategy: BranchStrategy::ExactRestore,
@@ -111,21 +116,28 @@ fn synthetic_draft(
         name: branch_id.to_owned(),
         notes: Some(String::from("synthetic source-only fixture")),
         artifacts,
-    }
+    })
 }
 
-fn fixture_workspace() -> PathBuf {
+fn fixture_workspace() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let path = std::env::temp_dir().join(format!(
         "sts2-exact-restore-fixture-{}",
         uuid::Uuid::new_v4()
     ));
-    std::fs::create_dir_all(&path).expect("fixture directory");
-    path
+    std::fs::create_dir_all(&path)?;
+    Ok(path)
 }
 
-fn publish_fixture(
-    root: &Path,
-) -> Result<(PathBuf, PathBuf, String, String, String, String), Box<dyn std::error::Error>> {
+struct PublishedFixture {
+    branch_path: PathBuf,
+    artifact_path: PathBuf,
+    checkpoint: String,
+    payload: String,
+    compatibility: String,
+    coverage: String,
+}
+
+fn publish_fixture(root: &Path) -> Result<PublishedFixture, Box<dyn std::error::Error>> {
     let artifact_path = root.join("artifacts");
     let branch_path = root.join("branches.sqlite3");
     let store = ExactArtifactStore::new(&artifact_path);
@@ -136,7 +148,7 @@ fn publish_fixture(
     canonical_value["boundary"]["game_tick"] = serde_json::json!(7);
     let canonical = serde_json::to_vec(&canonical_value)?;
     let canonical_digest = store.stage_blob(&canonical)?.as_str().to_owned();
-    let state = synthetic_state(&canonical);
+    let state = synthetic_state(&canonical)?;
     let compatibility = format!(
         "sha256:{}",
         Sha256::digest(serde_json::to_vec(&canonical_value["compatibility"])?.as_slice())
@@ -173,7 +185,7 @@ fn publish_fixture(
     let checkpoint = store.publish_manifest(&manifest)?;
     let root_record = SqliteBranchStore::open(&branch_path)?.create(
         "operation:create-root",
-        synthetic_draft("branch:root", None, &state, Vec::new()),
+        synthetic_draft("branch:root", None, &state, Vec::new())?,
     )?;
     let branch_store = SqliteBranchStore::open(&branch_path)?;
     let child = branch_store.create(
@@ -192,7 +204,7 @@ fn publish_fixture(
                     role: BranchArtifactRole::RestoreClosure,
                 },
             ],
-        ),
+        )?,
     )?;
     let restoring = branch_store.transition(
         "operation:restore",
@@ -216,22 +228,28 @@ fn publish_fixture(
         DurableBranchStatus::Ready,
     )?;
     drop(root_record);
-    Ok((
+    Ok(PublishedFixture {
         branch_path,
         artifact_path,
-        checkpoint.as_str().to_owned(),
-        canonical_digest,
+        checkpoint: checkpoint.as_str().to_owned(),
+        payload: canonical_digest,
         compatibility,
         coverage,
-    ))
+    })
 }
 
 #[test]
 fn valid_manifest_and_selected_branch_form_one_deduplicated_restore_closure()
 -> Result<(), Box<dyn std::error::Error>> {
-    let root = fixture_workspace();
-    let (branch_path, artifact_path, checkpoint, payload, compatibility, coverage) =
-        publish_fixture(&root)?;
+    let root = fixture_workspace()?;
+    let PublishedFixture {
+        branch_path,
+        artifact_path,
+        checkpoint,
+        payload,
+        compatibility,
+        coverage,
+    } = publish_fixture(&root)?;
     let selector =
         BranchContinuationSelector::new("experiment:exact-restore-fixture", "branch:selected")?;
     let selected =

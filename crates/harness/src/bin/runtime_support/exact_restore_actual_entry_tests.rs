@@ -29,9 +29,14 @@ fn actual_production_entrypoint_exact_restore_matrix_case()
         let owner = owner.get("fence").cloned().unwrap_or(owner);
         serde_json::to_string(&owner)?
     };
-    let root = fixture_workspace();
-    let (branch_path, artifact_path, _checkpoint, _payload, compatibility, coverage) =
-        publish_fixture(&root)?;
+    let root = fixture_workspace()?;
+    let PublishedFixture {
+        branch_path,
+        artifact_path,
+        compatibility,
+        coverage,
+        ..
+    } = publish_fixture(&root)?;
     let branch_store = SqliteBranchStore::open(&branch_path)?;
     let claim = branch_store
         .prepare_continuation_claim("experiment:exact-restore-fixture", "branch:selected")?;
