@@ -12,7 +12,9 @@ query/read profile. The explicitly selected `--lookup-bootstrap` entrypoint adds
 `sts2_lookup_bootstrap`; that tool emits `sts2.exo-lookup-wire-v2-bootstrap`
 Bootstrap frames and requires the correlated feedback frame to retain v2. All
 other frames remain v1 in the additive profile. A v1 session rejects the new
-Bootstrap payload.
+Bootstrap payload. The shipped relay selects this profile as a pair: it launches
+the executor with `--lookup-bootstrap` and `STS2_EXO_LOOKUP_BOOTSTRAP=1`; direct
+executor callers must set both controls together.
 
 The additive process oracle uses an existing read-only pinned Exo source checkout.
 Its extension path is this harness checkout; generated files stay in `target/`:
