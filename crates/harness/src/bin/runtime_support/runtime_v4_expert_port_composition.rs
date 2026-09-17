@@ -128,30 +128,8 @@ fn merge_actions(
             "expert catalog omitted a current Runtime-v3 legal action",
         ));
     }
-    let mut actions = Vec::with_capacity(normal_actions.actions().len() + values.len());
+    let mut actions = Vec::with_capacity(values.len());
     let mut payloads = BTreeMap::new();
-    for action in normal_actions.actions() {
-        let payload = normal_payloads
-            .get(action.action_id())
-            .cloned()
-            .ok_or_else(|| String::from("normal catalog payload is missing"))?;
-        let expert_payload = values
-            .iter()
-            .find(|value| {
-                value.get("action_id").and_then(Value::as_str) == Some(action.action_id())
-            })
-            .and_then(|value| value.get("action"))
-            .ok_or_else(|| String::from("expert catalog payload is missing"))?;
-        if expert_payload.get("kind").and_then(Value::as_str)
-            != Some(wire::action_kind_name(action.kind()))
-        {
-            return Err(String::from(
-                "expert catalog action kind does not match Runtime-v3",
-            ));
-        }
-        actions.push(action.clone());
-        payloads.insert(action.action_id().to_owned(), payload);
-    }
     for value in values {
         let Some(action_id) = value.get("action_id").and_then(Value::as_str) else {
             return Err(String::from("expert legal action identity is invalid"));
@@ -159,7 +137,22 @@ fn merge_actions(
         let Some(payload) = value.get("action") else {
             return Err(String::from("expert legal action payload is missing"));
         };
-        if normal_actions.find(action_id).is_some() {
+        if let Some(normal_action) = normal_actions.find(action_id) {
+            let normal_payload = normal_payloads
+                .get(action_id)
+                .cloned()
+                .ok_or_else(|| String::from("normal catalog payload is missing"))?;
+            if payload.get("kind").and_then(Value::as_str)
+                != Some(wire::action_kind_name(normal_action.kind()))
+            {
+                return Err(String::from(
+                    "expert catalog action kind does not match Runtime-v3",
+                ));
+            }
+            // Keep the normal catalog payload authoritative; the expert catalog only
+            // contributes ordering and the additional action identities.
+            actions.push(normal_action.clone());
+            payloads.insert(action_id.to_owned(), normal_payload);
             continue;
         }
         let kind = payload
