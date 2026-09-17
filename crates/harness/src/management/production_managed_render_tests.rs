@@ -183,13 +183,8 @@ fn render_fixture() -> (ContextRenderSource, ExoConfig) {
         valid_until: 100,
         identity,
     };
-    let config = ExoConfig::new(
-        crate::EXO_SOURCE_REVISION,
-        64 * 1024,
-        1024,
-        1_000,
-    )
-    .expect("Exo config");
+    let config =
+        ExoConfig::new(crate::EXO_SOURCE_REVISION, 64 * 1024, 1024, 1_000).expect("Exo config");
     (source, config)
 }
 
