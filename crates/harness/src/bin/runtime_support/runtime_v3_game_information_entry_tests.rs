@@ -252,6 +252,16 @@ fn run_runtime_entry(mode: EntryMode) {
                 "the actual runner must retain and reobserve the binding before its decision"
             );
             assert_eq!(
+                requests
+                    .iter()
+                    .filter(|request| {
+                        request.contains("/game-information/live-observation-bootstrap")
+                    })
+                    .count(),
+                usize::from(!replay),
+                "bootstrap must cross the MCP-owned gateway route only on the live run"
+            );
+            assert_eq!(
                 requests.last().map(String::as_str),
                 Some("POST /v1/instances/instance-1/release")
             );
@@ -286,6 +296,12 @@ fn run_runtime_entry(mode: EntryMode) {
                         .iter()
                         .any(|request| request.path == "/api/v1/game-information/list"),
                     "actual MCP content query must cross the actual Gateway"
+                );
+                assert!(
+                    requests.iter().any(|request| {
+                        request.path == "/api/v1/game-information/live-observation-bootstrap"
+                    }),
+                    "actual MCP bootstrap must cross the actual Gateway and game-mod route"
                 );
             }
             assert!(

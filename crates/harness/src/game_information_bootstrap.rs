@@ -68,7 +68,24 @@ pub fn validate_request(value: &Value) -> Result<(), BootstrapError> {
     {
         return Err(BootstrapError::Bounds);
     }
-    if value["protocol_version"] != PROFILE
+    let envelope = value.as_object().ok_or(BootstrapError::Invalid)?;
+    if !exact_keys(
+        envelope,
+        &[
+            "protocol_version",
+            "schema_digest",
+            "provenance",
+            "correlation_id",
+            "kind",
+            "selector",
+            "scope",
+            "limits",
+            "parent_observation",
+            "visible_entities",
+            "owner_provenance",
+            "error",
+        ],
+    ) || value["protocol_version"] != PROFILE
         || value["schema_digest"] != SCHEMA_DIGEST
         || value["kind"] != "bootstrap_request"
         || value["provenance"]["artifact"]
@@ -84,11 +101,22 @@ pub fn validate_request(value: &Value) -> Result<(), BootstrapError> {
     {
         return Err(BootstrapError::Invalid);
     }
+    if !exact_keys(
+        value["provenance"]
+            .as_object()
+            .ok_or(BootstrapError::Invalid)?,
+        &["artifact", "source", "generator"],
+    ) {
+        return Err(BootstrapError::Invalid);
+    }
     validate_scope(&value["scope"])?;
     validate_limits(&value["limits"])?;
     let selector = value["selector"]
         .as_object()
         .ok_or(BootstrapError::Invalid)?;
+    if !exact_keys(selector, &["definition_ref", "instance_ref"]) {
+        return Err(BootstrapError::Invalid);
+    }
     validate_definition(&selector["definition_ref"])?;
     if !selector["instance_ref"].is_null() {
         validate_instance(&selector["instance_ref"])?;
@@ -108,7 +136,24 @@ pub fn select_snapshot(request: &Value, response: &Value) -> Result<Value, Boots
     {
         return Err(BootstrapError::Bounds);
     }
-    if response["protocol_version"] != PROFILE
+    let envelope = response.as_object().ok_or(BootstrapError::Invalid)?;
+    if !exact_keys(
+        envelope,
+        &[
+            "protocol_version",
+            "schema_digest",
+            "provenance",
+            "correlation_id",
+            "kind",
+            "selector",
+            "scope",
+            "limits",
+            "parent_observation",
+            "visible_entities",
+            "owner_provenance",
+            "error",
+        ],
+    ) || response["protocol_version"] != PROFILE
         || response["schema_digest"] != SCHEMA_DIGEST
         || response["kind"] != "bootstrap_response"
         || response["correlation_id"] != request["correlation_id"]
@@ -119,6 +164,14 @@ pub fn select_snapshot(request: &Value, response: &Value) -> Result<Value, Boots
         || response["provenance"]["generator"] != "hand-authored"
         || response["error"] != Value::Null
     {
+        return Err(BootstrapError::Invalid);
+    }
+    if !exact_keys(
+        response["provenance"]
+            .as_object()
+            .ok_or(BootstrapError::Invalid)?,
+        &["artifact", "source", "generator"],
+    ) {
         return Err(BootstrapError::Invalid);
     }
     validate_scope(&response["scope"])?;
@@ -136,6 +189,11 @@ pub fn select_snapshot(request: &Value, response: &Value) -> Result<Value, Boots
     let response_selector = response["selector"]
         .as_object()
         .ok_or(BootstrapError::Invalid)?;
+    if !exact_keys(request_selector, &["definition_ref", "instance_ref"])
+        || !exact_keys(response_selector, &["definition_ref", "instance_ref"])
+    {
+        return Err(BootstrapError::Invalid);
+    }
     if response_selector["definition_ref"] != request_selector["definition_ref"] {
         return Err(BootstrapError::Scope);
     }
@@ -150,6 +208,12 @@ pub fn select_snapshot(request: &Value, response: &Value) -> Result<Value, Boots
     let parent = response["parent_observation"]
         .as_object()
         .ok_or(BootstrapError::Invalid)?;
+    if !exact_keys(
+        parent,
+        &["instance_ref", "snapshot_ref", "state_generation"],
+    ) {
+        return Err(BootstrapError::Invalid);
+    }
     validate_instance(&parent["instance_ref"])?;
     let parent_snapshot = parent["snapshot_ref"]
         .as_object()
@@ -175,6 +239,9 @@ pub fn select_snapshot(request: &Value, response: &Value) -> Result<Value, Boots
     let mut candidates = Vec::new();
     for entity in visible {
         let object = entity.as_object().ok_or(BootstrapError::Invalid)?;
+        if !exact_keys(object, &["instance_ref", "snapshot_ref", "definition_ref"]) {
+            return Err(BootstrapError::Invalid);
+        }
         validate_instance(&object["instance_ref"])?;
         validate_snapshot(
             object["snapshot_ref"]

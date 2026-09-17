@@ -13,6 +13,18 @@ fn valid_identity(value: Option<&str>) -> bool {
 
 fn validate_scope(value: &Value) -> Result<(), BootstrapError> {
     let object = value.as_object().ok_or(BootstrapError::Invalid)?;
+    if !exact_keys(
+        object,
+        &[
+            "instance_id",
+            "run_id",
+            "authority_epoch",
+            "content_manifest_id",
+            "locale",
+        ],
+    ) {
+        return Err(BootstrapError::Invalid);
+    }
     for key in ["instance_id", "run_id", "content_manifest_id"] {
         if !valid_identity(object.get(key).and_then(Value::as_str)) {
             return Err(BootstrapError::Invalid);
@@ -34,6 +46,9 @@ fn validate_scope(value: &Value) -> Result<(), BootstrapError> {
 
 fn validate_limits(value: &Value) -> Result<(), BootstrapError> {
     let object = value.as_object().ok_or(BootstrapError::Invalid)?;
+    if !exact_keys(object, &["max_visible_entities", "max_item_bytes", "max_message_bytes"]) {
+        return Err(BootstrapError::Invalid);
+    }
     let visible = object.get("max_visible_entities").and_then(Value::as_u64);
     let item = object.get("max_item_bytes").and_then(Value::as_u64);
     let message = object.get("max_message_bytes").and_then(Value::as_u64);
@@ -48,6 +63,12 @@ fn validate_limits(value: &Value) -> Result<(), BootstrapError> {
 
 fn validate_definition(value: &Value) -> Result<(), BootstrapError> {
     let object = value.as_object().ok_or(BootstrapError::Invalid)?;
+    if !exact_keys(
+        object,
+        &["content_manifest_id", "entity_kind", "namespaced_id", "variant"],
+    ) {
+        return Err(BootstrapError::Invalid);
+    }
     if !valid_identity(object.get("content_manifest_id").and_then(Value::as_str))
         || !valid_identity(object.get("namespaced_id").and_then(Value::as_str))
         || !matches!(
@@ -66,6 +87,12 @@ fn validate_definition(value: &Value) -> Result<(), BootstrapError> {
 
 fn validate_instance(value: &Value) -> Result<(), BootstrapError> {
     let object = value.as_object().ok_or(BootstrapError::Invalid)?;
+    if !exact_keys(
+        object,
+        &["instance_id", "run_id", "epoch", "entity_kind", "entity_id"],
+    ) {
+        return Err(BootstrapError::Invalid);
+    }
     if !valid_identity(object.get("instance_id").and_then(Value::as_str))
         || !valid_identity(object.get("run_id").and_then(Value::as_str))
         || !valid_identity(object.get("entity_id").and_then(Value::as_str))
@@ -82,6 +109,9 @@ fn validate_instance(value: &Value) -> Result<(), BootstrapError> {
 }
 
 fn validate_snapshot(value: &Map<String, Value>) -> Result<(), BootstrapError> {
+    if !exact_keys(value, &["snapshot_id", "instance_ref", "state_generation"]) {
+        return Err(BootstrapError::Invalid);
+    }
     if !valid_identity(value.get("snapshot_id").and_then(Value::as_str))
         || value.get("state_generation").and_then(Value::as_u64).is_none()
     {
@@ -92,6 +122,19 @@ fn validate_snapshot(value: &Map<String, Value>) -> Result<(), BootstrapError> {
 
 fn validate_owner_provenance(value: &Value) -> Result<(), BootstrapError> {
     let object = value.as_object().ok_or(BootstrapError::Invalid)?;
+    if !exact_keys(
+        object,
+        &[
+            "native_snapshot_owner",
+            "content_manifest_owner",
+            "instance_fence_owner",
+            "authority_epoch_owner",
+            "instance_ref_epoch_owner",
+            "transport_lease_epoch_role",
+        ],
+    ) {
+        return Err(BootstrapError::Invalid);
+    }
     let expected = [
         ("native_snapshot_owner", "sts2-game-mod"),
         ("content_manifest_owner", "sts2-game-mod"),
@@ -107,4 +150,8 @@ fn validate_owner_provenance(value: &Value) -> Result<(), BootstrapError> {
         return Err(BootstrapError::Scope);
     }
     Ok(())
+}
+
+fn exact_keys(object: &Map<String, Value>, expected: &[&str]) -> bool {
+    object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
 }

@@ -14,7 +14,10 @@ mod admission;
 mod mcp;
 #[path = "game_information_records.rs"]
 mod records;
-pub use mcp::{LookupMcpContext, LookupMcpPort, call_capabilities_mcp, call_lookup_mcp};
+pub use mcp::{
+    LookupMcpContext, LookupMcpPort, call_capabilities_mcp, call_live_observation_bootstrap_mcp,
+    call_lookup_mcp,
+};
 #[path = "game_information_agent.rs"]
 mod agent;
 pub use agent::{

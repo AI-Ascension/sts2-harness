@@ -64,5 +64,11 @@ fn foreign_scope_selector_and_oversize_response_fail_closed() -> Result<(), Stri
         select_snapshot(&request, &oversized),
         Err(BootstrapError::Bounds)
     );
+    let mut unknown = golden("bootstrap-response.json")?;
+    unknown["selector"]["unexpected"] = json!(true);
+    assert_eq!(
+        select_snapshot(&request, &unknown),
+        Err(BootstrapError::Invalid)
+    );
     Ok(())
 }

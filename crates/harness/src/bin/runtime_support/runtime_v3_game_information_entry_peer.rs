@@ -29,7 +29,8 @@ pub(super) fn mcp_server_script(log: &std::path::Path) -> String {
             {"name":"sts2.recover"},
             {"name":"sts2.capabilities"},
             {"name":"sts2.game_information_capabilities","annotations":{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true},"inputSchema":{"additionalProperties":false},"_meta":{"sts2":{"revision":"game-information-query-v1-mcp","feature":"static_reference"}}},
-            {"name":"sts2.game_information_list","annotations":{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true},"inputSchema":{"additionalProperties":false},"_meta":{"sts2":{"revision":"game-information-query-v1-mcp","feature":"static_reference"}}}
+            {"name":"sts2.game_information_list","annotations":{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true},"inputSchema":{"additionalProperties":false},"_meta":{"sts2":{"revision":"game-information-query-v1-mcp","feature":"static_reference"}}},
+            {"name":"sts2.game_information.live_observation_bootstrap","annotations":{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true},"inputSchema":{"additionalProperties":false},"_meta":{"sts2":{"revision":"game-information-live-observation-bootstrap-v1","feature":"live_observation_bootstrap"}}}
         ]
     });
     let catalog = serde_json::to_string(&catalog).expect("MCP catalog JSON");
@@ -52,6 +53,7 @@ pub(super) fn mcp_server_script(log: &std::path::Path) -> String {
     let settled = serde_json::to_string(&settled).expect("Python settled dispatch literal");
     format!(
         r#"#!/usr/bin/python3
+import http.client
 import json, os, sys
 LOG={log}
 INITIAL=json.loads({initial})
@@ -100,6 +102,26 @@ def query_response(i, a):
        "correlation_id":str(i),"kind":"query_response","query":query,
        "result":{{"read_only":True,"parent_observation":None,"result_generation":None,"page":page}},
        "capabilities":None,"error":None}}
+def bootstrap_proxy(i, a):
+    request={{
+      "protocol_version":"game-information-live-observation-bootstrap-v1",
+      "schema_digest":"6041a282ffda8757af4e3eb6ab551e082f136fe53138ab8ac17db9fab52765c2",
+      "provenance":{{"artifact":"sts2-protocol/game-information-live-observation-bootstrap-v1",
+        "source":"schemas/game-information-live-observation-bootstrap-v1.schema.json","generator":"hand-authored"}},
+      "correlation_id":str(i),"kind":"bootstrap_request",
+      "selector":{{"definition_ref":a["definition_ref"],"instance_ref":a.get("instance_ref")}},
+      "scope":{{"instance_id":a["instance_id"],"run_id":"run","authority_epoch":1,
+        "content_manifest_id":a["content_manifest_id"],"locale":a["locale"]}},
+      "limits":{{"max_visible_entities":64,"max_item_bytes":65536,"max_message_bytes":262144}},
+      "parent_observation":None,"visible_entities":None,"owner_provenance":None,"error":None}}
+    connection=http.client.HTTPConnection(os.environ["STS2_GATEWAY_ADDR"],timeout=5)
+    body=json.dumps(request,separators=(',',':')).encode()
+    connection.request("POST","/v1/instances/"+a["instance_id"]+"/game-information/live-observation-bootstrap",
+      body=body,headers={{"Content-Type":"application/json","Content-Length":str(len(body)),
+        "x-mcp-session-id":a["mcp_session_id"],"x-sts2-instance-id":a["instance_id"],
+        "x-sts2-session-id":os.environ["STS2_SESSION_ID"],"x-sts2-lease-id":a["lease_id"],
+        "x-sts2-lease-epoch":str(a["lease_epoch"]),"x-sts2-correlation-id":str(i)}})
+    return json.loads(connection.getresponse().read())
 for line in sys.stdin:
     req=json.loads(line); i=req.get("id"); method=req.get("method")
     params=req.get("params",{{}})
@@ -128,6 +150,8 @@ for line in sys.stdin:
           "capabilities":CAPS,"error":None}}
     elif name=="sts2.game_information_list":
         body=query_response(i,args)
+    elif name=="sts2.game_information.live_observation_bootstrap":
+        body=bootstrap_proxy(i,args)
     elif name=="sts2.dispatch_action":
         body=SETTLED.copy(); body["correlation_id"]=str(i)
         body["instance_id"]=args["instance_id"]; body["session_id"]="session-1"
@@ -175,6 +199,15 @@ args={{"operation_id":"entry-query","mode":"static",
   "limits":{{"page_items":4,"item_bytes":4096,"page_bytes":65536,"text_bytes":4096}},
   "cursor":None}}}}
 frame["sequence"]=1
+bootstrap={{"operation_id":"entry-bootstrap",
+ "definition_ref":{{"content_manifest_id":"content-1","entity_kind":"card",
+  "namespaced_id":"ironclad:strike","variant":None}},"instance_ref":None}}
+frame["payload"]={{"kind":"bootstrap","arguments":bootstrap}}
+print(json.dumps(frame),flush=True)
+feedback=json.loads(input())
+value=feedback["payload"]["value"]
+assert "bootstrap" in value
+frame["sequence"]=2
 frame["payload"]={{"kind":"query","arguments":args}}
 print(json.dumps(frame),flush=True)
 feedback=json.loads(input())
@@ -183,7 +216,7 @@ assert "data" in value
 with open(LOG,"a",encoding="utf-8") as out:
  out.write(json.dumps({{"kind":"data","owner_secrets_absent":secrets_absent(),
                         "data_authority":value["data"].get("authority")}})+"\n")
-frame["sequence"]=2
+frame["sequence"]=3
 frame["payload"]={{"kind":"decision","action_id":request["legal_action_ids"][0]}}
 with open(LOG,"a",encoding="utf-8") as out:
  out.write(json.dumps({{"kind":"decision","owner_secrets_absent":secrets_absent(),

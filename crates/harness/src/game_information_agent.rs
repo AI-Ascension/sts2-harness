@@ -78,6 +78,11 @@ pub fn run_lookup_tool_loop<A: LookupAgentPort, M: LookupMcpPort>(
     }
     let mut feedback = LookupFeedback::Start;
     for remaining in (0..max_turns).rev() {
+        if session.binding.snapshot.as_ref().is_some_and(|snapshot| {
+            snapshot["state_generation"].as_u64() != Some(legal_actions.generation())
+        }) {
+            return Err(LookupError::Reobserve);
+        }
         let turn = agent.next_turn(LookupAgentInput {
             binding: &session.binding,
             legal_actions,
@@ -118,6 +123,11 @@ pub fn run_lookup_replay_tool_loop<A: LookupAgentPort>(
     }
     let mut feedback = LookupFeedback::Start;
     for remaining in (0..max_turns).rev() {
+        if session.binding.snapshot.as_ref().is_some_and(|snapshot| {
+            snapshot["state_generation"].as_u64() != Some(legal_actions.generation())
+        }) {
+            return Err(LookupError::Reobserve);
+        }
         let turn = agent.next_turn(LookupAgentInput {
             binding: &session.binding,
             legal_actions,
