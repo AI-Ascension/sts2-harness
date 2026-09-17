@@ -207,7 +207,7 @@ pub struct SelectionRequest {
     pub phase2_prepared_manifest_sha256: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SelectionManifest {
     pub schema: String,

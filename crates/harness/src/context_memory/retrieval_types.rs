@@ -1,5 +1,16 @@
 // SPDX-License-Identifier: MIT
 
+// `#[serde(skip)]` below is a wire-contract omission, not a secrecy boundary, so the derived
+// `Debug` is a documented and justified deviation from the #247 AC1 allowlist rule:
+//
+// - `query_id` holds a bounded correlation identifier (`valid_id` caps it at 128 ASCII
+//   alphanumeric/`._:-` bytes), never private content bytes.
+// - It is not withheld from observers: `MemoryCorpus::retrieve` copies it into
+//   `RetrievalResponse.query_id`, which *is* serialized on the wire.
+// - It is absent from `query.v1` only so a returned response cannot be mistaken for an input,
+//   which is why it is skipped here.
+//
+// An allowlisted impl would therefore withhold nothing; the derive is retained deliberately.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryQuery {
@@ -41,7 +52,7 @@ impl MemoryQuery {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RetrievalResult {
     pub source: MemoryRef,
@@ -67,7 +78,7 @@ pub struct ExclusionReason {
     pub reason: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RetrievalResponse {
     pub schema: String,
@@ -150,7 +161,7 @@ pub enum SourceReconstruction {
     Unavailable,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryProposal {
     pub schema: String,

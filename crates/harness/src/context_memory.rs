@@ -33,6 +33,7 @@ mod context_memory_impl {
     include!("context_memory/cache.rs");
     include!("context_memory/controls.rs");
     include!("context_memory/resume.rs");
+    include!("context_memory/debug_redaction.rs");
     include!("context_memory/artifacts.rs");
     include!("context_memory/usage.rs");
     include!("context_memory/evaluation.rs");
@@ -44,6 +45,7 @@ mod context_memory_impl {
     include!("context_memory/concurrency.rs");
     include!("context_memory/security.rs");
     include!("context_memory/tests.rs");
+    include!("context_memory/debug_redaction_tests.rs");
 }
 
 pub use context_memory_impl::*;
