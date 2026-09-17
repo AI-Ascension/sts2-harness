@@ -6,15 +6,13 @@ use session::{
     WorkflowServiceConfig, response, served_runtime_run_id, submit_policy_gate,
     wait_for_workflow_service, workflow_service_command,
 };
-use sts2_harness::context_control::{
-    ContextBoundary, ContextDraft, ContextItem, ContextItemRef, ContextSourceDocument,
-    context_source_digest,
-};
+use sts2_harness::context_control::ContextBoundary;
 use sts2_harness::management::{
     CONTEXT_SOURCE_ADOPTION_SCHEMA_VERSION, CONTEXT_SOURCE_UPLOAD_SCHEMA_VERSION, CommandKind,
     CommandParameters, CommandRequest, CommandResponse, ContextBindingCatalog,
-    ContextBindingRequest, ContextControlReceipt, ContextOwnerBinding, ContextOwnerSourceStatus,
-    ContextSourceAdoptionRequest, ContextSourceUpload, MANAGEMENT_SCHEMA_VERSION,
+    ContextBindingRequest, ContextControlCommand, ContextControlReceipt, ContextOwnerBinding,
+    ContextOwnerSourceStatus, ContextSourceAdoptionRequest, ContextSourceUpload,
+    MANAGEMENT_SCHEMA_VERSION,
 };
 
 pub(super) fn run_receipt_boundary_negatives(
@@ -147,6 +145,7 @@ pub(super) fn run_receipt_boundary_negatives(
             {
                 return Err("boundary setup activated an unexpected source or invocation".into());
             }
+            let baseline_status = status.clone();
             let valid = ContextSourceAdoptionRequest {
                 schema_version: CONTEXT_SOURCE_ADOPTION_SCHEMA_VERSION.to_owned(),
                 idempotency_key: "boundary-negative-valid".to_owned(),
@@ -165,10 +164,8 @@ pub(super) fn run_receipt_boundary_negatives(
                 )?;
                 let body: Value = serde_json::from_slice(&refused.body)?;
                 if refused.status != 409
-                    || body
-                        .pointer("/error/code")
-                        .and_then(Value::as_str)
-                        .is_none()
+                    || body.pointer("/error/code").and_then(Value::as_str)
+                        != Some("context_source_adoption_stale")
                 {
                     return Err(format!(
                         "{} did not fail with a typed 409: HTTP {} {body}",
@@ -179,13 +176,29 @@ pub(super) fn run_receipt_boundary_negatives(
                 }
                 let unchanged: ContextOwnerSourceStatus =
                     response(client.request_json("GET", &status_path, None)?)?;
-                if unchanged.active_source.is_some() {
+                if unchanged.active_source.is_some()
+                    || unchanged.boundary != baseline_status.boundary
+                    || unchanged.active_revision_id != baseline_status.active_revision_id
+                {
                     return Err(format!(
-                        "{} activated a source before its fence passed",
+                        "{} changed source status before its fence passed",
                         case.label()
                     )
                     .into());
                 }
+                let lookup = client.request_json(
+                    "POST",
+                    &format!("/v1/workflow-runs/{run_id}/context-control-receipts/lookup"),
+                    Some(&serde_json::to_vec(&ContextControlCommand::Commit {
+                        idempotency_key: invalid.idempotency_key.clone(),
+                        expected_control_version: invalid.expected_control_version,
+                        expected_revision_id: invalid.expected_revision_id.clone(),
+                        expected_boundary: invalid.expected_boundary.clone(),
+                        preview_manifest_digest: source_digest.clone(),
+                        approved_manifest_digest: source_digest.clone(),
+                    })?),
+                )?;
+                assert_not_recorded(lookup, case.label())?;
             }
             let adopted = client.request_json(
                 "POST",
@@ -203,6 +216,31 @@ pub(super) fn run_receipt_boundary_negatives(
                 response(client.request_json("GET", &status_path, None)?)?;
             if activated.active_source.is_none() {
                 return Err("valid boundary adoption did not activate its source".into());
+            }
+            let stale = ContextSourceAdoptionRequest {
+                idempotency_key: "boundary-negative-stale".to_owned(),
+                ..valid.clone()
+            };
+            let refused = client.request_json(
+                "POST",
+                &format!("/v1/workflow-runs/{run_id}/context-sources/strategy/adopt"),
+                Some(&serde_json::to_vec(&stale)?),
+            )?;
+            let body: Value = serde_json::from_slice(&refused.body)?;
+            if refused.status != 409
+                || body.pointer("/error/code").and_then(Value::as_str)
+                    != Some("context_source_adoption_stale")
+            {
+                return Err(format!(
+                    "old boundary was not rejected as stale: HTTP {} {body}",
+                    refused.status
+                )
+                .into());
+            }
+            let unchanged: ContextOwnerSourceStatus =
+                response(client.request_json("GET", &status_path, None)?)?;
+            if unchanged != activated {
+                return Err("stale adoption changed the active source status".into());
             }
             Ok(())
         })();
@@ -308,28 +346,6 @@ impl BoundaryCase {
     }
 }
 
-fn source_document() -> Result<(ContextSourceDocument, String), Box<dyn std::error::Error>> {
-    let bytes = b"boundary negative strategy".to_vec();
-    let item = ContextItem {
-        reference: ContextItemRef {
-            item_id: "boundary-strategy".to_owned(),
-            version: 1,
-            sha256: sts2_harness::sha256_hex(&bytes),
-        },
-        kind: "strategy".to_owned(),
-        bytes,
-        protected: false,
-        expires_at: 4_000_000_000,
-    };
-    let mut draft = ContextDraft::new("boundary-draft", "context.revision.1");
-    draft.selected_items.push(item.reference.clone());
-    let mut items = std::collections::BTreeMap::new();
-    items.insert("boundary-strategy:1".to_owned(), item);
-    let document = ContextSourceDocument { draft, items };
-    let digest = context_source_digest(&document)?;
-    Ok((document, digest))
-}
-
 fn step(
     client: &ManagementClient,
     run_id: &str,
@@ -350,4 +366,22 @@ fn step(
         &format!("/v1/workflow-runs/{run_id}/commands"),
         Some(&serde_json::to_vec(&command)?),
     )?)
+}
+
+fn assert_not_recorded(
+    response: sts2_harness::management::ClientResponse,
+    label: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let body: Value = serde_json::from_slice(&response.body)?;
+    if response.status != 404
+        || body.pointer("/error/code").and_then(Value::as_str)
+            != Some("context_control_receipt_not_recorded")
+    {
+        return Err(format!(
+            "{label} unexpectedly produced a receipt: HTTP {} {body}",
+            response.status
+        )
+        .into());
+    }
+    Ok(())
 }
