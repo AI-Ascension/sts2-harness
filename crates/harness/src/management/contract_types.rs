@@ -119,6 +119,12 @@ pub struct RunSnapshot {
     /// declared mode contradicts the admitted target, and never emits it.
     ///
     /// `default` keeps records written before mode reporting deserializable.
+    ///
+    /// Per #247 AC1: `skip_serializing` here is a deliberate wire-contract omission of a coarse
+    /// `Synthetic`/`Live` classification, not a secrecy boundary over private bytes, so the derived
+    /// `Debug` needs no allowlist. The value is already derivable from the admitted target, and the
+    /// dense rationale above records why the key is withheld from the pinned consumer's closed
+    /// schema.
     #[serde(default, skip_serializing)]
     pub execution_mode: Option<ExecutionMode>,
 }
@@ -154,6 +160,9 @@ pub enum ContextAvailability {
     NotApplicable,
 }
 
+/// Per #247 AC1: `reason_code` is `skip_serializing_if`-gated, not `#[serde(skip)]`, so this type
+/// is outside the AC1 sweep and needs no `Debug` allowlist. It is omitted only while `None` and
+/// carries a bounded explanation code with no private payload.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ContextAssociationContext {
@@ -190,6 +199,9 @@ pub enum ContextCaptureState {
     Unavailable,
 }
 
+/// Per #247 AC1: `reason_code` is `skip_serializing_if`-gated, not `#[serde(skip)]`, so this type
+/// is outside the AC1 sweep and needs no `Debug` allowlist. It is omitted only while `None` and
+/// carries a bounded explanation code with no private payload.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ContextCaptureEvidence {

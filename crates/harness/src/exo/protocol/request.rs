@@ -14,6 +14,12 @@ const MAX_CONSTRAINTS: usize = 32;
 const MAX_CONSTRAINT_BYTES: usize = 512;
 
 /// A structured fair-play decision request sent to Exo.
+///
+/// Per #247 AC1: `map_context`, `management_profile` and `management_context` are
+/// `skip_serializing_if` fields, not `#[serde(skip)]` fields, so they are excluded by the AC1
+/// sweep and need no `Debug` allowlist. They are conditionally omitted only while absent and carry
+/// already-projected decision metadata that is serialized verbatim whenever present, so the derived
+/// `Debug` publishes nothing the wire form does not already carry.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExoDecisionRequest {
