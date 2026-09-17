@@ -290,6 +290,97 @@ fn schema_validity_and_profile_admission_are_separate_outcomes() {
 }
 
 #[test]
+fn every_memory_policy_limit_checks_global_schema_boundaries() {
+    let schema: Value = serde_json::from_slice(include_bytes!(
+        "../../../contracts/context-memory/policy.schema.json"
+    ))
+    .expect("policy schema");
+    let validator = jsonschema::validator_for(&schema).expect("policy validator");
+    let capabilities = corpus().capabilities();
+    let record = capabilities.effective_limit_record();
+    for row in &record.rows {
+        let Some(maximum) = row.policy_schema_ceiling else {
+            continue;
+        };
+        for requested in [1, maximum, maximum + 1] {
+            // Keep the results/candidates relation valid while varying either field.
+            let mut value =
+                serde_json::to_value(memory_policy(64, 1, 1, 1)).expect("baseline policy");
+            value[&row.field] = requested.into();
+            let policy: MemoryPolicy = serde_json::from_value(value.clone()).expect("policy");
+            let globally_valid = requested <= maximum;
+            assert_eq!(
+                validator.is_valid(&value),
+                globally_valid,
+                "{}={requested}: published schema",
+                row.field
+            );
+            assert_eq!(
+                policy.validate_schema().is_ok(),
+                globally_valid,
+                "{}={requested}: executable schema validator",
+                row.field
+            );
+            assert_eq!(
+                capabilities.admit_policy_value(&row.field, requested),
+                if requested <= row.executable_ceiling {
+                    Ok(())
+                } else {
+                    Err(UnavailableReason::EffectiveLimitExceeded)
+                },
+                "{}={requested}: selected profile admission",
+                row.field
+            );
+        }
+    }
+}
+
+#[test]
+fn every_session_policy_limit_checks_global_schema_boundaries() {
+    let schema: Value = serde_json::from_slice(include_bytes!(
+        "../../../contracts/provider-session/policy.schema.json"
+    ))
+    .expect("policy schema");
+    let validator = jsonschema::validator_for(&schema).expect("policy validator");
+    let capabilities = NativeCapabilities::fixture();
+    let record = capabilities.effective_limit_record();
+    for row in &record.rows {
+        let Some(maximum) = row.policy_schema_ceiling else {
+            continue;
+        };
+        for requested in [1, maximum, maximum + 1] {
+            let mut value = serde_json::to_value(session_policy(1, 1)).expect("baseline policy");
+            value[policy_field(&row.field)] = requested.into();
+            let policy: ProviderSessionPolicy =
+                serde_json::from_value(value.clone()).expect("policy");
+            let globally_valid = requested <= maximum;
+            assert_eq!(
+                validator.is_valid(&value),
+                globally_valid,
+                "{}={requested}: published schema",
+                row.field
+            );
+            assert_eq!(
+                policy.validate_schema().is_ok(),
+                globally_valid,
+                "{}={requested}: executable schema validator",
+                row.field
+            );
+            assert_eq!(
+                capabilities.admit_policy_value(&row.field, requested),
+                if requested <= row.executable_ceiling {
+                    Ok(())
+                } else {
+                    Err(UnavailableReason::EffectiveLimitExceeded)
+                },
+                "{}={requested}: selected profile admission",
+                row.field
+            );
+        }
+    }
+}
+
+#[test]
 fn disabled_surface_reports_disabled_rather_than_unlimited() {
     let mut corpus = corpus();
     corpus.set_enabled(false);
