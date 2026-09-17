@@ -51,7 +51,7 @@ const BROKER_SNAPSHOT_SCHEMA: &str = "ascension.provider-session.broker-snapshot
 
 /// Harness-owned session registry and lifecycle fence.  All mutating operations are serialized by
 /// the caller's owner token; this object deliberately has no public raw native RPC method.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ProviderSessionBroker {
     scope: SessionScope,
     policy: ProviderSessionPolicy,
@@ -71,6 +71,24 @@ pub struct ProviderSessionBroker {
     retirements: BTreeMap<String, Retirement>,
     events: Vec<SessionEvent>,
     inflight_turn: Option<String>,
+}
+
+// Debug is allowlisted: formatting registry values would expose owner credentials, native
+// identities, scope references, and prepared private bytes.
+impl std::fmt::Debug for ProviderSessionBroker {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ProviderSessionBroker")
+            .field("owner_epoch", &self.owner_epoch)
+            .field("revocation_epoch", &self.revocation_epoch)
+            .field("binding_count", &self.bindings.len())
+            .field("operation_count", &self.operations.len())
+            .field("prepared_count", &self.prepared.len())
+            .field("history_count", &self.histories.len())
+            .field("event_count", &self.events.len())
+            .field("has_inflight_turn", &self.inflight_turn.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 impl ProviderSessionBroker {

@@ -21,6 +21,8 @@ const SCHEMA: &str = "ascension.workflow-context-owner-config.v1";
 
 #[path = "production_context_owner/binding.rs"]
 mod binding;
+#[path = "production_context_owner/lease_fence.rs"]
+mod lease_fence;
 #[path = "production_context_owner/observation.rs"]
 mod observation;
 #[path = "production_context_owner/source.rs"]

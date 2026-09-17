@@ -335,5 +335,8 @@ fn served_owner_control_refuses_commit_past_the_admitted_run_limit() {
     assert_eq!(error.code, "context_control_events_exhausted");
 }
 
+#[path = "first_contact_lease_tests.rs"]
+mod first_contact_lease_tests;
+
 #[path = "association_receipt_tests.rs"]
 mod association_receipt_tests;
