@@ -397,15 +397,3 @@ fn assert_not_recorded(
     }
     Ok(())
 }
-
-fn assert_killed(output: &Output, process: &str) -> Result<(), Box<dyn std::error::Error>> {
-    if output.status.code() != Some(0) && !output.status.signal().is_some_and(|signal| signal == 9)
-    {
-        return Err(format!(
-            "{process} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
-    }
-    Ok(())
-}
