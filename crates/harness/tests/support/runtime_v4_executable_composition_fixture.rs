@@ -70,7 +70,17 @@ pub(crate) struct ModServer {
 
 impl ModServer {
     pub(crate) fn new(mode: FixtureMode) -> Result<Self, Box<dyn std::error::Error>> {
-        Self::bind_inner("127.0.0.1:0", mode, None)
+        Self::bind("127.0.0.1:0", mode)
+    }
+
+    /// Bind the synthetic downstream to an explicit address for operator
+    /// soak campaigns that run the fixture as a long-lived process.
+    #[allow(dead_code, reason = "used by the synthetic_mod_server operator target")]
+    pub(crate) fn bind(
+        address: &str,
+        mode: FixtureMode,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::bind_inner(address, mode, None)
     }
 
     pub(crate) fn accepted_barrier_then_settled()
