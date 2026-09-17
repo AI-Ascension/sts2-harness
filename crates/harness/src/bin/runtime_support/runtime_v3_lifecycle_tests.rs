@@ -50,6 +50,10 @@ impl Fixture {
         Self::new_with_blocked_effect_and_fence(blocked_effect, None)
     }
 
+    fn new_with_blocked_effect_timeout(timeout_millis: u32) -> Self {
+        Self::new_with_blocked_effect_and_fence_timeout(true, None, timeout_millis)
+    }
+
     fn new_with_fence(fence: Arc<dyn RuntimeLifecycleFence>) -> Self {
         Self::new_with_blocked_effect_and_fence(false, Some(fence))
     }
@@ -57,6 +61,14 @@ impl Fixture {
     fn new_with_blocked_effect_and_fence(
         blocked_effect: bool,
         fence: Option<Arc<dyn RuntimeLifecycleFence>>,
+    ) -> Self {
+        Self::new_with_blocked_effect_and_fence_timeout(blocked_effect, fence, 1000)
+    }
+
+    fn new_with_blocked_effect_and_fence_timeout(
+        blocked_effect: bool,
+        fence: Option<Arc<dyn RuntimeLifecycleFence>>,
+        timeout_millis: u32,
     ) -> Self {
         let source = exo_test_source::pinned_exo_test_source()
             .expect("pinned Exo test source configuration");
@@ -193,7 +205,8 @@ impl Fixture {
                 Vec::new(),
             )
             .expect("runner"),
-            exo: ExoConfig::new(EXO_SOURCE_REVISION, 8192, 8192, 1000).expect("Exo config"),
+            exo: ExoConfig::new(EXO_SOURCE_REVISION, 8192, 8192, timeout_millis)
+                .expect("Exo config"),
             process,
             admission,
             lifecycle: Some((lifecycle, secrets)),
