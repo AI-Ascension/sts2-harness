@@ -233,3 +233,88 @@ fn history_cursor_is_opaque_and_does_not_leak_scope_or_binding() {
     assert!(cursor.len() <= 64);
     assert!(cursor.split(':').count() == 3);
 }
+
+#[test]
+fn debug_omits_owner_identity_and_prepared_private_bytes() {
+    // Original MIT-licensed synthetic fixtures; no provider, credential, or user data.
+    let mut broker = broker();
+    let binding = held_binding(&mut broker);
+    let prepared = prepare(&mut broker, &binding.binding_id, "prepared-debug-private");
+    let serialized_before = serde_json::to_vec(&prepared).expect("prepared json");
+    let snapshot_before = serde_json::to_vec(&broker.snapshot()).expect("snapshot");
+    for formatted in [format!("{broker:?}"), format!("{broker:#?}")] {
+        assert!(formatted.contains("ProviderSessionBroker"));
+        assert!(formatted.contains("prepared_count: 1"));
+        assert_private_debug_omitted(&formatted, &prepared);
+    }
+    for formatted in [format!("{prepared:?}"), format!("{prepared:#?}")] {
+        assert!(formatted.contains("PreparedSessionTurn"));
+        assert!(formatted.contains("owner_epoch: 1"));
+        assert_private_debug_omitted(&formatted, &prepared);
+    }
+    assert_eq!(serialized_before, serde_json::to_vec(&prepared).unwrap());
+    assert_eq!(
+        snapshot_before,
+        serde_json::to_vec(&broker.snapshot()).unwrap()
+    );
+    assert_eq!(prepared, prepared.clone());
+    // Formatting and cloning retain the original owner authorization contract.
+    let mut cloned = broker.clone();
+    assert_eq!(
+        cloned.explicit_resume("wrong-owner", &binding.binding_id),
+        Err(SessionError::Unauthorized)
+    );
+    cloned
+        .explicit_resume("owner-fixture", &binding.binding_id)
+        .expect("original owner remains authorized");
+}
+
+fn assert_private_debug_omitted(formatted: &str, prepared: &PreparedSessionTurn) {
+    for private in [
+        "owner_token",
+        "owner-fixture",
+        "fixture-realm",
+        "project-fixture",
+        "run-fixture",
+        "episode-fixture",
+        "agent-fixture",
+        "native-thread-prepared",
+        prepared.prepared_id.as_str(),
+        prepared.binding_id.as_str(),
+        prepared.suffix_ref.as_str(),
+        prepared.output_schema_ref.as_str(),
+        prepared.protected_ref.as_str(),
+    ] {
+        assert!(
+            !formatted.contains(private),
+            "debug exposed private reference"
+        );
+    }
+    for bytes in [
+        &prepared.suffix,
+        &prepared.output_schema,
+        &prepared.protected,
+    ] {
+        assert!(!bytes.is_empty(), "privacy fixture must contain bytes");
+        for representation in [
+            String::from_utf8(bytes.clone()).expect("synthetic UTF-8"),
+            format!("{bytes:?}"),
+            format!("{bytes:#?}"),
+        ] {
+            assert!(
+                !formatted.contains(&representation),
+                "debug exposed raw bytes"
+            );
+        }
+        // Alternate Debug indents nested vectors; compare without whitespace too.
+        let compact_output: String = formatted.chars().filter(|c| !c.is_whitespace()).collect();
+        let compact_bytes: String = format!("{bytes:?}")
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        assert!(
+            !compact_output.contains(&compact_bytes),
+            "debug exposed byte vector"
+        );
+    }
+}

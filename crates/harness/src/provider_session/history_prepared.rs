@@ -69,7 +69,7 @@ pub enum HistoryCoverageView {
     Unavailable,
     Unknown,
 }
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PreparedSessionTurn {
     pub schema: String,
@@ -107,6 +107,23 @@ pub struct PreparedSessionTurn {
     pub output_schema: Vec<u8>,
     #[serde(skip)]
     pub protected: Vec<u8>,
+}
+
+// Serde's skip attributes do not apply to Debug. Keep private bytes and arbitrary
+// caller-controlled identifiers out of both ordinary and alternate debug formatting.
+impl std::fmt::Debug for PreparedSessionTurn {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PreparedSessionTurn")
+            .field("owner_epoch", &self.owner_epoch)
+            .field("session_epoch", &self.session_epoch)
+            .field("history_epoch", &self.history_epoch)
+            .field("revocation_epoch", &self.revocation_epoch)
+            .field("dependency_count", &self.dependency_ids.len())
+            .field("continuity_mode", &self.continuity_mode)
+            .field("history_coverage", &self.history_coverage)
+            .finish_non_exhaustive()
+    }
 }
 
 impl PreparedSessionTurn {
