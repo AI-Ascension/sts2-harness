@@ -201,6 +201,29 @@ impl SelectedBranchContinuation {
         let bytes = artifacts
             .read_blob(&digest)
             .map_err(|error| format!("cannot read persisted exact-restore receipt: {error}"))?;
+        let receipt: serde_json::Value = serde_json::from_slice(&bytes)
+            .map_err(|error| format!("persisted exact-restore receipt is invalid JSON: {error}"))?;
+        let receipt_revision = receipt["branch"]["metadata_revision"]
+            .as_u64()
+            .ok_or_else(|| String::from("persisted exact-restore receipt omits branch revision"))?;
+        let claim_operation = operation_suffix(&self.operation_id, "claim-restore");
+        let claim_event = self
+            .store
+            .events(&self.admission.branch.experiment_id, 0, 256)
+            .map_err(|error| format!("cannot read exact-restore claim history: {error}"))?
+            .events
+            .into_iter()
+            .find(|event| {
+                event.branch_id == self.admission.branch.branch_id
+                    && event.operation_id == claim_operation
+                    && event.status == DurableBranchStatus::Restoring
+            })
+            .ok_or_else(|| String::from("exact-restore claim history is missing"))?;
+        if claim_event.metadata_revision != receipt_revision {
+            return Err(String::from(
+                "persisted exact-restore receipt branch revision does not match its claim history",
+            ));
+        }
         super::exact_restore::operation::verify_persisted_receipt(&bytes, self, closure)
     }
 
@@ -224,12 +247,8 @@ include!("branch_continuation_runtime_binding.rs");
 
 include!("branch_continuation_runtime_artifact_path.rs");
 
-fn operation_id(selector: &BranchContinuationSelector, revision: u64) -> String {
-    let identity = format!(
-        "{}\0{}\0{revision}",
-        selector.experiment_id(),
-        selector.branch_id()
-    );
+fn operation_id(selector: &BranchContinuationSelector, _revision: u64) -> String {
+    let identity = format!("{}\0{}", selector.experiment_id(), selector.branch_id());
     format!(
         "{CONTINUATION_OPERATION_PREFIX}:{}",
         sts2_harness::sha256_hex(identity.as_bytes())
