@@ -17,8 +17,10 @@ claim a released harness version or runtime compatibility.
   draft, narrow pins to model-visible ids, and then delegate to the renderer so the selected owner
   limits still compose with (narrow) the membership bound instead of replacing it. An invocation
   without a selector renders today's exact bytes. `MembershipContinuity` is derived from the
-  binding's `provider_session_continuity`, so effective absence is refused unless the provider is
-  genuinely fresh for the invocation. Refusals name the precise pre-dispatch gate
+  binding's `provider_session_continuity`. Effective absence is refused for **every** continuity
+  until the render path can actually omit the observation from the composed provider request; the
+  stateless case was refused too after #254 proved it was admitted while the observation still
+  shipped in the served bytes. Refusals name the precise pre-dispatch gate
   (`context_membership_*`) rather than a generic provider failure.
   Compatibility: additive — no existing field, route, durable record, or published schema changes.
   Owner continuations gain optional `membership` configuration; absence preserves current behaviour.
@@ -31,11 +33,12 @@ claim a released harness version or runtime compatibility.
   explicit wider-scope authorization names both the calling agent and that item.
   `prevalidate_and_bind` fails before dispatch on revoked, expired, or digest-mismatched items, on a
   protected owner prerequisite a policy tried to exclude, and on the mandatory-plus-pin and effective
-  item bounds. A model-view policy may omit the observation from model-visible input while the item is
-  retained as a mandatory prerequisite for owner legality; that effective absence is refused unless
-  the continuity can execute it, so an opaque persistent adapter cannot claim a selector erased
-  provider history. Unpin and exclusion change only the next prepared input, and
-  `EffectiveMembership::revalidate` refuses anything that moved since preparation.
+  item bounds. A model-view policy may express an omitted observation while the item is retained as a
+  mandatory prerequisite for owner legality, but that effective absence is refused for every
+  continuity: an opaque persistent adapter cannot claim a selector erased provider history, and the
+  render path has no omission wireform, so an admitted stateless invocation would report the
+  observation hidden while still publishing it. Unpin and exclusion change only the next prepared
+  input, and `EffectiveMembership::revalidate` refuses anything that moved since preparation.
   Compatibility: additive — no existing field, route, durable record, or published schema changes;
   the new `ascension.context-control.membership.v1` policy is in-process with no published consumer.
   See [ADR 0046](docs/decisions/0046-invocation-context-membership.md). Refs #106.

@@ -273,9 +273,10 @@ fn protected_and_overflow_gates_fail_before_dispatch() {
     assert_eq!(exchanges.load(Ordering::SeqCst), 0);
 }
 
-// AC4: effective absence is refused for provider history a selector cannot erase.
+// AC4 (and the #254 fail-open): effective absence is refused before dispatch, so a selector can
+// never report `observation_visible = false` while the observation still ships in the bytes.
 #[test]
-fn opaque_provider_history_rejects_effective_absence() {
+fn effective_absence_never_ships_a_hidden_observation() {
     let (document, _) = history_document();
     let hidden = ContextMembershipSelector {
         model_view: ContextModelView {
@@ -283,24 +284,55 @@ fn opaque_provider_history_rejects_effective_absence() {
         },
         ..ContextMembershipSelector::include()
     };
-    let (mut source, config) = membership_source(document, "invocation-1", Some(hidden));
-    source.continuity = MembershipContinuity::OpaquePersistent;
-    let (mut session, _, exchanges, _) = render_test_session(
-        source,
-        config,
-        ContextRenderLimits::harness_maxima(),
-        Default::default(),
-        None,
+
+    // Every continuity is refused: stateless is the case #254 proved was admitted while the
+    // observation still appeared in the served bytes, and opaque could never execute absence.
+    for continuity in [
+        MembershipContinuity::Stateless,
+        MembershipContinuity::OpaquePersistent,
+    ] {
+        let (mut source, config) =
+            membership_source(document.clone(), "invocation-1", Some(hidden.clone()));
+        source.continuity = continuity;
+        let (mut session, _, exchanges, requests) = render_test_session(
+            source,
+            config,
+            ContextRenderLimits::harness_maxima(),
+            Default::default(),
+            None,
+        );
+        let error = session
+            .decide_for(&input(), "decision.live.v1", "context.live.v1")
+            .expect_err("no continuity can execute effective absence yet");
+        assert!(
+            error.message.contains("effective_absence_unsupported"),
+            "the refusal must name the absence gate: {}",
+            error.message
+        );
+        assert_eq!(
+            exchanges.load(Ordering::SeqCst),
+            0,
+            "the refusal must happen before any provider exchange"
+        );
+        assert!(
+            requests.lock().expect("recorded requests").is_empty(),
+            "no bytes may be composed for a refused effective-absence invocation"
+        );
+    }
+
+    // The fixture's observation is the value a leaky admission used to publish; prove it is the
+    // value a visible selector does publish, so the assertions above are not vacuous.
+    let (source, config) = membership_source(
+        document,
+        "invocation-1",
+        Some(ContextMembershipSelector::include()),
     );
-    let error = session
-        .decide_for(&input(), "decision.live.v1", "context.live.v1")
-        .expect_err("an opaque provider cannot execute effective absence");
+    let (requests, exchanges) = serve(source, config);
+    assert_eq!(exchanges, 1, "a visible observation is still admitted");
     assert!(
-        error.message.contains("effective_absence_unsupported"),
-        "the refusal must name the absence gate: {}",
-        error.message
+        contains(&requests, b"fixture"),
+        "the observation under test must be present when it is legitimately visible"
     );
-    assert_eq!(exchanges.load(Ordering::SeqCst), 0);
 }
 
 // The selector digest travels with the source identity, so a selector that changes while a request

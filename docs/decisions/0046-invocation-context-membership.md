@@ -48,14 +48,26 @@ state, and programmatic routing, and is suppressed from model-visible input
 rather than dropped. Collection and inclusion stay independent, and a policy may
 not exclude a protected prerequisite at all.
 
-## Effective absence needs executable continuity
+## Effective absence needs executable continuity *and* an omission wireform
 
 A membership policy selects which already-collected items become model-visible
 context. It cannot erase what an opaque persistent provider adapter already
-received. Effective absence of an observation is therefore refused unless the
-continuity in force is verified stateless, fresh, or reconstructed. The
-alternate would claim a selector change erased provider history, which the
-Harness cannot substantiate.
+received, so effective absence was never executable for a binding that keeps
+provider-side history. The stateless case cannot substantiate it either: the
+managed render path composes the provider request from an input that always
+carries the observation, so an admitted `observation_visible: false` would still
+publish the observation while reporting it hidden. That is a fail-open in the
+prepared bytes, of the same class this boundary exists to prevent.
+
+Effective absence of an observation is therefore **refused for every
+continuity** until an omission wireform exists that the render path actually
+consumes. Refusing at preparation keeps the gate's verdict identical to what the
+provider receives; the refusal reuses `EffectiveAbsenceUnsupported`, so callers
+keep the same precise pre-dispatch reason code. Implementing the omission is the
+successor work item: it must remove the observation from the composed provider
+request while preserving the host-owned observation and legal catalog for owner
+legality and routing, and it must ship with a regression proving the observation
+value is absent from served bytes.
 
 ## Revalidation and historical evidence
 

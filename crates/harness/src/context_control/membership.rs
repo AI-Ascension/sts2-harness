@@ -23,8 +23,8 @@
 //!
 //! A membership policy selects which already-collected items become *model-visible context*. It
 //! cannot erase what a persistent provider adapter already received. Effective absence of an
-//! observation is therefore **refused** unless the continuity in force can actually execute it; see
-//! [`MembershipContinuity`].
+//! observation is therefore **refused**, for every continuity, until an omission wireform exists
+//! that the render path actually consumes; see [`MembershipContinuity`].
 
 use super::types::{ContextItemRef, MAX_CONTEXT_ITEMS, valid_id};
 use crate::sha256_hex;
@@ -67,13 +67,19 @@ pub enum MembershipDisposition {
 
 /// The continuity a selected provider adapter can actually execute.
 ///
-/// Only [`MembershipContinuity::Stateless`] can support effective absence. A policy selector cannot
-/// erase history an opaque persistent adapter already holds, so requesting effective absence under
-/// [`MembershipContinuity::OpaquePersistent`] is refused instead of claimed.
+/// A policy selector cannot erase history an opaque persistent adapter already holds, so effective
+/// absence was never executable under [`MembershipContinuity::OpaquePersistent`]. It is **also not
+/// executable under [`MembershipContinuity::Stateless`] yet**: the managed render path builds the
+/// provider request from an input that always carries the observation, so admitting absence there
+/// would report `observation_visible == false` while still shipping the observation. Both
+/// continuities are refused until the omission is implemented in the bytes, which keeps the gate's
+/// verdict identical to what the provider actually receives.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MembershipContinuity {
     /// Verified stateless, fresh, or reconstructed execution for this invocation.
+    ///
+    /// Absence is still refused: the render path has no omission wireform yet.
     Stateless,
     /// A persistent adapter whose history this invocation cannot reconstitute.
     OpaquePersistent,
@@ -332,7 +338,7 @@ pub enum ContextMembershipError {
     MandatoryPinOverflow { bound: usize },
     /// The effective set exceeds the bound this invocation may carry.
     TooManyItems { bound: usize },
-    /// Effective absence was requested for a continuity that cannot execute it.
+    /// Effective absence was requested, but no continuity can execute it yet.
     EffectiveAbsenceUnsupported,
     /// The revalidated policy is not the policy that prepared the bound set.
     PolicyChanged,

@@ -93,9 +93,10 @@ fn unpin_affects_only_future_input() {
     assert!(!narrowed.effective.pins.contains(&"history-1".to_owned()));
 }
 
-// 5. Effective absence of the observation is refused for a continuity that cannot execute it.
+// 5. Effective absence of the observation is refused: no continuity can execute it while the
+// render path has no omission wireform for the observation.
 #[test]
-fn opaque_history_rejects_effective_absence() {
+fn effective_absence_is_refused_for_every_continuity() {
     let (registry, references) = registry_history(&["alpha"]);
     let mut draft = ContextDraft::new("draft-1", "revision-1");
     draft.selected_items = references;
@@ -103,6 +104,14 @@ fn opaque_history_rejects_effective_absence() {
     hidden.model_view = ContextModelView {
         observation_visible: false,
     };
+
+    // A stateless binding cannot erase what the composed provider request still carries, so
+    // admitting it here would report the observation hidden while publishing it.
+    assert_eq!(
+        prevalidate_and_bind(&hidden, &draft, &registry, NOW, &check(), MAX_CONTEXT_ITEMS),
+        Err(ContextMembershipError::EffectiveAbsenceUnsupported),
+        "a stateless binding cannot execute effective absence until the bytes omit it"
+    );
 
     let mut opaque = check();
     opaque.continuity = MembershipContinuity::OpaquePersistent;
@@ -112,11 +121,18 @@ fn opaque_history_rejects_effective_absence() {
         "a selector cannot erase provider history"
     );
 
-    // The same policy is admissible only when continuity can actually execute it.
-    let prepared =
-        prevalidate_and_bind(&hidden, &draft, &registry, NOW, &check(), MAX_CONTEXT_ITEMS)
-            .expect("stateless continuity can execute effective absence");
-    assert!(!prepared.dispatch_view.observation_visible);
+    // The refusal is about the observation view, not about membership: the same policy with a
+    // visible observation is prepared and reports the observation as visible.
+    let visible = prevalidate_and_bind(
+        &policy("invocation-1", MembershipDisposition::Include, Vec::new()),
+        &draft,
+        &registry,
+        NOW,
+        &check(),
+        MAX_CONTEXT_ITEMS,
+    )
+    .expect("a visible observation is admissible");
+    assert!(visible.dispatch_view.observation_visible);
 }
 
 // 6. The policy digest is stable for one policy and changes for any field.

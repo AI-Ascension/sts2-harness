@@ -42,9 +42,10 @@ impl<T: crate::exo::ExoTransport> ExoDecisionSource<T> {
     /// Renders one managed request through the membership boundary.
     ///
     /// The invocation's selector is bound to this exact invocation identity and draft revision, so
-    /// the effective set is gated before any provider bytes exist. Continuity comes from the
-    /// selected binding, so effective absence is refused unless the provider is genuinely fresh for
-    /// this invocation. Failures before dispatch surface as precise policy errors.
+    /// the effective set is gated before any provider bytes exist. Effective absence is refused for
+    /// every continuity until the render path can actually omit the observation from those bytes;
+    /// admitting it earlier would publish a hidden observation. Failures before dispatch surface as
+    /// precise policy errors.
     fn render_managed_context(
         source: &ContextRenderSource,
         input_for_render: ManagedRenderInput,
