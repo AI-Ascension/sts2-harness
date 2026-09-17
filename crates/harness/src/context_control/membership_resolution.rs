@@ -295,8 +295,8 @@ fn enforce_dispatch_gates(
     // `ollama_user_content`), so an invocation admitted with `observation_visible == false` would
     // still ship the observation. That is the fail-open this gate exists to prevent, and it is why
     // the previous `OpaquePersistent`-only check was unsafe: it refused only the continuity whose
-    // history an adapter keeps, while the *stateless* case — the only one that could execute
-    // absence — was admitted and then leaked the observation anyway.
+    // history an adapter keeps, while the *stateless* case was admitted and then leaked the
+    // observation anyway, even though it had no omission wireform to execute absence either.
     //
     // `MembershipContinuity` is deliberately not consulted here. Until an omission wireform exists
     // that the render path actually consumes, no continuity can substantiate absence, so the
