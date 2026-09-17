@@ -15,9 +15,14 @@ use session::{
 mod context_source;
 pub(crate) use context_source::run_served_context_source_adoption;
 
+#[path = "served/cancellation.rs"]
+mod cancellation;
+pub(crate) use cancellation::run_served_cancel_after_accepted_barrier;
+
 #[path = "served/acceptance.rs"]
 mod acceptance;
 pub(crate) use acceptance::run_served_peer_acceptance;
+
 #[path = "served/receipt_recovery.rs"]
 mod receipt_recovery;
 pub(crate) use receipt_recovery::run_served_context_receipt_recovery;

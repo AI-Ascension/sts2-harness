@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -12,6 +12,9 @@ use serde_json::{Value, json};
 
 #[path = "runtime_v4_executable_composition_fixture/actions.rs"]
 mod actions;
+#[path = "runtime_v4_executable_composition_fixture/gate.rs"]
+mod gate;
+pub(crate) use gate::ActionReadGate;
 
 pub(crate) const INSTANCE_ID: &str = "instance-1";
 pub(crate) const CALLER_ID: &str = "harness";
@@ -26,6 +29,11 @@ pub(crate) const REVIEWED_EXO_REVISION: &str = "b06869ab789dee3f80ca474b5fa89dbe
 pub(crate) enum FixtureMode {
     Success,
     UnknownOperation,
+    /// The mutation boundary admits the action, the first settlement read is
+    /// unresolved, and reconciliation of that same operation settles it.
+    /// This is a synthetic downstream sequence for the served cancellation
+    /// process test; gateway and MCP remain real peer processes.
+    AcceptedBarrierThenSettled,
     ForeignExpertState,
     /// Deliberately violates the closed expert-state envelope after the real
     /// gateway has selected its fixed route.  This is a synthetic downstream
@@ -65,17 +73,40 @@ impl ModServer {
         Self::bind("127.0.0.1:0", mode)
     }
 
-    /// Bind the synthetic downstream to an explicit address so an operator can
-    /// run it as a long-lived service for a soak campaign.
+    /// Bind the synthetic downstream to an explicit address for operator
+    /// soak campaigns that run the fixture as a long-lived process.
+    #[allow(dead_code, reason = "used by the synthetic_mod_server operator target")]
     pub(crate) fn bind(
         address: &str,
         mode: FixtureMode,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::bind_inner(address, mode, None)
+    }
+
+    pub(crate) fn accepted_barrier_then_settled()
+    -> Result<(Self, Arc<ActionReadGate>), Box<dyn std::error::Error>> {
+        let gate = Arc::new(ActionReadGate::new());
+        let server = Self::bind_inner(
+            "127.0.0.1:0",
+            FixtureMode::AcceptedBarrierThenSettled,
+            Some(Arc::clone(&gate)),
+        )?;
+        Ok((server, gate))
+    }
+
+    fn bind_inner(
+        address: &str,
+        mode: FixtureMode,
+        gate: Option<Arc<ActionReadGate>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let listener = TcpListener::bind(address)?;
         listener.set_nonblocking(true)?;
         let address = listener.local_addr()?;
         let stop = Arc::new(AtomicBool::new(false));
         let worker_stop = Arc::clone(&stop);
+        let action_reads = Arc::new(AtomicU64::new(0));
+        let worker_action_reads = Arc::clone(&action_reads);
+        let worker_gate = gate.clone();
         let ledger = Arc::new(Mutex::new(DownstreamLedger {
             requests: Vec::new(),
             responses: Vec::new(),
@@ -87,7 +118,12 @@ impl ModServer {
                 match listener.accept() {
                     Ok((mut stream, _)) => match read_request(&mut stream) {
                         Ok(request) => {
-                            let response = fixture_response(&request, mode);
+                            let response = fixture_response(
+                                &request,
+                                mode,
+                                &worker_action_reads,
+                                worker_gate.as_deref(),
+                            );
                             if let Ok(mut ledger) = worker_ledger.lock() {
                                 ledger.requests.push(request);
                             }
@@ -175,6 +211,8 @@ impl Drop for ModServer {
 fn fixture_response(
     request: &DownstreamRequest,
     mode: FixtureMode,
+    action_reads: &AtomicU64,
+    gate: Option<&ActionReadGate>,
 ) -> Result<(u16, Value), String> {
     if request.headers.get("authorization").map(String::as_str) != Some("Bearer mod-token") {
         return Err(String::from("downstream mod authorization is missing"));
@@ -185,9 +223,24 @@ fn fixture_response(
             Ok((200, v3_response("legal_actions_response", &request.headers)))
         }
         "/api/v4/runtime/expert-state" => expert_state_response(mode),
-        "/api/v4/runtime/expert-action" => actions::unknown_action(&request.body),
+        "/api/v4/runtime/expert-action" => match mode {
+            FixtureMode::AcceptedBarrierThenSettled => actions::accepted_action(&request.body),
+            _ => actions::unknown_action(&request.body),
+        },
         path if path.starts_with("/api/v4/runtime/expert-actions/") => match mode {
             FixtureMode::UnknownOperation => actions::unknown_operation(path, &request.headers),
+            FixtureMode::AcceptedBarrierThenSettled => {
+                if action_reads.fetch_add(1, Ordering::AcqRel) == 0
+                    && let Some(gate) = gate
+                {
+                    gate.block();
+                }
+                if gate.is_some_and(ActionReadGate::unsettled) {
+                    actions::unknown_operation(path, &request.headers)
+                } else {
+                    actions::settled_action(path, &request.headers)
+                }
+            }
             _ => actions::settled_action(path, &request.headers),
         },
         _ => Err(format!("unexpected downstream path: {}", request.path)),
@@ -196,7 +249,9 @@ fn fixture_response(
 
 fn expert_state_response(mode: FixtureMode) -> Result<(u16, Value), String> {
     match mode {
-        FixtureMode::Success | FixtureMode::UnknownOperation => {
+        FixtureMode::Success
+        | FixtureMode::UnknownOperation
+        | FixtureMode::AcceptedBarrierThenSettled => {
             Ok((200, expert_observation("live:7", 7, false)))
         }
         FixtureMode::ForeignExpertState => Ok((200, expert_observation("foreign-state", 7, false))),

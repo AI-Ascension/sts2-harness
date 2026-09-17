@@ -110,6 +110,7 @@ pub(crate) struct LaunchRecord {
 pub(crate) struct FakeFactory {
     log: Arc<Mutex<Vec<String>>>,
     launches: Arc<Mutex<Vec<LaunchRecord>>>,
+    completions: Arc<Mutex<Vec<bool>>>,
     unknown: bool,
     dispatch_error: bool,
     mismatched_receipt: bool,
@@ -118,6 +119,7 @@ pub(crate) struct FakeFactory {
     stop_error: bool,
     release_error: bool,
     reconcile_unknown: bool,
+    reconcile_status: Option<DispatchStatus>,
 }
 
 impl FakeFactory {
@@ -125,6 +127,7 @@ impl FakeFactory {
         Self {
             log: Arc::new(Mutex::new(Vec::new())),
             launches: Arc::new(Mutex::new(Vec::new())),
+            completions: Arc::new(Mutex::new(Vec::new())),
             unknown,
             dispatch_error: false,
             mismatched_receipt: false,
@@ -133,6 +136,7 @@ impl FakeFactory {
             stop_error: false,
             release_error: false,
             reconcile_unknown: false,
+            reconcile_status: None,
         }
     }
 
@@ -140,6 +144,7 @@ impl FakeFactory {
         Self {
             log: Arc::new(Mutex::new(Vec::new())),
             launches: Arc::new(Mutex::new(Vec::new())),
+            completions: Arc::new(Mutex::new(Vec::new())),
             unknown: false,
             dispatch_error: true,
             mismatched_receipt: false,
@@ -148,6 +153,7 @@ impl FakeFactory {
             stop_error: false,
             release_error: false,
             reconcile_unknown: false,
+            reconcile_status: None,
         }
     }
 
@@ -169,6 +175,10 @@ impl FakeFactory {
 
     pub(crate) fn unresolved_reconcile() -> Self {
         Self::new(true).with_reconcile_unknown()
+    }
+
+    pub(crate) fn reconciled(status: DispatchStatus) -> Self {
+        Self::new(true).with_reconcile_status(status)
     }
 
     fn with_mismatched_receipt(mut self) -> Self {
@@ -196,6 +206,11 @@ impl FakeFactory {
         self
     }
 
+    fn with_reconcile_status(mut self, status: DispatchStatus) -> Self {
+        self.reconcile_status = Some(status);
+        self
+    }
+
     pub(crate) fn entries(&self) -> Vec<String> {
         self.log.lock().expect("log").clone()
     }
@@ -203,6 +218,10 @@ impl FakeFactory {
     /// Records, for every opened live session, the validated definition digest and node order.
     pub(crate) fn launches(&self) -> Vec<LaunchRecord> {
         self.launches.lock().expect("launch log").clone()
+    }
+
+    pub(crate) fn completions(&self) -> Vec<bool> {
+        self.completions.lock().expect("completion log").clone()
     }
 }
 
@@ -240,6 +259,7 @@ impl LiveWorkflowSessionFactory for FakeFactory {
             });
         Ok(Box::new(FakeSession {
             log: Arc::clone(&self.log),
+            completions: Arc::clone(&self.completions),
             unknown: self.unknown,
             dispatch_error: self.dispatch_error,
             mismatched_receipt: self.mismatched_receipt,
@@ -248,6 +268,7 @@ impl LiveWorkflowSessionFactory for FakeFactory {
             stop_error: self.stop_error,
             release_error: self.release_error,
             reconcile_unknown: self.reconcile_unknown,
+            reconcile_status: self.reconcile_status,
             identity: None,
             action: None,
         }))
@@ -276,6 +297,7 @@ impl LiveWorkflowSessionFactory for FakeFactory {
 
 struct FakeSession {
     log: Arc<Mutex<Vec<String>>>,
+    completions: Arc<Mutex<Vec<bool>>>,
     unknown: bool,
     dispatch_error: bool,
     mismatched_receipt: bool,
@@ -284,6 +306,7 @@ struct FakeSession {
     stop_error: bool,
     release_error: bool,
     reconcile_unknown: bool,
+    reconcile_status: Option<DispatchStatus>,
     identity: Option<String>,
     action: Option<EpisodeLegalAction>,
 }

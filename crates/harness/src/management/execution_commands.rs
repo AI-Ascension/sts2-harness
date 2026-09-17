@@ -10,22 +10,21 @@ use crate::workflow::{RuntimeFault, RuntimeStatus};
 use super::execution_records::{application, cleanup_session, management_status, runtime_error};
 use super::node::LiveNodeExecutor;
 use super::node_recovery::reconcile_pending;
+use crate::episode::DispatchStatus;
 
 pub(super) fn apply_command(
     owner: &super::execution::LiveWorkflowExecutionPort,
     context: CommandContext,
     record_intent: Option<&dyn Fn(PendingOperation) -> Result<(), ManagementError>>,
 ) -> Result<CommandApplication, ManagementError> {
-    let mut runs = owner
-        .runs()
+    // Only hold the run's own lock across session calls. The registry lock is
+    // released after lookup so a bounded wait or reconciliation in this run
+    // cannot block unrelated live workflows.
+    let run_handle = owner.run(&context.request.run_id)?;
+    let mut run = run_handle
         .lock()
         .map_err(super::execution_records::lock_error)?;
-    let run = runs.get_mut(&context.request.run_id).ok_or_else(|| {
-        ManagementError::unresolved(
-            "live_runtime_after_restart",
-            "live session is unavailable after service restart",
-        )
-    })?;
+    let run = &mut *run;
     if run.definition_digest != context.snapshot.definition_digest {
         return Err(ManagementError::conflict(
             "live_identity_mismatch",
@@ -80,6 +79,18 @@ pub(super) fn apply_command(
                     "live_operation_unknown",
                     revision,
                 ));
+            }
+            let resolved_status = run
+                .state
+                .pending
+                .as_ref()
+                .and_then(|pending| pending.resolved.as_ref())
+                .map(|receipt| receipt.status());
+            if let Some(status) = resolved_status {
+                run.state.pending = None;
+                run.state
+                    .session
+                    .action_completed(status == DispatchStatus::Settled);
             }
             let cleanup_error = cleanup_session(run, true).err();
             run.cancelled = true;

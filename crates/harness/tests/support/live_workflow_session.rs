@@ -163,6 +163,16 @@ impl LiveWorkflowSession for FakeSession {
                 None,
             ));
         }
+        if let Some(status) = self.reconcile_status {
+            return Ok(TransitionReceipt::new(
+                operation_id,
+                action,
+                status,
+                (status == DispatchStatus::Settled).then(|| observation("state-1", 1)),
+                (status == DispatchStatus::Settled).then(|| "host.semantic.reconciled".to_owned()),
+                None,
+            ));
+        }
         Ok(TransitionReceipt::new(
             operation_id,
             action,
@@ -193,5 +203,12 @@ impl LiveWorkflowSession for FakeSession {
             ));
         }
         Ok(())
+    }
+
+    fn action_completed(&mut self, settled: bool) {
+        self.completions
+            .lock()
+            .expect("completion log")
+            .push(settled);
     }
 }
