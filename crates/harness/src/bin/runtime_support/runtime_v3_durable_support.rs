@@ -29,11 +29,6 @@ pub(super) fn fingerprint(
             required_worker_reference("STS2_WORKER_CONFIG_DIGEST", "STS2_RUNTIME_CONFIG_DIGEST")?;
         let provider =
             required_worker_reference("STS2_WORKER_PROVIDER_DIGEST", "STS2_PROVIDER_DIGEST")?;
-        let exact_restore_profile = super::super::super::exact_restore::fingerprint_value()?;
-        let config_digest = sha256_json(&json!({
-            "worker_config_digest": config_digest,
-            "exact_restore_profile": exact_restore_profile,
-        }))?;
         return ExecutionFingerprint::new(seed, build, state, config_digest, provider)
             .map_err(|error| format!("approved worker fingerprint is invalid: {error}"));
     }
@@ -64,7 +59,6 @@ pub(super) fn config_digest(
 ) -> Result<String, String> {
     let value = json!({
         "runtime_profile": config.runtime_profile,
-        "exact_restore_profile": super::super::super::exact_restore::fingerprint_value()?,
         "gateway_address": config.gateway_address,
         "mcp_binary": config.mcp_binary,
         "mcp_executable": mcp_executable(config.mcp_binary.as_str())?,

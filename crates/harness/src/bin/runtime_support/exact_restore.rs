@@ -16,9 +16,9 @@ mod operation;
 
 pub(super) use closure::{TransferBlob, VerifiedClosure};
 pub(crate) use operation::execute;
+pub(crate) use pins::ProfilePins;
 #[cfg(test)]
 pub(crate) use pins::validate_pin;
-pub(crate) use pins::{ProfilePins, fingerprint_value};
 #[cfg(test)]
 pub(super) use protocol::wrapper_validator;
 pub(super) use protocol::{

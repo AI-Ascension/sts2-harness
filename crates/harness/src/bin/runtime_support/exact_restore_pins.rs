@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-use serde_json::{Value, json};
-
 const COMPATIBILITY_ENV: &str = "STS2_EXACT_RESTORE_COMPATIBILITY_DIGEST";
 const COVERAGE_ENV: &str = "STS2_EXACT_RESTORE_COVERAGE_CONTRACT_DIGEST";
 
@@ -18,32 +16,6 @@ impl ProfilePins {
         Ok(Self {
             compatibility_digest,
             coverage_contract_digest,
-        })
-    }
-
-    pub(crate) fn optional_from_environment() -> Result<Option<Self>, String> {
-        let compatibility = optional_environment_value(COMPATIBILITY_ENV)?;
-        let coverage = optional_environment_value(COVERAGE_ENV)?;
-        match (compatibility, coverage) {
-            (None, None) => Ok(None),
-            (Some(compatibility_digest), Some(coverage_contract_digest)) => {
-                validate_pin(COMPATIBILITY_ENV, &compatibility_digest)?;
-                validate_pin(COVERAGE_ENV, &coverage_contract_digest)?;
-                Ok(Some(Self {
-                    compatibility_digest,
-                    coverage_contract_digest,
-                }))
-            }
-            _ => Err(format!(
-                "{COMPATIBILITY_ENV} and {COVERAGE_ENV} must be configured together"
-            )),
-        }
-    }
-
-    fn as_config_value(&self) -> Value {
-        json!({
-            "compatibility_digest": self.compatibility_digest,
-            "coverage_contract_digest": self.coverage_contract_digest,
         })
     }
 }
@@ -76,11 +48,4 @@ pub(crate) fn validate_pin(name: &str, value: &str) -> Result<(), String> {
         return Err(format!("{name} must use sha256:<64 lowercase hex>"));
     }
     Ok(())
-}
-
-pub(crate) fn fingerprint_value() -> Result<Value, String> {
-    Ok(
-        ProfilePins::optional_from_environment()?
-            .map_or(Value::Null, |pins| pins.as_config_value()),
-    )
 }
