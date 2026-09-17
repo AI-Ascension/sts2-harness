@@ -12,10 +12,10 @@ use std::path::{Path, PathBuf};
 mod resume_lock;
 
 use sts2_harness::{
-    BlobDigest, BranchAssurance, BranchContinuationAdmission, BranchContinuationAdmissionError,
-    BranchContinuationClaim, BranchContinuationClaimState, BranchContinuationSelector,
-    BranchContinuationStrategyPlan, DurableBranch, DurableBranchStatus, ExactArtifactStore,
-    ExactArtifactStoreResolver, SqliteBranchStore, admit_branch_continuation,
+    BlobDigest, BranchArtifactRole, BranchAssurance, BranchContinuationAdmission,
+    BranchContinuationAdmissionError, BranchContinuationClaim, BranchContinuationClaimState,
+    BranchContinuationSelector, BranchContinuationStrategyPlan, DurableBranch, DurableBranchStatus,
+    ExactArtifactStore, ExactArtifactStoreResolver, SqliteBranchStore, admit_branch_continuation,
     admit_running_branch_continuation,
 };
 
@@ -26,6 +26,8 @@ pub(crate) struct SelectedBranchContinuation {
     store: SqliteBranchStore,
     admission: BranchContinuationAdmission,
     replay_prefix: Option<Vec<u8>>,
+    artifact_store_path: PathBuf,
+    exact_restore: Option<super::exact_restore::VerifiedClosure>,
     operation_id: String,
     metadata_revision: u64,
     owner_claim: Option<BranchContinuationClaim>,
@@ -129,6 +131,8 @@ impl SelectedBranchContinuation {
             store,
             admission,
             replay_prefix,
+            artifact_store_path: artifact_store_path.to_path_buf(),
+            exact_restore: None,
             operation_id,
             metadata_revision,
             owner_claim,
@@ -152,134 +156,40 @@ impl SelectedBranchContinuation {
         self.replay_prefix.as_deref()
     }
 
-    /// Persists and returns the stable gateway owner-claim identity before runtime effects.
-    pub(crate) fn prepare_owner_claim(&mut self) -> Result<BranchContinuationClaim, String> {
-        let claim = match self.owner_claim.clone() {
-            Some(claim) => claim,
-            None => self
-                .store
-                .prepare_continuation_claim(
-                    &self.admission.branch.experiment_id,
-                    &self.admission.branch.branch_id,
-                )
-                .map_err(|error| {
-                    format!("cannot persist selected branch owner-claim intent: {error}")
-                })?,
-        };
-        self.owner_claim = Some(claim.clone());
-        Ok(claim)
+    /// Returns the preverified exact closure admitted before owner allocation.
+    pub(crate) fn exact_restore(&self) -> Option<&super::exact_restore::VerifiedClosure> {
+        self.exact_restore.as_ref()
     }
 
-    /// Returns true when this selection is an explicit resume of a verified running branch.
-    pub(crate) const fn is_resuming(&self) -> bool {
-        self.resuming
-    }
-
-    /// Persists verified prefix evidence and publishes the branch as the active continuation.
-    ///
-    /// This runs at the verified boundary before the first live provider decision.
-    pub(crate) fn publish_prefix_boundary(&mut self) -> Result<(), String> {
-        if self.current_status()? != DurableBranchStatus::Replaying {
+    /// Installs an exact closure only after its complete source manifest and all bytes verify.
+    pub(crate) fn install_exact_restore(
+        &mut self,
+        closure: super::exact_restore::VerifiedClosure,
+    ) -> Result<(), String> {
+        if !matches!(
+            self.admission.strategy,
+            BranchContinuationStrategyPlan::ExactRestore { .. }
+        ) || self.exact_restore.is_some()
+        {
             return Err(String::from(
-                "prefix replay boundary arrived outside the claimed replay state",
+                "verified exact-restore closure does not match the selected branch",
             ));
         }
-        let assured = self
-            .store
-            .set_assurance(
-                &operation_suffix(&self.operation_id, "assurance"),
-                &self.admission.branch.experiment_id,
-                &self.admission.branch.branch_id,
-                self.metadata_revision,
-                BranchAssurance::PrefixReplayBoundary,
-            )
-            .map_err(|error| format!("cannot persist prefix replay evidence: {error}"))?;
-        self.metadata_revision = assured.metadata_revision;
-        let ready = self
-            .store
-            .transition(
-                &operation_suffix(&self.operation_id, "ready"),
-                &self.admission.branch.experiment_id,
-                &self.admission.branch.branch_id,
-                self.metadata_revision,
-                DurableBranchStatus::Ready,
-            )
-            .map_err(|error| format!("cannot publish verified branch boundary: {error}"))?;
-        self.metadata_revision = ready.metadata_revision;
-        let running = self
-            .store
-            .transition(
-                &operation_suffix(&self.operation_id, "running"),
-                &self.admission.branch.experiment_id,
-                &self.admission.branch.branch_id,
-                self.metadata_revision,
-                DurableBranchStatus::Running,
-            )
-            .map_err(|error| format!("cannot admit branch continuation: {error}"))?;
-        self.metadata_revision = running.metadata_revision;
-        if let Some(claim) = self.owner_claim.as_ref()
-            && claim.state == BranchContinuationClaimState::Claimed
-        {
-            self.store
-                .transition_continuation_claim(
-                    &claim.operation_id,
-                    BranchContinuationClaimState::Claimed,
-                    BranchContinuationClaimState::BoundaryVerified,
-                )
-                .map_err(|error| format!("cannot persist verified owner boundary: {error}"))?;
-        }
+        self.exact_restore = Some(closure);
         Ok(())
     }
 
-    /// Marks a pre-boundary failure terminal, or post-boundary uncertainty for reconciliation.
-    pub(crate) fn mark_failed(&mut self, reason: &str) -> Result<(), String> {
-        let status = self.current_status()?;
-        let target = match status {
-            DurableBranchStatus::Replaying => DurableBranchStatus::Failed,
-            DurableBranchStatus::Running => DurableBranchStatus::Unknown,
-            _ => return Ok(()),
-        };
-        let updated = self
-            .store
-            .transition(
-                &operation_suffix(&self.operation_id, "failed"),
-                &self.admission.branch.experiment_id,
-                &self.admission.branch.branch_id,
-                self.metadata_revision,
-                target,
-            )
-            .map_err(|error| format!("cannot record branch continuation {reason}: {error}"))?;
-        self.metadata_revision = updated.metadata_revision;
-        Ok(())
-    }
-
-    /// Marks a completed continuation only after the normal runner reaches a terminal state.
-    pub(crate) fn complete(&mut self) -> Result<(), String> {
-        let completed = self
-            .store
-            .transition(
-                &operation_suffix(&self.operation_id, "complete"),
-                &self.admission.branch.experiment_id,
-                &self.admission.branch.branch_id,
-                self.metadata_revision,
-                DurableBranchStatus::Completed,
-            )
-            .map_err(|error| format!("cannot complete durable branch continuation: {error}"))?;
-        self.metadata_revision = completed.metadata_revision;
-        Ok(())
-    }
-
-    fn current_status(&self) -> Result<DurableBranchStatus, String> {
-        self.store
-            .get(
-                &self.admission.branch.experiment_id,
-                &self.admission.branch.branch_id,
-            )
-            .map_err(|error| format!("cannot read branch continuation state: {error}"))?
-            .map(|branch| branch.status)
-            .ok_or_else(|| String::from("selected branch disappeared from its store"))
+    pub(crate) fn is_exact_restore(&self) -> bool {
+        matches!(
+            self.admission.strategy,
+            BranchContinuationStrategyPlan::ExactRestore { .. }
+        )
     }
 }
+
+include!("branch_continuation_runtime_lifecycle.rs");
+
+include!("branch_continuation_runtime_exact_receipt.rs");
 
 include!("branch_continuation_runtime_resume_claim.rs");
 

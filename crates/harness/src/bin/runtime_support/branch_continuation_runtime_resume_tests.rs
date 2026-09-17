@@ -103,6 +103,85 @@ fn running_branch_resume_requires_boundary_claim_and_keeps_prefix_unreplayed()
 }
 
 #[test]
+fn exact_restore_resume_reuses_verified_receipt_without_reclaiming_restore()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = TemporaryDirectory::new()?;
+    let branch_store = temp.path().join("branches.sqlite3");
+    let artifact_path = temp.path().join("artifacts");
+    let artifacts = ExactArtifactStore::new(&artifact_path);
+    create_store(&branch_store, &artifacts, BranchStrategy::ExactRestore)?;
+    let store = SqliteBranchStore::open(&branch_store)?;
+    let ready = store
+        .get(EXPERIMENT, "branch:selected")?
+        .expect("selected branch");
+    let running = store.transition(
+        "operation:publish-exact-running-for-resume-test",
+        EXPERIMENT,
+        "branch:selected",
+        ready.metadata_revision,
+        DurableBranchStatus::Running,
+    )?;
+    let claim = store.prepare_continuation_claim(EXPERIMENT, "branch:selected")?;
+    let owner = serde_json::json!({
+        "deployment_id":"00000000-0000-4000-8000-000000000001",
+        "instance_id":"00000000-0000-4000-8000-000000000002",
+        "instance_incarnation":"00000000-0000-4000-8000-000000000003",
+        "boot_id":"00000000-0000-4000-8000-000000000004",
+        "authority_generation":7,
+        "host_fence_id":"00000000-0000-4000-8000-000000000005",
+        "host_fence_generation":3,
+        "lease_id":"00000000-0000-4000-8000-000000000006",
+        "lease_epoch":8,
+        "session_id":"selected-session",
+        "lease_expires_at_millis":1_800_000_000_000_u64
+    });
+    store.snapshot_continuation_owner(&claim.operation_id, &serde_json::to_string(&owner)?)?;
+    store.transition_continuation_claim(
+        &claim.operation_id,
+        BranchContinuationClaimState::OwnerSnapshotted,
+        BranchContinuationClaimState::Claimed,
+    )?;
+    store.transition_continuation_claim(
+        &claim.operation_id,
+        BranchContinuationClaimState::Claimed,
+        BranchContinuationClaimState::BoundaryVerified,
+    )?;
+
+    let selector =
+        BranchContinuationSelector::new(EXPERIMENT, "branch:selected").expect("selector");
+    let mut resumed =
+        SelectedBranchContinuation::load_for_resume(&selector, &branch_store, &artifact_path)?;
+    assert!(resumed.is_resuming());
+    assert!(resumed.is_exact_restore());
+    assert_eq!(resumed.branch().status, DurableBranchStatus::Running);
+    assert_eq!(
+        resumed.branch().assurance,
+        BranchAssurance::ExactRestoreReceipt
+    );
+    assert_eq!(
+        store
+            .continuation_claim(EXPERIMENT, "branch:selected")?
+            .map(|claim| claim.state),
+        Some(BranchContinuationClaimState::BoundaryVerified)
+    );
+    resumed.claim_resume()?;
+    assert_eq!(
+        store
+            .continuation_claim(EXPERIMENT, "branch:selected")?
+            .map(|claim| claim.state),
+        Some(BranchContinuationClaimState::Resuming)
+    );
+    assert_eq!(
+        store
+            .get(EXPERIMENT, "branch:selected")?
+            .expect("selected branch remains")
+            .metadata_revision,
+        running.metadata_revision
+    );
+    Ok(())
+}
+
+#[test]
 fn running_branch_resume_refuses_missing_boundary_claim() -> Result<(), Box<dyn std::error::Error>>
 {
     let temp = TemporaryDirectory::new()?;
