@@ -105,22 +105,10 @@ pub(super) fn run_harness(
     let mut command = Command::new("cargo");
     command
         .current_dir(&paths.harness_root)
-        .env_clear()
-        .env(
-            "PATH",
-            std::env::var("PATH").unwrap_or_else(|_| String::from("/usr/bin:/bin")),
-        )
+        .env_remove("STS2_EXACT_NATIVE_UNSUPPORTED")
+        .env_remove("STS2_EXACT_COMMIT_UNKNOWN")
+        .env_remove("STS2_EXACT_LOOKUP_UNKNOWN_ONCE")
         .envs(env.iter().map(|(name, value)| (name, value)))
-        .envs(std::env::vars().filter(|(name, _)| {
-            matches!(
-                name.as_str(),
-                "HOME"
-                    | "CARGO_HOME"
-                    | "RUSTUP_HOME"
-                    | "RUSTFLAGS"
-                    | "STS2_EXO_TEST_SOURCE"
-            )
-        }))
         .arg("test").arg("--locked").arg("--package").arg("sts2-harness")
         .arg("--bin").arg("sts2-harness-runtime")
         .arg("runtime_support::exact_restore::tests::actual_production_entrypoint_exact_restore_matrix_case")

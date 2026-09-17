@@ -19,9 +19,15 @@ fn main() {
 fn run() -> Result<(), String> {
     let arguments = Arguments::parse(std::env::args().skip(1))?;
     pins::validate(&arguments.pins)?;
+    let mut failures = Vec::new();
     for outcome in ["positive", "refused", "unknown"] {
         eprintln!("running exact-restore outcome={outcome}");
-        fixture::run_case(&arguments.paths, outcome)?;
+        if let Err(error) = fixture::run_case(&arguments.paths, outcome) {
+            failures.push(format!("{outcome}: {error}"));
+        }
+    }
+    if !failures.is_empty() {
+        return Err(format!("outcome failures: {}", failures.join("; ")));
     }
     Ok(())
 }
