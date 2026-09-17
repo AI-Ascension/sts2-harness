@@ -14,33 +14,162 @@ mod tests {
     #[test]
     fn composition_keeps_normal_actions_and_adds_only_expert_potions() -> Result<(), String> {
         let expert = expert()?;
-        let play = EpisodeLegalAction::new("play:7:card:1:enemy:1", ActionKind::PlayCard)
-            .map_err(|error| error.to_string())?;
         let end = EpisodeLegalAction::new("end:7", ActionKind::EndTurn)
             .map_err(|error| error.to_string())?;
         let normal = EpisodeLegalActionSet::new(
             expert.state_id(),
             expert.generation(),
-            vec![play.clone(), end.clone()],
+            vec![end.clone()],
         )
         .map_err(|error| error.to_string())?;
-        let payloads = BTreeMap::from([
-            (
-                play.action_id().to_owned(),
-                json!({"kind":"play_card","card_id":"card:1","target_id":"enemy:1"}),
-            ),
-            (end.action_id().to_owned(), json!({"kind":"end_turn"})),
-        ]);
+        let payloads =
+            BTreeMap::from([(end.action_id().to_owned(), json!({"kind":"end_turn"}))]);
         let (merged, merged_payloads) = merge_actions(&normal, &payloads, &expert)?;
         assert_eq!(merged.actions().len(), 3);
-        assert_eq!(merged.actions()[0], play);
-        assert_eq!(merged.actions()[1], end);
-        assert_eq!(merged.actions()[2].kind(), ActionKind::UsePotion);
+        assert_eq!(
+            merged
+                .actions()
+                .iter()
+                .map(EpisodeLegalAction::action_id)
+                .collect::<Vec<_>>(),
+            vec![
+                "play:7:card:1:enemy:1",
+                "potion:7:potion:fire:enemy:1",
+                "end:7"
+            ]
+        );
         assert_eq!(merged_payloads.len(), 3);
         assert_eq!(
-            merged_payloads[merged.actions()[2].action_id()]["kind"],
+            merged_payloads["end:7"]["kind"],
+            "end_turn"
+        );
+        assert_eq!(
+            merged_payloads["potion:7:potion:fire:enemy:1"]["kind"],
             "use_potion"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn composition_order_is_admitted_by_managed_exo_request() -> Result<(), String> {
+        let expert = expert()?;
+        let normal = EpisodeLegalActionSet::new(
+            expert.state_id(),
+            expert.generation(),
+            vec![EpisodeLegalAction::new("end:7", ActionKind::EndTurn)
+                .map_err(|error| error.to_string())?],
+        )
+        .map_err(|error| error.to_string())?;
+        let payloads = BTreeMap::from([(String::from("end:7"), json!({"kind":"end_turn"}))]);
+        let (merged, _) = merge_actions(&normal, &payloads, &expert)?;
+        let legal_action_ids = merged
+            .actions()
+            .iter()
+            .map(|action| action.action_id().to_owned())
+            .collect();
+        let input = sts2_harness::ManagedRenderInput {
+            execution_id: "model-execution-1".to_owned(),
+            state_id: expert.state_id().to_owned(),
+            generation: expert.generation(),
+            observation: expert.as_value().clone(),
+            legal_action_ids,
+            objective: "bounded managed decision".to_owned(),
+            hard_constraints: Vec::new(),
+            map_context: None,
+        };
+        let boundary = sts2_harness::ContextBoundary {
+            run_id: "run-1".to_owned(),
+            episode_id: "episode-1".to_owned(),
+            agent_id: "agent-1".to_owned(),
+            state_id: expert.state_id().to_owned(),
+            generation: expert.generation(),
+            observation_sha256: "a".repeat(64),
+            catalog_sha256: "b".repeat(64),
+            adapter_revision: sts2_harness::EXO_SOURCE_REVISION.to_owned(),
+            model_revision: "model-1".to_owned(),
+            configuration_sha256: "c".repeat(64),
+            output_schema_sha256: "d".repeat(64),
+            controller_epoch: 1,
+            gate_epoch: 0,
+            control_version: 0,
+        };
+        let config = sts2_harness::ExoConfig::new(
+            sts2_harness::EXO_SOURCE_REVISION,
+            64 * 1024,
+            8 * 1024,
+            1_000,
+        )
+        .map_err(|error| error.to_string())?;
+        sts2_harness::ContextRenderer::enabled_at_with_limits(
+            &boundary,
+            input,
+            &sts2_harness::ContextDraft::new("draft-1", "revision-1"),
+            &BTreeMap::new(),
+            &config,
+            1,
+            &sts2_harness::ContextRenderLimits::harness_maxima(),
+        )
+        .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    #[test]
+    fn composition_refuses_missing_normal_action() -> Result<(), String> {
+        let mut value = expert()?.as_value().clone();
+        value["legal_actions"] = json!([
+            {
+                "action_id": "play:7:card:1:enemy:1",
+                "action": {"kind": "play_card", "card_id": "card:1", "target_id": "enemy:1"}
+            },
+            {
+                "action_id": "potion:7:potion:fire:enemy:1",
+                "action": {"kind": "use_potion", "potion_id": "potion:fire", "target_id": "enemy:1"}
+            }
+        ]);
+        let expert =
+            RuntimeV4ExpertObservation::from_value(value).map_err(|error| error.to_string())?;
+        let normal = EpisodeLegalActionSet::new(
+            expert.state_id(),
+            expert.generation(),
+            vec![EpisodeLegalAction::new("end:7", ActionKind::EndTurn)
+                .map_err(|error| error.to_string())?],
+        )
+        .map_err(|error| error.to_string())?;
+        let payloads = BTreeMap::from([(String::from("end:7"), json!({"kind":"end_turn"}))]);
+        let error = match merge_actions(&normal, &payloads, &expert) {
+            Ok(_) => return Err(String::from(
+                "expert catalog omitting normal action unexpectedly succeeded",
+            )),
+            Err(error) => error,
+        };
+        assert!(error.contains("omitted a current Runtime-v3 legal action"));
+        Ok(())
+    }
+
+    #[test]
+    fn composition_refuses_kind_mismatch_for_normal_action() -> Result<(), String> {
+        let mut value = expert()?.as_value().clone();
+        value["legal_actions"][2]["action"] =
+            json!({"kind":"play_card","card_id":"card:1","target_id":"enemy:1"});
+        let expert =
+            RuntimeV4ExpertObservation::from_value(value).map_err(|error| error.to_string())?;
+        let normal = EpisodeLegalActionSet::new(
+            expert.state_id(),
+            expert.generation(),
+            vec![EpisodeLegalAction::new("end:7", ActionKind::EndTurn)
+                .map_err(|error| error.to_string())?],
+        )
+        .map_err(|error| error.to_string())?;
+        let payloads = BTreeMap::from([(String::from("end:7"), json!({"kind":"end_turn"}))]);
+        let error = match merge_actions(&normal, &payloads, &expert) {
+            Ok(_) => {
+                return Err(String::from(
+                    "expert kind mismatch unexpectedly succeeded",
+                ))
+            }
+            Err(error) => error,
+        };
+        assert!(error.contains("kind does not match Runtime-v3"));
         Ok(())
     }
 
