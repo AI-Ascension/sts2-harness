@@ -2,7 +2,6 @@
 
 use super::*;
 use std::net::TcpListener;
-use sts2_harness::context_memory::DurableMemoryStore;
 
 const CHILD_TEST: &str = "runtime_support::runtime_v3::game_information_owner::owner_management_tests::entry_tests::runtime_entry_child";
 const OWNER_TOKEN: &str = "runtime-entry-owner-token";
@@ -365,42 +364,18 @@ fn run_runtime_entry(mode: EntryMode) {
                 "game MCP child must not inherit owner credentials or store keys"
             );
         }
-        if replay {
-            assert!(
-                !mcp_events.iter().any(|event| {
-                    matches!(
-                        event["tool"].as_str(),
-                        Some("sts2.game_information_capabilities" | "sts2.game_information_list")
-                    )
-                }),
-                "replay must deliver the archived transcript without another game-information query"
-            );
-        } else {
-            if matches!(mode, EntryMode::Scripted) {
-                assert!(
-                    mcp_events
-                        .iter()
-                        .any(|event| event["tool"] == "sts2.game_information_list"),
-                    "the live entry must send the admitted query through the actual MCP process"
-                );
-            }
-            let archived = DurableMemoryStore::open_private(
-                archive_path.to_str().expect("UTF-8 archive path"),
-                scope.clone(),
-                [11; 32],
-            )
-            .expect("reopen encrypted lookup archive");
-            let archived_corpus = archived.load_corpus().expect("read archived transcript");
-            assert!(
-                archived_corpus
-                    .entries()
-                    .any(|entry| entry.entry_id.starts_with("lookup-archive:")),
-                "normal runtime shutdown must persist the game-information archive"
-            );
-        }
+        assertions::assert_archive_transcript(
+            replay,
+            matches!(mode, EntryMode::Scripted),
+            &mcp_events,
+            archive_path,
+            &scope,
+        );
     }
 }
 
+#[path = "runtime_v3_game_information_entry_assertions.rs"]
+mod assertions;
 #[path = "runtime_v3_game_information_entry_fixture_setup.rs"]
 mod fixture_setup;
 #[path = "runtime_v3_game_information_entry_gateway.rs"]
