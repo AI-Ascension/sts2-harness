@@ -4,7 +4,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::super::target_admission::TargetAdmissionBinding;
-use super::{RecoveryAdmission, RunEvent, RunSnapshot, WorkflowRunStatus};
+use super::{EventClassification, RecoveryAdmission, RunEvent, RunSnapshot, WorkflowRunStatus};
+
+/// Reason code for a live command that faulted before it executed anything.
+///
+/// The run is failed and the cursor does not move, so this response is `Applied` in the sense that
+/// the command was processed, while no operation was admitted. It is the one reason code that must
+/// not classify as settled.
+pub const LIVE_EXECUTION_FAILED: &str = "live_execution_failed";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -53,6 +60,29 @@ pub enum CommandOutcome {
     /// new command at its current revision.
     Pending,
     Duplicate,
+}
+
+impl CommandOutcome {
+    /// Event classification for this command response.
+    ///
+    /// `Applied` normally settles an operation, which is why the response vocabulary is left
+    /// unchanged: adding a variant would change the closed `ascension.management/v1` outcome set
+    /// without the version negotiation a published consumer change requires. The truthful
+    /// distinction lives in `classification` instead, whose published enum
+    /// (`ascension.workflow-event/v1`) already carries `rejected`.
+    ///
+    /// A command that faults before executing anything is `Applied` with reason
+    /// [`LIVE_EXECUTION_FAILED`]: the cursor does not move and no operation is admitted, so
+    /// reporting `Settled` would present a failure as forward progress to any consumer that treats
+    /// a settled step as completed.
+    #[must_use]
+    pub fn classification(&self, reason_code: &str) -> EventClassification {
+        match self {
+            Self::Pending => EventClassification::Unknown,
+            Self::Applied if reason_code == LIVE_EXECUTION_FAILED => EventClassification::Rejected,
+            Self::Accepted | Self::Applied | Self::Duplicate => EventClassification::Settled,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

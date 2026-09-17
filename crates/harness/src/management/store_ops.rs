@@ -11,7 +11,7 @@ use super::{CommandAcceptance, CommandApplication, StoreCore, StoreError, Submis
 mod event_ops;
 
 pub(crate) use event_ops::validate_initial_run;
-use event_ops::{append_event, classification_for_outcome, management_event, next_sequence};
+use event_ops::{append_event, management_event, next_sequence};
 
 #[path = "store_ops_intent.rs"]
 mod intent;
@@ -208,12 +208,13 @@ pub(super) fn apply_command(
         let sequence = next_sequence(run)?;
         let mut snapshot = application.snapshot;
         snapshot.schema_version = super::super::contract::RUN_SCHEMA_VERSION.to_owned();
+        let classification = application.outcome.classification(&application.reason_code);
         let event = management_event(
             &snapshot,
             sequence,
             EventType::CommandApplied,
             application.reason_code,
-            classification_for_outcome(&application.outcome),
+            classification,
         );
         append_event(run, event)?;
         run.snapshot = snapshot.clone();

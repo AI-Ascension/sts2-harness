@@ -102,14 +102,3 @@ pub(super) fn management_event(
         integrity_digest: None,
     }
 }
-
-pub(super) fn classification_for_outcome(
-    outcome: &super::super::super::contract::CommandOutcome,
-) -> EventClassification {
-    match outcome {
-        super::super::super::contract::CommandOutcome::Accepted
-        | super::super::super::contract::CommandOutcome::Applied
-        | super::super::super::contract::CommandOutcome::Duplicate => EventClassification::Settled,
-        super::super::super::contract::CommandOutcome::Pending => EventClassification::Unknown,
-    }
-}

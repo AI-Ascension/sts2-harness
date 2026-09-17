@@ -57,6 +57,12 @@ impl LiveWorkflowSession for FakeSession {
         _input: &DecisionInput,
     ) -> Result<Decision, sts2_harness::management::ManagementError> {
         self.record("decide");
+        if self.decide_error {
+            return Err(sts2_harness::management::ManagementError::capability(
+                "fake_decide",
+                "fixture decision failed before any provider call",
+            ));
+        }
         Ok(Decision::Action {
             action_id: "end-turn".to_owned(),
             rationale: "fixture decision".to_owned(),

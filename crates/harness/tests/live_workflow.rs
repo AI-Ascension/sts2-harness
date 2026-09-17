@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use serde_json::json;
 use sts2_harness::management::{
-    CommandKind, EventType, LiveWorkflowOptions, LiveWorkflowSessionFactory, MemoryWorkflowStore,
-    WorkflowRunStatus,
+    CommandKind, EventClassification, EventType, LiveWorkflowOptions, LiveWorkflowSessionFactory,
+    MemoryWorkflowStore, WorkflowRunStatus,
 };
 
 #[path = "support/live_workflow.rs"]
@@ -297,5 +297,59 @@ fn pause_resume_and_continue_match_durable_scheduler_state() {
     assert_eq!(
         service.status(&actor, &run_id).expect("status").run.status,
         WorkflowRunStatus::Completed
+    );
+}
+
+#[test]
+fn failed_step_before_execution_is_not_classified_as_settled() {
+    let factory = Arc::new(FakeFactory::decide_error());
+    let service = live_service(
+        Arc::new(MemoryWorkflowStore::new()),
+        Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
+        LiveWorkflowOptions::default(),
+    )
+    .expect("service");
+    let actor = actor();
+    let submitted = service
+        .submit_run(
+            &actor,
+            request("request-live-failed-step", definition(false)),
+        )
+        .expect("submit");
+    let run_id = submitted.workflow_run_id;
+    service
+        .command(&actor, command(&run_id, "step-1", 1, CommandKind::Step))
+        .expect("observe");
+
+    let before = service.status(&actor, &run_id).expect("status").run;
+    let failed = service
+        .command(&actor, command(&run_id, "step-2", 2, CommandKind::Step))
+        .expect("failing decide");
+
+    // The command faulted before it executed anything: no provider call was consumed, the run is
+    // failed, and the cursor did not advance. The response stays `Applied` (its published
+    // vocabulary), but the event must not present the failure as forward progress.
+    let after = service.status(&actor, &run_id).expect("status").run;
+    assert_eq!(after.status, WorkflowRunStatus::Failed);
+    assert_eq!(after.budget.provider_calls_consumed, 0);
+    assert_eq!(after.cursor.node_id, before.cursor.node_id);
+    assert!(after.pending_operation.is_none());
+
+    let last = service
+        .events(&actor, &run_id, 0, 128)
+        .expect("events")
+        .events
+        .into_iter()
+        .find(|event| event.sequence == failed.sequence.expect("sequence"))
+        .expect("failed step event");
+    assert_eq!(last.event_type, EventType::CommandApplied);
+    assert_eq!(last.payload.reason_code, "live_execution_failed");
+    assert_ne!(
+        last.payload.classification,
+        Some(EventClassification::Settled)
+    );
+    assert_eq!(
+        last.payload.classification,
+        Some(EventClassification::Rejected)
     );
 }

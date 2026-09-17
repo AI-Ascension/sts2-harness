@@ -113,6 +113,7 @@ pub(crate) struct FakeFactory {
     completions: Arc<Mutex<Vec<bool>>>,
     unknown: bool,
     dispatch_error: bool,
+    decide_error: bool,
     mismatched_receipt: bool,
     reconcile_conflict: bool,
     launch_error: bool,
@@ -130,6 +131,7 @@ impl FakeFactory {
             completions: Arc::new(Mutex::new(Vec::new())),
             unknown,
             dispatch_error: false,
+            decide_error: false,
             mismatched_receipt: false,
             reconcile_conflict: false,
             launch_error: false,
@@ -147,6 +149,7 @@ impl FakeFactory {
             completions: Arc::new(Mutex::new(Vec::new())),
             unknown: false,
             dispatch_error: true,
+            decide_error: false,
             mismatched_receipt: false,
             reconcile_conflict: false,
             launch_error: false,
@@ -155,6 +158,12 @@ impl FakeFactory {
             reconcile_unknown: false,
             reconcile_status: None,
         }
+    }
+
+    /// A live session whose `decide` node fails before any provider call, exercising the
+    /// generic runtime-fault arm rather than the accepted/unknown dispatch paths.
+    pub(crate) fn decide_error() -> Self {
+        Self::new(false).with_decide_error()
     }
 
     pub(crate) fn mismatched_receipt() -> Self {
@@ -193,6 +202,11 @@ impl FakeFactory {
 
     fn with_launch_error(mut self) -> Self {
         self.launch_error = true;
+        self
+    }
+
+    fn with_decide_error(mut self) -> Self {
+        self.decide_error = true;
         self
     }
 
@@ -262,6 +276,7 @@ impl LiveWorkflowSessionFactory for FakeFactory {
             completions: Arc::clone(&self.completions),
             unknown: self.unknown,
             dispatch_error: self.dispatch_error,
+            decide_error: self.decide_error,
             mismatched_receipt: self.mismatched_receipt,
             reconcile_conflict: self.reconcile_conflict,
             launch_error: self.launch_error,
@@ -300,6 +315,7 @@ struct FakeSession {
     completions: Arc<Mutex<Vec<bool>>>,
     unknown: bool,
     dispatch_error: bool,
+    decide_error: bool,
     mismatched_receipt: bool,
     reconcile_conflict: bool,
     launch_error: bool,

@@ -3,8 +3,8 @@
 use rusqlite::{OptionalExtension, params};
 
 use super::super::super::contract::{
-    CommandOutcome, CommandRequest, CommandResponse, EventClassification, EventPage, EventType,
-    MAX_EVENTS_PER_RUN, RunSnapshot,
+    CommandRequest, CommandResponse, EventClassification, EventPage, EventType, MAX_EVENTS_PER_RUN,
+    RunSnapshot,
 };
 use super::super::{CommandAcceptance, CommandApplication, StoreError, SubmissionLookup};
 use super::SqliteWorkflowStore;
@@ -221,6 +221,7 @@ pub(super) fn apply_command(
         ));
     }
     let sequence = next_sequence(&transaction, &request.run_id)?;
+    let classification = application.outcome.classification(&application.reason_code);
     if let Some(record) = &record {
         super::context_history::insert(
             &transaction,
@@ -235,7 +236,7 @@ pub(super) fn apply_command(
         sequence,
         EventType::CommandApplied,
         application.reason_code,
-        classification_for_outcome(&application.outcome),
+        classification,
     );
     insert_event(&transaction, &event)?;
     let response = CommandResponse {
@@ -261,15 +262,6 @@ pub(super) fn apply_command(
         .map_err(sqlite_error)?;
     transaction.commit().map_err(sqlite_error)?;
     Ok(response)
-}
-
-fn classification_for_outcome(outcome: &CommandOutcome) -> EventClassification {
-    match outcome {
-        CommandOutcome::Accepted | CommandOutcome::Applied | CommandOutcome::Duplicate => {
-            EventClassification::Settled
-        }
-        CommandOutcome::Pending => EventClassification::Unknown,
-    }
 }
 
 pub(super) fn next_sequence(
