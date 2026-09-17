@@ -29,6 +29,8 @@ pub struct ExoLookupProcess {
     cancel: tokio::sync::watch::Sender<bool>,
     binding: Option<crate::game_information::LookupBinding>,
     byte_budget: Option<usize>,
+    bootstrap_feedback_pending: bool,
+    bootstrap_profile: bool,
 }
 
 impl ExoLookupProcess {
@@ -39,6 +41,28 @@ impl ExoLookupProcess {
         request: serde_json::Value,
         timeout: Duration,
     ) -> Result<Self, LookupError> {
+        Self::new_mode(config, request_id, turn_id, request, timeout, false)
+    }
+
+    /// Explicit bootstrap-capable provider profile. Legacy `new` stays v1.
+    pub fn new_bootstrap(
+        config: ExoProcessConfig,
+        request_id: String,
+        turn_id: String,
+        request: serde_json::Value,
+        timeout: Duration,
+    ) -> Result<Self, LookupError> {
+        Self::new_mode(config, request_id, turn_id, request, timeout, true)
+    }
+
+    fn new_mode(
+        config: ExoProcessConfig,
+        request_id: String,
+        turn_id: String,
+        request: serde_json::Value,
+        timeout: Duration,
+        bootstrap_profile: bool,
+    ) -> Result<Self, LookupError> {
         if timeout.is_zero() || timeout > Duration::from_secs(120) {
             return Err(LookupError::Bounds);
         }
@@ -48,7 +72,11 @@ impl ExoLookupProcess {
         )
         .map_err(|_| LookupError::Invalid)?;
         ExoLookupFrame {
-            wire_version: EXO_LOOKUP_WIRE.into(),
+            wire_version: if bootstrap_profile {
+                EXO_LOOKUP_BOOTSTRAP_WIRE.into()
+            } else {
+                EXO_LOOKUP_WIRE.into()
+            },
             request_id: request_id.clone(),
             turn_id: turn_id.clone(),
             sequence: 0,
@@ -90,6 +118,8 @@ impl ExoLookupProcess {
             cancel,
             binding: None,
             byte_budget: None,
+            bootstrap_feedback_pending: false,
+            bootstrap_profile,
         })
     }
 
@@ -97,8 +127,13 @@ impl ExoLookupProcess {
         if self.closed {
             return Err(LookupError::Invalid);
         }
+        let bootstrap_wire = self.bootstrap_profile
+            && matches!(&payload, ExoLookupPayload::Start { .. })
+            || matches!(&payload, ExoLookupPayload::Bootstrap { .. })
+            || (self.bootstrap_feedback_pending
+                && matches!(&payload, ExoLookupPayload::Feedback { .. }));
         let frame = ExoLookupFrame {
-            wire_version: if matches!(&payload, ExoLookupPayload::Bootstrap { .. }) {
+            wire_version: if bootstrap_wire {
                 EXO_LOOKUP_BOOTSTRAP_WIRE.into()
             } else {
                 EXO_LOOKUP_WIRE.into()
@@ -108,6 +143,13 @@ impl ExoLookupProcess {
             sequence: self.sequence,
             payload,
         };
+        if matches!(frame.payload, ExoLookupPayload::Bootstrap { .. }) {
+            self.bootstrap_feedback_pending = true;
+        } else if self.bootstrap_feedback_pending
+            && matches!(frame.payload, ExoLookupPayload::Feedback { .. })
+        {
+            self.bootstrap_feedback_pending = false;
+        }
         self.sender
             .as_ref()
             .ok_or(LookupError::Transport)?
@@ -168,6 +210,9 @@ impl LookupAgentPort for ExoLookupProcess {
                     crate::exo_lookup_wire::query_turn(arguments, &input)
                 }
                 ExoLookupPayload::Bootstrap { arguments } => {
+                    if !self.bootstrap_profile {
+                        return Err(LookupError::Invalid);
+                    }
                     crate::exo_lookup_wire::bootstrap_turn(arguments)
                 }
                 ExoLookupPayload::ReadRetained {

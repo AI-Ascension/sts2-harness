@@ -68,8 +68,8 @@ impl LookupSession {
                 return Err(LookupError::Divergence);
             }
             if let Some(response) = &record.response {
-                let mut request = record.request.clone();
-                request["scope"] = response["scope"].clone();
+                let request =
+                    owner_normalized_bootstrap_request(&record.request, response, &self.binding)?;
                 crate::game_information_binding::game_information_bootstrap::select_snapshot(
                     &request, response,
                 )
@@ -251,8 +251,7 @@ fn validate_manifest(manifest: &Manifest, binding: &LookupBinding) -> Result<(),
             return Err(LookupError::Divergence);
         }
         if let Some(response) = &record.response {
-            let mut request = record.request.clone();
-            request["scope"] = response["scope"].clone();
+            let request = owner_normalized_bootstrap_request(&record.request, response, binding)?;
             crate::game_information_binding::game_information_bootstrap::select_snapshot(
                 &request, response,
             )
@@ -260,4 +259,31 @@ fn validate_manifest(manifest: &Manifest, binding: &LookupBinding) -> Result<(),
         }
     }
     Ok(())
+}
+
+/// Rebinds only the transport-owned request fields before replay validation.
+/// The response cannot choose a different run, manifest, locale, or authority
+/// and then validate itself against those claims.
+fn owner_normalized_bootstrap_request(
+    request: &Value,
+    response: &Value,
+    binding: &LookupBinding,
+) -> Result<Value, LookupError> {
+    let scope = response["scope"]
+        .as_object()
+        .ok_or(LookupError::Divergence)?;
+    if scope["run_id"] != binding.scope.run_id
+        || scope["authority_epoch"] != binding.authority_epoch
+        || scope["content_manifest_id"] != binding.content_manifest_id
+        || scope["locale"] != binding.locale
+    {
+        return Err(LookupError::Divergence);
+    }
+    let correlation = response["correlation_id"]
+        .as_str()
+        .ok_or(LookupError::Divergence)?;
+    let mut normalized = request.clone();
+    normalized["scope"] = response["scope"].clone();
+    normalized["correlation_id"] = Value::String(correlation.to_owned());
+    Ok(normalized)
 }

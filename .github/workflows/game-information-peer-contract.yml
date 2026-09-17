@@ -68,6 +68,7 @@ jobs:
           STS2_MCP_BINARY: ${{ github.workspace }}/mcp/target/debug/sts2-mcp-server
           STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
           STS2_LIVE_EPISODE: 'true'
+          STS2_EXO_LOOKUP_BOOTSTRAP: 'true'
         run: |
           cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
             'runtime_support::runtime_v3::game_information_owner::owner_management_tests::entry_tests::runtime_entry_adopts_queries_and_replays_through_real_gateway_and_mcp_processes' \
@@ -82,6 +83,7 @@ jobs:
           STS2_MCP_BINARY: ${{ github.workspace }}/mcp/target/debug/sts2-mcp-server
           STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
           STS2_LIVE_EPISODE: 'true'
+          STS2_EXO_LOOKUP_BOOTSTRAP: 'true'
         run: |
           cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
             'runtime_support::runtime_v3::game_information_owner::owner_management_tests::entry_tests::runtime_entry_refuses_foreign_manifest_before_query_or_agent_delivery' \

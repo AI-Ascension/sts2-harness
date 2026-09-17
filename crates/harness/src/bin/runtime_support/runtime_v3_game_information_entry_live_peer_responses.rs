@@ -29,6 +29,9 @@ pub(super) fn downstream_response(
         ("POST", "/api/v1/game-information/list") => {
             Ok((200, game_information_page(request, correlation)?))
         }
+        ("POST", "/api/v1/game-information/detail") => {
+            Ok((200, game_information_page(request, correlation)?))
+        }
         ("POST", "/api/v1/game-information/live-observation-bootstrap") => Ok((
             200,
             live_observation_bootstrap(request, correlation, mismatch_manifest)?,
@@ -191,14 +194,24 @@ fn live_observation_bootstrap(
     let definition = request
         .get("selector")
         .and_then(|selector| selector.get("definition_ref"))
+        .or_else(|| request.get("definition_ref"))
         .cloned()
         .unwrap_or_else(|| {
             json!({"content_manifest_id":manifest,"entity_kind":"card",
                 "namespaced_id":"ironclad:strike","variant":null})
         });
+    let scope = request.get("scope").cloned().unwrap_or_else(|| {
+        json!({
+            "instance_id": request["instance_id"],
+            "run_id": request["run_id"],
+            "authority_epoch": request["authority_epoch"],
+            "content_manifest_id": request["content_manifest_id"],
+            "locale": request["locale"]
+        })
+    });
     let instance = json!({
         "instance_id": INSTANCE,
-        "run_id": request["scope"]["run_id"],
+        "run_id": scope["run_id"],
         "epoch": 7,
         "entity_kind": "card",
         "entity_id": "card-17"
@@ -214,8 +227,8 @@ fn live_observation_bootstrap(
         "provenance":{"artifact":"sts2-protocol/game-information-live-observation-bootstrap-v1",
             "source":"schemas/game-information-live-observation-bootstrap-v1.schema.json","generator":"hand-authored"},
         "correlation_id":correlation,"kind":"bootstrap_response",
-        "scope":{"instance_id":INSTANCE,"run_id":request["scope"]["run_id"],
-            "authority_epoch":request["scope"]["authority_epoch"],
+        "scope":{"instance_id":INSTANCE,"run_id":scope["run_id"],
+            "authority_epoch":scope["authority_epoch"],
             "content_manifest_id":manifest,"locale":LOCALE},
         "selector":{"definition_ref":definition,"instance_ref":null},
         "limits":{"max_visible_entities":64,"max_item_bytes":65536,"max_message_bytes":262144},

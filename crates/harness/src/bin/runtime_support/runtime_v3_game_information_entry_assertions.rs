@@ -19,6 +19,7 @@ pub(super) fn assert_archive_transcript(
                     Some(
                         "sts2.game_information_capabilities"
                             | "sts2.game_information_list"
+                            | "sts2.game_information_detail"
                             | "sts2.game_information.live_observation_bootstrap"
                     )
                 )
@@ -28,9 +29,12 @@ pub(super) fn assert_archive_transcript(
     } else {
         if scripted {
             assert!(
-                mcp_events
-                    .iter()
-                    .any(|event| event["tool"] == "sts2.game_information_list"),
+                mcp_events.iter().any(|event| {
+                    matches!(
+                        event["tool"].as_str(),
+                        Some("sts2.game_information_list" | "sts2.game_information_detail")
+                    )
+                }),
                 "the live entry must send the admitted query through the actual MCP process"
             );
             assert!(

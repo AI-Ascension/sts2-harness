@@ -51,8 +51,22 @@ impl LookupSession {
         {
             return Err(LookupError::Bounds);
         }
+        let response_scope = response["scope"]
+            .as_object()
+            .ok_or(LookupError::Scope)?;
+        if response_scope["run_id"] != self.binding.scope.run_id
+            || response_scope["authority_epoch"] != self.binding.authority_epoch
+            || response_scope["content_manifest_id"] != self.binding.content_manifest_id
+            || response_scope["locale"] != self.binding.locale
+        {
+            return Err(LookupError::Scope);
+        }
         let mut validated_request = request.clone();
         validated_request["scope"] = response["scope"].clone();
+        // Bootstrap requests use a provider-local placeholder correlation;
+        // validate against the owner-assigned response correlation while
+        // retaining the original request in the durable transcript.
+        validated_request["correlation_id"] = response["correlation_id"].clone();
         let selected =
             crate::game_information_binding::game_information_bootstrap::select_snapshot(
                 &validated_request,

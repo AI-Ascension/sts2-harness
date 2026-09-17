@@ -14,7 +14,7 @@ fn handle_bootstrap<M: LookupMcpPort>(
     request_shape["scope"] = serde_json::json!({
         "instance_id": "pending",
         "run_id": session.binding.scope.run_id,
-        "authority_epoch": session.binding.authority_epoch.max(1),
+        "authority_epoch": session.binding.authority_epoch,
         "content_manifest_id": session.binding.content_manifest_id,
         "locale": session.binding.locale
     });
@@ -38,6 +38,10 @@ fn handle_bootstrap<M: LookupMcpPort>(
             };
             let mut validated_request = request.clone();
             validated_request["scope"] = response["scope"].clone();
+            // The provider sends a transport-neutral `pending` correlation.
+            // The owner replaces it with the authenticated MCP correlation
+            // before validating and recording the response.
+            validated_request["correlation_id"] = response["correlation_id"].clone();
             let snapshot = match crate::game_information_binding::game_information_bootstrap::select_snapshot(
                 &validated_request,
                 &response,

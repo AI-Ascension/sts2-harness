@@ -226,7 +226,7 @@ fn run_runtime_entry(mode: EntryMode) {
             assert!(
                 !requests
                     .iter()
-                    .any(|request| request.path.ends_with("/game-information/list")),
+                    .any(|request| request.path.ends_with("/game-information/detail")),
                 "foreign producer manifest must be refused before a content query"
             );
             continue;
@@ -279,7 +279,9 @@ fn run_runtime_entry(mode: EntryMode) {
                     !requests.iter().any(|request| {
                         matches!(
                             request.path.as_str(),
-                            "/api/v1/game-information/query" | "/api/v1/game-information/list"
+                            "/api/v1/game-information/query"
+                                | "/api/v1/game-information/list"
+                                | "/api/v1/game-information/detail"
                         )
                     }),
                     "replay must deliver the archived transcript without another content query"
@@ -294,8 +296,16 @@ fn run_runtime_entry(mode: EntryMode) {
                 assert!(
                     requests
                         .iter()
-                        .any(|request| request.path == "/api/v1/game-information/list"),
-                    "actual MCP content query must cross the actual Gateway"
+                        .any(|request| request.path == "/api/v1/game-information/detail"),
+                    "actual MCP live content query must cross the actual Gateway"
+                );
+                assert!(
+                    requests.iter().any(|request| {
+                        request.path == "/api/v1/game-information/detail"
+                            && request.body["query"]["binding"]["mode"] == "live"
+                            && request.body["query"]["parent_observation"]["state_generation"] == 0
+                    }),
+                    "actual MCP live detail query must carry the bootstrapped snapshot"
                 );
                 assert!(
                     requests.iter().any(|request| {

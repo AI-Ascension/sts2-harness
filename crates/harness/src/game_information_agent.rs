@@ -198,8 +198,19 @@ pub fn run_lookup_replay_tool_loop<A: LookupAgentPort>(
                     .response
                     .clone()
                     .ok_or_else(|| record.error.clone().unwrap_or(LookupError::Divergence))?;
+                let response_scope = response["scope"]
+                    .as_object()
+                    .ok_or(LookupError::Divergence)?;
+                if response_scope["run_id"] != session.binding.scope.run_id
+                    || response_scope["authority_epoch"] != session.binding.authority_epoch
+                    || response_scope["content_manifest_id"] != session.binding.content_manifest_id
+                    || response_scope["locale"] != session.binding.locale
+                {
+                    return Err(LookupError::Divergence);
+                }
                 let mut validated_request = request.clone();
                 validated_request["scope"] = response["scope"].clone();
+                validated_request["correlation_id"] = response["correlation_id"].clone();
                 let snapshot =
                     crate::game_information_binding::game_information_bootstrap::select_snapshot(
                         &validated_request,

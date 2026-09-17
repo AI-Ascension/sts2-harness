@@ -129,6 +129,7 @@ pub(super) fn start_runtime_child(
         .env("STS2_RUNTIME_PROFILE", "negotiated-composition-v1")
         .env("STS2_LIVE_EPISODE", "true")
         .env("STS2_ENABLE_GAME_INFORMATION_LOOKUP_BINDING", "true")
+        .env("STS2_EXO_LOOKUP_BOOTSTRAP", "true")
         .env("STS2_GATEWAY_ADDR", gateway_address.to_string())
         .env("STS2_GATEWAY_TOKEN", gateway_token)
         .env("STS2_MCP_BINARY", mcp_binary)

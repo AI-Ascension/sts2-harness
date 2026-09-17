@@ -38,20 +38,52 @@ fn execute() -> Result<(), &'static str> {
     };
     if matches!(
         mode.as_str(),
-        "--lookup-describe" | "--lookup-run" | "--lookup-synthetic"
+        "--lookup-describe"
+            | "--lookup-run"
+            | "--lookup-synthetic"
+            | "--lookup-bootstrap-describe"
+            | "--lookup-bootstrap-run"
+            | "--lookup-bootstrap-synthetic"
     ) {
         let loaded = config::load_profile(path, true)?;
-        if mode == "--lookup-describe" && rest.is_empty() {
+        let bootstrap = matches!(
+            mode.as_str(),
+            "--lookup-bootstrap-describe"
+                | "--lookup-bootstrap-run"
+                | "--lookup-bootstrap-synthetic"
+        );
+        if matches!(
+            mode.as_str(),
+            "--lookup-describe" | "--lookup-bootstrap-describe"
+        ) && rest.is_empty()
+        {
+            let description = if bootstrap {
+                loaded.lookup_bootstrap_description()?
+            } else {
+                loaded.lookup_description()?
+            };
             return write_output(
-                &serde_json::to_vec(&loaded.lookup_description()?)
-                    .map_err(|_| "exo_bridge_description")?,
+                &serde_json::to_vec(&description).map_err(|_| "exo_bridge_description")?,
             );
         }
-        if mode == "--lookup-describe" || rest.len() != 1 || rest[0] != loaded.digest {
+        if matches!(
+            mode.as_str(),
+            "--lookup-describe" | "--lookup-bootstrap-describe"
+        ) || rest.len() != 1
+            || rest[0] != loaded.digest
+        {
             return Err("exo_bridge_config_identity");
         }
-        loaded.validate_route(mode == "--lookup-synthetic")?;
-        return lookup::execute(&loaded, mode == "--lookup-synthetic");
+        let synthetic = matches!(
+            mode.as_str(),
+            "--lookup-synthetic" | "--lookup-bootstrap-synthetic"
+        );
+        loaded.validate_route(synthetic)?;
+        return if bootstrap {
+            lookup::execute_bootstrap(&loaded, synthetic)
+        } else {
+            lookup::execute(&loaded, synthetic)
+        };
     }
     if !matches!(
         mode.as_str(),

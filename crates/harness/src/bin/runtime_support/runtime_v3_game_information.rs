@@ -244,15 +244,14 @@ impl RuntimeV3Port {
         let observation_changed = previous_observation
             .as_ref()
             .zip(
-                self.lookup_binding
-                    .as_ref()
-                    .and_then(LookupBindingSession::observation),
-            )
-            .is_some_and(|(previous, current)| {
-                previous.observation_id != current.observation_id
-                    || previous.snapshot_id != current.snapshot_id
+            self.lookup_binding
+                .as_ref()
+                .and_then(LookupBindingSession::observation),
+        )
+        .is_some_and(|(previous, current)| {
+                previous.snapshot_id != current.snapshot_id
                     || previous.state_generation != current.state_generation
-            });
+        });
         if observation_changed
             && let Some(session) = self.lookup_session.as_mut()
         {

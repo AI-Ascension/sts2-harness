@@ -12,6 +12,19 @@ use sts2_harness::{EXO_SOURCE_REVISION, ExoDecisionRequest};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
 pub fn execute(loaded: &Loaded, synthetic: bool) -> Result<(), &'static str> {
+    execute_mode(loaded, synthetic, false)
+}
+
+/// Bootstrap-capable lookup profile. Legacy `--lookup` remains terminal/query-only.
+pub fn execute_bootstrap(loaded: &Loaded, synthetic: bool) -> Result<(), &'static str> {
+    execute_mode(loaded, synthetic, true)
+}
+
+fn execute_mode(
+    loaded: &Loaded,
+    synthetic: bool,
+    bootstrap_capable: bool,
+) -> Result<(), &'static str> {
     let credential = if synthetic {
         "sts2-synthetic-model-key".into()
     } else {
@@ -25,7 +38,7 @@ pub fn execute(loaded: &Loaded, synthetic: bool) -> Result<(), &'static str> {
         .enable_all()
         .build()
         .map_err(|_| "exo_bridge_runtime")?;
-    let result = runtime.block_on(relay(loaded, &private, credential));
+    let result = runtime.block_on(relay(loaded, &private, credential, bootstrap_capable));
     // Tokio's process-owned stdin worker cannot interrupt an OS read; main exits after this bound.
     runtime.shutdown_timeout(std::time::Duration::from_millis(100));
     result
@@ -52,6 +65,7 @@ async fn relay(
     loaded: &Loaded,
     private: &PrivateRoot,
     credential: String,
+    bootstrap_capable: bool,
 ) -> Result<(), &'static str> {
     let mut host_input = tokio::io::stdin();
     let mut host_output = tokio::io::stdout();
@@ -62,6 +76,11 @@ async fn relay(
     .await
     .map_err(|_| "exo_bridge_lookup_timeout")??;
     let start = ExoLookupFrame::parse(&bytes).map_err(|_| "exo_bridge_lookup_frame")?;
+    if bootstrap_capable
+        != (start.wire_version == sts2_harness::exo_lookup_wire::EXO_LOOKUP_BOOTSTRAP_WIRE)
+    {
+        return Err("exo_bridge_lookup_profile");
+    }
     let ExoLookupPayload::Start {
         request,
         optional_byte_budget,
@@ -92,12 +111,20 @@ async fn relay(
             "legal_action_ids":request.legal_action_ids,"objective":request.objective,
             "hard_constraints":request.hard_constraints}
     });
-    let mut child = executor_command(loaded, private)?
-        .env(
-            "STS2_EXO_LOOKUP_FEEDBACK_BYTES",
-            feedback_budget.to_string(),
-        )
-        .arg("--lookup")
+    let mut command = executor_command(loaded, private)?;
+    command.env(
+        "STS2_EXO_LOOKUP_FEEDBACK_BYTES",
+        feedback_budget.to_string(),
+    );
+    if bootstrap_capable {
+        command.env("STS2_EXO_LOOKUP_BOOTSTRAP", "1");
+    }
+    let mut child = command
+        .arg(if bootstrap_capable {
+            "--lookup-bootstrap"
+        } else {
+            "--lookup"
+        })
         .spawn()
         .map_err(|_| "exo_bridge_executor_unavailable")?;
     let pid = child
@@ -137,13 +164,26 @@ async fn relay(
             frame
                 .assert_identity(&start.request_id, &start.turn_id, sequence)
                 .map_err(|_| "exo_bridge_lookup_identity")?;
+            let bootstrap = matches!(frame.payload, ExoLookupPayload::Bootstrap { .. });
+            if bootstrap
+                && (!bootstrap_capable
+                    || frame.wire_version
+                        != sts2_harness::exo_lookup_wire::EXO_LOOKUP_BOOTSTRAP_WIRE)
+            {
+                return Err("exo_bridge_lookup_profile");
+            }
+            if !bootstrap && frame.wire_version != sts2_harness::exo_lookup_wire::EXO_LOOKUP_WIRE {
+                return Err("exo_bridge_lookup_profile");
+            }
             let terminal = match &frame.payload {
                 ExoLookupPayload::Decision { action_id }
                     if request.legal_action_ids.contains(action_id) =>
                 {
                     true
                 }
-                ExoLookupPayload::Query { .. } | ExoLookupPayload::ReadRetained { .. }
+                ExoLookupPayload::Query { .. }
+                | ExoLookupPayload::Bootstrap { .. }
+                | ExoLookupPayload::ReadRetained { .. }
                     if sequence <= 32 =>
                 {
                     false
@@ -164,6 +204,11 @@ async fn relay(
             feedback
                 .assert_identity(&start.request_id, &start.turn_id, sequence)
                 .map_err(|_| "exo_bridge_lookup_identity")?;
+            if bootstrap
+                && feedback.wire_version != sts2_harness::exo_lookup_wire::EXO_LOOKUP_BOOTSTRAP_WIRE
+            {
+                return Err("exo_bridge_lookup_profile");
+            }
             let ExoLookupPayload::Feedback { value } = &feedback.payload else {
                 return Err("exo_bridge_lookup_feedback");
             };

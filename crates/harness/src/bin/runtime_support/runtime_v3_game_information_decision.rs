@@ -14,15 +14,22 @@ pub(super) struct LookupAgentDecisionSource {
     process: ExoProcessConfig,
     revision: String,
     timeout: Duration,
+    bootstrap_profile: bool,
     execution_id: Option<ModelExecutionId>,
 }
 
 impl LookupAgentDecisionSource {
-    pub(super) fn new(process: ExoProcessConfig, revision: String, timeout: Duration) -> Self {
+    pub(super) fn new_with_profile(
+        process: ExoProcessConfig,
+        revision: String,
+        timeout: Duration,
+        bootstrap_profile: bool,
+    ) -> Self {
         Self {
             process,
             revision,
             timeout,
+            bootstrap_profile,
             execution_id: None,
         }
     }
@@ -74,13 +81,23 @@ impl DecisionSource for LookupAgentDecisionSource {
             "hard_constraints": &input.hard_constraints,
             "max_response_bytes": 8192,
         });
-        let mut agent = ExoLookupProcess::new(
-            self.process.clone(),
-            request_id,
-            turn_id,
-            request,
-            self.timeout,
-        )
+        let mut agent = if self.bootstrap_profile {
+            ExoLookupProcess::new_bootstrap(
+                self.process.clone(),
+                request_id,
+                turn_id,
+                request,
+                self.timeout,
+            )
+        } else {
+            ExoLookupProcess::new(
+                self.process.clone(),
+                request_id,
+                turn_id,
+                request,
+                self.timeout,
+            )
+        }
         .map_err(map_lookup_error)?;
         let action_id = runtime.run_game_information_lookup(&input.legal_actions, &mut agent)?;
         self.execution_id = Some(input.execution_id);

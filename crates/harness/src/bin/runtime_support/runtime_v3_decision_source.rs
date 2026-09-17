@@ -14,10 +14,11 @@ fn decision_source(
             ));
         }
         Ok(Box::new(
-            game_information_decision::LookupAgentDecisionSource::new(
+            game_information_decision::LookupAgentDecisionSource::new_with_profile(
                 settings.process.clone(),
                 lookup_agent.revision.clone(),
                 lookup_agent.timeout,
+                lookup_agent.bootstrap_profile,
             ),
         ))
     } else {
