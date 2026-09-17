@@ -15,6 +15,20 @@ use sts2_harness::context_control::{
     catalog_metadata, excluded_sentinel_paths, project_model_view,
 };
 
+/// The shared roots every recipe must reach, so each case below declares only what it varies.
+fn required_roots() -> Vec<sts2_harness::context_control::ViewFieldPath> {
+    vec![
+        path(&[named("state_id")]),
+        path(&[named("generation")]),
+        path(&[named("player"), named("hp")]),
+        path(&[named("player"), named("max_hp")]),
+        path(&[named("player"), named("energy")]),
+        path(&[named("player"), named("gold")]),
+        path(&[named("player"), named("hand")]),
+        path(&[named("state"), named("state")]),
+    ]
+}
+
 // ---------------------------------------------------------------------------
 // AC1 — nested/array/missing/null produce deterministic bounded output, and
 //       source validation demonstrably precedes projection.
@@ -153,4 +167,119 @@ fn source_validation_precedes_projection_and_covers_excluded_fields() {
         "the unseen card piles are declared as excluded sentinels"
     );
     let _ = recipe;
+}
+
+// ---------------------------------------------------------------------------
+// Several declared paths may index the same collection. Each contributes only its own member, so
+// the collection level must be merged rather than replaced: replacing drops every member but the
+// last declared, and the surviving set would depend on declaration order.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn every_declared_member_of_one_indexed_collection_survives() {
+    for order in [
+        vec!["card_id", "name"],
+        vec!["name", "card_id"],
+        vec!["cost", "name", "card_id"],
+    ] {
+        let mut fields = required_roots();
+        // Replace the whole-hand selection with the indexed members this case is about.
+        fields.retain(|field| field.segments != vec![named("player"), named("hand")]);
+        for member in &order {
+            fields.push(path(&[
+                named("player"),
+                named("hand"),
+                PathSegment::AllItems,
+                named(member),
+            ]));
+        }
+        let recipe = ModelViewProjection::new("selector-members", "revision-1", fields)
+            .expect("recipe resolves");
+        let source = AdmittedSourceObservation::admit(observation()).expect("source admits");
+        let prepared = project_model_view(&recipe, &source).expect("projection");
+
+        let hand = prepared
+            .value
+            .pointer("/player/hand")
+            .and_then(Value::as_array)
+            .expect("hand is an array");
+        assert_eq!(hand.len(), 2, "the collection keeps its cardinality");
+        for (index, member) in order.iter().enumerate() {
+            let expected = match *member {
+                "card_id" => json!(if index == 0 { "strike" } else { "defend" }),
+                "name" => json!(if index == 0 { "Strike" } else { "Defend" }),
+                _ => json!(1),
+            };
+            assert!(
+                hand.iter()
+                    .any(|element| element.get(*member) == Some(&expected)),
+                "declaration order {order:?} must not drop {member}; got {hand:?}"
+            );
+        }
+        // Every member survives for every element, not merely somewhere in the array.
+        for element in hand {
+            for member in &order {
+                assert!(
+                    element.get(*member).is_some(),
+                    "each element must carry {member}; got {element:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn indexed_members_of_a_nested_collection_survive_and_match_the_witness() {
+    let mut nested = observation();
+    nested["state"] = json!({
+        "state": "combat",
+        "turn_index": 4,
+        "enemies": [{
+            "enemy_id": "e1",
+            "name": "Jaw Worm",
+            "hp": 10,
+            "max_hp": 12,
+            "intent": {"kind": "attack", "damage": 6, "hits": 1}
+        }]
+    });
+    let mut fields = required_roots();
+    fields.pop();
+    fields.push(path(&[named("state"), named("state")]));
+    for member in ["name", "hp", "max_hp"] {
+        fields.push(path(&[
+            named("state"),
+            named("enemies"),
+            PathSegment::AllItems,
+            named(member),
+        ]));
+    }
+    let recipe = ModelViewProjection::new("selector-enemies", "revision-1", fields)
+        .expect("recipe resolves");
+    let source = AdmittedSourceObservation::admit(nested).expect("source admits");
+    let prepared = project_model_view(&recipe, &source).expect("projection");
+
+    let enemies = prepared
+        .value
+        .pointer("/state/enemies")
+        .and_then(Value::as_array)
+        .expect("enemies is an array");
+    assert_eq!(
+        enemies.first(),
+        Some(&json!({"name": "Jaw Worm", "hp": 10, "max_hp": 12})),
+        "every declared member of a nested indexed collection must survive"
+    );
+    // The witness must describe the bytes it accompanies, not a superset of them.
+    for member in ["name", "hp", "max_hp"] {
+        assert!(
+            prepared.paths.iter().any(|path| path.ends_with(member)),
+            "the witness lists {member}"
+        );
+    }
+    let rendered = String::from_utf8(prepared.bytes.clone()).expect("bytes are utf-8");
+    for member in ["Jaw Worm", "hp", "max_hp"] {
+        assert!(
+            rendered.contains(member),
+            "the bytes must contain the declared member {member}"
+        );
+    }
 }

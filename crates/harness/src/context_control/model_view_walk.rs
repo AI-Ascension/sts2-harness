@@ -42,9 +42,39 @@ fn merge_into(target: &mut Map<String, Value>, value: Value) {
             (Some(Value::Object(existing)), Value::Object(nested)) => {
                 merge_into(existing, Value::Object(nested))
             }
+            // Two declared paths may index the same collection, for example both `card_id` and
+            // `name` of one hand. Each contributes the same-length array holding only its own
+            // member, so the elements are merged position by position. Replacing instead would
+            // silently drop every member but the last one declared, and the surviving set would
+            // depend on declaration order.
+            (Some(Value::Array(existing)), Value::Array(incoming)) => {
+                merge_arrays(existing, incoming);
+            }
             (_, child) => {
                 target.insert(key, child);
             }
+        }
+    }
+}
+
+/// Merges one projected collection level into another, element by element.
+///
+/// A length mismatch cannot arise from the walk, because every path indexes the same source
+/// collection under the same declared bound. If it ever did, the longer array is retained rather
+/// than truncated, so a mismatch cannot silently drop selected elements.
+fn merge_arrays(target: &mut Vec<Value>, incoming: Vec<Value>) {
+    if target.len() != incoming.len() {
+        if incoming.len() > target.len() {
+            *target = incoming;
+        }
+        return;
+    }
+    for (existing, child) in target.iter_mut().zip(incoming) {
+        match (existing, child) {
+            (Value::Object(existing), Value::Object(nested)) => {
+                merge_into(existing, Value::Object(nested));
+            }
+            (existing, child) => *existing = child,
         }
     }
 }

@@ -185,3 +185,39 @@ fn a_selector_may_not_be_rebound_to_different_fields() {
     assert_eq!(registry.digest_of("selector-basic"), Some(digest.as_str()));
     assert_eq!(registry.selector_ids(), vec!["selector-basic"]);
 }
+
+#[test]
+fn forged_bytes_are_fenced_by_the_approval() {
+    // `PreparedModelView` has public fields and no constructor, so a consumer can pair an honest
+    // value with bytes it edited. The bytes are what a downstream caller would actually send, so the
+    // approval must bind them too: otherwise excluded content could ride in under a valid approval.
+    let recipe = minimal_recipe();
+    let source = AdmittedSourceObservation::admit(observation()).expect("source admits");
+    let prepared = project_model_view(&recipe, &source).expect("projection");
+    let approval = ModelViewApproval::mint(&recipe, &prepared);
+    assert_eq!(approval.verify(&recipe, &prepared), Ok(()));
+
+    let mut forged = prepared.clone();
+    forged.bytes =
+        serde_json::to_vec(&json!({"legal_actions": [{"action_id": "a1"}]})).expect("encode");
+    assert_eq!(
+        approval.verify(&recipe, &forged),
+        Err(ModelViewProjectionError::ApprovalFenced),
+        "bytes that do not match the approved digest must fence the approval"
+    );
+    assert!(
+        String::from_utf8(forged.bytes.clone())
+            .expect("utf-8")
+            .contains("legal_actions"),
+        "the forged payload really does carry excluded content"
+    );
+
+    // A one-byte edit is enough; the binding is over the exact bytes.
+    let mut nudged = prepared.clone();
+    nudged.bytes.push(b' ');
+    assert_eq!(
+        approval.verify(&recipe, &nudged),
+        Err(ModelViewProjectionError::ApprovalFenced),
+        "even an appended byte must fence the approval"
+    );
+}

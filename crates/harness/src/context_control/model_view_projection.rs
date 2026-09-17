@@ -7,8 +7,12 @@
 //! [`project_model_view`] revalidates the **complete** source observation through the fair-play
 //! validator *before* it reads a single declared field, and it revalidates that same complete value
 //! again *after* projection. Validation is therefore never narrowed to the selected subset: a
-//! forbidden field the recipe happens to exclude still fails the whole call, because the source
-//! must be admissible in full before any part of it may be shown.
+//! source-privileged key (the fair-play validator's `is_privileged_key` class, such as `rng_state`)
+//! that the recipe happens to exclude still fails the whole call, because the source must be
+//! admissible in full before any part of it may be shown. An *owner-only* field is a different
+//! refusal with a different rule: it is refused when a recipe names it as a target
+//! ([`ProtectedPath`](ModelViewProjectionError::ProtectedPath)), and it is simply never carried into
+//! the output otherwise.
 //!
 //! ## The source is never mutated
 //!
@@ -123,6 +127,10 @@ impl ModelViewApproval {
             || self.recipe_digest != recipe.digest()?
             || self.projected_digest != prepared.projected_digest
             || prepared.recompute_digest()? != prepared.projected_digest
+            // The bytes a consumer would actually send are bound too. `PreparedModelView` has public
+            // fields and no constructor, so without this an honest `value` could be paired with
+            // forged `bytes` that carry excluded content while the approval still verified.
+            || sha256_hex(&prepared.bytes) != prepared.projected_digest
         {
             return Err(ModelViewProjectionError::ApprovalFenced);
         }
