@@ -15,7 +15,7 @@ pub enum MapAttachmentKind {
     Image,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapAttachment {
     pub kind: MapAttachmentKind,

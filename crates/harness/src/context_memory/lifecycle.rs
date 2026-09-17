@@ -11,7 +11,7 @@ pub const MEMORY_PROJECTION_SCHEMA: &str = "ascension.context-memory.projection.
 pub const MAX_BACKUP_ENTRIES: usize = MAX_ENTRIES_PER_RUN;
 pub const MAX_REVOKED_REFS: usize = MAX_ENTRIES_PER_RUN;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryBackupEntry {
     pub metadata: MemoryEntry,

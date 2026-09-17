@@ -174,7 +174,7 @@ impl MemoryParent {
 
 /// Metadata is wire compatible with `entry.v1`; content and protection are private store facts
 /// and are intentionally omitted from serialization.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryEntry {
     pub schema: String,
