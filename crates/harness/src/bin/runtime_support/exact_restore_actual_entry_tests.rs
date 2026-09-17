@@ -48,17 +48,10 @@ LOG = {provider_log_json}
 for line in sys.stdin:
     request = json.loads(line)
     response = {{
-        "wire_version": "sts2.exo-bridge-wire-v2",
-        "request_id": "exact-restore-request",
-        "turn_id": "exact-restore-turn",
-        "outcome": "decision",
-        "decision": {{
-            "decision": "action",
-            "action_id": "combat.end-turn",
-            "rationale": "deterministic exact-restore continuation",
-            "confidence": 90
-        }},
-        "error_code": None
+        "decision": "action",
+        "action_id": "combat.end-turn",
+        "rationale": "deterministic exact-restore continuation",
+        "confidence": 90
     }}
     with open(LOG, "a", encoding="utf-8") as output:
         output.write(json.dumps({{"request": request, "response": response}},
