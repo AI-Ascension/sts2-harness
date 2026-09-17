@@ -54,6 +54,7 @@ fn runtime_sessions_are_validated_independently() {
         session_id: String::from("gateway-session-1"),
         lease_id: String::from("lease-1"),
         lease_epoch: 1,
+        episode_profile: false,
         mcp_session_id: String::from("mcp-session-independent"),
         run_id: "run-1".into(),
         episode_id: "episode-1".into(),

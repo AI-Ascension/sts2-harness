@@ -5,6 +5,10 @@ use sts2_harness::{ShutdownError, ShutdownPort};
 use super::RuntimeV3Port;
 
 impl ShutdownPort for RuntimeV3Port {
+    fn mark_episode_completed(&mut self) {
+        self.episode_completed = true;
+    }
+
     fn release_lease(&mut self) -> Result<(), ShutdownError> {
         self.release_lease_inner()
             .map_err(|_| ShutdownError::ReleaseFailed)

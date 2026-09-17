@@ -8,6 +8,7 @@ use crate::episode::{
 
 struct FailingBindingPort {
     calls: Vec<&'static str>,
+    episode_completed: bool,
 }
 
 impl BarrierPort for FailingBindingPort {
@@ -39,6 +40,10 @@ impl RecoveryPort for FailingBindingPort {
 }
 
 impl ShutdownPort for FailingBindingPort {
+    fn mark_episode_completed(&mut self) {
+        self.episode_completed = true;
+    }
+
     fn release_lease(&mut self) -> Result<(), ShutdownError> {
         self.calls.push("release");
         Ok(())
@@ -95,6 +100,140 @@ impl super::super::policy_router::DecisionSource for UnusedSource {
     }
 }
 
+/// A port whose first observation is already terminal, so the episode completes
+/// on the first step and cleanup runs against a completed episode.
+struct TerminalPort {
+    calls: Vec<&'static str>,
+    episode_completed: bool,
+}
+
+impl BarrierPort for TerminalPort {
+    fn wait_for_transition(
+        &mut self,
+        _operation_id: &str,
+        _wait_for_millis: u32,
+    ) -> Result<WaitSample, BarrierError> {
+        unreachable!("a terminal observation needs no barrier")
+    }
+}
+
+impl RecoveryPort for TerminalPort {
+    fn reobserve(&mut self) -> Result<EpisodeObservation, RecoveryError> {
+        unreachable!("a terminal observation needs no recovery read")
+    }
+
+    fn reconcile(&mut self, _operation_id: &str) -> Result<TransitionReceipt, RecoveryError> {
+        unreachable!("a terminal observation needs no reconciliation")
+    }
+
+    fn release_lease(&mut self) -> Result<(), RecoveryError> {
+        unreachable!("the shutdown port owns cleanup in this test")
+    }
+
+    fn stop_episode(&mut self) -> Result<(), RecoveryError> {
+        unreachable!("a terminal observation needs no recovery stop")
+    }
+}
+
+impl ShutdownPort for TerminalPort {
+    fn mark_episode_completed(&mut self) {
+        self.episode_completed = true;
+    }
+
+    fn release_lease(&mut self) -> Result<(), ShutdownError> {
+        self.calls.push("release");
+        Ok(())
+    }
+
+    fn close_mcp(&mut self) -> Result<(), ShutdownError> {
+        self.calls.push("mcp");
+        Ok(())
+    }
+
+    fn close_gateway(&mut self) -> Result<(), ShutdownError> {
+        self.calls.push("gateway");
+        Ok(())
+    }
+}
+
+impl EpisodeRuntimePort for TerminalPort {
+    fn launch(&mut self) -> Result<(), PortError> {
+        self.calls.push("launch");
+        Ok(())
+    }
+
+    fn prepare_game_information_binding(&mut self) -> Result<(), PortError> {
+        self.calls.push("binding");
+        Ok(())
+    }
+
+    fn observe(&mut self) -> Result<EpisodeObservation, PortError> {
+        self.calls.push("observe");
+        EpisodeObservation::new(
+            "state-1",
+            1,
+            super::super::observation::EpisodeStage::Victory,
+            false,
+            false,
+            false,
+            serde_json::json!({
+                "state_id":"state-1",
+                "generation":1,
+                "visible_seed":null,
+                "player":{"hp":10,"max_hp":10,"energy":3,"gold":0,
+                    "hand":[],"deck":[],"discard":[],"exhaust":[]},
+                "state":{"state":"victory"},
+                "legal_actions":[]
+            }),
+        )
+        .map_err(|error| PortError::new("observation", error.to_string(), false))
+    }
+
+    fn legal_actions(
+        &mut self,
+        _state_id: &str,
+        _generation: u64,
+    ) -> Result<EpisodeLegalActionSet, PortError> {
+        unreachable!("a terminal observation has no action choice")
+    }
+
+    fn dispatch_action(
+        &mut self,
+        _identity: &ActionIdentity,
+        _action: &EpisodeLegalAction,
+    ) -> Result<TransitionReceipt, PortError> {
+        unreachable!("a terminal observation dispatches no action")
+    }
+}
+
+/// A completed episode must arm the profile before cleanup, so the release that
+/// the cleanup performs is the one that negotiates the repeated-episode lease.
+#[test]
+fn a_terminal_outcome_arms_the_profile_before_cleanup() -> Result<(), Box<dyn std::error::Error>> {
+    let config = EpisodeRunnerConfig::new(
+        1,
+        StabilityBarrier::new(1, 1)?,
+        RecoveryController::new(1)?,
+        "test",
+        Vec::new(),
+    )?;
+    let mut port = TerminalPort {
+        calls: Vec::new(),
+        episode_completed: false,
+    };
+    let report = EpisodeRunner::new(config).run(&mut port, &mut UnusedSource)?;
+    assert_eq!(report.terminal_stage(), EpisodeStage::Victory);
+    assert!(
+        port.episode_completed,
+        "a completed episode must arm the repeated-episode profile"
+    );
+    assert_eq!(
+        port.calls,
+        ["launch", "binding", "observe", "release", "mcp", "gateway"]
+    );
+    Ok(())
+}
+
 #[test]
 fn binding_preparation_is_before_observation_and_cleanup_is_retained()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -105,7 +244,10 @@ fn binding_preparation_is_before_observation_and_cleanup_is_retained()
         "test",
         Vec::new(),
     )?;
-    let mut port = FailingBindingPort { calls: Vec::new() };
+    let mut port = FailingBindingPort {
+        calls: Vec::new(),
+        episode_completed: false,
+    };
     let result = EpisodeRunner::new(config).run(&mut port, &mut UnusedSource);
 
     assert!(matches!(
@@ -115,6 +257,10 @@ fn binding_preparation_is_before_observation_and_cleanup_is_retained()
     assert_eq!(
         port.calls,
         ["launch", "binding", "release", "mcp", "gateway"]
+    );
+    assert!(
+        !port.episode_completed,
+        "a failed binding is not a completed episode and must not arm the profile"
     );
     Ok(())
 }

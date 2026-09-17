@@ -15,6 +15,7 @@ fn config() -> RuntimeConfig {
         session_id: "session-1".into(),
         lease_id: "lease-1".into(),
         lease_epoch: 1,
+        episode_profile: false,
         mcp_session_id: "mcp-session-1".into(),
         run_id: "run-1".into(),
         episode_id: "episode-1".into(),

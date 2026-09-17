@@ -9,6 +9,16 @@ use serde_json::{Map, Value, json};
 use super::config::RuntimeConfig;
 use super::http::GatewayClient;
 
+#[path = "episode_profile.rs"]
+mod episode_profile;
+#[cfg(test)]
+pub(super) use episode_profile::{
+    EPISODE_PROFILE_CAPABILITY, EPISODE_PROFILE_HEADER, EPISODE_PROFILE_NAME,
+    EPISODE_PROFILE_SCHEMA_DIGEST,
+};
+pub(super) use episode_profile::{apply_episode_profile, confirm_episode_profile_witness};
+pub(super) use episode_profile::{confirm_release, release_headers};
+
 pub(super) use super::mcp_process::McpProcess;
 use super::response_validation::validate_response;
 
@@ -35,9 +45,11 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
                 "POST",
                 &format!("/v1/instances/{}/release", config.instance_id),
                 &Value::Null,
-                identity_headers(&config, &release_correlation()),
+                // A spawn failure is not a completed episode, so it must not
+                // negotiate the repeated-episode profile.
+                release_headers(&config, false),
             );
-            return match confirm_release(release) {
+            return match confirm_release(release, &config, false) {
                 Ok(_) => Err(error),
                 Err(release_error) => Err(format!(
                     "{error}; allocated lease release also failed: {release_error}"
@@ -47,28 +59,28 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
     };
     let trace_result = run_trace(&mut mcp, &config);
     let close_result = mcp.close();
+    // Only a release that completes a *successful* episode may arm the
+    // repeated-episode profile; a failed episode is not a completed one.
+    let completes_episode = trace_result.is_ok();
     let release_result = client.request(
         "POST",
         &format!("/v1/instances/{}/release", config.instance_id),
         &Value::Null,
-        identity_headers(&config, &release_correlation()),
+        release_headers(&config, completes_episode),
     );
-    let failures: Vec<_> = [trace_result, close_result, confirm_release(release_result)]
-        .into_iter()
-        .filter_map(Result::err)
-        .collect();
+    let failures: Vec<_> = [
+        trace_result,
+        close_result,
+        confirm_release(release_result, &config, completes_episode),
+    ]
+    .into_iter()
+    .filter_map(Result::err)
+    .collect();
     if failures.is_empty() {
         Ok(())
     } else {
         Err(failures.join("; "))
     }
-}
-
-fn confirm_release(response: Result<Value, String>) -> Result<(), String> {
-    if response?["status"] != "released" {
-        return Err(String::from("gateway did not confirm lease release"));
-    }
-    Ok(())
 }
 
 fn allocate(client: &GatewayClient, config: &RuntimeConfig) -> Result<(), String> {
@@ -248,6 +260,9 @@ pub(super) use allocation_cleanup::{
 #[path = "release_correlation.rs"]
 mod release;
 pub(super) use release::release_correlation;
+#[path = "identity_headers.rs"]
+mod identity;
+pub(super) use identity::identity_headers;
 
 pub(super) fn validate_allocation(value: &Value, config: &RuntimeConfig) -> Result<(), String> {
     for (key, expected) in [
@@ -266,33 +281,6 @@ pub(super) fn validate_allocation(value: &Value, config: &RuntimeConfig) -> Resu
         ));
     }
     Ok(())
-}
-
-pub(super) fn identity_headers(
-    config: &RuntimeConfig,
-    correlation: &str,
-) -> BTreeMap<String, String> {
-    BTreeMap::from([
-        (
-            String::from("x-sts2-instance-id"),
-            config.instance_id.clone(),
-        ),
-        (String::from("x-sts2-caller-id"), config.caller_id.clone()),
-        (String::from("x-sts2-session-id"), config.session_id.clone()),
-        (
-            String::from("x-mcp-session-id"),
-            config.mcp_session_id.clone(),
-        ),
-        (String::from("x-sts2-lease-id"), config.lease_id.clone()),
-        (
-            String::from("x-sts2-lease-epoch"),
-            config.lease_epoch.to_string(),
-        ),
-        (
-            String::from("x-sts2-correlation-id"),
-            String::from(correlation),
-        ),
-    ])
 }
 
 #[cfg(test)]

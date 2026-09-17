@@ -264,6 +264,11 @@ impl EpisodeRunner {
                 pending_operation_id: None,
             }),
         };
+        // Only a successful terminal outcome is a completed episode; cleanup
+        // must not arm a repeated-episode profile for a failed run.
+        if outcome.is_ok() {
+            port.mark_episode_completed();
+        }
         let cleanup = EpisodeShutdown.close_report(port);
         match (outcome, cleanup.first_failure()) {
             (Ok(report), None) => Ok(report),

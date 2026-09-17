@@ -2,6 +2,16 @@
 
 /// Owner of gateway/MCP/episode cleanup work.
 pub trait ShutdownPort {
+    /// Records that the episode reached a successful terminal outcome, before
+    /// cleanup runs.
+    ///
+    /// A runtime that negotiated the gateway's repeated-episode lease profile
+    /// (`sts2-gateway#67`) may only arm it for a *completed* episode; a failed
+    /// episode is not a completed one and must keep the gateway's
+    /// permanent-revocation default. Adapters that do not negotiate a profile
+    /// inherit this no-op.
+    fn mark_episode_completed(&mut self) {}
+
     fn release_lease(&mut self) -> Result<(), ShutdownError>;
     fn close_mcp(&mut self) -> Result<(), ShutdownError>;
     fn close_gateway(&mut self) -> Result<(), ShutdownError>;

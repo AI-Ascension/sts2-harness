@@ -30,6 +30,7 @@ fn runtime_config() -> RuntimeConfig {
         session_id: SESSION.to_owned(),
         lease_id: String::from("configured-stale-lease"),
         lease_epoch: 1,
+        episode_profile: false,
         mcp_session_id: String::from("selected-mcp-session"),
         run_id: String::from("selected-run"),
         episode_id: String::from("selected-episode"),

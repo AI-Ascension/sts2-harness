@@ -376,6 +376,7 @@ fn runtime_config() -> RuntimeConfig {
         session_id: String::from("bootstrap-session"),
         lease_id: String::from("bootstrap-lease"),
         lease_epoch: 1,
+        episode_profile: false,
         mcp_session_id: String::from("bootstrap-mcp"),
         run_id: String::from("bootstrap-run"),
         episode_id: String::from("bootstrap-episode"),

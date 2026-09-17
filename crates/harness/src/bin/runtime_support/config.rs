@@ -13,6 +13,10 @@ pub(crate) struct RuntimeConfig {
     pub(crate) session_id: String,
     pub(crate) lease_id: String,
     pub(crate) lease_epoch: u64,
+    /// Opt-in negotiation of the gateway's repeated-episode lease profile
+    /// (`sts2-gateway#67`). Off by default so an ordinary run keeps the
+    /// gateway's permanent-revocation single-episode contract.
+    pub(crate) episode_profile: bool,
     pub(crate) mcp_session_id: String,
     pub(crate) run_id: String,
     pub(crate) episode_id: String,
@@ -99,6 +103,7 @@ impl RuntimeConfig {
             lease_epoch: env_or_default("STS2_LEASE_EPOCH", "1")?
                 .parse::<u64>()
                 .map_err(|_| String::from("STS2_LEASE_EPOCH must be an integer"))?,
+            episode_profile: optional_flag("STS2_EPISODE_PROFILE")?,
             mcp_session_id: env_or_default("STS2_MCP_SESSION_ID", "mcp-session-1")?,
             run_id: env_or_default("STS2_RUN_ID", "run-runtime-0001")?,
             episode_id: env_or_default("STS2_EPISODE_ID", "episode-runtime-0001")?,
@@ -219,6 +224,19 @@ fn optional_identity(name: &str) -> Result<Option<String>, String> {
         Ok(value) if !value.is_empty() => Ok(Some(value)),
         Ok(_) => Err(format!("{name} must not be empty")),
         Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => Err(format!("{name} is not valid UTF-8")),
+    }
+}
+
+/// Opt-in boolean flag. Absent means `false`; a present-but-non-boolean value is
+/// rejected rather than guessed, so a typo cannot silently disable a fence.
+fn optional_flag(name: &str) -> Result<bool, String> {
+    match std::env::var(name) {
+        Ok(value) if value.is_empty() => Err(format!("{name} must not be empty")),
+        Ok(value) => value
+            .parse::<bool>()
+            .map_err(|_| format!("{name} must be true or false")),
+        Err(std::env::VarError::NotPresent) => Ok(false),
         Err(std::env::VarError::NotUnicode(_)) => Err(format!("{name} is not valid UTF-8")),
     }
 }

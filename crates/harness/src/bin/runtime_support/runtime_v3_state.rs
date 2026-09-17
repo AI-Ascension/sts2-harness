@@ -18,6 +18,10 @@ pub(super) struct RuntimeV3Port {
     expert_mcp: Option<McpProcess>,
     allocated: bool,
     released: bool,
+    /// Set only when the episode runner observed a successful terminal outcome.
+    /// Gates the opt-in repeated-episode profile so cleanup paths keep the
+    /// gateway's permanent-revocation default.
+    episode_completed: bool,
     continuation_prelaunched: bool,
     continuation_adopted: bool,
     continuation_boundary_verified: bool,

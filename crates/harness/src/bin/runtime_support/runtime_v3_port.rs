@@ -94,6 +94,7 @@ impl RuntimeV3Port {
             expert_mcp: None,
             allocated: false,
             released: false,
+            episode_completed: false,
             continuation_prelaunched: false,
             continuation_adopted: false,
             continuation_boundary_verified: false,
