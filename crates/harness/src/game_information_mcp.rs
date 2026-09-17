@@ -10,6 +10,14 @@ pub trait LookupMcpPort {
         Err(LookupError::MissingCapability)
     }
     fn call_information(&mut self, tool: &str, request: &Value) -> Result<Vec<u8>, LookupError>;
+    /// Additive live-observation bootstrap. Existing MCP-only test ports keep
+    /// the safe default and therefore retain static/live-unavailable behavior.
+    fn call_live_observation_bootstrap(
+        &mut self,
+        _request: &Value,
+    ) -> Result<Vec<u8>, LookupError> {
+        Err(LookupError::MissingCapability)
+    }
 }
 
 /// Capability read uses only the selected MCP authority context, never a query or mutation.

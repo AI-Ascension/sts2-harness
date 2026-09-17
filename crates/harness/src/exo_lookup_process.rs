@@ -9,7 +9,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::ExoProcessConfig;
 use crate::exo_lookup_wire::{
-    EXO_LOOKUP_FRAME_BYTES, EXO_LOOKUP_WIRE, ExoLookupFrame, ExoLookupPayload,
+    EXO_LOOKUP_BOOTSTRAP_WIRE, EXO_LOOKUP_FRAME_BYTES, EXO_LOOKUP_WIRE, ExoLookupFrame,
+    ExoLookupPayload,
 };
 use crate::game_information::{
     LookupAgentInput, LookupAgentPort, LookupError, LookupFeedback, LookupTurn,
@@ -97,7 +98,11 @@ impl ExoLookupProcess {
             return Err(LookupError::Invalid);
         }
         let frame = ExoLookupFrame {
-            wire_version: EXO_LOOKUP_WIRE.into(),
+            wire_version: if matches!(&payload, ExoLookupPayload::Bootstrap { .. }) {
+                EXO_LOOKUP_BOOTSTRAP_WIRE.into()
+            } else {
+                EXO_LOOKUP_WIRE.into()
+            },
             request_id: self.request_id.clone(),
             turn_id: self.turn_id.clone(),
             sequence: self.sequence,
@@ -122,7 +127,7 @@ impl LookupAgentPort for ExoLookupProcess {
             if self
                 .binding
                 .as_ref()
-                .is_some_and(|binding| binding != input.binding)
+                .is_some_and(|binding| !binding.same_owner(input.binding))
                 || self
                     .byte_budget
                     .is_some_and(|budget| budget != input.optional_byte_budget)
@@ -161,6 +166,9 @@ impl LookupAgentPort for ExoLookupProcess {
             match self.exchange(payload)? {
                 ExoLookupPayload::Query { arguments } => {
                     crate::exo_lookup_wire::query_turn(arguments, &input)
+                }
+                ExoLookupPayload::Bootstrap { arguments } => {
+                    crate::exo_lookup_wire::bootstrap_turn(arguments)
                 }
                 ExoLookupPayload::ReadRetained {
                     record_ordinal,

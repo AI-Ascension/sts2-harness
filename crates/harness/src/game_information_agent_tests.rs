@@ -86,6 +86,91 @@ fn supported_bounded_agent_loop_queries_both_families_before_deciding() -> TestR
 }
 
 #[test]
+fn bootstrap_transcript_replays_without_an_mcp_callback() -> TestResult {
+    struct BootstrapAgent {
+        sent: bool,
+    }
+    impl LookupAgentPort for BootstrapAgent {
+        fn next_turn(&mut self, input: LookupAgentInput<'_>) -> Result<LookupTurn, LookupError> {
+            if !self.sent {
+                self.sent = true;
+                let definition = serde_json::json!({
+                    "content_manifest_id":"synthetic-content-1",
+                    "entity_kind":"card","namespaced_id":"synthetic:strike","variant":null
+                });
+                let request = crate::game_information_binding::game_information_bootstrap::request(
+                    "pending",
+                    Value::Null,
+                    definition,
+                    None,
+                );
+                return Ok(LookupTurn::Bootstrap {
+                    operation_id: "bootstrap".to_owned(),
+                    request: serde_json::to_vec(&request).map_err(|_| LookupError::Invalid)?,
+                });
+            }
+            if matches!(input.feedback, LookupFeedback::Bootstrap { .. }) {
+                return Ok(LookupTurn::Decide {
+                    action_id: "play:card-17".to_owned(),
+                });
+            }
+            Err(LookupError::Divergence)
+        }
+    }
+
+    let (mut session, corpus) = setup(8192)?;
+    let instance = serde_json::json!({
+        "instance_id":"instance-1","run_id":"run-1","epoch":7,
+        "entity_kind":"card","entity_id":"card-17"
+    });
+    let snapshot = serde_json::json!({
+        "snapshot_id":"snapshot-42","instance_ref":instance,"state_generation":42
+    });
+    let definition = serde_json::json!({
+        "content_manifest_id":"synthetic-content-1",
+        "entity_kind":"card","namespaced_id":"synthetic:strike","variant":null
+    });
+    let request = crate::game_information_binding::game_information_bootstrap::request(
+        "pending",
+        Value::Null,
+        definition.clone(),
+        None,
+    );
+    let response = serde_json::json!({
+        "protocol_version":crate::game_information_binding::game_information_bootstrap::PROFILE,
+        "schema_digest":crate::game_information_binding::game_information_bootstrap::SCHEMA_DIGEST,
+        "provenance":{"artifact":"sts2-protocol/game-information-live-observation-bootstrap-v1",
+            "source":"schemas/game-information-live-observation-bootstrap-v1.schema.json","generator":"hand-authored"},
+        "correlation_id":"pending","kind":"bootstrap_response",
+        "scope":{"instance_id":"instance-1","run_id":"run-1","authority_epoch":1,
+            "content_manifest_id":"synthetic-content-1","locale":"en"},
+        "selector":{"definition_ref":definition,"instance_ref":null},
+        "limits":{"max_visible_entities":64,"max_item_bytes":65536,"max_message_bytes":262144},
+        "parent_observation":{"instance_ref":instance,"snapshot_ref":snapshot,"state_generation":42},
+        "visible_entities":[{"definition_ref":definition,"instance_ref":instance,"snapshot_ref":snapshot}],
+        "owner_provenance":{"native_snapshot_owner":"sts2-game-mod","content_manifest_owner":"sts2-game-mod",
+            "instance_fence_owner":"sts2-gateway","authority_epoch_owner":"sts2-harness",
+            "instance_ref_epoch_owner":"sts2-game-mod","transport_lease_epoch_role":"fence_only"},
+        "error":null
+    });
+    session.install_bootstrap("bootstrap", request, response, snapshot)?;
+    let legal = crate::EpisodeLegalActionSet::new(
+        "state-42",
+        42,
+        vec![crate::EpisodeLegalAction::new(
+            "play:card-17",
+            crate::ActionKind::PlayCard,
+        )?],
+    )?;
+    let mut agent = BootstrapAgent { sent: false };
+    assert_eq!(
+        run_lookup_replay_tool_loop(&mut session, &corpus, &mut agent, &legal, 2)?,
+        "play:card-17"
+    );
+    Ok(())
+}
+
+#[test]
 fn replay_rejects_a_different_query_before_returning_a_decision() -> TestResult {
     struct ChangedQueryAgent {
         turns: usize,

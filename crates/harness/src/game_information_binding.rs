@@ -5,6 +5,8 @@ use serde_json::json;
 #[path = "game_information_binding_validation.rs"]
 mod validation;
 pub use validation::decode_lookup_binding_response;
+#[path = "game_information_bootstrap.rs"]
+pub mod game_information_bootstrap;
 use validation::{Decoded, binding_id, error_code, schema, string};
 
 pub const LOOKUP_BINDING_PROFILE: &str = "game-information-lookup-binding-v1";

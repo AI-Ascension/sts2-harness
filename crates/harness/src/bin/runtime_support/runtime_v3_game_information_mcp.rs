@@ -77,4 +77,11 @@ impl LookupMcpPort for RuntimeV3Port {
         };
         Ok(response)
     }
+
+    fn call_live_observation_bootstrap(
+        &mut self,
+        request: &Value,
+    ) -> Result<Vec<u8>, LookupError> {
+        live_bootstrap(self, request)
+    }
 }
