@@ -184,7 +184,7 @@ fn render_fixture() -> (ContextRenderSource, ExoConfig) {
         identity,
     };
     let config = ExoConfig::new(
-        "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
+        crate::EXO_SOURCE_REVISION,
         64 * 1024,
         1024,
         1_000,
