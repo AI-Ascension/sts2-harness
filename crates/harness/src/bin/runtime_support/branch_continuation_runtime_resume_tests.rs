@@ -1,5 +1,43 @@
 // SPDX-License-Identifier: MIT
 
+#[cfg(unix)]
+#[test]
+fn resume_lock_waits_out_a_transient_holder() -> Result<(), Box<dyn std::error::Error>> {
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
+
+    let temp = TemporaryDirectory::new()?;
+    let branch_store = temp.path().join("branches.sqlite3");
+    let artifact_path = temp.path().join("artifacts");
+    let artifacts = ExactArtifactStore::new(&artifact_path);
+    create_store(&branch_store, &artifacts, BranchStrategy::PrefixReplay)?;
+
+    let (held, held_rx) = mpsc::channel();
+    let (release, release_rx) = mpsc::channel();
+    let holder_path = branch_store.clone();
+    let holder = thread::spawn(move || {
+        let lock = super::resume_lock::acquire(&holder_path, EXPERIMENT, "branch:selected")
+            .expect("holder acquires continuation lock");
+        held.send(()).expect("holder signal");
+        release_rx.recv().expect("release signal");
+        drop(lock);
+    });
+    held_rx.recv().expect("holder reached the lock");
+
+    let releaser = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(40));
+        release.send(()).expect("release");
+    });
+    let reacquired =
+        super::resume_lock::acquire(&branch_store, EXPERIMENT, "branch:selected")
+            .expect("transient descriptor must not be reported as a live owner");
+    drop(reacquired);
+    releaser.join().expect("releaser thread");
+    holder.join().expect("holder thread");
+    Ok(())
+}
+
 #[test]
 fn running_branch_resume_requires_boundary_claim_and_keeps_prefix_unreplayed()
 -> Result<(), Box<dyn std::error::Error>> {

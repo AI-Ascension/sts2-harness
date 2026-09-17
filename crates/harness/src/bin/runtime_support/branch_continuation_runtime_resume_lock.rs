@@ -5,6 +5,15 @@
 use std::fs::File;
 use std::path::Path;
 
+/// A forked child can retain a `CLOEXEC` descriptor until it reaches `execve`. During that
+/// bounded hand-off window, an immediate `flock` probe sees `WouldBlock` even though no live
+/// continuation owner remains. Waiting here cannot admit a second owner: a lock held by a live
+/// process remains held for every attempt and still fails closed.
+#[cfg(unix)]
+const ACQUIRE_ATTEMPTS: usize = 32;
+#[cfg(unix)]
+const ACQUIRE_RETRY: std::time::Duration = std::time::Duration::from_millis(5);
+
 /// Locks the durable store inode, so lexical paths, symlinks, and hard links share one owner lock.
 ///
 /// The lock intentionally serializes resumes from the same store, including sibling branches.
@@ -57,14 +66,26 @@ pub(super) fn acquire(
             "selected-branch store identity changed while acquiring its process lock",
         ));
     }
-    lock.try_lock().map_err(|error| match error {
-        std::fs::TryLockError::WouldBlock => String::from(
-            "selected branch store already has an active continuation process; resume is refused",
-        ),
-        std::fs::TryLockError::Error(_) => {
-            String::from("cannot acquire selected-branch store process lock")
+    let mut acquired = false;
+    for _ in 0..ACQUIRE_ATTEMPTS {
+        match lock.try_lock() {
+            Ok(()) => {
+                acquired = true;
+                break;
+            }
+            Err(std::fs::TryLockError::WouldBlock) => std::thread::sleep(ACQUIRE_RETRY),
+            Err(std::fs::TryLockError::Error(_)) => {
+                return Err(String::from(
+                    "cannot acquire selected-branch store process lock",
+                ));
+            }
         }
-    })?;
+    }
+    if !acquired {
+        return Err(String::from(
+            "selected branch store already has an active continuation process; resume is refused",
+        ));
+    }
     Ok(lock)
 }
 
