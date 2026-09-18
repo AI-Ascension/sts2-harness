@@ -10,6 +10,28 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Add the **`sts2-jev-bridge` executable**, which asks one typed question of a System One provider
+  and returns one terminal decision. It reads a bounded decision request on standard input, builds
+  the request from the host-generated catalog, runs one bounded exchange, maps the answer, and prints
+  exactly one decision. Every refusal is fail-closed — a nonzero exit and nothing on standard output
+  — for an oversized request, an absent or malformed catalog, a transport failure or nonzero exit, an
+  unreadable or oversized reply, an answer of the wrong type, and a choice outside the presented
+  options. `--describe` prints the requested configuration without reading input or starting a
+  process, and reports requested configuration rather than availability.
+  The HTTPS exchange is performed by an operator-owned transport executable named by `--transport`,
+  following the precedent `sts2-astra-bridge` set; request construction, bounds, catalog membership,
+  the confidence gate and the decision shape stay inside the digest-pinned binary, and the credential
+  never reaches this process. Standard input and output are serviced on their own threads and the
+  transport is killed at a deadline, so neither side can deadlock on a full pipe.
+  `systemone_decision` maps the answer: an in-catalog choice at or above the confidence gate becomes
+  an `action` carrying the confidence as the percentage the decision contract already accepts, and
+  one below it becomes `reobserve` rather than a guess. The `rationale` is composed from the returned
+  distribution and labelled bridge-authored, because this provider generates no text and a fluent
+  sentence presented as model reasoning would be a fabricated record.
+  Compatibility: additive; one new binary, one new support module, one new document.
+  `confirmed` only for the offline suite; a live call, the TLS path, decision quality, and any
+  gameplay outcome are `unverified`. Refs #284, #288.
+
 - Admit a **`typesafe-jev` local bridge provider kind**, fail-closed. The kind joins `ollama` and
   `openai-astra` on the legacy local-bridge lane and keeps every guard that lane applies: the
   SHA-256 digest computed from the bytes at `STS2_EXO_BRIDGE_BINARY`, the explicit combat-demo or
@@ -26,6 +48,7 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   Compatibility: additive; one new accepted value, no change to an existing shape, record, or digest.
   With the kind admitted and no bridge executable present, the runtime still fails closed at digest
   verification. Refs #285.
+
 - Build a **System One provider request** from a bridge decision request.
   `context_control::build_system_one_request` turns a rendered observation and a presented action
   catalog into the body of one typed question: a `choice` whose option identifiers are exactly the
@@ -40,6 +63,7 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   question is asked; the provider evaluates many per call in parallel, but an unconsumed question
   would spend tokens producing a number no code reads. Compatibility: additive; one new module and
   its re-exports, no change to an existing record, route, or digest. Refs #283.
+
 - Derive the **presented option set from the state** instead of offering a provider the whole legal
   catalog. `context_control::OptionSelection` folds catalog entries that are identical under the
   admitted action vocabulary — the same kind aimed at the same target, differing only in which copy
@@ -54,6 +78,7 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   on cost could only ever overrule that authority, and affordability stays in the derived-exact facts
   beside the state. Compatibility: additive; one new module and its re-exports, no change to an
   existing record, route, or digest. Refs #290.
+
 - Compute **exactly derivable combat facts** from an admitted observation, so a provider is handed
   comparisons rather than operands. `context_control::DerivedExactFacts` states gross incoming
   damage (revealed intent damage times hits, only when every listed enemy carries an intent), a
@@ -67,6 +92,7 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   gross and named to say so. The projection is `derived_exact` under the fair-play taxonomy and is
   not host authority. Compatibility: additive; one new module and its re-exports, no change to an
   existing record, route, or digest. Refs #287.
+
 - Share one **bounded HTTP/1.1 response reader across provider bridges**. The strict reader that
   refuses oversized headers, a duplicate `Content-Length`, both framings at once, a non-`chunked`
   transfer coding, an oversized or short chunk, and any trailer after the terminal chunk moves from
@@ -77,6 +103,7 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   malformed-header, and non-JSON refusals that were previously only implied. The loopback-only
   `ManagementClient` stays a separate boundary and is unchanged. Compatibility: no behaviour change;
   `sts2-ollama-bridge` accepts and refuses exactly what it did before. Refs #282.
+
 - Record the **System One provider lane and its transport** in
   [ADR 0053](docs/decisions/0053-system-one-provider-lane.md). A System One provider evaluates typed
   questions against one state and returns structured answers with probabilities and a calibrated
@@ -91,6 +118,7 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   price, and documented model weaknesses are carried with `source-derived` labels and their sources;
   the claim that this lane plays the game is `unverified` and no run exists. Compatibility:
   documentation only; no code, dependency, or contract changes. Refs #286.
+
 - Remove an **orphaned `context_memory` source fragment** that made the repository impossible to
   check out on Windows. `crates/harness/src/context_memory/aux.rs` was 188 lines beginning inside an
   `impl` block and ending on a dangling attribute; nothing declared it, so no build, format, lint, or
@@ -125,6 +153,7 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   episodes and runs cannot inherit a scope. Compatibility: additive-compatible; one new table
   (`context_control_lifetime`), no change to an existing table, column, digest or route; see
   [ADR 0051](docs/decisions/0051-logical-invocation-lifetime-consumption.md). Refs #111.
+
 - Exercise **stale-generation and not-observable bootstrap refusals against the pinned real
   Gateway and MCP** in the game-information peer-contract lane. The synthetic producer behind the
   pinned peers now selects a closed `PeerNegative` (`None`, `ForeignManifest`, `StaleGeneration`,
@@ -144,6 +173,7 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   bootstrap `error_response` on a 5xx answer instead of collapsing it to a retryable
   `gateway_unavailable`. Compatibility: internal; no schema, route or durable record changes.
   Refs #127, #276.
+
 - Serve the **provider-session effective-limits record** for the Console capability sidecar.
   `GET /v1/workflow-runs/{run_id}/provider-session-effective-limits` (`workflow:read`) returns the
   producer's `ascension.harness.effective-limits.v1` record built by
@@ -187,6 +217,7 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   declared input did not settle, and records an unwinding branch as `BranchLost` rather than
   stalling. `ParallelCap::SERIAL` keeps cap=1 compatible and `execute_plan` is unchanged; this is
   additive, and budget reservation, cancel/restart and browser branch state remain open. See [ADR 0049](docs/decisions/0049-bounded-parallel-analysis-join.md). Refs #98.
+
 - Deny **forbidden Exo tools by name at dispatch** in the owned restricted extension and re-record
   the real pinned-Exo process oracle. The model tool catalog is empty; the extension now also seals
   the actual `HarnessToolRegistry` handed to each model round, so a pre-populated registry, any
@@ -496,84 +527,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   values, global ceilings, disabled metadata and digest consistency. A catalog sealing helper
   reuses the existing v1 encoding. No wire fields, limits or selected-limit execution behavior
   change; consumer adoption and rendering/journal enforcement remain separate. Refs #95.
-
-- Add an opt-in authenticated durable memory-policy owner: retain exact saved encodings, require
-  target-bound approval for atomic adoption, and load the adopted policy for actual local memory
-  selection. Restart requires explicit revalidation; stale grants/profiles/revisions fail closed.
-  The separate encrypted bounded store preserves history and idempotent receipts. This is the
-  memory-only component slice of #95, not session migration, browser/production wiring or #119.
-
-- Publish the machine-readable `ascension.harness.effective-limits.v1` classification record so every
-  advertised context-memory and provider-session value is classified as schema-valid versus
-  executable for the selected profile, with machine-readable unavailable reasons. Add a
-  producer/consumer pin and digest conformance matrix (`contracts/effective-limits-pins.json`) that
-  recomputes producer digests and fails closed on drift, tampering, a stale adoption label, an
-  unrecorded surface, or a consumer that still validates a `v1` capability schema. Both recorded
-  consumers (Context Console, Studio) remain `pending`, so neither can present a value the runtime
-  rejects. Deterministic offline tests only; consumer adoption, native, and provider evidence remain
-  `unverified`.
-
-- Bind the authoritative context owner at the live invocation the runtime actually executes.
-  Live admission now performs a fail-closed owner/catalog/support check only; each context-bound
-  node is bound when the runtime cursor reaches it, using the runtime-allocated `node_execution_id`
-  and validating the owner response against the persisted run cursor. Compatibility: no serialized
-  snapshot/event schema change. This is a source-level change to the management API: `CommandContext`
-  gains a required actor-scoped owner field (external struct literals must supply it), the
-  `WorkflowExecutionPort::attach_context_owner` hook added by #167 is removed (implementations
-  overriding it must drop the override), and `CommandContext` now uses a manual `Debug` that omits
-  the owner. Owner `bind` denials/escalations now surface at the first context-node dispatch instead
-  of submission, while missing/denied/unavailable/ambiguous catalogs still fail closed before any
-  target or execution effect. Refs #100.
-
-- Define the harness-owned `sts2-exo-bridge-v1` contract and freeze the candidate Exo source
-  manifest. The closed capability/preflight and request/turn envelopes enforce independent
-  identity, bounds, UTF-8/framing, correlation, terminal-decision, cancellation, and EOF rules;
-  deterministic fixtures cover rejection vectors. The nine-commit upstream review found no native
-  machine executor hook, so package, model, extension, native connectivity, and gameplay evidence
-  remain `unverified`; see ADR 0017.
-
-- Require a closed `ExoRestrictedProfile` in the trusted Exo configuration for issue #140.
-  Admission now fails closed before inference on any non-empty/unreviewed model tool, duplicate or
-  invalid tool names, unsafe or overlapping private state/cache/temp roots, unbounded
-  quota/retention, or permissions other than `0o700`, with canonical catalog and profile digests.
-  The reviewed model tool allowlist is intentionally empty; TypeScript dispatch, OS containment, and
-  native private-state enforcement remain follow-up work.
-
-- Add a pinned runtime-peer CI lane. It builds the candidate harness against immutable gateway and
-  MCP executable peers, uses a bounded synthetic mod HTTP endpoint only as downstream, and runs
-  positive plus foreign-identity and malformed-envelope rejection cases. Startup and cancellation
-  cleanup regressions run in the same lane. This is source-derived synthetic process composition
-  evidence, not game-host, provider, or release qualification.
-
-- Reject incomplete exact checkpoint manifests, inconsistent dependency sizes and payload
- identities, and source/destination profile mismatches before session admission. Bound reads of
- persisted exact artifacts to 16 MiB. These checks establish component integrity, not live restore
- certification; see ADR 0016.
-
-- Add the bounded `coop-native-v1` cohort coordinator and canonical-peer attribution safety
-  correction. A returned observation can be attributed only when its sole local peer equals the
-  originally scheduled canonical actor and its instance/session/lease/epoch fence matches the
-  original operation. Mismatches retain pending or unknown operations for same-operation
-  reconciliation. The frozen artifact, wire profile, digest, and producer goldens are unchanged;
-  route credentials remain outside harness records. This is source/component evidence only, not
-  native multiplayer transport, settlement, or release compatibility.
-
-- Digest all serialized Runtime-v3 telemetry lineage identities with domain-separated SHA-256
-  values while retaining raw trace lineage only for private OTLP topology derivation. Exporter
-  tests cover raw prompt, model-output, credential, path, and proprietary-text sentinels through
-  the full serialized OTLP envelope. Backend queries must use the deterministic digest while raw
-  mappings remain access-controlled local run evidence; collector/backend and live evidence remain
-  unverified.
-
-- Tighten optional seeded-receipt replay admission before `EpisodeRunner` construction. A receipt
-  preamble now requires exact current seed configuration and original operation/fence/context
-  equivalence, a fresh canonical-seed run-start witness, and a closed MCP wrapper/result chain.
-  This is deterministic source/component validation only; it does not execute replay or invoke a
-  provider, MCP server, gateway, or host.
-
-- Persist validated Runtime-v3 action-wait settlement against its original durable operation
-  before admitting another model decision. Previously the host could settle the action while
-  the durable store retained `unknown`, causing the next decision to fail with a misleading
-  provider-malformed error. Unresolved waits and invalid witnesses retain durable uncertainty.
-  Synthetic runtime tests cover decision admission, repeated waits, and database reopening;
-  native campaign validation remains a separate gate.
