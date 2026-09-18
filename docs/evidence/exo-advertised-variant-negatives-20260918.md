@@ -66,14 +66,21 @@ The advertisement and the guard are one list, not two that agree. `unsupported_p
 `UnsupportedProfileAxis::ALL`, and `capability_fields` derives `profile_support` from that same
 `ALL`, so the axis list *is* the guard and *is* the advertisement. The earlier `management` omission
 was possible because the guard was a hand-written `if`-chain and the advertisement read a separate
-constant; a new axis could be enforced without being listed. It cannot now: adding a variant fails
-to compile until `is_present` and `profile_name` handle it, and `ALL` is the only place either side
-reads, so an enforced axis is published in the same step that enforces it.
+constant; a new axis could be enforced without being listed. An enforced axis is now published in
+the step that enforces it: adding a variant fails to compile until `is_present` and `profile_name`
+handle it, and `ALL` is the only list either side reads.
+
+One escape hatch remains by design, so it is closed explicitly rather than left implicit. An axis
+whose `profile_name()` is `None` is enforced but has no `profile_support` entry. `Revision` is the
+only axis that legitimately needs that (its expected value is already published as
+`source_revision`), so `profile_name` derives the advertised key from `name()` and the `None` arm
+names `Revision` alone; the test pins that exempt set to exactly `["revision"]`. A new axis cannot
+opt out of the advertisement silently: it must join `Revision` in that arm, where a reviewer sees it.
 
 `every_unsupported_profile_axis_is_rejected_before_inference` is driven by `ALL` and asserts each
 case reports *that* axis; `every_classifier_profile_axis_is_advertised` checks `ALL` against the
-published `UNSUPPORTED_PROFILES` in both directions and pins the advertised key set as literals, so
-shrinking `ALL` cannot quietly widen the guard.
+published `UNSUPPORTED_PROFILES` in both directions, pins the advertised key set as literals, and
+pins the exempt set, so neither shrinking `ALL` nor opting an axis out can widen the guard quietly.
 
 The lookup relay is terminal on an action id only, so it re-projects the decision fields rather
 than inheriting the one-shot set: `--lookup-describe` advertises `decisions: ["action_id"]` and

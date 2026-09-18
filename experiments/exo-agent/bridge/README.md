@@ -122,7 +122,8 @@ explicitly `unsupported`), and the two fail-closed codes `unsupported_profile_co
 (`exo_bridge_unsupported_profile`) and `unsupported_recovery_code`
 (`exo_bridge_unsupported_recovery`). A caller can therefore pre-check support instead of inferring
 it from a rejection. The guard walks the one axis list the advertisement is derived from, so an
-enforced profile cannot be missing from `profile_support`:
+enforced profile is advertised in the same step; the single exempt axis (`revision`, published as
+`source_revision`) is named in code and pinned by test:
 `crates/harness/tests/exo_advertised_variant_negatives.rs` and the bridge's own test module assert
 the agreement, and `tests/advertised_variant_oracle.rs` re-checks it against the real process with
 zero model requests.

@@ -4,9 +4,9 @@
 //!
 //! The advertisement and the runtime guard are the same data: [`unsupported_profile_axis`] walks
 //! [`UnsupportedProfileAxis::ALL`], and [`capability_fields`] publishes the profile names it finds
-//! there. One list is therefore both the guard and the advertisement, so an axis cannot be enforced
-//! without being published. Splitting this out of the configuration module keeps each file within
-//! the repository size rule without duplicating the vocabulary.
+//! there. One list is therefore both the guard and the advertisement, so an axis is published in the
+//! step that enforces it. Splitting this out of the configuration module keeps each file within the
+//! repository size rule without duplicating the vocabulary.
 
 use crate::{EXO_SOURCE_REVISION, ExoDecisionRequest};
 use serde_json::{Value, json};
@@ -16,8 +16,8 @@ pub const SUPPORTED_PROFILES: [&str; 1] = ["standard"];
 /// Profiles the pinned upstream source names but this build rejects before any inference.
 ///
 /// Every entry must correspond to an [`UnsupportedProfileAxis`] that reports that
-/// [`UnsupportedProfileAxis::profile_name`], so the advertisement cannot omit an axis the guard
-/// enforces. `every_classifier_profile_axis_is_advertised` asserts both directions.
+/// [`UnsupportedProfileAxis::profile_name`]. `every_classifier_profile_axis_is_advertised` asserts
+/// both directions.
 pub const UNSUPPORTED_PROFILES: [&str; 3] = ["map", "management", "expert"];
 /// Context modes implemented by this one-shot build.
 pub const SUPPORTED_CONTEXT_MODES: [&str; 1] = ["fresh"];
@@ -89,15 +89,18 @@ impl UnsupportedProfileAxis {
 
     /// The `profile_support` key this axis is advertised under, or `None` when it has none.
     ///
-    /// [`Self::Revision`] is `None`: a provider revision is not a request profile, and the expected
-    /// value is already published as `source_revision`, so it has no `profile_support` entry.
+    /// Every axis is a request profile and is advertised under its own [`Self::name`], except
+    /// [`Self::Revision`]: a provider revision is not a request profile, and its expected value is
+    /// already published as `source_revision`, so it has no `profile_support` entry. Deriving the
+    /// key from `name()` rather than writing it out means a new axis cannot be enforced and left
+    /// undiscoverable by default — it is advertised the moment it is listed in [`Self::ALL`], and
+    /// the only way to opt out is to join `Revision` in the `None` arm, which
+    /// `every_classifier_profile_axis_is_advertised` pins to exactly that one axis.
     #[must_use]
     pub const fn profile_name(self) -> Option<&'static str> {
         match self {
             Self::Revision => None,
-            Self::Map => Some("map"),
-            Self::Management => Some("management"),
-            Self::Expert => Some("expert"),
+            Self::Map | Self::Management | Self::Expert => Some(self.name()),
         }
     }
 }
