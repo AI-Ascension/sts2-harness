@@ -84,6 +84,28 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   declared input did not settle, and records an unwinding branch as `BranchLost` rather than
   stalling. `ParallelCap::SERIAL` keeps cap=1 compatible and `execute_plan` is unchanged; this is
   additive, and budget reservation, cancel/restart and browser branch state remain open. See [ADR 0049](docs/decisions/0049-bounded-parallel-analysis-join.md). Refs #98.
+- Deny **forbidden Exo tools by name at dispatch** in the owned restricted extension and re-record
+  the real pinned-Exo process oracle. The model tool catalog is empty; the extension now also seals
+  the actual `HarnessToolRegistry` handed to each model round, so a pre-populated registry, any
+  later `register`, and any `executePending` — `shell`, `install_agent_tool`,
+  `uninstall_agent_tool`, `manage_tool`, `inspect_tools`, `install_skill`, `remember`,
+  lookup-profile tools, and any case/namespace variant — throws the typed `sts2_forbidden_tool`
+  error before a handler can exist and records the denial counts in a new `sts2.exo-tool-guard-v1`
+  event. The executor requires that event and maps a non-zero count to receipt
+  `error_code: exo_forbidden_tool` with no decision; the bridge fails closed as
+  `exo_bridge_executor_failed` after exactly one model egress. New process-oracle cases
+  `forbidden_tool_by_name_*` (one per name/alias, driven by a synthetic model that calls the tool)
+  and `request_tools_are_empty` exercise both the bridge and the executor boundary against the real
+  pinned Exo with a synthetic loopback model (no provider, no game); the shipped extension digest,
+  the recorded oracle bytes, and `protocol-artifact/exo-bridge-v1/{manifest.json,SHA256SUMS}` are
+  re-recorded together so `crates/harness/tests/support/exo_contract_process_evidence.rs` stays
+  fail-closed. Also documents `STS2_EXO_PRIVATE_STATE_ROOT`, the truthful capability list, and
+  source-freeze/re-admission in the new `docs/exo-compatibility.md` (the Exo sections of
+  `docs/COMPATIBILITY.md` moved there unchanged to stay within the file budget), and corrects stale
+  `experiments/exo-agent/README.md` lines that predated runtime-v3 admission (#205/#223/#226).
+  Compatibility: `safety-correction` to an unreleased candidate — the empty registry is now
+  enforced in dispatch rather than inherited from upstream; no wire field, route, published schema,
+  or durable record changes. Refs #140.
 
 - Consume the gateway's negotiated **repeated-episode lease profile** so a harness run can
   complete two episodes against one gateway deployment. The gateway permanently revokes its local

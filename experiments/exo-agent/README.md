@@ -21,16 +21,51 @@ A deployment using another revision must replace it with a separately reviewed 4
 64-character lowercase commit hash. Empty, floating, placeholder, and all-zero revisions are
 rejected by `ExoConfig`.
 
-The future selected executor path is one dedicated operator-owned TypeScript module loaded through
+The selected executor path is one dedicated operator-owned TypeScript module loaded through
 `agent.typescript.module_path`: `experiments/exo-agent/extension/src/index.ts` →
 `defineHarness.runTurn` → `runResponsesHarnessTurn` → `ResponsesRuntime.complete`. The pinned
 candidate has one root `exo` package; `@exo/harness` and `@exo/model-runtime/turn-loop` are
 `tsconfig.json` path aliases, not installable workspace packages. The candidate-root loader,
-Node/pnpm pins, and locked install/typecheck/lint/test commands are in the extension README. The
-current Rust runtime still uses its legacy request/process seam and does not load this module,
-invoke preflight, or emit the outer envelope; those are future integration requirements. Once
-integrated, the harness must not fall back to Exo `/health`, substrate `/request`, or the
-human-facing CLI.
+Node/pnpm pins, and locked install/typecheck/lint/test commands are in the extension README. In
+the reviewed `STS2_EXO_ADMISSION=envelope` mode the runtime-v3 binary runs trusted preflight,
+inspects the package, extension and bridge bytes against the operator pin, and hands the
+`sts2.exo-bridge-wire-v1` envelope to `sts2-exo-bridge --run`, which loads this module through
+the executor package ([ADR 0031](../../docs/decisions/0031-runtime-exo-admission-gate.md),
+[ADR 0032](../../docs/decisions/0032-inspected-admission-identity.md)). `STS2_EXO_ADMISSION=legacy`
+is the explicit acknowledgement of the un-admitted raw-wire seam. Neither mode falls back to Exo
+`/health`, substrate `/request`, or the human-facing CLI.
+
+### Restricted profile: tools, private state, capability list
+
+The reviewed model tool catalog is empty (`ExoToolCatalog::reviewed()`, `tool_digest` in the
+`--describe` capability). Upstream builds no default registry when a module supplies
+`registerTools`; the extension does not rely on that alone. It seals the actual registry handed to
+every model round: a registry that already carries a tool, any later registration, and any
+dispatch — `shell`, `install_agent_tool`, `uninstall_agent_tool`, `manage_tool`, `inspect_tools`,
+`install_skill`, `remember`, lookup-profile tools, and any case or namespace variant — fails with
+the typed `sts2_forbidden_tool` error before a handler exists, and the counts are appended as the
+`sts2.exo-tool-guard-v1` event. The executor requires that event and reports a non-zero count as
+receipt `error_code: exo_forbidden_tool` with no decision; the bridge then fails closed as
+`exo_bridge_executor_failed` after exactly one model egress. The by-name cases are recorded against
+the real pinned Exo in `docs/evidence/exo-executor-process-oracle-20260917.md`
+(`forbidden_tool_by_name_*`, `request_tools_are_empty`).
+
+`STS2_EXO_PRIVATE_STATE_ROOT` (optional; default `/var/lib/sts2-harness/exo-runtime`) is the base
+of the reviewed `ExoPrivateStatePolicy` that envelope admission validates before inference:
+`<root>/state`, `<root>/cache` and `<root>/temp`, default quota and retention, `0700` permissions.
+Validation is lexical (absolute, no `..`, no `home`/`root`/`Users` component, no system or
+game-install prefix). The bridge itself still creates its fresh `0700` per-run child under the
+caller's `TMPDIR`; materializing the declared roots, quota enforcement and retention sweeps remain
+open under #140.
+
+The truthful capability list is the `--describe` output (`sts2.exo-one-shot-capability-v1`): the
+pinned source revision, bridge/executor/extension/Node digests, the empty-catalog `tool_digest`,
+the configuration digest, the configured model and endpoint, `profiles: [standard]`,
+`context_modes: [fresh]`, four decision kinds, `max_tool_round_trips: 0`, and
+`full_runtime_admission: false`. Any change to the source tree, extension bytes, executor, Node,
+configuration or model binding changes a digest, so the operator pin no longer matches and
+admission refuses before any effect; re-admission means reviewing and pinning the new identity
+(ADR 0017 “re-admission”), never adopting a changed artifact in place.
 
 The harness supplies `ExoProcessTransport` for an operator-owned bridge when a direct process is
 appropriate. It passes configured arguments directly, clears the environment except for an
@@ -94,7 +129,6 @@ into a small decision enum; verbatim output is not a trajectory artifact.
 
 Live Exo connectivity, the selected revision, licensed STS2 build, and gameplay compatibility are
 `unverified` until a separately recorded runtime handoff supplies exact package, extension, bridge,
-model, prompt, tool, configuration, and native-instance lineage. The source-derived artifact and
-offline preflight do not constitute a real executor spike. The existing runtime has no preflight
-admission or envelope handoff yet; implementing those gates is required before this extension can
-be called operational.
+model, prompt, tool, configuration, and native-instance lineage. The source-derived artifact,
+offline preflight and the synthetic-model process oracle do not constitute a real provider or
+native run.
