@@ -10,11 +10,12 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
-- Make the one-shot Exo bridge **advertise the variants it implements**. `--describe` now publishes
-  `profile_support` (`map`/`expert` `unsupported`), `decision_support` (`recovery` `unsupported`) and
-  the two fail-closed codes, so a caller can pre-check support instead of inferring it from a
-  rejection that is identical for every profile axis. The advertisement and the guard share one
-  classifier and pure route predicates. Map and expert stay negative-only. Compatibility: additive.
+- Make the one-shot Exo bridge **advertise the variants it implements**. `--describe` publishes
+  `profile_support` (`map`/`management`/`expert` `unsupported`), `decision_support` (`recovery`
+  `unsupported`) and the two fail-closed codes, so a caller can pre-check support rather than infer it
+  from a rejection identical for every axis. The guard walks the one axis list the advertisement is
+  derived from, so an enforced axis cannot be missing from it; map, management and expert stay
+  negative-only. Compatibility: additive.
   See [evidence](docs/evidence/exo-advertised-variant-negatives-20260918.md). Refs #141.
 
 - Persist **logical-invocation context lifetime consumption at dispatch admission**. A continuity

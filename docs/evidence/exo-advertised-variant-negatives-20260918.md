@@ -33,10 +33,10 @@ or native instance is used.
 |---|---|
 | `exo_revision` | `b06869ab789dee3f80ca474b5fa89dbe47ccb859` |
 | `extension_sha256` | `2e5485127f434bdd95a534785a414fa9f357432c924d89fd56d50c96f434b9cd` |
-| `executor_sha256` | `244269e0ef7aeb92c71f6b47459f7fc9e41c1449552dd65847b226da6195ca54` |
-| `bridge_sha256` | `5aa0d61436f041c40fb9090136772ab89a897fe1d9a462c94df2b25ec276ac00` |
-| `oracle_sha256` | `16c3513cfdb479d1e3826eaa85a3633ba69cc04bbf3c047094153bbd4f751022` |
-| `harness_revision` | `39c088862d7fc159e6438521f194c8d4bcaba627` (the revision the harness was at when the recorded run executed, as with the 2026-09-15 record) |
+| `executor_sha256` | `3f6d7d9530da3c7a884d48acfc20dfe1b24d73e9f2499a9ed5b575e4e9d97729` |
+| `bridge_sha256` | `232f4568a719f477674ef4e7d8a3b5babace7ceb278f196bfcf6a2918b137b92` |
+| `oracle_sha256` | `ff84c9812d6ef56bca63fef3774c44ed23a71960b121a41f5852ad9f1392a820` |
+| `harness_revision` | `55331ec1660b7dacebd8e5c9ae1eabcb681535e7` (the revision the harness was at when the recorded run executed, as with the 2026-09-15 record) |
 | Node | `v22.15.0` |
 | Rust toolchain | `1.97.1`; non-Linux platforms remain unverified |
 
@@ -51,7 +51,8 @@ support from a rejection code:
 ```json
 {
   "profiles": ["standard"],
-  "profile_support": {"standard": "supported", "map": "unsupported", "expert": "unsupported"},
+  "profile_support": {"standard": "supported", "map": "unsupported", "management": "unsupported",
+                      "expert": "unsupported"},
   "context_modes": ["fresh"],
   "decisions": ["action", "plan", "wait", "reobserve"],
   "decision_support": {"action": "supported", "plan": "supported", "wait": "supported",
@@ -61,9 +62,18 @@ support from a rejection code:
 }
 ```
 
-The advertisement and the guard are the same classifier, so they cannot drift. Both the one-shot
-entry point and the lookup relay call `unsupported_profile_axis`; a test enumerates every axis the
-classifier can return and asserts each has a negative case.
+The advertisement and the guard are one list, not two that agree. `unsupported_profile_axis` walks
+`UnsupportedProfileAxis::ALL`, and `capability_fields` derives `profile_support` from that same
+`ALL`, so the axis list *is* the guard and *is* the advertisement. The earlier `management` omission
+was possible because the guard was a hand-written `if`-chain and the advertisement read a separate
+constant; a new axis could be enforced without being listed. It cannot now: adding a variant fails
+to compile until `is_present` and `profile_name` handle it, and `ALL` is the only place either side
+reads, so an enforced axis is published in the same step that enforces it.
+
+`every_unsupported_profile_axis_is_rejected_before_inference` is driven by `ALL` and asserts each
+case reports *that* axis; `every_classifier_profile_axis_is_advertised` checks `ALL` against the
+published `UNSUPPORTED_PROFILES` in both directions and pins the advertised key set as literals, so
+shrinking `ALL` cannot quietly widen the guard.
 
 The lookup relay is terminal on an action id only, so it re-projects the decision fields rather
 than inheriting the one-shot set: `--lookup-describe` advertises `decisions: ["action_id"]` and
@@ -74,17 +84,20 @@ to stop, and the reason the capability sets are parameters rather than one share
 ## Result
 
 The real-process oracle (`experiments/exo-agent/bridge/tests/advertised_variant_oracle.rs`) passes
-with **zero model requests** across four probes: `describe`, a repeated `describe`, a
-map-profile request refused pre-inference with `exo_bridge_unsupported_profile`, and a
+with **zero model requests** across five probes: `describe`, a repeated `describe`, map-profile and
+management-profile requests each refused pre-inference with `exo_bridge_unsupported_profile`, and a
 tampered-config rejection. The synthetic model is armed with a decision that would succeed, so a
 probe that wrongly inferred would visibly contact it rather than failing for an unrelated reason.
+Both refusal probes are schema-valid — the management probe carries `management_profile:
+"management-enabled"` *and* the non-null `management_context` the schema requires for it — so the
+strict parser admits them and the shared guard is the only thing that can refuse them.
 
 The request/receipt/decision negative matrix is enforced by two suites, both proven discriminating
 by temporarily deleting the guard and observing the failure:
 
 | Suite | Cases | Guard removed | Observed |
 |---|---|---|---|
-| `crates/harness/tests/exo_advertised_variant_negatives.rs` | 7 tests: profile axes, malformed framing, map refusal, decision parsing, lookup decision advertisement | `unsupported_profile_axis` body emptied | 2 tests fail |
+| `crates/harness/tests/exo_advertised_variant_negatives.rs` | 8 tests: profile axes, two-way advertisement agreement, malformed framing, map refusal, decision parsing, lookup decision advertisement | `unsupported_profile_axis` body emptied | 2 tests fail |
 | `crates/harness/src/bin/support/exo_bridge_run_tests.rs` | 8 tests: 13 negative receipts/decisions, advertisement agreement, route containment | `validate_decision` match arms deleted | `negative_receipts_and_decisions_never_produce_a_dispatchable_response` fails on `illegal_action_id` |
 
 `crates/harness/tests/support/exo_contract_process_evidence.rs` re-derives `extension_sha256` and
@@ -100,7 +113,7 @@ Full workspace validation on the final candidate:
 cargo run --locked --package repo-policy -- --strict   → 0 warnings, 0 errors
 cargo fmt --all --check                                → clean
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings → clean
-cargo test --workspace --all-targets --all-features --locked → 223 targets, 1567 passed, 0 failed
+cargo test --workspace --all-targets --all-features --locked → 224 targets, 1576 passed, 0 failed
 ```
 
 The workspace run requires `STS2_EXO_TEST_SOURCE` (a clean checkout of the reviewed revision) and

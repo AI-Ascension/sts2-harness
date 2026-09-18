@@ -44,6 +44,32 @@ fn envelope_bytes(value: &Value) -> Vec<u8> {
 /// The bridge's own stdin read bound; a larger frame cannot be read at all.
 const STDIN_BOUND: usize = 131_072;
 
+/// The golden envelope with the one field that carries `axis` set to an unsupported value.
+///
+/// Exhaustive on purpose: a new axis does not compile until it names the request shape it detects.
+fn request_carrying(axis: config::UnsupportedProfileAxis) -> Value {
+    use config::UnsupportedProfileAxis as Axis;
+    let mut request = envelope();
+    match axis {
+        Axis::Revision => {
+            request["request"]["provider_revision"] = json!("f".repeat(40));
+        }
+        Axis::Map => {
+            request["request"]["map_context"] = json!({"profile": "runtime-map-v1"});
+        }
+        // The schema requires a non-null context for the enabled profile, so the request must carry
+        // it to be schema-valid and reach the shared guard.
+        Axis::Management => {
+            request["request"]["management_profile"] = json!("management-enabled");
+            request["request"]["management_context"] = json!({});
+        }
+        Axis::Expert => {
+            request["request"]["observation"]["protocol_version"] = json!("runtime-v4-expert");
+        }
+    }
+    request
+}
+
 #[test]
 fn every_unsupported_profile_axis_is_rejected_before_inference() {
     // The advertisement and the guard must agree on the exact axis names and code.
@@ -60,32 +86,18 @@ fn every_unsupported_profile_axis_is_rejected_before_inference() {
     assert_eq!(fields["profiles"], json!(["standard"]));
     assert_eq!(fields["context_modes"], json!(["fresh"]));
 
-    // Every axis the classifier can report must appear here, so a new axis cannot be added
-    // without a negative case.
-    let mut covered = Vec::new();
-    for axis in ["revision", "map", "management", "expert"] {
-        let mut request = envelope();
-        match axis {
-            "revision" => request["request"]["provider_revision"] = json!("f".repeat(40)),
-            "map" => request["request"]["map_context"] = json!({"profile": "runtime-map-v1"}),
-            "management" => request["request"]["management_profile"] = json!("management-enabled"),
-            "expert" => {
-                request["request"]["observation"]["protocol_version"] = json!("runtime-v4-expert")
-            }
-            _ => continue,
-        }
-        covered.push(axis);
-        let bytes = envelope_bytes(&request);
+    // Driven by `ALL`, the list the guard walks, and each case must report *that* axis.
+    for axis in config::UnsupportedProfileAxis::ALL {
+        let bytes = envelope_bytes(&request_carrying(axis));
         // Whatever the parser decides, the bridge must not reach the executor. Where the request
         // is still schema-valid the shared classifier is the only thing that can stop it.
         match parse_bridge_request_envelope(&bytes, STDIN_BOUND) {
-            Ok(parsed) => {
-                let axis = config::unsupported_profile_axis(&parsed.request);
-                assert!(
-                    axis.is_some(),
-                    "axis {axis:?} was admitted by the shipped profile guard"
-                );
-            }
+            Ok(parsed) => assert_eq!(
+                config::unsupported_profile_axis(&parsed.request),
+                Some(axis),
+                "axis {} was admitted by the shipped profile guard",
+                axis.name()
+            ),
             Err(error) => {
                 // The strict validator may reject the shape first; that is still fail-closed.
                 assert!(
@@ -93,23 +105,74 @@ fn every_unsupported_profile_axis_is_rejected_before_inference() {
                         error,
                         ExoWireError::InvalidRequest | ExoWireError::InvalidShape
                     ),
-                    "unexpected pre-model rejection for {axis}: {error:?}"
+                    "unexpected pre-model rejection for {}: {error:?}",
+                    axis.name()
                 );
             }
         }
     }
-    for axis in [
-        config::UnsupportedProfileAxis::Revision,
-        config::UnsupportedProfileAxis::Map,
-        config::UnsupportedProfileAxis::Management,
-        config::UnsupportedProfileAxis::Expert,
-    ] {
-        assert!(
-            covered.contains(&axis.name()),
-            "classifier axis {} has no negative case",
+}
+
+/// The advertisement must publish every profile axis the guard enforces, in both directions.
+///
+/// `profile_support` is the only way a caller can pre-check support, so an axis that is enforced
+/// but absent here is undiscoverable except by triggering the deliberately identical rejection
+/// code. This is the regression test for the `management` axis, which the guard enforced while the
+/// advertisement omitted it: the guard and the advertisement were the same classifier, but the
+/// published profile list was a separate constant that had fallen behind it.
+///
+/// The guard now walks [`config::UnsupportedProfileAxis::ALL`], which is also the advertisement's
+/// source, so this asserts both directions of the only remaining pair: `ALL`/`UNSUPPORTED_PROFILES`.
+#[test]
+fn every_classifier_profile_axis_is_advertised() {
+    let fields =
+        config::capability_fields(&config::SUPPORTED_DECISIONS, &config::UNSUPPORTED_DECISIONS);
+    let advertised = fields["profile_support"]
+        .as_object()
+        .expect("profile_support is an object");
+
+    // Every classifier axis that names a request profile must appear as `unsupported`.
+    for axis in config::UnsupportedProfileAxis::ALL {
+        let Some(profile) = axis.profile_name() else {
+            continue;
+        };
+        assert_eq!(
+            advertised.get(profile),
+            Some(&json!("unsupported")),
+            "classifier axis {} is enforced but not advertised as unsupported",
             axis.name()
         );
+        assert!(
+            config::UNSUPPORTED_PROFILES.contains(&profile),
+            "{profile} is enforced by the classifier but missing from UNSUPPORTED_PROFILES"
+        );
     }
+
+    // ...and the published list must not carry a profile no axis enforces.
+    for profile in config::UNSUPPORTED_PROFILES {
+        assert!(
+            config::UnsupportedProfileAxis::ALL
+                .iter()
+                .any(|axis| axis.profile_name() == Some(profile)),
+            "{profile} is advertised as unsupported but no classifier axis enforces it"
+        );
+    }
+
+    // The advertised keys are exactly the supported profiles plus the enforced axes.
+    let mut expected: Vec<&str> = config::SUPPORTED_PROFILES.to_vec();
+    expected.extend(
+        config::UnsupportedProfileAxis::ALL
+            .iter()
+            .filter_map(|axis| axis.profile_name()),
+    );
+    let mut observed: Vec<&str> = advertised.keys().map(String::as_str).collect();
+    expected.sort_unstable();
+    observed.sort_unstable();
+    assert_eq!(observed, expected, "profile_support keys drifted");
+    // Pinned as literals rather than derived, so shrinking `ALL` cannot silently widen the guard:
+    // `management` was enforced-but-unadvertised once and must stay advertised, and no axis may be
+    // published under a profile name it does not have.
+    assert_eq!(observed, ["expert", "management", "map", "standard"]);
 }
 
 #[test]

@@ -16,10 +16,11 @@ const ADVERTISED_ORACLE: &[u8] =
     include_bytes!("../../../../experiments/exo-agent/bridge/tests/advertised_variant_oracle.rs");
 const ADVERTISED_RECORD_PATH: &str = "docs/evidence/exo-advertised-variant-negatives-20260918.json";
 const ACCEPTED_DECISIONS: [&str; 4] = ["action", "plan", "wait", "reobserve"];
-const ADVERTISED_PROBES: [&str; 4] = [
+const ADVERTISED_PROBES: [&str; 5] = [
     "describe",
     "describe_repeated",
     "map_refused_pre_inference",
+    "management_refused_pre_inference",
     "tampered_config_rejected",
 ];
 const MODEL_OUTPUT_REJECTIONS: [&str; 9] = [
