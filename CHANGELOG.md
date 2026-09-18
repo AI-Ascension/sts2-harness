@@ -10,6 +10,19 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Compute **exactly derivable combat facts** from an admitted observation, so a provider is handed
+  comparisons rather than operands. `context_control::DerivedExactFacts` states gross incoming
+  damage (revealed intent damage times hits, only when every listed enemy carries an intent), a
+  `fatal`/`heavy`/`survivable` label against current hit points, the hand cards current energy
+  covers, the hand cards whose cost is not a fixed number, the single lowest-hit-point enemy, and
+  the two counts a model would otherwise tally itself. It reads the admitted observation only, and
+  a value it cannot derive exactly is omitted rather than estimated: an unrevealed intent removes
+  the damage total and says so instead of counting as zero, and a tie names no weakest enemy. Two
+  boundaries come from the declared model-view vocabulary rather than from the game — a card carries
+  no attack value, so no lethal claim is derivable, and nothing carries block, so incoming damage is
+  gross and named to say so. The projection is `derived_exact` under the fair-play taxonomy and is
+  not host authority. Compatibility: additive; one new module and its re-exports, no change to an
+  existing record, route, or digest. Refs #287.
 - Share one **bounded HTTP/1.1 response reader across provider bridges**. The strict reader that
   refuses oversized headers, a duplicate `Content-Length`, both framings at once, a non-`chunked`
   transfer coding, an oversized or short chunk, and any trailer after the terminal chunk moves from
