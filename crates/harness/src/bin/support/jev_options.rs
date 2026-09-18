@@ -15,6 +15,12 @@ pub(super) const DEFAULT_MODEL: &str = "jev-latest";
 /// Largest transport path this parser accepts.
 const MAX_TRANSPORT_BYTES: usize = 4096;
 
+/// Largest confidence gate this parser accepts, in hundredths.
+///
+/// The gate is taken as an integer percentage rather than a decimal so an argument vector carries
+/// no locale-dependent separator and admission can compare it exactly.
+const MAX_GATE_PERCENT: u32 = 100;
+
 /// Command-line configuration, never inferred from game or model output.
 pub(super) struct Options {
     /// Provider model identifier, sent unchanged.
@@ -23,6 +29,11 @@ pub(super) struct Options {
     pub transport: Option<String>,
     /// Print the requested configuration and exit without opening a connection.
     pub describe: bool,
+    /// Confidence at or above which an answer becomes an action, as an integer percentage.
+    ///
+    /// Absent means the bridge's own default applies. An operator lowers it when a lane's real
+    /// confidence distribution sits below the default, which is a measurement rather than a taste.
+    pub gate_percent: Option<u32>,
 }
 
 impl Options {
@@ -31,6 +42,7 @@ impl Options {
         let mut arguments = arguments.into_iter();
         let mut model = None;
         let mut transport = None;
+        let mut gate_percent = None;
         let mut describe = false;
         while let Some(argument) = arguments.next() {
             match argument.as_str() {
@@ -51,6 +63,16 @@ impl Options {
                     }
                     transport = Some(value);
                 }
+                "--gate" if gate_percent.is_none() => {
+                    let value = arguments.next().ok_or("missing confidence gate")?;
+                    let parsed = value
+                        .parse::<u32>()
+                        .map_err(|_| "invalid confidence gate")?;
+                    if parsed > MAX_GATE_PERCENT || value != parsed.to_string() {
+                        return Err("invalid confidence gate");
+                    }
+                    gate_percent = Some(parsed);
+                }
                 _ => return Err("unknown or duplicate bridge option"),
             }
         }
@@ -58,6 +80,7 @@ impl Options {
             model: model.unwrap_or_else(|| DEFAULT_MODEL.to_owned()),
             transport,
             describe,
+            gate_percent,
         })
     }
 }
@@ -129,6 +152,28 @@ mod tests {
             );
         }
         assert!(Options::parse(vec!["--model".to_owned(), "x".repeat(241)]).is_err());
+    }
+
+    #[test]
+    fn a_confidence_gate_is_accepted_as_an_integer_percentage() -> Result<(), &'static str> {
+        assert_eq!(Options::parse(Vec::new())?.gate_percent, None);
+        let options = Options::parse(vec!["--gate", "35"].into_iter().map(str::to_owned))?;
+        assert_eq!(options.gate_percent, Some(35));
+        for arguments in [
+            vec!["--gate"],
+            vec!["--gate", ""],
+            vec!["--gate", "101"],
+            vec!["--gate", "0.35"],
+            vec!["--gate", "-1"],
+            vec!["--gate", "035"],
+            vec!["--gate", "35", "--gate", "40"],
+        ] {
+            assert!(
+                Options::parse(arguments.clone().into_iter().map(str::to_owned)).is_err(),
+                "expected {arguments:?} to be refused"
+            );
+        }
+        Ok(())
     }
 
     #[test]

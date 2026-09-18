@@ -10,6 +10,18 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Let an operator **set the System One confidence gate** per invocation. `sts2-jev-bridge` gains
+  `--gate PERCENT`, an integer percentage so an argument vector carries no locale-dependent
+  separator and admission can compare it exactly; absent, the bridge's own default still applies.
+  The admitted argument form for `typesafe-jev` accordingly accepts either the four-element model and
+  transport pair or that pair followed by `--gate PERCENT`, and nothing else. This exists because a
+  gate is a measurement rather than a taste: the first two recorded live answers came back at `0.44`
+  and `0.42` against a `0.55` default, so a lane left at the default would return `reobserve` on
+  states like those and never act. Changing it through the recorded argument vector keeps that
+  visible in a run's identity instead of hidden in a rebuild. `--describe` reports the gate the
+  invocation would use. Compatibility: additive; the existing four-element form and the default gate
+  are unchanged. Refs #308.
+
 - Make the harness library **compile for Windows** again, and add a lane that keeps it that way.
   `exo_lifecycle/process_effect.rs` guarded one unix-only call and then used `rustix::process` —
   whose `process` module is unix-only — unconditionally for the child's identity and for killing its
@@ -515,31 +527,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   and validate exact decision/reservation metadata before completion or uncertainty writes.
   Validate authenticated lifecycle-to-broker references and phase relationships before
   restart claim publication, retaining held recovery and historical completed entries.
-
-- Add opt-in Exo owner persistence with a separate encrypted broker journal, lifetime owner lock,
-  authenticated send/result fences, conservative restart handling, and explicit v1 cutover.
-  Existing execution-store reservations and result bytes retain their ownership. See
-  [ADR 0020](docs/decisions/0020-exo-owner-journal-and-single-use-send.md).
-  Focused source/recording-fixture and local process coverage passed 37 test functions at
-  `29d256c`; this is not native Exo or full-runtime acceptance. Cancellation, native
-  reconciliation, qualified accounting, containment and episode admission remain gated. Refs #142.
-
-- Add the owned `sts2-exo-bridge` single-turn process entrypoint and an isolated, exact-pinned
-  real Exo embedding package. Strict standard/fresh requests retain their complete catalog and
-  constraints; correlated output is independently parsed with no fallback. The tool-free extension
-  forwards at most one model request and records denied upstream SDK retry attempts. Add
-  `ExoAdmittedTransport` for full-preflight envelope handoff with explicit host identities.
-  Compatibility: additive opt-in source/process path; full runtime admission, map/expert/recovery,
-  durable lifecycle, actual provider/game execution and replay remain separately gated. Refs #141.
-
-- Align the reviewed Console and Studio v3 effective-limit consumer pins, require exact
-  repository-owned CI references, and verify candidate producer-library bytes against both
-  unchanged consumer fixtures before admission tests. Validate actual static YAML checkout
-  steps with pinned `yaml-rust2` 0.13.0; shell text, ambiguous mappings and conditional/inert
-  steps cannot establish a consumer pin. Preserve the separate Studio workflow-owner
-  regression; effective-limit evidence remains synthetic only.
-
-- Add producer-generated context-control catalog fixtures for descriptor minima, restricted
-  values, global ceilings, disabled metadata and digest consistency. A catalog sealing helper
-  reuses the existing v1 encoding. No wire fields, limits or selected-limit execution behavior
-  change; consumer adoption and rendering/journal enforcement remain separate. Refs #95.
