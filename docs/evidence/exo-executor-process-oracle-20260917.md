@@ -36,8 +36,8 @@ against the executor, whose receipt carries `error_code: exo_forbidden_tool` and
 | `support_sha256` (`tests/support/mod.rs`) | `c42408176a7f774d1f845cb3b8a0805892174ae237149ca037d232bf65050b5c` |
 | `support_sha256` (`tests/support/projection.rs`) | `25c6168f0c76d103d7fc0e1ca14ac0bf8251c35fdc5cadd31ea50318a455c26e` |
 | `executor_sha256` | `35b214b58d3cd5fdcf250078b6dec1fcc24b6f0bc77b58fbfdb91e103062dc70` |
-| `bridge_sha256` | `d2d7e7a1e5f6185b0d5d141c102fddd9fb726d30f3d3dba1313ba973b443bed2` |
-| `harness_revision` | `89c489649c1912bd828e9c8b2fda42376c483a11` |
+| `bridge_sha256` | `ee2207a1a0391796fc2cd5e8fbeb1c9c6763e792b849b89c406ea16cc030774f` |
+| `harness_revision` | `fdb2d86050bf31c563083dc99e47602ac7b492bb` |
 | Node | `v22.14.0` (the extension pin; upstream declares `22.15.0`, still unqualified) |
 | Rust toolchain | `1.97.1`; `aarch64`/non-Linux platforms remain unverified |
 | Model binding | `o3-pro` → synthetic loopback endpoint, model route asserted, no credential |
@@ -46,14 +46,16 @@ against the executor, whose receipt carries `error_code: exo_forbidden_tool` and
 `support_sha256` binds the two oracle support modules. The `executor_sha256` and `bridge_sha256` are
 locally built executables, not publication artifacts.
 
-`harness_revision` names the commit at which the recorded sources were frozen, which is necessarily
-an ancestor of the commit carrying this record and is rewritten when the change is squash-merged.
-The binding that matters is that the named revision contains every recorded source byte, which the
+`harness_revision` names the commit at which the recorded sources were frozen. It is an ancestor of
+or equal to the commit carrying this record and is rewritten when the change is squash-merged; the
+binding that matters is that the named revision contains every recorded source byte, which the
 oracle now enforces at record time (`support::assert_sources_are_committed`).
 
 ## Result
 
-All 40 oracle cases passed (`test result: ok. 1 passed; 0 failed`), the whole matrix in 42.65 s:
+All 40 oracle cases passed (`test result: ok. 1 passed; 0 failed`). The recorded run took 208.72 s
+while other builds shared the machine; the same case set measures 42.65 s on an idle machine, so the
+figure is load-dependent and not a performance claim:
 
 | Case group | Cases | Observed |
 |---|---|---|
