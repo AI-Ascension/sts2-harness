@@ -13,11 +13,11 @@ use sts2_harness::{
 
 const LIMIT: usize = 128 * 1024;
 
-#[path = "runtime_support/ollama_response.rs"]
-mod response;
-
 #[path = "support/ollama_options.rs"]
 mod options;
+
+#[path = "support/provider_http_response.rs"]
+mod provider_http_response;
 
 fn main() {
     let Ok(options) = options::Options::parse(std::env::args().skip(1)) else {
@@ -199,7 +199,7 @@ fn exchange_at(
             return Err("provider response exceeds bound".into());
         }
     }
-    response::parse(&response)
+    provider_http_response::parse_json_response(&response).map_err(Into::into)
 }
 
 #[cfg(test)]
