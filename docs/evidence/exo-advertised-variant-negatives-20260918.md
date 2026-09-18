@@ -36,7 +36,7 @@ or native instance is used.
 | `executor_sha256` | `244269e0ef7aeb92c71f6b47459f7fc9e41c1449552dd65847b226da6195ca54` |
 | `bridge_sha256` | `5aa0d61436f041c40fb9090136772ab89a897fe1d9a462c94df2b25ec276ac00` |
 | `oracle_sha256` | `16c3513cfdb479d1e3826eaa85a3633ba69cc04bbf3c047094153bbd4f751022` |
-| `harness_revision` | `0003206c96289a71245b833778a4e0c467c5044e` (the revision the harness was at when the recorded run executed, as with the 2026-09-15 record) |
+| `harness_revision` | `39c088862d7fc159e6438521f194c8d4bcaba627` (the revision the harness was at when the recorded run executed, as with the 2026-09-15 record) |
 | Node | `v22.15.0` |
 | Rust toolchain | `1.97.1`; non-Linux platforms remain unverified |
 

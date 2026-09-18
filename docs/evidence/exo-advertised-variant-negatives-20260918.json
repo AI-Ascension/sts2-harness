@@ -14,7 +14,7 @@
   "executor_sha256": "244269e0ef7aeb92c71f6b47459f7fc9e41c1449552dd65847b226da6195ca54",
   "extension_sha256": "2e5485127f434bdd95a534785a414fa9f357432c924d89fd56d50c96f434b9cd",
   "full_runtime_admission": false,
-  "harness_revision": "0003206c96289a71245b833778a4e0c467c5044e",
+  "harness_revision": "39c088862d7fc159e6438521f194c8d4bcaba627",
   "model_requests": 0,
   "oracle_sha256": "16c3513cfdb479d1e3826eaa85a3633ba69cc04bbf3c047094153bbd4f751022",
   "probes": [
