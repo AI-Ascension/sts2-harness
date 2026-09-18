@@ -157,6 +157,15 @@ fn advertised_variants_and_zero_model_probes() -> Result {
     assert_eq!(model.request_count(), 0);
     std::fs::remove_file(tampered_config)?;
 
+    // The report names `HEAD`; refuse to emit it unless `HEAD` really carries the recorded bytes.
+    support::assert_sources_are_committed(
+        &root,
+        &[
+            "experiments/exo-agent/extension/src/index.ts",
+            "experiments/exo-agent/bridge/tests/advertised_variant_oracle.rs",
+            "experiments/exo-agent/bridge/tests/support/mod.rs",
+        ],
+    )?;
     let report = json!({
         "schema": "sts2.exo-advertised-variant-evidence-v1",
         "evidence": "real-process-synthetic-model-no-game",
