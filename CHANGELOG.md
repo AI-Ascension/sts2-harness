@@ -7,6 +7,29 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Persist **logical-invocation context lifetime consumption at dispatch
+  admission**. A continuity owner issues a bounded `ContextLifetimeScope`
+  (`ascension.context-control.lifetime.v1`) over ordered context item ids for one
+  agent/episode/run — optionally pinned to one branch — with applicability
+  `current_invocation` or `next_n { bound }` and a wall-clock ceiling that is an
+  additional bound rather than the mechanism. Applicability is consumed at exactly
+  one site, durable dispatch admission, on a logical `invocation_id` whose
+  `attempt` distinguishes transport retries: a preview, reload, receipt lookup or
+  retry never consumes, extends or resurrects applicability, and a retry of the
+  same logical invocation is answered with its existing manifest instead of a
+  second slot. A crash *before* the durable write consumes nothing; a crash
+  *after* it leaves the slot consumed and the invocation held as a possible
+  dispatch until reconciliation, because a dispatch that may have happened is
+  never silently handed back. Counters and identities persist through
+  `ContextControlStore` as `ascension.context-control.lifetime-state.v1`, so a
+  restart replays the same window. Manifests are append-only and their digest
+  binds the immutable admission facts, so reconciliation and expiry never rewrite
+  or delete history. Sibling agents, branches, episodes and runs cannot inherit a
+  scope. Compatibility: additive-compatible; one new table
+  (`context_control_lifetime`), no change to an existing table, column, digest or
+  route; see [ADR 0051](docs/decisions/0051-logical-invocation-lifetime-consumption.md).
+  Refs #111.
+
 - Consume the shared `game-information-live-observation-bootstrap-v1` conformance case and its
   seven invalid fixtures (copied byte-identically from sts2-protocol, `SHA256SUMS` extended) and
   drive the `error-native-unavailable.json` golden through the MCP bootstrap boundary: a
