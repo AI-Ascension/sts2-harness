@@ -8,6 +8,8 @@ use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+pub mod projection;
+
 pub type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub fn digest(path: &Path) -> Result<String> {
@@ -16,52 +18,6 @@ pub fn digest(path: &Path) -> Result<String> {
         return Err("digest failed".into());
     }
     Ok(String::from_utf8(output.stdout)?[..64].to_owned())
-}
-
-pub fn ordinary_map(envelope: &Value) -> Result<Value> {
-    let snapshot = json!({
-        "state_id": "map-state", "generation": 0, "schema_version": "visible-map-v1",
-        "projection_version": "runtime-map-v1", "game_build": "synthetic", "mod_version": "synthetic",
-        "map_instance_id": "map-1", "act_id": 1, "scope_id": "scope-1",
-        "availability": "available", "completeness": "complete", "freshness": "current", "reason": null,
-        "nodes": [
-            {"id": "next", "row": 1, "column": 0, "category": "monster", "visited": false},
-            {"id": "start", "row": 0, "column": 0, "category": "start", "visited": true}
-        ],
-        "edges": [{"from": "start", "to": "next"}],
-        "position": {"kind": "current", "node_id": "start"}, "history": ["start"],
-        "terminal_node_ids": ["next"],
-        "bindings": [{"graph_node_id": "next", "host_action_id": "move-1",
-            "action": {"kind": "select_map_node", "node_id": "next"}}]
-    });
-    // Map snapshot digests require collection order canonicalized by node ID, not path order.
-    let mut hash = Command::new("sha256sum")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()?;
-    hash.stdin
-        .take()
-        .ok_or("hash stdin missing")?
-        .write_all(&serde_json::to_vec(&snapshot)?)?;
-    let output = hash.wait_with_output()?;
-    assert!(output.status.success());
-    let digest = &String::from_utf8(output.stdout)?[..64];
-    let mut map = envelope.clone();
-    let request = &mut map["request"];
-    request["schema"] = json!("sts2.exo-decision-map-v1");
-    request["state_id"] = json!("map-state");
-    request["observation"]["state_id"] = json!("map-state");
-    request["observation"]["state"] =
-        json!({"state": "map", "node_id": "start", "options": ["next"]});
-    request["observation"]["legal_actions"] = json!([{"action_id": "move-1",
-        "action": {"kind": "select_map_node", "node_id": "next"}}]);
-    request["legal_action_ids"] = json!(["move-1"]);
-    request["map_context"] = json!({
-        "profile": "runtime-map-v1",
-        "schema_digest": "ceab0d2dfc471d1ec36d12edaf4654b8c7fdced06548bf47265e11c63f98115b",
-        "snapshot_digest": digest, "snapshot": snapshot
-    });
-    Ok(map)
 }
 
 pub struct Model {
@@ -195,18 +151,35 @@ pub fn response(text: &str, kind: &str) -> Value {
     }]);
     match kind {
         "refusal" => output[0]["content"] = json!([{"type": "refusal", "refusal": "synthetic"}]),
-        "tool" => {
-            output = json!([{
-                "type": "function_call", "id": "fc_synthetic", "call_id": "call_synthetic",
-                "name": "shell", "arguments": "{}", "status": "completed"
-            }])
-        }
+        "tool" => output = tool_call("shell")["output"].clone(),
         "multiple" => output = json!([output[0].clone(), output[0].clone()]),
         _ => {}
     }
     json!({
         "id": "resp_synthetic", "object": "response", "created_at": 0,
         "status": "completed", "model": "o3-pro", "output": output,
+        "usage": {"input_tokens": 11, "output_tokens": 5, "total_tokens": 16}
+    })
+}
+
+/// Digests of the oracle support sources, recorded so the evidence binds every assertion module.
+pub fn support_digests() -> Result<Value> {
+    let support = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/support");
+    Ok(json!({
+        "tests/support/mod.rs": digest(&support.join("mod.rs"))?,
+        "tests/support/projection.rs": digest(&support.join("projection.rs"))?
+    }))
+}
+
+/// One synthetic Responses output whose only item calls `name`; the synthetic model returns it
+/// verbatim, so the case exercises the actual upstream tool-call path with that exact name.
+pub fn tool_call(name: &str) -> Value {
+    json!({
+        "id": "resp_synthetic", "object": "response", "created_at": 0,
+        "status": "completed", "model": "o3-pro", "output": [{
+            "type": "function_call", "id": "fc_synthetic", "call_id": "call_synthetic",
+            "name": name, "arguments": "{}", "status": "completed"
+        }],
         "usage": {"input_tokens": 11, "output_tokens": 5, "total_tokens": 16}
     })
 }
@@ -222,9 +195,67 @@ pub fn invoke(binary: &Path, config: &Path, data: &[u8], mode: &str, eof: bool) 
     if mode != "--describe" {
         command.arg(digest(config)?);
     }
-    let mut child = command
+    command.env_clear().env("TMPDIR", temporary);
+    let output = run_bounded(command, data, eof)?;
+    if String::from_utf8_lossy(&output.0.stderr).contains("sts2.exo-one-shot-evidence-v1") {
+        assert!(output.1 >= 3, "real Exo process tree missing");
+    }
+    Ok(output.0)
+}
+
+/// Drives the separately built executor exactly as the bridge does (private handoff on stdin,
+/// cleared environment, fresh private roots) and returns its receipt. This is the only boundary
+/// where the executor's typed `error_code` is observable: the bridge maps every executor failure
+/// to `exo_bridge_executor_failed` and never forwards the code.
+pub fn invoke_executor(config: &Path, envelope: &Value, ordinal: usize) -> Result<Value> {
+    let config: Value = serde_json::from_slice(&std::fs::read(config)?)?;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../target/exo-test-tmp")
+        .join(format!("executor-probe-{}-{ordinal}", std::process::id()));
+    std::fs::create_dir_all(&root)?;
+    for child in ["state", "config", "cache", "temp"] {
+        std::fs::create_dir(root.join(child))?;
+    }
+    let request = &envelope["request"];
+    let handoff = json!({
+        "version": "sts2.exo-executor-input-v1",
+        "request_id": envelope["request_id"], "host_turn_id": envelope["turn_id"],
+        "model": config["model"], "endpoint": config["endpoint"],
+        "module_path": config["extension"], "source_root": config["source_root"],
+        "state_root": root.join("state"),
+        "input": {
+            "observation": request["observation"], "legal_action_ids": request["legal_action_ids"],
+            "objective": request["objective"], "hard_constraints": request["hard_constraints"]
+        },
+        "timeout_millis": 115_000, "max_output_tokens": 4096,
+        "credential": "sts2-synthetic-model-key"
+    });
+    let node = Path::new(config["node"].as_str().ok_or("node missing")?);
+    let mut command = Command::new(config["executor"].as_str().ok_or("executor missing")?);
+    command
         .env_clear()
-        .env("TMPDIR", temporary)
+        .env("PATH", node.parent().ok_or("node parent missing")?)
+        .env("XDG_CONFIG_HOME", root.join("config"))
+        .env("XDG_CACHE_HOME", root.join("cache"))
+        .env("TMPDIR", root.join("temp"))
+        .env("EXO_LITELLM_PRICES_PATH", root.join("no-prices.json"))
+        .env(
+            "STS2_EXO_ALLOWED_ENDPOINT",
+            config["endpoint"].as_str().ok_or("endpoint missing")?,
+        );
+    let (output, processes) = run_bounded(command, &serde_json::to_vec(&handoff)?, true)?;
+    std::fs::remove_dir_all(&root)?;
+    assert!(processes >= 2, "real Exo process tree missing");
+    assert!(
+        output.status.success(),
+        "executor: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(serde_json::from_slice(&output.stdout)?)
+}
+
+fn run_bounded(mut command: Command, data: &[u8], eof: bool) -> Result<(Output, usize)> {
+    let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -249,11 +280,7 @@ pub fn invoke(binary: &Path, config: &Path, data: &[u8], mode: &str, eof: bool) 
         std::thread::sleep(Duration::from_millis(20));
     }
     drop(retained);
-    let output = child.wait_with_output()?;
-    if String::from_utf8_lossy(&output.stderr).contains("sts2.exo-one-shot-evidence-v1") {
-        assert!(maximum_processes >= 3, "real Exo process tree missing");
-    }
-    Ok(output)
+    Ok((child.wait_with_output()?, maximum_processes))
 }
 
 fn private_argv_absent(pid: u32) -> Result<usize> {
