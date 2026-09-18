@@ -34,9 +34,9 @@ or native instance is used.
 | `exo_revision` | `b06869ab789dee3f80ca474b5fa89dbe47ccb859` |
 | `extension_sha256` | `2e5485127f434bdd95a534785a414fa9f357432c924d89fd56d50c96f434b9cd` |
 | `executor_sha256` | `3f6d7d9530da3c7a884d48acfc20dfe1b24d73e9f2499a9ed5b575e4e9d97729` |
-| `bridge_sha256` | `232f4568a719f477674ef4e7d8a3b5babace7ceb278f196bfcf6a2918b137b92` |
+| `bridge_sha256` | `826584f790b879a530146f64232cedbfa9f5cd64d0e11b249a6f74403d5c1518` |
 | `oracle_sha256` | `ff84c9812d6ef56bca63fef3774c44ed23a71960b121a41f5852ad9f1392a820` |
-| `harness_revision` | `55331ec1660b7dacebd8e5c9ae1eabcb681535e7` (the revision the harness was at when the recorded run executed, as with the 2026-09-15 record) |
+| `harness_revision` | `a1460816f4caf8d3e5dc7d16e8b83bfa62a95013` (the revision the harness was at when the recorded run executed, as with the 2026-09-15 record) |
 | Node | `v22.15.0` |
 | Rust toolchain | `1.97.1`; non-Linux platforms remain unverified |
 
@@ -66,14 +66,21 @@ The advertisement and the guard are one list, not two that agree. `unsupported_p
 `UnsupportedProfileAxis::ALL`, and `capability_fields` derives `profile_support` from that same
 `ALL`, so the axis list *is* the guard and *is* the advertisement. The earlier `management` omission
 was possible because the guard was a hand-written `if`-chain and the advertisement read a separate
-constant; a new axis could be enforced without being listed. It cannot now: adding a variant fails
-to compile until `is_present` and `profile_name` handle it, and `ALL` is the only place either side
-reads, so an enforced axis is published in the same step that enforces it.
+constant; a new axis could be enforced without being listed. An enforced axis is now published in
+the step that enforces it: adding a variant fails to compile until `is_present` and `profile_name`
+handle it, and `ALL` is the only list either side reads.
+
+One escape hatch remains by design, so it is closed explicitly rather than left implicit. An axis
+whose `profile_name()` is `None` is enforced but has no `profile_support` entry. `Revision` is the
+only axis that legitimately needs that (its expected value is already published as
+`source_revision`), so `profile_name` derives the advertised key from `name()` and the `None` arm
+names `Revision` alone; the test pins that exempt set to exactly `["revision"]`. A new axis cannot
+opt out of the advertisement silently: it must join `Revision` in that arm, where a reviewer sees it.
 
 `every_unsupported_profile_axis_is_rejected_before_inference` is driven by `ALL` and asserts each
 case reports *that* axis; `every_classifier_profile_axis_is_advertised` checks `ALL` against the
-published `UNSUPPORTED_PROFILES` in both directions and pins the advertised key set as literals, so
-shrinking `ALL` cannot quietly widen the guard.
+published `UNSUPPORTED_PROFILES` in both directions, pins the advertised key set as literals, and
+pins the exempt set, so neither shrinking `ALL` nor opting an axis out can widen the guard quietly.
 
 The lookup relay is terminal on an action id only, so it re-projects the decision fields rather
 than inheriting the one-shot set: `--lookup-describe` advertises `decisions: ["action_id"]` and
@@ -113,7 +120,7 @@ Full workspace validation on the final candidate:
 cargo run --locked --package repo-policy -- --strict   → 0 warnings, 0 errors
 cargo fmt --all --check                                → clean
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings → clean
-cargo test --workspace --all-targets --all-features --locked → 224 targets, 1576 passed, 0 failed
+cargo test --workspace --all-targets --all-features --locked → 226 targets, 1581 passed, 0 failed
 ```
 
 The workspace run requires `STS2_EXO_TEST_SOURCE` (a clean checkout of the reviewed revision) and

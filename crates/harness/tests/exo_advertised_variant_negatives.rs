@@ -51,20 +51,16 @@ fn request_carrying(axis: config::UnsupportedProfileAxis) -> Value {
     use config::UnsupportedProfileAxis as Axis;
     let mut request = envelope();
     match axis {
-        Axis::Revision => {
-            request["request"]["provider_revision"] = json!("f".repeat(40));
-        }
-        Axis::Map => {
-            request["request"]["map_context"] = json!({"profile": "runtime-map-v1"});
-        }
-        // The schema requires a non-null context for the enabled profile, so the request must carry
-        // it to be schema-valid and reach the shared guard.
+        Axis::Revision => request["request"]["provider_revision"] = json!("f".repeat(40)),
+        Axis::Map => request["request"]["map_context"] = json!({"profile": "runtime-map-v1"}),
+        // The schema requires a non-null context for the enabled profile, so carry it to stay
+        // schema-valid and reach the shared guard.
         Axis::Management => {
             request["request"]["management_profile"] = json!("management-enabled");
             request["request"]["management_context"] = json!({});
         }
         Axis::Expert => {
-            request["request"]["observation"]["protocol_version"] = json!("runtime-v4-expert");
+            request["request"]["observation"]["protocol_version"] = json!("runtime-v4-expert")
         }
     }
     request
@@ -115,14 +111,10 @@ fn every_unsupported_profile_axis_is_rejected_before_inference() {
 
 /// The advertisement must publish every profile axis the guard enforces, in both directions.
 ///
-/// `profile_support` is the only way a caller can pre-check support, so an axis that is enforced
-/// but absent here is undiscoverable except by triggering the deliberately identical rejection
-/// code. This is the regression test for the `management` axis, which the guard enforced while the
-/// advertisement omitted it: the guard and the advertisement were the same classifier, but the
-/// published profile list was a separate constant that had fallen behind it.
-///
-/// The guard now walks [`config::UnsupportedProfileAxis::ALL`], which is also the advertisement's
-/// source, so this asserts both directions of the only remaining pair: `ALL`/`UNSUPPORTED_PROFILES`.
+/// `profile_support` is the only way a caller can pre-check support, so an enforced but absent axis
+/// is undiscoverable except by triggering the deliberately identical rejection code. This is the
+/// regression test for the `management` axis; both sides now derive from
+/// [`config::UnsupportedProfileAxis::ALL`], so this pins the one exempt axis and both directions.
 #[test]
 fn every_classifier_profile_axis_is_advertised() {
     let fields =
@@ -131,7 +123,7 @@ fn every_classifier_profile_axis_is_advertised() {
         .as_object()
         .expect("profile_support is an object");
 
-    // Every classifier axis that names a request profile must appear as `unsupported`.
+    // Every axis that names a request profile must appear as `unsupported`.
     for axis in config::UnsupportedProfileAxis::ALL {
         let Some(profile) = axis.profile_name() else {
             continue;
@@ -169,10 +161,22 @@ fn every_classifier_profile_axis_is_advertised() {
     expected.sort_unstable();
     observed.sort_unstable();
     assert_eq!(observed, expected, "profile_support keys drifted");
-    // Pinned as literals rather than derived, so shrinking `ALL` cannot silently widen the guard:
-    // `management` was enforced-but-unadvertised once and must stay advertised, and no axis may be
-    // published under a profile name it does not have.
+    // Pinned as literals, not derived, so neither side can be widened silently.
     assert_eq!(observed, ["expert", "management", "map", "standard"]);
+    // `None` is the last silent opt-out: pin the one axis that is not a request profile.
+    let profile_less: Vec<&str> = config::UnsupportedProfileAxis::ALL
+        .iter()
+        .filter(|axis| axis.profile_name().is_none())
+        .map(|axis| axis.name())
+        .collect();
+    assert_eq!(profile_less, ["revision"], "an enforced axis opted out");
+    for axis in config::UnsupportedProfileAxis::ALL {
+        assert_eq!(
+            axis.profile_name().unwrap_or("revision"),
+            axis.name(),
+            "an axis must publish under its own name"
+        );
+    }
 }
 
 #[test]
