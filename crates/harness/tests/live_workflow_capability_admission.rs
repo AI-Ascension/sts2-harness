@@ -3,20 +3,28 @@
 //! Capability admission at the production live entry point.
 //!
 //! `sts2-harness#94` acceptance criterion 2 requires that an unsupported node or capability causes
-//! no effects and no synthetic success. The merged `live_workflow.rs` coverage exercises only the
-//! *unknown node kind* arm of `node_diagnostics` (a `pause` node, which `NODE_CAPABILITIES` does not
-//! list at all). Two distinct production arms were therefore unproven:
+//! no effects and no synthetic success. Three distinct production arms enforce that, and merged
+//! coverage reached none of them:
 //!
-//! 1. `node_capability_unavailable` in `crates/harness/src/management/validation.rs` — a node kind
+//! 1. `node_capability_unavailable` in `crates/harness/src/management/validation.rs`, unknown-kind
+//!    arm — a node kind `NODE_CAPABILITIES` does not list at all (here a `pause` node).
+//! 2. `node_capability_unavailable` in the same function, advertised-vs-wired arm — a node kind
 //!    the live lane *does* support, whose required capability the owner does **not** advertise. This
 //!    is the real "advertised vs wired" boundary: an owner that wires a node but forgets to advertise
 //!    its capability must fail closed rather than execute the node.
-//! 2. `capability_unavailable` in `crates/harness/src/management/workflow_ports.rs` — a definition
+//! 3. `capability_unavailable` in `crates/harness/src/management/workflow_ports.rs` — a definition
 //!    whose own `capabilities.required` names something the owner does not advertise.
 //!
-//! Both must refuse at `submit_run` before `LiveWorkflowSessionFactory::open` is ever called, so the
-//! factory's launch log proves no live effect occurred. Each test asserts the specific diagnostic
+//! All three must refuse at `submit_run` before `LiveWorkflowSessionFactory::open` is ever called, so
+//! the factory's launch log proves no live effect occurred. Each test asserts the specific diagnostic
 //! code so it cannot pass on an unrelated failure.
+//!
+//! The merged `live_workflow.rs` case named `unsupported_node_is_rejected_before_live_launch` appends
+//! an *unconnected* `pause` node, which is refused structurally by `validate_reachability`
+//! (`unreachable_terminal`) before `node_diagnostics` is consulted at all — disabling the
+//! unknown-kind arm leaves it passing. It therefore never exercised the arm it is named for. The
+//! case here splices the node into the live path so the graph stays structurally valid and the
+//! capability arm is the only thing that can refuse it.
 
 #![allow(clippy::expect_used)]
 
@@ -158,6 +166,76 @@ fn diagnostic_codes(
         .iter()
         .map(|diagnostic| diagnostic.code.clone())
         .collect()
+}
+
+/// The live definition with an `unsupported` `pause` node spliced into the main path
+/// (`decide -> unsupported -> execute`), so the graph stays structurally valid and reachable. An
+/// *unconnected* node would instead be refused by `validate_reachability` with `unreachable_terminal`
+/// before `node_diagnostics` runs, which is why the merged coverage never reached the capability arm.
+fn definition_with_reachable_unsupported_node() -> Value {
+    let mut value = definition(false);
+    let graph = &mut value["graphs"][0];
+    for edge in graph["edges"].as_array_mut().expect("edges").iter_mut() {
+        if edge["from"] == "decide" && edge["to"] == "execute" {
+            edge["to"] = json!("unsupported");
+        }
+    }
+    graph["nodes"].as_array_mut().expect("nodes").push(json!({
+        "id": "unsupported",
+        "kind": "pause",
+        "config": {"reason_code": "operator"}
+    }));
+    graph["edges"].as_array_mut().expect("edges").push(json!({
+        "from": "unsupported",
+        "to": "execute",
+        "on": "ok",
+        "priority": 0
+    }));
+    value
+}
+
+#[test]
+fn unsupported_node_kind_is_refused_before_live_launch() {
+    // `pause` is a real `NodeKind` that `NODE_CAPABILITIES` does not list, so the unknown-kind arm
+    // must refuse it. Every advertised capability is present, so the advertised-vs-wired and
+    // definition-level arms cannot be what refused it.
+    let factory = Arc::new(AdvertisingFactory::new(LIVE_CAPABILITIES));
+    let service = live_service(
+        Arc::new(MemoryWorkflowStore::new()),
+        Arc::clone(&factory) as Arc<dyn LiveWorkflowSessionFactory>,
+        LiveWorkflowOptions::default(),
+    )
+    .expect("service");
+
+    let advertised = LIVE_CAPABILITIES
+        .iter()
+        .map(|item| (*item).to_owned())
+        .collect::<Vec<_>>();
+    let definition = definition_with_reachable_unsupported_node();
+
+    assert_eq!(
+        diagnostic_codes(&service, &definition, &advertised),
+        vec!["node_capability_unavailable".to_owned()],
+        "the unsupported-node-kind arm did not fire in isolation"
+    );
+
+    let error = service
+        .submit_run(&actor(), request("request-unsupported-node", definition))
+        .expect_err("an unsupported node kind must be refused");
+
+    assert_eq!(
+        error.code, "definition_invalid",
+        "unexpected refusal: {error:?}"
+    );
+    assert!(
+        factory.inner.entries().is_empty(),
+        "an unsupported node kind produced a live effect: {:?}",
+        factory.inner.entries()
+    );
+    assert!(
+        factory.inner.launches().is_empty(),
+        "an unsupported node kind opened a live session"
+    );
 }
 
 #[test]
