@@ -165,6 +165,24 @@ The Runtime-v1 copied checksum inventory and golden messages were completed from
 manifest bytes are unchanged. CI checks the copied POC, Runtime-v1, and Runtime-v2 inventories;
 this confirms artifact integrity only, not host compatibility.
 
+## Served immutable inference-profile catalog
+
+[ADR 0054](decisions/0054-inference-profile-revision-adoption-scope.md) adds
+`GET /v1/inference-profiles` (`workflow:read`) returning the owner's sealed
+`ascension.inference-profiles/v1` catalog of `ascension.inference-profile/v1` descriptors, and wires
+exact-revision resolution into live admission and dispatch. This is `additive-compatible`: no existing
+route, record, schema, digest or bound changes, the request/response schema is a new closed
+`contracts/inference-profile/catalog.schema.json`, and an owner that serves no catalog keeps the
+previous capability-prefix behaviour. Descriptors carry only bounded metadata (adapter,
+requested/resolved model, prompt and configuration revisions, supported settings, operation
+allow-list, context compatibility, continuity, effective budgets, select/edit grants and
+availability), never a credential or provider authority, and the route grants no edit path. Unknown
+id, digest mismatch, revocation and unsupported/stale/disabled model or settings are refused before
+any reservation or inference; a catalog refresh causes zero inference. Adoption of a newer revision
+applies to a new definition only and never retargets an admitted run; the merged provider-session
+idle-rebind semantics are explicitly out of this criterion's scope. Evidence is synthetic/component
+only: provider execution, live model identity and native hosts remain unverified.
+
 ## Independent compatibility axes
 
 “Compatible” is not one claim. The harness records these independently:

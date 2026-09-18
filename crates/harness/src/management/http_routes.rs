@@ -66,6 +66,9 @@ pub(super) fn dispatch(
                     .bind_context(&actor, body)
                     .and_then(|value| json_value(&value))
             }
+            ("GET", "/v1/inference-profiles") if request.query.is_empty() => service
+                .inference_profile_catalog(&actor)
+                .and_then(|value| json_value(&value)),
             ("GET", "/v1/capabilities") if request.query.is_empty() => service
                 .capabilities(&actor)
                 .and_then(|value| json_value(&value)),

@@ -83,12 +83,17 @@ fn factory(
         }),
         Arc::new(Provider),
         provider_policy,
-        provider_capabilities,
+        provider_capabilities.clone(),
     ).map_err(|error| error.to_string())?
         .with_context_observations(observations)
-        .with_context_render_port(render)))
+        .with_context_render_port(render)
+        .with_inference_profile_catalog(Arc::new(
+            inference_profiles::InferenceProfileCatalogProducer::new(provider_capabilities),
+        ))))
 }
 
+#[path = "workflow_service_inference_profiles.rs"]
+mod inference_profiles;
 #[path = "workflow_service_policy.rs"]
 mod policy;
 use policy::ProviderPolicyConfiguration;

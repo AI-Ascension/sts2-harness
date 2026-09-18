@@ -2,7 +2,7 @@
 
 use super::super::contract::PendingOperationState;
 use super::super::service::ManagementError;
-use super::execution::{LiveNodeState, PendingDispatch};
+use super::execution_state::{LiveNodeState, PendingDispatch};
 use crate::episode::{DispatchStatus, TransitionReceipt, WaitOutcome, WaitSample};
 use crate::workflow::RuntimeFault;
 

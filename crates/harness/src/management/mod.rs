@@ -11,6 +11,15 @@ pub use context_binding_history::{
 mod contract;
 mod contract_authoring;
 mod http;
+mod inference_profile_binding;
+pub use inference_profile_binding::{
+    InferenceProfileBinding, InferenceProfileBindingSet, resolve_definition,
+};
+mod inference_profile_catalog;
+pub use inference_profile_catalog::{
+    INFERENCE_PROFILE_BINDINGS_SCHEMA_VERSION, INFERENCE_PROFILE_PROVENANCE_PREFIX,
+    InferenceProfilePin, InferenceProfileRef, LiveInferenceProfileCatalogPort,
+};
 mod live_workflow;
 mod provider_policy;
 mod provider_session_inspection;
@@ -18,6 +27,10 @@ mod service;
 mod store;
 mod synthetic_context_owner;
 pub use synthetic_context_owner::SyntheticContextOwnerPort;
+mod synthetic_inference_profiles;
+pub use synthetic_inference_profiles::{
+    SYNTHETIC_INFERENCE_OWNER_ID, synthetic_inference_profile_catalog,
+};
 mod workflow_ports;
 
 pub use cli::run_cli;
@@ -52,8 +65,12 @@ pub use contract::{
     DiagnosticSeverity, DiffRequest, DiffResponse, EVENT_SCHEMA_VERSION, EXPORT_SCHEMA_VERSION,
     ErrorBody, ErrorClass, ErrorResponse, EventClassification, EventGap, EventPage, EventPayload,
     EventType, ExecutionMode, ExportRequest, ExportResponse, GameOutcome, HealthResponse,
-    InspectRequest, InspectResponse, MANAGEMENT_SCHEMA_VERSION, MAX_CONNECTIONS,
-    MAX_EVENTS_PER_PAGE, MAX_HEADER_BYTES, MAX_IDENTIFIER_BYTES, MAX_JSON_BYTES, MAX_JSON_DEPTH,
+    INFERENCE_PROFILE_CATALOG_SCHEMA_VERSION, INFERENCE_PROFILE_SCHEMA_VERSION,
+    InferenceProfileBudgets, InferenceProfileCatalog, InferenceProfileContinuity,
+    InferenceProfileDescriptor, InferenceProfileGrants, InferenceProfileState, InspectRequest,
+    InspectResponse, MANAGEMENT_SCHEMA_VERSION, MAX_CONNECTIONS, MAX_EVENTS_PER_PAGE,
+    MAX_HEADER_BYTES, MAX_IDENTIFIER_BYTES, MAX_INFERENCE_INPUT_BYTES, MAX_INFERENCE_OUTPUT_TOKENS,
+    MAX_INFERENCE_PROFILES, MAX_INFERENCE_PROVIDER_CALLS, MAX_JSON_BYTES, MAX_JSON_DEPTH,
     MAX_JSON_ITEMS, MAX_PATH_BYTES, MAX_RESPONSE_BYTES, MAX_STORE_BYTES, MAX_STRING_BYTES,
     OutputFormat, PROVIDER_SESSION_LIST_SCHEMA_VERSION,
     PROVIDER_SESSION_POLICY_COMMAND_SCHEMA_VERSION, PROVIDER_SESSION_POLICY_VIEW_SCHEMA_VERSION,
@@ -70,7 +87,7 @@ pub use contract::{
     TARGET_CATALOG_SCHEMA_VERSION, TargetAdmissionBinding, TargetAdmissionRequest,
     TargetAvailability, TargetCatalogResponse, TargetDescriptor, TargetPreflightResponse,
     ValidateRequest, ValidateResponse, WorkflowRunStatus, decode_strict, decode_value,
-    digest_value, validate_digest, validate_identifier,
+    digest_value, inference_catalog_digest, validate_digest, validate_identifier,
 };
 pub use contract_authoring::{
     STUDIO_SCHEMA_VERSION, StudioCreateDraftRequest, StudioDefinitionRecord,
