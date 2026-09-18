@@ -141,7 +141,7 @@ fn negative_receipts_and_decisions_never_produce_a_dispatchable_response() {
 /// The advertised capability document must describe exactly what the guard enforces.
 #[test]
 fn advertisement_matches_the_shipped_guard() {
-    let fields = capability_fields();
+    let fields = capability_fields(&SUPPORTED_DECISIONS, &UNSUPPORTED_DECISIONS);
     assert_eq!(fields["profiles"], json!(SUPPORTED_PROFILES));
     assert_eq!(fields["context_modes"], json!(SUPPORTED_CONTEXT_MODES));
     assert_eq!(fields["decisions"], json!(SUPPORTED_DECISIONS));
@@ -169,7 +169,10 @@ fn advertisement_matches_the_shipped_guard() {
 #[test]
 fn synthetic_route_cannot_reach_a_real_provider() {
     // The advertised capability document is itself non-inferencing.
-    assert_eq!(capability_fields()["profiles"], json!(["standard"]));
+    assert_eq!(
+        capability_fields(&SUPPORTED_DECISIONS, &UNSUPPORTED_DECISIONS)["profiles"],
+        json!(["standard"])
+    );
 
     // Admitted: literal loopback with the synthetic-only model binding.
     assert!(synthetic_route_admitted(

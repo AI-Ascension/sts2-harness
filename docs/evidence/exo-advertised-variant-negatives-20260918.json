@@ -8,7 +8,7 @@
   "advertised_profiles": [
     "standard"
   ],
-  "bridge_sha256": "dacaeb22e64595a2a25e00faf877001957277108ea88b97491df9d52db1f9c86",
+  "bridge_sha256": "5aa0d61436f041c40fb9090136772ab89a897fe1d9a462c94df2b25ec276ac00",
   "evidence": "real-process-synthetic-model-no-game",
   "exo_revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
   "executor_sha256": "244269e0ef7aeb92c71f6b47459f7fc9e41c1449552dd65847b226da6195ca54",

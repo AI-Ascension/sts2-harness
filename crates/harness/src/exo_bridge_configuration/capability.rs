@@ -20,6 +20,11 @@ pub const SUPPORTED_CONTEXT_MODES: [&str; 1] = ["fresh"];
 pub const SUPPORTED_DECISIONS: [&str; 4] = ["action", "plan", "wait", "reobserve"];
 /// Terminal decisions the contract can parse but this build refuses to dispatch.
 pub const UNSUPPORTED_DECISIONS: [&str; 1] = ["recovery"];
+/// Terminal decisions the lookup relay returns: it is terminal on an action id only.
+pub const LOOKUP_SUPPORTED_DECISIONS: [&str; 1] = ["action_id"];
+/// Terminal decisions the lookup relay cannot dispatch, including the one-shot decision kinds.
+pub const LOOKUP_UNSUPPORTED_DECISIONS: [&str; 5] =
+    ["action", "plan", "wait", "reobserve", "recovery"];
 /// Single fail-closed rejection code for every unsupported request-profile axis.
 pub const UNSUPPORTED_PROFILE_CODE: &str = "exo_bridge_unsupported_profile";
 /// Single fail-closed rejection code for the unsupported recovery decision.
@@ -107,9 +112,14 @@ pub fn provider_route_admitted(endpoint: &str) -> bool {
 /// Machine-checkable capability fields shared by every `--describe`-style advertisement.
 ///
 /// The advertised sets are the exact sets the runtime guard enforces; a test asserts the two
-/// cannot disagree.
+/// cannot disagree. The decision sets are parameters rather than the one-shot constants because
+/// the lookup relay is terminal on `action_id` only: reusing the one-shot set would advertise
+/// `plan`/`wait`/`reobserve` as supported on an entry point that cannot dispatch them.
 #[must_use]
-pub fn capability_fields() -> serde_json::Map<String, Value> {
+pub fn capability_fields(
+    supported_decisions: &[&str],
+    unsupported_decisions: &[&str],
+) -> serde_json::Map<String, Value> {
     let profile_support = SUPPORTED_PROFILES
         .iter()
         .chain(UNSUPPORTED_PROFILES.iter())
@@ -122,11 +132,11 @@ pub fn capability_fields() -> serde_json::Map<String, Value> {
             (profile.to_string(), json!(state))
         })
         .collect::<serde_json::Map<_, _>>();
-    let decision_support = SUPPORTED_DECISIONS
+    let decision_support = supported_decisions
         .iter()
         .map(|decision| (decision.to_string(), json!("supported")))
         .chain(
-            UNSUPPORTED_DECISIONS
+            unsupported_decisions
                 .iter()
                 .map(|decision| (decision.to_string(), json!("unsupported"))),
         )
@@ -135,7 +145,7 @@ pub fn capability_fields() -> serde_json::Map<String, Value> {
     fields.insert("profiles".to_owned(), json!(SUPPORTED_PROFILES));
     fields.insert("profile_support".to_owned(), json!(profile_support));
     fields.insert("context_modes".to_owned(), json!(SUPPORTED_CONTEXT_MODES));
-    fields.insert("decisions".to_owned(), json!(SUPPORTED_DECISIONS));
+    fields.insert("decisions".to_owned(), json!(supported_decisions));
     fields.insert("decision_support".to_owned(), json!(decision_support));
     fields.insert(
         "unsupported_profile_code".to_owned(),

@@ -14,10 +14,11 @@ use std::process::{Command, Stdio};
 mod capability;
 
 pub use capability::{
-    PROVIDER_ENDPOINT, SUPPORTED_CONTEXT_MODES, SUPPORTED_DECISIONS, SUPPORTED_PROFILES,
-    SYNTHETIC_ENDPOINT_PREFIX, SYNTHETIC_MODEL, UNSUPPORTED_DECISIONS, UNSUPPORTED_PROFILE_CODE,
-    UNSUPPORTED_PROFILES, UNSUPPORTED_RECOVERY_CODE, UnsupportedProfileAxis, capability_fields,
-    provider_route_admitted, synthetic_route_admitted, unsupported_profile_axis,
+    LOOKUP_SUPPORTED_DECISIONS, LOOKUP_UNSUPPORTED_DECISIONS, PROVIDER_ENDPOINT,
+    SUPPORTED_CONTEXT_MODES, SUPPORTED_DECISIONS, SUPPORTED_PROFILES, SYNTHETIC_ENDPOINT_PREFIX,
+    SYNTHETIC_MODEL, UNSUPPORTED_DECISIONS, UNSUPPORTED_PROFILE_CODE, UNSUPPORTED_PROFILES,
+    UNSUPPORTED_RECOVERY_CODE, UnsupportedProfileAxis, capability_fields, provider_route_admitted,
+    synthetic_route_admitted, unsupported_profile_axis,
 };
 
 pub const MAX_EXECUTOR_BYTES: usize = 512 * 1024 * 1024;
@@ -140,7 +141,14 @@ impl Loaded {
         value["wire_version"] = json!(crate::exo_lookup_wire::EXO_LOOKUP_WIRE);
         value["tools"] = json!(["sts2_lookup_query", "sts2_lookup_read"]);
         value["tool_digest"] = json!(sha256_hex(b"sts2_lookup_query\nsts2_lookup_read\n"));
-        value["decisions"] = json!(["action_id"]);
+        // The relay is terminal on an action id only, so it must not inherit the one-shot decision
+        // sets: advertising `plan`/`wait`/`reobserve` here would claim support the relay cannot
+        // dispatch. Re-project the decision fields instead of overwriting `decisions` alone.
+        let object = value.as_object_mut().ok_or("exo_bridge_description")?;
+        object.extend(capability_fields(
+            &LOOKUP_SUPPORTED_DECISIONS,
+            &LOOKUP_UNSUPPORTED_DECISIONS,
+        ));
         value["max_tool_round_trips"] = json!(32);
         value["max_model_writes"] = json!(33);
         Ok(value)
@@ -200,7 +208,10 @@ impl Loaded {
         let object = description
             .as_object_mut()
             .ok_or("exo_bridge_description")?;
-        object.extend(capability_fields());
+        object.extend(capability_fields(
+            &SUPPORTED_DECISIONS,
+            &UNSUPPORTED_DECISIONS,
+        ));
         Ok(description)
     }
 }

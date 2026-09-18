@@ -47,7 +47,8 @@ const STDIN_BOUND: usize = 131_072;
 #[test]
 fn every_unsupported_profile_axis_is_rejected_before_inference() {
     // The advertisement and the guard must agree on the exact axis names and code.
-    let fields = config::capability_fields();
+    let fields =
+        config::capability_fields(&config::SUPPORTED_DECISIONS, &config::UNSUPPORTED_DECISIONS);
     assert_eq!(
         fields["unsupported_profile_code"],
         json!(config::UNSUPPORTED_PROFILE_CODE)
@@ -226,7 +227,8 @@ fn terminal_decision_matrix_separates_dispatchable_from_refused() {
         parse_bridge_decision(recovery),
         Ok(sts2_harness::Decision::Recovery { .. })
     ));
-    let fields = config::capability_fields();
+    let fields =
+        config::capability_fields(&config::SUPPORTED_DECISIONS, &config::UNSUPPORTED_DECISIONS);
     assert_eq!(fields["decision_support"]["recovery"], json!("unsupported"));
     for decision in config::SUPPORTED_DECISIONS {
         assert_eq!(
@@ -288,4 +290,68 @@ fn malformed_model_decisions_are_never_parseable_as_dispatchable() {
         parse_bridge_decision(&vec![b'x'; EXO_MAX_RESPONSE_BYTES + 1]),
         Err(ExoWireError::TooLarge)
     ));
+}
+
+/// The lookup relay is terminal on an action id only, but it builds its advertisement from the
+/// one-shot `description()`. If the decision fields were not re-projected, `lookup-describe` would
+/// claim `plan`/`wait`/`reobserve` support on an entry point that cannot dispatch them — the exact
+/// drift this change exists to stop. This drives the real methods rather than the helper, so
+/// deleting the re-projection fails here.
+#[test]
+fn lookup_advertisement_does_not_borrow_the_one_shot_decision_set() {
+    let loaded = config::Loaded {
+        config: config::Configuration {
+            schema: "sts2.exo-lookup-config-v1".to_owned(),
+            executor: "/executor".into(),
+            executor_sha256: "0".repeat(64),
+            source_root: "/source".into(),
+            extension: "/extension".into(),
+            extension_sha256: "0".repeat(64),
+            node: "/node".into(),
+            node_sha256: "0".repeat(64),
+            model: "o3-pro".to_owned(),
+            endpoint: "http://127.0.0.1:8080".to_owned(),
+        },
+        digest: "0".repeat(64),
+    };
+    let lookup = loaded
+        .lookup_description()
+        .expect("the lookup advertisement is produced");
+    let one_shot = loaded
+        .description()
+        .expect("the one-shot advertisement is produced");
+
+    assert_eq!(lookup["schema"], json!("sts2.exo-lookup-capability-v1"));
+    assert_eq!(lookup["decisions"], json!(["action_id"]));
+    assert_eq!(lookup["decision_support"]["action_id"], json!("supported"));
+    for decision in ["action", "plan", "wait", "reobserve", "recovery"] {
+        assert_eq!(
+            lookup["decision_support"][decision],
+            json!("unsupported"),
+            "the lookup relay advertised {decision} as supported"
+        );
+    }
+    assert_ne!(lookup["decisions"], one_shot["decisions"]);
+    for decision in config::LOOKUP_SUPPORTED_DECISIONS {
+        assert!(
+            !config::LOOKUP_UNSUPPORTED_DECISIONS.contains(&decision),
+            "{decision} cannot be both supported and unsupported"
+        );
+    }
+    // Profile advertisement is genuinely shared and must stay identical.
+    assert_eq!(lookup["profiles"], one_shot["profiles"]);
+    assert_eq!(lookup["profile_support"], one_shot["profile_support"]);
+    assert_eq!(
+        lookup["unsupported_profile_code"],
+        one_shot["unsupported_profile_code"]
+    );
+    // The bootstrap profile inherits the same corrected decision advertisement.
+    let bootstrap = loaded
+        .lookup_bootstrap_description()
+        .expect("the bootstrap advertisement is produced");
+    assert_eq!(bootstrap["decisions"], json!(["action_id"]));
+    assert_eq!(
+        bootstrap["decision_support"]["reobserve"],
+        json!("unsupported")
+    );
 }
