@@ -18,12 +18,18 @@ jobs:
     name: Game-information entry against negotiated runtime peers
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # GitHub's unspecified-shell default is `bash -e {0}` without `pipefail`, so a
+    # `cargo test ... | tee` step reported tee's exit status and masked test failures.
+    # The explicit bash shell runs with `-eo pipefail` and fails the step on the test.
+    defaults:
+      run:
+        shell: bash
     env:
       CARGO_BUILD_JOBS: '2'
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
-      GATEWAY_REVISION: 20744f659c66629b4c55c6484601b93378917a6b
-      MCP_REVISION: 25268f6895408973b7cc1429aec15e1b0a51dea2
+      GATEWAY_REVISION: 60002e8e060670f6e945c416a9baa99143dfecfa
+      MCP_REVISION: d8885a9ec0a36db7bc7eff2bbdeba65a0f358fbe
     steps:
       - name: Check out candidate harness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -90,6 +96,34 @@ jobs:
             -- --ignored --exact --nocapture \
             2>&1 | tee "$RUNNER_TEMP/runtime-game-information-entry/negative.log"
 
+      - name: Exercise stale-generation bootstrap refusal
+        if: always()
+        working-directory: harness
+        env:
+          STS2_GATEWAY_BINARY: ${{ github.workspace }}/gateway/target/debug/sts2-gateway-runtime
+          STS2_MCP_BINARY: ${{ github.workspace }}/mcp/target/debug/sts2-mcp-server
+          STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
+          STS2_LIVE_EPISODE: 'true'
+        run: |
+          cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
+            'runtime_support::runtime_v3::game_information_owner::owner_management_tests::entry_tests::runtime_entry_refuses_stale_bootstrap_generation_before_agent_delivery' \
+            -- --ignored --exact --nocapture \
+            2>&1 | tee "$RUNNER_TEMP/runtime-game-information-entry/negative-stale.log"
+
+      - name: Exercise not-observable bootstrap refusal
+        if: always()
+        working-directory: harness
+        env:
+          STS2_GATEWAY_BINARY: ${{ github.workspace }}/gateway/target/debug/sts2-gateway-runtime
+          STS2_MCP_BINARY: ${{ github.workspace }}/mcp/target/debug/sts2-mcp-server
+          STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
+          STS2_LIVE_EPISODE: 'true'
+        run: |
+          cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
+            'runtime_support::runtime_v3::game_information_owner::owner_management_tests::entry_tests::runtime_entry_reports_not_observable_bootstrap_as_missing_capability_without_content_query' \
+            -- --ignored --exact --nocapture \
+            2>&1 | tee "$RUNNER_TEMP/runtime-game-information-entry/negative-not-observable.log"
+
       - name: Record peer and fixture-log checksums
         if: always()
         run: |
@@ -100,7 +134,9 @@ jobs:
             mcp/target/debug/sts2-mcp-server \
             harness/target/debug/sts2-harness-runtime \
             "$RUNNER_TEMP/runtime-game-information-entry/positive.log" \
-            "$RUNNER_TEMP/runtime-game-information-entry/negative.log"
+            "$RUNNER_TEMP/runtime-game-information-entry/negative.log" \
+            "$RUNNER_TEMP/runtime-game-information-entry/negative-stale.log" \
+            "$RUNNER_TEMP/runtime-game-information-entry/negative-not-observable.log"
           do
             if test -f "$file"; then
               sha256sum "$file" >> "$RUNNER_TEMP/runtime-game-information-entry/SHA256SUMS"

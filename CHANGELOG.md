@@ -35,6 +35,25 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   episodes and runs cannot inherit a scope. Compatibility: additive-compatible; one new table
   (`context_control_lifetime`), no change to an existing table, column, digest or route; see
   [ADR 0051](docs/decisions/0051-logical-invocation-lifetime-consumption.md). Refs #111.
+- Exercise **stale-generation and not-observable bootstrap refusals against the pinned real
+  Gateway and MCP** in the game-information peer-contract lane. The synthetic producer behind the
+  pinned peers now selects a closed `PeerNegative` (`None`, `ForeignManifest`, `StaleGeneration`,
+  `NotObservable`) instead of a boolean, and two operator-only entry tests assert the runtime exits
+  non-zero, delivers no data or decision to the agent, reaches the Gateway lookup-binding route,
+  issues no content query, and surfaces exactly the typed lookup error (`Reobserve`,
+  `MissingCapability`) for the producer's bootstrap answer. Two harness consumer corrections were
+  required for the negotiated bootstrap to be reachable at all: the MCP catalog validator now
+  accepts the MCP's `live_details` capability group for the bootstrap tool (no MCP group is named
+  after the tool), and the runtime RPC wrapper preserves a structured bootstrap `error_response`
+  tool error so its `error.code` maps to a typed lookup error instead of an opaque transport
+  failure. The workflow runs its `cargo test | tee` steps under `bash -eo pipefail`, so a failing
+  peer test fails its step. The lane pins the Gateway and MCP revisions that make the bootstrap
+  reachable end to end: the Gateway bounds a bootstrap request's declared limits by the pinned
+  schema's maxima rather than its smaller response-framing ceiling, and the MCP forwards the sealed
+  bootstrap envelope verbatim instead of injecting runtime-v1 transport identity and keeps a typed
+  bootstrap `error_response` on a 5xx answer instead of collapsing it to a retryable
+  `gateway_unavailable`. Compatibility: internal; no schema, route or durable record changes.
+  Refs #127, #276.
 
 - Consume the shared `game-information-live-observation-bootstrap-v1` conformance case and its
   seven invalid fixtures (copied byte-identically from sts2-protocol, `SHA256SUMS` extended) and

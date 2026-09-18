@@ -98,3 +98,24 @@ fn transition_wait_budget_includes_requested_semantic_wait() -> Result<(), Strin
     assert!(request_timeout("tools/call", &params).is_err());
     Ok(())
 }
+
+#[test]
+fn bootstrap_error_envelope_is_preserved_but_other_bootstrap_tool_errors_are_not() {
+    let tool_error = |text: &str| {
+        serde_json::json!({"jsonrpc":"2.0","id":4,"result":{"isError":true,
+            "content":[{"type":"text","text":text}]}})
+    };
+    let error_response = serde_json::json!({
+        "protocol_version":"game-information-live-observation-bootstrap-v1",
+        "kind":"error_response","error":{"code":"not_observable"}
+    })
+    .to_string();
+    assert!(has_bootstrap_error_envelope(&tool_error(&error_response)));
+    let success_shape = error_response.replace("error_response", "bootstrap_response");
+    assert!(!has_bootstrap_error_envelope(&tool_error(&success_shape)));
+    let foreign_protocol = error_response.replace("live-observation-bootstrap-v1", "query-v1");
+    assert!(!has_bootstrap_error_envelope(&tool_error(&foreign_protocol)));
+    assert!(!has_bootstrap_error_envelope(&tool_error(
+        "gateway error -32005: gateway rejected the request"
+    )));
+}

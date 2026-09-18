@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::super::{INSTANCE, LOCALE, MANIFEST};
+use super::super::{BINDING_STATE_GENERATION, INSTANCE, LEASE_EPOCH, LOCALE, PeerNegative};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -16,7 +16,7 @@ pub(super) fn downstream_response(
     path: &str,
     headers: &BTreeMap<String, String>,
     request: &Value,
-    mismatch_manifest: bool,
+    negative: PeerNegative,
 ) -> Result<(u16, Value), String> {
     let correlation = headers
         .get("x-sts2-correlation-id")
@@ -25,7 +25,7 @@ pub(super) fn downstream_response(
     match (method, path) {
         ("POST", "/api/v1/game-information/lookup-binding") => Ok((
             200,
-            lookup_binding_response(request, correlation, mismatch_manifest)?,
+            lookup_binding_response(request, correlation, negative)?,
         )),
         ("GET", "/api/v1/game-information/capabilities") => {
             Ok((200, game_information_capabilities(correlation)))
@@ -36,10 +36,9 @@ pub(super) fn downstream_response(
         ("POST", "/api/v1/game-information/detail") => {
             Ok((200, game_information_page(request, correlation)?))
         }
-        ("POST", "/api/v1/game-information/live-observation-bootstrap") => Ok((
-            200,
-            live_observation_bootstrap(request, correlation, mismatch_manifest)?,
-        )),
+        ("POST", "/api/v1/game-information/live-observation-bootstrap") => {
+            live_observation_bootstrap(request, correlation, negative)
+        }
         ("GET", "/api/v3/runtime/state") => {
             Ok((200, gameplay_state("state_response", correlation)))
         }
@@ -58,7 +57,7 @@ pub(super) fn downstream_response(
 fn lookup_binding_response(
     request: &Value,
     correlation: &str,
-    mismatch_manifest: bool,
+    negative: PeerNegative,
 ) -> Result<Value, String> {
     let operation = request["operation"]
         .as_str()
@@ -69,11 +68,7 @@ fn lookup_binding_response(
         include_str!("../../../../../protocol-artifact/game-information-lookup-binding-v1/golden/observation-response.json")
     })
     .map_err(|_| String::from("lookup-binding golden could not be read"))?;
-    let manifest = if mismatch_manifest {
-        "foreign-content"
-    } else {
-        MANIFEST
-    };
+    let manifest = negative.content_manifest_id();
     let scope = json!({
         "project_id":request["project_id"],
         "run_id":request["run_id"],
@@ -104,7 +99,7 @@ fn lookup_binding_response(
         let sequence = OBSERVATION_SEQUENCE.fetch_add(1, Ordering::Relaxed);
         response["observation"]["observation_id"] = json!(format!("peer-observation-{sequence}"));
         response["observation"]["snapshot_id"] = json!("peer-snapshot-1");
-        response["observation"]["state_generation"] = json!(0);
+        response["observation"]["state_generation"] = json!(BINDING_STATE_GENERATION);
     }
     Ok(response)
 }
@@ -142,7 +137,7 @@ fn game_information_capabilities(correlation: &str) -> Value {
         "query":null,"result":null,"error":null,
         "capabilities":{
             "profile":"game-information-query-v1",
-            "query_kinds":["list"],"entity_kinds":["card"],
+            "query_kinds":["list","detail"],"entity_kinds":["card"],
             "projections":["summary"],"detail_levels":["summary"],"fields":["display_name"],
             "limits":{"page_items":4,"item_bytes":4096,"page_bytes":65536,"text_bytes":4096},
             "max_message_bytes":262144,"max_cursor_bytes":512,
@@ -167,6 +162,16 @@ fn game_information_page(request: &Value, correlation: &str) -> Result<Value, St
             "algorithm":"identity_bytes","deterministic":true},
         "limits":query["limits"]
     });
+    // A live result must echo the query's parent observation and answer at the
+    // snapshot generation the owner bound; a static result carries neither.
+    let (parent, generation) = if query["binding"]["mode"] == "live" {
+        (
+            query["parent_observation"].clone(),
+            query["binding"]["snapshot_ref"]["state_generation"].clone(),
+        )
+    } else {
+        (Value::Null, Value::Null)
+    };
     let page_without_accounting = serde_json::to_vec(&page)
         .map_err(|_| String::from("game-information page could not be encoded"))?;
     page["accounting"] = json!({
@@ -180,7 +185,7 @@ fn game_information_page(request: &Value, correlation: &str) -> Result<Value, St
             "source":"schemas/game-information-query-v1.schema.json","generator":"hand-authored"},
         "correlation_id":correlation,"kind":"query_response",
         "query":query,
-        "result":{"read_only":true,"parent_observation":null,"result_generation":null,"page":page},
+        "result":{"read_only":true,"parent_observation":parent,"result_generation":generation,"page":page},
         "capabilities":null,"error":null
     }))
 }
@@ -188,13 +193,13 @@ fn game_information_page(request: &Value, correlation: &str) -> Result<Value, St
 fn live_observation_bootstrap(
     request: &Value,
     correlation: &str,
-    mismatch_manifest: bool,
-) -> Result<Value, String> {
-    let manifest = if mismatch_manifest {
-        "foreign-content"
-    } else {
-        MANIFEST
-    };
+    negative: PeerNegative,
+) -> Result<(u16, Value), String> {
+    if negative == PeerNegative::NotObservable {
+        return Ok((503, not_observable_bootstrap(request, correlation)?));
+    }
+    let manifest = negative.content_manifest_id();
+    let generation = negative.bootstrap_state_generation();
     let definition = request
         .get("selector")
         .and_then(|selector| selector.get("definition_ref"))
@@ -216,32 +221,58 @@ fn live_observation_bootstrap(
     let instance = json!({
         "instance_id": INSTANCE,
         "run_id": scope["run_id"],
-        "epoch": 7,
+        // The Gateway fences a live instance reference to the transport lease epoch.
+        "epoch": LEASE_EPOCH,
         "entity_kind": "card",
         "entity_id": "card-17"
     });
     let snapshot = json!({
         "snapshot_id": "peer-snapshot-1",
         "instance_ref": instance,
-        "state_generation": 0
+        "state_generation": generation
     });
-    Ok(json!({
-        "protocol_version":"game-information-live-observation-bootstrap-v1",
-        "schema_digest":"6041a282ffda8757af4e3eb6ab551e082f136fe53138ab8ac17db9fab52765c2",
-        "provenance":{"artifact":"sts2-protocol/game-information-live-observation-bootstrap-v1",
-            "source":"schemas/game-information-live-observation-bootstrap-v1.schema.json","generator":"hand-authored"},
-        "correlation_id":correlation,"kind":"bootstrap_response",
-        "scope":{"instance_id":INSTANCE,"run_id":scope["run_id"],
-            "authority_epoch":scope["authority_epoch"],
-            "content_manifest_id":manifest,"locale":LOCALE},
-        "selector":{"definition_ref":definition,"instance_ref":null},
-        "limits":{"max_visible_entities":64,"max_item_bytes":65536,"max_message_bytes":262144},
-        "parent_observation":{"instance_ref":instance,"snapshot_ref":snapshot,"state_generation":0},
-        "visible_entities":[{"definition_ref":definition,"instance_ref":instance,"snapshot_ref":snapshot}],
-        "owner_provenance":{"native_snapshot_owner":"sts2-game-mod",
-            "content_manifest_owner":"sts2-game-mod","instance_fence_owner":"sts2-gateway",
-            "authority_epoch_owner":"sts2-harness","instance_ref_epoch_owner":"sts2-game-mod",
-            "transport_lease_epoch_role":"fence_only"},
-        "error":null
-    }))
+    Ok((
+        200,
+        json!({
+            "protocol_version":"game-information-live-observation-bootstrap-v1",
+            "schema_digest":"6041a282ffda8757af4e3eb6ab551e082f136fe53138ab8ac17db9fab52765c2",
+            "provenance":{"artifact":"sts2-protocol/game-information-live-observation-bootstrap-v1",
+                "source":"schemas/game-information-live-observation-bootstrap-v1.schema.json","generator":"hand-authored"},
+            "correlation_id":correlation,"kind":"bootstrap_response",
+            "scope":{"instance_id":INSTANCE,"run_id":scope["run_id"],
+                "authority_epoch":scope["authority_epoch"],
+                "content_manifest_id":manifest,"locale":LOCALE},
+            "selector":{"definition_ref":definition,"instance_ref":null},
+            "limits":request.get("limits").cloned().unwrap_or_else(|| json!({
+                "max_visible_entities":64,"max_item_bytes":65536,"max_message_bytes":262144})),
+            "parent_observation":{"instance_ref":instance,"snapshot_ref":snapshot,"state_generation":generation},
+            "visible_entities":[{"definition_ref":definition,"instance_ref":instance,"snapshot_ref":snapshot}],
+            "owner_provenance":{"native_snapshot_owner":"sts2-game-mod",
+                "content_manifest_owner":"sts2-game-mod","instance_fence_owner":"sts2-gateway",
+                "authority_epoch_owner":"sts2-harness","instance_ref_epoch_owner":"sts2-game-mod",
+                "transport_lease_epoch_role":"fence_only"},
+            "error":null
+        }),
+    ))
+}
+
+/// The shipped protocol golden is the producer's `not_observable` shape. The pinned
+/// Gateway and MCP both require an error response to echo the exact request scope
+/// and selector under a 4xx/5xx status, so those and the transport correlation are
+/// the only substitutions.
+fn not_observable_bootstrap(request: &Value, correlation: &str) -> Result<Value, String> {
+    let mut response: Value = serde_json::from_str(include_str!(
+        "../../../../../protocol-artifact/game-information-live-observation-bootstrap-v1/golden/error-native-unavailable.json"
+    ))
+    .map_err(|_| String::from("bootstrap not-observable golden could not be read"))?;
+    response["correlation_id"] = json!(correlation);
+    response["scope"] = request
+        .get("scope")
+        .cloned()
+        .ok_or("bootstrap request scope missing")?;
+    response["selector"] = request
+        .get("selector")
+        .cloned()
+        .ok_or("bootstrap request selector missing")?;
+    Ok(response)
 }

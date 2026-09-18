@@ -18,6 +18,39 @@ const LEASE: &str = "lease-1";
 const LEASE_EPOCH: u64 = 1;
 const MANIFEST: &str = "content-1";
 const LOCALE: &str = "en-US";
+/// Generation the synthetic producer issues on every lookup-binding observation.
+const BINDING_STATE_GENERATION: u64 = 0;
+
+/// Closed set of producer-side negatives the synthetic mod server can emit while
+/// the pinned real Gateway and MCP stay in the path. Each variant changes only the
+/// downstream producer bytes; the peers and the candidate runtime are unmodified.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum PeerNegative {
+    /// Every route answers with the adopted manifest and a consistent generation.
+    None,
+    /// Lookup-binding and bootstrap carry a manifest the owner never adopted.
+    ForeignManifest,
+    /// The bootstrap snapshot reports a generation the binding observation never issued.
+    StaleGeneration,
+    /// The bootstrap route answers with the protocol `not_observable` error shape.
+    NotObservable,
+}
+
+impl PeerNegative {
+    pub(super) const fn content_manifest_id(self) -> &'static str {
+        match self {
+            Self::ForeignManifest => "foreign-content",
+            Self::None | Self::StaleGeneration | Self::NotObservable => MANIFEST,
+        }
+    }
+
+    pub(super) const fn bootstrap_state_generation(self) -> u64 {
+        match self {
+            Self::StaleGeneration => BINDING_STATE_GENERATION + 1,
+            Self::None | Self::ForeignManifest | Self::NotObservable => BINDING_STATE_GENERATION,
+        }
+    }
+}
 
 pub(super) struct LoggedRequest {
     pub(super) method: String,
@@ -35,7 +68,7 @@ pub(super) struct LivePeers {
 }
 
 impl LivePeers {
-    pub(super) fn start(gateway_binary: &Path, mismatch_manifest: bool) -> Result<Self, String> {
+    pub(super) fn start(gateway_binary: &Path, negative: PeerNegative) -> Result<Self, String> {
         let listener = TcpListener::bind("127.0.0.1:0").map_err(|_| "synthetic mod listener")?;
         listener
             .set_nonblocking(true)
@@ -44,12 +77,7 @@ impl LivePeers {
         let address = free_address()?;
         let stop = Arc::new(AtomicBool::new(false));
         let requests = Arc::new(Mutex::new(Vec::new()));
-        let worker = spawn_mod_server(
-            listener,
-            Arc::clone(&stop),
-            Arc::clone(&requests),
-            mismatch_manifest,
-        );
+        let worker = spawn_mod_server(listener, Arc::clone(&stop), Arc::clone(&requests), negative);
         let mut gateway = Command::new(gateway_binary);
         gateway
             .env_clear()
@@ -67,6 +95,10 @@ impl LivePeers {
             .env("STS2_GAME_INFORMATION_CONTENT_MANIFEST_ID", MANIFEST)
             .env("STS2_GAME_INFORMATION_RUN_ID", RUN)
             .env("STS2_GAME_INFORMATION_LOCALE", LOCALE)
+            // The pinned Gateway installs its live-observation bootstrap handler only
+            // on this explicit setting; without it the MCP never offers the bootstrap
+            // tool and the candidate runtime fails before any producer bootstrap.
+            .env("STS2_GAME_INFORMATION_LIVE_BOOTSTRAP_ENABLED", "true")
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
         let mut gateway = gateway

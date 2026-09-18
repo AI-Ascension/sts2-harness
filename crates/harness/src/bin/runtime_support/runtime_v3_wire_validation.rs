@@ -28,6 +28,19 @@ fn has_receipt_query_envelope(response: &Value) -> bool {
         .is_some_and(|value| value["protocol_version"] == "coop-receipt-query-v1")
 }
 
+/// A producer `not_observable`/stale bootstrap answer is a structured protocol
+/// error the MCP surfaces as a tool error. Preserve it so the owner maps its
+/// `error.code` to a typed lookup error instead of an opaque transport failure.
+fn has_bootstrap_error_envelope(response: &Value) -> bool {
+    response["result"]["content"][0]["text"]
+        .as_str()
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .is_some_and(|value| {
+            value["protocol_version"] == "game-information-live-observation-bootstrap-v1"
+                && value["kind"] == "error_response"
+        })
+}
+
 fn has_recovery_envelope(response: &Value) -> bool {
     response["result"]["content"][0]["text"]
         .as_str()
