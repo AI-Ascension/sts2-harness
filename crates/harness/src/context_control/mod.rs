@@ -43,7 +43,8 @@ pub use lifetime_manifest::{
 };
 pub use lifetime_scope::{
     CONTEXT_LIFETIME_SCHEMA, ContextLifetimeScope, InvocationOwnerScope, LifetimeApplicability,
-    LogicalInvocationIdentity, MAX_LIFETIME_ITEMS, MAX_LIFETIME_NEXT_N,
+    LogicalInvocationIdentity, MAX_LIFETIME_ITEMS, MAX_LIFETIME_MANIFESTS, MAX_LIFETIME_NEXT_N,
+    MAX_LIFETIME_SCOPES,
 };
 pub use lifetime_state::LifetimePreview;
 pub use membership::{

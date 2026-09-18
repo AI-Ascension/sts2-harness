@@ -24,9 +24,12 @@ use serde::{Deserialize, Serialize};
 
 use super::lifetime_error::ContextLifetimeError;
 use super::lifetime_ledger::ContextLifetimeLedger;
+use super::lifetime_scope::{
+    MAX_LIFETIME_MANIFESTS, MAX_LIFETIME_SCOPES, MAX_LIFETIME_STATE_BYTES,
+};
 use super::store::ContextControlStore;
 use super::store_schema::digest;
-use super::store_types::{DurableControlStoreError, MAX_LIFETIME_STATE_BYTES};
+use super::store_types::DurableControlStoreError;
 
 /// AAD binding the lifetime envelope to its purpose inside the control store.
 pub(super) const LIFETIME_AAD: &[u8] = b"ascension.context-control.lifetime.v1\0";
@@ -81,6 +84,8 @@ impl DurableLifetimeState {
         }
         if self.scope_count as usize != self.scopes.len()
             || self.manifest_count as usize != self.manifests.len()
+            || self.scopes.len() > MAX_LIFETIME_SCOPES
+            || self.manifests.len() > MAX_LIFETIME_MANIFESTS
         {
             return Err(ContextLifetimeError::InvalidInput);
         }

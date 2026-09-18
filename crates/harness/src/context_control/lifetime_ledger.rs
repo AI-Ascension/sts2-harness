@@ -32,8 +32,9 @@ use super::lifetime_manifest::{
     DispatchSettlement, LifetimeApproval, LifetimeManifest, MAX_LIFETIME_MANIFEST_BYTES,
 };
 use super::lifetime_scope::{
-    CONTEXT_LIFETIME_SCHEMA, ContextLifetimeScope, LogicalInvocationIdentity,
-    MAX_LIFETIME_MANIFESTS, MAX_LIFETIME_SCOPES,
+    CONTEXT_LIFETIME_SCHEMA, ContextLifetimeScope, LIFETIME_BODY_CHARGE_FACTOR,
+    LIFETIME_RECORD_OVERHEAD, LogicalInvocationIdentity, MAX_LIFETIME_MANIFESTS,
+    MAX_LIFETIME_SCOPES, MAX_LIFETIME_STATE_BYTES,
 };
 use super::lifetime_state::{LifetimePreview, ScopeState};
 
@@ -51,6 +52,8 @@ pub enum LifetimeFailpoint {
 pub struct ContextLifetimeLedger {
     pub(super) scopes: BTreeMap<String, ScopeState>,
     pub(super) manifests: Vec<LifetimeManifest>,
+    /// Bytes already charged against the run's persisted-image budget.
+    pub(super) charged: usize,
 }
 
 impl ContextLifetimeLedger {
@@ -72,6 +75,10 @@ impl ContextLifetimeLedger {
             return Ok(digest);
         }
         if self.scopes.len() >= MAX_LIFETIME_SCOPES {
+            return Err(ContextLifetimeError::InvalidInput);
+        }
+        // Charge the scope before recording it, so a state reachable here is always persistable.
+        if self.charge(scope.body_len()?) {
             return Err(ContextLifetimeError::InvalidInput);
         }
         self.scopes.insert(
@@ -136,6 +143,22 @@ impl ContextLifetimeLedger {
     #[must_use]
     pub fn manifests(&self) -> &[LifetimeManifest] {
         &self.manifests
+    }
+
+    /// Charges a canonical record body against the run's persisted-image byte budget.
+    ///
+    /// Returns `true` when the record would not fit, which the caller turns into a refusal. This is
+    /// what keeps "any reachable state is persistable" true: without it a window could grow until
+    /// `persist_lifetime` rejected it permanently.
+    pub(super) fn charge(&mut self, body_len: usize) -> bool {
+        let cost = body_len
+            .saturating_mul(LIFETIME_BODY_CHARGE_FACTOR)
+            .saturating_add(LIFETIME_RECORD_OVERHEAD);
+        if self.charged.saturating_add(cost) > MAX_LIFETIME_STATE_BYTES {
+            return true;
+        }
+        self.charged = self.charged.saturating_add(cost);
+        false
     }
 
     /// Every issued scope, ordered by scope id, exactly as it was issued.
@@ -267,6 +290,11 @@ impl ContextLifetimeLedger {
         }
         .mint()?;
         if manifest.bytes.len() > MAX_LIFETIME_MANIFEST_BYTES {
+            return Err(ContextLifetimeError::InvalidInput);
+        }
+        // Charge only after the record is known to be well-formed, so a refused admission leaves the
+        // budget and the ledger untouched.
+        if self.charge(manifest.bytes.len()) {
             return Err(ContextLifetimeError::InvalidInput);
         }
         if let Some(state) = self.scopes.get_mut(scope_id) {

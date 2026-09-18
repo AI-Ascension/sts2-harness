@@ -32,6 +32,26 @@ pub const MAX_LIFETIME_SCOPES: usize = 64;
 /// Upper bound on the manifests one run's lifetime state may hold.
 pub const MAX_LIFETIME_MANIFESTS: usize = 512;
 
+/// Byte budget for one run's persisted lifetime image.
+///
+/// This is the *effective* bound: a scope or admission is refused before it would push the run's
+/// image past this budget, so any state reachable through this API is guaranteed to be persistable.
+/// The count bounds above are backstops; a window with unusually large items reaches this budget
+/// first, and a window with small items reaches a count bound first. Bounding only the counts would
+/// let a window grow until `persist_lifetime` refused it forever.
+pub const MAX_LIFETIME_STATE_BYTES: usize = 1024 * 1024;
+
+/// Conservative multiplier applied to a record's canonical body when charging the byte budget.
+///
+/// A manifest is serialized twice inside the image: once as its own fields and once as the numeric
+/// array in `bytes`. The array costs at most four characters per byte, so charging `5 * body + 256`
+/// bounds the real cost from above and keeps the guarantee without re-serializing the whole image on
+/// every admission.
+pub(super) const LIFETIME_BODY_CHARGE_FACTOR: usize = 5;
+
+/// Fixed per-record overhead charged on top of the body, covering field names and digests.
+pub(super) const LIFETIME_RECORD_OVERHEAD: usize = 256;
+
 /// The agent/episode/run (and optionally branch) a scope was issued for.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -157,6 +177,13 @@ impl ContextLifetimeScope {
     pub fn digest(&self) -> Result<String, ContextLifetimeError> {
         let bytes = serde_json::to_vec(self).map_err(|_| ContextLifetimeError::Encode)?;
         Ok(crate::sha256_hex(bytes))
+    }
+
+    /// Canonical body length, used to charge this scope against the run's persisted-image budget.
+    pub fn body_len(&self) -> Result<usize, ContextLifetimeError> {
+        serde_json::to_vec(self)
+            .map(|bytes| bytes.len())
+            .map_err(|_| ContextLifetimeError::Encode)
     }
 }
 

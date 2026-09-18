@@ -93,6 +93,11 @@ impl ContextLifetimeLedger {
             let scope_id = manifest.scope_id.clone();
             let invocation_id = manifest.invocation_id.clone();
             let settlement = manifest.settlement;
+            // Keep the restored budget identical to the live one, so a reloaded ledger refuses the
+            // same over-budget growth the live ledger would have refused.
+            if self.charge(manifest.bytes.len()) {
+                return Err(ContextLifetimeError::InvalidInput);
+            }
             self.manifests.push(manifest.clone());
             if let Some(state) = self.scopes.get_mut(&scope_id) {
                 state.admitted.push(invocation_id.clone());
