@@ -160,9 +160,12 @@ fn advertised_variants_and_zero_model_probes() -> Result {
     let report = json!({
         "schema": "sts2.exo-advertised-variant-evidence-v1",
         "evidence": "real-process-synthetic-model-no-game",
+        "temporary_storage": "owned-target-exo-test-tmp",
         "bridge_sha256": digest(&binary)?,
         "executor_sha256": digest(&executor)?,
         "extension_sha256": digest(&extension)?,
+        "exo_revision": String::from_utf8(std::process::Command::new("git")
+            .arg("-C").arg(&source).args(["rev-parse", "HEAD"]).output()?.stdout)?.trim(),
         "harness_revision": String::from_utf8(std::process::Command::new("git")
             .arg("-C").arg(&root).args(["rev-parse", "HEAD"]).output()?.stdout)?.trim(),
         "oracle_sha256": digest(&PathBuf::from(env!("CARGO_MANIFEST_DIR"))
