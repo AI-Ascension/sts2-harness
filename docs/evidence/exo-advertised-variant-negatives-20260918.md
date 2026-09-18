@@ -32,11 +32,11 @@ or native instance is used.
 | Field | Value |
 |---|---|
 | `exo_revision` | `b06869ab789dee3f80ca474b5fa89dbe47ccb859` |
-| `extension_sha256` | `2e5485127f434bdd95a534785a414fa9f357432c924d89fd56d50c96f434b9cd` |
-| `executor_sha256` | `3f6d7d9530da3c7a884d48acfc20dfe1b24d73e9f2499a9ed5b575e4e9d97729` |
-| `bridge_sha256` | `826584f790b879a530146f64232cedbfa9f5cd64d0e11b249a6f74403d5c1518` |
-| `oracle_sha256` | `ff84c9812d6ef56bca63fef3774c44ed23a71960b121a41f5852ad9f1392a820` |
-| `harness_revision` | `a1460816f4caf8d3e5dc7d16e8b83bfa62a95013` (the revision the harness was at when the recorded run executed, as with the 2026-09-15 record) |
+| `extension_sha256` | `bcc034e787972f7ad6eabff5e817ad1456d6f6cab8c7dc42b426bd9f5b33ef3d` |
+| `executor_sha256` | `a77124735478106ba2c6a0eca45a697223477d163c586cb9cbd3ef7a8fc34548` |
+| `bridge_sha256` | `010d91d112688c16b36a1bb5d7cc33889e7198ab605bf92eee8cd681c57627a3` |
+| `oracle_sha256` | `c6624827d90087cd5b09c84046898c5bb757225d456e5b2d5af4635bc2f53f83` |
+| `harness_revision` | `e882e908778fd57b7e49572add7420764c368037` (the revision the harness was at when the recorded run executed, as with the 2026-09-15 record) |
 | Node | `v22.15.0` |
 | Rust toolchain | `1.97.1`; non-Linux platforms remain unverified |
 
