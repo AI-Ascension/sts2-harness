@@ -16,6 +16,8 @@ pub(super) const MAX_SNAPSHOT_BYTES: usize = 4 * 1024 * 1024;
 pub(super) const MAX_EVENTS: usize = 4096;
 pub(super) const MAX_EVENT_BYTES: usize = 64 * 1024;
 pub(super) const MAX_OWNER_RECEIPT_BYTES: usize = 64 * 1024;
+/// Upper bound on the persisted logical-invocation lifetime state for one run.
+pub(super) const MAX_LIFETIME_STATE_BYTES: usize = 1024 * 1024;
 
 /// Encrypted, owner-scoped evidence for one already applied context-control command.
 ///

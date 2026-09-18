@@ -181,4 +181,12 @@ CREATE TABLE IF NOT EXISTS context_control_active_context_source (
     source_digest TEXT NOT NULL,
     active_revision_id TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS context_control_lifetime (
+    run_id TEXT PRIMARY KEY NOT NULL,
+    envelope BLOB NOT NULL,
+    envelope_digest TEXT NOT NULL,
+    scope_count INTEGER NOT NULL,
+    manifest_count INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
 "#;

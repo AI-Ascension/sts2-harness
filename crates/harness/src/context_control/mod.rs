@@ -6,6 +6,13 @@
 //! records control decisions, while the game host remains the authority for observations, legal
 //! actions, and mutations.
 
+mod lifetime_durable;
+mod lifetime_error;
+mod lifetime_ledger;
+mod lifetime_manifest;
+mod lifetime_restore;
+mod lifetime_scope;
+mod lifetime_state;
 mod membership;
 mod membership_render;
 mod model_view;
@@ -28,6 +35,17 @@ mod store_schema;
 mod store_types;
 mod types;
 
+pub use lifetime_durable::{DURABLE_LIFETIME_SCHEMA, DurableLifetimeState};
+pub use lifetime_error::ContextLifetimeError;
+pub use lifetime_ledger::{ContextLifetimeLedger, LifetimeFailpoint};
+pub use lifetime_manifest::{
+    DispatchSettlement, LifetimeApproval, LifetimeManifest, MAX_LIFETIME_MANIFEST_BYTES,
+};
+pub use lifetime_scope::{
+    CONTEXT_LIFETIME_SCHEMA, ContextLifetimeScope, InvocationOwnerScope, LifetimeApplicability,
+    LogicalInvocationIdentity, MAX_LIFETIME_ITEMS, MAX_LIFETIME_NEXT_N,
+};
+pub use lifetime_state::LifetimePreview;
 pub use membership::{
     CONTEXT_MEMBERSHIP_POLICY_SCHEMA, ContextMembershipBroaderScope, ContextMembershipError,
     ContextMembershipPolicy, ContextMembershipScope, ContextMembershipSelector, ContextModelView,
