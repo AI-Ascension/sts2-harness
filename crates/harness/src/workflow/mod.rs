@@ -7,6 +7,8 @@ mod decoder;
 mod definition;
 mod diagnostic;
 mod dynamic;
+mod dynamic_join;
+mod dynamic_parallel;
 mod dynamic_runtime;
 mod graph_checks;
 mod graph_validation;
@@ -49,9 +51,12 @@ pub use diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticReport, DiagnosticSeverity, StructuralLocation,
 };
 pub use dynamic::{
-    DynamicEdge, DynamicNode, DynamicNodeKind, DynamicPlan, DynamicPlanError, DynamicPlanRegistry,
-    DynamicPlanResult, PlanStore, PureAnalysisExecutor, execute_plan, validate_plan,
+    AnalysisFault, DynamicEdge, DynamicNode, DynamicNodeKind, DynamicPlan, DynamicPlanError,
+    DynamicPlanRegistry, DynamicPlanResult, ParallelAnalysisExecutor, PlanStore,
+    PureAnalysisExecutor, execute_plan, validate_plan,
 };
+pub use dynamic_join::{BranchOutcome, JoinedResult, MAX_PARALLEL_ANALYSES, ParallelCap};
+pub use dynamic_parallel::execute_plan_bounded;
 pub use dynamic_runtime::{DynamicExecutorPort, DynamicRuntime};
 pub use guards::{GuardContext, GuardError, TruthValue};
 pub use ids::*;

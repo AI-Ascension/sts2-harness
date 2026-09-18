@@ -73,6 +73,9 @@ pub enum DynamicPlanError {
     ReplanLimit,
     NoProgress,
     Persistence,
+    UnsettledInput,
+    BranchUnknown,
+    BranchLost,
 }
 
 impl std::fmt::Display for DynamicPlanError {
@@ -89,6 +92,9 @@ impl std::fmt::Display for DynamicPlanError {
             Self::ReplanLimit => "dynamic plan replan budget is exhausted",
             Self::NoProgress => "dynamic plan made no progress",
             Self::Persistence => "dynamic plan could not be persisted before execution",
+            Self::UnsettledInput => "dynamic plan node has a declared input that did not settle",
+            Self::BranchUnknown => "dynamic plan branch outcome is unknown",
+            Self::BranchLost => "dynamic plan branch ended without reporting an outcome",
         })
     }
 }
@@ -113,6 +119,32 @@ pub trait PureAnalysisExecutor {
         context: &ContextId,
         inputs: &BTreeMap<NodeId, AnalysisValue>,
     ) -> Result<AnalysisValue, DynamicPlanError>;
+}
+
+/// Why one analysis branch produced no settled value.
+///
+/// `Failed` is a typed, attributable refusal; `Unknown` means the executor cannot
+/// say whether the analysis ran (for example a lost provider response). Both are
+/// retained per branch by the bounded route and never become a decision input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnalysisFault {
+    Failed(DynamicPlanError),
+    Unknown,
+}
+
+/// Pure analysis executor that may be invoked from several branches at once.
+///
+/// The bounded route (`execute_plan_bounded`) calls `analyze` through a shared
+/// reference from at most `ParallelCap` worker threads, so implementations own
+/// their interior synchronization. The serial `execute_plan` route keeps using
+/// [`PureAnalysisExecutor`] unchanged.
+pub trait ParallelAnalysisExecutor: Send + Sync {
+    fn analyze(
+        &self,
+        operation: &OperationRef,
+        context: &ContextId,
+        inputs: &BTreeMap<NodeId, AnalysisValue>,
+    ) -> Result<AnalysisValue, AnalysisFault>;
 }
 
 pub struct DynamicPlanRegistry {

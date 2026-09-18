@@ -27,6 +27,14 @@ case (sha256 `b16ed9ebd584131d72bca3fb3978fd5d32e44a5e9d695e98d10f58b99fb01469`)
 `e9b5bb77…`, `missing-native-ref` `549d5bc1…`, `selector-instance-mismatch` `a3e585eb…`, `stale-generation`
 `719210fb…` (full digests in `SHA256SUMS`); a `not_observable` error maps to a typed missing-capability result.
 
+## Bounded parallel analysis route
+
+`execute_plan_bounded` is `additive-compatible`: new `ParallelAnalysisExecutor`, `ParallelCap`, `BranchOutcome`,
+`JoinedResult` and `DynamicPlanError::{UnsettledInput, BranchUnknown, BranchLost}` beside the unchanged serial
+`execute_plan`; it reads the existing `max_parallel_analyses` (`1..=4`) and adds no `NodeKind`, schema, route,
+record or Studio pin. Cap=1 reproduces the serial values for executors reading declared inputs only; a failed or
+unknown branch never feeds a decision; budget, cancel/restart and browser branch states stay open. See [ADR 0049](decisions/0049-bounded-parallel-analysis-join.md).
+
 ## Benchmark manifest foundation
 
 `benchmark_manifest` adds a private `ascension.benchmark-manifest.v1` owner format and
@@ -520,21 +528,14 @@ frozen artifact bytes. A different lease returned for the requested instance, ca
 can be used only for cleanup after its identity and epoch are validated. Unattributable responses
 retain the original configured fence. Cleanup failures remain explicit; live behavior is unverified.
 
-The existing Runtime-v1 executable accepts only numeric loopback gateway socket addresses, not DNS
-names or remote plaintext bearer endpoints. It bounds complete HTTP/MCP exchanges to five seconds,
-validates outer RPC correlation and the existing projected tool contract, and minimizes child
-environment/error output. MCP retains full downstream envelope/fence validation authority.
-Frozen Runtime-v2 decoder fields remain required even when their permitted value is null.
-The persistent MCP child uses cancellable asynchronous pipes and joined supervisors; direct-child
-shutdown/reaping is bounded and errors remain visible. Descendants are not forcibly killed, but
-inherited pipe handles cannot strand harness I/O workers. Only explicit STS2 connection variables
-plus PATH/SystemRoot/TEMP/TMP are inherited, and stderr is suppressed. This is credential
-minimization, not an OS sandbox. MCP and gateway sessions are separate namespaces; the configured
-MCP child receives both identities explicitly, and its adapter must bind them without equating them.
-The six-tool Runtime-v3 catalog is independent of the retained Runtime-v2 four-lane scheduler.
-Configure the same explicit `STS2_MCP_SESSION_ID` in the independently launched gateway and harness.
-Harness, gateway, and MCP default to `mcp-session-1`; custom session names require coordinated
-configuration. The gateway session independently defaults to `session-1`.
+Frozen Runtime-v2 decoder fields remain required even when their permitted value is null. The persistent
+MCP child uses cancellable asynchronous pipes and joined supervisors, so shutdown/reaping is bounded,
+errors remain visible, and inherited pipe handles cannot strand harness I/O workers. MCP and gateway
+sessions are separate namespaces, and the configured MCP child receives both identities explicitly, so
+its adapter must bind them without equating them. The six-tool Runtime-v3 catalog is independent of the
+retained Runtime-v2 four-lane scheduler; configure the same explicit `STS2_MCP_SESSION_ID` in the
+independently launched gateway and harness (harness, gateway and MCP default to `mcp-session-1`, and the
+gateway session independently to `session-1`).
 
 Dispatch preserves the complete host legal-action reference (`action_id` plus typed `action` payload)
 across the MCP boundary. A bare payload is not a legal-action reference. Canonical schema regressions
