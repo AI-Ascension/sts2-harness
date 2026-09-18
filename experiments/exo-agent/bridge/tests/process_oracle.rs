@@ -4,7 +4,8 @@ mod support;
 
 use serde_json::{Value, json};
 use std::path::PathBuf;
-use support::{Model, Result, digest, invoke, response};
+use support::projection::{FORBIDDEN_TOOLS, evidence_row, projection, request_envelope};
+use support::{Model, Result, digest, invoke, invoke_executor, response, tool_call};
 
 /// Explicitly selected Linux-only real Exo test, using only a synthetic loopback model.
 #[test]
@@ -46,6 +47,8 @@ fn real_exo_process_matrix() -> Result {
     rejected_inputs(&model, &binary, &config, &envelope, &mut cases)?;
     failed_process_boundaries(&model, &binary, &config, &envelope, &mut cases)?;
     decisions(&model, &binary, &config, &envelope, &mut cases)?;
+    request_tools_are_empty(&model, &binary, &config, &envelope, &mut cases)?;
+    forbidden_tools(&model, &binary, &config, &envelope, &mut cases)?;
     std::fs::remove_file(config)?;
     let report = json!({
         "schema": "sts2.exo-one-shot-process-evidence-v1",
@@ -57,6 +60,7 @@ fn real_exo_process_matrix() -> Result {
         "harness_revision": String::from_utf8(std::process::Command::new("git")
             .arg("-C").arg(&root).args(["rev-parse", "HEAD"]).output()?.stdout)?.trim(),
         "oracle_sha256": digest(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/process_oracle.rs"))?,
+        "support_sha256": support::support_digests()?,
         "cases": cases, "full_runtime_admission": false
     });
     std::fs::write(
@@ -64,19 +68,6 @@ fn real_exo_process_matrix() -> Result {
         serde_json::to_vec_pretty(&report)?,
     )?;
     Ok(())
-}
-
-fn request_envelope(root: &std::path::Path) -> Result<Value> {
-    let mut request: Value = serde_json::from_slice(&std::fs::read(
-        root.join("protocol-artifact/exo-bridge-v1/golden/request.json"),
-    )?)?;
-    request["objective"] = json!("synthetic exact objective sentinel");
-    request["hard_constraints"] = json!(["synthetic complete constraint sentinel"]);
-    Ok(json!({
-        "wire_version": "sts2.exo-bridge-wire-v1",
-        "request_id": "host-request-private-sentinel",
-        "turn_id": "host-turn-private-sentinel", "request": request
-    }))
 }
 
 fn failed_process_boundaries(
@@ -219,14 +210,7 @@ fn decisions(
         assert_eq!(observed.len(), 1, "{name}");
         assert_eq!(model.request_count(), 1, "{name}");
         projection(&observed[0], envelope)?;
-        let diagnostics = String::from_utf8(output.stderr)?;
-        let evidence = diagnostics
-            .lines()
-            .filter(|line| line.starts_with('{'))
-            .map(serde_json::from_str::<Value>)
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        assert_eq!(evidence.len(), 1, "{name}: {diagnostics}");
-        let row = &evidence[0];
+        let row = evidence_row(&output.stderr, name)?;
         assert_eq!(row["forwarded_requests"], 1, "{name}");
         assert_eq!(
             row["exo_turn_id"].as_str().ok_or("missing id")?.as_bytes()[14],
@@ -249,42 +233,106 @@ fn decisions(
     Ok(())
 }
 
-fn projection(body: &Value, envelope: &Value) -> Result {
-    assert!(body.get("tools").is_none_or(|tools| tools == &json!([])));
-    let serialized = body.to_string();
-    for field in ["request_id", "turn_id"] {
-        assert!(!serialized.contains(envelope[field].as_str().ok_or("missing host id")?));
-    }
+// Named case for the inline `tools` check: the actual request advertises no tool or tool choice.
+fn request_tools_are_empty(
+    model: &Model,
+    binary: &std::path::Path,
+    config: &std::path::Path,
+    envelope: &Value,
+    cases: &mut Vec<Value>,
+) -> Result {
+    model.set(
+        200,
+        response(
+            "{\"decision\":\"wait\",\"rationale\":\"synthetic\"}",
+            "message",
+        ),
+    )?;
+    let output = invoke(
+        binary,
+        config,
+        &serde_json::to_vec(envelope)?,
+        "--synthetic",
+        true,
+    )?;
     assert!(
-        !serialized.contains(
-            envelope["request"]["model_execution_id"]
-                .as_str()
-                .ok_or("missing execution id")?
-        )
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
     );
-    fn strings<'a>(value: &'a Value, values: &mut Vec<&'a str>) {
-        match value {
-            Value::String(text) => values.push(text),
-            Value::Array(items) => items.iter().for_each(|item| strings(item, values)),
-            Value::Object(items) => items.values().for_each(|item| strings(item, values)),
-            _ => {}
-        }
-    }
-    let mut values = Vec::new();
-    strings(body, &mut values);
-    let projections = values
-        .into_iter()
-        .filter_map(|text| serde_json::from_str::<Value>(text).ok())
-        .filter(|value| value.get("observation").is_some())
-        .collect::<Vec<_>>();
-    assert_eq!(projections.len(), 1);
-    for key in [
-        "observation",
-        "legal_action_ids",
-        "objective",
-        "hard_constraints",
-    ] {
-        assert_eq!(projections[0][key], envelope["request"][key], "{key}");
+    let observed = model.requests.lock().map_err(|_| "poisoned")?;
+    assert_eq!((observed.len(), model.request_count()), (1, 1));
+    let advertised = observed[0]
+        .get("tools")
+        .cloned()
+        .unwrap_or_else(|| json!([]));
+    assert_eq!(advertised, json!([]));
+    assert!(observed[0].get("tool_choice").is_none());
+    projection(&observed[0], envelope)?;
+    let row = evidence_row(&output.stderr, "request_tools_are_empty")?;
+    cases.push(
+        json!({"case": "request_tools_are_empty", "passed": true, "model_requests": 1,
+        "tools_advertised": 0, "argv_private_values_absent": true, "evidence": row}),
+    );
+    Ok(())
+}
+
+// Per forbidden name the synthetic model calls that exact tool: the bridge fails closed after one
+// egress and the executor receipt carries the typed `exo_forbidden_tool` code and no decision.
+fn forbidden_tools(
+    model: &Model,
+    binary: &std::path::Path,
+    config: &std::path::Path,
+    envelope: &Value,
+    cases: &mut Vec<Value>,
+) -> Result {
+    for (ordinal, (alias, name)) in FORBIDDEN_TOOLS.into_iter().enumerate() {
+        let case = format!("forbidden_tool_by_name_{alias}");
+        model.set(200, tool_call(name))?;
+        let output = invoke(
+            binary,
+            config,
+            &serde_json::to_vec(envelope)?,
+            "--synthetic",
+            true,
+        )?;
+        assert!(
+            !output.status.success() && output.stdout.is_empty(),
+            "{case}"
+        );
+        let stderr = String::from_utf8(output.stderr)?;
+        assert!(
+            stderr.ends_with("exo_bridge_executor_failed\n"),
+            "{case}: {stderr}"
+        );
+        let bridge = evidence_row(stderr.as_bytes(), &case)?;
+        assert_eq!(
+            (bridge["forwarded_requests"].as_u64(), model.request_count()),
+            (Some(1), 1)
+        );
+        projection(&model.requests.lock().map_err(|_| "poisoned")?[0], envelope)?;
+        model.set(200, tool_call(name))?;
+        let receipt = invoke_executor(config, envelope, ordinal)?;
+        assert_eq!(
+            receipt["error_code"], "exo_forbidden_tool",
+            "{case}: {receipt}"
+        );
+        assert!(receipt["decision"].is_null(), "{case}");
+        assert_eq!(receipt["request_id"], envelope["request_id"], "{case}");
+        assert_eq!(
+            (
+                receipt["forwarded_requests"].as_u64(),
+                model.request_count()
+            ),
+            (Some(1), 1)
+        );
+        projection(&model.requests.lock().map_err(|_| "poisoned")?[0], envelope)?;
+        cases.push(
+            json!({"case": case, "passed": true, "model_requests": 2, "tool_name": name,
+            "argv_private_values_absent": true, "evidence": {"bridge": bridge,
+            "bridge_error_code": "exo_bridge_executor_failed",
+            "executor_error_code": "exo_forbidden_tool", "executor_decision_absent": true}}),
+        );
     }
     Ok(())
 }
@@ -308,7 +356,7 @@ fn rejected_inputs(
         ("wrong_revision", serde_json::to_vec(&revision)?, true),
         (
             "unsupported_map",
-            serde_json::to_vec(&support::ordinary_map(envelope)?)?,
+            serde_json::to_vec(&support::projection::ordinary_map(envelope)?)?,
             true,
         ),
         ("wrong_generation", serde_json::to_vec(&generation)?, true),

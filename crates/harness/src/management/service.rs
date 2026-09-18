@@ -38,6 +38,8 @@ mod constructors;
 mod context_history;
 #[path = "service_context_owner.rs"]
 mod context_owner_port;
+#[path = "service_effective_limits.rs"]
+mod effective_limits_ops;
 #[path = "service_execution.rs"]
 mod execution_types;
 #[path = "service_ops_lifecycle.rs"]
@@ -240,6 +242,7 @@ pub struct ManagementService {
     provider_session_policy: Arc<dyn super::provider_policy::ProviderSessionPolicyCommandPort>,
     live_provider_policy: Arc<dyn LiveProviderPolicyPort>,
     memory_policy_owner: Arc<dyn MemoryPolicyOwnerManagementPort>,
+    provider_session_capabilities: Option<crate::provider_session::NativeCapabilities>,
 }
 
 impl ManagementService {
@@ -264,6 +267,7 @@ impl ManagementService {
             memory_policy_owner: Arc::new(
                 memory_policy_owner_ops::UnavailableMemoryPolicyOwnerManagementPort,
             ),
+            provider_session_capabilities: None,
         }
     }
 

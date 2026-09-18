@@ -6,6 +6,7 @@
 //! records control decisions, while the game host remains the authority for observations, legal
 //! actions, and mutations.
 
+mod derived_exact;
 mod lifetime_durable;
 mod lifetime_error;
 mod lifetime_ledger;
@@ -24,6 +25,7 @@ mod model_view_path;
 mod model_view_projection;
 mod model_view_sentinels;
 mod model_view_walk;
+mod option_selection;
 mod render;
 mod state;
 mod store;
@@ -36,6 +38,7 @@ mod store_types;
 mod systemone_request;
 mod types;
 
+pub use derived_exact::{DERIVED_EXACT_SCHEMA, DerivedExactFacts, Survival};
 pub use lifetime_durable::{DURABLE_LIFETIME_SCHEMA, DurableLifetimeState};
 pub use lifetime_error::ContextLifetimeError;
 pub use lifetime_ledger::{ContextLifetimeLedger, LifetimeFailpoint};
@@ -77,6 +80,10 @@ pub use model_view_projection::{
 };
 pub use model_view_sentinels::{
     catalog_paths, excluded_sentinel_paths, fair_play_verdict, reject_excluded_sentinels,
+};
+pub use option_selection::{
+    MAX_PRESENTED_OPTIONS, OPTION_SELECTION_SCHEMA, OptionSelection, PresentedOption,
+    SelectionMode, WithheldOption, WithheldReason,
 };
 pub use render::{
     ContextRenderError, ContextRenderLimits, ContextRenderer, ManagedRenderInput, PreparedContext,

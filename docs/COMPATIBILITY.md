@@ -51,46 +51,35 @@ ascension 0..20, with a fresh baseline; other modes/characters remain unsupporte
 Seed generation/durability, complete native readback/RNG, cold-launch integration,
 profile provisioning and provider execution remain unverified and outside this delivery.
 
-## Opt-in recorded context bindings
+## Context-owner management surface
 
-[ADR 0040](decisions/0040-recorded-context-binding-history.md) adds private, bounded SQLite
-binding history and a scoped library-only historical reader. Public closed JSON schemas,
-current-cursor association semantics and file-store JSON remain unchanged. Old SQLite stores
-start with no history; rollback binaries ignore and preserve the added table. Retention is
-explicitly enabled and does not imply current owner availability or control permission.
-The unreleased Rust `CommandApplication` gains `context_binding`; source constructors must
-set `None` or provide exact accepted binding evidence. Default `WorkflowStore` hooks remain
-unsupported, and existing default compositions do not retain this metadata.
+The rows for recorded context bindings ([ADR 0040](decisions/0040-recorded-context-binding-history.md)),
+the composed effective-limits projection ([ADR 0030](decisions/0030-context-owner-effective-limits-composition.md)),
+selected limit enforcement ([ADR 0028](decisions/0028-selected-context-control-limit-enforcement.md),
+[ADR 0041](decisions/0041-selected-limit-enforcement-wiring.md)), the current association
+([ADR 0025](decisions/0025-context-owner-current-association.md)), receipt recovery
+([ADR 0024](decisions/0024-context-control-receipt-recovery.md)), control commands
+([ADR 0048](decisions/0048-context-owner-control-commands.md)) and the recorded-binding projection
+([ADR 0023](decisions/0023-recorded-context-binding-http-projection.md)) are kept together in
+[`COMPATIBILITY_CONTEXT_OWNER.md`](COMPATIBILITY_CONTEXT_OWNER.md).
 
-## Composed context-owner effective limits
+## Served provider-session effective-limits record
 
-[ADR 0030](decisions/0030-context-owner-effective-limits-composition.md) adds
-`GET /v1/workflow-runs/{run_id}/context-owner-effective-limits`, returning
-`ascension.harness.context-owner-effective-limits-view.v1`: the limits advertised by the catalog
-descriptor that admits the owner's **current** binding for one run, composed through the same
-fail-closed seam (`compose_context_owner_binding`) that live admission uses. This is
-`additive-compatible`: `GET /v1/context-bindings`, `POST /v1/context-bindings/bind` and the ADR 0025
-association projection are unchanged, no bound, schema, digest or default changes, and the admission
-refactor keeps the existing error codes for the checks it moves. A foreign owner, a missing or
-disabled descriptor, a non-available binding, a non-published binding identity, a grant or
-continuity escalation, an oversized descriptor and a stale descriptor/catalog digest are refused
-before any advertised value is reported; an unattached owner stays explicitly unavailable. The
-projection itself is observation-only; the enforcement of the selected limits is wired separately
-by [ADR 0041](decisions/0041-selected-limit-enforcement-wiring.md).
-
-## Selected context-control limit enforcement
-
-[ADR 0028](decisions/0028-selected-context-control-limit-enforcement.md) adds
-`ContextRenderLimits` and `ContextRenderer::enabled_at_with_limits`, which enforce the limits a
-binding actually advertises (`max_items`, `max_notes`, `max_objective_bytes`, `max_context_bytes`)
-rather than only the harness maxima, reporting `ExceedsSelectedLimit` with the offending limit name.
-This is `additive-compatible`: `enabled`, `enabled_at` and `legacy` are unchanged and the harness
-maxima are untouched. [ADR 0041](decisions/0041-selected-limit-enforcement-wiring.md) wires the
-render entry point and `max_control_events` to their production points of use, so the selected
-limits are enforced rather than only validated.
-Applying a selected event bound also rejects an authority whose retained journal already exceeds
-that bound with `context_control_events_exhausted`, matching bounded recovery. A journal exactly
-at the selected bound remains admissible; existing events are never silently discarded.
+[ADR 0052](decisions/0052-provider-session-effective-limits-route.md) adds
+`GET /v1/workflow-runs/{run_id}/provider-session-effective-limits` (`workflow:read`), returning the
+producer's `ascension.harness.effective-limits.v1` record built by
+`NativeCapabilities::effective_limit_record` from the descriptor the served process admits provider
+sessions against, and `GET /v1/workflow-runs/{run_id}/context-memory-effective-limits`, which the
+served workflow composition refuses with the typed `context_memory_record_unavailable` because it
+holds no memory corpus. This is `additive-compatible`: the record schema, its producers, the
+fixtures under `fixtures/effective-limits/` and every existing route are unchanged, and no bound,
+digest or default changes. The record is metadata only (classification rows and the descriptor
+digest; no session content, credential or policy bytes) and is fenced to the run's current
+context-owner association, whose boundary must name the served descriptor's adapter and model
+revision (`provider_session_capabilities_mismatch` otherwise). A composition without a served
+descriptor answers `provider_session_capabilities_unavailable`; it never falls back to a fixture.
+Evidence is synthetic and in-process; the sidecar population on the Console side is a separate
+consumer change.
 
 ## Saved provider-session policy migration
 
@@ -111,40 +100,6 @@ from schema-valid-but-unexecutable values (`effective_limit_exceeded`, `disabled
 `field_not_advertised`, ...). This is `additive-compatible`: no policy field, schema, digest, range or
 resource bound changes, and `validate`/`validate_schema` are unchanged. The portable schema ceilings
 stay intentionally broader than the executable ceilings, and a refused policy is never clamped.
-
-## Current context-owner association
-
-[ADR 0025](decisions/0025-context-owner-current-association.md) adds
-`GET /v1/workflow-runs/{run_id}/context-owner-association`, returning the owner's current
-`ContextOwnerBinding` as `ascension.harness.context-owner-association-view.v1`. This is
-`additive-compatible`: the existing `GET /v1/workflow-runs/{run_id}/context` `ContextAssociation`
-contract is unchanged, no record/schema/digest or bound changes, and unknown paths still fail closed.
-The projection is observation-only; projected grants and epochs are owner assertions and confer no
-harness-issued control authority.
-
-## Recovered context-control receipts
-
-[ADR 0024](decisions/0024-context-control-receipt-recovery.md) adds
-`POST /v1/workflow-runs/{run_id}/context-control-receipts/lookup`, which returns the owner's already
-recorded `ascension.context-control.owner-receipt.v2` for a retained `pause`/`commit`/`resume`
-command. This is `additive-compatible`: the port method has a failing default, no existing owner,
-binding, receipt or digest changes, and nothing is re-issued, re-applied or inferred. Recovery
-requires scoped read authorization and an owner that can return persisted historical evidence; the
-receipt must match the exact owner/invocation/binding/command identity. It does not require or
-recreate a current association, and it grants no new control authority. Unsupported, unrecorded,
-mismatched and unavailable outcomes stay distinct.
-
-[ADR 0048](decisions/0048-context-owner-control-commands.md) adds `POST /v1/workflow-runs/{run_id}/context-control-commands` (`workflow:control`), submitting one `pause`/`commit`/`resume` `ContextControlCommand` to the authoritative owner for the run's current binding and returning its v2 receipt; optional `STS2_WORKFLOW_TOKEN_<PROFILE>_READ` mints a `workflow:read`-only companion token. `additive-compatible`: no existing route, record, schema, digest or default changes; the harness mints no authority — an exact duplicate returns the recorded receipt and a stale fence/boundary/revision is refused (409, no receipt) before the owner is called. Synthetic in-process evidence only.
-
-## Recorded context-binding HTTP projection
-
-[ADR 0023](decisions/0023-recorded-context-binding-http-projection.md) adds one read-only
-management route (`GET /v1/workflow-runs/{run_id}/executions/{node_execution_id}/context-binding`)
-returning the versioned `ascension.harness.recorded-context-binding-view.v1` projection of the
-binding accepted for that invocation. This is `additive-compatible`: no existing route, record,
-schema, digest or resource bound changes, retention remains opt-in, and unknown paths still fail
-closed. The projection is observation-only and is neither current owner authority nor receipt
-recovery.
 
 ## Effective-limit consumer alignment
 
@@ -227,36 +182,9 @@ The harness does not inherit source or behavioral compatibility from a reference
 
 ### Pinned Exo executor bridge
 
-The harness-owned `sts2-exo-bridge-v1` contract is documented in
-[ADR 0017](decisions/0017-exo-executor-bridge-contract.md) and frozen in
-[`protocol-artifact/exo-bridge-v1`](../protocol-artifact/exo-bridge-v1/README.md). Its source
-revision, package/executable, dedicated TypeScript extension, bounded bridge, model binding,
-prompt/tool/configuration digests, contract version, and native instance identity are separate
-compatibility axes. The selected executor path is the extension's
-`defineHarness.runTurn` → `runResponsesHarnessTurn` → `ResponsesRuntime.complete` chain; HTTP
-substrate requests, `/health`, and the human-facing CLI are not fallback executors.
-
-The closed capability/preflight descriptor and request/turn envelope drive the production
-admission gate recorded in [ADR 0031](decisions/0031-runtime-exo-admission-gate.md). The reviewed
-`STS2_EXO_ADMISSION=envelope` mode refuses the run while a required capability, digest, revision,
-route or schema is not admitted, and it refuses before the durable store, the gateway, the MCP
-session, the provider or any game effect exists; `STS2_EXO_ADMISSION=legacy` is an explicit
-operator acknowledgement of an un-admitted raw-wire bridge. That gate cross-checks the identity
-**inspected** from the launch's own artifacts against the operator pin
-([ADR 0032](decisions/0032-inspected-admission-identity.md)), so a swapped package, extension or
-bridge artifact fails closed and a pinned axis the inspection did not bind refuses as
-`UnboundIdentity` instead of being admitted on the declaration alone. Standard/fresh/Linux x86_64 and
-strict terminal decision parsing are source-derived;
-map/expert, continuity, cancellation/recovery, event/usage, replay, native package/model
-identity, live Exo connectivity, and STS2 gameplay remain `unverified` until the real pinned
-executor spike records them. The required `runtime`, `provider`, and `endpoint` identity axes are
-classified as a `breaking` required-configuration correction; readers that cannot validate them
-fail closed. The tightened expert digest and non-empty legal-action schema, plus parser-only
-checks for duplicate action IDs, UTF-8 byte bounds, and `hp <= max_hp`, are a
-`safety-correction`. Schema-valid/parser-rejected semantic cases are executable conformance
-vectors. Migrations must stage additive records, run schema and trusted preflight checks, retain a
-backup until handoff, and restore that backup on failure without reinterpreting new records as
-legacy `provider_revision`-only identities.
+The Exo executor bridge axes, the restricted profile (forbidden-tool dispatch denial, private state
+root, truthful capability list, source freeze and re-admission), and the runtime Exo admission gate
+are documented in [`exo-compatibility.md`](exo-compatibility.md).
 
 ## Current evidence baseline
 
@@ -554,41 +482,3 @@ is now bounded by the same interval the map publication lock already uses: 32 at
 about 160 ms nominal and 162-172 ms as measured, after which a contended acquisition still fails
 closed with `Busy`. On the contended `create` path the caller's authority guard is held for the
 length of that wait before the call fails.
-
-## Runtime Exo admission gate
-
-[ADR 0031](decisions/0031-runtime-exo-admission-gate.md) wires the ADR 0017 preflight and the
-`ExoAdmittedTransport` envelope into the runtime-v3 transport seam. This is `breaking` for
-operator configuration: `STS2_EXO_ADMISSION` now selects the admission mode, the reviewed
-`envelope` mode is the default when it is absent, and it requires the complete operator-trusted
-deployment identity (`STS2_EXO_PACKAGE_DIGEST`, `STS2_EXO_EXTENSION_DIGEST`,
-`STS2_EXO_BRIDGE_DIGEST`, `STS2_EXO_MODEL_BINDING`, `STS2_EXO_PROVIDER`, `STS2_EXO_ENDPOINT`,
-`STS2_EXO_PROMPT_DIGEST`, `STS2_EXO_TOOL_DIGEST`, `STS2_EXO_CONFIG_DIGEST`,
-`STS2_EXO_NATIVE_INSTANCE_ID`, `STS2_EXO_MODEL_EXECUTION_ID`, `STS2_EXO_REQUEST_ID`,
-`STS2_EXO_TURN_ID`), plus one required artifact locator, `STS2_EXO_PACKAGE_PATH`. A missing or
-unverified deployment, or an absent or empty package locator, ends the run while settings are
-assembled, before any gateway, MCP, provider or game effect, and no request bytes are emitted.
-`envelope` inspects the exact bytes at `STS2_EXO_PACKAGE_PATH` and the exact bytes of the bridge
-executable it is about to launch, and hashes both into the inspected identity, so a swapped package
-is refused as `IdentityMismatch("package_digest")` and a swapped bridge as
-`IdentityMismatch("bridge_digest")`. The inspected digests are always computed from the located
-bytes; `STS2_EXO_PACKAGE_DIGEST` and `STS2_EXO_BRIDGE_DIGEST` are never substituted for the
-observation. The identity comparison precedes the capability gate and `package_digest` is evaluated
-first. The envelope now requires launch arguments `--run`, an absolute bridge configuration path,
-and its digest. The shared bridge loader verifies that configuration, the executor, the reviewed
-extension, Node and source revision. The package locator must resolve to that same executor.
-Extension and prompt identity bind the complete reviewed extension source; tool identity uses the
-reviewed tool catalog; model, provider route and configuration identity come from the verified
-launch configuration. The instance identity comes from the gateway runtime configuration and is
-subsequently subject to gateway allocation validation. It is not native acceptance evidence.
-This is a breaking operator-configuration change, with unchanged wire schemas. It removes the
-unbound extension obstacle but does not promote unverified cancellation/recovery capabilities;
-those still prevent full admission until their runtime composition is verified.
-`STS2_EXO_PACKAGE_PATH` is a
-backward-incompatible addition to the reviewed envelope contract — every deployment that does not
-supply it now fails closed with `STS2_EXO_PACKAGE_PATH is required`. The already-documented raw-wire
-development bridges
-(`docs/OLLAMA_MODEL_SELECTION.md`, `experiments/live-combat/README.md`) must set
-`STS2_EXO_ADMISSION=legacy`, which is an explicit acknowledgement of an un-admitted bridge rather
-than an admission. Rollback is to set `legacy`; no wire field, schema, contract version or durable
-record changes. Per-turn envelope admission for a multi-turn episode remains open.
