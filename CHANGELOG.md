@@ -10,6 +10,22 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Make the harness library **compile for Windows** again, and add a lane that keeps it that way.
+  `exo_lifecycle/process_effect.rs` guarded one unix-only call and then used `rustix::process` —
+  whose `process` module is unix-only — unconditionally for the child's identity and for killing its
+  process group, so every Windows target failed with four `E0433`s and no binary in this workspace
+  could be built for Windows. Reaping moves to `exo_lifecycle/process_reap.rs`, which states the
+  platform difference instead of hiding it: unix signals the child's whole process group as before,
+  and Windows terminates the child itself, which does not reach a descendant the transport spawned.
+  That difference is recorded in `docs/COMPATIBILITY.md`; closing it means attaching the child to a
+  job object at spawn, which is a change to the spawn path rather than to reaping. Two Windows-only
+  warnings in `provider_session/state_store.rs` are resolved at the same time: the `Read` import
+  moves into the unix-only reader that needs it, and the mode-narrowing helper now says what Windows
+  does instead of leaving its parameter dead. A check-only `x86_64-pc-windows-gnu` job builds the
+  workspace and the System One bridge, so a unix-only call cannot reach the library unnoticed again;
+  it runs no tests on Windows and no behavioural claim about Windows follows from it. Compatibility:
+  no change on Linux; Windows moves from not compiling to compiling. Refs #301.
+
 - Add the **`sts2-jev-bridge` executable**, which asks one typed question of a System One provider
   and returns one terminal decision. It reads a bounded decision request on standard input, builds
   the request from the host-generated catalog, runs one bounded exchange, maps the answer, and prints

@@ -13,6 +13,7 @@ mod migration;
 mod owner;
 mod ports;
 mod process_effect;
+mod process_reap;
 mod reconcile;
 mod recovery;
 mod runtime_transport;

@@ -482,3 +482,16 @@ is now bounded by the same interval the map publication lock already uses: 32 at
 about 160 ms nominal and 162-172 ms as measured, after which a contended acquisition still fails
 closed with `Busy`. On the contended `create` path the caller's authority guard is held for the
 length of that wait before the call fails.
+
+## Platform support for the lifecycle process effect
+
+The one-shot lifecycle process effect reaps its child differently per platform, and the guarantee is
+not the same on both. On unix the child is placed in its own process group at spawn and the whole
+group is signalled, so a descendant the bridge spawned is reaped with it. On Windows there is no
+process group to signal and only the child itself is terminated, so a Windows operator whose
+transport spawns further processes owns their cleanup. Closing that gap means attaching the child to
+a job object at spawn, which is a change to the spawn path rather than to reaping.
+
+A `cargo check` lane for `x86_64-pc-windows-gnu` runs in continuous integration. It establishes that
+the workspace compiles for Windows; it does not run tests there, and no behavioural claim about
+Windows follows from it.

@@ -17,7 +17,7 @@ use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
 use getrandom::fill as fill_random;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use zeroize::Zeroizing;
@@ -333,6 +333,7 @@ impl ProviderSessionMetadataStore {
 #[cfg(unix)]
 fn read_restricted_file(path: &Path) -> Result<Vec<u8>, ProviderSessionMetadataStoreError> {
     use rustix::fs::{Mode, OFlags, open};
+    use std::io::Read;
 
     let descriptor = open(
         path,
@@ -439,6 +440,12 @@ fn set_private_file_mode(file: &File) -> io::Result<()> {
     {
         use std::os::unix::fs::PermissionsExt;
         file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(windows)]
+    {
+        // There is no mode to narrow here. A file created inside the private state root inherits
+        // that directory's access control, which is where the restriction lives on this platform.
+        let _ = file;
     }
     Ok(())
 }
