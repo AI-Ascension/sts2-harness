@@ -14,6 +14,7 @@ and report. It does not turn unrelated directories into implementation claims.
 ├── schemas/              # future harness-owned record/artifact contracts
 ├── conformance/          # future implementation-neutral cases
 ├── docs/                 # architecture, policy, decisions, research, and testing guidance
+│   └── CHANGELOG-ARCHIVE.md  # verbatim completed changelog entries moved out of the active file
 ├── tests/                # future deterministic component/integration tests
 ├── tools/repo-policy/    # current Rust foundation checker
 └── MINIMAL_POC_REPORT.md # exact offline trace and evidence classification
