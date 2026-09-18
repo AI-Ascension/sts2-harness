@@ -38,12 +38,28 @@ pub const ACTION_QUESTION: &str = "action";
 /// caller is expected to narrow first and this bound is the backstop.
 pub const MAX_OPTIONS: usize = 64;
 
+/// Largest description this builder will carry for one option.
+pub const MAX_DESCRIPTION_BYTES: usize = 240;
+
 /// Conservative byte ceiling for the state plus the longest question.
 ///
 /// The published limit is 32k tokens for that pair. Assuming two bytes per token rather than the
 /// usual three or four keeps the refusal on this side of a provider-side `422`, at the cost of
 /// refusing some requests the provider would have accepted.
 pub const MAX_STATE_AND_QUESTION_BYTES: usize = 64 * 1024;
+
+/// One option to present, with the description the model reads.
+///
+/// The description is what distinguishes this option from its neighbours. An identifier is a valid
+/// description and was the only one this builder used before, but it makes the model resolve the
+/// identifier against the state itself.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SystemOneOption {
+    /// The identifier the answer resolves to, and the key of the criteria entry.
+    pub id: String,
+    /// What the model reads for this option.
+    pub description: String,
+}
 
 /// Why a System One request could not be built.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -103,6 +119,29 @@ pub fn build_system_one_request(
     objective: &str,
     constraints: &[String],
 ) -> Result<Value, SystemOneRequestError> {
+    let described: Vec<SystemOneOption> = options
+        .iter()
+        .map(|id| SystemOneOption {
+            id: id.clone(),
+            description: id.clone(),
+        })
+        .collect();
+    build_described_system_one_request(model, state, &described, objective, constraints)
+}
+
+/// Builds the request body for one decision, with a description per option.
+///
+/// # Errors
+///
+/// Returns a [`SystemOneRequestError`] for an empty, oversized, or malformed input. The builder never
+/// truncates the state to fit: a smaller state is the caller's decision to make, not a silent one.
+pub fn build_described_system_one_request(
+    model: &str,
+    state: &str,
+    options: &[SystemOneOption],
+    objective: &str,
+    constraints: &[String],
+) -> Result<Value, SystemOneRequestError> {
     if !printable(model) || model.is_empty() || model.len() > 240 {
         return Err(SystemOneRequestError::InvalidModel);
     }
@@ -134,7 +173,7 @@ pub fn system_one_questions_digest(request: &Value) -> String {
 }
 
 /// Refuses an option set this builder will not present.
-fn validate_options(options: &[String]) -> Result<(), SystemOneRequestError> {
+fn validate_options(options: &[SystemOneOption]) -> Result<(), SystemOneRequestError> {
     if options.is_empty() {
         return Err(SystemOneRequestError::EmptyOptions);
     }
@@ -142,10 +181,18 @@ fn validate_options(options: &[String]) -> Result<(), SystemOneRequestError> {
         return Err(SystemOneRequestError::TooManyOptions);
     }
     for (index, option) in options.iter().enumerate() {
-        if option.is_empty() || option.len() > 240 || !printable(option) {
+        if option.id.is_empty() || option.id.len() > 240 || !printable(&option.id) {
             return Err(SystemOneRequestError::InvalidOption);
         }
-        if options[..index].contains(option) {
+        // A description is host text rather than an identifier, so it is bounded and stripped of
+        // control characters, but not required to be an identifier. An empty one falls back to the
+        // identifier at render time rather than failing a request over presentation.
+        if option.description.len() > MAX_DESCRIPTION_BYTES
+            || option.description.chars().any(char::is_control)
+        {
+            return Err(SystemOneRequestError::InvalidOption);
+        }
+        if options[..index].iter().any(|seen| seen.id == option.id) {
             return Err(SystemOneRequestError::InvalidOption);
         }
     }
@@ -154,13 +201,18 @@ fn validate_options(options: &[String]) -> Result<(), SystemOneRequestError> {
 
 /// Builds the criteria map, whose keys are exactly the presented option identifiers.
 ///
-/// The description is the identifier itself. The identifiers this repository issues are already
-/// descriptive (`combat.end-turn`, `play:card-17`), and inventing prose for them here would put a
-/// second, unverified account of what an action does in front of the model.
-fn criteria(options: &[String]) -> Value {
+/// The value is the caller's description, or the identifier when the caller supplied none. The
+/// caller composes descriptions from the same observation the state carries, so a description
+/// restates host data and never adds an account of what an action does.
+fn criteria(options: &[SystemOneOption]) -> Value {
     let mut map = serde_json::Map::new();
     for option in options {
-        map.insert(option.clone(), Value::String(option.clone()));
+        let description = if option.description.is_empty() {
+            option.id.clone()
+        } else {
+            option.description.clone()
+        };
+        map.insert(option.id.clone(), Value::String(description));
     }
     Value::Object(map)
 }

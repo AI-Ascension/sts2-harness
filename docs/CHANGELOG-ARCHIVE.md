@@ -268,3 +268,12 @@ wave. Active development continues in `CHANGELOG.md`.
   Focused source/recording-fixture and local process coverage passed 37 test functions at
   `29d256c`; this is not native Exo or full-runtime acceptance. Cancellation, native
   reconciliation, qualified accounting, containment and episode admission remain gated. Refs #142.
+- Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
+  and validate exact decision/reservation metadata before completion or uncertainty writes.
+  Validate authenticated lifecycle-to-broker references and phase relationships before
+  restart claim publication, retaining held recovery and historical completed entries.
+- Require game-information v1 responses with `unavailable` or `not_observable` coverage to carry an
+  unknown total (`total_count_known: false`, `total_count: null`). The harness consumer previously
+  rejected only non-empty pages, accepting a known or fabricated total for coverage extremes and
+  thereby violating the "never convert unknown into zero or empty" rule. Compatibility: validation
+  tightening only; no schema, wire field, or contract version changed.

@@ -27,7 +27,9 @@ pub(super) fn is_allowed(kind: ValueKind, key: &str) -> bool {
         ValueKind::Player => &[
             "hp", "max_hp", "energy", "gold", "hand", "deck", "discard", "exhaust",
         ],
-        ValueKind::Card => &["card_id", "name", "cost", "upgraded"],
+        // `description` is the host's own card text. It is admitted so a host that carries it can
+        // say what a card does; a host that does not is unaffected, because absence is allowed.
+        ValueKind::Card => &["card_id", "name", "cost", "upgraded", "description"],
         ValueKind::Enemy => &["enemy_id", "name", "hp", "max_hp", "intent"],
         ValueKind::Intent => &["kind", "damage", "hits"],
         ValueKind::State => &[
@@ -77,7 +79,7 @@ pub(super) fn child_kind(parent: ValueKind, key: &str) -> ValueKind {
         | (ValueKind::Player, "energy")
         | (ValueKind::Player, "gold") => ValueKind::Number,
         (ValueKind::Card, "card_id") => ValueKind::Identity,
-        (ValueKind::Card, "name") => ValueKind::Text,
+        (ValueKind::Card, "name") | (ValueKind::Card, "description") => ValueKind::Text,
         (ValueKind::Card, "cost") => ValueKind::Number,
         (ValueKind::Card, "upgraded") => ValueKind::Boolean,
         (ValueKind::Enemy, "enemy_id") => ValueKind::Identity,

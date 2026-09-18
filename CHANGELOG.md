@@ -10,6 +10,23 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Describe the options and derive the arithmetic** for the System One lane, and stop asking about
+  the same play more than once. A live Linux episode recorded six options for one combat turn whose
+  criteria were their own identifiers: three of them were the same Defend and two the same Strike, so
+  the probability mass for playing a Defend was split three ways and the answer read as confidence
+  0.19 in a turn with an obvious play. The bridge now folds strategically identical entries through
+  the existing `OptionSelection`, so five catalog entries stand as three options; describes each one
+  from the same observation the state carries (`play Strike [1 energy] at Nibbit (44 hit points
+  left)`), so no identifier has to be resolved against the hand; and adds `DerivedExactFacts` to the
+  state, which states gross incoming damage, survival, affordable cards and the weakest enemy. Both
+  modules already existed, were reviewed and merged, and were reachable from nothing. A turn with one
+  legal action is now taken without a provider call at all, because asking spends a call to be told
+  the only thing that can happen. `ValueKind::Card` additionally admits `description`, the host's own
+  card text, which the sandbox previously refused: a host that carries it can now say what a card
+  does, and a host that does not is unaffected. Nothing here invents an account of the game: every
+  word of a description is either a host-supplied value or a fixed label for the host's own action
+  kind, and an unlabelled kind still reads as its identifier. Refs #313.
+
 - Fix the **option-selection fold key**, which folded distinct host-listed actions. The key was built
   from a fixed list of seven identity fields, so any action whose identity lived outside that list
   collapsed into a neighbour and was recorded as an intentional duplicate: two different cards aimed
@@ -530,14 +547,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 - Complete the #139 Exo pin inventory: list every revision-bearing bridge, contract, documentation
   and artifact source in the manifest and enforce the full set in the drift guard. Refresh the
   manifest checksum. Compatibility: inventory-only; no schema or wire change.
-
-- Require game-information v1 responses with `unavailable` or `not_observable` coverage to carry an
-  unknown total (`total_count_known: false`, `total_count: null`). The harness consumer previously
-  rejected only non-empty pages, accepting a known or fabricated total for coverage extremes and
-  thereby violating the "never convert unknown into zero or empty" rule. Compatibility: validation
-  tightening only; no schema, wire field, or contract version changed.
-
-- Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
-  and validate exact decision/reservation metadata before completion or uncertainty writes.
-  Validate authenticated lifecycle-to-broker references and phase relationships before
-  restart claim publication, retaining held recovery and historical completed entries.
