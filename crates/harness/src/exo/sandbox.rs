@@ -13,6 +13,7 @@ const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const MAX_CARDS: usize = 256;
 const MAX_RELICS: usize = 256;
 const MAX_POTIONS: usize = 64;
+const MAX_CHOICE_CONTENTS: usize = 32;
 const MAX_ENEMIES: usize = 64;
 const MAX_LEGAL_ACTIONS: usize = 256;
 const MAX_SHOP_ITEMS: usize = 128;

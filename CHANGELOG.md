@@ -10,6 +10,18 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Let a reward say what it would offer before it is taken.** A reward is chosen on one screen and
+  its contents on the next, so the first choice was made blind: a card reward was an identifier and
+  nothing else until it had already been taken. In a recorded run the model committed to a card
+  reward at p=0.77, found three cards it could not tell apart, skipped, and was offered the same
+  reward again. A `Choice` now carries `contents`, the entries taking it would present next, and a
+  reward describes as `take the reward Card reward, offering Blood Wall (upgraded) [2 energy]
+  (rare): Gain 12 Block.` An entry inside `contents` has no `contents` of its own, so disclosure is
+  one level deep by construction and the projection needs no depth counter to stay bounded against a
+  host nesting an observation inside an observation. Additive and optional throughout: a reward that
+  discloses nothing describes exactly as before, and contents listed as bare identifiers are carried
+  as those identifiers rather than dropped. Refs #315.
+
 - **Describe the options and derive the arithmetic** for the System One lane, and stop asking about
   the same play more than once. A live Linux episode recorded six options for one combat turn whose
   criteria were their own identifiers: three of them were the same Defend and two the same Strike, so
@@ -534,10 +546,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   profiles. Synthetic tool-loop and SQLite restart evidence do not claim native provider or
   exact-host execution; the old native Exo adapter remains terminal-decision-only.
   See [ADR 0039](docs/decisions/0039-game-information-consumer.md). Refs #127.
-
-- Add the opt-in immutable benchmark manifest library: bounded strict v1 parsing, separate
-  gameplay/experiment/occurrence identities, exact mismatch reasons and keyed public references.
-  Existing seed receipts can be associated with an immutable planned trial as `seed_receipt_bound`
-  only when the declared protocol version and schema digest also match; this is offline consistency,
-  not native reproducibility or hidden RNG verification. No runtime or legacy-record behavior
-  changes. See [ADR 0021](docs/decisions/0021-benchmark-manifest-foundation.md). Refs #121.

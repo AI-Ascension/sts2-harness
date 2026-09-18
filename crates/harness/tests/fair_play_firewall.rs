@@ -274,3 +274,41 @@ fn a_relic_or_potion_without_an_identity_or_name_is_refused() {
         );
     }
 }
+
+#[test]
+fn a_reward_may_disclose_what_it_would_offer_next() {
+    let mut value = observation();
+    value["state"] = json!({
+        "state": "reward",
+        "options": [{
+            "choice_id": "reward:5:CardReward", "name": "Card reward",
+            "contents": [{
+                "choice_id": "card:21:Setup-Strike", "name": "Setup Strike", "cost": 1,
+                "upgraded": false, "rarity": "common",
+                "description": "Deal 7 damage. Draw 1 card."
+            }],
+        }],
+    });
+    assert!(SanitizedObservation::new(value).is_ok());
+}
+
+#[test]
+fn disclosure_is_one_level_deep() {
+    // An entry inside `contents` has no `contents` of its own, so a host cannot nest an observation
+    // inside an observation and the projection needs no depth counter to stay bounded.
+    let mut value = observation();
+    value["state"] = json!({
+        "state": "reward",
+        "options": [{
+            "choice_id": "reward:5:CardReward",
+            "contents": [{
+                "choice_id": "card:21:Setup-Strike",
+                "contents": [{"choice_id": "card:99:Deeper"}]
+            }],
+        }],
+    });
+    assert_eq!(
+        SanitizedObservation::new(value).err(),
+        Some(SandboxError::UnknownField)
+    );
+}

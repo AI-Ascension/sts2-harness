@@ -10,6 +10,7 @@ enum ValueKind {
     State,
     ShopItem,
     Choice,
+    ChoiceContent,
     Relic,
     Potion,
     LegalAction,
@@ -36,7 +37,11 @@ fn validate_value(value: &Value, kind: ValueKind, root: bool) -> Result<(), Sand
             ValueKind::Text if valid_text(text) => Ok(()),
             // A choice is an identifier or a described object. Every host today sends the
             // identifier, so the string form stays admitted and unchanged.
-            ValueKind::Identity | ValueKind::Choice if valid_identity(text) => Ok(()),
+            ValueKind::Identity | ValueKind::Choice | ValueKind::ChoiceContent
+                if valid_identity(text) =>
+            {
+                Ok(())
+            }
             _ => Err(SandboxError::InvalidText),
         },
         Value::Number(number) => {
@@ -115,6 +120,7 @@ fn collection_bound(kind: ValueKind, key: &str) -> Option<usize> {
         (ValueKind::State, "items") => Some(MAX_SHOP_ITEMS),
         (ValueKind::Player, "relics") => Some(MAX_RELICS),
         (ValueKind::Player, "potions") => Some(MAX_POTIONS),
+        (ValueKind::Choice, "contents") => Some(MAX_CHOICE_CONTENTS),
         (ValueKind::State, "characters" | "options" | "choices") => Some(MAX_TEXT_ITEMS),
         _ => None,
     }
@@ -131,6 +137,7 @@ fn validate_number_bound(
         (ValueKind::Player, "energy") => 255,
         (ValueKind::Player, "potion_slots" | "max_potion_slots") => 255,
         (ValueKind::Potion, "slot") => 255,
+        (ValueKind::ChoiceContent, "cost") => 255,
         (ValueKind::Player, "gold") => 4_294_967_295,
         (ValueKind::Card, "cost") | (ValueKind::Choice, "cost") => 255,
         (ValueKind::Enemy, "hp" | "max_hp") => 65_535,

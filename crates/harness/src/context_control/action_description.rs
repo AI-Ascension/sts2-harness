@@ -171,6 +171,37 @@ fn offered_phrase(id: &str, observation: &Value) -> Option<String> {
         .filter_map(|key| state.get(key).and_then(Value::as_array))
         .flatten()
         .find(|entry| entry.get("choice_id").and_then(Value::as_str) == Some(id))?;
+    let mut phrase = describe_entry(entry);
+    if let Some(contents) = disclosed_contents(entry) {
+        phrase.push_str(&format!(", offering {contents}"));
+    }
+    Some(phrase)
+}
+
+/// Lists what an option would present next, when the host discloses it.
+///
+/// Taking a card reward opens a second screen holding the cards. Described here, the choice of
+/// whether to open it at all is made knowing what is inside, rather than after the fact. An entry
+/// the host lists as a bare identifier contributes that identifier, because that is all it said.
+fn disclosed_contents(entry: &Value) -> Option<String> {
+    let contents = entry.get("contents")?.as_array()?;
+    let described: Vec<String> = contents
+        .iter()
+        .filter_map(|item| match item {
+            Value::String(id) => Some(id.clone()),
+            Value::Object(_) => Some(describe_entry(item)),
+            _ => None,
+        })
+        .collect();
+    (!described.is_empty()).then(|| described.join("; "))
+}
+
+/// Names one described entry: the shared rendering of a card, a reward, or a disclosed content.
+fn describe_entry(entry: &Value) -> String {
+    let id = entry
+        .get("choice_id")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let name = entry.get("name").and_then(Value::as_str).unwrap_or(id);
     let mut phrase = String::from(name);
     if entry.get("upgraded").and_then(Value::as_bool) == Some(true) {
@@ -197,7 +228,7 @@ fn offered_phrase(id: &str, observation: &Value) -> Option<String> {
     {
         phrase.push_str(&format!(": {text}"));
     }
-    Some(phrase)
+    phrase
 }
 
 /// Finds a card object by identity in any collection the observation lists it in.
@@ -248,3 +279,7 @@ fn item_phrase(action: &Value, observation: &Value) -> Option<String> {
 #[cfg(test)]
 #[path = "action_description_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "action_description_offer_tests.rs"]
+mod offer_tests;

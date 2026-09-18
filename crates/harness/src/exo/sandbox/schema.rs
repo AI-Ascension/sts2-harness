@@ -4,6 +4,27 @@ use serde_json::{Map, Value};
 
 use super::{SandboxError, ValueKind};
 
+/// Fields of one entry in an offered set. `Choice` adds `contents`; an entry inside `contents` does
+/// not, which is what keeps disclosure one level deep.
+const CHOICE_CONTENT_FIELDS: &[&str] = &[
+    "choice_id",
+    "name",
+    "cost",
+    "upgraded",
+    "description",
+    "rarity",
+];
+const CHOICE_FIELDS: &[&str] = &[
+    "choice_id",
+    "name",
+    "cost",
+    "upgraded",
+    "description",
+    "rarity",
+    "contents",
+];
+const CHOICE_OPTIONAL: &[&str] = &["name", "cost", "upgraded", "description", "rarity"];
+
 pub(super) fn allows_null(kind: ValueKind, key: &str) -> bool {
     matches!(
         (kind, key),
@@ -57,14 +78,11 @@ pub(super) fn is_allowed(kind: ValueKind, key: &str) -> bool {
             "description",
         ],
         // An offered card or reward, when the host describes one rather than naming it.
-        ValueKind::Choice => &[
-            "choice_id",
-            "name",
-            "cost",
-            "upgraded",
-            "description",
-            "rarity",
-        ],
+        // `contents` is what taking this option would present next. A reward is chosen on one
+        // screen and its contents on the following one, so without it the first choice is blind: a
+        // card reward is only an identifier until it has already been taken.
+        ValueKind::Choice => CHOICE_FIELDS,
+        ValueKind::ChoiceContent => CHOICE_CONTENT_FIELDS,
         ValueKind::Enemy => &["enemy_id", "name", "hp", "max_hp", "intent"],
         ValueKind::Intent => &["kind", "damage", "hits"],
         ValueKind::State => &[
@@ -141,7 +159,15 @@ pub(super) fn child_kind(parent: ValueKind, key: &str) -> ValueKind {
         (ValueKind::State, "characters") => ValueKind::Identity,
         // An offered set: identifiers today, described objects when a host carries the detail.
         (ValueKind::State, "options") | (ValueKind::State, "choices") => ValueKind::Choice,
-        (ValueKind::Choice, "choice_id") => ValueKind::Identity,
+        (ValueKind::Choice, "contents") => ValueKind::ChoiceContent,
+        (ValueKind::Choice, "choice_id") | (ValueKind::ChoiceContent, "choice_id") => {
+            ValueKind::Identity
+        }
+        (ValueKind::ChoiceContent, "name")
+        | (ValueKind::ChoiceContent, "description")
+        | (ValueKind::ChoiceContent, "rarity") => ValueKind::Text,
+        (ValueKind::ChoiceContent, "cost") => ValueKind::Number,
+        (ValueKind::ChoiceContent, "upgraded") => ValueKind::Boolean,
         (ValueKind::Choice, "name")
         | (ValueKind::Choice, "description")
         | (ValueKind::Choice, "rarity") => ValueKind::Text,
@@ -208,11 +234,8 @@ pub(super) fn validate_shape(
             &["potion_id", "name"],
             &["slot", "usable", "target_mode", "description"],
         ),
-        ValueKind::Choice => require_fields(
-            object,
-            &["choice_id"],
-            &["name", "cost", "upgraded", "description", "rarity"],
-        ),
+        ValueKind::Choice => require_fields(object, &["choice_id"], &CHOICE_FIELDS[1..]),
+        ValueKind::ChoiceContent => require_fields(object, &["choice_id"], CHOICE_OPTIONAL),
         ValueKind::LegalAction => require_exact(object, &["action_id", "action"]),
         ValueKind::Action => match object.get("kind").and_then(Value::as_str) {
             Some("start_run") => require_exact(object, &["kind", "character_id"]),
