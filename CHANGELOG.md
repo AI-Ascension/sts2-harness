@@ -28,12 +28,12 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   second slot. A crash *before* the durable write consumes nothing; a crash *after* it leaves the
   slot consumed and the invocation held as a possible dispatch until reconciliation, because a
   dispatch that may have happened is never silently handed back. Counters and identities persist
-  through `ContextControlStore` as `ascension.context-control.lifetime-state.v1` , so a restart
+  through `ContextControlStore` as `ascension.context-control.lifetime-state.v1`, so a restart
   replays the same window. Manifests are append-only and their digest binds the immutable admission
   facts, so reconciliation and expiry never rewrite or delete history. Sibling agents, branches,
   episodes and runs cannot inherit a scope. Compatibility: additive-compatible; one new table
   (`context_control_lifetime`), no change to an existing table, column, digest or route; see
-  [ADR 0051](docs/decisions/0051-logical-invocation-lifetime-consumption.md) . Refs #111.
+  [ADR 0051](docs/decisions/0051-logical-invocation-lifetime-consumption.md). Refs #111.
 
 - Consume the shared `game-information-live-observation-bootstrap-v1` conformance case and its
   seven invalid fixtures (copied byte-identically from sts2-protocol, `SHA256SUMS` extended) and
@@ -291,7 +291,7 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   Existing seed receipts can be associated with an immutable planned trial as `seed_receipt_bound`
   only when the declared protocol version and schema digest also match; this is offline consistency,
   not native reproducibility or hidden RNG verification. No runtime or legacy-record behavior
-  changes. See [ADR 0021](docs/decisions/0021-benchmark-manifest-foundation.md) . Refs #121.
+  changes. See [ADR 0021](docs/decisions/0021-benchmark-manifest-foundation.md). Refs #121.
 
 - Add opt-in bounded SQLite history for context-owner bindings, committed atomically with
   command results and read by original invocation with current scoped, same-subject permission.
