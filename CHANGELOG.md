@@ -10,6 +10,23 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Admit a **`typesafe-jev` local bridge provider kind**, fail-closed. The kind joins `ollama` and
+  `openai-astra` on the legacy local-bridge lane and keeps every guard that lane applies: the
+  SHA-256 digest computed from the bytes at `STS2_EXO_BRIDGE_BINARY`, the explicit combat-demo or
+  live-episode requirement, and the per-kind argument allowlist. It is not promoted to live-episode
+  mode, which stays Astra-only, and not to the reviewed envelope, whose route axes bind one provider
+  and host by design. Its admitted argument form is exactly
+  `["--model", MODEL, "--transport", PATH]` with an absolute transport path, re-parsed with the same
+  parser the bridge executable uses so admission and the executable cannot disagree about what a
+  valid invocation is. Argument admission moves out of `runtime_v3_settings.rs`, which was at its
+  300-line preferred budget, into `runtime_v3_settings_local_bridge.rs` with the existing Ollama
+  shape and its tests. The provider credential needs no code: the bridge process is spawned with a
+  cleared environment and only the names in the operator's `STS2_EXO_INHERITED_ENV_JSON` pass
+  through, so `TYPESAFE_API_KEY` reaches it by name and never as an argument or a record.
+  Compatibility: additive; one new accepted value, no change to an existing shape, record, or digest.
+  With the kind admitted and no bridge executable present, the runtime still fails closed at digest
+  verification. Refs #285.
+
 - Make the one-shot Exo bridge **advertise the variants it implements**. `--describe` publishes
   `profile_support` (`map`/`management`/`expert` `unsupported`), `decision_support` (`recovery`
   `unsupported`) and the two fail-closed codes, so a caller can pre-check support rather than infer it

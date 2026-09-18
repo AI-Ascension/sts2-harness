@@ -1,0 +1,145 @@
+// SPDX-License-Identifier: MIT
+
+//! Command-line configuration for the System One bridge, shared with runtime admission.
+//!
+//! The runtime re-parses the admitted argument vector with this parser before it launches the
+//! bridge, exactly as it does for the Ollama bridge, so the admission gate and the executable agree
+//! on what a valid invocation is rather than holding two opinions about it.
+//!
+//! Nothing here is inferred from game or model output, and the credential is not an argument: it
+//! reaches the bridge through the operator-declared inherited environment, never a command line.
+
+/// Model identifier used when the operator does not select one.
+pub(super) const DEFAULT_MODEL: &str = "jev-latest";
+
+/// Largest transport path this parser accepts.
+const MAX_TRANSPORT_BYTES: usize = 4096;
+
+/// Command-line configuration, never inferred from game or model output.
+pub(super) struct Options {
+    /// Provider model identifier, sent unchanged.
+    pub model: String,
+    /// Absolute path of the operator-owned executable that performs the HTTPS exchange.
+    pub transport: Option<String>,
+    /// Print the requested configuration and exit without opening a connection.
+    pub describe: bool,
+}
+
+impl Options {
+    /// Parses the argument vector, refusing unknown, duplicate, or malformed options.
+    pub fn parse(arguments: impl IntoIterator<Item = String>) -> Result<Self, &'static str> {
+        let mut arguments = arguments.into_iter();
+        let mut model = None;
+        let mut transport = None;
+        let mut describe = false;
+        while let Some(argument) = arguments.next() {
+            match argument.as_str() {
+                "--describe" if !describe => describe = true,
+                "--model" if model.is_none() => {
+                    let value = arguments.next().ok_or("missing model identifier")?;
+                    if !valid_identifier(&value, 240) {
+                        return Err("invalid model identifier");
+                    }
+                    model = Some(value);
+                }
+                "--transport" if transport.is_none() => {
+                    let value = arguments.next().ok_or("missing transport path")?;
+                    if !valid_identifier(&value, MAX_TRANSPORT_BYTES)
+                        || !std::path::Path::new(&value).is_absolute()
+                    {
+                        return Err("invalid transport path");
+                    }
+                    transport = Some(value);
+                }
+                _ => return Err("unknown or duplicate bridge option"),
+            }
+        }
+        Ok(Self {
+            model: model.unwrap_or_else(|| DEFAULT_MODEL.to_owned()),
+            transport,
+            describe,
+        })
+    }
+}
+
+/// Whether a value is a usable, unambiguous option value.
+///
+/// Rejects an empty value, one above its bound, one that would read as another option, and any
+/// whitespace or control character, so an argument vector cannot smuggle a second option.
+fn valid_identifier(value: &str, maximum: usize) -> bool {
+    !value.is_empty()
+        && value.len() <= maximum
+        && !value.starts_with('-')
+        && !value.chars().any(char::is_whitespace)
+        && !value.chars().any(char::is_control)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn selection_preserves_identifiers_and_the_default_model() -> Result<(), &'static str> {
+        let empty = Options::parse(Vec::new())?;
+        assert_eq!(empty.model, DEFAULT_MODEL);
+        assert_eq!(empty.transport, None);
+        assert!(!empty.describe);
+
+        let transport = if cfg!(windows) {
+            "C:/providers/systemone-transport.exe"
+        } else {
+            "/opt/providers/systemone-transport"
+        };
+        for arguments in [
+            vec!["--model", "jev-1.13.0", "--transport", transport],
+            vec!["--transport", transport, "--model", "jev-1.13.0"],
+        ] {
+            let options = Options::parse(arguments.into_iter().map(str::to_owned))?;
+            assert_eq!(options.model, "jev-1.13.0");
+            assert_eq!(options.transport.as_deref(), Some(transport));
+            assert!(!options.describe);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_ambiguous_or_relative_selections_are_rejected() {
+        let transport = if cfg!(windows) {
+            "C:/providers/systemone-transport.exe"
+        } else {
+            "/opt/providers/systemone-transport"
+        };
+        for arguments in [
+            vec!["--model"],
+            vec!["--model", ""],
+            vec!["--model", "a b"],
+            vec!["--model", "a\nb"],
+            vec!["--model", "--transport"],
+            vec!["--model", "a", "--model", "b"],
+            vec!["--transport"],
+            vec!["--transport", "relative/path"],
+            vec!["--transport", ""],
+            vec!["--transport", transport, "--transport", transport],
+            vec!["--describe", "--describe"],
+            vec!["--unknown"],
+        ] {
+            assert!(
+                Options::parse(arguments.clone().into_iter().map(str::to_owned)).is_err(),
+                "expected {arguments:?} to be refused"
+            );
+        }
+        assert!(Options::parse(vec!["--model".to_owned(), "x".repeat(241)]).is_err());
+    }
+
+    #[test]
+    fn describe_is_accepted_beside_a_selection() -> Result<(), &'static str> {
+        let options = Options::parse(
+            vec!["--describe", "--model", "jev-preview"]
+                .into_iter()
+                .map(str::to_owned),
+        )?;
+        assert!(options.describe);
+        assert_eq!(options.model, "jev-preview");
+        Ok(())
+    }
+}
