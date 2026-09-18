@@ -174,6 +174,18 @@ pub fn serve_live_with_provider_policy_and_context_owner(
     serve_live_service(listen, authenticator, service)
 }
 
+/// The owner ports a served management composition attaches.
+///
+/// Bundling them keeps the served-live constructors within the argument bound
+/// as the required owner set grows, and keeps the three ports of one owner
+/// reviewable as a single value rather than as positional arguments whose
+/// order a caller must remember.
+pub struct ServedOwnerPorts {
+    pub provider_policy: std::sync::Arc<dyn LiveProviderPolicyPort>,
+    pub command_port: std::sync::Arc<dyn ProviderSessionPolicyCommandPort>,
+    pub context_owner: std::sync::Arc<dyn ContextOwnerPort>,
+}
+
 /// Starts served-live management with shared durable provider-policy owner
 /// ports, explicit saved-policy commands, and an attached context owner.
 pub fn serve_live_with_provider_policy_commands_and_context_owner(
@@ -181,9 +193,8 @@ pub fn serve_live_with_provider_policy_commands_and_context_owner(
     store_path: &str,
     authenticator: std::sync::Arc<dyn Authenticator>,
     factory: std::sync::Arc<dyn LiveWorkflowSessionFactory>,
-    provider_policy: std::sync::Arc<dyn LiveProviderPolicyPort>,
-    command_port: std::sync::Arc<dyn ProviderSessionPolicyCommandPort>,
-    context_owner: std::sync::Arc<dyn ContextOwnerPort>,
+    owner: ServedOwnerPorts,
+    provider_session_capabilities: crate::provider_session::NativeCapabilities,
 ) -> Result<(), ManagementError> {
     let store = SqliteWorkflowStore::open(store_path)
         .map_err(|error| ManagementError::store("workflow_store_open", error.to_string()))?;
@@ -193,11 +204,12 @@ pub fn serve_live_with_provider_policy_commands_and_context_owner(
             store,
             factory,
             LiveWorkflowOptions::default(),
-            provider_policy,
-            command_port,
+            owner.provider_policy,
+            owner.command_port,
         )?
-        .with_context_owner_port(context_owner)
-        .with_context_binding_history()?,
+        .with_context_owner_port(owner.context_owner)
+        .with_context_binding_history()?
+        .with_provider_session_capabilities(provider_session_capabilities)?,
     );
     serve_live_service(listen, authenticator, service)
 }

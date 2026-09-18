@@ -6,6 +6,7 @@
 //! records control decisions, while the game host remains the authority for observations, legal
 //! actions, and mutations.
 
+mod derived_exact;
 mod lifetime_durable;
 mod lifetime_error;
 mod lifetime_ledger;
@@ -24,6 +25,7 @@ mod model_view_path;
 mod model_view_projection;
 mod model_view_sentinels;
 mod model_view_walk;
+mod option_selection;
 mod render;
 mod state;
 mod store;
@@ -33,8 +35,10 @@ mod store_receipts;
 mod store_render_sources;
 mod store_schema;
 mod store_types;
+mod systemone_request;
 mod types;
 
+pub use derived_exact::{DERIVED_EXACT_SCHEMA, DerivedExactFacts, Survival};
 pub use lifetime_durable::{DURABLE_LIFETIME_SCHEMA, DurableLifetimeState};
 pub use lifetime_error::ContextLifetimeError;
 pub use lifetime_ledger::{ContextLifetimeLedger, LifetimeFailpoint};
@@ -77,6 +81,10 @@ pub use model_view_projection::{
 pub use model_view_sentinels::{
     catalog_paths, excluded_sentinel_paths, fair_play_verdict, reject_excluded_sentinels,
 };
+pub use option_selection::{
+    MAX_PRESENTED_OPTIONS, OPTION_SELECTION_SCHEMA, OptionSelection, PresentedOption,
+    SelectionMode, WithheldOption, WithheldReason,
+};
 pub use render::{
     ContextRenderError, ContextRenderLimits, ContextRenderer, ManagedRenderInput, PreparedContext,
     ollama_user_content,
@@ -90,6 +98,10 @@ pub use store_types::{
     CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION, DurableActiveContextSource,
     DurableContextOwnerControlReceipt, DurableContextSourceSnapshot, DurableControlStoreError,
     DurableStoreFailpoint, LegacyOpenError, StoreMode, StoreSnapshot,
+};
+pub use systemone_request::{
+    ACTION_QUESTION, MAX_OPTIONS, MAX_STATE_AND_QUESTION_BYTES, SYSTEM_ONE_PATH,
+    SystemOneRequestError, build_system_one_request, system_one_questions_digest,
 };
 pub use types::{
     ActiveContextSource, CONTEXT_DRAFT_SCHEMA, ContextBoundary, ContextDraft, ContextItem,
