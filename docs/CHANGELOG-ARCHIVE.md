@@ -277,3 +277,19 @@ wave. Active development continues in `CHANGELOG.md`.
   rejected only non-empty pages, accepting a known or fabricated total for coverage extremes and
   thereby violating the "never convert unknown into zero or empty" rule. Compatibility: validation
   tightening only; no schema, wire field, or contract version changed.
+- Complete the #139 Exo pin inventory: list every revision-bearing bridge, contract, documentation
+  and artifact source in the manifest and enforce the full set in the drift guard. Refresh the
+  manifest checksum. Compatibility: inventory-only; no schema or wire change.
+- Reconcile the Exo bridge contract inventory for #139. Add executable conformance vectors for
+  unavailable `map`/`expert` profiles, absent context continuity, incompatible capability
+  schema/contract versions, and malformed descriptor shapes, plus a manifest pin-location drift
+  guard and an explicit upstream dependency/prerequisite record. Compatibility: contract-vector and
+  documentation additions only; no schema or wire field changed. Real provider/native acceptance
+  remains gated by #149.
+- Add opt-in bounded SQLite history for context-owner bindings, committed atomically with
+  command results and read by original invocation with current scoped, same-subject permission.
+  Historical grants and epochs never authorize current control or claim a restored owner.
+  Public JSON schemas and current-cursor association stay unchanged; Rust `CommandApplication`
+  constructors must supply the new optional `context_binding` field. See
+  [ADR 0040](decisions/0040-recorded-context-binding-history.md). This library-only slice
+  does not implement HTTP history, owner receipt recovery or complete #100 acceptance.

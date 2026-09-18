@@ -27,6 +27,19 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   word of a description is either a host-supplied value or a fixed label for the host's own action
   kind, and an unlabelled kind still reads as its identifier. Refs #313.
 
+- **Let a host describe the set it offers**, and make an optional field actually optional.
+  `require_exact` counts keys, so admitting a field in the allow-list alone still refused the object
+  for carrying one key too many: `description` on a card was admitted and then rejected by the shape.
+  `require_fields` states required and optional fields separately, and a card may now carry the
+  host's own text. `state.choices` and `state.options` accept a described entry as well as the bare
+  identifier every host sends today, so a reward screen can say `choose Tremble [2 energy]
+  (uncommon): Apply 3 Vulnerable to ALL enemies.` instead of `select_card:123:card:22:Tremble`. The
+  identifier form is unchanged and still admitted. `skip_reward` and `proceed` are labelled rather
+  than left to fall back to their identifiers. This is capacity, not behaviour: the offered set is
+  unmodeled upstream, which `sts2-game-core` records as a deliberate exclusion of `RewardChoicePicks`
+  because "the offered set is unmodeled, so no identity or rarity is inferred", so nothing populates
+  the described form until a host does. Refs #315.
+
 - Fix the **option-selection fold key**, which folded distinct host-listed actions. The key was built
   from a fixed list of seven identity fields, so any action whose identity lived outside that list
   collapsed into a neighbour and was recorded as an intentional duplicate: two different cards aimed
@@ -528,22 +541,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   only when the declared protocol version and schema digest also match; this is offline consistency,
   not native reproducibility or hidden RNG verification. No runtime or legacy-record behavior
   changes. See [ADR 0021](docs/decisions/0021-benchmark-manifest-foundation.md). Refs #121.
-
-- Add opt-in bounded SQLite history for context-owner bindings, committed atomically with
-  command results and read by original invocation with current scoped, same-subject permission.
-  Historical grants and epochs never authorize current control or claim a restored owner.
-  Public JSON schemas and current-cursor association stay unchanged; Rust `CommandApplication`
-  constructors must supply the new optional `context_binding` field. See
-  [ADR 0040](docs/decisions/0040-recorded-context-binding-history.md). This library-only slice
-  does not implement HTTP history, owner receipt recovery or complete #100 acceptance.
-
-- Reconcile the Exo bridge contract inventory for #139. Add executable conformance vectors for
-  unavailable `map`/`expert` profiles, absent context continuity, incompatible capability
-  schema/contract versions, and malformed descriptor shapes, plus a manifest pin-location drift
-  guard and an explicit upstream dependency/prerequisite record. Compatibility: contract-vector and
-  documentation additions only; no schema or wire field changed. Real provider/native acceptance
-  remains gated by #149.
-
-- Complete the #139 Exo pin inventory: list every revision-bearing bridge, contract, documentation
-  and artifact source in the manifest and enforce the full set in the drift guard. Refresh the
-  manifest checksum. Compatibility: inventory-only; no schema or wire change.

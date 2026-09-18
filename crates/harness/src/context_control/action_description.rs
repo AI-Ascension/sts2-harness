@@ -53,12 +53,34 @@ fn compose(action: &Value, observation: &Value) -> Option<String> {
         "end_turn" => String::from("end the turn"),
         "start_run" => format!("start a run as {}", named(action, "character_id")?),
         "select_map_node" => format!("travel to map node {}", named(action, "node_id")?),
-        "choose_reward" => format!("take the reward {}", named(action, "reward_id")?),
-        "select_card" => format!(
-            "choose {}",
-            card_phrase(action.get("card_id").and_then(Value::as_str), observation)
-                .unwrap_or_else(|| named(action, "card_id").unwrap_or_default())
+        "choose_reward" => {
+            let reward_id = named(action, "reward_id")?;
+            format!(
+                "take the reward {}",
+                offered_phrase(&reward_id, observation).unwrap_or(reward_id)
+            )
+        }
+        "select_card" => {
+            let card_id = named(action, "card_id").unwrap_or_default();
+            let phrase = card_phrase(Some(&card_id), observation)
+                .or_else(|| offered_phrase(&card_id, observation))
+                .unwrap_or(card_id);
+            format!("choose {phrase}")
+        }
+        "use_potion" => {
+            let potion =
+                potion_phrase(action.get("potion_id").and_then(Value::as_str), observation)?;
+            match target_phrase(action.get("target_id").and_then(Value::as_str), observation) {
+                Some(target) => format!("use {potion} at {target}"),
+                None => format!("use {potion}"),
+            }
+        }
+        "discard_potion" => format!(
+            "discard {}",
+            potion_phrase(action.get("potion_id").and_then(Value::as_str), observation)?
         ),
+        "skip_reward" => String::from("skip the reward"),
+        "proceed" => String::from("proceed"),
         "shop_purchase" => format!("buy {}", item_phrase(action, observation)?),
         "shop_remove" => format!(
             "remove {} from the deck",
@@ -99,6 +121,76 @@ fn card_phrase(card_id: Option<&str>, observation: &Value) -> Option<String> {
         phrase.push_str(&format!(" [{cost} energy]"));
     }
     if let Some(text) = card
+        .get("description")
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+    {
+        phrase.push_str(&format!(": {text}"));
+    }
+    Some(phrase)
+}
+
+/// Names a potion the player is carrying, with the host's own text for what it does.
+///
+/// A potion is an action available this turn rather than a passive holding, so an unnamed one is a
+/// legal action the model cannot tell apart from any other. A potion the observation does not list
+/// yields nothing, and the identifier stands.
+fn potion_phrase(potion_id: Option<&str>, observation: &Value) -> Option<String> {
+    let potion_id = potion_id?;
+    let potion = observation
+        .get("player")?
+        .get("potions")?
+        .as_array()?
+        .iter()
+        .find(|potion| potion.get("potion_id").and_then(Value::as_str) == Some(potion_id))?;
+    let name = potion
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or(potion_id);
+    let mut phrase = String::from(name);
+    if let Some(text) = potion
+        .get("description")
+        .and_then(Value::as_str)
+        .filter(|text| !text.is_empty())
+    {
+        phrase.push_str(&format!(": {text}"));
+    }
+    Some(phrase)
+}
+
+/// Describes an offered card or reward from the set the host listed for this screen.
+///
+/// An offered entry is not held in any pile, so it cannot be found by [`find_card`]. A host that
+/// lists the set as bare identifiers gives nothing to add, and this returns nothing; a host that
+/// describes it is quoted. The offered set is unmodeled upstream today, so the second case is
+/// the capacity rather than the current behaviour.
+fn offered_phrase(id: &str, observation: &Value) -> Option<String> {
+    let state = observation.get("state")?;
+    let entry = ["choices", "options"]
+        .into_iter()
+        .filter_map(|key| state.get(key).and_then(Value::as_array))
+        .flatten()
+        .find(|entry| entry.get("choice_id").and_then(Value::as_str) == Some(id))?;
+    let name = entry.get("name").and_then(Value::as_str).unwrap_or(id);
+    let mut phrase = String::from(name);
+    if entry.get("upgraded").and_then(Value::as_bool) == Some(true) {
+        phrase.push_str(" (upgraded)");
+    }
+    if let Some(cost) = entry
+        .get("cost")
+        .and_then(Value::as_i64)
+        .filter(|c| *c >= 0)
+    {
+        phrase.push_str(&format!(" [{cost} energy]"));
+    }
+    if let Some(rarity) = entry
+        .get("rarity")
+        .and_then(Value::as_str)
+        .filter(|rarity| !rarity.is_empty())
+    {
+        phrase.push_str(&format!(" ({rarity})"));
+    }
+    if let Some(text) = entry
         .get("description")
         .and_then(Value::as_str)
         .filter(|text| !text.is_empty())
