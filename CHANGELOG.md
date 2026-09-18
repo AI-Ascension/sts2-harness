@@ -10,6 +10,17 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Add the **campaign episode mode** for a local provider bridge. A local bridge previously had two
+  modes to name: the combat demo and the live episode, and the live episode is restricted to the
+  OpenAI Astra provider. That left `typesafe-jev` with only the combat demo, which acts solely while
+  the host is already in combat and never leaves a menu, so the provider could observe a campaign but
+  never begin one: against a freshly launched host it polled an unchanging main-menu observation
+  until its bound elapsed and was asked for nothing. `STS2_CAMPAIGN_EPISODE=true` names the third
+  mode, which runs the ordinary episode runner and so reaches the host's whole action catalogue,
+  `start_run` included. It is exclusive with the combat demo rather than layered, because the two
+  take different runners and a vector naming both states no intent. The bridge digest check and the
+  argument allow-list are unchanged and still apply to every mode. Refs #311.
+
 - Fix the **option-selection fold key**, which folded distinct host-listed actions. The key was built
   from a fixed list of seven identity fields, so any action whose identity lived outside that list
   collapsed into a neighbour and was recorded as an intentional duplicate: two different cards aimed
@@ -536,8 +547,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   rejected only non-empty pages, accepting a known or fabricated total for coverage extremes and
   thereby violating the "never convert unknown into zero or empty" rule. Compatibility: validation
   tightening only; no schema, wire field, or contract version changed.
-
-- Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
-  and validate exact decision/reservation metadata before completion or uncertainty writes.
-  Validate authenticated lifecycle-to-broker references and phase relationships before
-  restart claim publication, retaining held recovery and historical completed entries.
