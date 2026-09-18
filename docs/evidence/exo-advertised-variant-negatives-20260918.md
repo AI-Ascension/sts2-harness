@@ -34,9 +34,9 @@ or native instance is used.
 | `exo_revision` | `b06869ab789dee3f80ca474b5fa89dbe47ccb859` |
 | `extension_sha256` | `2e5485127f434bdd95a534785a414fa9f357432c924d89fd56d50c96f434b9cd` |
 | `executor_sha256` | `3f6d7d9530da3c7a884d48acfc20dfe1b24d73e9f2499a9ed5b575e4e9d97729` |
-| `bridge_sha256` | `232f4568a719f477674ef4e7d8a3b5babace7ceb278f196bfcf6a2918b137b92` |
+| `bridge_sha256` | `826584f790b879a530146f64232cedbfa9f5cd64d0e11b249a6f74403d5c1518` |
 | `oracle_sha256` | `ff84c9812d6ef56bca63fef3774c44ed23a71960b121a41f5852ad9f1392a820` |
-| `harness_revision` | `55331ec1660b7dacebd8e5c9ae1eabcb681535e7` (the revision the harness was at when the recorded run executed, as with the 2026-09-15 record) |
+| `harness_revision` | `a1460816f4caf8d3e5dc7d16e8b83bfa62a95013` (the revision the harness was at when the recorded run executed, as with the 2026-09-15 record) |
 | Node | `v22.15.0` |
 | Rust toolchain | `1.97.1`; non-Linux platforms remain unverified |
 
@@ -120,7 +120,7 @@ Full workspace validation on the final candidate:
 cargo run --locked --package repo-policy -- --strict   → 0 warnings, 0 errors
 cargo fmt --all --check                                → clean
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings → clean
-cargo test --workspace --all-targets --all-features --locked → 224 targets, 1576 passed, 0 failed
+cargo test --workspace --all-targets --all-features --locked → 226 targets, 1581 passed, 0 failed
 ```
 
 The workspace run requires `STS2_EXO_TEST_SOURCE` (a clean checkout of the reviewed revision) and
