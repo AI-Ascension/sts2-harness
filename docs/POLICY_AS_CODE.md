@@ -48,6 +48,13 @@ Rust `src/bin` production source is traversed despite the generic generated-outp
 The traversal regression proves file collection and size/language findings while preserving ignored
 generated managed `bin` output. No runtime-source size or license exemption is granted.
 
+`CHANGELOG.md` is not exempt from the Markdown budget. When the active file would exceed
+`markdown_preferred`, move the oldest completed entries verbatim into
+`docs/CHANGELOG-ARCHIVE.md` instead of shortening them or adding an exemption. The archive keeps the
+original text and only rebases relative links for its new location; `CHANGELOG.md` keeps a link to it,
+so a removed or renamed archive fails `DOC002`. Trimming entry text to fit the budget loses the
+operational detail the changelog exists to preserve.
+
 ## CI and change control
 
 `policy.yml` runs the same checker on pull requests and pushes to `main` with read-only contents

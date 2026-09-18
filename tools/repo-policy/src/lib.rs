@@ -86,6 +86,9 @@ fn outcome(checked_files: usize, strict: bool, findings: &[Finding]) -> Outcome 
 
 #[cfg(test)]
 mod tests {
+    use std::error::Error;
+    use std::path::PathBuf;
+
     use super::{Finding, outcome};
 
     #[test]
@@ -95,5 +98,22 @@ mod tests {
         assert_eq!(result.warnings, 1);
         assert_eq!(result.errors, 1);
         assert!(!result.passed(true));
+    }
+
+    /// The repository itself must satisfy strict policy. This is the check that a preferred-size
+    /// regression actually breaks: `CHANGELOG.md` grew past `markdown_preferred` on `main`, and the
+    /// policy workflow promotes that warning to an error, so every open pull request failed its
+    /// policy gate. A unit fixture cannot catch that, because the budget is a property of the real
+    /// tree. Keep this test so the repository cannot drift back over budget unnoticed.
+    #[test]
+    fn repository_satisfies_strict_policy() -> Result<(), Box<dyn Error>> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let outcome = super::check(&root, true)?;
+        assert!(
+            outcome.passed(true),
+            "repository fails strict policy: {}",
+            outcome.diagnostics.join("; ")
+        );
+        Ok(())
     }
 }
