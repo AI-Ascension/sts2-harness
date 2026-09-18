@@ -24,6 +24,7 @@ mod model_view_path;
 mod model_view_projection;
 mod model_view_sentinels;
 mod model_view_walk;
+mod option_selection;
 mod render;
 mod state;
 mod store;
@@ -76,6 +77,10 @@ pub use model_view_projection::{
 };
 pub use model_view_sentinels::{
     catalog_paths, excluded_sentinel_paths, fair_play_verdict, reject_excluded_sentinels,
+};
+pub use option_selection::{
+    MAX_PRESENTED_OPTIONS, OPTION_SELECTION_SCHEMA, OptionSelection, PresentedOption,
+    SelectionMode, WithheldOption, WithheldReason,
 };
 pub use render::{
     ContextRenderError, ContextRenderLimits, ContextRenderer, ManagedRenderInput, PreparedContext,
