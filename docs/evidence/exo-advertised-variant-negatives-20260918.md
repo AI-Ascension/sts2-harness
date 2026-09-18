@@ -114,18 +114,20 @@ survive a change to the extension or to this oracle. The record is also listed i
 `protocol-artifact/exo-bridge-v1/manifest.json` `pin_locations`, because it names the reviewed
 candidate revision.
 
-Full workspace validation on the final candidate:
+Full workspace validation on the pinned candidate revision (`harness_revision` below; `main` has
+since taken later commits, which carry its own totals):
 
 ```text
 cargo run --locked --package repo-policy -- --strict   → 0 warnings, 0 errors
 cargo fmt --all --check                                → clean
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings → clean
-cargo test --workspace --all-targets --all-features --locked → 226 targets, 1581 passed, 0 failed
+cargo test --workspace --all-targets --all-features --locked → 225 targets, 1580 passed, 0 failed
 ```
 
 The workspace run requires `STS2_EXO_TEST_SOURCE` (a clean checkout of the reviewed revision) and
-`STS2_EXO_TEST_NODE`; without them, five pre-existing `runtime_support` tests fail for missing
-configuration, identically before and after this change.
+`STS2_EXO_TEST_NODE`; without them, six pre-existing tests fail for missing configuration — five
+`runtime_support` bootstrap admission tests and `exo_lifecycle_runtime_entry` — identically before
+and after this change.
 
 ## Remaining gap
 
