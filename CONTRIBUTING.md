@@ -48,6 +48,21 @@ the accepted contract.
 6. Run policy, formatting, lint, test, and applicable conformance checks.
 7. Describe evidence states and unverified runtime boundaries in the pull request.
 
+### Do not let a scope note close an issue
+
+GitHub closes an issue when a pull request body, title, or commit message contains a closing keyword
+(`close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved`) immediately
+followed by an issue reference such as `#94`. The parser is lexical and **negation-blind**: it matches
+inside "this does not close #94" and closes the issue anyway.
+
+Write scope notes so no closing keyword sits next to an issue reference, even negated:
+
+- Safe: "This does not complete #94.", "Remaining work on #94: AC1/AC4/AC5.", "Partial progress on #94."
+- Unsafe: "does not close #94", "doesn't resolve #94", "not fixed by #94".
+
+Use a `Refs #94` trailer rather than a closing keyword when the issue must stay open. If an issue is
+closed by accident, reopen it and record the cause rather than accepting the closure.
+
 Use `apply_patch` for file edits. Do not initialize Git or perform commit, push, merge, release,
 deployment, installation, provider, game-launch, or game/profile mutation actions without explicit
 authorization for that action.
