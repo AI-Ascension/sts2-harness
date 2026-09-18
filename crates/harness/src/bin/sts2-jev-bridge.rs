@@ -79,8 +79,20 @@ fn describe(options: &options::Options) -> Value {
         "endpoint": format!("https://{PROVIDER_HOST}{SYSTEM_ONE_PATH}"),
         "transport": options.transport,
         "question": ACTION_QUESTION,
-        "confidence_gate": decision::DEFAULT_CONFIDENCE_GATE,
+        "confidence_gate": gate(options),
     })
+}
+
+/// The confidence gate this invocation applies.
+///
+/// An operator-supplied percentage wins over the bridge's default, which is a starting value rather
+/// than a calibrated one.
+fn gate(options: &options::Options) -> f64 {
+    options
+        .gate_percent
+        .map_or(decision::DEFAULT_CONFIDENCE_GATE, |percent| {
+            f64::from(percent) / 100.0
+        })
 }
 
 /// Reads the request, performs one exchange, and prints one decision.
@@ -93,7 +105,7 @@ fn run(options: &options::Options) -> Result<(), Box<dyn std::error::Error>> {
     std::io::stdin()
         .take((LIMIT + 1) as u64)
         .read_to_end(&mut bytes)?;
-    let decision = decide(&bytes, &options.model, &mut |body| {
+    let decision = decide(&bytes, &options.model, gate(options), &mut |body| {
         exchange(transport, body, TIMEOUT)
     })?;
     println!("{decision}");
@@ -107,6 +119,7 @@ fn run(options: &options::Options) -> Result<(), Box<dyn std::error::Error>> {
 fn decide(
     bytes: &[u8],
     model: &str,
+    gate: f64,
     exchange: &mut Exchange<'_>,
 ) -> Result<Value, Box<dyn std::error::Error>> {
     if bytes.len() > LIMIT {
@@ -131,7 +144,7 @@ fn decide(
         &response,
         ACTION_QUESTION,
         &catalog,
-        decision::DEFAULT_CONFIDENCE_GATE,
+        gate,
     )?)
 }
 

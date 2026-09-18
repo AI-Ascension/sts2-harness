@@ -240,3 +240,31 @@ wave. Active development continues in `CHANGELOG.md`.
   selection. Restart requires explicit revalidation; stale grants/profiles/revisions fail closed.
   The separate encrypted bounded store preserves history and idempotent receipts. This is the
   memory-only component slice of #95, not session migration, browser/production wiring or #119.
+
+- Add producer-generated context-control catalog fixtures for descriptor minima, restricted
+  values, global ceilings, disabled metadata and digest consistency. A catalog sealing helper
+  reuses the existing v1 encoding. No wire fields, limits or selected-limit execution behavior
+  change; consumer adoption and rendering/journal enforcement remain separate. Refs #95.
+
+- Align the reviewed Console and Studio v3 effective-limit consumer pins, require exact
+  repository-owned CI references, and verify candidate producer-library bytes against both
+  unchanged consumer fixtures before admission tests. Validate actual static YAML checkout
+  steps with pinned `yaml-rust2` 0.13.0; shell text, ambiguous mappings and conditional/inert
+  steps cannot establish a consumer pin. Preserve the separate Studio workflow-owner
+  regression; effective-limit evidence remains synthetic only.
+
+- Add the owned `sts2-exo-bridge` single-turn process entrypoint and an isolated, exact-pinned
+  real Exo embedding package. Strict standard/fresh requests retain their complete catalog and
+  constraints; correlated output is independently parsed with no fallback. The tool-free extension
+  forwards at most one model request and records denied upstream SDK retry attempts. Add
+  `ExoAdmittedTransport` for full-preflight envelope handoff with explicit host identities.
+  Compatibility: additive opt-in source/process path; full runtime admission, map/expert/recovery,
+  durable lifecycle, actual provider/game execution and replay remain separately gated. Refs #141.
+
+- Add opt-in Exo owner persistence with a separate encrypted broker journal, lifetime owner lock,
+  authenticated send/result fences, conservative restart handling, and explicit v1 cutover.
+  Existing execution-store reservations and result bytes retain their ownership. See
+  [ADR 0020](decisions/0020-exo-owner-journal-and-single-use-send.md).
+  Focused source/recording-fixture and local process coverage passed 37 test functions at
+  `29d256c`; this is not native Exo or full-runtime acceptance. Cancellation, native
+  reconciliation, qualified accounting, containment and episode admission remain gated. Refs #142.

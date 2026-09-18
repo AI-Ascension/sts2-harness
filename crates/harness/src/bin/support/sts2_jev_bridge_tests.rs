@@ -51,12 +51,17 @@ fn decide_with(
     reply: Result<Vec<u8>, &'static str>,
 ) -> (Result<Value, String>, Vec<u8>) {
     let mut seen = Vec::new();
-    let outcome = decide(request, "jev-latest", &mut |body| {
-        seen = body.to_vec();
-        reply
-            .clone()
-            .map_err(|message| -> Box<dyn std::error::Error> { message.into() })
-    })
+    let outcome = decide(
+        request,
+        "jev-latest",
+        decision::DEFAULT_CONFIDENCE_GATE,
+        &mut |body| {
+            seen = body.to_vec();
+            reply
+                .clone()
+                .map_err(|message| -> Box<dyn std::error::Error> { message.into() })
+        },
+    )
     .map_err(|error| error.to_string());
     (outcome, seen)
 }
@@ -119,6 +124,42 @@ fn an_unconfident_answer_asks_to_re_observe() {
 }
 
 #[test]
+fn a_lowered_gate_turns_an_otherwise_unconfident_answer_into_an_action() {
+    let mut seen = Vec::new();
+    let decision = decide(&request(), "jev-latest", 0.35, &mut |body| {
+        seen = body.to_vec();
+        Ok(response("play:card-17", 0.42))
+    })
+    .ok()
+    .unwrap_or_default();
+    assert_eq!(decision["decision"], json!("action"));
+    assert_eq!(decision["confidence"], json!(42));
+
+    // The same answer at the bridge default is a re-observation, which is the behaviour the
+    // operator option exists to change.
+    let defaulted = decide(
+        &request(),
+        "jev-latest",
+        decision::DEFAULT_CONFIDENCE_GATE,
+        &mut |_| Ok(response("play:card-17", 0.42)),
+    )
+    .ok()
+    .unwrap_or_default();
+    assert_eq!(defaulted["decision"], json!("reobserve"));
+}
+
+#[test]
+fn describe_reports_the_requested_gate() {
+    let options = options::Options::parse(
+        vec!["--describe", "--gate", "35"]
+            .into_iter()
+            .map(str::to_owned),
+    )
+    .expect("options");
+    assert_eq!(describe(&options)["confidence_gate"], json!(0.35));
+}
+
+#[test]
 fn an_answer_outside_the_catalog_is_refused() {
     let (decision, _) = decide_with(&request(), Ok(response("play:card-99", 0.99)));
     assert!(decision.is_err());
@@ -142,10 +183,15 @@ fn a_missing_or_oversized_catalog_is_refused_before_any_exchange() {
     let no_catalog =
         serde_json::to_vec(&json!({"observation": {"state_id": "s"}})).unwrap_or_default();
     let mut called = false;
-    let outcome = decide(&no_catalog, "jev-latest", &mut |_| {
-        called = true;
-        Ok(Vec::new())
-    });
+    let outcome = decide(
+        &no_catalog,
+        "jev-latest",
+        decision::DEFAULT_CONFIDENCE_GATE,
+        &mut |_| {
+            called = true;
+            Ok(Vec::new())
+        },
+    );
     assert!(outcome.is_err());
     assert!(!called, "the transport must not run for an invalid catalog");
 
