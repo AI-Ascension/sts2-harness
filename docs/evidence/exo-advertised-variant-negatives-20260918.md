@@ -130,7 +130,7 @@ since taken later commits, which carry its own totals):
 cargo run --locked --package repo-policy -- --strict   → 0 warnings, 0 errors
 cargo fmt --all --check                                → clean
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings → clean
-cargo test --workspace --all-targets --all-features --locked → 225 targets, 1580 passed, 0 failed
+cargo test --workspace --all-targets --all-features --locked → 225 targets, 1581 passed, 0 failed
 ```
 
 The workspace run requires `STS2_EXO_TEST_SOURCE` (a clean checkout of the reviewed revision) and
