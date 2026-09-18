@@ -35,6 +35,7 @@ mod store_receipts;
 mod store_render_sources;
 mod store_schema;
 mod store_types;
+mod systemone_request;
 mod types;
 
 pub use derived_exact::{DERIVED_EXACT_SCHEMA, DerivedExactFacts, Survival};
@@ -97,6 +98,10 @@ pub use store_types::{
     CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION, DurableActiveContextSource,
     DurableContextOwnerControlReceipt, DurableContextSourceSnapshot, DurableControlStoreError,
     DurableStoreFailpoint, LegacyOpenError, StoreMode, StoreSnapshot,
+};
+pub use systemone_request::{
+    ACTION_QUESTION, MAX_OPTIONS, MAX_STATE_AND_QUESTION_BYTES, SYSTEM_ONE_PATH,
+    SystemOneRequestError, build_system_one_request, system_one_questions_digest,
 };
 pub use types::{
     ActiveContextSource, CONTEXT_DRAFT_SCHEMA, ContextBoundary, ContextDraft, ContextItem,
