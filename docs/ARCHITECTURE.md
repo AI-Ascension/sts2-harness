@@ -156,6 +156,15 @@ changed offers or intents, turn/stage changes, and unavailable next actions requ
 provider call. The game-facing operation remains serial and unchanged. See
 [ADR 0008](decisions/0008-bounded-model-action-plans.md) and its bounded live evidence.
 
+A second provider shape is recorded but not yet implemented. A System One provider evaluates typed
+questions against one state and returns structured answers with probabilities and a calibrated
+confidence instead of generating text, so the host-generated action catalog becomes the option set of
+one typed question rather than a schema constraint on a generator. It is admitted as a local bridge
+kind on the legacy lane, with the digest pin and combat gate the other local bridges carry, and not
+on the reviewed envelope, whose route axes bind one provider and host. The returned distribution
+gates the decision: below an explicit confidence threshold the bridge returns `reobserve` rather than
+an action. See [ADR 0053](decisions/0053-system-one-provider-lane.md).
+
 The projection root admits `state_id`, `generation`, `player`, `state`, `legal_actions`, and an
 optional `visible_seed`. The owner requires repeatable seeded invocation and replay, so
 `ExoConfig::forward_visible_seed` defaults to `true` on both the session and `ProviderPort` paths.
