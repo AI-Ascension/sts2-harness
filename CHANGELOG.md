@@ -24,6 +24,50 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   on cost could only ever overrule that authority, and affordability stays in the derived-exact facts
   beside the state. Compatibility: additive; one new module and its re-exports, no change to an
   existing record, route, or digest. Refs #290.
+- Compute **exactly derivable combat facts** from an admitted observation, so a provider is handed
+  comparisons rather than operands. `context_control::DerivedExactFacts` states gross incoming
+  damage (revealed intent damage times hits, only when every listed enemy carries an intent), a
+  `fatal`/`heavy`/`survivable` label against current hit points, the hand cards current energy
+  covers, the hand cards whose cost is not a fixed number, the single lowest-hit-point enemy, and
+  the two counts a model would otherwise tally itself. It reads the admitted observation only, and
+  a value it cannot derive exactly is omitted rather than estimated: an unrevealed intent removes
+  the damage total and says so instead of counting as zero, and a tie names no weakest enemy. Two
+  boundaries come from the declared model-view vocabulary rather than from the game — a card carries
+  no attack value, so no lethal claim is derivable, and nothing carries block, so incoming damage is
+  gross and named to say so. The projection is `derived_exact` under the fair-play taxonomy and is
+  not host authority. Compatibility: additive; one new module and its re-exports, no change to an
+  existing record, route, or digest. Refs #287.
+- Share one **bounded HTTP/1.1 response reader across provider bridges**. The strict reader that
+  refuses oversized headers, a duplicate `Content-Length`, both framings at once, a non-`chunked`
+  transfer coding, an oversized or short chunk, and any trailer after the terminal chunk moves from
+  the Ollama bridge's private `runtime_support` include to the shared `bin/support` tree, where a
+  second bridge reaches it the same way the Astra bridge reaches its accounting support. Refusals are
+  now a typed `ProviderResponseError` carrying a stable code per cause rather than an opaque string,
+  and the added negative tests pin the status, terminator, declared-length, absent-framing,
+  malformed-header, and non-JSON refusals that were previously only implied. The loopback-only
+  `ManagementClient` stays a separate boundary and is unchanged. Compatibility: no behaviour change;
+  `sts2-ollama-bridge` accepts and refuses exactly what it did before. Refs #282.
+- Record the **System One provider lane and its transport** in
+  [ADR 0053](docs/decisions/0053-system-one-provider-lane.md). A System One provider evaluates typed
+  questions against one state and returns structured answers with probabilities and a calibrated
+  confidence rather than text, so a host-generated action catalog becomes the option set of one typed
+  question and the returned distribution can gate the decision. The ADR admits it as a local bridge
+  kind on the legacy lane — digest pin, argument allowlist, and explicit combat gate intact, no
+  live-episode promotion, no reviewed-envelope admission, whose route axes bind one provider and host
+  by design — and decides that the bridge owns the request and answer contract while a pinned,
+  operator-owned executable owns the HTTPS exchange, following the precedent `sts2-astra-bridge` set.
+  A pure-Rust TLS client inside the bridge is recorded as the migration path with the reasons it is
+  not the first step, and the rejected alternatives are stated rather than implied. Published limits,
+  price, and documented model weaknesses are carried with `source-derived` labels and their sources;
+  the claim that this lane plays the game is `unverified` and no run exists. Compatibility:
+  documentation only; no code, dependency, or contract changes. Refs #286.
+- Remove an **orphaned `context_memory` source fragment** that made the repository impossible to
+  check out on Windows. `crates/harness/src/context_memory/aux.rs` was 188 lines beginning inside an
+  `impl` block and ending on a dangling attribute; nothing declared it, so no build, format, lint, or
+  test ever read it, and its live counterparts are `approval.rs` and `authorizer.rs`. Because `aux`
+  is a reserved Win32 device name with any extension, `git clone` on Windows stopped with
+  `error: invalid path` and left an incomplete tree that could not be built. Compatibility: no
+  behaviour change; the file was outside the module tree. Refs #281.
 
 - Make the one-shot Exo bridge **advertise the variants it implements**. `--describe` publishes
   `profile_support` (`map`/`management`/`expert` `unsupported`), `decision_support` (`recovery`
@@ -70,6 +114,20 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   bootstrap `error_response` on a 5xx answer instead of collapsing it to a retryable
   `gateway_unavailable`. Compatibility: internal; no schema, route or durable record changes.
   Refs #127, #276.
+- Serve the **provider-session effective-limits record** for the Console capability sidecar.
+  `GET /v1/workflow-runs/{run_id}/provider-session-effective-limits` (`workflow:read`) returns the
+  producer's `ascension.harness.effective-limits.v1` record built by
+  `NativeCapabilities::effective_limit_record` from the descriptor the served process admits
+  provider sessions against: metadata only, validated before it is returned, and fenced to the
+  run's current context-owner association (`provider_session_capabilities_mismatch` when the
+  boundary names another adapter/model revision; `provider_session_capabilities_unavailable` when
+  no descriptor is served, never a fixture). The served workflow composition holds no memory
+  corpus, so `GET /v1/workflow-runs/{run_id}/context-memory-effective-limits` refuses with the
+  typed `context_memory_record_unavailable`. `docs/COMPATIBILITY.md` is split: the context-owner
+  rows move to `docs/COMPATIBILITY_CONTEXT_OWNER.md`, where the control-command route regains its
+  own heading. Compatibility: additive-compatible; see
+  [ADR 0052](docs/decisions/0052-provider-session-effective-limits-route.md).
+  Refs AI-Ascension/ascension-context-console#18.
 
 - Consume the shared `game-information-live-observation-bootstrap-v1` conformance case and its
   seven invalid fixtures (copied byte-identically from sts2-protocol, `SHA256SUMS` extended) and
@@ -99,6 +157,28 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   declared input did not settle, and records an unwinding branch as `BranchLost` rather than
   stalling. `ParallelCap::SERIAL` keeps cap=1 compatible and `execute_plan` is unchanged; this is
   additive, and budget reservation, cancel/restart and browser branch state remain open. See [ADR 0049](docs/decisions/0049-bounded-parallel-analysis-join.md). Refs #98.
+- Deny **forbidden Exo tools by name at dispatch** in the owned restricted extension and re-record
+  the real pinned-Exo process oracle. The model tool catalog is empty; the extension now also seals
+  the actual `HarnessToolRegistry` handed to each model round, so a pre-populated registry, any
+  later `register`, and any `executePending` — `shell`, `install_agent_tool`,
+  `uninstall_agent_tool`, `manage_tool`, `inspect_tools`, `install_skill`, `remember`,
+  lookup-profile tools, and any case/namespace variant — throws the typed `sts2_forbidden_tool`
+  error before a handler can exist and records the denial counts in a new `sts2.exo-tool-guard-v1`
+  event. The executor requires that event and maps a non-zero count to receipt
+  `error_code: exo_forbidden_tool` with no decision; the bridge fails closed as
+  `exo_bridge_executor_failed` after exactly one model egress. New process-oracle cases
+  `forbidden_tool_by_name_*` (one per name/alias, driven by a synthetic model that calls the tool)
+  and `request_tools_are_empty` exercise both the bridge and the executor boundary against the real
+  pinned Exo with a synthetic loopback model (no provider, no game); the shipped extension digest,
+  the recorded oracle bytes, and `protocol-artifact/exo-bridge-v1/{manifest.json,SHA256SUMS}` are
+  re-recorded together so `crates/harness/tests/support/exo_contract_process_evidence.rs` stays
+  fail-closed. Also documents `STS2_EXO_PRIVATE_STATE_ROOT`, the truthful capability list, and
+  source-freeze/re-admission in the new `docs/exo-compatibility.md` (the Exo sections of
+  `docs/COMPATIBILITY.md` moved there unchanged to stay within the file budget), and corrects stale
+  `experiments/exo-agent/README.md` lines that predated runtime-v3 admission (#205/#223/#226).
+  Compatibility: `safety-correction` to an unreleased candidate — the empty registry is now
+  enforced in dispatch rather than inherited from upstream; no wire field, route, published schema,
+  or durable record changes. Refs #140.
 
 - Consume the gateway's negotiated **repeated-episode lease profile** so a harness run can
   complete two episodes against one gateway deployment. The gateway permanently revokes its local

@@ -43,6 +43,9 @@ pub(super) fn serve() -> Result<(), String> {
     let command_port: Arc<dyn ProviderSessionPolicyCommandPort> = Arc::new(
         DurableProviderSessionPolicyCommandPort::new(Arc::clone(&owner)),
     );
+    // The served effective-limits record is built from the same descriptor the
+    // session factory admits provider sessions against.
+    let served_capabilities = policy.capabilities.clone();
     sts2_harness::management::serve_live_with_provider_policy_commands_and_context_owner(
         listen,
         &store,
@@ -53,9 +56,12 @@ pub(super) fn serve() -> Result<(), String> {
             policy.capabilities,
             Arc::clone(&context_owner),
         )?,
-        provider_policy,
-        command_port,
-        context_owner,
+        sts2_harness::management::ServedOwnerPorts {
+            provider_policy,
+            command_port,
+            context_owner,
+        },
+        served_capabilities,
     )
     .map_err(|error| error.to_string())
 }
