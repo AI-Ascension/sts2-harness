@@ -10,6 +10,21 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Build a **System One provider request** from a bridge decision request.
+  `context_control::build_system_one_request` turns a rendered observation and a presented action
+  catalog into the body of one typed question: a `choice` whose option identifiers are exactly the
+  catalog, with the request's objective and hard constraints carried in its instruction. It sits
+  beside the existing provider projection and is pure — no socket, no environment, no credential —
+  so every refusal happens before any of those exist. It refuses an empty, oversized, duplicated, or
+  non-printable option set, a malformed model identifier, an empty state, and a state that would
+  exceed a conservative byte ceiling for the published 32k-token state-and-question budget, and it
+  never truncates a state to make it fit. Serialization is byte-stable, so
+  `system_one_questions_digest` gives a run record the honest analogue of the reviewed envelope's
+  `prompt_digest`: a question set is data, so its digest states exactly what was asked. Exactly one
+  question is asked; the provider evaluates many per call in parallel, but an unconsumed question
+  would spend tokens producing a number no code reads. Compatibility: additive; one new module and
+  its re-exports, no change to an existing record, route, or digest. Refs #283.
+
 - Make the one-shot Exo bridge **advertise the variants it implements**. `--describe` publishes
   `profile_support` (`map`/`management`/`expert` `unsupported`), `decision_support` (`recovery`
   `unsupported`) and the two fail-closed codes, so a caller can pre-check support rather than infer it
