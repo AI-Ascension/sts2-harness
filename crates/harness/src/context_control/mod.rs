@@ -6,6 +6,7 @@
 //! records control decisions, while the game host remains the authority for observations, legal
 //! actions, and mutations.
 
+mod derived_exact;
 mod lifetime_durable;
 mod lifetime_error;
 mod lifetime_ledger;
@@ -35,6 +36,7 @@ mod store_schema;
 mod store_types;
 mod types;
 
+pub use derived_exact::{DERIVED_EXACT_SCHEMA, DerivedExactFacts, Survival};
 pub use lifetime_durable::{DURABLE_LIFETIME_SCHEMA, DurableLifetimeState};
 pub use lifetime_error::ContextLifetimeError;
 pub use lifetime_ledger::{ContextLifetimeLedger, LifetimeFailpoint};
