@@ -116,15 +116,16 @@ is the actual configured endpoint. `--synthetic` accepts only `o3-pro` with
 The process oracle creates this configuration automatically.
 
 `--describe` is also machine-checkable about which variants this build implements. It publishes
-`profiles` (`["standard"]`), `profile_support` (with `map` and `expert` explicitly `unsupported`),
-`context_modes` (`["fresh"]`), `decisions`, `decision_support` (with `recovery` explicitly
-`unsupported`), and the two fail-closed codes `unsupported_profile_code`
+`profiles` (`["standard"]`), `profile_support` (with `map`, `management` and `expert` explicitly
+`unsupported`), `context_modes` (`["fresh"]`), `decisions`, `decision_support` (with `recovery`
+explicitly `unsupported`), and the two fail-closed codes `unsupported_profile_code`
 (`exo_bridge_unsupported_profile`) and `unsupported_recovery_code`
 (`exo_bridge_unsupported_recovery`). A caller can therefore pre-check support instead of inferring
-it from a rejection. The shipped guard and the advertisement share one classifier, so they cannot
-drift: `crates/harness/tests/exo_advertised_variant_negatives.rs` and the bridge's own test module
-assert the agreement, and `tests/advertised_variant_oracle.rs` re-checks it against the real
-process with zero model requests.
+it from a rejection. The guard walks the one axis list the advertisement is derived from, so an
+enforced profile cannot be missing from `profile_support`:
+`crates/harness/tests/exo_advertised_variant_negatives.rs` and the bridge's own test module assert
+the agreement, and `tests/advertised_variant_oracle.rs` re-checks it against the real process with
+zero model requests.
 
 The lookup relay is terminal on an action id only, so `--lookup-describe` and
 `--lookup-bootstrap-describe` re-project the decision fields instead of inheriting the one-shot set:

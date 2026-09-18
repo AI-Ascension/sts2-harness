@@ -62,6 +62,12 @@ fn advertised_variants_and_zero_model_probes() -> Result {
     );
     // Unsupported variants are named, not merely absent.
     assert_eq!(capability["profile_support"]["map"], json!("unsupported"));
+    // `management` is enforced by the shared classifier, so it must be discoverable here too.
+    // It was previously omitted, leaving a caller unable to pre-check it.
+    assert_eq!(
+        capability["profile_support"]["management"],
+        json!("unsupported")
+    );
     assert_eq!(capability["profile_support"]["expert"], json!("unsupported"));
     assert_eq!(
         capability["decision_support"]["recovery"],
@@ -118,6 +124,26 @@ fn advertised_variants_and_zero_model_probes() -> Result {
     assert_eq!(model.request_count(), 0);
     assert!(model.requests.lock().map_err(|_| "poisoned")?.is_empty());
 
+    // A management-profile request is refused by the same shared guard with the same published
+    // code. Without this probe the axis was enforced but neither advertised nor exercised here.
+    let mut management_envelope = base_envelope.clone();
+    management_envelope["request"]["management_profile"] = json!("management-enabled");
+    // The contract requires a non-null context alongside an enabled profile, so the request is
+    // schema-valid and the shared profile guard is the only thing that can refuse it.
+    management_envelope["request"]["management_context"] = json!({});
+    let management = invoke(
+        &binary,
+        &config,
+        &serde_json::to_vec(&management_envelope)?,
+        "--synthetic",
+        true,
+    )?;
+    assert!(!management.status.success());
+    assert!(management.stdout.is_empty());
+    assert_eq!(management.stderr, b"exo_bridge_unsupported_profile\n");
+    assert_eq!(model.request_count(), 0);
+    assert!(model.requests.lock().map_err(|_| "poisoned")?.is_empty());
+
     // A config-integrity rejection is also pre-inference: the packaged executor digest no longer
     // matches, so the bridge refuses before it can spawn the executor or contact the model.
     let tampered_config = root.join("target/exo-advertised-tampered-config.json");
@@ -141,7 +167,7 @@ fn advertised_variants_and_zero_model_probes() -> Result {
         "oracle_sha256": digest(&PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/advertised_variant_oracle.rs"))?,
         "probes": ["describe", "describe_repeated", "map_refused_pre_inference",
-            "tampered_config_rejected"],
+            "management_refused_pre_inference", "tampered_config_rejected"],
         "model_requests": 0,
         "advertised_profiles": ["standard"],
         "advertised_decisions": ["action", "plan", "wait", "reobserve"],

@@ -2,10 +2,11 @@
 
 //! Machine-checkable capability advertisement for the one-shot Exo bridge.
 //!
-//! The advertisement and the runtime guard are the same data: [`unsupported_profile_axis`] is what
-//! the shipped entry points call, and [`capability_fields`] publishes the exact sets it enforces.
-//! Splitting this out of the configuration module keeps each file within the repository size rule
-//! without duplicating the vocabulary.
+//! The advertisement and the runtime guard are the same data: [`unsupported_profile_axis`] walks
+//! [`UnsupportedProfileAxis::ALL`], and [`capability_fields`] publishes the profile names it finds
+//! there. One list is therefore both the guard and the advertisement, so an axis cannot be enforced
+//! without being published. Splitting this out of the configuration module keeps each file within
+//! the repository size rule without duplicating the vocabulary.
 
 use crate::{EXO_SOURCE_REVISION, ExoDecisionRequest};
 use serde_json::{Value, json};
@@ -13,7 +14,11 @@ use serde_json::{Value, json};
 /// Profiles the reviewed extension in this build actually implements.
 pub const SUPPORTED_PROFILES: [&str; 1] = ["standard"];
 /// Profiles the pinned upstream source names but this build rejects before any inference.
-pub const UNSUPPORTED_PROFILES: [&str; 2] = ["map", "expert"];
+///
+/// Every entry must correspond to an [`UnsupportedProfileAxis`] that reports that
+/// [`UnsupportedProfileAxis::profile_name`], so the advertisement cannot omit an axis the guard
+/// enforces. `every_classifier_profile_axis_is_advertised` asserts both directions.
+pub const UNSUPPORTED_PROFILES: [&str; 3] = ["map", "management", "expert"];
 /// Context modes implemented by this one-shot build.
 pub const SUPPORTED_CONTEXT_MODES: [&str; 1] = ["fresh"];
 /// Terminal decisions this build returns to the host.
@@ -47,6 +52,30 @@ pub enum UnsupportedProfileAxis {
 }
 
 impl UnsupportedProfileAxis {
+    /// Every axis the shipped guard enforces, in classifier order.
+    ///
+    /// This is the list [`unsupported_profile_axis`] walks, so it is the guard *and* the source of
+    /// the advertisement rather than a second list that could fall behind either. Adding a variant
+    /// does not compile until [`Self::is_present`] and [`Self::profile_name`] handle it (both are
+    /// exhaustive matches); adding it here is what makes the guard reject it, and it is published in
+    /// the same step.
+    pub const ALL: [Self; 4] = [Self::Revision, Self::Map, Self::Management, Self::Expert];
+
+    /// Whether `request` carries this axis.
+    ///
+    /// Exhaustive on purpose: a new variant does not compile until it states the request shape it
+    /// detects. Because the guard walks [`Self::ALL`], stating the trigger and listing the axis are
+    /// the only two steps, and neither can happen without the other being reachable.
+    #[must_use]
+    fn is_present(self, request: &ExoDecisionRequest) -> bool {
+        match self {
+            Self::Revision => request.provider_revision != EXO_SOURCE_REVISION,
+            Self::Map => request.map_context.is_some(),
+            Self::Management => request.management_profile.is_some(),
+            Self::Expert => request.observation.get("protocol_version").is_some(),
+        }
+    }
+
     /// Stable machine-readable axis name shared with the capability advertisement.
     #[must_use]
     pub const fn name(self) -> &'static str {
@@ -57,29 +86,34 @@ impl UnsupportedProfileAxis {
             Self::Expert => "expert",
         }
     }
+
+    /// The `profile_support` key this axis is advertised under, or `None` when it has none.
+    ///
+    /// [`Self::Revision`] is `None`: a provider revision is not a request profile, and the expected
+    /// value is already published as `source_revision`, so it has no `profile_support` entry.
+    #[must_use]
+    pub const fn profile_name(self) -> Option<&'static str> {
+        match self {
+            Self::Revision => None,
+            Self::Map => Some("map"),
+            Self::Management => Some("management"),
+            Self::Expert => Some("expert"),
+        }
+    }
 }
 
 /// Classifies the first unsupported profile axis of an already schema-validated request.
 ///
-/// Returns `None` only when every axis this build implements is present. The ordering is fixed, so
-/// a request that is unsupported for several reasons always reports the same axis. Both the
-/// one-shot entry point and the lookup relay call this, so the guard cannot drift from the
+/// Returns `None` only when every axis this build implements is present. The walk follows
+/// [`UnsupportedProfileAxis::ALL`], so the ordering is fixed and a request that is unsupported for
+/// several reasons always reports the same axis. Both the one-shot entry point and the lookup relay
+/// call this, and [`capability_fields`] publishes the same list, so the guard cannot drift from the
 /// advertisement.
 #[must_use]
 pub fn unsupported_profile_axis(request: &ExoDecisionRequest) -> Option<UnsupportedProfileAxis> {
-    if request.provider_revision != EXO_SOURCE_REVISION {
-        return Some(UnsupportedProfileAxis::Revision);
-    }
-    if request.map_context.is_some() {
-        return Some(UnsupportedProfileAxis::Map);
-    }
-    if request.management_profile.is_some() {
-        return Some(UnsupportedProfileAxis::Management);
-    }
-    if request.observation.get("protocol_version").is_some() {
-        return Some(UnsupportedProfileAxis::Expert);
-    }
-    None
+    UnsupportedProfileAxis::ALL
+        .into_iter()
+        .find(|axis| axis.is_present(request))
 }
 
 /// The only model binding the synthetic smoke mode may use.
@@ -120,17 +154,18 @@ pub fn capability_fields(
     supported_decisions: &[&str],
     unsupported_decisions: &[&str],
 ) -> serde_json::Map<String, Value> {
+    // Derived from the classifier rather than a parallel list: every axis the guard enforces that
+    // names a request profile is advertised `unsupported`, so a new axis cannot be enforced but
+    // left undiscoverable. `UNSUPPORTED_PROFILES` is asserted to agree with this below.
     let profile_support = SUPPORTED_PROFILES
         .iter()
-        .chain(UNSUPPORTED_PROFILES.iter())
-        .map(|profile| {
-            let state = if SUPPORTED_PROFILES.contains(profile) {
-                "supported"
-            } else {
-                "unsupported"
-            };
-            (profile.to_string(), json!(state))
-        })
+        .map(|profile| (profile.to_string(), json!("supported")))
+        .chain(
+            UnsupportedProfileAxis::ALL
+                .iter()
+                .filter_map(|axis| axis.profile_name())
+                .map(|profile| (profile.to_string(), json!("unsupported"))),
+        )
         .collect::<serde_json::Map<_, _>>();
     let decision_support = supported_decisions
         .iter()

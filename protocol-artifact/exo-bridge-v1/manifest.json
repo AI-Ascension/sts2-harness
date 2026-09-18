@@ -92,7 +92,7 @@
       "kind": "real-pinned-Exo-with-synthetic-loopback-model-no-provider-no-game",
       "exo_revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
       "extension_sha256": "2e5485127f434bdd95a534785a414fa9f357432c924d89fd56d50c96f434b9cd",
-      "oracle_sha256": "16c3513cfdb479d1e3826eaa85a3633ba69cc04bbf3c047094153bbd4f751022",
+      "oracle_sha256": "ff84c9812d6ef56bca63fef3774c44ed23a71960b121a41f5852ad9f1392a820",
       "model_requests": 0,
       "runtime_admission": "source-process-only",
       "provider": "unverified",
