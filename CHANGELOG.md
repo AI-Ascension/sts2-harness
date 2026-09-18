@@ -14,28 +14,23 @@ claim a released harness version or runtime compatibility.
   classifier and pure route predicates. Map and expert stay negative-only. Compatibility: additive.
   See [evidence](docs/evidence/exo-advertised-variant-negatives-20260918.md). Refs #141.
 
-- Persist **logical-invocation context lifetime consumption at dispatch
-  admission**. A continuity owner issues a bounded `ContextLifetimeScope`
-  (`ascension.context-control.lifetime.v1`) over ordered context item ids for one
-  agent/episode/run — optionally pinned to one branch — with applicability
-  `current_invocation` or `next_n { bound }` and a wall-clock ceiling that is an
-  additional bound rather than the mechanism. Applicability is consumed at exactly
-  one site, durable dispatch admission, on a logical `invocation_id` whose
-  `attempt` distinguishes transport retries: a preview, reload, receipt lookup or
-  retry never consumes, extends or resurrects applicability, and a retry of the
-  same logical invocation is answered with its existing manifest instead of a
-  second slot. A crash *before* the durable write consumes nothing; a crash
-  *after* it leaves the slot consumed and the invocation held as a possible
-  dispatch until reconciliation, because a dispatch that may have happened is
-  never silently handed back. Counters and identities persist through
-  `ContextControlStore` as `ascension.context-control.lifetime-state.v1`, so a
-  restart replays the same window. Manifests are append-only and their digest
-  binds the immutable admission facts, so reconciliation and expiry never rewrite
-  or delete history. Sibling agents, branches, episodes and runs cannot inherit a
-  scope. Compatibility: additive-compatible; one new table
-  (`context_control_lifetime`), no change to an existing table, column, digest or
-  route; see [ADR 0051](docs/decisions/0051-logical-invocation-lifetime-consumption.md).
-  Refs #111.
+- Persist **logical-invocation context lifetime consumption at dispatch admission**. A continuity
+  owner issues a bounded `ContextLifetimeScope` (`ascension.context-control.lifetime.v1`) over
+  ordered context item ids for one agent/episode/run — optionally pinned to one branch — with
+  applicability `current_invocation` or `next_n { bound }` and a wall-clock ceiling that is an
+  additional bound rather than the mechanism. Applicability is consumed at exactly one site, durable
+  dispatch admission, on a logical `invocation_id` whose `attempt` distinguishes transport retries:
+  a preview, reload, receipt lookup or retry never consumes, extends or resurrects applicability,
+  and a retry of the same logical invocation is answered with its existing manifest instead of a
+  second slot. A crash *before* the durable write consumes nothing; a crash *after* it leaves the
+  slot consumed and the invocation held as a possible dispatch until reconciliation, because a
+  dispatch that may have happened is never silently handed back. Counters and identities persist
+  through `ContextControlStore` as `ascension.context-control.lifetime-state.v1` , so a restart
+  replays the same window. Manifests are append-only and their digest binds the immutable admission
+  facts, so reconciliation and expiry never rewrite or delete history. Sibling agents, branches,
+  episodes and runs cannot inherit a scope. Compatibility: additive-compatible; one new table
+  (`context_control_lifetime`), no change to an existing table, column, digest or route; see
+  [ADR 0051](docs/decisions/0051-logical-invocation-lifetime-consumption.md) . Refs #111.
 
 - Consume the shared `game-information-live-observation-bootstrap-v1` conformance case and its
   seven invalid fixtures (copied byte-identically from sts2-protocol, `SHA256SUMS` extended) and
@@ -158,12 +153,10 @@ claim a released harness version or runtime compatibility.
   schema, contract version or durable record changes, and `legacy` behaviour is unchanged. See
   [ADR 0032](docs/decisions/0032-inspected-admission-identity.md). Refs #139.
 
-- Renumber eight harness decision records whose numbers were each held by two
-  different records, so every `ADR NNNN` label and `NNNN-*.md` link denotes exactly
-  one decision. The moved records and every in-repo citation site were updated in
-  the same change; no decision content changed. See
-  [docs/decisions/README.md](docs/decisions/README.md) for the old-to-new mapping.
-  Refs #203.
+- Renumber eight harness decision records whose numbers were each held by two different records, so
+  every `ADR NNNN` label and `NNNN-*.md` link denotes exactly one decision. The moved records and
+  every in-repo citation site were updated in the same change; no decision content changed. See
+  [docs/decisions/README.md](docs/decisions/README.md) for the old-to-new mapping. Refs #203.
 
 - Cross-check the **inspected Exo deployment identity** against the operator pin at the runtime
   admission boundary, so a swapped package, extension or bridge artifact fails closed instead of
@@ -290,13 +283,12 @@ claim a released harness version or runtime compatibility.
   exact-host execution; the old native Exo adapter remains terminal-decision-only.
   See [ADR 0039](docs/decisions/0039-game-information-consumer.md). Refs #127.
 
-- Add the opt-in immutable benchmark manifest library: bounded strict v1 parsing,
-  separate gameplay/experiment/occurrence identities, exact mismatch reasons and
-  keyed public references. Existing seed receipts can be associated with an immutable
-  planned trial as `seed_receipt_bound` only when the declared protocol version and schema
-  digest also match; this is offline consistency, not native
-  reproducibility or hidden RNG verification. No runtime or legacy-record behavior changes.
-  See [ADR 0021](docs/decisions/0021-benchmark-manifest-foundation.md). Refs #121.
+- Add the opt-in immutable benchmark manifest library: bounded strict v1 parsing, separate
+  gameplay/experiment/occurrence identities, exact mismatch reasons and keyed public references.
+  Existing seed receipts can be associated with an immutable planned trial as `seed_receipt_bound`
+  only when the declared protocol version and schema digest also match; this is offline consistency,
+  not native reproducibility or hidden RNG verification. No runtime or legacy-record behavior
+  changes. See [ADR 0021](docs/decisions/0021-benchmark-manifest-foundation.md) . Refs #121.
 
 - Add opt-in bounded SQLite history for context-owner bindings, committed atomically with
   command results and read by original invocation with current scoped, same-subject permission.
@@ -398,12 +390,11 @@ claim a released harness version or runtime compatibility.
   The reviewed model tool allowlist is intentionally empty; TypeScript dispatch, OS containment, and
   native private-state enforcement remain follow-up work.
 
-- Add a pinned runtime-peer CI lane. It builds the candidate harness against
-  immutable gateway and MCP executable peers, uses a bounded synthetic mod HTTP
-  endpoint only as downstream, and runs positive plus foreign-identity and
-  malformed-envelope rejection cases. Startup and cancellation cleanup
-  regressions run in the same lane. This is source-derived synthetic process
-  composition evidence, not game-host, provider, or release qualification.
+- Add a pinned runtime-peer CI lane. It builds the candidate harness against immutable gateway and
+  MCP executable peers, uses a bounded synthetic mod HTTP endpoint only as downstream, and runs
+  positive plus foreign-identity and malformed-envelope rejection cases. Startup and cancellation
+  cleanup regressions run in the same lane. This is source-derived synthetic process composition
+  evidence, not game-host, provider, or release qualification.
 
 - Reject incomplete exact checkpoint manifests, inconsistent dependency sizes and payload
  identities, and source/destination profile mismatches before session admission. Bound reads of
