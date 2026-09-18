@@ -10,6 +10,14 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Remove an **orphaned `context_memory` source fragment** that made the repository impossible to
+  check out on Windows. `crates/harness/src/context_memory/aux.rs` was 188 lines beginning inside an
+  `impl` block and ending on a dangling attribute; nothing declared it, so no build, format, lint, or
+  test ever read it, and its live counterparts are `approval.rs` and `authorizer.rs`. Because `aux`
+  is a reserved Win32 device name with any extension, `git clone` on Windows stopped with
+  `error: invalid path` and left an incomplete tree that could not be built. Compatibility: no
+  behaviour change; the file was outside the module tree. Refs #281.
+
 - Make the one-shot Exo bridge **advertise the variants it implements**. `--describe` publishes
   `profile_support` (`map`/`management`/`expert` `unsupported`), `decision_support` (`recovery`
   `unsupported`) and the two fail-closed codes, so a caller can pre-check support rather than infer it
