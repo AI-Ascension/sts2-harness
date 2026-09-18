@@ -10,6 +10,16 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Share one **bounded HTTP/1.1 response reader across provider bridges**. The strict reader that
+  refuses oversized headers, a duplicate `Content-Length`, both framings at once, a non-`chunked`
+  transfer coding, an oversized or short chunk, and any trailer after the terminal chunk moves from
+  the Ollama bridge's private `runtime_support` include to the shared `bin/support` tree, where a
+  second bridge reaches it the same way the Astra bridge reaches its accounting support. Refusals are
+  now a typed `ProviderResponseError` carrying a stable code per cause rather than an opaque string,
+  and the added negative tests pin the status, terminator, declared-length, absent-framing,
+  malformed-header, and non-JSON refusals that were previously only implied. The loopback-only
+  `ManagementClient` stays a separate boundary and is unchanged. Compatibility: no behaviour change;
+  `sts2-ollama-bridge` accepts and refuses exactly what it did before. Refs #282.
 - Record the **System One provider lane and its transport** in
   [ADR 0053](docs/decisions/0053-system-one-provider-lane.md). A System One provider evaluates typed
   questions against one state and returns structured answers with probabilities and a calibrated
