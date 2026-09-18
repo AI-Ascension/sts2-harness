@@ -63,6 +63,20 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   bootstrap `error_response` on a 5xx answer instead of collapsing it to a retryable
   `gateway_unavailable`. Compatibility: internal; no schema, route or durable record changes.
   Refs #127, #276.
+- Serve the **provider-session effective-limits record** for the Console capability sidecar.
+  `GET /v1/workflow-runs/{run_id}/provider-session-effective-limits` (`workflow:read`) returns the
+  producer's `ascension.harness.effective-limits.v1` record built by
+  `NativeCapabilities::effective_limit_record` from the descriptor the served process admits
+  provider sessions against: metadata only, validated before it is returned, and fenced to the
+  run's current context-owner association (`provider_session_capabilities_mismatch` when the
+  boundary names another adapter/model revision; `provider_session_capabilities_unavailable` when
+  no descriptor is served, never a fixture). The served workflow composition holds no memory
+  corpus, so `GET /v1/workflow-runs/{run_id}/context-memory-effective-limits` refuses with the
+  typed `context_memory_record_unavailable`. `docs/COMPATIBILITY.md` is split: the context-owner
+  rows move to `docs/COMPATIBILITY_CONTEXT_OWNER.md`, where the control-command route regains its
+  own heading. Compatibility: additive-compatible; see
+  [ADR 0052](docs/decisions/0052-provider-session-effective-limits-route.md).
+  Refs AI-Ascension/ascension-context-console#18.
 
 - Consume the shared `game-information-live-observation-bootstrap-v1` conformance case and its
   seven invalid fixtures (copied byte-identically from sts2-protocol, `SHA256SUMS` extended) and
