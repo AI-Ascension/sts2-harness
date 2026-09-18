@@ -8,6 +8,7 @@
 //! recorded digest instead of adding evidence. Evidence class here is **real-process with a
 //! synthetic loopback model and no game** — it is not native-game and not real-provider evidence.
 
+#[allow(dead_code)]
 mod support;
 
 use serde_json::{Value, json};
@@ -110,7 +111,7 @@ fn advertised_variants_and_zero_model_probes() -> Result {
         "turn_id": "host-turn-map",
         "request": golden
     });
-    let map_envelope = support::ordinary_map(&base_envelope)?;
+    let map_envelope = support::projection::ordinary_map(&base_envelope)?;
     let map = invoke(
         &binary,
         &config,
