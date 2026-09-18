@@ -2,6 +2,7 @@
 
 //! Cancellable one-shot process effect for the durable Exo lifecycle owner.
 
+use super::process_reap::{reap_handle, terminate};
 use super::{EffectCompletion, EffectHandle, EffectPort, LifecycleError, SendPermit};
 use crate::{
     ExecutionCancellation, ExoProcessConfig, encode_bridge_response, parse_bridge_request_envelope,
@@ -198,11 +199,7 @@ async fn exchange_async(
             return Err(LifecycleError::Unavailable);
         }
     };
-    let pid = child
-        .id()
-        .and_then(|id| i32::try_from(id).ok())
-        .and_then(rustix::process::Pid::from_raw)
-        .ok_or(LifecycleError::Unavailable)?;
+    let pid = reap_handle(&child).ok_or(LifecycleError::Unavailable)?;
     let _ = started.send(Ok(()));
     let deadline = Instant::now() + Duration::from_millis(u64::from(timeout_millis));
     let result = tokio::select! {
@@ -283,9 +280,4 @@ async fn exchange_pipes(
     };
     let (_, bytes, ()) = tokio::try_join!(write, read, wait)?;
     Ok(bytes)
-}
-
-async fn terminate(child: &mut Child, pid: rustix::process::Pid) {
-    let _ = rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
-    let _ = tokio::time::timeout(Duration::from_millis(250), child.wait()).await;
 }
