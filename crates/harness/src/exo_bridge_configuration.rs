@@ -10,6 +10,16 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+#[path = "exo_bridge_configuration/capability.rs"]
+mod capability;
+
+pub use capability::{
+    PROVIDER_ENDPOINT, SUPPORTED_CONTEXT_MODES, SUPPORTED_DECISIONS, SUPPORTED_PROFILES,
+    SYNTHETIC_ENDPOINT_PREFIX, SYNTHETIC_MODEL, UNSUPPORTED_DECISIONS, UNSUPPORTED_PROFILE_CODE,
+    UNSUPPORTED_PROFILES, UNSUPPORTED_RECOVERY_CODE, UnsupportedProfileAxis, capability_fields,
+    provider_route_admitted, synthetic_route_admitted, unsupported_profile_axis,
+};
+
 pub const MAX_EXECUTOR_BYTES: usize = 512 * 1024 * 1024;
 pub const MAX_EXTENSION_BYTES: usize = 64 * 1024;
 pub const MAX_NODE_BYTES: usize = 256 * 1024 * 1024;
@@ -158,15 +168,10 @@ impl Loaded {
     }
     pub fn validate_route(&self, synthetic: bool) -> Result<(), &'static str> {
         if synthetic {
-            let port = self
-                .config
-                .endpoint
-                .strip_prefix("http://127.0.0.1:")
-                .and_then(|value| value.parse::<u16>().ok());
-            if port.is_none_or(|port| port == 0) || self.config.model != "o3-pro" {
+            if !synthetic_route_admitted(&self.config.endpoint, &self.config.model) {
                 return Err("exo_bridge_synthetic_route");
             }
-        } else if self.config.endpoint != "https://api.openai.com/v1" {
+        } else if !provider_route_admitted(&self.config.endpoint) {
             return Err("exo_bridge_provider_route");
         }
         Ok(())
@@ -174,7 +179,7 @@ impl Loaded {
 
     pub fn description(&self) -> Result<Value, &'static str> {
         let executable = std::env::current_exe().map_err(|_| "exo_bridge_package")?;
-        Ok(json!({
+        let mut description = json!({
             "schema": "sts2.exo-one-shot-capability-v1",
             "source_revision": EXO_SOURCE_REVISION,
             "bridge_sha256": sha256_hex(read_bounded(&executable, MAX_EXECUTOR_BYTES)?),
@@ -185,16 +190,18 @@ impl Loaded {
             "configuration_sha256": self.digest,
             "model": self.config.model,
             "endpoint": self.config.endpoint,
-            "profiles": ["standard"],
-            "context_modes": ["fresh"],
-            "decisions": ["action", "plan", "wait", "reobserve"],
             "max_turns": 1,
             "max_tool_round_trips": 0,
             "model_calls": 0,
             "full_runtime_admission": false,
             "durable_recovery": "unverified",
             "native_game": "unverified"
-        }))
+        });
+        let object = description
+            .as_object_mut()
+            .ok_or("exo_bridge_description")?;
+        object.extend(capability_fields());
+        Ok(description)
     }
 }
 

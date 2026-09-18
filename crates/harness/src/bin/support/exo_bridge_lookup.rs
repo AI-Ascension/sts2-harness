@@ -5,10 +5,11 @@ use super::{
     run::{PrivateRoot, executor_command},
 };
 use serde_json::json;
+use sts2_harness::ExoDecisionRequest;
+use sts2_harness::exo_bridge_configuration as config;
 use sts2_harness::exo_lookup_wire::{
     EXO_LOOKUP_FEEDBACK_BYTES, EXO_LOOKUP_FRAME_BYTES, ExoLookupFrame, ExoLookupPayload,
 };
-use sts2_harness::{EXO_SOURCE_REVISION, ExoDecisionRequest};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
 pub fn execute(loaded: &Loaded, synthetic: bool) -> Result<(), &'static str> {
@@ -94,13 +95,11 @@ async fn relay(
     request
         .encode(131_072)
         .map_err(|_| "exo_bridge_lookup_request")?;
-    if start.sequence != 0
-        || request.provider_revision != EXO_SOURCE_REVISION
-        || request.map_context.is_some()
-        || request.management_profile.is_some()
-        || request.observation.get("protocol_version").is_some()
-    {
-        return Err("exo_bridge_unsupported_profile");
+    if start.sequence != 0 {
+        return Err("exo_bridge_lookup_profile");
+    }
+    if config::unsupported_profile_axis(&request).is_some() {
+        return Err(config::UNSUPPORTED_PROFILE_CODE);
     }
     let invocation = json!({
         "version":"sts2.exo-lookup-executor-input-v1","request_id":start.request_id,

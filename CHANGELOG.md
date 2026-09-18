@@ -7,6 +7,13 @@ claim a released harness version or runtime compatibility.
 
 ## Unreleased
 
+- Make the one-shot Exo bridge **advertise the variants it implements**. `--describe` now publishes
+  `profile_support` (`map`/`expert` `unsupported`), `decision_support` (`recovery` `unsupported`) and
+  the two fail-closed codes, so a caller can pre-check support instead of inferring it from a
+  rejection that is identical for every profile axis. The advertisement and the guard share one
+  classifier and pure route predicates. Map and expert stay negative-only. Compatibility: additive.
+  See [evidence](docs/evidence/exo-advertised-variant-negatives-20260918.md). Refs #141.
+
 - Persist **logical-invocation context lifetime consumption at dispatch
   admission**. A continuity owner issues a bounded `ContextLifetimeScope`
   (`ascension.context-control.lifetime.v1`) over ordered context item ids for one
