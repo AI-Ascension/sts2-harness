@@ -10,6 +10,20 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Fix the **option-selection fold key**, which folded distinct host-listed actions. The key was built
+  from a fixed list of seven identity fields, so any action whose identity lived outside that list
+  collapsed into a neighbour and was recorded as an intentional duplicate: two different cards aimed
+  at one enemy differed only in `card_id`, and `use_potion`, `rest_option`, `select_card`,
+  `confirm_selection` and `cancel_selection` carry `potion_id`, `rest_option_id` and `selection_id`,
+  which the model-view vocabulary does not declare at all. The key is now built from the whole action
+  the host emitted, so it is injective on whatever the host carries, declared here or not. Exactly
+  one substitution remains and it is the only thing that folds anything: a `card_id` that resolves to
+  a card in hand is replaced by that card's identity — name, cost, upgraded — so two copies of one
+  card aimed at the same target still fold, while two different cards, two costs, an upgrade, or a
+  card that does not resolve never do. Reported against the merged #295. Compatibility: fewer options
+  are withheld, and no option that the host listed can now be hidden behind an unrelated one. Refs
+  #302.
+
 - Let an operator **set the System One confidence gate** per invocation. `sts2-jev-bridge` gains
   `--gate PERCENT`, an integer percentage so an argument vector carries no locale-dependent
   separator and admission can compare it exactly; absent, the bridge's own default still applies.

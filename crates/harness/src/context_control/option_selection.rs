@@ -14,6 +14,9 @@
 //!
 //! Narrowing may only ever hide an option the host listed, never invent one, so every rule is
 //! conservative and every removal is recorded with a reason that names the option it folded into.
+//! The fold key is built from the whole action the host emitted rather than from a list of fields
+//! this module knows about, so an identity field the vocabulary does not declare still separates two
+//! options instead of silently merging them.
 //! Two safety properties hold by construction. The first occurrence of any signature is always the
 //! presented one, so a turn-ending action in the catalog is always presented and the provider keeps
 //! an escape; folding can remove a second copy of it, never the option itself. And a selection that
@@ -38,6 +41,9 @@ pub const MAX_PRESENTED_OPTIONS: usize = 24;
 
 /// Declared bound on the legal-action collection, mirroring the model-view vocabulary.
 const MAX_CATALOG: usize = 256;
+
+/// Declared bound on the hand collection, mirroring the model-view vocabulary.
+const MAX_HAND: usize = 256;
 
 /// How the presented options should be asked about.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -109,7 +115,11 @@ impl OptionSelection {
             .and_then(Value::as_array)
             .map(Vec::as_slice)
             .unwrap_or_default();
-        let entries = read_entries(catalog);
+        let hand = observation
+            .get("player")
+            .and_then(|player| player.get("hand"))
+            .and_then(Value::as_array);
+        let entries = read_entries(catalog, hand);
         let full: Vec<PresentedOption> = entries
             .iter()
             .map(|entry| PresentedOption {
@@ -121,7 +131,7 @@ impl OptionSelection {
         let malformed: Vec<WithheldOption> = catalog
             .iter()
             .take(MAX_CATALOG)
-            .filter(|item| read_entry(item).is_none())
+            .filter(|item| read_entry(item, hand).is_none())
             .map(|item| WithheldOption {
                 action_id: item
                     .get("action_id")
@@ -180,51 +190,69 @@ struct Entry<'a> {
 }
 
 /// Reads every usable catalog entry, in catalog order.
-fn read_entries(catalog: &[Value]) -> Vec<Entry<'_>> {
+fn read_entries<'a>(catalog: &'a [Value], hand: Option<&Vec<Value>>) -> Vec<Entry<'a>> {
     catalog
         .iter()
         .take(MAX_CATALOG)
-        .filter_map(read_entry)
+        .filter_map(|item| read_entry(item, hand))
         .collect()
 }
 
 /// Reads one catalog entry, refusing an entry without an identifier or an action object.
-fn read_entry(item: &Value) -> Option<Entry<'_>> {
+///
+/// The signature is built from the **whole** action object, so it is injective on whatever the host
+/// emits — including fields this repository's model-view vocabulary does not declare, such as
+/// `potion_id`, `rest_option_id` and `selection_id`. An earlier version keyed on a fixed list of
+/// seven fields and silently folded distinct actions that differed only outside it; two different
+/// potions aimed at one enemy, or two different rest options, were indistinguishable.
+///
+/// Exactly one substitution is made, and it is the only thing that folds anything: a `card_id` that
+/// resolves to a card in hand is replaced by that card's identity — name, cost, upgraded — so two
+/// copies of one card aimed at the same target share a signature. A `card_id` that does not resolve
+/// is kept verbatim, so an unresolvable card never folds with anything.
+fn read_entry<'a>(item: &'a Value, hand: Option<&Vec<Value>>) -> Option<Entry<'a>> {
     let action_id = item.get("action_id").and_then(Value::as_str)?;
     let action = item.get("action")?.as_object()?;
     let kind = action.get("kind").and_then(Value::as_str)?;
-    // Everything the vocabulary lets an action carry except the card instance identity, which is
-    // what distinguishes two copies of the same card in hand.
-    let mut signature = String::from(kind);
-    for field in [
-        "character_id",
-        "node_id",
-        "player_id",
-        "target_id",
-        "reward_id",
-        "item_id",
-        "choice_id",
-    ] {
-        signature.push('|');
-        signature.push_str(
-            action
-                .get(field)
-                .and_then(Value::as_str)
-                .unwrap_or_default(),
+    let mut signature = serde_json::Map::new();
+    for (name, value) in action {
+        let folded = (name == "card_id")
+            .then(|| value.as_str().and_then(|card| card_identity(card, hand)))
+            .flatten();
+        signature.insert(
+            name.clone(),
+            folded.map_or_else(|| value.clone(), Value::String),
         );
     }
     Some(Entry {
         action_id,
         kind,
-        signature,
+        // Serialized from a map, so field order is canonical rather than emission order.
+        signature: Value::Object(signature).to_string(),
     })
 }
 
-/// Folds entries that are identical under the admitted vocabulary into their first occurrence.
+/// The identity of a card in hand: what makes two copies of it the same question.
 ///
-/// Card instance identity is deliberately not part of the signature: two copies of one card in
-/// hand, aimed at the same target, are the same question asked twice. The first occurrence in
-/// catalog order is the representative, so the result is stable for a fixed input.
+/// `None` when the hand is absent or the identifier does not resolve, which keeps the instance
+/// identifier in the signature and prevents a fold that cannot be justified.
+fn card_identity(card_id: &str, hand: Option<&Vec<Value>>) -> Option<String> {
+    let card = hand?
+        .iter()
+        .take(MAX_HAND)
+        .find(|card| card.get("card_id").and_then(Value::as_str) == Some(card_id))?;
+    let name = card.get("name").and_then(Value::as_str)?;
+    let cost = card.get("cost").and_then(Value::as_i64)?;
+    let upgraded = card.get("upgraded").and_then(Value::as_bool)?;
+    Some(format!("card-identity:{name}:{cost}:{upgraded}"))
+}
+
+/// Folds entries whose signatures are equal into their first occurrence.
+///
+/// Two entries fold only when every field the host emitted matches, after a card in hand has been
+/// replaced by its identity. Two copies of one card aimed at the same target therefore fold; two
+/// different cards, potions, rest options or selections never do. The first occurrence in catalog
+/// order is the representative, so the result is stable for a fixed input.
 fn collapse(entries: &[Entry<'_>]) -> (Vec<PresentedOption>, Vec<WithheldOption>) {
     let mut presented: Vec<PresentedOption> = Vec::new();
     let mut signatures: Vec<&str> = Vec::new();
