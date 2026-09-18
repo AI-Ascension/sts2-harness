@@ -83,9 +83,9 @@
     "kind": "real-pinned-Exo-with-synthetic-loopback-model-no-provider-no-game",
     "exo_revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
     "extension_sha256": "bcc034e787972f7ad6eabff5e817ad1456d6f6cab8c7dc42b426bd9f5b33ef3d",
-    "oracle_sha256": "948d31ccc4a505e411d04f03fefeb16e71135220ddb01b7e67f2606a15140714",
+    "oracle_sha256": "381ba1470f476872bded864400890ce6bbcb63d256496d76729093ab080114eb",
     "support_sha256": {
-      "tests/support/mod.rs": "451ab6115729c254dc1c47be0ea1528168dead4320a1570707bad7e94f07232f",
+      "tests/support/mod.rs": "c42408176a7f774d1f845cb3b8a0805892174ae237149ca037d232bf65050b5c",
       "tests/support/projection.rs": "25c6168f0c76d103d7fc0e1ca14ac0bf8251c35fdc5cadd31ea50318a455c26e"
     },
     "forbidden_tool_dispatch": "denied by name at dispatch with sts2_forbidden_tool; executor error_code exo_forbidden_tool",
@@ -98,7 +98,7 @@
       "kind": "real-pinned-Exo-with-synthetic-loopback-model-no-provider-no-game",
       "exo_revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
       "extension_sha256": "bcc034e787972f7ad6eabff5e817ad1456d6f6cab8c7dc42b426bd9f5b33ef3d",
-      "oracle_sha256": "c6624827d90087cd5b09c84046898c5bb757225d456e5b2d5af4635bc2f53f83",
+      "oracle_sha256": "c0da5819ba192b0a202950334a972eacc65c58ec128cbc4fc4433a23829e915d",
       "model_requests": 0,
       "runtime_admission": "source-process-only",
       "provider": "unverified",

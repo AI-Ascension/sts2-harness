@@ -133,7 +133,7 @@ pub fn verify_exo_bridge_artifact() -> Result<(), ExoArtifactError> {
         ),
         (
             checksums[1].0,
-            "57f4439c42831e589f885ef798c9ac90044184ec95da4f4e6877310e3e1be5cb",
+            "1e09bc5456be62fed43551a915307cc43b41bacf1d10eddd84c98a14ab8cf49a",
         ),
         (
             checksums[2].0,

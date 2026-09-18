@@ -33,15 +33,20 @@ or native instance is used.
 |---|---|
 | `exo_revision` | `b06869ab789dee3f80ca474b5fa89dbe47ccb859` |
 | `extension_sha256` | `bcc034e787972f7ad6eabff5e817ad1456d6f6cab8c7dc42b426bd9f5b33ef3d` |
-| `executor_sha256` | `a77124735478106ba2c6a0eca45a697223477d163c586cb9cbd3ef7a8fc34548` |
-| `bridge_sha256` | `010d91d112688c16b36a1bb5d7cc33889e7198ab605bf92eee8cd681c57627a3` |
-| `oracle_sha256` | `c6624827d90087cd5b09c84046898c5bb757225d456e5b2d5af4635bc2f53f83` |
-| `harness_revision` | `e882e908778fd57b7e49572add7420764c368037` (the revision the harness was at when the recorded run executed, as with the 2026-09-15 record) |
+| `executor_sha256` | `35b214b58d3cd5fdcf250078b6dec1fcc24b6f0bc77b58fbfdb91e103062dc70` |
+| `bridge_sha256` | `d2d7e7a1e5f6185b0d5d141c102fddd9fb726d30f3d3dba1313ba973b443bed2` |
+| `oracle_sha256` | `c0da5819ba192b0a202950334a972eacc65c58ec128cbc4fc4433a23829e915d` |
+| `harness_revision` | `89c489649c1912bd828e9c8b2fda42376c483a11` (the revision the harness was at when the recorded run executed, as with the 2026-09-15 record) |
 | Node | `v22.15.0` |
 | Rust toolchain | `1.97.1`; non-Linux platforms remain unverified |
 
 The `executor_sha256` here is a **local rebuild** and deliberately differs from the `c739ff69…`
 recorded for the 2026-09-15 oracle; the earlier record is not extended or restated by this one.
+
+`harness_revision` names the commit at which the recorded sources were frozen, which is necessarily
+an ancestor of the commit carrying this record and is rewritten when the change is squash-merged.
+The binding that matters is that the named revision contains every recorded source byte, which the
+oracle now enforces at record time (`support::assert_sources_are_committed`).
 
 ## Advertised capability
 
@@ -113,6 +118,10 @@ the manifest's `process_evidence.advertised_variant_evidence` block, so a stale 
 survive a change to the extension or to this oracle. The record is also listed in
 `protocol-artifact/exo-bridge-v1/manifest.json` `pin_locations`, because it names the reviewed
 candidate revision.
+
+Like the 2026-09-17 oracle, this one refuses to emit a record whose `harness_revision` does not
+describe the recorded bytes: `support::assert_sources_are_committed` fails the run when a recorded
+source differs from `HEAD` or is untracked, so the named revision always carries the evidence.
 
 Full workspace validation on the pinned candidate revision (`harness_revision` below; `main` has
 since taken later commits, which carry its own totals):
