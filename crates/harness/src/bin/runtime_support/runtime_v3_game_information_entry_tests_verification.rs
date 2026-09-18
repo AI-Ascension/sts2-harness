@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use super::live_peers::LoggedRequest;
+use super::live_peers::{LoggedRequest, PeerNegative};
+use super::support::read_json_lines;
 use super::{AGENT, EPISODE, PROJECT, RUN};
 use serde_json::json;
 use std::path::Path;
@@ -195,5 +196,90 @@ pub(super) fn verify_entry_result(outcome: EntryOutcome<'_>) {
         &mcp_events,
         archive_path,
         scope,
+    );
+}
+
+pub(super) struct RefusedEntry<'a> {
+    pub(super) output: &'a Output,
+    pub(super) live_requests: Vec<LoggedRequest>,
+    pub(super) agent_log: &'a Path,
+    pub(super) negative: PeerNegative,
+}
+
+/// Every producer negative must stop the run before any content query or agent
+/// data delivery. A foreign manifest is refused while the binding is prepared, so
+/// no agent process ever starts; a stale or not-observable bootstrap is refused
+/// after the agent requested it, so the only event the agent may observe is the
+/// typed lookup error the owner returned for that bootstrap.
+pub(super) fn verify_refused_entry(refused: RefusedEntry<'_>) {
+    let RefusedEntry {
+        output,
+        live_requests,
+        agent_log,
+        negative,
+    } = refused;
+    eprintln!(
+        "real-peer {negative:?} runtime exit {:?}; stderr:\n{}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "{negative:?} producer must prevent runtime admission"
+    );
+    let agent_events = read_json_lines(agent_log);
+    assert!(
+        !agent_events
+            .iter()
+            .any(|event| matches!(event["kind"].as_str(), Some("data" | "decision"))),
+        "{negative:?} producer must be refused before agent data delivery: {agent_events:?}"
+    );
+    let paths = live_requests
+        .iter()
+        .map(|request| request.path.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        paths
+            .iter()
+            .any(|path| path.ends_with("/game-information/lookup-binding")),
+        "actual MCP startup must reach Gateway lookup-binding validation: {paths:?}"
+    );
+    assert!(
+        !paths
+            .iter()
+            .any(|path| path.ends_with("/game-information/detail")),
+        "{negative:?} producer must be refused before a content query: {paths:?}"
+    );
+    let expected_error = match negative {
+        PeerNegative::None | PeerNegative::ForeignManifest => {
+            assert_eq!(
+                negative,
+                PeerNegative::ForeignManifest,
+                "positive runs are verified by verify_entry_result"
+            );
+            assert!(
+                agent_events.is_empty(),
+                "foreign producer manifest must be refused before the agent starts: {agent_events:?}"
+            );
+            return;
+        }
+        PeerNegative::StaleGeneration => "Reobserve",
+        PeerNegative::NotObservable => "MissingCapability",
+    };
+    assert!(
+        paths
+            .iter()
+            .any(|path| path.ends_with("/game-information/live-observation-bootstrap")),
+        "{negative:?} must be exercised at the producer bootstrap route, not by an earlier failure: {paths:?}"
+    );
+    let errors = agent_events
+        .iter()
+        .filter(|event| event["kind"] == "error")
+        .map(|event| event["error"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        errors,
+        vec![json!(expected_error)],
+        "{negative:?} bootstrap must reach the agent only as its typed lookup error: {agent_events:?}"
     );
 }

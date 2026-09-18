@@ -117,7 +117,9 @@ fn validate_bootstrap(tool: &Value) -> Result<(), String> {
         || tool["annotations"]["idempotentHint"] != true
         || tool["inputSchema"]["additionalProperties"] != false
         || meta["revision"] != "game-information-live-observation-bootstrap-v1"
-        || meta["feature"] != "live_observation_bootstrap"
+        // The MCP groups this tool under its closed `live_details` capability group;
+        // no MCP capability group is named after the tool itself.
+        || meta["feature"] != "live_details"
     {
         return Err("MCP bootstrap descriptor has unsupported authority or revision".to_owned());
     }

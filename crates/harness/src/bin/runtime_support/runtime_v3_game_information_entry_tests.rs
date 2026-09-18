@@ -32,7 +32,7 @@ fn runtime_entry_adopts_delivers_and_replays_game_information_with_scripted_mcp_
 #[ignore = "operator-only acceptance; requires exact Gateway, MCP, and harness runtime binaries"]
 fn runtime_entry_adopts_queries_and_replays_through_real_gateway_and_mcp_processes() {
     run_runtime_entry(EntryMode::RealPeers {
-        mismatch_manifest: false,
+        negative: PeerNegative::None,
     });
 }
 
@@ -40,14 +40,42 @@ fn runtime_entry_adopts_queries_and_replays_through_real_gateway_and_mcp_process
 #[ignore = "operator-only negative acceptance; requires exact Gateway, MCP, and harness runtime binaries"]
 fn runtime_entry_refuses_foreign_manifest_before_query_or_agent_delivery() {
     run_runtime_entry(EntryMode::RealPeers {
-        mismatch_manifest: true,
+        negative: PeerNegative::ForeignManifest,
+    });
+}
+
+#[test]
+#[ignore = "operator-only negative acceptance; requires exact Gateway, MCP, and harness runtime binaries"]
+fn runtime_entry_refuses_stale_bootstrap_generation_before_agent_delivery() {
+    run_runtime_entry(EntryMode::RealPeers {
+        negative: PeerNegative::StaleGeneration,
+    });
+}
+
+#[test]
+#[ignore = "operator-only negative acceptance; requires exact Gateway, MCP, and harness runtime binaries"]
+fn runtime_entry_reports_not_observable_bootstrap_as_missing_capability_without_content_query() {
+    run_runtime_entry(EntryMode::RealPeers {
+        negative: PeerNegative::NotObservable,
     });
 }
 
 #[derive(Clone, Copy)]
 enum EntryMode {
     Scripted,
-    RealPeers { mismatch_manifest: bool },
+    RealPeers { negative: PeerNegative },
+}
+
+impl EntryMode {
+    const fn negative(self) -> Option<PeerNegative> {
+        match self {
+            Self::Scripted
+            | Self::RealPeers {
+                negative: PeerNegative::None,
+            } => None,
+            Self::RealPeers { negative } => Some(negative),
+        }
+    }
 }
 
 fn run_runtime_entry(mode: EntryMode) {
@@ -100,12 +128,7 @@ fn run_runtime_entry(mode: EntryMode) {
     let config_path = &fixture.config_path;
     let archive_path = &fixture.archive_path;
 
-    let replay_modes: &[bool] = if matches!(
-        mode,
-        EntryMode::RealPeers {
-            mismatch_manifest: true
-        }
-    ) {
+    let replay_modes: &[bool] = if mode.negative().is_some() {
         &[false]
     } else {
         &[false, true]
@@ -134,8 +157,8 @@ fn run_runtime_entry(mode: EntryMode) {
             replay,
         );
         let mut live = match (mode, gateway_binary.as_deref()) {
-            (EntryMode::RealPeers { mismatch_manifest }, Some(binary)) => Some(
-                live_peers::LivePeers::start(binary, mismatch_manifest)
+            (EntryMode::RealPeers { negative }, Some(binary)) => Some(
+                live_peers::LivePeers::start(binary, negative)
                     .expect("start actual Gateway and synthetic producer"),
             ),
             _ => None,
@@ -202,33 +225,13 @@ fn run_runtime_entry(mode: EntryMode) {
                 .finish()
                 .expect("actual Gateway and synthetic producer complete cleanly")
         });
-        if matches!(
-            mode,
-            EntryMode::RealPeers {
-                mismatch_manifest: true
-            }
-        ) {
-            assert!(
-                !output.status.success(),
-                "foreign producer manifest must prevent runtime admission"
-            );
-            assert!(
-                read_json_lines(agent_log).is_empty(),
-                "foreign producer manifest must be refused before agent delivery"
-            );
-            let requests = live_requests.expect("actual producer request log");
-            assert!(
-                requests
-                    .iter()
-                    .any(|request| request.path.ends_with("/game-information/lookup-binding")),
-                "actual MCP bootstrap must reach Gateway lookup-binding validation"
-            );
-            assert!(
-                !requests
-                    .iter()
-                    .any(|request| request.path.ends_with("/game-information/detail")),
-                "foreign producer manifest must be refused before a content query"
-            );
+        if let Some(negative) = mode.negative() {
+            verification::verify_refused_entry(verification::RefusedEntry {
+                output: &output,
+                live_requests: live_requests.expect("actual producer request log"),
+                agent_log,
+                negative,
+            });
             continue;
         }
         verification::verify_entry_result(verification::EntryOutcome {
@@ -261,7 +264,8 @@ mod support;
 mod verification;
 
 use gateway::serve_gateway;
+use live_peers::PeerNegative;
 use support::{
     explicit_revalidation_approval_and_adoption, finish_child, free_loopback_address,
-    read_json_lines, start_runtime_child, wait_for_management, write_owner_config, write_private,
+    start_runtime_child, wait_for_management, write_owner_config, write_private,
 };

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use self::responses::downstream_response;
-use super::LoggedRequest;
+use super::{LoggedRequest, PeerNegative};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -15,7 +15,7 @@ pub(super) fn spawn_mod_server(
     listener: TcpListener,
     stop: Arc<AtomicBool>,
     requests: Arc<Mutex<Vec<LoggedRequest>>>,
-    mismatch_manifest: bool,
+    negative: PeerNegative,
 ) -> JoinHandle<Result<(), String>> {
     thread::spawn(move || {
         while !stop.load(Ordering::Acquire) {
@@ -31,7 +31,7 @@ pub(super) fn spawn_mod_server(
                             correlation: headers.get("x-sts2-correlation-id").cloned(),
                             body: body.clone(),
                         });
-                    match downstream_response(&method, &path, &headers, &body, mismatch_manifest) {
+                    match downstream_response(&method, &path, &headers, &body, negative) {
                         Ok((status, response)) => write_response(&mut stream, status, &response)?,
                         Err(error) => {
                             // Keep the peer alive after a malformed or unexpected request so
@@ -116,7 +116,11 @@ fn read_request(
 fn write_response(stream: &mut TcpStream, status: u16, body: &Value) -> Result<(), String> {
     let bytes = serde_json::to_vec(body)
         .map_err(|_| String::from("synthetic mod response encode failed"))?;
-    let reason = if status == 200 { "OK" } else { "Bad Gateway" };
+    let reason = match status {
+        200 => "OK",
+        503 => "Service Unavailable",
+        _ => "Bad Gateway",
+    };
     write!(
         stream,
         "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",

@@ -30,7 +30,7 @@ pub(super) fn mcp_server_script(log: &std::path::Path) -> String {
             {"name":"sts2.capabilities"},
             {"name":"sts2.game_information_capabilities","annotations":{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true},"inputSchema":{"additionalProperties":false},"_meta":{"sts2":{"revision":"game-information-query-v1-mcp","feature":"static_reference"}}},
             {"name":"sts2.game_information_list","annotations":{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true},"inputSchema":{"additionalProperties":false},"_meta":{"sts2":{"revision":"game-information-query-v1-mcp","feature":"static_reference"}}},
-            {"name":"sts2.game_information.live_observation_bootstrap","annotations":{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true},"inputSchema":{"additionalProperties":false},"_meta":{"sts2":{"revision":"game-information-live-observation-bootstrap-v1","feature":"live_observation_bootstrap"}}}
+            {"name":"sts2.game_information.live_observation_bootstrap","annotations":{"readOnlyHint":true,"destructiveHint":false,"idempotentHint":true},"inputSchema":{"additionalProperties":false},"_meta":{"sts2":{"revision":"game-information-live-observation-bootstrap-v1","feature":"live_details"}}}
         ]
     });
     let catalog = serde_json::to_string(&catalog).expect("MCP catalog JSON");
@@ -201,9 +201,16 @@ def secrets_absent():
            "STS2_LOOKUP_ARCHIVE_STORE_KEY_HEX","STS2_WORKFLOW_TOKEN_LOOKUP_OWNER"]
     return not any(name in os.environ for name in names) and \
            "STS2_LOOKUP_BINDING_DISCOVERY_REQUEST_JSON" not in os.environ
+def log(event):
+ with open(LOG,"a",encoding="utf-8") as out:
+  out.write(json.dumps(event)+"\n")
+def fail(kind, detail):
+ # Surface the provider-side reason in the test log instead of a silent exit.
+ log({{"kind":kind,"owner_secrets_absent":secrets_absent(),"detail":str(detail)[:512]}})
+ sys.exit(1)
+sys.excepthook=lambda kind, value, trace: fail("exception", value)
 raw=input()
-with open(LOG,"a",encoding="utf-8") as out:
- out.write(json.dumps({{"kind":"start","owner_secrets_absent":secrets_absent()}})+"\n")
+log({{"kind":"start","owner_secrets_absent":secrets_absent()}})
 frame=json.loads(raw)
 request=frame["payload"]["request"]
 args={{"operation_id":"entry-query","mode":"live",
@@ -223,14 +230,22 @@ frame["payload"]={{"kind":"bootstrap","arguments":bootstrap}}
 print(json.dumps(frame),flush=True)
 feedback=json.loads(input())
 value=feedback["payload"]["value"]
-assert "bootstrap" in value
+if "error" in value:
+ log({{"kind":"error","owner_secrets_absent":secrets_absent(),"error":value["error"]}})
+ sys.exit(1)
+if "bootstrap" not in value:
+ fail("unexpected_feedback", json.dumps(feedback)[:400])
 frame["sequence"]=2
 frame["wire_version"]="sts2.exo-lookup-wire-v1"
 frame["payload"]={{"kind":"query","arguments":args}}
 print(json.dumps(frame),flush=True)
 feedback=json.loads(input())
 value=feedback["payload"]["value"]
-assert "data" in value
+if "error" in value:
+ log({{"kind":"error","owner_secrets_absent":secrets_absent(),"error":value["error"]}})
+ sys.exit(1)
+if "data" not in value:
+ fail("unexpected_feedback", json.dumps(feedback)[:400])
 with open(LOG,"a",encoding="utf-8") as out:
  out.write(json.dumps({{"kind":"data","owner_secrets_absent":secrets_absent(),
                         "data_authority":value["data"].get("authority")}})+"\n")
