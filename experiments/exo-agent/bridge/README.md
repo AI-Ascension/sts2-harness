@@ -115,6 +115,25 @@ is the actual configured endpoint. `--synthetic` accepts only `o3-pro` with
 `http://127.0.0.1:PORT`, supplies a fixed synthetic key, and never falls back to a real provider.
 The process oracle creates this configuration automatically.
 
+`--describe` is also machine-checkable about which variants this build implements. It publishes
+`profiles` (`["standard"]`), `profile_support` (with `map` and `expert` explicitly `unsupported`),
+`context_modes` (`["fresh"]`), `decisions`, `decision_support` (with `recovery` explicitly
+`unsupported`), and the two fail-closed codes `unsupported_profile_code`
+(`exo_bridge_unsupported_profile`) and `unsupported_recovery_code`
+(`exo_bridge_unsupported_recovery`). A caller can therefore pre-check support instead of inferring
+it from a rejection. The shipped guard and the advertisement share one classifier, so they cannot
+drift: `crates/harness/tests/exo_advertised_variant_negatives.rs` and the bridge's own test module
+assert the agreement, and `tests/advertised_variant_oracle.rs` re-checks it against the real
+process with zero model requests.
+
+The lookup relay is terminal on an action id only, so `--lookup-describe` and
+`--lookup-bootstrap-describe` re-project the decision fields instead of inheriting the one-shot set:
+they advertise `decisions: ["action_id"]` and mark `action`/`plan`/`wait`/`reobserve`/`recovery`
+`unsupported`. The profile fields are shared, because both entry points enforce the same profile
+guard. The relay also separates two refusals it previously conflated: a non-zero start sequence is
+`exo_bridge_lookup_profile` (a protocol-ordering fault), while an unsupported profile axis is
+`exo_bridge_unsupported_profile` (the shared fail-closed code).
+
 `--run` is the separately authorized provider entrypoint. It accepts the reviewed
 `https://api.openai.com/v1` route and requires `STS2_EXO_MODEL_KEY` in the bridge environment.
 The key crosses to the executor only through private stdin, not child environment or argv.

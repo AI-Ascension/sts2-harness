@@ -14,7 +14,7 @@ mod run;
 #[cfg(target_os = "linux")]
 use std::io::{Read, Write};
 #[cfg(target_os = "linux")]
-use sts2_harness::{EXO_SOURCE_REVISION, parse_bridge_request_envelope};
+use sts2_harness::parse_bridge_request_envelope;
 
 #[cfg(target_os = "linux")]
 fn main() {
@@ -107,13 +107,8 @@ fn execute() -> Result<(), &'static str> {
     let bytes = read_input()?;
     let envelope =
         parse_bridge_request_envelope(&bytes, 131_072).map_err(|_| "exo_bridge_invalid_request")?;
-    let request = &envelope.request;
-    if request.provider_revision != EXO_SOURCE_REVISION
-        || request.map_context.is_some()
-        || request.management_profile.is_some()
-        || request.observation.get("protocol_version").is_some()
-    {
-        return Err("exo_bridge_unsupported_profile");
+    if config::unsupported_profile_axis(&envelope.request).is_some() {
+        return Err(config::UNSUPPORTED_PROFILE_CODE);
     }
     let response = if mode == "--run-v2" || mode == "--synthetic-v2" {
         run::execute_v2(&loaded, envelope, mode == "--synthetic-v2")?
