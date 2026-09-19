@@ -79,7 +79,7 @@ fn compose(action: &Value, observation: &Value) -> Option<String> {
             "discard {}",
             potion_phrase(action.get("potion_id").and_then(Value::as_str), observation)?
         ),
-        "skip_reward" => String::from("skip the reward"),
+        "skip_reward" => skip_phrase(observation),
         "proceed" => String::from("proceed"),
         "shop_purchase" => format!("buy {}", item_phrase(action, observation)?),
         "shop_remove" => format!(
@@ -156,6 +156,32 @@ fn potion_phrase(potion_id: Option<&str>, observation: &Value) -> Option<String>
         phrase.push_str(&format!(": {text}"));
     }
     Some(phrase)
+}
+
+/// Describes declining an offer, naming what is being declined.
+///
+/// "skip the reward" reads as a tidy, legible option next to a list of identifiers the model cannot
+/// rank, and it won a recorded reward loop repeatedly at low confidence. Naming what is given up
+/// puts the trade in front of the model rather than leaving skipping as the one option that needs
+/// no reading.
+///
+/// It states the count, which the host gave, and nothing else. It does not say the offered cards
+/// are unsuitable, or that skipping is wise: neither is known here, and a description that argued
+/// for one option would be choosing instead of describing.
+fn skip_phrase(observation: &Value) -> String {
+    let offered = observation
+        .get("state")
+        .and_then(|state| {
+            ["choices", "options"]
+                .into_iter()
+                .find_map(|key| state.get(key))
+        })
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    match offered {
+        0 => String::from("skip the reward, taking nothing from it"),
+        count => format!("skip the reward, taking none of the {count} offered"),
+    }
 }
 
 /// Describes an offered card or reward from the set the host listed for this screen.

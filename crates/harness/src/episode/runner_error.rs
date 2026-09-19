@@ -82,6 +82,8 @@ pub enum EpisodeRunnerError {
     UncertainMutation,
     StoppedByRecovery,
     StepLimitExceeded,
+    /// One game situation was reached more times than the runner is willing to keep deciding on.
+    RepeatedSituation,
 }
 
 impl std::fmt::Display for EpisodeRunnerError {
@@ -158,6 +160,9 @@ impl std::fmt::Display for EpisodeRunnerError {
             Self::UncertainMutation => "mutation outcome is uncertain; episode is fail-closed",
             Self::StoppedByRecovery => "episode stopped by explicit recovery",
             Self::StepLimitExceeded => "episode exceeded its bounded step budget",
+            Self::RepeatedSituation => {
+                "episode reached one situation repeatedly without progressing"
+            }
         };
         formatter.write_str(message)
     }

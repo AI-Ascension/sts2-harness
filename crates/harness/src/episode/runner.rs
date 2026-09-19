@@ -135,6 +135,7 @@ pub struct EpisodeRunnerConfig {
     hard_constraints: Vec<String>,
     map_context_enabled: bool,
     max_consecutive_abstentions: u8,
+    max_repeated_situations: u16,
 }
 
 impl EpisodeRunnerConfig {
@@ -164,7 +165,30 @@ impl EpisodeRunnerConfig {
             hard_constraints,
             map_context_enabled: false,
             max_consecutive_abstentions: 0,
+            max_repeated_situations: 0,
         })
+    }
+
+    /// Bounds how many times one game situation may be reached before the episode is abandoned.
+    ///
+    /// Zero, the default, keeps the previous behaviour: a cycle runs until the step or time limit.
+    /// Above zero, a situation reached that many times ends the episode with
+    /// [`EpisodeRunnerError::RepeatedSituation`].
+    ///
+    /// A situation is the observation with its `state_id` and `generation` removed, because those
+    /// advance on every step and would make a repeat look new. Confident decisions can still cycle:
+    /// taking a reward, failing to rank its cards, skipping, and being offered the same reward
+    /// again is a loop of decisions that each clear the confidence gate, so the abstention bound
+    /// does not see it.
+    #[must_use]
+    pub const fn with_max_repeated_situations(mut self, bound: u16) -> Self {
+        self.max_repeated_situations = bound;
+        self
+    }
+
+    #[must_use]
+    pub const fn max_repeated_situations(&self) -> u16 {
+        self.max_repeated_situations
     }
 
     /// Bounds how many times an unchanged state may be re-asked before the runner settles.

@@ -394,3 +394,15 @@ wave. Active development continues in `CHANGELOG.md`.
   unattached owner stays explicitly unavailable. Compatibility: additive read-only route; the
   existing `ContextAssociation` route is unchanged. See
   [ADR 0025](decisions/0025-context-owner-current-association.md). Refs #100.
+- Classify saved provider-session policies precisely against the **selected** adapter profile:
+  `ProviderSessionPolicy::admit_for_profile` checks portable schema validity separately from the
+  profile's executable ceiling and returns either a schema failure or a precise capability reason,
+  never a generic invalid-policy error and never a silent clamp. Compatibility: additive; no policy
+  field, schema, range or bound changes. See
+  [ADR 0026](decisions/0026-provider-session-saved-policy-admission.md). Refs #95.
+- Add bounded migration records for saved provider-session policies that are portable-schema valid
+  but above the selected profile's executable ceiling: the exact saved bytes and violated limits are
+  retained, and adoption requires explicit approval plus a caller-supplied target that is already
+  within the executable ceilings — no value is ever silently clamped. Compatibility: additive,
+  library-only; no policy field, schema, range or bound changes. See
+  [ADR 0027](decisions/0027-provider-session-policy-migration.md). Refs #95.
