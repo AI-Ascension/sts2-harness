@@ -108,3 +108,41 @@ Steam has to come up inside the desktop session or it exits during bootstrap wit
         DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
         systemd-run --user --scope --setenv=DISPLAY=:0 --setenv=WAYLAND_DISPLAY=wayland-0 \
         /usr/games/steam -silent
+
+### Keeping it fullscreen
+
+Making the window fullscreen once is not enough. The launcher passes `--windowed`, and the game
+applies its own saved display settings *after* the window is mapped - the log line is
+`[Display] Attempting WINDOWED mode` - which takes it straight back out of fullscreen. The symptom
+is a window that looks nearly right and still has the Ubuntu top bar over it: the compositor
+reported `fs=false` on a `1024x805+0+0` window against a 1024x768 screen. The extension therefore
+watches `notify::fullscreen` on the game window and re-asserts, bounded to 30 attempts so a build
+that genuinely refuses cannot spin. It re-asserts focus on `notify::focus-window` for the same
+reason: Mutter only hides the top bar and the dock for the *focused* fullscreen window.
+
+Two things make this hard to debug, so the extension logs the window stack itself:
+
+- `org.gnome.Shell.Eval` and `org.gnome.Shell.Introspect.GetWindows` are both refused on GNOME 46,
+  so there is no external way to ask what is on top.
+- The shell only imports an extension's code at session start. `gnome-extensions disable` then
+  `enable` re-runs `enable()` on the module already in memory, it does **not** pick up an edited
+  file - a changed extension needs `systemctl restart gdm`. That does make the toggle a cheap way
+  to dump the current window stack, which is what `_dump('enable')` is for:
+
+      journalctl -b -o cat | grep -F 'jev-fullscreen enable:'
+      jev-fullscreen enable: 1 windows [Slay the Spire 2|...|fs=true|focus=true|1024x768+0+0]
+
+Steam also needs `XAUTHORITY`, not just `DISPLAY`: it is an X11 client on XWayland, and without the
+auth file it logs `Authorization required, but no authorization protocol specified` and
+`Unable to open X11 display, exiting` after bootstrapping. The file is per session, so resolve it:
+
+    XA=$(ls -1 /run/user/1000/.mutter-Xwaylandauth.* | head -1)
+    sudo -u ubuntu env XDG_RUNTIME_DIR=/run/user/1000 \
+        DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+        systemd-run --user --scope --setenv=DISPLAY=:0 --setenv=XAUTHORITY="$XA" \
+        --setenv=WAYLAND_DISPLAY=wayland-0 /usr/games/steam -silent
+
+Finally, do not guard the loop start with `pgrep -f "[j]ev-loop.sh"` in the same command line that
+starts `/usr/local/sbin/jev-loop.sh`. The bracket keeps the *pattern* from matching itself, but the
+unbracketed path in the start command is on that same command line, so the guard matches the shell
+running it and the loop never starts. Check in one call and start in another.
