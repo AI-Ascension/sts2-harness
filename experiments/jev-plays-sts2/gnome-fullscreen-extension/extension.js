@@ -6,29 +6,43 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 // session matches, so Steam's own windows are left alone.
 const MATCH = /spire/i;
 
-// The window is mapped before Godot settles its size, and the launcher resizes it once more
-// on the way in. Re-check for a while rather than acting on the first map only.
+// The window is mapped well before the game settles: it resizes itself twice on the way in and
+// its saved display settings are applied later still.
 const ATTEMPT_DELAYS = [500, 1500, 3000, 6000, 12000];
 
-// Long enough for the game's own startup pass to finish before we answer it, short enough that
+// Long enough for the game's own startup pass to finish before answering it, short enough that
 // the shell is never left drawn over the game. Also debounces the change our own call causes.
 const REASSERT_DELAY = 400;
 
-// The game puts itself back into windowed mode once, while it applies its saved display settings.
-// A bounded number of answers covers that without spinning forever if a build ever refuses.
-const MAX_REASSERTS = 30;
+// The backstop. notify::fullscreen only fires on a transition, so a window that never became
+// fullscreen in the first place - because the early attempts landed before it was established -
+// produces no signal at all and would otherwise sit windowed forever. That is exactly what
+// happened after an episode relaunch: the window stayed 718x552 until the extension was
+// re-enabled by hand. Sweeping catches it without needing a transition to react to.
+const SWEEP_SECONDS = 5;
+
+// The game puts itself back into windowed mode while it applies its saved display settings. A
+// bounded number of answers covers that without spinning forever if a build ever refuses. The
+// count is per window, so a fresh game every episode starts with a fresh budget.
+const MAX_REASSERTS = 40;
 
 export default class JevFullscreen extends Extension {
     enable() {
         this._timeouts = new Set();
-        this._pending = 0;
-        this._reasserts = 0;
         this._watched = new Map();
+        this._reasserts = new Map();
+        this._pending = 0;
         this._createdId = global.display.connect('window-created',
             (_display, window) => this._consider(window));
         // Anything that takes focus - an update-notifier dialog, a Steam popup - leaves the game
         // fullscreen but unfocused, and Mutter then draws the top bar and the dock over it.
         this._focusId = global.display.connect('notify::focus-window', () => this._schedule());
+        this._sweepId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, SWEEP_SECONDS, () => {
+            const game = this._gameWindow();
+            if (game && (!game.is_fullscreen() || global.display.focus_window !== game))
+                this._apply(game);
+            return GLib.SOURCE_CONTINUE;
+        });
         for (const actor of global.get_window_actors())
             this._consider(actor.meta_window);
         this._dump('enable');
@@ -46,15 +60,18 @@ export default class JevFullscreen extends Extension {
                 try {
                     window.disconnect(id);
                 } catch (error) {
-                    // The window may already be gone; nothing to release.
+                    // Already unmanaged; nothing to release.
                 }
             }
         }
         this._watched.clear();
-        if (this._pending) {
-            GLib.source_remove(this._pending);
-            this._pending = 0;
+        this._reasserts.clear();
+        for (const id of [this._sweepId, this._pending]) {
+            if (id)
+                GLib.source_remove(id);
         }
+        this._sweepId = 0;
+        this._pending = 0;
         for (const id of this._timeouts)
             GLib.source_remove(id);
         this._timeouts.clear();
@@ -88,9 +105,6 @@ export default class JevFullscreen extends Extension {
         }
     }
 
-    // The launcher starts the game with a fixed --windowed, and the game applies its saved display
-    // settings after the window is already mapped, which takes it straight back out of fullscreen.
-    // Watch the property rather than guessing when that pass happens.
     _watch(window) {
         if (!this._isGame(window) || this._watched.has(window))
             return;
@@ -103,16 +117,17 @@ export default class JevFullscreen extends Extension {
 
     _unwatch(window) {
         const ids = this._watched.get(window);
-        if (!ids)
-            return;
-        for (const id of ids) {
-            try {
-                window.disconnect(id);
-            } catch (error) {
-                // Already unmanaged.
+        if (ids) {
+            for (const id of ids) {
+                try {
+                    window.disconnect(id);
+                } catch (error) {
+                    // Already unmanaged.
+                }
             }
+            this._watched.delete(window);
         }
-        this._watched.delete(window);
+        this._reasserts.delete(window);
     }
 
     _schedule() {
@@ -132,20 +147,17 @@ export default class JevFullscreen extends Extension {
             // A window destroyed between the timeout being armed and firing has no actor.
             if (!window || !window.get_compositor_private() || !this._isGame(window))
                 return;
-            const wantsFullscreen = !window.is_fullscreen();
-            const wantsFocus = global.display.focus_window !== window;
-            if (!wantsFullscreen && !wantsFocus)
-                return;
-            if (wantsFullscreen) {
-                if (this._reasserts >= MAX_REASSERTS) {
-                    if (this._reasserts === MAX_REASSERTS) {
-                        this._reasserts += 1;
-                        log('jev-fullscreen: giving up after '
-                            + `${MAX_REASSERTS} fullscreen attempts the game undid`);
+            this._watch(window);
+            if (!window.is_fullscreen()) {
+                const used = this._reasserts.get(window) ?? 0;
+                if (used >= MAX_REASSERTS) {
+                    if (used === MAX_REASSERTS) {
+                        this._reasserts.set(window, used + 1);
+                        log(`jev-fullscreen: giving up after ${MAX_REASSERTS} attempts the game undid`);
                     }
                     return;
                 }
-                this._reasserts += 1;
+                this._reasserts.set(window, used + 1);
                 window.make_fullscreen();
             }
             // Mutter only hides the top bar and the dock for the *focused* fullscreen window.

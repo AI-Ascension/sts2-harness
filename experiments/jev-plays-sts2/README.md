@@ -275,3 +275,38 @@ because Mutter 46 does not implement the Wayland `fifo-v1` protocol, which the g
 The host has an Intel Arc Pro B60 already doing SR-IOV, with one of seven virtual functions given
 to the Windows domain and six free. `gpu-passthrough/` holds a prepared, unexecuted plan to give
 one to this guest, with a read-only preflight, a rollback, and the reasoning for each step.
+
+## The game was not finishing, it was being cut off
+
+Every substantial episode ended with `exit 124` - the exit code of `timeout` - and the episodes
+were spaced 15:15 to 15:26 apart against a 900s `EPISODE_TIMEOUT`. What that looks like from the
+outside is the game finishing and relaunching. What it actually was: the bound firing mid-combat,
+the loop tearing the session down, and the next episode launching a fresh game against a fresh
+profile. Measured episodes reached 117 to 123 decisions, five map nodes and real combat, and none
+of them ever saw a death or a victory:
+
+    option families: play=340, end=92, choose_reward=23, select_card=18, proceed=17,
+                     skip_reward=6, select_map_node=5
+    last decision:   play Blood Wall [2 energy]
+
+At about 7.7s per decision a run needs far longer than fifteen minutes, so `EPISODE_TIMEOUT` is
+now 3300s. It cannot go much higher: the reviewed launcher refuses a session outside 60..3600
+(`max-seconds must be bounded between 60 and 3600`), so 3600 is the ceiling on one game session
+and the episode bound sits just under it. The loop checks both relations at startup rather than
+letting the launcher refuse or letting the game be killed out from under a live episode.
+
+A run that still does not finish inside 55 minutes will be relaunched, because one episode is one
+launcher session by design - the launcher creates a fresh profile every time. Continuing across
+that boundary is a harness and mod question, not a loop one: see AI-Ascension/sts2-game-mod#172.
+
+## Why the extension needs a sweep as well as a signal
+
+`notify::fullscreen` only fires on a transition. A window that never became fullscreen in the
+first place - because the early attempts landed before it was established - produces no signal at
+all, so nothing ever retried. After one episode relaunch the window sat at 718x552, windowed, and
+stayed there until the extension was disabled and re-enabled by hand.
+
+So the extension also sweeps every five seconds: if a game window exists and is not fullscreen, or
+is not focused, it re-applies. The attempt budget is per window rather than per session, so a
+fresh game each episode starts with a fresh budget instead of exhausting one shared counter over a
+day of relaunches.
