@@ -6,6 +6,7 @@
 //! records control decisions, while the game host remains the authority for observations, legal
 //! actions, and mutations.
 
+mod action_description;
 mod derived_exact;
 mod lifetime_durable;
 mod lifetime_error;
@@ -38,6 +39,7 @@ mod store_types;
 mod systemone_request;
 mod types;
 
+pub use action_description::describe_action;
 pub use derived_exact::{DERIVED_EXACT_SCHEMA, DerivedExactFacts, Survival};
 pub use lifetime_durable::{DURABLE_LIFETIME_SCHEMA, DurableLifetimeState};
 pub use lifetime_error::ContextLifetimeError;
@@ -100,8 +102,9 @@ pub use store_types::{
     DurableStoreFailpoint, LegacyOpenError, StoreMode, StoreSnapshot,
 };
 pub use systemone_request::{
-    ACTION_QUESTION, MAX_OPTIONS, MAX_STATE_AND_QUESTION_BYTES, SYSTEM_ONE_PATH,
-    SystemOneRequestError, build_system_one_request, system_one_questions_digest,
+    ACTION_QUESTION, MAX_DESCRIPTION_BYTES, MAX_OPTIONS, MAX_STATE_AND_QUESTION_BYTES,
+    SYSTEM_ONE_PATH, SystemOneOption, SystemOneRequestError, build_described_system_one_request,
+    build_system_one_request, system_one_questions_digest,
 };
 pub use types::{
     ActiveContextSource, CONTEXT_DRAFT_SCHEMA, ContextBoundary, ContextDraft, ContextItem,

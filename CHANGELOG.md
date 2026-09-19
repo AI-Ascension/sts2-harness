@@ -24,6 +24,57 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   live catalogue like any other. Output says `abstention_settled` so the record distinguishes an
   action settled under the bound from one chosen above the gate. The library default is 0, which is
   the previous unbounded behaviour, so only the runtime changes. Refs #317.
+- **Let a reward say what it would offer before it is taken.** A reward is chosen on one screen and
+  its contents on the next, so the first choice was made blind: a card reward was an identifier and
+  nothing else until it had already been taken. In a recorded run the model committed to a card
+  reward at p=0.77, found three cards it could not tell apart, skipped, and was offered the same
+  reward again. A `Choice` now carries `contents`, the entries taking it would present next, and a
+  reward describes as `take the reward Card reward, offering Blood Wall (upgraded) [2 energy]
+  (rare): Gain 12 Block.` An entry inside `contents` has no `contents` of its own, so disclosure is
+  one level deep by construction and the projection needs no depth counter to stay bounded against a
+  host nesting an observation inside an observation. Additive and optional throughout: a reward that
+  discloses nothing describes exactly as before, and contents listed as bare identifiers are carried
+  as those identifiers rather than dropped. Refs #315.
+
+- **Describe the options and derive the arithmetic** for the System One lane, and stop asking about
+  the same play more than once. A live Linux episode recorded six options for one combat turn whose
+  criteria were their own identifiers: three of them were the same Defend and two the same Strike, so
+  the probability mass for playing a Defend was split three ways and the answer read as confidence
+  0.19 in a turn with an obvious play. The bridge now folds strategically identical entries through
+  the existing `OptionSelection`, so five catalog entries stand as three options; describes each one
+  from the same observation the state carries (`play Strike [1 energy] at Nibbit (44 hit points
+  left)`), so no identifier has to be resolved against the hand; and adds `DerivedExactFacts` to the
+  state, which states gross incoming damage, survival, affordable cards and the weakest enemy. Both
+  modules already existed, were reviewed and merged, and were reachable from nothing. A turn with one
+  legal action is now taken without a provider call at all, because asking spends a call to be told
+  the only thing that can happen. `ValueKind::Card` additionally admits `description`, the host's own
+  card text, which the sandbox previously refused: a host that carries it can now say what a card
+  does, and a host that does not is unaffected. Nothing here invents an account of the game: every
+  word of a description is either a host-supplied value or a fixed label for the host's own action
+  kind, and an unlabelled kind still reads as its identifier. Refs #313.
+
+- **Let a host describe the set it offers**, and make an optional field actually optional.
+  `require_exact` counts keys, so admitting a field in the allow-list alone still refused the object
+  for carrying one key too many: `description` on a card was admitted and then rejected by the shape.
+  `require_fields` states required and optional fields separately, and a card may now carry the
+  host's own text. `state.choices` and `state.options` accept a described entry as well as the bare
+  identifier every host sends today, so a reward screen can say `choose Tremble [2 energy]
+  (uncommon): Apply 3 Vulnerable to ALL enemies.` instead of `select_card:123:card:22:Tremble`. The
+  identifier form is unchanged and still admitted. `skip_reward` and `proceed` are labelled rather
+  than left to fall back to their identifiers. This is capacity, not behaviour: the offered set is
+  unmodeled upstream, which `sts2-game-core` records as a deliberate exclusion of `RewardChoicePicks`
+  because "the offered set is unmodeled, so no identity or rarity is inferred", so nothing populates
+  the described form until a host does. Refs #315.
+- Add the **campaign episode mode** for a local provider bridge. A local bridge previously had two
+  modes to name: the combat demo and the live episode, and the live episode is restricted to the
+  OpenAI Astra provider. That left `typesafe-jev` with only the combat demo, which acts solely while
+  the host is already in combat and never leaves a menu, so the provider could observe a campaign but
+  never begin one: against a freshly launched host it polled an unchanging main-menu observation
+  until its bound elapsed and was asked for nothing. `STS2_CAMPAIGN_EPISODE=true` names the third
+  mode, which runs the ordinary episode runner and so reaches the host's whole action catalogue,
+  `start_run` included. It is exclusive with the combat demo rather than layered, because the two
+  take different runners and a vector naming both states no intent. The bridge digest check and the
+  argument allow-list are unchanged and still apply to every mode. Refs #311.
 
 - Fix the **option-selection fold key**, which folded distinct host-listed actions. The key was built
   from a fixed list of seven identity fields, so any action whose identity lived outside that list
@@ -484,64 +535,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   never a generic invalid-policy error and never a silent clamp. Compatibility: additive; no policy
   field, schema, range or bound changes. See
   [ADR 0026](docs/decisions/0026-provider-session-saved-policy-admission.md). Refs #95.
-
-- Expose the authoritative context owner's **current** association for one workflow run as the
-  versioned read-only projection `ascension.harness.context-owner-association-view.v1` over
-  `GET /v1/workflow-runs/{run_id}/context-owner-association`. The projected grants and epochs are
-  owner assertions, not harness-issued authority; a binding for another run fails closed and an
-  unattached owner stays explicitly unavailable. Compatibility: additive read-only route; the
-  existing `ContextAssociation` route is unchanged. See
-  [ADR 0025](docs/decisions/0025-context-owner-current-association.md). Refs #100.
-
-- Add read-only recovery of already-issued context-control receipts. A caller whose delegated
-  `pause`/`commit`/`resume` reply was lost can now look up the owner's recorded receipt by replaying
-  the exact command instead of re-issuing it, gated on the binding advertising `receipt_recovery`.
-  A recovered receipt must satisfy exact owner/invocation/binding/command identity before it is
-  returned. Compatibility: additive, read-only, failing default port method; no schema, record,
-  digest or resource bound changes. See
-  [ADR 0024](docs/decisions/0024-context-control-receipt-recovery.md). Refs #100.
-
-- Expose the recorded context-owner binding for one workflow invocation over the authenticated
-  management HTTP surface as a separately versioned, read-only projection. Same-subject scoped
-  `workflow:read` is required; an unrecorded invocation, another subject, a missing scope and
-  disabled retention are reported as distinct errors. Compatibility: additive read-only endpoint;
-  no existing route, record, schema or resource bound changes. Does not establish current owner
-  authority or receipt recovery. See [ADR 0023](docs/decisions/0023-recorded-context-binding-http-projection.md).
-  Refs #100.
-
-- Add an opt-in Exo duplex lookup bridge and bounded native TypeScript tool registration,
-  connecting the lookup agent API to the isolated pinned executor. See
-  [ADR 0022](docs/decisions/0022-exo-lookup-duplex-bridge.md). Refs #127.
-
-- Add scoped game-information v1 lookup consumption through the existing MCP port, a bounded
-  typed agent tool loop, complete-source validation before projection, separate source/view
-  identities and encrypted pinned replay archives. The opt-in mixed catalog preserves legacy
-  profiles. Synthetic tool-loop and SQLite restart evidence do not claim native provider or
-  exact-host execution; the old native Exo adapter remains terminal-decision-only.
-  See [ADR 0039](docs/decisions/0039-game-information-consumer.md). Refs #127.
-
-- Add the opt-in immutable benchmark manifest library: bounded strict v1 parsing, separate
-  gameplay/experiment/occurrence identities, exact mismatch reasons and keyed public references.
-  Existing seed receipts can be associated with an immutable planned trial as `seed_receipt_bound`
-  only when the declared protocol version and schema digest also match; this is offline consistency,
-  not native reproducibility or hidden RNG verification. No runtime or legacy-record behavior
-  changes. See [ADR 0021](docs/decisions/0021-benchmark-manifest-foundation.md). Refs #121.
-
-- Add opt-in bounded SQLite history for context-owner bindings, committed atomically with
-  command results and read by original invocation with current scoped, same-subject permission.
-  Historical grants and epochs never authorize current control or claim a restored owner.
-  Public JSON schemas and current-cursor association stay unchanged; Rust `CommandApplication`
-  constructors must supply the new optional `context_binding` field. See
-  [ADR 0040](docs/decisions/0040-recorded-context-binding-history.md). This library-only slice
-  does not implement HTTP history, owner receipt recovery or complete #100 acceptance.
-
-- Reconcile the Exo bridge contract inventory for #139. Add executable conformance vectors for
-  unavailable `map`/`expert` profiles, absent context continuity, incompatible capability
-  schema/contract versions, and malformed descriptor shapes, plus a manifest pin-location drift
-  guard and an explicit upstream dependency/prerequisite record. Compatibility: contract-vector and
-  documentation additions only; no schema or wire field changed. Real provider/native acceptance
-  remains gated by #149.
-
-- Complete the #139 Exo pin inventory: list every revision-bearing bridge, contract, documentation
-  and artifact source in the manifest and enforce the full set in the drift guard. Refresh the
-  manifest checksum. Compatibility: inventory-only; no schema or wire change.

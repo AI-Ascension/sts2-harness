@@ -24,6 +24,10 @@ mod lookup;
 #[path = "runtime_v3_settings_local_bridge.rs"]
 mod local_bridge;
 
+#[path = "runtime_v3_settings_bounded_mode.rs"]
+mod bounded_mode;
+use bounded_mode::bounded_mode_named;
+
 pub(super) struct RuntimeV3Settings {
     pub(super) runner: EpisodeRunnerConfig,
     pub(super) exo: ExoConfig,
@@ -81,12 +85,12 @@ fn verify_revision(revision: &str) -> Result<(), String> {
             "Live episode mode requires the OpenAI Astra provider",
         ));
     }
-    if local_bridge
-        && (revision.len() != 64
-            || !(optional("STS2_COMBAT_DEMO")?.as_deref() == Some("true") || live_episode))
-    {
+    let combat_demo = optional("STS2_COMBAT_DEMO")?.as_deref() == Some("true");
+    let campaign_episode = optional("STS2_CAMPAIGN_EPISODE")?.as_deref() == Some("true");
+    let bounded_mode = bounded_mode_named(combat_demo, live_episode, campaign_episode)?;
+    if local_bridge && (revision.len() != 64 || !bounded_mode) {
         return Err(String::from(
-            "Local provider requires the bridge SHA256 and explicit combat or live episode mode",
+            "Local provider requires the bridge SHA256 and explicit combat, campaign, or live episode mode",
         ));
     }
     if local_bridge {

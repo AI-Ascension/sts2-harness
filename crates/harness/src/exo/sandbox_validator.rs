@@ -9,6 +9,10 @@ enum ValueKind {
     Intent,
     State,
     ShopItem,
+    Choice,
+    ChoiceContent,
+    Relic,
+    Potion,
     LegalAction,
     Action,
     Identity,
@@ -31,7 +35,13 @@ fn validate_value(value: &Value, kind: ValueKind, root: bool) -> Result<(), Sand
         Value::Array(_) => Err(SandboxError::InvalidCollection),
         Value::String(text) => match kind {
             ValueKind::Text if valid_text(text) => Ok(()),
-            ValueKind::Identity if valid_identity(text) => Ok(()),
+            // A choice is an identifier or a described object. Every host today sends the
+            // identifier, so the string form stays admitted and unchanged.
+            ValueKind::Identity | ValueKind::Choice | ValueKind::ChoiceContent
+                if valid_identity(text) =>
+            {
+                Ok(())
+            }
             _ => Err(SandboxError::InvalidText),
         },
         Value::Number(number) => {
@@ -108,6 +118,9 @@ fn collection_bound(kind: ValueKind, key: &str) -> Option<usize> {
         (ValueKind::State, "enemies") => Some(MAX_ENEMIES),
         (ValueKind::Root, "legal_actions") => Some(MAX_LEGAL_ACTIONS),
         (ValueKind::State, "items") => Some(MAX_SHOP_ITEMS),
+        (ValueKind::Player, "relics") => Some(MAX_RELICS),
+        (ValueKind::Player, "potions") => Some(MAX_POTIONS),
+        (ValueKind::Choice, "contents") => Some(MAX_CHOICE_CONTENTS),
         (ValueKind::State, "characters" | "options" | "choices") => Some(MAX_TEXT_ITEMS),
         _ => None,
     }
@@ -122,8 +135,11 @@ fn validate_number_bound(
         (ValueKind::Root, "generation") => MAX_SAFE_INTEGER,
         (ValueKind::Player, "hp" | "max_hp") => 65_535,
         (ValueKind::Player, "energy") => 255,
+        (ValueKind::Player, "potion_slots" | "max_potion_slots") => 255,
+        (ValueKind::Potion, "slot") => 255,
+        (ValueKind::ChoiceContent, "cost") => 255,
         (ValueKind::Player, "gold") => 4_294_967_295,
-        (ValueKind::Card, "cost") => 255,
+        (ValueKind::Card, "cost") | (ValueKind::Choice, "cost") => 255,
         (ValueKind::Enemy, "hp" | "max_hp") => 65_535,
         (ValueKind::Intent, "damage") => 65_535,
         (ValueKind::Intent, "hits") => 255,

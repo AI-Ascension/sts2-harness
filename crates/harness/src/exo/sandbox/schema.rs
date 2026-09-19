@@ -4,6 +4,27 @@ use serde_json::{Map, Value};
 
 use super::{SandboxError, ValueKind};
 
+/// Fields of one entry in an offered set. `Choice` adds `contents`; an entry inside `contents` does
+/// not, which is what keeps disclosure one level deep.
+const CHOICE_CONTENT_FIELDS: &[&str] = &[
+    "choice_id",
+    "name",
+    "cost",
+    "upgraded",
+    "description",
+    "rarity",
+];
+const CHOICE_FIELDS: &[&str] = &[
+    "choice_id",
+    "name",
+    "cost",
+    "upgraded",
+    "description",
+    "rarity",
+    "contents",
+];
+const CHOICE_OPTIONAL: &[&str] = &["name", "cost", "upgraded", "description", "rarity"];
+
 pub(super) fn allows_null(kind: ValueKind, key: &str) -> bool {
     matches!(
         (kind, key),
@@ -25,9 +46,43 @@ pub(super) fn is_allowed(kind: ValueKind, key: &str) -> bool {
             "legal_actions",
         ],
         ValueKind::Player => &[
-            "hp", "max_hp", "energy", "gold", "hand", "deck", "discard", "exhaust",
+            "hp",
+            "max_hp",
+            "energy",
+            "gold",
+            "hand",
+            "deck",
+            "discard",
+            "exhaust",
+            // What the player is carrying. A relic changes the rules for the whole run and a potion
+            // is an action available this turn, so a model told neither is reasoning about a
+            // different game from the one being played.
+            "relics",
+            "potions",
+            "potion_slots",
+            "max_potion_slots",
         ],
-        ValueKind::Card => &["card_id", "name", "cost", "upgraded"],
+        // `description` is the host's own card text. It is admitted so a host that carries it can
+        // say what a card does; a host that does not is unaffected, because absence is allowed.
+        ValueKind::Card => &["card_id", "name", "cost", "upgraded", "description"],
+        // Names follow the runtime-v4 expert shapes in runtime_v4_expert_shape_collections.rs, so
+        // the two protocols describe the same things the same way. `description` is added to both,
+        // because neither carried what a relic or a potion actually does.
+        ValueKind::Relic => &["relic_id", "name", "description"],
+        ValueKind::Potion => &[
+            "potion_id",
+            "name",
+            "slot",
+            "usable",
+            "target_mode",
+            "description",
+        ],
+        // An offered card or reward, when the host describes one rather than naming it.
+        // `contents` is what taking this option would present next. A reward is chosen on one
+        // screen and its contents on the following one, so without it the first choice is blind: a
+        // card reward is only an identifier until it has already been taken.
+        ValueKind::Choice => CHOICE_FIELDS,
+        ValueKind::ChoiceContent => CHOICE_CONTENT_FIELDS,
         ValueKind::Enemy => &["enemy_id", "name", "hp", "max_hp", "intent"],
         ValueKind::Intent => &["kind", "damage", "hits"],
         ValueKind::State => &[
@@ -54,6 +109,7 @@ pub(super) fn is_allowed(kind: ValueKind, key: &str) -> bool {
             "reward_id",
             "item_id",
             "choice_id",
+            "potion_id",
         ],
         ValueKind::Identity | ValueKind::Text | ValueKind::Number | ValueKind::Boolean => &[],
     };
@@ -75,9 +131,21 @@ pub(super) fn child_kind(parent: ValueKind, key: &str) -> ValueKind {
         (ValueKind::Player, "hp")
         | (ValueKind::Player, "max_hp")
         | (ValueKind::Player, "energy")
-        | (ValueKind::Player, "gold") => ValueKind::Number,
+        | (ValueKind::Player, "gold")
+        | (ValueKind::Player, "potion_slots")
+        | (ValueKind::Player, "max_potion_slots") => ValueKind::Number,
+        (ValueKind::Player, "relics") => ValueKind::Relic,
+        (ValueKind::Player, "potions") => ValueKind::Potion,
+        (ValueKind::Relic, "relic_id") => ValueKind::Identity,
+        (ValueKind::Relic, "name") | (ValueKind::Relic, "description") => ValueKind::Text,
+        (ValueKind::Potion, "potion_id") => ValueKind::Identity,
+        (ValueKind::Potion, "name")
+        | (ValueKind::Potion, "description")
+        | (ValueKind::Potion, "target_mode") => ValueKind::Text,
+        (ValueKind::Potion, "slot") => ValueKind::Number,
+        (ValueKind::Potion, "usable") => ValueKind::Boolean,
         (ValueKind::Card, "card_id") => ValueKind::Identity,
-        (ValueKind::Card, "name") => ValueKind::Text,
+        (ValueKind::Card, "name") | (ValueKind::Card, "description") => ValueKind::Text,
         (ValueKind::Card, "cost") => ValueKind::Number,
         (ValueKind::Card, "upgraded") => ValueKind::Boolean,
         (ValueKind::Enemy, "enemy_id") => ValueKind::Identity,
@@ -88,9 +156,23 @@ pub(super) fn child_kind(parent: ValueKind, key: &str) -> ValueKind {
         (ValueKind::State, "state")
         | (ValueKind::State, "node_id")
         | (ValueKind::State, "code") => ValueKind::Identity,
-        (ValueKind::State, "characters")
-        | (ValueKind::State, "options")
-        | (ValueKind::State, "choices") => ValueKind::Identity,
+        (ValueKind::State, "characters") => ValueKind::Identity,
+        // An offered set: identifiers today, described objects when a host carries the detail.
+        (ValueKind::State, "options") | (ValueKind::State, "choices") => ValueKind::Choice,
+        (ValueKind::Choice, "contents") => ValueKind::ChoiceContent,
+        (ValueKind::Choice, "choice_id") | (ValueKind::ChoiceContent, "choice_id") => {
+            ValueKind::Identity
+        }
+        (ValueKind::ChoiceContent, "name")
+        | (ValueKind::ChoiceContent, "description")
+        | (ValueKind::ChoiceContent, "rarity") => ValueKind::Text,
+        (ValueKind::ChoiceContent, "cost") => ValueKind::Number,
+        (ValueKind::ChoiceContent, "upgraded") => ValueKind::Boolean,
+        (ValueKind::Choice, "name")
+        | (ValueKind::Choice, "description")
+        | (ValueKind::Choice, "rarity") => ValueKind::Text,
+        (ValueKind::Choice, "cost") => ValueKind::Number,
+        (ValueKind::Choice, "upgraded") => ValueKind::Boolean,
         (ValueKind::State, "reason") => ValueKind::Text,
         (ValueKind::State, "turn_index") => ValueKind::Number,
         (ValueKind::Enemy, "intent") => ValueKind::Intent,
@@ -115,13 +197,18 @@ pub(super) fn validate_shape(
         return Ok(());
     }
     match kind {
-        ValueKind::Player => require_exact(
+        ValueKind::Player => require_fields(
             object,
             &[
                 "hp", "max_hp", "energy", "gold", "hand", "deck", "discard", "exhaust",
             ],
+            &["relics", "potions", "potion_slots", "max_potion_slots"],
         ),
-        ValueKind::Card => require_exact(object, &["card_id", "name", "cost", "upgraded"]),
+        ValueKind::Card => require_fields(
+            object,
+            &["card_id", "name", "cost", "upgraded"],
+            &["description"],
+        ),
         ValueKind::Enemy => require_exact(object, &["enemy_id", "name", "hp", "max_hp", "intent"]),
         ValueKind::Intent => match object.get("kind").and_then(Value::as_str) {
             Some("attack") => require_exact(object, &["kind", "damage", "hits"]),
@@ -141,6 +228,14 @@ pub(super) fn validate_shape(
             _ => Err(SandboxError::UnknownField),
         },
         ValueKind::ShopItem => require_exact(object, &["item_id", "name", "price"]),
+        ValueKind::Relic => require_fields(object, &["relic_id", "name"], &["description"]),
+        ValueKind::Potion => require_fields(
+            object,
+            &["potion_id", "name"],
+            &["slot", "usable", "target_mode", "description"],
+        ),
+        ValueKind::Choice => require_fields(object, &["choice_id"], &CHOICE_FIELDS[1..]),
+        ValueKind::ChoiceContent => require_fields(object, &["choice_id"], CHOICE_OPTIONAL),
         ValueKind::LegalAction => require_exact(object, &["action_id", "action"]),
         ValueKind::Action => match object.get("kind").and_then(Value::as_str) {
             Some("start_run") => require_exact(object, &["kind", "character_id"]),
@@ -151,6 +246,8 @@ pub(super) fn validate_shape(
             Some("shop_remove" | "smith" | "select_card") => {
                 require_exact(object, &["kind", "card_id"])
             }
+            Some("use_potion") => require_exact(object, &["kind", "potion_id", "target_id"]),
+            Some("discard_potion") => require_exact(object, &["kind", "potion_id"]),
             Some("select_player") => require_exact(object, &["kind", "player_id"]),
             Some("event_choice") => require_exact(object, &["kind", "choice_id"]),
             Some("end_turn" | "skip_reward" | "rest" | "confirm_victory" | "save_quit") => {
@@ -166,6 +263,27 @@ pub(super) fn validate_shape(
         | ValueKind::Text
         | ValueKind::Number
         | ValueKind::Boolean => Ok(()),
+    }
+}
+
+/// Admits an object carrying every required field, and nothing beyond the optional ones.
+///
+/// `require_exact` counts keys, so it cannot express an optional field: an object carrying one is
+/// refused for having the wrong number of them. A host that knows more than the minimum should not
+/// have to withhold it, and a host that knows only the minimum should not have to invent the rest.
+pub(super) fn require_fields(
+    object: &Map<String, Value>,
+    required: &[&str],
+    optional: &[&str],
+) -> Result<(), SandboxError> {
+    if required.iter().all(|field| object.contains_key(*field))
+        && object
+            .keys()
+            .all(|key| required.contains(&key.as_str()) || optional.contains(&key.as_str()))
+    {
+        Ok(())
+    } else {
+        Err(SandboxError::UnknownField)
     }
 }
 

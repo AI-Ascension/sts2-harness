@@ -261,3 +261,126 @@ fn a_transport_that_exits_nonzero_is_refused() {
     assert!(outcome.is_err());
     let _ = std::fs::remove_file(&script);
 }
+
+/// A combat turn holding three identical Defends and two identical Strikes.
+///
+/// This is the shape the live Linux run recorded: five distinct catalog entries that stand for
+/// three distinct plays.
+fn duplicate_hand_request() -> Vec<u8> {
+    serde_json::to_vec(&json!({
+        "model_execution_id": "model-execution-8",
+        "objective": "win the combat while preserving hit points",
+        "hard_constraints": [],
+        "legal_action_ids": [
+            "play:13:card:11:enemy:1", "play:13:card:12:none", "play:13:card:13:enemy:1",
+            "play:13:card:14:none", "play:13:card:15:none", "end:13",
+        ],
+        "observation": {
+            "state_id": "combat-2",
+            "generation": 13,
+            "player": {
+                "hp": 80, "max_hp": 80, "energy": 3, "gold": 99,
+                "hand": [
+                    {"card_id": "card:11", "name": "Strike", "cost": 1, "upgraded": false},
+                    {"card_id": "card:12", "name": "Defend", "cost": 1, "upgraded": false},
+                    {"card_id": "card:13", "name": "Strike", "cost": 1, "upgraded": false},
+                    {"card_id": "card:14", "name": "Defend", "cost": 1, "upgraded": false},
+                    {"card_id": "card:15", "name": "Defend", "cost": 1, "upgraded": false},
+                ],
+                "deck": [], "discard": [], "exhaust": [],
+            },
+            "state": {
+                "state": "combat",
+                "turn_index": 1,
+                "enemies": [{
+                    "enemy_id": "enemy:1", "name": "Nibbit", "hp": 44, "max_hp": 44,
+                    "intent": {"kind": "attack", "damage": 12, "hits": 1},
+                }],
+            },
+            "legal_actions": [
+                {"action_id": "play:13:card:11:enemy:1",
+                 "action": {"kind": "play_card", "card_id": "card:11", "target_id": "enemy:1"}},
+                {"action_id": "play:13:card:12:none",
+                 "action": {"kind": "play_card", "card_id": "card:12", "target_id": null}},
+                {"action_id": "play:13:card:13:enemy:1",
+                 "action": {"kind": "play_card", "card_id": "card:13", "target_id": "enemy:1"}},
+                {"action_id": "play:13:card:14:none",
+                 "action": {"kind": "play_card", "card_id": "card:14", "target_id": null}},
+                {"action_id": "play:13:card:15:none",
+                 "action": {"kind": "play_card", "card_id": "card:15", "target_id": null}},
+                {"action_id": "end:13", "action": {"kind": "end_turn"}},
+            ],
+        },
+    }))
+    .unwrap_or_default()
+}
+
+#[test]
+fn identical_cards_are_asked_about_once_instead_of_splitting_their_probability() {
+    let (_, seen) = decide_with(&duplicate_hand_request(), Err("no reply needed"));
+    let body: Value = serde_json::from_slice(&seen).expect("request body");
+    let criteria = body["questions"]["action"]["criteria"]
+        .as_object()
+        .expect("criteria");
+    // Five catalog entries stand for three plays: one Strike, one Defend, and ending the turn.
+    assert_eq!(criteria.len(), 3, "criteria were {criteria:?}");
+    assert!(criteria.contains_key("end:13"));
+}
+
+#[test]
+fn every_option_reads_as_the_play_it_is_rather_than_as_an_identifier() {
+    let (_, seen) = decide_with(&duplicate_hand_request(), Err("no reply needed"));
+    let body: Value = serde_json::from_slice(&seen).expect("request body");
+    let criteria = body["questions"]["action"]["criteria"]
+        .as_object()
+        .expect("criteria");
+    let descriptions: Vec<&str> = criteria.values().filter_map(Value::as_str).collect();
+    assert!(
+        descriptions.contains(&"play Strike [1 energy] at Nibbit (44 hit points left)"),
+        "descriptions were {descriptions:?}"
+    );
+    assert!(descriptions.contains(&"play Defend [1 energy]"));
+    assert!(descriptions.contains(&"end the turn"));
+}
+
+#[test]
+fn the_state_carries_the_arithmetic_the_model_is_not_asked_to_do() {
+    let (_, seen) = decide_with(&duplicate_hand_request(), Err("no reply needed"));
+    let body: Value = serde_json::from_slice(&seen).expect("request body");
+    let state: Value =
+        serde_json::from_str(body["state"].as_str().expect("state")).expect("state json");
+    let facts = &state["derived_exact"];
+    // One enemy intending 12 damage once, against 80 hit points.
+    assert_eq!(facts["incoming_damage_gross"], json!(12));
+    assert_eq!(facts["survival"], json!("survivable"));
+    assert_eq!(facts["intents_revealed"], json!(true));
+    assert_eq!(facts["hand_size"], json!(5));
+    assert_eq!(facts["weakest_enemy_id"], json!("enemy:1"));
+}
+
+#[test]
+fn a_single_legal_action_is_taken_without_spending_a_provider_call() {
+    let mut request: Value =
+        serde_json::from_slice(&duplicate_hand_request()).expect("request json");
+    request["legal_action_ids"] = json!(["end:13"]);
+    request["observation"]["legal_actions"] =
+        json!([{"action_id": "end:13", "action": {"kind": "end_turn"}}]);
+    let body = serde_json::to_vec(&request).expect("request bytes");
+
+    let mut called = false;
+    let outcome = decide(
+        &body,
+        "jev-latest",
+        decision::DEFAULT_CONFIDENCE_GATE,
+        &mut |_| {
+            called = true;
+            Err("the bridge must not ask".into())
+        },
+    )
+    .map_err(|error| error.to_string());
+
+    assert!(!called, "a forced action must not reach the transport");
+    let decision = outcome.expect("forced decision");
+    assert_eq!(decision["decision"], json!("action"));
+    assert_eq!(decision["action_id"], json!("end:13"));
+}
