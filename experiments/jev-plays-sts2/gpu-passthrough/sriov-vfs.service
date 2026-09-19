@@ -1,0 +1,22 @@
+[Unit]
+Description=Provision Intel Arc B60 SR-IOV virtual functions
+Documentation=https://github.com/AI-Ascension/sts2-harness
+# The VFs have to exist before libvirt starts any domain that has one as a <hostdev>, or that
+# domain fails to start.
+After=systemd-modules-load.service
+Before=libvirtd.service virtqemud.service
+Wants=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# No ConditionPathExists: that is evaluated before the unit runs, so on a boot where the driver
+# has not enumerated the card yet it would skip silently and leave both domains without a VF.
+# Wait for it instead, and fail loudly if it never appears.
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do [ -w /sys/bus/pci/devices/0000:07:00.0/sriov_numvfs ] && exit 0; sleep 1; done; echo "sriov_numvfs never appeared for 0000:07:00.0" >&2; exit 1'
+ExecStart=/bin/sh -c 'echo 0 > /sys/bus/pci/devices/0000:07:00.0/sriov_numvfs'
+ExecStart=/bin/sh -c 'echo 2 > /sys/bus/pci/devices/0000:07:00.0/sriov_numvfs'
+ExecStart=/bin/sh -c 'echo "sriov_numvfs = $(cat /sys/bus/pci/devices/0000:07:00.0/sriov_numvfs)"'
+
+[Install]
+WantedBy=multi-user.target
