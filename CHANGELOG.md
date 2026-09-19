@@ -10,6 +10,21 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Stop re-asking a near-tie until a roll clears the gate.** System One is not deterministic, so
+  re-asking an unchanged state re-rolls the confidence, and a run advanced when a roll happened to
+  clear the gate rather than when anything was learned. One measured episode spent **140 of its 206
+  provider calls** that way: the same reward screen asked four times at 0.01, 0.06, 0.17 and 0.20
+  against a gate of 20. That was already acting on a low-confidence draw — it just paid for three
+  refusals first and took whichever roll came up highest. An abstention may now carry the option it
+  would have taken, as `candidate_action_id` and `candidate_confidence`, and the runner counts
+  consecutive abstentions on one `state_id` and `generation` and dispatches that option once
+  `STS2_MAX_CONSECUTIVE_REOBSERVE` (default 3) is reached. The candidate is evidence, not an
+  instruction: the decision is still to observe again, an action decision may not carry one at all,
+  a candidate the host no longer offers is dropped, and the settled action is validated against the
+  live catalogue like any other. Output says `abstention_settled` so the record distinguishes an
+  action settled under the bound from one chosen above the gate. The library default is 0, which is
+  the previous unbounded behaviour, so only the runtime changes. Refs #317.
+
 - Fix the **option-selection fold key**, which folded distinct host-listed actions. The key was built
   from a fixed list of seven identity fields, so any action whose identity lived outside that list
   collapsed into a neighbour and was recorded as an intentional duplicate: two different cards aimed
@@ -530,14 +545,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 - Complete the #139 Exo pin inventory: list every revision-bearing bridge, contract, documentation
   and artifact source in the manifest and enforce the full set in the drift guard. Refresh the
   manifest checksum. Compatibility: inventory-only; no schema or wire change.
-
-- Require game-information v1 responses with `unavailable` or `not_observable` coverage to carry an
-  unknown total (`total_count_known: false`, `total_count: null`). The harness consumer previously
-  rejected only non-empty pages, accepting a known or fabricated total for coverage extremes and
-  thereby violating the "never convert unknown into zero or empty" rule. Compatibility: validation
-  tightening only; no schema, wire field, or contract version changed.
-
-- Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
-  and validate exact decision/reservation metadata before completion or uncertainty writes.
-  Validate authenticated lifecycle-to-broker references and phase relationships before
-  restart claim publication, retaining held recovery and historical completed entries.

@@ -134,6 +134,7 @@ pub struct EpisodeRunnerConfig {
     objective: String,
     hard_constraints: Vec<String>,
     map_context_enabled: bool,
+    max_consecutive_abstentions: u8,
 }
 
 impl EpisodeRunnerConfig {
@@ -162,7 +163,26 @@ impl EpisodeRunnerConfig {
             objective,
             hard_constraints,
             map_context_enabled: false,
+            max_consecutive_abstentions: 0,
         })
+    }
+
+    /// Bounds how many times an unchanged state may be re-asked before the runner settles.
+    ///
+    /// Zero, the default, keeps the previous behaviour: an abstention always observes again, for as
+    /// many steps as the episode has. Above zero, once that many consecutive abstentions have been
+    /// made on one `state_id` and `generation`, the runner dispatches the candidate the source
+    /// carried instead of asking a fourth time. It settles only on a candidate the source named and
+    /// the host still offers; with no candidate it observes again exactly as before.
+    #[must_use]
+    pub const fn with_max_consecutive_abstentions(mut self, bound: u8) -> Self {
+        self.max_consecutive_abstentions = bound;
+        self
+    }
+
+    #[must_use]
+    pub const fn max_consecutive_abstentions(&self) -> u8 {
+        self.max_consecutive_abstentions
     }
 
     /// Enables the negotiated map projection for this runner. When enabled, a map-stage

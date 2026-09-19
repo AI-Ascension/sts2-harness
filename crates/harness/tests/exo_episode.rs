@@ -197,7 +197,9 @@ fn exo_request_carries_pinned_revision_and_timeout() {
     assert_eq!(
         decision,
         Decision::Reobserve {
-            rationale: "refresh".to_owned()
+            rationale: "refresh".to_owned(),
+            candidate_action_id: None,
+            candidate_confidence: None,
         }
     );
 

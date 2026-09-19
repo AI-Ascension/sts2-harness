@@ -202,3 +202,21 @@ fn confidence_is_carried_as_a_bounded_percentage() {
     assert_eq!(percent(0.555), 56);
     assert_eq!(percent(0.554), 55);
 }
+
+#[test]
+fn an_abstention_carries_the_option_it_would_have_taken() {
+    // Declining is still the decision. Carrying the option only stops throwing away what the
+    // provider already said, so a caller that has re-asked this state to its bound can use it.
+    let decision = mapped("play:card-17", 0.21);
+    assert_eq!(decision["decision"], json!("reobserve"));
+    assert_eq!(decision["candidate_action_id"], json!("play:card-17"));
+    assert_eq!(decision["candidate_confidence"], json!(21));
+}
+
+#[test]
+fn an_action_carries_no_candidate_because_it_carries_its_choice() {
+    let decision = mapped("play:card-17", 0.90);
+    assert_eq!(decision["decision"], json!("action"));
+    assert_eq!(decision.get("candidate_action_id"), None);
+    assert_eq!(decision.get("candidate_confidence"), None);
+}

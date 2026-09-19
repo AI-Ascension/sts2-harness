@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MIT
 
+#[path = "decision_directive.rs"]
+mod directive;
+use directive::parse_observation_directive;
+
 const MAX_DECISION_BYTES: usize = 8 * 1024;
 const MAX_RATIONALE_BYTES: usize = 512;
 
@@ -20,6 +24,14 @@ pub enum Decision {
     },
     Reobserve {
         rationale: String,
+        /// The option the model would have taken, when it named one while declining to act.
+        ///
+        /// A candidate is evidence, not an instruction: the decision is still to observe again.
+        /// It is carried so a caller that has re-asked an unchanged state too many times can act
+        /// on what the model already said rather than paying to be told it again.
+        candidate_action_id: Option<String>,
+        /// Confidence in that candidate, as the percentage the contract carries elsewhere.
+        candidate_confidence: Option<u8>,
     },
     Recovery {
         kind: String,
@@ -76,6 +88,8 @@ pub fn parse_decision(bytes: &[u8]) -> Result<Decision, DecisionError> {
         "confidence",
         "recovery_kind",
         "operation_id",
+        "candidate_action_id",
+        "candidate_confidence",
     ];
     if object.keys().any(|key| !allowed.contains(&key.as_str())) {
         return Err(DecisionError::UnknownField);
@@ -108,6 +122,8 @@ fn parse_action(
     if object.contains_key("recovery_kind")
         || object.contains_key("operation_id")
         || object.contains_key("action_ids")
+        || object.contains_key("candidate_action_id")
+        || object.contains_key("candidate_confidence")
     {
         return Err(DecisionError::UnknownField);
     }
@@ -142,6 +158,8 @@ fn parse_recovery(
     if object.contains_key("action_id")
         || object.contains_key("confidence")
         || object.contains_key("action_ids")
+        || object.contains_key("candidate_action_id")
+        || object.contains_key("candidate_confidence")
     {
         return Err(DecisionError::UnknownField);
     }
@@ -173,26 +191,6 @@ fn parse_recovery(
         operation_id,
         rationale,
     })
-}
-
-fn parse_observation_directive(
-    object: &serde_json::Map<String, serde_json::Value>,
-    decision: &str,
-    rationale: String,
-) -> Result<Decision, DecisionError> {
-    if object.keys().any(|key| {
-        matches!(
-            key.as_str(),
-            "action_id" | "action_ids" | "confidence" | "recovery_kind" | "operation_id"
-        )
-    }) {
-        return Err(DecisionError::UnknownField);
-    }
-    match decision {
-        "wait" => Ok(Decision::Wait { rationale }),
-        "reobserve" => Ok(Decision::Reobserve { rationale }),
-        _ => Err(DecisionError::InvalidValue),
-    }
 }
 
 fn parse_object(bytes: &[u8]) -> Result<serde_json::Map<String, serde_json::Value>, DecisionError> {

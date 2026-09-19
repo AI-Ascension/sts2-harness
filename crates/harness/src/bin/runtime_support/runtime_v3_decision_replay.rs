@@ -36,10 +36,25 @@ pub(super) fn encode(decision: &Decision) -> Result<(Vec<u8>, String), String> {
             "decision": "wait",
             "rationale": rationale,
         }),
-        Decision::Reobserve { rationale } => json!({
-            "decision": "reobserve",
-            "rationale": rationale,
-        }),
+        Decision::Reobserve {
+            rationale,
+            candidate_action_id,
+            candidate_confidence,
+        } => {
+            // Replayed exactly as recorded: a candidate that was carried stays carried, and one
+            // that was absent stays absent, so a replay cannot settle where the original observed.
+            let mut value = json!({
+                "decision": "reobserve",
+                "rationale": rationale,
+            });
+            if let Some(action_id) = candidate_action_id {
+                value["candidate_action_id"] = json!(action_id);
+            }
+            if let Some(confidence) = candidate_confidence {
+                value["candidate_confidence"] = json!(confidence);
+            }
+            value
+        }
         Decision::Recovery {
             kind,
             operation_id,
@@ -112,6 +127,8 @@ mod tests {
             },
             Decision::Reobserve {
                 rationale: String::from("observe"),
+                candidate_action_id: None,
+                candidate_confidence: None,
             },
             Decision::Recovery {
                 kind: String::from("reconcile"),

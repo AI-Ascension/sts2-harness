@@ -17,6 +17,13 @@ pub(super) struct RunCounters {
     pub(super) transitions: u32,
     pub(super) recoveries: u32,
     catalog_refreshes: u8,
+    /// The state the current run of abstentions is being made on, and how many there have been.
+    ///
+    /// Re-asking an unchanged state re-rolls a non-deterministic answer, so a near-tie is otherwise
+    /// asked over and over until a roll happens to clear the gate. Counting them is what lets the
+    /// runner stop paying for that.
+    abstained_on: Option<(String, u64)>,
+    abstentions: u8,
 }
 
 pub(super) enum ObservationStep {
@@ -121,7 +128,50 @@ impl EpisodeRunner {
                 self.handle_wait(port, machine, &observation, step + 1, counters)?;
                 Ok(None)
             }
-            PolicyChoice::Reobserve { .. } => {
+            PolicyChoice::Reobserve {
+                candidate_action_id,
+                ..
+            } => {
+                let here = (observation.state_id().to_owned(), observation.generation());
+                if counters.abstained_on.as_ref() == Some(&here) {
+                    counters.abstentions = counters.abstentions.saturating_add(1);
+                } else {
+                    counters.abstained_on = Some(here);
+                    counters.abstentions = 1;
+                }
+                let bound = self.config.max_consecutive_abstentions();
+                if bound > 0
+                    && counters.abstentions >= bound
+                    && let Some(action_id) = candidate_action_id
+                {
+                    // Settling, not choosing: the source declined, and this dispatches what it said
+                    // it would otherwise have taken rather than asking again for another roll of
+                    // the same question. The identifier is not printed, for the same reason no
+                    // other action identifier is.
+                    println!(
+                        "{{\"event\":\"abstention_settled\",\"after\":{}}}",
+                        counters.abstentions
+                    );
+                    counters.abstained_on = None;
+                    counters.abstentions = 0;
+                    let transitions_before = counters.transitions;
+                    let result = self.handle_action(
+                        port,
+                        machine,
+                        ledger,
+                        ActionRequest {
+                            observation: &observation,
+                            legal_actions: &legal_actions,
+                            action_id: &action_id,
+                            step_number: step + 1,
+                        },
+                        counters,
+                    );
+                    source.action_completed(
+                        result.is_ok() && counters.transitions > transitions_before,
+                    );
+                    return result;
+                }
                 self.reobserve(port, machine)?;
                 counters.recoveries += 1;
                 Ok(None)
