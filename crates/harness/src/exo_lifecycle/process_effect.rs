@@ -4,6 +4,7 @@
 
 use super::process_reap::{reap_handle, terminate};
 use super::{EffectCompletion, EffectHandle, EffectPort, LifecycleError, SendPermit};
+use crate::exo_process::{report_stopped_child_failure, settle_child, start_failure_line};
 use crate::{
     ExecutionCancellation, ExoProcessConfig, encode_bridge_response, parse_bridge_request_envelope,
     sha256_hex,
@@ -15,6 +16,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
 
 const MAX_RESPONSE_BYTES: usize = 8 * 1024;
+/// The seam's name in an operator line, so a report names which child asked for it.
+const LIFECYCLE_EFFECT: &str = "lifecycle effect";
 
 /// An owned, cancellable process factory. The cancellation signal is external to the effect so an
 /// authority owner can revoke an active turn without waiting for its model process to finish.
@@ -176,7 +179,9 @@ async fn exchange_async(
         .args(config.arguments())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        // The child's standard error is the only channel on which an effect that cannot start names
+        // its cause, and discarding it made that effect indistinguishable from an unavailable peer.
+        .stderr(Stdio::piped())
         .env_clear()
         .kill_on_drop(true);
     #[cfg(unix)]
@@ -194,7 +199,11 @@ async fn exchange_async(
     }
     let mut child = match command.spawn() {
         Ok(child) => child,
-        Err(_) => {
+        Err(error) => {
+            eprintln!(
+                "{}",
+                start_failure_line(LIFECYCLE_EFFECT, config.executable(), &error)
+            );
             let _ = started.send(Err(LifecycleError::Unavailable));
             return Err(LifecycleError::Unavailable);
         }
@@ -212,7 +221,11 @@ async fn exchange_async(
     let bytes = match result {
         Ok(bytes) => bytes,
         Err(error) => {
+            // The child is asked for its own status before the harness stops it, so an effect the
+            // owner cancelled or the deadline stopped is reported only when it left something.
+            let own_exit = settle_child(&mut child).await;
             terminate(&mut child, pid).await;
+            report_stopped_child_failure(LIFECYCLE_EFFECT, &mut child, own_exit).await;
             return Err(error);
         }
     };
