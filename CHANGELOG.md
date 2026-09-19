@@ -523,23 +523,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   genuinely busy lease is now reported after about 160 ms (32 attempts, 5 ms apart) instead of
   immediately. See
   [ADR 0029](docs/decisions/0029-owner-lease-transient-busy-retry.md). Refs #188.
-
-- Compose the authoritative context owner's **current** binding with the catalog descriptor that
-  admits it, and publish the resulting effective limits as the versioned read-only projection
-  `ascension.harness.context-owner-effective-limits-view.v1` over
-  `GET /v1/workflow-runs/{run_id}/context-owner-effective-limits`. Live admission and the
-  observable surface now share one fail-closed seam, so the limits a consumer can read are the
-  limits the run was admitted under — not the portable schema maxima or the harness maxima. A
-  foreign owner, a missing or disabled descriptor, a binding that is not the published descriptor
-  identity, a grant escalation, an oversized descriptor and a stale descriptor/catalog digest are
-  each refused with a precise error; an unattached owner stays explicitly unavailable.
-  Compatibility: additive read-only route; no bound, schema, digest or default changes, and the
-  admission checks keep their existing error codes. See
-  [ADR 0030](docs/decisions/0030-context-owner-effective-limits-composition.md). Refs #95.
-
-- Enforce the **selected** context-control limits that a binding advertises instead of only the
-  harness maxima: `ContextRenderer::enabled_at_with_limits` refuses a draft that exceeds the
-  advertised `max_items`, `max_notes`, `max_objective_bytes` or `max_context_bytes` with a precise
-  error naming the limit, before any inference or retention. Compatibility: additive; `enabled`,
-  `enabled_at` and `legacy` keep their signatures and behaviour, and no bound changes. See
-  [ADR 0028](docs/decisions/0028-selected-context-control-limit-enforcement.md). Refs #95.
