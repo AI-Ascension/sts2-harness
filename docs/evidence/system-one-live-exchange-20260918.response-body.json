@@ -1,0 +1,1 @@
+{"model":"jev-1.13.0","answers":{"action":{"type":"choice","choice":"play:card-defend-1","confidence":0.44,"probabilities":{"play:card-bash-1:enemy-0":0.37,"play:card-defend-1":0.55,"combat.end-turn":0.01,"play:card-strike-1:enemy-0":0.04,"play:card-strike-2:enemy-0":0.03}}},"usage":{"input_tokens":652,"output_tokens":99}}

@@ -39,11 +39,32 @@ The bridge emitted:
 
 ```json
 {"decision":"reobserve",
- "rationale":"bridge-authored evidence: chose play:card-defend-1 at p=0.56, runner-up play:card-bash-1:enemy-0 at p=0.35, confidence 0.45"}
+ "rationale":"bridge-authored evidence: chose play:card-defend-1 at p=0.55, runner-up play:card-bash-1:enemy-0 at p=0.37, confidence 0.44"}
 ```
 
-A second call on the same state returned the same ordering with confidence `0.45`, so the two runs
-agree on shape and differ in the third decimal.
+Correction, 2026-09-19 (#305). The decision quoted here was the second call's, not this exchange's.
+A second call on the same state returned the same ordering with confidence `0.45`, and its decision
+was the one filed; the string carried `0.56`/`0.35`/`0.45` while the `provider_response` beside it
+carries `0.55`/`0.37`/`0.44`, so no input to the bridge produced the string as filed. This entry now
+carries the decision this bridge derives from the committed response, and
+`systemone_evidence_tests.rs` recomputes it from the artifact, so the two cannot drift apart again.
+The second call has no committed artifact; nothing in this report depends on its numbers.
+
+## Digests and how to check them
+
+Both digests cover the exact bytes on the wire: compact JSON, UTF-8, no whitespace, one trailing
+newline, in the member order the endpoint used. That member order is not the one the artifact beside
+this report preserves, so compact-serializing the artifact does not reproduce the response digest
+even though it carries the same values. The transported order, recovered against the published
+digest, is top level `model`, `answers`, `usage`; `action` as `type`, `choice`, `confidence`,
+`probabilities`; and `probabilities` as `play:card-bash-1:enemy-0`, `play:card-defend-1`,
+`combat.end-turn`, `play:card-strike-1:enemy-0`, `play:card-strike-2:enemy-0`.
+
+The transported response body is committed verbatim as
+[`system-one-live-exchange-20260918.response-body.json`](system-one-live-exchange-20260918.response-body.json);
+its SHA-256 is the response digest above. The request reproduces directly from the artifact's
+`provider_request` under the same canonicalization. `systemone_evidence_tests.rs` asserts both, and
+asserts that the transported body carries the same exchange as the artifact's `provider_response`.
 
 ## What this confirms
 
