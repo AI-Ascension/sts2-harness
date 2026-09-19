@@ -10,6 +10,22 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Give the Windows lane's provider transport the environment it needs to start.** The runtime
+  spawns the Exo bridge with the environment cleared but for `STS2_EXO_INHERITED_ENV_JSON`, and the
+  bridge hands its own environment to the transport it spawns, so that list is the transport's whole
+  environment. On this lane the transport is a `.cmd` that runs Windows PowerShell, and the list
+  named only the credential and the recording path. Without `PATH` the command interpreter cannot
+  resolve `powershell.exe` at all and the transport exits 9009; with `PATH` but without `SystemRoot`
+  it resolves the interpreter and the interpreter cannot load its own managed assemblies
+  (`0x8009001d`). Both were measured on the guest, where the same request to the same endpoint from
+  the same host authenticated and answered, so the episode that ended as `provider is unavailable`
+  had a transport that never started rather than a provider that was down. The lane now declares
+  `PATH` and `SystemRoot` alongside the two names it already declared. The test
+  `crates/harness/tests/jev_loop_windows_transport_environment.rs` scans the real script and fails if
+  a name the transport needs is dropped, a name it does not need is added, or the list is declared
+  twice, which is how a second declaration would silently replace the first. Refs #173. Partial
+  progress on #79 only.
+
 - **Write the Windows lane's shared files without a byte-order mark.** Windows PowerShell 5.1
   spells `-Encoding UTF8` as UTF-8 *with* a mark, and the lane wrote `override.cfg` that way. The
   game does not honour a marked override, so it resolved the shared default user directory, the mod
