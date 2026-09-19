@@ -10,6 +10,20 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Make the System One live-exchange record recomputable, and withdraw the three claims it could
+  not support.** The committed evidence file published a `bridge_decision` rationale reporting
+  `p=0.56`, runner-up `p=0.35` and confidence `0.45` beside a response that yields `0.55`, `0.37` and
+  `0.44`; no input to `map_decision` produces the recorded numbers. Its published response digest was
+  equally unreproducible, and the received bytes were not retained. The decision is corrected to the
+  mapper's output, the response digest to the value a reader can recompute, and the unverifiable
+  second-call claim is dropped, with every withdrawn claim kept in the file with its reason. The root
+  cause was transcription, so `sts2-jev-bridge --record` now prints the provider request, the
+  provider response and the decision as one object instead of two fields written down separately. A
+  new check recomputes the decision and both digests from the committed objects, and reproduces the
+  original defect when the old values are restored. The runtime's local-bridge admission refuses
+  `--record`, exactly as it already refuses `--describe`, because it reads that executable's stdout
+  as the decision itself. Refs #305.
+
 - **Stop a run of confident decisions cycling at a reward.** An episode played combat well for 33
   exchanges and then went round this loop until its bound expired: take the card reward (0.63), fail
   to rank three bare identifiers, skip (0.27), be offered the same reward again. The abstention bound

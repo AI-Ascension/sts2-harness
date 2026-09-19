@@ -132,6 +132,11 @@ was accepted, the answer carried the documented shape, the returned choice was o
 that were sent, and the confidence gate fired on a real answer. That exchange used the transport's
 TLS stack rather than the bridge's, which is the subject of issue #299.
 
+The decision and both digests in that record are re-derived from the committed request and response
+by `crates/harness/src/bin/support/system_one_evidence_tests.rs`, so the file cannot drift from its
+own inputs without failing. Three claims that did not survive that check are withdrawn in
+[#305](https://github.com/AI-Ascension/sts2-harness/issues/305) and listed in the record itself.
+
 `unverified` for everything beyond that: no gameplay outcome, no decision-quality claim, and no
 sustained run. The offline fixtures speak plain pipes to a local script, so the suite itself remains
 evidence about framing and refusals rather than about certificates or the real endpoint.

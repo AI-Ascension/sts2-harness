@@ -1,7 +1,9 @@
 {
   "bridge_decision": {
     "decision": "reobserve",
-    "rationale": "bridge-authored evidence: chose play:card-defend-1 at p=0.56, runner-up play:card-bash-1:enemy-0 at p=0.35, confidence 0.45"
+    "candidate_action_id": "play:card-defend-1",
+    "candidate_confidence": 44,
+    "rationale": "bridge-authored evidence: chose play:card-defend-1 at p=0.55, runner-up play:card-bash-1:enemy-0 at p=0.37, confidence 0.44"
   },
   "bridge_request": {
     "hard_constraints": [
@@ -71,6 +73,11 @@
     }
   },
   "date": "2026-09-18",
+  "digests": {
+    "canonicalization": "sha256 over the UTF-8 bytes of the object re-serialized as compact JSON: no insignificant whitespace, object keys sorted lexicographically, array order preserved",
+    "provider_request_sha256": "057cc399be8d612dc8c7fe4bc11b2e20f8340785a8fee7df1ffdea281b59a2ce",
+    "provider_response_sha256": "b93444408488ec82e8f87f9e666e54728b4542f196043c0b64254ea8b3633bbf"
+  },
   "endpoint": "https://api.typesafe.ai/v1/systemone",
   "note": "No game was running. The observation is synthetic. No action was sent to a host.",
   "provider_request": {
@@ -111,5 +118,22 @@
       "output_tokens": 99
     }
   },
-  "schema": "ascension.system-one-live-exchange.v1"
+  "schema": "ascension.system-one-live-exchange.v1",
+  "withdrawn_claims": [
+    {
+      "claim": "provider response digest sha256:a4f780156765337b367d72c4dca6bb3962d104f13cd7cad0e9940d74dcce107c",
+      "issue": "https://github.com/AI-Ascension/sts2-harness/issues/305",
+      "reason": "Not reproducible from the committed provider_response under the stated canonicalization or under 120 orderings across five serializations. The received bytes the digest was taken over were not retained, so the value cannot be confirmed or recomputed; it is withdrawn rather than restated."
+    },
+    {
+      "claim": "a bridge_decision rationale reporting p=0.56, runner-up p=0.35 and confidence 0.45",
+      "issue": "https://github.com/AI-Ascension/sts2-harness/issues/305",
+      "reason": "No input to map_decision produces those numbers for the committed provider_response, which yields p=0.55, runner-up p=0.37 and confidence 0.44. The numbers belong to a second exchange whose artifact was never committed; the stored decision is corrected to the value the mapper derives from the response beside it."
+    },
+    {
+      "claim": "a second call on the same state returned the same ordering with confidence 0.45",
+      "issue": "https://github.com/AI-Ascension/sts2-harness/issues/305",
+      "reason": "Run 2 has no committed artifact, so the claim is unverifiable either way. It is withdrawn rather than left standing as evidence."
+    }
+  ]
 }
