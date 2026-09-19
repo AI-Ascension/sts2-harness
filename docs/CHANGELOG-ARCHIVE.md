@@ -268,3 +268,7 @@ wave. Active development continues in `CHANGELOG.md`.
   Focused source/recording-fixture and local process coverage passed 37 test functions at
   `29d256c`; this is not native Exo or full-runtime acceptance. Cancellation, native
   reconciliation, qualified accounting, containment and episode admission remain gated. Refs #142.
+- Bind Exo lifecycle polling and result reads to the admitted execution-store incarnation,
+  and validate exact decision/reservation metadata before completion or uncertainty writes.
+  Validate authenticated lifecycle-to-broker references and phase relationships before
+  restart claim publication, retaining held recovery and historical completed entries.
