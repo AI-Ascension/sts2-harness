@@ -10,6 +10,20 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Stop re-asking a near-tie until a roll clears the gate.** System One is not deterministic, so
+  re-asking an unchanged state re-rolls the confidence, and a run advanced when a roll happened to
+  clear the gate rather than when anything was learned. One measured episode spent **140 of its 206
+  provider calls** that way: the same reward screen asked four times at 0.01, 0.06, 0.17 and 0.20
+  against a gate of 20. That was already acting on a low-confidence draw — it just paid for three
+  refusals first and took whichever roll came up highest. An abstention may now carry the option it
+  would have taken, as `candidate_action_id` and `candidate_confidence`, and the runner counts
+  consecutive abstentions on one `state_id` and `generation` and dispatches that option once
+  `STS2_MAX_CONSECUTIVE_REOBSERVE` (default 3) is reached. The candidate is evidence, not an
+  instruction: the decision is still to observe again, an action decision may not carry one at all,
+  a candidate the host no longer offers is dropped, and the settled action is validated against the
+  live catalogue like any other. Output says `abstention_settled` so the record distinguishes an
+  action settled under the bound from one chosen above the gate. The library default is 0, which is
+  the previous unbounded behaviour, so only the runtime changes. Refs #317.
 - **Let a reward say what it would offer before it is taken.** A reward is chosen on one screen and
   its contents on the next, so the first choice was made blind: a card reward was an identifier and
   nothing else until it had already been taken. In a recorded run the model committed to a card
@@ -521,19 +535,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   never a generic invalid-policy error and never a silent clamp. Compatibility: additive; no policy
   field, schema, range or bound changes. See
   [ADR 0026](docs/decisions/0026-provider-session-saved-policy-admission.md). Refs #95.
-
-- Expose the authoritative context owner's **current** association for one workflow run as the
-  versioned read-only projection `ascension.harness.context-owner-association-view.v1` over
-  `GET /v1/workflow-runs/{run_id}/context-owner-association`. The projected grants and epochs are
-  owner assertions, not harness-issued authority; a binding for another run fails closed and an
-  unattached owner stays explicitly unavailable. Compatibility: additive read-only route; the
-  existing `ContextAssociation` route is unchanged. See
-  [ADR 0025](docs/decisions/0025-context-owner-current-association.md). Refs #100.
-
-- Add read-only recovery of already-issued context-control receipts. A caller whose delegated
-  `pause`/`commit`/`resume` reply was lost can now look up the owner's recorded receipt by replaying
-  the exact command instead of re-issuing it, gated on the binding advertising `receipt_recovery`.
-  A recovered receipt must satisfy exact owner/invocation/binding/command identity before it is
-  returned. Compatibility: additive, read-only, failing default port method; no schema, record,
-  digest or resource bound changes. See
-  [ADR 0024](docs/decisions/0024-context-control-receipt-recovery.md). Refs #100.

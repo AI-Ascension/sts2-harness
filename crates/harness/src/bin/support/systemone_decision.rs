@@ -106,7 +106,15 @@ pub fn map_decision(
     let probabilities = answer.get("probabilities");
     let rationale = rationale(choice, confidence, probabilities);
     if confidence < gate {
-        return Ok(json!({"decision": "reobserve", "rationale": rationale}));
+        // The choice is still to observe again. The option is carried so that a caller which has
+        // re-asked this same state to its bound can act on what was already said, rather than
+        // paying for another roll of a question that has been answered three times.
+        return Ok(json!({
+            "decision": "reobserve",
+            "candidate_action_id": choice,
+            "candidate_confidence": percent(confidence),
+            "rationale": rationale,
+        }));
     }
     Ok(json!({
         "decision": "action",

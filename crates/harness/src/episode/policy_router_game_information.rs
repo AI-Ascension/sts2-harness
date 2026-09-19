@@ -44,7 +44,22 @@ impl PolicyRouter {
                 })
             }
             Decision::Wait { rationale } => Ok(PolicyChoice::Wait { rationale }),
-            Decision::Reobserve { rationale } => Ok(PolicyChoice::Reobserve { rationale }),
+            Decision::Reobserve {
+                rationale,
+                candidate_action_id,
+                candidate_confidence,
+            } => {
+                // A candidate naming something the host is not offering is dropped rather than
+                // carried: it could only mislead a later decision to dispatch it.
+                let candidate_action_id = candidate_action_id
+                    .filter(|action_id| input.legal_actions.find(action_id).is_some());
+                Ok(PolicyChoice::Reobserve {
+                    rationale,
+                    candidate_confidence: candidate_confidence
+                        .filter(|_| candidate_action_id.is_some()),
+                    candidate_action_id,
+                })
+            }
             Decision::Recovery {
                 kind,
                 operation_id,

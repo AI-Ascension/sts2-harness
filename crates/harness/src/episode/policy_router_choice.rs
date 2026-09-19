@@ -14,6 +14,13 @@ pub enum PolicyChoice {
     },
     Reobserve {
         rationale: String,
+        /// The option the source would have taken while declining to act, when it named one.
+        ///
+        /// Carried so a runner that has re-asked an unchanged state to its bound can act on what
+        /// was already said. It is never dispatched on the strength of being present: the choice
+        /// is still to observe again unless the runner decides otherwise.
+        candidate_action_id: Option<String>,
+        candidate_confidence: Option<u8>,
     },
     Recovery {
         operation: RecoveryOperation,

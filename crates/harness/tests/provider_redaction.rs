@@ -81,7 +81,9 @@ fn session_request(config: ExoConfig) -> Value {
     assert_eq!(
         decision,
         Decision::Reobserve {
-            rationale: "refresh".to_owned()
+            rationale: "refresh".to_owned(),
+            candidate_action_id: None,
+            candidate_confidence: None,
         }
     );
     let transport = session.into_transport();
