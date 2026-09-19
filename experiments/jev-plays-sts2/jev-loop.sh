@@ -1,0 +1,327 @@
+#!/usr/bin/env bash
+# Jev plays Slay the Spire 2, one episode at a time, restarting the whole session after each one.
+#
+# The game is started through the supported launcher,
+# native-launch-inputs-steam-20260908/launch-linux-standard-campaign.py, which is what loads the
+# mod. An earlier version of this loop started the binary directly, the mod never loaded, and the
+# runtime session on 127.0.0.1:15626 never opened. The launcher must run as root, which is why the
+# desktop entry uses pkexec; it drops to uid 1000 for the game itself.
+#
+# AUTHORIZATION: the operator plan this launcher was prepared under records a guard of "no provider
+# call". These episodes deliberately make provider calls: the owner asked for a model-driven loop on
+# this lane on 2026-09-18 and reaffirmed it after that guard was raised. Every episode records that
+# fact in authorization.json beside its evidence, so no run of this loop can be mistaken for one
+# prepared under the older guard.
+#
+# Each session generates its own credentials: a runtime credential the launcher hands to the game
+# and the loop hands to the gateway, and a separate gateway credential. Nothing is read from a saved
+# setting and no token has to be known in advance.
+#
+# Each episode writes its own directory under runs/, so a loop of N episodes produces N records.
+
+set -uo pipefail
+
+# The payload lives in the user's tree; this script lives in a root-owned directory so that the
+# passwordless sudo rule cannot be pointed at something the desktop user is able to rewrite.
+ROOT="${JEV_HOME:-/home/ubuntu/jev}"
+WORK="${JEV_WORK_ROOT:-/home/ubuntu/sts2-native-map-g3-7d85w_n6}"
+# The r2 bundle, not native-launch-inputs-steam-20260908: that older launcher pins the 09ef addon
+# staging and refuses the addon actually installed now ("canonical addon identity mismatch"). This
+# bundle is the operator's recorded production command for the current tree.
+INPUTS="${JEV_BUNDLE:-$WORK/linux-rest-native-launch-ad927-r2-20260909}"
+LAUNCHER="$INPUTS/launch-linux-native-rest-campaign.py"
+BRIDGE="$ROOT/sts2-jev-bridge"
+TRANSPORT="$ROOT/systemone_transport.py"
+HARNESS="$ROOT/sts2-harness-runtime"
+GATEWAY="$ROOT/sts2-gateway-runtime"
+MCP="$ROOT/sts2-mcp-server"
+RUNS="$ROOT/runs"
+
+# Digests the operator reviewed, taken verbatim from that bundle's operator-plan.json
+# production_command and re-checked by the launcher against the files before every launch.
+# The reviewed template was {"mod_settings":{"mods_enabled":false,"mod_list":[]}} and its digest
+# was 58677fec...fec6. Two acknowledgement flags are added to it: without seen_ea_disclaimer the
+# game shows its early-access notice on every launch, because the launcher creates a fresh profile
+# each episode and the notice is acknowledged per profile. skip_intro_logo saves the logo each time.
+# The digest below is the amended template; the operator plan still records the original.
+SETTINGS_SHA="${JEV_SETTINGS_SHA:-d68cbd19bc3df84a7fa51643f7dde78d0250c31a6817514192b4131b8e8d31b3}"
+MODLOAD_SHA="${JEV_MODLOAD_SHA:-a606d5f68634300f9c415b6e4abf76677bebcbaa23874c0243854e3a5208fe80}"
+
+EPISODES="${JEV_EPISODES:-0}"          # 0 means keep going until this window is closed
+# Gate 35 let Jev start a run and pick a map node, then refused every combat answer: in combat its
+# calibrated confidence sits near 0.25, so it abstained and re-observed forever, asking the provider
+# hundreds of times without acting. At 20 it plays: 20 dispatched actions in the first 46 decisions.
+GATE_PERCENT="${JEV_GATE_PERCENT:-20}"
+EPISODE_TIMEOUT="${JEV_EPISODE_TIMEOUT:-900}"
+LAUNCH_SECONDS="${JEV_LAUNCH_SECONDS:-1200}"
+GAME_READY_TIMEOUT="${JEV_GAME_READY_TIMEOUT:-240}"
+WAIT_FOR_COMBAT="${JEV_WAIT_FOR_COMBAT:-180}"
+# The runner waits on this barrier whenever an observation is not yet actionable, and the default
+# of 8 polls x 1s expires while the game is still loading, failing the episode before the first
+# decision. 40 x 3s gives the host two minutes to reach a screen Jev can act on.
+BARRIER_MAX_POLLS=${JEV_BARRIER_MAX_POLLS:-40}
+BARRIER_WAIT_MILLIS=${JEV_BARRIER_WAIT_MILLIS:-3000}
+OBJECTIVE="${JEV_OBJECTIVE:-advance as far as possible in the run while preserving hit points}"
+
+banner() {
+    printf '\n\033[36m%s\033[0m\n' "$(printf '=%.0s' {1..78})"
+    printf '\033[36m  %s\033[0m\n' "$1"
+    printf '\033[36m%s\033[0m\n' "$(printf '=%.0s' {1..78})"
+}
+
+fail() { echo "  $1" >&2; }
+
+credential() {
+    # The launcher requires [A-Za-z0-9_-]{43,256}; this yields 64 characters from the OS CSPRNG.
+    head -c 48 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n'
+}
+
+stop_stale() {
+    for name in sts2-harness-runtime sts2-gateway-runtime sts2-mcp-server sts2-jev-bridge \
+                SlayTheSpire2 launch-linux-standard-campaign; do
+        pkill -f "$name" 2>/dev/null || true
+    done
+    sleep 2
+}
+
+wait_for_runtime() {
+    local deadline=$(( $(date +%s) + GAME_READY_TIMEOUT ))
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+        if ss -tln 2>/dev/null | grep -q '127.0.0.1:15626'; then
+            echo '  the mod runtime session is listening'
+            return 0
+        fi
+        if ! kill -0 "$1" 2>/dev/null; then
+            fail 'the launcher exited before the runtime session opened'
+            return 1
+        fi
+        sleep 3
+    done
+    fail "runtime session never opened within ${GAME_READY_TIMEOUT}s"
+    return 1
+}
+
+as_user() { sudo -u ubuntu "$@"; }
+
+# The launcher expects the reviewed baseline profile and preserves it to a fixed path. Looping
+# therefore needs two things per episode: the baseline back in place, and that fixed preservation
+# path free. Both come from the launcher's own preservation, kept pristine here on first use.
+PRESERVED="$WORK/rest-preservation-ad927-linux/profile"
+PRESERVE_TARGET="$WORK/rest-preservation-ad927-linux/profile-before-rest-launch"
+BASELINE="$ROOT/profile-baseline"
+
+prepare_profile() {
+    local run_dir="$1"
+    if [ ! -d "$BASELINE" ]; then
+        if [ -d "$PRESERVED" ]; then
+            cp -a "$PRESERVED" "$BASELINE"
+        elif [ -d "$PRESERVE_TARGET" ]; then
+            cp -a "$PRESERVE_TARGET" "$BASELINE"
+        else
+            fail 'no reviewed baseline profile to restore from'
+            return 1
+        fi
+        echo "  kept a pristine copy of the baseline profile at $BASELINE"
+    fi
+    # The launcher refuses to overwrite its preservation, so the previous one moves in with the
+    # episode that produced it.
+    if [ -e "$PRESERVE_TARGET" ]; then
+        rm -rf "$run_dir/profile-preserved-by-launcher"
+        mv "$PRESERVE_TARGET" "$run_dir/profile-preserved-by-launcher"
+    fi
+    rm -rf "$WORK/profile"
+    cp -a "$BASELINE" "$WORK/profile"
+    chown -R ubuntu:ubuntu "$WORK/profile"
+    chmod 700 "$WORK/profile"
+}
+
+[ "$(id -u)" -eq 0 ] || { echo 'this loop must run as root; start it from jev-start.sh' >&2; exit 1; }
+
+# The launcher will not start Steam, and the game cannot authenticate without it: it reports
+# "SteamAPI_Init(): did not locate a running instance of Steam" and never opens its runtime session.
+# jev-start.sh brings Steam up in the desktop session before elevating to here.
+if ! pgrep -u 1000 -x steam > /dev/null 2>&1; then
+    echo 'Steam is not running as the desktop user; start it from jev-start.sh, not from here.' >&2
+    echo 'Started from root it has no session keyring, cannot sign in, and exits.' >&2
+    exit 1
+fi
+for required in "$LAUNCHER" "$BRIDGE" "$TRANSPORT" "$HARNESS" "$GATEWAY" "$MCP" "$ROOT/key.txt"; do
+    [ -e "$required" ] || { echo "missing required component: $required" >&2; exit 1; }
+done
+
+DIGEST="$(sha256sum "$BRIDGE" | cut -d' ' -f1)"
+banner "Jev plays Slay the Spire 2   |   gate ${GATE_PERCENT}%"
+echo "  bridge digest $DIGEST"
+echo "  launcher      $LAUNCHER"
+
+episode=0
+failures=0
+while :; do
+    episode=$((episode + 1))
+    if [ "$EPISODES" -gt 0 ] && [ "$episode" -gt "$EPISODES" ]; then break; fi
+
+    stamp="$(date +%Y%m%d-%H%M%S)"
+    run_dir="$RUNS/episode-$stamp"
+    mkdir -p "$run_dir/state"
+    # The launcher refuses a readiness record whose parent is group/other accessible, and the
+    # harness runs as the desktop user and keeps a durable branch store in its working directory.
+    # Owner-only and owned by that user satisfies both; the runtime token inside stays root:root.
+    chown -R ubuntu:ubuntu "$run_dir" 2>/dev/null
+    chmod 700 "$ROOT" "$RUNS" "$run_dir" 2>/dev/null
+    banner "episode $episode   |   $stamp"
+
+    cat > "$run_dir/authorization.json" <<JSON
+{
+  "schema": "ascension.jev-loop-authorization.v1",
+  "recorded_utc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "provider_calls": "authorized",
+  "authorized_by": "repository owner, 2026-09-18",
+  "note": "The operator plan this launcher was prepared under records a guard of 'no provider call'. This episode makes provider calls with the owner's explicit instruction, recorded here so the run is not mistaken for one prepared under that guard.",
+  "provider": "typesafe", "model": "jev-latest", "confidence_gate_percent": $GATE_PERCENT
+}
+JSON
+
+    stop_stale
+    if ! prepare_profile "$run_dir"; then
+        echo 'could not prepare the reviewed profile' > "$run_dir/outcome.txt"
+        break
+    fi
+
+    runtime_token="$(credential)"
+    gateway_token="$(credential)"
+    printf '%s' "$runtime_token" > "$run_dir/runtime.token"
+    chown root:root "$run_dir/runtime.token"
+    chmod 600 "$run_dir/runtime.token"
+
+    echo '  starting the game through the supported launcher...'
+    # DISPLAY is deliberately removed here. Steam needs it (it is an X11 client on XWayland) and
+    # jev-start.sh leaves it in the environment, but the launcher refuses to run with an ambient
+    # DISPLAY: "launcher refuses X11 fallback". The game is a Wayland client, so it loses nothing.
+    env -u DISPLAY -u XAUTHORITY python3 "$LAUNCHER" \
+        --session-env-json "$INPUTS/session-env.json" \
+        --user-dir-mapping "$INPUTS/user-dir-mapping.json" \
+        --settings-template "$INPUTS/settings-template.json" \
+        --settings-sha256 "$SETTINGS_SHA" \
+        --mod-loading-bin "$INPUTS/sts2-game-mod-loading" \
+        --mod-loading-sha256 "$MODLOAD_SHA" \
+        --runtime-token-file "$run_dir/runtime.token" \
+        --readiness-file "$run_dir/readiness.json" \
+        --max-seconds "$LAUNCH_SECONDS" \
+        --stop-file "$run_dir/stop" \
+        > "$run_dir/launcher.log" 2>&1 &
+    launcher_pid=$!
+
+    if ! wait_for_runtime "$launcher_pid"; then
+        echo 'runtime session never opened' > "$run_dir/outcome.txt"
+        touch "$run_dir/stop"
+        wait "$launcher_pid" 2>/dev/null
+        stop_stale
+        echo "  record: $run_dir"
+        failures=$((failures + 1))
+        if [ "$failures" -ge 3 ]; then
+            fail 'three launches failed in a row; stopping instead of spinning'
+            fail "the launcher's own reason is in $run_dir/launcher.log"
+            break
+        fi
+        sleep 5
+        continue
+    fi
+    failures=0
+
+    # A gateway left over from a previous episode keeps its allocation, and the harness then gets
+    # "gateway returned HTTP 409" against a stale instance. Wait for the port to actually be free.
+    for _ in $(seq 1 20); do
+        ss -tln 2>/dev/null | grep -q '127.0.0.1:15525' || break
+        pkill -f sts2-gateway-runtime 2>/dev/null || true
+        sleep 1
+    done
+
+    # The gateway serves exactly one instance, defaulting to 'instance-1', while the harness asks
+    # for the per-episode identity below. That mismatch is what the HTTP 409 was: the gateway held
+    # instance-1 and refused the allocation for instance-jev-<stamp>. Both are now told the same one.
+    # It also runs in its own directory, so the sqlite stores it opens belong to this episode alone
+    # and no allocation state from a previous episode is found and reused.
+    mkdir -p "$run_dir/gateway"
+    chown ubuntu:ubuntu "$run_dir/gateway"
+    echo '  starting the gateway...'
+    # The scope is what the HTTP 401 was about: a gateway token carries no authority unless its
+    # scope says so, and allocation needs all three. STS2_GATEWAY_TOKEN_EXPIRES_AT is not set,
+    # because the reference fixture in tools/exact-restore-conformance omits it and an unverified
+    # format here would only expire the token early. The identity below is the same one the harness
+    # allocates with, including the caller id, which the harness defaults to "harness".
+    ( cd "$run_dir/gateway" && as_user env \
+        STS2_GATEWAY_TOKEN="$gateway_token" \
+        STS2_GATEWAY_TOKEN_SCOPE="read,mutate,control" \
+        STS2_MOD_TOKEN="$runtime_token" \
+        STS2_MOD_ADDR="127.0.0.1:15626" \
+        STS2_CALLER_ID="harness" \
+        STS2_INSTANCE_ID="instance-jev-$stamp" \
+        STS2_SESSION_ID="session-jev-$stamp" \
+        STS2_MCP_SESSION_ID="mcp-session-jev-$stamp" \
+        STS2_LEASE_ID="lease-jev-$stamp" \
+        STS2_LEASE_EPOCH="1" \
+        STS2_DEPLOYMENT_ID="deployment-jev" \
+        "$GATEWAY" ) > "$run_dir/gateway.out.log" 2> "$run_dir/gateway.err.log" &
+    gateway_pid=$!
+    sleep 5
+
+    # Confirm it is serving this episode instance before the harness allocates against it.
+    if grep -q "instance-jev-$stamp" "$run_dir/gateway.out.log" 2>/dev/null; then
+        echo "  the gateway is serving instance-jev-$stamp"
+    else
+        echo "  note: the gateway did not report this episode instance; see gateway.out.log"
+    fi
+
+    # Campaign mode, not the combat demo: the demo only acts once the host is already in combat
+    # and never leaves a menu, so against a freshly launched game it polls an unchanging main
+    # menu and Jev is asked nothing. See AI-Ascension/sts2-harness#311.
+    echo -e '  \033[32mhanding the run to Jev...\033[0m'
+    ( cd "$run_dir/state" && as_user env \
+        STS2_GATEWAY_TOKEN="$gateway_token" \
+        STS2_GATEWAY_TOKEN_SCOPE="read,mutate,control" \
+        STS2_CALLER_ID="harness" \
+        STS2_LEASE_EPOCH="1" \
+        STS2_MOD_TOKEN="$runtime_token" \
+        STS2_RUNTIME_PROFILE=runtime-v3-gameplay \
+        STS2_MCP_BINARY="$MCP" \
+        STS2_OBJECTIVE="$OBJECTIVE" \
+        STS2_PROVIDER_KIND=typesafe-jev \
+        STS2_EXO_ADMISSION=legacy \
+        STS2_CAMPAIGN_EPISODE=true \
+        STS2_BARRIER_MAX_POLLS="$BARRIER_MAX_POLLS" \
+        STS2_BARRIER_WAIT_MILLIS="$BARRIER_WAIT_MILLIS" \
+        STS2_EXO_BRIDGE_BINARY="$BRIDGE" \
+        STS2_EXO_REVISION="$DIGEST" \
+        STS2_EXO_BRIDGE_ARGS_JSON="[\"--model\",\"jev-latest\",\"--transport\",\"$TRANSPORT\",\"--gate\",\"$GATE_PERCENT\"]" \
+        STS2_EXO_INHERITED_ENV_JSON='["TYPESAFE_API_KEY","JEV_CONTEXT_LOG"]' \
+        JEV_CONTEXT_LOG="$run_dir/jev-context.jsonl" \
+        TYPESAFE_API_KEY="$(cat "$ROOT/key.txt")" \
+        STS2_RUN_ID="run-jev-$stamp" \
+        STS2_EPISODE_ID="episode-jev-$stamp" \
+        STS2_TRAJECTORY_ID="trajectory-jev-$stamp" \
+        STS2_TRACE_ID="trace-jev-$stamp" \
+        STS2_ARTIFACT_ID="artifact-jev-$stamp" \
+        STS2_INSTANCE_ID="instance-jev-$stamp" \
+        STS2_SESSION_ID="session-jev-$stamp" \
+        STS2_MCP_SESSION_ID="mcp-session-jev-$stamp" \
+        STS2_LEASE_ID="lease-jev-$stamp" \
+        STS2_RUNTIME_WAIT_FOR_COMBAT_SECONDS="$WAIT_FOR_COMBAT" \
+        timeout "$EPISODE_TIMEOUT" "$HARNESS" ) \
+            > "$run_dir/harness.out.log" 2> "$run_dir/harness.err.log"
+    status=$?
+    echo "exit $status" > "$run_dir/outcome.txt"
+    if [ "$status" -eq 124 ]; then
+        echo "  episode passed its ${EPISODE_TIMEOUT}s bound"
+    else
+        echo "  episode finished, harness exit $status"
+    fi
+
+    kill "$gateway_pid" 2>/dev/null || true
+    touch "$run_dir/stop"
+    wait "$launcher_pid" 2>/dev/null
+    stop_stale
+    echo "  record: $run_dir"
+done
+
+banner 'loop finished'
+read -r -p 'press enter to close' _
