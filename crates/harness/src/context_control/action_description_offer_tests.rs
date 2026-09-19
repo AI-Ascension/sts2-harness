@@ -97,7 +97,7 @@ fn leaving_a_reward_screen_reads_as_words_rather_than_an_identifier() {
             &entry("skip_reward:123", json!({"kind": "skip_reward"})),
             &source
         ),
-        "skip the reward"
+        "skip the reward, taking none of the 2 offered"
     );
 }
 

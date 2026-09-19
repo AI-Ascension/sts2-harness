@@ -193,6 +193,13 @@ fn runner_from_environment(map_context_enabled: bool) -> Result<EpisodeRunnerCon
     let abstention_bound = number("STS2_MAX_CONSECUTIVE_REOBSERVE", 3)?
         .try_into()
         .map_err(|_| String::from("STS2_MAX_CONSECUTIVE_REOBSERVE is too large"))?;
+    // Confident decisions can still cycle: take a reward, fail to rank its cards, skip, and be
+    // offered the same reward again. Each clears the gate, so the abstention bound never sees it,
+    // and a measured episode spent its last eight exchanges going round that loop. Eight visits to
+    // one situation is well past anything a run does on purpose.
+    let situation_bound = number("STS2_MAX_REPEATED_SITUATIONS", 8)?
+        .try_into()
+        .map_err(|_| String::from("STS2_MAX_REPEATED_SITUATIONS is too large"))?;
     EpisodeRunnerConfig::new(
         number("STS2_MAX_STEPS", 1_024)?
             .try_into()
@@ -204,6 +211,7 @@ fn runner_from_environment(map_context_enabled: bool) -> Result<EpisodeRunnerCon
     )
     .map(|config| config.with_map_context_enabled(map_context_enabled))
     .map(|config| config.with_max_consecutive_abstentions(abstention_bound))
+    .map(|config| config.with_max_repeated_situations(situation_bound))
     .map_err(|error| format!("episode runner configuration is invalid: {error}"))
 }
 

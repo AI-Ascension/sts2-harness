@@ -10,6 +10,20 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Stop a run of confident decisions cycling at a reward.** An episode played combat well for 33
+  exchanges and then went round this loop until its bound expired: take the card reward (0.63), fail
+  to rank three bare identifiers, skip (0.27), be offered the same reward again. The abstention bound
+  cannot see it — every decision clears the gate, and every state is new because the generation
+  advances, 36 distinct states across 40 exchanges. The runner now counts visits to a *situation*,
+  which is the observation with `state_id` and `generation` removed, and ends the episode with
+  `RepeatedSituation` once `STS2_MAX_REPEATED_SITUATIONS` (default 8) is passed. Two descriptions
+  also changed, because the loop turned on what the model could read: skipping now names what is
+  being declined (`skip the reward, taking none of the 3 offered`) rather than being the one tidy
+  option on a screen of identifiers, and a screen that offers a set to choose from says that a card
+  chosen there is kept for the rest of the run, which is framing beside the objective rather than a
+  claim in an option's description. The library default for the bound is 0, the previous behaviour.
+  Refs #323.
+
 - **Stop re-asking a near-tie until a roll clears the gate.** System One is not deterministic, so
   re-asking an unchanged state re-rolls the confidence, and a run advanced when a roll happened to
   clear the gate rather than when anything was learned. One measured episode spent **140 of its 206
@@ -521,17 +535,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   error naming the limit, before any inference or retention. Compatibility: additive; `enabled`,
   `enabled_at` and `legacy` keep their signatures and behaviour, and no bound changes. See
   [ADR 0028](docs/decisions/0028-selected-context-control-limit-enforcement.md). Refs #95.
-
-- Add bounded migration records for saved provider-session policies that are portable-schema valid
-  but above the selected profile's executable ceiling: the exact saved bytes and violated limits are
-  retained, and adoption requires explicit approval plus a caller-supplied target that is already
-  within the executable ceilings — no value is ever silently clamped. Compatibility: additive,
-  library-only; no policy field, schema, range or bound changes. See
-  [ADR 0027](docs/decisions/0027-provider-session-policy-migration.md). Refs #95.
-
-- Classify saved provider-session policies precisely against the **selected** adapter profile:
-  `ProviderSessionPolicy::admit_for_profile` checks portable schema validity separately from the
-  profile's executable ceiling and returns either a schema failure or a precise capability reason,
-  never a generic invalid-policy error and never a silent clamp. Compatibility: additive; no policy
-  field, schema, range or bound changes. See
-  [ADR 0026](docs/decisions/0026-provider-session-saved-policy-admission.md). Refs #95.

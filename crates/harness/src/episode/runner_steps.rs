@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use std::collections::BTreeMap;
+
 use super::super::idempotency::{ActionIdentity, ActionLedger};
 use super::super::legal_actions::{EpisodeLegalAction, EpisodeLegalActionSet};
 use super::super::map::MapDecisionContext;
@@ -7,6 +9,8 @@ use super::super::observation::EpisodeObservation;
 use super::super::policy_router::{DecisionInput, DecisionSource, PolicyChoice, PolicyRouter};
 use super::super::recovery::RecoveryError;
 use super::super::state_machine::{EpisodeMachine, EpisodeMachineError};
+#[path = "runner_situation.rs"]
+mod situation;
 use super::runner_actions::ActionRequest;
 use super::runner_recovery::{accept_observation, report};
 use super::{EpisodeRunReport, EpisodeRunner, EpisodeRunnerError, EpisodeRuntimePort};
@@ -17,13 +21,11 @@ pub(super) struct RunCounters {
     pub(super) transitions: u32,
     pub(super) recoveries: u32,
     catalog_refreshes: u8,
-    /// The state the current run of abstentions is being made on, and how many there have been.
-    ///
-    /// Re-asking an unchanged state re-rolls a non-deterministic answer, so a near-tie is otherwise
-    /// asked over and over until a roll happens to clear the gate. Counting them is what lets the
-    /// runner stop paying for that.
+    /// The state the current run of abstentions is on, and how many there have been. Re-asking an
+    /// unchanged state re-rolls a non-deterministic answer, so counting stops the runner paying.
     abstained_on: Option<(String, u64)>,
     abstentions: u8,
+    situations: BTreeMap<String, u16>,
 }
 
 pub(super) enum ObservationStep {
@@ -105,6 +107,16 @@ impl EpisodeRunner {
             }
         };
         counters.catalog_refreshes = 0;
+
+        // A cycle of confident decisions is invisible to the abstention bound; see `situation`.
+        if situation::visit_exceeds_bound(
+            &mut counters.situations,
+            &observation,
+            self.config.max_repeated_situations(),
+        ) {
+            return Err(EpisodeRunnerError::RepeatedSituation);
+        }
+
         match choice {
             PolicyChoice::Action { action_id, .. } => {
                 let transitions_before = counters.transitions;
@@ -132,17 +144,12 @@ impl EpisodeRunner {
                 candidate_action_id,
                 ..
             } => {
-                let here = (observation.state_id().to_owned(), observation.generation());
-                if counters.abstained_on.as_ref() == Some(&here) {
-                    counters.abstentions = counters.abstentions.saturating_add(1);
-                } else {
-                    counters.abstained_on = Some(here);
-                    counters.abstentions = 1;
-                }
-                let bound = self.config.max_consecutive_abstentions();
-                if bound > 0
-                    && counters.abstentions >= bound
-                    && let Some(action_id) = candidate_action_id
+                if situation::abstention_reaches_bound(
+                    &mut counters.abstained_on,
+                    &mut counters.abstentions,
+                    &observation,
+                    self.config.max_consecutive_abstentions(),
+                ) && let Some(action_id) = candidate_action_id
                 {
                     // Settling, not choosing: the source declined, and this dispatches what it said
                     // it would otherwise have taken rather than asking again for another roll of

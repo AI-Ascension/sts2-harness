@@ -55,6 +55,10 @@ mod options;
 #[path = "support/systemone_decision.rs"]
 mod decision;
 
+#[path = "support/selection_framing.rs"]
+mod framing_support;
+use framing_support::framing;
+
 fn main() {
     let Ok(options) = options::Options::parse(std::env::args().skip(1)) else {
         eprintln!("Usage: sts2-jev-bridge [--model MODEL] [--transport PATH] [--describe]");
@@ -157,7 +161,10 @@ fn decide(
         model,
         &state,
         &options,
-        request["objective"].as_str().unwrap_or_default(),
+        &framing(
+            request["objective"].as_str().unwrap_or_default(),
+            observation,
+        ),
         &constraints(&request),
     )?;
     let response = exchange(&serde_json::to_vec(&body)?)?;
