@@ -310,3 +310,50 @@ So the extension also sweeps every five seconds: if a game window exists and is 
 is not focused, it re-applies. The attempt budget is per window rather than per session, so a
 fresh game each episode starts with a fresh budget instead of exhausting one shared counter over a
 day of relaunches.
+
+## The host disk stops the lane, not the guest
+
+Twice in one day both STS domains went from running to `paused`, which looks exactly like a frozen
+game. They were not frozen. libvirt pauses a domain rather than let it take a write error:
+
+    virsh -c qemu:///system domblkerror sts.home.complete.tech-slay-the-spire
+    vda: no space
+
+Train's root filesystem had filled. `virsh resume` brings the domain back mid-episode with nothing
+lost - a paused VM simply stops - and the lane picks up where it left off. The guest's own disk is
+not the problem; it sits under half full. What fills the host is the coding agents:
+`session.home.complete.tech/data` is 454G, and 339G of that is agent worktrees for this project.
+
+`host-disk/sweep-cargo-targets.sh` reclaims the rebuildable part. It takes only directories cargo
+itself marked with `CACHEDIR.TAG` - a directory merely named `target` is not enough - only ones
+untouched since a cutoff date, and never anything under `~/.cache`, `~/.local`, `~/.cargo`,
+`~/.rustup` or `~/.npm`, because emptying those has broken toolchains on this host before. It
+skips any directory a live process names, scanning `/proc/*/cmdline` per candidate, and it dry-runs
+by default:
+
+    sudo bash host-disk/sweep-cargo-targets.sh            # show what would go
+    sudo bash host-disk/sweep-cargo-targets.sh --apply    # take it
+
+A first version refused outright whenever any `cargo` was running. On a host where agents build
+around the clock that means it never runs, so the check is per directory instead; the date cutoff
+already excludes anything touched today.
+
+## The frame rate
+
+The game renders every frame on the CPU and sustains around 400% of one core for a turn-based card
+game. Three things are true at once, and only the first is fixable from here:
+
+- **No GPU.** `Using Device #0: Unknown - llvmpipe` - see the section above on the Arc B60.
+- **Vsync cannot pace it.** Mutter 46 does not implement the Wayland `fifo-v1` protocol, so the
+  swapchain has nothing to pace against: `FIFO protocol not found! Frame pacing will be degraded`.
+- **A frame cap would probably not bind anyway.** `fps_limit` is not in the template, so the game
+  uses its own default of 60, and Forward+ on llvmpipe at 1024x768 is unlikely to reach 60. A cap
+  only saves work when you are bumping against it. Putting `"fps_limit": 30` in the template is the
+  cheap way to test that: if the CPU drops, the cap binds.
+
+One earlier conclusion here was wrong and is worth correcting. The saved settings were said not to
+load at all, because the game scavenged them as a version-0 save. Adding `schema_version` to the
+template fixed that: the mapped file now round-trips `schema_version` and `fullscreen` intact
+instead of being stripped to `mod_settings`. The settings are read. `fullscreen` still loses,
+because the launcher passes `--windowed` on the command line and the command line wins - which is
+why the compositor-side extension is still the thing doing that job.
