@@ -32,12 +32,12 @@ against the executor, whose receipt carries `error_code: exo_forbidden_tool` and
 |---|---|
 | `exo_revision` | `b06869ab789dee3f80ca474b5fa89dbe47ccb859` |
 | `extension_sha256` | `bcc034e787972f7ad6eabff5e817ad1456d6f6cab8c7dc42b426bd9f5b33ef3d` |
-| `oracle_sha256` | `948d31ccc4a505e411d04f03fefeb16e71135220ddb01b7e67f2606a15140714` |
-| `support_sha256` (`tests/support/mod.rs`) | `451ab6115729c254dc1c47be0ea1528168dead4320a1570707bad7e94f07232f` |
+| `oracle_sha256` | `381ba1470f476872bded864400890ce6bbcb63d256496d76729093ab080114eb` |
+| `support_sha256` (`tests/support/mod.rs`) | `c42408176a7f774d1f845cb3b8a0805892174ae237149ca037d232bf65050b5c` |
 | `support_sha256` (`tests/support/projection.rs`) | `25c6168f0c76d103d7fc0e1ca14ac0bf8251c35fdc5cadd31ea50318a455c26e` |
-| `executor_sha256` | `3f6d7d9530da3c7a884d48acfc20dfe1b24d73e9f2499a9ed5b575e4e9d97729` |
-| `bridge_sha256` | `8e66665d3f13a6b8313d0b1feacc9a4e881b80e282659410d1a0c92880180e95` |
-| `harness_revision` | `deb5df6df7e83f1e2e102417fb8dc34ac097ff9c` |
+| `executor_sha256` | `35b214b58d3cd5fdcf250078b6dec1fcc24b6f0bc77b58fbfdb91e103062dc70` |
+| `bridge_sha256` | `ee2207a1a0391796fc2cd5e8fbeb1c9c6763e792b849b89c406ea16cc030774f` |
+| `harness_revision` | `fdb2d86050bf31c563083dc99e47602ac7b492bb` |
 | Node | `v22.14.0` (the extension pin; upstream declares `22.15.0`, still unqualified) |
 | Rust toolchain | `1.97.1`; `aarch64`/non-Linux platforms remain unverified |
 | Model binding | `o3-pro` → synthetic loopback endpoint, model route asserted, no credential |
@@ -46,9 +46,16 @@ against the executor, whose receipt carries `error_code: exo_forbidden_tool` and
 `support_sha256` binds the two oracle support modules. The `executor_sha256` and `bridge_sha256` are
 locally built executables, not publication artifacts.
 
+`harness_revision` names the commit at which the recorded sources were frozen. It is an ancestor of
+or equal to the commit carrying this record and is rewritten when the change is squash-merged; the
+binding that matters is that the named revision contains every recorded source byte, which the
+oracle now enforces at record time (`support::assert_sources_are_committed`).
+
 ## Result
 
-All 40 oracle cases passed (`test result: ok. 1 passed; 0 failed`), the whole matrix in 53.73 s:
+All 40 oracle cases passed (`test result: ok. 1 passed; 0 failed`). The recorded run took 208.72 s
+while other builds shared the machine; the same case set measures 42.65 s on an idle machine, so the
+figure is load-dependent and not a performance claim:
 
 | Case group | Cases | Observed |
 |---|---|---|
@@ -111,3 +118,8 @@ clears inherited credentials and never starts a game.
 with this record and with the artifact manifest, and asserts the forbidden-tool cases carry the
 typed executor and bridge error codes. Any change to the extension module or to the oracle sources
 without a refreshed real-process run fails the workspace test suite.
+
+The oracle itself also refuses to emit a record whose `harness_revision` does not describe the
+recorded bytes: `support::assert_sources_are_committed` fails the run when any recorded source
+differs from `HEAD` or is untracked, so a run against a dirty tree cannot produce a record that
+names a revision lacking the evidence it claims. Both oracle reports are gated this way.

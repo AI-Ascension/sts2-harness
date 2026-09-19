@@ -171,6 +171,43 @@ pub fn support_digests() -> Result<Value> {
     }))
 }
 
+/// Refuses to record evidence whose bytes the recorded revision does not contain.
+///
+/// Every digest in a report is computed from the worktree, while `harness_revision` comes from
+/// `git rev-parse HEAD`. If one of those paths is modified or untracked, the emitted record would
+/// name a revision that does not contain the evidence it claims — the 2026-09-17 record shipped
+/// exactly that failure, naming a `HEAD` at which neither the extension nor the support modules
+/// existed. Recording is gated on each recorded source being committed unchanged, so the revision
+/// the report names always describes the bytes the report binds.
+pub fn assert_sources_are_committed(root: &Path, paths: &[&str]) -> Result {
+    for path in paths {
+        let committed = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(["cat-file", "-e"])
+            .arg(format!("HEAD:{path}"))
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()?;
+        if !committed.success() {
+            return Err(format!("recorded source {path} is absent at HEAD").into());
+        }
+        let unmodified = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(["diff", "--quiet", "HEAD", "--", path])
+            .status()?;
+        if !unmodified.success() {
+            return Err(format!(
+                "recorded source {path} differs from HEAD; commit the recorded bytes before \
+                 recording evidence"
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
 /// One synthetic Responses output whose only item calls `name`; the synthetic model returns it
 /// verbatim, so the case exercises the actual upstream tool-call path with that exact name.
 pub fn tool_call(name: &str) -> Value {

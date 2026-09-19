@@ -8,15 +8,15 @@
   "advertised_profiles": [
     "standard"
   ],
-  "bridge_sha256": "010d91d112688c16b36a1bb5d7cc33889e7198ab605bf92eee8cd681c57627a3",
+  "bridge_sha256": "ee2207a1a0391796fc2cd5e8fbeb1c9c6763e792b849b89c406ea16cc030774f",
   "evidence": "real-process-synthetic-model-no-game",
-  "executor_sha256": "a77124735478106ba2c6a0eca45a697223477d163c586cb9cbd3ef7a8fc34548",
+  "executor_sha256": "35b214b58d3cd5fdcf250078b6dec1fcc24b6f0bc77b58fbfdb91e103062dc70",
   "exo_revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
   "extension_sha256": "bcc034e787972f7ad6eabff5e817ad1456d6f6cab8c7dc42b426bd9f5b33ef3d",
   "full_runtime_admission": false,
-  "harness_revision": "e882e908778fd57b7e49572add7420764c368037",
+  "harness_revision": "fdb2d86050bf31c563083dc99e47602ac7b492bb",
   "model_requests": 0,
-  "oracle_sha256": "c6624827d90087cd5b09c84046898c5bb757225d456e5b2d5af4635bc2f53f83",
+  "oracle_sha256": "c0da5819ba192b0a202950334a972eacc65c58ec128cbc4fc4433a23829e915d",
   "probes": [
     "describe",
     "describe_repeated",

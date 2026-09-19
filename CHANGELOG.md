@@ -249,6 +249,14 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   `error: invalid path` and left an incomplete tree that could not be built. Compatibility: no
   behaviour change; the file was outside the module tree. Refs #281.
 
+- Bind the Exo **evidence records to the revision that actually contains them**. Both oracle reports
+  derive `harness_revision` from `git rev-parse HEAD` while every other digest is computed from the
+  worktree, so a run on an uncommitted tree emitted a record naming a revision without the evidence
+  it binds — the 2026-09-17 record named `deb5df6d`, where the extension, the oracle and both
+  support modules differ or are absent. `support::assert_sources_are_committed` now fails the run
+  when a recorded source differs from `HEAD` or is untracked, both records are re-recorded at the
+  revision carrying their bytes, and the coupled manifest/`SHA256SUMS` digests are re-pinned. Refs #140.
+
 - Make the one-shot Exo bridge **advertise the variants it implements**. `--describe` publishes
   `profile_support` (`map`/`management`/`expert` `unsupported`), `decision_support` (`recovery`
   `unsupported`) and the two fail-closed codes, so a caller can pre-check support rather than infer it

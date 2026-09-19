@@ -1,5 +1,5 @@
 {
-  "bridge_sha256": "8e66665d3f13a6b8313d0b1feacc9a4e881b80e282659410d1a0c92880180e95",
+  "bridge_sha256": "ee2207a1a0391796fc2cd5e8fbeb1c9c6763e792b849b89c406ea16cc030774f",
   "cases": [
     {
       "case": "describe",
@@ -67,11 +67,11 @@
       "case": "action",
       "evidence": {
         "denied_requests": 0,
-        "event_cursor": "01a0b1b0-e27c-7392-8c46-8f4bda065912",
-        "exo_agent_id": "01a0b1b0-df83-75c3-9303-11a359db4985",
-        "exo_conversation_id": "01a0b1b0-df84-7e73-aa86-11666e40c8a5",
-        "exo_session_id": "01a0b1b0-df86-78d0-be46-cdace9e1914b",
-        "exo_turn_id": "01a0b1b0-df86-78d0-be46-cdb14470cbd4",
+        "event_cursor": "01a0b58d-8c29-72d3-b30a-88e01254cf89",
+        "exo_agent_id": "01a0b58d-8859-7b02-b1ce-d04162026801",
+        "exo_conversation_id": "01a0b58d-885b-7f80-ab58-3f5157124e4c",
+        "exo_session_id": "01a0b58d-885e-7ec2-b355-f49f33d13cc1",
+        "exo_turn_id": "01a0b58d-885e-7ec2-b355-f4af3e5d997a",
         "fetch_attempts": 1,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -84,11 +84,11 @@
       "case": "plan",
       "evidence": {
         "denied_requests": 0,
-        "event_cursor": "01a0b1b0-e6b0-7a60-be28-4ada300bbcaf",
-        "exo_agent_id": "01a0b1b0-e39e-72d2-9f14-479bb95c2a74",
-        "exo_conversation_id": "01a0b1b0-e39f-70b0-83d4-1779f3d78ab2",
-        "exo_session_id": "01a0b1b0-e3a2-7f90-ab2a-16776365da4b",
-        "exo_turn_id": "01a0b1b0-e3a2-7f90-ab2a-168f9ae5b7df",
+        "event_cursor": "01a0b58d-a0f8-70f2-a572-3d5a416c7c53",
+        "exo_agent_id": "01a0b58d-9de3-7cb2-bb32-008273a45367",
+        "exo_conversation_id": "01a0b58d-9de5-7911-b7bc-c100cc99a18e",
+        "exo_session_id": "01a0b58d-9de7-7823-a5ba-e7286c38c227",
+        "exo_turn_id": "01a0b58d-9de7-7823-a5ba-e73c896b420f",
         "fetch_attempts": 1,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -101,11 +101,11 @@
       "case": "wait",
       "evidence": {
         "denied_requests": 0,
-        "event_cursor": "01a0b1b0-ead6-7ae2-999c-9a3a1bb0bde8",
-        "exo_agent_id": "01a0b1b0-e7d7-7da0-a4a4-f11b0ad0ecf1",
-        "exo_conversation_id": "01a0b1b0-e7d9-7a91-b3fd-6929c52e6416",
-        "exo_session_id": "01a0b1b0-e7db-7a92-87d8-a576dd54d2fb",
-        "exo_turn_id": "01a0b1b0-e7db-7a92-87d8-a58f024de8b4",
+        "event_cursor": "01a0b58d-b5f4-7130-9813-82981959bd71",
+        "exo_agent_id": "01a0b58d-b2c0-7463-a30d-325c547ac937",
+        "exo_conversation_id": "01a0b58d-b2c2-7990-bcd4-7a60d0da1ef3",
+        "exo_session_id": "01a0b58d-b2c5-73f0-85e6-22ead9254c8f",
+        "exo_turn_id": "01a0b58d-b2c5-73f0-85e6-22f0904a7177",
         "fetch_attempts": 1,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -118,11 +118,11 @@
       "case": "reobserve",
       "evidence": {
         "denied_requests": 0,
-        "event_cursor": "01a0b1b0-eecc-7902-a4a2-63e4f73f031d",
-        "exo_agent_id": "01a0b1b0-ebec-7950-bdbb-260b686ebe1c",
-        "exo_conversation_id": "01a0b1b0-ebee-7101-8835-54a3da191f24",
-        "exo_session_id": "01a0b1b0-ebf0-74d0-ae3f-5d3420f84685",
-        "exo_turn_id": "01a0b1b0-ebf0-74d0-ae3f-5d426e735985",
+        "event_cursor": "01a0b58d-cac1-7441-a86f-27f936d2b065",
+        "exo_agent_id": "01a0b58d-c7e5-7fe3-b984-5d4042a0621d",
+        "exo_conversation_id": "01a0b58d-c7e7-7800-999a-4a88a7f48bf5",
+        "exo_session_id": "01a0b58d-c7e9-7150-b81a-53a833dd650a",
+        "exo_turn_id": "01a0b58d-c7e9-7150-b81a-53b0223dded5",
         "fetch_attempts": 1,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -135,11 +135,11 @@
       "case": "illegal_action",
       "evidence": {
         "denied_requests": 0,
-        "event_cursor": "01a0b1b0-f312-7d22-a3c8-690dd011a471",
-        "exo_agent_id": "01a0b1b0-eff3-77e2-a5c9-f9e7461fd65d",
-        "exo_conversation_id": "01a0b1b0-eff4-7a51-801a-028eed1f326f",
-        "exo_session_id": "01a0b1b0-eff7-7fc2-a7bc-7614f671c0e0",
-        "exo_turn_id": "01a0b1b0-eff7-7fc2-a7bc-762c6c2d8d67",
+        "event_cursor": "01a0b58d-df02-7903-aab2-fdd87baa33f0",
+        "exo_agent_id": "01a0b58d-dc33-7613-9957-e5bdaf936847",
+        "exo_conversation_id": "01a0b58d-dc35-7720-ad90-a0081d2e095f",
+        "exo_session_id": "01a0b58d-dc37-7463-af8e-417dada4b08f",
+        "exo_turn_id": "01a0b58d-dc37-7463-af8e-418a140183fa",
         "fetch_attempts": 1,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -152,11 +152,11 @@
       "case": "multiple_json",
       "evidence": {
         "denied_requests": 0,
-        "event_cursor": "01a0b1b0-f774-7a53-9d04-a3f186d31397",
-        "exo_agent_id": "01a0b1b0-f448-7cb1-9f8f-10a2a975dc0b",
-        "exo_conversation_id": "01a0b1b0-f44b-77b2-a7d0-42802316a380",
-        "exo_session_id": "01a0b1b0-f44e-7291-98b1-289ffbe8ebd4",
-        "exo_turn_id": "01a0b1b0-f44e-7291-98b1-28adcd8e51c7",
+        "event_cursor": "01a0b58d-f303-7ed0-aa04-d1699704778a",
+        "exo_agent_id": "01a0b58d-f03a-7d93-a471-876aa72ac5a3",
+        "exo_conversation_id": "01a0b58d-f03c-74e2-aa1b-15ac004c02b4",
+        "exo_session_id": "01a0b58d-f03e-7ee0-bcdf-dcd2c7ee68a7",
+        "exo_turn_id": "01a0b58d-f03e-7ee0-bcdf-dce0c3d8a763",
         "fetch_attempts": 1,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -169,11 +169,11 @@
       "case": "truncated_json",
       "evidence": {
         "denied_requests": 0,
-        "event_cursor": "01a0b1b0-fc2c-7a10-a779-bee76da277d8",
-        "exo_agent_id": "01a0b1b0-f886-7c72-b325-160660e05994",
-        "exo_conversation_id": "01a0b1b0-f887-7d22-9c33-28728cedb244",
-        "exo_session_id": "01a0b1b0-f88a-7bf1-a5ec-f71a6877ad84",
-        "exo_turn_id": "01a0b1b0-f88a-7bf1-a5ec-f72839344890",
+        "event_cursor": "01a0b58e-0630-79b3-8053-84193e74bf4f",
+        "exo_agent_id": "01a0b58e-0354-78f0-bad2-1e990d429674",
+        "exo_conversation_id": "01a0b58e-0356-7311-9fa0-c10ded559dfd",
+        "exo_session_id": "01a0b58e-0358-7503-9b09-052d7514e786",
+        "exo_turn_id": "01a0b58e-0358-7503-9b09-05385583e6e2",
         "fetch_attempts": 1,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -186,11 +186,11 @@
       "case": "empty_output",
       "evidence": {
         "denied_requests": 0,
-        "event_cursor": "01a0b1b1-00cf-75b1-a077-c69309a88fab",
-        "exo_agent_id": "01a0b1b0-fd45-7b30-88c7-8254fe2833ce",
-        "exo_conversation_id": "01a0b1b0-fd46-7a73-85fa-b233185dfa77",
-        "exo_session_id": "01a0b1b0-fd49-7a02-b5fd-c850edbed535",
-        "exo_turn_id": "01a0b1b0-fd49-7a02-b5fd-c86503c44f47",
+        "event_cursor": "01a0b58e-1b11-7ce3-a874-9dce89684b5f",
+        "exo_agent_id": "01a0b58e-182a-7620-926f-5e8047d44137",
+        "exo_conversation_id": "01a0b58e-182c-7193-9706-8479fc4277ee",
+        "exo_session_id": "01a0b58e-182e-73b3-8486-cd8b826ddb31",
+        "exo_turn_id": "01a0b58e-182e-73b3-8486-cd998fbed4bb",
         "fetch_attempts": 1,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -203,11 +203,11 @@
       "case": "oversized_output",
       "evidence": {
         "denied_requests": 0,
-        "event_cursor": "01a0b1b1-058c-7fb3-bc4c-62abe464fd35",
-        "exo_agent_id": "01a0b1b1-01f9-78e2-a834-06b8c4995951",
-        "exo_conversation_id": "01a0b1b1-01fa-7302-bda2-a3058c49bf30",
-        "exo_session_id": "01a0b1b1-01fd-77a0-afc1-6453a597aca2",
-        "exo_turn_id": "01a0b1b1-01fd-77a0-afc1-646fc3a933df",
+        "event_cursor": "01a0b58e-2f22-7dc2-aa4f-6790a63a9465",
+        "exo_agent_id": "01a0b58e-2c60-7f62-bf3c-312667034fc9",
+        "exo_conversation_id": "01a0b58e-2c61-7f12-b08b-3067fbf11699",
+        "exo_session_id": "01a0b58e-2c63-7a11-9c93-7905a42a7430",
+        "exo_turn_id": "01a0b58e-2c63-7a11-9c93-7911125a0786",
         "fetch_attempts": 1,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -220,11 +220,11 @@
       "case": "unknown_field",
       "evidence": {
         "denied_requests": 0,
-        "event_cursor": "01a0b1b1-09e4-76c3-ad87-9295eab8232b",
-        "exo_agent_id": "01a0b1b1-0699-7513-a657-4f13948593ee",
-        "exo_conversation_id": "01a0b1b1-069b-7a01-9715-1d6de4c7c3d4",
-        "exo_session_id": "01a0b1b1-069d-7cb2-b519-0cc9efb7a3c0",
-        "exo_turn_id": "01a0b1b1-069d-7cb2-b519-0cdfaa17c886",
+        "event_cursor": "01a0b58e-42f7-77d2-b220-e39a619c7929",
+        "exo_agent_id": "01a0b58e-401f-7333-b023-0f6d54b6248a",
+        "exo_conversation_id": "01a0b58e-4021-7ba0-87c6-2192668bcfa1",
+        "exo_session_id": "01a0b58e-4024-75e0-8761-4cf9cfffabb9",
+        "exo_turn_id": "01a0b58e-4024-75e0-8761-4d0c64757edd",
         "fetch_attempts": 1,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -237,11 +237,11 @@
       "case": "refusal",
       "evidence": {
         "denied_requests": 0,
-        "event_cursor": "01a0b1b1-111d-7b01-8878-8e9b84804e7c",
-        "exo_agent_id": "01a0b1b1-0b2c-7201-a73e-4dd886fd075c",
-        "exo_conversation_id": "01a0b1b1-0b2e-7672-8cfa-8e7dd0dc4692",
-        "exo_session_id": "01a0b1b1-0b31-7e12-9a67-bd64b4149f61",
-        "exo_turn_id": "01a0b1b1-0b31-7e12-9a67-bd768157ba39",
+        "event_cursor": "01a0b58e-5690-7111-a869-a2f17abd8ec2",
+        "exo_agent_id": "01a0b58e-535a-79b1-8256-6c587949500a",
+        "exo_conversation_id": "01a0b58e-535b-7921-b19c-782fa9db859c",
+        "exo_session_id": "01a0b58e-535e-7b90-824d-f8467fe45e0d",
+        "exo_turn_id": "01a0b58e-535e-7b90-824d-f8543164a9e4",
         "fetch_attempts": 1,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -254,11 +254,11 @@
       "case": "tool_escalation",
       "evidence": {
         "denied_requests": 0,
-        "event_cursor": "01a0b1b1-15d7-7290-a3b8-4f32a6ae5af4",
-        "exo_agent_id": "01a0b1b1-1261-7300-86c8-5e9753a2bd8f",
-        "exo_conversation_id": "01a0b1b1-1262-7b53-9969-8d3d3b5765f4",
-        "exo_session_id": "01a0b1b1-1265-74f1-9551-adc042e340ab",
-        "exo_turn_id": "01a0b1b1-1265-74f1-9551-add7df1589ab",
+        "event_cursor": "01a0b58e-6a4c-7942-9993-18157448e569",
+        "exo_agent_id": "01a0b58e-6757-7570-8690-53d5a13132c4",
+        "exo_conversation_id": "01a0b58e-6758-71d2-b1bb-028111f52fa1",
+        "exo_session_id": "01a0b58e-675b-71a2-b350-0cc205a1d996",
+        "exo_turn_id": "01a0b58e-675b-71a2-b350-0cd2037949b9",
         "fetch_attempts": 1,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -271,11 +271,11 @@
       "case": "multiple_messages",
       "evidence": {
         "denied_requests": 0,
-        "event_cursor": "01a0b1b1-1a15-7ec1-9c9e-302278995bbd",
-        "exo_agent_id": "01a0b1b1-170b-7e40-8159-e1f39f858d36",
-        "exo_conversation_id": "01a0b1b1-170c-7ac2-9266-7a22d701801f",
-        "exo_session_id": "01a0b1b1-170f-7d40-a298-42002e9baa12",
-        "exo_turn_id": "01a0b1b1-170f-7d40-a298-421db897a38c",
+        "event_cursor": "01a0b58e-7e0e-7300-ad0c-e0ad29e0acf5",
+        "exo_agent_id": "01a0b58e-7b14-79a0-b2a3-62435a1b0837",
+        "exo_conversation_id": "01a0b58e-7b15-7c72-ba9c-564cf1771251",
+        "exo_session_id": "01a0b58e-7b17-7bb1-8349-ad60d2b71a86",
+        "exo_turn_id": "01a0b58e-7b17-7bb1-8349-ad75dfba93a9",
         "fetch_attempts": 1,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -288,11 +288,11 @@
       "case": "429_one_egress",
       "evidence": {
         "denied_requests": 2,
-        "event_cursor": "01a0b1b1-23e5-7ef2-803a-e2ca45451acc",
-        "exo_agent_id": "01a0b1b1-1b2e-7681-979f-2d1b906a99e8",
-        "exo_conversation_id": "01a0b1b1-1b2f-7dc1-b994-e0fd09ba8208",
-        "exo_session_id": "01a0b1b1-1b32-79a2-ae61-7a2565991e7f",
-        "exo_turn_id": "01a0b1b1-1b32-79a2-ae61-7a3ccc90c806",
+        "event_cursor": "01a0b58e-9790-77d0-a51c-e6eb697075cc",
+        "exo_agent_id": "01a0b58e-8f25-7763-b751-bde6de990b57",
+        "exo_conversation_id": "01a0b58e-8f27-75e3-9d55-15dda817d18c",
+        "exo_session_id": "01a0b58e-8f29-7c01-98e2-ddfb086339ca",
+        "exo_turn_id": "01a0b58e-8f29-7c01-98e2-de0b1e52f0fe",
         "fetch_attempts": 3,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -305,11 +305,11 @@
       "case": "500_one_egress",
       "evidence": {
         "denied_requests": 2,
-        "event_cursor": "01a0b1b1-2d33-7b42-a9ed-5b9274ffea94",
-        "exo_agent_id": "01a0b1b1-2509-7653-a242-a5888aa0339a",
-        "exo_conversation_id": "01a0b1b1-250a-7ee2-9308-b98fd706082a",
-        "exo_session_id": "01a0b1b1-250c-79e1-8359-d28c940ae98f",
-        "exo_turn_id": "01a0b1b1-250c-79e1-8359-d291e95e738a",
+        "event_cursor": "01a0b58e-b14e-74d1-8417-6c96ec4602d4",
+        "exo_agent_id": "01a0b58e-a95b-7a12-83f2-d94acf612e7a",
+        "exo_conversation_id": "01a0b58e-a95d-76d2-85c4-5cb35710c709",
+        "exo_session_id": "01a0b58e-a95f-7761-9da5-dbe10c3bc67c",
+        "exo_turn_id": "01a0b58e-a95f-7761-9da5-dbf87b8d3e3f",
         "fetch_attempts": 3,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -322,11 +322,11 @@
       "case": "request_tools_are_empty",
       "evidence": {
         "denied_requests": 0,
-        "event_cursor": "01a0b1b1-312b-71a1-a6da-009e58ee33b7",
-        "exo_agent_id": "01a0b1b1-2e57-71d2-be45-1fe9c2d776fb",
-        "exo_conversation_id": "01a0b1b1-2e58-7a73-8998-08284c5e677e",
-        "exo_session_id": "01a0b1b1-2e5b-7323-b2af-8b6cd9e029fe",
-        "exo_turn_id": "01a0b1b1-2e5b-7323-b2af-8b79c7a76651",
+        "event_cursor": "01a0b58e-c4c6-7331-8951-d7370e9ed62d",
+        "exo_agent_id": "01a0b58e-c20d-7963-b6dc-b83f1e8370e7",
+        "exo_conversation_id": "01a0b58e-c20e-74e2-a649-4197c8e44673",
+        "exo_session_id": "01a0b58e-c212-7a60-8515-b6ae7bb4a5dd",
+        "exo_turn_id": "01a0b58e-c212-7a60-8515-b6b8d07b9948",
         "fetch_attempts": 1,
         "forwarded_requests": 1,
         "schema": "sts2.exo-one-shot-evidence-v1"
@@ -341,11 +341,11 @@
       "evidence": {
         "bridge": {
           "denied_requests": 0,
-          "event_cursor": "01a0b1b1-35e1-7ef3-ae25-20b7c498b3cf",
-          "exo_agent_id": "01a0b1b1-3263-7f83-ad28-2d7def07650a",
-          "exo_conversation_id": "01a0b1b1-3264-7b11-947c-ec424c4b032b",
-          "exo_session_id": "01a0b1b1-3267-7240-9428-141974cd879d",
-          "exo_turn_id": "01a0b1b1-3267-7240-9428-1425114548b4",
+          "event_cursor": "01a0b58e-d8b8-7811-b466-e5fcc6caa26d",
+          "exo_agent_id": "01a0b58e-d5d5-7162-a146-e8ea5e4d358a",
+          "exo_conversation_id": "01a0b58e-d5d6-7ec0-b5b8-4485e8b966ef",
+          "exo_session_id": "01a0b58e-d5d8-7662-9f90-9a0acb73eb28",
+          "exo_turn_id": "01a0b58e-d5d8-7662-9f90-9a1190f0f3c9",
           "fetch_attempts": 1,
           "forwarded_requests": 1,
           "schema": "sts2.exo-one-shot-evidence-v1"
@@ -364,11 +364,11 @@
       "evidence": {
         "bridge": {
           "denied_requests": 0,
-          "event_cursor": "01a0b1b1-3eb0-71b0-91d8-c73faaff08c2",
-          "exo_agent_id": "01a0b1b1-3b23-7580-977d-76f852581df3",
-          "exo_conversation_id": "01a0b1b1-3b24-71e1-84d1-dd119d274013",
-          "exo_session_id": "01a0b1b1-3b27-7911-af19-da10f650ad89",
-          "exo_turn_id": "01a0b1b1-3b27-7911-af19-da24f80acb59",
+          "event_cursor": "01a0b58e-ef8b-7222-ba59-96a6a9dc2782",
+          "exo_agent_id": "01a0b58e-ec91-7b92-bc36-3f1dec8a6d46",
+          "exo_conversation_id": "01a0b58e-ec94-7cd1-a589-e1484a86a0c2",
+          "exo_session_id": "01a0b58e-ec99-7d41-82ce-8a05ef095be1",
+          "exo_turn_id": "01a0b58e-ec99-7d41-82ce-8a111c301598",
           "fetch_attempts": 1,
           "forwarded_requests": 1,
           "schema": "sts2.exo-one-shot-evidence-v1"
@@ -387,11 +387,11 @@
       "evidence": {
         "bridge": {
           "denied_requests": 0,
-          "event_cursor": "01a0b1b1-464b-7a51-be9d-34d837bc4219",
-          "exo_agent_id": "01a0b1b1-42ca-78a1-9442-780ecefb85e0",
-          "exo_conversation_id": "01a0b1b1-42cb-7470-afae-402dac2cd5f2",
-          "exo_session_id": "01a0b1b1-42cd-7591-9f7f-042c4982f19c",
-          "exo_turn_id": "01a0b1b1-42cd-7591-9f7f-04351a942910",
+          "event_cursor": "01a0b58f-0655-7ac1-961c-2468f4958902",
+          "exo_agent_id": "01a0b58f-0337-7e41-93d3-f3f8a70c9f0f",
+          "exo_conversation_id": "01a0b58f-0338-7610-98a7-49c128e824d2",
+          "exo_session_id": "01a0b58f-033b-7f33-be2d-b22bac4ec525",
+          "exo_turn_id": "01a0b58f-033b-7f33-be2d-b236dd655770",
           "fetch_attempts": 1,
           "forwarded_requests": 1,
           "schema": "sts2.exo-one-shot-evidence-v1"
@@ -410,11 +410,11 @@
       "evidence": {
         "bridge": {
           "denied_requests": 0,
-          "event_cursor": "01a0b1b1-4d7e-7000-b055-c9f19226f32d",
-          "exo_agent_id": "01a0b1b1-4a99-72e3-a8ee-81e5f389b0d3",
-          "exo_conversation_id": "01a0b1b1-4a9a-7ad3-9df2-c3b977dd3d01",
-          "exo_session_id": "01a0b1b1-4a9c-7b13-af5c-9898b231bf2f",
-          "exo_turn_id": "01a0b1b1-4a9c-7b13-af5c-98a74478bab0",
+          "event_cursor": "01a0b58f-1d0e-7792-9b13-3d53c8ef4549",
+          "exo_agent_id": "01a0b58f-1a5b-70e2-9a3a-05bde9ee0fb6",
+          "exo_conversation_id": "01a0b58f-1a5c-73b3-aecd-3cd243313b88",
+          "exo_session_id": "01a0b58f-1a5f-7063-b678-6d37d797baa7",
+          "exo_turn_id": "01a0b58f-1a5f-7063-b678-6d495b225cfb",
           "fetch_attempts": 1,
           "forwarded_requests": 1,
           "schema": "sts2.exo-one-shot-evidence-v1"
@@ -433,11 +433,11 @@
       "evidence": {
         "bridge": {
           "denied_requests": 0,
-          "event_cursor": "01a0b1b1-556a-74a0-8843-dad953c5bcdb",
-          "exo_agent_id": "01a0b1b1-5205-7331-9c27-bb2b3f32247b",
-          "exo_conversation_id": "01a0b1b1-5206-74d1-9f2f-ca198ab594b2",
-          "exo_session_id": "01a0b1b1-5208-75a1-b97d-7226f9de785b",
-          "exo_turn_id": "01a0b1b1-5208-75a1-b97d-723fc60630cb",
+          "event_cursor": "01a0b58f-33f3-7d42-aaed-c9d0504e4b7b",
+          "exo_agent_id": "01a0b58f-313d-7ce3-842e-17f9211a19d5",
+          "exo_conversation_id": "01a0b58f-313e-73b1-bb71-253aa4607738",
+          "exo_session_id": "01a0b58f-3140-7d21-8d3c-b2a2014351b8",
+          "exo_turn_id": "01a0b58f-3140-7d21-8d3c-b2bdd6b12cee",
           "fetch_attempts": 1,
           "forwarded_requests": 1,
           "schema": "sts2.exo-one-shot-evidence-v1"
@@ -456,11 +456,11 @@
       "evidence": {
         "bridge": {
           "denied_requests": 0,
-          "event_cursor": "01a0b1b1-5d5b-7513-9f49-232bc1b907f8",
-          "exo_agent_id": "01a0b1b1-59ce-74f1-8623-cc95b04e1ae9",
-          "exo_conversation_id": "01a0b1b1-59cf-75e3-92fb-ad935d53d060",
-          "exo_session_id": "01a0b1b1-59d1-7de3-bc1e-02b36a3c99ff",
-          "exo_turn_id": "01a0b1b1-59d1-7de3-bc1e-02c33b0be2f6",
+          "event_cursor": "01a0b58f-49f0-7010-9550-fa176c432eae",
+          "exo_agent_id": "01a0b58f-472f-7cf0-822b-bd24eee56956",
+          "exo_conversation_id": "01a0b58f-4730-7ad1-9d9a-f8170e98d6d0",
+          "exo_session_id": "01a0b58f-4732-7bd1-a244-2458781df754",
+          "exo_turn_id": "01a0b58f-4732-7bd1-a244-246a42f67514",
           "fetch_attempts": 1,
           "forwarded_requests": 1,
           "schema": "sts2.exo-one-shot-evidence-v1"
@@ -479,11 +479,11 @@
       "evidence": {
         "bridge": {
           "denied_requests": 0,
-          "event_cursor": "01a0b1b1-6522-71a3-b913-44337e9395c7",
-          "exo_agent_id": "01a0b1b1-61f5-7b82-8cf8-aff1536e5b4f",
-          "exo_conversation_id": "01a0b1b1-61f6-70d0-ad47-e038b8b7fd10",
-          "exo_session_id": "01a0b1b1-61f8-7163-9400-6bd2ace050fd",
-          "exo_turn_id": "01a0b1b1-61f8-7163-9400-6be1d57da1b5",
+          "event_cursor": "01a0b58f-5f75-7b00-bb83-0a552c6f81c1",
+          "exo_agent_id": "01a0b58f-5ccb-7ea2-b1c3-7e8e3752b979",
+          "exo_conversation_id": "01a0b58f-5ccd-7b02-9c3d-5b93cc4aadeb",
+          "exo_session_id": "01a0b58f-5ccf-7a10-8027-74a3354a969b",
+          "exo_turn_id": "01a0b58f-5ccf-7a10-8027-74b480c9ece1",
           "fetch_attempts": 1,
           "forwarded_requests": 1,
           "schema": "sts2.exo-one-shot-evidence-v1"
@@ -502,11 +502,11 @@
       "evidence": {
         "bridge": {
           "denied_requests": 0,
-          "event_cursor": "01a0b1b1-6dad-7461-bd55-48ccc6447320",
-          "exo_agent_id": "01a0b1b1-6974-7601-bd76-745e31d9d453",
-          "exo_conversation_id": "01a0b1b1-697a-72e0-94d4-04838e14c48b",
-          "exo_session_id": "01a0b1b1-697d-7422-83b5-0d7e9930dcea",
-          "exo_turn_id": "01a0b1b1-697d-7422-83b5-0d871b128486",
+          "event_cursor": "01a0b58f-74b2-7973-86bd-2a45f8d6dc5c",
+          "exo_agent_id": "01a0b58f-71e1-74a0-99ec-a4a52ab6392b",
+          "exo_conversation_id": "01a0b58f-71e2-77a2-ad2f-2400494cf3ca",
+          "exo_session_id": "01a0b58f-71e5-7d72-9f13-05d0e50d8eaa",
+          "exo_turn_id": "01a0b58f-71e5-7d72-9f13-05e5a8e96fd1",
           "fetch_attempts": 1,
           "forwarded_requests": 1,
           "schema": "sts2.exo-one-shot-evidence-v1"
@@ -525,11 +525,11 @@
       "evidence": {
         "bridge": {
           "denied_requests": 0,
-          "event_cursor": "01a0b1b1-7507-7422-acbc-9e89e0b251ad",
-          "exo_agent_id": "01a0b1b1-7244-7460-a1bf-27b2cdb3f44f",
-          "exo_conversation_id": "01a0b1b1-7246-7f71-9439-83d9a315059d",
-          "exo_session_id": "01a0b1b1-7248-71f0-a323-e3da5b0204c2",
-          "exo_turn_id": "01a0b1b1-7248-71f0-a323-e3e6ea9212c3",
+          "event_cursor": "01a0b58f-89fe-7f60-99b6-038a8aebc438",
+          "exo_agent_id": "01a0b58f-872b-7221-85ac-a80a5311c022",
+          "exo_conversation_id": "01a0b58f-872c-7b22-9941-76541fcf00c2",
+          "exo_session_id": "01a0b58f-872f-7482-b709-ed1939b635bd",
+          "exo_turn_id": "01a0b58f-872f-7482-b709-ed2b6f7ce943",
           "fetch_attempts": 1,
           "forwarded_requests": 1,
           "schema": "sts2.exo-one-shot-evidence-v1"
@@ -548,11 +548,11 @@
       "evidence": {
         "bridge": {
           "denied_requests": 0,
-          "event_cursor": "01a0b1b1-7c3f-7202-bbab-32984e8f2215",
-          "exo_agent_id": "01a0b1b1-7944-7cc0-b910-fe4389fd8493",
-          "exo_conversation_id": "01a0b1b1-7945-7b60-b2e9-cf21c44a9741",
-          "exo_session_id": "01a0b1b1-7947-7d63-b913-d17f6750f29d",
-          "exo_turn_id": "01a0b1b1-7947-7d63-b913-d18d829d7d68",
+          "event_cursor": "01a0b58f-a03c-7631-89d5-e4d017113a71",
+          "exo_agent_id": "01a0b58f-9d81-78e3-8c40-0bcd67c52e88",
+          "exo_conversation_id": "01a0b58f-9d83-7830-a1c8-53a799e9b0ec",
+          "exo_session_id": "01a0b58f-9d86-73d2-8785-57a381a3e852",
+          "exo_turn_id": "01a0b58f-9d86-73d2-8785-57b0588b52b3",
           "fetch_attempts": 1,
           "forwarded_requests": 1,
           "schema": "sts2.exo-one-shot-evidence-v1"
@@ -571,11 +571,11 @@
       "evidence": {
         "bridge": {
           "denied_requests": 0,
-          "event_cursor": "01a0b1b1-836e-7421-95b7-521aac70efe9",
-          "exo_agent_id": "01a0b1b1-802c-70d1-a446-c6f63756647a",
-          "exo_conversation_id": "01a0b1b1-802d-7fe2-94db-6fc3d9f8b2e6",
-          "exo_session_id": "01a0b1b1-8030-7e21-9373-c6eb1e22eb4b",
-          "exo_turn_id": "01a0b1b1-8030-7e21-9373-c6f8a8578282",
+          "event_cursor": "01a0b58f-b447-70f1-a2a9-4dc57ca3efb2",
+          "exo_agent_id": "01a0b58f-b19c-7460-8127-b669387dc73e",
+          "exo_conversation_id": "01a0b58f-b19d-7582-aacf-22a824f2f39c",
+          "exo_session_id": "01a0b58f-b1a0-71e0-b29b-ff7071c2b4f2",
+          "exo_turn_id": "01a0b58f-b1a0-71e0-b29b-ff83dd779aed",
           "fetch_attempts": 1,
           "forwarded_requests": 1,
           "schema": "sts2.exo-one-shot-evidence-v1"
@@ -594,11 +594,11 @@
       "evidence": {
         "bridge": {
           "denied_requests": 0,
-          "event_cursor": "01a0b1b1-8a70-7840-897c-7164058cf49a",
-          "exo_agent_id": "01a0b1b1-8754-7402-80f5-0a14705bfefb",
-          "exo_conversation_id": "01a0b1b1-8755-7c12-bda6-a11311aeaee1",
-          "exo_session_id": "01a0b1b1-8759-7523-8207-ed8751eadb27",
-          "exo_turn_id": "01a0b1b1-8759-7523-8207-ed996c635c64",
+          "event_cursor": "01a0b58f-c8bf-7d80-9a3f-569632dd40a3",
+          "exo_agent_id": "01a0b58f-c634-7d30-8e24-c7d77d530a4e",
+          "exo_conversation_id": "01a0b58f-c636-7313-b310-a85bc02012b4",
+          "exo_session_id": "01a0b58f-c638-7a72-8915-7a53b0837bb3",
+          "exo_turn_id": "01a0b58f-c638-7a72-8915-7a607a6337ac",
           "fetch_attempts": 1,
           "forwarded_requests": 1,
           "schema": "sts2.exo-one-shot-evidence-v1"
@@ -613,15 +613,15 @@
     }
   ],
   "evidence": "real-pinned-Exo-with-synthetic-model-no-game",
-  "executor_sha256": "3f6d7d9530da3c7a884d48acfc20dfe1b24d73e9f2499a9ed5b575e4e9d97729",
+  "executor_sha256": "35b214b58d3cd5fdcf250078b6dec1fcc24b6f0bc77b58fbfdb91e103062dc70",
   "exo_revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
   "extension_sha256": "bcc034e787972f7ad6eabff5e817ad1456d6f6cab8c7dc42b426bd9f5b33ef3d",
   "full_runtime_admission": false,
-  "harness_revision": "deb5df6df7e83f1e2e102417fb8dc34ac097ff9c",
-  "oracle_sha256": "948d31ccc4a505e411d04f03fefeb16e71135220ddb01b7e67f2606a15140714",
+  "harness_revision": "fdb2d86050bf31c563083dc99e47602ac7b492bb",
+  "oracle_sha256": "381ba1470f476872bded864400890ce6bbcb63d256496d76729093ab080114eb",
   "schema": "sts2.exo-one-shot-process-evidence-v1",
   "support_sha256": {
-    "tests/support/mod.rs": "451ab6115729c254dc1c47be0ea1528168dead4320a1570707bad7e94f07232f",
+    "tests/support/mod.rs": "c42408176a7f774d1f845cb3b8a0805892174ae237149ca037d232bf65050b5c",
     "tests/support/projection.rs": "25c6168f0c76d103d7fc0e1ca14ac0bf8251c35fdc5cadd31ea50318a455c26e"
   },
   "temporary_storage": "owned-target-exo-test-tmp"
