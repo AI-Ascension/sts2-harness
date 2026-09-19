@@ -10,6 +10,17 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Write the Windows lane's shared files without a byte-order mark.** Windows PowerShell 5.1
+  spells `-Encoding UTF8` as UTF-8 *with* a mark, and the lane wrote `override.cfg` that way. The
+  game does not honour a marked override, so it resolved the shared default user directory, the mod
+  compared that against the directory the lane had declared in `STS2_LIVE_USER_DIR`, and the episode
+  ended with `live demo requires its isolated user directory` and no listener. Of the 212 episodes
+  the guest still holds, the 18 the lane drove all resolved the default directory, while the 167
+  whose `override.cfg` came from a writer that emits no mark all resolved their own per-episode
+  directory. `override.cfg`, the seeded `settings.save`, and `authorization.json` now go through one
+  `Write-TextFile` helper that constructs `UTF8Encoding($false)`; the PID and outcome files keep
+  bare `Set-Content`, which writes no mark. Refs #173.
+
 - **File the System One decision the bridge actually emits, and let the bridge emit the record
   itself.** `map_decision` returns four fields for a re-observation, but the filed `bridge_decision`
   carried only the rationale and the decision name, so the evidence artifact was still not the
@@ -515,25 +526,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   Compatibility: `breaking` for the refusal vocabulary and operator messages only — no wire field,
   schema, contract version or durable record changes, and `legacy` behaviour is unchanged. See
   [ADR 0032](docs/decisions/0032-inspected-admission-identity.md). Refs #139.
-
-- Invoke the pinned-Exo **capability preflight at the runtime transport seam** so a missing,
-  malformed, unknown or unverified deployment fails closed before a model or game effect.
-  `STS2_EXO_ADMISSION` selects the mode: `envelope` (the default when unset) assembles the
-  operator-trusted identity, refuses the run while settings are still being assembled when a
-  capability, digest, revision, route or schema is not admitted, and then admits a correlated turn
-  through `ExoAdmittedTransport`; `legacy` is the explicit acknowledgement of an un-admitted
-  raw-wire bridge and preserves the previous behaviour. Compatibility: `breaking` for operator
-  configuration only — no wire field, schema, contract version or durable record changes, the
-  reviewed capability axes are not promoted on the bridge's behalf (so `envelope` currently refuses
-  the current deployment; the inspected-identity entry above strengthens the reason), and the
-  raw-wire development bridges need `STS2_EXO_ADMISSION=legacy`. Per-turn envelope admission for a
-  multi-turn episode remains open. See
-  [ADR 0031](docs/decisions/0031-runtime-exo-admission-gate.md). Refs #139.
-
-- Keep a **cancel** pending as `NeedsOperator` while a live operation's settlement is still unknown,
-  instead of stopping the episode and marking the run cancelled. `CommandKind::Cancel` reconciles
-  first, and when reconciliation reports `ErrorClass::Unresolved` it returns
-  `CommandOutcome::Pending` with reason `live_operation_unknown`, leaving the pending operation
-  identity, the `NotStarted` cleanup state and the live session untouched so that an operator can
-  still settle it. Compatibility: the cancel command, its revision guard and its response schema are
-  unchanged, and a cancel at a settled revision behaves exactly as before. Refs #94.

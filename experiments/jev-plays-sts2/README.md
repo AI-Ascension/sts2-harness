@@ -107,6 +107,33 @@ values, so they are not in the episode's credential cleanup list. The test
 `crates/harness/tests/jev_loop_windows_live_campaign_env.rs` fails if any of them is removed,
 renamed, given another value, or declared after the game has already been started.
 
+## The byte-order mark the Windows lane used to write
+
+Declared and opted in, the next episode failed earlier instead of later: the mod refused to
+initialise, the listener never opened, and the directory the game had resolved was the shared
+default one. The lane writes `override.cfg`, which is the only place this launcher tells the game
+where its per-episode directory is, with PowerShell's `Set-Content`. The lane runs under Windows
+PowerShell 5.1, where `-Encoding UTF8` means UTF-8 *with* a byte-order mark; the game does not
+honour an override that begins with the mark, so it resolved the default directory, and the mod
+compared that against the directory the lane had published in `STS2_LIVE_USER_DIR` and refused.
+
+The evidence is a separation that is total in both directions, across the 212 episodes the guest
+still holds. The 18 the lane drove all resolved `AppData\Roaming\SlayTheSpire2`; the 167 whose
+`override.cfg` came from a writer that emits no mark all resolved their own
+`AIAscensionJevLoop-<stamp>`. Both sets launch the same executable from the same host directory,
+and the mark is the only difference between the two writers. On the guest the live file is 117
+bytes and begins `EF BB BF`; the same text written without a mark is 114 bytes, and skipping the
+first three bytes makes the two byte-for-byte equal.
+
+Every file this lane writes for another program to read -- `override.cfg`, the seeded
+`settings.save`, and `authorization.json` -- now goes through `Write-TextFile`, which constructs
+`UTF8Encoding($false)`. The PID and outcome files keep bare `Set-Content`, which writes no mark
+under this interpreter and is read back only by the lane itself. The test
+`crates/harness/tests/jev_loop_windows_bom_free_writes.rs` scans the real script and fails if a
+mark-emitting cmdlet comes back carrying an encoding, or if any of the three files stops going
+through the helper. The confirmation is the next native episode: its `game.log` has to record the
+per-episode directory rather than the shared one.
+
 ## Fullscreen on the Linux guest
 
 The reviewed launcher starts the game with a fixed `--windowed --resolution 958x699`, refuses to run
