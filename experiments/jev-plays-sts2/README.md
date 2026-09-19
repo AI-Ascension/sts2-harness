@@ -85,6 +85,28 @@ rather than silently becoming a different directory. The test
 `crates/harness/tests/jev_loop_windows_user_dir_declaration.rs` fails if the declaration is removed
 or stops being the resolved value.
 
+## The live runtime the Windows lane opts into
+
+The mod's production live runtime is opt-in. `STS2_LIVE_COMBAT=1` is the switch that binds the
+gameplay host at all; with it, `STS2_LIVE_CAMPAIGN=1` selects the isolated campaign save backend and
+`STS2_LIVE_CAMPAIGN_MODE=standard` selects the standard seeded run path. The reviewed launcher sets
+all three in the child environment, and the Linux lane inherits them that way. The Windows lane
+launches the host executable directly, so the environment is its own responsibility, and it declared
+only the runtime session variables.
+
+The failure that produced was not a refusal. The mod loaded, printed
+`authenticated runtime HTTP listener started on 127.0.0.1:15626`, and served every read as
+`{"state":"recovery","code":"host_not_configured"}` -- the code its host seam reports when no host
+was ever configured. The harness read that as an unknown state, re-observed once, and ended the
+episode as `episode requires recovery before policy can continue`, four seconds after the game
+reached its main menu, with two checkpoints and no operation. Nothing in that message says
+"environment", which is why the listener evidence looked like progress.
+
+The lane now declares all three before starting the game. They are constants rather than per-episode
+values, so they are not in the episode's credential cleanup list. The test
+`crates/harness/tests/jev_loop_windows_live_campaign_env.rs` fails if any of them is removed,
+renamed, given another value, or declared after the game has already been started.
+
 ## Fullscreen on the Linux guest
 
 The reviewed launcher starts the game with a fixed `--windowed --resolution 958x699`, refuses to run

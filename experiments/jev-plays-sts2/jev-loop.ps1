@@ -330,6 +330,17 @@ config/custom_user_dir_name="$userDir"
         # nothing else sets it; the Linux lane starts the game through the supported launcher, which
         # sets it from --user-dir-mapping.
         $env:STS2_LIVE_USER_DIR = $userDirPath
+
+        # The production live runtime is opt-in, and opting in is what binds the gameplay host. Left
+        # unset, the mod still loads and still opens its listener and then answers every read with
+        # {"state":"recovery","code":"host_not_configured"} because no host was ever configured, and
+        # the harness ends the episode as "episode requires recovery before policy can continue"
+        # (sts2-game-mod#79). The Linux lane receives all three from the supported launcher; the
+        # Windows lane launches the host executable directly, so declaring them is its own job.
+        $env:STS2_LIVE_COMBAT = '1'
+        $env:STS2_LIVE_CAMPAIGN = '1'
+        $env:STS2_LIVE_CAMPAIGN_MODE = 'standard'
+
         $env:STS2_RUNTIME_SESSION = '1'
         $env:STS2_RUNTIME_BIND_ADDRESS = '127.0.0.1'
         $env:STS2_RUNTIME_PORT = "$($modPortCandidates[0])"
