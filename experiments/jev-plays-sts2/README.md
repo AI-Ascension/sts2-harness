@@ -146,3 +146,22 @@ Finally, do not guard the loop start with `pgrep -f "[j]ev-loop.sh"` in the same
 starts `/usr/local/sbin/jev-loop.sh`. The bracket keeps the *pattern* from matching itself, but the
 unbracketed path in the start command is on that same command line, so the guard matches the shell
 running it and the loop never starts. Check in one call and start in another.
+
+## Rendering on the CPU
+
+The guest renders in software. Its only graphics device is virtio-gpu, which gives OpenGL through
+virgl but no Vulkan, and the game is Godot 4 Forward+, which is Vulkan-only - Vulkan over
+virtio-gpu needs venus, and the host's virglrenderer is 1.0.0 without it. So Mesa falls back to
+lavapipe and the game sustains 362% of one core of four for a turn-based card game:
+
+    Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)
+
+The frame rate is not capped either. `fps_limit` is 60 in the settings file, but the game takes its
+effective settings from the mapped file and scavenges it as a version-0 save, so the saved values
+are replaced by defaults - the same reason it ignores `fullscreen`. Vsync cannot pick up the slack
+because Mutter 46 does not implement the Wayland `fifo-v1` protocol, which the game reports as
+`FIFO protocol not found! Frame pacing will be degraded`.
+
+The host has an Intel Arc Pro B60 already doing SR-IOV, with one of seven virtual functions given
+to the Windows domain and six free. `gpu-passthrough/` holds a prepared, unexecuted plan to give
+one to this guest, with a read-only preflight, a rollback, and the reasoning for each step.
