@@ -134,6 +134,17 @@ mark-emitting cmdlet comes back carrying an encoding, or if any of the three fil
 through the helper. The confirmation is the next native episode: its `game.log` has to record the
 per-episode directory rather than the shared one.
 
+The mark had a second home. `systemone_transport.ps1` records each exchange when `JEV_CONTEXT_LOG`
+names a file, and it appended with `[Text.Encoding]::UTF8` -- a `UTF8Encoding` with its identifier
+turned on. `AppendAllText` writes the preamble when it *creates* the file, so the mark appears once,
+in front of the first record, rather than on every append. That file is a JSON Lines stream read
+line by line, so a reader that opens it as UTF-8 fails on line one -- the line that carries the
+state, the instructions and every option the model was given. On the guest, the record of
+`episode-20260919-100810` is 324,031 bytes and its only mark is the three bytes at offset zero. The
+append now hands the call a `UTF8Encoding($false)`, and
+`crates/harness/tests/jev_loop_windows_transport_record_mark_free.rs` scans the transport and fails
+if a mark-emitting encoding, cmdlet or constructor returns.
+
 ## The provider transport the Windows lane could not start
 
 With the mark gone the episode ran much further and then failed at the provider instead: it reached

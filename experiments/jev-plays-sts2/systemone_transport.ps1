@@ -19,6 +19,13 @@ $ErrorActionPreference = 'Stop'
 # MAX_STATE_AND_QUESTION_BYTES in crates/harness/src/context_control/systemone_request.rs.
 $script:BudgetBytes = 64 * 1024
 
+# The record is a JSON Lines stream, and PowerShell's [Text.Encoding]::UTF8 emits a byte-order mark
+# when it creates a file, which puts three bytes in front of the first record and makes that line
+# unparseable for a reader that does not expect them. UTF8Encoding($false) writes the same bytes as
+# UTF-8 without the mark, so the file starts with `{` the way every reader of JSON Lines expects.
+# The GetBytes calls elsewhere in this script are unaffected: they never write a preamble.
+$script:MarkFreeUtf8 = New-Object System.Text.UTF8Encoding($false)
+
 function Get-Sha256Hex([string]$text) {
     $sha = [Security.Cryptography.SHA256]::Create()
     try {
@@ -91,7 +98,7 @@ function Write-ContextRecord([string]$requestBody, [string]$responseBody, $statu
             catch { $entry['response_unparsed'] = $responseBody.Substring(0, [Math]::Min(4000, $responseBody.Length)) }
         }
         $line = ($entry | ConvertTo-Json -Depth 30 -Compress)
-        [IO.File]::AppendAllText($path, $line + "`n", [Text.Encoding]::UTF8)
+        [IO.File]::AppendAllText($path, $line + "`n", $script:MarkFreeUtf8)
     } catch {
         # Recording must never fail the exchange.
     }

@@ -10,6 +10,17 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Stop the Windows transport marking its exchange record.** `systemone_transport.ps1` appends to
+  the file `JEV_CONTEXT_LOG` names with `[Text.Encoding]::UTF8`, which is a `UTF8Encoding` with its
+  identifier turned on, and `AppendAllText` writes that preamble when it creates the file -- so the
+  record begins with three bytes in front of the first record. The file is a JSON Lines stream read
+  line by line, so a reader that opens it as UTF-8 cannot parse the one line that carries the state,
+  the instructions and every option the model was given. The append now hands the call a
+  `UTF8Encoding($false)`. The test
+  `crates/harness/tests/jev_loop_windows_transport_record_mark_free.rs` scans the transport and fails
+  if a mark-emitting encoding, cmdlet or constructor comes back. Refs #173. Partial progress on #79
+  only.
+
 - **Give the Windows lane's provider transport the environment it needs to start.** The runtime
   spawns the Exo bridge with the environment cleared but for `STS2_EXO_INHERITED_ENV_JSON`, and the
   bridge hands its own environment to the transport it spawns, so that list is the transport's whole
