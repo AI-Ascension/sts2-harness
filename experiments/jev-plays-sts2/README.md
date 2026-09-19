@@ -67,6 +67,24 @@ python3 jev-context.py <log> --options  per option: times shown, times top, aver
 - On Windows the mod refuses to initialise unless its user directory holds a fresh profile baseline:
   AI-Ascension/sts2-game-mod#173.
 
+## The isolated user directory the Windows lane declares
+
+The mod also refuses to initialise unless the directory the *game* resolved equals the directory the
+*launcher* published in `STS2_LIVE_USER_DIR`, and the game resolves that directory from
+`config/custom_user_dir_name` in `override.cfg` under the launch-scoped `APPDATA` root -- not from
+any launcher argument. The Linux lane satisfies this through the reviewed launcher, which sets the
+variable from `--user-dir-mapping`; the Windows lane starts the host executable directly, so the
+variable is its own responsibility.
+
+It was never set, so every episode that reached the mod failed with `live demo requires its isolated
+user directory` while the game was resolving exactly the directory the lane had isolated -- the
+message names neither directory, which is why the episode looked like a directory problem. The lane
+now reads the directory back out of the `override.cfg` it just wrote, seeds that value, and declares
+that same value, so the two cannot drift apart; a resolver failure is recorded as an episode failure
+rather than silently becoming a different directory. The test
+`crates/harness/tests/jev_loop_windows_user_dir_declaration.rs` fails if the declaration is removed
+or stops being the resolved value.
+
 ## Fullscreen on the Linux guest
 
 The reviewed launcher starts the game with a fixed `--windowed --resolution 958x699`, refuses to run

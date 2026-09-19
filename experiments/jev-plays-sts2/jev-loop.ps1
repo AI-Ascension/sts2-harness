@@ -105,6 +105,66 @@ function Stop-Tree {
     }
 }
 
+function Get-NormalizedUserDirectory {
+    <#
+      Absolute-form normalization, except that trailing separators are removed on every platform.
+      [System.IO.Path]::GetFullPath keeps a trailing separator on Unix and removes it on Windows,
+      which would otherwise make the same declaration agree on one platform and not another. This
+      mirrors Get-NormalizedUserDirectory in sts2-game-mod's live-combat-demo-override.ps1, which is
+      the resolver the supported launcher already uses.
+    #>
+    param([Parameter(Mandatory = $true)][string]$Directory)
+
+    $full = [System.IO.Path]::GetFullPath($Directory)
+    $root = [System.IO.Path]::GetPathRoot($full)
+    if ($full.Length -gt $root.Length) {
+        $separators = [char[]]@(
+            [System.IO.Path]::DirectorySeparatorChar,
+            [System.IO.Path]::AltDirectorySeparatorChar)
+        return $full.TrimEnd($separators)
+    }
+    return $full
+}
+
+function Resolve-IsolatedUserDirectory {
+    <#
+      The absolute directory the game resolves for this episode, read back from the override.cfg this
+      episode has just written rather than assumed from the name that was written into it.
+
+      The mod refuses to initialise unless the directory the game resolved equals the directory the
+      launcher published in STS2_LIVE_USER_DIR, and the game resolves that directory from
+      config/custom_user_dir_name under the launch-scoped APPDATA root -- not from any launcher
+      argument. Seeding the directory and declaring it from one resolved value is what keeps the two
+      from drifting apart (sts2-game-mod#173).
+
+      This deliberately repeats the checks the supported launcher performs before launch, using the
+      same stable reason tokens, because this lane launches the host executable directly.
+    #>
+    param([Parameter(Mandatory = $true)][string]$HostDirectory)
+
+    $overridePath = Join-Path $HostDirectory 'override.cfg'
+    if (-not (Test-Path -LiteralPath $overridePath)) {
+        throw "overrides_absent: no override.cfg in '$HostDirectory', so the game would use the shared user directory"
+    }
+
+    $text = Get-Content -LiteralPath $overridePath -Raw
+    if ($text -notmatch '(?m)^\s*config/use_custom_user_dir\s*=\s*true\s*$') {
+        throw "override_not_custom: override.cfg does not set config/use_custom_user_dir=true, so the game would use the shared user directory"
+    }
+
+    $named = [regex]::Match($text, '(?m)^\s*config/custom_user_dir_name\s*=\s*"([^"]+)"\s*$')
+    if (-not $named.Success) {
+        throw "override_unnamed: override.cfg does not name config/custom_user_dir_name, so the isolated user directory is undetermined"
+    }
+
+    $name = $named.Groups[1].Value
+    if ([string]::IsNullOrWhiteSpace($name) -or $name -match '[\\/]' -or $name -match '[\x00-\x1f]') {
+        throw "override_unusable_name: override.cfg names a config/custom_user_dir_name that is not a single safe directory name"
+    }
+
+    return Get-NormalizedUserDirectory (Join-Path $env:APPDATA $name)
+}
+
 function Initialize-IsolatedUserDir {
     <#
       The mod refuses to initialise unless the game's user directory is isolated and already holds a
@@ -116,10 +176,14 @@ function Initialize-IsolatedUserDir {
       The directory also has to answer the questions the game would otherwise stop to ask -- the
       mods warning, the early-access notice, the intro logo -- because it is thrown away after each
       episode and so has never been asked them.
-    #>
-    param([string]$UserDirName)
 
-    $target = Join-Path $env:APPDATA $UserDirName
+      The directory is passed in resolved, from Resolve-IsolatedUserDirectory, so that what is seeded
+      and what is declared as STS2_LIVE_USER_DIR are the same value by construction.
+    #>
+    param([Parameter(Mandatory = $true)][string]$Target)
+
+    $target = Get-NormalizedUserDirectory $Target
+    $userDirName = Split-Path -Leaf $target
     New-Item -ItemType Directory -Force -Path $target | Out-Null
 
     if (Test-Path $baselineProfile) {
@@ -132,7 +196,7 @@ function Initialize-IsolatedUserDir {
     # The Steam account directory is named after the signed-in account, so it is learned from a
     # directory an earlier episode created rather than hard-coded.
     $account = Get-ChildItem $env:APPDATA -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like 'AIAscensionJevLoop-*' -and $_.Name -ne $UserDirName } |
+        Where-Object { $_.Name -like 'AIAscensionJevLoop-*' -and $_.Name -ne $userDirName } |
         Sort-Object LastWriteTime -Descending |
         ForEach-Object { Get-ChildItem (Join-Path $_.FullName 'steam') -Directory -ErrorAction SilentlyContinue } |
         Select-Object -First 1
@@ -251,9 +315,21 @@ config/custom_user_dir_name="$userDir"
     $gatewayProc = $null
     $harnessProc = $null
     try {
-        Initialize-IsolatedUserDir -UserDirName $userDir
+        # Read back what that override makes the game resolve, rather than trusting the name that was
+        # just written into it. Publishing the declaration from the resolved value is what makes
+        # STS2_LIVE_USER_DIR and the game agree; assuming it is what produced "live demo requires its
+        # isolated user directory" while the game was resolving exactly the right directory
+        # (sts2-game-mod#173). A resolver failure is an episode failure, recorded and counted like
+        # any other, so it cannot silently become a wrong directory.
+        $userDirPath = Resolve-IsolatedUserDirectory -HostDirectory $hostDir
+        Initialize-IsolatedUserDir -Target $userDirPath
 
         # --- the game, with the mod's runtime session listening on loopback -------------------
+        # The mod compares this declaration with the directory the game resolved and refuses to
+        # initialise when they disagree. The Windows lane launches the host executable directly, so
+        # nothing else sets it; the Linux lane starts the game through the supported launcher, which
+        # sets it from --user-dir-mapping.
+        $env:STS2_LIVE_USER_DIR = $userDirPath
         $env:STS2_RUNTIME_SESSION = '1'
         $env:STS2_RUNTIME_BIND_ADDRESS = '127.0.0.1'
         $env:STS2_RUNTIME_PORT = "$($modPortCandidates[0])"
@@ -353,7 +429,7 @@ config/custom_user_dir_name="$userDir"
         Stop-Tree @($harnessProc, $gatewayProc, $gameProc)
         Stop-Stale
         foreach ($name in @('STS2_RUNTIME_TOKEN', 'STS2_MOD_TOKEN', 'STS2_GATEWAY_TOKEN',
-                'TYPESAFE_API_KEY', 'JEV_CONTEXT_LOG')) {
+                'STS2_LIVE_USER_DIR', 'TYPESAFE_API_KEY', 'JEV_CONTEXT_LOG')) {
             Remove-Item "Env:\$name" -ErrorAction SilentlyContinue
         }
         Write-Host "  record: $runDir" -ForegroundColor DarkGray
