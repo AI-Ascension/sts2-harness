@@ -515,25 +515,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   Compatibility: `breaking` for the refusal vocabulary and operator messages only — no wire field,
   schema, contract version or durable record changes, and `legacy` behaviour is unchanged. See
   [ADR 0032](docs/decisions/0032-inspected-admission-identity.md). Refs #139.
-
-- Invoke the pinned-Exo **capability preflight at the runtime transport seam** so a missing,
-  malformed, unknown or unverified deployment fails closed before a model or game effect.
-  `STS2_EXO_ADMISSION` selects the mode: `envelope` (the default when unset) assembles the
-  operator-trusted identity, refuses the run while settings are still being assembled when a
-  capability, digest, revision, route or schema is not admitted, and then admits a correlated turn
-  through `ExoAdmittedTransport`; `legacy` is the explicit acknowledgement of an un-admitted
-  raw-wire bridge and preserves the previous behaviour. Compatibility: `breaking` for operator
-  configuration only — no wire field, schema, contract version or durable record changes, the
-  reviewed capability axes are not promoted on the bridge's behalf (so `envelope` currently refuses
-  the current deployment; the inspected-identity entry above strengthens the reason), and the
-  raw-wire development bridges need `STS2_EXO_ADMISSION=legacy`. Per-turn envelope admission for a
-  multi-turn episode remains open. See
-  [ADR 0031](docs/decisions/0031-runtime-exo-admission-gate.md). Refs #139.
-
-- Keep a **cancel** pending as `NeedsOperator` while a live operation's settlement is still unknown,
-  instead of stopping the episode and marking the run cancelled. `CommandKind::Cancel` reconciles
-  first, and when reconciliation reports `ErrorClass::Unresolved` it returns
-  `CommandOutcome::Pending` with reason `live_operation_unknown`, leaving the pending operation
-  identity, the `NotStarted` cleanup state and the live session untouched so that an operator can
-  still settle it. Compatibility: the cancel command, its revision guard and its response schema are
-  unchanged, and a cancel at a settled revision behaves exactly as before. Refs #94.
