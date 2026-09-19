@@ -58,8 +58,19 @@ EPISODES="${JEV_EPISODES:-0}"          # 0 means keep going until this window is
 # calibrated confidence sits near 0.25, so it abstained and re-observed forever, asking the provider
 # hundreds of times without acting. At 20 it plays: 20 dispatched actions in the first 46 decisions.
 GATE_PERCENT="${JEV_GATE_PERCENT:-20}"
-EPISODE_TIMEOUT="${JEV_EPISODE_TIMEOUT:-900}"
-LAUNCH_SECONDS="${JEV_LAUNCH_SECONDS:-1200}"
+# 900s ended every episode mid-combat at exactly the 15 minute mark, exit 124, and the loop then
+# tore the game down and launched a fresh one - which looks like the game finishing and restarting
+# but is the bound firing. Measured episodes reached 117 to 123 decisions, five map nodes and real
+# combat, and none of them ever saw a death or a victory. At about 7.7s per decision a run needs
+# far longer than that, so the bound is now 90 minutes. The abstention and repeated-situation
+# bounds still end a stuck run early; this one is only the backstop.
+EPISODE_TIMEOUT="${JEV_EPISODE_TIMEOUT:-3300}"
+# How long the launcher keeps the game session open. It must stay above EPISODE_TIMEOUT, or the
+# game is killed out from under an episode that is still playing, and the launcher itself refuses
+# anything outside 60..3600 ("max-seconds must be bounded between 60 and 3600"). 3600 is therefore
+# the ceiling on a single run, and the episode bound sits just under it.
+LAUNCH_SECONDS="${JEV_LAUNCH_SECONDS:-3600}"
+LAUNCH_SECONDS_MAX=3600
 GAME_READY_TIMEOUT="${JEV_GAME_READY_TIMEOUT:-240}"
 WAIT_FOR_COMBAT="${JEV_WAIT_FOR_COMBAT:-180}"
 # The runner waits on this barrier whenever an observation is not yet actionable, and the default
@@ -199,6 +210,17 @@ JSON
     chown root:root "$record"
     chmod 644 "$record"
 }
+
+if [ "$LAUNCH_SECONDS" -gt "$LAUNCH_SECONDS_MAX" ]; then
+    echo "JEV_LAUNCH_SECONDS ($LAUNCH_SECONDS) is above the launcher's own ceiling of" >&2
+    echo "$LAUNCH_SECONDS_MAX; it would refuse with 'max-seconds must be bounded between 60 and 3600'." >&2
+    exit 1
+fi
+if [ "$LAUNCH_SECONDS" -le "$EPISODE_TIMEOUT" ]; then
+    echo "JEV_LAUNCH_SECONDS ($LAUNCH_SECONDS) must exceed JEV_EPISODE_TIMEOUT ($EPISODE_TIMEOUT)," >&2
+    echo "or the launcher closes the game session while the episode is still playing." >&2
+    exit 1
+fi
 
 [ "$(id -u)" -eq 0 ] || { echo 'this loop must run as root; start it from jev-start.sh' >&2; exit 1; }
 
