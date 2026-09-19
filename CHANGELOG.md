@@ -51,6 +51,16 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   unmodeled upstream, which `sts2-game-core` records as a deliberate exclusion of `RewardChoicePicks`
   because "the offered set is unmodeled, so no identity or rarity is inferred", so nothing populates
   the described form until a host does. Refs #315.
+- Add the **campaign episode mode** for a local provider bridge. A local bridge previously had two
+  modes to name: the combat demo and the live episode, and the live episode is restricted to the
+  OpenAI Astra provider. That left `typesafe-jev` with only the combat demo, which acts solely while
+  the host is already in combat and never leaves a menu, so the provider could observe a campaign but
+  never begin one: against a freshly launched host it polled an unchanging main-menu observation
+  until its bound elapsed and was asked for nothing. `STS2_CAMPAIGN_EPISODE=true` names the third
+  mode, which runs the ordinary episode runner and so reaches the host's whole action catalogue,
+  `start_run` included. It is exclusive with the combat demo rather than layered, because the two
+  take different runners and a vector naming both states no intent. The bridge digest check and the
+  argument allow-list are unchanged and still apply to every mode. Refs #311.
 
 - Fix the **option-selection fold key**, which folded distinct host-listed actions. The key was built
   from a fixed list of seven identity fields, so any action whose identity lived outside that list
@@ -527,22 +537,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   returned. Compatibility: additive, read-only, failing default port method; no schema, record,
   digest or resource bound changes. See
   [ADR 0024](docs/decisions/0024-context-control-receipt-recovery.md). Refs #100.
-
-- Expose the recorded context-owner binding for one workflow invocation over the authenticated
-  management HTTP surface as a separately versioned, read-only projection. Same-subject scoped
-  `workflow:read` is required; an unrecorded invocation, another subject, a missing scope and
-  disabled retention are reported as distinct errors. Compatibility: additive read-only endpoint;
-  no existing route, record, schema or resource bound changes. Does not establish current owner
-  authority or receipt recovery. See [ADR 0023](docs/decisions/0023-recorded-context-binding-http-projection.md).
-  Refs #100.
-
-- Add an opt-in Exo duplex lookup bridge and bounded native TypeScript tool registration,
-  connecting the lookup agent API to the isolated pinned executor. See
-  [ADR 0022](docs/decisions/0022-exo-lookup-duplex-bridge.md). Refs #127.
-
-- Add scoped game-information v1 lookup consumption through the existing MCP port, a bounded
-  typed agent tool loop, complete-source validation before projection, separate source/view
-  identities and encrypted pinned replay archives. The opt-in mixed catalog preserves legacy
-  profiles. Synthetic tool-loop and SQLite restart evidence do not claim native provider or
-  exact-host execution; the old native Exo adapter remains terminal-decision-only.
-  See [ADR 0039](docs/decisions/0039-game-information-consumer.md). Refs #127.
