@@ -29,12 +29,18 @@ pub(super) struct Options {
     pub transport: Option<String>,
     /// Print the requested configuration and exit without opening a connection.
     pub describe: bool,
-    /// Print one `{provider_request, provider_response, decision}` record instead of the bare
-    /// decision.
+    /// Print one record object instead of the bare decision: `schema`, `provider_call`,
+    /// `provider_request`, `provider_response` and `decision`.
     ///
     /// A stored evidence file has to prove that the decision it publishes is a function of the
     /// response beside it. Writing the two fields down by hand cannot prove that, so the operator
     /// who records an exchange asks for the record the bridge itself assembled.
+    ///
+    /// The runtime lane mounts this module as well, and reads no field here: its admitted shape is
+    /// the model and transport pair, so a vector carrying this flag is refused by that shape before
+    /// the flag could matter, and a check for it would have no input it could change the outcome of.
+    /// The bridge binary does read this, which is why the annotation is `allow` and not `expect`.
+    #[allow(dead_code)]
     pub record: bool,
     /// Confidence at or above which an answer becomes an action, as an integer percentage.
     ///
