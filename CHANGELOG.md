@@ -10,6 +10,21 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Report why a supervised child produced no answer at every seam that supervises one.** The
+  provider transport no longer sends its child's standard error to the null device, but the two seams
+  beside it, the one-shot lifecycle effect and the long-lived lookup supervisor, still discarded it,
+  so a bridge that could not start, a bridge that exited with a status and a bridge that never
+  answered all arrived as the same `Unavailable` or `Transport` and an outage they were not. The
+  three seams now share one diagnostic boundary: a child the harness could not start is reported with
+  the executable and the operating system's own message, a child that stopped by itself with its exit
+  status and a bounded, escaped tail of what it wrote, and a child the harness had to stop -- a
+  cancelled turn, an expired deadline -- only when it left something on the stream. The duplex
+  supervisor drains that stream while its child runs, because a bridge that writes to a pipe nobody
+  reads blocks on it while the protocol loop waits for its response. Nothing free-form enters a
+  record, an error value, or a wire shape. Compatibility: a one-shot bridge that writes more standard
+  error than the pipe holds now waits on that pipe, bounded by the exchange's deadline. Refs #352.
+  Partial progress on #79 only.
+
 - **Report why a provider transport did not start, instead of calling it an outage.** The transport
   spawned the bridge with the child's standard error sent to the null device, so a bridge that could
   not start and a provider that could not be reached arrived as the same `Unavailable`, the same

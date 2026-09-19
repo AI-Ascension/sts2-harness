@@ -285,7 +285,7 @@ fn the_process_transport_never_discards_the_child_standard_error() {
         "the child's standard error is no longer captured"
     );
     assert!(
-        source.contains("report_failed_start(&mut child)"),
+        source.contains("report_stopped_child_failure(PROVIDER_TRANSPORT, &mut child, own_exit)"),
         "a captured standard error is no longer reported"
     );
 }
