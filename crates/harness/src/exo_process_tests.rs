@@ -4,6 +4,8 @@ use super::*;
 use std::error::Error;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
+#[cfg(unix)]
+use std::process::ExitStatus;
 
 /// The exchange futures never leave the calling thread, so a current-thread runtime is enough.
 fn current_thread() -> Result<tokio::runtime::Runtime, std::io::Error> {
