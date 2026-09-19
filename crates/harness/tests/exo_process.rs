@@ -163,3 +163,78 @@ fn synchronous_transport_can_be_called_inside_an_async_runtime() {
         );
     });
 }
+
+// sts2-harness#348: a transport that cannot start was reported as an outage because the child's
+// stderr was discarded. The contract must not change -- a failed child is still `Unavailable` --
+// but the child is now drained and reaped rather than left unread.
+#[cfg(unix)]
+#[test]
+fn failed_child_still_reports_unavailable_rather_than_a_new_error() {
+    let config = ExoProcessConfig::new(
+        "/bin/sh",
+        vec![
+            String::from("-c"),
+            String::from(
+                "cat >/dev/null; printf '%s' 'powershell.exe is not recognized' >&2; exit 3",
+            ),
+        ],
+        None,
+        Vec::new(),
+    )
+    .expect("failing bridge configuration is valid");
+    let mut transport = ExoProcessTransport::new(config);
+    assert_eq!(
+        transport.exchange(b"request", 512, 2_000),
+        Err(ExoTransportError::Unavailable),
+        "a transport that exits non-zero must stay Unavailable"
+    );
+}
+
+// A child that fills its stderr pipe and is never drained cannot exit, which would turn a
+// diagnosable start failure into an exchange timeout. This guards the piped-but-unread regression
+// that the stderr capture introduces; it does not fail against the previous discard-to-null form.
+#[cfg(unix)]
+#[test]
+fn verbose_failing_child_is_drained_instead_of_blocking_on_a_full_stderr_pipe() {
+    let config = ExoProcessConfig::new(
+        "/bin/sh",
+        vec![
+            String::from("-c"),
+            // 256 KiB -- comfortably more than any pipe buffer -- then a non-zero exit.
+            String::from("head -c 262144 /dev/zero >&2; exit 3"),
+        ],
+        None,
+        Vec::new(),
+    )
+    .expect("verbose failing bridge configuration is valid");
+    let mut transport = ExoProcessTransport::new(config);
+    let started = std::time::Instant::now();
+    assert_eq!(
+        transport.exchange(b"request", 512, 2_000),
+        Err(ExoTransportError::Unavailable)
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(1),
+        "an undrained stderr pipe would block this child until the deadline: {:?}",
+        started.elapsed()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_transport_that_cannot_be_started_is_unavailable_without_hanging() {
+    let config = ExoProcessConfig::new(
+        "/nonexistent/sts2-harness-348-bridge",
+        Vec::new(),
+        None,
+        Vec::new(),
+    )
+    .expect("missing-executable configuration is well formed");
+    let mut transport = ExoProcessTransport::new(config);
+    let started = std::time::Instant::now();
+    assert_eq!(
+        transport.exchange(b"request", 512, 2_000),
+        Err(ExoTransportError::Unavailable)
+    );
+    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+}

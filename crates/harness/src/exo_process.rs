@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::BTreeSet;
-use std::process::Stdio;
+use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
@@ -14,6 +14,8 @@ const MAX_ARGUMENTS: usize = 32;
 const MAX_ARGUMENT_BYTES: usize = 2_048;
 const MAX_ENVIRONMENT_NAMES: usize = 32;
 const MAX_ENVIRONMENT_NAME_BYTES: usize = 128;
+/// Bounded tail of a failed child's stderr kept for the operator-visible diagnostic.
+const MAX_CHILD_STDERR_BYTES: usize = 4_096;
 
 /// Operator-owned process configuration for an Exo bridge.
 ///
@@ -169,7 +171,7 @@ async fn exchange_process(
         .args(&config.arguments)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .env_clear()
         .kill_on_drop(true);
     if let Some(directory) = &config.working_directory {
@@ -180,9 +182,10 @@ async fn exchange_process(
             command.env(name, value);
         }
     }
-    let mut child = command
-        .spawn()
-        .map_err(|_| ExoTransportError::Unavailable)?;
+    let mut child = command.spawn().map_err(|error| {
+        eprintln!("{}", start_failure_diagnostic(&error));
+        ExoTransportError::Unavailable
+    })?;
     let result = tokio::time::timeout_at(
         tokio::time::Instant::from_std(deadline),
         exchange_pipes(&mut child, request, maximum),
@@ -203,6 +206,7 @@ async fn exchange_pipes(
 ) -> Result<Vec<u8>, ExoTransportError> {
     let mut input = child.stdin.take().ok_or(ExoTransportError::Unavailable)?;
     let output = child.stdout.take().ok_or(ExoTransportError::Unavailable)?;
+    let errors = child.stderr.take().ok_or(ExoTransportError::Unavailable)?;
     let write = async move {
         input
             .write_all(request)
@@ -214,22 +218,69 @@ async fn exchange_pipes(
             .map_err(|_| ExoTransportError::Unavailable)
     };
     let wait = async {
-        let status = child
+        child
             .wait()
             .await
-            .map_err(|_| ExoTransportError::Unavailable)?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(ExoTransportError::Unavailable)
-        }
+            .map_err(|_| ExoTransportError::Unavailable)
     };
-    let (_, response, ()) = tokio::try_join!(write, read_bounded(output, maximum), wait)?;
+    // Every stream is polled to completion rather than short-circuited. The exit status and the
+    // child's stderr are what name a transport that could not start, and a piped stderr left
+    // unread would block such a child on a full pipe instead of letting it exit.
+    let (written, response, status, errors) = tokio::join!(
+        write,
+        read_bounded(output, maximum),
+        wait,
+        read_tail(errors, MAX_CHILD_STDERR_BYTES)
+    );
+    let status = status?;
+    if !status.success() {
+        eprintln!("{}", child_failure_diagnostic(&status, &errors));
+        return Err(ExoTransportError::Unavailable);
+    }
+    written?;
+    let response = response?;
     if response.is_empty() {
         Err(ExoTransportError::MalformedResponse)
     } else {
         Ok(response)
     }
+}
+
+/// Reads a child stream to its end and keeps only the last `maximum` bytes.
+///
+/// The tail is a diagnostic, so it must neither fail the exchange nor grow without bound, and the
+/// stream has to keep draining or a verbose child cannot exit.
+async fn read_tail(mut stream: impl AsyncRead + Unpin, maximum: usize) -> Vec<u8> {
+    let mut kept = Vec::new();
+    let mut chunk = [0_u8; 4_096];
+    loop {
+        match stream.read(&mut chunk).await {
+            Ok(0) | Err(_) => return kept,
+            Ok(count) => {
+                kept.extend_from_slice(&chunk[..count]);
+                if kept.len() > maximum {
+                    let excess = kept.len() - maximum;
+                    kept.drain(..excess);
+                }
+            }
+        }
+    }
+}
+
+/// Names why a transport child failed, using only what is bounded and safe to print.
+fn child_failure_diagnostic(status: &ExitStatus, tail: &[u8]) -> String {
+    let tail = String::from_utf8_lossy(tail);
+    let tail = tail.trim_end();
+    if tail.is_empty() {
+        format!("exo transport child failed with {status} and wrote no stderr")
+    } else {
+        format!("exo transport child failed with {status}; stderr tail:\n{tail}")
+    }
+}
+
+/// Names why a transport child could not be started at all.
+fn start_failure_diagnostic(error: &std::io::Error) -> String {
+    format!("exo transport child could not be started: {error}")
 }
 
 async fn read_bounded(
@@ -290,4 +341,9 @@ fn valid_environment_names(names: &[String]) -> bool {
             )
             && unique.insert(name)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    include!("exo_process_tests.rs");
 }
