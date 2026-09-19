@@ -83,3 +83,38 @@ from losing its VF. Install it after step 1 succeeds:
 ## Backups
 
 `backup/` holds the inactive XML of both domains as they were before any of this.
+
+## What has been tested
+
+`tests/run-tests.sh` runs the two steps that stop something against a mock host - a fake sysfs
+tree and a fake `virsh` whose domain states are files - so it is safe to run anywhere, as an
+unprivileged user, with no libvirt and no GPU. Nine cases pass:
+
+- the happy path reaches two VFs and puts Windows back
+- a Windows domain that was already off stays off
+- a host already at two VFs is a no-op that never stops anything
+- an unwritable `sriov_numvfs` refuses **before** stopping Windows
+- a Windows domain that will not stop aborts without touching the card
+- a missing VF1 after provisioning fails but still restarts Windows
+- rollback returns to one VF and restarts both domains
+- rollback leaves an already-off domain off
+- a domain that will not stop aborts the rollback, and both domains are still put back
+
+Every path that can fail after a domain has been stopped restarts it. That was the defect the
+first draft shipped with, and the fourth test above is there to keep it fixed.
+
+Against the live host, with throwaway probe domains that were defined and then removed:
+
+- libvirt accepts `hostdev-vf1.xml` and auto-assigns the guest PCI address, so the file
+  deliberately carries no `<address>` of its own
+- `virsh detach-device --config` with that same file matches and removes the device, which is
+  what `99-rollback.sh` relies on: one hostdev before, zero after
+
+The scripts take `JEV_VIRSH`, `JEV_GPU_DEVROOT`, `JEV_GUEST_EXEC`, `JEV_LINUX_DOMAIN` and
+`JEV_WINDOWS_DOMAIN` from the environment, defaulting to this host. That is what lets the tests
+point them at a mock rather than carrying a second copy of the logic.
+
+Static analysis is clean: `shellcheck -S warning` reports nothing across all six steps and the
+test suite. Fixing what it did report removed a real hazard in `00-preflight.sh`, which used
+`test && ok || bad` for each check - a form where the failure branch also runs if the success
+branch returns non-zero, which is the one thing a preflight must never do quietly.

@@ -6,11 +6,11 @@
 # domain will refuse to start with a missing host device.
 set -euo pipefail
 
-LINUX=sts.home.complete.tech-slay-the-spire
+LINUX="${JEV_LINUX_DOMAIN:-sts.home.complete.tech-slay-the-spire}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-V="virsh -c qemu:///system"
+V="${JEV_VIRSH:-virsh -c qemu:///system}"
 
-if [ ! -e /sys/bus/pci/devices/0000:07:00.2 ]; then
+if [ ! -e ${JEV_GPU_DEVROOT:-/sys/bus/pci/devices}/0000:07:00.2 ]; then
     echo "0000:07:00.2 does not exist yet; run 01-create-vf.sh first" >&2
     exit 1
 fi

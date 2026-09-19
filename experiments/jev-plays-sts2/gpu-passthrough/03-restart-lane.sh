@@ -5,9 +5,9 @@
 # here, because none of it is automatic: the desktop session, then Steam, then the loop.
 set -uo pipefail
 
-LINUX=sts.home.complete.tech-slay-the-spire
-G=/home/completetrain/guest_exec.sh
-V="virsh -c qemu:///system"
+LINUX="${JEV_LINUX_DOMAIN:-sts.home.complete.tech-slay-the-spire}"
+G="${JEV_GUEST_EXEC:-/home/completetrain/guest_exec.sh}"
+V="${JEV_VIRSH:-virsh -c qemu:///system}"
 
 say() { printf '\n== %s\n' "$1"; }
 
