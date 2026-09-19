@@ -1,0 +1,7 @@
+{
+  "uuid": "jev-fullscreen@complete.tech",
+  "name": "Jev Fullscreen",
+  "description": "Puts the Slay the Spire 2 window into fullscreen as soon as it appears. The reviewed launcher starts the game with --windowed --resolution 958x699 and will not take a DISPLAY, so the window cannot ask for fullscreen itself; the compositor does it here instead.",
+  "shell-version": ["46"],
+  "session-modes": ["user"]
+}
