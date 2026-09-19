@@ -81,6 +81,11 @@ fn the_published_digests_reproduce_from_the_committed_evidence() {
         digests[0],
         "the committed request must hash to the published request digest"
     );
+    assert_ne!(
+        sha256_hex(format!("{request}\n").as_bytes()),
+        digests[0],
+        "the request digest covers the body alone; the trailing newline is the response's"
+    );
 
     assert!(
         !RESPONSE_BODY.ends_with("\n\n"),
