@@ -43,8 +43,14 @@ RUNS="$ROOT/runs"
 # was 58677fec...fec6. Two acknowledgement flags are added to it: without seen_ea_disclaimer the
 # game shows its early-access notice on every launch, because the launcher creates a fresh profile
 # each episode and the notice is acknowledged per profile. skip_intro_logo saves the logo each time.
+# fullscreen is set here too, together with schema_version: without the version the game
+# treats the template as a version-0 save, scavenges it, and falls back to default
+# display settings, which is how a fullscreen flag here was silently dropped.
+# fullscreen is set here too. The game takes its effective settings from this template,
+# not from the profile copy: it rewrites live-campaign/settings.save from the mapped file
+# before it applies display settings, so a fullscreen flag anywhere else is discarded.
 # The digest below is the amended template; the operator plan still records the original.
-SETTINGS_SHA="${JEV_SETTINGS_SHA:-d68cbd19bc3df84a7fa51643f7dde78d0250c31a6817514192b4131b8e8d31b3}"
+SETTINGS_SHA="${JEV_SETTINGS_SHA:-4a0cd234aa5ab1095cc9a62b2cc5a0947a3ec0df7a7b236711597a4a32b5b967}"
 MODLOAD_SHA="${JEV_MODLOAD_SHA:-a606d5f68634300f9c415b6e4abf76677bebcbaa23874c0243854e3a5208fe80}"
 
 EPISODES="${JEV_EPISODES:-0}"          # 0 means keep going until this window is closed
@@ -135,6 +141,65 @@ prepare_profile() {
     chmod 700 "$WORK/profile"
 }
 
+# The launcher compares the recorded authenticated session against the live one and refuses to
+# run if any property differs, including the leader PID. gdm gives the desktop session a new
+# leader every time it restarts, so a session record written once goes stale on the next boot and
+# every episode then dies with "live loginctl properties differ from the authenticated session
+# record". It is the same session either way, so re-record it here from the live one.
+SESSION_USER="${JEV_SESSION_USER:-ubuntu}"
+
+refresh_session_record() {
+    local record="$INPUTS/session-env.json" sid uid name display remote type class state leader gid
+    sid="$(loginctl list-sessions --no-legend | awk -v u="$SESSION_USER" '$3 == u { print $1; exit }')"
+    if [ -z "$sid" ]; then
+        echo "  no live login session for $SESSION_USER; leaving the recorded session alone" >&2
+        return 0
+    fi
+    uid="$(loginctl show-session "$sid" -p User --value)"
+    name="$(loginctl show-session "$sid" -p Name --value)"
+    display="$(loginctl show-session "$sid" -p Display --value)"
+    remote="$(loginctl show-session "$sid" -p Remote --value)"
+    type="$(loginctl show-session "$sid" -p Type --value)"
+    class="$(loginctl show-session "$sid" -p Class --value)"
+    state="$(loginctl show-session "$sid" -p State --value)"
+    leader="$(loginctl show-session "$sid" -p Leader --value)"
+    gid="$(id -g "$name" 2>/dev/null)"
+    for value in "$uid" "$name" "$type" "$class" "$state" "$leader" "$gid"; do
+        if [ -z "$value" ]; then
+            echo '  live session properties are incomplete; leaving the recorded session alone' >&2
+            return 0
+        fi
+    done
+    if [ "$remote" = 'no' ]; then remote=false; else remote=true; fi
+    if [ ! -e "$record.first" ] && [ -e "$record" ]; then
+        cp -p "$record" "$record.first"
+    fi
+    cat > "$record" <<JSON
+{
+  "schema": "sts2-linux-authenticated-session-env-v1",
+  "user": {
+    "uid": $uid,
+    "gid": $gid,
+    "name": "$name",
+    "session_id": "$sid",
+    "display": "$display",
+    "remote": $remote,
+    "type": "$type",
+    "class": "$class",
+    "state": "$state",
+    "leader": $leader
+  },
+  "environment": {
+    "XDG_SESSION_TYPE": "$type",
+    "XDG_RUNTIME_DIR": "/run/user/$uid",
+    "WAYLAND_DISPLAY": "wayland-0"
+  }
+}
+JSON
+    chown root:root "$record"
+    chmod 644 "$record"
+}
+
 [ "$(id -u)" -eq 0 ] || { echo 'this loop must run as root; start it from jev-start.sh' >&2; exit 1; }
 
 # The launcher will not start Steam, and the game cannot authenticate without it: it reports
@@ -193,6 +258,7 @@ JSON
     chown root:root "$run_dir/runtime.token"
     chmod 600 "$run_dir/runtime.token"
 
+    refresh_session_record
     echo '  starting the game through the supported launcher...'
     # DISPLAY is deliberately removed here. Steam needs it (it is an X11 client on XWayland) and
     # jev-start.sh leaves it in the environment, but the launcher refuses to run with an ambient

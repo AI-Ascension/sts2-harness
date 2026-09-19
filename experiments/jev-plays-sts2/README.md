@@ -66,3 +66,45 @@ python3 jev-context.py <log> --options  per option: times shown, times top, aver
   AI-Ascension/sts2-game-mod#172.
 - On Windows the mod refuses to initialise unless its user directory holds a fresh profile baseline:
   AI-Ascension/sts2-game-mod#173.
+
+## Fullscreen on the Linux guest
+
+The reviewed launcher starts the game with a fixed `--windowed --resolution 958x699`, refuses to run
+with an ambient `DISPLAY`, and refuses to pass one to the game, so the game is a Wayland client that
+can never be fullscreened from outside by the usual X tools. Three things were tried and do not
+work, recorded here so they are not tried again:
+
+- **A `fullscreen` flag in the profile baseline.** The game rewrites `live-campaign/settings.save`
+  from the mapped settings file before it applies display settings, so the copied value is
+  discarded. It also costs a re-record of the launcher's 96-file / 1768384-byte baseline, which the
+  launcher pins as a literal.
+- **A `fullscreen` flag in the settings template.** The mapped file is the mod settings file; the
+  game strips everything but `mod_settings` when it writes it back, and the command line wins over
+  the file for both size and mode - the settings ask for 1280x720 and the window comes up 958x699.
+- **Injecting the compositor's fullscreen keybinding.** `ydotoold` is not in Ubuntu's `ydotool`
+  0.1.8, and the transient uinput device the client creates on its own is never added to the seat,
+  so Mutter never sees the key. `org.gnome.Shell.Eval` is closed on GNOME 46.
+
+What does work is `gnome-fullscreen-extension/`, a GNOME Shell extension that fullscreens and
+focuses the game window from inside the compositor. Install it as the desktop user:
+
+    D=~/.local/share/gnome-shell/extensions/jev-fullscreen@complete.tech
+    mkdir -p "$D" && cp gnome-fullscreen-extension/* "$D"/
+    gnome-extensions enable jev-fullscreen@complete.tech
+
+On Wayland the shell only picks up a newly installed extension at session start, so restart the
+session once (`systemctl restart gdm`; autologin brings it back). It has to focus the window as well
+as fullscreen it: Mutter only hides the top bar and the dock for the *focused* fullscreen window,
+and nothing in this lane ever clicks the game.
+
+Restarting the session gives the desktop a new login session with a new leader PID, which used to
+fail every following episode with "live loginctl properties differ from the authenticated session
+record". The loop now re-records `session-env.json` from the live session before each launch.
+
+Steam has to come up inside the desktop session or it exits during bootstrap without a keyring -
+`sudo -u ubuntu ... setsid /usr/games/steam` is not enough. Start it in the user's own manager:
+
+    sudo -u ubuntu env XDG_RUNTIME_DIR=/run/user/1000 \
+        DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+        systemd-run --user --scope --setenv=DISPLAY=:0 --setenv=WAYLAND_DISPLAY=wayland-0 \
+        /usr/games/steam -silent
