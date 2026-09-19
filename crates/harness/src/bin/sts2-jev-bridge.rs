@@ -24,7 +24,9 @@ use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use sts2_harness::{
-    ACTION_QUESTION, SYSTEM_ONE_PATH, build_system_one_request, ollama_user_content,
+    ACTION_QUESTION, DerivedExactFacts, MAX_PRESENTED_OPTIONS, OptionSelection, SYSTEM_ONE_PATH,
+    SelectionMode, SystemOneOption, build_described_system_one_request, describe_action,
+    ollama_user_content,
 };
 
 /// Largest request, response, and decision this bridge handles.
@@ -127,11 +129,34 @@ fn decide(
     }
     let request: Value = serde_json::from_slice(bytes)?;
     let catalog = catalog(&request)?;
-    let state = ollama_user_content(&request)?;
-    let body = build_system_one_request(
+    let observation = request
+        .get("observation")
+        .ok_or("request carries no observation")?;
+
+    // Fold strategically identical entries before asking. Three copies of one card in hand are three
+    // catalog entries, and presenting all three splits the probability mass for that play across
+    // them, which reads as low confidence in the play rather than a choice between duplicates.
+    let selection = OptionSelection::from_observation(observation, MAX_PRESENTED_OPTIONS);
+    if selection.mode == SelectionMode::Forced
+        && let Some(only) = selection.presented.first()
+    {
+        // One legal action is not a question. Asking would spend a call to be told the only thing
+        // that can happen, so the bridge answers it without a provider exchange.
+        return Ok(json!({
+            "decision": "action",
+            "action_id": only.action_id,
+            "rationale": "bridge-authored evidence: one legal action, chosen without a provider call",
+            "confidence": 100,
+        }));
+    }
+    let options = present(&selection, observation, &catalog);
+    let ids: Vec<String> = options.iter().map(|option| option.id.clone()).collect();
+
+    let state = state_with_derived_facts(&request, observation)?;
+    let body = build_described_system_one_request(
         model,
         &state,
-        &catalog,
+        &options,
         request["objective"].as_str().unwrap_or_default(),
         &constraints(&request),
     )?;
@@ -143,9 +168,71 @@ fn decide(
     Ok(decision::map_decision(
         &response,
         ACTION_QUESTION,
-        &catalog,
+        &ids,
         gate,
     )?)
+}
+
+/// Builds the option set to present, each carrying a description composed from the observation.
+///
+/// Falls back to the whole catalog when the selection presented nothing usable, so a selection that
+/// cannot read this observation costs the run nothing.
+fn present(
+    selection: &OptionSelection,
+    observation: &Value,
+    catalog: &[String],
+) -> Vec<SystemOneOption> {
+    let entries = observation
+        .get("legal_actions")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let describe = |action_id: &str| -> String {
+        entries
+            .iter()
+            .find(|entry| entry.get("action_id").and_then(Value::as_str) == Some(action_id))
+            .map(|entry| describe_action(entry, observation))
+            .unwrap_or_else(|| action_id.to_owned())
+    };
+    if selection.presented.is_empty() {
+        return catalog
+            .iter()
+            .map(|id| SystemOneOption {
+                id: id.clone(),
+                description: describe(id),
+            })
+            .collect();
+    }
+    selection
+        .presented
+        .iter()
+        .map(|option| SystemOneOption {
+            id: option.action_id.clone(),
+            description: describe(&option.action_id),
+        })
+        .collect()
+}
+
+/// Renders the state, adding the facts that follow exactly from this observation.
+///
+/// The facts are derived, never fetched: incoming damage is the sum the host's own revealed intents
+/// state, and each one is omitted when the observation does not support it exactly. They are added
+/// because the arithmetic is the part a System One model is documented not to do, and the state
+/// already carries every term of it.
+fn state_with_derived_facts(
+    request: &Value,
+    observation: &Value,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let rendered = ollama_user_content(request)?;
+    let facts = DerivedExactFacts::from_observation(observation);
+    let Ok(mut value) = serde_json::from_str::<Value>(&rendered) else {
+        return Ok(rendered);
+    };
+    let Some(object) = value.as_object_mut() else {
+        return Ok(rendered);
+    };
+    object.insert(String::from("derived_exact"), serde_json::to_value(facts)?);
+    Ok(value.to_string())
 }
 
 /// Reads the host-generated action catalog from the request.

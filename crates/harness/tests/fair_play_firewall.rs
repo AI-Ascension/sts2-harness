@@ -170,3 +170,145 @@ fn visible_seed_is_the_only_optional_root_field() {
         );
     }
 }
+
+#[test]
+fn a_host_that_knows_its_own_card_text_may_send_it() {
+    // require_exact counts keys, so admitting `description` in the field list alone still refused
+    // the card for having five of them. An optional field has to be optional in the shape too.
+    let mut value = observation();
+    value["player"]["hand"] = json!([{
+        "card_id": "card-1", "name": "Strike", "cost": 1, "upgraded": false,
+        "description": "Deal 6 damage."
+    }]);
+    assert!(SanitizedObservation::new(value).is_ok());
+}
+
+#[test]
+fn a_card_still_requires_the_fields_it_always_required() {
+    let mut value = observation();
+    value["player"]["hand"] = json!([{"card_id": "card-1", "description": "Deal 6 damage."}]);
+    assert_eq!(
+        SanitizedObservation::new(value).err(),
+        Some(SandboxError::UnknownField)
+    );
+}
+
+#[test]
+fn an_offered_set_is_admitted_named_or_described() {
+    // Every host today lists the offered set as identifiers, and that must keep working.
+    let mut named = observation();
+    named["state"] = json!({"state": "selection", "choices": ["card:22:Tremble"]});
+    assert!(SanitizedObservation::new(named).is_ok());
+
+    let mut described = observation();
+    described["state"] = json!({
+        "state": "selection",
+        "choices": [{
+            "choice_id": "card:22:Tremble", "name": "Tremble", "cost": 2,
+            "upgraded": false, "rarity": "uncommon",
+            "description": "Apply 3 Vulnerable to ALL enemies."
+        }],
+    });
+    assert!(SanitizedObservation::new(described).is_ok());
+
+    // The identity is what an action references, so an entry without one cannot be resolved.
+    let mut anonymous = observation();
+    anonymous["state"] = json!({"state": "selection", "choices": [{"name": "Tremble"}]});
+    assert_eq!(
+        SanitizedObservation::new(anonymous).err(),
+        Some(SandboxError::UnknownField)
+    );
+
+    let mut unknown = observation();
+    unknown["state"] = json!({
+        "state": "selection",
+        "choices": [{"choice_id": "card:22:Tremble", "win_probability": "high"}],
+    });
+    assert_eq!(
+        SanitizedObservation::new(unknown).err(),
+        Some(SandboxError::UnknownField)
+    );
+}
+
+#[test]
+fn what_the_player_is_carrying_is_admitted_with_what_it_does() {
+    let mut value = observation();
+    value["player"]["relics"] = json!([{
+        "relic_id": "relic:1", "name": "Burning Blood",
+        "description": "At the end of combat, heal 6 HP."
+    }]);
+    value["player"]["potions"] = json!([{
+        "potion_id": "potion:1", "name": "Fire Potion", "slot": 0, "usable": true,
+        "target_mode": "enemy", "description": "Deal 20 damage to target enemy."
+    }]);
+    value["player"]["potion_slots"] = json!(3);
+    value["player"]["max_potion_slots"] = json!(3);
+    value["legal_actions"] = json!([{
+        "action_id": "use_potion:1:potion:1:enemy:1",
+        "action": {"kind": "use_potion", "potion_id": "potion:1", "target_id": null}
+    }]);
+    assert!(SanitizedObservation::new(value).is_ok());
+}
+
+#[test]
+fn a_player_carrying_nothing_is_unchanged() {
+    // relics and potions are optional, so every host that sent neither still validates.
+    assert!(SanitizedObservation::new(observation()).is_ok());
+}
+
+#[test]
+fn a_relic_or_potion_without_an_identity_or_name_is_refused() {
+    for holding in [
+        json!({"player_relics": [{"name": "Burning Blood"}]}),
+        json!({"player_potions": [{"potion_id": "potion:1"}]}),
+    ] {
+        let mut value = observation();
+        if let Some(relics) = holding.get("player_relics") {
+            value["player"]["relics"] = relics.clone();
+        } else {
+            value["player"]["potions"] = holding["player_potions"].clone();
+        }
+        assert_eq!(
+            SanitizedObservation::new(value).err(),
+            Some(SandboxError::UnknownField)
+        );
+    }
+}
+
+#[test]
+fn a_reward_may_disclose_what_it_would_offer_next() {
+    let mut value = observation();
+    value["state"] = json!({
+        "state": "reward",
+        "options": [{
+            "choice_id": "reward:5:CardReward", "name": "Card reward",
+            "contents": [{
+                "choice_id": "card:21:Setup-Strike", "name": "Setup Strike", "cost": 1,
+                "upgraded": false, "rarity": "common",
+                "description": "Deal 7 damage. Draw 1 card."
+            }],
+        }],
+    });
+    assert!(SanitizedObservation::new(value).is_ok());
+}
+
+#[test]
+fn disclosure_is_one_level_deep() {
+    // An entry inside `contents` has no `contents` of its own, so a host cannot nest an observation
+    // inside an observation and the projection needs no depth counter to stay bounded.
+    let mut value = observation();
+    value["state"] = json!({
+        "state": "reward",
+        "options": [{
+            "choice_id": "reward:5:CardReward",
+            "contents": [{
+                "choice_id": "card:21:Setup-Strike",
+                "contents": [{"choice_id": "card:99:Deeper"}]
+            }],
+        }],
+    });
+    assert_eq!(
+        SanitizedObservation::new(value).err(),
+        Some(SandboxError::UnknownField)
+    );
+}
