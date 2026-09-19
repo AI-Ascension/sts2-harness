@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::BTreeSet;
-use std::process::Stdio;
+use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
@@ -14,6 +14,14 @@ const MAX_ARGUMENTS: usize = 32;
 const MAX_ARGUMENT_BYTES: usize = 2_048;
 const MAX_ENVIRONMENT_NAMES: usize = 32;
 const MAX_ENVIRONMENT_NAME_BYTES: usize = 128;
+const MAX_STDERR_BYTES: usize = 2_048;
+const MAX_REPORTED_STDERR_BYTES: usize = 256;
+/// The grace a failed exchange spends reading what a dead child already wrote to its standard error.
+///
+/// The bytes are usually buffered, so this returns as soon as the pipe reaches end of file. It only
+/// elapses when a descendant inherited the child's standard error and still holds it open, which is
+/// exactly the case an operator cannot wait for.
+const STDERR_TAIL_MILLIS: u64 = 50;
 
 /// Operator-owned process configuration for an Exo bridge.
 ///
@@ -169,7 +177,7 @@ async fn exchange_process(
         .args(&config.arguments)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .env_clear()
         .kill_on_drop(true);
     if let Some(directory) = &config.working_directory {
@@ -192,6 +200,7 @@ async fn exchange_process(
     if result.is_err() {
         // The timeout has dropped both pipe futures and their handles before cleanup begins.
         terminate(&mut child).await?;
+        report_failed_start(&mut child).await;
     }
     result
 }
@@ -250,6 +259,76 @@ async fn read_bounded(
             return Err(ExoTransportError::OversizedResponse);
         }
         bytes.extend_from_slice(&chunk[..count]);
+    }
+}
+
+/// Report on the harness's own standard error why a failed exchange produced no decision.
+///
+/// The child's standard error is the only channel on which a transport that cannot start names its
+/// cause, and discarding it made that transport indistinguishable from a provider that was down.
+/// The exit status and a bounded, escaped tail of that stream go to the operator log the runtime
+/// already collects; `ExoTransportError`, the wire shapes and the durable records keep their shape,
+/// and no free-form child text enters any of them.
+async fn report_failed_start(child: &mut Child) {
+    let stderr = child.stderr.take();
+    let status = child.try_wait().ok().flatten();
+    let (Some(stderr), Some(status)) = (stderr, status) else {
+        return;
+    };
+    let tail = tokio::time::timeout(
+        Duration::from_millis(STDERR_TAIL_MILLIS),
+        read_stderr_tail(stderr, MAX_STDERR_BYTES),
+    )
+    .await
+    .unwrap_or_default();
+    if let Some(reason) = start_failure_reason(status, &tail) {
+        eprintln!("{reason}");
+    }
+}
+
+/// Describe a failed transport start for the operator log, or `None` when the child succeeded.
+fn start_failure_reason(exit: ExitStatus, tail: &[u8]) -> Option<String> {
+    if exit.success() {
+        return None;
+    }
+    let tail = escape_stderr(tail);
+    let tail = if tail.is_empty() {
+        "(empty)"
+    } else {
+        tail.as_str()
+    };
+    Some(format!(
+        "provider transport failed: {exit}; stderr tail: {tail}"
+    ))
+}
+
+/// Render the child's standard error as one bounded line of printable text.
+fn escape_stderr(tail: &[u8]) -> String {
+    let escaped: String = String::from_utf8_lossy(tail).escape_debug().collect();
+    if escaped.chars().count() <= MAX_REPORTED_STDERR_BYTES {
+        return escaped;
+    }
+    let mut bounded: String = escaped.chars().take(MAX_REPORTED_STDERR_BYTES).collect();
+    bounded.push_str("...");
+    bounded
+}
+
+/// Read the child's standard error to end of file, keeping at most `maximum` bytes from the end.
+///
+/// A read failure returns what was already read: the reason is worth reporting even when the stream
+/// ends early.
+async fn read_stderr_tail(mut source: impl AsyncRead + Unpin, maximum: usize) -> Vec<u8> {
+    let mut tail = Vec::new();
+    let mut chunk = [0_u8; 256];
+    loop {
+        match source.read(&mut chunk).await {
+            Ok(0) | Err(_) => return tail,
+            Ok(count) => {
+                tail.extend_from_slice(&chunk[..count]);
+                let excess = tail.len().saturating_sub(maximum);
+                tail.drain(..excess);
+            }
+        }
     }
 }
 
