@@ -2,8 +2,8 @@
 # Step 4. Confirm the game is rendering on the Arc and not on the CPU.
 set -uo pipefail
 
-LINUX=sts.home.complete.tech-slay-the-spire
-G=/home/completetrain/guest_exec.sh
+LINUX="${JEV_LINUX_DOMAIN:-sts.home.complete.tech-slay-the-spire}"
+G="${JEV_GUEST_EXEC:-/home/completetrain/guest_exec.sh}"
 
 say() { printf '\n== %s\n' "$1"; }
 
