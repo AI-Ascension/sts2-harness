@@ -55,6 +55,12 @@ original text and only rebases relative links for its new location; `CHANGELOG.m
 so a removed or renamed archive fails `DOC002`. Trimming entry text to fit the budget loses the
 operational detail the changelog exists to preserve.
 
+Evicted entries are appended in move order at the end of the archive under its
+`### Archived from CHANGELOG.md` heading, because they come from the flat `## Unreleased` list and
+carry no section of their own. Filing an entry is idempotent: the archive holds exactly one copy of
+each evicted entry, and an entry already filed there is never appended a second time. Appending to
+EOF without that heading files feature entries under whatever section the file happens to end with.
+
 ## CI and change control
 
 `policy.yml` runs the same checker on pull requests and pushes to `main` with read-only contents

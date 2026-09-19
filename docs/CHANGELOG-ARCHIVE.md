@@ -7,7 +7,9 @@ them; this archive is a verbatim record, not a supported release or a second
 normative changelog.
 
 The archive begins with the first dated entry of the 2026-09-10 bounded-campaign
-wave. Active development continues in `CHANGELOG.md`.
+wave. Active development continues in `CHANGELOG.md`. Entries moved out of the active file after
+this archive was created are kept in move order under `### Archived from CHANGELOG.md`, because
+they come from the flat `## Unreleased` list and carry no section of their own.
 
 - 2026-09-10: Add the additive `seeded-run-v1` transport handoff at harness main
   `3926e5a30ab569612e67d2dfdc6542f1391e95d7`. It validates a bounded contiguous seed plan and
@@ -160,6 +162,8 @@ wave. Active development continues in `CHANGELOG.md`.
 
 - No provider, game, profile, save, credential, model, or dataset access was added.
 
+### Archived from CHANGELOG.md
+
 - Persist validated Runtime-v3 action-wait settlement against its original durable operation
   before admitting another model decision. Previously the host could settle the action while
   the durable store retained `unknown`, causing the next decision to fail with a misleading
@@ -277,71 +281,6 @@ wave. Active development continues in `CHANGELOG.md`.
   rejected only non-empty pages, accepting a known or fabricated total for coverage extremes and
   thereby violating the "never convert unknown into zero or empty" rule. Compatibility: validation
   tightening only; no schema, wire field, or contract version changed.
-- Complete the #139 Exo pin inventory: list every revision-bearing bridge, contract, documentation
-  and artifact source in the manifest and enforce the full set in the drift guard. Refresh the
-  manifest checksum. Compatibility: inventory-only; no schema or wire change.
-- Reconcile the Exo bridge contract inventory for #139. Add executable conformance vectors for
-  unavailable `map`/`expert` profiles, absent context continuity, incompatible capability
-  schema/contract versions, and malformed descriptor shapes, plus a manifest pin-location drift
-  guard and an explicit upstream dependency/prerequisite record. Compatibility: contract-vector and
-  documentation additions only; no schema or wire field changed. Real provider/native acceptance
-  remains gated by #149.
-- Add opt-in bounded SQLite history for context-owner bindings, committed atomically with
-  command results and read by original invocation with current scoped, same-subject permission.
-  Historical grants and epochs never authorize current control or claim a restored owner.
-  Public JSON schemas and current-cursor association stay unchanged; Rust `CommandApplication`
-  constructors must supply the new optional `context_binding` field. See
-  [ADR 0040](decisions/0040-recorded-context-binding-history.md). This library-only slice
-  does not implement HTTP history, owner receipt recovery or complete #100 acceptance.
-- Add the opt-in immutable benchmark manifest library: bounded strict v1 parsing, separate
-  gameplay/experiment/occurrence identities, exact mismatch reasons and keyed public references.
-  Existing seed receipts can be associated with an immutable planned trial as `seed_receipt_bound`
-  only when the declared protocol version and schema digest also match; this is offline consistency,
-  not native reproducibility or hidden RNG verification. No runtime or legacy-record behavior
-  changes. See [ADR 0021](decisions/0021-benchmark-manifest-foundation.md). Refs #121.
-- Require game-information v1 responses with `unavailable` or `not_observable` coverage to carry an
-  unknown total (`total_count_known: false`, `total_count: null`). The harness consumer previously
-  rejected only non-empty pages, accepting a known or fabricated total for coverage extremes and
-  thereby violating the "never convert unknown into zero or empty" rule. Compatibility: validation
-  tightening only; no schema, wire field, or contract version changed.
-- Complete the #139 Exo pin inventory: list every revision-bearing bridge, contract, documentation
-  and artifact source in the manifest and enforce the full set in the drift guard. Refresh the
-  manifest checksum. Compatibility: inventory-only; no schema or wire change.
-- Reconcile the Exo bridge contract inventory for #139. Add executable conformance vectors for
-  unavailable `map`/`expert` profiles, absent context continuity, incompatible capability
-  schema/contract versions, and malformed descriptor shapes, plus a manifest pin-location drift
-  guard and an explicit upstream dependency/prerequisite record. Compatibility: contract-vector and
-  documentation additions only; no schema or wire field changed. Real provider/native acceptance
-  remains gated by #149.
-- Add opt-in bounded SQLite history for context-owner bindings, committed atomically with
-  command results and read by original invocation with current scoped, same-subject permission.
-  Historical grants and epochs never authorize current control or claim a restored owner.
-  Public JSON schemas and current-cursor association stay unchanged; Rust `CommandApplication`
-  constructors must supply the new optional `context_binding` field. See
-  [ADR 0040](decisions/0040-recorded-context-binding-history.md). This library-only slice
-  does not implement HTTP history, owner receipt recovery or complete #100 acceptance.
-- Add the opt-in immutable benchmark manifest library: bounded strict v1 parsing, separate
-  gameplay/experiment/occurrence identities, exact mismatch reasons and keyed public references.
-  Existing seed receipts can be associated with an immutable planned trial as `seed_receipt_bound`
-  only when the declared protocol version and schema digest also match; this is offline consistency,
-  not native reproducibility or hidden RNG verification. No runtime or legacy-record behavior
-  changes. See [ADR 0021](decisions/0021-benchmark-manifest-foundation.md). Refs #121.
-- Add scoped game-information v1 lookup consumption through the existing MCP port, a bounded
-  typed agent tool loop, complete-source validation before projection, separate source/view
-  identities and encrypted pinned replay archives. The opt-in mixed catalog preserves legacy
-  profiles. Synthetic tool-loop and SQLite restart evidence do not claim native provider or
-  exact-host execution; the old native Exo adapter remains terminal-decision-only.
-  See [ADR 0039](decisions/0039-game-information-consumer.md). Refs #127.
-- Add an opt-in Exo duplex lookup bridge and bounded native TypeScript tool registration,
-  connecting the lookup agent API to the isolated pinned executor. See
-  [ADR 0022](decisions/0022-exo-lookup-duplex-bridge.md). Refs #127.
-- Expose the recorded context-owner binding for one workflow invocation over the authenticated
-  management HTTP surface as a separately versioned, read-only projection. Same-subject scoped
-  `workflow:read` is required; an unrecorded invocation, another subject, a missing scope and
-  disabled retention are reported as distinct errors. Compatibility: additive read-only endpoint;
-  no existing route, record, schema or resource bound changes. Does not establish current owner
-  authority or receipt recovery. See [ADR 0023](decisions/0023-recorded-context-binding-http-projection.md).
-  Refs #100.
 - Complete the #139 Exo pin inventory: list every revision-bearing bridge, contract, documentation
   and artifact source in the manifest and enforce the full set in the drift guard. Refresh the
   manifest checksum. Compatibility: inventory-only; no schema or wire change.
