@@ -38,6 +38,11 @@ pub(super) fn dispatch_run_route(
     ) {
         return result;
     }
+    if let Some(result) = super::routes_lifecycle::dispatch_lifecycle_route(
+        request, service, actor, run_id, &segments,
+    ) {
+        return result;
+    }
     match (request.method.as_str(), segments.as_slice()) {
         ("GET", ["", "v1", "workflow-runs", _]) if request.query.is_empty() => service
             .status(actor, run_id)

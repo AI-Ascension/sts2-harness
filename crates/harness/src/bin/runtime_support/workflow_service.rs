@@ -46,7 +46,7 @@ pub(super) fn serve() -> Result<(), String> {
     // The served effective-limits record is built from the same descriptor the
     // session factory admits provider sessions against.
     let served_capabilities = policy.capabilities.clone();
-    sts2_harness::management::serve_live_with_provider_policy_commands_and_context_owner(
+    sts2_harness::management::serve_live_with_lifecycle(
         listen,
         &store,
         authenticator,
@@ -62,9 +62,13 @@ pub(super) fn serve() -> Result<(), String> {
             context_owner,
         },
         served_capabilities,
+        lifecycle_owner::owner()?,
     )
     .map_err(|error| error.to_string())
 }
+
+#[path = "workflow_service_lifecycle.rs"]
+mod lifecycle_owner;
 
 fn factory(
     provider_policy: Arc<dyn LiveProviderPolicyPort>,

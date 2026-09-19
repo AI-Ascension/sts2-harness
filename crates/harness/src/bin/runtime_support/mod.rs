@@ -7,6 +7,7 @@ mod config;
 mod continuation_branches;
 pub(super) mod exact_restore;
 mod gateway_json;
+mod gateway_lifecycle;
 mod http;
 mod mcp;
 mod mcp_process;

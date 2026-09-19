@@ -21,6 +21,9 @@ pub use inference_profile_catalog::{
     InferenceProfilePin, InferenceProfileRef, LiveInferenceProfileCatalogPort,
     is_provenance_reference,
 };
+mod lifecycle;
+mod lifecycle_intent;
+mod lifecycle_readiness;
 mod live_workflow;
 mod provider_policy;
 mod provider_session_inspection;
@@ -98,6 +101,22 @@ pub use contract_authoring::{
 pub use http::{
     ClientResponse, HttpError, HttpLimits, ManagementClient, ManagementServer, ServerConfig,
     ServerHandle,
+};
+pub use lifecycle::{
+    LaunchProfileId, LifecycleAction, LifecycleClassification, LifecycleCommand,
+    LifecycleCommandResponse, LifecycleFailure, LifecycleOperationState, LifecycleOperationView,
+    LifecycleProcessIdentity, LifecycleState, LifecycleTarget, MAX_LIFECYCLE_COMMAND_BYTES,
+    MAX_LIFECYCLE_COMMAND_ID_BYTES, PROCESS_LIFECYCLE_COMMAND_SCHEMA_VERSION,
+    PROCESS_LIFECYCLE_CONTRACT, PROCESS_LIFECYCLE_STATUS_SCHEMA_VERSION,
+    ProcessLifecycleCapability, ProcessLifecyclePort, StopMode, UnavailableProcessLifecyclePort,
+    validate_lifecycle_command,
+};
+pub use lifecycle_intent::{
+    LifecycleIntent, LifecycleIntentStore, MAX_LIFECYCLE_INTENTS, ProcessLifecycleOwner,
+};
+pub use lifecycle_readiness::{
+    GameplayReadinessEvidence, LaunchAcknowledgement, LifecycleReadiness, ReadinessError,
+    ReadinessObservation,
 };
 pub use live_workflow::{
     EpisodeRuntimeSession, LIVE_WORKFLOW_CAPABILITY, LIVE_WORKFLOW_PROFILE,
@@ -214,21 +233,51 @@ pub fn serve_live_with_provider_policy_commands_and_context_owner(
     owner: ServedOwnerPorts,
     provider_session_capabilities: crate::provider_session::NativeCapabilities,
 ) -> Result<(), ManagementError> {
+    serve_live_with_lifecycle(
+        listen,
+        store_path,
+        authenticator,
+        factory,
+        owner,
+        provider_session_capabilities,
+        None,
+    )
+}
+
+/// Starts served-live management with the optional gateway process-lifecycle
+/// owner attached.
+///
+/// The lifecycle port and its durable intent directory are supplied together by
+/// the binary that owns the gateway credential. Passing neither leaves the
+/// surface composed but unavailable, which refuses every lifecycle command
+/// instead of inventing an effect.
+pub fn serve_live_with_lifecycle(
+    listen: std::net::SocketAddr,
+    store_path: &str,
+    authenticator: std::sync::Arc<dyn Authenticator>,
+    factory: std::sync::Arc<dyn LiveWorkflowSessionFactory>,
+    owner: ServedOwnerPorts,
+    provider_session_capabilities: crate::provider_session::NativeCapabilities,
+    lifecycle: Option<ProcessLifecycleOwner>,
+) -> Result<(), ManagementError> {
     let store = SqliteWorkflowStore::open(store_path)
         .map_err(|error| ManagementError::store("workflow_store_open", error.to_string()))?;
     let store: std::sync::Arc<dyn WorkflowStore> = std::sync::Arc::new(store);
-    let service = std::sync::Arc::new(
-        live_store_with_provider_policy_and_command_port(
-            store,
-            factory,
-            LiveWorkflowOptions::default(),
-            owner.provider_policy,
-            owner.command_port,
-        )?
-        .with_context_owner_port(owner.context_owner)
-        .with_context_binding_history()?
-        .with_provider_session_capabilities(provider_session_capabilities)?,
-    );
+    let service = live_store_with_provider_policy_and_command_port(
+        store,
+        factory,
+        LiveWorkflowOptions::default(),
+        owner.provider_policy,
+        owner.command_port,
+    )?
+    .with_context_owner_port(owner.context_owner)
+    .with_context_binding_history()?
+    .with_provider_session_capabilities(provider_session_capabilities)?;
+    let service = match lifecycle {
+        Some((port, intents)) => service.with_process_lifecycle(port, intents),
+        None => service,
+    };
+    let service = std::sync::Arc::new(service);
     serve_live_service(listen, authenticator, service)
 }
 

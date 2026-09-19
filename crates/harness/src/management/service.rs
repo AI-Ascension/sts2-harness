@@ -52,6 +52,8 @@ mod live_provider_policy;
 mod memory_policy_owner_ops;
 #[path = "service_ops.rs"]
 mod ops;
+#[path = "service_process_lifecycle.rs"]
+mod process_lifecycle_ops;
 #[path = "service_provider_policy.rs"]
 mod provider_policy_ops;
 #[path = "service_provider_session.rs"]
@@ -256,6 +258,8 @@ pub struct ManagementService {
     live_provider_policy: Arc<dyn LiveProviderPolicyPort>,
     memory_policy_owner: Arc<dyn MemoryPolicyOwnerManagementPort>,
     provider_session_capabilities: Option<crate::provider_session::NativeCapabilities>,
+    process_lifecycle: Arc<dyn super::lifecycle::ProcessLifecyclePort>,
+    lifecycle_intents: Option<Arc<std::sync::Mutex<super::lifecycle_intent::LifecycleIntentStore>>>,
 }
 
 impl ManagementService {
@@ -281,6 +285,8 @@ impl ManagementService {
                 memory_policy_owner_ops::UnavailableMemoryPolicyOwnerManagementPort,
             ),
             provider_session_capabilities: None,
+            process_lifecycle: Arc::new(super::lifecycle::UnavailableProcessLifecyclePort),
+            lifecycle_intents: None,
         }
     }
 

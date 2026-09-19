@@ -513,3 +513,7 @@ a job object at spawn, which is a change to the spawn path rather than to reapin
 A `cargo check` lane for `x86_64-pc-windows-gnu` runs in continuous integration. It establishes that
 the workspace compiles for Windows; it does not run tests there, and no behavioural claim about
 Windows follows from it.
+
+## Typed process-lifecycle execution port
+
+The typed process-lifecycle execution port (`sts2-gateway-process-lifecycle-v1`, gateway pin `afb30ba9`) is `additive-compatible`: three new run-scoped harness routes and a durable intent sidecar change no existing route, record, schema, digest or default, and the harness gains no process authority; see [ADR 0055](decisions/0055-harness-typed-process-lifecycle-port.md).
