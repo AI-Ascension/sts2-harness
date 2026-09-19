@@ -103,3 +103,55 @@ fn the_published_digests_reproduce_from_the_committed_evidence() {
         "the transported body must carry the same exchange as the artifact"
     );
 }
+
+#[test]
+fn the_filed_observation_is_the_state_the_filed_request_described() {
+    let artifact: Value = serde_json::from_str(ARTIFACT).expect("the evidence artifact parses");
+    let request = artifact.get("provider_request").expect("provider_request");
+    let observation = artifact["bridge_request"]
+        .get("observation")
+        .expect("bridge_request.observation");
+
+    let described: Value = serde_json::from_str(
+        request["state"]
+            .as_str()
+            .expect("the request files its state as the string it sent"),
+    )
+    .expect("the filed state string parses");
+
+    assert_eq!(
+        &described, observation,
+        "the observation transcribed beside the request must be the state that request described: \
+         the decision and the digests are pinned, and neither can see an observation that drifts \
+         from the bytes it claims to have come from"
+    );
+}
+
+#[test]
+fn the_filed_action_identifiers_are_the_criteria_the_filed_request_asked() {
+    let artifact: Value = serde_json::from_str(ARTIFACT).expect("the evidence artifact parses");
+    let request = artifact.get("provider_request").expect("provider_request");
+
+    let mut asked: Vec<&str> = request["questions"]["action"]["criteria"]
+        .as_object()
+        .expect("the request asks about actions through a criteria map")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    asked.sort_unstable();
+
+    let mut filed: Vec<&str> = artifact["bridge_request"]["legal_action_ids"]
+        .as_array()
+        .expect("legal_action_ids")
+        .iter()
+        .map(|value| value.as_str().expect("an action identifier"))
+        .collect();
+    filed.sort_unstable();
+
+    assert_eq!(
+        filed, asked,
+        "the identifiers the record says were offered must be exactly the criteria the request \
+         asked about, so the round-trip claim rests on a checked option set rather than on the \
+         identifiers happening to be listed twice"
+    );
+}
