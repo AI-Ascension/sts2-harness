@@ -7,7 +7,7 @@ use super::super::contract::{
     RunRequest, RunSnapshot, TargetAdmissionBinding, WorkflowRunStatus,
 };
 use super::super::service::{CommandApplication, ManagementError};
-use super::execution::LiveRun;
+use super::execution_state::LiveRun;
 use crate::workflow::{RuntimeFault, RuntimeStatus, StrictRuntime};
 
 pub(super) struct SnapshotState {

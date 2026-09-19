@@ -3,6 +3,7 @@
 use super::super::auth::AuthContext;
 use super::super::context_owner::ContextOwnerPort;
 use super::super::contract::{CleanupState, RunRequest, RunSubmissionResponse, WorkflowRunStatus};
+use super::inference_profile_ops::{admit_inference_profiles, bind_inference_provenance};
 use super::support::{run_submission_response, verify_admission};
 use super::target_admission::{bind_snapshot_admission, is_live_profile};
 use super::{ManagementError, ManagementService, RunReservation};
@@ -35,6 +36,20 @@ pub(super) fn submit_run(
         None
     };
     let binding = service.revalidate_target_admission(actor, &request, &definition_digest)?;
+    // Every decision/planner reference must resolve to an exact catalog revision
+    // before any reservation exists. The resolved provenance replaces the
+    // consumer's target-level selection on the durable admission, and the
+    // request carries the same binding so the execution port's exact-binding
+    // comparison and its second fence see identical provenance.
+    let resolved = match binding.as_ref() {
+        Some(binding) if is_live_profile(&request.profile) => {
+            admit_inference_profiles(service, actor, &request, binding)?
+        }
+        _ => None,
+    };
+    let binding = bind_inference_provenance(binding, resolved.as_ref());
+    let mut request = request;
+    request.admission = binding.clone();
     let reservation = RunReservation::new(
         std::sync::Arc::clone(&service.store),
         request.request_id.clone(),

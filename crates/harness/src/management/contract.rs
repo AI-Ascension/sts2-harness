@@ -2,6 +2,8 @@
 
 //! Versioned management wire contracts and strict boundary decoding.
 
+#[path = "contract_inference_profile.rs"]
+mod inference_profile;
 #[path = "contract_json.rs"]
 mod json;
 #[path = "contract_provider_session.rs"]
@@ -13,6 +15,7 @@ mod target_admission;
 #[path = "contract_types.rs"]
 mod types;
 
+pub use inference_profile::*;
 pub use json::*;
 pub use provider_session::*;
 pub use store_types::*;

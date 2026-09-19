@@ -25,6 +25,18 @@ pub trait LiveWorkflowSessionFactory: Send + Sync {
         ))
     }
 
+    /// Returns the actor-scoped inference-profile catalog, or `None` when the
+    /// owner serves none. A served catalog is authoritative: admission and
+    /// dispatch resolve every decision/planner reference in it and refuse
+    /// unknown, mismatched, revoked or unsupported revisions before inference.
+    fn inference_profile_catalog(
+        &self,
+        _actor: &AuthContext,
+    ) -> Result<Option<super::super::super::contract::InferenceProfileCatalog>, ManagementError>
+    {
+        Ok(None)
+    }
+
     fn open(
         &self,
         request: &RunRequest,

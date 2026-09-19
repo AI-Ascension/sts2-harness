@@ -14,7 +14,9 @@ use serde_json::Value;
 use std::sync::Arc;
 
 use super::super::auth::AuthContext;
-use super::super::contract::{RunRequest, TargetCatalogResponse};
+use super::super::contract::{InferenceProfileCatalog, RunRequest, TargetCatalogResponse};
+use super::super::inference_profile_binding::InferenceProfileBindingSet;
+use super::super::inference_profile_catalog::LiveInferenceProfileCatalogPort;
 use super::super::service::{LiveProviderPolicyPort, ManagementError};
 use super::session::{LiveWorkflowSession, LiveWorkflowSessionFactory};
 use crate::episode::{
@@ -102,6 +104,7 @@ pub struct ProductionLiveWorkflowSessionFactory {
     provider_capabilities: NativeCapabilities,
     context_observations: Option<Arc<dyn LiveContextObservationPort>>,
     context_render: Option<Arc<dyn LiveContextRenderPort>>,
+    inference_profiles: Option<Arc<dyn LiveInferenceProfileCatalogPort>>,
 }
 
 impl ProductionLiveWorkflowSessionFactory {
@@ -129,7 +132,18 @@ impl ProductionLiveWorkflowSessionFactory {
             provider_capabilities,
             context_observations: None,
             context_render: None,
+            inference_profiles: None,
         })
+    }
+
+    /// Attaches the owner-served inference-profile catalog. Once attached,
+    /// every decision reference is resolved in it before the runtime opens.
+    pub fn with_inference_profile_catalog(
+        mut self,
+        catalog: Arc<dyn LiveInferenceProfileCatalogPort>,
+    ) -> Self {
+        self.inference_profiles = Some(catalog);
+        self
     }
 
     pub fn with_context_observations(
@@ -156,6 +170,16 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
         actor: &AuthContext,
     ) -> Result<TargetCatalogResponse, ManagementError> {
         self.catalog.target_catalog(actor)
+    }
+
+    fn inference_profile_catalog(
+        &self,
+        actor: &AuthContext,
+    ) -> Result<Option<InferenceProfileCatalog>, ManagementError> {
+        self.inference_profiles
+            .as_ref()
+            .map(|port| port.inference_profile_catalog(actor))
+            .transpose()
     }
 
     fn open(
@@ -199,6 +223,12 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
                 "managed rendering requires the admitted observation and control owner",
             ));
         }
+        let admitted_profiles = session::inference_profile::admit_inference_profiles(
+            self.inference_profiles.as_deref(),
+            actor,
+            request,
+            definition,
+        )?;
         let authority_binding =
             self.runtime
                 .authority_binding(request, actor, definition, definition_digest)?;
@@ -223,6 +253,8 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
             active_policy_binding: None,
             policy_change_fenced: false,
             authority_binding,
+            inference_profiles: self.inference_profiles.clone(),
+            admitted_profiles,
         }))
     }
 }
@@ -273,6 +305,10 @@ struct ProductionLiveWorkflowSession {
     active_policy_binding: Option<(String, u64)>,
     policy_change_fenced: bool,
     authority_binding: RuntimeAuthorityBinding,
+    inference_profiles: Option<Arc<dyn LiveInferenceProfileCatalogPort>>,
+    /// Every inference binding resolved at admission; the run keeps these exact
+    /// revisions and is never re-bound to a later catalog revision.
+    admitted_profiles: Option<InferenceProfileBindingSet>,
 }
 
 #[path = "production/session.rs"]

@@ -3,7 +3,7 @@
 use uuid::Uuid;
 
 use super::super::contract::{PendingOperation, PendingOperationState};
-use super::execution::{LiveNodeState, PendingDispatch};
+use super::execution_state::{LiveNodeState, PendingDispatch};
 use super::node_projection::{catalog_digest, observation_value};
 use crate::episode::{
     ActionIdentity, DecisionInput, DispatchStatus, TransitionReceipt, verify_settlement,

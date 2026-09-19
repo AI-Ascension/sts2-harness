@@ -203,7 +203,7 @@ pub(super) fn apply_command(
 /// for a different invocation therefore fails closed instead of being accepted
 /// while the run may never execute it.
 fn bind_dispatch_context(
-    run: &mut super::execution::LiveRun,
+    run: &mut super::execution_state::LiveRun,
     context: &CommandContext,
 ) -> Result<(), ManagementError> {
     let runtime_snapshot = run.runtime.snapshot();

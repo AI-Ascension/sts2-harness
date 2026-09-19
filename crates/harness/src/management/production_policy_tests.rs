@@ -272,6 +272,8 @@ fn make_session(
         context_control_limits: None,
         active_policy_binding: Some(("a".repeat(64), 0)),
         policy_change_fenced: false,
+        inference_profiles: None,
+        admitted_profiles: None,
         authority_binding: RuntimeAuthorityBinding {
             instance_id: "test-instance".to_owned(),
             session_id: "test-session".to_owned(),

@@ -851,6 +851,16 @@ impl CapabilityPort for SyntheticCapabilityPort {
         }))
     }
 
+    /// The synthetic owner serves the clearly-labelled synthetic inference
+    /// catalog so discovery and exact resolution can be exercised with no
+    /// provider, model or credential; it proves nothing about provider execution.
+    fn inference_profile_catalog(
+        &self,
+        _actor: &AuthContext,
+    ) -> Result<Option<super::contract::InferenceProfileCatalog>, ManagementError> {
+        super::synthetic_inference_profiles::synthetic_inference_profile_catalog().map(Some)
+    }
+
     /// The synthetic owner publishes exactly one clearly-labelled synthetic
     /// target so authenticated consumers can preflight an exact admission
     /// without any game, provider, or lease authority.

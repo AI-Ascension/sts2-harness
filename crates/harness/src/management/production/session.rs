@@ -2,11 +2,16 @@
 
 use super::*;
 
+#[path = "session_errors.rs"]
+mod errors;
+#[path = "session_inference_profile.rs"]
+pub(super) mod inference_profile;
 #[path = "session_managed.rs"]
 mod managed;
-
 #[path = "session_policy.rs"]
 mod policy;
+
+pub(super) use errors::{provider_error, runtime_error};
 
 impl ProductionLiveWorkflowSession {
     fn refresh_authority_lease_binding(&mut self) -> Result<(), ManagementError> {
@@ -114,21 +119,6 @@ impl ProductionLiveWorkflowSession {
     }
 }
 
-pub(super) fn runtime_error(
-    code: &'static str,
-) -> impl FnOnce(crate::PortError) -> ManagementError {
-    move |error| ManagementError::unavailable(code, error.to_string())
-}
-
-pub(super) fn provider_error(error: crate::episode::PolicyError) -> ManagementError {
-    if let crate::episode::PolicyError::SelectedContextLimit(limit) = error {
-        return ManagementError::capability(
-            "context_render_limit_exceeded",
-            format!("prepared context exceeds the selected owner limit: {limit}"),
-        );
-    }
-    ManagementError::unavailable("provider_decision_failed", error.to_string())
-}
 impl LiveWorkflowSession for ProductionLiveWorkflowSession {
     fn launch(&mut self) -> Result<(), ManagementError> {
         self.runtime
@@ -228,6 +218,7 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
     ) -> Result<crate::Decision, ManagementError> {
         self.assert_current_observation(&input.observation)?;
         self.admit_active_policy_binding()?;
+        self.admit_inference_profile_binding(decision_profile_ref)?;
         if let Some(render) = self
             .context_render
             .as_ref()

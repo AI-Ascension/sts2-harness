@@ -4,7 +4,10 @@ use std::collections::BTreeSet;
 
 use serde_json::Value;
 
-use super::super::contract::{Diagnostic, DiagnosticSeverity, TargetCatalogResponse};
+use super::super::contract::{
+    Diagnostic, DiagnosticSeverity, InferenceProfileCatalog, TargetCatalogResponse,
+};
+use super::super::inference_profile_catalog::InferenceProfileRef;
 use super::super::service::{
     CapabilityPort, DefinitionPort, DiffResult, InspectionResult, ManagementError, ValidationResult,
 };
@@ -139,11 +142,20 @@ fn node_diagnostics(definition: &WorkflowDefinition, capabilities: &Value) -> Ve
                     );
                 }
                 NodeDefinition::Decide { config, .. } => {
+                    // A pinned `profile_id:version:digest` reference binds the
+                    // capability by its profile id; the exact revision is
+                    // resolved against the inference-profile catalog at admission.
+                    let profile_id =
+                        InferenceProfileRef::parse(config.decision_profile_ref.as_str())
+                            .map_or_else(
+                                |_| config.decision_profile_ref.as_str().to_owned(),
+                                |reference| reference.profile_id,
+                            );
                     binding_diagnostic(
                         &mut diagnostics,
                         &available,
                         "workflow.provider.",
-                        config.decision_profile_ref.as_str(),
+                        &profile_id,
                         &format!("{path}.decision_profile_ref"),
                     );
                     binding_diagnostic(
@@ -224,5 +236,12 @@ impl CapabilityPort for LiveCapabilityPort {
         actor: &AuthContext,
     ) -> Result<TargetCatalogResponse, ManagementError> {
         self.factory.target_catalog(actor)
+    }
+
+    fn inference_profile_catalog(
+        &self,
+        actor: &AuthContext,
+    ) -> Result<Option<InferenceProfileCatalog>, ManagementError> {
+        self.factory.inference_profile_catalog(actor)
     }
 }

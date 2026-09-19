@@ -42,6 +42,8 @@ mod context_owner_port;
 mod effective_limits_ops;
 #[path = "service_execution.rs"]
 mod execution_types;
+#[path = "service_inference_profile.rs"]
+mod inference_profile_ops;
 #[path = "service_ops_lifecycle.rs"]
 mod lifecycle_ops;
 #[path = "service_live_provider_policy.rs"]
@@ -187,6 +189,17 @@ pub trait CapabilityPort: Send + Sync {
             "target_catalog_unavailable",
             "target discovery is not attached to this workflow owner",
         ))
+    }
+
+    /// Returns the caller-scoped inference-profile catalog, or `None` when the
+    /// owner serves none. An absent catalog keeps the capability-prefix
+    /// admission of decision references; a served catalog is authoritative and
+    /// every decision/planner reference must resolve in it before inference.
+    fn inference_profile_catalog(
+        &self,
+        _actor: &AuthContext,
+    ) -> Result<Option<super::contract::InferenceProfileCatalog>, ManagementError> {
+        Ok(None)
     }
 }
 

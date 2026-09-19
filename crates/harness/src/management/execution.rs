@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use super::super::auth::AuthContext;
-use super::super::context_owner::ContextOwnerBinding;
 use super::super::contract::{
     EventClassification, EventPayload, EventType, PendingOperation, RecoveryAdmission, RunEvent,
     RunRequest, RunSnapshot, TargetAdmissionBinding,
@@ -13,11 +12,7 @@ use super::super::service::{
     CommandApplication, CommandContext, ManagementError, RunAdmission, RunReservation,
     WorkflowExecutionPort,
 };
-use super::session::{LiveWorkflowOptions, LiveWorkflowSession, LiveWorkflowSessionFactory};
-use crate::episode::{
-    ActionIdentity, EpisodeLegalAction, EpisodeLegalActionSet, EpisodeObservation,
-    TransitionReceipt,
-};
+use super::session::{LiveWorkflowOptions, LiveWorkflowSessionFactory};
 use crate::workflow::{CompiledWorkflow, StrictRuntime};
 
 use super::execution_records::{
@@ -28,41 +23,7 @@ use super::execution_records::{
 mod admission;
 #[path = "execution_recovery.rs"]
 mod recovery;
-
-pub(super) struct LiveRun {
-    pub(super) runtime: StrictRuntime,
-    pub(super) definition_digest: String,
-    pub(super) run_id: String,
-    pub(super) instance_id: String,
-    pub(super) state: LiveNodeState,
-    pub(super) cancelled: bool,
-    pub(super) cleanup: super::super::contract::CleanupState,
-    pub(super) admission: Option<TargetAdmissionBinding>,
-    /// Context-bound invocations declared by the admitted definition. Used to
-    /// decide, at dispatch time, which node must be bound by the owner.
-    pub(super) context_nodes: Vec<super::execution_context::ContextNode>,
-    /// The owner binding accepted for the most recently dispatched
-    /// context-bound node, retained as bounded admission evidence.
-    pub(super) context_binding: Option<ContextOwnerBinding>,
-}
-
-pub(super) struct LiveNodeState {
-    pub(super) session: Box<dyn LiveWorkflowSession>,
-    pub(super) instance_id: String,
-    pub(super) observation: Option<EpisodeObservation>,
-    pub(super) actions: Option<EpisodeLegalActionSet>,
-    pub(super) pending: Option<PendingDispatch>,
-    pub(super) provider_calls: u64,
-    pub(super) max_provider_calls: u64,
-    pub(super) options: LiveWorkflowOptions,
-}
-
-pub(super) struct PendingDispatch {
-    pub(super) identity: ActionIdentity,
-    pub(super) action: EpisodeLegalAction,
-    pub(super) state: super::super::contract::PendingOperationState,
-    pub(super) resolved: Option<TransitionReceipt>,
-}
+use super::execution_state::{LiveNodeState, LiveRun};
 
 /// Live execution keeps the authored graph and operation identity in one
 /// bounded in-memory coordinator. Missing state after restart fails closed.
@@ -189,6 +150,12 @@ impl LiveWorkflowExecutionPort {
         })?;
         admission::validate_live_admission(request, definition_digest, admission)?;
         admission::validate_live_catalog(self.factory.as_ref(), actor, admission)?;
+        admission::validate_live_inference_profiles(
+            self.factory.as_ref(),
+            actor,
+            request,
+            admission,
+        )?;
         let value = request.definition.as_ref().ok_or_else(|| {
             ManagementError::unavailable(
                 "artifact_port_unavailable",
@@ -258,6 +225,12 @@ impl LiveWorkflowExecutionPort {
         };
         reserve.reserve(&admission_result)?;
         admission::validate_live_catalog(self.factory.as_ref(), actor, admission)?;
+        admission::validate_live_inference_profiles(
+            self.factory.as_ref(),
+            actor,
+            request,
+            admission,
+        )?;
         let mut session = self.factory.open_admitted(
             request,
             actor,
