@@ -1,5 +1,7 @@
 {
   "bridge_decision": {
+    "candidate_action_id": "play:card-defend-1",
+    "candidate_confidence": 44,
     "decision": "reobserve",
     "rationale": "bridge-authored evidence: chose play:card-defend-1 at p=0.55, runner-up play:card-bash-1:enemy-0 at p=0.37, confidence 0.44"
   },

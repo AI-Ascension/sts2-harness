@@ -53,14 +53,9 @@ fn the_filed_decision_is_derived_from_the_filed_response() {
         .expect("the filed response decides");
 
     assert_eq!(
-        mapped.get("rationale"),
-        artifact["bridge_decision"].get("rationale"),
-        "the filed rationale must be the one this bridge derives from the filed response"
-    );
-    assert_eq!(
-        mapped.get("decision"),
-        artifact["bridge_decision"].get("decision"),
-        "the filed decision must be the one this bridge derives from the filed response"
+        mapped, artifact["bridge_decision"],
+        "the filed decision must be, whole, the one this bridge derives from the filed response: \
+         comparing named fields cannot see a key the mapper emits and the record omits"
     );
 }
 

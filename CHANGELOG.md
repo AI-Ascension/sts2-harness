@@ -10,6 +10,17 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **File the System One decision the bridge actually emits, and let the bridge emit the record
+  itself.** `map_decision` returns four fields for a re-observation, but the filed `bridge_decision`
+  carried only the rationale and the decision name, so the evidence artifact was still not the
+  bridge's output even after its numbers had been corrected (#305). The two omitted keys are filed,
+  and the evidence check now compares the object whole instead of field by field, because comparing
+  named fields cannot see a key the mapper emits and the record omits. `sts2-jev-bridge --record`
+  prints `{provider_request, provider_response, decision}` as one object, so the next exchange is
+  published from the bridge rather than transcribed from it. The default output is unchanged, and the
+  runtime lane refuses `--record` exactly as it already refuses `--describe`, because that lane reads
+  this executable's stdout as the decision itself. Refs #305.
+
 - Consume the gateway's process-lifecycle surface through a **typed harness port**
   (`sts2-gateway-process-lifecycle-v1`, gateway pin `afb30ba9`). The harness adds three run-scoped
   management routes (capability read, one closed-action submission, identity-addressed

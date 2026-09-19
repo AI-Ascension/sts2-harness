@@ -358,29 +358,72 @@ fn the_state_carries_the_arithmetic_the_model_is_not_asked_to_do() {
     assert_eq!(facts["weakest_enemy_id"], json!("enemy:1"));
 }
 
-#[test]
-fn a_single_legal_action_is_taken_without_spending_a_provider_call() {
+fn forced_turn_request() -> Vec<u8> {
     let mut request: Value =
         serde_json::from_slice(&duplicate_hand_request()).expect("request json");
     request["legal_action_ids"] = json!(["end:13"]);
     request["observation"]["legal_actions"] =
         json!([{"action_id": "end:13", "action": {"kind": "end_turn"}}]);
-    let body = serde_json::to_vec(&request).expect("request bytes");
+    serde_json::to_vec(&request).expect("request bytes")
+}
 
-    let mut called = false;
-    let outcome = decide(
-        &body,
-        "jev-latest",
-        decision::DEFAULT_CONFIDENCE_GATE,
-        &mut |_| {
-            called = true;
-            Err("the bridge must not ask".into())
-        },
-    )
-    .map_err(|error| error.to_string());
-
-    assert!(!called, "a forced action must not reach the transport");
+#[test]
+fn a_single_legal_action_is_taken_without_spending_a_provider_call() {
+    // The fake transport refuses, so an Ok decision can only come from skipping the call.
+    let (outcome, _) = decide_with(&forced_turn_request(), Err("the bridge must not ask"));
     let decision = outcome.expect("forced decision");
     assert_eq!(decision["decision"], json!("action"));
     assert_eq!(decision["action_id"], json!("end:13"));
+}
+
+#[test]
+fn a_record_beside_the_decision_proves_the_decision_is_a_function_of_the_response() {
+    let mut seen = Vec::new();
+    let record = record(
+        &request(),
+        "jev-latest",
+        decision::DEFAULT_CONFIDENCE_GATE,
+        &mut |body| {
+            seen = body.to_vec();
+            Ok(response("play:card-17", 0.81))
+        },
+    )
+    .expect("record");
+    assert_eq!(record["schema"], json!(RECORD_SCHEMA));
+    assert_eq!(record["provider_call"], json!(true));
+    let handed: Value = serde_json::from_slice(&seen).expect("body");
+    assert_eq!(record["provider_request"], handed);
+
+    // Recomputing from the recorded response reproduces the decision exactly: what the evidence file failed.
+    let criteria = record["provider_request"]["questions"]["action"]["criteria"].as_object();
+    let options: Vec<String> = criteria.expect("criteria").keys().cloned().collect();
+    let map = |response: &Value| {
+        decision::map_decision(
+            response,
+            ACTION_QUESTION,
+            &options,
+            decision::DEFAULT_CONFIDENCE_GATE,
+        )
+        .expect("the response maps to a decision")
+    };
+    assert_eq!(record["decision"], map(&record["provider_response"]));
+
+    let mut moved = record["provider_response"].clone();
+    moved["answers"]["action"]["probabilities"]["play:card-18"] = json!(0.90);
+    assert_ne!(record["decision"]["rationale"], map(&moved)["rationale"]);
+}
+
+#[test]
+fn a_forced_action_records_that_no_provider_call_happened() {
+    let record = record(
+        &forced_turn_request(),
+        "jev-latest",
+        decision::DEFAULT_CONFIDENCE_GATE,
+        &mut |_| Err("the bridge must not ask".into()),
+    )
+    .expect("record");
+    assert_eq!(record["provider_call"], json!(false));
+    assert_eq!(record["provider_request"], json!(null));
+    assert_eq!(record["provider_response"], json!(null));
+    assert_eq!(record["decision"]["action_id"], json!("end:13"));
 }

@@ -29,6 +29,13 @@ pub(super) struct Options {
     pub transport: Option<String>,
     /// Print the requested configuration and exit without opening a connection.
     pub describe: bool,
+    /// Print one `{provider_request, provider_response, decision}` record instead of the bare
+    /// decision.
+    ///
+    /// A stored evidence file has to prove that the decision it publishes is a function of the
+    /// response beside it. Writing the two fields down by hand cannot prove that, so the operator
+    /// who records an exchange asks for the record the bridge itself assembled.
+    pub record: bool,
     /// Confidence at or above which an answer becomes an action, as an integer percentage.
     ///
     /// Absent means the bridge's own default applies. An operator lowers it when a lane's real
@@ -44,9 +51,11 @@ impl Options {
         let mut transport = None;
         let mut gate_percent = None;
         let mut describe = false;
+        let mut record = false;
         while let Some(argument) = arguments.next() {
             match argument.as_str() {
                 "--describe" if !describe => describe = true,
+                "--record" if !record => record = true,
                 "--model" if model.is_none() => {
                     let value = arguments.next().ok_or("missing model identifier")?;
                     if !valid_identifier(&value, 240) {
@@ -80,6 +89,7 @@ impl Options {
             model: model.unwrap_or_else(|| DEFAULT_MODEL.to_owned()),
             transport,
             describe,
+            record,
             gate_percent,
         })
     }
@@ -107,6 +117,7 @@ mod tests {
         assert_eq!(empty.model, DEFAULT_MODEL);
         assert_eq!(empty.transport, None);
         assert!(!empty.describe);
+        assert!(!empty.record);
 
         let transport = if cfg!(windows) {
             "C:/providers/systemone-transport.exe"
@@ -144,6 +155,7 @@ mod tests {
             vec!["--transport", ""],
             vec!["--transport", transport, "--transport", transport],
             vec!["--describe", "--describe"],
+            vec!["--record", "--record"],
             vec!["--unknown"],
         ] {
             assert!(
@@ -185,6 +197,26 @@ mod tests {
         )?;
         assert!(options.describe);
         assert_eq!(options.model, "jev-preview");
+        Ok(())
+    }
+
+    #[test]
+    fn a_record_is_requested_explicitly_and_defaults_off() -> Result<(), &'static str> {
+        let options = Options::parse(
+            vec![
+                "--record",
+                "--transport",
+                "/opt/providers/systemone-transport",
+            ]
+            .into_iter()
+            .map(str::to_owned),
+        )?;
+        assert!(options.record);
+        assert!(!options.describe);
+        assert_eq!(
+            options.transport.as_deref(),
+            Some("/opt/providers/systemone-transport")
+        );
         Ok(())
     }
 }

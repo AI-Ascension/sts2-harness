@@ -38,7 +38,9 @@ confidence                  0.44
 The bridge emitted:
 
 ```json
-{"decision":"reobserve",
+{"candidate_action_id":"play:card-defend-1",
+ "candidate_confidence":44,
+ "decision":"reobserve",
  "rationale":"bridge-authored evidence: chose play:card-defend-1 at p=0.55, runner-up play:card-bash-1:enemy-0 at p=0.37, confidence 0.44"}
 ```
 
@@ -46,9 +48,18 @@ Correction, 2026-09-19 (#305). The decision quoted here was the second call's, n
 A second call on the same state returned the same ordering with confidence `0.45`, and its decision
 was the one filed; the string carried `0.56`/`0.35`/`0.45` while the `provider_response` beside it
 carries `0.55`/`0.37`/`0.44`, so no input to the bridge produced the string as filed. This entry now
-carries the decision this bridge derives from the committed response, and
+carries the decision this bridge derives from the committed response, whole, and
 `systemone_evidence_tests.rs` recomputes it from the artifact, so the two cannot drift apart again.
 The second call has no committed artifact; nothing in this report depends on its numbers.
+
+The `candidate_action_id` and `candidate_confidence` keys are part of that correction. `map_decision`
+returns four fields for a re-observation rather than two, and the first filing carried only the
+rationale and the decision name, which is a second, quieter instance of the same defect: a decision
+written down by hand is a decision that can be written down incompletely. The filed object and the
+bridge's output are now the same object, and the check compares them whole rather than field by
+field, so a key added to the mapper cannot go missing from the record again. `sts2-jev-bridge
+--record` prints the request, the response and the decision together for the next exchange, so an
+operator can publish the bridge's own output instead of transcribing it.
 
 ## Digests and how to check them
 
