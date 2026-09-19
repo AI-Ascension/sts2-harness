@@ -10,6 +10,17 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Write the Windows lane's shared files without a byte-order mark.** Windows PowerShell 5.1
+  spells `-Encoding UTF8` as UTF-8 *with* a mark, and the lane wrote `override.cfg` that way. The
+  game does not honour a marked override, so it resolved the shared default user directory, the mod
+  compared that against the directory the lane had declared in `STS2_LIVE_USER_DIR`, and the episode
+  ended with `live demo requires its isolated user directory` and no listener. Of the 212 episodes
+  the guest still holds, the 18 the lane drove all resolved the default directory, while the 167
+  whose `override.cfg` came from a writer that emits no mark all resolved their own per-episode
+  directory. `override.cfg`, the seeded `settings.save`, and `authorization.json` now go through one
+  `Write-TextFile` helper that constructs `UTF8Encoding($false)`; the PID and outcome files keep
+  bare `Set-Content`, which writes no mark. Refs #173.
+
 - **File the System One decision the bridge actually emits, and let the bridge emit the record
   itself.** `map_decision` returns four fields for a re-observation, but the filed `bridge_decision`
   carried only the rationale and the decision name, so the evidence artifact was still not the
