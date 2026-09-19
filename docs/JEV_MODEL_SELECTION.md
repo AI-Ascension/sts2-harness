@@ -135,10 +135,11 @@ TLS stack rather than the bridge's, which is the subject of issue #299.
 That artifact is checked against the mapper rather than trusted: `systemone_evidence_tests.rs`
 recomputes the filed decision, whole, and both published digests from the committed bytes, so a
 transcribed decision cannot drift from the response beside it. For the next exchange the bridge can
-write the record itself — `sts2-jev-bridge --record` prints `{provider_request, provider_response,
-decision}` as one object, so an operator publishes the bridge's own output instead of copying two
-fields by hand. The flag changes nothing about the default output, and the runtime lane refuses it,
-because that lane reads this executable's stdout as the decision itself.
+write the record itself — `sts2-jev-bridge --record` prints one object carrying `schema`,
+`provider_call`, `provider_request`, `provider_response` and `decision`, so an operator publishes the
+bridge's own output instead of copying two fields by hand. The flag changes nothing about the default
+output, and the runtime lane does not admit it, because that lane reads this executable's stdout as
+the decision itself.
 
 `unverified` for everything beyond that: no gameplay outcome, no decision-quality claim, and no
 sustained run. The offline fixtures speak plain pipes to a local script, so the suite itself remains

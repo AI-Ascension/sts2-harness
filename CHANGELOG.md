@@ -16,10 +16,11 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   bridge's output even after its numbers had been corrected (#305). The two omitted keys are filed,
   and the evidence check now compares the object whole instead of field by field, because comparing
   named fields cannot see a key the mapper emits and the record omits. `sts2-jev-bridge --record`
-  prints `{provider_request, provider_response, decision}` as one object, so the next exchange is
-  published from the bridge rather than transcribed from it. The default output is unchanged, and the
-  runtime lane refuses `--record` exactly as it already refuses `--describe`, because that lane reads
-  this executable's stdout as the decision itself. Refs #305.
+  prints one `{schema, provider_call, provider_request, provider_response, decision}` object, so the
+  next exchange is published from the bridge rather than transcribed from it. The default output is
+  unchanged, and the runtime lane does not admit `--record` any more than it admits `--describe`,
+  because that lane reads this executable's stdout as the decision itself; that refusal already
+  follows from the lane's fixed admitted shape and is now pinned by a test. Refs #305.
 
 - Consume the gateway's process-lifecycle surface through a **typed harness port**
   (`sts2-gateway-process-lifecycle-v1`, gateway pin `afb30ba9`). The harness adds three run-scoped
