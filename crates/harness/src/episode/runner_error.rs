@@ -89,13 +89,38 @@ impl std::fmt::Display for EpisodeRunnerError {
         let message = match self {
             Self::InvalidConfiguration => "episode runner configuration is invalid",
             Self::InvalidIdentity => "episode runner identity allocation failed",
-            Self::Launch(_) => "episode launch failed",
-            Self::GameInformationBinding(_) => {
-                "episode game-information binding preparation failed"
+            // The port error's code is named, the way the barrier's and the policy's already are.
+            // Only `code` is used: it is a `&'static str` chosen at compile time, so it can carry
+            // no observation, identifier or provider text, and the message stays bounded. Without
+            // it "episode observation failed" is the whole of what a failed run reports, and the
+            // reason it failed has to be guessed at.
+            Self::Launch(error) => {
+                return write!(formatter, "episode launch failed: {}", error.code());
             }
-            Self::Observe(_) => "episode observation failed",
-            Self::LegalActions(_) => "episode legal-action request failed",
-            Self::Dispatch(_) => "episode action dispatch failed",
+            Self::GameInformationBinding(error) => {
+                return write!(
+                    formatter,
+                    "episode game-information binding preparation failed: {}",
+                    error.code()
+                );
+            }
+            Self::Observe(error) => {
+                return write!(formatter, "episode observation failed: {}", error.code());
+            }
+            Self::LegalActions(error) => {
+                return write!(
+                    formatter,
+                    "episode legal-action request failed: {}",
+                    error.code()
+                );
+            }
+            Self::Dispatch(error) => {
+                return write!(
+                    formatter,
+                    "episode action dispatch failed: {}",
+                    error.code()
+                );
+            }
             Self::DispatchRecovery { operation_id, .. } => {
                 return write!(
                     formatter,
