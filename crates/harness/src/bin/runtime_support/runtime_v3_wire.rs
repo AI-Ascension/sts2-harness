@@ -197,11 +197,12 @@ pub(super) fn catalog_reobserve(value: &Value) -> bool {
     value.as_object().is_some_and(|fields| fields.len() == 3)
         && value["correlation_id"].as_str().is_some()
         && value["recovery"] == "reobserve"
-        && matches!(
-            value["error_code"].as_str(),
-            Some("stale_generation" | "host_not_configured" | "host_observation_unavailable")
-        )
+        && value["error_code"]
+            .as_str()
+            .is_some_and(catalog_recovery_code)
 }
+
+include!("runtime_v3_wire_refusal.rs");
 
 include!("runtime_v3_wire_validation.rs");
 #[path = "runtime_v3_lookup_catalog.rs"]
