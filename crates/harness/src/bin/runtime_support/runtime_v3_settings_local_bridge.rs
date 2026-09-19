@@ -9,6 +9,8 @@
 //!
 //! Each kind admits one exact shape and nothing else. `--describe` is a human-facing option that
 //! prints configuration without contacting anything, so it is never an execution argument.
+//! `--record` prints a record object that stands beside the decision rather than the decision
+//! itself, and this lane reads the executable's stdout as the decision, so it is refused here too.
 
 #[path = "../support/ollama_options.rs"]
 mod ollama_options;
@@ -46,7 +48,16 @@ fn ollama_allowed(arguments: &[String]) -> bool {
 /// bridge default would otherwise never act, and because an operator changing it should be visible
 /// in the recorded argument vector rather than hidden in a rebuild.
 fn system_one_allowed(arguments: &[String]) -> bool {
-    // Length first: a shorter vector must be refused, not indexed.
+    // The bridge's own parser decides which options exist at all, before the shape check below
+    // narrows the admitted set, so an option it grew that this lane cannot honour is refused for
+    // its own reason rather than by a length that happens to be wrong.
+    let Ok(options) = jev_options::Options::parse(arguments.iter().cloned()) else {
+        return false;
+    };
+    if options.describe || options.record {
+        return false;
+    }
+    // Length next: a shorter vector must be refused, not indexed.
     let gated = match arguments.len() {
         4 => false,
         6 => true,
@@ -58,12 +69,9 @@ fn system_one_allowed(arguments: &[String]) -> bool {
     if gated && arguments[4] != "--gate" {
         return false;
     }
-    jev_options::Options::parse(arguments.iter().cloned()).is_ok_and(|options| {
-        !options.describe
-            && options.model == arguments[1]
-            && options.transport.as_deref() == Some(arguments[3].as_str())
-            && options.gate_percent.map(|gate| gate.to_string()) == arguments.get(5).cloned()
-    })
+    options.model == arguments[1]
+        && options.transport.as_deref() == Some(arguments[3].as_str())
+        && options.gate_percent.map(|gate| gate.to_string()) == arguments.get(5).cloned()
 }
 
 #[cfg(test)]
@@ -76,6 +84,35 @@ mod tests {
             "C:/providers/systemone.exe"
         } else {
             "/opt/providers/systemone"
+        }
+    }
+
+    #[test]
+    fn the_record_shape_is_refused_for_a_lane_that_reads_the_decision() {
+        for arguments in [
+            vec!["--record"],
+            vec![
+                "--model",
+                "jev-1.13.0",
+                "--transport",
+                transport(),
+                "--record",
+            ],
+            vec![
+                "--model",
+                "jev-1.13.0",
+                "--transport",
+                transport(),
+                "--gate",
+                "35",
+                "--record",
+            ],
+        ] {
+            let arguments = arguments.into_iter().map(str::to_owned).collect::<Vec<_>>();
+            assert!(
+                !arguments_allowed(Some("typesafe-jev"), &arguments),
+                "{arguments:?} must be refused"
+            );
         }
     }
 

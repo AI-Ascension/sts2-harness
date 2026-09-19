@@ -6,6 +6,12 @@
 //! and prints exactly one terminal decision on standard output. Every refusal is fail-closed: a
 //! nonzero exit and no decision, never a guessed action.
 //!
+//! `--record` prints one object carrying the provider request, the provider response, and the
+//! decision, instead of the decision alone. The decision in that record is composed from the
+//! response in the same record, so an evidence file built from it can show the decision is a
+//! function of the response rather than a second field written down separately. The default output
+//! is unchanged.
+//!
 //! The HTTPS exchange itself is performed by an operator-owned transport executable, named by
 //! `--transport` and pinned by the operator's own digest, following the precedent
 //! `sts2-astra-bridge` set for a provider whose transport this repository does not own. This binary
@@ -24,9 +30,8 @@ use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use sts2_harness::{
-    ACTION_QUESTION, DerivedExactFacts, MAX_PRESENTED_OPTIONS, OptionSelection, SYSTEM_ONE_PATH,
-    SelectionMode, SystemOneOption, build_described_system_one_request, describe_action,
-    ollama_user_content,
+    ACTION_QUESTION, MAX_PRESENTED_OPTIONS, OptionSelection, SYSTEM_ONE_PATH, SelectionMode,
+    build_described_system_one_request,
 };
 
 /// Largest request, response, and decision this bridge handles.
@@ -44,6 +49,13 @@ const PROVIDER_HOST: &str = "api.typesafe.ai";
 /// Provider identity recorded beside a run.
 const PROVIDER: &str = "typesafe";
 
+/// Schema identifier carried by one bridge record.
+///
+/// A record is the bridge's own statement of what it asked, what came back, and what it decided;
+/// an evidence file that publishes a decision beside a response can carry this record instead of
+/// two fields transcribed by hand.
+const RECORD_SCHEMA: &str = "ascension.system-one-bridge-record.v1";
+
 /// One bounded provider exchange: a request body in, a response body out.
 ///
 /// Named so the offline tests can supply a deterministic fake in place of a network.
@@ -59,9 +71,16 @@ mod decision;
 mod framing_support;
 use framing_support::framing;
 
+#[path = "support/system_one_request.rs"]
+mod request_support;
+use request_support::{catalog, constraints, present, state_with_derived_facts};
+
 fn main() {
     let Ok(options) = options::Options::parse(std::env::args().skip(1)) else {
-        eprintln!("Usage: sts2-jev-bridge [--model MODEL] [--transport PATH] [--describe]");
+        eprintln!(
+            "Usage: sts2-jev-bridge [--model MODEL] [--transport PATH] [--gate PERCENT] \
+             [--record] [--describe]"
+        );
         std::process::exit(2);
     };
     if options.describe {
@@ -101,7 +120,7 @@ fn gate(options: &options::Options) -> f64 {
         })
 }
 
-/// Reads the request, performs one exchange, and prints one decision.
+/// Reads the request, performs one exchange, and prints one decision or one record.
 fn run(options: &options::Options) -> Result<(), Box<dyn std::error::Error>> {
     let transport = options
         .transport
@@ -111,10 +130,20 @@ fn run(options: &options::Options) -> Result<(), Box<dyn std::error::Error>> {
     std::io::stdin()
         .take((LIMIT + 1) as u64)
         .read_to_end(&mut bytes)?;
-    let decision = decide(&bytes, &options.model, gate(options), &mut |body| {
-        exchange(transport, body, TIMEOUT)
-    })?;
-    println!("{decision}");
+    let mut ask = |body: &[u8]| exchange(transport, body, TIMEOUT);
+    if options.record {
+        println!(
+            "{}",
+            record(&bytes, &options.model, gate(options), &mut ask)?
+        );
+    } else {
+        // The default output stays exactly one decision object, so an admitted invocation that did
+        // not ask for a record reads the same bytes it read before.
+        println!(
+            "{}",
+            decide(&bytes, &options.model, gate(options), &mut ask)?
+        );
+    }
     Ok(())
 }
 
@@ -123,6 +152,20 @@ fn run(options: &options::Options) -> Result<(), Box<dyn std::error::Error>> {
 /// The exchange is a parameter so the offline tests drive a deterministic fake instead of a network,
 /// a credential, and a TLS server.
 fn decide(
+    bytes: &[u8],
+    model: &str,
+    gate: f64,
+    exchange: &mut Exchange<'_>,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    Ok(record(bytes, model, gate, exchange)?["decision"].clone())
+}
+
+/// Turns one request body into one record carrying what was asked, what came back, and the decision.
+///
+/// The record exists so the decision can be shown to be a function of the response it is stored
+/// beside. `provider_call` is `false` when the bridge answered without asking, and the two provider
+/// fields are then `null` rather than a fabricated exchange.
+fn record(
     bytes: &[u8],
     model: &str,
     gate: f64,
@@ -147,10 +190,17 @@ fn decide(
         // One legal action is not a question. Asking would spend a call to be told the only thing
         // that can happen, so the bridge answers it without a provider exchange.
         return Ok(json!({
-            "decision": "action",
-            "action_id": only.action_id,
-            "rationale": "bridge-authored evidence: one legal action, chosen without a provider call",
-            "confidence": 100,
+            "schema": RECORD_SCHEMA,
+            "provider_call": false,
+            "provider_request": Value::Null,
+            "provider_response": Value::Null,
+            "decision": {
+                "decision": "action",
+                "action_id": only.action_id,
+                "rationale":
+                    "bridge-authored evidence: one legal action, chosen without a provider call",
+                "confidence": 100,
+            },
         }));
     }
     let options = present(&selection, observation, &catalog);
@@ -172,101 +222,14 @@ fn decide(
         return Err("provider response exceeds bound".into());
     }
     let response: Value = serde_json::from_slice(&response)?;
-    Ok(decision::map_decision(
-        &response,
-        ACTION_QUESTION,
-        &ids,
-        gate,
-    )?)
-}
-
-/// Builds the option set to present, each carrying a description composed from the observation.
-///
-/// Falls back to the whole catalog when the selection presented nothing usable, so a selection that
-/// cannot read this observation costs the run nothing.
-fn present(
-    selection: &OptionSelection,
-    observation: &Value,
-    catalog: &[String],
-) -> Vec<SystemOneOption> {
-    let entries = observation
-        .get("legal_actions")
-        .and_then(Value::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default();
-    let describe = |action_id: &str| -> String {
-        entries
-            .iter()
-            .find(|entry| entry.get("action_id").and_then(Value::as_str) == Some(action_id))
-            .map(|entry| describe_action(entry, observation))
-            .unwrap_or_else(|| action_id.to_owned())
-    };
-    if selection.presented.is_empty() {
-        return catalog
-            .iter()
-            .map(|id| SystemOneOption {
-                id: id.clone(),
-                description: describe(id),
-            })
-            .collect();
-    }
-    selection
-        .presented
-        .iter()
-        .map(|option| SystemOneOption {
-            id: option.action_id.clone(),
-            description: describe(&option.action_id),
-        })
-        .collect()
-}
-
-/// Renders the state, adding the facts that follow exactly from this observation.
-///
-/// The facts are derived, never fetched: incoming damage is the sum the host's own revealed intents
-/// state, and each one is omitted when the observation does not support it exactly. They are added
-/// because the arithmetic is the part a System One model is documented not to do, and the state
-/// already carries every term of it.
-fn state_with_derived_facts(
-    request: &Value,
-    observation: &Value,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let rendered = ollama_user_content(request)?;
-    let facts = DerivedExactFacts::from_observation(observation);
-    let Ok(mut value) = serde_json::from_str::<Value>(&rendered) else {
-        return Ok(rendered);
-    };
-    let Some(object) = value.as_object_mut() else {
-        return Ok(rendered);
-    };
-    object.insert(String::from("derived_exact"), serde_json::to_value(facts)?);
-    Ok(value.to_string())
-}
-
-/// Reads the host-generated action catalog from the request.
-fn catalog(request: &Value) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let ids = request["legal_action_ids"]
-        .as_array()
-        .ok_or("missing catalog")?;
-    if ids.is_empty() || ids.len() > 256 || ids.iter().any(|value| !value.is_string()) {
-        return Err("invalid catalog".into());
-    }
-    Ok(ids
-        .iter()
-        .filter_map(|value| value.as_str().map(str::to_owned))
-        .collect())
-}
-
-/// Reads the hard constraints from the request, tolerating their absence.
-fn constraints(request: &Value) -> Vec<String> {
-    request["hard_constraints"]
-        .as_array()
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(|value| value.as_str().map(str::to_owned))
-                .collect()
-        })
-        .unwrap_or_default()
+    let decision = decision::map_decision(&response, ACTION_QUESTION, &ids, gate)?;
+    Ok(json!({
+        "schema": RECORD_SCHEMA,
+        "provider_call": true,
+        "provider_request": body,
+        "provider_response": response,
+        "decision": decision,
+    }))
 }
 
 /// Runs the operator-owned transport for exactly one bounded exchange.
