@@ -408,3 +408,21 @@ they come from the flat `## Unreleased` list and carry no section of their own.
   identity, the `NotStarted` cleanup state and the live session untouched so that an operator can
   still settle it. Compatibility: the cancel command, its revision guard and its response schema are
   unchanged, and a cancel at a settled revision behaves exactly as before. Refs #94.
+
+- Renumber eight harness decision records whose numbers were each held by two different records, so
+  every `ADR NNNN` label and `NNNN-*.md` link denotes exactly one decision. The moved records and
+  every in-repo citation site were updated in the same change; no decision content changed. See
+  [docs/decisions/README.md](decisions/README.md) for the old-to-new mapping. Refs #203.
+
+- Cross-check the **inspected Exo deployment identity** against the operator pin at the runtime
+  admission boundary, so a swapped package, extension or bridge artifact fails closed instead of
+  being admitted on the operator's declaration alone. `ExoAdmissionPlan::inspected` derives the
+  advertised identity from the SHA-256 of the inspected artifact bytes, `preflight` compares that
+  identity before the capability gate (a swapped artifact is now `IdentityMismatch(axis)` rather than
+  a masked `RequiredCapability`), and a pinned axis the inspection did not bind is refused as
+  `UnboundIdentity(axis)`. The runtime seam inspects the bridge executable's bytes and deliberately
+  does not copy the operator's environment into the inspected identity, so the remaining pinned axes
+  stay unbound and the reviewed `envelope` mode still refuses before any model or game effect.
+  Compatibility: `breaking` for the refusal vocabulary and operator messages only — no wire field,
+  schema, contract version or durable record changes, and `legacy` behaviour is unchanged. See
+  [ADR 0032](decisions/0032-inspected-admission-identity.md). Refs #139.
