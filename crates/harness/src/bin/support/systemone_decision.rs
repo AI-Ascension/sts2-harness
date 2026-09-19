@@ -188,3 +188,7 @@ fn printable(value: &str) -> bool {
 #[cfg(test)]
 #[path = "systemone_decision_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "systemone_evidence_tests.rs"]
+mod evidence_tests;

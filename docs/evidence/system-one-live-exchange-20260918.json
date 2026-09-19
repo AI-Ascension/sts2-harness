@@ -1,7 +1,7 @@
 {
   "bridge_decision": {
     "decision": "reobserve",
-    "rationale": "bridge-authored evidence: chose play:card-defend-1 at p=0.56, runner-up play:card-bash-1:enemy-0 at p=0.35, confidence 0.45"
+    "rationale": "bridge-authored evidence: chose play:card-defend-1 at p=0.55, runner-up play:card-bash-1:enemy-0 at p=0.37, confidence 0.44"
   },
   "bridge_request": {
     "hard_constraints": [
@@ -72,7 +72,7 @@
   },
   "date": "2026-09-18",
   "endpoint": "https://api.typesafe.ai/v1/systemone",
-  "note": "No game was running. The observation is synthetic. No action was sent to a host.",
+  "note": "No game was running. The observation is synthetic. No action was sent to a host. The decision filed here is the one this bridge derives from the provider_response committed beside it, and systemone_evidence_tests.rs recomputes it from this file; the decision filed before 2026-09-19 belonged to a second, unarchived call.",
   "provider_request": {
     "model": "jev-latest",
     "questions": {
