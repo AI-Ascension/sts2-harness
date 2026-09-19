@@ -84,6 +84,23 @@ function New-Credential {
     [Convert]::ToBase64String($bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=')
 }
 
+function Write-TextFile {
+    <#
+      Writes text the way Set-Content does -- the text and a trailing newline -- but without a
+      byte-order mark.
+
+      Windows PowerShell 5.1 is the interpreter this lane runs under, and there `-Encoding UTF8`
+      means UTF-8 *with* a mark. The game does not accept one: an override.cfg that begins with
+      EF BB BF is not honoured, so the game resolves the shared default user directory instead of the
+      name the file sets, the directory this lane declares and the directory the game resolved
+      disagree, and the mod refuses to initialise with "live demo requires its isolated user
+      directory" (sts2-game-mod#173). Every file this lane writes for another program to read is
+      written through here, so the mark cannot come back one call at a time.
+    #>
+    param([string]$Path, [string]$Text)
+    [IO.File]::WriteAllText($Path, "$Text`r`n", (New-Object System.Text.UTF8Encoding($false)))
+}
+
 function Stop-Stale {
     <#
       taskkill writes to stderr when nothing matches, which is an error under this script's
@@ -227,7 +244,7 @@ function Initialize-IsolatedUserDir {
                 })
         }
         $settings | Add-Member -NotePropertyName 'mod_settings' -NotePropertyValue $mods -Force
-        $settings | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $settingsPath -Encoding UTF8
+        Write-TextFile $settingsPath ($settings | ConvertTo-Json -Depth 30)
         Write-Host "  answered the game's one-time prompts for $($account.Name)" -ForegroundColor Gray
     } catch {
         Write-Host "  could not seed the profile: $($_.Exception.Message)" -ForegroundColor Yellow
@@ -287,7 +304,7 @@ while ($true) {
 
     Write-Banner "episode $episode   |   $stamp"
 
-    @{
+    Write-TextFile (Join-Path $runDir 'authorization.json') (@{
         schema                  = 'ascension.jev-loop-authorization.v1'
         recorded_utc            = (Get-Date).ToUniversalTime().ToString('o')
         provider_calls          = 'authorized'
@@ -295,18 +312,19 @@ while ($true) {
         provider                = 'typesafe'
         model                   = 'jev-latest'
         confidence_gate_percent = $GatePercent
-    } | ConvertTo-Json | Set-Content (Join-Path $runDir 'authorization.json') -Encoding UTF8
+    } | ConvertTo-Json)
 
     Stop-Stale
 
     # A disposable user directory per episode, which is what the mod requires, seeded before the
     # game reads it.
     $userDir = "AIAscensionJevLoop-$stamp"
-    @"
+    $overrideText = @"
 [application]
 config/use_custom_user_dir=true
 config/custom_user_dir_name="$userDir"
-"@ | Set-Content (Join-Path $hostDir 'override.cfg') -Encoding UTF8
+"@
+    Write-TextFile (Join-Path $hostDir 'override.cfg') $overrideText
 
     $runtimeToken = New-Credential
     $gatewayToken = New-Credential
