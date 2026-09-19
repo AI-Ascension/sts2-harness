@@ -10,6 +10,14 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Consume the gateway's process-lifecycle surface through a **typed harness port**
+  (`sts2-gateway-process-lifecycle-v1`, gateway pin `afb30ba9`). The harness adds three run-scoped
+  management routes (capability read, one closed-action submission, identity-addressed
+  reconciliation), records durable intent *before* the gateway call, and reconciles a lost response
+  by operation identity instead of resubmitting it. Launch is structurally not readiness.
+  Compatibility: additive-compatible; see
+  [ADR 0055](docs/decisions/0055-harness-typed-process-lifecycle-port.md). Refs #101.
+
 - **Stop a run of confident decisions cycling at a reward.** An episode played combat well for 33
   exchanges and then went round this loop until its bound expired: take the card reward (0.63), fail
   to rank three bare identifiers, skip (0.27), be offered the same reward again. The abstention bound
