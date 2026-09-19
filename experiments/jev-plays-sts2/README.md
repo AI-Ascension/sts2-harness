@@ -134,6 +134,38 @@ mark-emitting cmdlet comes back carrying an encoding, or if any of the three fil
 through the helper. The confirmation is the next native episode: its `game.log` has to record the
 per-episode directory rather than the shared one.
 
+## The provider transport the Windows lane could not start
+
+With the mark gone the episode ran much further and then failed at the provider instead: it reached
+its main menu, recorded thirteen live generations, reconciled two settled live operations, and ended
+as `Runtime-v3 episode failed: episode policy decision was rejected: provider is unavailable`.
+Nothing in the episode says why. The reservation row reads `failure_class=outage`, the telemetry
+export reads `partial sent=0 failed=299`, and no episode in the 212 the guest holds has a
+`jev-context.jsonl`, so this lane had never recorded an exchange at all.
+
+The runtime spawns the Exo bridge with the environment cleared but for the names in
+`STS2_EXO_INHERITED_ENV_JSON`, and the bridge hands its own environment to the transport it spawns,
+so that list is the transport's whole environment. The Linux lane's transport is a Python script,
+which the shebang runs with the inherited `PATH`; this lane's transport is `systemone_transport.cmd`,
+a command interpreter that first has to *find* `powershell.exe`. The list named the credential and
+the recording path and nothing else.
+
+Spawned on the guest with exactly that cleared environment, the transport exits `9009` and prints
+`'powershell.exe' is not recognized`. With `PATH` alone it finds PowerShell and exits `-65536`
+(`0x8009001d`), `Loading managed Windows PowerShell failed`. With `PATH` and `SystemRoot` the
+exchange completes and the context record is written. The same request to the same endpoint from the
+same host authenticates and answers, so the outage was the transport never starting. The failure was
+invisible because the runtime and the bridge both spawn the child with its stderr discarded, and a
+transport that exits before it reads its request writes no record.
+
+The lane now declares `PATH` and `SystemRoot` alongside the two names it already declared. Neither
+is a credential, and neither is read by anything else the lane starts. The test
+`crates/harness/tests/jev_loop_windows_transport_environment.rs` scans the real script and fails if a
+name the transport needs is dropped, if a name it does not need is added -- the list is a clearance,
+not a convenience -- or if the declaration is repeated, since the process environment holds one
+value and an appended declaration would silently replace this one. The confirmation is the next
+native episode: a non-empty `jev-context.jsonl` and no `provider is unavailable`.
+
 ## Fullscreen on the Linux guest
 
 The reviewed launcher starts the game with a fixed `--windowed --resolution 958x699`, refuses to run

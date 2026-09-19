@@ -424,7 +424,17 @@ config/custom_user_dir_name="$userDir"
             "[""--model"",""jev-latest"",""--transport"",""$($transport -replace '\\', '\\')"",""--gate"",""$GatePercent""]"
         # Written literally: ConvertTo-Json unwraps a single-element array into a bare string, which
         # the runtime rejects as not being a JSON array.
-        $env:STS2_EXO_INHERITED_ENV_JSON = '["TYPESAFE_API_KEY","JEV_CONTEXT_LOG"]'
+        #
+        # PATH and SystemRoot are on the list for the transport rather than for the credential or
+        # the recording. The runtime spawns the bridge with the environment cleared but for this
+        # list, and the bridge hands its own environment to the transport it spawns, so this list is
+        # the transport's whole environment. Here the transport is a .cmd that runs Windows
+        # PowerShell, and without PATH the command interpreter cannot find powershell.exe at all
+        # (exit 9009); with PATH but without SystemRoot it finds it and the interpreter cannot load
+        # its own managed assemblies (0x8009001d). Both were measured on the guest. Neither is a
+        # credential, and neither is read by anything else this lane starts.
+        $env:STS2_EXO_INHERITED_ENV_JSON =
+            '["TYPESAFE_API_KEY","JEV_CONTEXT_LOG","PATH","SystemRoot"]'
         $env:TYPESAFE_API_KEY = $apiKey
         # Every exchange with the provider is recorded here: the state, the instructions, every
         # option, and what came back. Read it with jev-context.py.

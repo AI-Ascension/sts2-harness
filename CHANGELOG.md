@@ -10,6 +10,22 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Give the Windows lane's provider transport the environment it needs to start.** The runtime
+  spawns the Exo bridge with the environment cleared but for `STS2_EXO_INHERITED_ENV_JSON`, and the
+  bridge hands its own environment to the transport it spawns, so that list is the transport's whole
+  environment. On this lane the transport is a `.cmd` that runs Windows PowerShell, and the list
+  named only the credential and the recording path. Without `PATH` the command interpreter cannot
+  resolve `powershell.exe` at all and the transport exits 9009; with `PATH` but without `SystemRoot`
+  it resolves the interpreter and the interpreter cannot load its own managed assemblies
+  (`0x8009001d`). Both were measured on the guest, where the same request to the same endpoint from
+  the same host authenticated and answered, so the episode that ended as `provider is unavailable`
+  had a transport that never started rather than a provider that was down. The lane now declares
+  `PATH` and `SystemRoot` alongside the two names it already declared. The test
+  `crates/harness/tests/jev_loop_windows_transport_environment.rs` scans the real script and fails if
+  a name the transport needs is dropped, a name it does not need is added, or the list is declared
+  twice, which is how a second declaration would silently replace the first. Refs #173. Partial
+  progress on #79 only.
+
 - **Write the Windows lane's shared files without a byte-order mark.** Windows PowerShell 5.1
   spells `-Encoding UTF8` as UTF-8 *with* a mark, and the lane wrote `override.cfg` that way. The
   game does not honour a marked override, so it resolved the shared default user directory, the mod
@@ -506,23 +522,5 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   the envelope still refuses every deployment today, now naming `extension_digest` as the first
   unbound axis. Compatibility: `breaking` for operator configuration — the locator is required and a
   deployment without it fails closed with `STS2_EXO_PACKAGE_PATH is required`; no wire field,
-  schema, contract version or durable record changes, and `legacy` behaviour is unchanged. See
-  [ADR 0032](docs/decisions/0032-inspected-admission-identity.md). Refs #139.
-
-- Renumber eight harness decision records whose numbers were each held by two different records, so
-  every `ADR NNNN` label and `NNNN-*.md` link denotes exactly one decision. The moved records and
-  every in-repo citation site were updated in the same change; no decision content changed. See
-  [docs/decisions/README.md](docs/decisions/README.md) for the old-to-new mapping. Refs #203.
-
-- Cross-check the **inspected Exo deployment identity** against the operator pin at the runtime
-  admission boundary, so a swapped package, extension or bridge artifact fails closed instead of
-  being admitted on the operator's declaration alone. `ExoAdmissionPlan::inspected` derives the
-  advertised identity from the SHA-256 of the inspected artifact bytes, `preflight` compares that
-  identity before the capability gate (a swapped artifact is now `IdentityMismatch(axis)` rather than
-  a masked `RequiredCapability`), and a pinned axis the inspection did not bind is refused as
-  `UnboundIdentity(axis)`. The runtime seam inspects the bridge executable's bytes and deliberately
-  does not copy the operator's environment into the inspected identity, so the remaining pinned axes
-  stay unbound and the reviewed `envelope` mode still refuses before any model or game effect.
-  Compatibility: `breaking` for the refusal vocabulary and operator messages only — no wire field,
   schema, contract version or durable record changes, and `legacy` behaviour is unchanged. See
   [ADR 0032](docs/decisions/0032-inspected-admission-identity.md). Refs #139.
