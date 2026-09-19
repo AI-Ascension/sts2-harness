@@ -33,13 +33,25 @@ use super::inference_profile_catalog_fixtures::*;
 pub(crate) struct CatalogCapabilityDouble {
     calls: Arc<AtomicUsize>,
     catalogs: Vec<InferenceProfileCatalog>,
+    advertised: Vec<String>,
 }
 
 impl CatalogCapabilityDouble {
     pub(crate) fn serving(catalogs: Vec<InferenceProfileCatalog>) -> Arc<Self> {
+        Self::advertising(catalogs, Vec::new())
+    }
+
+    /// Serves `catalogs` from a target whose descriptor advertises
+    /// `advertised` inference profiles, so a test can submit a target-level
+    /// selection the target list actually admits.
+    pub(crate) fn advertising(
+        catalogs: Vec<InferenceProfileCatalog>,
+        advertised: Vec<String>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             calls: Arc::new(AtomicUsize::new(0)),
             catalogs,
+            advertised,
         })
     }
 
@@ -58,7 +70,7 @@ impl CapabilityPort for CatalogCapabilityDouble {
         &self,
         _actor: &AuthContext,
     ) -> Result<TargetCatalogResponse, ManagementError> {
-        Ok(target_catalog())
+        Ok(target_catalog_advertising(&self.advertised))
     }
 
     fn inference_profile_catalog(
@@ -269,8 +281,10 @@ pub(crate) fn admission(definition_digest: &str) -> RunAdmission {
 }
 
 /// The single live fake target every admission in this suite is scoped to. It
-/// names no real instance and reaches no host.
-pub(crate) fn target_descriptor() -> TargetDescriptor {
+/// names no real instance and reaches no host, and it advertises
+/// `inference_profiles` the way the served runtime advertises its one reviewed
+/// provider-session adapter.
+pub(crate) fn target_descriptor_advertising(inference_profiles: Vec<String>) -> TargetDescriptor {
     TargetDescriptor {
         instance_id: "instance-1".to_owned(),
         execution_profiles: vec!["live.workflow.v1".to_owned()],
@@ -282,19 +296,24 @@ pub(crate) fn target_descriptor() -> TargetDescriptor {
         capabilities: vec!["workflow.live".to_owned()],
         game_profiles: vec!["sts2-live-v1".to_owned()],
         save_profiles: Vec::new(),
-        inference_profiles: Vec::new(),
+        inference_profiles,
     }
 }
 
 pub(crate) fn target_catalog() -> TargetCatalogResponse {
+    target_catalog_advertising(&[])
+}
+
+pub(crate) fn target_catalog_advertising(inference_profiles: &[String]) -> TargetCatalogResponse {
     TargetCatalogResponse {
         schema_version: TARGET_CATALOG_SCHEMA_VERSION.to_owned(),
         catalog_revision: CATALOG_REVISION.to_owned(),
-        targets: vec![target_descriptor()],
+        targets: vec![target_descriptor_advertising(inference_profiles.to_vec())],
     }
 }
 
-pub(crate) fn target() -> RunTargetConfiguration {
+/// The same target, carrying the consumer's target-level adapter selection.
+pub(crate) fn target_selecting(selection: Option<&str>) -> RunTargetConfiguration {
     RunTargetConfiguration {
         instance_id: "instance-1".to_owned(),
         execution_profile: "live.workflow.v1".to_owned(),
@@ -304,19 +323,31 @@ pub(crate) fn target() -> RunTargetConfiguration {
         capability_revision: "live.capabilities.v1".to_owned(),
         game_profile: "sts2-live-v1".to_owned(),
         save_profile: None,
-        inference_profile: None,
+        inference_profile: selection.map(str::to_owned),
         context_capability: None,
         provider_capability: None,
     }
 }
 
 pub(crate) fn binding(definition: &Value, request_id: &str) -> TargetAdmissionBinding {
+    binding_selecting(definition, request_id, None)
+}
+
+pub(crate) fn binding_selecting(
+    definition: &Value,
+    request_id: &str,
+    selection: Option<&str>,
+) -> TargetAdmissionBinding {
     TargetAdmissionBinding {
         schema_version: "ascension.workflow-admission/v1".to_owned(),
         request_id: request_id.to_owned(),
         workflow_definition_digest: digest_value(definition).expect("definition digest"),
-        target: target(),
-        descriptor_digest: target_descriptor().digest().expect("descriptor digest"),
+        target: target_selecting(selection),
+        descriptor_digest: target_descriptor_advertising(
+            selection.map_or_else(Vec::new, |value| vec![value.to_owned()]),
+        )
+        .digest()
+        .expect("descriptor digest"),
         catalog_revision: CATALOG_REVISION.to_owned(),
     }
 }
@@ -335,7 +366,33 @@ pub(crate) fn fixture(
     definition: &Value,
     request_id: &str,
 ) -> Result<Fixture, Box<dyn std::error::Error>> {
-    let admission = binding(definition, request_id);
+    fixture_selecting(capability, definition, request_id, None)
+}
+
+/// The same harness for a request that carries a target-level inference-profile
+/// selection, with a target that advertises exactly that selection — the shape
+/// the served runtime publishes for its one reviewed provider-session adapter.
+pub(crate) fn fixture_with_selection(
+    catalogs: Vec<InferenceProfileCatalog>,
+    definition: &Value,
+    request_id: &str,
+    selection: &str,
+) -> Result<Fixture, Box<dyn std::error::Error>> {
+    fixture_selecting(
+        CatalogCapabilityDouble::advertising(catalogs, vec![selection.to_owned()]),
+        definition,
+        request_id,
+        Some(selection),
+    )
+}
+
+pub(crate) fn fixture_selecting(
+    capability: Arc<dyn CapabilityPort>,
+    definition: &Value,
+    request_id: &str,
+    selection: Option<&str>,
+) -> Result<Fixture, Box<dyn std::error::Error>> {
+    let admission = binding_selecting(definition, request_id, selection);
     let request = RunRequest {
         schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
         request_id: request_id.to_owned(),

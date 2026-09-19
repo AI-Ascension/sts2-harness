@@ -30,6 +30,27 @@ pub const INFERENCE_PROFILE_BINDINGS_SCHEMA_VERSION: &str =
 /// `RunSnapshot.admission.target.inference_profile`.
 pub const INFERENCE_PROFILE_PROVENANCE_PREFIX: &str = "inference-profiles.v1.";
 
+/// True when `value` is exactly a provenance reference produced by
+/// `InferenceProfileBindingSet::reference`: the versioned prefix followed by
+/// one lowercase SHA-256 digest.
+///
+/// The exact shape decides, never a bare prefix match. `validate_identifier`
+/// accepts `.`, so a consumer target selection may legitimately begin with the
+/// prefix; only a value that *is* a recorded reference is exempt from the
+/// target's inference-profile list. A near miss stays a selection and is
+/// admitted or refused as one.
+#[must_use]
+pub fn is_provenance_reference(value: &str) -> bool {
+    value
+        .strip_prefix(INFERENCE_PROFILE_PROVENANCE_PREFIX)
+        .is_some_and(|digest| {
+            digest.len() == 64
+                && digest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+}
+
 /// Authoritative, actor-scoped catalog supplied by the owner that serves the
 /// provider. Only bounded metadata crosses this port.
 pub trait LiveInferenceProfileCatalogPort: Send + Sync {

@@ -13,7 +13,7 @@ use crate::management::contract::{
     ExecutionMode, RunRequest, TargetAdmissionBinding, TargetAvailability, TargetDescriptor,
 };
 use crate::management::inference_profile_binding::resolve_definition;
-use crate::management::inference_profile_catalog::INFERENCE_PROFILE_PROVENANCE_PREFIX;
+use crate::management::inference_profile_catalog::is_provenance_reference;
 use crate::management::service::ManagementError;
 
 pub(super) fn validate_live_admission(
@@ -122,7 +122,13 @@ pub(super) fn validate_live_inference_profiles(
         )
     })?;
     let parsed = super::super::super::workflow_ports::parse_definition(definition)?;
-    let resolved = resolve_definition(&catalog, &parsed, &binding.target)?;
+    // The durable admission holds this fence's own provenance reference in
+    // `inference_profile`, not the consumer's selection, so no selection is
+    // re-checked here. The adapter axis stays covered: every sealed binding
+    // records the adapter it resolved to, admission already refused any binding
+    // whose adapter differed from the selection, and both fences seal the same
+    // content, so this comparison is exact.
+    let resolved = resolve_definition(&catalog, &parsed, None)?;
     if binding.target.inference_profile.as_deref() != Some(resolved.reference().as_str()) {
         return Err(ManagementError::conflict(
             "inference_profile_provenance_mismatch",
@@ -216,10 +222,12 @@ fn validate_descriptor(
             "requested save profile is not available on the target",
         ));
     }
-    // A provenance reference records the resolved inference bindings; it is
-    // checked by `validate_live_inference_profiles`, not the target list.
+    // A recorded provenance reference is checked by
+    // `validate_live_inference_profiles`, not the target list. Only the exact
+    // reference shape is exempt: a consumer selection that merely begins with
+    // the provenance prefix stays subject to the target's profile list.
     if let Some(profile) = binding.target.inference_profile.as_deref()
-        && !profile.starts_with(INFERENCE_PROFILE_PROVENANCE_PREFIX)
+        && !is_provenance_reference(profile)
         && !descriptor
             .inference_profiles
             .iter()

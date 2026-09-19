@@ -55,7 +55,16 @@ pub(super) fn admit_inference_profiles(
         )
     })?;
     let parsed = super::super::workflow_ports::parse_definition(definition)?;
-    resolve_definition(&catalog, &parsed, &binding.target).map(Some)
+    // This is the admission fence, and the target still carries the consumer's
+    // selection, so it is passed through unchanged and checked against every
+    // resolved adapter. A selection that happens to look like a recorded
+    // reference is checked as a selection rather than dropped.
+    resolve_definition(
+        &catalog,
+        &parsed,
+        binding.target.inference_profile.as_deref(),
+    )
+    .map(Some)
 }
 
 /// Writes the resolved provenance into the admission the run record keeps.

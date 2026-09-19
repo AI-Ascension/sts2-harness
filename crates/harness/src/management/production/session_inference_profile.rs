@@ -22,19 +22,18 @@ pub(crate) fn admit_inference_profiles(
     let Some(port) = port else {
         return Ok(None);
     };
-    let target = request
-        .admission
-        .as_ref()
-        .map(|admission| &admission.target)
-        .ok_or_else(|| {
-            ManagementError::conflict(
-                "target_admission_required",
-                "served inference-profile admission requires an exact target admission binding",
-            )
-        })?;
+    if request.admission.is_none() {
+        return Err(ManagementError::conflict(
+            "target_admission_required",
+            "served inference-profile admission requires an exact target admission binding",
+        ));
+    }
     let catalog = port.inference_profile_catalog(actor)?;
     catalog.validate()?;
-    resolve_definition(&catalog, definition, target).map(Some)
+    // Admission already checked this target's selection against every resolved
+    // adapter; a bound admission carries the recorded provenance reference here,
+    // which is not a selection. Re-resolving it as one would refuse the run.
+    resolve_definition(&catalog, definition, None).map(Some)
 }
 
 impl ProductionLiveWorkflowSession {

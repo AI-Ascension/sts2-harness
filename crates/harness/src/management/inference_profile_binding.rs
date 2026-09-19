@@ -9,9 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::contract::{
-    InferenceProfileCatalog, InferenceProfileDescriptor, RunTargetConfiguration,
-};
+use super::contract::{InferenceProfileCatalog, InferenceProfileDescriptor};
 use super::inference_profile_catalog::{
     INFERENCE_PROFILE_BINDINGS_SCHEMA_VERSION, INFERENCE_PROFILE_PROVENANCE_PREFIX,
 };
@@ -42,6 +40,10 @@ pub struct InferenceProfileBindingSet {
     pub schema_version: String,
     pub catalog_digest: String,
     /// The target-level adapter the consumer selected at preflight, if any.
+    ///
+    /// Informational, and deliberately not sealed: the selection is enforced
+    /// against every binding's `adapter` before this set exists, so each binding
+    /// already carries it. See `SealedBindings`.
     pub target_inference_profile: Option<String>,
     pub bindings: Vec<InferenceProfileBinding>,
     pub digest: String,
@@ -55,19 +57,34 @@ impl InferenceProfileBindingSet {
     }
 }
 
+/// The content a binding set seals: every resolved revision binding, and the
+/// catalog revision they were resolved from.
+///
+/// The target-level selection is excluded on purpose. It is checked against
+/// every binding's adapter before this set exists, so sealing it adds no
+/// information — and it would make the execution-side fence unreproducible,
+/// because that fence reads the durable admission, where the same field holds
+/// this set's own reference rather than the consumer's selection.
+#[derive(Serialize)]
+struct SealedBindings<'a> {
+    schema_version: &'a str,
+    catalog_digest: &'a str,
+    bindings: &'a [InferenceProfileBinding],
+}
+
 /// Resolves every decide/planner node of `definition` against `catalog`.
+///
+/// `selection` is the consumer's target-level adapter selection exactly as
+/// submitted, or `None` for a fence that re-resolves a recorded admission and
+/// must not treat the recorded provenance reference as a selection. Each call
+/// site states which of the two it is: a resolution that inferred it from the
+/// target could not tell them apart, and would silently drop a legitimate
+/// selection that begins with the provenance prefix.
 pub fn resolve_definition(
     catalog: &InferenceProfileCatalog,
     definition: &WorkflowDefinition,
-    target: &RunTargetConfiguration,
+    selection: Option<&str>,
 ) -> Result<InferenceProfileBindingSet, ManagementError> {
-    // A recorded provenance reference is the output of a previous resolution,
-    // not a consumer's target-level selection; the second fence re-resolves
-    // from the same inputs the first one used.
-    let selection = target
-        .inference_profile
-        .as_deref()
-        .filter(|value| !value.starts_with(INFERENCE_PROFILE_PROVENANCE_PREFIX));
     let mut bindings = Vec::new();
     for graph in &definition.graphs {
         for node in &graph.nodes {
@@ -99,11 +116,21 @@ pub fn resolve_definition(
         bindings,
         digest: String::new(),
     };
-    let bytes = serde_json::to_vec(&set).map_err(|error| {
+    set.digest = seal(&set)?;
+    Ok(set)
+}
+
+/// Seals `set` by hashing its sealed content.
+fn seal(set: &InferenceProfileBindingSet) -> Result<String, ManagementError> {
+    let sealed = SealedBindings {
+        schema_version: &set.schema_version,
+        catalog_digest: &set.catalog_digest,
+        bindings: &set.bindings,
+    };
+    let bytes = serde_json::to_vec(&sealed).map_err(|error| {
         ManagementError::invalid("inference_profile_bindings_encode", error.to_string())
     })?;
-    set.digest = sha256_hex(bytes);
-    Ok(set)
+    Ok(sha256_hex(bytes))
 }
 
 /// `(node_kind, profile reference, context reference)` for inference nodes.

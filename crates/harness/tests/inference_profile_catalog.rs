@@ -86,7 +86,7 @@ fn two_node_bindings_bind_two_distinct_revisions() -> Result<(), Box<dyn std::er
     let definition: WorkflowDefinition = decode_strict(&serde_json::to_vec(
         &two_node_definition("decision.synthetic.v1", "planner.synthetic.v1"),
     )?)?;
-    let resolved = sts2_harness::management::resolve_definition(&catalog, &definition, &target())?;
+    let resolved = sts2_harness::management::resolve_definition(&catalog, &definition, None)?;
     assert_eq!(resolved.bindings.len(), 2);
     assert_eq!(resolved.bindings[0].profile_id, "decision.synthetic.v1");
     assert_eq!(resolved.bindings[0].node_kind, "decide");
@@ -288,7 +288,7 @@ fn synthetic_fixture_resolves_against_the_synthetic_catalog()
     let catalog = sts2_harness::management::synthetic_inference_profile_catalog()?;
     let definition: WorkflowDefinition = decode_strict(WORKFLOW_DEFINITION)
         .map_err(|error| std::io::Error::other(error.to_string()))?;
-    let resolved = sts2_harness::management::resolve_definition(&catalog, &definition, &target())?;
+    let resolved = sts2_harness::management::resolve_definition(&catalog, &definition, None)?;
     assert_eq!(resolved.bindings.len(), 1);
     assert_eq!(resolved.bindings[0].profile_id, "decision.synthetic.v1");
     assert_eq!(resolved.bindings[0].requested_model, "synthetic.model.v1");

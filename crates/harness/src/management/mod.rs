@@ -19,6 +19,7 @@ mod inference_profile_catalog;
 pub use inference_profile_catalog::{
     INFERENCE_PROFILE_BINDINGS_SCHEMA_VERSION, INFERENCE_PROFILE_PROVENANCE_PREFIX,
     InferenceProfilePin, InferenceProfileRef, LiveInferenceProfileCatalogPort,
+    is_provenance_reference,
 };
 mod live_workflow;
 mod provider_policy;
