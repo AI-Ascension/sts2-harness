@@ -10,6 +10,19 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Report why a provider transport did not start, instead of calling it an outage.** The transport
+  spawned the bridge with the child's standard error sent to the null device, so a bridge that could
+  not start and a provider that could not be reached arrived as the same `Unavailable`, the same
+  `transport_unavailable` capture reason and a provider reservation whose failure class was `outage`.
+  The bridge that produced that class here exits `9009` or `0x8009001d` before it reads its request
+  and says why on standard error, which was the one channel naming the cause and the one discarded.
+  That stream is now piped, and a failed exchange writes one operator line to the harness's own
+  standard error, which the runtime already collects as `harness.err.log`: the exit status and a
+  bounded, escaped tail of the child's message. Nothing free-form enters a record, an error value, a
+  wire shape or the episode vocabulary, and a completed exchange reports nothing. Compatibility: a
+  bridge that writes more standard error than the pipe holds now waits on that pipe rather than the
+  null device, bounded by the exchange's deadline. Refs #348. Partial progress on #79 only.
+
 - **Stop the Windows transport marking its exchange record.** `systemone_transport.ps1` appends to
   the file `JEV_CONTEXT_LOG` names with `[Text.Encoding]::UTF8`, which is a `UTF8Encoding` with its
   identifier turned on, and `AppendAllText` writes that preamble when it creates the file -- so the
@@ -174,30 +187,6 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   invocation would use. Compatibility: additive; the existing four-element form and the default gate
   are unchanged. Refs #308.
 
-- Make the harness library **compile for Windows** again, and add a lane that keeps it that way.
-  `exo_lifecycle/process_effect.rs` guarded one unix-only call and then used `rustix::process` —
-  whose `process` module is unix-only — unconditionally for the child's identity and for killing its
-  process group, so every Windows target failed with four `E0433`s and no binary in this workspace
-  could be built for Windows. Reaping moves to `exo_lifecycle/process_reap.rs`, which states the
-  platform difference instead of hiding it: unix signals the child's whole process group as before,
-  and Windows terminates the child itself, which does not reach a descendant the transport spawned.
-  That difference is recorded in `docs/COMPATIBILITY.md`; closing it means attaching the child to a
-  job object at spawn, which is a change to the spawn path rather than to reaping. Two Windows-only
-  warnings in `provider_session/state_store.rs` are resolved at the same time: the `Read` import
-  moves into the unix-only reader that needs it, and the mode-narrowing helper now says what Windows
-  does instead of leaving its parameter dead. A check-only `x86_64-pc-windows-gnu` job builds the
-  workspace and the System One bridge, so a unix-only call cannot reach the library unnoticed again;
-  it runs no tests on Windows and no behavioural claim about Windows follows from it. Compatibility:
-  no change on Linux; Windows moves from not compiling to compiling. Refs #301.
-
-- Add the **`sts2-jev-bridge` executable**, which asks one typed question of a System One provider
-  and returns one terminal decision. It reads a bounded decision request on standard input, builds
-  the request from the host-generated catalog, runs one bounded exchange, maps the answer, and prints
-  exactly one decision. Every refusal is fail-closed — a nonzero exit and nothing on standard output
-  — for an oversized request, an absent or malformed catalog, a transport failure or nonzero exit, an
-  unreadable or oversized reply, an answer of the wrong type, and a choice outside the presented
-  options. `--describe` prints the requested configuration without reading input or starting a
-  process, and reports requested configuration rather than availability.
   The HTTPS exchange is performed by an operator-owned transport executable named by `--transport`,
   following the precedent `sts2-astra-bridge` set; request construction, bounds, catalog membership,
   the confidence gate and the decision shape stay inside the digest-pinned binary, and the credential
