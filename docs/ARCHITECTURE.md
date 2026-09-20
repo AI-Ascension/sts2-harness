@@ -93,6 +93,9 @@ answers bounded pages and causal explanations only through the harness-owned rea
 carries the role-tagged ends the host named — an actor and, where the kind acts on one, a target — so
 a filter by entity cannot collapse a source into a target, and each kind states the actor, target,
 quantity or content reference it must carry rather than admitting an absent detail as a real one.
+The history is written out as one document and read back only by re-deriving those same rules, so a
+run's history survives a restart of its owner and a document that could not have been written is
+refused rather than loaded.
 
 ## Security and data boundaries
 

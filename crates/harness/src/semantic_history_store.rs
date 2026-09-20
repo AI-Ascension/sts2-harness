@@ -11,6 +11,8 @@ use super::{
 };
 use std::collections::BTreeMap;
 
+#[path = "semantic_history_store_persistence.rs"]
+mod persistence;
 #[path = "semantic_history_store_retention.rs"]
 mod retention;
 
@@ -41,6 +43,7 @@ pub enum SemanticHistoryRetention {
 /// rewritten into a different event. Re-appending the same identity with identical content replays,
 /// and re-appending it with different content is refused as a conflict rather than accepted as a
 /// correction, because a history that can be edited in place cannot be trusted to explain a run.
+#[derive(Debug)]
 pub struct SemanticHistoryStore {
     binding: SemanticHistoryBinding,
     lineage: Vec<SemanticHistoryLineage>,
@@ -48,6 +51,7 @@ pub struct SemanticHistoryStore {
     window: SemanticHistoryCaptureWindow,
 }
 
+#[derive(Debug)]
 struct BranchHistory {
     events: Vec<SemanticHistoryEvent>,
     by_id: BTreeMap<String, usize>,
@@ -84,6 +88,23 @@ impl SemanticHistoryStore {
     #[must_use]
     pub fn binding(&self) -> &SemanticHistoryBinding {
         &self.binding
+    }
+
+    /// Encodes this whole history as one document.
+    ///
+    /// Everything the store owns travels together — the owner scope, the branch lineage, the capture
+    /// window and every stored event — because a document that carried only the events could be
+    /// restored against a different scope or window and would then explain a run it never saw.
+    pub fn encode(&self) -> Result<Vec<u8>, Error> {
+        persistence::encode(self)
+    }
+
+    /// Restores a history from one document, re-validating every record as an append would.
+    ///
+    /// A document this boundary could not have written is refused rather than loaded, so a restart
+    /// either continues the same history or reports that it cannot.
+    pub fn restore(bytes: &[u8]) -> Result<Self, Error> {
+        persistence::restore(bytes)
     }
 
     /// The capture window, including every declared gap.
@@ -203,7 +224,7 @@ impl SemanticHistoryStore {
                 return Err(Error::Coverage);
             }
         }
-        let digest = self.digest_of(&input, &causal_parent)?;
+        let digest = event_digest(&input, &causal_parent)?;
         let branch = self.branches.get_mut(branch_id).ok_or(Error::Branch)?;
         if let Some(index) = branch.by_id.get(&input.event_id).copied() {
             let existing = &branch.events[index];
@@ -254,16 +275,16 @@ impl SemanticHistoryStore {
         branch.events.push(event);
         Ok(SemanticHistoryAppend::Recorded)
     }
+}
 
-    fn digest_of(
-        &self,
-        input: &SemanticHistoryEventInput,
-        causal_parent: &SemanticHistoryCausalParent,
-    ) -> Result<String, Error> {
-        let bytes = serde_json::to_vec(&(input, causal_parent)).map_err(|_| Error::Corrupt)?;
-        if bytes.len() > MAX_HISTORY_EVENT_BYTES {
-            return Err(Error::Bounds);
-        }
-        Ok(history_digest(&bytes))
+/// The digest of one event's content, used to detect a conflicting re-append.
+pub(super) fn event_digest(
+    input: &SemanticHistoryEventInput,
+    causal_parent: &SemanticHistoryCausalParent,
+) -> Result<String, Error> {
+    let bytes = serde_json::to_vec(&(input, causal_parent)).map_err(|_| Error::Corrupt)?;
+    if bytes.len() > MAX_HISTORY_EVENT_BYTES {
+        return Err(Error::Bounds);
     }
+    Ok(history_digest(&bytes))
 }

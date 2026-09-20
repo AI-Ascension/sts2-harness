@@ -75,6 +75,19 @@ representational, not decorative.
    read as "there was none", and a target or a cause the kind does not act on is
    refused for the same reason. Episode travels as the bounded number it is, not
    as an identity to be compared as text.
+7. **A history survives the restart it claims to survive, and is restored as a
+   validation rather than a cast.** One document carries the owner scope, the
+   capture window, the branch lineage and every recorded event. Restoration
+   re-derives the rules the append path applies to each record — its schema and
+   branch, the shape of its kind's detail, the epoch it claims, where it sits in
+   the capture window, its parent, and its own recomputed digest — and refuses
+   the whole document when any of them does not hold, so a truncated or edited
+   document can never introduce an event the boundary would have rejected, a
+   renumbered sequence, a closed gap or a causal link that never held. The
+   lineage is restored under the same rule: every edge names a branch and every
+   branch has exactly one edge, exactly one branch is the root, and no ancestry
+   is deeper than the bound. What is restored is the history the writer had, or
+   no history at all.
 
 ## Consequences
 
@@ -94,7 +107,9 @@ representational, not decorative.
   for a complete one, and a traversal refuses a cycle rather than looping.
 - **This establishes the component contract only.** It does not prove that the
   host emits the vocabulary, that a capture ran, or that a query answered over a
-  live run.
+  live run. The restart above is a restart of this store, written out and read
+  back through its own bytes; a capture that reloads and rejoins through the
+  game-mod port is a separate gate.
 
 ## Verification
 
@@ -102,7 +117,7 @@ representational, not decorative.
 `semantic_history_sequence.rs`, `semantic_history_causal.rs`,
 `semantic_history_validation.rs`, `semantic_history_values.rs`,
 `semantic_history_readonly.rs`, `semantic_history_subjects.rs` and
-`semantic_history_page.rs` cover the decisions above deterministically, with no
+`semantic_history_page.rs` cover decisions 1 to 6 deterministically, with no
 socket, process, clock or live game:
 strict sequencing and declared jumps, gaps that stay declared, the stated/absent
 parent rule and its same-branch, same-epoch, strictly-preceding requirements, the
@@ -122,6 +137,25 @@ gap-detail refusal, the conflict-on-different-content rule, the retention
 redaction, the per-read epoch re-check, the declared-gap refusal and the
 undeclared-jump refusal each fails exactly its named test and nothing else, and
 the file is restored byte-identical afterwards.
+
+`crates/harness/tests/semantic_history_restart.rs`,
+`semantic_history_restart_records.rs`, `semantic_history_restart_document.rs`
+and `semantic_history_restart_lineage.rs` cover decision 7 the same way. The
+restored history serves the same records in the same order, still explains a
+stated chain and answers the same bounded query; a re-appended record replays
+without writing a second event while a changed rejoin is a conflict; an epoch
+advance that restarts host sequencing survives the restart on both a branch that
+has already recorded in the new epoch and one that has not; a declared gap
+travels with the history and a fork keeps its own records rather than inheriting
+its parent's. Each refusal is falsified by mutation as well: skipping the
+document's schema check, the owner-scope or window re-validation, the branch
+identity check, the record's own schema and branch check, the per-record input
+validation, the imported-parent refusal, the epoch, before-capture and coverage
+checks, the duplicate-identity check, the sequencing and declared-jump rules,
+the stated-parent presence, precedence and epoch rules, the digest comparison,
+the end-of-branch sequencing expectation, and the lineage identity, branch
+existence, epoch, single-root, bijection and depth rules fails exactly its named
+test and nothing else, and the file is restored byte-identical afterwards.
 
 These tests do not execute the game-mod producer, capture a native run, or answer
 an end-to-end query over a controlled run. Those remain separate gates, and

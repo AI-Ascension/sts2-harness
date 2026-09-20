@@ -7,8 +7,8 @@
 use sts2_harness::semantic_history::{
     SemanticHistoryAppend, SemanticHistoryBinding, SemanticHistoryCaptureWindow,
     SemanticHistoryCausalParent, SemanticHistoryCoverage, SemanticHistoryCoverageInterval,
-    SemanticHistoryCoverageStatus, SemanticHistoryEventInput, SemanticHistoryKind,
-    SemanticHistoryNamespace, SemanticHistoryOrigin, SemanticHistoryReference,
+    SemanticHistoryCoverageStatus, SemanticHistoryError, SemanticHistoryEventInput,
+    SemanticHistoryKind, SemanticHistoryNamespace, SemanticHistoryOrigin, SemanticHistoryReference,
     SemanticHistoryStore, SemanticHistorySubject, SemanticHistorySubjectRole, SemanticHistoryValue,
 };
 
@@ -222,4 +222,19 @@ pub fn store_with_events(count: u64) -> SemanticHistoryStore {
         );
     }
     store
+}
+
+/// The encoded document, as a mutable value so one field can be tampered with deliberately.
+pub fn document(store: &SemanticHistoryStore) -> serde_json::Value {
+    serde_json::from_slice(&store.encode().expect("encode")).expect("document")
+}
+
+/// Restores one document, reporting the refusal instead of panicking.
+pub fn restore(document: &serde_json::Value) -> Result<SemanticHistoryStore, SemanticHistoryError> {
+    SemanticHistoryStore::restore(&serde_json::to_vec(document).expect("bytes"))
+}
+
+/// Restores one document the boundary must refuse, and returns the reason.
+pub fn refused(document: &serde_json::Value) -> SemanticHistoryError {
+    restore(document).expect_err("the document is refused")
 }

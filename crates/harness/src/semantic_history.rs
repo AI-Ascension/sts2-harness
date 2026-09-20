@@ -23,7 +23,9 @@
 //!   and precede its child.
 //! - Appends are idempotent across restart, replay and rejoin: the same event identity with the same
 //!   content replays the recorded outcome and writes nothing, and the same identity with different
-//!   content is a conflict rather than a second event.
+//!   content is a conflict rather than a second event. Restart is served by encoding the whole
+//!   owner scope to one document and restoring it through the same validation an append goes
+//!   through, so a document that could not have been written is refused rather than loaded.
 //! - Retention and privacy are applied by redaction, never by inventing a value: a redacted payload
 //!   keeps the event, its coverage and its causal link, and reports the value as unavailable.
 //! - The store is reachable only through the harness-owned port. A request that names storage
