@@ -28,7 +28,7 @@ mod checkpoint_capability;
 mod checkpoint_projection;
 mod checkpoint_session;
 mod checkpoint_verify;
-mod context_capture;
+pub mod context_capture;
 pub use catalog_identity::{
     CatalogError, CatalogIdentity, MAX_CATALOG_SCHEMA_BYTES, RAW_CATALOG_PREFIX, RawCatalogDigest,
     SEMANTIC_CATALOG_PREFIX, SemanticCatalogDigest,
