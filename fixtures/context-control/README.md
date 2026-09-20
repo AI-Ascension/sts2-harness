@@ -41,6 +41,10 @@ global maximum and one over for each advertised limit. Negative `max_notes` fail
 decoding; zero is a valid note ceiling. Other zero ceilings and all one-over values fail the
 producer limit validator. `descriptor_result` describes descriptor validation only. The fixture
 does not encode policy-schema validity, requested counts, or selected-profile execution.
+Because this fixture pins its historical contract-origin revision, its vectors cover the five
+numeric descriptor fields as they were then; the optional `output_reserve_bytes` added by
+[ADR 0058](../../docs/decisions/0058-served-whole-input-output-reserve.md) postdates it, defaults to
+absent, and is exercised by the library and served-boundary tests instead.
 `context_owner_limits` also tests exact fixture regeneration, mutation of every limit,
 stale catalog hashes, invalid sealed members, duplicate identities and closed-field decoding.
 

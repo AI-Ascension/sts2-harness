@@ -543,3 +543,24 @@ they come from the flat `## Unreleased` list and carry no section of their own.
   one failure path now emits `rejected` instead of `settled`, and no field, route, durable record,
   or published schema changes. See
   [ADR 0047](decisions/0047-failed-command-event-classification.md). Refs #260.
+
+- Consume the shared `game-information-live-observation-bootstrap-v1` conformance case and its
+  seven invalid fixtures (copied byte-identically from sts2-protocol, `SHA256SUMS` extended) and
+  drive the `error-native-unavailable.json` golden through the MCP bootstrap boundary: a
+  `not_observable` error is the typed missing-capability result, installs no snapshot, retains no
+  producer text and delivers nothing to the agent. Safety correction in bootstrap snapshot
+  selection: a visible entity carrying a foreign content manifest is now rejected instead of
+  skipped, and the response selector must echo the request selector exactly. No schema, digest,
+  route or durable record changes. Refs #127.
+
+- Submit **context-owner control commands over management HTTP**.
+  `POST /v1/workflow-runs/{run_id}/context-control-commands` forwards one `pause`/`commit`/`resume`
+  `ContextControlCommand` to the authoritative context owner for the run's current binding under
+  scoped `workflow:control` and returns the owner's `ascension.context-control.owner-receipt.v2`.
+  The harness mints no authority: an exact duplicate returns the recorded receipt without a second
+  effect, and a stale control version, boundary or revision fence is refused with a typed conflict
+  before the owner is called. A served profile may also set `STS2_WORKFLOW_TOKEN_<PROFILE>_READ`
+  to mint a `workflow:read`-only companion token for the same subject, so a metadata-only caller is
+  refused with `missing_scope` on content writes, adoption and control. Compatibility:
+  additive-compatible; see [ADR 0048](decisions/0048-context-owner-control-commands.md).
+  Refs AI-Ascension/ascension-context-console#18.

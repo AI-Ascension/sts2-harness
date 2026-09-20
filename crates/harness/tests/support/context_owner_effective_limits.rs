@@ -32,6 +32,7 @@ pub fn selected_limits() -> ContextEffectiveLimits {
         max_context_bytes: 1024,
         max_objective_bytes: 32,
         max_control_events: 8,
+        output_reserve_bytes: None,
     }
 }
 

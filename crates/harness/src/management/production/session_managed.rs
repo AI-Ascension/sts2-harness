@@ -35,6 +35,7 @@ impl ProductionLiveWorkflowSession {
             .provider_mut()?
             .prepare_managed_context(input, &source)
             .map_err(provider_error)?;
+        admit_assembled_managed_input(&source.limits, prepared.provider_bytes().len())?;
         render.assert_render_source_current(
             &actor,
             &request,
@@ -63,4 +64,32 @@ impl ProductionLiveWorkflowSession {
         )?;
         Ok(decision)
     }
+}
+
+/// Admit the exact assembled provider bytes against the selected whole-input bound.
+///
+/// This is the served caller of the prepared-input budget: the bytes exist by now, so the only
+/// admissible outcome is a refusal, and the refusal happens before `decide_prepared_for` can write
+/// anything or spend a provider call. `None` publishes no separate reserve, which is the
+/// pre-existing contract rather than an unlimited claim: the renderer still bounds these bytes by
+/// the selected `max_context_bytes`, and response capacity stays bounded independently by the
+/// provider configuration.
+fn admit_assembled_managed_input(
+    limits: &crate::ContextRenderLimits,
+    input_bytes: usize,
+) -> Result<(), ManagementError> {
+    let Some(output_reserve_bytes) = limits.output_reserve_bytes else {
+        return Ok(());
+    };
+    let bound = crate::context_memory::AssembledInputBound::new(
+        limits.max_context_bytes,
+        output_reserve_bytes,
+    )
+    .map_err(|error| {
+        ManagementError::capability("context_whole_input_budget_invalid", error.to_string())
+    })?;
+    bound.admit(input_bytes).map_err(|error| {
+        ManagementError::capability("context_whole_input_budget_exceeded", error.to_string())
+    })?;
+    Ok(())
 }

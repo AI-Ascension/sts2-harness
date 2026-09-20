@@ -31,6 +31,7 @@ fn setup() -> (
             max_context_bytes: 1,
             max_objective_bytes: 1,
             max_control_events: 64,
+            output_reserve_bytes: None,
         },
         render_required: false,
         sources: Vec::new(),

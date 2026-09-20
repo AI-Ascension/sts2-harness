@@ -19,6 +19,85 @@ pub enum PreparedInputAdmission<'a> {
     Unadmitted,
 }
 
+/// The whole-input bound and the separate output reserve for one assembled input.
+///
+/// [`PreparedInputRequest`] describes a request whose optional content may still be evicted. This is
+/// the same arithmetic for the other shape: the exact bytes already exist, so an overflow is the
+/// same refusal rather than an eviction. A served caller that has already assembled provider bytes
+/// admits them through this type instead of re-deriving the subtraction beside this library.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AssembledInputBound {
+    pub whole_input_byte_bound: usize,
+    pub output_reserve_bytes: usize,
+}
+
+impl AssembledInputBound {
+    /// Validate and bind one assembled-input admission.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PreparedBudgetError::InvalidRequest`] naming the offending field when the bound or
+    /// the reserve is zero, or the reserve exceeds [`MAX_PREPARED_OUTPUT_RESERVE_BYTES`]. A bound is
+    /// never unlimited and a reserve is never absent: both are explicit values.
+    ///
+    /// The bound's own surface ceiling is validated where the value is authored, not here: the
+    /// memory surface bounds `whole_input_byte_bound` by [`MAX_JOB_INPUT_BYTES`] in
+    /// [`PreparedInputLimits::validate`], and the context-owner surface bounds
+    /// `max_context_bytes` in `validate_limits`. Applying either constant here would reject the
+    /// other surface's legal value.
+    pub fn new(
+        whole_input_byte_bound: usize,
+        output_reserve_bytes: usize,
+    ) -> Result<Self, PreparedBudgetError> {
+        if whole_input_byte_bound == 0 {
+            return Err(PreparedBudgetError::InvalidRequest(
+                "whole_input_byte_bound",
+            ));
+        }
+        if output_reserve_bytes == 0 || output_reserve_bytes > MAX_PREPARED_OUTPUT_RESERVE_BYTES {
+            return Err(PreparedBudgetError::InvalidRequest("output_reserve_bytes"));
+        }
+        Ok(Self {
+            whole_input_byte_bound,
+            output_reserve_bytes,
+        })
+    }
+
+    /// The input headroom the bound leaves once the reserve is set aside.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PreparedBudgetError::OutputReserveOverflow`] when the reserve cannot fit inside
+    /// the whole-input bound.
+    pub fn input_headroom(&self) -> Result<usize, PreparedBudgetError> {
+        self.whole_input_byte_bound
+            .checked_sub(self.output_reserve_bytes)
+            .ok_or(PreparedBudgetError::OutputReserveOverflow {
+                requested: self.output_reserve_bytes,
+                effective: self.whole_input_byte_bound,
+            })
+    }
+
+    /// Admit an assembled input length, returning the whole bytes including the reserve.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PreparedBudgetError::OutputReserveOverflow`] when the reserve cannot fit inside
+    /// the bound, or [`PreparedBudgetError::CombinedWindowOverflow`] when the assembled input plus
+    /// its reserve exceeds the bound.
+    pub fn admit(&self, input_bytes: usize) -> Result<usize, PreparedBudgetError> {
+        let headroom = self.input_headroom()?;
+        if input_bytes > headroom {
+            return Err(PreparedBudgetError::CombinedWindowOverflow {
+                input_bytes,
+                output_reserve_bytes: self.output_reserve_bytes,
+                effective: self.whole_input_byte_bound,
+            });
+        }
+        Ok(input_bytes.saturating_add(self.output_reserve_bytes))
+    }
+}
+
 impl PreparedInputRequest {
     /// Prepare the final application input, evict optional content deterministically, and reserve
     /// provider capacity only after every bound is satisfied.
@@ -40,14 +119,11 @@ impl PreparedInputRequest {
         self.validate()?;
         self.admit(admission)?;
         let reserve = self.limits.output_reserve_bytes;
-        let input_headroom = self
-            .limits
-            .whole_input_byte_bound
-            .checked_sub(reserve)
-            .ok_or(PreparedBudgetError::OutputReserveOverflow {
-                requested: reserve,
-                effective: self.limits.whole_input_byte_bound,
-            })?;
+        let input_headroom = AssembledInputBound {
+            whole_input_byte_bound: self.limits.whole_input_byte_bound,
+            output_reserve_bytes: reserve,
+        }
+        .input_headroom()?;
         let protected = self.protected_bytes();
         if protected > input_headroom {
             return Err(PreparedBudgetError::ProtectedOverflow {

@@ -18,6 +18,7 @@ impl ContextEffectiveLimits {
             max_notes: self.max_notes as usize,
             max_context_bytes: self.max_context_bytes as usize,
             max_objective_bytes: self.max_objective_bytes as usize,
+            output_reserve_bytes: self.output_reserve_bytes.map(|reserve| reserve as usize),
         }
     }
 }
@@ -226,6 +227,10 @@ pub(crate) fn validate_limits(limits: &ContextEffectiveLimits) -> Result<(), Man
         || limits.max_objective_bytes > MAX_OBJECTIVE_BYTES as u64
         || limits.max_control_events == 0
         || limits.max_control_events > MAX_CONTROL_EVENTS
+        || limits.output_reserve_bytes.is_some_and(|reserve| {
+            reserve == 0
+                || reserve > crate::context_memory::MAX_PREPARED_OUTPUT_RESERVE_BYTES as u64
+        })
     {
         return Err(ManagementError::invalid(
             "context_effective_limits_invalid",
