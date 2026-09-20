@@ -40,6 +40,8 @@ jobs:
         run: node --test experiments/jev-evaluation/*.test.mjs
       - name: Generate the synthetic demonstration
         run: node experiments/jev-evaluation/demo.mjs
+      - name: Verify Linux benchmark and streaming session control
+        run: node --test experiments/jev-plays-sts2/session-modes.test.mjs
       - name: Install pinned Rust for the compiled bridge
         run: rustup toolchain install 1.97.1 --profile minimal --no-self-update
       - name: Run compiled paired replay and frozen pilot diagnostics

@@ -21,6 +21,14 @@
 
 set -uo pipefail
 
+# Benchmark sessions retain their original fresh-process behavior. Streaming is an explicit
+# operator mode: preserve the native game and pause on failure instead of discarding its run.
+MODE="${1:-benchmark}"
+if [ "$#" -gt 1 ] || [[ "$MODE" != benchmark && "$MODE" != stream ]]; then
+    echo 'usage: jev-loop.sh [benchmark|stream]' >&2
+    exit 2
+fi
+
 # The payload lives in the user's tree; this script lives in a root-owned directory so that the
 # passwordless sudo rule cannot be pointed at something the desktop user is able to rewrite.
 ROOT="${JEV_HOME:-/home/ubuntu/jev}"
@@ -30,6 +38,11 @@ WORK="${JEV_WORK_ROOT:-/home/ubuntu/sts2-native-map-g3-7d85w_n6}"
 # bundle is the operator's recorded production command for the current tree.
 INPUTS="${JEV_BUNDLE:-$WORK/linux-rest-native-launch-ad927-r2-20260909}"
 LAUNCHER="$INPUTS/launch-linux-native-rest-campaign.py"
+LAUNCH_ARGS=()
+if [ "$MODE" = stream ]; then
+    LAUNCHER="$INPUTS/launch-linux-native-rest-stream.py"
+    LAUNCH_ARGS=(--persistent-session)
+fi
 BRIDGE="$ROOT/sts2-jev-bridge"
 TRANSPORT="$ROOT/systemone_transport.py"
 HARNESS="$ROOT/sts2-harness-runtime"
@@ -237,17 +250,29 @@ for required in "$LAUNCHER" "$BRIDGE" "$TRANSPORT" "$HARNESS" "$GATEWAY" "$MCP" 
 done
 
 DIGEST="$(sha256sum "$BRIDGE" | cut -d' ' -f1)"
-banner "Jev plays Slay the Spire 2   |   gate ${GATE_PERCENT}%"
+exec 9<>/run/lock/jev-session.lock
+flock -n 9 || { echo 'another Jev supervisor owns this session' >&2; exit 1; }
+if [ "$MODE" = stream ]; then
+    # Never close another game or attach an unverified native session.
+    if pgrep -u 1000 -x SlayTheSpire2 >/dev/null 2>&1; then
+        echo 'a game is already running; leave it open and stop before creating another stream' >&2
+        exit 1
+    fi
+fi
+banner "Jev plays Slay the Spire 2   |   $MODE   |   gate ${GATE_PERCENT}%"
 echo "  bridge digest $DIGEST"
 echo "  launcher      $LAUNCHER"
 
 episode=0
 failures=0
+stream_started=false
+stream_dir=''
 while :; do
     episode=$((episode + 1))
     if [ "$EPISODES" -gt 0 ] && [ "$episode" -gt "$EPISODES" ]; then break; fi
 
     stamp="$(date +%Y%m%d-%H%M%S)"
+    if [ "$MODE" = stream ]; then stamp="$stamp-$episode"; fi
     run_dir="$RUNS/episode-$stamp"
     mkdir -p "$run_dir/state"
     # The launcher refuses a readiness record whose parent is group/other accessible, and the
@@ -268,14 +293,18 @@ while :; do
 }
 JSON
 
-    stop_stale
+    if [ "$MODE" = benchmark ]; then stop_stale; fi
+    if ! "$stream_started"; then
+    if [ "$MODE" = stream ] && [ -d "$WORK/profile" ]; then
+        # Preserve the previous stopped session before the reviewed fresh-profile launch.
+        cp -a "$WORK/profile" "$run_dir/profile-before-stream" || break
+    fi
     if ! prepare_profile "$run_dir"; then
         echo 'could not prepare the reviewed profile' > "$run_dir/outcome.txt"
         break
     fi
 
     runtime_token="$(credential)"
-    gateway_token="$(credential)"
     printf '%s' "$runtime_token" > "$run_dir/runtime.token"
     chown root:root "$run_dir/runtime.token"
     chmod 600 "$run_dir/runtime.token"
@@ -295,15 +324,29 @@ JSON
         --runtime-token-file "$run_dir/runtime.token" \
         --readiness-file "$run_dir/readiness.json" \
         --max-seconds "$LAUNCH_SECONDS" \
+        "${LAUNCH_ARGS[@]}" \
         --stop-file "$run_dir/stop" \
         > "$run_dir/launcher.log" 2>&1 &
     launcher_pid=$!
 
+    if [ "$MODE" = stream ]; then
+        stream_started=true
+        stream_dir="$run_dir"
+        printf '%s\n' "$stream_dir" > "$ROOT/stream-session.path"
+        chown ubuntu:ubuntu "$ROOT/stream-session.path"
+        chmod 600 "$ROOT/stream-session.path"
+    fi
+
     if ! wait_for_runtime "$launcher_pid"; then
         echo 'runtime session never opened' > "$run_dir/outcome.txt"
+        if [ "$MODE" = stream ]; then
+            echo "  Stream readiness failed; game retained. Stop with: touch $stream_dir/stop"
+            wait "$launcher_pid"
+            break
+        fi
         touch "$run_dir/stop"
         wait "$launcher_pid" 2>/dev/null
-        stop_stale
+        if [ "$MODE" = benchmark ]; then stop_stale; fi
         echo "  record: $run_dir"
         failures=$((failures + 1))
         if [ "$failures" -ge 3 ]; then
@@ -314,13 +357,17 @@ JSON
         sleep 5
         continue
     fi
+    fi
     failures=0
+    gateway_token="$(credential)"
 
     # A gateway left over from a previous episode keeps its allocation, and the harness then gets
     # "gateway returned HTTP 409" against a stale instance. Wait for the port to actually be free.
     for _ in $(seq 1 20); do
         ss -tln 2>/dev/null | grep -q '127.0.0.1:15525' || break
-        pkill -f sts2-gateway-runtime 2>/dev/null || true
+        if [ "$MODE" = benchmark ]; then
+            pkill -f sts2-gateway-runtime 2>/dev/null || true
+        fi
         sleep 1
     done
 
@@ -337,7 +384,7 @@ JSON
     # because the reference fixture in tools/exact-restore-conformance omits it and an unverified
     # format here would only expire the token early. The identity below is the same one the harness
     # allocates with, including the caller id, which the harness defaults to "harness".
-    ( cd "$run_dir/gateway" && as_user env \
+    ( cd "$run_dir/gateway" && exec sudo -u ubuntu env \
         STS2_GATEWAY_TOKEN="$gateway_token" \
         STS2_GATEWAY_TOKEN_SCOPE="read,mutate,control" \
         STS2_MOD_TOKEN="$runtime_token" \
@@ -364,6 +411,8 @@ JSON
     # and never leaves a menu, so against a freshly launched game it polls an unchanging main
     # menu and Jev is asked nothing. See AI-Ascension/sts2-harness#311.
     echo -e '  \033[32mhanding the run to Jev...\033[0m'
+    HARNESS_COMMAND=(timeout "$EPISODE_TIMEOUT" "$HARNESS")
+    if [ "$MODE" = stream ]; then HARNESS_COMMAND=("$HARNESS"); fi
     ( cd "$run_dir/state" && as_user env \
         STS2_GATEWAY_TOKEN="$gateway_token" \
         STS2_GATEWAY_TOKEN_SCOPE="read,mutate,control" \
@@ -394,7 +443,7 @@ JSON
         STS2_MCP_SESSION_ID="mcp-session-jev-$stamp" \
         STS2_LEASE_ID="lease-jev-$stamp" \
         STS2_RUNTIME_WAIT_FOR_COMBAT_SECONDS="$WAIT_FOR_COMBAT" \
-        timeout "$EPISODE_TIMEOUT" "$HARNESS" ) \
+        "${HARNESS_COMMAND[@]}" ) \
             > "$run_dir/harness.out.log" 2> "$run_dir/harness.err.log"
     status=$?
     echo "exit $status" > "$run_dir/outcome.txt"
@@ -405,6 +454,30 @@ JSON
     fi
 
     kill "$gateway_pid" 2>/dev/null || true
+    if [ "$MODE" = stream ]; then
+        wait "$gateway_pid" 2>/dev/null || true
+        echo '  Streaming paused; the game and profile remain open.'
+        echo '  No automatic retry and no application restart.'
+        echo "  After resolving the stop (or returning to the main menu), explicitly resume with:"
+        echo "  touch $stream_dir/resume"
+        echo "  To close this owned game session: touch $stream_dir/stop"
+        printf '%s\n' "paused; harness_exit=$status" > "$stream_dir/stream-status.txt"
+        # The installed host has no terminal-screen transition in its action catalog. Do not
+        # fabricate one, inject UI input, reset the profile, or spin new terminal episodes.
+        while kill -0 "$launcher_pid" 2>/dev/null; do
+            if [ -f "$stream_dir/resume" ]; then
+                rm -- "$stream_dir/resume"
+                printf '%s\n' 'resumed by operator' > "$stream_dir/stream-status.txt"
+                break
+            fi
+            sleep 2
+        done
+        if ! kill -0 "$launcher_pid" 2>/dev/null; then
+            wait "$launcher_pid" 2>/dev/null || true
+            break
+        fi
+        continue
+    fi
     touch "$run_dir/stop"
     wait "$launcher_pid" 2>/dev/null
     stop_stale

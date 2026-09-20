@@ -10,6 +10,8 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Add Linux [Jev streaming mode](experiments/jev-plays-sts2/STREAMING.md): retain the game with manual resume; preserve timed benchmarks. Automatic terminal progression remains unavailable.
+
 - Run the existing compiled Jev paired-replay and frozen-pilot tests in both Node CI checks
   through a locked-build [entrypoint](experiments/jev-evaluation/compiled-ci.sh). Failures do not
   silently skip coverage. The transport stays synthetic; live gameplay benefit remains unverified.
