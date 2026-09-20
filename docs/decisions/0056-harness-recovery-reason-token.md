@@ -37,6 +37,18 @@ unavailable observation.
    reason cannot be separated by later plumbing. Only a recovery or unknown
    observation may carry one; binding a code to any other stage is refused, so a
    normal observation cannot acquire a reason that would misdescribe it.
+
+   Composition is later plumbing. An expert runtime profile replaces the parsed
+   runtime-v3 read with the expert projection, which names its own `recovery`
+   state and carries the condition in that state's `code`, so every site that
+   rebuilds the observation re-binds the projection's code whenever the composed
+   stage is recovery. Deciding the stage again is not the same as keeping the
+   reason: a rebuild that copies the state and drops the code reports the
+   anonymous sentence on the two expert profiles while the runtime-v3 profile
+   names the condition. The projection is held to the same identity rule as the
+   runtime-v3 sibling, so no code one boundary admits is narrower or wider at the
+   other, and a composed recovery that somehow names none is refused rather than
+   reported anonymously.
 2. **The code is held to the identity rule already in force.** One predicate
    governs both `state_id` and the recovery code -- non-empty, at most 512 bytes,
    ASCII alphanumerics plus `.`, `:`, `/`, `-`, `_` -- which is the shape the
@@ -79,7 +91,7 @@ recovery read that carries each vocabulary token into the observation, the
 malformed and missing-code refusals, and that a playable observation binds no
 code. `crates/harness/tests/episode_runner/recovery_reason.rs` covers the runner
 failure naming a refused-contract reason, the unchanged sentence when the host
-named none, and the two binding refusals.
+named none, the two binding refusals, and every code the host composes.
 `crates/harness/src/bin/runtime_support/runtime_v4_expert_port_recovery_tests.rs`
 covers decision 1 on the two expert runtime profiles and at each site that
 rebuilds the projection's observation: the reason the projection names is
