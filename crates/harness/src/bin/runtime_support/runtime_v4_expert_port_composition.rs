@@ -99,7 +99,7 @@ fn compose_with_normal(
     )
     .map_err(|error| format!("expert fair-play observation failed validation: {error}"))?;
     Ok(ComposedExpertObservation {
-        observation,
+        observation: bind_recovery_code(observation)?,
         actions,
         payloads,
     })
@@ -214,7 +214,7 @@ fn expert_only_observation(
     )
     .map_err(|error| format!("expert settlement observation failed validation: {error}"))?;
     Ok(ComposedExpertObservation {
-        observation,
+        observation: bind_recovery_code(observation)?,
         actions,
         payloads,
     })
