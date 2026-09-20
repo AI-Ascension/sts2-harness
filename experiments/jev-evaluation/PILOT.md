@@ -125,8 +125,9 @@ no private path, observation, action identifier, transport output or credential 
 `pilot-profile.mjs` owns the narrow bounds and cohort counts; `pilot.mjs` owns private read-only
 composition; `pilot-analysis.mjs` owns descriptive calculations. `runner-journal.mjs` exposes
 its existing validated read through `readRun`; `inspectRun` keeps its previous output shape.
-No third-party package, workflow, Rust source, provider credential flow, or runtime mutation
-surface is added.
+The original pilot added no third-party package, Rust source, provider credential flow,
+or runtime mutation surface. Its compiled regression is now also wired into the existing
+Jev evaluation workflow as described below.
 
 ```sh
 node --test experiments/jev-evaluation/*.test.mjs
@@ -146,3 +147,27 @@ STS2_JEV_TEST_SOURCE_REVISION="$(git rev-parse HEAD)" \
 The new module tests use hand-authored synthetic journals and local files only. Passing them
 does not establish a provider pilot, compiled bridge execution, a native game, or better play.
 Consult the change's validation report for the commands actually executed in its environment.
+
+### Compiled CI regression
+
+The existing `Offline evaluation (Node ...)` checks run the explicit compiled suite after
+the ordinary offline tests on both pinned Node versions. The Linux entrypoint is:
+
+```sh
+bash experiments/jev-evaluation/compiled-ci.sh
+```
+
+It uses the current Git checkout, builds `sts2-jev-bridge` with locked dependencies and
+Rust 1.97.1 under `target/jev-compiled-ci`, and supplies that executable and the checkout
+revision to `compiled-bridge.integration.mjs`. An ambient executable path cannot replace
+the built binary. Build/test failures, an absent or nonexecutable binary, and an observed
+HEAD change fail the command; there is no success-on-skip or automatic retry. The source
+revision is a declaration, not a dirty-tree or reproducible-build attestation.
+
+CI installs the pinned toolchain, uses read-only repository permissions, does not expose
+secrets, and bounds each matrix job to fifteen minutes. Dependency/toolchain downloads may
+use the network; the tests still use only the socket-free synthetic transport from #377.
+The ten-pair case exercises #379's reporter without live inputs or gameplay. These are
+CI tests, not execution of the actual provider pilot and not policy-promotion evidence.
+`compiled-ci.test.mjs` separately checks shell control flow using command doubles; those
+unit tests do not stand in for execution of the compiled bridge.

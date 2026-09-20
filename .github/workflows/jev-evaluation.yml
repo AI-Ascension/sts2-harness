@@ -16,7 +16,7 @@ jobs:
   offline-evaluation:
     name: Offline evaluation (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -40,3 +40,9 @@ jobs:
         run: node --test experiments/jev-evaluation/*.test.mjs
       - name: Generate the synthetic demonstration
         run: node experiments/jev-evaluation/demo.mjs
+      - name: Install pinned Rust for the compiled bridge
+        run: rustup toolchain install 1.97.1 --profile minimal --no-self-update
+      - name: Run compiled paired replay and frozen pilot diagnostics
+        shell: bash
+        # The transport remains the socket-free fixture. No secrets or live inputs are used.
+        run: bash experiments/jev-evaluation/compiled-ci.sh
