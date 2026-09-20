@@ -77,9 +77,26 @@ unavailable observation.
 `crates/harness/src/bin/runtime_support/runtime_v3_parse_test.rs` covers a
 recovery read that carries each vocabulary token into the observation, the
 malformed and missing-code refusals, and that a playable observation binds no
-code. `crates/harness/tests/episode_runner/scenarios.rs` covers the runner
+code. `crates/harness/tests/episode_runner/recovery_reason.rs` covers the runner
 failure naming a refused-contract reason, the unchanged sentence when the host
 named none, and the two binding refusals.
+`crates/harness/src/bin/runtime_support/runtime_v4_expert_port_recovery_tests.rs`
+covers decision 1 on the two expert runtime profiles and at each site that
+rebuilds the projection's observation: the reason the projection names is
+re-bound through the ordinary composition, the expert-only read, and the
+`overlay_rest_selector` rebuild that replaces the composed observation outright;
+a runtime-v3 baseline that names no code does not suppress it; and a playable
+projection binds none.
+
+The preservation assertions are load-bearing rather than a restatement of the
+merged code, and the negative control is reproducible: reverting
+`runtime_v4_expert_port_composition.rs` and
+`runtime_v4_expert_port_rest_overlay.rs` to `f980c50b` fails exactly
+`expert_recovery_observation_carries_the_host_reason`,
+`expert_recovery_composition_carries_the_host_reason` and
+`rest_selector_overlay_keeps_the_host_reason`, while both guard assertions
+(`playable_expert_observation_never_binds_a_recovery_code` and
+`a_reason_is_refused_outside_a_recovery_stage`) still pass.
 
 These establish component behaviour. They do **not** prove a native recovery
 transition, a refused launch contract observed end to end, or that any campaign
