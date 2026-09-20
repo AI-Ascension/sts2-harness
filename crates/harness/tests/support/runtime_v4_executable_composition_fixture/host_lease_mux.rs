@@ -41,16 +41,26 @@ impl super::ModServer {
 /// caller supplied one, otherwise the operator's environment, otherwise a
 /// refusal that names the missing variable. Without a key the mux stays closed
 /// and the refusal is recorded in the downstream ledger instead of being
-/// silently satisfied.
+/// silently satisfied. An accepted install moves the identity the runtime
+/// routes are fenced with, because the lease the gateway installs is the one it
+/// tells the deployment to present.
 pub(crate) fn recovery_response(
     raw: &[u8],
     host_lease: Option<&HostLeaseControl>,
+    identity: &super::Identity,
 ) -> Result<(u16, Value), String> {
-    if let Some(terminal) = host_lease {
-        return Ok((200, terminal.respond(raw)?));
-    }
-    let terminal = HostLeaseControl::from_env()?.ok_or_else(|| {
-        String::from("the recovery mux is closed: STS2_SYNTHETIC_HOST_LEASE_KEY is not configured")
-    })?;
-    Ok((200, terminal.respond(raw)?))
+    let configured;
+    let terminal = if let Some(terminal) = host_lease {
+        terminal
+    } else {
+        configured = HostLeaseControl::from_env()?.ok_or_else(|| {
+            String::from(
+                "the recovery mux is closed: STS2_SYNTHETIC_HOST_LEASE_KEY is not configured",
+            )
+        })?;
+        &configured
+    };
+    let response = terminal.respond(raw)?;
+    identity.adopt_install(raw);
+    Ok((200, response))
 }

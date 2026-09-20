@@ -2,19 +2,15 @@
 
 use super::*;
 
-pub(super) fn unknown_action(request: &Value) -> Result<(u16, Value), String> {
+pub(super) fn unknown_action(request: &Value, admitted: &Admitted) -> Result<(u16, Value), String> {
     if request["action"]["action_id"] != ACTION_ID {
         return Err(String::from(
             "expert action was not the host-generated potion action",
         ));
     }
     let mut response = golden_action()?;
-    for (field, value) in [
+    for (field, value) in admitted.fields().into_iter().chain([
         ("correlation_id", request["correlation_id"].clone()),
-        ("instance_id", json!(INSTANCE_ID)),
-        ("session_id", json!(SESSION_ID)),
-        ("lease_id", json!(LEASE_ID)),
-        ("lease_epoch", json!(LEASE_EPOCH)),
         ("generation", json!(7)),
         ("state_id", json!("live:7")),
         ("operation_id", request["operation_id"].clone()),
@@ -24,25 +20,24 @@ pub(super) fn unknown_action(request: &Value) -> Result<(u16, Value), String> {
         ("observation", Value::Null),
         ("transition", Value::Null),
         ("error_code", json!("transport_timeout")),
-    ] {
+    ]) {
         response[field] = value;
     }
     Ok((503, response))
 }
 
-pub(super) fn accepted_action(request: &Value) -> Result<(u16, Value), String> {
+pub(super) fn accepted_action(
+    request: &Value,
+    admitted: &Admitted,
+) -> Result<(u16, Value), String> {
     if request["action"]["action_id"] != ACTION_ID {
         return Err(String::from(
             "expert action was not the host-generated potion action",
         ));
     }
     let mut response = golden_action()?;
-    for (field, value) in [
+    for (field, value) in admitted.fields().into_iter().chain([
         ("correlation_id", request["correlation_id"].clone()),
-        ("instance_id", json!(INSTANCE_ID)),
-        ("session_id", json!(SESSION_ID)),
-        ("lease_id", json!(LEASE_ID)),
-        ("lease_epoch", json!(LEASE_EPOCH)),
         ("generation", json!(7)),
         ("state_id", json!("live:7")),
         ("operation_id", request["operation_id"].clone()),
@@ -52,7 +47,7 @@ pub(super) fn accepted_action(request: &Value) -> Result<(u16, Value), String> {
         ("observation", Value::Null),
         ("transition", Value::Null),
         ("error_code", Value::Null),
-    ] {
+    ]) {
         response[field] = value;
     }
     Ok((200, response))
@@ -61,10 +56,11 @@ pub(super) fn accepted_action(request: &Value) -> Result<(u16, Value), String> {
 pub(super) fn settled_action(
     path: &str,
     headers: &BTreeMap<String, String>,
+    admitted: &Admitted,
 ) -> Result<(u16, Value), String> {
     let operation_id = operation_id(path)?;
     let mut response = golden_action()?;
-    for (field, value) in [
+    for (field, value) in admitted.fields().into_iter().chain([
         (
             "correlation_id",
             json!(
@@ -74,10 +70,6 @@ pub(super) fn settled_action(
                     .unwrap_or_default()
             ),
         ),
-        ("instance_id", json!(INSTANCE_ID)),
-        ("session_id", json!(SESSION_ID)),
-        ("lease_id", json!(LEASE_ID)),
-        ("lease_epoch", json!(LEASE_EPOCH)),
         ("generation", json!(8)),
         ("state_id", json!("live:8")),
         ("operation_id", json!(operation_id)),
@@ -91,7 +83,7 @@ pub(super) fn settled_action(
                    "after_generation":8,"potion_id":"potion:fire","removed":true}),
         ),
         ("error_code", Value::Null),
-    ] {
+    ]) {
         response[field] = value;
     }
     Ok((200, response))
@@ -100,10 +92,11 @@ pub(super) fn settled_action(
 pub(super) fn unknown_operation(
     path: &str,
     headers: &BTreeMap<String, String>,
+    admitted: &Admitted,
 ) -> Result<(u16, Value), String> {
     let operation_id = operation_id(path)?;
     let mut response = golden_action()?;
-    for (field, value) in [
+    for (field, value) in admitted.fields().into_iter().chain([
         (
             "correlation_id",
             json!(
@@ -113,10 +106,6 @@ pub(super) fn unknown_operation(
                     .unwrap_or_default()
             ),
         ),
-        ("instance_id", json!(INSTANCE_ID)),
-        ("session_id", json!(SESSION_ID)),
-        ("lease_id", json!(LEASE_ID)),
-        ("lease_epoch", json!(LEASE_EPOCH)),
         ("generation", json!(7)),
         ("state_id", json!("live:7")),
         ("operation_id", json!(operation_id)),
@@ -126,7 +115,7 @@ pub(super) fn unknown_operation(
         ("observation", Value::Null),
         ("transition", Value::Null),
         ("error_code", json!("transport_timeout")),
-    ] {
+    ]) {
         response[field] = value;
     }
     Ok((503, response))
