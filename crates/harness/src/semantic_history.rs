@@ -33,11 +33,15 @@
 //!   restoring is granted deliberately, every restored record keeps the `Imported` origin and the
 //!   coverage label its source stated, and the span must abut the retained capture start, so
 //!   restored history can neither read as something this harness observed nor leave a hole behind it.
+//! - The repository's existing branch retention is applied here rather than bypassed: a branch the
+//!   branch store pruned under its own operator policy has its observed detail disclosed, so pruning
+//!   a branch cannot leave its gameplay history readable through this surface.
 //!
 //! This is a harness-owned historical artifact surface. It reaches no host, no game process and no
 //! gateway, and it claims no native event capture.
 
 mod backfill;
+mod branch_retention;
 mod causal;
 mod error;
 mod ingest;
@@ -56,6 +60,7 @@ pub use backfill::{
     SemanticBackfillAuthority, SemanticBackfillOutcome, SemanticBackfillPort,
     SemanticBackfillRequest, restore_saved_history,
 };
+pub use branch_retention::{SemanticBranchRetentionOutcome, SemanticBranchRetentionRequest};
 pub use causal::{SemanticCausalTraversal, SemanticCausalVisit, traverse_causes};
 pub use error::{SemanticHistoryError, SemanticHistoryRefusal};
 pub use ingest::admit_batch;

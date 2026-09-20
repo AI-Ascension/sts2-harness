@@ -168,6 +168,8 @@ fn error(batch: SemanticEventBatch) -> SemanticHistoryRefusal {
 mod admission;
 #[path = "semantic_history/backfill.rs"]
 mod backfill;
+#[path = "semantic_history/branch_retention.rs"]
+mod branch_retention;
 #[path = "semantic_history/lookup.rs"]
 mod lookup;
 #[path = "semantic_history/persistence.rs"]

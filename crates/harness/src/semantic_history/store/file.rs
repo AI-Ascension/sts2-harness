@@ -12,6 +12,7 @@ use std::fs;
 use std::path::Path;
 
 use super::super::backfill::SemanticBackfillRequest;
+use super::super::branch_retention::SemanticBranchRetentionRequest;
 use super::super::error::{
     SemanticHistoryError, SemanticHistoryRefusal as Refusal, SemanticHistoryResult,
 };
@@ -79,6 +80,25 @@ pub(super) fn digest_backfill(request: &SemanticBackfillRequest) -> SemanticHist
         &request.binding,
         request.first_sequence,
         request.last_sequence,
+    ))
+    .map_err(|_| SemanticHistoryError::new(Refusal::Storage))?;
+    Ok(crate::sha256_hex(bytes))
+}
+
+/// A stable digest of one branch-retention application, used to tell a re-delivery from a conflict.
+///
+/// What this operation does is fixed by the experiment, the policy and the branches the branch
+/// store selected, so those are what the digest covers. The artifact lists the plan also carries
+/// describe blob reachability in the branch store; they change nothing here.
+pub(super) fn digest_branch_retention(
+    request: &SemanticBranchRetentionRequest,
+) -> SemanticHistoryResult<String> {
+    let bytes = serde_json::to_vec(&(
+        &request.operation_id,
+        &request.experiment_id,
+        request.policy.retain_completed,
+        request.policy.minimum_age_millis,
+        &request.plan.branch_ids,
     ))
     .map_err(|_| SemanticHistoryError::new(Refusal::Storage))?;
     Ok(crate::sha256_hex(bytes))
