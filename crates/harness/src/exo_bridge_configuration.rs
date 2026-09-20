@@ -174,6 +174,29 @@ impl Loaded {
         ));
         Ok(value)
     }
+
+    /// Description for the explicitly selected additive history profile.
+    ///
+    /// The two closed descriptions above remain byte-compatible and advertise only their own
+    /// surface. This one is additive over the bootstrap surface rather than an alternative to
+    /// it: selecting history must not withdraw a capability the shipped profile already offered.
+    /// Callers must select this profile explicitly before the relay accepts v3 History frames.
+    pub fn lookup_history_description(&self) -> Result<Value, &'static str> {
+        let mut value = self.lookup_bootstrap_description()?;
+        value["schema"] = json!("sts2.exo-lookup-capability-v3-history");
+        value["wire_version"] = json!(crate::exo_lookup_wire::EXO_LOOKUP_HISTORY_WIRE);
+        value["profile"] = json!("history");
+        value["tools"] = json!([
+            "sts2_lookup_query",
+            "sts2_lookup_read",
+            "sts2_lookup_bootstrap",
+            "sts2_lookup_history"
+        ]);
+        value["tool_digest"] = json!(sha256_hex(
+            b"sts2_lookup_query\nsts2_lookup_read\nsts2_lookup_bootstrap\nsts2_lookup_history\n"
+        ));
+        Ok(value)
+    }
     pub fn validate_route(&self, synthetic: bool) -> Result<(), &'static str> {
         if synthetic {
             if !synthetic_route_admitted(&self.config.endpoint, &self.config.model) {

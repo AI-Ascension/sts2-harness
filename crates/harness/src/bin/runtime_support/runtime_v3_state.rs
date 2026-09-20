@@ -11,6 +11,9 @@ pub(super) struct RuntimeV3Port {
     lookup_policy_binding: Option<sts2_harness::context_memory::policy_owner::ActivePolicyBinding>,
     lookup_session: Option<sts2_harness::game_information::LookupSession>,
     lookup_corpus: Option<sts2_harness::context_memory::MemoryCorpus>,
+    /// The durable history the runtime owner holds for this run, before it is attached to the
+    /// session. Only the session owner can attach it, so no provider can supply its own.
+    lookup_history: Option<sts2_harness::semantic_history::SemanticHistoryStore>,
     lookup_replay_mode: bool,
     mcp: Option<McpProcess>,
     seeded_mcp: Option<McpProcess>,

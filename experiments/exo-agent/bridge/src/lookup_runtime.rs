@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MIT
-use crate::{lookup_bootstrap, lookup_wire::{self as wire, Frame, Payload}};
+use crate::{
+    lookup_bootstrap,
+    lookup_wire::{self as wire, Frame, Payload},
+};
 use async_trait::async_trait;
 use executor::{AgentConfig, ConversationConfig, ToolRuntime};
 use exoharness::{AgentHandle, ConversationHandle, ToolRequest, ToolResult, TurnHandle};
@@ -13,9 +16,32 @@ use tokio::{
 pub struct LookupRuntime {
     request_id: String,
     turn_id: String,
-    bootstrap_profile: bool,
+    profile: LookupProfile,
     channel: Mutex<Channel>,
 }
+
+/// The additive provider surface one executor invocation was explicitly selected under.
+///
+/// Selection is the caller's: the relay passes the matching executor argument, and a tool belonging
+/// to another surface is denied rather than forwarded. History is additive over bootstrap, so
+/// selecting it widens the surface instead of trading the shipped capability away.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LookupProfile {
+    Terminal,
+    Bootstrap,
+    History,
+}
+
+impl LookupProfile {
+    fn admits_bootstrap(self) -> bool {
+        matches!(self, Self::Bootstrap | Self::History)
+    }
+
+    fn admits_history(self) -> bool {
+        self == Self::History
+    }
+}
+
 struct Channel {
     input: BufReader<Stdin>,
     output: Stdout,
@@ -28,12 +54,12 @@ impl LookupRuntime {
         request_id: String,
         turn_id: String,
         input: BufReader<Stdin>,
-        bootstrap_profile: bool,
+        profile: LookupProfile,
     ) -> Self {
         Self {
             request_id,
             turn_id,
-            bootstrap_profile,
+            profile,
             channel: Mutex::new(Channel {
                 input,
                 output: tokio::io::stdout(),
@@ -71,7 +97,7 @@ impl LookupRuntime {
             return Err("exo_lookup_tool_bound");
         }
         channel.failed = true; // Remains failed on every validation, I/O or cancellation exit.
-        let payload = tool_payload_with_profile(request, self.bootstrap_profile)?;
+        let payload = tool_payload_with_profile(request, self.profile)?;
         let version = wire::version_for_payload(&payload);
         channel.tools += 1;
         let sequence = channel.tools;
@@ -84,13 +110,8 @@ impl LookupRuntime {
         };
         wire::write_frame(&mut channel.output, &frame).await?;
         let bytes = wire::read_line(&mut channel.input).await?;
-        let value = wire::feedback_for_version(
-            &bytes,
-            &self.request_id,
-            &self.turn_id,
-            sequence,
-            version,
-        )?;
+        let value =
+            wire::feedback_for_version(&bytes, &self.request_id, &self.turn_id, sequence, version)?;
         channel.failed = false;
         Ok(value)
     }
@@ -105,12 +126,12 @@ struct ReadArguments {
 
 #[cfg(test)]
 fn tool_payload(request: &ToolRequest) -> Result<Payload, &'static str> {
-    tool_payload_with_profile(request, false)
+    tool_payload_with_profile(request, LookupProfile::Terminal)
 }
 
 fn tool_payload_with_profile(
     request: &ToolRequest,
-    bootstrap_profile: bool,
+    profile: LookupProfile,
 ) -> Result<Payload, &'static str> {
     if request.namespace.is_some()
         || serde_json::to_vec(&request.arguments)
@@ -124,10 +145,20 @@ fn tool_payload_with_profile(
     match request.function_name.as_str() {
         "sts2_lookup_query" => Ok(Payload::Query { arguments }),
         "sts2_lookup_bootstrap" => {
-            if !bootstrap_profile {
+            if !profile.admits_bootstrap() {
                 return Err("exo_lookup_tool_denied");
             }
             lookup_bootstrap::payload(arguments)
+        }
+        // History is answered by the harness-owned store port. The executor only carries the closed
+        // question across, so the question is forwarded for that boundary to validate against its
+        // own vocabulary rather than re-implemented here; nothing in it can name an owner, epoch,
+        // path, bucket, artifact or record ordinal.
+        "sts2_lookup_history" => {
+            if !profile.admits_history() {
+                return Err("exo_lookup_tool_denied");
+            }
+            Ok(Payload::History { arguments })
         }
         "sts2_lookup_read" => {
             let read: ReadArguments =
@@ -191,6 +222,32 @@ mod tests {
             .arguments
             .insert("data".into(), json!("x".repeat(wire::TOOL_BYTES)));
         assert!(tool_payload(&request).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn additive_profiles_admit_only_their_own_surface() -> Result<(), Box<dyn std::error::Error>> {
+        let mut request: ToolRequest = serde_json::from_value(json!({
+            "function_name":"sts2_lookup_history",
+            "arguments":{"operation":"summary","operation_id":"history-1","branch_id":"branch_root"}
+        }))?;
+        assert!(tool_payload_with_profile(&request, LookupProfile::Terminal).is_err());
+        assert!(tool_payload_with_profile(&request, LookupProfile::Bootstrap).is_err());
+        let payload = tool_payload_with_profile(&request, LookupProfile::History)?;
+        assert!(matches!(payload, Payload::History { .. }));
+        assert_eq!(wire::version_for_payload(&payload), wire::HISTORY_VERSION);
+
+        // Selecting history stays additive: the bootstrap tool the shipped profile had is intact.
+        request.function_name = "sts2_lookup_bootstrap".into();
+        request.arguments = serde_json::from_value(json!({
+            "operation_id":"bootstrap-1",
+            "definition_ref":{"content_manifest_id":"content-1","entity_kind":"card",
+                "namespaced_id":"ironclad:strike","variant":null},
+            "instance_ref":null
+        }))?;
+        assert!(tool_payload_with_profile(&request, LookupProfile::Terminal).is_err());
+        assert!(tool_payload_with_profile(&request, LookupProfile::Bootstrap).is_ok());
+        assert!(tool_payload_with_profile(&request, LookupProfile::History).is_ok());
         Ok(())
     }
 

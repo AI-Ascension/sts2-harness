@@ -20,6 +20,25 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   CI for the offline evaluation tests. Windows capture, native gameplay benefit and live paired
   orchestration remain unverified. See [capture documentation](experiments/jev-evaluation/CAPTURE.md).
 
+- Let a provider ask **bounded semantic history through one harness-owned agent tool**. The history
+  a run records was queryable inside the harness but not through the boundary an agent actually
+  drives, so nothing could ask what happened without reaching around that boundary. The tool
+  vocabulary is closed to the branch, kind, origin, subject, episode, sequence, limit and
+  continuation axes — a question naming a path, bucket, artifact, record ordinal, offset, owner, run
+  or epoch is refused rather than read — so the MCP game adapter cannot bypass the owned port to
+  arbitrary artifact storage or reverse-call the harness. Selecting history is additive over the
+  bootstrap profile: the advertised schema, tool set and digest widen to include the new tool, no
+  shipped tool or inherited authority axis changes, and each additive turn keeps its own wire pin, so
+  a relay holding an earlier profile's pin cannot relabel a frame into a history question and a
+  bootstrap turn is refused on the pin history added. History is served only from the store the owner
+  attached, that grant is re-checked on every read, and a session with no attachment refuses by
+  capability name rather than answering an empty history; an episode travels per event, so the
+  question cannot name one as a session axis. One answer must fit one feedback envelope, and an
+  archive replay of a history turn diverges rather than being presented as a replayed read.
+  Compatibility: additive — the v1 and v2 advertisements, pins and tool descriptions stay
+  byte-compatible, the profile is opt-in, and no durable record or published schema changes. See
+  [ADR 0057](docs/decisions/0057-harness-semantic-history.md). Refs #128.
+
 - Record **queryable semantic combat and run history with causal provenance**. The host's bounded
   semantic event vocabulary had no harness-owned durable history behind it, so a run could not be
   asked what happened or why a value changed. The new `semantic_history` module appends each event

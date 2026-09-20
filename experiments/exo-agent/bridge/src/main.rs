@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-mod lookup_runtime;
 mod lookup_bootstrap;
+mod lookup_runtime;
 mod lookup_turn;
 mod lookup_wire;
 mod turn;
 mod turn_evidence;
 
+use lookup_runtime::LookupProfile;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -62,10 +63,13 @@ async fn main() {
 async fn run() -> Result<(), &'static str> {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
     if arguments == ["--lookup"] {
-        return lookup_turn::run(false).await;
+        return lookup_turn::run(LookupProfile::Terminal).await;
     }
     if arguments == ["--lookup-bootstrap"] {
-        return lookup_turn::run(true).await;
+        return lookup_turn::run(LookupProfile::Bootstrap).await;
+    }
+    if arguments == ["--lookup-history"] {
+        return lookup_turn::run(LookupProfile::History).await;
     }
     if !arguments.is_empty() {
         return Err("exo_executor_arguments");
@@ -115,5 +119,7 @@ async fn publish(writer: &mut (impl AsyncWrite + Unpin), bytes: &[u8]) -> Result
     writer.flush().await.map_err(|_| "exo_executor_output")
 }
 
+#[cfg(test)]
+mod lookup_history_tests;
 #[cfg(test)]
 mod output_tests;

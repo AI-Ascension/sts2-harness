@@ -14,6 +14,8 @@ mod run;
 #[cfg(target_os = "linux")]
 use std::io::{Read, Write};
 #[cfg(target_os = "linux")]
+use sts2_harness::exo_lookup_process::ExoLookupProfile;
+#[cfg(target_os = "linux")]
 use sts2_harness::parse_bridge_request_envelope;
 
 #[cfg(target_os = "linux")]
@@ -36,54 +38,25 @@ fn execute() -> Result<(), &'static str> {
     let [mode, path, rest @ ..] = args.as_slice() else {
         return Err("exo_bridge_arguments");
     };
-    if matches!(
-        mode.as_str(),
-        "--lookup-describe"
-            | "--lookup-run"
-            | "--lookup-synthetic"
-            | "--lookup-bootstrap-describe"
-            | "--lookup-bootstrap-run"
-            | "--lookup-bootstrap-synthetic"
-    ) {
+    if let Some(profile) = lookup::profile_for(mode) {
         let loaded = config::load_profile(path, true)?;
-        let bootstrap = matches!(
-            mode.as_str(),
-            "--lookup-bootstrap-describe"
-                | "--lookup-bootstrap-run"
-                | "--lookup-bootstrap-synthetic"
-        );
-        if matches!(
-            mode.as_str(),
-            "--lookup-describe" | "--lookup-bootstrap-describe"
-        ) && rest.is_empty()
-        {
-            let description = if bootstrap {
-                loaded.lookup_bootstrap_description()?
-            } else {
-                loaded.lookup_description()?
+        let describe = mode.ends_with("-describe");
+        if describe && rest.is_empty() {
+            let description = match profile {
+                ExoLookupProfile::Terminal => loaded.lookup_description()?,
+                ExoLookupProfile::Bootstrap => loaded.lookup_bootstrap_description()?,
+                ExoLookupProfile::History => loaded.lookup_history_description()?,
             };
             return write_output(
                 &serde_json::to_vec(&description).map_err(|_| "exo_bridge_description")?,
             );
         }
-        if matches!(
-            mode.as_str(),
-            "--lookup-describe" | "--lookup-bootstrap-describe"
-        ) || rest.len() != 1
-            || rest[0] != loaded.digest
-        {
+        if describe || rest.len() != 1 || rest[0] != loaded.digest {
             return Err("exo_bridge_config_identity");
         }
-        let synthetic = matches!(
-            mode.as_str(),
-            "--lookup-synthetic" | "--lookup-bootstrap-synthetic"
-        );
+        let synthetic = mode.ends_with("-synthetic");
         loaded.validate_route(synthetic)?;
-        return if bootstrap {
-            lookup::execute_bootstrap(&loaded, synthetic)
-        } else {
-            lookup::execute(&loaded, synthetic)
-        };
+        return lookup::execute_profile(&loaded, synthetic, profile);
     }
     if !matches!(
         mode.as_str(),

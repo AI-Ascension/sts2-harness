@@ -40,7 +40,9 @@ fn valid_definition_ref(value: &Value) -> bool {
         return false;
     };
     object.len() == 4
-        && object.get("content_manifest_id").is_some_and(valid_identity)
+        && object
+            .get("content_manifest_id")
+            .is_some_and(valid_identity)
         && object
             .get("entity_kind")
             .and_then(Value::as_str)
@@ -114,10 +116,7 @@ mod tests {
             "instance_id":"instance-1","run_id":"run-42"
         }))?;
         let payload = super::payload(Value::Object(request.arguments.clone()))?;
-        assert_eq!(
-            wire::version_for_payload(&payload),
-            wire::BOOTSTRAP_VERSION
-        );
+        assert_eq!(wire::version_for_payload(&payload), wire::BOOTSTRAP_VERSION);
         assert!(matches!(payload, Payload::Bootstrap { .. }));
 
         let mut foreign = request.clone();
@@ -162,6 +161,55 @@ mod tests {
             wire::BOOTSTRAP_VERSION,
         )?;
         assert_eq!(value["kind"], "bootstrap_response");
+        Ok(())
+    }
+
+    #[test]
+    fn bootstrap_payload_requires_additive_wire_version() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let frame = Frame {
+            wire_version: wire::BOOTSTRAP_VERSION.into(),
+            request_id: "request".into(),
+            turn_id: "turn".into(),
+            sequence: 1,
+            payload: Payload::Bootstrap {
+                arguments: json!({
+                    "operation_id":"bootstrap-1",
+                    "definition_ref":{
+                        "content_manifest_id":"content-1","entity_kind":"card",
+                        "namespaced_id":"ironclad:strike","variant":null
+                    },
+                    "instance_ref":null
+                }),
+            },
+        };
+        let bytes = serde_json::to_vec(&frame)?;
+        assert_eq!(
+            wire::version_for_payload(&frame.payload),
+            wire::BOOTSTRAP_VERSION
+        );
+        assert!(wire::decode_frame(&bytes).is_ok());
+        let mut legacy = serde_json::to_value(frame)?;
+        legacy["wire_version"] = json!(wire::VERSION);
+        assert!(wire::decode_frame(&serde_json::to_vec(&legacy)?).is_err());
+        assert!(
+            wire::feedback_for_version(
+                &serde_json::to_vec(&Frame {
+                    wire_version: wire::VERSION.into(),
+                    request_id: "request".into(),
+                    turn_id: "turn".into(),
+                    sequence: 1,
+                    payload: Payload::Feedback {
+                        value: json!({"bootstrap":"response"}),
+                    },
+                })?,
+                "request",
+                "turn",
+                1,
+                wire::BOOTSTRAP_VERSION,
+            )
+            .is_err()
+        );
         Ok(())
     }
 }

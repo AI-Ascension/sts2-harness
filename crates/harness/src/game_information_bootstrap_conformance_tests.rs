@@ -344,7 +344,8 @@ fn not_observable_bootstrap_error_is_missing_capability_and_never_reaches_the_ag
                 // Any producer payload delivered after an error is a boundary breach.
                 LookupFeedback::Bootstrap { .. }
                 | LookupFeedback::Data { .. }
-                | LookupFeedback::Bytes { .. } => Err(LookupError::Divergence),
+                | LookupFeedback::Bytes { .. }
+                | LookupFeedback::History { .. } => Err(LookupError::Divergence),
             }
         }
     }

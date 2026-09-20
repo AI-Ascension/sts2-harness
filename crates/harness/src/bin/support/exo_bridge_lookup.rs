@@ -7,24 +7,43 @@ use super::{
 use serde_json::json;
 use sts2_harness::ExoDecisionRequest;
 use sts2_harness::exo_bridge_configuration as config;
+use sts2_harness::exo_lookup_process::ExoLookupProfile;
 use sts2_harness::exo_lookup_wire::{
-    EXO_LOOKUP_FEEDBACK_BYTES, EXO_LOOKUP_FRAME_BYTES, ExoLookupFrame, ExoLookupPayload,
+    EXO_LOOKUP_BOOTSTRAP_WIRE, EXO_LOOKUP_FEEDBACK_BYTES, EXO_LOOKUP_FRAME_BYTES,
+    EXO_LOOKUP_HISTORY_WIRE, EXO_LOOKUP_WIRE, ExoLookupFrame, ExoLookupPayload,
 };
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
-pub fn execute(loaded: &Loaded, synthetic: bool) -> Result<(), &'static str> {
-    execute_mode(loaded, synthetic, false)
+/// The profile a `--lookup*` mode selects, or `None` when the mode is not a lookup mode.
+///
+/// The longest prefix wins, so `--lookup-bootstrap-run` cannot be read as the terminal
+/// `--lookup` mode with a stray suffix.
+pub fn profile_for(mode: &str) -> Option<ExoLookupProfile> {
+    let profiles = [
+        ("--lookup-history", ExoLookupProfile::History),
+        ("--lookup-bootstrap", ExoLookupProfile::Bootstrap),
+        ("--lookup", ExoLookupProfile::Terminal),
+    ];
+    let (prefix, profile) = profiles.into_iter().find(|(prefix, _)| {
+        mode.strip_prefix(prefix)
+            .is_some_and(|suffix| matches!(suffix, "-describe" | "-run" | "-synthetic"))
+    })?;
+    debug_assert!(mode.starts_with(prefix));
+    Some(profile)
 }
 
-/// Bootstrap-capable lookup profile. Legacy `--lookup` remains terminal/query-only.
-pub fn execute_bootstrap(loaded: &Loaded, synthetic: bool) -> Result<(), &'static str> {
-    execute_mode(loaded, synthetic, true)
+pub fn execute_profile(
+    loaded: &Loaded,
+    synthetic: bool,
+    profile: ExoLookupProfile,
+) -> Result<(), &'static str> {
+    execute_mode(loaded, synthetic, profile)
 }
 
 fn execute_mode(
     loaded: &Loaded,
     synthetic: bool,
-    bootstrap_capable: bool,
+    profile: ExoLookupProfile,
 ) -> Result<(), &'static str> {
     let credential = if synthetic {
         "sts2-synthetic-model-key".into()
@@ -39,7 +58,7 @@ fn execute_mode(
         .enable_all()
         .build()
         .map_err(|_| "exo_bridge_runtime")?;
-    let result = runtime.block_on(relay(loaded, &private, credential, bootstrap_capable));
+    let result = runtime.block_on(relay(loaded, &private, credential, profile));
     // Tokio's process-owned stdin worker cannot interrupt an OS read; main exits after this bound.
     runtime.shutdown_timeout(std::time::Duration::from_millis(100));
     result
@@ -66,7 +85,7 @@ async fn relay(
     loaded: &Loaded,
     private: &PrivateRoot,
     credential: String,
-    bootstrap_capable: bool,
+    profile: ExoLookupProfile,
 ) -> Result<(), &'static str> {
     let mut host_input = tokio::io::stdin();
     let mut host_output = tokio::io::stdout();
@@ -77,9 +96,9 @@ async fn relay(
     .await
     .map_err(|_| "exo_bridge_lookup_timeout")??;
     let start = ExoLookupFrame::parse(&bytes).map_err(|_| "exo_bridge_lookup_frame")?;
-    if bootstrap_capable
-        != (start.wire_version == sts2_harness::exo_lookup_wire::EXO_LOOKUP_BOOTSTRAP_WIRE)
-    {
+    // Selection is exact: the opening frame must carry the pin of the selected profile, so a
+    // caller cannot obtain a wider surface by asking one profile for another's frame.
+    if start.wire_version != profile.wire() {
         return Err("exo_bridge_lookup_profile");
     }
     let ExoLookupPayload::Start {
@@ -115,14 +134,17 @@ async fn relay(
         "STS2_EXO_LOOKUP_FEEDBACK_BYTES",
         feedback_budget.to_string(),
     );
-    if bootstrap_capable {
+    if profile != ExoLookupProfile::Terminal {
         command.env("STS2_EXO_LOOKUP_BOOTSTRAP", "1");
     }
+    if profile == ExoLookupProfile::History {
+        command.env("STS2_EXO_LOOKUP_HISTORY", "1");
+    }
     let mut child = command
-        .arg(if bootstrap_capable {
-            "--lookup-bootstrap"
-        } else {
-            "--lookup"
+        .arg(match profile {
+            ExoLookupProfile::Terminal => "--lookup",
+            ExoLookupProfile::Bootstrap => "--lookup-bootstrap",
+            ExoLookupProfile::History => "--lookup-history",
         })
         .spawn()
         .map_err(|_| "exo_bridge_executor_unavailable")?;
@@ -164,14 +186,20 @@ async fn relay(
                 .assert_identity(&start.request_id, &start.turn_id, sequence)
                 .map_err(|_| "exo_bridge_lookup_identity")?;
             let bootstrap = matches!(frame.payload, ExoLookupPayload::Bootstrap { .. });
+            let history = matches!(frame.payload, ExoLookupPayload::History { .. });
             if bootstrap
-                && (!bootstrap_capable
-                    || frame.wire_version
-                        != sts2_harness::exo_lookup_wire::EXO_LOOKUP_BOOTSTRAP_WIRE)
+                && (profile == ExoLookupProfile::Terminal
+                    || frame.wire_version != EXO_LOOKUP_BOOTSTRAP_WIRE)
             {
                 return Err("exo_bridge_lookup_profile");
             }
-            if !bootstrap && frame.wire_version != sts2_harness::exo_lookup_wire::EXO_LOOKUP_WIRE {
+            if history
+                && (profile != ExoLookupProfile::History
+                    || frame.wire_version != EXO_LOOKUP_HISTORY_WIRE)
+            {
+                return Err("exo_bridge_lookup_profile");
+            }
+            if !bootstrap && !history && frame.wire_version != EXO_LOOKUP_WIRE {
                 return Err("exo_bridge_lookup_profile");
             }
             let terminal = match &frame.payload {
@@ -182,6 +210,7 @@ async fn relay(
                 }
                 ExoLookupPayload::Query { .. }
                 | ExoLookupPayload::Bootstrap { .. }
+                | ExoLookupPayload::History { .. }
                 | ExoLookupPayload::ReadRetained { .. }
                     if sequence <= 32 =>
                 {
@@ -203,9 +232,10 @@ async fn relay(
             feedback
                 .assert_identity(&start.request_id, &start.turn_id, sequence)
                 .map_err(|_| "exo_bridge_lookup_identity")?;
-            if bootstrap
-                && feedback.wire_version != sts2_harness::exo_lookup_wire::EXO_LOOKUP_BOOTSTRAP_WIRE
-            {
+            if bootstrap && feedback.wire_version != EXO_LOOKUP_BOOTSTRAP_WIRE {
+                return Err("exo_bridge_lookup_profile");
+            }
+            if history && feedback.wire_version != EXO_LOOKUP_HISTORY_WIRE {
                 return Err("exo_bridge_lookup_profile");
             }
             let ExoLookupPayload::Feedback { value } = &feedback.payload else {
