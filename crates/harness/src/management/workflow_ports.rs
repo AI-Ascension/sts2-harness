@@ -47,12 +47,18 @@ pub fn synthetic_store(
         .with_context_owner_port(Arc::new(
             super::synthetic_context_owner::SyntheticContextOwnerPort,
         ))
+        .with_inference_profile_revision_journal(Arc::new(
+            super::MemoryInferenceProfileRevisionJournal::default(),
+        ))
 }
 
 pub fn synthetic_sqlite_store(
     store: Arc<super::store::SqliteWorkflowStore>,
 ) -> super::service::ManagementService {
     let service_store: Arc<dyn super::store::WorkflowStore> = store.clone();
+    let journal: Arc<dyn super::InferenceProfileRevisionJournal> = Arc::new(
+        super::SqliteInferenceProfileRevisionJournal::new(store.clone()),
+    );
     super::service::ManagementService::new(service_store)
         .with_authoring_store(store.clone())
         .with_definition_port(Arc::new(SyntheticDefinitionPort))
@@ -63,6 +69,7 @@ pub fn synthetic_sqlite_store(
         .with_context_owner_port(Arc::new(
             super::synthetic_context_owner::SyntheticContextOwnerPort,
         ))
+        .with_inference_profile_revision_journal(journal)
 }
 
 struct SyntheticContextInspectionPort;

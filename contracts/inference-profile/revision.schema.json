@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ascension:harness:inference-profile-revision:v1",
+  "title": "Harness inference-profile revision edit",
+  "description": "The admitted edit route `POST /v1/inference-profiles/{profile_id}/revisions`. The request restates only the fields an owner publishes as editable — version, prompt revision, settings revision, supported settings and effective budgets — and carries a compare-and-swap expectation plus a caller mutation identity. There is deliberately no field that could carry a credential, endpoint, executable or tool authority, and no field that could restate adapter, model identity, node kinds, operations, context compatibility, continuity, state or grants: a consumer edit inherits every identity and authority field from the revision it edits, so it cannot widen a profile. The response names the adopted revision as the exact `profile_id:version:digest` reference a new definition pins; its `revision` member is an `ascension.inference-profile/v1` descriptor whose closed shape is defined by `catalog.schema.json#/$defs/descriptor`.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/response"
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_input_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 131072
+        },
+        "max_output_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2000000
+        },
+        "max_provider_calls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "max_input_bytes",
+        "max_output_tokens",
+        "max_provider_calls"
+      ]
+    },
+    "request": {
+      "description": "Closed: any field outside the editable allow-list is rejected rather than ignored, so an unadvertised authority or credential field cannot be smuggled through an edit that is otherwise well-formed.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "ascension.inference-profile-revision/v1"
+        },
+        "expected_revision_digest": {
+          "description": "The compare-and-swap expectation: the exact digest of the served revision this edit was authored against. The swap is won only if the accepted head still carries it.",
+          "$ref": "#/$defs/digest"
+        },
+        "client_mutation_id": {
+          "description": "Stable caller identity, so a retried edit is replayed rather than applied twice.",
+          "$ref": "#/$defs/identifier"
+        },
+        "version": {
+          "description": "The new revision identity. It must differ from the edited revision, because a revision is keyed by profile_id and version.",
+          "$ref": "#/$defs/semver"
+        },
+        "prompt_revision": {
+          "$ref": "#/$defs/identifier"
+        },
+        "settings_revision": {
+          "$ref": "#/$defs/identifier"
+        },
+        "supported_settings": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "effective_budgets": {
+          "$ref": "#/$defs/budgets"
+        }
+      },
+      "required": [
+        "schema_version",
+        "expected_revision_digest",
+        "client_mutation_id",
+        "version",
+        "prompt_revision",
+        "settings_revision",
+        "supported_settings",
+        "effective_budgets"
+      ]
+    },
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "ascension.inference-profile-revision-response/v1"
+        },
+        "outcome": {
+          "description": "`adopted` won the swap, `replayed` found this client_mutation_id already applied with the same candidate, and `conflict` lost the swap to a concurrent edit.",
+          "enum": [
+            "adopted",
+            "replayed",
+            "conflict"
+          ]
+        },
+        "profile_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "reference": {
+          "description": "`profile_id:version:digest` of `revision`, the exact reference a new definition pins. On a conflict this names the revision that won.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*:(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*):[0-9a-f]{64}$"
+        },
+        "revision": {
+          "description": "The adopted revision, or the currently accepted revision when the swap was lost. Its closed descriptor shape is `catalog.schema.json#/$defs/descriptor`.",
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "outcome",
+        "profile_id",
+        "reference",
+        "revision"
+      ]
+    }
+  }
+}

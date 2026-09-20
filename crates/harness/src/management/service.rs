@@ -69,6 +69,10 @@ mod target_admission;
 #[path = "service_unavailable.rs"]
 mod unavailable;
 
+pub use super::inference_profile_revision::{
+    InferenceProfileRevisionJournal, InferenceProfileRevisionRequest,
+    UnavailableInferenceProfileRevisionJournal,
+};
 pub use live_provider_policy::{
     LiveProviderPolicyPort, ProviderSessionPolicyBinding, UnavailableLiveProviderPolicyPort,
 };
@@ -109,6 +113,10 @@ impl From<StoreError> for ManagementError {
         let class = match error.code.as_str() {
             "run_not_found" | "command_not_found" => ErrorClass::InvalidInput,
             "stale_revision" | "duplicate_run" | "command_conflict" => ErrorClass::Conflict,
+            // An accepted edit must publish a new version, and a version is a
+            // revision identity, so re-using one is a conflict with the
+            // journal's held revisions rather than a store outage.
+            "inference_profile_revision_duplicate" => ErrorClass::Conflict,
             "redaction_required" => ErrorClass::Forbidden,
             _ => ErrorClass::Store,
         };
@@ -260,6 +268,7 @@ pub struct ManagementService {
     provider_session_capabilities: Option<crate::provider_session::NativeCapabilities>,
     process_lifecycle: Arc<dyn super::lifecycle::ProcessLifecyclePort>,
     lifecycle_intents: Option<Arc<std::sync::Mutex<super::lifecycle_intent::LifecycleIntentStore>>>,
+    journal: Arc<dyn InferenceProfileRevisionJournal>,
 }
 
 impl ManagementService {
@@ -287,6 +296,7 @@ impl ManagementService {
             provider_session_capabilities: None,
             process_lifecycle: Arc::new(super::lifecycle::UnavailableProcessLifecyclePort),
             lifecycle_intents: None,
+            journal: Arc::new(UnavailableInferenceProfileRevisionJournal),
         }
     }
 
@@ -302,6 +312,19 @@ impl ManagementService {
 
     pub fn with_capability_port(mut self, port: Arc<dyn CapabilityPort>) -> Self {
         self.capabilities = port;
+        self
+    }
+
+    /// Attaches the server-owned CAS revision journal that
+    /// `POST /v1/inference-profiles/{profile_id}/revisions` appends to.
+    ///
+    /// Without it the route is composed but unavailable: an edit is refused
+    /// rather than accepted into a process-local map an operator cannot see.
+    pub fn with_inference_profile_revision_journal(
+        mut self,
+        journal: Arc<dyn InferenceProfileRevisionJournal>,
+    ) -> Self {
+        self.journal = journal;
         self
     }
 }

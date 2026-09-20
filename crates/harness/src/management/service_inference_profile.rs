@@ -4,6 +4,10 @@
 
 use super::super::contract::{InferenceProfileCatalog, TargetAdmissionBinding};
 use super::super::inference_profile_binding::{InferenceProfileBindingSet, resolve_definition};
+use super::super::inference_profile_revision::{
+    InferenceProfileRevisionRequest, InferenceProfileRevisionResponse, RevisionAppendOutcome,
+    derive_inference_profile_revision,
+};
 use super::support::authorize;
 use super::{AuthContext, ManagementError, ManagementService, RunRequest};
 
@@ -29,6 +33,77 @@ impl ManagementService {
             })?;
         catalog.validate()?;
         Ok(catalog)
+    }
+
+    /// Adopts one new inference-profile revision through the CAS journal for
+    /// `POST /v1/inference-profiles/{profile_id}/revisions`.
+    ///
+    /// Two independent authorities are required. The caller must hold
+    /// `workflow:content:write`, the owner configuration-write scope, so the
+    /// read and select grants that authorize discovery confer **no** edit
+    /// authority here. The served revision must also publish `grants.edit`,
+    /// so an owner can keep a profile discoverable and selectable while
+    /// refusing every edit to it.
+    ///
+    /// The accepted edit is appended as a *new* immutable revision. The
+    /// revision named by `expected_revision_digest` is never rewritten, and the
+    /// compare-and-swap is performed by the journal's atomic append, so a
+    /// concurrent edit loses the swap instead of silently overwriting the
+    /// winner. Nothing here reads or writes a run record: an already-admitted
+    /// run keeps the exact id/version/digest it resolved at admission.
+    pub fn adopt_inference_profile_revision(
+        &self,
+        actor: &AuthContext,
+        profile_id: &str,
+        request: InferenceProfileRevisionRequest,
+    ) -> Result<InferenceProfileRevisionResponse, ManagementError> {
+        authorize(actor, "workflow:content:write", None)?;
+        super::super::contract::validate_identifier("profile_id", profile_id)?;
+        let catalog = self
+            .capabilities
+            .inference_profile_catalog(actor)?
+            .ok_or_else(|| {
+                ManagementError::unavailable(
+                    "inference_profile_catalog_unavailable",
+                    "inference-profile discovery is not attached to this workflow owner",
+                )
+            })?;
+        catalog.validate()?;
+        // Editing is anchored on the revision the owner *serves*: a profile the
+        // catalog does not advertise cannot be edited, and the expected digest
+        // must name a revision actually published for that profile.
+        let served = catalog
+            .descriptors
+            .iter()
+            .find(|descriptor| descriptor.profile_id == profile_id)
+            .ok_or_else(|| {
+                ManagementError::unavailable(
+                    "inference_profile_unknown",
+                    "the inference profile catalog does not advertise this profile",
+                )
+            })?;
+        if served.digest != request.expected_revision_digest {
+            return Err(ManagementError::conflict(
+                "inference_profile_revision_conflict",
+                "the expected revision digest does not name the served revision",
+            ));
+        }
+        let candidate = derive_inference_profile_revision(served, &request)?;
+        let outcome = self.journal.append(
+            profile_id,
+            served,
+            &request.expected_revision_digest,
+            &request.client_mutation_id,
+            &candidate,
+        )?;
+        let (outcome, revision) = match outcome {
+            RevisionAppendOutcome::Adopted(revision) => ("adopted", *revision),
+            RevisionAppendOutcome::Replayed(revision) => ("replayed", *revision),
+            RevisionAppendOutcome::Conflict(revision) => ("conflict", *revision),
+        };
+        Ok(InferenceProfileRevisionResponse::new(
+            outcome, profile_id, revision,
+        ))
     }
 }
 

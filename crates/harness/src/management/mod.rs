@@ -21,6 +21,13 @@ pub use inference_profile_catalog::{
     InferenceProfilePin, InferenceProfileRef, LiveInferenceProfileCatalogPort,
     is_provenance_reference,
 };
+mod inference_profile_revision;
+pub use inference_profile_revision::{
+    INFERENCE_PROFILE_REVISION_SCHEMA_VERSION, InferenceProfileRevisionJournal,
+    InferenceProfileRevisionRequest, InferenceProfileRevisionResponse,
+    MemoryInferenceProfileRevisionJournal, RevisionAppendOutcome,
+    SqliteInferenceProfileRevisionJournal, derive_inference_profile_revision,
+};
 mod lifecycle;
 mod lifecycle_intent;
 mod lifecycle_readiness;
@@ -260,9 +267,14 @@ pub fn serve_live_with_lifecycle(
     provider_session_capabilities: crate::provider_session::NativeCapabilities,
     lifecycle: Option<ProcessLifecycleOwner>,
 ) -> Result<(), ManagementError> {
-    let store = SqliteWorkflowStore::open(store_path)
-        .map_err(|error| ManagementError::store("workflow_store_open", error.to_string()))?;
-    let store: std::sync::Arc<dyn WorkflowStore> = std::sync::Arc::new(store);
+    let store = std::sync::Arc::new(
+        SqliteWorkflowStore::open(store_path)
+            .map_err(|error| ManagementError::store("workflow_store_open", error.to_string()))?,
+    );
+    let journal: std::sync::Arc<dyn InferenceProfileRevisionJournal> = std::sync::Arc::new(
+        SqliteInferenceProfileRevisionJournal::new(std::sync::Arc::clone(&store)),
+    );
+    let store: std::sync::Arc<dyn WorkflowStore> = store;
     let service = live_store_with_provider_policy_and_command_port(
         store,
         factory,
@@ -270,6 +282,7 @@ pub fn serve_live_with_lifecycle(
         owner.provider_policy,
         owner.command_port,
     )?
+    .with_inference_profile_revision_journal(journal)
     .with_context_owner_port(owner.context_owner)
     .with_context_binding_history()?
     .with_provider_session_capabilities(provider_session_capabilities)?;

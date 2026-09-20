@@ -183,6 +183,28 @@ applies to a new definition only and never retargets an admitted run; the merged
 idle-rebind semantics are explicitly out of this criterion's scope. Evidence is synthetic/component
 only: provider execution, live model identity and native hosts remain unverified.
 
+The admitted edit route `POST /v1/inference-profiles/{profile_id}/revisions` (lane 104-B) is the one
+route that writes a revision, and it is `additive-compatible`: no existing route, record, schema,
+digest or bound changes, and its request/response schema is a new closed
+`contracts/inference-profile/revision.schema.json`. It requires two independent authorities —
+`workflow:content:write`, and a served revision whose descriptor publishes `grants.edit` — so the
+read and select grants that authorize discovery confer no edit authority, and an owner can keep a
+profile discoverable and selectable while refusing every edit. The request restates only the
+editable fields (version, prompt revision, settings revision, supported settings, effective
+budgets) and carries a compare-and-swap expectation plus a caller mutation identity; every identity
+and authority field is inherited from the revision it edits, and the closed shape rejects any
+unadvertised field, so an edit can neither widen a profile's authority nor carry a credential,
+endpoint or executable. An accepted edit appends a **new** immutable revision — the replaced one is
+never rewritten — and is admitted only against the exact expected digest, so of two concurrent edits
+one is adopted and the other is reported as a conflict naming the winner; a repeated mutation
+identity is replayed rather than applied twice. Adoption is definition-scoped: the accepted revision
+is recorded in the journal and reported as the exact `profile_id:version:digest` reference a new
+definition pins, while admission writes a run's provenance once and a catalog refresh or newer
+revision refuses an admitted definition rather than retargeting it. The owner's catalog remains the
+only thing that publishes what it serves, so a newly accepted revision becomes resolvable for new
+definitions when its owner publishes it. Evidence is synthetic/component only, and the live lane
+continues to publish its own profile as uneditable.
+
 ## Independent compatibility axes
 
 “Compatible” is not one claim. The harness records these independently:
