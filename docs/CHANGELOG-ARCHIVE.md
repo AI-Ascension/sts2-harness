@@ -512,3 +512,34 @@ they come from the flat `## Unreleased` list and carry no section of their own.
   Compatibility: additive — no existing field, route, durable record, or published schema changes.
   Owner continuations gain optional `membership` configuration; absence preserves current behaviour.
   See [ADR 0046](decisions/0046-invocation-context-membership.md). Refs #106.
+
+- Consume the gateway's negotiated **repeated-episode lease profile** so a harness run can
+  complete two episodes against one gateway deployment. The gateway permanently revokes its local
+  lease context on a successful `release`, so a second episode could never be admitted
+  (AI-Ascension/sts2-gateway#67). A run that opts in with `STS2_EPISODE_PROFILE=true` sends
+  `x-sts2-episode-profile: repeated-episode-lease-v1` on the release that completes an episode and
+  requires the gateway's exact witness back (`profile`, `capability`, `schema_digest`,
+  `released_epoch`); a missing or mismatched witness fails the run instead of silently degrading to
+  the single-episode default. The profile is armed **only** for a completed episode: the episode
+  runner marks completion solely on a successful terminal outcome, so every failure, cleanup, and
+  restart path keeps the gateway's fail-closed permanent revocation. The witness is required only
+  when this build negotiated it, so a run that does not opt in sends no header and its release body
+  stays byte-identical. Compatibility: opt-in and additive — no field, route, durable record, or
+  published schema changes, and the profile is off by default. See
+  [gateway ADR 0033](https://github.com/AI-Ascension/sts2-gateway/blob/main/docs/decisions/0033-repeated-episode-lease-profile.md).
+  Refs AI-Ascension/sts2-gateway#67.
+
+- Stop reporting a **failed live command as settled**. A command that faults before executing
+  anything (`live_execution_failed`) is still `CommandOutcome::Applied` — the command was processed
+  and its response vocabulary is unchanged — but its event is no longer classified `settled`. The
+  run fails, the cursor stays on the same node, and no provider call is consumed, so a `settled`
+  classification presented a failure as forward progress to consumers that treat a settled step as
+  completed. Classification is now derived from the outcome *and* the reason code in one shared
+  place (`CommandOutcome::classification`) for both the memory and SQLite event writers, replacing
+  two copies of the mapping. A new `CommandOutcome` variant was rejected because it would extend the
+  closed `ascension.management/v1` outcome set without the version negotiation a published consumer
+  change requires; the event classification enum already publishes `rejected`
+  (`ascension.workflow-event/v1`). Compatibility: `safety-correction` to an unreleased candidate —
+  one failure path now emits `rejected` instead of `settled`, and no field, route, durable record,
+  or published schema changes. See
+  [ADR 0047](decisions/0047-failed-command-event-classification.md). Refs #260.
