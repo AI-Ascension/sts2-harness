@@ -1,0 +1,11 @@
+{
+  "name": "sts2-jev-offline-evaluation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.16.0" },
+  "scripts": {
+    "test": "node --test contract.test.mjs outcomes.test.mjs audit.test.mjs io.test.mjs"
+  }
+}

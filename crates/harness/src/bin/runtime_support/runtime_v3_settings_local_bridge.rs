@@ -42,13 +42,30 @@ fn ollama_allowed(arguments: &[String]) -> bool {
         .is_ok_and(|options| !options.describe && options.model == arguments[1])
 }
 
-/// Admits the System One model and transport selection, with an optional confidence gate.
-///
-/// Two shapes only: the four-element model and transport pair, and that pair followed by
-/// `--gate PERCENT`. The gate is admitted because a lane whose measured confidence sits below the
-/// bridge default would otherwise never act, and because an operator changing it should be visible
-/// in the recorded argument vector rather than hidden in a rebuild.
+/// Admits the existing model/transport pair and optional gate, with an opt-in --tactical suffix.
+/// The recorded vector exposes the selected policy. Record/describe and arbitrary flags stay denied.
 fn system_one_allowed(arguments: &[String]) -> bool {
+    // Canonical capture suffix only. Do not widen record/describe or other provider kinds.
+    let (arguments, audit_dir) = match arguments {
+        [execution @ .., flag, directory] if flag == "--audit-dir" => {
+            (execution, Some(directory.as_str()))
+        }
+        _ => (arguments, None),
+    };
+    if audit_dir.is_some() && !cfg!(unix) {
+        return false;
+    }
+    // Only a final --tactical is admitted, with either existing execution shape.
+    let tactical = arguments.last().is_some_and(|value| value == "--tactical");
+    let execution = if tactical {
+        &arguments[..arguments.len() - 1]
+    } else {
+        arguments
+    };
+    system_one_shape(execution, tactical, audit_dir)
+}
+
+fn system_one_shape(arguments: &[String], tactical: bool, audit_dir: Option<&str>) -> bool {
     // Length first: a shorter vector must be refused, not indexed.
     let gated = match arguments.len() {
         4 => false,
@@ -66,13 +83,27 @@ fn system_one_allowed(arguments: &[String]) -> bool {
     // admitted position can carry a flag because the parser rejects a value that begins with `-`.
     // `--describe` is excluded below for the longer-standing reason: this lane reads the
     // executable's stdout as the decision, not a configuration print.
-    jev_options::Options::parse(arguments.iter().cloned()).is_ok_and(|options| {
+    let mut parsed = arguments.to_vec();
+    if tactical {
+        parsed.push(String::from("--tactical"));
+    }
+    if let Some(directory) = audit_dir {
+        parsed.extend([String::from("--audit-dir"), directory.to_owned()]);
+    }
+    jev_options::Options::parse(parsed).is_ok_and(|options| {
         !options.describe
+            && !options.record
+            && options.tactical == tactical
+            && options.audit_dir.as_deref() == audit_dir
             && options.model == arguments[1]
             && options.transport.as_deref() == Some(arguments[3].as_str())
             && options.gate_percent.map(|gate| gate.to_string()) == arguments.get(5).cloned()
     })
 }
+
+#[cfg(test)]
+#[path = "runtime_v3_capture_admission_tests.rs"]
+mod capture_tests;
 
 #[cfg(test)]
 mod tests {
@@ -85,6 +116,52 @@ mod tests {
         } else {
             "/opt/providers/systemone"
         }
+    }
+
+    #[test]
+    fn spaced_transport_is_admitted_in_each_system_one_execution_shape() {
+        let path = if cfg!(windows) {
+            "C:/Program Files/System One/transport.exe"
+        } else {
+            "/opt/System One/transport"
+        };
+        for (gated, tactical) in [(false, false), (true, false), (false, true), (true, true)] {
+            let mut arguments = vec!["--model", "jev-1.13.0", "--transport", path];
+            if gated {
+                arguments.extend(["--gate", "35"]);
+            }
+            if tactical {
+                arguments.push("--tactical");
+            }
+            let arguments: Vec<String> = arguments.into_iter().map(str::to_owned).collect();
+            assert!(arguments_allowed(Some("typesafe-jev"), &arguments));
+            assert!(!arguments_allowed(Some("ollama"), &arguments));
+            for forbidden in ["--record", "--describe", "--unknown"] {
+                let mut invalid = arguments.clone();
+                invalid.push(forbidden.to_owned());
+                assert!(!arguments_allowed(Some("typesafe-jev"), &invalid));
+            }
+        }
+    }
+
+    #[test]
+    fn splitting_a_transport_path_does_not_create_an_admitted_argument_vector() {
+        let prefix = if cfg!(windows) {
+            "C:/Program"
+        } else {
+            "/opt/System"
+        };
+        let arguments = [
+            "--model",
+            "jev-1.13.0",
+            "--transport",
+            prefix,
+            "One/transport",
+        ];
+        let mut arguments: Vec<String> = arguments.into_iter().map(str::to_owned).collect();
+        assert!(!arguments_allowed(Some("typesafe-jev"), &arguments));
+        arguments.push(String::from("--tactical"));
+        assert!(!arguments_allowed(Some("typesafe-jev"), &arguments));
     }
 
     /// The record form is refused because the admitted set is one fixed shape, not by a branch.
@@ -127,6 +204,25 @@ mod tests {
                 !arguments_allowed(Some("typesafe-jev"), &arguments),
                 "{arguments:?} must be refused"
             );
+        }
+    }
+
+    #[test]
+    fn tactical_suffix_is_admitted_without_widening_other_options() {
+        for gated in [false, true] {
+            let mut args = vec!["--model", "jev-1.13.0", "--transport", transport()];
+            if gated {
+                args.extend(["--gate", "20"]);
+            }
+            args.push("--tactical");
+            let mut args: Vec<String> = args.into_iter().map(str::to_owned).collect();
+            assert!(arguments_allowed(Some("typesafe-jev"), &args));
+            assert!(!arguments_allowed(Some("ollama"), &args));
+            args.push(String::from("--record"));
+            assert!(!arguments_allowed(Some("typesafe-jev"), &args));
+            let _ = args.pop();
+            args.push(String::from("--tactical"));
+            assert!(!arguments_allowed(Some("typesafe-jev"), &args));
         }
     }
 

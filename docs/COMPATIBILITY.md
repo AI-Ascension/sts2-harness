@@ -453,6 +453,21 @@ coordinated consumer review. Additive fields must define old-reader behavior. Un
 null versus missing, ordering, numeric bounds, identifier namespaces, stale state, and partial effects
 must be tested before an additive label is used.
 
+### Runtime peer lane recovery sideband
+
+`contracts/runtime-peer-lane.json` declares the immutable gateway and MCP revisions the runtime
+peer contract builds against. The harness starts the configured MCP with the `watchdog-recovery-v1`
+profile before it reads or reconciles a durable operation and fails closed when a peer refuses that
+profile. The MCP pin moved from `f3b6eaa8` to `587a53ce`: the older revision predates the sideband
+catalog and exits with `STS2_RUNTIME_PROFILE must be ... got watchdog-recovery-v1`, so the lane
+declared a pair its own recovery path could never reach while every other lane case still passed.
+The gateway pin is unchanged at `8940fba8` and needs no move: it already declares
+`watchdog-recovery-v1` at schema digest `fb934d31…09217`, the same contract and digest the harness
+and the MCP peer declare, and `fb7e57c3` carries the identical value. Two operator-only checks run
+in the lane: the MCP peer must advertise the exact nine-tool sideband surface, and both peers must
+declare the harness's recovery contract and digest. These are peer-capability checks only; the
+recovery path has not been executed end to end against a live host, which remains unverified.
+
 ## Runtime coordinator row
 
 | Coordinator | Downstream lane | Current evidence | Result |

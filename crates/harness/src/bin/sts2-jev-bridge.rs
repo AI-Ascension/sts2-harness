@@ -64,6 +64,12 @@ type Exchange<'a> = dyn FnMut(&[u8]) -> Result<Vec<u8>, Box<dyn std::error::Erro
 #[path = "support/jev_options.rs"]
 mod options;
 
+#[path = "support/jev_tactical.rs"]
+mod tactical;
+
+#[path = "support/jev_capture.rs"]
+mod capture;
+
 #[path = "support/systemone_decision.rs"]
 mod decision;
 
@@ -79,7 +85,7 @@ fn main() {
     let Ok(options) = options::Options::parse(std::env::args().skip(1)) else {
         eprintln!(
             "Usage: sts2-jev-bridge [--model MODEL] [--transport PATH] [--gate PERCENT] \
-             [--record] [--describe]"
+             [--record] [--describe] [--tactical] [--audit-dir DIR]"
         );
         std::process::exit(2);
     };
@@ -97,7 +103,7 @@ fn main() {
 ///
 /// This is requested configuration, not availability, and not evidence that inference happened.
 fn describe(options: &options::Options) -> Value {
-    json!({
+    let mut description = json!({
         "kind": "systemone",
         "provider": PROVIDER,
         "model": options.model,
@@ -105,7 +111,14 @@ fn describe(options: &options::Options) -> Value {
         "transport": options.transport,
         "question": ACTION_QUESTION,
         "confidence_gate": gate(options),
-    })
+    });
+    if options.tactical {
+        description["tactical_profile"] = json!(tactical::PROFILE);
+    }
+    if options.audit_dir.is_some() {
+        description["redacted_capture"] = json!(capture::SCHEMA);
+    }
+    description
 }
 
 /// The confidence gate this invocation applies.
@@ -131,7 +144,17 @@ fn run(options: &options::Options) -> Result<(), Box<dyn std::error::Error>> {
         .take((LIMIT + 1) as u64)
         .read_to_end(&mut bytes)?;
     let mut ask = |body: &[u8]| exchange(transport, body, TIMEOUT);
-    if options.record {
+    if options.audit_dir.is_some() {
+        println!("{}", capture::run(&bytes, options, &mut ask)?);
+    } else if options.tactical {
+        let evidence = record_profile(&bytes, &options.model, gate(options), &mut ask, true)?;
+        let output = if options.record {
+            evidence
+        } else {
+            evidence["decision"].clone()
+        };
+        println!("{output}");
+    } else if options.record {
         println!(
             "{}",
             record(&bytes, &options.model, gate(options), &mut ask)?
@@ -165,72 +188,9 @@ fn decide(
 /// The record exists so the decision can be shown to be a function of the response it is stored
 /// beside. `provider_call` is `false` when the bridge answered without asking, and the two provider
 /// fields are then `null` rather than a fabricated exchange.
-fn record(
-    bytes: &[u8],
-    model: &str,
-    gate: f64,
-    exchange: &mut Exchange<'_>,
-) -> Result<Value, Box<dyn std::error::Error>> {
-    if bytes.len() > LIMIT {
-        return Err("request exceeds bound".into());
-    }
-    let request: Value = serde_json::from_slice(bytes)?;
-    let catalog = catalog(&request)?;
-    let observation = request
-        .get("observation")
-        .ok_or("request carries no observation")?;
-
-    // Fold strategically identical entries before asking. Three copies of one card in hand are three
-    // catalog entries, and presenting all three splits the probability mass for that play across
-    // them, which reads as low confidence in the play rather than a choice between duplicates.
-    let selection = OptionSelection::from_observation(observation, MAX_PRESENTED_OPTIONS);
-    if selection.mode == SelectionMode::Forced
-        && let Some(only) = selection.presented.first()
-    {
-        // One legal action is not a question. Asking would spend a call to be told the only thing
-        // that can happen, so the bridge answers it without a provider exchange.
-        return Ok(json!({
-            "schema": RECORD_SCHEMA,
-            "provider_call": false,
-            "provider_request": Value::Null,
-            "provider_response": Value::Null,
-            "decision": {
-                "decision": "action",
-                "action_id": only.action_id,
-                "rationale":
-                    "bridge-authored evidence: one legal action, chosen without a provider call",
-                "confidence": 100,
-            },
-        }));
-    }
-    let options = present(&selection, observation, &catalog);
-    let ids: Vec<String> = options.iter().map(|option| option.id.clone()).collect();
-
-    let state = state_with_derived_facts(&request, observation)?;
-    let body = build_described_system_one_request(
-        model,
-        &state,
-        &options,
-        &framing(
-            request["objective"].as_str().unwrap_or_default(),
-            observation,
-        ),
-        &constraints(&request),
-    )?;
-    let response = exchange(&serde_json::to_vec(&body)?)?;
-    if response.len() > LIMIT {
-        return Err("provider response exceeds bound".into());
-    }
-    let response: Value = serde_json::from_slice(&response)?;
-    let decision = decision::map_decision(&response, ACTION_QUESTION, &ids, gate)?;
-    Ok(json!({
-        "schema": RECORD_SCHEMA,
-        "provider_call": true,
-        "provider_request": body,
-        "provider_response": response,
-        "decision": decision,
-    }))
-}
+#[path = "support/jev_record.rs"]
+mod recording;
+use recording::{record, record_profile};
 
 /// Runs the operator-owned transport for exactly one bounded exchange.
 ///
@@ -286,3 +246,11 @@ fn exchange(
 #[cfg(test)]
 #[path = "support/sts2_jev_bridge_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "support/jev_tactical_bridge_tests.rs"]
+mod tactical_bridge_tests;
+
+#[cfg(test)]
+#[path = "support/jev_tactical_fixture.rs"]
+mod tactical_fixture;

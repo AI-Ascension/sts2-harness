@@ -10,6 +10,12 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Add opt-in Jev `--audit-dir` metadata sidecars with bounded, create-only Unix reservations,
+  separate execution/input fingerprints, no raw prompts or action IDs, and no extra provider calls.
+  Runtime stdout stays one decision; storage failures refuse it. Add a redacted paired reader and
+  CI for the offline evaluation tests. Windows capture, native gameplay benefit and live paired
+  orchestration remain unverified. See [capture documentation](experiments/jev-evaluation/CAPTURE.md).
+
 - Let a provider ask **bounded semantic history through one harness-owned agent tool**. The history
   a run records was queryable inside the harness but not through the boundary an agent actually
   drives, so nothing could ask what happened without reaching around that boundary. The tool
@@ -522,3 +528,8 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   Compatibility: `safety-correction` to an unreleased candidate — the empty registry is now
   enforced in dispatch rather than inherited from upstream; no wire field, route, published schema,
   or durable record changes. Refs #140.
+
+- Promote the **runtime peer lane's MCP pin to a recovery-capable revision**. The lane declared MCP
+  `f3b6eaa8`, which predates the `watchdog-recovery-v1` sideband profile the harness starts before it
+  reads or reconciles a durable operation, so the lane's own recovery path was unreachable. The pin is
+  now `587a53ce`, and the lane adds operator-only peer capability checks; the gateway pin is unchanged.
