@@ -259,6 +259,15 @@ pub(super) fn merge_intervals(
     if intervals.len() > SEMANTIC_MAX_INTERVALS {
         return Err(SemanticHistoryError::new(Refusal::TooManyIntervals));
     }
+    let mut previous_end: Option<u64> = None;
+    for interval in &intervals {
+        if previous_end.is_some_and(|end| interval.first_sequence <= end) {
+            return Err(SemanticHistoryError::new(Refusal::OverlappingIntervals));
+        }
+        previous_end = Some(previous_end.map_or(interval.last_sequence, |end| {
+            end.max(interval.last_sequence)
+        }));
+    }
     Ok(intervals)
 }
 

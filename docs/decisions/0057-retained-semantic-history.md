@@ -90,7 +90,20 @@ consumer can detect later. Refusal is therefore the contract, not a fallback.
     shape, a request over its byte bound is refused, and a result over its own byte bound is refused
     rather than truncated into a page that looks complete. What a lookup returns is a disclosed
     page: a pruned span is stated as retention disclosed and a missing sequence as a gap, so a
-    lookup can never read the removal of a record as a measured zero.
+   lookup can never read the removal of a record as a measured zero.
+12. **Saved native history is restored only through an owned mod port, and it keeps its own labels.**
+    History that predates this harness can never be admitted as capture, so it is restored backwards
+    through one port the harness owns: the harness declares `SemanticBackfillPort`, the mod
+    implements it, and the port yields a batch rather than reaching the store. Authority is **not
+    granted by default**, and an ungranted restore is refused *before the port is consulted*, so a
+    mod is never asked for native history the harness has not authorized. What comes back is
+    admitted under the same vocabulary, identity and bound rules a live batch faces, lands **ahead**
+    of the retained capture start rather than being appended to it, and is idempotent by operation
+    identity: a re-delivery restores nothing a second time, and reusing that identity with another
+    span or binding is refused. Imported history is never relabelled: an observed restored record
+    must carry the `Imported` origin so it can never read as an event this harness observed, a
+    restored gap must keep the coverage label naming what its source could not see, and a span that
+    does not abut the retained start is refused rather than leaving an undeclared hole behind it.
 
 ## Consequences
 
@@ -111,7 +124,7 @@ consumer can detect later. Refusal is therefore the contract, not a fallback.
 ## Verification
 
 `crates/harness/tests/semantic_history.rs` with
-`crates/harness/tests/semantic_history/{admission,persistence,query,retention,lookup}.rs` covers 76 cases:
+`crates/harness/tests/semantic_history/{admission,persistence,query,retention,lookup,backfill}.rs` covers 97 cases:
 coverage-shape and window refusals (decision 2), the causal-shape, absent-parent, non-preceding
 parent and imported-causality refusals plus bounded and cycle-refusing traversal (decisions 3 and
 4), the cross-branch and cross-epoch read refusals and bounded paging with continuation (decisions
@@ -121,7 +134,12 @@ identity and bound refusals (decision 7), and restart, missing-store and corrupt
 closure, the stale-plan and reused-identity refusals, the disclosed-span bound, restart, fork and
 post-prune append behaviour over a disclosed span (decision 10), and the authority gate, both byte
 bounds, the unknown-field refusal, retention disclosure, and the scope fence holding on an empty as
-well as a non-empty history (decision 11).
+well as a non-empty history (decision 11), and the ungranted restore, the granted restore landing
+ahead of the retained capture, the imported-origin and gap-label rules, the non-abutting and
+over-long and short span refusals, the binding, fence and scope refusals, the same-rules-as-a-live
+batch admission, the re-delivered and conflicting-identity restores, the restore that reaches the
+first sequence and leaves nothing before capture, the restart that keeps the restored span where
+capture begins, and the port that cannot read saved history (decision 12).
 
 These establish component behaviour over batches the harness constructed. They do **not** prove a
 native event capture, a capture window the host actually declared, or that any campaign ran; those

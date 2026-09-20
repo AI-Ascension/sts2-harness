@@ -32,6 +32,11 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   rather than shortened, a result over its byte bound is refused rather than served as a page that
   looks complete, a pruned span is disclosed rather than read as a measured zero, and the port
   borrows the retained store directly with no accessor back to raw artifact storage.
+  Saved native history predates the capture and is restored only through an owned mod port:
+  authority is not granted by default and an ungranted restore refuses before the mod is asked, the
+  restored span lands ahead of the capture start under the same admission rules, is idempotent by
+  operation identity, and keeps its own labels -- imported records stay imported and a restored gap
+  keeps the coverage label naming what its source could not see.
   Compatibility: additive; no wire field, schema or durable record changes, and no native event
   capture is claimed. See [ADR 0057](docs/decisions/0057-retained-semantic-history.md). Refs #128.
 

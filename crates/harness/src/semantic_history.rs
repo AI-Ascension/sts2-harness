@@ -29,10 +29,15 @@
 //!   capability-gated, refused unless a request is the shape it serves and fits one byte bound, and
 //!   refused rather than truncated when a page's retained text weight exceeds the result bound. The
 //!   port exposes no store path, so a lookup cannot become a read of an arbitrary artifact.
+//! - Saved history is restored through one harness-owned mod port rather than admitted as capture:
+//!   restoring is granted deliberately, every restored record keeps the `Imported` origin and the
+//!   coverage label its source stated, and the span must abut the retained capture start, so
+//!   restored history can neither read as something this harness observed nor leave a hole behind it.
 //!
 //! This is a harness-owned historical artifact surface. It reaches no host, no game process and no
 //! gateway, and it claims no native event capture.
 
+mod backfill;
 mod causal;
 mod error;
 mod ingest;
@@ -47,6 +52,10 @@ mod store;
 mod vocabulary;
 mod window;
 
+pub use backfill::{
+    SemanticBackfillAuthority, SemanticBackfillOutcome, SemanticBackfillPort,
+    SemanticBackfillRequest, restore_saved_history,
+};
 pub use causal::{SemanticCausalTraversal, SemanticCausalVisit, traverse_causes};
 pub use error::{SemanticHistoryError, SemanticHistoryRefusal};
 pub use ingest::admit_batch;

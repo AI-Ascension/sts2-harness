@@ -53,6 +53,8 @@ pub enum SemanticHistoryRefusal {
     CapturedInsideGap,
     /// A declared gap lies outside the captured range.
     GapOutsideCapture,
+    /// A declared span overlaps a span this history already declares or retention already replaced.
+    OverlappingIntervals,
     /// The capture window contradicts where capture began.
     WindowContradiction,
     /// A batch or a lookup names a different catalog binding than the retained history.
@@ -85,6 +87,12 @@ pub enum SemanticHistoryRefusal {
     LookupPayloadTooLarge,
     /// A lookup request was not the shape this port serves.
     LookupShape,
+    /// Saved history was restored without the harness granting the owned mod port.
+    BackfillNotGranted,
+    /// A restored record was not labelled with the origin and coverage label its source stated.
+    BackfillLabel,
+    /// A restored span did not abut the start of the retained capture.
+    BackfillSpan,
     /// The retained store could not be read or written.
     Storage,
 }
@@ -116,6 +124,7 @@ impl SemanticHistoryRefusal {
             Self::StatedParentNotBefore => "stated_parent_not_before",
             Self::CapturedInsideGap => "captured_inside_gap",
             Self::GapOutsideCapture => "gap_outside_capture",
+            Self::OverlappingIntervals => "overlapping_intervals",
             Self::WindowContradiction => "window_contradiction",
             Self::BindingMismatch => "binding_mismatch",
             Self::ScopeMismatch => "scope_mismatch",
@@ -132,6 +141,9 @@ impl SemanticHistoryRefusal {
             Self::LookupNotGranted => "lookup_not_granted",
             Self::LookupPayloadTooLarge => "lookup_payload_too_large",
             Self::LookupShape => "lookup_shape",
+            Self::BackfillNotGranted => "backfill_not_granted",
+            Self::BackfillLabel => "backfill_label",
+            Self::BackfillSpan => "backfill_span",
             Self::Storage => "storage",
         }
     }

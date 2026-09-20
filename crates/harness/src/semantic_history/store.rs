@@ -26,6 +26,7 @@ use super::scope::{
     SEMANTIC_MAX_EVENTS, SEMANTIC_MAX_HISTORY_BYTES, SemanticCatalogBinding, SemanticEventScope,
 };
 
+mod backfill;
 mod file;
 mod prune;
 
@@ -120,9 +121,33 @@ impl SemanticHistoryStore {
             if append.batch.window.capture_start_sequence != expected {
                 return Err(SemanticHistoryError::new(Refusal::NotContiguous));
             }
-        } else if append.batch.window.capture_start_sequence != 1 {
-            return Err(SemanticHistoryError::new(Refusal::NotContiguous));
         }
+        let added = records.len();
+        // Every fallible step happens before the retained state is touched, so a refused append
+        // leaves the history exactly as it was rather than removing what it could not extend.
+        //
+        // A history keeps where its capture began, and the spans it declared, from the batch that
+        // created it: a later batch states a continuation, so it adds its own spans to the retained
+        // list rather than restating its own origin or replacing what an earlier batch declared.
+        let retained = self.state.histories.get(&key);
+        let origin = retained.map_or(
+            (
+                append.batch.window.capture_start_sequence,
+                append.batch.window.history_before_capture,
+            ),
+            |history| {
+                (
+                    history.window.capture_start_sequence,
+                    history.window.history_before_capture,
+                )
+            },
+        );
+        let declared = retained.map_or_else(Vec::new, |history| history.window.intervals.clone());
+        let window = super::record::SemanticCaptureWindow {
+            capture_start_sequence: origin.0,
+            history_before_capture: origin.1,
+            intervals: merge_intervals(&declared, &append.batch.window.intervals)?,
+        };
         let mut history = self
             .state
             .histories
@@ -130,22 +155,17 @@ impl SemanticHistoryStore {
             .unwrap_or(RetainedHistory {
                 binding: append.binding.clone(),
                 scope: append.batch.scope.clone(),
-                window: append.batch.window.clone(),
+                window: super::record::SemanticCaptureWindow {
+                    capture_start_sequence: origin.0,
+                    history_before_capture: origin.1,
+                    intervals: Vec::new(),
+                },
                 records: Vec::new(),
                 parent_branch_id: None,
                 operation_ids: BTreeMap::new(),
                 retention_intervals: Vec::new(),
                 prune_plans: BTreeMap::new(),
             });
-        let added = records.len();
-        let window = super::record::SemanticCaptureWindow {
-            capture_start_sequence: append.batch.window.capture_start_sequence,
-            history_before_capture: append.batch.window.history_before_capture,
-            intervals: merge_intervals(
-                &append.batch.window.intervals,
-                &history.retention_intervals,
-            )?,
-        };
         history.records.extend(records);
         history.window = window;
         history
@@ -271,7 +291,22 @@ impl SemanticHistoryStore {
         if bytes > SEMANTIC_MAX_HISTORY_BYTES {
             return Err(SemanticHistoryError::new(Refusal::TooManyBytes));
         }
-        self.state.histories.insert(key, history);
-        file::store(&self.path, &self.state)
+        // The write is the last step and it is undone if it fails, so a commit that cannot reach the
+        // file leaves the in-memory history as the file still describes it.
+        let previous = self.state.histories.insert(key.clone(), history);
+        match file::store(&self.path, &self.state) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                match previous {
+                    Some(previous) => {
+                        self.state.histories.insert(key, previous);
+                    }
+                    None => {
+                        self.state.histories.remove(&key);
+                    }
+                }
+                Err(error)
+            }
+        }
     }
 }

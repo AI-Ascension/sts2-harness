@@ -12,6 +12,11 @@ use super::scope::SEMANTIC_MAX_INTERVALS;
 ///
 /// A consumer that cannot see the capture boundary cannot tell an absent event from an unwatched
 /// one, so the window must be internally consistent before any event is read against it.
+///
+/// Whether gameplay history exists before capture is not a free flag: capture began at the first
+/// sequence exactly when nothing precedes it, and began later exactly when something does. The two
+/// fields must agree, so a window cannot claim a late start while denying the span it does not
+/// hold, nor claim a full history while starting past its own beginning.
 pub(super) fn validate_window(window: &SemanticCaptureWindow) -> SemanticHistoryResult<()> {
     if window.intervals.len() > SEMANTIC_MAX_INTERVALS {
         return Err(SemanticHistoryError::new(Refusal::TooManyIntervals));
@@ -19,7 +24,7 @@ pub(super) fn validate_window(window: &SemanticCaptureWindow) -> SemanticHistory
     if window.capture_start_sequence == 0 {
         return Err(SemanticHistoryError::new(Refusal::WindowContradiction));
     }
-    if window.capture_start_sequence == 1 && window.history_before_capture {
+    if window.history_before_capture != (window.capture_start_sequence != 1) {
         return Err(SemanticHistoryError::new(Refusal::WindowContradiction));
     }
     let mut previous_end: Option<u64> = None;

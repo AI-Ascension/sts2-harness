@@ -11,6 +11,7 @@
 use std::fs;
 use std::path::Path;
 
+use super::super::backfill::SemanticBackfillRequest;
 use super::super::error::{
     SemanticHistoryError, SemanticHistoryRefusal as Refusal, SemanticHistoryResult,
 };
@@ -68,5 +69,17 @@ pub(super) fn digest_fork(fork: &SemanticHistoryFork) -> SemanticHistoryResult<S
 pub(super) fn digest_prune(request: &SemanticPruneRequest) -> SemanticHistoryResult<String> {
     let bytes = serde_json::to_vec(&(&request.branch_id, &request.policy))
         .map_err(|_| SemanticHistoryError::new(Refusal::Storage))?;
+    Ok(crate::sha256_hex(bytes))
+}
+
+/// A stable digest of one backfill request, used to tell a re-delivery from a conflicting reuse.
+pub(super) fn digest_backfill(request: &SemanticBackfillRequest) -> SemanticHistoryResult<String> {
+    let bytes = serde_json::to_vec(&(
+        &request.fence,
+        &request.binding,
+        request.first_sequence,
+        request.last_sequence,
+    ))
+    .map_err(|_| SemanticHistoryError::new(Refusal::Storage))?;
     Ok(crate::sha256_hex(bytes))
 }

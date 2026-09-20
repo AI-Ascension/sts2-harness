@@ -179,3 +179,95 @@ fn an_open_of_a_missing_store_starts_empty_rather_than_failing() {
     let store = SemanticHistoryStore::open(file).expect("a missing store opens empty");
     assert_eq!(store.branch_count(), 0);
 }
+
+#[test]
+fn a_history_whose_capture_began_late_retains_where_capture_began() {
+    let mut store = SemanticHistoryStore::in_memory(path("late-capture"));
+    let mut late = append("op-1", "b1", 3, vec![card_played("e3", 3)]);
+    late.batch.window.history_before_capture = true;
+    store
+        .append(&late)
+        .expect("a history that declares the span it does not hold is retainable");
+    let window = store.window("b1").expect("retained");
+    assert_eq!(window.capture_start_sequence, 3);
+    assert!(window.history_before_capture);
+    assert_eq!(store.records("b1").unwrap().len(), 1);
+}
+
+#[test]
+fn the_retained_capture_start_is_where_the_history_began_not_where_it_last_appended() {
+    let mut store = SemanticHistoryStore::in_memory(path("first-start"));
+    store
+        .append(&append("op-1", "b1", 1, vec![card_played("e1", 1)]))
+        .expect("first append lands");
+    store
+        .append(&append("op-2", "b1", 2, vec![card_played("e2", 2)]))
+        .expect("second append lands");
+    let window = store.window("b1").expect("retained");
+    assert_eq!(
+        window.capture_start_sequence, 1,
+        "the history began at sequence 1, so that is where its capture began"
+    );
+    assert!(!window.history_before_capture);
+    assert_eq!(store.records("b1").unwrap().len(), 2);
+}
+
+#[test]
+fn a_span_an_earlier_batch_declared_is_still_declared_after_a_later_append() {
+    let mut store = SemanticHistoryStore::in_memory(path("spans-kept"));
+    let mut first = append(
+        "op-1",
+        "b1",
+        1,
+        vec![gap("g1", 1, SemanticCoverageStatus::Dropped)],
+    );
+    first.batch.window.intervals = vec![dropped(1, 1)];
+    store.append(&first).expect("first append lands");
+    store
+        .append(&append("op-2", "b1", 2, vec![card_played("e2", 2)]))
+        .expect("second append lands");
+    let window = store.window("b1").expect("retained");
+    assert_eq!(
+        window.intervals,
+        vec![dropped(1, 1)],
+        "a span the first batch declared is not dropped when a later batch states its own"
+    );
+    assert_eq!(window.capture_start_sequence, 1);
+    assert_eq!(store.records("b1").unwrap().len(), 2);
+}
+
+#[test]
+fn a_batch_that_restates_a_span_the_history_already_declares_is_refused() {
+    let mut store = SemanticHistoryStore::in_memory(path("spans-restated"));
+    let mut first = append("op-1", "b1", 1, vec![card_played("e1", 1)]);
+    first.batch.window.intervals = Vec::new();
+    store.append(&first).expect("first append lands");
+    let mut declared = append(
+        "op-2",
+        "b1",
+        2,
+        vec![gap("g2", 2, SemanticCoverageStatus::Dropped)],
+    );
+    declared.batch.window.intervals = vec![dropped(2, 2), dropped(5, 5)];
+    store.append(&declared).expect("a declared span lands");
+    let mut restated = append("op-3", "b1", 3, vec![card_played("e3", 3)]);
+    restated.batch.window.intervals = vec![dropped(5, 5)];
+    let refused = store.append(&restated).expect_err("restatement is refused");
+    assert_eq!(
+        refused.refusal,
+        SemanticHistoryRefusal::OverlappingIntervals
+    );
+    assert_eq!(store.records("b1").unwrap().len(), 2);
+}
+
+#[test]
+fn a_window_that_denies_the_history_it_starts_after_is_refused() {
+    let mut store = SemanticHistoryStore::in_memory(path("window-denies"));
+    let mut denied = append("op-1", "b1", 3, vec![card_played("e3", 3)]);
+    denied.batch.window.history_before_capture = false;
+    let refused = store
+        .append(&denied)
+        .expect_err("a late start must declare its prefix");
+    assert_eq!(refused.refusal, SemanticHistoryRefusal::WindowContradiction);
+    assert_eq!(store.branch_count(), 0);
+}
