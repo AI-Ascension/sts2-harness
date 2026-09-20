@@ -16,7 +16,7 @@ fn overlay_rest_selector(
     fair_play["harness_projection"] = Value::String(
         sts2_harness::RUNTIME_V4_EXPERT_FAIR_PLAY_PROJECTION.to_owned(),
     );
-    composed.observation = EpisodeObservation::new(
+    let observation = EpisodeObservation::new(
         composed.observation.state_id(),
         composed.observation.generation(),
         composed.observation.stage(),
@@ -26,6 +26,7 @@ fn overlay_rest_selector(
         fair_play,
     )
     .map_err(|error| format!("REST selector observation is invalid: {error}"))?;
+    composed.observation = bind_recovery_code(observation)?;
     Ok(())
 }
 

@@ -18,7 +18,10 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   observation and named in the failure when the host named one, and the established sentence is
   unchanged when it named none. It is held to the same identity rule as `state_id`, and only a
   recovery observation may carry one, so a reason the host names later needs no second change here
-  while a code the schema cannot carry still fails closed. Compatibility: `breaking` for
+  while a code the schema cannot carry still fails closed. The same reason now survives the expert
+  runtime profiles, whose observation is composed from the expert projection rather than carried
+  over from the runtime-v3 read, so `runtime-v4-expert` and `runtime-v4-expert-rest-action` name it
+  too. Compatibility: `breaking` for
   `EpisodeRunnerError::RecoveryRequired`, now a struct variant with an optional `code`; no wire
   field, schema or durable record changes, and the directory diagnostic stays in `game.log`
   unread. See [ADR 0056](docs/decisions/0056-harness-recovery-reason-token.md). Refs #355.
