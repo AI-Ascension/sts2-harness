@@ -257,7 +257,7 @@ impl PreparedInputRequest {
 }
 
 fn budget_status(measurement: &TokenMeasurement) -> &'static str {
-    match measurement.provenance {
+    match measurement.provenance() {
         TokenProvenance::Unavailable => "bounded_unknown_tokens",
         TokenProvenance::Heuristic => "bounded_heuristic_tokens",
         TokenProvenance::LocalTokenizer | TokenProvenance::ProviderReported => {

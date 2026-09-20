@@ -201,9 +201,9 @@ impl PreparedInputRequest {
         self.pins.validate()?;
         self.limits.validate()?;
         self.measurement.validate()?;
-        if self.measurement.scope != MeasurementScope::PreparedInput {
+        if self.measurement.scope() != MeasurementScope::PreparedInput {
             return Err(PreparedBudgetError::MeasurementScope(
-                self.measurement.scope.code(),
+                self.measurement.scope().code(),
             ));
         }
         if self.pinned.len() > MAX_SELECTED || self.optional.len() > MAX_CANDIDATES {
@@ -302,10 +302,10 @@ impl PreparedInputBudget {
         &self,
         report: TokenMeasurement,
     ) -> Result<Self, PreparedBudgetError> {
-        if report.scope != MeasurementScope::ProviderTurn
-            || report.provenance != TokenProvenance::ProviderReported
+        if report.scope() != MeasurementScope::ProviderTurn
+            || report.provenance() != TokenProvenance::ProviderReported
         {
-            return Err(PreparedBudgetError::MeasurementScope(report.scope.code()));
+            return Err(PreparedBudgetError::MeasurementScope(report.scope().code()));
         }
         report.validate()?;
         let mut updated = self.clone();

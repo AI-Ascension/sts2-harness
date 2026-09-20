@@ -76,15 +76,58 @@ impl MeasurementScope {
 ///
 /// The quantity is `None` exactly when nothing is bound, so a caller cannot read a byte count as a
 /// token count through this type.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+///
+/// The fields are private and every read carries its provenance, so the invariant is enforced
+/// wherever the quantity is observed. Both construction paths enforce it: the validated
+/// constructors, and deserialization, which re-validates the record before a value exists. A crafted
+/// record that claims `Unavailable` while carrying a quantity, or a quantity with no provenance to
+/// label it, is rejected rather than read back as a measurement.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct TokenMeasurement {
-    pub provenance: TokenProvenance,
-    pub scope: MeasurementScope,
+    provenance: TokenProvenance,
+    scope: MeasurementScope,
     /// `None` exactly when the provenance is [`TokenProvenance::Unavailable`].
-    pub tokens: Option<u64>,
+    tokens: Option<u64>,
     /// Bound measurement adapter identity, or `none` when nothing is bound.
-    pub method: String,
+    method: String,
+}
+
+/// The unvalidated wire shape of one measurement record.
+///
+/// It exists only inside [`TokenMeasurement::deserialize`]: a record becomes a
+/// [`TokenMeasurement`] only after the same validation every constructor applies.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TokenMeasurementRecord {
+    provenance: TokenProvenance,
+    scope: MeasurementScope,
+    tokens: Option<u64>,
+    method: String,
+}
+
+impl TryFrom<TokenMeasurementRecord> for TokenMeasurement {
+    type Error = PreparedBudgetError;
+
+    fn try_from(record: TokenMeasurementRecord) -> Result<Self, Self::Error> {
+        let measurement = Self {
+            provenance: record.provenance,
+            scope: record.scope,
+            tokens: record.tokens,
+            method: record.method,
+        };
+        measurement.validate()?;
+        Ok(measurement)
+    }
+}
+
+impl<'de> Deserialize<'de> for TokenMeasurement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Self::try_from(TokenMeasurementRecord::deserialize(deserializer)?)
+            .map_err(serde::de::Error::custom)
+    }
 }
 
 impl TokenMeasurement {
@@ -141,6 +184,24 @@ impl TokenMeasurement {
         self.tokens
     }
 
+    /// The provenance that qualifies the quantity.
+    #[must_use]
+    pub fn provenance(&self) -> TokenProvenance {
+        self.provenance
+    }
+
+    /// The quantity this measurement covers.
+    #[must_use]
+    pub fn scope(&self) -> MeasurementScope {
+        self.scope
+    }
+
+    /// The bound measurement adapter identity, or `none` when nothing is bound.
+    #[must_use]
+    pub fn method(&self) -> &str {
+        self.method.as_str()
+    }
+
     /// Whether this quantity is an exact measurement for its scope.
     #[must_use]
     pub fn is_exact(&self) -> bool {
@@ -183,134 +244,3 @@ impl TokenMeasurement {
         }
     }
 }
-
-/// One axis whose change invalidates a previously approved preparation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PreparedInputDrift {
-    OwnerRevision,
-    Profile,
-    Model,
-    Tokenizer,
-    Adapter,
-    EffectiveLimit,
-}
-
-impl PreparedInputDrift {
-    #[must_use]
-    pub fn code(self) -> &'static str {
-        match self {
-            Self::OwnerRevision => "owner_revision",
-            Self::Profile => "profile",
-            Self::Model => "model",
-            Self::Tokenizer => "tokenizer",
-            Self::Adapter => "adapter",
-            Self::EffectiveLimit => "effective_limit",
-        }
-    }
-}
-
-/// Typed rejection of a prepared input before any provider reservation is written.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum PreparedBudgetError {
-    /// The request is structurally invalid for the named field.
-    InvalidRequest(&'static str),
-    /// The named measurement field is invalid.
-    InvalidMeasurement(&'static str),
-    /// A published profile ceiling rejects a schema-valid value.
-    ProfileInadmissible {
-        field: String,
-        requested: u64,
-        reason: crate::effective_limits::UnavailableReason,
-    },
-    /// Framing, tool/schema, mandatory or pinned bytes cannot fit the admission window.
-    ProtectedOverflow {
-        field: &'static str,
-        requested: usize,
-        effective: usize,
-        overflow_bytes: usize,
-    },
-    /// The reserved output capacity cannot fit beside the input bound.
-    OutputReserveOverflow {
-        requested: usize,
-        effective: usize,
-    },
-    /// Input plus the output reserve exceed the combined whole-input bound or profile window.
-    CombinedWindowOverflow {
-        input_bytes: usize,
-        output_reserve_bytes: usize,
-        effective: usize,
-    },
-    /// A recorded profile/model/tokenizer/adapter/limit axis changed.
-    ApprovalInvalidated(Vec<PreparedInputDrift>),
-    /// The provider reservation ledger refused the capacity reservation.
-    ReservationRejected(MemoryError),
-    /// A measurement was attached with a scope the budget does not own.
-    MeasurementScope(&'static str),
-}
-
-impl std::fmt::Display for PreparedBudgetError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidRequest(field) => {
-                write!(formatter, "prepared input field {field} is invalid")
-            }
-            Self::InvalidMeasurement(field) => write!(
-                formatter,
-                "prepared input token measurement {field} is invalid; a byte ceiling is never a token count"
-            ),
-            Self::ProfileInadmissible {
-                field,
-                requested,
-                reason,
-            } => write!(
-                formatter,
-                "prepared input rejects before any provider reservation: {field} requests {requested} and the selected profile reports {}",
-                reason.code()
-            ),
-            Self::ProtectedOverflow {
-                field,
-                requested,
-                effective,
-                overflow_bytes,
-            } => write!(
-                formatter,
-                "prepared input rejects before any provider reservation: protected framing, tool/schema, mandatory and pinned bytes need {requested} against {field} {effective}, over by {overflow_bytes}; reduce protected content or raise the admitted profile ceiling"
-            ),
-            Self::OutputReserveOverflow {
-                requested,
-                effective,
-            } => write!(
-                formatter,
-                "prepared input rejects before any provider reservation: the output reserve of {requested} exceeds {effective}"
-            ),
-            Self::CombinedWindowOverflow {
-                input_bytes,
-                output_reserve_bytes,
-                effective,
-            } => write!(
-                formatter,
-                "prepared input rejects before any provider reservation: input {input_bytes} plus output reserve {output_reserve_bytes} exceeds the combined window {effective}"
-            ),
-            Self::ApprovalInvalidated(drift) => {
-                let axes = drift
-                    .iter()
-                    .map(|axis| axis.code())
-                    .collect::<Vec<_>>()
-                    .join(",");
-                write!(
-                    formatter,
-                    "prepared input approval is invalidated by changed axes: {axes}"
-                )
-            }
-            Self::ReservationRejected(error) => {
-                write!(formatter, "prepared input reservation was refused: {error}")
-            }
-            Self::MeasurementScope(scope) => write!(
-                formatter,
-                "prepared input does not own a {scope} scoped measurement"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for PreparedBudgetError {}

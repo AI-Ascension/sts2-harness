@@ -564,3 +564,8 @@ they come from the flat `## Unreleased` list and carry no section of their own.
   refused with `missing_scope` on content writes, adoption and control. Compatibility:
   additive-compatible; see [ADR 0048](decisions/0048-context-owner-control-commands.md).
   Refs AI-Ascension/ascension-context-console#18.
+
+- Promote the **runtime peer lane's MCP pin to a recovery-capable revision**. The lane declared MCP
+  `f3b6eaa8`, which predates the `watchdog-recovery-v1` sideband profile the harness starts before it
+  reads or reconciles a durable operation, so the lane's own recovery path was unreachable. The pin is
+  now `587a53ce`, and the lane adds operator-only peer capability checks; the gateway pin is unchanged.
