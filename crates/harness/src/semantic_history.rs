@@ -63,14 +63,22 @@ mod error;
 mod identity;
 #[path = "semantic_history_index.rs"]
 mod index;
+#[path = "semantic_history_kind.rs"]
+mod kind;
 #[path = "semantic_history_model.rs"]
 mod model;
 #[path = "semantic_history_port.rs"]
 mod port;
 #[path = "semantic_history_query.rs"]
 mod query;
+#[path = "semantic_history_reference.rs"]
+mod reference;
 #[path = "semantic_history_store.rs"]
 mod store;
+#[path = "semantic_history_subject.rs"]
+mod subject;
+#[path = "semantic_history_validation.rs"]
+mod validation;
 
 pub use binding::{SemanticHistoryBinding, SemanticHistoryLineage};
 pub use causal::{
@@ -86,9 +94,10 @@ pub use identity::{
     SemanticHistoryNamespace, is_opaque_history_identity, validate_history_identity,
 };
 pub use index::{SemanticHistoryCursor, SemanticHistoryIndex};
+pub use kind::SemanticHistoryKind;
 pub use model::{
     SemanticHistoryCausalParent, SemanticHistoryEvent, SemanticHistoryEventInput,
-    SemanticHistoryKind, SemanticHistoryOrigin, SemanticHistorySubject, SemanticHistoryValue,
+    SemanticHistoryOrigin, SemanticHistoryValue,
 };
 pub use port::{
     SemanticHistoryAgentPort, SemanticHistorySourcePort, SemanticHistorySourceRequest,
@@ -98,7 +107,9 @@ pub use query::{
     SemanticHistoryContinuation, SemanticHistoryPage, SemanticHistoryQuery, SemanticHistoryReader,
     SemanticHistorySummary,
 };
+pub use reference::SemanticHistoryReference;
 pub use store::{SemanticHistoryAppend, SemanticHistoryRetention, SemanticHistoryStore};
+pub use subject::{SemanticHistorySubject, SemanticHistorySubjectRole};
 
 use error::SemanticHistoryError as Error;
 

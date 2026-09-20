@@ -6,7 +6,8 @@ use sts2_harness::semantic_history::{
     SemanticHistoryAppend, SemanticHistoryCaptureWindow, SemanticHistoryCausalParent,
     SemanticHistoryCoverage, SemanticHistoryCoverageInterval, SemanticHistoryCoverageStatus,
     SemanticHistoryKind, SemanticHistoryNamespace, SemanticHistoryOrigin, SemanticHistoryStore,
-    SemanticHistorySubject, SemanticHistoryValue, is_opaque_history_identity,
+    SemanticHistorySubject, SemanticHistorySubjectRole, SemanticHistoryValue,
+    is_opaque_history_identity,
 };
 
 #[path = "support/semantic_history_fixture.rs"]
@@ -212,10 +213,11 @@ fn only_a_live_instance_may_be_a_subject() {
         SemanticHistoryNamespace::Event,
     ] {
         let mut input = fixture::event("event_1", SemanticHistoryKind::CardPlayed, 1, None);
-        input.subject = Some(SemanticHistorySubject {
+        input.subjects = vec![SemanticHistorySubject {
+            role: SemanticHistorySubjectRole::Actor,
             namespace,
             identity: "thing_1".to_owned(),
-        });
+        }];
         assert!(
             store
                 .append(fixture::ROOT, input, SemanticHistoryCausalParent::NotStated)

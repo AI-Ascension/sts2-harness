@@ -161,10 +161,10 @@ fn only_a_stated_value_is_a_real_observation() {
     );
 }
 #[test]
-fn every_quantity_changing_kind_is_named_and_the_rest_are_not() {
+fn every_quantity_reporting_kind_is_named_and_the_rest_are_not() {
     let changing = SemanticHistoryKind::ALL
         .iter()
-        .filter(|kind| kind.changes_a_quantity())
+        .filter(|kind| kind.requires_quantity())
         .count();
     assert_eq!(changing, 8);
     assert_eq!(SemanticHistoryKind::ALL.len(), 14);
@@ -180,7 +180,7 @@ fn every_quantity_changing_kind_is_named_and_the_rest_are_not() {
                 | SemanticHistoryKind::ModifierApplied
                 | SemanticHistoryKind::ModifierRemoved
         );
-        assert_eq!(kind.changes_a_quantity(), expected, "{}", kind.name());
+        assert_eq!(kind.requires_quantity(), expected, "{}", kind.name());
         assert!(!kind.name().is_empty());
     }
     let mut names: Vec<&str> = SemanticHistoryKind::ALL

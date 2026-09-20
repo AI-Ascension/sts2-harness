@@ -7,7 +7,7 @@ use super::{
     SEMANTIC_HISTORY_SCHEMA, SemanticHistoryBinding, SemanticHistoryCaptureWindow,
     SemanticHistoryCausalParent, SemanticHistoryCoverageStatus, SemanticHistoryEvent,
     SemanticHistoryEventInput, SemanticHistoryIndex, SemanticHistoryLineage, SemanticHistoryOrigin,
-    history_digest,
+    history_digest, validation,
 };
 use std::collections::BTreeMap;
 
@@ -181,8 +181,8 @@ impl SemanticHistoryStore {
         input: SemanticHistoryEventInput,
         causal_parent: SemanticHistoryCausalParent,
     ) -> Result<SemanticHistoryAppend, Error> {
-        self.validate_input(&input)?;
         causal_parent.validate()?;
+        validation::validate_input(&input, &causal_parent, branch_id, &self.binding.run_id)?;
         if causal_parent.is_stated() && !input.origin.admits_stated_parent() {
             // An imported event's causality was settled when it was captured.
             return Err(Error::ImportedStatesParent);
@@ -253,24 +253,6 @@ impl SemanticHistoryStore {
         branch.by_id.insert(event.input.event_id.clone(), index);
         branch.events.push(event);
         Ok(SemanticHistoryAppend::Recorded)
-    }
-
-    fn validate_input(&self, input: &SemanticHistoryEventInput) -> Result<(), Error> {
-        super::validate_history_identity(&input.event_id, "event_id")?;
-        super::validate_history_identity(&input.episode_id, "episode_id")?;
-        input.coverage.validate()?;
-        if let Some(subject) = &input.subject {
-            subject.validate("subject")?;
-        }
-        if let Some(value) = &input.value {
-            value.validate()?;
-        }
-        if input.kind.changes_a_quantity() && input.value.is_none() {
-            // A quantity-changing event that states no value would be indistinguishable from one
-            // that changed nothing; the absence must be stated as `Unavailable`, not omitted.
-            return Err(Error::InvalidField("value"));
-        }
-        Ok(())
     }
 
     fn digest_of(

@@ -8,7 +8,7 @@ use sts2_harness::semantic_history::{
     SemanticHistoryCoverage, SemanticHistoryCoverageInterval, SemanticHistoryCoverageStatus,
     SemanticHistoryError, SemanticHistoryEventInput, SemanticHistoryKind, SemanticHistoryLineage,
     SemanticHistoryNamespace, SemanticHistoryQuery, SemanticHistorySubject,
-    is_opaque_history_identity,
+    SemanticHistorySubjectRole, is_opaque_history_identity,
 };
 
 #[path = "support/semantic_history_fixture.rs"]
@@ -54,7 +54,7 @@ fn a_query_with_an_inverted_sequence_window_is_refused() {
     assert_eq!(query.validate(), Ok(()));
 }
 #[test]
-fn a_query_naming_a_non_opaque_subject_or_episode_is_refused() {
+fn a_query_naming_a_non_opaque_subject_is_refused() {
     let mut query = SemanticHistoryQuery::branch(fixture::ROOT, 4);
     query.subject_id = Some("/etc/passwd".to_owned());
     assert_eq!(
@@ -62,12 +62,8 @@ fn a_query_naming_a_non_opaque_subject_or_episode_is_refused() {
         Err(SemanticHistoryError::NonOpaqueIdentity("query.subject_id"))
     );
     query.subject_id = None;
-    query.episode_id = Some("a/b".to_owned());
-    assert_eq!(
-        query.validate(),
-        Err(SemanticHistoryError::NonOpaqueIdentity("query.episode_id"))
-    );
-    query.episode_id = Some("episode_0001".to_owned());
+    // An episode is a bounded number, not an opaque identity, so any number is a valid axis.
+    query.episode = Some(3);
     assert_eq!(query.validate(), Ok(()));
 }
 #[test]
@@ -199,21 +195,20 @@ fn a_subject_outside_the_live_instance_namespace_is_refused() {
         SemanticHistoryNamespace::Event,
     ] {
         let subject = SemanticHistorySubject {
+            role: SemanticHistorySubjectRole::Actor,
             namespace,
             identity: "thing_1".to_owned(),
         };
         assert_eq!(
             subject.validate("subject"),
-            Err(SemanticHistoryError::InvalidField("subject")),
+            Err(SemanticHistoryError::WrongSubjectNamespace("actor")),
             "a {} subject is refused",
             namespace.name()
         );
     }
-    assert_eq!(
-        fixture::subject("instance_hero").validate("subject"),
-        Ok(())
-    );
+    assert_eq!(fixture::actor("instance_hero").validate("subject"), Ok(()));
     let bad = SemanticHistorySubject {
+        role: SemanticHistorySubjectRole::Target,
         namespace: SemanticHistoryNamespace::LiveInstance,
         identity: "a/b".to_owned(),
     };

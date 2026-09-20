@@ -12,17 +12,17 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 - Record **queryable semantic combat and run history with causal provenance**. The host's bounded
   semantic event vocabulary had no harness-owned durable history behind it, so a run could not be
-  asked what happened, in what order, or why a value changed. The new `semantic_history` module
-  appends each event against one run, branch, episode and authority epoch on a strictly advancing
-  sequence, keeps a declared capture gap a gap instead of closing it with an invented event, and
-  admits a causal parent only when the host stated one — in the same branch and epoch and strictly
-  before its child — while an imported event never states one. Appends are idempotent across
-  restart and rejoin: identical content replays and writes nothing, and different content under one
-  identity is refused as a conflict rather than accepted as a correction. Retention redacts in
-  place and reports the value as unavailable instead of deleting the event or leaving a zero, with
-  the recorded digest unchanged so the original content still replays. History is readable only
-  through the harness-owned port, which re-checks owner and epoch on every read and refuses a caller
-  naming storage directly; see [ADR 0057](docs/decisions/0057-harness-semantic-history.md). Refs #128.
+  asked what happened or why a value changed. The new `semantic_history` module appends each event
+  against one run, branch, episode and authority epoch on a strictly advancing sequence, and carries
+  both ends of an event — an actor and a target, each in the namespace it was minted in — plus the
+  content a card play, pile move, purchase or offer names. A detail the kind requires and the host
+  omitted is refused rather than stored as absent, as is a capture gap closed with an invented
+  event; a causal parent is admitted only when the host stated one, in the same branch and epoch and
+  strictly before its child, and an imported event never states one. An identical re-append replays
+  and writes nothing while different content under one identity is a conflict; retention redacts a
+  value in place rather than deleting the event or zeroing it. History is readable only through the
+  harness-owned port, which re-checks owner and epoch on every read and refuses a caller naming
+  storage directly; see [ADR 0057](docs/decisions/0057-harness-semantic-history.md). Refs #128.
 
 - Name the **host's recovery reason** in an episode failure instead of reporting every recovery
   condition with one sentence. A runtime-v3 recovery state carries the condition that produced it

@@ -20,6 +20,15 @@ reports an unobserved quantity as zero would answer every question and be wrong
 in each. A history that guesses is worse than a history that admits a gap,
 because the guess is indistinguishable from an observation once stored.
 
+The sibling vocabulary also models an event as naming *both* ends of itself: a
+role-tagged actor, a role-tagged target, and, for the kinds that are about
+content, a reference resolved against the content manifest. A harness record
+that carried one role-less subject and a string episode could not hold what the
+host states: a source and a target that happen to share a token would collapse
+into one, a target would have nowhere to live, and an episode would be compared
+as text rather than as the number the scope carries. Alignment here is therefore
+representational, not decorative.
+
 ## Decision
 
 1. **History is harness-owned and appended under a strict identity and order.**
@@ -55,6 +64,17 @@ because the guess is indistinguishable from an observation once stored.
    re-checks the source's owner and authority epoch on every read rather than
    treating the grant as a durable capability, so a source that later drifts
    cannot keep answering through a stale grant.
+6. **A subject is a role, and a kind states the detail it requires.** An event
+   carries a list of subjects, each naming its role (actor or target), the
+   namespace it was minted in and an opaque identity. Only a live instance may
+   be a subject, one end of an event may be named once, and a subject identity
+   may not alias the event, the branch or the run, because those aliases would
+   make an identity read as a different kind of thing. Each kind then states
+   what it needs: an actor, a target, a bounded quantity, a content reference,
+   and whether it admits a cause at all. A missing end is refused rather than
+   read as "there was none", and a target or a cause the kind does not act on is
+   refused for the same reason. Episode travels as the bounded number it is, not
+   as an identity to be compared as text.
 
 ## Consequences
 
@@ -63,9 +83,12 @@ because the guess is indistinguishable from an observation once stored.
   history and from `decision_replay`. No provider message can become an event,
   and nothing here reads or writes a provider transcript.
 - **An unreadable or unauthoritative input fails closed.** An event whose
-  identity could be read as a host path is refused, as is a subject outside the
-  live-instance namespace and a quantity-changing kind that states no value. The
-  refusals are the contract, not incidental validation.
+  identity could be read as a host path is refused, as are a subject outside the
+  live-instance namespace, a role named twice, a subject aliasing the event,
+  branch or run, a kind that omits the actor, target, quantity or content
+  reference it requires, a detail no kind admits, a cause on a kind that cannot
+  be caused, and a disclosed gap that carries any observed detail. The refusals
+  are the contract, not incidental validation.
 - **Bounded reads are explicit.** A page or causal traversal that stops at a
   limit reports that it is truncated, so a caller cannot mistake a bounded answer
   for a complete one, and a traversal refuses a cycle rather than looping.
@@ -78,20 +101,27 @@ because the guess is indistinguishable from an observation once stored.
 `crates/harness/tests/semantic_history_core.rs`,
 `semantic_history_sequence.rs`, `semantic_history_causal.rs`,
 `semantic_history_validation.rs`, `semantic_history_values.rs`,
-`semantic_history_readonly.rs` and `semantic_history_page.rs` cover the
-decisions above deterministically, with no socket, process, clock or live game:
+`semantic_history_readonly.rs`, `semantic_history_subjects.rs` and
+`semantic_history_page.rs` cover the decisions above deterministically, with no
+socket, process, clock or live game:
 strict sequencing and declared jumps, gaps that stay declared, the stated/absent
 parent rule and its same-branch, same-epoch, strictly-preceding requirements, the
 imported-parent refusal, idempotent replay versus conflict, retention that keeps
-the event and its digest, the query bounds and digest binding, and the granted
-port that re-checks owner and epoch and refuses a caller naming storage directly.
+the event and its digest, both ends of a targeted event with their roles and
+namespaces, every per-kind required-detail refusal and the cause-admission
+refusal, a subject filter that matches either end and never returns one event
+twice, the query bounds and digest binding, and the granted port that re-checks
+owner and epoch and refuses a caller naming storage directly.
 
 Each guard is falsified, not merely asserted: flipping the lineage-depth check,
 the causal-parent arm refusal, the `..` traversal refusal, the live-instance
-subject rule, the quantity-value requirement, the conflict-on-different-content
-rule, the retention redaction, the per-read epoch re-check, the declared-gap
-refusal and the undeclared-jump refusal each fails exactly its named test and
-nothing else, and the file is restored byte-identical afterwards.
+subject rule, the duplicate-role refusal, the required-actor refusal, the
+unexpected-target refusal, the alias-collision refusal, the quantity-value
+requirement, the content-reference requirement, the cause-admission rule, the
+gap-detail refusal, the conflict-on-different-content rule, the retention
+redaction, the per-read epoch re-check, the declared-gap refusal and the
+undeclared-jump refusal each fails exactly its named test and nothing else, and
+the file is restored byte-identical afterwards.
 
 These tests do not execute the game-mod producer, capture a native run, or answer
 an end-to-end query over a controlled run. Those remain separate gates, and

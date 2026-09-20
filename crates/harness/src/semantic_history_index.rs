@@ -6,7 +6,7 @@ use super::{
     Error, SemanticHistoryEvent, SemanticHistoryKind, SemanticHistoryNamespace,
     SemanticHistoryOrigin,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// A resumable position inside one ordered query result.
 ///
@@ -30,7 +30,7 @@ pub struct SemanticHistoryIndex {
     by_kind: BTreeMap<SemanticHistoryKind, Vec<usize>>,
     by_origin: BTreeMap<SemanticHistoryOrigin, Vec<usize>>,
     by_subject: BTreeMap<String, Vec<usize>>,
-    by_episode: BTreeMap<String, Vec<usize>>,
+    by_episode: BTreeMap<u64, Vec<usize>>,
 }
 
 impl SemanticHistoryIndex {
@@ -42,20 +42,26 @@ impl SemanticHistoryIndex {
         let mut by_kind: BTreeMap<SemanticHistoryKind, Vec<usize>> = BTreeMap::new();
         let mut by_origin: BTreeMap<SemanticHistoryOrigin, Vec<usize>> = BTreeMap::new();
         let mut by_subject: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-        let mut by_episode: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        let mut by_episode: BTreeMap<u64, Vec<usize>> = BTreeMap::new();
         for (index, event) in events.iter().enumerate() {
             by_kind.entry(event.input.kind).or_default().push(index);
             by_origin.entry(event.input.origin).or_default().push(index);
-            if let Some(subject) = &event.input.subject
-                && subject.namespace == SemanticHistoryNamespace::LiveInstance
-            {
+            // An event whose actor and target are the same live instance appears once under that
+            // identity, so a filter cannot return the same event twice.
+            let mut identities: BTreeSet<&str> = BTreeSet::new();
+            for subject in &event.input.subjects {
+                if subject.namespace == SemanticHistoryNamespace::LiveInstance {
+                    identities.insert(&subject.identity);
+                }
+            }
+            for identity in identities {
                 by_subject
-                    .entry(subject.identity.clone())
+                    .entry(identity.to_owned())
                     .or_default()
                     .push(index);
             }
             by_episode
-                .entry(event.input.episode_id.clone())
+                .entry(event.input.episode)
                 .or_default()
                 .push(index);
         }
@@ -108,8 +114,8 @@ impl SemanticHistoryIndex {
 
     /// Ordinals for one episode.
     #[must_use]
-    pub fn episode(&self, episode_id: &str) -> &[usize] {
-        self.by_episode.get(episode_id).map_or(&[], Vec::as_slice)
+    pub fn episode(&self, episode: u64) -> &[usize] {
+        self.by_episode.get(&episode).map_or(&[], Vec::as_slice)
     }
 
     /// Mints a cursor for a query at this generation.

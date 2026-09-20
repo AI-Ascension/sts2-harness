@@ -8,8 +8,8 @@ use sts2_harness::semantic_history::{
     SemanticHistoryAppend, SemanticHistoryBinding, SemanticHistoryCaptureWindow,
     SemanticHistoryCausalParent, SemanticHistoryCoverage, SemanticHistoryCoverageInterval,
     SemanticHistoryCoverageStatus, SemanticHistoryEventInput, SemanticHistoryKind,
-    SemanticHistoryNamespace, SemanticHistoryOrigin, SemanticHistoryStore, SemanticHistorySubject,
-    SemanticHistoryValue,
+    SemanticHistoryNamespace, SemanticHistoryOrigin, SemanticHistoryReference,
+    SemanticHistoryStore, SemanticHistorySubject, SemanticHistorySubjectRole, SemanticHistoryValue,
 };
 
 pub const ROOT: &str = "branch_root";
@@ -58,10 +58,29 @@ pub fn store() -> SemanticHistoryStore {
     SemanticHistoryStore::open(binding(), ROOT, window(1)).expect("store opens")
 }
 
-pub fn subject(identity: &str) -> SemanticHistorySubject {
+/// One live-instance subject in the actor role.
+pub fn actor(identity: &str) -> SemanticHistorySubject {
     SemanticHistorySubject {
+        role: SemanticHistorySubjectRole::Actor,
         namespace: SemanticHistoryNamespace::LiveInstance,
         identity: identity.to_owned(),
+    }
+}
+
+/// One live-instance subject in the target role.
+pub fn target(identity: &str) -> SemanticHistorySubject {
+    SemanticHistorySubject {
+        role: SemanticHistorySubjectRole::Target,
+        namespace: SemanticHistoryNamespace::LiveInstance,
+        identity: identity.to_owned(),
+    }
+}
+
+/// The content reference one content-naming kind carries.
+pub fn reference(namespaced_id: &str) -> SemanticHistoryReference {
+    SemanticHistoryReference {
+        entity_kind: "card".to_owned(),
+        namespaced_id: namespaced_id.to_owned(),
     }
 }
 
@@ -72,21 +91,33 @@ pub fn quantity(amount: i64, unit: &str) -> SemanticHistoryValue {
     }
 }
 
+/// One event holding the subjects its kind requires and the reference its kind names.
+///
+/// The helper fills only what the kind's own rules require, so a caller can still construct an event
+/// that deliberately violates them.
 pub fn event(
     event_id: &str,
     kind: SemanticHistoryKind,
     sequence: u64,
     value: Option<SemanticHistoryValue>,
 ) -> SemanticHistoryEventInput {
+    let mut subjects = Vec::new();
+    if kind.requires_actor() {
+        subjects.push(actor("instance_hero"));
+    }
+    if kind.requires_target() {
+        subjects.push(target("instance_enemy"));
+    }
     SemanticHistoryEventInput {
         event_id: event_id.to_owned(),
         kind,
         sequence,
-        episode_id: "episode_0001".to_owned(),
+        episode: 1,
         authority_epoch: 1,
         origin: SemanticHistoryOrigin::Native,
-        subject: Some(subject("instance_hero")),
+        subjects,
         value,
+        reference: kind.requires_reference().then(|| reference("card_strike")),
         coverage: SemanticHistoryCoverage::captured(),
     }
 }
@@ -115,6 +146,8 @@ pub fn window_with_gap(start: u64, from: u64, to: u64) -> SemanticHistoryCapture
 /// A gap event whose coverage matches a declared dropped span.
 pub fn gap_event(event_id: &str, sequence: u64) -> SemanticHistoryEventInput {
     SemanticHistoryEventInput {
+        subjects: Vec::new(),
+        reference: None,
         coverage: SemanticHistoryCoverage::gap(
             SemanticHistoryCoverageStatus::Dropped,
             "capture_dropped",

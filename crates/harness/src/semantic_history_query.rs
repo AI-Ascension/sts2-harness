@@ -24,10 +24,10 @@ pub struct SemanticHistoryQuery {
     pub kind: Option<SemanticHistoryKind>,
     /// Restrict to one origin.
     pub origin: Option<SemanticHistoryOrigin>,
-    /// Restrict to events whose subject is this live instance.
+    /// Restrict to events whose subject, in either role, is this live instance.
     pub subject_id: Option<String>,
     /// Restrict to one episode.
-    pub episode_id: Option<String>,
+    pub episode: Option<u64>,
     /// Restrict to sequences at or after this number.
     pub from_sequence: Option<u64>,
     /// Restrict to sequences at or before this number.
@@ -45,7 +45,7 @@ impl SemanticHistoryQuery {
             kind: None,
             origin: None,
             subject_id: None,
-            episode_id: None,
+            episode: None,
             from_sequence: None,
             to_sequence: None,
             limit,
@@ -64,9 +64,6 @@ impl SemanticHistoryQuery {
         }
         if let Some(subject) = &self.subject_id {
             super::validate_history_identity(subject, "query.subject_id")?;
-        }
-        if let Some(episode) = &self.episode_id {
-            super::validate_history_identity(episode, "query.episode_id")?;
         }
         Ok(())
     }
@@ -90,17 +87,17 @@ impl SemanticHistoryQuery {
         if let Some(subject) = &self.subject_id {
             let matches = event
                 .input
-                .subject
-                .as_ref()
-                .is_some_and(|candidate| &candidate.identity == subject);
+                .subjects
+                .iter()
+                .any(|candidate| &candidate.identity == subject);
             if !matches {
                 return false;
             }
         }
         if self
-            .episode_id
+            .episode
             .as_ref()
-            .is_some_and(|episode| episode != &event.input.episode_id)
+            .is_some_and(|episode| episode != &event.input.episode)
         {
             return false;
         }

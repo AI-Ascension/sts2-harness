@@ -1,110 +1,15 @@
 // SPDX-License-Identifier: MIT
 
-//! The stored event, its subject, its origin and its optional stated causal parent.
+//! The stored event: its origin, the detail it states, and its optional stated causal parent.
 
 use super::{
-    Error, SemanticHistoryCoverage, SemanticHistoryNamespace, validate_history_identity,
-    validate_label,
+    Error, SemanticHistoryCoverage, SemanticHistoryKind, SemanticHistoryNamespace,
+    SemanticHistoryReference, SemanticHistorySubject, validate_history_identity, validate_label,
 };
 use serde::{Deserialize, Serialize};
 
 #[path = "semantic_history_model_causal_decode.rs"]
 mod causal_decode;
-
-/// The closed vocabulary of gameplay events this boundary stores.
-///
-/// The set mirrors the game-mod companion's stated vocabulary. It is closed on purpose: a kind this
-/// boundary does not know is refused rather than stored under a generic label, because a generic
-/// label would make an unsupported event look captured.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SemanticHistoryKind {
-    /// A card was played.
-    CardPlayed,
-    /// Damage was dealt.
-    Damage,
-    /// Block was gained.
-    Block,
-    /// Health was restored.
-    Heal,
-    /// A character-specific resource changed.
-    ResourceChanged,
-    /// A status or power was applied.
-    StatusApplied,
-    /// A status or power was removed.
-    StatusRemoved,
-    /// A modifier was applied.
-    ModifierApplied,
-    /// A modifier was removed.
-    ModifierRemoved,
-    /// A card moved between piles.
-    PileMoved,
-    /// The party moved to another room or act.
-    RoomTransitioned,
-    /// A choice was made, including a reward or event decision.
-    ChoiceMade,
-    /// An offer was presented and is inspectable.
-    OfferPresented,
-    /// A purchase was made.
-    PurchaseMade,
-}
-
-impl SemanticHistoryKind {
-    /// Every kind this boundary stores, in a stable order.
-    pub const ALL: [Self; 14] = [
-        Self::CardPlayed,
-        Self::Damage,
-        Self::Block,
-        Self::Heal,
-        Self::ResourceChanged,
-        Self::StatusApplied,
-        Self::StatusRemoved,
-        Self::ModifierApplied,
-        Self::ModifierRemoved,
-        Self::PileMoved,
-        Self::RoomTransitioned,
-        Self::ChoiceMade,
-        Self::OfferPresented,
-        Self::PurchaseMade,
-    ];
-
-    /// The stable lowercase name used in owner-defined text and diagnostics.
-    #[must_use]
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::CardPlayed => "card_played",
-            Self::Damage => "damage",
-            Self::Block => "block",
-            Self::Heal => "heal",
-            Self::ResourceChanged => "resource_changed",
-            Self::StatusApplied => "status_applied",
-            Self::StatusRemoved => "status_removed",
-            Self::ModifierApplied => "modifier_applied",
-            Self::ModifierRemoved => "modifier_removed",
-            Self::PileMoved => "pile_moved",
-            Self::RoomTransitioned => "room_transitioned",
-            Self::ChoiceMade => "choice_made",
-            Self::OfferPresented => "offer_presented",
-            Self::PurchaseMade => "purchase_made",
-        }
-    }
-
-    /// Returns whether this kind changes a quantity that a why-changed query may explain.
-    #[must_use]
-    pub const fn changes_a_quantity(self) -> bool {
-        matches!(
-            self,
-            Self::Damage
-                | Self::Block
-                | Self::Heal
-                | Self::ResourceChanged
-                | Self::StatusApplied
-                | Self::StatusRemoved
-                | Self::ModifierApplied
-                | Self::ModifierRemoved
-        )
-    }
-}
 
 /// Where one event came from, kept distinct from what it says.
 ///
@@ -144,28 +49,6 @@ impl SemanticHistoryOrigin {
     #[must_use]
     pub const fn admits_stated_parent(self) -> bool {
         matches!(self, Self::Native | Self::Derived)
-    }
-}
-
-/// One subject of an event, with its namespace stated rather than assumed.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SemanticHistorySubject {
-    /// Which namespace this identity belongs to.
-    pub namespace: SemanticHistoryNamespace,
-    /// The opaque identity inside that namespace.
-    pub identity: String,
-}
-
-impl SemanticHistorySubject {
-    /// Validates the namespace and the opaque identity.
-    pub fn validate(&self, field: &'static str) -> Result<(), Error> {
-        if !self.namespace.admits_subject() {
-            // A definition is not a thing that acts, and an action is what an event records rather
-            // than what it happened to; only a live instance may be a subject.
-            return Err(Error::InvalidField(field));
-        }
-        validate_history_identity(&self.identity, field)
     }
 }
 
@@ -240,16 +123,18 @@ pub struct SemanticHistoryEventInput {
     pub kind: SemanticHistoryKind,
     /// Host sequence number, monotonic inside one run, branch, episode and epoch.
     pub sequence: u64,
-    /// Episode the event belongs to.
-    pub episode_id: String,
+    /// Episode number the event belongs to.
+    pub episode: u64,
     /// Authority epoch the event belongs to.
     pub authority_epoch: u64,
     /// Where the event came from.
     pub origin: SemanticHistoryOrigin,
-    /// What the event happened to, if it names a subject.
-    pub subject: Option<SemanticHistorySubject>,
-    /// The value the event states, if it states one.
+    /// Which ends of the event the host named, at most one entry per role.
+    pub subjects: Vec<SemanticHistorySubject>,
+    /// The value the event states, if its kind states one.
     pub value: Option<SemanticHistoryValue>,
+    /// The content the event is about, if its kind names content.
+    pub reference: Option<SemanticHistoryReference>,
     /// This event's own coverage.
     pub coverage: SemanticHistoryCoverage,
 }

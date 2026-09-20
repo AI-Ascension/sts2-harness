@@ -28,6 +28,16 @@ pub enum SemanticHistoryError {
     NonOpaqueIdentity(&'static str),
     /// A required field was absent or a field was stated where it is not admitted.
     InvalidField(&'static str),
+    /// A kind required an end of the event that was not named.
+    MissingSubject(&'static str),
+    /// A subject named the target end of a kind that does not act on a target.
+    UnexpectedSubjectRole(&'static str),
+    /// One end of an event was named more than once.
+    DuplicateSubjectRole(&'static str),
+    /// A subject was minted in a namespace that is not a live instance.
+    WrongSubjectNamespace(&'static str),
+    /// A live subject shares a token with the event, the branch or the run.
+    IdentityNamespaceCollision(&'static str),
     /// The record belongs to a different owner scope.
     Scope,
     /// The record belongs to a different authority epoch.
@@ -85,6 +95,21 @@ impl std::fmt::Display for SemanticHistoryError {
                 write!(f, "semantic history: non-opaque identity: {field}")
             }
             Self::InvalidField(field) => write!(f, "semantic history: invalid field: {field}"),
+            Self::MissingSubject(role) => {
+                write!(f, "semantic history: missing subject: {role}")
+            }
+            Self::UnexpectedSubjectRole(role) => {
+                write!(f, "semantic history: unexpected subject role: {role}")
+            }
+            Self::DuplicateSubjectRole(role) => {
+                write!(f, "semantic history: duplicate subject role: {role}")
+            }
+            Self::WrongSubjectNamespace(role) => {
+                write!(f, "semantic history: wrong subject namespace: {role}")
+            }
+            Self::IdentityNamespaceCollision(role) => {
+                write!(f, "semantic history: identity namespace collision: {role}")
+            }
             other => write!(f, "semantic history: {other:?}"),
         }
     }

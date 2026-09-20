@@ -16,7 +16,7 @@ fn chained(branch: &str, depth: u64) -> SemanticHistoryStore {
         &mut store,
         branch,
         "event_1",
-        SemanticHistoryKind::RoomTransitioned,
+        SemanticHistoryKind::ChoiceMade,
         1,
     );
     for sequence in 2..=depth {
@@ -26,7 +26,7 @@ fn chained(branch: &str, depth: u64) -> SemanticHistoryStore {
             &mut store,
             branch,
             &event_id,
-            SemanticHistoryKind::RoomTransitioned,
+            SemanticHistoryKind::ChoiceMade,
             sequence,
             &parent,
         );
@@ -185,7 +185,7 @@ fn a_stated_parent_that_is_not_in_this_branch_is_refused() {
     let err = store
         .append(
             "branch_child",
-            fixture::event("event_9", SemanticHistoryKind::CardPlayed, 1, None),
+            fixture::event("event_9", SemanticHistoryKind::ChoiceMade, 1, None),
             fixture::stated_parent("event_1"),
         )
         .expect_err("a parent from another branch is refused");
@@ -199,11 +199,11 @@ fn a_stated_parent_that_does_not_precede_its_child_is_refused() {
         &mut store,
         fixture::ROOT,
         "event_1",
-        SemanticHistoryKind::CardPlayed,
+        SemanticHistoryKind::ChoiceMade,
         5,
     );
     store.advance_epoch(2).expect("advance");
-    let mut input = fixture::event("event_2", SemanticHistoryKind::CardPlayed, 3, None);
+    let mut input = fixture::event("event_2", SemanticHistoryKind::ChoiceMade, 3, None);
     input.authority_epoch = 2;
     // A new epoch may restart host sequencing, but an event that sits later than its child is
     // still not its cause.
@@ -220,11 +220,11 @@ fn a_stated_parent_from_another_epoch_is_refused() {
         &mut store,
         fixture::ROOT,
         "event_1",
-        SemanticHistoryKind::CardPlayed,
+        SemanticHistoryKind::ChoiceMade,
         1,
     );
     store.advance_epoch(2).expect("advance");
-    let mut input = fixture::event("event_2", SemanticHistoryKind::CardPlayed, 2, None);
+    let mut input = fixture::event("event_2", SemanticHistoryKind::ChoiceMade, 2, None);
     input.authority_epoch = 2;
     let err = store
         .append(fixture::ROOT, input, fixture::stated_parent("event_1"))
@@ -260,10 +260,10 @@ fn an_imported_event_may_not_state_a_causal_parent() {
         &mut store,
         fixture::ROOT,
         "event_1",
-        SemanticHistoryKind::CardPlayed,
+        SemanticHistoryKind::ChoiceMade,
         1,
     );
-    let mut input = fixture::event("event_2", SemanticHistoryKind::CardPlayed, 2, None);
+    let mut input = fixture::event("event_2", SemanticHistoryKind::ChoiceMade, 2, None);
     input.origin = SemanticHistoryOrigin::Imported;
     // An imported event's causality was settled when it was captured; stating one now would invent it.
     assert_eq!(

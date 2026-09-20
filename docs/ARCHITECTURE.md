@@ -89,7 +89,10 @@ owned resources. Locking, retry, idempotency, stale lease, and duplicate-event b
 specified before implementation. Semantic combat and run history is one such record: the
 harness-owned `semantic_history` store keeps a per-branch, per-epoch event history whose capture
 gaps stay declared and whose causal parents are stated by the host rather than inferred, and it
-answers bounded pages and causal explanations only through the harness-owned read port.
+answers bounded pages and causal explanations only through the harness-owned read port. Each event
+carries the role-tagged ends the host named — an actor and, where the kind acts on one, a target — so
+a filter by entity cannot collapse a source into a target, and each kind states the actor, target,
+quantity or content reference it must carry rather than admitting an absent detail as a real one.
 
 ## Security and data boundaries
 
