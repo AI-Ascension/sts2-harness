@@ -10,6 +10,20 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Record **queryable semantic combat and run history with causal provenance**. The host's bounded
+  semantic event vocabulary had no harness-owned durable history behind it, so a run could not be
+  asked what happened, in what order, or why a value changed. The new `semantic_history` module
+  appends each event against one run, branch, episode and authority epoch on a strictly advancing
+  sequence, keeps a declared capture gap a gap instead of closing it with an invented event, and
+  admits a causal parent only when the host stated one — in the same branch and epoch and strictly
+  before its child — while an imported event never states one. Appends are idempotent across
+  restart and rejoin: identical content replays and writes nothing, and different content under one
+  identity is refused as a conflict rather than accepted as a correction. Retention redacts in
+  place and reports the value as unavailable instead of deleting the event or leaving a zero, with
+  the recorded digest unchanged so the original content still replays. History is readable only
+  through the harness-owned port, which re-checks owner and epoch on every read and refuses a caller
+  naming storage directly; see [ADR 0057](docs/decisions/0057-harness-semantic-history.md). Refs #128.
+
 - Name the **host's recovery reason** in an episode failure instead of reporting every recovery
   condition with one sentence. A runtime-v3 recovery state carries the condition that produced it
   in the sibling `code`, but the parser read only the stage, so a refused launch contract

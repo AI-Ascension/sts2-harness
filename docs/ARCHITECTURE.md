@@ -86,7 +86,10 @@ Timeout or disconnect does not silently cancel work already accepted by a downst
 Ordering uses monotonic durations and explicit sequence/causality data; wall timestamps are for
 observation only. Shutdown rejects new work, resolves owned queued work, closes ports, and joins
 owned resources. Locking, retry, idempotency, stale lease, and duplicate-event behavior must be
-specified before implementation.
+specified before implementation. Semantic combat and run history is one such record: the
+harness-owned `semantic_history` store keeps a per-branch, per-epoch event history whose capture
+gaps stay declared and whose causal parents are stated by the host rather than inferred, and it
+answers bounded pages and causal explanations only through the harness-owned read port.
 
 ## Security and data boundaries
 
