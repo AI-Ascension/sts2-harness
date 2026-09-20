@@ -10,6 +10,10 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Add an explicitly approved [paired Jev replay runner](experiments/jev-evaluation/RUNNER.md):
+  pinned matching inputs, reserved budgets, independent redacted captures, bounded Unix processes
+  and read-only recovery. No game action is dispatched; native/provider benefit remains unverified.
+
 - Add opt-in Jev `--audit-dir` metadata sidecars with bounded, create-only Unix reservations,
   separate execution/input fingerprints, no raw prompts or action IDs, and no extra provider calls.
   Runtime stdout stays one decision; storage failures refuse it. Add a redacted paired reader and
