@@ -71,6 +71,10 @@ pub struct ContextEffectiveLimits {
     pub max_context_bytes: u64,
     pub max_objective_bytes: u64,
     pub max_control_events: u64,
+    /// Output capacity this owner reserves beside the whole input, or `None` for no separate
+    /// reserve: then `max_context_bytes` bounds the input bytes alone, which is the prior contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_reserve_bytes: Option<u64>,
 }
 
 impl Default for ContextEffectiveLimits {
@@ -81,6 +85,7 @@ impl Default for ContextEffectiveLimits {
             max_context_bytes: MAX_CONTEXT_BYTES as u64,
             max_objective_bytes: MAX_OBJECTIVE_BYTES as u64,
             max_control_events: 4096,
+            output_reserve_bytes: None,
         }
     }
 }

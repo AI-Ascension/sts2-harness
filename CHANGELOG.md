@@ -10,6 +10,18 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Refuse a served assembled input that does not fit beside its advertised output reserve.** The
+  pre-existing `max_context_bytes` check bounded the request bytes alone; there was no served bound
+  over the whole bytes actually sent. `ContextRenderLimits` and the context-owner descriptor both
+  gain an optional `output_reserve_bytes`: `None` is exactly the prior contract, where response
+  capacity stays bounded by the provider configuration, and a published reserve makes
+  `max_context_bytes` the combined whole-input bound. The served managed decision then admits the
+  assembled provider bytes against that bound before any dispatch, refusing
+  `context_whole_input_budget_exceeded` and an unusable advertised reserve with
+  `context_whole_input_budget_invalid`. Compatibility: additive; the field is optional and
+  skip-serialized, so a descriptor that does not advertise it serializes byte-identically. See
+  [ADR 0058](docs/decisions/0058-served-whole-input-output-reserve.md). Refs #107.
+
 - Add a read-only [frozen Jev pilot profile](experiments/jev-evaluation/PILOT.md): ten pairs,
   twenty reserved attempts, exact-manifest reconciliation, per-arm refusal/gate diagnostics and
   matched input-token/latency accounting. No policy change or live gameplay benefit is claimed.
@@ -483,27 +495,6 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   rows move to `docs/COMPATIBILITY_CONTEXT_OWNER.md`, where the control-command route regains its
   own heading. Compatibility: additive-compatible; see
   [ADR 0052](docs/decisions/0052-provider-session-effective-limits-route.md).
-  Refs AI-Ascension/ascension-context-console#18.
-
-- Consume the shared `game-information-live-observation-bootstrap-v1` conformance case and its
-  seven invalid fixtures (copied byte-identically from sts2-protocol, `SHA256SUMS` extended) and
-  drive the `error-native-unavailable.json` golden through the MCP bootstrap boundary: a
-  `not_observable` error is the typed missing-capability result, installs no snapshot, retains no
-  producer text and delivers nothing to the agent. Safety correction in bootstrap snapshot
-  selection: a visible entity carrying a foreign content manifest is now rejected instead of
-  skipped, and the response selector must echo the request selector exactly. No schema, digest,
-  route or durable record changes. Refs #127.
-
-- Submit **context-owner control commands over management HTTP**.
-  `POST /v1/workflow-runs/{run_id}/context-control-commands` forwards one `pause`/`commit`/`resume`
-  `ContextControlCommand` to the authoritative context owner for the run's current binding under
-  scoped `workflow:control` and returns the owner's `ascension.context-control.owner-receipt.v2`.
-  The harness mints no authority: an exact duplicate returns the recorded receipt without a second
-  effect, and a stale control version, boundary or revision fence is refused with a typed conflict
-  before the owner is called. A served profile may also set `STS2_WORKFLOW_TOKEN_<PROFILE>_READ`
-  to mint a `workflow:read`-only companion token for the same subject, so a metadata-only caller is
-  refused with `missing_scope` on content writes, adoption and control. Compatibility:
-  additive-compatible; see [ADR 0048](docs/decisions/0048-context-owner-control-commands.md).
   Refs AI-Ascension/ascension-context-console#18.
 
 - Execute independent read-only analyses of an admitted dynamic plan under an **owner-enforced

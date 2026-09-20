@@ -234,7 +234,7 @@ pub enum PreparedBudgetError {
         requested: usize,
         effective: usize,
     },
-    /// Input plus the output reserve exceed the combined profile window.
+    /// Input plus the output reserve exceed the combined whole-input bound or profile window.
     CombinedWindowOverflow {
         input_bytes: usize,
         output_reserve_bytes: usize,

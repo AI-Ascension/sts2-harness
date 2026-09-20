@@ -47,6 +47,14 @@ Applying a selected event bound also rejects an authority whose retained journal
 that bound with `context_control_events_exhausted`, matching bounded recovery. A journal exactly
 at the selected bound remains admissible; existing events are never silently discarded.
 
+[ADR 0058](decisions/0058-served-whole-input-output-reserve.md) adds one optional
+`output_reserve_bytes` to `ContextRenderLimits` and to the descriptor's `ContextEffectiveLimits`,
+and admits the assembled provider bytes of a served managed decision against it before any dispatch.
+This is `additive-compatible`: absent is exactly the prior contract, the field is skip-serialized so
+existing descriptors and the committed conformance fixture are byte-identical, no route, digest or
+default changes, and no capacity is raised. It does not establish that the input-plus-response
+composition was bounded before a reserve was advertised.
+
 ## Current context-owner association
 
 [ADR 0025](decisions/0025-context-owner-current-association.md) adds

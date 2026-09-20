@@ -175,6 +175,14 @@ pub struct ContextRenderLimits {
     pub max_notes: usize,
     pub max_context_bytes: usize,
     pub max_objective_bytes: usize,
+    /// Output capacity reserved beside `max_context_bytes`, or `None` when this owner publishes no
+    /// separate reserve.
+    ///
+    /// `None` is the pre-existing contract: `max_context_bytes` bounds the input bytes alone and
+    /// response capacity stays bounded independently by the provider configuration. When a reserve
+    /// is published, `max_context_bytes` is the combined whole-input bound and the served decision
+    /// admits `input + reserve` against it, so the reserve is never silently folded into the input.
+    pub output_reserve_bytes: Option<usize>,
 }
 
 impl ContextRenderLimits {
@@ -185,6 +193,7 @@ impl ContextRenderLimits {
             max_notes: MAX_CONTEXT_NOTES,
             max_context_bytes: MAX_CONTEXT_BYTES,
             max_objective_bytes: MAX_OBJECTIVE_BYTES,
+            output_reserve_bytes: None,
         }
     }
 }
