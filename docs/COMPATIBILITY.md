@@ -382,6 +382,23 @@ M10 records build, data, UI, action, and schema dimensions independently in
 is deliberately `quarantined` until exact package hashes, licensed-host traces, independent leak
 checks, cleanup, replay, rollback, and all repository gates are available.
 
+### Host lease-control artifact provenance
+
+The [host lease-control bundle](../protocol-artifact/host-lease-control-v1/PIN.md) was copied
+byte-for-byte from `AI-Ascension/sts2-gateway` main
+`77ffb01aef50e8e53b3bd2fb015074c649c3a383` (MIT). The copied `README.md`,
+`PROOF_PROFILE.md`, `PROVENANCE.md`, `manifest.json`, `frame.schema.json`, `proof-vectors.json`
+and twelve fixtures retain upstream bytes. The pin note and the `SHA256SUMS` inventory are the
+only harness additions, and every copied file still hashes to the value the artifact's own
+`PROVENANCE.md` publishes. Schema digest is
+`e22faf0f7d3cd313a007b65e52058b3c255153d5778dd8124055c283adf977f9`.
+The bundle's manifest records `consumer_owners: ["gateway", "host-mod"]`; the harness pins it
+because the synthetic downstream that a soak campaign runs terminates the gateway's fixed
+`POST /api/v1/runtime/recovery` hop as the signed host. The bundle's own vectors classify
+themselves as `test-vectors-not-live-evidence`, so reproducing them establishes profile
+agreement only, never a deployed host, a protected key, live gameplay or an approved soak
+window.
+
 ## Breaking changes
 
 ### Runtime-v3 canonical artifact provenance
