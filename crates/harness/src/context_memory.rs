@@ -23,6 +23,9 @@ mod context_memory_impl {
     include!("context_memory/summary_store.rs");
     include!("context_memory/manifest.rs");
     include!("context_memory/selection.rs");
+    include!("context_memory/final_budget_measurement.rs");
+    include!("context_memory/final_budget.rs");
+    include!("context_memory/final_budget_prepare.rs");
     include!("context_memory/approval.rs");
     include!("context_memory/capabilities.rs");
     include!("context_memory/effective_limits.rs");
