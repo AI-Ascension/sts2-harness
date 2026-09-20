@@ -277,6 +277,31 @@ impl CapturePort for NoopCapture {
 mod memory;
 pub use memory::MemoryCapture;
 
+mod dispatch_controller;
+mod dispatch_error;
+mod dispatch_fences;
+mod dispatch_lifecycle;
+mod dispatch_material;
+mod dispatch_port;
+mod dispatch_resume;
+mod dispatch_support;
+
+pub use dispatch_controller::PreparedDispatchController;
+pub use dispatch_error::DispatchError;
+pub use dispatch_fences::{DispatchFences, DriftAxis};
+pub use dispatch_lifecycle::{
+    DispatchLedger, DispatchMetadata, DispatchOutcome, DispatchPreview, DispatchReceipt,
+    DispatchState, PreparedDispatch,
+};
+pub use dispatch_material::{
+    BoundaryManifestEntry, MAX_MEDIA_TYPE_BYTES, MAX_PREPARED_BYTES, MAX_PREPARED_COMPONENTS,
+    PreparedApplicationInput, PreparedBoundaryComponent, manifest_sha256, material_sha256,
+};
+pub use dispatch_port::{ApprovedDispatchMaterial, CaptureRecordingPort, PreparedDispatchPort};
+pub use dispatch_support::{
+    ADVERTISED_EXACT_ADAPTERS, AdapterSupport, EffectiveContextClaim, adapter_support,
+};
+
 #[cfg(test)]
 #[path = "context_capture_tests.rs"]
 mod tests;
