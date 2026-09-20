@@ -20,6 +20,7 @@ fn compose_with_rest_selector(
             "Runtime-v4 expert stage does not match the Runtime-v3 observation",
         ));
     }
+    composed.observation = carry_recovery_code(composed.observation, baseline.recovery_code())?;
     composed.actions = selector_actions;
     composed.payloads = selector_payloads;
     Ok(composed)

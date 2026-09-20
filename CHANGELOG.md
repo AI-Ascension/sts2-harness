@@ -10,6 +10,16 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Carry the **host's recovery reason through expert runtime composition**. The reason reached the
+  failure on the runtime-v3 read, but the `runtime-v4-expert` and `runtime-v4-expert-rest-action`
+  profiles replace that read with the composed expert projection, which names its own `recovery`
+  state and carries no `code`, so those profiles still reported the generic sentence. Composition now
+  re-applies the parsed baseline's code at each site that rebuilds the observation, including the
+  REST selector overlay, and never re-derives a token from the projection, which decides only the
+  stage. No contract change: the token, its identity rule, the optional `code` on the failure, and
+  the `game.log` boundary are unchanged. See
+  [ADR 0056](docs/decisions/0056-harness-recovery-reason-token.md). Refs #355.
+
 - Name the **host's recovery reason** in an episode failure instead of reporting every recovery
   condition with one sentence. A runtime-v3 recovery state carries the condition that produced it
   in the sibling `code`, but the parser read only the stage, so a refused launch contract

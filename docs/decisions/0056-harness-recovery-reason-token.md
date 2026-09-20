@@ -37,6 +37,12 @@ unavailable observation.
    reason cannot be separated by later plumbing. Only a recovery or unknown
    observation may carry one; binding a code to any other stage is refused, so a
    normal observation cannot acquire a reason that would misdescribe it.
+
+   Composition is later plumbing. An expert runtime profile replaces the parsed
+   runtime-v3 read with a projection that names its own `recovery` state and
+   carries no `code`, so a site that rebuilds an observation from a baseline
+   re-applies the baseline's code rather than re-deriving one from the
+   projection. Deciding the stage again is not the same as keeping the reason.
 2. **The code is held to the identity rule already in force.** One predicate
    governs both `state_id` and the recovery code -- non-empty, at most 512 bytes,
    ASCII alphanumerics plus `.`, `:`, `/`, `-`, `_` -- which is the shape the
@@ -77,9 +83,16 @@ unavailable observation.
 `crates/harness/src/bin/runtime_support/runtime_v3_parse_test.rs` covers a
 recovery read that carries each vocabulary token into the observation, the
 malformed and missing-code refusals, and that a playable observation binds no
-code. `crates/harness/tests/episode_runner/scenarios.rs` covers the runner
+code. `crates/harness/tests/episode_runner/recovery_reason.rs` covers the runner
 failure naming a refused-contract reason, the unchanged sentence when the host
-named none, and the two binding refusals.
+named none, the two binding refusals, and every vocabulary token the host
+composes.
+
+`crates/harness/src/bin/runtime_support/runtime_v4_expert_port_recovery_tests.rs`
+covers the composition boundary: each of the three sites that rebuilds the
+observation keeps the baseline's code, a composition whose baseline named none
+stays anonymous instead of lifting one out of the projection, and a code offered
+outside a recovery stage is refused.
 
 These establish component behaviour. They do **not** prove a native recovery
 transition, a refused launch contract observed end to end, or that any campaign

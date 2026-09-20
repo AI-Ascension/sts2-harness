@@ -98,6 +98,7 @@ fn compose_with_normal(
         expert.as_value().clone(),
     )
     .map_err(|error| format!("expert fair-play observation failed validation: {error}"))?;
+    let observation = carry_recovery_code(observation, baseline.recovery_code())?;
     Ok(ComposedExpertObservation {
         observation,
         actions,

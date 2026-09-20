@@ -32,6 +32,8 @@ pub(super) struct ComposedExpertObservation {
 
 include!("runtime_v4_expert_port_transport.rs");
 include!("runtime_v4_expert_port_composition.rs");
+include!("runtime_v4_expert_port_recovery_carry.rs");
 include!("runtime_v4_expert_port_rest.rs");
 include!("runtime_v4_expert_port_rest_selection.rs");
 include!("runtime_v4_expert_port_tests.rs");
+include!("runtime_v4_expert_port_recovery_tests.rs");
