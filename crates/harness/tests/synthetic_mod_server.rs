@@ -28,9 +28,18 @@ fn run_synthetic_downstream_until_terminated() -> Result<(), Box<dyn std::error:
         Ok("foreign-state") => FixtureMode::ForeignExpertState,
         _ => FixtureMode::Success,
     };
+    // The gateway drives every recovery mutation at this address, so the
+    // operator has to supply the pinned host lease-control configuration for
+    // the durable recovery path to have a host to talk to.
+    let host_lease = match fixture::host_lease_mux::host_lease_control::HostLeaseControl::from_env()
+    {
+        Ok(Some(_)) => "enabled",
+        Ok(None) => "closed",
+        Err(error) => return Err(error.into()),
+    };
     let server = ModServer::bind(&address, mode)?;
     println!(
-        "synthetic_mod_listening={} mode={:?}",
+        "synthetic_mod_listening={} mode={:?} host_lease={host_lease}",
         server.address,
         std::env::var("STS2_SYNTHETIC_MOD_MODE").unwrap_or_else(|_| "success".to_owned())
     );

@@ -16,6 +16,11 @@ mod actions;
 mod gate;
 pub(crate) use gate::ActionReadGate;
 
+#[path = "runtime_v4_executable_composition_fixture/host_lease_mux.rs"]
+pub(crate) mod host_lease_mux;
+
+use host_lease_mux::host_lease_control::HostLeaseControl;
+
 pub(crate) const INSTANCE_ID: &str = "instance-1";
 pub(crate) const CALLER_ID: &str = "harness";
 pub(crate) const SESSION_ID: &str = "gateway-session-1";
@@ -47,6 +52,10 @@ pub(crate) struct DownstreamRequest {
     pub(crate) path: String,
     pub(crate) headers: BTreeMap<String, String>,
     pub(crate) body: Value,
+    /// The body bytes exactly as they arrived. The host lease-control profile
+    /// validates its canonical input before parsing, so the recovery mux cannot
+    /// read the already-normalized projection.
+    pub(crate) raw: Vec<u8>,
 }
 
 #[derive(Clone, Debug)]
@@ -80,7 +89,7 @@ impl ModServer {
         address: &str,
         mode: FixtureMode,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        Self::bind_inner(address, mode, None)
+        Self::bind_inner(address, mode, None, None)
     }
 
     pub(crate) fn accepted_barrier_then_settled()
@@ -90,6 +99,7 @@ impl ModServer {
             "127.0.0.1:0",
             FixtureMode::AcceptedBarrierThenSettled,
             Some(Arc::clone(&gate)),
+            None,
         )?;
         Ok((server, gate))
     }
@@ -98,6 +108,7 @@ impl ModServer {
         address: &str,
         mode: FixtureMode,
         gate: Option<Arc<ActionReadGate>>,
+        host_lease: Option<Arc<HostLeaseControl>>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let listener = TcpListener::bind(address)?;
         listener.set_nonblocking(true)?;
@@ -107,6 +118,7 @@ impl ModServer {
         let action_reads = Arc::new(AtomicU64::new(0));
         let worker_action_reads = Arc::clone(&action_reads);
         let worker_gate = gate.clone();
+        let worker_host_lease = host_lease;
         let ledger = Arc::new(Mutex::new(DownstreamLedger {
             requests: Vec::new(),
             responses: Vec::new(),
@@ -123,6 +135,7 @@ impl ModServer {
                                 mode,
                                 &worker_action_reads,
                                 worker_gate.as_deref(),
+                                worker_host_lease.as_deref(),
                             );
                             if let Ok(mut ledger) = worker_ledger.lock() {
                                 ledger.requests.push(request);
@@ -213,6 +226,7 @@ fn fixture_response(
     mode: FixtureMode,
     action_reads: &AtomicU64,
     gate: Option<&ActionReadGate>,
+    host_lease: Option<&HostLeaseControl>,
 ) -> Result<(u16, Value), String> {
     if request.headers.get("authorization").map(String::as_str) != Some("Bearer mod-token") {
         return Err(String::from("downstream mod authorization is missing"));
@@ -243,6 +257,7 @@ fn fixture_response(
             }
             _ => actions::settled_action(path, &request.headers),
         },
+        "/api/v1/runtime/recovery" => host_lease_mux::recovery_response(&request.raw, host_lease),
         _ => Err(format!("unexpected downstream path: {}", request.path)),
     }
 }
@@ -371,6 +386,7 @@ fn read_request(stream: &mut TcpStream) -> Result<DownstreamRequest, Box<dyn std
         } else {
             serde_json::from_slice(&body)?
         },
+        raw: body,
     })
 }
 
