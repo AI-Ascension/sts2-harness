@@ -75,4 +75,36 @@ mod recovery_tests {
         assert_eq!(composed.observation.recovery_code(), None);
         Ok(())
     }
+
+    /// The REST selector overlay destructively replaces the composed observation with one rebuilt
+    /// from `fair_play`, so a reason that survived composition has to survive that rebuild too.
+    #[test]
+    fn rest_selector_overlay_keeps_the_host_reason() -> Result<(), String> {
+        let mut composed = expert_only_observation(&recovery_expert("host_not_configured")?)?;
+        assert_eq!(
+            composed.observation.recovery_code(),
+            Some("host_not_configured")
+        );
+        overlay_rest_selector(&mut composed, &json!({"legal_actions": []}))?;
+        assert_eq!(composed.observation.stage(), EpisodeStage::Recovery);
+        assert_eq!(
+            composed.observation.recovery_code(),
+            Some("host_not_configured")
+        );
+        Ok(())
+    }
+
+    /// Binding is not a second route to a reason: the stage guard still refuses one on an
+    /// observation that is not recovering.
+    #[test]
+    fn a_reason_is_refused_outside_a_recovery_stage() -> Result<(), String> {
+        let expert = RuntimeV4ExpertObservation::parse(include_bytes!(
+            "../../../../../protocol-artifact/runtime-v4-expert/golden/observation.json"
+        ))
+        .map_err(|error| error.to_string())?;
+        let composed = expert_only_observation(&expert)?;
+        assert_ne!(composed.observation.stage(), EpisodeStage::Recovery);
+        assert!(composed.observation.with_recovery_code("host_not_configured").is_err());
+        Ok(())
+    }
 }
