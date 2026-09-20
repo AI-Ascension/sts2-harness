@@ -81,6 +81,16 @@ consumer can detect later. Refusal is therefore the contract, not a fallback.
     anyway, and that protection closes transitively over the ancestor chain, so a prune can never
     leave a stated cause unreachable. An append after a prune inherits the spans retention declared,
     because a producer cannot restate a decision the store made.
+11. **History leaves the store only through a harness-owned lookup port.** A caller does not reach
+    the retained store; it states a `SemanticLookupRequest` to a `SemanticLookupPort`, and the
+    harness-owned `RetainedHistoryLookup` serves it from the store it already holds and exposes no
+    accessor back to that store. Authority is **not granted by default**: every request is refused
+    until a caller is explicitly granted it, so serving history is a deliberate grant rather than a
+    capability that arrives with the type. A request that names an unknown field is refused on
+    shape, a request over its byte bound is refused, and a result over its own byte bound is refused
+    rather than truncated into a page that looks complete. What a lookup returns is a disclosed
+    page: a pruned span is stated as retention disclosed and a missing sequence as a gap, so a
+    lookup can never read the removal of a record as a measured zero.
 
 ## Consequences
 
@@ -101,7 +111,7 @@ consumer can detect later. Refusal is therefore the contract, not a fallback.
 ## Verification
 
 `crates/harness/tests/semantic_history.rs` with
-`crates/harness/tests/semantic_history/{admission,persistence,query,retention}.rs` covers 60 cases: the
+`crates/harness/tests/semantic_history/{admission,persistence,query,retention,lookup}.rs` covers 76 cases:
 coverage-shape and window refusals (decision 2), the causal-shape, absent-parent, non-preceding
 parent and imported-causality refusals plus bounded and cycle-refusing traversal (decisions 3 and
 4), the cross-branch and cross-epoch read refusals and bounded paging with continuation (decisions
@@ -109,7 +119,9 @@ parent and imported-causality refusals plus bounded and cycle-refusing traversal
 identity and bound refusals (decision 7), and restart, missing-store and corrupt-document behaviour
 (decision 9), and the retention preview/apply pair, the reference-aware pin and its transitive
 closure, the stale-plan and reused-identity refusals, the disclosed-span bound, restart, fork and
-post-prune append behaviour over a disclosed span (decision 10).
+post-prune append behaviour over a disclosed span (decision 10), and the authority gate, both byte
+bounds, the unknown-field refusal, retention disclosure, and the scope fence holding on an empty as
+well as a non-empty history (decision 11).
 
 These establish component behaviour over batches the harness constructed. They do **not** prove a
 native event capture, a capture window the host actually declared, or that any campaign ran; those

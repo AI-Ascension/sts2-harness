@@ -27,6 +27,11 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   nothing a policy removed can read as a measured zero. A prune plan is computed against the exact
   bytes it previews and is refused when that history has moved, and a later append still declares the
   span retention disclosed.
+  History leaves the store only through a harness-owned agent tool port: authority to serve it is
+  not granted by default, a request that names an unknown field or exceeds its byte bound is refused
+  rather than shortened, a result over its byte bound is refused rather than served as a page that
+  looks complete, a pruned span is disclosed rather than read as a measured zero, and the port
+  borrows the retained store directly with no accessor back to raw artifact storage.
   Compatibility: additive; no wire field, schema or durable record changes, and no native event
   capture is claimed. See [ADR 0057](docs/decisions/0057-retained-semantic-history.md). Refs #128.
 
