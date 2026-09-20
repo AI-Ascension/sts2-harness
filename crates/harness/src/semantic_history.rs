@@ -21,6 +21,10 @@
 //!   unchanged, and a changed payload for the same append identity is refused.
 //! - A fork copies its ancestor's history by lineage and appends only what is new, so a replayed
 //!   or re-joined batch cannot duplicate an event.
+//! - Retention is explicit and reference-aware: a policy an operator must disable deliberately can
+//!   select observed detail for pruning, a record another surviving record still names as its stated
+//!   cause is kept anyway, and every pruned span keeps its sequence number as a declared gap
+//!   carrying the retention label, so nothing a policy removed can read as measured.
 //!
 //! This is a harness-owned historical artifact surface. It reaches no host, no game process and no
 //! gateway, and it claims no native event capture.
@@ -31,6 +35,7 @@ mod ingest;
 mod query;
 mod record;
 mod replay;
+mod retention;
 mod roles;
 mod scope;
 mod store;
@@ -50,6 +55,9 @@ pub use record::{
 };
 pub use replay::{
     SemanticAppendOutcome, SemanticForkOutcome, SemanticHistoryAppend, SemanticHistoryFork,
+};
+pub use retention::{
+    SEMANTIC_RETENTION_LABEL, SemanticPrunePlan, SemanticPruneRequest, SemanticRetentionPolicy,
 };
 pub use roles::{
     SemanticCausalProvenance, SemanticCoverageStatus, SemanticIdentityNamespace,

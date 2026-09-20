@@ -69,6 +69,12 @@ pub enum SemanticHistoryRefusal {
     UnknownParentBranch,
     /// A fork named its own branch as its parent.
     SelfParentBranch,
+    /// A retention policy selected nothing, so there is no prune to apply.
+    NothingPrunable,
+    /// A prune named a branch this store does not retain.
+    UnknownBranch,
+    /// A prune plan does not describe the history it was applied to, so it is refused.
+    StalePrunePlan,
     /// The traversal exceeded its visit bound or its depth bound.
     TraversalBound,
     /// The traversal revisited an event, so the causal graph is not a tree.
@@ -112,6 +118,9 @@ impl SemanticHistoryRefusal {
             Self::NotContiguous => "not_contiguous",
             Self::UnknownParentBranch => "unknown_parent_branch",
             Self::SelfParentBranch => "self_parent_branch",
+            Self::NothingPrunable => "nothing_prunable",
+            Self::UnknownBranch => "unknown_branch",
+            Self::StalePrunePlan => "stale_prune_plan",
             Self::TraversalBound => "traversal_bound",
             Self::CausalCycle => "causal_cycle",
             Self::Storage => "storage",

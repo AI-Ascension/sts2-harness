@@ -67,6 +67,20 @@ consumer can detect later. Refusal is therefore the contract, not a fallback.
    document that cannot be read, is over its byte bound, or does not parse is refused rather than
    reopened as an empty history, because an empty history is indistinguishable from a lost one. A
    missing file is the one case that legitimately opens empty.
+10. **Retention is explicit, reference-aware, and discloses what it removes.** An
+    operator-selected `SemanticRetentionPolicy` reuses the shape of the branch store's own retention
+    owner -- a protection that must be disabled deliberately, plus a bound below which nothing is
+    pruned -- with a count of retained records standing in for an age, because this store keeps no
+    clock. A prune is previewed as a `SemanticPrunePlan` before it is applied, and the applied plan
+    must equal the one the history produces now: a plan computed against other bytes, or under a
+    policy that no longer selects the same records, is refused. What the policy selects is
+    **disclosed rather than deleted**: each selected record keeps its identity and sequence number
+    and loses every gameplay value, and the window gains a declared span covering it, so a pruned
+    span can never read as a measured zero, an empty complete result, or an event that never
+    happened. A record another surviving record still names as its stated causal parent is kept
+    anyway, and that protection closes transitively over the ancestor chain, so a prune can never
+    leave a stated cause unreachable. An append after a prune inherits the spans retention declared,
+    because a producer cannot restate a decision the store made.
 
 ## Consequences
 
@@ -87,13 +101,15 @@ consumer can detect later. Refusal is therefore the contract, not a fallback.
 ## Verification
 
 `crates/harness/tests/semantic_history.rs` with
-`crates/harness/tests/semantic_history/{admission,persistence,query}.rs` covers 47 cases: the
+`crates/harness/tests/semantic_history/{admission,persistence,query,retention}.rs` covers 60 cases: the
 coverage-shape and window refusals (decision 2), the causal-shape, absent-parent, non-preceding
 parent and imported-causality refusals plus bounded and cycle-refusing traversal (decisions 3 and
 4), the cross-branch and cross-epoch read refusals and bounded paging with continuation (decisions
 5 and 8), idempotent re-append, conflicting reuse, contiguity and fork lineage (decision 6), the
 identity and bound refusals (decision 7), and restart, missing-store and corrupt-document behaviour
-(decision 9).
+(decision 9), and the retention preview/apply pair, the reference-aware pin and its transitive
+closure, the stale-plan and reused-identity refusals, the disclosed-span bound, restart, fork and
+post-prune append behaviour over a disclosed span (decision 10).
 
 These establish component behaviour over batches the harness constructed. They do **not** prove a
 native event capture, a capture window the host actually declared, or that any campaign ran; those

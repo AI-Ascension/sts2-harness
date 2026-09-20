@@ -15,6 +15,7 @@ use super::super::error::{
     SemanticHistoryError, SemanticHistoryRefusal as Refusal, SemanticHistoryResult,
 };
 use super::super::replay::{SemanticHistoryAppend, SemanticHistoryFork};
+use super::super::retention::SemanticPruneRequest;
 use super::RetainedStore;
 
 const MAX_STORE_BYTES: u64 = 16 * 1024 * 1024;
@@ -60,5 +61,12 @@ pub(super) fn digest_append(append: &SemanticHistoryAppend) -> SemanticHistoryRe
 pub(super) fn digest_fork(fork: &SemanticHistoryFork) -> SemanticHistoryResult<String> {
     let bytes =
         serde_json::to_vec(fork).map_err(|_| SemanticHistoryError::new(Refusal::Storage))?;
+    Ok(crate::sha256_hex(bytes))
+}
+
+/// A stable digest of one prune request, used to tell a re-delivered prune from a conflicting reuse.
+pub(super) fn digest_prune(request: &SemanticPruneRequest) -> SemanticHistoryResult<String> {
+    let bytes = serde_json::to_vec(&(&request.branch_id, &request.policy))
+        .map_err(|_| SemanticHistoryError::new(Refusal::Storage))?;
     Ok(crate::sha256_hex(bytes))
 }

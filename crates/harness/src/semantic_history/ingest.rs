@@ -264,7 +264,7 @@ fn validate_causality(records: &[SemanticEventRecord]) -> SemanticHistoryResult<
     Ok(())
 }
 
-fn validate_identity(value: &str) -> SemanticHistoryResult<()> {
+pub(super) fn validate_identity(value: &str) -> SemanticHistoryResult<()> {
     let bounded = !value.is_empty()
         && value.len() <= SEMANTIC_MAX_IDENTITY_BYTES
         && !value.contains('/')

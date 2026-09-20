@@ -170,3 +170,5 @@ mod admission;
 mod persistence;
 #[path = "semantic_history/query.rs"]
 mod query;
+#[path = "semantic_history/retention.rs"]
+mod retention;

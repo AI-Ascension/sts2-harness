@@ -20,6 +20,13 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   parents backwards and refuses rather than truncates when it would exceed its bounds or revisit an
   event. Re-appending an identical batch is a no-op, reusing an append identity with a different
   payload is refused, and a fork inherits its ancestor by lineage and appends only what is new.
+  Retention over that history is explicit and reference-aware: a policy an operator must disable
+  deliberately can select an observed span for pruning, a record another surviving record still
+  names as its stated cause is kept anyway (and that protection closes over the ancestor chain), and
+  every pruned span keeps its sequence number as a declared gap carrying the retention label, so
+  nothing a policy removed can read as a measured zero. A prune plan is computed against the exact
+  bytes it previews and is refused when that history has moved, and a later append still declares the
+  span retention disclosed.
   Compatibility: additive; no wire field, schema or durable record changes, and no native event
   capture is claimed. See [ADR 0057](docs/decisions/0057-retained-semantic-history.md). Refs #128.
 
@@ -519,22 +526,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   one failure path now emits `rejected` instead of `settled`, and no field, route, durable record,
   or published schema changes. See
   [ADR 0047](docs/decisions/0047-failed-command-event-classification.md). Refs #260.
-
-- Wire the per-invocation **context membership boundary** into the production render path so a
-  policy actually changes published application bytes. `ContextMembershipSelector` is the
-  owner-configured half (disposition, overrides, pin inheritance, wider scope, model view) and
-  `bind` mints the versioned `ascension.context-control.membership.v1` policy for one invocation of
-  one draft revision, so a default or override cannot silently carry another invocation's identity.
-  The live managed dispatch seam and the composed owner render seam both resolve and gate the
-  effective set before any provider bytes exist, project the model-visible subset onto a cloned
-  draft, narrow pins to model-visible ids, and then delegate to the renderer so the selected owner
-  limits still compose with (narrow) the membership bound instead of replacing it. An invocation
-  without a selector renders today's exact bytes. `MembershipContinuity` is derived from the
-  binding's `provider_session_continuity`. Effective absence is refused for **every** continuity
-  until the render path can actually omit the observation from the composed provider request; the
-  stateless case was refused too after #254 proved it was admitted while the observation still
-  shipped in the served bytes. Refusals name the precise pre-dispatch gate
-  (`context_membership_*`) rather than a generic provider failure.
-  Compatibility: additive — no existing field, route, durable record, or published schema changes.
-  Owner continuations gain optional `membership` configuration; absence preserves current behaviour.
-  See [ADR 0046](docs/decisions/0046-invocation-context-membership.md). Refs #106.

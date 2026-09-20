@@ -21,11 +21,13 @@ use super::replay::{
     SemanticAppendOutcome, SemanticForkOutcome, SemanticHistoryAppend, SemanticHistoryFork,
     validate_fork,
 };
+use super::retention::{SemanticPrunePlan, merge_intervals};
 use super::scope::{
     SEMANTIC_MAX_EVENTS, SEMANTIC_MAX_HISTORY_BYTES, SemanticCatalogBinding, SemanticEventScope,
 };
 
 mod file;
+mod prune;
 
 /// One retained history: its scope, its binding, and its records in sequence order.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -37,6 +39,10 @@ struct RetainedHistory {
     records: Vec<SemanticEventRecord>,
     parent_branch_id: Option<String>,
     operation_ids: BTreeMap<String, String>,
+    #[serde(default)]
+    retention_intervals: Vec<super::record::SemanticCoverageInterval>,
+    #[serde(default)]
+    prune_plans: BTreeMap<String, SemanticPrunePlan>,
 }
 
 /// The whole retained store, keyed by branch identity.
@@ -128,10 +134,20 @@ impl SemanticHistoryStore {
                 records: Vec::new(),
                 parent_branch_id: None,
                 operation_ids: BTreeMap::new(),
+                retention_intervals: Vec::new(),
+                prune_plans: BTreeMap::new(),
             });
         let added = records.len();
+        let window = super::record::SemanticCaptureWindow {
+            capture_start_sequence: append.batch.window.capture_start_sequence,
+            history_before_capture: append.batch.window.history_before_capture,
+            intervals: merge_intervals(
+                &append.batch.window.intervals,
+                &history.retention_intervals,
+            )?,
+        };
         history.records.extend(records);
-        history.window = append.batch.window.clone();
+        history.window = window;
         history
             .operation_ids
             .insert(append.operation_id.clone(), payload);
@@ -177,6 +193,8 @@ impl SemanticHistoryStore {
             records: parent.records,
             parent_branch_id: Some(fork.parent_branch_id.clone()),
             operation_ids: BTreeMap::new(),
+            retention_intervals: parent.retention_intervals,
+            prune_plans: BTreeMap::new(),
         };
         history
             .operation_ids
