@@ -46,6 +46,8 @@ pub(super) struct Options {
     pub gate_percent: Option<u32>,
     /// Opt-in parallel evaluator. False preserves the legacy request and decision path.
     pub tactical: bool,
+    /// Explicit private sidecar directory. Never enables extra provider calls or record stdout.
+    pub audit_dir: Option<String>,
 }
 
 impl Options {
@@ -58,11 +60,21 @@ impl Options {
         let mut describe = false;
         let mut record = false;
         let mut tactical = false;
+        let mut audit_dir = None;
         while let Some(argument) = arguments.next() {
             match argument.as_str() {
                 "--describe" if !describe => describe = true,
                 "--record" if !record => record = true,
                 "--tactical" if !tactical => tactical = true,
+                "--audit-dir" if audit_dir.is_none() => {
+                    let value = arguments.next().ok_or("missing audit directory")?;
+                    if !valid_identifier(&value, MAX_TRANSPORT_BYTES)
+                        || !std::path::Path::new(&value).is_absolute()
+                    {
+                        return Err("invalid audit directory");
+                    }
+                    audit_dir = Some(value);
+                }
                 "--model" if model.is_none() => {
                     let value = arguments.next().ok_or("missing model identifier")?;
                     if !valid_identifier(&value, 240) {
@@ -90,6 +102,9 @@ impl Options {
                 _ => return Err("unknown or duplicate bridge option"),
             }
         }
+        if record && audit_dir.is_some() {
+            return Err("record stdout and redacted capture are mutually exclusive");
+        }
         Ok(Self {
             model: model.unwrap_or_else(|| DEFAULT_MODEL.to_owned()),
             transport,
@@ -97,6 +112,7 @@ impl Options {
             record,
             gate_percent,
             tactical,
+            audit_dir,
         })
     }
 }
@@ -123,6 +139,10 @@ fn valid_transport(value: &str) -> bool {
         && !value.chars().any(char::is_control)
         && std::path::Path::new(value).is_absolute()
 }
+
+#[cfg(test)]
+#[path = "jev_capture_options_tests.rs"]
+mod capture_tests;
 
 #[cfg(test)]
 mod tests {

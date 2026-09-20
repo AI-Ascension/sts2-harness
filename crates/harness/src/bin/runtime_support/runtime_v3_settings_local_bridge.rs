@@ -45,6 +45,16 @@ fn ollama_allowed(arguments: &[String]) -> bool {
 /// Admits the existing model/transport pair and optional gate, with an opt-in --tactical suffix.
 /// The recorded vector exposes the selected policy. Record/describe and arbitrary flags stay denied.
 fn system_one_allowed(arguments: &[String]) -> bool {
+    // Canonical capture suffix only. Do not widen record/describe or other provider kinds.
+    let (arguments, audit_dir) = match arguments {
+        [execution @ .., flag, directory] if flag == "--audit-dir" => {
+            (execution, Some(directory.as_str()))
+        }
+        _ => (arguments, None),
+    };
+    if audit_dir.is_some() && !cfg!(unix) {
+        return false;
+    }
     // Only a final --tactical is admitted, with either existing execution shape.
     let tactical = arguments.last().is_some_and(|value| value == "--tactical");
     let execution = if tactical {
@@ -52,10 +62,10 @@ fn system_one_allowed(arguments: &[String]) -> bool {
     } else {
         arguments
     };
-    system_one_shape(execution, tactical)
+    system_one_shape(execution, tactical, audit_dir)
 }
 
-fn system_one_shape(arguments: &[String], tactical: bool) -> bool {
+fn system_one_shape(arguments: &[String], tactical: bool, audit_dir: Option<&str>) -> bool {
     // Length first: a shorter vector must be refused, not indexed.
     let gated = match arguments.len() {
         4 => false,
@@ -77,15 +87,23 @@ fn system_one_shape(arguments: &[String], tactical: bool) -> bool {
     if tactical {
         parsed.push(String::from("--tactical"));
     }
+    if let Some(directory) = audit_dir {
+        parsed.extend([String::from("--audit-dir"), directory.to_owned()]);
+    }
     jev_options::Options::parse(parsed).is_ok_and(|options| {
         !options.describe
             && !options.record
             && options.tactical == tactical
+            && options.audit_dir.as_deref() == audit_dir
             && options.model == arguments[1]
             && options.transport.as_deref() == Some(arguments[3].as_str())
             && options.gate_percent.map(|gate| gate.to_string()) == arguments.get(5).cloned()
     })
 }
+
+#[cfg(test)]
+#[path = "runtime_v3_capture_admission_tests.rs"]
+mod capture_tests;
 
 #[cfg(test)]
 mod tests {

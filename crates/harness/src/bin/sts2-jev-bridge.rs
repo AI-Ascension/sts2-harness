@@ -67,6 +67,9 @@ mod options;
 #[path = "support/jev_tactical.rs"]
 mod tactical;
 
+#[path = "support/jev_capture.rs"]
+mod capture;
+
 #[path = "support/systemone_decision.rs"]
 mod decision;
 
@@ -82,7 +85,7 @@ fn main() {
     let Ok(options) = options::Options::parse(std::env::args().skip(1)) else {
         eprintln!(
             "Usage: sts2-jev-bridge [--model MODEL] [--transport PATH] [--gate PERCENT] \
-             [--record] [--describe] [--tactical]"
+             [--record] [--describe] [--tactical] [--audit-dir DIR]"
         );
         std::process::exit(2);
     };
@@ -112,6 +115,9 @@ fn describe(options: &options::Options) -> Value {
     if options.tactical {
         description["tactical_profile"] = json!(tactical::PROFILE);
     }
+    if options.audit_dir.is_some() {
+        description["redacted_capture"] = json!(capture::SCHEMA);
+    }
     description
 }
 
@@ -138,7 +144,9 @@ fn run(options: &options::Options) -> Result<(), Box<dyn std::error::Error>> {
         .take((LIMIT + 1) as u64)
         .read_to_end(&mut bytes)?;
     let mut ask = |body: &[u8]| exchange(transport, body, TIMEOUT);
-    if options.tactical {
+    if options.audit_dir.is_some() {
+        println!("{}", capture::run(&bytes, options, &mut ask)?);
+    } else if options.tactical {
         let evidence = record_profile(&bytes, &options.model, gate(options), &mut ask, true)?;
         let output = if options.record {
             evidence

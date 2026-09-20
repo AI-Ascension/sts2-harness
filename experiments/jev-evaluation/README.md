@@ -150,13 +150,14 @@ Limits: 4,096 pairs, fewer than 100 repetitions per seed, 1 MiB per JSON input/r
 
 This separate JavaScript experiment does not introduce Node into the Rust harness runtime,
 add a Cargo dependency, alter a game/protocol field, change an installed binary, or enable
-the tactical profile by default. It has no automatic CI integration in this first package;
-run its explicit test command in review in addition to the repository's existing gates.
+the tactical profile by default. The Jev evaluation workflow now runs all Node tests and the synthetic demo on pull requests
+and main-branch pushes, alongside the existing Rust and policy gates.
 Its private analysis manifests do not replace the Rust `benchmark_manifest` library,
 receipt association or runtime admission. No live exporter or native runner is wired here.
-Runtime admission still rejects `--record` on its decision-only stdout path; collect
-standalone approved captures or add a separately reviewed redacted sidecar exporter rather
-than enabling record mode in an admitted live invocation.
+Runtime admission still rejects `--record` on its decision-only stdout path. The opt-in
+[redacted sidecar capture](CAPTURE.md) adds `--audit-dir` without changing that output
+contract. Its first writer is Unix-only and adds no provider calls. Raw-record audits
+remain available for separately approved retained inputs.
 
 Before merging an integration, run the repository's strict policy command:
 
