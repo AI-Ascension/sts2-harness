@@ -10,6 +10,25 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Let a provider ask **bounded semantic history through one harness-owned agent tool**. The history
+  a run records was queryable inside the harness but not through the boundary an agent actually
+  drives, so nothing could ask what happened without reaching around that boundary. The tool
+  vocabulary is closed to the branch, kind, origin, subject, episode, sequence, limit and
+  continuation axes — a question naming a path, bucket, artifact, record ordinal, offset, owner, run
+  or epoch is refused rather than read — so the MCP game adapter cannot bypass the owned port to
+  arbitrary artifact storage or reverse-call the harness. Selecting history is additive over the
+  bootstrap profile: the advertised schema, tool set and digest widen to include the new tool, no
+  shipped tool or inherited authority axis changes, and each additive turn keeps its own wire pin, so
+  a relay holding an earlier profile's pin cannot relabel a frame into a history question and a
+  bootstrap turn is refused on the pin history added. History is served only from the store the owner
+  attached, that grant is re-checked on every read, and a session with no attachment refuses by
+  capability name rather than answering an empty history; an episode travels per event, so the
+  question cannot name one as a session axis. One answer must fit one feedback envelope, and an
+  archive replay of a history turn diverges rather than being presented as a replayed read.
+  Compatibility: additive — the v1 and v2 advertisements, pins and tool descriptions stay
+  byte-compatible, the profile is opt-in, and no durable record or published schema changes. See
+  [ADR 0057](docs/decisions/0057-harness-semantic-history.md). Refs #128.
+
 - Record **queryable semantic combat and run history with causal provenance**. The host's bounded
   semantic event vocabulary had no harness-owned durable history behind it, so a run could not be
   asked what happened or why a value changed. The new `semantic_history` module appends each event
@@ -503,34 +522,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   Compatibility: `safety-correction` to an unreleased candidate — the empty registry is now
   enforced in dispatch rather than inherited from upstream; no wire field, route, published schema,
   or durable record changes. Refs #140.
-
-- Consume the gateway's negotiated **repeated-episode lease profile** so a harness run can
-  complete two episodes against one gateway deployment. The gateway permanently revokes its local
-  lease context on a successful `release`, so a second episode could never be admitted
-  (AI-Ascension/sts2-gateway#67). A run that opts in with `STS2_EPISODE_PROFILE=true` sends
-  `x-sts2-episode-profile: repeated-episode-lease-v1` on the release that completes an episode and
-  requires the gateway's exact witness back (`profile`, `capability`, `schema_digest`,
-  `released_epoch`); a missing or mismatched witness fails the run instead of silently degrading to
-  the single-episode default. The profile is armed **only** for a completed episode: the episode
-  runner marks completion solely on a successful terminal outcome, so every failure, cleanup, and
-  restart path keeps the gateway's fail-closed permanent revocation. The witness is required only
-  when this build negotiated it, so a run that does not opt in sends no header and its release body
-  stays byte-identical. Compatibility: opt-in and additive — no field, route, durable record, or
-  published schema changes, and the profile is off by default. See
-  [gateway ADR 0033](https://github.com/AI-Ascension/sts2-gateway/blob/main/docs/decisions/0033-repeated-episode-lease-profile.md).
-  Refs AI-Ascension/sts2-gateway#67.
-
-- Stop reporting a **failed live command as settled**. A command that faults before executing
-  anything (`live_execution_failed`) is still `CommandOutcome::Applied` — the command was processed
-  and its response vocabulary is unchanged — but its event is no longer classified `settled`. The
-  run fails, the cursor stays on the same node, and no provider call is consumed, so a `settled`
-  classification presented a failure as forward progress to consumers that treat a settled step as
-  completed. Classification is now derived from the outcome *and* the reason code in one shared
-  place (`CommandOutcome::classification`) for both the memory and SQLite event writers, replacing
-  two copies of the mapping. A new `CommandOutcome` variant was rejected because it would extend the
-  closed `ascension.management/v1` outcome set without the version negotiation a published consumer
-  change requires; the event classification enum already publishes `rejected`
-  (`ascension.workflow-event/v1`). Compatibility: `safety-correction` to an unreleased candidate —
-  one failure path now emits `rejected` instead of `settled`, and no field, route, durable record,
-  or published schema changes. See
-  [ADR 0047](docs/decisions/0047-failed-command-event-classification.md). Refs #260.

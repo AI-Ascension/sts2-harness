@@ -3,12 +3,20 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::game_information::{LookupAgentInput, LookupError, LookupFeedback, LookupTurn};
+use crate::game_information::{LookupAgentInput, LookupError, LookupTurn};
+
+#[path = "exo_lookup_feedback.rs"]
+mod feedback;
+
+pub(crate) use feedback::feedback_value;
 
 pub const EXO_LOOKUP_WIRE: &str = "sts2.exo-lookup-wire-v1";
 /// Additive frame pin for the bootstrap-capable provider bridge. The closed
 /// terminal lookup wire above remains byte-for-byte compatible.
 pub const EXO_LOOKUP_BOOTSTRAP_WIRE: &str = "sts2.exo-lookup-wire-v2-bootstrap";
+/// Additive frame pin for the history-capable provider bridge. Both closed
+/// profiles above remain byte-for-byte compatible.
+pub const EXO_LOOKUP_HISTORY_WIRE: &str = "sts2.exo-lookup-wire-v3-history";
 pub const EXO_LOOKUP_FRAME_BYTES: usize = 196_608;
 pub const EXO_LOOKUP_TOOL_BYTES: usize = 16_384;
 pub const EXO_LOOKUP_FEEDBACK_BYTES: usize = 7_000;
@@ -37,6 +45,10 @@ pub enum ExoLookupPayload {
     Bootstrap {
         arguments: Value,
     },
+    /// One bounded history question asked of the store the owner attached to the session.
+    History {
+        arguments: Value,
+    },
     ReadRetained {
         record_ordinal: usize,
         offset: usize,
@@ -61,7 +73,7 @@ impl ExoLookupFrame {
         let frame: Self = serde_json::from_value(value).map_err(|_| LookupError::Invalid)?;
         if !matches!(
             frame.wire_version.as_str(),
-            EXO_LOOKUP_WIRE | EXO_LOOKUP_BOOTSTRAP_WIRE
+            EXO_LOOKUP_WIRE | EXO_LOOKUP_BOOTSTRAP_WIRE | EXO_LOOKUP_HISTORY_WIRE
         ) || frame.sequence > 33
             || !valid_id(&frame.request_id)
             || !valid_id(&frame.turn_id)
@@ -70,6 +82,13 @@ impl ExoLookupFrame {
         }
         if matches!(frame.payload, ExoLookupPayload::Bootstrap { .. })
             && frame.wire_version != EXO_LOOKUP_BOOTSTRAP_WIRE
+        {
+            return Err(LookupError::Invalid);
+        }
+        // A history question is only ever carried by its own additive pin, so a provider that
+        // selected another profile cannot ask one by relabelling a frame it already holds.
+        if matches!(frame.payload, ExoLookupPayload::History { .. })
+            && frame.wire_version != EXO_LOOKUP_HISTORY_WIRE
         {
             return Err(LookupError::Invalid);
         }
@@ -223,91 +242,4 @@ pub(crate) fn bootstrap_turn(arguments: Value) -> Result<LookupTurn, LookupError
         operation_id: args.operation_id,
         request: serde_json::to_vec(&request).map_err(|_| LookupError::Invalid)?,
     })
-}
-
-/// Compact bounded feedback survives upstream's 8,000-character tool-result wrapper.
-pub(crate) fn feedback_value(
-    feedback: &LookupFeedback,
-    budget: usize,
-) -> Result<Value, LookupError> {
-    let maximum = budget.min(EXO_LOOKUP_FEEDBACK_BYTES);
-    if maximum == 0 {
-        return Err(LookupError::Bounds);
-    }
-    let value = match feedback {
-        LookupFeedback::Data {
-            record_ordinal,
-            delivery,
-        } => {
-            let full = json!({"record_ordinal":record_ordinal,"data":delivery.data});
-            if serde_json::to_vec(&full)
-                .map_err(|_| LookupError::Invalid)?
-                .len()
-                <= maximum
-            {
-                full
-            } else {
-                json!({"record_ordinal":record_ordinal,"data":{"authority":"untrusted_game_information_data",
-                "delivery":"retained","byte_length":delivery.record.source_bytes,
-                "source_sha256":delivery.record.source_sha256}})
-            }
-        }
-        LookupFeedback::Bootstrap {
-            record_ordinal,
-            response,
-        } => {
-            let value = json!({"record_ordinal":record_ordinal,"bootstrap":response});
-            if serde_json::to_vec(&value)
-                .map_err(|_| LookupError::Invalid)?
-                .len()
-                > maximum
-            {
-                return Err(LookupError::Bounds);
-            }
-            value
-        }
-        LookupFeedback::Bytes {
-            record_ordinal,
-            offset,
-            total_bytes,
-            bytes,
-        } => {
-            if *record_ordinal >= 256
-                || *total_bytes > 65_536
-                || offset > total_bytes
-                || bytes.len() > total_bytes - offset
-            {
-                return Err(LookupError::Bounds);
-            }
-            let mut count = bytes.len().min(EXO_LOOKUP_CHUNK_BYTES);
-            loop {
-                let next = offset.checked_add(count).ok_or(LookupError::Bounds)?;
-                let value = json!({"record_ordinal":record_ordinal,"offset":offset,"next_offset":next,
-                    "total_bytes":total_bytes,"encoding":"hex","bytes":crate::hex_bytes(&bytes[..count]),
-                    "authority":"untrusted_game_information_data"});
-                let size = serde_json::to_vec(&value)
-                    .map_err(|_| LookupError::Invalid)?
-                    .len();
-                if size <= maximum {
-                    if count == 0 && !bytes.is_empty() {
-                        return Err(LookupError::Bounds);
-                    }
-                    break value;
-                }
-                count = count
-                    .checked_sub((size - maximum).div_ceil(2))
-                    .ok_or(LookupError::Bounds)?;
-            }
-        }
-        LookupFeedback::Error(error) => json!({"error":error}),
-        LookupFeedback::Start => return Err(LookupError::Invalid),
-    };
-    if serde_json::to_vec(&value)
-        .map_err(|_| LookupError::Invalid)?
-        .len()
-        > maximum
-    {
-        return Err(LookupError::Bounds);
-    }
-    Ok(value)
 }

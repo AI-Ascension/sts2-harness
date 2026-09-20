@@ -101,7 +101,11 @@ cannot state a window, scope, epoch or cause the harness would then trust, an im
 the coverage and the source label it was captured under instead of reading as an observation, and a
 batch that fails partway writes nothing at all. A granted reader can spend a page's continuation to
 the end of a multi-page read and ask for a bounded causal explanation, and it walks no further than
-the caller asked.
+the caller asked. History reaches a provider only through one harness-owned agent tool, on an
+additive profile that widens the advertised tool set without withdrawing a shipped tool and without
+reusing a shipped wire pin: the question vocabulary is closed to the branch, kind, origin, subject,
+episode, sequence, limit and continuation axes, so it has no storage coordinate for an adapter to
+follow around the port, and an episode travels per event rather than as a session axis.
 
 ## Security and data boundaries
 

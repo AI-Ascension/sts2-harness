@@ -35,6 +35,27 @@ pub(super) fn retained<'a>(
 }
 
 impl LookupSession {
+    /// Bounded exact raw-byte chunk of a retained, previously admitted source. Chunks are data.
+    pub fn read_retained(
+        &self,
+        record: &LookupRecord,
+        corpus: &MemoryCorpus,
+        offset: usize,
+    ) -> Result<Vec<u8>, LookupError> {
+        if !record.binding.same_owner(&self.binding) || corpus.scope() != &self.binding.scope {
+            return Err(LookupError::Scope);
+        }
+        self.replay(record, &record.request, corpus)?;
+        let bytes = retained(record, corpus, &self.now)?;
+        if offset > bytes.len() {
+            return Err(LookupError::Bounds);
+        }
+        let end = offset
+            .saturating_add(self.policy.optional_byte_budget)
+            .min(bytes.len());
+        Ok(bytes[offset..end].to_vec())
+    }
+
     fn new_record(&self, operation: &str, sequence: usize, request: Value) -> LookupRecord {
         LookupRecord {
             schema: "ascension.game-information-record.v1".to_owned(),

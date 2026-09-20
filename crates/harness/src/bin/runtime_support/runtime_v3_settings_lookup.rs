@@ -10,6 +10,7 @@ pub(crate) struct LookupAgentSettings {
     pub(crate) timeout: Duration,
     pub(crate) owner_config_sha256: String,
     pub(crate) bootstrap_profile: bool,
+    pub(crate) history_profile: bool,
 }
 
 pub(super) fn settings_from_environment(
@@ -24,6 +25,8 @@ pub(super) fn settings_from_environment(
     let owner_config_sha256 = required("STS2_LOOKUP_OWNER_CONFIG_SHA256")?;
     let bootstrap_profile =
         optional("STS2_EXO_LOOKUP_BOOTSTRAP")?.is_some_and(|value| value == "1" || value == "true");
+    let history_profile =
+        optional("STS2_EXO_LOOKUP_HISTORY")?.is_some_and(|value| value == "1" || value == "true");
     if !valid_sha256(&owner_config_sha256) {
         return Err(String::from(
             "STS2_LOOKUP_OWNER_CONFIG_SHA256 must be a lowercase SHA256 digest",
@@ -51,6 +54,7 @@ pub(super) fn settings_from_environment(
             timeout,
             owner_config_sha256,
             bootstrap_profile,
+            history_profile,
         }),
     })
 }

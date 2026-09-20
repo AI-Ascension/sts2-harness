@@ -6,7 +6,8 @@ use std::time::{Duration, Instant};
 
 use crate::ExoProcessConfig;
 use crate::exo_lookup_wire::{
-    EXO_LOOKUP_BOOTSTRAP_WIRE, EXO_LOOKUP_WIRE, ExoLookupFrame, ExoLookupPayload,
+    EXO_LOOKUP_BOOTSTRAP_WIRE, EXO_LOOKUP_HISTORY_WIRE, EXO_LOOKUP_WIRE, ExoLookupFrame,
+    ExoLookupPayload,
 };
 use crate::game_information::{
     LookupAgentInput, LookupAgentPort, LookupError, LookupFeedback, LookupTurn,
@@ -14,6 +15,36 @@ use crate::game_information::{
 
 #[path = "exo_lookup_process_supervisor.rs"]
 mod supervisor;
+
+#[path = "exo_lookup_process_port.rs"]
+mod port;
+
+/// The additive provider profile one process was explicitly selected under.
+///
+/// Selection is the caller's: a process built for one profile refuses a frame belonging to
+/// another rather than widening its own surface, so a provider cannot obtain a capability the
+/// caller did not select for it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExoLookupProfile {
+    /// The closed terminal query/read relay.
+    Terminal,
+    /// The additive bootstrap-capable relay.
+    Bootstrap,
+    /// The additive history-capable relay.
+    History,
+}
+
+impl ExoLookupProfile {
+    /// The frame pin this profile opens on. Each additive turn carries its own pin.
+    #[must_use]
+    pub const fn wire(self) -> &'static str {
+        match self {
+            Self::Terminal => EXO_LOOKUP_WIRE,
+            Self::Bootstrap => EXO_LOOKUP_BOOTSTRAP_WIRE,
+            Self::History => EXO_LOOKUP_HISTORY_WIRE,
+        }
+    }
+}
 
 /// One bounded model turn with read-only tool round trips. Dropping joins the owned supervisor.
 pub struct ExoLookupProcess {
@@ -28,8 +59,8 @@ pub struct ExoLookupProcess {
     cancel: tokio::sync::watch::Sender<bool>,
     binding: Option<crate::game_information::LookupBinding>,
     byte_budget: Option<usize>,
-    bootstrap_feedback_pending: bool,
-    bootstrap_profile: bool,
+    profile: ExoLookupProfile,
+    feedback_pending: bool,
 }
 
 impl ExoLookupProcess {
@@ -40,7 +71,14 @@ impl ExoLookupProcess {
         request: serde_json::Value,
         timeout: Duration,
     ) -> Result<Self, LookupError> {
-        Self::new_mode(config, request_id, turn_id, request, timeout, false)
+        Self::new_mode(
+            config,
+            request_id,
+            turn_id,
+            request,
+            timeout,
+            ExoLookupProfile::Terminal,
+        )
     }
 
     /// Explicit bootstrap-capable provider profile. Legacy `new` stays v1.
@@ -51,7 +89,32 @@ impl ExoLookupProcess {
         request: serde_json::Value,
         timeout: Duration,
     ) -> Result<Self, LookupError> {
-        Self::new_mode(config, request_id, turn_id, request, timeout, true)
+        Self::new_mode(
+            config,
+            request_id,
+            turn_id,
+            request,
+            timeout,
+            ExoLookupProfile::Bootstrap,
+        )
+    }
+
+    /// Explicit history-capable provider profile. The closed profiles above stay as they were.
+    pub fn new_history(
+        config: ExoProcessConfig,
+        request_id: String,
+        turn_id: String,
+        request: serde_json::Value,
+        timeout: Duration,
+    ) -> Result<Self, LookupError> {
+        Self::new_mode(
+            config,
+            request_id,
+            turn_id,
+            request,
+            timeout,
+            ExoLookupProfile::History,
+        )
     }
 
     fn new_mode(
@@ -60,7 +123,7 @@ impl ExoLookupProcess {
         turn_id: String,
         request: serde_json::Value,
         timeout: Duration,
-        bootstrap_profile: bool,
+        profile: ExoLookupProfile,
     ) -> Result<Self, LookupError> {
         if timeout.is_zero() || timeout > Duration::from_secs(120) {
             return Err(LookupError::Bounds);
@@ -71,11 +134,7 @@ impl ExoLookupProcess {
         )
         .map_err(|_| LookupError::Invalid)?;
         ExoLookupFrame {
-            wire_version: if bootstrap_profile {
-                EXO_LOOKUP_BOOTSTRAP_WIRE.into()
-            } else {
-                EXO_LOOKUP_WIRE.into()
-            },
+            wire_version: profile.wire().into(),
             request_id: request_id.clone(),
             turn_id: turn_id.clone(),
             sequence: 0,
@@ -118,8 +177,8 @@ impl ExoLookupProcess {
             cancel,
             binding: None,
             byte_budget: None,
-            bootstrap_feedback_pending: false,
-            bootstrap_profile,
+            profile,
+            feedback_pending: false,
         })
     }
 
@@ -127,28 +186,31 @@ impl ExoLookupProcess {
         if self.closed {
             return Err(LookupError::Invalid);
         }
-        let bootstrap_wire = self.bootstrap_profile
-            && matches!(&payload, ExoLookupPayload::Start { .. })
-            || matches!(&payload, ExoLookupPayload::Bootstrap { .. })
-            || (self.bootstrap_feedback_pending
-                && matches!(&payload, ExoLookupPayload::Feedback { .. }));
+        // A turn adds its own pin; feedback for that turn stays on the pin it answered on, so a
+        // provider cannot read an answer under a profile it did not select.
+        let wire = match &payload {
+            ExoLookupPayload::Bootstrap { .. } => EXO_LOOKUP_BOOTSTRAP_WIRE,
+            ExoLookupPayload::History { .. } => EXO_LOOKUP_HISTORY_WIRE,
+            ExoLookupPayload::Start { .. } => self.profile.wire(),
+            ExoLookupPayload::Feedback { .. } if self.feedback_pending => self.profile.wire(),
+            _ => EXO_LOOKUP_WIRE,
+        };
         let frame = ExoLookupFrame {
-            wire_version: if bootstrap_wire {
-                EXO_LOOKUP_BOOTSTRAP_WIRE.into()
-            } else {
-                EXO_LOOKUP_WIRE.into()
-            },
+            wire_version: wire.into(),
             request_id: self.request_id.clone(),
             turn_id: self.turn_id.clone(),
             sequence: self.sequence,
             payload,
         };
-        if matches!(frame.payload, ExoLookupPayload::Bootstrap { .. }) {
-            self.bootstrap_feedback_pending = true;
-        } else if self.bootstrap_feedback_pending
+        if matches!(
+            frame.payload,
+            ExoLookupPayload::Bootstrap { .. } | ExoLookupPayload::History { .. }
+        ) {
+            self.feedback_pending = true;
+        } else if self.feedback_pending
             && matches!(frame.payload, ExoLookupPayload::Feedback { .. })
         {
-            self.bootstrap_feedback_pending = false;
+            self.feedback_pending = false;
         }
         self.sender
             .as_ref()
@@ -160,87 +222,6 @@ impl ExoLookupProcess {
         self.sequence += 1;
         response.assert_identity(&self.request_id, &self.turn_id, self.sequence)?;
         Ok(response.payload)
-    }
-}
-
-impl LookupAgentPort for ExoLookupProcess {
-    fn next_turn(&mut self, input: LookupAgentInput<'_>) -> Result<LookupTurn, LookupError> {
-        let result = (|| {
-            if self
-                .binding
-                .as_ref()
-                .is_some_and(|binding| !binding.same_owner(input.binding))
-                || self
-                    .byte_budget
-                    .is_some_and(|budget| budget != input.optional_byte_budget)
-                || self.request["generation"].as_u64() != Some(input.legal_actions.generation())
-                || self.request["state_id"].as_str() != Some(input.legal_actions.state_id())
-                || self.request["legal_action_ids"]
-                    != serde_json::json!(
-                        input
-                            .legal_actions
-                            .actions()
-                            .iter()
-                            .map(|a| a.action_id())
-                            .collect::<Vec<_>>()
-                    )
-            {
-                return Err(LookupError::Scope);
-            }
-            let payload = if self.sequence == 0 {
-                if *input.feedback != LookupFeedback::Start {
-                    return Err(LookupError::Scope);
-                }
-                self.binding = Some(input.binding.clone());
-                self.byte_budget = Some(input.optional_byte_budget);
-                ExoLookupPayload::Start {
-                    request: self.request.clone(),
-                    optional_byte_budget: input.optional_byte_budget,
-                }
-            } else {
-                ExoLookupPayload::Feedback {
-                    value: crate::exo_lookup_wire::feedback_value(
-                        input.feedback,
-                        input.optional_byte_budget,
-                    )?,
-                }
-            };
-            match self.exchange(payload)? {
-                ExoLookupPayload::Query { arguments } => {
-                    crate::exo_lookup_wire::query_turn(arguments, &input)
-                }
-                ExoLookupPayload::Bootstrap { arguments } => {
-                    if !self.bootstrap_profile {
-                        return Err(LookupError::Invalid);
-                    }
-                    crate::exo_lookup_wire::bootstrap_turn(arguments)
-                }
-                ExoLookupPayload::ReadRetained {
-                    record_ordinal,
-                    offset,
-                } if record_ordinal < 256 && offset <= 65_536 => Ok(LookupTurn::ReadRetained {
-                    record_ordinal,
-                    offset,
-                }),
-                ExoLookupPayload::Decision { action_id }
-                    if input
-                        .legal_actions
-                        .actions()
-                        .iter()
-                        .any(|a| a.action_id() == action_id) =>
-                {
-                    self.closed = true;
-                    self.sender.take();
-                    Ok(LookupTurn::Decide { action_id })
-                }
-                _ => Err(LookupError::Invalid),
-            }
-        })();
-        if result.is_err() {
-            self.closed = true;
-            self.sender.take();
-        }
-        result
     }
 }
 

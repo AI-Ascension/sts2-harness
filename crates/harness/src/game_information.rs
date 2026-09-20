@@ -26,6 +26,8 @@ pub use agent::{
 };
 #[path = "game_information_archive.rs"]
 mod archive;
+#[path = "game_information_history.rs"]
+pub(crate) mod history;
 pub use archive::LookupArchive;
 #[cfg(test)]
 #[path = "game_information_tests.rs"]
@@ -136,6 +138,11 @@ pub struct LookupSession {
     records: Vec<LookupRecord>,
     bootstrap_records: Vec<LookupBootstrapRecord>,
     pages: BTreeMap<String, (Value, Value, usize)>,
+    /// The durable history this owner attached for this session's scope, if any.
+    ///
+    /// History is served only from here, so a session the owner attached nothing to cannot reach a
+    /// history at all.
+    history: Option<crate::semantic_history::SemanticHistoryStore>,
     replay_cursor: usize,
     bootstrap_replay_cursor: usize,
     now: String,
@@ -167,6 +174,7 @@ impl LookupSession {
             records: Vec::new(),
             bootstrap_records: Vec::new(),
             pages: BTreeMap::new(),
+            history: None,
             replay_cursor: 0,
             bootstrap_replay_cursor: 0,
             now: now.to_owned(),
@@ -292,26 +300,5 @@ impl LookupSession {
             return Err(LookupError::Divergence);
         }
         Ok(delivery)
-    }
-
-    /// Bounded exact raw-byte chunk of a retained, previously admitted source. Chunks are data.
-    pub fn read_retained(
-        &self,
-        record: &LookupRecord,
-        corpus: &MemoryCorpus,
-        offset: usize,
-    ) -> Result<Vec<u8>, LookupError> {
-        if !record.binding.same_owner(&self.binding) || corpus.scope() != &self.binding.scope {
-            return Err(LookupError::Scope);
-        }
-        self.replay(record, &record.request, corpus)?;
-        let bytes = records::retained(record, corpus, &self.now)?;
-        if offset > bytes.len() {
-            return Err(LookupError::Bounds);
-        }
-        let end = offset
-            .saturating_add(self.policy.optional_byte_budget)
-            .min(bytes.len());
-        Ok(bytes[offset..end].to_vec())
     }
 }

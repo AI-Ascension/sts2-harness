@@ -5,7 +5,8 @@ use std::time::Duration;
 use serde_json::json;
 use sts2_harness::{
     Decision, DecisionInput, DecisionSource, EpisodeRuntimePort, ExoProcessConfig,
-    ModelExecutionId, PolicyError, exo_lookup_process::ExoLookupProcess,
+    ModelExecutionId, PolicyError,
+    exo_lookup_process::{ExoLookupProcess, ExoLookupProfile},
 };
 
 /// Runtime decision source that uses the bounded duplex lookup protocol and
@@ -15,6 +16,7 @@ pub(super) struct LookupAgentDecisionSource {
     revision: String,
     timeout: Duration,
     bootstrap_profile: bool,
+    history_profile: bool,
     execution_id: Option<ModelExecutionId>,
 }
 
@@ -24,12 +26,14 @@ impl LookupAgentDecisionSource {
         revision: String,
         timeout: Duration,
         bootstrap_profile: bool,
+        history_profile: bool,
     ) -> Self {
         Self {
             process,
             revision,
             timeout,
             bootstrap_profile,
+            history_profile,
             execution_id: None,
         }
     }
@@ -81,22 +85,35 @@ impl DecisionSource for LookupAgentDecisionSource {
             "hard_constraints": &input.hard_constraints,
             "max_response_bytes": 8192,
         });
-        let mut agent = if self.bootstrap_profile {
-            ExoLookupProcess::new_bootstrap(
+        // The history profile is additive over the bootstrap one, so selecting it keeps the
+        // shipped capability rather than trading it away.
+        let profile = match (self.history_profile, self.bootstrap_profile) {
+            (true, _) => ExoLookupProfile::History,
+            (false, true) => ExoLookupProfile::Bootstrap,
+            (false, false) => ExoLookupProfile::Terminal,
+        };
+        let mut agent = match profile {
+            ExoLookupProfile::Terminal => ExoLookupProcess::new(
                 self.process.clone(),
                 request_id,
                 turn_id,
                 request,
                 self.timeout,
-            )
-        } else {
-            ExoLookupProcess::new(
+            ),
+            ExoLookupProfile::Bootstrap => ExoLookupProcess::new_bootstrap(
                 self.process.clone(),
                 request_id,
                 turn_id,
                 request,
                 self.timeout,
-            )
+            ),
+            ExoLookupProfile::History => ExoLookupProcess::new_history(
+                self.process.clone(),
+                request_id,
+                turn_id,
+                request,
+                self.timeout,
+            ),
         }
         .map_err(map_lookup_error)?;
         let action_id = runtime.run_game_information_lookup(&input.legal_actions, &mut agent)?;

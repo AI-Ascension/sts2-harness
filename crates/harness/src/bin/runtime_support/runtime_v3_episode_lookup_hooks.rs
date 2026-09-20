@@ -27,6 +27,18 @@ pub(super) fn run_game_information_lookup(
         .lookup_corpus
         .take()
         .ok_or(PolicyError::ProviderUnavailable)?;
+    // The owner attaches this run's history to the session it opened. Attachment is one-time per
+    // session: the store lives inside the session afterwards, so a later turn reads through the
+    // same attachment instead of reopening one, and a provider can never supply its own. An
+    // attachment this session refuses leaves both handles back on the port instead of dropping
+    // the owned session.
+    if let Some(history) = port.lookup_history.take()
+        && session.attach_history(history).is_err()
+    {
+        port.lookup_session = Some(session);
+        port.lookup_corpus = Some(corpus);
+        return Err(PolicyError::ProviderUnavailable);
+    }
     let mut fenced_agent = FencedLookupAgent {
         owner: owner.clone(),
         expected: expected.clone(),

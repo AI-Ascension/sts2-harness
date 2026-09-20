@@ -102,6 +102,24 @@ representational, not decorative.
    taken under. The batch is applied to a copy of the store and committed only
    once the whole batch held, so a batch that fails partway leaves no partial
    history behind.
+9. **A provider reaches history through one harness-owned agent tool, on its own
+   additive profile.** The tool vocabulary is closed to the branch, kind, origin,
+   subject, episode, sequence, limit and continuation axes, so a question naming a
+   path, bucket, artifact, record ordinal, offset, owner, run or epoch is refused
+   rather than read, and the adapter cannot bypass the port to artifact storage or
+   reverse-call the harness for one. Selecting history is additive over the
+   bootstrap profile — the schema, tool set and digest widen to include the added
+   tool and no shipped tool is withdrawn, and every inherited authority axis keeps
+   the value the shipped profile published — but the wire is not additive: each
+   additive turn travels only on the pin its own selector opened, so a relay
+   holding an earlier profile's pin cannot relabel a frame into a history question,
+   and a bootstrap turn is refused on the pin history added. The session scope has
+   no episode axis, because an episode travels per event; the owner's attachment is
+   the only grant that serves history, it is re-checked on every read, and a session
+   the owner attached no history to refuses the question by capability name rather
+   than answering an empty history. One answer must fit one feedback envelope, so an
+   answer that cannot be delivered whole is refused rather than truncated into a
+   shorter history.
 
 ## Consequences
 
@@ -197,6 +215,36 @@ each fails exactly its named test and nothing else. So does dropping the
 continuation hand-off through the port, the page or explanation response arm,
 the caller's own traversal bound, or the validation that runs before a source is
 asked, with the file restored byte-identical afterwards.
+
+`crates/harness/tests/semantic_history_agent_tool.rs` covers decision 9 where a
+provider actually reaches it. The shipped v1 and v2 advertisements are pinned by
+value and stay byte-compatible while the history profile widens only the tool set
+and its digest, leaving every inherited authority axis equal to the shipped one; a
+history turn is refused on the v1 and bootstrap pins while a well-formed one is
+admitted on the pin history added, and the rule is symmetric for a bootstrap turn;
+and a relay is driven through the real process constructor for each profile, so a
+relay selected for the terminal or bootstrap profile refuses a history turn while
+both additive profiles still answer the shipped bootstrap turn.
+`game_information_history_tool_tests.rs` covers the grant, the scope re-checked on
+every read, the continuation that resumes a page and the bound one question cannot
+widen; `game_information_history_vocabulary_tests.rs` covers the closed vocabulary
+— a question naming any storage coordinate or a branch that could be read as a host
+path is refused, and a canonical request this boundary did not write is never
+served because its profile is compared by value — and
+`game_information_history_answer_tests.rs` covers the answers: a short page still
+discloses what it could not observe, the archive diverges rather than replaying a
+history turn, and one answer must fit one feedback envelope. The same pin rule is
+enforced a second time in the executor mirror's own wire module, so a frame that
+could not be forwarded by the harness is refused before it is sent.
+
+Each guard is falsified by mutation as well: deleting the pin cross-check that
+confines a history turn to its own pin, the history profile gate on the payload, the
+grant taken when history is attached, the refusal of a second attachment, the page
+and walk bounds, the closed question shape, the profile comparison that decides
+whether a canonical request is served at all, the archive's divergence on a history
+turn, the feedback envelope bound, the advertised tool list, the digest that names
+those tools, or the mirror's own version rule each fails exactly its named test and
+nothing else, and every file is restored byte-identical afterwards.
 
 These tests do not execute the game-mod producer, capture a native run, or answer
 an end-to-end query over a controlled run. Those remain separate gates, and

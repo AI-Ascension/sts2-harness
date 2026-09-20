@@ -87,6 +87,7 @@ impl RuntimeV3Port {
             lookup_policy_binding: None,
             lookup_session: None,
             lookup_corpus: None,
+            lookup_history: None,
             lookup_replay_mode: false,
             mcp: None,
             seeded_mcp: None,

@@ -9,6 +9,8 @@ mod agent_tests;
 mod bootstrap_conformance_tests;
 #[path = "game_information_failure_tests.rs"]
 mod failure_tests;
+#[path = "game_information_history_tool_tests.rs"]
+mod history_tool_tests;
 #[cfg(unix)]
 #[path = "game_information_process_tests.rs"]
 mod process_tests;

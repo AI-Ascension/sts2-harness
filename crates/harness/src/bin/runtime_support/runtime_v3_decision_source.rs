@@ -19,6 +19,7 @@ fn decision_source(
                 lookup_agent.revision.clone(),
                 lookup_agent.timeout,
                 lookup_agent.bootstrap_profile,
+                lookup_agent.history_profile,
             ),
         ))
     } else {
