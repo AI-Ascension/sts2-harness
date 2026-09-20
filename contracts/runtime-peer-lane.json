@@ -15,7 +15,7 @@
     },
     "mcp": {
       "repository": "AI-Ascension/sts2-mcp-server",
-      "revision": "f3b6eaa8bcf2241b8d6c47587c958388a8fe1031",
+      "revision": "587a53ceb235aa5aaecf314577b075f3c45b6cbd",
       "source_kind": "active_runtime_dependency",
       "binary": "sts2-mcp-server"
     }
