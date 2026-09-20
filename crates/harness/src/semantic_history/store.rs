@@ -226,6 +226,15 @@ impl SemanticHistoryStore {
             .map(|history| &history.binding)
     }
 
+    /// Returns the retained scope of one branch.
+    #[must_use]
+    pub fn scope(&self, branch_id: &str) -> Option<&SemanticEventScope> {
+        self.state
+            .histories
+            .get(branch_id)
+            .map(|history| &history.scope)
+    }
+
     /// Returns the retained capture window of one branch.
     #[must_use]
     pub fn window(&self, branch_id: &str) -> Option<&super::record::SemanticCaptureWindow> {

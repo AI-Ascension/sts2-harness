@@ -25,6 +25,10 @@
 //!   select observed detail for pruning, a record another surviving record still names as its stated
 //!   cause is kept anyway, and every pruned span keeps its sequence number as a declared gap
 //!   carrying the retention label, so nothing a policy removed can read as measured.
+//! - Lookup is served through one harness-owned agent tool port that borrows the store: it is
+//!   capability-gated, refused unless a request is the shape it serves and fits one byte bound, and
+//!   refused rather than truncated when a page's retained text weight exceeds the result bound. The
+//!   port exposes no store path, so a lookup cannot become a read of an arbitrary artifact.
 //!
 //! This is a harness-owned historical artifact surface. It reaches no host, no game process and no
 //! gateway, and it claims no native event capture.
@@ -32,6 +36,7 @@
 mod causal;
 mod error;
 mod ingest;
+mod lookup;
 mod query;
 mod record;
 mod replay;
@@ -45,6 +50,12 @@ mod window;
 pub use causal::{SemanticCausalTraversal, SemanticCausalVisit, traverse_causes};
 pub use error::{SemanticHistoryError, SemanticHistoryRefusal};
 pub use ingest::admit_batch;
+pub use lookup::{
+    RetainedHistoryLookup, SEMANTIC_LOOKUP_TOOL, SEMANTIC_MAX_LOOKUP_REQUEST_BYTES,
+    SEMANTIC_MAX_LOOKUP_RESULT_BYTES, SemanticLookupAuthority, SemanticLookupCoverage,
+    SemanticLookupDetail, SemanticLookupItem, SemanticLookupPage, SemanticLookupPort,
+    SemanticLookupRequest,
+};
 pub use query::{
     SemanticEventListQuery, SemanticEventPage, SemanticHistoryContinuation, page_history,
 };

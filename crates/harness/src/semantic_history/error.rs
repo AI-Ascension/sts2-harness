@@ -55,7 +55,7 @@ pub enum SemanticHistoryRefusal {
     GapOutsideCapture,
     /// The capture window contradicts where capture began.
     WindowContradiction,
-    /// The batch names a different catalog binding than the retained history.
+    /// A batch or a lookup names a different catalog binding than the retained history.
     BindingMismatch,
     /// The batch names a different scope than the history it would extend.
     ScopeMismatch,
@@ -71,7 +71,7 @@ pub enum SemanticHistoryRefusal {
     SelfParentBranch,
     /// A retention policy selected nothing, so there is no prune to apply.
     NothingPrunable,
-    /// A prune named a branch this store does not retain.
+    /// A prune or a lookup named a branch this store does not retain.
     UnknownBranch,
     /// A prune plan does not describe the history it was applied to, so it is refused.
     StalePrunePlan,
@@ -79,6 +79,12 @@ pub enum SemanticHistoryRefusal {
     TraversalBound,
     /// The traversal revisited an event, so the causal graph is not a tree.
     CausalCycle,
+    /// A lookup was served without the harness granting the historical lookup port.
+    LookupNotGranted,
+    /// A lookup request or result exceeded its byte bound.
+    LookupPayloadTooLarge,
+    /// A lookup request was not the shape this port serves.
+    LookupShape,
     /// The retained store could not be read or written.
     Storage,
 }
@@ -123,6 +129,9 @@ impl SemanticHistoryRefusal {
             Self::StalePrunePlan => "stale_prune_plan",
             Self::TraversalBound => "traversal_bound",
             Self::CausalCycle => "causal_cycle",
+            Self::LookupNotGranted => "lookup_not_granted",
+            Self::LookupPayloadTooLarge => "lookup_payload_too_large",
+            Self::LookupShape => "lookup_shape",
             Self::Storage => "storage",
         }
     }

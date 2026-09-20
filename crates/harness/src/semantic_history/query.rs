@@ -2,6 +2,8 @@
 
 //! Bounded filtering and pagination over a retained history.
 
+use serde::{Deserialize, Serialize};
+
 use super::error::{
     SemanticHistoryError, SemanticHistoryRefusal as Refusal, SemanticHistoryResult,
 };
@@ -14,7 +16,8 @@ use super::vocabulary::{SemanticEventKind, SemanticEventOrigin};
 ///
 /// Every field is a narrowing, never a substitution: an unset field means "any", and a set field
 /// that matches nothing yields an empty page rather than a widened one.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct SemanticEventListQuery {
     /// Restrict to one event kind.
     pub kind: Option<SemanticEventKind>,
@@ -35,7 +38,8 @@ pub struct SemanticEventListQuery {
 }
 
 /// The position a page stopped at, so the next page resumes exactly there.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct SemanticHistoryContinuation {
     /// Sequence number of the last entry returned.
     pub after_sequence: u64,

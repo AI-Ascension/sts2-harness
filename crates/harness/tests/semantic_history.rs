@@ -166,6 +166,8 @@ fn error(batch: SemanticEventBatch) -> SemanticHistoryRefusal {
 
 #[path = "semantic_history/admission.rs"]
 mod admission;
+#[path = "semantic_history/lookup.rs"]
+mod lookup;
 #[path = "semantic_history/persistence.rs"]
 mod persistence;
 #[path = "semantic_history/query.rs"]
