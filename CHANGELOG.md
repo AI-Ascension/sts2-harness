@@ -29,6 +29,13 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   or edited document is refused rather than loaded as a history this boundary never wrote.
   An advance to a new authority epoch, which restarts host sequencing honestly, survives that
   restart with the sequencing expectation of the epoch now in force.
+  Native saved history is backfilled through the same owned port and only as opaque bytes, so an
+  importer cannot state a window, scope, epoch or cause the harness would then trust: a batch that
+  names another scope, epoch or branch, an unknown member, another schema or a non-opaque identity
+  is refused, an event that claims a native origin is refused rather than stamped as imported,
+  imported records keep the coverage and source label they were captured under, and a batch that
+  fails partway writes nothing at all. A granted reader can now spend a page's continuation and ask
+  for a bounded causal explanation.
   storage directly; see [ADR 0057](docs/decisions/0057-harness-semantic-history.md). Refs #128.
 
 - Name the **host's recovery reason** in an episode failure instead of reporting every recovery

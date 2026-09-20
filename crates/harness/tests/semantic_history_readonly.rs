@@ -1,102 +1,28 @@
 // SPDX-License-Identifier: MIT
 
+//! The read port admits a caller, and keeps admitting them on every later read.
+//!
+//! A grant is an admission decision rather than a durable capability, so the source still has to
+//! serve the owner the grant was made for. The port repeats every rule the store would apply, and
+//! refuses a request before a source is asked rather than letting a source answer something the
+//! caller was never allowed to ask.
+
 #![allow(clippy::expect_used, dead_code)]
 
 use std::cell::Cell;
+
 use sts2_harness::semantic_history::{
-    SemanticHistoryAgentPort, SemanticHistoryAuthority, SemanticHistoryBinding,
-    SemanticHistoryError, SemanticHistoryQuery, SemanticHistoryReader, SemanticHistorySourcePort,
-    SemanticHistorySourceRequest, SemanticHistorySourceResponse, SemanticHistoryStore,
-    SemanticHistorySummary,
+    SemanticHistoryAgentPort, SemanticHistoryAuthority, SemanticHistoryError, SemanticHistoryQuery,
+    SemanticHistorySourcePort, SemanticHistorySourceRequest,
 };
 
 #[path = "support/semantic_history_fixture.rs"]
 mod fixture;
 
-/// A source whose reported owner scope is chosen at read time.
-struct DriftingSource {
-    store: SemanticHistoryStore,
-    bindings: [SemanticHistoryBinding; 2],
-    current: Cell<usize>,
-}
+#[path = "support/semantic_history_port_doubles.rs"]
+mod port_doubles;
 
-impl SemanticHistorySourcePort for DriftingSource {
-    fn binding(&self) -> &SemanticHistoryBinding {
-        &self.bindings[self.current.get()]
-    }
-
-    fn read(
-        &self,
-        request: &SemanticHistorySourceRequest,
-    ) -> Result<SemanticHistorySourceResponse, SemanticHistoryError> {
-        self.store.read(request)
-    }
-}
-
-/// A source that answers every request with a summary, whatever was asked.
-struct SummaryOnlySource {
-    binding: SemanticHistoryBinding,
-}
-
-impl SemanticHistorySourcePort for SummaryOnlySource {
-    fn binding(&self) -> &SemanticHistoryBinding {
-        &self.binding
-    }
-
-    fn read(
-        &self,
-        request: &SemanticHistorySourceRequest,
-    ) -> Result<SemanticHistorySourceResponse, SemanticHistoryError> {
-        let branch_id = match request {
-            SemanticHistorySourceRequest::Page { query } => query.branch_id.clone(),
-            SemanticHistorySourceRequest::Summary { branch_id } => branch_id.clone(),
-        };
-        Ok(SemanticHistorySourceResponse::Summary(Box::new(
-            SemanticHistorySummary {
-                branch_id,
-                total: 0,
-                captured: 0,
-                gaps: 0,
-                first_sequence: None,
-                last_sequence: None,
-            },
-        )))
-    }
-}
-
-/// A source that answers every request with a page, whatever was asked.
-struct PageOnlySource {
-    store: SemanticHistoryStore,
-    binding: SemanticHistoryBinding,
-}
-
-impl SemanticHistorySourcePort for PageOnlySource {
-    fn binding(&self) -> &SemanticHistoryBinding {
-        &self.binding
-    }
-
-    fn read(
-        &self,
-        request: &SemanticHistorySourceRequest,
-    ) -> Result<SemanticHistorySourceResponse, SemanticHistoryError> {
-        let branch_id = match request {
-            SemanticHistorySourceRequest::Page { query } => query.branch_id.clone(),
-            SemanticHistorySourceRequest::Summary { branch_id } => branch_id.clone(),
-        };
-        let reader = SemanticHistoryReader::open(&self.store, &branch_id)?;
-        let page = reader.page(&SemanticHistoryQuery::branch(&branch_id, 1), None)?;
-        Ok(SemanticHistorySourceResponse::Page(Box::new(page)))
-    }
-}
-
-fn granted(store: &SemanticHistoryStore) -> SemanticHistoryAgentPort<'_, SemanticHistoryStore> {
-    SemanticHistoryAgentPort::grant(
-        store,
-        SemanticHistoryAuthority::HarnessOwned,
-        fixture::binding(),
-    )
-    .expect("a harness-owned grant")
-}
+use port_doubles::*;
 
 #[test]
 fn a_granted_port_serves_a_page_and_a_summary() {
@@ -112,6 +38,7 @@ fn a_granted_port_serves_a_page_and_a_summary() {
     assert_eq!(summary.total, 2);
     assert_eq!(summary.first_sequence, Some(1));
 }
+
 #[test]
 fn a_caller_that_asks_for_its_own_authority_is_refused_a_port() {
     let store = fixture::store_with_events(0);
@@ -127,6 +54,7 @@ fn a_caller_that_asks_for_its_own_authority_is_refused_a_port() {
         SemanticHistoryError::Authority
     );
 }
+
 #[test]
 fn a_port_granted_for_another_run_scope_is_refused() {
     let store = fixture::store_with_events(0);
@@ -141,6 +69,7 @@ fn a_port_granted_for_another_run_scope_is_refused() {
         SemanticHistoryError::Scope
     );
 }
+
 #[test]
 fn a_port_granted_for_another_epoch_is_refused() {
     let store = fixture::store_with_events(0);
@@ -155,6 +84,7 @@ fn a_port_granted_for_another_epoch_is_refused() {
         SemanticHistoryError::Epoch
     );
 }
+
 #[test]
 fn a_grant_with_an_invalid_binding_is_refused_before_any_read() {
     let store = fixture::store_with_events(0);
@@ -170,6 +100,7 @@ fn a_grant_with_an_invalid_binding_is_refused_before_any_read() {
         SemanticHistoryError::NonOpaqueIdentity("binding.run_id")
     );
 }
+
 #[test]
 fn a_grant_that_is_no_longer_the_sources_scope_is_refused_on_its_next_read() {
     let source = DriftingSource {
@@ -195,6 +126,7 @@ fn a_grant_that_is_no_longer_the_sources_scope_is_refused_on_its_next_read() {
         Err(SemanticHistoryError::Scope)
     );
 }
+
 #[test]
 fn a_grant_that_is_no_longer_the_sources_epoch_is_refused_on_its_next_read() {
     let source = DriftingSource {
@@ -214,6 +146,7 @@ fn a_grant_that_is_no_longer_the_sources_epoch_is_refused_on_its_next_read() {
         Err(SemanticHistoryError::Epoch)
     );
 }
+
 #[test]
 fn naming_storage_directly_is_refused_rather_than_answered() {
     let store = fixture::store_with_events(1);
@@ -227,6 +160,7 @@ fn naming_storage_directly_is_refused_rather_than_answered() {
         Err(SemanticHistoryError::Authority)
     );
 }
+
 #[test]
 fn a_port_refuses_a_query_whose_branch_identity_is_not_opaque() {
     let store = fixture::store_with_events(1);
@@ -240,6 +174,7 @@ fn a_port_refuses_a_query_whose_branch_identity_is_not_opaque() {
         Err(SemanticHistoryError::NonOpaqueIdentity("branch_id"))
     );
 }
+
 #[test]
 fn a_port_refuses_a_query_that_is_out_of_bounds() {
     let store = fixture::store_with_events(1);
@@ -253,6 +188,7 @@ fn a_port_refuses_a_query_that_is_out_of_bounds() {
         Err(SemanticHistoryError::Bounds)
     );
 }
+
 #[test]
 fn a_source_response_of_the_wrong_shape_is_refused_by_the_port() {
     let summary_only = SummaryOnlySource {
@@ -280,6 +216,7 @@ fn a_source_response_of_the_wrong_shape_is_refused_by_the_port() {
     .expect("grant");
     assert_eq!(port.summary(fixture::ROOT), Err(SemanticHistoryError::Port));
 }
+
 #[test]
 fn reading_an_unknown_branch_is_refused_by_the_store_port() {
     let store = fixture::store_with_events(1);
@@ -291,7 +228,8 @@ fn reading_an_unknown_branch_is_refused_by_the_store_port() {
     );
     assert_eq!(
         store.read(&SemanticHistorySourceRequest::Page {
-            query: SemanticHistoryQuery::branch("branch_absent", 5)
+            query: SemanticHistoryQuery::branch("branch_absent", 5),
+            continuation: None,
         }),
         Err(SemanticHistoryError::Branch)
     );

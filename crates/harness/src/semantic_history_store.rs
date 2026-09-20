@@ -43,7 +43,7 @@ pub enum SemanticHistoryRetention {
 /// rewritten into a different event. Re-appending the same identity with identical content replays,
 /// and re-appending it with different content is refused as a conflict rather than accepted as a
 /// correction, because a history that can be edited in place cannot be trusted to explain a run.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SemanticHistoryStore {
     binding: SemanticHistoryBinding,
     lineage: Vec<SemanticHistoryLineage>,
@@ -51,7 +51,7 @@ pub struct SemanticHistoryStore {
     window: SemanticHistoryCaptureWindow,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct BranchHistory {
     events: Vec<SemanticHistoryEvent>,
     by_id: BTreeMap<String, usize>,

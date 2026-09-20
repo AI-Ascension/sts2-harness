@@ -52,6 +52,12 @@ pub const MAX_HISTORY_TRAVERSAL_DEPTH: usize = 16;
 pub const MAX_HISTORY_TRAVERSAL_VISITS: usize = 256;
 /// Maximum branch-lineage depth this boundary will follow.
 pub const MAX_HISTORY_BRANCH_DEPTH: usize = 16;
+/// Maximum saved-history batches one import may carry.
+pub const MAX_HISTORY_IMPORT_BATCHES: usize = 16;
+/// Maximum events one imported batch may carry.
+pub const MAX_HISTORY_IMPORT_EVENTS: usize = 256;
+/// Maximum serialized bytes of one imported batch.
+pub const MAX_HISTORY_IMPORT_BYTES: usize = 262_144;
 
 #[path = "semantic_history_binding.rs"]
 mod binding;
@@ -63,6 +69,8 @@ mod coverage;
 mod error;
 #[path = "semantic_history_identity.rs"]
 mod identity;
+#[path = "semantic_history_import.rs"]
+mod import;
 #[path = "semantic_history_index.rs"]
 mod index;
 #[path = "semantic_history_kind.rs"]
@@ -94,6 +102,10 @@ pub use coverage::{
 pub use error::{SemanticHistoryAuthority, SemanticHistoryError};
 pub use identity::{
     SemanticHistoryNamespace, is_opaque_history_identity, validate_history_identity,
+};
+pub use import::{
+    SemanticHistoryImportBatch, SemanticHistoryImportEvent, SemanticHistoryImportOutcome,
+    SemanticHistoryImportPort, import_saved_history,
 };
 pub use index::{SemanticHistoryCursor, SemanticHistoryIndex};
 pub use kind::SemanticHistoryKind;

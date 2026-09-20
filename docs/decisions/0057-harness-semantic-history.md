@@ -88,6 +88,20 @@ representational, not decorative.
    branch has exactly one edge, exactly one branch is the root, and no ancestry
    is deeper than the bound. What is restored is the history the writer had, or
    no history at all.
+8. **Saved history is backfilled only through the same owned port, and only as
+   opaque bytes.** An importer hands back batch identities and the bytes an
+   owner-side capture wrote; it cannot construct an event, name a window, scope
+   or epoch, or state a cause, so the harness re-derives every rule from those
+   bytes rather than trusting the caller's own structure. A batch is refused on
+   its size before it is parsed — empty, oversized or over the batch bound — and
+   afterwards when its schema, member shape, identity opacity, branch, event
+   count or sequencing does not hold. An event must already say it was imported:
+   one claiming a native or derived origin is refused rather than stamped, so a
+   backfill can never introduce history that reads as an observation, and what
+   an import writes keeps the coverage and the source label the capture was
+   taken under. The batch is applied to a copy of the store and committed only
+   once the whole batch held, so a batch that fails partway leaves no partial
+   history behind.
 
 ## Consequences
 
@@ -156,6 +170,33 @@ the stated-parent presence, precedence and epoch rules, the digest comparison,
 the end-of-branch sequencing expectation, and the lineage identity, branch
 existence, epoch, single-root, bijection and depth rules fails exactly its named
 test and nothing else, and the file is restored byte-identical afterwards.
+
+`crates/harness/tests/semantic_history_import.rs` and
+`semantic_history_import_boundary.rs` cover decision 8, and
+`semantic_history_readonly_reads.rs` covers what a granted port can then walk
+beside the admission rules in `semantic_history_readonly.rs`. A saved batch is
+appended, served as imported history and still replayed rather than duplicated
+after a restart; a gap it carries stays disclosed and an imported event inside a
+declared gap, before capture began, or with coverage contradicting the window is
+refused; a batch naming another scope, epoch or branch, another schema, an
+unknown member, a non-opaque identity, an undecodable document or more events
+than the bound is refused, and one that fails partway leaves the store at its
+previous length. The granted reader follows a first page's continuation to the
+end of a second page, explains a stated chain, refuses an unknown event or a
+branch identity that is not opaque before a source is asked, and walks no
+further than the caller's own traversal bound. The doubles these suites drive
+are shared from `tests/support/semantic_history_import_doubles.rs` and
+`tests/support/semantic_history_port_doubles.rs`.
+
+Each of those guards is falsified by mutation as well: skipping the batch or
+event member shape, the schema, the byte, batch-count or event-count bounds, the
+batch, capture, branch or event identity checks, the owner-scope or epoch check,
+the branch-existence check, the imported-origin refusal, or the append path, and
+replacing the all-or-nothing copy with an in-place write or dropping the commit
+each fails exactly its named test and nothing else. So does dropping the
+continuation hand-off through the port, the page or explanation response arm,
+the caller's own traversal bound, or the validation that runs before a source is
+asked, with the file restored byte-identical afterwards.
 
 These tests do not execute the game-mod producer, capture a native run, or answer
 an end-to-end query over a controlled run. Those remain separate gates, and

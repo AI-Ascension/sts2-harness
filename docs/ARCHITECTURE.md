@@ -96,6 +96,12 @@ quantity or content reference it must carry rather than admitting an absent deta
 The history is written out as one document and read back only by re-deriving those same rules, so a
 run's history survives a restart of its owner and a document that could not have been written is
 refused rather than loaded.
+Native saved history is backfilled through that same port and only as opaque bytes, so an importer
+cannot state a window, scope, epoch or cause the harness would then trust, an imported record keeps
+the coverage and the source label it was captured under instead of reading as an observation, and a
+batch that fails partway writes nothing at all. A granted reader can spend a page's continuation to
+the end of a multi-page read and ask for a bounded causal explanation, and it walks no further than
+the caller asked.
 
 ## Security and data boundaries
 

@@ -56,6 +56,8 @@ pub enum SemanticHistoryError {
     ParentNotPreceding,
     /// An imported event attempted to state a causal parent.
     ImportedStatesParent,
+    /// A backfill offered an event whose origin claims it was observed here.
+    ImportedOrigin,
     /// A filter, page or traversal bound was exceeded or malformed.
     Bounds,
     /// A continuation is unknown, superseded, already consumed or bound to another query.
