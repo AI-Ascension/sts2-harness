@@ -274,6 +274,27 @@ fn expert_state_response(mode: FixtureMode) -> Result<(u16, Value), String> {
     }
 }
 
+/// Echo the identity the gateway fenced onto this hop.
+///
+/// The real mod answers with the identity it validated on the request, so the
+/// identity on the wire is the negotiated one, not a fixture constant: the
+/// gateway compares every echoed identity field against the request envelope it
+/// forwarded, and refuses a downstream that pins its own identity as
+/// `runtime_v3_response_invalid` on any deployment that is not the fixture
+/// default. A missing header yields an empty identity (epoch `0`), so an
+/// unfenced hop is refused rather than answered as the fixture default.
+pub(super) fn echoed_identity(headers: &BTreeMap<String, String>) -> (Value, Value, Value, Value) {
+    let field = |name: &str| json!(headers.get(name).cloned().unwrap_or_default());
+    let epoch = headers
+        .get("x-sts2-lease-epoch")
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
+    let instance_id = field("x-sts2-instance-id");
+    let session_id = field("x-sts2-session-id");
+    let lease_id = field("x-sts2-lease-id");
+    (instance_id, session_id, lease_id, json!(epoch))
+}
+
 fn v3_response(kind: &str, headers: &BTreeMap<String, String>) -> Value {
     let mut value: Value = serde_json::from_slice(include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -287,10 +308,11 @@ fn v3_response(kind: &str, headers: &BTreeMap<String, String>) -> Value {
             .cloned()
             .unwrap_or_default()
     );
-    value["instance_id"] = json!(INSTANCE_ID);
-    value["session_id"] = json!(SESSION_ID);
-    value["lease_id"] = json!(LEASE_ID);
-    value["lease_epoch"] = json!(LEASE_EPOCH);
+    let (instance_id, session_id, lease_id, lease_epoch) = echoed_identity(headers);
+    value["instance_id"] = instance_id;
+    value["session_id"] = session_id;
+    value["lease_id"] = lease_id;
+    value["lease_epoch"] = lease_epoch;
     value["generation"] = json!(7);
     value["state_id"] = json!("live:7");
     value["observation"]["state_id"] = json!("live:7");
