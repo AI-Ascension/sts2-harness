@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::BTreeMap;
-use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -14,7 +13,14 @@ use serde_json::{Value, json};
 mod actions;
 #[path = "runtime_v4_executable_composition_fixture/gate.rs"]
 mod gate;
+#[path = "runtime_v4_executable_composition_fixture/wire.rs"]
+mod wire;
 pub(crate) use gate::ActionReadGate;
+use wire::{read_request, write_response};
+
+#[path = "runtime_v4_executable_composition_fixture/identity.rs"]
+pub(crate) mod identity;
+pub(crate) use identity::{Admitted, Identity};
 
 #[path = "runtime_v4_executable_composition_fixture/host_lease_mux.rs"]
 pub(crate) mod host_lease_mux;
@@ -119,6 +125,8 @@ impl ModServer {
         let worker_action_reads = Arc::clone(&action_reads);
         let worker_gate = gate.clone();
         let worker_host_lease = host_lease;
+        let identity = Arc::new(Identity::pinned());
+        let worker_identity = Arc::clone(&identity);
         let ledger = Arc::new(Mutex::new(DownstreamLedger {
             requests: Vec::new(),
             responses: Vec::new(),
@@ -136,6 +144,7 @@ impl ModServer {
                                 &worker_action_reads,
                                 worker_gate.as_deref(),
                                 worker_host_lease.as_deref(),
+                                &worker_identity,
                             );
                             if let Ok(mut ledger) = worker_ledger.lock() {
                                 ledger.requests.push(request);
@@ -227,22 +236,39 @@ fn fixture_response(
     action_reads: &AtomicU64,
     gate: Option<&ActionReadGate>,
     host_lease: Option<&HostLeaseControl>,
+    identity: &Identity,
 ) -> Result<(u16, Value), String> {
     if request.headers.get("authorization").map(String::as_str) != Some("Bearer mod-token") {
         return Err(String::from("downstream mod authorization is missing"));
     }
+    // The recovery mux authenticates its own frames under the pinned
+    // host-lease-control proof, so it is not fenced with the runtime identity.
+    if request.path == "/api/v1/runtime/recovery" {
+        return host_lease_mux::recovery_response(&request.raw, host_lease, identity);
+    }
+    let Some(admitted) = identity.admit(&request.headers) else {
+        return Ok((409, identity::stale_fence()));
+    };
     match request.path.as_str() {
-        "/api/v3/runtime/state" => Ok((200, v3_response("state_response", &request.headers))),
-        "/api/v3/runtime/legal-actions" => {
-            Ok((200, v3_response("legal_actions_response", &request.headers)))
-        }
+        "/api/v3/runtime/state" => Ok((
+            200,
+            v3_response("state_response", &request.headers, &admitted),
+        )),
+        "/api/v3/runtime/legal-actions" => Ok((
+            200,
+            v3_response("legal_actions_response", &request.headers, &admitted),
+        )),
         "/api/v4/runtime/expert-state" => expert_state_response(mode),
         "/api/v4/runtime/expert-action" => match mode {
-            FixtureMode::AcceptedBarrierThenSettled => actions::accepted_action(&request.body),
-            _ => actions::unknown_action(&request.body),
+            FixtureMode::AcceptedBarrierThenSettled => {
+                actions::accepted_action(&request.body, &admitted)
+            }
+            _ => actions::unknown_action(&request.body, &admitted),
         },
         path if path.starts_with("/api/v4/runtime/expert-actions/") => match mode {
-            FixtureMode::UnknownOperation => actions::unknown_operation(path, &request.headers),
+            FixtureMode::UnknownOperation => {
+                actions::unknown_operation(path, &request.headers, &admitted)
+            }
             FixtureMode::AcceptedBarrierThenSettled => {
                 if action_reads.fetch_add(1, Ordering::AcqRel) == 0
                     && let Some(gate) = gate
@@ -250,14 +276,13 @@ fn fixture_response(
                     gate.block();
                 }
                 if gate.is_some_and(ActionReadGate::unsettled) {
-                    actions::unknown_operation(path, &request.headers)
+                    actions::unknown_operation(path, &request.headers, &admitted)
                 } else {
-                    actions::settled_action(path, &request.headers)
+                    actions::settled_action(path, &request.headers, &admitted)
                 }
             }
-            _ => actions::settled_action(path, &request.headers),
+            _ => actions::settled_action(path, &request.headers, &admitted),
         },
-        "/api/v1/runtime/recovery" => host_lease_mux::recovery_response(&request.raw, host_lease),
         _ => Err(format!("unexpected downstream path: {}", request.path)),
     }
 }
@@ -274,28 +299,13 @@ fn expert_state_response(mode: FixtureMode) -> Result<(u16, Value), String> {
     }
 }
 
-/// Echo the identity the gateway fenced onto this hop.
+/// Answer as the deployment this request was admitted on.
 ///
-/// The real mod answers with the identity it validated on the request, so the
-/// identity on the wire is the negotiated one, not a fixture constant: the
-/// gateway compares every echoed identity field against the request envelope it
-/// forwarded, and refuses a downstream that pins its own identity as
-/// `runtime_v3_response_invalid` on any deployment that is not the fixture
-/// default. A missing header yields an empty identity (epoch `0`), so an
-/// unfenced hop is refused rather than answered as the fixture default.
-pub(super) fn echoed_identity(headers: &BTreeMap<String, String>) -> (Value, Value, Value, Value) {
-    let field = |name: &str| json!(headers.get(name).cloned().unwrap_or_default());
-    let epoch = headers
-        .get("x-sts2-lease-epoch")
-        .and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or(0);
-    let instance_id = field("x-sts2-instance-id");
-    let session_id = field("x-sts2-session-id");
-    let lease_id = field("x-sts2-lease-id");
-    (instance_id, session_id, lease_id, json!(epoch))
-}
-
-fn v3_response(kind: &str, headers: &BTreeMap<String, String>) -> Value {
+/// The gateway compares all five identity fields of a response against the
+/// request envelope it forwarded, so the response has to answer as the admitted
+/// deployment: a downstream that answers as the fixture default is refused as
+/// `runtime_v3_response_invalid` by any gateway that admits another identity.
+fn v3_response(kind: &str, headers: &BTreeMap<String, String>, admitted: &Admitted) -> Value {
     let mut value: Value = serde_json::from_slice(include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../protocol-artifact/runtime-v3-gameplay/golden/state-response.json"
@@ -308,11 +318,9 @@ fn v3_response(kind: &str, headers: &BTreeMap<String, String>) -> Value {
             .cloned()
             .unwrap_or_default()
     );
-    let (instance_id, session_id, lease_id, lease_epoch) = echoed_identity(headers);
-    value["instance_id"] = instance_id;
-    value["session_id"] = session_id;
-    value["lease_id"] = lease_id;
-    value["lease_epoch"] = lease_epoch;
+    for (field, identity) in admitted.fields() {
+        value[field] = identity;
+    }
     value["generation"] = json!(7);
     value["state_id"] = json!("live:7");
     value["observation"]["state_id"] = json!("live:7");
@@ -347,77 +355,4 @@ fn expert_observation(state_id: &str, generation: u64, terminal: bool) -> Value 
         });
     }
     value
-}
-
-fn read_request(stream: &mut TcpStream) -> Result<DownstreamRequest, Box<dyn std::error::Error>> {
-    stream.set_read_timeout(Some(Duration::from_secs(2)))?;
-    let mut bytes = Vec::new();
-    let header_end = loop {
-        if let Some(end) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
-            break end;
-        }
-        if bytes.len() > 64 * 1024 {
-            return Err("downstream request header bound exceeded".into());
-        }
-        let mut chunk = [0_u8; 2048];
-        let count = stream.read(&mut chunk)?;
-        if count == 0 {
-            return Err("downstream request ended before headers".into());
-        }
-        bytes.extend_from_slice(&chunk[..count]);
-    };
-    let mut lines = std::str::from_utf8(&bytes[..header_end])?.split("\r\n");
-    let request_line = lines.next().ok_or("downstream request line missing")?;
-    let mut parts = request_line.split_ascii_whitespace();
-    let method = parts.next().ok_or("downstream method missing")?.to_owned();
-    let path = parts.next().ok_or("downstream path missing")?.to_owned();
-    if parts.next() != Some("HTTP/1.1") || parts.next().is_some() {
-        return Err("downstream request line invalid".into());
-    }
-    let mut headers = BTreeMap::new();
-    for line in lines {
-        let (name, value) = line.split_once(':').ok_or("downstream header invalid")?;
-        headers.insert(name.to_ascii_lowercase(), value.trim().to_owned());
-    }
-    let length = headers
-        .get("content-length")
-        .ok_or("downstream content length missing")?
-        .parse::<usize>()?;
-    if length > 128 * 1024 {
-        return Err("downstream request body bound exceeded".into());
-    }
-    let body_start = header_end + 4;
-    if bytes.len().saturating_sub(body_start) > length {
-        return Err("downstream request has trailing bytes".into());
-    }
-    let mut body = bytes[body_start..].to_vec();
-    while body.len() < length {
-        let mut chunk = vec![0_u8; (length - body.len()).min(2048)];
-        let count = stream.read(&mut chunk)?;
-        if count == 0 {
-            return Err("downstream request ended before body".into());
-        }
-        body.extend_from_slice(&chunk[..count]);
-    }
-    Ok(DownstreamRequest {
-        method,
-        path,
-        headers,
-        body: if body.is_empty() {
-            Value::Null
-        } else {
-            serde_json::from_slice(&body)?
-        },
-        raw: body,
-    })
-}
-
-fn write_response(stream: &mut TcpStream, status: u16, body: &Value) -> std::io::Result<()> {
-    let body = serde_json::to_vec(body).map_err(std::io::Error::other)?;
-    let headers = format!(
-        "HTTP/1.1 {status} OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n",
-        body.len()
-    );
-    stream.write_all(headers.as_bytes())?;
-    stream.write_all(&body)
 }

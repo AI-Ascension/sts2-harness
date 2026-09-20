@@ -2,57 +2,14 @@
 
 use super::*;
 
-/// Echo the identity carried by the request envelope or its fenced headers.
-///
-/// The gateway compares every echoed identity field against the request it
-/// forwarded, so the action responses have to answer as the negotiated
-/// deployment rather than as the fixture default. `expert-action` arrives with
-/// the identity in the body and its reconciliation arrives with the identity in
-/// the headers, so both sources are read.
-fn echoed(
-    request: Option<&Value>,
-    headers: &BTreeMap<String, String>,
-) -> [(&'static str, Value); 4] {
-    let body = |name: &str| request.and_then(|value| value.get(name)).cloned();
-    let header = |name: &str| json!(headers.get(name).cloned().unwrap_or_default());
-    [
-        (
-            "instance_id",
-            body("instance_id").unwrap_or_else(|| header("x-sts2-instance-id")),
-        ),
-        (
-            "session_id",
-            body("session_id").unwrap_or_else(|| header("x-sts2-session-id")),
-        ),
-        (
-            "lease_id",
-            body("lease_id").unwrap_or_else(|| header("x-sts2-lease-id")),
-        ),
-        (
-            "lease_epoch",
-            body("lease_epoch").unwrap_or_else(|| header_epoch(headers)),
-        ),
-    ]
-}
-
-fn header_epoch(headers: &BTreeMap<String, String>) -> Value {
-    json!(
-        headers
-            .get("x-sts2-lease-epoch")
-            .and_then(|epoch| epoch.parse::<u64>().ok())
-            .unwrap_or(0)
-    )
-}
-
-pub(super) fn unknown_action(request: &Value) -> Result<(u16, Value), String> {
+pub(super) fn unknown_action(request: &Value, admitted: &Admitted) -> Result<(u16, Value), String> {
     if request["action"]["action_id"] != ACTION_ID {
         return Err(String::from(
             "expert action was not the host-generated potion action",
         ));
     }
     let mut response = golden_action()?;
-    let identity = echoed(Some(request), &BTreeMap::new());
-    for (field, value) in identity.into_iter().chain([
+    for (field, value) in admitted.fields().into_iter().chain([
         ("correlation_id", request["correlation_id"].clone()),
         ("generation", json!(7)),
         ("state_id", json!("live:7")),
@@ -69,15 +26,17 @@ pub(super) fn unknown_action(request: &Value) -> Result<(u16, Value), String> {
     Ok((503, response))
 }
 
-pub(super) fn accepted_action(request: &Value) -> Result<(u16, Value), String> {
+pub(super) fn accepted_action(
+    request: &Value,
+    admitted: &Admitted,
+) -> Result<(u16, Value), String> {
     if request["action"]["action_id"] != ACTION_ID {
         return Err(String::from(
             "expert action was not the host-generated potion action",
         ));
     }
     let mut response = golden_action()?;
-    let identity = echoed(Some(request), &BTreeMap::new());
-    for (field, value) in identity.into_iter().chain([
+    for (field, value) in admitted.fields().into_iter().chain([
         ("correlation_id", request["correlation_id"].clone()),
         ("generation", json!(7)),
         ("state_id", json!("live:7")),
@@ -97,11 +56,11 @@ pub(super) fn accepted_action(request: &Value) -> Result<(u16, Value), String> {
 pub(super) fn settled_action(
     path: &str,
     headers: &BTreeMap<String, String>,
+    admitted: &Admitted,
 ) -> Result<(u16, Value), String> {
     let operation_id = operation_id(path)?;
     let mut response = golden_action()?;
-    let identity = echoed(None, headers);
-    for (field, value) in identity.into_iter().chain([
+    for (field, value) in admitted.fields().into_iter().chain([
         (
             "correlation_id",
             json!(
@@ -133,11 +92,11 @@ pub(super) fn settled_action(
 pub(super) fn unknown_operation(
     path: &str,
     headers: &BTreeMap<String, String>,
+    admitted: &Admitted,
 ) -> Result<(u16, Value), String> {
     let operation_id = operation_id(path)?;
     let mut response = golden_action()?;
-    let identity = echoed(None, headers);
-    for (field, value) in identity.into_iter().chain([
+    for (field, value) in admitted.fields().into_iter().chain([
         (
             "correlation_id",
             json!(
