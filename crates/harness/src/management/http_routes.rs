@@ -7,6 +7,7 @@ use super::super::context_owner::ContextBindingRequest;
 use super::super::contract_authoring::{
     StudioCreateDraftRequest, StudioPublishDraftRequest, StudioSaveDraftRequest,
 };
+use super::super::service::InferenceProfileRevisionRequest;
 use super::response::reason_phrase;
 use super::*;
 
@@ -98,6 +99,9 @@ fn dispatch_studio_or_run_route(
     if request.path.starts_with("/v1/studio/") {
         return dispatch_studio_route(request, service, actor);
     }
+    if request.path.starts_with("/v1/inference-profiles/") {
+        return dispatch_inference_profile_revision_route(request, service, actor);
+    }
     if request.path.starts_with("/v1/memory-policy-owner") {
         return super::routes_memory_owner::dispatch_memory_policy_owner_route(
             request, service, actor, bearer,
@@ -110,6 +114,34 @@ fn dispatch_studio_or_run_route(
         });
     }
     super::routes_run::dispatch_run_route(request, service, actor)
+}
+
+/// `POST /v1/inference-profiles/{profile_id}/revisions` — the admitted edit
+/// route. The profile id is a single path segment; every other shape is
+/// `route_not_found` rather than a silently ignored sub-resource.
+fn dispatch_inference_profile_revision_route(
+    request: &HttpRequest,
+    service: &ManagementService,
+    actor: &super::super::auth::AuthContext,
+) -> Result<Value, ManagementError> {
+    let segments = request.path.split('/').collect::<Vec<_>>();
+    let profile_id = match segments.as_slice() {
+        ["", "v1", "inference-profiles", profile_id, "revisions"]
+            if request.method == "POST" && request.query.is_empty() =>
+        {
+            *profile_id
+        }
+        _ => return Err(route_not_found()),
+    };
+    validate_identifier("profile_id", profile_id).map_err(ManagementError::from)?;
+    let body: InferenceProfileRevisionRequest = decode_body_management(&request.body)?;
+    service
+        .adopt_inference_profile_revision(actor, profile_id, body)
+        .and_then(|value| json_value(&value))
+}
+
+fn route_not_found() -> ManagementError {
+    ManagementError::invalid("route_not_found", "management route was not found")
 }
 
 fn dispatch_studio_route(

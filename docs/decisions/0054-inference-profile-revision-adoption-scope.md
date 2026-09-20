@@ -58,9 +58,33 @@ Issue #104 is delivered in two lanes:
   credentials, and refuses unknown id, digest mismatch, revocation and
   unsupported model/settings before any inference. It states the AC3 scope in
   this record.
-- **104-B (later lane)** owns the CAS revision journal and the admitted edit
-  route that physically implements concurrent-edit CAS and new-definition
-  adoption.
+- **104-B (delivered)** owns the CAS revision journal and the admitted edit
+  route that physically implement concurrent-edit CAS and new-definition
+  adoption. `POST /v1/inference-profiles/{profile_id}/revisions` requires both
+  `workflow:content:write` and an owner-published `grants.edit`, so the read and
+  select grants that authorize discovery confer no edit authority. It admits an
+  edit only against the exact expected revision digest — one of two concurrent
+  edits is adopted and the other is reported as a conflict naming the winner —
+  and appends a **new** revision, never rewriting the one it replaced; a
+  repeated caller mutation identity is replayed rather than applied twice.
+  Adoption stays definition-scoped: the accepted revision is recorded and
+  reported as the exact `profile_id:version:digest` reference a new definition
+  pins, while an admitted run's provenance is written once at admission, so a
+  newer revision refuses an admitted definition rather than retargeting it.
+
+  The request restates only the fields an owner publishes as editable (version,
+  prompt revision, settings revision, supported settings, effective budgets) and
+  is closed. Every identity and authority field — adapter, requested and
+  resolved model, node kinds, operations, context compatibility, continuity,
+  state and grants — is inherited from the edited revision, so this record's
+  statement that it "does not give the harness authority to edit protected
+  inference configuration" still holds: there is no field through which an edit
+  could express one.
+
+  The owner remains the only publisher of what it serves. The journal records
+  and names an accepted revision; it is not spliced into the owner-served
+  catalog, so a newly accepted revision becomes resolvable for new definitions
+  when its owner publishes it.
 
 ## Consequences
 
@@ -72,6 +96,9 @@ Issue #104 is delivered in two lanes:
   it does not become a size finding.
 - 104-A can be complete and reviewed for AC1/AC2/AC4 without waiting on the
   104-B journal, and the two lanes cannot both claim AC3.
+- A profile the owner publishes without `grants.edit` cannot be edited through
+  this route at all, which is how the one served live profile stays uneditable
+  while remaining discoverable and selectable.
 
 ## Verification
 
@@ -79,3 +106,8 @@ Documentation-only decision; no code, provider, host, game or credential is
 contacted. The AC1/AC2/AC4 halves this record scopes are proven by
 `crates/harness/tests/inference_profile_catalog.rs` against
 `contracts/inference-profile/catalog.schema.json` with synthetic fixtures only.
+The 104-B edit route is proven by `crates/harness/tests/inference_profile_revision.rs`
+against `contracts/inference-profile/revision.schema.json` with the same kind of
+synthetic fixtures, including the concurrent-edit swap, mutation replay,
+immutability of the replaced revision, restart durability of the SQLite journal,
+the two independent authorities and the definition-scoped adoption above.

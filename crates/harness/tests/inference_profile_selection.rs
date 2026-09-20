@@ -20,6 +20,8 @@ use sts2_harness::workflow::WorkflowDefinition;
 
 #[path = "support/live_workflow_context_owner.rs"]
 mod context_owner_double;
+#[path = "support/inference_profile_admission_fixtures.rs"]
+mod inference_profile_admission_fixtures;
 #[path = "support/inference_profile_catalog_doubles.rs"]
 mod inference_profile_catalog_doubles;
 #[path = "support/inference_profile_catalog_fixtures.rs"]

@@ -57,9 +57,13 @@ fn descriptor(
             max_output_tokens: 4096,
             max_provider_calls: 64,
         },
+        // The synthetic owner publishes its two labelled fixtures as editable so
+        // the admitted edit route can be exercised end to end with no provider,
+        // model or credential. It proves the journal and the authority split; it
+        // proves nothing about a live owner's edit policy, which is that owner's.
         grants: InferenceProfileGrants {
             select: true,
-            edit: false,
+            edit: true,
         },
         state: InferenceProfileState::Available,
     }

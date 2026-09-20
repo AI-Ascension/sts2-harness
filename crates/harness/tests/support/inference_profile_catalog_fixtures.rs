@@ -84,6 +84,17 @@ pub(crate) fn descriptor(
     state: InferenceProfileState,
     select: bool,
 ) -> InferenceProfileDescriptor {
+    descriptor_with_grants(profile_id, node_kind, context_refs, state, select, false)
+}
+
+fn descriptor_with_grants(
+    profile_id: &str,
+    node_kind: &str,
+    context_refs: &[&str],
+    state: InferenceProfileState,
+    select: bool,
+    edit: bool,
+) -> InferenceProfileDescriptor {
     InferenceProfileDescriptor {
         schema_version: INFERENCE_PROFILE_SCHEMA_VERSION.to_owned(),
         profile_id: profile_id.to_owned(),
@@ -110,10 +121,7 @@ pub(crate) fn descriptor(
             max_output_tokens: 4096,
             max_provider_calls: 64,
         },
-        grants: InferenceProfileGrants {
-            select,
-            edit: false,
-        },
+        grants: InferenceProfileGrants { select, edit },
         state,
     }
     .seal()
@@ -132,6 +140,36 @@ pub(crate) fn available(
         InferenceProfileState::Available,
         true,
     )
+}
+
+/// `available`, published by its owner as editable.
+///
+/// The admitted edit route requires `grants.edit` in addition to the caller's
+/// write scope, so the edit suite needs a fixture whose owner publishes that
+/// grant. Every other fixture in this module stays `edit: false`, which is what
+/// `catalog_with_decide` asserts.
+pub(crate) fn available_editable(
+    profile_id: &str,
+    node_kind: &str,
+    context_refs: &[&str],
+) -> InferenceProfileDescriptor {
+    descriptor_with_grants(
+        profile_id,
+        node_kind,
+        context_refs,
+        InferenceProfileState::Available,
+        true,
+        true,
+    )
+}
+
+/// The two-node baseline, with the `decide` profile published as editable and
+/// the planner left uneditable, so one catalog exercises both authority halves.
+pub(crate) fn editable_catalog() -> InferenceProfileCatalog {
+    catalog(vec![
+        available_editable("decision.synthetic.v1", "decide", &["context.live.v1"]),
+        available("planner.synthetic.v1", "adaptive_region", &[]),
+    ])
 }
 
 pub(crate) fn catalog(descriptors: Vec<InferenceProfileDescriptor>) -> InferenceProfileCatalog {

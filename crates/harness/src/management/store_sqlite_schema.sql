@@ -91,3 +91,27 @@ CREATE TABLE IF NOT EXISTS studio_publications (
     definition BLOB NOT NULL,
     published_revision INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS management_inference_profile_revisions (
+    profile_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    version TEXT NOT NULL,
+    digest TEXT NOT NULL,
+    revision BLOB NOT NULL,
+    PRIMARY KEY (profile_id, ordinal),
+    UNIQUE (profile_id, digest),
+    UNIQUE (profile_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS management_inference_profile_heads (
+    profile_id TEXT PRIMARY KEY NOT NULL,
+    digest TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS management_inference_profile_mutations (
+    profile_id TEXT NOT NULL,
+    mutation_id TEXT NOT NULL,
+    mutation_digest TEXT NOT NULL,
+    revision BLOB NOT NULL,
+    PRIMARY KEY (profile_id, mutation_id)
+);
