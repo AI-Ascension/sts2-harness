@@ -6,9 +6,9 @@ use serde_json::{Value, json};
 use sts2_harness::{
     ActionIdentity, ActionKind, BarrierError, BarrierPort, Decision, DecisionInput, DecisionSource,
     DispatchStatus, EpisodeLegalAction, EpisodeLegalActionSet, EpisodeObservation, EpisodeRunner,
-    EpisodeRunnerConfig, EpisodeRunnerError, EpisodeRuntimePort, EpisodeStage, PolicyError,
-    PortError, RecoveryController, RecoveryError, RecoveryPort, ShutdownError, ShutdownPort,
-    StabilityBarrier, TransitionReceipt, WaitOutcome, WaitSample,
+    EpisodeRunnerConfig, EpisodeRunnerError, EpisodeRuntimePort, EpisodeStage, ObservationError,
+    PolicyError, PortError, RecoveryController, RecoveryError, RecoveryPort, ShutdownError,
+    ShutdownPort, StabilityBarrier, TransitionReceipt, WaitOutcome, WaitSample,
 };
 
 #[derive(Clone)]
@@ -351,3 +351,6 @@ mod scenarios;
 
 #[path = "episode_runner/catalog_reobserve.rs"]
 mod catalog_reobserve;
+
+#[path = "episode_runner/recovery_reason.rs"]
+mod recovery_reason;

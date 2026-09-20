@@ -472,3 +472,24 @@ they come from the flat `## Unreleased` list and carry no section of their own.
   deployment without it fails closed with `STS2_EXO_PACKAGE_PATH is required`; no wire field,
   schema, contract version or durable record changes, and `legacy` behaviour is unchanged. See
   [ADR 0032](decisions/0032-inspected-admission-identity.md). Refs #139.
+
+- Enforce a versioned, per-invocation **context membership policy** so one invocation can include,
+  exclude, or inherit collected context independently of the persisted draft. `resolve_membership`
+  records a typed reason per reference and binds the decision with a policy digest; scope is carried
+  by the item kind, so an invocation-scoped item is refused as a sibling-scope leak unless an
+  explicit wider-scope authorization names both the calling agent and that item.
+  `prevalidate_and_bind` fails before dispatch on revoked, expired, or digest-mismatched items, on a
+  protected owner prerequisite a policy tried to exclude, and on the mandatory-plus-pin and effective
+  item bounds. A model-view policy may express an omitted observation while the item is retained as a
+  mandatory prerequisite for owner legality, but that effective absence is refused for every
+  continuity: an opaque persistent adapter cannot claim a selector erased provider history, and the
+  render path has no omission wireform, so an admitted stateless invocation would report the
+  observation hidden while still publishing it. Unpin and exclusion change only the next prepared
+  input, and `EffectiveMembership::revalidate` refuses anything that moved since preparation.
+  Compatibility: additive — no existing field, route, durable record, or published schema changes;
+  the new `ascension.context-control.membership.v1` policy is in-process with no published consumer.
+  See [ADR 0046](decisions/0046-invocation-context-membership.md). Refs #106.
+
+- Refuse recorded-run export explicitly on non-Unix platforms, where its descriptor-relative
+  no-follow snapshot reader is unavailable, instead of preventing the whole harness from compiling.
+  The Unix snapshot checks remain intact. This does not certify Windows runtime behavior.

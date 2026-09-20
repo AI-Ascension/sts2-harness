@@ -141,9 +141,12 @@ pub(super) fn accept_observation(
     machine: &mut EpisodeMachine,
     observation: EpisodeObservation,
 ) -> Result<(), EpisodeRunnerError> {
+    let recovery_code = observation.recovery_code().map(str::to_owned);
     machine.observe(observation).map_err(|error| match error {
         EpisodeMachineError::UnknownState | EpisodeMachineError::StaleObservation => {
-            EpisodeRunnerError::RecoveryRequired
+            EpisodeRunnerError::RecoveryRequired {
+                code: recovery_code,
+            }
         }
         other => EpisodeRunnerError::Machine(other),
     })

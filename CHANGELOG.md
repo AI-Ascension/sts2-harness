@@ -10,6 +10,19 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Name the **host's recovery reason** in an episode failure instead of reporting every recovery
+  condition with one sentence. A runtime-v3 recovery state carries the condition that produced it
+  in the sibling `code`, but the parser read only the stage, so a refused launch contract
+  (`launch_contract_refused_<reason>`), an unconfigured host and an unavailable observation all
+  arrived as `episode requires recovery before policy can continue`. The code is now bound to the
+  observation and named in the failure when the host named one, and the established sentence is
+  unchanged when it named none. It is held to the same identity rule as `state_id`, and only a
+  recovery observation may carry one, so a reason the host names later needs no second change here
+  while a code the schema cannot carry still fails closed. Compatibility: `breaking` for
+  `EpisodeRunnerError::RecoveryRequired`, now a struct variant with an optional `code`; no wire
+  field, schema or durable record changes, and the directory diagnostic stays in `game.log`
+  unread. See [ADR 0056](docs/decisions/0056-harness-recovery-reason-token.md). Refs #355.
+
 - Admit the **refused-launch-contract recovery code** on the legal-action read. The game-mod answers
   a refused launch contract with `503 launch_contract_refused`, or the prefix, `_`, and one bounded
   reason token, while the adapter admitted only `stale_generation`, `host_not_configured`, and
@@ -509,24 +522,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   Compatibility: additive — no existing field, route, durable record, or published schema changes.
   Owner continuations gain optional `membership` configuration; absence preserves current behaviour.
   See [ADR 0046](docs/decisions/0046-invocation-context-membership.md). Refs #106.
-
-- Enforce a versioned, per-invocation **context membership policy** so one invocation can include,
-  exclude, or inherit collected context independently of the persisted draft. `resolve_membership`
-  records a typed reason per reference and binds the decision with a policy digest; scope is carried
-  by the item kind, so an invocation-scoped item is refused as a sibling-scope leak unless an
-  explicit wider-scope authorization names both the calling agent and that item.
-  `prevalidate_and_bind` fails before dispatch on revoked, expired, or digest-mismatched items, on a
-  protected owner prerequisite a policy tried to exclude, and on the mandatory-plus-pin and effective
-  item bounds. A model-view policy may express an omitted observation while the item is retained as a
-  mandatory prerequisite for owner legality, but that effective absence is refused for every
-  continuity: an opaque persistent adapter cannot claim a selector erased provider history, and the
-  render path has no omission wireform, so an admitted stateless invocation would report the
-  observation hidden while still publishing it. Unpin and exclusion change only the next prepared
-  input, and `EffectiveMembership::revalidate` refuses anything that moved since preparation.
-  Compatibility: additive — no existing field, route, durable record, or published schema changes;
-  the new `ascension.context-control.membership.v1` policy is in-process with no published consumer.
-  See [ADR 0046](docs/decisions/0046-invocation-context-membership.md). Refs #106.
-
-- Refuse recorded-run export explicitly on non-Unix platforms, where its descriptor-relative
-  no-follow snapshot reader is unavailable, instead of preventing the whole harness from compiling.
-  The Unix snapshot checks remain intact. This does not certify Windows runtime behavior.

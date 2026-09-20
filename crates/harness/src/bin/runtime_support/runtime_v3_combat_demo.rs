@@ -33,7 +33,9 @@ impl CombatDemoReport {
 
 pub(super) struct CombatDemoFailure {
     message: String,
-    terminal_observation: Option<EpisodeObservation>,
+    /// Boxed so this failure stays a small `Err` payload. An observation is a wide value, and this
+    /// struct is returned by value from every step of the demo.
+    terminal_observation: Option<Box<EpisodeObservation>>,
     cleanup_status: CleanupStatus,
 }
 
@@ -43,7 +45,7 @@ impl CombatDemoFailure {
     }
 
     pub(super) fn terminal_observation(&self) -> Option<&EpisodeObservation> {
-        self.terminal_observation.as_ref()
+        self.terminal_observation.as_deref()
     }
 
     pub(super) const fn cleanup_status(&self) -> CleanupStatus {
@@ -71,7 +73,7 @@ pub(super) fn run<S: DecisionSource>(
         (Ok(report), Ok(())) => Ok(report),
         (Ok(report), Err(error)) => Err(CombatDemoFailure {
             message: format!("combat demo cleanup failed: {error}"),
-            terminal_observation: Some(report.terminal_observation),
+            terminal_observation: Some(Box::new(report.terminal_observation)),
             cleanup_status: CleanupStatus::Failed,
         }),
         (Err(error), Ok(())) => Err(CombatDemoFailure {

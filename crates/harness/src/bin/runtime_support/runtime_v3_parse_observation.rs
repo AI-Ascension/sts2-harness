@@ -3,12 +3,12 @@
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
-use sts2_harness::{EpisodeLegalActionSet, EpisodeObservation};
+use sts2_harness::{EpisodeLegalActionSet, EpisodeObservation, EpisodeStage};
 
 use super::catalog::{parse_actions, raw_catalog};
 use super::{
-    ParsedObservation, RuntimeConfig, number, require_null, root, stage, string, transition,
-    validate_observation_fields,
+    ParsedObservation, RuntimeConfig, number, recovery_code, require_null, root, stage, string,
+    transition, validate_observation_fields,
 };
 
 #[allow(dead_code)]
@@ -165,7 +165,7 @@ pub(in super::super) fn observation_from_root(
     fair_play.insert(String::from("legal_actions"), catalog.clone());
     let stage = stage(&observation)?;
     let actionable = stage.is_actionable() && !actions.actions().is_empty();
-    let episode_observation = EpisodeObservation::new(
+    let mut episode_observation = EpisodeObservation::new(
         state_id,
         generation,
         stage,
@@ -175,6 +175,11 @@ pub(in super::super) fn observation_from_root(
         Value::Object(fair_play),
     )
     .map_err(|error| format!("fair-play observation failed validation: {error}"))?;
+    if stage == EpisodeStage::Recovery {
+        episode_observation = episode_observation
+            .with_recovery_code(recovery_code(&observation)?)
+            .map_err(|error| format!("recovery observation failed validation: {error}"))?;
+    }
     Ok(ParsedObservation {
         observation: episode_observation,
         actions,

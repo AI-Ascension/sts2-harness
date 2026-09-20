@@ -5,7 +5,8 @@ use super::map::MapDecisionContext;
 use crate::exo::SanitizedObservation;
 use serde_json::Value;
 
-const MAX_STATE_ID_BYTES: usize = 512;
+/// Bound and charset the protocol schemas use for an `identity` token.
+const MAX_IDENTITY_BYTES: usize = 512;
 
 /// Player-visible stage used by the episode state machine.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -50,6 +51,9 @@ pub struct EpisodeObservation {
     input_enabled: bool,
     fair_play: SanitizedObservation,
     map_context: Option<Box<MapDecisionContext>>,
+    /// Boxed so the token costs a thin pointer rather than a full `String`, because an observation
+    /// is cloned on every transition and is carried inside error payloads whose size is bounded.
+    recovery_code: Option<Box<str>>,
 }
 
 impl EpisodeObservation {
@@ -64,12 +68,7 @@ impl EpisodeObservation {
         fair_play: Value,
     ) -> Result<Self, ObservationError> {
         let state_id = state_id.into();
-        if state_id.is_empty()
-            || state_id.len() > MAX_STATE_ID_BYTES
-            || !state_id
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
-        {
+        if !identity_token(&state_id) {
             return Err(ObservationError::InvalidIdentity);
         }
         if generation > 9_007_199_254_740_991 {
@@ -94,7 +93,26 @@ impl EpisodeObservation {
             input_enabled,
             fair_play,
             map_context: None,
+            recovery_code: None,
         })
+    }
+
+    /// Binds the host's recovery reason token to a non-actionable observation.
+    ///
+    /// The runtime-v3 recovery state carries the condition that produced it, but only the stage
+    /// used to cross the boundary. Without the token an episode failure can report the generic
+    /// "requires recovery" message for a refused launch contract, an unconfigured host, and an
+    /// unavailable observation alike, so the operator cannot tell which one happened.
+    pub fn with_recovery_code(mut self, code: impl Into<String>) -> Result<Self, ObservationError> {
+        if !matches!(self.stage, EpisodeStage::Recovery | EpisodeStage::Unknown) {
+            return Err(ObservationError::UnexpectedRecoveryCode);
+        }
+        let code = code.into();
+        if !identity_token(&code) {
+            return Err(ObservationError::InvalidRecoveryCode);
+        }
+        self.recovery_code = Some(code.into_boxed_str());
+        Ok(self)
     }
 
     #[must_use]
@@ -132,6 +150,12 @@ impl EpisodeObservation {
         &self.fair_play
     }
 
+    /// The host's recovery condition, when this observation carried one.
+    #[must_use]
+    pub fn recovery_code(&self) -> Option<&str> {
+        self.recovery_code.as_deref()
+    }
+
     #[must_use]
     pub(crate) fn with_map_context(mut self, context: MapDecisionContext) -> Self {
         self.map_context = Some(Box::new(context));
@@ -163,6 +187,8 @@ pub enum ObservationError {
     UnknownState,
     PrivilegedProjection,
     ProjectionMismatch,
+    InvalidRecoveryCode,
+    UnexpectedRecoveryCode,
 }
 
 impl std::fmt::Display for ObservationError {
@@ -175,8 +201,19 @@ impl std::fmt::Display for ObservationError {
             Self::ProjectionMismatch => {
                 "observation projection identity does not match its envelope"
             }
+            Self::InvalidRecoveryCode => "observation recovery code is not an identity token",
+            Self::UnexpectedRecoveryCode => "only a recovery observation may carry a recovery code",
         })
     }
 }
 
 impl std::error::Error for ObservationError {}
+
+/// Whether a value is a wire identity token, shared by the state identity and the recovery code.
+fn identity_token(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_IDENTITY_BYTES
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
+}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use serde_json::{Value, json};
-use sts2_harness::{ActionKind, DispatchStatus, EpisodeLegalAction};
+use sts2_harness::{ActionKind, DispatchStatus, EpisodeLegalAction, EpisodeStage};
 
 use super::super::config::RuntimeConfig;
 use super::{action_set, observation, receipt, result_observation, wait_sample};
@@ -137,6 +137,17 @@ fn response(kind: &str, generation: u64, operation_id: Value, status: Value) -> 
     })
 }
 
+/// The envelope the mod's `RecoveryState` produces when its host seam has no current observation:
+/// the condition is inside the state, the catalog is empty, and the observation read's result
+/// fields stay null. `error_code` is not set, so the state's code is the only place the reason
+/// exists.
+fn recovery_response(code: &str) -> Value {
+    let mut value = response("state_response", 0, Value::Null, Value::Null);
+    value["observation"]["state"] = json!({"state": "recovery", "code": code});
+    value["legal_actions"] = json!([]);
+    value
+}
+
 #[test]
 fn observation_separates_semantic_action_from_host_payload() -> Result<(), String> {
     let parsed = observation(
@@ -155,6 +166,60 @@ fn privileged_projection_is_rejected_before_policy_use() {
     let mut value = response("state_response", 0, Value::Null, Value::Null);
     value["observation"]["rng_state"] = json!("hidden");
     assert!(observation(&value, "state_response", &config()).is_err());
+}
+
+/// A recovery read names the condition it is recovering from in `observation.state.code` -- this is
+/// the envelope the mod's `RecoveryState` produces for a refused launch contract or an
+/// unconfigured host. The parser has to read that sibling field: with only `observation.state.state`
+/// every one of those conditions reached the episode as the same anonymous recovery.
+#[test]
+fn a_recovery_observation_carries_the_host_reason_code() -> Result<(), String> {
+    for code in [
+        "host_not_configured",
+        "host_observation_unavailable",
+        "launch_contract_refused_isolated_user_dir_mismatch",
+    ] {
+        let value = recovery_response(code);
+        let parsed = observation(&value, "state_response", &config())?;
+        assert_eq!(parsed.observation.stage(), EpisodeStage::Recovery);
+        assert_eq!(parsed.observation.recovery_code(), Some(code));
+    }
+    Ok(())
+}
+
+/// The code is a required identity token rather than free text, so an envelope that omits it or
+/// carries an unsafe one is refused instead of being reported as an anonymous recovery.
+#[test]
+fn a_recovery_observation_without_a_valid_code_is_refused() {
+    let oversized = "x".repeat(513);
+    for state in [
+        json!({"state": "recovery"}),
+        json!({"state": "recovery", "code": null}),
+        json!({"state": "recovery", "code": ""}),
+        json!({"state": "recovery", "code": "not a token"}),
+        json!({"state": "recovery", "code": oversized}),
+    ] {
+        let mut value = response("state_response", 0, Value::Null, Value::Null);
+        value["observation"]["state"] = state;
+        value["legal_actions"] = json!([]);
+        assert!(
+            observation(&value, "state_response", &config()).is_err(),
+            "a recovery observation without a valid code must be refused"
+        );
+    }
+}
+
+/// Only a recovery read binds the token; an ordinary stage must not acquire a reason.
+#[test]
+fn a_playable_observation_never_binds_a_recovery_code() -> Result<(), String> {
+    let parsed = observation(
+        &response("state_response", 0, Value::Null, Value::Null),
+        "state_response",
+        &config(),
+    )?;
+    assert_eq!(parsed.observation.stage(), EpisodeStage::Setup);
+    assert_eq!(parsed.observation.recovery_code(), None);
+    Ok(())
 }
 
 #[test]
