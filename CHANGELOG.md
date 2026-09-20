@@ -10,6 +10,18 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Admit the **refused-launch-contract recovery code** on the legal-action read. The game-mod answers
+  a refused launch contract with `503 launch_contract_refused`, or the prefix, `_`, and one bounded
+  reason token, while the adapter admitted only `stale_generation`, `host_not_configured`, and
+  `host_observation_unavailable`, so a refusal stayed fatal instead of becoming the bounded
+  reobservation it names. The admitted set is now the producer's own rule rather than a second list:
+  the bare prefix, or the prefix, `_`, and a token of 1 to 64 ASCII alphanumerics, `_`, or `-`. A
+  code the mod cannot compose — a trailing separator, a dot, a slash, a space, a non-ASCII byte, a
+  65-byte token, or a neighbouring string that merely starts the same way — still fails closed, as do
+  other statuses, extra fields, and mismatched correlation. This mirrors
+  `AI-Ascension/sts2-gateway#85`; the MCP consumer is a separate change and the native recovered
+  screen transition remains unverified.
+
 - **Report why a supervised child produced no answer at every seam that supervises one.** The
   provider transport no longer sends its child's standard error to the null device, but the two seams
   beside it, the one-shot lifecycle effect and the long-lived lookup supervisor, still discarded it,
@@ -518,24 +530,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 - Refuse recorded-run export explicitly on non-Unix platforms, where its descriptor-relative
   no-follow snapshot reader is unavailable, instead of preventing the whole harness from compiling.
   The Unix snapshot checks remain intact. This does not certify Windows runtime behavior.
-
-- Inspect the actual Exo launch configuration using the same loader as the bridge. Bind the
-  configured extension, prompt, tool catalog, model route and configuration to the operator pins,
-  require the package locator to match the configured executor, and use the shared artifact bounds.
-  Envelope arguments now require `--run`, an absolute configuration path and its digest.
-  Compatibility: breaking operator configuration, unchanged wire schemas. Unverified lifecycle
-  capabilities remain an independent admission gate; no provider/native certification is claimed.
-  See [ADR 0032](docs/decisions/0032-inspected-admission-identity.md). Refs #139.
-
-- Bind the **package axis** of the runtime Exo admission identity to an inspected artifact. The
-  reviewed `envelope` mode now requires `STS2_EXO_PACKAGE_PATH`, reads the exact bytes it locates
-  through the existing bounded inspection read, and hashes them into `package_digest`, so a swapped
-  package is refused as `IdentityMismatch("package_digest")` before the capability gate instead of
-  incidentally as `UnboundIdentity("package_digest")`. The inspected digest is computed from the
-  located bytes and the operator's `STS2_EXO_PACKAGE_DIGEST` is never substituted for the
-  observation, so the pin stays independent. The remaining axes still have no inspected artifact, so
-  the envelope still refuses every deployment today, now naming `extension_digest` as the first
-  unbound axis. Compatibility: `breaking` for operator configuration — the locator is required and a
-  deployment without it fails closed with `STS2_EXO_PACKAGE_PATH is required`; no wire field,
-  schema, contract version or durable record changes, and `legacy` behaviour is unchanged. See
-  [ADR 0032](docs/decisions/0032-inspected-admission-identity.md). Refs #139.

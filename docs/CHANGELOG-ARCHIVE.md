@@ -451,3 +451,24 @@ they come from the flat `## Unreleased` list and carry no section of their own.
   workspace and the System One bridge, so a unix-only call cannot reach the library unnoticed again;
   it runs no tests on Windows and no behavioural claim about Windows follows from it. Compatibility:
   no change on Linux; Windows moves from not compiling to compiling. Refs #301.
+
+- Inspect the actual Exo launch configuration using the same loader as the bridge. Bind the
+  configured extension, prompt, tool catalog, model route and configuration to the operator pins,
+  require the package locator to match the configured executor, and use the shared artifact bounds.
+  Envelope arguments now require `--run`, an absolute configuration path and its digest.
+  Compatibility: breaking operator configuration, unchanged wire schemas. Unverified lifecycle
+  capabilities remain an independent admission gate; no provider/native certification is claimed.
+  See [ADR 0032](decisions/0032-inspected-admission-identity.md). Refs #139.
+
+- Bind the **package axis** of the runtime Exo admission identity to an inspected artifact. The
+  reviewed `envelope` mode now requires `STS2_EXO_PACKAGE_PATH`, reads the exact bytes it locates
+  through the existing bounded inspection read, and hashes them into `package_digest`, so a swapped
+  package is refused as `IdentityMismatch("package_digest")` before the capability gate instead of
+  incidentally as `UnboundIdentity("package_digest")`. The inspected digest is computed from the
+  located bytes and the operator's `STS2_EXO_PACKAGE_DIGEST` is never substituted for the
+  observation, so the pin stays independent. The remaining axes still have no inspected artifact, so
+  the envelope still refuses every deployment today, now naming `extension_digest` as the first
+  unbound axis. Compatibility: `breaking` for operator configuration — the locator is required and a
+  deployment without it fails closed with `STS2_EXO_PACKAGE_PATH is required`; no wire field,
+  schema, contract version or durable record changes, and `legacy` behaviour is unchanged. See
+  [ADR 0032](decisions/0032-inspected-admission-identity.md). Refs #139.

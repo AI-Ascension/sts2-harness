@@ -59,6 +59,11 @@ fn catalog_recovery_requires_exact_shape_and_correlation() {
         "stale_generation",
         "host_not_configured",
         "host_observation_unavailable",
+        // A refused launch contract answers with the mod's refusal code rather than the
+        // never-declared code, and it must be admitted the same way.
+        "launch_contract_refused",
+        "launch_contract_refused_isolated_user_dir_mismatch",
+        "launch_contract_refused_campaign_required",
     ] {
         let mut body =
             json!({"correlation_id":"42", "error_code":code, "recovery":"reobserve"});
@@ -73,6 +78,63 @@ fn catalog_recovery_requires_exact_shape_and_correlation() {
             &json!({"correlation_id":"42","error_code":code,"recovery":"reobserve"})
         ));
     }
+}
+
+/// The admitted refusal shape is the producer's own rule, so a code the mod cannot compose must
+/// stay refused here rather than be admitted as a neighbouring string.
+#[test]
+fn a_refused_launch_contract_code_is_admitted_only_in_the_shape_the_mod_composes() {
+    let admitted = |code: &str| {
+        catalog_reobserve(&json!({
+            "correlation_id":"42", "error_code":code, "recovery":"reobserve"}))
+    };
+    let longest = format!("launch_contract_refused_{}", "a".repeat(64));
+    for code in [
+        "launch_contract_refused",
+        "launch_contract_refused_a",
+        "launch_contract_refused_isolated_user_dir_mismatch",
+        "launch_contract_refused_campaign_required",
+        "launch_contract_refused_UPPER_lower-123_456",
+        // `_` is a legal token character, so a token may begin with one.
+        "launch_contract_refused__leading",
+        longest.as_str(),
+    ] {
+        assert!(admitted(code), "the refusal code {code} must be admitted");
+    }
+    for code in [
+        "launch_contract_refused_",
+        "launch_contract_refused_..",
+        "launch_contract_refused_a b",
+        "launch_contract_refused_a.b",
+        "launch_contract_refused_a/b",
+        "launch_contract_refused_ünicode",
+        "launch_contract_refusedx",
+        "launch_contractrefused",
+        "launch_contract",
+        "host_not_configured_refused",
+    ] {
+        assert!(!admitted(code), "{code} must stay refused");
+    }
+    // One byte over the reason bound is the first token the producer degrades to the bare prefix,
+    // so the neighbouring admitted code is the 64-byte token and not this.
+    assert!(!admitted(&format!(
+        "launch_contract_refused_{}",
+        "a".repeat(65)
+    )));
+    // The refusal is admitted only in the refusal's own envelope shape.
+    let refusal = json!({"correlation_id":"42",
+        "error_code":"launch_contract_refused_isolated_user_dir_mismatch",
+        "recovery":"reobserve"});
+    let response =
+        json!({"result":{"isError":true,"content":[{"text":refusal.to_string()}]}});
+    assert!(has_catalog_reobserve(&response, 42));
+    assert!(!has_catalog_reobserve(&response, 43));
+    let mut extra = refusal.clone();
+    extra["private"] = json!("extra");
+    assert!(!catalog_reobserve(&extra));
+    let mut retry = refusal.clone();
+    retry["recovery"] = json!("retry");
+    assert!(!catalog_reobserve(&retry));
 }
 #[test]
 fn gameplay_unknown_remains_available_for_receipt_validation() {

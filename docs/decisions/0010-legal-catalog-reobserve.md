@@ -6,8 +6,13 @@ A native screen may advance after observation but before the legal-action read. 
 already validates the host's compact, correlated read refusal. The MCP adapter preserves that
 specific error; the harness adapter admits it only for `sts2.legal_actions`, with `isError: true`,
 matching correlation, at most 1024 bytes and exactly `correlation_id`, `error_code`, and `recovery`.
-Allowed codes are `stale_generation`, `host_not_configured`, and `host_observation_unavailable`;
-recovery must be `reobserve`. Other failures remain fatal.
+Allowed codes are `stale_generation`, `host_not_configured`, `host_observation_unavailable`, and a
+refused-launch-contract code (`AI-Ascension/sts2-gateway#85`); recovery must be `reobserve`. A
+refused launch contract is a distinct failure from a lane that never declared one, and it arrives as
+the game-mod's own refusal prefix `launch_contract_refused`, either alone or followed by `_` and one
+reason token of 1 to 64 ASCII alphanumerics, `_` or `-` — the exact vocabulary the producer composes,
+so a string the producer cannot emit is refused here rather than admitted as a neighbouring code.
+Other failures remain fatal.
 
 The adapter maps this refusal to retryable `catalog_reobserve`. Coordinator policy permits at
 most three consecutive refreshes before failing with owned cleanup. A successful fresh catalog
