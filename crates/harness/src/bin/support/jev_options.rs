@@ -36,17 +36,16 @@ pub(super) struct Options {
     /// response beside it. Writing the two fields down by hand cannot prove that, so the operator
     /// who records an exchange asks for the record the bridge itself assembled.
     ///
-    /// The runtime lane mounts this module as well, and reads no field here: its admitted shape is
-    /// the model and transport pair, so a vector carrying this flag is refused by that shape before
-    /// the flag could matter, and a check for it would have no input it could change the outcome of.
-    /// The bridge binary does read this, which is why the annotation is `allow` and not `expect`.
-    #[allow(dead_code)]
+    /// The runtime shares this parser but rejects record mode: its stdout contract is one bare
+    /// decision. Standalone invocations may request the fuller record for offline inspection.
     pub record: bool,
     /// Confidence at or above which an answer becomes an action, as an integer percentage.
     ///
     /// Absent means the bridge's own default applies. An operator lowers it when a lane's real
     /// confidence distribution sits below the default, which is a measurement rather than a taste.
     pub gate_percent: Option<u32>,
+    /// Opt-in parallel evaluator. False preserves the legacy request and decision path.
+    pub tactical: bool,
 }
 
 impl Options {
@@ -58,10 +57,12 @@ impl Options {
         let mut gate_percent = None;
         let mut describe = false;
         let mut record = false;
+        let mut tactical = false;
         while let Some(argument) = arguments.next() {
             match argument.as_str() {
                 "--describe" if !describe => describe = true,
                 "--record" if !record => record = true,
+                "--tactical" if !tactical => tactical = true,
                 "--model" if model.is_none() => {
                     let value = arguments.next().ok_or("missing model identifier")?;
                     if !valid_identifier(&value, 240) {
@@ -97,6 +98,7 @@ impl Options {
             describe,
             record,
             gate_percent,
+            tactical,
         })
     }
 }
@@ -116,6 +118,14 @@ fn valid_identifier(value: &str, maximum: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tactical_profile_is_explicit_and_cannot_be_duplicated() -> Result<(), &'static str> {
+        assert!(!Options::parse(Vec::new())?.tactical);
+        assert!(Options::parse(vec![String::from("--tactical")])?.tactical);
+        assert!(Options::parse(vec![String::from("--tactical"); 2]).is_err());
+        Ok(())
+    }
 
     #[test]
     fn selection_preserves_identifiers_and_the_default_model() -> Result<(), &'static str> {

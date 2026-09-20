@@ -42,13 +42,20 @@ fn ollama_allowed(arguments: &[String]) -> bool {
         .is_ok_and(|options| !options.describe && options.model == arguments[1])
 }
 
-/// Admits the System One model and transport selection, with an optional confidence gate.
-///
-/// Two shapes only: the four-element model and transport pair, and that pair followed by
-/// `--gate PERCENT`. The gate is admitted because a lane whose measured confidence sits below the
-/// bridge default would otherwise never act, and because an operator changing it should be visible
-/// in the recorded argument vector rather than hidden in a rebuild.
+/// Admits the existing model/transport pair and optional gate, with an opt-in --tactical suffix.
+/// The recorded vector exposes the selected policy. Record/describe and arbitrary flags stay denied.
 fn system_one_allowed(arguments: &[String]) -> bool {
+    // Only a final --tactical is admitted, with either existing execution shape.
+    let tactical = arguments.last().is_some_and(|value| value == "--tactical");
+    let execution = if tactical {
+        &arguments[..arguments.len() - 1]
+    } else {
+        arguments
+    };
+    system_one_shape(execution, tactical)
+}
+
+fn system_one_shape(arguments: &[String], tactical: bool) -> bool {
     // Length first: a shorter vector must be refused, not indexed.
     let gated = match arguments.len() {
         4 => false,
@@ -66,8 +73,14 @@ fn system_one_allowed(arguments: &[String]) -> bool {
     // admitted position can carry a flag because the parser rejects a value that begins with `-`.
     // `--describe` is excluded below for the longer-standing reason: this lane reads the
     // executable's stdout as the decision, not a configuration print.
-    jev_options::Options::parse(arguments.iter().cloned()).is_ok_and(|options| {
+    let mut parsed = arguments.to_vec();
+    if tactical {
+        parsed.push(String::from("--tactical"));
+    }
+    jev_options::Options::parse(parsed).is_ok_and(|options| {
         !options.describe
+            && !options.record
+            && options.tactical == tactical
             && options.model == arguments[1]
             && options.transport.as_deref() == Some(arguments[3].as_str())
             && options.gate_percent.map(|gate| gate.to_string()) == arguments.get(5).cloned()
@@ -127,6 +140,25 @@ mod tests {
                 !arguments_allowed(Some("typesafe-jev"), &arguments),
                 "{arguments:?} must be refused"
             );
+        }
+    }
+
+    #[test]
+    fn tactical_suffix_is_admitted_without_widening_other_options() {
+        for gated in [false, true] {
+            let mut args = vec!["--model", "jev-1.13.0", "--transport", transport()];
+            if gated {
+                args.extend(["--gate", "20"]);
+            }
+            args.push("--tactical");
+            let mut args: Vec<String> = args.into_iter().map(str::to_owned).collect();
+            assert!(arguments_allowed(Some("typesafe-jev"), &args));
+            assert!(!arguments_allowed(Some("ollama"), &args));
+            args.push(String::from("--record"));
+            assert!(!arguments_allowed(Some("typesafe-jev"), &args));
+            let _ = args.pop();
+            args.push(String::from("--tactical"));
+            assert!(!arguments_allowed(Some("typesafe-jev"), &args));
         }
     }
 
