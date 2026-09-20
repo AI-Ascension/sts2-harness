@@ -2,80 +2,12 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
+#[path = "support/prepared_input_budget_fixtures.rs"]
+mod fixture;
+
+use fixture::{base_request, capabilities, new_ledger, optional_entry, pinned_entry, pins};
 use sts2_harness::context_memory::*;
 use sts2_harness::effective_limits::UnavailableReason;
-
-fn scope() -> MemoryScope {
-    MemoryScope::new(
-        "project-fixture",
-        "run-fixture",
-        "episode-fixture",
-        "agent-fixture",
-    )
-}
-
-fn capabilities() -> MemoryCapabilities {
-    MemoryCorpus::with_limits(scope(), 16, 4096)
-        .expect("corpus")
-        .capabilities()
-}
-
-fn digest(label: &str) -> String {
-    sts2_harness::sha256_hex(label.as_bytes())
-}
-
-fn pins(tokenizer: &str) -> PreparedInputPins {
-    PreparedInputPins {
-        owner_revision: "harness-context-memory-v3".to_owned(),
-        profile_id: "profile-fixture".to_owned(),
-        model_id: "model-fixture".to_owned(),
-        tokenizer_id: tokenizer.to_owned(),
-        adapter_id: "adapter-fixture".to_owned(),
-        effective_limit_digest: digest("effective-limits-fixture"),
-    }
-}
-
-fn pinned_entry(entry_id: &str, bytes: usize) -> PinnedInput {
-    PinnedInput {
-        entry_id: entry_id.to_owned(),
-        sha256: digest(&format!("{entry_id}:{bytes}:pinned")),
-        content: vec![b'p'; bytes],
-    }
-}
-
-fn optional_entry(entry_id: &str, content: Vec<u8>) -> OptionalInput {
-    OptionalInput {
-        entry_id: entry_id.to_owned(),
-        sha256: digest(&format!("{entry_id}:{}:optional", content.len())),
-        content,
-    }
-}
-
-fn base_request() -> PreparedInputRequest {
-    PreparedInputRequest {
-        request_id: "request-fixture".to_owned(),
-        pins: pins("tokenizer-fixture"),
-        limits: PreparedInputLimits {
-            whole_input_byte_bound: 4096,
-            optional_byte_budget: 32,
-            output_reserve_bytes: 64,
-            combined_window_bytes: None,
-        },
-        framing: b"frame-v1\n".to_vec(),
-        tool_schema: b"{\"type\":\"object\"}".to_vec(),
-        mandatory: b"mandatory-fixture".to_vec(),
-        pinned: vec![pinned_entry("pin-1", 32)],
-        optional: vec![
-            optional_entry("opt-1", vec![b'a'; 16]),
-            optional_entry("opt-2", vec![b'b'; 16]),
-        ],
-        measurement: TokenMeasurement::unavailable(MeasurementScope::PreparedInput),
-    }
-}
-
-fn new_ledger() -> MemoryBudgetLedger {
-    MemoryBudgetLedger::new(4, 256 * 1024).expect("ledger")
-}
 
 #[test]
 fn exact_boundary_and_one_over_include_wrappers_schema_tools_and_output_reserve() {
@@ -165,15 +97,15 @@ fn multibyte_unicode_is_counted_in_bytes_not_characters() {
     let capabilities = capabilities();
     let mut request = base_request();
     let crabs = "🦀".repeat(5);
-    assert!(crabs.chars().count() == 5 && crabs.len() == 20);
-    request.optional = vec![
-        optional_entry("opt-ascii", vec![b'a'; 8]),
-        optional_entry("opt-crab", crabs.into_bytes()),
-    ];
+    assert_eq!((crabs.len(), crabs.chars().count()), (20, 5));
+    request.optional = vec![optional_entry("opt-crab", crabs.into_bytes())];
+    // One five-character, twenty-byte entry under an eight-byte optional budget. Eight characters
+    // would admit the crab and eight bytes do not, so the fixture discriminates byte accounting from
+    // character accounting instead of consuming the whole limit either way.
     request.limits.optional_byte_budget = 8;
     request.limits.output_reserve_bytes = 8;
     let protected = request.protected_bytes();
-    request.limits.whole_input_byte_bound = protected + 8 + 8;
+    request.limits.whole_input_byte_bound = protected + 8 + 20;
 
     let mut ledger = new_ledger();
     let budget = request
@@ -183,12 +115,32 @@ fn multibyte_unicode_is_counted_in_bytes_not_characters() {
             "res-unicode",
         )
         .expect("unicode fixture prepares");
-    assert_eq!(budget.input_bytes, protected + 8);
-    assert_eq!(budget.selected_optional.len(), 1);
-    assert_eq!(budget.selected_optional[0].entry_id, "opt-ascii");
+    assert!(budget.selected_optional.is_empty());
+    assert_eq!(budget.optional_rendered_bytes, 0);
+    assert_eq!(budget.input_bytes, protected);
     assert_eq!(budget.exclusions.len(), 1);
     assert_eq!(budget.exclusions[0].entry_id, "opt-crab");
     assert_eq!(budget.exclusions[0].reason, "optional_byte_budget");
+    // The entry's byte-valued field is its twenty bytes, not its five characters.
+    assert_eq!(request.optional[0].reference().bytes, 20);
+
+    // The same entry fits a twenty-byte optional budget exactly, and the admitted reference records
+    // the byte length rather than the character count.
+    request.limits.optional_byte_budget = 20;
+    let mut ledger = new_ledger();
+    let admitted = request
+        .prepare(
+            PreparedInputAdmission::Capability(&capabilities),
+            &mut ledger,
+            "res-unicode-exact",
+        )
+        .expect("a twenty-byte budget admits the crab exactly");
+    assert!(admitted.exclusions.is_empty());
+    assert_eq!(admitted.selected_optional.len(), 1);
+    assert_eq!(admitted.selected_optional[0].entry_id, "opt-crab");
+    assert_eq!(admitted.selected_optional[0].bytes, 20);
+    assert_eq!(admitted.optional_rendered_bytes, 20);
+    assert_eq!(admitted.input_bytes, protected + 20);
 }
 
 #[test]

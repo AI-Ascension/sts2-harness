@@ -14,6 +14,16 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   through a locked-build [entrypoint](experiments/jev-evaluation/compiled-ci.sh). Failures do not
   silently skip coverage. The transport stays synthetic; live gameplay benefit remains unverified.
 
+- **Enforce the prepared-input token-measurement invariant on the read path.** `TokenMeasurement`
+  claimed that `tokens` is `None` exactly when the provenance is `Unavailable`, but its fields were
+  public and its derived deserializer accepted any shape, so a record claiming an absent provenance
+  beside a byte count deserialized and `PreparedInputBudget::tokens()` reported that byte count as a
+  token count. The fields are now private behind read accessors, and deserialization re-validates
+  exactly what the constructors validate: `Unavailable` with a quantity, a non-`Unavailable`
+  provenance with no quantity, `tokens == 0` and an invalid method are rejected rather than read
+  back as a measurement. The Unicode eviction test now discriminates byte accounting from character
+  accounting. No durable record, published schema, or consumer pin changes. Refs #381.
+
 - **Refuse a served assembled input that does not fit beside its advertised output reserve.** The
   pre-existing `max_context_bytes` check bounded the request bytes alone; there was no served bound
   over the whole bytes actually sent. `ContextRenderLimits` and the context-owner descriptor both
@@ -531,8 +541,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   Compatibility: `safety-correction` to an unreleased candidate — the empty registry is now
   enforced in dispatch rather than inherited from upstream; no wire field, route, published schema,
   or durable record changes. Refs #140.
-
-- Promote the **runtime peer lane's MCP pin to a recovery-capable revision**. The lane declared MCP
-  `f3b6eaa8`, which predates the `watchdog-recovery-v1` sideband profile the harness starts before it
-  reads or reconciles a durable operation, so the lane's own recovery path was unreachable. The pin is
-  now `587a53ce`, and the lane adds operator-only peer capability checks; the gateway pin is unchanged.
