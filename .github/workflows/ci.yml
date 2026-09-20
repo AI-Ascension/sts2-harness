@@ -110,3 +110,30 @@ jobs:
         run: |
           cargo build --locked --release --target x86_64-pc-windows-gnu \
             --package sts2-harness --bin sts2-jev-bridge
+
+  jev-arguments:
+    name: JEV argument parsing (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --no-self-update
+
+      - name: Run native parser and runtime admission tests
+        shell: bash
+        # Compile the actual shared modules, not a reimplementation or a Windows cross-check.
+        # These modules use only std; no provider, credential, game or network call is exercised.
+        run: |
+          mkdir -p target
+          printf '#[path = "../crates/harness/src/bin/runtime_support/runtime_v3_settings_local_bridge.rs"]\nmod local_bridge;\n' > target/jev-argument-tests.rs
+          rustc +1.97.1 --edition=2024 --test target/jev-argument-tests.rs -o target/jev-argument-tests.exe
+          ./target/jev-argument-tests.exe

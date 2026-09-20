@@ -100,6 +100,52 @@ mod tests {
         }
     }
 
+    #[test]
+    fn spaced_transport_is_admitted_in_each_system_one_execution_shape() {
+        let path = if cfg!(windows) {
+            "C:/Program Files/System One/transport.exe"
+        } else {
+            "/opt/System One/transport"
+        };
+        for (gated, tactical) in [(false, false), (true, false), (false, true), (true, true)] {
+            let mut arguments = vec!["--model", "jev-1.13.0", "--transport", path];
+            if gated {
+                arguments.extend(["--gate", "35"]);
+            }
+            if tactical {
+                arguments.push("--tactical");
+            }
+            let arguments: Vec<String> = arguments.into_iter().map(str::to_owned).collect();
+            assert!(arguments_allowed(Some("typesafe-jev"), &arguments));
+            assert!(!arguments_allowed(Some("ollama"), &arguments));
+            for forbidden in ["--record", "--describe", "--unknown"] {
+                let mut invalid = arguments.clone();
+                invalid.push(forbidden.to_owned());
+                assert!(!arguments_allowed(Some("typesafe-jev"), &invalid));
+            }
+        }
+    }
+
+    #[test]
+    fn splitting_a_transport_path_does_not_create_an_admitted_argument_vector() {
+        let prefix = if cfg!(windows) {
+            "C:/Program"
+        } else {
+            "/opt/System"
+        };
+        let arguments = [
+            "--model",
+            "jev-1.13.0",
+            "--transport",
+            prefix,
+            "One/transport",
+        ];
+        let mut arguments: Vec<String> = arguments.into_iter().map(str::to_owned).collect();
+        assert!(!arguments_allowed(Some("typesafe-jev"), &arguments));
+        arguments.push(String::from("--tactical"));
+        assert!(!arguments_allowed(Some("typesafe-jev"), &arguments));
+    }
+
     /// The record form is refused because the admitted set is one fixed shape, not by a branch.
     ///
     /// The pair alone is admitted and the same pair with `--record` appended is not. If the length
