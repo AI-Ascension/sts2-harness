@@ -1,7 +1,9 @@
 # Jev plays Slay the Spire 2
 
 The operator scripts that run a TypeSafe System One model (`jev-latest`) against a live game, one
-episode at a time, restarting the whole session after each one.
+episode at a time, restarting the whole session after each one in benchmark mode.
+Linux also has an explicit [streaming mode](STREAMING.md) that retains the game process and
+profile when the harness stops, with operator-controlled resume and no automatic provider retry.
 
 They live here because they were lost once. They existed only in a scratch directory and on the two
 guests, an editing mistake truncated all three copies at the same moment, and there was nothing to

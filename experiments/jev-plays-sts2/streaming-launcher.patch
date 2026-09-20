@@ -1,0 +1,60 @@
+--- launch-linux-native-rest-campaign.py
++++ launch-linux-native-rest-stream.py
+@@ -1711,8 +1711,13 @@
+                 os.close(fd)
+ 
+ 
++def session_deadline_reached(started: float, max_seconds: int, persistent: bool) -> bool:
++    """Only the explicitly selected streaming session has no duration teardown."""
++    return not persistent and time.monotonic() - started >= max_seconds
++
++
+ def launch_game(ctx: Context, session: dict[str, Any], run_dir: Path,
+-                max_seconds: int, stop_file: Path) -> dict[str, Any]:
++                max_seconds: int, stop_file: Path, persistent: bool = False) -> dict[str, Any]:
+     if ctx.fixture and not ctx.exercise_process:
+         return {"launched": False, "reason": "fixture dry-run", "argv": [str(ctx.game_executable), "--windowed", "--resolution", "958x699", "--audio-driver", "Dummy", "--log-file", str(run_dir / "game.log")]}
+     token = read_runtime_token(ctx)
+@@ -1801,7 +1806,7 @@
+                 stop_reason = "stop_file"
+                 signal_owned_group(process.pid, identity, ctx, signal.SIGTERM)
+                 break
+-            if time.monotonic() - started >= max_seconds:
++            if session_deadline_reached(started, max_seconds, persistent):
+                 stop_reason = "deadline"
+                 signal_owned_group(process.pid, identity, ctx, signal.SIGTERM)
+                 break
+@@ -1867,6 +1872,7 @@
+     result = {
+         "launched": True, "pid": process.pid if process else None,
+         "identity": identity, "returncode": process.returncode if process else None,
++        "session_mode": "stream" if persistent else "benchmark",
+         "stop_reason": stop_reason, "elapsed_seconds": round(time.monotonic() - started, 3),
+         "argv": [str(ctx.game_executable), "--windowed", "--resolution", "958x699", "--audio-driver", "Dummy", "--log-file", str(log_path)],
+         "runtime_endpoint": RUNTIME_ENDPOINT,
+@@ -1915,6 +1921,7 @@
+     parser.add_argument("--runtime-token-file", help="root-owned 0600 shared mod credential file")
+     parser.add_argument("--readiness-file", help="root-owned nonsecret active process identity record")
+     parser.add_argument("--max-seconds", type=int, default=900, help="bounded visible launch duration (60..3600)")
++    parser.add_argument("--persistent-session", action="store_true", help="streaming: retain the game until process exit or explicit stop file; no duration teardown")
+     parser.add_argument("--stop-file", help="operator-created stop file; defaults to the run evidence directory")
+     parser.add_argument("--dry-run", action="store_true", help="only valid with an explicit fixture specification")
+     parser.add_argument("--fixture-spec", help=argparse.SUPPRESS)
+@@ -1953,7 +1960,7 @@
+                       "checks": {"stage_r3": True, "mcp_absent": True, "historic_mcp_backup": True, "source_and_copy_core": True, "profile_baseline_preserved": True, "fresh_profile": True, "mapping": True, "session": True, "settings_explicit": True, "tool_pinned": True, "shared_token_file": True, "readiness_path": True, "no_native_game_launch": True},
+                       "native_user_directory_observation": "unverified",
+                       "profile_preparation": profile_preparation, "preparation": preparation,
+-                      "game": launch_game(ctx, session_before, ctx.work, args.max_seconds, ctx.work / "stop")}
++                      "game": launch_game(ctx, session_before, ctx.work, args.max_seconds, ctx.work / "stop", args.persistent_session)}
+             return result
+         run_dir = ctx.work / f"runtime-linux-rest-{time.time_ns()}"
+         safe_path(run_dir, "run evidence directory", allow_missing_leaf=True)
+@@ -1963,7 +1970,7 @@
+         require_outside(stop_file, "stop file", (ctx.game, ctx.profile, ctx.source))
+         if stop_file.exists() or stop_file.is_symlink():
+             fail("stop file already exists; remove it before launch")
+-        game_result = launch_game(ctx, session_before, run_dir, args.max_seconds, stop_file)
++        game_result = launch_game(ctx, session_before, run_dir, args.max_seconds, stop_file, args.persistent_session)
+         after = postflight(ctx, {"core": core_before, "override": override_before}, run_dir,
+                            stage_digest, mapping_digest, session_digest)
+         result = {"schema": SCHEMA, "recorded_utc": now(), "state": "fixture-process" if ctx.fixture else "completed", "fixture": ctx.fixture,
