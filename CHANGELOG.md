@@ -11,6 +11,12 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 ## Unreleased
 
 - Add Linux [Jev streaming mode](experiments/jev-plays-sts2/STREAMING.md): retain the game with manual resume; preserve timed benchmarks. Automatic terminal progression remains unavailable.
+- **Hold one live decision attempt so a lost reply cannot buy a second one.** A live `Decide` node
+  took a fresh `ModelExecutionId` on every entry and kept no record of the attempt, so an
+  `Unresolved` refusal left the run `NeedsOperator` with `pending_operation: null` and the next
+  `Step` paid the provider again. The attempt is now installed and durably recorded before
+  `decide_for`, released only by a refusal the provider owner reported before it could write, and
+  re-used by a retry that reproduces the admitted request digest. Compatibility: additive; no wire or durable record changes. See [ADR 0059](docs/decisions/0059-held-live-decision-attempt.md). Refs #108.
 
 - Run the existing compiled Jev paired-replay and frozen-pilot tests in both Node CI checks
   through a locked-build [entrypoint](experiments/jev-evaluation/compiled-ci.sh). Failures do not
@@ -520,26 +526,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   declared input did not settle, and records an unwinding branch as `BranchLost` rather than
   stalling. `ParallelCap::SERIAL` keeps cap=1 compatible and `execute_plan` is unchanged; this is
   additive, and budget reservation, cancel/restart and browser branch state remain open. See [ADR 0049](docs/decisions/0049-bounded-parallel-analysis-join.md). Refs #98.
-
-- Deny **forbidden Exo tools by name at dispatch** in the owned restricted extension and re-record
-  the real pinned-Exo process oracle. The model tool catalog is empty; the extension now also seals
-  the actual `HarnessToolRegistry` handed to each model round, so a pre-populated registry, any
-  later `register`, and any `executePending` — `shell`, `install_agent_tool`,
-  `uninstall_agent_tool`, `manage_tool`, `inspect_tools`, `install_skill`, `remember`,
-  lookup-profile tools, and any case/namespace variant — throws the typed `sts2_forbidden_tool`
-  error before a handler can exist and records the denial counts in a new `sts2.exo-tool-guard-v1`
-  event. The executor requires that event and maps a non-zero count to receipt
-  `error_code: exo_forbidden_tool` with no decision; the bridge fails closed as
-  `exo_bridge_executor_failed` after exactly one model egress. New process-oracle cases
-  `forbidden_tool_by_name_*` (one per name/alias, driven by a synthetic model that calls the tool)
-  and `request_tools_are_empty` exercise both the bridge and the executor boundary against the real
-  pinned Exo with a synthetic loopback model (no provider, no game); the shipped extension digest,
-  the recorded oracle bytes, and `protocol-artifact/exo-bridge-v1/{manifest.json,SHA256SUMS}` are
-  re-recorded together so `crates/harness/tests/support/exo_contract_process_evidence.rs` stays
-  fail-closed. Also documents `STS2_EXO_PRIVATE_STATE_ROOT`, the truthful capability list, and
-  source-freeze/re-admission in the new `docs/exo-compatibility.md` (the Exo sections of
-  `docs/COMPATIBILITY.md` moved there unchanged to stay within the file budget), and corrects stale
-  `experiments/exo-agent/README.md` lines that predated runtime-v3 admission (#205/#223/#226).
-  Compatibility: `safety-correction` to an unreleased candidate — the empty registry is now
-  enforced in dispatch rather than inherited from upstream; no wire field, route, published schema,
-  or durable record changes. Refs #140.

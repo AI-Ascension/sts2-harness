@@ -1,166 +1,11 @@
 # Changelog archive
 
 This file preserves the completed `## Unreleased` history that was moved out of
-[`CHANGELOG.md`](../CHANGELOG.md) when the active changelog exceeded its
-preferred size budget. Entries are unchanged from the revision that introduced
-them; this archive is a verbatim record, not a supported release or a second
-normative changelog.
-
-The archive begins with the first dated entry of the 2026-09-10 bounded-campaign
-wave. Active development continues in `CHANGELOG.md`. Entries moved out of the active file after
-this archive was created are kept in move order under `### Archived from CHANGELOG.md`, because
-they come from the flat `## Unreleased` list and carry no section of their own.
-
-- 2026-09-10: Add the additive `seeded-run-v1` transport handoff at harness main
-  `3926e5a30ab569612e67d2dfdc6542f1391e95d7`. It validates a bounded contiguous seed plan and
-  context-digest-bound standard Ironclad selection, establishes a generation fence, creates one
-  durable reservation before `start_seeded_run`, and reconciles unknown starts with the same
-  operation ID. The copied `sts2-protocol/seeded-run-v1` artifact has schema digest
-  `5c659f344be78f84e8d783986925d462714f933cac95d18943358992f7d3e2b8`, aligned with protocol main
-  `d3ab5fca7d9d74bb31eeb3e5b343d8024ee44404`. Source/component and artifact checks do not establish
-  native seed settlement, profile/save isolation, gameplay, deployment, or release compatibility.
-
-- 2026-09-10: Add the `coop-native-v1` consumer boundary as a source/component integration. The
-  strict parser consumes the copied accepted artifact, recognizes recovery requests that use the
-  bodyful `recovery_response` shape, enforces peer-token uniqueness and host-generation relations,
-  and retains unknown mutations for same-operation reconciliation. Deterministic tests cover all
-  seventeen producer goldens and malformed peer, effect, receipt, and recovery mutations. This
-  does not add MCP/HTTP/gateway transport or claim a live native multiplayer session; peer admission,
-  host legality, settlement, checksum convergence, rejoin, deployment, and release compatibility
-  remain `unverified`.
-
-- 2026-09-10: Fence unknown recovery receipts to the observed host generation. The accepted
-  same-generation receipt exception is limited to pending rejoin recovery; reconcile and unresolved
-  receipts retain a null after-generation until a settled response.
-
-- Record visible Astra-controlled v0.107.1 campaigns and fresh process replays through the full
-  harness → MCP → gateway → mod path: Windows reached Defeat with 333 settled actions; Linux
-  reached Defeat with 431 after one controller restart following a catalog-read failure. These
-  are bounded fixture records; model-played Victory, all campaign branches, native multiplayer,
-  and broader compatibility remain unverified. See `docs/evidence/seeded-astra-campaign-20260906.md`
-  and `docs/evidence/linux-seeded-campaign-20260906.md`.
-
-- Consume the coordinated Runtime-v3 continuation schema with argument-free proceed,
-  confirm-selection and cancel-selection actions; reject mixed revisions and extra arguments.
-
-- Add OpenAI Astra combat decisions through authenticated, ephemeral Codex calls. Provider
-  bridges describe their identity so live-run manifests distinguish OpenAI and Ollama.
-
-- Preserve the host's visible seed by default for repeatable calls and replay. Explicit
-  `STS2_EXO_FORWARD_VISIBLE_SEED=false` still supports seed-blind experiments.
-- Add an opt-in real combat demo with a bounded Ollama provider bridge and host settlement
-  records. Preserve unknown gameplay receipts for same-operation reconciliation through MCP.
-- Release router bindings rejected for mismatched run or episode identity and surface cleanup
-  failures through the routing error boundary.
-- Split the independent Runtime-v2 coordinator and process trace from PR #7; the bounded
-  Runtime-v3 card-play probe remains outside this change. Frozen artifact bytes are unchanged.
-- Document coordinated explicit gateway/MCP session configuration and verify independent session
-  identities and the selected runtime profile reach a spawned fake MCP process.
-
-### Added
-
-- Complete the frozen Runtime-v1 consumer checksum inventory and golden messages; check both
-  frozen runtime inventories in CI without changing existing wire schemas or manifests.
-
-- A dated, evidence-labeled expert-state information-architecture research specification covering
-  fair-play observation, the proposed atomic-state/action inventory, recovery, evaluation, and
-  patch drift. It is explicitly not full-game or gameplay-proof evidence.
-
-- A generated expert-state requirements package with 131 candidate states, typed observation/action/
-  transition inventories, closed JSON schemas, synthetic fixture classes, per-state Markdown, and
-  Mermaid sources. The package remains target-build validation material, not runtime support.
-
-- A bounded Runtime-v2 multi-instance coordinator seam with four-lane registration, explicit
-  identity isolation, fair serial dispatch, global/per-instance backpressure, queued cancellation,
-  active-work reconciliation reporting, and sanitized snapshots. This is component evidence only.
-- Propagated the independently configured Runtime-v2 MCP session through gateway allocation,
-  spawned MCP configuration, request correlation, and lease release. The gateway session remains
-  the frozen protocol-envelope identity; gateway and MCP session values must be distinct.
-
-### Safety corrections
-
-- Generate UUIDv4 operation identities at production action creation and retain the same identity
-  through uncertain dispatch and recovery reconciliation. Preserve the authoritative host state ID
-  without substitution; the frozen Runtime-v3 gameplay artifact is unchanged. Focused source and
-  component tests cover recovery-boundary acceptance, restart uniqueness, and conflicting action
-  reuse. See [ADR 0012](decisions/0012-operation-identity-at-creation.md).
-
-- Validate historical recovery against retained canonical action bytes, the requested original
-  authority, terminal ticket and operation-specific witness. Reconcile unresolved lookups without
-  gameplay polling; accept retained terminal gateway states and bounded padded/unpadded action
-  encodings. Missing evidence remains unresolved. This is synthetic consumer validation, not
-  cross-boot recovery or a release-set claim.
-
-- Require a `released` status after runtime lease cleanup; a successful HTTP exchange alone
-  no longer counts as confirmed release.
-
-- Retain unknown operations in their serial instance lane until explicit reconciliation.
-- Bound MCP and loopback gateway exchanges end to end, reap owned MCP children, and reject
-  mismatched responses without printing downstream payloads or inheriting unrelated credentials.
-- Validate exact Runtime-v2 response contracts and retain only numeric legacy gameplay trace fields.
-
-- Require recovered transitions to match the complete dispatched action, and reconnect failed MCP
-  transports only for bounded recovery reads while retaining operation identity. Attempt fenced
-  lease cleanup when an allocation response is lost or invalid.
-- Split Exo request validation, fair-play schema rules, decision replay, and evaluation report
-  projection into cohesive modules within ordinary policy budgets; remove handwritten exemptions.
-
-- The bounded Runtime-v3 episode state machine, semantic action ledger, transition barrier and
-  recovery ports, and strict Exo fair-play decision adapter.
-- A bounded complete-run coordinator that routes every declared playable surface through the
-  current host legal-action catalog and independently verifies transition settlement.
-- An operator-owned direct Exo process transport with bounded stdin/stdout, timeout, environment
-  allowlisting, and fail-closed shutdown behavior.
-- An offline Exo configuration example and explicit `unverified` live-connectivity status.
-- Full-run routing coverage for setup, map, combat, reward, shop, event, rest, selection, and
-  separate victory/defeat terminal observations.
-- Bounded typed decision records, memory, replay/evaluation metrics, cooperative synchronization
-  gates, and quarantined M10 build/patch manifest preparation.
-- The bounded `sts2-harness-runtime` coordinator, `runtime-v1` artifact copy, real MCP/gateway
-  process path, stale-generation oracle, sanitized trace, and component evidence record.
-
-- A dated authorized-host integration record confirming the complete bounded coordinator-to-STS2
-  runtime probe, visible effect witness, stale-generation rejection, and reversible cleanup.
-
-- Repository governance, policy-as-code, workflow, licensing, security, and release foundations.
-- Harness-specific ownership, dependency, protocol-repository, compatibility, and provenance decisions.
-- Documentation for multi-instance coordination, model/provider ports, episodes, trajectories,
-  replay, scoring, evaluation, and artifact lineage.
-- A target-owned Rust harness package with explicit routing, provider, record, replay, artifact, and
-  shutdown ports plus deterministic fake-boundary tests.
-- A copied release-like `sts2-protocol/poc-v1` artifact, deterministic five-boundary fake runner, and
-  [`MINIMAL_POC_REPORT.md`](../MINIMAL_POC_REPORT.md) with the canonical 15-event trace.
-
-### Changed
-
-- Standardized historical POC and Runtime-v2 fake evidence labels to `confirmed`, retaining
-  their deterministic-fake scope, original dates, trace bytes, digests, and unverified live lanes.
-
-- Attempt fenced allocation cleanup when the runtime coordinator cannot accept an allocation
-  response, preserving the configured trace fence and reporting release failures explicitly.
-  Deterministic fake-boundary coverage does not establish live cleanup behavior.
-
-- This package-preparation entry covered no live providers, game access, gateway lease ownership,
-  MCP framing, game rules, scoring, dataset export, or training integration; those concerns remain
-  outside that historical wave. Later dated campaign records are scoped separately.
-- Exo revisions are now required to be exact non-zero lowercase commit hashes; the checked-in
-  example uses the reviewed public audit revision and does not claim live connectivity.
-
-### Deprecated
-
-- Nothing.
-
-### Removed
-
-- Nothing.
-
-### Fixed
-
-- Nothing.
-
-### Security
-
-- No provider, game, profile, save, credential, model, or dataset access was added.
+[`CHANGELOG.md`](../CHANGELOG.md) when the active changelog exceeded its preferred size budget.
+Entries are unchanged from the revision that introduced them; this archive is a verbatim record, not
+a supported release or a second normative changelog. The closed 2026-09-10 bounded-campaign wave
+that preceded the entries below is preserved in
+[`CHANGELOG-ARCHIVE-2026-09-10.md`](CHANGELOG-ARCHIVE-2026-09-10.md).
 
 ### Archived from CHANGELOG.md
 
@@ -569,3 +414,26 @@ they come from the flat `## Unreleased` list and carry no section of their own.
   `f3b6eaa8`, which predates the `watchdog-recovery-v1` sideband profile the harness starts before it
   reads or reconciles a durable operation, so the lane's own recovery path was unreachable. The pin is
   now `587a53ce`, and the lane adds operator-only peer capability checks; the gateway pin is unchanged.
+
+- Deny **forbidden Exo tools by name at dispatch** in the owned restricted extension and re-record
+  the real pinned-Exo process oracle. The model tool catalog is empty; the extension now also seals
+  the actual `HarnessToolRegistry` handed to each model round, so a pre-populated registry, any
+  later `register`, and any `executePending` — `shell`, `install_agent_tool`,
+  `uninstall_agent_tool`, `manage_tool`, `inspect_tools`, `install_skill`, `remember`,
+  lookup-profile tools, and any case/namespace variant — throws the typed `sts2_forbidden_tool`
+  error before a handler can exist and records the denial counts in a new `sts2.exo-tool-guard-v1`
+  event. The executor requires that event and maps a non-zero count to receipt
+  `error_code: exo_forbidden_tool` with no decision; the bridge fails closed as
+  `exo_bridge_executor_failed` after exactly one model egress. New process-oracle cases
+  `forbidden_tool_by_name_*` (one per name/alias, driven by a synthetic model that calls the tool)
+  and `request_tools_are_empty` exercise both the bridge and the executor boundary against the real
+  pinned Exo with a synthetic loopback model (no provider, no game); the shipped extension digest,
+  the recorded oracle bytes, and `protocol-artifact/exo-bridge-v1/{manifest.json,SHA256SUMS}` are
+  re-recorded together so `crates/harness/tests/support/exo_contract_process_evidence.rs` stays
+  fail-closed. Also documents `STS2_EXO_PRIVATE_STATE_ROOT`, the truthful capability list, and
+  source-freeze/re-admission in the new `docs/exo-compatibility.md` (the Exo sections of
+  `docs/COMPATIBILITY.md` moved there unchanged to stay within the file budget), and corrects stale
+  `experiments/exo-agent/README.md` lines that predated runtime-v3 admission (#205/#223/#226).
+  Compatibility: `safety-correction` to an unreleased candidate — the empty registry is now
+  enforced in dispatch rather than inherited from upstream; no wire field, route, published schema,
+  or durable record changes. Refs #140.

@@ -42,12 +42,14 @@ impl LiveWorkflowSession for FakeSession {
         generation: u64,
     ) -> Result<EpisodeLegalActionSet, sts2_harness::management::ManagementError> {
         self.record("legal_actions");
-        EpisodeLegalActionSet::new(
-            state_id,
-            generation,
-            vec![EpisodeLegalAction::new("end-turn", ActionKind::EndTurn).expect("action")],
-        )
-        .map_err(|error| {
+        self.catalog_calls = self.catalog_calls.saturating_add(1);
+        let mut actions =
+            vec![EpisodeLegalAction::new("end-turn", ActionKind::EndTurn).expect("action")];
+        if self.catalog_drift && self.catalog_calls > 1 {
+            actions
+                .push(EpisodeLegalAction::new("play-card", ActionKind::PlayCard).expect("action"));
+        }
+        EpisodeLegalActionSet::new(state_id, generation, actions).map_err(|error| {
             sts2_harness::management::ManagementError::invalid("fake_catalog", error.to_string())
         })
     }
@@ -57,6 +59,12 @@ impl LiveWorkflowSession for FakeSession {
         _input: &DecisionInput,
     ) -> Result<Decision, sts2_harness::management::ManagementError> {
         self.record("decide");
+        if self.decide_unknown {
+            return Err(sts2_harness::management::ManagementError::unresolved(
+                "fake_decide_transport",
+                "decision reply was lost after the provider exchange",
+            ));
+        }
         if self.decide_error {
             return Err(sts2_harness::management::ManagementError::capability(
                 "fake_decide",

@@ -260,6 +260,7 @@ impl LiveWorkflowExecutionPort {
                 observation: None,
                 actions: None,
                 pending: None,
+                pending_decision: None,
                 provider_calls: 0,
                 max_provider_calls: definition.limits.max_provider_calls,
                 options: self.options.clone(),

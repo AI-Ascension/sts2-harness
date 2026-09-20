@@ -7,7 +7,8 @@ use std::sync::Arc;
 
 use sts2_harness::management::{
     AuthContext, CommandKind, CommandRequest, CommandResponse, ContextOwnerBinding,
-    LiveWorkflowOptions, ManagementService, RunSnapshot, SqliteWorkflowStore, live_store,
+    LiveWorkflowOptions, ManagementService, PendingOperationState, RecoveryAdmission, RunSnapshot,
+    SqliteWorkflowStore, live_store,
 };
 
 #[path = "support/context_binding_history.rs"]
@@ -272,7 +273,23 @@ fn command_result_failure_rolls_back_history_and_does_not_repeat_effects() {
             .expect("history rolled back")
             .is_none()
     );
-    assert_eq!(service.status(&actor, &run_id).expect("after").run, before);
+    // The rolled-back command application is not the only durable record of this step: the decision
+    // attempt's intent crossed the provider boundary before it and is already committed, exactly as
+    // a dispatched action's intent is. So the stored snapshot is the pre-command snapshot plus that
+    // attempt, and the run advertises an outstanding effect instead of looking untouched.
+    let after = service.status(&actor, &run_id).expect("after");
+    let intent = after
+        .run
+        .pending_operation
+        .clone()
+        .expect("the decision attempt stays durable after the rollback");
+    assert_eq!(intent.classification, PendingOperationState::Intent);
+    assert_eq!(intent.instance_id, "instance-1");
+    assert_eq!(intent.original_generation, 0);
+    assert_eq!(after.recovery_admission, RecoveryAdmission::Reconciling);
+    let mut expected = before;
+    expected.pending_operation = Some(intent);
+    assert_eq!(after.run, expected);
     let calls = factory.entries();
     connection
         .execute_batch("DROP TRIGGER fail_result")

@@ -38,6 +38,7 @@ pub(super) struct LiveNodeState {
     pub(super) observation: Option<EpisodeObservation>,
     pub(super) actions: Option<EpisodeLegalActionSet>,
     pub(super) pending: Option<PendingDispatch>,
+    pub(super) pending_decision: Option<PendingDecision>,
     pub(super) provider_calls: u64,
     pub(super) max_provider_calls: u64,
     pub(super) options: LiveWorkflowOptions,
@@ -48,4 +49,20 @@ pub(super) struct PendingDispatch {
     pub(super) action: EpisodeLegalAction,
     pub(super) state: PendingOperationState,
     pub(super) resolved: Option<TransitionReceipt>,
+}
+
+/// One held provider-decision attempt.
+///
+/// This is the decide-node counterpart of [`PendingDispatch`]: the intent is installed before the
+/// provider exchange and released only once a usable decision for this exact invocation exists, so
+/// a lost reply, an operator step or a restart cannot become a second paid exchange. `execution_id`
+/// and `input_digest` are the admitted request identity; a retry that does not reproduce both
+/// exactly may never reuse the attempt.
+pub(super) struct PendingDecision {
+    pub(super) operation_id: String,
+    pub(super) execution_id: u64,
+    pub(super) generation: u64,
+    pub(super) input_digest: String,
+    pub(super) state: PendingOperationState,
+    pub(super) resolved: Option<Box<crate::Decision>>,
 }

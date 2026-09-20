@@ -55,6 +55,13 @@ original text and only rebases relative links for its new location; `CHANGELOG.m
 so a removed or renamed archive fails `DOC002`. Trimming entry text to fit the budget loses the
 operational detail the changelog exists to preserve.
 
+The archive is not exempt either. When the archive would itself exceed `markdown_preferred`, move its
+oldest closed wave verbatim into a dated archive file beside it — currently
+[`docs/CHANGELOG-ARCHIVE-2026-09-10.md`](CHANGELOG-ARCHIVE-2026-09-10.md) — and keep a link to that
+file from the archive, so the archive can keep receiving evictions without shortening entry text,
+raising a limit, or adding an exemption. A dated archive file is a verbatim record under these same
+rules: it is never edited in place, and an entry is filed there exactly once.
+
 Evicted entries are appended in move order at the end of the archive under its
 `### Archived from CHANGELOG.md` heading, because they come from the flat `## Unreleased` list and
 carry no section of their own. Filing an entry is idempotent: the archive holds exactly one copy of

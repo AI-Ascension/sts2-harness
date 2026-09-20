@@ -199,7 +199,10 @@ async fn exchange_process(
                 "{}",
                 start_failure_line(PROVIDER_TRANSPORT, &config.executable, &error)
             );
-            return Err(ExoTransportError::Unavailable);
+            // No child existed, so the request was never transmitted. Reporting this as the
+            // generic `Unavailable` would make a transport that could not start look exactly like
+            // a provider that was reached and did not answer.
+            return Err(ExoTransportError::NotStarted);
         }
     };
     let result = tokio::time::timeout_at(

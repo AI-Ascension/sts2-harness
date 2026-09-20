@@ -11,7 +11,9 @@ mod managed;
 #[path = "session_policy.rs"]
 mod policy;
 
-pub(super) use errors::{provider_error, runtime_error};
+pub(super) use errors::{
+    decision_provider_error, exchange_unresolved, provider_error, runtime_error,
+};
 
 impl ProductionLiveWorkflowSession {
     fn refresh_authority_lease_binding(&mut self) -> Result<(), ManagementError> {
@@ -205,8 +207,12 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
     fn decide(&mut self, input: &DecisionInput) -> Result<crate::Decision, ManagementError> {
         self.assert_current_observation(&input.observation)?;
         self.admit_active_policy_binding()?;
-        let decision = self.provider_mut()?.decide(input).map_err(provider_error)?;
-        self.assert_active_policy_binding_current()?;
+        let decision = self
+            .provider_mut()?
+            .decide(input)
+            .map_err(decision_provider_error)?;
+        self.assert_active_policy_binding_current()
+            .map_err(exchange_unresolved)?;
         Ok(decision)
     }
 
@@ -235,8 +241,9 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
         let decision = self
             .provider_mut()?
             .decide_for(input, decision_profile_ref, context_ref)
-            .map_err(provider_error)?;
-        self.assert_active_policy_binding_current()?;
+            .map_err(decision_provider_error)?;
+        self.assert_active_policy_binding_current()
+            .map_err(exchange_unresolved)?;
         Ok(decision)
     }
 

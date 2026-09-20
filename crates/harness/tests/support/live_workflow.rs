@@ -114,6 +114,8 @@ pub(crate) struct FakeFactory {
     unknown: bool,
     dispatch_error: bool,
     decide_error: bool,
+    decide_unknown: bool,
+    catalog_drift: bool,
     mismatched_receipt: bool,
     reconcile_conflict: bool,
     launch_error: bool,
@@ -132,6 +134,8 @@ impl FakeFactory {
             unknown,
             dispatch_error: false,
             decide_error: false,
+            decide_unknown: false,
+            catalog_drift: false,
             mismatched_receipt: false,
             reconcile_conflict: false,
             launch_error: false,
@@ -150,6 +154,8 @@ impl FakeFactory {
             unknown: false,
             dispatch_error: true,
             decide_error: false,
+            decide_unknown: false,
+            catalog_drift: false,
             mismatched_receipt: false,
             reconcile_conflict: false,
             launch_error: false,
@@ -164,6 +170,18 @@ impl FakeFactory {
     /// generic runtime-fault arm rather than the accepted/unknown dispatch paths.
     pub(crate) fn decide_error() -> Self {
         Self::new(false).with_decide_error()
+    }
+
+    /// A live session whose `decide` exchange is reached but whose reply is lost, so the harness
+    /// cannot prove no inference happened.
+    pub(crate) fn decide_unknown() -> Self {
+        Self::new(false).with_decide_unknown()
+    }
+
+    /// A live session whose legal-action catalog grows between two `decide` attempts, so a retry
+    /// no longer reproduces the admitted request the first attempt was paid for.
+    pub(crate) fn decide_unknown_with_catalog_drift() -> Self {
+        Self::new(false).with_decide_unknown().with_catalog_drift()
     }
 
     pub(crate) fn mismatched_receipt() -> Self {
@@ -207,6 +225,16 @@ impl FakeFactory {
 
     fn with_decide_error(mut self) -> Self {
         self.decide_error = true;
+        self
+    }
+
+    fn with_decide_unknown(mut self) -> Self {
+        self.decide_unknown = true;
+        self
+    }
+
+    fn with_catalog_drift(mut self) -> Self {
+        self.catalog_drift = true;
         self
     }
 
@@ -277,6 +305,8 @@ impl LiveWorkflowSessionFactory for FakeFactory {
             unknown: self.unknown,
             dispatch_error: self.dispatch_error,
             decide_error: self.decide_error,
+            decide_unknown: self.decide_unknown,
+            catalog_drift: self.catalog_drift,
             mismatched_receipt: self.mismatched_receipt,
             reconcile_conflict: self.reconcile_conflict,
             launch_error: self.launch_error,
@@ -286,6 +316,7 @@ impl LiveWorkflowSessionFactory for FakeFactory {
             reconcile_status: self.reconcile_status,
             identity: None,
             action: None,
+            catalog_calls: 0,
         }))
     }
 
@@ -316,6 +347,8 @@ struct FakeSession {
     unknown: bool,
     dispatch_error: bool,
     decide_error: bool,
+    decide_unknown: bool,
+    catalog_drift: bool,
     mismatched_receipt: bool,
     reconcile_conflict: bool,
     launch_error: bool,
@@ -325,6 +358,7 @@ struct FakeSession {
     reconcile_status: Option<DispatchStatus>,
     identity: Option<String>,
     action: Option<EpisodeLegalAction>,
+    catalog_calls: u32,
 }
 
 impl FakeSession {

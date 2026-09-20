@@ -270,6 +270,11 @@ pub enum PolicyError {
     IllegalAction,
     MissingOperation,
     MalformedDecision,
+    /// No request byte reached a provider: the transport never started.
+    ///
+    /// This is the only provider failure that proves the exchange did not happen, so callers that
+    /// must not repeat a paid request may release their identity on it.
+    ProviderNotStarted,
     ProviderUnavailable,
     ProviderMalformed,
     ProviderClosed,
@@ -292,6 +297,7 @@ impl std::fmt::Display for PolicyError {
             Self::IllegalAction => "provider action is absent from the current catalog",
             Self::MissingOperation => "recovery reconciliation lacks an operation identity",
             Self::MalformedDecision => "provider decision is malformed",
+            Self::ProviderNotStarted => "provider transport never started; no inference was sent",
             Self::ProviderUnavailable => "provider is unavailable",
             Self::ProviderMalformed => "provider request or response is malformed",
             Self::ProviderClosed => "provider session is closed",
@@ -303,6 +309,7 @@ impl std::fmt::Display for PolicyError {
 
 fn map_exo_error(error: ExoError) -> PolicyError {
     match error {
+        ExoError::NotStarted => PolicyError::ProviderNotStarted,
         ExoError::Unavailable | ExoError::Timeout => PolicyError::ProviderUnavailable,
         ExoError::Closed => PolicyError::ProviderClosed,
         ExoError::Decision(_) => PolicyError::MalformedDecision,
