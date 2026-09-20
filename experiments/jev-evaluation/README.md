@@ -2,8 +2,11 @@
 
 Dependency-free experiment tooling for the opt-in tactical profile merged in PR #368,
 reviewed at `1a075bcd43380dbe45a4bb33c2f822d6777c5a17`.
-This is an **offline artifact reader and comparison planner**, not a game runner, provider
-client, Rust runtime change, or evidence that tactical play is better.
+The audit and cohort commands are **offline artifact readers and comparison planners**.
+The separately approved [bounded paired runner](RUNNER.md) can now invoke the existing
+bridge for independent baseline/tactical decisions. It requires explicit execution approval;
+planning and inspection remain read-only. Neither path runs a game, changes Rust runtime
+behavior, or establishes that tactical play is better.
 
 ## Run the verified local checks
 
@@ -12,7 +15,7 @@ are required. `package.json` declares the minimum runtime for this experiment.
 
 ```sh
 cd experiments/jev-evaluation
-node --test contract.test.mjs outcomes.test.mjs audit.test.mjs io.test.mjs
+node --test *.test.mjs
 node demo.mjs
 node cli.mjs plan ../../target/jev-evaluation-demo/cohort.json
 node cli.mjs audit ../../target/jev-evaluation-demo/pairs.json
