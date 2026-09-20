@@ -10,6 +10,10 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Run the existing compiled Jev paired-replay and frozen-pilot tests in both Node CI checks
+  through a locked-build [entrypoint](experiments/jev-evaluation/compiled-ci.sh). Failures do not
+  silently skip coverage. The transport stays synthetic; live gameplay benefit remains unverified.
+
 - **Refuse a served assembled input that does not fit beside its advertised output reserve.** The
   pre-existing `max_context_bytes` check bounded the request bytes alone; there was no served bound
   over the whole bytes actually sent. `ContextRenderLimits` and the context-owner descriptor both
