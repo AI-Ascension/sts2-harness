@@ -187,6 +187,19 @@ fn string<'a>(object: &'a Map<String, Value>, field: &str) -> Result<&'a str, St
         .ok_or_else(|| format!("Runtime-v3 {field} is invalid"))
 }
 
+/// The recovery state's `code` is the host's own reason token. It is required by the schema, so a
+/// recovery observation that omits it or carries an unsafe token is refused rather than reported as
+/// an anonymous recovery.
+fn recovery_code(value: &Value) -> Result<&str, String> {
+    value
+        .get("state")
+        .and_then(Value::as_object)
+        .and_then(|object| object.get("code"))
+        .and_then(Value::as_str)
+        .filter(|code| safe_identity(code))
+        .ok_or_else(|| String::from("Runtime-v3 recovery code is invalid"))
+}
+
 fn number(object: &Map<String, Value>, field: &str) -> Result<u64, String> {
     object
         .get(field)

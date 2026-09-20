@@ -77,7 +77,12 @@ pub enum EpisodeRunnerError {
     ConflictingOperation,
     MissingObservation,
     MissingEffectWitness,
-    RecoveryRequired,
+    /// The host reached a state policy may not act on. `code` is the host's own reason token
+    /// when the authoritative observation carried one, so a refused launch contract, an
+    /// unconfigured host and an unavailable observation are distinguishable in the failure.
+    RecoveryRequired {
+        code: Option<String>,
+    },
     UnexpectedRecoveryResult,
     UncertainMutation,
     StoppedByRecovery,
@@ -155,7 +160,17 @@ impl std::fmt::Display for EpisodeRunnerError {
             Self::ConflictingOperation => "episode operation identity conflicts",
             Self::MissingObservation => "episode transition omitted an observation",
             Self::MissingEffectWitness => "episode transition omitted an effect witness",
-            Self::RecoveryRequired => "episode requires recovery before policy can continue",
+            Self::RecoveryRequired { code } => {
+                return match code {
+                    Some(code) => write!(
+                        formatter,
+                        "episode requires recovery before policy can continue: host recovery code {code}"
+                    ),
+                    None => {
+                        formatter.write_str("episode requires recovery before policy can continue")
+                    }
+                };
+            }
             Self::UnexpectedRecoveryResult => "recovery returned an unexpected result",
             Self::UncertainMutation => "mutation outcome is uncertain; episode is fail-closed",
             Self::StoppedByRecovery => "episode stopped by explicit recovery",
