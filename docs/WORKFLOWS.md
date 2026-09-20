@@ -86,6 +86,13 @@ persisted-startup and cancellation-cleanup regressions remain required in the
 same lane. This is synthetic process-composition evidence, not native-host,
 native-provider, or game-effect evidence.
 
+The lane additionally requires the declared peers to serve the harness's own recovery sideband.
+The MCP peer is started with the `watchdog-recovery-v1` profile and must advertise the exact
+nine-tool sideband surface, and both peers must declare the same recovery frame contract and schema
+digest the harness pins. The default MCP pin moved from `f3b6eaa8` to `587a53ce` because the older
+revision predates that profile and refuses it, so the lane declared a pair its own recovery path
+could never reach. The gateway pin is unchanged: it already declares the same contract and digest.
+
 The ordinary pull-request and `main` paths use the immutable default peers. A
 coordinated candidate pair is permitted only through `workflow_dispatch` with
 full 40-hex gateway and/or MCP revisions; the checkout HEADs are compared to

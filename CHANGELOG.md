@@ -540,3 +540,8 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   one failure path now emits `rejected` instead of `settled`, and no field, route, durable record,
   or published schema changes. See
   [ADR 0047](docs/decisions/0047-failed-command-event-classification.md). Refs #260.
+
+- Promote the **runtime peer lane's MCP pin to a recovery-capable revision**. The lane declared MCP
+  `f3b6eaa8`, which predates the `watchdog-recovery-v1` sideband profile the harness starts before it
+  reads or reconciles a durable operation, so the lane's own recovery path was unreachable. The pin is
+  now `587a53ce`, and the lane adds operator-only peer capability checks; the gateway pin is unchanged.
