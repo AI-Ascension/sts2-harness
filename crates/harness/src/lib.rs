@@ -97,6 +97,7 @@ mod runtime_v4_expert_action_artifact;
 mod runtime_v4_expert_artifact;
 mod runtime_v4_expert_rest_action;
 mod runtime_v4_expert_rest_action_artifact;
+pub mod semantic_history;
 mod trace_diagnosis;
 
 pub mod worker_endpoint;
@@ -116,8 +117,6 @@ pub use context_capture::{
     NoopCapture, PreparedAstraInput, PreparedInput, PreparedOllamaInput, TransportState,
     generated_capture_attempt_id,
 };
-pub use context_control::*;
-pub use coop_native::*;
 pub use coordinator::{EpisodeHandle, Harness, HarnessParts};
 pub use decision_fence::{DecisionFence, DecisionToken, FenceError, MAX_OUTSTANDING_DECISIONS};
 pub use decision_records::{DecisionPayload, DecisionRecord, DecisionRecordKind, EvidenceStatus};
@@ -305,3 +304,4 @@ pub use runtime_v4_expert_rest_action_artifact::{
     verify_runtime_v4_expert_rest_action_artifact,
 };
 pub use trace_diagnosis::{PublicDivergenceStatus, TraceDiagnosis, diagnose_traces};
+pub use {context_control::*, coop_native::*};
