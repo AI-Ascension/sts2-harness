@@ -10,6 +10,12 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Add opt-in Jev `--audit-dir` metadata sidecars with bounded, create-only Unix reservations,
+  separate execution/input fingerprints, no raw prompts or action IDs, and no extra provider calls.
+  Runtime stdout stays one decision; storage failures refuse it. Add a redacted paired reader and
+  CI for the offline evaluation tests. Windows capture, native gameplay benefit and live paired
+  orchestration remain unverified. See [capture documentation](experiments/jev-evaluation/CAPTURE.md).
+
 - Record **queryable semantic combat and run history with causal provenance**. The host's bounded
   semantic event vocabulary had no harness-owned durable history behind it, so a run could not be
   asked what happened or why a value changed. The new `semantic_history` module appends each event

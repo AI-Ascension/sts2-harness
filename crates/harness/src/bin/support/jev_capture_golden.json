@@ -1,0 +1,27 @@
+{
+  "schema": "ascension.jev-redacted-capture.v1",
+  "profile": "baseline",
+  "bridge_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "model_execution_id_digest": "342f2929a9421cda28d34facdebc2140ba82f29508398e29c884d1cb7e81aa3d",
+  "input_digest": "10d681276dc23e4505622abd13566f7d599f128342c6df7a622db89e510a1e1b",
+  "catalog_digest": "020461b2aa84cbd63ed5984ae5624954ab8ae86ac0e1a2805d329e43e7277761",
+  "catalog_count": 2,
+  "requested_model_digest": "3449c93722b115bb7b3be9cd57f8083a8209331a1f84cd91b66775e4a150d2bb",
+  "confidence_gate": 0.2,
+  "status": "complete",
+  "provider_attempts": 1,
+  "elapsed_ms": 12,
+  "decision": {
+    "kind": "action",
+    "selected_index": 0,
+    "candidate_index": null
+  },
+  "provider": {
+    "request_digest": "3f4416f2ebb7563c6aee25628d53a7b77001ff2126d42dcbc3ddd9a885c75c7a",
+    "shared_request_digest": "32cfe2082c30917825f16abe97951e572f22c3e7fe644bc358ee687ff4481fce",
+    "question_set_digest": "4da476d0b044f24e42fc5fe8a0092ae1d601b0374c51c5dbf11dcb410ab82318",
+    "response_model_digest": "3449c93722b115bb7b3be9cd57f8083a8209331a1f84cd91b66775e4a150d2bb",
+    "input_tokens": 7
+  },
+  "tactical": null
+}

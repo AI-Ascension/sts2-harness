@@ -1,0 +1,42 @@
+name: Jev evaluation contracts
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jev-evaluation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  offline-evaluation:
+    name: Offline evaluation (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.16.0', '24.18.0']
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - name: Validate experiment syntax
+        run: |
+          for file in experiments/jev-evaluation/*.mjs; do
+            node --check "$file"
+          done
+      - name: Run all offline tests
+        run: node --test experiments/jev-evaluation/*.test.mjs
+      - name: Generate the synthetic demonstration
+        run: node experiments/jev-evaluation/demo.mjs
