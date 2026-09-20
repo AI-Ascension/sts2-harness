@@ -10,6 +10,10 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Add a read-only [frozen Jev pilot profile](experiments/jev-evaluation/PILOT.md): ten pairs,
+  twenty reserved attempts, exact-manifest reconciliation, per-arm refusal/gate diagnostics and
+  matched input-token/latency accounting. No policy change or live gameplay benefit is claimed.
+
 - Add an explicitly approved [paired Jev replay runner](experiments/jev-evaluation/RUNNER.md):
   pinned matching inputs, reserved budgets, independent redacted captures, bounded Unix processes
   and read-only recovery. No game action is dispatched; native/provider benefit remains unverified.

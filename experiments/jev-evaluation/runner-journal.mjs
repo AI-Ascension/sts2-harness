@@ -67,7 +67,7 @@ export function summarize(plan, rows, phase = 'finished') {
 }
 
 // Read-only accounting, never resumption. An outstanding reservation may still be active.
-export async function inspectRun(directory) {
+export async function readRun(directory) {
   const root = resolve(directory); await privateDirectory(root);
   const document = await readOptionalJson(join(root, 'run.pending.json'), 1024 * 1024);
   requireThat(document !== null, 'runner_plan_missing');
@@ -102,5 +102,11 @@ export async function inspectRun(directory) {
       status: 'interrupted_unknown', process_started: null, child_closed: null,
       reserved_provider_attempts: 1, observed_provider_attempts: null, input_tokens: null }));
   }
+  return { plan, rows };
+}
+
+// Preserve the existing inspection shape; diagnostic readers share the same journal validation.
+export async function inspectRun(directory) {
+  const { plan, rows } = await readRun(directory);
   return { ...summarize(plan, rows, 'inspection_not_liveness_proof'), pair_audit_performed: false };
 }

@@ -9,6 +9,7 @@ import { isAbsolute, join } from 'node:path';
 import { sha256 } from './contract.mjs';
 import { executeRun, planRun } from './paired-runner.mjs';
 import { inspectRun } from './runner-journal.mjs';
+import { reportPilot } from './pilot.mjs';
 import { fixture } from './runner-test-fixtures.mjs';
 
 const binary = process.env.STS2_JEV_TEST_BRIDGE;
@@ -208,4 +209,14 @@ test('ten synthetic pairs reserve twenty attempts and retain twenty distinct exe
     const audit = await json(join(f.manifest.output_directory, 'audit-held_out.json'));
     assert.equal(audit.independent_action_pairs, 10); assert.equal(audit.counts.disagree, 10);
     assert.equal(audit.gameplay_improvement_established, false);
+    const pilot = await reportPilot(f.path);
+    assert.equal(pilot.incomplete, false);
+    assert.equal(pilot.cohort.scheduled_pairs, 10);
+    assert.equal(pilot.cohort.distinct_input_file_hashes, 1);
+    assert.equal(pilot.cohort.declared_clusters, 1);
+    assert.equal(pilot.overall.audit.independent_action_pairs, 10);
+    assert.equal(pilot.overall.execution.observed_provider_attempts_known_sum, 20);
+    assert.equal(pilot.splits.calibration, null);
+    assert.equal(pilot.splits.held_out.audit.scheduled_pairs, 10);
+    assert.equal(pilot.gameplay_improvement_established, false);
   });
