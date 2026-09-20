@@ -104,6 +104,21 @@ consumer can detect later. Refusal is therefore the contract, not a fallback.
     must carry the `Imported` origin so it can never read as an event this harness observed, a
     restored gap must keep the coverage label naming what its source could not see, and a span that
     does not abut the retained start is refused rather than leaving an undeclared hole behind it.
+13. **The repository's existing branch retention is applied here rather than bypassed.** A branch the
+    branch store has already pruned under its own operator-selected `BranchRetentionPolicy` must not
+    stay readable as gameplay detail on this surface, or an operator who deliberately pruned a branch
+    could still read its observed events through this one and the existing policy would be bypassed
+    instead of applied. The `BranchPrunePlan` the branch store's own prune already produced is taken
+    as **authoritative** rather than recomputed: this store holds no branch age and no branch status,
+    so a second derivation here would be a guess dressed as a policy. Every branch the plan names
+    that this store retains has its observed detail disclosed under the same rule this store's own
+    retention uses - each record keeps its identity and its sequence number and loses every gameplay
+    value, and the window gains a declared span carrying the retention label - so the boundary reads
+    as "not retained" rather than as a zero that was measured. A branch the plan names that this
+    store never captured is **counted rather than refused**, because a branch can predate this
+    surface or never have carried semantic events. The application is idempotent by operation
+    identity: a re-delivery discloses nothing a second time, and reusing that identity under another
+    selection is refused.
 
 ## Consequences
 
@@ -124,7 +139,8 @@ consumer can detect later. Refusal is therefore the contract, not a fallback.
 ## Verification
 
 `crates/harness/tests/semantic_history.rs` with
-`crates/harness/tests/semantic_history/{admission,persistence,query,retention,lookup,backfill}.rs` covers 97 cases:
+`crates/harness/tests/semantic_history/{admission,persistence,query,retention,lookup,backfill,branch_retention}.rs`
+covers 107 cases:
 coverage-shape and window refusals (decision 2), the causal-shape, absent-parent, non-preceding
 parent and imported-causality refusals plus bounded and cycle-refusing traversal (decisions 3 and
 4), the cross-branch and cross-epoch read refusals and bounded paging with continuation (decisions
@@ -139,7 +155,12 @@ ahead of the retained capture, the imported-origin and gap-label rules, the non-
 over-long and short span refusals, the binding, fence and scope refusals, the same-rules-as-a-live
 batch admission, the re-delivered and conflicting-identity restores, the restore that reaches the
 first sequence and leaves nothing before capture, the restart that keeps the restored span where
-capture begins, and the port that cannot read saved history (decision 12).
+capture begins, and the port that cannot read saved history (decision 12), and the branch the
+existing branch policy pruned being disclosed rather than left readable, the declared span its
+sequences need, the branch the plan did not name keeping its observed detail, the re-delivered and
+conflicting-identity applications, the empty selection refused and the branch this store never
+captured counted, the cause disclosed along with the value it explained, and the branch without
+observed detail that still records its application identity (decision 13).
 
 These establish component behaviour over batches the harness constructed. They do **not** prove a
 native event capture, a capture window the host actually declared, or that any campaign ran; those

@@ -37,6 +37,8 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   restored span lands ahead of the capture start under the same admission rules, is idempotent by
   operation identity, and keeps its own labels -- imported records stay imported and a restored gap
   keeps the coverage label naming what its source could not see.
+  The repository's existing branch retention is applied here rather than bypassed: the plan the
+  branch store's prune already produced is authoritative, and a branch it pruned is disclosed.
   Compatibility: additive; no wire field, schema or durable record changes, and no native event
   capture is claimed. See [ADR 0057](docs/decisions/0057-retained-semantic-history.md). Refs #128.
 
