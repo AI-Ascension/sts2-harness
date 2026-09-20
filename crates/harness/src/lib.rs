@@ -1,26 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-use sha2::{Digest as _, Sha256};
-
-/// Encode bytes as lowercase hexadecimal without formatting the digest type.
-#[must_use]
-pub fn hex_bytes(bytes: impl AsRef<[u8]>) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let bytes = bytes.as_ref();
-    let mut output = String::with_capacity(bytes.len() * 2);
-    for &byte in bytes {
-        output.push(HEX[(byte >> 4) as usize] as char);
-        output.push(HEX[(byte & 0x0f) as usize] as char);
-    }
-    output
-}
-
-/// Return the lowercase hexadecimal SHA-256 digest of `bytes`.
-#[must_use]
-pub fn sha256_hex(bytes: impl AsRef<[u8]>) -> String {
-    hex_bytes(Sha256::digest(bytes))
-}
-
 mod artifact;
 pub mod benchmark_manifest;
 mod catalog_identity;
@@ -68,6 +47,8 @@ mod exo_process;
 pub mod game_information;
 pub mod game_information_binding;
 mod game_information_validation;
+mod hashing;
+pub use hashing::{hex_bytes, sha256_hex};
 mod identity;
 pub mod management;
 mod map;
@@ -97,6 +78,7 @@ mod runtime_v4_expert_action_artifact;
 mod runtime_v4_expert_artifact;
 mod runtime_v4_expert_rest_action;
 mod runtime_v4_expert_rest_action_artifact;
+pub mod semantic_history;
 mod trace_diagnosis;
 
 pub mod worker_endpoint;

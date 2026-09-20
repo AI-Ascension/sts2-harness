@@ -10,6 +10,19 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Retain and query the **semantic run history** the game-mod now states. A new
+  `sts2_harness::semantic_history` surface admits the producer's semantic event batches and keeps them
+  as a durable, queryable history: a disclosed gap keeps its sequence number and carries no gameplay
+  detail, a causal parent is stored only when the producer stated one, sequence order is monotonic and
+  contiguous inside one run, branch, episode and epoch, and a read that names another scope is refused
+  rather than answered from this history. Queries narrow by kind, origin, coverage, subject identity
+  and sequence range, are bounded, and resume from a continuation; a causal traversal walks stated
+  parents backwards and refuses rather than truncates when it would exceed its bounds or revisit an
+  event. Re-appending an identical batch is a no-op, reusing an append identity with a different
+  payload is refused, and a fork inherits its ancestor by lineage and appends only what is new.
+  Compatibility: additive; no wire field, schema or durable record changes, and no native event
+  capture is claimed. See [ADR 0057](docs/decisions/0057-retained-semantic-history.md). Refs #128.
+
 - Name the **host's recovery reason** in an episode failure instead of reporting every recovery
   condition with one sentence. A runtime-v3 recovery state carries the condition that produced it
   in the sibling `code`, but the parser read only the stage, so a refused launch contract
