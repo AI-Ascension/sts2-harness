@@ -141,6 +141,12 @@ impl LiveNodeExecutor<'_, '_> {
         let execution_id =
             crate::ModelExecutionId::new(held_execution_id).ok_or(RuntimeFault::InvalidState)?;
         let input = self.decision_input(execution_id, &observation, &actions);
+        // The admitted request is the identity, not only the execution number: the same number
+        // against a different observation, objective or catalog is a request the attempt was never
+        // paid for. No served command reaches this fence today -- a fault raised after the decision
+        // was accepted fails the runtime, and only a `NeedsOperator` runtime is re-opened -- so it
+        // is held for any future caller that can re-step a node already carrying an accepted
+        // attempt, and it is deliberately asserted here rather than assumed from the call graph.
         if decision_input_digest(&input, &actions)? != held_digest {
             // The admitted request is no longer the one the attempt was paid for. The held
             // identity may not be retargeted, and a second identity may not be minted while this
