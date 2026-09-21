@@ -43,6 +43,9 @@ pub(super) fn settings_from_environment(
     )
     .map_err(|error| format!("lookup-agent runtime configuration is invalid: {error}"))?
     .with_visible_seed_forwarding(false);
+    // The lookup lane names no decision provider, so its live-episode declaration is its whole
+    // claim; installed last, once the run is admitted.
+    live_admission::install(live_admission::resolve_declared(live_admission::declared()?))?;
     Ok(RuntimeV3Settings {
         runner,
         exo,

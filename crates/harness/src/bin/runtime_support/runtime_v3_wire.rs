@@ -5,6 +5,7 @@ use sts2_harness::ActionKind;
 
 use super::mcp::McpProcess;
 use super::mcp_process::McpProcessError;
+use super::runtime_v3_settings::live_admission::admitted_live_episode;
 
 #[path = "runtime_v3_wire_recovery.rs"]
 mod recovery;
@@ -118,7 +119,7 @@ fn rpc_call_with_read_kind(
         )));
     }
     if response.get("error").is_some() {
-        if std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true") {
+        if admitted_live_episode() {
             // Preserve the numeric RPC category without the remote message or data payload.
             eprintln!(
                 "MCP RPC failure: code={:?}",

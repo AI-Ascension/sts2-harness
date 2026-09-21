@@ -2,6 +2,8 @@
 
 const MAX_REPLAY_EVENT_BYTES: usize = 512 * 1024;
 
+use super::super::runtime_v3_settings::live_admission::admitted_live_episode;
+
 #[cfg(test)]
 use std::cell::RefCell;
 
@@ -10,7 +12,7 @@ thread_local! {
     static REPLAY_CAPTURE: RefCell<Option<Vec<u8>>> = const { RefCell::new(None) };
 }
 fn replay_enabled() -> bool {
-    std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true")
+    admitted_live_episode()
 }
 
 fn encode_replay_event(event: &serde_json::Value) -> Option<Vec<u8>> {

@@ -111,3 +111,23 @@ development bridges
 `STS2_EXO_ADMISSION=legacy`, which is an explicit acknowledgement of an un-admitted bridge rather
 than an admission. Rollback is to set `legacy`; no wire field, schema, contract version or durable
 record changes. Per-turn envelope admission for a multi-turn episode remains open.
+
+### Live-episode admission
+
+A live episode is a capability the provider kind declares rather than a spelling beside the lane
+([ADR 0060](decisions/0060-live-episode-capability-admission.md)). `openai-astra` and `exo` declare
+it; `ollama`, `typesafe-jev` and `synthetic` do not, and a run that declares `STS2_LIVE_EPISODE=true`
+on one of them is refused. The Exo lane's capability is backed by the reviewed envelope's
+inspection of its descriptor, so `exo` carries a live episode only under `STS2_EXO_ADMISSION=envelope`;
+the raw-wire `legacy` acknowledgement does not inspect the descriptor and cannot stand in for it.
+The Astra lane is unaffected and still takes its live episode on the raw-wire lane under the digest
+and argument checks it always applied.
+
+A `STS2_PROVIDER_KIND` this runtime does not implement — `openai_astra`, `OpenAI-Astra`, `exo-bridge`
+or any typo — is refused while settings are assembled, before the durable execution store, the
+gateway, the MCP session or the provider exists. Previously such a name took the non-bridge branch
+and ran under the reviewed Exo source revision, so it selected a lane nobody named. The admitted
+live mode is installed once per process and is what the replay stream and the live diagnostics read;
+a process that inherits the variable without the admission behaves as a standard run. The lanes that
+are admitted and their requirements are otherwise unchanged: this is a refusal of an unimplemented
+name, not a new lane.

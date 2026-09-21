@@ -10,6 +10,17 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Admit a live episode from the provider lane's declared capability, not from a name.** A live
+  `STS2_LIVE_EPISODE=true` run was admitted only when `STS2_PROVIDER_KIND` was exactly
+  `openai-astra`, which left the Exo lane unable to be admitted for one, while any unimplemented name
+  fell through the non-bridge branch and ran under the reviewed Exo source revision. The kind is now
+  a type whose declarations decide whether the lane is a locally launched bridge and whether it
+  claims live-episode capability (`openai-astra` and `exo`); an unimplemented name is refused while
+  settings are assembled, and `exo` carries a live episode only under `STS2_EXO_ADMISSION=envelope`.
+  The admitted mode is installed once and is what the replay stream and the live diagnostics read.
+  Compatibility: the documented lanes are unchanged; a `STS2_PROVIDER_KIND` no lane implements is
+  now refused instead of running silently as the reviewed executor. See
+  [ADR 0060](docs/decisions/0060-live-episode-capability-admission.md). Refs #145.
 - Add Linux [Jev streaming mode](experiments/jev-plays-sts2/STREAMING.md): retain the game with manual resume; preserve timed benchmarks. Automatic terminal progression remains unavailable.
 - **Hold one live decision attempt so a lost reply cannot buy a second one.** A live `Decide` node
   took a fresh `ModelExecutionId` on every entry and kept no record of the attempt, so an

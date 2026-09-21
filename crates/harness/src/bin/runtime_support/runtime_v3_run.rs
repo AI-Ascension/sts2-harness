@@ -218,7 +218,7 @@ pub(super) fn run(
     let report = match result {
         Ok(report) => report,
         Err(error) => {
-            if std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true") {
+            if super::runtime_v3_settings::live_admission::admitted_live_episode() {
                 eprintln!("runtime-v3 episode primary error: {error:?}");
             }
             durable.mark_interrupted_unknown("runtime-v3 episode failed");

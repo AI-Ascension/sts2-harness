@@ -2,6 +2,8 @@
 use serde_json::Value;
 use std::collections::BTreeSet;
 
+use super::super::runtime_v3_settings::live_admission::admitted_live_episode;
+
 const GAMEPLAY: [&str; 6] = [
     "sts2.observe",
     "sts2.legal_actions",
@@ -37,7 +39,7 @@ pub(super) fn validate(response: &Value) -> Result<(), String> {
     let tools = result["tools"]
         .as_array()
         .ok_or_else(|| "MCP lookup catalog omitted tools".to_owned())?;
-    if std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true") {
+    if admitted_live_episode() {
         eprintln!(
             "MCP negotiated tools: {:?}",
             tools
