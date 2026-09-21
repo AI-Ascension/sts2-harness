@@ -88,6 +88,13 @@ persisted-startup and cancellation-cleanup regressions remain required in the
 same lane. This is synthetic process-composition evidence, not native-host,
 native-provider, or game-effect evidence.
 
+The lane also runs both `runtime_v4_rest_executable_composition` selector cases, one per selector
+encoding (`synthetic` and `native`), against the same peers. Each drives an authored
+observe → decide → execute-action → terminal graph through the served REST surface and requires every
+durable receipt to settle with its original operation identity and effect witness before the next
+step is admitted. Each composition writes under its own evidence directory, so a REST run cannot
+overwrite the generic composition's `result.json`.
+
 The lane additionally requires the declared peers to serve the harness's own recovery sideband.
 The MCP peer is started with the `watchdog-recovery-v1` profile and must advertise the exact
 nine-tool sideband surface, and both peers must declare the same recovery frame contract and schema

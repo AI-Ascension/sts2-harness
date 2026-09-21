@@ -8,26 +8,47 @@
 //! indistinguishable from a passing lane: the test is simply never invoked, and a
 //! regression it was written to catch stays invisible. The idle-adoption witness for the
 //! permanent mid-run policy-adoption fence (issue #255) was declared that way and shipped
-//! with no step, so its regression could not be observed.
+//! with no step, so its regression could not be observed; the executable REST selector
+//! composition (issue #148) was declared the same way and reached no gate at all.
 //!
-//! This check reads the committed lane source and the committed lane workflow, so drift in
+//! This check reads the committed lane sources and the committed lane workflow, so drift in
 //! either direction fails an ordinary workspace run:
 //!
 //! - a declared operator-only composition test that no lane step executes, and
 //! - a lane `--exact` invocation that names no declared operator-only test.
 //!
+//! Each lane is paired with the test binary its declarations belong to, so one binary's
+//! step is never compared against another binary's declarations.
+//!
 //! It compares text shapes; it does not start a peer. Whether the lane itself passes
 //! remains the lane's own result.
 
-const LANE_SOURCE: &str = include_str!("runtime_v4_executable_composition.rs");
 const LANE_WORKFLOW: &str = include_str!("../../../.github/workflows/runtime-peer-contract.yml");
 
 const OPERATOR_ONLY_MARKER: &str = "#[ignore = \"operator-only test; requires explicitly built gateway, MCP, and harness binaries\"]";
-const LANE_TEST_BINARY: &str = "--test runtime_v4_executable_composition";
 const EXACT_INVOCATION: &str = "-- --ignored --exact ";
-const IDLE_ADOPTION_WITNESS: &str = "served_decision_survives_changed_policy_adopted_while_idle";
 
-/// Operator-only tests declared in the lane source, in declaration order.
+/// One declared operator-only lane: its source, its test binary, and one witness it must keep.
+struct Lane {
+    source: &'static str,
+    test_binary: &'static str,
+    required_witness: &'static str,
+}
+
+const LANES: &[Lane] = &[
+    Lane {
+        source: include_str!("runtime_v4_executable_composition.rs"),
+        test_binary: "--test runtime_v4_executable_composition",
+        required_witness: "served_decision_survives_changed_policy_adopted_while_idle",
+    },
+    Lane {
+        source: include_str!("runtime_v4_rest_executable_composition.rs"),
+        test_binary: "--test runtime_v4_rest_executable_composition",
+        required_witness: "executable_runtime_v4_rest_composes_full_selection_recovery_chain",
+    },
+];
+
+/// Operator-only tests declared in a lane source, in declaration order.
 fn declared_operator_only_tests(source: &str) -> Vec<String> {
     let mut names = Vec::new();
     let mut pending = false;
@@ -61,11 +82,11 @@ fn attributed_test_name(trimmed: &str) -> Option<String> {
     Some(name.to_owned())
 }
 
-/// Test names the lane workflow invokes with `--ignored --exact`.
-fn lane_exact_targets(workflow: &str) -> Vec<String> {
+/// Test names the lane workflow invokes for `test_binary` with `--ignored --exact`.
+fn lane_exact_targets(workflow: &str, test_binary: &str) -> Vec<String> {
     let mut names = Vec::new();
     for line in workflow.lines() {
-        if !line.contains(LANE_TEST_BINARY) {
+        if !line.contains(test_binary) {
             continue;
         }
         if let Some((_, tail)) = line.split_once(EXACT_INVOCATION)
@@ -77,39 +98,43 @@ fn lane_exact_targets(workflow: &str) -> Vec<String> {
     names
 }
 
-/// True when one lane command runs every ignored test in the binary instead of naming them.
-fn lane_runs_every_ignored_test(workflow: &str) -> bool {
+/// True when one lane command runs every ignored test in `test_binary` instead of naming them.
+fn lane_runs_every_ignored_test(workflow: &str, test_binary: &str) -> bool {
     workflow.lines().any(|line| {
-        line.contains(LANE_TEST_BINARY)
-            && line.contains("-- --ignored")
-            && !line.contains("--exact")
+        line.contains(test_binary) && line.contains("-- --ignored") && !line.contains("--exact")
     })
 }
 
 #[test]
 fn every_declared_operator_only_composition_test_is_executed_by_the_lane() {
-    let declared = declared_operator_only_tests(LANE_SOURCE);
-    assert!(
-        declared.contains(&IDLE_ADOPTION_WITNESS.to_owned()),
-        "the lane source no longer declares the idle-adoption witness; declared: {declared:?}"
-    );
-    assert!(
-        LANE_WORKFLOW.contains(LANE_TEST_BINARY),
-        "the runtime peer contract lane never invokes {LANE_TEST_BINARY}"
-    );
-    let runs_every_ignored_test = lane_runs_every_ignored_test(LANE_WORKFLOW);
-    let exact = lane_exact_targets(LANE_WORKFLOW);
-    for name in &declared {
+    for lane in LANES {
+        let declared = declared_operator_only_tests(lane.source);
         assert!(
-            runs_every_ignored_test || exact.contains(name),
-            "operator-only test {name} is declared but no runtime peer contract step runs it"
+            declared
+                .iter()
+                .any(|name| name.as_str() == lane.required_witness),
+            "the lane source no longer declares {}; declared: {declared:?}",
+            lane.required_witness
         );
-    }
-    for target in &exact {
         assert!(
-            declared.contains(target),
-            "the lane runs {target} but the source declares no such operator-only test"
+            LANE_WORKFLOW.contains(lane.test_binary),
+            "the runtime peer contract lane never invokes {}",
+            lane.test_binary
         );
+        let runs_every_ignored_test = lane_runs_every_ignored_test(LANE_WORKFLOW, lane.test_binary);
+        let exact = lane_exact_targets(LANE_WORKFLOW, lane.test_binary);
+        for name in &declared {
+            assert!(
+                runs_every_ignored_test || exact.contains(name),
+                "operator-only test {name} is declared but no runtime peer contract step runs it"
+            );
+        }
+        for target in &exact {
+            assert!(
+                declared.contains(target),
+                "the lane runs {target} but the source declares no such operator-only test"
+            );
+        }
     }
 }
 
@@ -131,17 +156,42 @@ fn the_lane_check_reads_declared_tests_and_ignores_unrelated_ignores() {
 
 #[test]
 fn the_lane_check_separates_exact_targets_from_a_whole_binary_run() {
+    let binary = "--test runtime_v4_executable_composition";
     let exact = concat!(
         "        run: cargo test --locked -j 2 --package sts2-harness ",
         "--test runtime_v4_executable_composition -- --ignored --exact witnessed_decision\n",
     );
-    assert_eq!(lane_exact_targets(exact), ["witnessed_decision"]);
-    assert!(!lane_runs_every_ignored_test(exact));
+    assert_eq!(lane_exact_targets(exact, binary), ["witnessed_decision"]);
+    assert!(!lane_runs_every_ignored_test(exact, binary));
 
     let whole = concat!(
         "        run: cargo test --locked -j 2 --package sts2-harness ",
         "--test runtime_v4_executable_composition -- --ignored\n",
     );
-    assert!(lane_runs_every_ignored_test(whole));
-    assert!(lane_exact_targets(whole).is_empty());
+    assert!(lane_runs_every_ignored_test(whole, binary));
+    assert!(lane_exact_targets(whole, binary).is_empty());
+}
+
+/// A step for one test binary must never be read as a step for its sibling, whose file stem
+/// merely shares a prefix.
+#[test]
+fn the_lane_check_never_cross_reads_a_sibling_test_binary() {
+    let workflow = concat!(
+        "        run: cargo test --locked -j 2 --package sts2-harness ",
+        "--test runtime_v4_executable_composition -- --ignored --exact witnessed_decision\n",
+        "        run: cargo test --locked -j 2 --package sts2-harness ",
+        "--test runtime_v4_rest_executable_composition -- --ignored --exact rest_witnessed_decision\n",
+    );
+    assert_eq!(
+        lane_exact_targets(workflow, "--test runtime_v4_executable_composition"),
+        ["witnessed_decision"]
+    );
+    assert_eq!(
+        lane_exact_targets(workflow, "--test runtime_v4_rest_executable_composition"),
+        ["rest_witnessed_decision"]
+    );
+    assert!(!lane_runs_every_ignored_test(
+        workflow,
+        "--test runtime_v4_rest_executable_composition"
+    ));
 }

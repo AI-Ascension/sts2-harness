@@ -460,3 +460,41 @@ that preceded the entries below is preserved in
   declared input did not settle, and records an unwinding branch as `BranchLost` rather than
   stalling. `ParallelCap::SERIAL` keeps cap=1 compatible and `execute_plan` is unchanged; this is
   additive, and budget reservation, cancel/restart and browser branch state remain open. See [ADR 0049](decisions/0049-bounded-parallel-analysis-join.md). Refs #98.
+
+- Persist **logical-invocation context lifetime consumption at dispatch admission**. A continuity
+  owner issues a bounded `ContextLifetimeScope` (`ascension.context-control.lifetime.v1`) over
+  ordered context item ids for one agent/episode/run — optionally pinned to one branch — with
+  applicability `current_invocation` or `next_n { bound }` and a wall-clock ceiling that is an
+  additional bound rather than the mechanism. Applicability is consumed at exactly one site, durable
+  dispatch admission, on a logical `invocation_id` whose `attempt` distinguishes transport retries:
+  a preview, reload, receipt lookup or retry never consumes, extends or resurrects applicability,
+  and a retry of the same logical invocation is answered with its existing manifest instead of a
+  second slot. A crash *before* the durable write consumes nothing; a crash *after* it leaves the
+  slot consumed and the invocation held as a possible dispatch until reconciliation, because a
+  dispatch that may have happened is never silently handed back. Counters and identities persist
+  through `ContextControlStore` as `ascension.context-control.lifetime-state.v1`, so a restart
+  replays the same window. Manifests are append-only and their digest binds the immutable admission
+  facts, so reconciliation and expiry never rewrite or delete history. Sibling agents, branches,
+  episodes and runs cannot inherit a scope. Compatibility: additive-compatible; one new table
+  (`context_control_lifetime`), no change to an existing table, column, digest or route; see
+  [ADR 0051](decisions/0051-logical-invocation-lifetime-consumption.md). Refs #111.
+
+- Exercise **stale-generation and not-observable bootstrap refusals against the pinned real
+  Gateway and MCP** in the game-information peer-contract lane. The synthetic producer behind the
+  pinned peers now selects a closed `PeerNegative` (`None`, `ForeignManifest`, `StaleGeneration`,
+  `NotObservable`) instead of a boolean, and two operator-only entry tests assert the runtime exits
+  non-zero, delivers no data or decision to the agent, reaches the Gateway lookup-binding route,
+  issues no content query, and surfaces exactly the typed lookup error (`Reobserve`,
+  `MissingCapability`) for the producer's bootstrap answer. Two harness consumer corrections were
+  required for the negotiated bootstrap to be reachable at all: the MCP catalog validator now
+  accepts the MCP's `live_details` capability group for the bootstrap tool (no MCP group is named
+  after the tool), and the runtime RPC wrapper preserves a structured bootstrap `error_response`
+  tool error so its `error.code` maps to a typed lookup error instead of an opaque transport
+  failure. The workflow runs its `cargo test | tee` steps under `bash -eo pipefail`, so a failing
+  peer test fails its step. The lane pins the Gateway and MCP revisions that make the bootstrap
+  reachable end to end: the Gateway bounds a bootstrap request's declared limits by the pinned
+  schema's maxima rather than its smaller response-framing ceiling, and the MCP forwards the sealed
+  bootstrap envelope verbatim instead of injecting runtime-v1 transport identity and keeps a typed
+  bootstrap `error_response` on a 5xx answer instead of collapsing it to a retryable
+  `gateway_unavailable`. Compatibility: internal; no schema, route or durable record changes.
+  Refs #127, #276.
