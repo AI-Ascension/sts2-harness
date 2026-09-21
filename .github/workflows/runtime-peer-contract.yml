@@ -151,6 +151,14 @@ jobs:
           cargo test --locked -j 2 --package sts2-harness --test runtime_peer_recovery_sideband -- --ignored --exact configured_mcp_peer_serves_the_watchdog_recovery_sideband
           cargo test --locked -j 2 --package sts2-harness --test runtime_peer_recovery_sideband -- --ignored --exact declared_peers_carry_one_recovery_frame_contract
 
+      - name: Exercise the shipped host-lease campaign downstream
+        working-directory: harness
+        run: |
+          binary=$(cargo test --locked -j 2 --package sts2-harness --test synthetic_mod_server --no-run \
+            --message-format=json | grep -o '"executable":"[^"]*synthetic_mod_server-[^"]*"' | tail -n1 | cut -d'"' -f4)
+          test -x "$binary"
+          STS2_SYNTHETIC_MOD_SERVER_BINARY="$binary" cargo test --locked -j 2 --package sts2-harness --test host_lease_control_served -- --ignored --exact the_env_configured_campaign_downstream_answers_a_signed_install
+
       - name: Exercise hostile startup and cancellation cleanup regressions
         working-directory: harness
         run: |
