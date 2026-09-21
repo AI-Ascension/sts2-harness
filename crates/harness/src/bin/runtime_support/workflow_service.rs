@@ -5,9 +5,9 @@ use std::sync::Arc;
 use serde::Deserialize;
 use serde_json::json;
 use sts2_harness::management::{
-    AuthContext, DurableProviderSessionPolicyCommandPort, EnvironmentAuthenticator, ExecutionMode,
-    LiveProviderPolicyPort, LiveProviderSessionFactory, LiveRuntimeSessionFactory,
-    LiveTargetCatalogPort, LiveWorkflowSessionFactory, ManagementError,
+    AuthContext, BoundaryCaptureSink, DurableProviderSessionPolicyCommandPort,
+    EnvironmentAuthenticator, ExecutionMode, LiveProviderPolicyPort, LiveProviderSessionFactory,
+    LiveRuntimeSessionFactory, LiveTargetCatalogPort, LiveWorkflowSessionFactory, ManagementError,
     ProductionLiveWorkflowSessionFactory, ProviderSessionPolicyCommandPort,
     ProviderSessionPolicyOwnerPort, RunRequest, RuntimeAuthorityBinding, TargetAvailability,
     TargetCatalogResponse, TargetDescriptor,
@@ -91,6 +91,13 @@ fn factory(
     ).map_err(|error| error.to_string())?
         .with_context_observations(observations)
         .with_context_render_port(render)
+        // The served boundary records through this sink: the approved material and the bytes the
+        // boundary wrote are one value only if the sink records the release before the write, so the
+        // served composition attaches a recording ring rather than the inert default.
+        .with_capture_sink(
+            BoundaryCaptureSink::memory_ring()
+                .map_err(|error| format!("served boundary capture configuration: {error}"))?,
+        )
         .with_inference_profile_catalog(Arc::new(
             inference_profiles::InferenceProfileCatalogProducer::new(provider_capabilities),
         ))))

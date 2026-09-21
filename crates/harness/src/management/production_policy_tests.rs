@@ -274,6 +274,8 @@ fn make_session(
         policy_change_fenced: false,
         inference_profiles: None,
         admitted_profiles: None,
+        boundary: ServedBoundaryLedger::default(),
+        boundary_capture: BoundaryCaptureSink::default(),
         authority_binding: RuntimeAuthorityBinding {
             instance_id: "test-instance".to_owned(),
             session_id: "test-session".to_owned(),
@@ -415,3 +417,7 @@ mod managed_render_tests;
 #[cfg(test)]
 #[path = "production_membership_render_tests.rs"]
 mod membership_render_tests;
+
+#[cfg(test)]
+#[path = "production_boundary_tests.rs"]
+mod boundary_tests;

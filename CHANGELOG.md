@@ -10,6 +10,12 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Record the served managed boundary before it writes.** The exact material a served managed
+  decision approved was never compared with the bytes it wrote. The exchange now runs inside the
+  recording write port, so a session with no recording sink refuses (`prepared_boundary_unsupported`)
+  instead of publishing exactness, and the served composition attaches a bounded recording ring so a
+  managed decision records its boundary rather than refusing. See
+  [ADR 0061](docs/decisions/0061-served-managed-boundary-recording.md). Refs #108.
 - **Size the jev process-teardown pipe-cleanup bound above host-load jitter.** The paired runner gave
   a killed process group 250 ms to close an inherited pipe and reported `child_closed: false` past
   that, but a clean host's kill-to-close tail already reaches 250-306 ms under load, so the flag read
