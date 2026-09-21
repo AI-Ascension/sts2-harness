@@ -193,6 +193,16 @@ impl LiveWorkflowExecutionPort {
         let runtime = StrictRuntime::new(compiled)
             .map_err(|error| ManagementError::invalid("runtime_admission", error.to_string()))?;
         let run_id = live_run_id(request, definition_digest)?;
+        // A repeated run identity is refused before the reservation, the session open and the
+        // episode launch. The authoritative re-check below still runs under the registry lock, but
+        // refusing only there would let a duplicate submission reserve the submission and start a
+        // second live episode before the caller learned the identity was taken.
+        if self.runs.lock().map_err(lock_error)?.contains_key(&run_id) {
+            return Err(ManagementError::conflict(
+                "live_duplicate_run",
+                "live run identity was already admitted",
+            ));
+        }
         let mut snapshot = snapshot_from_runtime(
             &run_id,
             definition_digest,
@@ -274,7 +284,18 @@ impl LiveWorkflowExecutionPort {
         let mut runs = self.runs.lock().map_err(lock_error)?;
         if runs.contains_key(&run_id) {
             drop(runs);
-            let _ = cleanup_session(&mut run, true);
+            // Only a submission that raced past the early check reaches this path, and the session
+            // it launched still has to be torn down. A failed teardown must be reported rather than
+            // discarded, which would leave an operator-visible episode behind.
+            if let Err(error) = cleanup_session(&mut run, true) {
+                return Err(ManagementError::unavailable(
+                    "live_duplicate_cleanup_failed",
+                    format!(
+                        "live duplicate run refused; cleanup failed ({})",
+                        error.code
+                    ),
+                ));
+            }
             return Err(ManagementError::conflict(
                 "live_duplicate_run",
                 "live run identity was already admitted",
