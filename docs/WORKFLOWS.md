@@ -73,7 +73,9 @@ real peers and has no game, provider, or host authority.
 The lane runs the generic runtime composition and served `serve-workflow`
 policy, restart, and managed-context regressions against those same peers. The
 policy case exercises run-scoped policy GET and adoption, settles one action,
-and verifies the live context binding. The restart case persists an unknown
+and verifies the live context binding; its sibling adopts a changed policy while
+the run sits at an idle decision cursor and requires the following decision to
+execute rather than fence the run. The restart case persists an unknown
 operation, restarts against the same stores, and proves a later step is refused
 without a second effect. The managed-context case publishes and adopts an
 allowlisted source against the actual decision cursor, then verifies one
