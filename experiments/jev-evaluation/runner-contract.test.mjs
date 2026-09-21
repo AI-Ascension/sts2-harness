@@ -77,7 +77,7 @@ for (const [name, mutate] of [
   ['input bytes change', async f => writeFile(f.inputPath, '{}\n')],
   ['world-readable input', async f => f.chmod(f.inputPath, 0o644)],
   ['world-readable manifest', async f => f.chmod(f.path, 0o644)],
-  ['unsafe output parent', async f => { await mkdir(join(f.root, 'public'), { mode: 0o755 }); f.manifest.output_directory = join(f.root, 'public/run'); await f.save(); }],
+  ['unsafe output parent', async f => { const parent = join(f.root, 'public'); await mkdir(parent, { mode: 0o755 }); await f.chmod(parent, 0o755); f.manifest.output_directory = join(parent, 'run'); await f.save(); }],
   ['input symlink', async f => { await symlink(f.inputPath, join(f.root, 'linked.json')); f.manifest.pairs[0].input_path = 'linked.json'; await f.save(); }],
   ['bridge drift', async f => writeFile(f.bridge, 'changed')],
   ['group-writable executable', async f => f.chmod(f.transport, 0o770)],
