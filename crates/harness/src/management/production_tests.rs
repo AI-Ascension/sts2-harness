@@ -23,9 +23,21 @@ const STATIC_LEASE: &str = "configured-lease";
 const ACQUIRED_LEASE: &str = "gateway-recovery-lease";
 const SESSION_ID: &str = "runtime-session";
 
-struct Runtime {
+pub(super) type Shared<T> = Arc<Mutex<T>>;
+
+/// Counts the boundary crossings a fence is supposed to prevent.
+#[derive(Default, PartialEq, Eq, Debug)]
+pub(super) struct Counters {
+    pub(super) runtime_opens: usize,
+    pub(super) dispatch_calls: usize,
+    pub(super) decide_calls: usize,
+    pub(super) provider_opens: usize,
+}
+
+pub(super) struct Runtime {
     observation: EpisodeObservation,
     lease: RuntimeLeaseBinding,
+    counters: Shared<Counters>,
 }
 
 impl EpisodeRuntimePort for Runtime {
@@ -62,6 +74,7 @@ impl EpisodeRuntimePort for Runtime {
         _identity: &ActionIdentity,
         _action: &EpisodeLegalAction,
     ) -> Result<TransitionReceipt, PortError> {
+        self.counters.lock().expect("counter lock").dispatch_calls += 1;
         Err(PortError::new(
             "test_dispatch_unused",
             "dispatch is not part of the lease-binding regression",
@@ -112,10 +125,11 @@ impl ShutdownPort for Runtime {
     }
 }
 
-struct RuntimeFactory {
-    authority: RuntimeAuthorityBinding,
-    acquired: RuntimeLeaseBinding,
-    observation: EpisodeObservation,
+pub(super) struct RuntimeFactory {
+    pub(super) authority: RuntimeAuthorityBinding,
+    pub(super) acquired: RuntimeLeaseBinding,
+    pub(super) observation: EpisodeObservation,
+    pub(super) counters: Shared<Counters>,
 }
 
 impl LiveRuntimeSessionFactory for RuntimeFactory {
@@ -126,9 +140,11 @@ impl LiveRuntimeSessionFactory for RuntimeFactory {
         _definition: &WorkflowDefinition,
         _definition_digest: &str,
     ) -> Result<Box<dyn EpisodeRuntimePort + Send>, ManagementError> {
+        self.counters.lock().expect("counter lock").runtime_opens += 1;
         Ok(Box::new(Runtime {
             observation: self.observation.clone(),
             lease: self.acquired.clone(),
+            counters: Arc::clone(&self.counters),
         }))
     }
 
@@ -143,7 +159,7 @@ impl LiveRuntimeSessionFactory for RuntimeFactory {
     }
 }
 
-struct Catalog;
+pub(super) struct Catalog;
 
 impl LiveTargetCatalogPort for Catalog {
     fn target_catalog(
@@ -157,7 +173,7 @@ impl LiveTargetCatalogPort for Catalog {
     }
 }
 
-struct Policy;
+pub(super) struct Policy;
 
 impl LiveProviderPolicyPort for Policy {
     fn load_active_policy(
@@ -182,7 +198,9 @@ impl LiveProviderPolicyPort for Policy {
     }
 }
 
-struct Provider;
+pub(super) struct Provider {
+    pub(super) counters: Shared<Counters>,
+}
 
 impl LiveProviderSessionFactory for Provider {
     fn open_provider(
@@ -192,21 +210,27 @@ impl LiveProviderSessionFactory for Provider {
         _definition: &WorkflowDefinition,
         _definition_digest: &str,
     ) -> Result<Box<dyn DecisionSource + Send>, ManagementError> {
-        Ok(Box::new(NoopDecision))
+        self.counters.lock().expect("counter lock").provider_opens += 1;
+        Ok(Box::new(NoopDecision {
+            counters: Arc::clone(&self.counters),
+        }))
     }
 }
 
-struct NoopDecision;
+struct NoopDecision {
+    counters: Shared<Counters>,
+}
 
 impl DecisionSource for NoopDecision {
     fn decide(&mut self, _input: &DecisionInput) -> Result<Decision, PolicyError> {
+        self.counters.lock().expect("counter lock").decide_calls += 1;
         Err(PolicyError::ProviderUnavailable)
     }
 }
 
 #[derive(Default)]
-struct CapturingOwner {
-    binding: Mutex<Option<RuntimeAuthorityBinding>>,
+pub(super) struct CapturingOwner {
+    pub(super) binding: Mutex<Option<RuntimeAuthorityBinding>>,
 }
 
 impl LiveContextObservationPort for CapturingOwner {
@@ -297,6 +321,7 @@ fn production_session_hands_the_allocated_recovery_lease_to_the_context_owner() 
     )
     .expect("observation");
     let owner = Arc::new(CapturingOwner::default());
+    let counters = Arc::new(Mutex::new(Counters::default()));
     let factory = ProductionLiveWorkflowSessionFactory::new(
         serde_json::json!({"capabilities":[]}),
         Arc::new(Catalog),
@@ -304,8 +329,11 @@ fn production_session_hands_the_allocated_recovery_lease_to_the_context_owner() 
             authority,
             acquired,
             observation,
+            counters: Arc::clone(&counters),
         }),
-        Arc::new(Provider),
+        Arc::new(Provider {
+            counters: Arc::clone(&counters),
+        }),
         Arc::new(Policy),
         NativeCapabilities::fixture(),
     )
