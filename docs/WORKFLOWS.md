@@ -102,6 +102,13 @@ digest the harness pins. The default MCP pin moved from `f3b6eaa8` to `587a53ce`
 revision predates that profile and refuses it, so the lane declared a pair its own recovery path
 could never reach. The gateway pin is unchanged: it already declares the same contract and digest.
 
+The lane also runs the shipped host-lease campaign downstream. It builds the operator-only
+`synthetic_mod_server` target, points `STS2_SYNTHETIC_MOD_SERVER_BINARY` at it, and requires that
+environment-configured process to advertise `host_lease=enabled` and to terminate a signed
+`lease_install_request` exactly as the in-process terminal does. The in-process terminal is already
+covered by an ordinary workspace test; this is the step that fails if the environment half of the
+sideband is removed. It needs no gateway, MCP, or provider, and it grants no game or host authority.
+
 The ordinary pull-request and `main` paths use the immutable default peers. A
 coordinated candidate pair is permitted only through `workflow_dispatch` with
 full 40-hex gateway and/or MCP revisions; the checkout HEADs are compared to

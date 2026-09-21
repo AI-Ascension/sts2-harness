@@ -17,21 +17,30 @@
 //! - a declared operator-only composition test that no lane step executes, and
 //! - a lane `--exact` invocation that names no declared operator-only test.
 //!
-//! Each lane is paired with the test binary its declarations belong to, so one binary's
-//! step is never compared against another binary's declarations.
+//! Each lane is paired with the test binary its declarations belong to and with the operator
+//! marker that binary declares them under, so one binary's step is never compared against
+//! another binary's declarations, and a lane never inherits a sibling's marker. The shipped
+//! host-lease campaign downstream is the third lane: its witness runs the operator-built
+//! `synthetic_mod_server` binary through the environment-configured sideband, and no step
+//! invoked it before.
 //!
 //! It compares text shapes; it does not start a peer. Whether the lane itself passes
 //! remains the lane's own result.
 
 const LANE_WORKFLOW: &str = include_str!("../../../.github/workflows/runtime-peer-contract.yml");
 
-const OPERATOR_ONLY_MARKER: &str = "#[ignore = \"operator-only test; requires explicitly built gateway, MCP, and harness binaries\"]";
+/// Marker used by the served compositions that need the built gateway, MCP, and harness binaries.
+const SERVED_COMPOSITION_MARKER: &str = "#[ignore = \"operator-only test; requires explicitly built gateway, MCP, and harness binaries\"]";
+/// Marker used by the served host-lease terminal for the operator-built campaign downstream.
+const HOST_LEASE_CAMPAIGN_MARKER: &str =
+    "#[ignore = \"operator-only: requires the built synthetic_mod_server operator binary\"]";
 const EXACT_INVOCATION: &str = "-- --ignored --exact ";
 
 /// One declared operator-only lane: its source, its test binary, and one witness it must keep.
 struct Lane {
     source: &'static str,
     test_binary: &'static str,
+    marker: &'static str,
     required_witness: &'static str,
 }
 
@@ -39,22 +48,30 @@ const LANES: &[Lane] = &[
     Lane {
         source: include_str!("runtime_v4_executable_composition.rs"),
         test_binary: "--test runtime_v4_executable_composition",
+        marker: SERVED_COMPOSITION_MARKER,
         required_witness: "served_decision_survives_changed_policy_adopted_while_idle",
     },
     Lane {
         source: include_str!("runtime_v4_rest_executable_composition.rs"),
         test_binary: "--test runtime_v4_rest_executable_composition",
+        marker: SERVED_COMPOSITION_MARKER,
         required_witness: "executable_runtime_v4_rest_composes_full_selection_recovery_chain",
+    },
+    Lane {
+        source: include_str!("host_lease_control_served.rs"),
+        test_binary: "--test host_lease_control_served",
+        marker: HOST_LEASE_CAMPAIGN_MARKER,
+        required_witness: "the_env_configured_campaign_downstream_answers_a_signed_install",
     },
 ];
 
 /// Operator-only tests declared in a lane source, in declaration order.
-fn declared_operator_only_tests(source: &str) -> Vec<String> {
+fn declared_operator_only_tests(source: &str, marker: &str) -> Vec<String> {
     let mut names = Vec::new();
     let mut pending = false;
     for line in source.lines() {
         let trimmed = line.trim();
-        if trimmed == OPERATOR_ONLY_MARKER {
+        if trimmed == marker {
             pending = true;
             continue;
         }
@@ -108,12 +125,12 @@ fn lane_runs_every_ignored_test(workflow: &str, test_binary: &str) -> bool {
 #[test]
 fn every_declared_operator_only_composition_test_is_executed_by_the_lane() {
     for lane in LANES {
-        let declared = declared_operator_only_tests(lane.source);
+        let declared = declared_operator_only_tests(lane.source, lane.marker);
         assert!(
             declared
                 .iter()
                 .any(|name| name.as_str() == lane.required_witness),
-            "the lane source no longer declares {}; declared: {declared:?}",
+            "the lane source no longer declares {} under its own marker; declared: {declared:?}",
             lane.required_witness
         );
         assert!(
@@ -150,8 +167,35 @@ fn the_lane_check_reads_declared_tests_and_ignores_unrelated_ignores() {
         "#[ignore = \"launched explicitly by another test\"]\n",
         "fn helper_child() {}\n",
     );
-    assert_eq!(declared_operator_only_tests(source), ["first_witness"]);
-    assert!(declared_operator_only_tests("").is_empty());
+    assert_eq!(
+        declared_operator_only_tests(source, SERVED_COMPOSITION_MARKER),
+        ["first_witness"]
+    );
+    assert!(declared_operator_only_tests("", SERVED_COMPOSITION_MARKER).is_empty());
+}
+
+/// A lane must not read another lane's marker: the host-lease campaign downstream declares its
+/// witness under a marker that names its own operator binary, not the peer binaries.
+#[test]
+fn the_lane_check_reads_only_its_own_operator_marker() {
+    let source = concat!(
+        "#[test]\n",
+        "#[ignore = \"operator-only: requires the built synthetic_mod_server operator binary\"]\n",
+        "fn campaign_witness() -> Result<(), Box<dyn std::error::Error>> {\n",
+        "    Ok(())\n",
+        "}\n",
+        "#[test]\n",
+        "#[ignore = \"operator-only test; requires explicitly built gateway, MCP, and harness binaries\"]\n",
+        "fn peer_witness() {}\n",
+    );
+    assert_eq!(
+        declared_operator_only_tests(source, HOST_LEASE_CAMPAIGN_MARKER),
+        ["campaign_witness"]
+    );
+    assert_eq!(
+        declared_operator_only_tests(source, SERVED_COMPOSITION_MARKER),
+        ["peer_witness"]
+    );
 }
 
 #[test]

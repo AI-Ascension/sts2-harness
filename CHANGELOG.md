@@ -10,6 +10,14 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Execute the shipped host-lease campaign downstream in the runtime peer contract lane.** The
+  `the_env_configured_campaign_downstream_answers_a_signed_install` witness was declared
+  operator-only and no step invoked it, so nothing in CI proved that the *environment-configured*
+  long-lived `synthetic_mod_server` process advertises `host_lease=enabled` and terminates a signed
+  `lease_install_request` — the half of the sideband a long campaign depends on, while only the
+  in-process terminal was covered. The lane now builds that operator target, points
+  `STS2_SYNTHETIC_MOD_SERVER_BINARY` at it, and runs the witness, and the fail-closed lane check
+  pairs each lane with the operator marker its own source declares. Refs #94.
 - Verify **the System One bridge's refusals at its own process boundary**, and pin the tie it does not
   resolve. Three acceptance criteria were carried unverified because nothing exercised the seam they
   named. A shell transport now drives the real `sts2-jev-bridge`: a non-`200` exit, a raw HTTP status
