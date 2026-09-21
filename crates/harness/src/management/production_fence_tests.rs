@@ -20,7 +20,8 @@ use crate::episode::{
     EpisodeStage, RuntimeLeaseBinding,
 };
 use crate::management::{
-    ContextOwnerControlLimits, LiveWorkflowSession, ManagementError, live_run_id,
+    ContextOwnerControlLimits, ExecutionMode, LiveWorkflowSession, ManagementError,
+    RunTargetConfiguration, TARGET_ADMISSION_SCHEMA_VERSION, TargetAdmissionBinding, live_run_id,
 };
 use crate::workflow::WorkflowDefinition;
 use std::sync::{Arc, Mutex};
@@ -51,7 +52,7 @@ impl LiveProviderSessionFactory for UnavailableProvider {
     }
 }
 
-fn observation(state_id: &str, generation: u64) -> EpisodeObservation {
+pub(super) fn observation(state_id: &str, generation: u64) -> EpisodeObservation {
     EpisodeObservation::new(
         state_id,
         generation,
@@ -71,8 +72,40 @@ fn observation(state_id: &str, generation: u64) -> EpisodeObservation {
     .expect("observation")
 }
 
+/// The server-issued preflight binding a live caller must submit. The factory
+/// checks its presence before it resolves the definition's inference profiles;
+/// the preflight route validates its contents, not this harness.
+pub(super) fn target_admission(
+    request: &RunRequest,
+    definition_digest: &str,
+) -> TargetAdmissionBinding {
+    TargetAdmissionBinding {
+        schema_version: TARGET_ADMISSION_SCHEMA_VERSION.to_owned(),
+        request_id: request.request_id.clone(),
+        workflow_definition_digest: definition_digest.to_owned(),
+        target: RunTargetConfiguration {
+            instance_id: request.instance_id.clone(),
+            execution_profile: request.profile.clone(),
+            execution_mode: ExecutionMode::Live,
+            workflow_revision: "workflow.synthetic.v1".to_owned(),
+            compatibility_revision: "compat.synthetic.v1".to_owned(),
+            capability_revision: "capability.synthetic.v1".to_owned(),
+            game_profile: "synthetic-sts2-v1".to_owned(),
+            save_profile: None,
+            inference_profile: None,
+            context_capability: None,
+            provider_capability: None,
+        },
+        descriptor_digest: "f".repeat(64),
+        catalog_revision: "catalog.synthetic.v1".to_owned(),
+    }
+}
+
 /// One served-live composition whose runtime and provider are the shared fixtures.
-struct Served {
+///
+/// Shared with the sibling served-live fence suites, so each new fence reuses the
+/// same real production composition instead of re-deriving it.
+pub(super) struct Served {
     request: RunRequest,
     definition: WorkflowDefinition,
     digest: String,
@@ -178,7 +211,26 @@ impl Served {
         .with_context_observations(self.owner.clone() as Arc<dyn LiveContextObservationPort>)
     }
 
-    fn open(
+    /// The same composition carrying the server-issued target admission the
+    /// served-live factory requires before it will resolve inference profiles.
+    pub(super) fn admitted() -> Self {
+        let mut served = Self::new();
+        served.request.admission = Some(target_admission(&served.request, &served.digest));
+        served
+    }
+
+    /// The same composition with an owner-served inference-profile catalog
+    /// attached, so the decision-dispatch fence is reachable.
+    pub(super) fn factory_with_profiles(
+        &self,
+        observation: EpisodeObservation,
+        profiles: Arc<dyn LiveInferenceProfileCatalogPort>,
+    ) -> ProductionLiveWorkflowSessionFactory {
+        self.factory(self.authority(), self.acquired(), observation, false)
+            .with_inference_profile_catalog(profiles)
+    }
+
+    pub(super) fn open(
         &self,
         factory: &ProductionLiveWorkflowSessionFactory,
     ) -> Result<Box<dyn LiveWorkflowSession>, ManagementError> {
@@ -191,7 +243,7 @@ impl Served {
         )
     }
 
-    fn counts(&self) -> (usize, usize, usize, usize) {
+    pub(super) fn counts(&self) -> (usize, usize, usize, usize) {
         let counters = self.counters.lock().unwrap();
         (
             counters.runtime_opens,
@@ -205,7 +257,7 @@ impl Served {
         EpisodeLegalAction::new("combat.end-turn", crate::ActionKind::EndTurn).expect("action")
     }
 
-    fn decision_input(&self, observation: EpisodeObservation) -> DecisionInput {
+    pub(super) fn decision_input(&self, observation: EpisodeObservation) -> DecisionInput {
         let actions = EpisodeLegalActionSet::new(
             observation.state_id(),
             observation.generation(),
@@ -367,3 +419,8 @@ fn served_launch_reports_an_unavailable_provider_without_a_paid_decision() {
         "an unavailable provider must not yield a synthetic success"
     );
 }
+
+// The inference-profile dispatch fence; declared here because `production.rs` is
+// already at its production size ceiling.
+#[path = "production_profile_fence_tests.rs"]
+mod profile_fence_tests;
