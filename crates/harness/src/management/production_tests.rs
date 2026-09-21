@@ -25,6 +25,12 @@ const SESSION_ID: &str = "runtime-session";
 
 pub(super) type Shared<T> = Arc<Mutex<T>>;
 
+/// `#94`: a repeated live run identity is refused before the reservation, the session open and the
+/// episode launch, so a duplicate submission cannot buy a second effect.
+#[cfg(test)]
+#[path = "production_duplicate_run_tests.rs"]
+mod duplicate_run_tests;
+
 /// Counts the boundary crossings a fence is supposed to prevent.
 #[derive(Default, PartialEq, Eq, Debug)]
 pub(super) struct Counters {
