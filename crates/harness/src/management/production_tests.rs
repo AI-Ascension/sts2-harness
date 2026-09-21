@@ -31,6 +31,12 @@ pub(super) type Shared<T> = Arc<Mutex<T>>;
 #[path = "production_duplicate_run_tests.rs"]
 mod duplicate_run_tests;
 
+/// `#94`: a submission that already opened a session must tear it down before it is refused, and a
+/// teardown that fails has to be reported rather than discarded.
+#[cfg(test)]
+#[path = "production_duplicate_cleanup_tests.rs"]
+mod duplicate_cleanup_tests;
+
 /// Counts the boundary crossings a fence is supposed to prevent.
 #[derive(Default, PartialEq, Eq, Debug)]
 pub(super) struct Counters {
@@ -38,6 +44,13 @@ pub(super) struct Counters {
     pub(super) dispatch_calls: usize,
     pub(super) decide_calls: usize,
     pub(super) provider_opens: usize,
+    /// Fault injection for the teardown fences. The numbered `launch` call, and the numbered
+    /// `stop_episode` call, each fail when their field names that call number. `None` — the
+    /// default every other fixture construction uses — keeps the fixture successful.
+    pub(super) launch_fault_on_call: Option<usize>,
+    pub(super) stop_fault_on_call: Option<usize>,
+    pub(super) launch_calls: usize,
+    pub(super) stop_calls: usize,
 }
 
 pub(super) struct Runtime {
@@ -48,6 +61,15 @@ pub(super) struct Runtime {
 
 impl EpisodeRuntimePort for Runtime {
     fn launch(&mut self) -> Result<(), PortError> {
+        let counters = &mut *self.counters.lock().expect("counter lock");
+        counters.launch_calls += 1;
+        if counters.launch_fault_on_call == Some(counters.launch_calls) {
+            return Err(PortError::new(
+                "test_launch_failure",
+                "the fixture runtime was armed to fail this launch",
+                false,
+            ));
+        }
         Ok(())
     }
 
@@ -113,6 +135,11 @@ impl RecoveryPort for Runtime {
     }
 
     fn stop_episode(&mut self) -> Result<(), RecoveryError> {
+        let counters = &mut *self.counters.lock().expect("counter lock");
+        counters.stop_calls += 1;
+        if counters.stop_fault_on_call == Some(counters.stop_calls) {
+            return Err(RecoveryError::PortFailure);
+        }
         Ok(())
     }
 }
