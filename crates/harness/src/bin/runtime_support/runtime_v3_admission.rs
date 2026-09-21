@@ -65,6 +65,15 @@ fn selected_mode(value: Option<&str>) -> Result<ExoAdmissionMode, String> {
     }
 }
 
+/// The declared admission mode, without inspecting artifacts or assembling a plan.
+///
+/// Live-episode admission asks whether the reviewed envelope is in force, which is a property of
+/// this declaration alone. It is read through the same parser the admission itself uses, so a
+/// misspelt mode cannot be refused in one place and read as the default in another.
+pub(super) fn declared_mode() -> Result<ExoAdmissionMode, String> {
+    selected_mode(optional(ADMISSION_MODE)?.as_deref())
+}
+
 fn enveloped(
     process: &ExoProcessConfig,
     map_context_enabled: bool,

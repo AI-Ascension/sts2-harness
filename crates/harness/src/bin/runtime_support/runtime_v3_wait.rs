@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::super::runtime_v3_settings::live_admission::admitted_live_episode;
 use super::{RuntimeV3Port, parse, recording};
 use serde_json::json;
 use std::time::{Duration, Instant};
@@ -35,7 +36,7 @@ impl BarrierPort for RuntimeV3Port {
             {
                 // Idle stability observes host state; it cannot manufacture an action witness.
                 let observation = self.observe_for_idle_transition().map_err(|error| {
-                    if std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true") {
+                    if admitted_live_episode() {
                         // Codes are harness-owned constants. Do not log arbitrary port messages.
                         eprintln!("idle transition observation failed: code={}", error.code());
                     }
@@ -45,9 +46,7 @@ impl BarrierPort for RuntimeV3Port {
                     observation.generation(),
                     observation.assert_actionable().is_ok(),
                 );
-                if last_idle_sample != Some(idle_sample)
-                    && std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true")
-                {
+                if last_idle_sample != Some(idle_sample) && admitted_live_episode() {
                     eprintln!(
                         "idle transition: operation={operation_id} before={before_generation} observed={} actionable={}",
                         observation.generation(),

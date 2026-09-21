@@ -154,3 +154,13 @@ the pinned binary, which is exactly the part that must stay reviewable here.
 - [ADR 0017](0017-exo-executor-bridge-contract.md) — pinned executor and bridge contract.
 - [ADR 0031](0031-runtime-exo-admission-gate.md) — runtime admission modes.
 - [`docs/OLLAMA_MODEL_SELECTION.md`](../OLLAMA_MODEL_SELECTION.md) — the existing local bridge lane.
+
+## Amendment 2026-09-21: live-episode promotion no longer follows the lane's name
+
+The decision above records that this lane is not promoted to live-episode mode, and that live-episode
+mode "stays Astra-only". That is no longer the rule:
+[ADR 0060](0060-live-episode-capability-admission.md) replaced the name-keyed check with a capability
+the provider kind declares, which admits the Exo lane for a live episode through the reviewed
+envelope and refuses a `STS2_PROVIDER_KIND` no lane implements. This lane is unchanged by that
+record: `typesafe-jev` declares no live-episode capability, so a live episode is refused on it by
+capability, and it is still not admitted to the reviewed envelope.

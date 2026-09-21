@@ -28,6 +28,12 @@ mod local_bridge;
 mod bounded_mode;
 use bounded_mode::bounded_mode_named;
 
+#[path = "runtime_v3_settings_provider.rs"]
+mod provider;
+
+#[path = "runtime_v3_live_admission.rs"]
+pub(crate) mod live_admission;
+
 pub(super) struct RuntimeV3Settings {
     pub(super) runner: EpisodeRunnerConfig,
     pub(super) exo: ExoConfig,
@@ -44,7 +50,7 @@ impl RuntimeV3Settings {
         if config.lookup_binding_enabled()? {
             return lookup::settings_from_environment(runner);
         }
-        let exo = exo_from_environment(config.map_context_enabled)?;
+        let (exo, live_mode) = exo_from_environment(config.map_context_enabled)?;
         let process = ExoProcessConfig::new(
             required("STS2_EXO_BRIDGE_BINARY")?,
             string_list("STS2_EXO_BRIDGE_ARGS_JSON")?,
@@ -62,6 +68,8 @@ impl RuntimeV3Settings {
             &config.instance_id,
             lifecycle.is_some(),
         )?;
+        // Installed last: a run refused above cannot have already admitted live behavior.
+        live_admission::install(live_mode)?;
         Ok(Self {
             runner,
             exo,
@@ -73,57 +81,23 @@ impl RuntimeV3Settings {
     }
 }
 
-fn verify_revision(revision: &str) -> Result<(), String> {
-    let provider = optional("STS2_PROVIDER_KIND")?;
-    let local_bridge = matches!(
-        provider.as_deref(),
-        Some("ollama" | "openai-astra" | "typesafe-jev")
-    );
-    let live_episode = optional("STS2_LIVE_EPISODE")?.as_deref() == Some("true");
-    if live_episode && provider.as_deref() != Some("openai-astra") {
-        return Err(String::from(
-            "Live episode mode requires the OpenAI Astra provider",
-        ));
-    }
+fn verify_revision(revision: &str) -> Result<live_admission::LiveMode, String> {
+    let kind = provider::declared()?;
+    let live_episode = live_admission::declared()?;
+    let live_mode =
+        live_admission::resolve(kind, live_episode, runtime_v3_admission::declared_mode()?)?;
     let combat_demo = optional("STS2_COMBAT_DEMO")?.as_deref() == Some("true");
     let campaign_episode = optional("STS2_CAMPAIGN_EPISODE")?.as_deref() == Some("true");
     let bounded_mode = bounded_mode_named(combat_demo, live_episode, campaign_episode)?;
-    if local_bridge && (revision.len() != 64 || !bounded_mode) {
-        return Err(String::from(
-            "Local provider requires the bridge SHA256 and explicit combat, campaign, or live episode mode",
-        ));
-    }
-    if local_bridge {
-        use std::io::Read;
-        let file = std::fs::File::open(required("STS2_EXO_BRIDGE_BINARY")?)
-            .map_err(|_| String::from("cannot open provider bridge for digest verification"))?;
-        let mut bytes = Vec::new();
-        file.take(128 * 1024 * 1024 + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|_| String::from("cannot hash provider bridge"))?;
-        if bytes.len() > 128 * 1024 * 1024
-            || sts2_harness::sha256_hex(&bytes) != revision
-            || !local_bridge::arguments_allowed(
-                provider.as_deref(),
-                &string_list("STS2_EXO_BRIDGE_ARGS_JSON")?,
-            )
-        {
-            return Err(String::from(
-                "Provider bridge digest or arguments do not match",
-            ));
-        }
-    }
-    if !local_bridge && revision != REVIEWED_EXO_REVISION {
-        return Err(String::from(
-            "STS2_EXO_REVISION is not the reviewed Exo revision",
-        ));
-    }
-    Ok(())
+    provider::verify_bridge(kind, revision, bounded_mode)?;
+    Ok(live_mode)
 }
 
-fn exo_from_environment(map_context_enabled: bool) -> Result<ExoConfig, String> {
+fn exo_from_environment(
+    map_context_enabled: bool,
+) -> Result<(ExoConfig, live_admission::LiveMode), String> {
     let revision = required("STS2_EXO_REVISION")?;
-    verify_revision(&revision)?;
+    let live_mode = verify_revision(&revision)?;
     let forward_visible_seed = flag("STS2_EXO_FORWARD_VISIBLE_SEED")?;
     let default_max_request_bytes = if map_context_enabled {
         DEFAULT_MAP_MAX_REQUEST_BYTES
@@ -146,6 +120,7 @@ fn exo_from_environment(map_context_enabled: bool) -> Result<ExoConfig, String> 
             .map_err(|_| String::from("STS2_EXO_TIMEOUT_MILLIS is too large"))?,
     )
     .map(|config| config.with_visible_seed_forwarding(forward_visible_seed))
+    .map(|config| (config, live_mode))
     .map_err(|error| format!("Exo configuration is invalid: {error}"))
 }
 

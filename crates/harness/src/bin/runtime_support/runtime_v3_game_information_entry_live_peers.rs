@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::super::super::super::super::runtime_v3_settings::live_admission::admitted_live_episode;
 use super::*;
 use serde_json::Value;
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -156,7 +157,7 @@ impl LivePeers {
             .requests
             .lock()
             .map_err(|_| "synthetic mod request log unavailable")?;
-        if std::env::var("STS2_LIVE_EPISODE").as_deref() == Ok("true") {
+        if admitted_live_episode() {
             eprintln!(
                 "real-peer downstream trace: {:?}",
                 requests
