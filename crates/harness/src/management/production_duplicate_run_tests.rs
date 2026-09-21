@@ -91,18 +91,18 @@ impl LiveTargetCatalogPort for LiveCatalog {
 
 /// The reservation store double. `create_run` records each reservation instead of rejecting the
 /// repeated key, so the port — not the store — decides whether the duplicate is refused.
-struct CountingStore {
+pub(super) struct CountingStore {
     creates: Mutex<Vec<(String, String)>>,
 }
 
 impl CountingStore {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             creates: Mutex::new(Vec::new()),
         }
     }
 
-    fn creates(&self) -> usize {
+    pub(super) fn creates(&self) -> usize {
         self.creates.lock().expect("store lock").len()
     }
 }
@@ -177,7 +177,7 @@ impl WorkflowStore for CountingStore {
     }
 }
 
-fn unused(surface: &str) -> StoreError {
+pub(super) fn unused(surface: &str) -> StoreError {
     StoreError::new(
         "test_store_unused",
         format!("{surface} are not part of the duplicate-run fence"),
@@ -205,7 +205,7 @@ fn observation(state_id: &str, generation: u64) -> EpisodeObservation {
 }
 
 /// One live request whose admission names the served catalog exactly, with its definition digest.
-fn admitted_request() -> (RunRequest, String) {
+pub(super) fn admitted_request() -> (RunRequest, String) {
     let definition = live_definition();
     let definition_digest = digest_value(&definition).expect("definition digest");
     let binding = TargetAdmissionBinding {
@@ -242,7 +242,7 @@ fn admitted_request() -> (RunRequest, String) {
     )
 }
 
-fn counts(counters: &Shared<Counters>) -> (usize, usize, usize, usize) {
+pub(super) fn counts(counters: &Shared<Counters>) -> (usize, usize, usize, usize) {
     let counters = counters.lock().expect("counter lock");
     (
         counters.runtime_opens,
@@ -252,7 +252,7 @@ fn counts(counters: &Shared<Counters>) -> (usize, usize, usize, usize) {
     )
 }
 
-fn submit(
+pub(super) fn submit(
     port: &LiveWorkflowExecutionPort,
     request: &RunRequest,
     actor: &AuthContext,
@@ -282,7 +282,7 @@ fn submit(
 /// `run_id` is the identity the fixture authority binding names. The port derives its own identity
 /// from the request and the bound definition digest, so a submission that never reaches that
 /// derivation still has to name the identity its configured authority would have carried.
-fn live_port(counters: &Shared<Counters>, run_id: &str) -> LiveWorkflowExecutionPort {
+pub(super) fn live_port(counters: &Shared<Counters>, run_id: &str) -> LiveWorkflowExecutionPort {
     let factory: Arc<dyn LiveWorkflowSessionFactory> = Arc::new(
         ProductionLiveWorkflowSessionFactory::new(
             serde_json::json!({"capabilities": []}),
