@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-//! The served-live composition boundary.
-//!
-//! Gateway/MCP lifecycle and provider construction remain owned by their
-//! respective adapters.  This module joins those already-authoritative ports
-//! into one management session; it deliberately has no game transport.
+//! The served-live composition boundary joining the already-authoritative
+//! gateway/MCP lifecycle, provider construction and target discovery into one
+//! management session. It deliberately has no game transport.
 
 #[path = "production_context_ports.rs"]
 mod context_ports;
@@ -314,6 +312,9 @@ struct ProductionLiveWorkflowSession {
 #[path = "production/session.rs"]
 mod session;
 
+#[cfg(test)]
+#[path = "production_fence_tests.rs"]
+mod fence_tests;
 #[cfg(test)]
 #[path = "production_policy_tests.rs"]
 mod policy_tests;
