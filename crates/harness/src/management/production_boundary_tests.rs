@@ -19,7 +19,7 @@ use crate::{ContextRenderLimits, ExoConfig};
 use std::sync::atomic::AtomicBool;
 
 /// Selected limits that admit the fixture's two retained items.
-const SELECTED_ITEMS: usize = 2;
+pub(super) const SELECTED_ITEMS: usize = 2;
 
 /// The dispatch identity the served boundary derives for one model execution.
 ///
@@ -56,12 +56,12 @@ fn lifecycle(state: TransportState, boundary: CaptureBoundary) -> SinkRecord {
 
 /// A recording sink that keeps what the served boundary actually handed it.
 #[derive(Clone, Debug)]
-struct ObservingSink {
+pub(super) struct ObservingSink {
     records: Arc<Mutex<Vec<SinkRecord>>>,
 }
 
 impl ObservingSink {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             records: Arc::new(Mutex::new(Vec::new())),
         }
@@ -79,6 +79,16 @@ impl ObservingSink {
 
     fn push(&self, record: SinkRecord) {
         self.records.lock().expect("sink records").push(record);
+    }
+
+    /// The sink's recorded (prepared, completed) depth so far.
+    ///
+    /// Sampled from inside the provider exchange, this witnesses the record/exchange interleaving.
+    pub(super) fn depth(&self) -> (usize, usize) {
+        (
+            self.state(TransportState::Prepared).len(),
+            self.state(TransportState::WriteCompleted).len(),
+        )
     }
 }
 
