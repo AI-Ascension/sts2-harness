@@ -34,7 +34,7 @@ impl ProductionLiveWorkflowSession {
         }
         self.authority_binding.lease_id = lease.lease_id;
         self.authority_binding.lease_epoch = lease.lease_epoch;
-        super::validate_runtime_authority_binding(
+        super::runtime_authority::validate_runtime_authority_binding(
             &self.request,
             &self.definition_digest,
             &self.authority_binding,

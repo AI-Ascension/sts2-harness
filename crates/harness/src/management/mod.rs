@@ -126,7 +126,7 @@ pub use lifecycle_readiness::{
     ReadinessObservation,
 };
 pub use live_workflow::{
-    EpisodeRuntimeSession, LIVE_WORKFLOW_CAPABILITY, LIVE_WORKFLOW_PROFILE,
+    BoundaryCaptureSink, EpisodeRuntimeSession, LIVE_WORKFLOW_CAPABILITY, LIVE_WORKFLOW_PROFILE,
     LiveContextObservationPort, LiveContextRenderPort, LiveProviderSessionFactory,
     LiveRuntimeSessionFactory, LiveTargetCatalogPort, LiveWorkflowExecutionPort,
     LiveWorkflowFactory, LiveWorkflowOptions, LiveWorkflowSession, LiveWorkflowSessionFactory,

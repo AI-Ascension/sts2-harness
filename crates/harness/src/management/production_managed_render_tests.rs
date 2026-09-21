@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::context_capture::{CaptureMode, MemoryCapture};
 use crate::management::{
     ContextOwnerControlLimits, ContextRenderSource, ContextRenderSourceIdentity,
     LiveContextRenderPort,
@@ -213,6 +214,11 @@ pub(super) fn render_test_session(
 ///
 /// Exposing the state lets a test mutate exactly one fenced identity field during inference, so it
 /// can prove that field participates in the live comparison rather than only being stored.
+///
+/// The fixture attaches a real in-memory recording sink, which is what a served composition that
+/// enables managed rendering must do: the served boundary refuses a managed release whose exact
+/// bytes nothing recorded, so a fixture without a sink would exercise the refusal instead of the
+/// decision under test.
 pub(super) fn render_test_session_with_state(
     render_state: Arc<Mutex<RenderState>>,
     config: ExoConfig,
@@ -221,6 +227,9 @@ pub(super) fn render_test_session_with_state(
     on_exchange: Option<Arc<dyn Fn() + Send + Sync>>,
 ) -> RenderTestSession {
     let (mut session, _, _) = make_session(Change::HistoryOnlyDuringInference);
+    session.boundary_capture = BoundaryCaptureSink::new(Box::new(
+        MemoryCapture::new(CaptureMode::Memory, 32, 1_048_576).expect("fixture recording sink"),
+    ));
     session.context_render = Some(Arc::new(RenderPort {
         state: Arc::clone(&render_state),
         stale,

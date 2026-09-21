@@ -36,6 +36,8 @@ impl ProductionLiveWorkflowSession {
             .prepare_managed_context(input, &source)
             .map_err(provider_error)?;
         admit_assembled_managed_input(&source.limits, prepared.provider_bytes().len())?;
+        // The approval is bound and fenced before the write, so a refused or unrecordable boundary
+        // stops the decision before anything reaches the provider.
         render.assert_render_source_current(
             &actor,
             &request,
@@ -46,14 +48,19 @@ impl ProductionLiveWorkflowSession {
             context_ref,
             &source.identity,
         )?;
-        // Everything below may already have reached the provider. The exchange is the
-        // `decide_prepared_for` call, so a failure from there -- and from the re-assertions that
-        // validate a decision the provider already produced -- is reported as an unresolved
+        // The recorded release performs the exchange inside the recording write port, so the
+        // approved material and the bytes the boundary wrote are one value. Everything from here on
+        // may already have reached the provider, so the re-assertions below report an unresolved
         // outcome rather than a clean refusal.
-        let decision = self
-            .provider_mut()?
-            .decide_prepared_for(input, decision_profile_ref, context_ref, &prepared)
-            .map_err(decision_provider_error)?;
+        let capture = self.boundary_capture.clone();
+        let decision = self.dispatch_managed_boundary(
+            input,
+            decision_profile_ref,
+            context_ref,
+            &prepared,
+            &source.identity,
+            &capture,
+        )?;
         self.assert_current_observation(&input.observation)
             .map_err(exchange_unresolved)?;
         self.assert_active_policy_binding_current()

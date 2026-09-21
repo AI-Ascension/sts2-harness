@@ -6,7 +6,7 @@
 
 #[path = "production_context_ports.rs"]
 mod context_ports;
-pub use context_ports::{LiveContextObservationPort, LiveContextRenderPort};
+pub use context_ports::{BoundaryCaptureSink, LiveContextObservationPort, LiveContextRenderPort};
 
 use serde_json::Value;
 use std::sync::Arc;
@@ -23,6 +23,12 @@ use crate::episode::{
 };
 use crate::provider_session::NativeCapabilities;
 use crate::workflow::WorkflowDefinition;
+
+#[path = "production/session_boundary.rs"]
+mod boundary;
+#[path = "production/runtime_authority.rs"]
+mod runtime_authority;
+use boundary::ServedBoundaryLedger;
 
 /// Authoritative, actor-scoped discovery supplied by the gateway/MCP owner.
 pub trait LiveTargetCatalogPort: Send + Sync {
@@ -100,6 +106,7 @@ pub struct ProductionLiveWorkflowSessionFactory {
     provider: Arc<dyn LiveProviderSessionFactory>,
     provider_policy: Arc<dyn LiveProviderPolicyPort>,
     provider_capabilities: NativeCapabilities,
+    capture_sink: BoundaryCaptureSink,
     context_observations: Option<Arc<dyn LiveContextObservationPort>>,
     context_render: Option<Arc<dyn LiveContextRenderPort>>,
     inference_profiles: Option<Arc<dyn LiveInferenceProfileCatalogPort>>,
@@ -128,10 +135,21 @@ impl ProductionLiveWorkflowSessionFactory {
             provider,
             provider_policy,
             provider_capabilities,
+            capture_sink: BoundaryCaptureSink::disabled(),
             context_observations: None,
             context_render: None,
             inference_profiles: None,
         })
+    }
+
+    /// Attaches the recording sink the served managed boundary writes through.
+    ///
+    /// The default sink cannot record, so a composition that enables managed rendering without
+    /// attaching an operator-built sink refuses the release instead of publishing exactness for a
+    /// boundary nothing recorded.
+    pub fn with_capture_sink(mut self, capture_sink: BoundaryCaptureSink) -> Self {
+        self.capture_sink = capture_sink;
+        self
     }
 
     /// Attaches the owner-served inference-profile catalog. Once attached,
@@ -230,7 +248,11 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
         let authority_binding =
             self.runtime
                 .authority_binding(request, actor, definition, definition_digest)?;
-        validate_runtime_authority_binding(request, definition_digest, &authority_binding)?;
+        runtime_authority::validate_runtime_authority_binding(
+            request,
+            definition_digest,
+            &authority_binding,
+        )?;
         let runtime = self
             .runtime
             .open_runtime(request, actor, definition, definition_digest)?;
@@ -253,37 +275,10 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
             authority_binding,
             inference_profiles: self.inference_profiles.clone(),
             admitted_profiles,
+            boundary: ServedBoundaryLedger::default(),
+            boundary_capture: self.capture_sink.clone(),
         }))
     }
-}
-
-fn validate_runtime_authority_binding(
-    request: &RunRequest,
-    definition_digest: &str,
-    binding: &RuntimeAuthorityBinding,
-) -> Result<(), ManagementError> {
-    let workflow_run_id = super::execution_records::live_run_id(request, definition_digest)?;
-    if binding.instance_id != request.instance_id
-        || binding.run_id != workflow_run_id
-        || binding.session_id.is_empty()
-        || binding.lease_id.is_empty()
-        || binding.lease_epoch == 0
-        || binding.episode_id.is_empty()
-        || binding.trajectory_id.is_empty()
-        || binding.trace_id.is_empty()
-        || binding.artifact_id.is_empty()
-        || binding.agent_id.is_empty()
-        || binding.adapter_revision.is_empty()
-        || binding.model_revision.is_empty()
-        || binding.configuration_digest.len() != 64
-        || binding.output_schema_digest.len() != 64
-    {
-        return Err(ManagementError::conflict(
-            "runtime_authority_scope_mismatch",
-            "runtime authority is not bound to the admitted workflow run",
-        ));
-    }
-    Ok(())
 }
 
 struct ProductionLiveWorkflowSession {
@@ -307,6 +302,10 @@ struct ProductionLiveWorkflowSession {
     /// Every inference binding resolved at admission; the run keeps these exact
     /// revisions and is never re-bound to a later catalog revision.
     admitted_profiles: Option<InferenceProfileBindingSet>,
+    /// Receipts of the approvals this run already wrote through the managed boundary.
+    boundary: ServedBoundaryLedger,
+    /// Recording sink the served managed boundary writes through.
+    boundary_capture: BoundaryCaptureSink,
 }
 
 #[path = "production/session.rs"]
