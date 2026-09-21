@@ -10,6 +10,14 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Size the jev process-teardown pipe-cleanup bound above host-load jitter.** The paired runner gave
+  a killed process group 250 ms to close an inherited pipe and reported `child_closed: false` past
+  that, but a clean host's kill-to-close tail already reaches 250-306 ms under load, so the flag read
+  "closure unconfirmed" for a process that closed a millisecond later and the offline runner-process
+  contract test flaked. The grace is now a documented 1000 ms contract value, and a new escaped-
+  session control proves the flag stays false when a bound is genuinely spent, so the assertion was
+  strengthened rather than relaxed. Compatibility: none; the flag's meaning is unchanged. Refs #394.
+
 - **Let the jev execution budget govern arm admission, not filesystem timing.** The paired runner
   re-checked the budget after reserving an arm, so a slow filesystem cancelled an admitted first arm
   and made the offline global-time-budget contract test fail, with a re-run masking that red. An
@@ -518,26 +526,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   bootstrap `error_response` on a 5xx answer instead of collapsing it to a retryable
   `gateway_unavailable`. Compatibility: internal; no schema, route or durable record changes.
   Refs #127, #276.
-
-- Serve the **provider-session effective-limits record** for the Console capability sidecar.
-  `GET /v1/workflow-runs/{run_id}/provider-session-effective-limits` (`workflow:read`) returns the
-  producer's `ascension.harness.effective-limits.v1` record built by
-  `NativeCapabilities::effective_limit_record` from the descriptor the served process admits
-  provider sessions against: metadata only, validated before it is returned, and fenced to the
-  run's current context-owner association (`provider_session_capabilities_mismatch` when the
-  boundary names another adapter/model revision; `provider_session_capabilities_unavailable` when
-  no descriptor is served, never a fixture). The served workflow composition holds no memory
-  corpus, so `GET /v1/workflow-runs/{run_id}/context-memory-effective-limits` refuses with the
-  typed `context_memory_record_unavailable`. `docs/COMPATIBILITY.md` is split: the context-owner
-  rows move to `docs/COMPATIBILITY_CONTEXT_OWNER.md`, where the control-command route regains its
-  own heading. Compatibility: additive-compatible; see
-  [ADR 0052](docs/decisions/0052-provider-session-effective-limits-route.md).
-  Refs AI-Ascension/ascension-context-console#18.
-
-- Execute independent read-only analyses of an admitted dynamic plan under an **owner-enforced
-  in-flight cap** from `WorkflowLimits::max_parallel_analyses`, joined by node identity:
-  `execute_plan_bounded` records each node `Settled`, `Failed` or `Unknown` in a `JoinedResult`
-  whose `join_digest` is identical for every completion order, never dispatches a node whose
-  declared input did not settle, and records an unwinding branch as `BranchLost` rather than
-  stalling. `ParallelCap::SERIAL` keeps cap=1 compatible and `execute_plan` is unchanged; this is
-  additive, and budget reservation, cancel/restart and browser branch state remain open. See [ADR 0049](docs/decisions/0049-bounded-parallel-analysis-join.md). Refs #98.

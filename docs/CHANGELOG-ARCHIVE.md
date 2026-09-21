@@ -437,3 +437,26 @@ that preceded the entries below is preserved in
   Compatibility: `safety-correction` to an unreleased candidate — the empty registry is now
   enforced in dispatch rather than inherited from upstream; no wire field, route, published schema,
   or durable record changes. Refs #140.
+
+- Serve the **provider-session effective-limits record** for the Console capability sidecar.
+  `GET /v1/workflow-runs/{run_id}/provider-session-effective-limits` (`workflow:read`) returns the
+  producer's `ascension.harness.effective-limits.v1` record built by
+  `NativeCapabilities::effective_limit_record` from the descriptor the served process admits
+  provider sessions against: metadata only, validated before it is returned, and fenced to the
+  run's current context-owner association (`provider_session_capabilities_mismatch` when the
+  boundary names another adapter/model revision; `provider_session_capabilities_unavailable` when
+  no descriptor is served, never a fixture). The served workflow composition holds no memory
+  corpus, so `GET /v1/workflow-runs/{run_id}/context-memory-effective-limits` refuses with the
+  typed `context_memory_record_unavailable`. `docs/COMPATIBILITY.md` is split: the context-owner
+  rows move to `docs/COMPATIBILITY_CONTEXT_OWNER.md`, where the control-command route regains its
+  own heading. Compatibility: additive-compatible; see
+  [ADR 0052](decisions/0052-provider-session-effective-limits-route.md).
+  Refs AI-Ascension/ascension-context-console#18.
+
+- Execute independent read-only analyses of an admitted dynamic plan under an **owner-enforced
+  in-flight cap** from `WorkflowLimits::max_parallel_analyses`, joined by node identity:
+  `execute_plan_bounded` records each node `Settled`, `Failed` or `Unknown` in a `JoinedResult`
+  whose `join_digest` is identical for every completion order, never dispatches a node whose
+  declared input did not settle, and records an unwinding branch as `BranchLost` rather than
+  stalling. `ParallelCap::SERIAL` keeps cap=1 compatible and `execute_plan` is unchanged; this is
+  additive, and budget reservation, cancel/restart and browser branch state remain open. See [ADR 0049](decisions/0049-bounded-parallel-analysis-join.md). Refs #98.

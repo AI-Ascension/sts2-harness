@@ -2,6 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { runBridge } from './runner-process.mjs';
 import { fixture } from './runner-test-fixtures.mjs';
@@ -74,4 +75,30 @@ test('a descendant retaining inherited pipes cannot bypass the total process dea
   assert.equal(result.status, 'timeout');
   assert.equal(result.child_closed, true); // Same-group descendant pipes were closed after group termination.
   assert.ok(performance.now() - start < 1800);
+});
+
+test('an escaped descendant reports closure unconfirmed rather than a fabricated close', unix, async t => {
+  const f = await fixture(t), ready = `${f.root}/escaped-ready`;
+  // A new session is not in the killed group, so its inherited pipes stay open past the grace bound.
+  // The descendant reports readiness before the group is signalled, so the bound is spent with the
+  // pipes provably still open rather than racing descendant startup.
+  const script = `require('node:child_process').spawn(process.execPath, ['-e',
+  "require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setTimeout(() => {}, 6000)",
+  process.argv[1]], {stdio:'inherit', detached:true}).unref();`;
+  const controller = new AbortController(), pending = invoke(f.root, script,
+    { timeoutMs: 8000, signal: controller.signal, args: [ready] });
+  let pid;
+  const deadline = performance.now() + 5000;
+  while (performance.now() < deadline) {
+    try { const raw = fs.readFileSync(ready, 'utf8').trim(); if (raw) { pid = Number(raw); break; } }
+    catch { /* The descendant is still starting. */ }
+    await new Promise(r => setTimeout(r, 20));
+  }
+  controller.abort();
+  const result = await pending;
+  try { if (pid) process.kill(pid, 'SIGKILL'); } catch { /* The detached session may already have exited. */ }
+  assert.ok(Number.isSafeInteger(pid) && pid > 0, 'the escaped descendant reported readiness');
+  assert.equal(result.status, 'cancelled');
+  assert.equal(result.child_closed, false); // The bound is spent, not skipped: the flag stays false.
+  assert.ok(result.elapsed_ms >= 1000); // Closure is never fabricated before the documented bound.
 });
