@@ -421,3 +421,7 @@ mod membership_render_tests;
 #[cfg(test)]
 #[path = "production_boundary_tests.rs"]
 mod boundary_tests;
+
+#[cfg(test)]
+#[path = "production_boundary_ordering_tests.rs"]
+mod boundary_ordering_tests;
