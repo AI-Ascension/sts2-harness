@@ -10,6 +10,10 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Let the jev execution budget govern arm admission, not filesystem timing.** The paired runner
+  re-checked the budget after reserving an arm, so a slow filesystem cancelled an admitted first arm
+  and made the offline global-time-budget contract test fail, with a re-run masking that red. An
+  admitted arm now launches its child bounded by the smaller of the two budgets. Refs #388.
 - **Admit a live episode from the provider lane's declared capability, not from a name.** A live
   `STS2_LIVE_EPISODE=true` run was admitted only when `STS2_PROVIDER_KIND` was exactly
   `openai-astra`, which left the Exo lane unable to be admitted for one, while any unimplemented name

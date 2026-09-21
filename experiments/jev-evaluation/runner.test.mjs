@@ -128,13 +128,38 @@ test('artifact replacement between arms stops execution without silently re-pinn
   assert.equal(result.reserved_provider_attempts, 1); assert.equal((await readdir(f.proof)).length, 1);
 });
 
-test('a global time budget leaves later arms explicitly unstarted', unix, async t => {
+test('a global time budget bounds the first arm and leaves later arms explicitly unstarted', unix, async t => {
   const f = await fixture(t, 'timeout');
-  f.manifest.budgets.total_timeout_ms = 400; f.manifest.budgets.per_arm_timeout_ms = 1000;
+  f.manifest.budgets.total_timeout_ms = 1000; f.manifest.budgets.per_arm_timeout_ms = 3000;
   await f.save(); const result = await execute(f);
-  assert.equal(result.counts.timeout, 1); assert.equal(result.counts.not_started, 1);
+  const first = await json(join(f.manifest.output_directory, 'slot-0000.result.json'));
+  const second = await json(join(f.manifest.output_directory, 'slot-0001.result.json'));
+  assert.equal(result.counts.timeout, 1); assert.equal(result.counts.cancelled, 0);
+  assert.equal(result.counts.not_started, 1);
   assert.equal(result.reserved_provider_attempts, 1);
   assert.equal(result.observed_provider_attempts_unknown_arms, 1);
+  assert.equal(first.status, 'timeout'); assert.equal(first.process_started, true);
+  assert.equal(first.reserved_provider_attempts, 1); assert.equal(first.observed_provider_attempts, null);
+  assert.equal(second.status, 'not_started'); assert.equal(second.process_started, false);
+  assert.equal(second.reserved_provider_attempts, 0); assert.equal(second.observed_provider_attempts, 0);
+});
+
+test('an interruption after the reservation cancels an arm instead of timing it out', unix, async t => {
+  const f = await fixture(t, 'timeout');
+  f.manifest.budgets.per_arm_timeout_ms = 120000; await f.save();
+  const plan = await planRun(f.path), controller = new AbortController();
+  const running = executeRun(f.path, plan.manifest_sha256,
+    { signal: controller.signal, environment: f.environment });
+  const pending = join(f.manifest.output_directory, 'slot-0000.pending.json');
+  let reserved = false;
+  for (let attempt = 0; attempt < 4000 && !reserved; attempt += 1) {
+    reserved = await lstat(pending).then(() => true, () => false);
+    if (!reserved) await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.equal(reserved, true); controller.abort();
+  const result = await running;
+  assert.equal(result.counts.cancelled, 1); assert.equal(result.counts.timeout, 0);
+  assert.equal(result.counts.not_started, 1); assert.equal(result.reserved_provider_attempts, 1);
 });
 
 test('pre-cancelled runs perform no provider work and account for every arm', unix, async t => {
