@@ -36,6 +36,7 @@ const UNIMPLEMENTED_KIND_REFUSAL: &str = "is not a provider kind this runtime im
 const UNNAMED_KIND_REFUSAL: &str = "requires STS2_PROVIDER_KIND to name a kind that declares";
 const LIVE_CAPABILITY_REFUSAL: &str = "does not declare live-episode capability";
 const RAW_WIRE_REFUSAL: &str = "admitted for a live episode only through the reviewed envelope";
+const DIGEST_REFUSAL: &str = "Provider bridge digest or arguments do not match";
 
 /// The declaration a run is launched under.
 struct Declaration<'a> {
@@ -43,6 +44,9 @@ struct Declaration<'a> {
     live_episode: bool,
     admission: Option<&'a str>,
     revision: &'a str,
+    bridge: Option<&'a PathBuf>,
+    arguments: Option<&'a str>,
+    combat_demo: bool,
 }
 
 impl<'a> Declaration<'a> {
@@ -52,6 +56,9 @@ impl<'a> Declaration<'a> {
             live_episode: false,
             admission: None,
             revision: REVIEWED_EXO_REVISION,
+            bridge: None,
+            arguments: None,
+            combat_demo: false,
         }
     }
 
@@ -76,6 +83,30 @@ impl<'a> Declaration<'a> {
         self.revision = BRIDGE_DIGEST;
         self
     }
+
+    /// The binary the declaration names, which a local kind pins by digest.
+    fn declaring(mut self, bridge: &'a PathBuf) -> Self {
+        self.bridge = Some(bridge);
+        self
+    }
+
+    /// The argument vector the declaration records for that binary.
+    fn running(mut self, arguments: &'a str) -> Self {
+        self.arguments = Some(arguments);
+        self
+    }
+
+    /// The revision the declaration pins, for a control that pins the real one.
+    fn at(mut self, revision: &'a str) -> Self {
+        self.revision = revision;
+        self
+    }
+
+    /// The bounded mode a local bridge may run in, stated outright as the lane requires.
+    fn in_the_combat_demo(mut self) -> Self {
+        self.combat_demo = true;
+        self
+    }
 }
 
 /// What one run of the real binary did.
@@ -95,6 +126,7 @@ struct Scratch {
     root: PathBuf,
     store: PathBuf,
     missing_mcp: PathBuf,
+    bridge: PathBuf,
 }
 
 impl Scratch {
@@ -111,6 +143,7 @@ impl Scratch {
         Ok(Self {
             store: root.join("execution.sqlite3"),
             missing_mcp: root.join("no-such-mcp-probe"),
+            bridge: root.join("declared-provider-bridge"),
             root,
         })
     }
@@ -145,6 +178,15 @@ impl Scratch {
         }
         if let Some(admission) = declaration.admission {
             command.env("STS2_EXO_ADMISSION", admission);
+        }
+        if let Some(bridge) = declaration.bridge {
+            command.env("STS2_EXO_BRIDGE_BINARY", bridge);
+        }
+        if let Some(arguments) = declaration.arguments {
+            command.env("STS2_EXO_BRIDGE_ARGS_JSON", arguments);
+        }
+        if declaration.combat_demo {
+            command.env("STS2_COMBAT_DEMO", "true");
         }
         let output = command
             .output()
@@ -305,4 +347,50 @@ fn the_synthetic_probe_lane_stays_non_bridge_and_non_live() -> Result<(), String
         &observation,
         &format!("provider kind synthetic {LIVE_CAPABILITY_REFUSAL}"),
     )
+}
+
+/// A local kind pins the executable it launches by digest, so bytes that do not hash to the declared
+/// revision are refused by that name rather than launched as the operator's bridge.
+///
+/// The refusal is also shown to be the digest and nothing else: the same declaration, the same file
+/// and the same argument vector are not refused when the revision is the one those bytes really have.
+#[test]
+fn a_declared_bridge_whose_bytes_do_not_match_its_pinned_digest_is_refused() -> Result<(), String> {
+    let scratch = Scratch::new("digest")?;
+    let bytes = b"not the provider bridge this declaration pins\n";
+    fs::write(&scratch.bridge, bytes)
+        .map_err(|error| format!("cannot write the declared bridge: {error}"))?;
+    let digest = sts2_harness::sha256_hex(bytes);
+    if digest.len() != 64 {
+        return Err(format!("the computed digest is not a SHA256: {digest}"));
+    }
+    if digest == BRIDGE_DIGEST {
+        return Err(String::from(
+            "the fixture happens to hash to the pinned digest, so it cannot show a mismatch",
+        ));
+    }
+
+    let refused = scratch.run(
+        Declaration::lane("typesafe-jev")
+            .digest_pinned()
+            .declaring(&scratch.bridge)
+            .running("[]")
+            .in_the_combat_demo(),
+    )?;
+    assert_refused_before_the_lane_ran(&refused, DIGEST_REFUSAL)?;
+
+    let control = scratch.run(
+        Declaration::lane("typesafe-jev")
+            .at(&digest)
+            .declaring(&scratch.bridge)
+            .running("[]")
+            .in_the_combat_demo(),
+    )?;
+    if control.stderr().contains(DIGEST_REFUSAL) {
+        return Err(format!(
+            "a bridge matching its pinned digest was refused as a mismatch: {}",
+            control.stderr()
+        ));
+    }
+    Ok(())
 }
