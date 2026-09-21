@@ -128,6 +128,8 @@ fit the budget up front. Maximums are 256 pairs, 512 reserved attempts, 128 KiB 
 input, 32 MiB total original input bytes, 120,000 ms per arm and 3,600,000 ms execution budget.
 The execution budget starts after preflight and plan storage, and governs admission of
 subsequent arms and their child deadlines; it is not a hard deadline on filesystem operations.
+The first scheduled arm is admitted whenever a run starts, and an admitted arm always launches its
+child with the smaller of the per-arm timeout and the remaining execution budget.
 
 “Provider attempts” means the bridge's counted **transport invocations**, not authenticated
 HTTP arrivals, model inference count, or dollars charged. No hard token or monetary budget

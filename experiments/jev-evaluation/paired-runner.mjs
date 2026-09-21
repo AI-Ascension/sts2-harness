@@ -36,19 +36,23 @@ async function executeArm(prepared, entry, env, deadline, signal) {
   try { await verifyExecutable(m.bridge); await verifyExecutable(m.transport); } catch {
     return armResult(hash, entry, { status: 'executable_drift' });
   }
-  if (signal?.aborted || performance.now() >= deadline) return armResult(hash, entry);
+  if (signal?.aborted) return armResult(hash, entry);
   await createJson(join(root, `${slotName(entry.slot)}.pending.json`), reservation(hash, entry));
   const directory = join(root, slotName(entry.slot));
   await createDirectory(directory);
   const body = payload(input, hash, entry.slot);
   let result;
   try {
-    const remaining = Math.floor(deadline - performance.now());
-    result = remaining <= 0 || signal?.aborted
+    // Admission is decided by the caller before this reservation, so an admitted arm always launches
+    // its child: the budget bounds the child's deadline, not the filesystem work that precedes it.
+    // Rounding up keeps the remaining global budget the exact upper bound of the child deadline.
+    const remaining = Math.ceil(deadline - performance.now());
+    result = signal?.aborted
       ? { status: 'cancelled', stdout: Buffer.alloc(0), elapsed_ms: 0,
         process_started: false, child_closed: true }
       : await runBridge(m.bridge.path, bridgeArguments(m, entry.arm, directory), body, {
-        cwd: directory, env, signal, timeoutMs: Math.min(m.budgets.per_arm_timeout_ms, remaining),
+        cwd: directory, env, signal,
+        timeoutMs: Math.max(1, Math.min(m.budgets.per_arm_timeout_ms, remaining)),
       });
     const evidence = await collectEvidence(root, m, entry, input, result);
     return armResult(hash, entry, { ...evidence, process_started: result.process_started,
@@ -94,8 +98,10 @@ export async function executeRun(path, approvedHash, { signal, environment = pro
   const rows = [];
   let stopped = false;
   try {
-    for (const entry of entries) {
-      const row = stopped || signal?.aborted || performance.now() >= deadline
+    for (const [index, entry] of entries.entries()) {
+      // The budget governs the admission of the arms after the first: it starts after preflight and
+      // plan storage, so no earlier bookkeeping may un-admit the first scheduled arm.
+      const row = stopped || signal?.aborted || (index > 0 && performance.now() >= deadline)
         ? armResult(hash, entry)
         : await executeArm(prepared, entry, env, deadline, signal);
       rows.push(row);
