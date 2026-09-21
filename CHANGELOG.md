@@ -10,6 +10,21 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Verify **the System One bridge's refusals at its own process boundary**, and pin the tie it does not
+  resolve. Three acceptance criteria were carried unverified because nothing exercised the seam they
+  named. A shell transport now drives the real `sts2-jev-bridge`: a non-`200` exit, a raw HTTP status
+  line read as a body, a malformed envelope, an out-of-catalog choice, a well-formed answer past the
+  128 KiB bound, and a transport failure are each refused with the bridge's exit status and no
+  decision, and every case proves the provider answer arrived first, so a case whose transport never
+  ran cannot pass. The operator credential is asserted both positively — `TYPESAFE_API_KEY` reaches
+  the transport by name — and negatively, in a captured request, a record, `--describe` and a
+  refusal. A local provider declaration's digest pin is exercised at the runtime boundary with a
+  control that pins the digest those bytes really have, so the refusal is the mismatch and not the
+  presence of a declared bridge. And two equally likely options are shown to be resolved by nothing:
+  the answer's own `choice` is returned, the gate is applied to the confidence the provider stated,
+  and the tied identifier named in the bridge-authored rationale is the one the sorted probability map
+  orders last, so the same answer produces the same rationale whatever order the provider wrote its
+  keys in. Refs #284, #285, #288.
 - **Route the executable REST selector composition into the runtime peer contract lane.** The
   `runtime_v4_rest_executable_composition` witnesses (issue #148) assert the authored
   observe → decide → execute-action → terminal graph settles each durable REST receipt before it

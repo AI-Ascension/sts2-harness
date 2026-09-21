@@ -111,6 +111,18 @@ so the field is composed from the distribution — the chosen option, its probab
 and the confidence. Nothing in a run record is a sentence the model wrote, because the model writes
 no sentences.
 
+When two options carry the same probability the answer cannot say which of them it meant, and the
+bridge does not decide for it. The decision is unchanged: the provider's own `choice` is what is
+returned, the gate is applied to the confidence the provider stated, and a tie at or above the gate
+is not converted into a second guess. The tie is visible only in the `rationale`, which names one of
+the tied options as the runner-up. That selection is fixed by the probability map rather than by the
+answer: the map is a sorted map and the bridge reads it in its own stable order, so the identifier
+that sorts last is the one named, the same answer always produces the same rationale, and the order
+the provider happened to write its keys in cannot change it. Naming one of two equally likely
+options as the runner-up is not a claim that the other is less likely — the probabilities printed
+beside both identifiers are the evidence, and neither the decision nor the rationale asserts more
+than the distribution carries.
+
 ## Known model weaknesses that this lane does not fix
 
 The vendor documents that the model is not a calculator, that counting error grows with list size,

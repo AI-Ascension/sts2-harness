@@ -203,6 +203,79 @@ fn confidence_is_carried_as_a_bounded_percentage() {
     assert_eq!(percent(0.554), 55);
 }
 
+/// A response whose chosen option leads and whose two remaining options tie at the same mass.
+///
+/// The two tied identifiers are inserted in the order given, so a case can state them one way and
+/// then the other and require the same rationale from both.
+fn tied_response(first: &str, second: &str, confidence: f64) -> Value {
+    let mut probabilities = serde_json::Map::new();
+    probabilities.insert(first.to_owned(), json!(0.2));
+    probabilities.insert(second.to_owned(), json!(0.2));
+    probabilities.insert("play:card-17".to_owned(), json!(0.6));
+    json!({"answers": {"action": {
+        "type": "choice",
+        "choice": "play:card-17",
+        "probabilities": Value::Object(probabilities),
+        "confidence": confidence,
+    }}})
+}
+
+#[test]
+fn a_tie_between_two_options_is_resolved_by_the_map_and_never_by_the_answer() {
+    // The same response, read twice, is the same decision: nothing here depends on a clock, a
+    // hash seed, or an ordering the caller cannot reproduce.
+    let response = tied_response("combat.end-turn", "play:card-18", 0.75);
+    let first = map_decision(&response, "action", &options(), DEFAULT_CONFIDENCE_GATE)
+        .ok()
+        .unwrap_or_default();
+    let second = map_decision(&response, "action", &options(), DEFAULT_CONFIDENCE_GATE)
+        .ok()
+        .unwrap_or_default();
+    assert_eq!(first, second);
+
+    // The tie does not move the decision: the provider's own choice is what is returned, and the
+    // gate is still applied to the confidence the provider stated.
+    assert_eq!(first["decision"], json!("action"));
+    assert_eq!(first["action_id"], json!("play:card-17"));
+    assert_eq!(first["confidence"], json!(75));
+
+    // The tie is visible only in the rationale, which names one of the two tied options: the one
+    // the probability map orders last. It is not a claim that the other is less likely, and the
+    // rationale reports each option's own mass beside its identifier.
+    let rationale = first["rationale"].as_str().unwrap_or_default();
+    assert!(rationale.contains("chose play:card-17 at p=0.60"));
+    assert!(rationale.contains("runner-up play:card-18 at p=0.20"));
+    assert!(rationale.contains("confidence 0.75"));
+
+    // The choice of tied option is the map's, not the response's byte order: written the other way
+    // round, the same two options and the same masses produce the same rationale.
+    let reversed = tied_response("play:card-18", "combat.end-turn", 0.75);
+    let mirrored = map_decision(&reversed, "action", &options(), DEFAULT_CONFIDENCE_GATE)
+        .ok()
+        .unwrap_or_default();
+    assert_eq!(mirrored["rationale"], first["rationale"]);
+}
+
+#[test]
+fn a_tie_below_the_gate_still_re_observes_rather_than_resolving_itself() {
+    // A tie does not raise confidence either: an answer that cannot say which of two equally likely
+    // options it meant still declines to act when it is below the gate.
+    let decision = map_decision(
+        &tied_response("combat.end-turn", "play:card-18", 0.30),
+        "action",
+        &options(),
+        DEFAULT_CONFIDENCE_GATE,
+    )
+    .ok()
+    .unwrap_or_default();
+    assert_eq!(decision["decision"], json!("reobserve"));
+    assert_eq!(decision["candidate_action_id"], json!("play:card-17"));
+    assert_eq!(decision.get("action_id"), None);
+    let rationale = decision["rationale"].as_str().unwrap_or_default();
+    assert!(rationale.contains("runner-up play:card-18 at p=0.20"));
+    assert!(rationale.contains("confidence 0.30"));
+}
+
 #[test]
 fn an_abstention_carries_the_option_it_would_have_taken() {
     // Declining is still the decision. Carrying the option only stops throwing away what the
