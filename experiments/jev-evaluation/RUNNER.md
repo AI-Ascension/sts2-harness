@@ -143,8 +143,11 @@ array and a cleared, explicit environment. Stdin/stdout/stderr are serviced conc
 Stdout is bounded to 8 KiB, stderr to 64 KiB, and neither is written to runner artifacts.
 The deadline includes unread input pipes and descendants retaining output pipes. Timeout,
 cancellation, failure and overflow do not trigger another invocation. The process group
-is signalled for termination; local pipe cleanup has a further 250 ms grace bound. A
-`child_closed` flag establishes the direct child's close event and closed pipes, not that
+is signalled for termination; local pipe cleanup has a further 1000 ms grace bound. That bound is
+host-load-dependent: a same-group descendant's inherited pipes close only once the child's `close`
+event fires, which can lag group termination by hundreds of milliseconds under load, so
+`child_closed: false` means closure was not confirmed within the bound rather than that cleanup
+failed. A `child_closed` flag establishes the direct child's close event and closed pipes, not that
 every escaped descendant has terminated. No later arm is launched when closure is unconfirmed.
 Descendants deliberately creating new sessions require an external reviewed OS sandbox.
 

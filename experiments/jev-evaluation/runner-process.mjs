@@ -7,7 +7,12 @@ import { requireThat } from './contract.mjs';
 
 const OUTPUT_LIMIT = 8192;
 const STDERR_LIMIT = 65536;
-const CLEANUP_GRACE_MS = 250;
+// Bound on local pipe cleanup after the process group is signalled. The child's inherited pipes
+// close only once its `close` event fires, which on a host under load can lag group termination by
+// hundreds of milliseconds, so this bound is sized above that jitter rather than just above the
+// median. It is therefore a host-load-dependent contract value: `child_closed: false` means closure
+// was not confirmed within the bound, not that cleanup failed. No later arm launches either way.
+const CLEANUP_GRACE_MS = 1000;
 
 export function runBridge(executable, args, bytes, { cwd, env, timeoutMs, signal }) {
   requireThat(process.platform !== 'win32', 'runner_unix_only');
