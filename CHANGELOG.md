@@ -10,6 +10,13 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Execute the idle-adoption policy-rebind regression in the runtime peer contract lane.** The
+  `served_decision_survives_changed_policy_adopted_while_idle` witness was written for the permanent
+  mid-run policy-adoption fence (issue #255) with the same `#[ignore]` operator marker as its
+  siblings, but no lane step invoked it, so the regression was as invisible as if it had never been
+  written. The served policy step now also runs it against the pinned gateway and MCP peers, and a
+  fail-closed lane check rejects a declared operator-only composition test that no lane step executes
+  or a lane `--exact` invocation that names no declared test. Refs #255.
 - **Record the served managed boundary before it writes.** The exact material a served managed
   decision approved was never compared with the bytes it wrote. The exchange now runs inside the
   recording write port, so a session with no recording sink refuses (`prepared_boundary_unsupported`)

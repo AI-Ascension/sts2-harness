@@ -103,13 +103,15 @@ jobs:
           STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR: ${{ runner.temp }}/runtime-peer-contract
         run: cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact executable_runtime_v4_composes_unknown_reconcile_and_foreign_state_fence
 
-      - name: Exercise served policy routes and settled action
+      - name: Exercise served policy routes, settled action, and idle-adoption rebind
         working-directory: harness
         env:
           STS2_GATEWAY_BINARY: ${{ github.workspace }}/gateway/target/debug/sts2-gateway-runtime
           STS2_MCP_BINARY: ${{ github.workspace }}/mcp/target/debug/sts2-mcp-server
           STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
-        run: cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_workflow_settles_action_with_adopted_provider_policy
+        run: |
+          cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_workflow_settles_action_with_adopted_provider_policy
+          cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_decision_survives_changed_policy_adopted_while_idle
 
       - name: Exercise served unknown-effect restart refusal
         working-directory: harness
