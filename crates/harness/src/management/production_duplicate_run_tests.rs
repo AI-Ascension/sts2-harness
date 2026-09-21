@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-//! `#94` duplicate live-run identity fence.
+//! `#94` live submission fences that must refuse before the first effect.
 //!
 //! A repeated live run identity must be refused *before* the submission is reserved, a session is
-//! opened or an episode is launched. The unit under test is
+//! opened or an episode is launched, and a submission whose carried definition does not hash to the
+//! digest its admission is bound to must be refused at the same point. The unit under test is
 //! [`LiveWorkflowExecutionPort::submit_admitted_with_reservation`]; the composition is the real
 //! production session and only the gateway/MCP runtime and the provider are fixtures.
 //!
@@ -276,16 +277,12 @@ fn submit(
     )
 }
 
-#[test]
-fn live_duplicate_run_identity_is_refused_before_the_first_effect() {
-    let (request, definition_digest) = admitted_request();
-    let request_digest = digest_value(&serde_json::to_value(&request).expect("request encode"))
-        .expect("request digest");
-    let run_id = live_run_id(&request, &definition_digest).expect("run identity");
-    let actor =
-        AuthContext::new("duplicate-fence-actor", ["workflow:*".to_owned()]).expect("actor");
-
-    let counters = Arc::new(Mutex::new(Counters::default()));
+/// The real served composition, with the gateway/MCP runtime and the provider as fixtures.
+///
+/// `run_id` is the identity the fixture authority binding names. The port derives its own identity
+/// from the request and the bound definition digest, so a submission that never reaches that
+/// derivation still has to name the identity its configured authority would have carried.
+fn live_port(counters: &Shared<Counters>, run_id: &str) -> LiveWorkflowExecutionPort {
     let factory: Arc<dyn LiveWorkflowSessionFactory> = Arc::new(
         ProductionLiveWorkflowSessionFactory::new(
             serde_json::json!({"capabilities": []}),
@@ -296,7 +293,7 @@ fn live_duplicate_run_identity_is_refused_before_the_first_effect() {
                     session_id: SESSION_ID.to_owned(),
                     lease_id: "configured-lease".to_owned(),
                     lease_epoch: 1,
-                    run_id: run_id.clone(),
+                    run_id: run_id.to_owned(),
                     episode_id: "duplicate-fence-episode".to_owned(),
                     trajectory_id: "duplicate-fence-trajectory".to_owned(),
                     trace_id: "duplicate-fence-trace".to_owned(),
@@ -310,23 +307,35 @@ fn live_duplicate_run_identity_is_refused_before_the_first_effect() {
                 acquired: RuntimeLeaseBinding {
                     instance_id: INSTANCE_ID.to_owned(),
                     session_id: SESSION_ID.to_owned(),
-                    run_id: run_id.clone(),
+                    run_id: run_id.to_owned(),
                     lease_id: "gateway-recovery-lease".to_owned(),
                     lease_epoch: 3,
                 },
                 observation: observation("combat-1", 1),
-                counters: Arc::clone(&counters),
+                counters: Arc::clone(counters),
             }),
             Arc::new(Provider {
-                counters: Arc::clone(&counters),
+                counters: Arc::clone(counters),
             }),
             Arc::new(Policy),
             NativeCapabilities::fixture(),
         )
         .expect("production factory"),
     );
-    let port =
-        LiveWorkflowExecutionPort::new(factory, LiveWorkflowOptions::default()).expect("live port");
+    LiveWorkflowExecutionPort::new(factory, LiveWorkflowOptions::default()).expect("live port")
+}
+
+#[test]
+fn live_duplicate_run_identity_is_refused_before_the_first_effect() {
+    let (request, definition_digest) = admitted_request();
+    let request_digest = digest_value(&serde_json::to_value(&request).expect("request encode"))
+        .expect("request digest");
+    let run_id = live_run_id(&request, &definition_digest).expect("run identity");
+    let actor =
+        AuthContext::new("duplicate-fence-actor", ["workflow:*".to_owned()]).expect("actor");
+
+    let counters = Arc::new(Mutex::new(Counters::default()));
+    let port = live_port(&counters, &run_id);
     let store = Arc::new(CountingStore::new());
     let reservation_store: Arc<dyn WorkflowStore> = store.clone();
 
@@ -368,5 +377,51 @@ fn live_duplicate_run_identity_is_refused_before_the_first_effect() {
         store.creates(),
         1,
         "the refusal must not reserve the durable submission a second time"
+    );
+}
+
+#[test]
+fn live_definition_digest_mismatch_is_refused_before_the_first_effect() {
+    // A request whose carried definition does not hash to the digest its admission is bound to is
+    // the wrong-binding refusal `#94` AC2 names: the admission can approve one definition while the
+    // submission ships another. The binding and the argument agree, so every admission fence passes
+    // and only the byte-level digest comparison can catch it.
+    let (mut request, _) = admitted_request();
+    let mismatched = "f".repeat(64);
+    request
+        .admission
+        .as_mut()
+        .expect("admitted request carries an admission")
+        .workflow_definition_digest = mismatched.clone();
+    let request_digest = digest_value(&serde_json::to_value(&request).expect("request encode"))
+        .expect("request digest");
+    let run_id = live_run_id(&request, &mismatched).expect("run identity");
+    let actor = AuthContext::new("identity-fence-actor", ["workflow:*".to_owned()]).expect("actor");
+
+    let counters = Arc::new(Mutex::new(Counters::default()));
+    let port = live_port(&counters, &run_id);
+    let store = Arc::new(CountingStore::new());
+    let reservation_store: Arc<dyn WorkflowStore> = store.clone();
+
+    let error = submit(
+        &port,
+        &request,
+        &actor,
+        &mismatched,
+        &request_digest,
+        Arc::clone(&reservation_store),
+    )
+    .expect_err("a definition that does not match its bound digest must be refused");
+
+    assert_eq!(error.code, "live_identity_mismatch");
+    assert_eq!(
+        counts(&counters),
+        (0, 0, 0, 0),
+        "the refusal must not open a runtime or reach a provider"
+    );
+    assert_eq!(
+        store.creates(),
+        0,
+        "the refusal must not reserve a durable submission"
     );
 }
