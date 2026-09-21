@@ -5,12 +5,10 @@ use uuid::Uuid;
 use super::super::contract::{PendingOperation, PendingOperationState};
 use super::execution_state::{LiveNodeState, PendingDispatch};
 use super::node_projection::{catalog_digest, observation_value};
-use crate::episode::{
-    ActionIdentity, DecisionInput, DispatchStatus, TransitionReceipt, verify_settlement,
-};
+use crate::episode::{ActionIdentity, DispatchStatus, TransitionReceipt, verify_settlement};
 use crate::workflow::{
-    ActionId, BoundedText, DecisionProposal, EdgeOutcome, Generation, NodeDefinition, NodeExecutor,
-    NodeOutcome, ProviderExecutionId, RuntimeContext, RuntimeFault, TypedValue,
+    EdgeOutcome, NodeDefinition, NodeExecutor, NodeOutcome, RuntimeContext, RuntimeFault,
+    TypedValue,
 };
 
 pub(super) struct LiveNodeExecutor<'state, 'intent> {
@@ -59,73 +57,7 @@ impl LiveNodeExecutor<'_, '_> {
         decision_profile_ref: &str,
         context_ref: &str,
     ) -> Result<NodeOutcome, RuntimeFault> {
-        let observation = self
-            .state
-            .observation
-            .clone()
-            .ok_or(RuntimeFault::InvalidState)?;
-        if self.state.provider_calls >= self.state.max_provider_calls {
-            return Err(RuntimeFault::BudgetExceeded);
-        }
-        let actions = self
-            .state
-            .session
-            .legal_actions(observation.state_id(), observation.generation())
-            .map_err(|_| RuntimeFault::ExecutorUnavailable)?;
-        actions
-            .assert_matches(observation.state_id(), observation.generation())
-            .map_err(|_| RuntimeFault::ExecutorRejected)?;
-        let execution_id = crate::ModelExecutionId::new(self.state.provider_calls + 1)
-            .ok_or(RuntimeFault::InvalidState)?;
-        let input = DecisionInput::new(
-            execution_id,
-            observation.clone(),
-            actions.clone(),
-            self.state.options.objective.clone(),
-            self.state.options.hard_constraints.clone(),
-        );
-        let decision = self
-            .state
-            .session
-            .decide_for(&input, decision_profile_ref, context_ref)
-            .map_err(|_| RuntimeFault::ExecutorUnavailable)?;
-        self.state.provider_calls = self.state.provider_calls.saturating_add(1);
-        self.state.actions = Some(actions.clone());
-        let crate::Decision::Action {
-            action_id,
-            rationale,
-            ..
-        } = decision
-        else {
-            return Ok(NodeOutcome::new(
-                EdgeOutcome::Unavailable,
-                TypedValue::Unavailable,
-            ));
-        };
-        let action = actions
-            .find(&action_id)
-            .ok_or(RuntimeFault::ExecutorRejected)?;
-        let model_id = self
-            .state
-            .session
-            .model_execution_id()
-            .unwrap_or(execution_id);
-        let provider_execution_id = ProviderExecutionId::new(model_id.to_string())
-            .map_err(|_| RuntimeFault::InvalidState)?;
-        let proposal = DecisionProposal {
-            state_id: BoundedText::new(observation.state_id())
-                .map_err(|_| RuntimeFault::InvalidState)?,
-            generation: Generation::new(observation.generation())
-                .map_err(|_| RuntimeFault::InvalidState)?,
-            catalog_digest: catalog_digest(&actions)?,
-            action_id: ActionId::new(action.action_id()).map_err(|_| RuntimeFault::InvalidState)?,
-            provider_execution_id,
-            reason_code: BoundedText::new(rationale).ok(),
-        };
-        Ok(NodeOutcome::new(
-            EdgeOutcome::Ok,
-            TypedValue::DecisionProposal(Box::new(proposal)),
-        ))
+        self.decide_with_held_attempt(decision_profile_ref, context_ref)
     }
 
     fn execute_action(

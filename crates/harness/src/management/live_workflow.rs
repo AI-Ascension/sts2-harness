@@ -15,6 +15,8 @@ mod execution_records;
 mod execution_state;
 #[path = "node.rs"]
 mod node;
+#[path = "node_decision.rs"]
+mod node_decision;
 #[path = "node_projection.rs"]
 mod node_projection;
 #[path = "node_recovery.rs"]

@@ -13,6 +13,20 @@ pub use factory::{LiveWorkflowFactory, LiveWorkflowSessionFactory};
 
 /// The live boundary assembled by a binary from its gateway/MCP runtime and
 /// provider. No graph, transport, or game authority enters this trait.
+///
+/// # Error classes
+///
+/// The two decision methods are the paid boundary of an authored run: one call may reach a model
+/// runtime and be billed. Their failures are therefore read as a report about *how far* the call
+/// got, and the held-attempt discipline acts on that report:
+///
+/// * `Unresolved` means the session cannot rule out that the provider was reached and wrote. The
+///   caller keeps the paid attempt identity held.
+/// * Every other class means the session refused the request before it could reach the provider.
+///   The caller releases the attempt and the refusal stays retryable under policy.
+///
+/// An implementation that cannot prove it never reached the provider must report `Unresolved`.
+/// Reporting a clean refusal after an exchange authorizes the caller to pay for a second one.
 pub trait LiveWorkflowSession: Send {
     fn launch(&mut self) -> Result<(), ManagementError>;
     fn observe(&mut self) -> Result<EpisodeObservation, ManagementError>;
@@ -129,8 +143,11 @@ where
     }
 
     fn decide(&mut self, input: &DecisionInput) -> Result<crate::Decision, ManagementError> {
+        // This composition owns no proof about how far the adapter got: a `DecisionSource` may
+        // fail after it sent the request, so the outcome is reported as unresolved rather than as
+        // a clean refusal that would authorize a replacement exchange.
         self.source.decide(input).map_err(|error| {
-            ManagementError::unavailable("provider_decision_failed", error.to_string())
+            ManagementError::unresolved("provider_decision_failed", error.to_string())
         })
     }
 
@@ -149,7 +166,7 @@ where
         self.source
             .decide_for(input, decision_profile_ref, context_ref)
             .map_err(|error| {
-                ManagementError::unavailable("provider_decision_failed", error.to_string())
+                ManagementError::unresolved("provider_decision_failed", error.to_string())
             })
     }
 

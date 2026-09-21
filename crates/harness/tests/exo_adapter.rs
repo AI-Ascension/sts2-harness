@@ -146,23 +146,31 @@ fn unconfigured_or_floating_revision_is_rejected() {
 #[test]
 fn transport_failures_are_typed_and_do_not_select_an_action() {
     let cases = [
-        (ExoTransportError::Unavailable, "exo_unavailable"),
-        (ExoTransportError::Timeout, "exo_timeout"),
+        (ExoTransportError::NotStarted, "exo_not_started", true),
+        (ExoTransportError::Unavailable, "exo_unavailable", true),
+        (ExoTransportError::Timeout, "exo_timeout", true),
         (
             ExoTransportError::OversizedResponse,
             "exo_oversized_response",
+            false,
         ),
         (
             ExoTransportError::MalformedResponse,
             "exo_malformed_response",
+            false,
         ),
     ];
-    for (failure, code) in cases {
+    for (failure, code, retryable) in cases {
         let mut provider = provider(Err(failure));
         let error = provider
             .execute(&request())
             .expect_err("transport failure must be returned");
         assert_eq!(error.code(), code);
+        assert_eq!(
+            error.is_retryable(),
+            retryable,
+            "{code} retryability must match the transport outcome"
+        );
     }
 }
 

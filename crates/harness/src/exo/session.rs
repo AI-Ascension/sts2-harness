@@ -96,10 +96,12 @@ impl<T> ExoSession<T> {
                 response
             }
             Err(error) => {
-                self.provider.capture_write_unknown(
+                self.provider.capture_transport_failure(
                     &execution_id.to_string(),
                     Some(attempt_id.as_str()),
+                    error,
                     match error {
+                        super::protocol::ExoTransportError::NotStarted => "transport_not_started",
                         super::protocol::ExoTransportError::Unavailable => "transport_unavailable",
                         super::protocol::ExoTransportError::Timeout => "transport_timeout",
                         super::protocol::ExoTransportError::OversizedResponse => {
@@ -166,9 +168,10 @@ impl<T> ExoSession<T> {
                 response
             }
             Err(error) => {
-                self.provider.capture_write_unknown(
+                self.provider.capture_transport_failure(
                     &execution_id.to_string(),
                     Some(attempt_id.as_str()),
+                    error,
                     "prepared_transport_unknown",
                     crate::context_capture::CaptureBoundary::ExoSessionRequest,
                 );

@@ -33,6 +33,12 @@ pub const EXO_MAX_MAP_REQUEST_BYTES: usize =
 /// External Exo transport failure; no gameplay fallback is attached to it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExoTransportError {
+    /// The transport never began an exchange.
+    ///
+    /// No child process existed and no request byte was written, so no provider work can be
+    /// outstanding. This is the only transport outcome that proves the provider was never
+    /// engaged; every other variant may follow a request that was already on the wire.
+    NotStarted,
     Unavailable,
     Timeout,
     OversizedResponse,
@@ -119,6 +125,8 @@ pub enum ExoError {
     InvalidConfig,
     InvalidRequest,
     RequestTooLarge,
+    /// The request was never transmitted to a provider transport.
+    NotStarted,
     Unavailable,
     Timeout,
     OversizedResponse,
@@ -134,6 +142,7 @@ impl std::fmt::Display for ExoError {
             Self::InvalidConfig => "Exo adapter configuration is invalid or unpinned",
             Self::InvalidRequest => "Exo decision request is invalid",
             Self::RequestTooLarge => "Exo decision request exceeds its bound",
+            Self::NotStarted => "Exo transport never started, so no inference was requested",
             Self::Unavailable => "Exo is unavailable",
             Self::Timeout => "Exo decision timed out",
             Self::OversizedResponse => "Exo response exceeds its bound",
@@ -162,6 +171,7 @@ impl From<SandboxError> for ExoError {
 impl From<ExoTransportError> for ExoError {
     fn from(error: ExoTransportError) -> Self {
         match error {
+            ExoTransportError::NotStarted => Self::NotStarted,
             ExoTransportError::Unavailable => Self::Unavailable,
             ExoTransportError::Timeout => Self::Timeout,
             ExoTransportError::OversizedResponse => Self::OversizedResponse,
@@ -247,9 +257,10 @@ impl<T> ExoProvider<T> {
                 Ok(response)
             }
             Err(error) => {
-                self.capture_write_unknown(
+                self.capture_transport_failure(
                     request.model_execution_id.as_str(),
                     Some(attempt_id.as_str()),
+                    error,
                     error_code(ExoError::from(error)),
                     CaptureBoundary::ExoSessionRequest,
                 );
@@ -286,16 +297,27 @@ impl<T> ExoProvider<T> {
         }
     }
 
-    pub(super) fn capture_write_unknown(
+    /// Record the capture state of one failed transport exchange.
+    ///
+    /// `NotStarted` proves the request never reached a provider, so it is recorded as a definite
+    /// failed write under its own code. Every other transport failure may follow a request that is
+    /// already on the wire, so it keeps the caller's code and stays indeterminate.
+    pub(super) fn capture_transport_failure(
         &mut self,
         execution_id: &str,
         attempt_id: Option<&str>,
+        error: ExoTransportError,
         code: &str,
         boundary: CaptureBoundary,
     ) {
-        if let Some(capture) = self.capture.as_mut() {
-            let _ = capture.write_unknown(execution_id, attempt_id, code, boundary);
-        }
+        let Some(capture) = self.capture.as_mut() else {
+            return;
+        };
+        let _ = if matches!(error, ExoTransportError::NotStarted) {
+            capture.write_failed_with_attempt(execution_id, attempt_id, "transport_not_started")
+        } else {
+            capture.write_unknown(execution_id, attempt_id, code, boundary)
+        };
     }
 }
 

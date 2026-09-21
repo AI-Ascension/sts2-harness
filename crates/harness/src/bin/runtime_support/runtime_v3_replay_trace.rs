@@ -263,6 +263,7 @@ fn failure_code_name(value: &str) -> Option<&'static str> {
         "illegal_action" => "illegal_action",
         "missing_operation" => "missing_operation",
         "malformed_decision" => "malformed_decision",
+        "provider_not_started" => "provider_not_started",
         "provider_unavailable" => "provider_unavailable",
         "provider_malformed" => "provider_malformed",
         "provider_closed" => "provider_closed",

@@ -54,6 +54,7 @@ fn provider_error(code: &'static str, retryable: bool) -> crate::error::Provider
 
 pub(super) fn error_code(error: ExoError) -> &'static str {
     match error {
+        ExoError::NotStarted => "exo_not_started",
         ExoError::Unavailable => "exo_unavailable",
         ExoError::Timeout => "exo_timeout",
         ExoError::OversizedResponse => "exo_oversized_response",
@@ -67,7 +68,11 @@ pub(super) fn error_code(error: ExoError) -> &'static str {
 }
 
 fn is_retryable(error: ExoError) -> bool {
-    matches!(error, ExoError::Unavailable | ExoError::Timeout)
+    // A transport that never started sent nothing, so a retry cannot repeat provider work.
+    matches!(
+        error,
+        ExoError::NotStarted | ExoError::Unavailable | ExoError::Timeout
+    )
 }
 
 fn decision_error_code(error: DecisionError) -> &'static str {

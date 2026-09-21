@@ -43,13 +43,27 @@ pub(super) fn application(
         &run.runtime,
         SnapshotState {
             cancelled: run.cancelled,
-            pending: run.state.pending.as_ref().map(|pending| PendingOperation {
-                operation_id: pending.identity.operation_id.clone(),
-                classification: pending.state.clone(),
-                instance_id: run.instance_id.clone(),
-                original_generation: pending.identity.generation,
-                payload_digest: crate::sha256_hex(pending.action.action_id()),
-            }),
+            pending: run
+                .state
+                .pending
+                .as_ref()
+                .map(|pending| PendingOperation {
+                    operation_id: pending.identity.operation_id.clone(),
+                    classification: pending.state.clone(),
+                    instance_id: run.instance_id.clone(),
+                    original_generation: pending.identity.generation,
+                    payload_digest: crate::sha256_hex(pending.action.action_id()),
+                })
+                .or_else(|| {
+                    // A held decision attempt is an in-flight unknown effect: publishing it the way
+                    // the action path publishes an intent makes recovery admission short-circuit to
+                    // `Reconciling` and `authority.recovery` report `pending_effect_visible`, instead
+                    // of leaving the run looking like a state with nothing outstanding.
+                    run.state
+                        .pending_decision
+                        .as_ref()
+                        .map(|held| super::node_decision::decision_intent(held, &run.instance_id))
+                }),
             provider_calls: run.state.provider_calls,
             cleanup: run.cleanup.clone(),
             admission: run.admission.clone(),
