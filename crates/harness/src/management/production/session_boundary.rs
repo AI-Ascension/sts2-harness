@@ -18,11 +18,10 @@ use super::session::exchange_unresolved;
 use super::*;
 use crate::context_capture::{
     CaptureComponent, CaptureComponentKind, CapturePort, DispatchError, DispatchFences,
-    DispatchReceipt, PreparedApplicationInput, PreparedDispatchController,
+    DispatchLedger, DispatchReceipt, PreparedApplicationInput, PreparedDispatchController,
 };
 use crate::context_control::PreparedContext;
-use crate::management::ContextRenderSourceIdentity;
-use std::collections::BTreeMap;
+use crate::management::{ContextRenderSourceIdentity, ErrorClass};
 
 #[path = "session_boundary_fences.rs"]
 mod fences;
@@ -40,20 +39,52 @@ const BOUNDARY_MEDIA_TYPE: &str = "application/json";
 /// invocation resolves to the retained receipt and never writes that approval a second time. Only
 /// the receipt is retained: the approved bytes stay with the held approval that owns them, so a long
 /// served run does not accumulate the material of every decision it already wrote.
+///
+/// The receipts are additionally carried through the attached [`ServedDispatchLedger`], so a
+/// composition that rebuilds this session reloads the receipts its predecessor committed instead of
+/// starting empty and writing an already-accepted boundary a second time.
 #[derive(Debug, Default)]
 pub(super) struct ServedBoundaryLedger {
-    receipts: BTreeMap<String, DispatchReceipt>,
+    receipts: DispatchLedger,
+    store: ServedDispatchLedger,
 }
 
 impl ServedBoundaryLedger {
+    /// Rebuilds the receipts a restarted composition already committed.
+    ///
+    /// A store that cannot be read refuses the session rather than starting empty: an unavailable
+    /// durable image is unknown, not empty, so the composition must never assume the boundary was
+    /// not written.
+    pub(super) fn restored(store: ServedDispatchLedger) -> Result<Self, ManagementError> {
+        let mut ledger = Self {
+            receipts: DispatchLedger::new(),
+            store,
+        };
+        if let Some(image) = ledger.store.load().map_err(|_| store_unavailable())? {
+            ledger.receipts = image.restore().map_err(|_| store_inconsistent())?;
+        }
+        Ok(ledger)
+    }
+
     /// The receipt this served session already recorded for one dispatch identity.
     pub(super) fn receipt(&self, dispatch_id: &str) -> Option<&DispatchReceipt> {
-        self.receipts.get(dispatch_id)
+        self.receipts.receipt(dispatch_id)
     }
 
     /// Retains one receipt under the dispatch identity it reconciles.
     pub(super) fn record(&mut self, receipt: DispatchReceipt) {
-        self.receipts.insert(receipt.dispatch_id.clone(), receipt);
+        self.receipts.record_receipt(receipt);
+    }
+
+    /// Makes every receipt this served session recorded durable.
+    ///
+    /// The recorded receipt is the evidence that the boundary was reached, so it is persisted before
+    /// the release is reported: a composition that restarts then refuses a second write of the same
+    /// approval instead of writing it again.
+    pub(super) fn persist(&self) -> Result<(), ManagementError> {
+        self.store
+            .save(&self.receipts.durable())
+            .map_err(|_| store_unavailable())
     }
 }
 
@@ -81,6 +112,22 @@ fn already_recorded() -> ManagementError {
         "prepared_boundary_already_recorded",
         "the served boundary already recorded this approval, so no new provider write exists",
     ))
+}
+
+/// The refusal of a served session whose durable receipt store could not be read or written.
+fn store_unavailable() -> ManagementError {
+    ManagementError::unavailable(
+        "prepared_boundary_ledger_unavailable",
+        "the durable prepared-dispatch ledger is unavailable, so the recorded receipts are unknown",
+    )
+}
+
+/// The refusal of a served session whose durable receipt store is not a consistent image.
+fn store_inconsistent() -> ManagementError {
+    ManagementError::unavailable(
+        "prepared_boundary_ledger_inconsistent",
+        "the durable prepared-dispatch ledger is inconsistent, so its receipts cannot be trusted",
+    )
 }
 
 /// A held approval for the exact application bytes of one served decision.
@@ -165,9 +212,26 @@ impl ManagedBoundary {
             Err(error) => Err(port.release_error(error)),
         }
     }
+
+    /// The receipt `resume` recorded for this boundary, including an indeterminate outcome.
+    ///
+    /// A port whose transport outcome is indeterminate still records the receipt before `resume`
+    /// returns, so this is how a lost reply is retained rather than dropped with the controller.
+    pub(super) fn recorded_receipt(&self) -> Option<DispatchReceipt> {
+        self.controller.ledger().receipt(&self.dispatch_id).cloned()
+    }
 }
 
 impl ProductionLiveWorkflowSession {
+    /// Retains one recorded receipt and makes the durable image current.
+    ///
+    /// The provider exchange may already have happened, so a store that cannot be written is
+    /// reported as an unresolved outcome rather than a clean refusal.
+    fn retain_receipt(&mut self, receipt: DispatchReceipt) -> Result<(), ManagementError> {
+        self.boundary.record(receipt);
+        self.boundary.persist().map_err(exchange_unresolved)
+    }
+
     /// Dispatches one managed decision through the held prepared boundary.
     ///
     /// The provider exchange happens inside the release, so a sink that cannot record, a fence that
@@ -187,12 +251,7 @@ impl ProductionLiveWorkflowSession {
             return Err(already_recorded());
         }
         let mut boundary = ManagedBoundary::hold(identity, prepared, &execution_id)?;
-        let mut sink = capture.lock().map_err(|_| {
-            ManagementError::unavailable(
-                "prepared_boundary_capture_unavailable",
-                "the served boundary capture sink is unavailable",
-            )
-        })?;
+        let mut sink = capture.lock().map_err(refusal)?;
         let released = boundary.release(
             self.provider_mut()?,
             input,
@@ -202,8 +261,26 @@ impl ProductionLiveWorkflowSession {
             &mut **sink,
         );
         drop(sink);
-        let (decision, receipt) = released?;
-        self.boundary.record(receipt);
-        decision.ok_or_else(already_recorded)
+        // A receipt is retained and made durable whenever the write may already have reached the
+        // provider, so a composition that restarts refuses a second write of the same approval
+        // rather than writing it again.
+        match released {
+            Ok((decision, receipt)) => {
+                self.retain_receipt(receipt)?;
+                decision.ok_or_else(already_recorded)
+            }
+            Err(error) => {
+                // A refusal that happened before the write leaves nothing to reconcile, so no
+                // receipt is retained and the decision stays retryable. An unresolved outcome may
+                // already have reached the provider, so the receipt `resume` recorded is retained
+                // and made durable before the failure is reported.
+                if error.class == ErrorClass::Unresolved
+                    && let Some(receipt) = boundary.recorded_receipt()
+                {
+                    self.retain_receipt(receipt)?;
+                }
+                Err(error)
+            }
+        }
     }
 }

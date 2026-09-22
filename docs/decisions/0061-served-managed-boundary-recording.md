@@ -62,12 +62,17 @@ satisfies it with a bounded in-memory ring, which drops its oldest record once f
 
 Honest limits of this record:
 
-- The served composition records through a bounded in-memory ring, so its records do not survive a
-  process restart; durable decision-level receipts remain outstanding.
+- The served composition records through a bounded in-memory ring, so the recorded bytes do not
+  survive a process restart. The receipt ledger that backs the once-only release now has a versioned
+  durable image and an owner-supplied reconciliation port (`with_dispatch_ledger_port`), but the
+  served composition attaches no store by default, so which store is attached remains an owner
+  decision.
 - Only the Exo lane is recorded. The Ollama `HttpBody` boundary is advertised by the library but this
   served composition does not record it.
 - Live Exo connectivity, native-host progression, gameplay outcomes and any paid provider exchange
   remain unverified here; every fixture is synthetic and application-controlled.
 - A durable decision-level reconciliation port (see [ADR 0059](0059-held-live-decision-attempt.md))
-  remains outstanding, so the once-only guarantee rests on the in-memory receipt ledger of one served
+  now exists: a composition that attaches one reloads the committed receipts and refuses a second
+  write after a restart. The served composition still attaches none by default, so unless the owner
+  attaches a store the once-only guarantee rests on the in-memory receipt ledger of one served
   session plus the caller's held-attempt discipline.

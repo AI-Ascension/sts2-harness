@@ -4,12 +4,16 @@
 //!
 //! A held dispatch is drafted, acknowledged and then dispatched exactly once.  The receipt ledger
 //! and its terminal cancellations are the only durable state: a restarted controller is rebuilt
-//! from them, so the same approval can never be dispatched twice.
+//! from them, so the same approval can never be dispatched twice.  The ledger's wire vocabulary
+//! lives in [`super::dispatch_ledger_durable`], which carries that state across a process restart
+//! through an owner-supplied reconciliation port.
 
 use super::CaptureBoundary;
+use super::dispatch_error::DispatchError;
 use super::dispatch_fences::DispatchFences;
 use super::dispatch_material::{BoundaryManifestEntry, PreparedApplicationInput};
 use super::dispatch_support::EffectiveContextClaim;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Lifecycle of one held dispatch.
@@ -42,7 +46,8 @@ impl DispatchState {
 }
 
 /// The outcome of the single write attempt.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub enum DispatchOutcome {
     /// The port recorded the approved material.
     WriteCompleted,
@@ -60,8 +65,28 @@ impl DispatchOutcome {
     }
 }
 
+impl From<DispatchOutcome> for String {
+    fn from(outcome: DispatchOutcome) -> Self {
+        outcome.as_str().to_owned()
+    }
+}
+
+impl TryFrom<String> for DispatchOutcome {
+    type Error = DispatchError;
+
+    /// Parses the stable wire label. An unknown label is refused rather than approximated.
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() {
+            "write_completed" => Ok(Self::WriteCompleted),
+            "unknown" => Ok(Self::Unknown),
+            _ => Err(DispatchError::InvalidMaterial),
+        }
+    }
+}
+
 /// Durable reconciliation record for exactly one dispatch attempt.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DispatchReceipt {
     /// Identity of the held dispatch this receipt reconciles.
     pub dispatch_id: String,
@@ -116,6 +141,16 @@ impl DispatchLedger {
     /// Number of recorded receipts.
     pub fn receipt_count(&self) -> usize {
         self.receipts.len()
+    }
+
+    /// Every retained receipt, ordered by dispatch identity.
+    pub(crate) fn receipts(&self) -> impl Iterator<Item = &DispatchReceipt> {
+        self.receipts.values()
+    }
+
+    /// Every terminal cancellation, ordered by dispatch identity.
+    pub(crate) fn cancelled(&self) -> impl Iterator<Item = &str> {
+        self.cancelled.iter().map(String::as_str)
     }
 
     /// Records one receipt.  A recorded receipt is authoritative for its dispatch identity.
