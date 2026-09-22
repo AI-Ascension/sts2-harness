@@ -63,16 +63,17 @@ satisfies it with a bounded in-memory ring, which drops its oldest record once f
 Honest limits of this record:
 
 - The served composition records through a bounded in-memory ring, so the recorded bytes do not
-  survive a process restart. The receipt ledger that backs the once-only release now has a versioned
-  durable image and an owner-supplied reconciliation port (`with_dispatch_ledger_port`), but the
-  served composition attaches no store by default, so which store is attached remains an owner
-  decision.
+  survive a process restart. The receipt ledger that backs the once-only release has a versioned
+  durable image, an owner-supplied reconciliation port (`with_dispatch_ledger_port`) and a
+  file-backed store, and the served binary attaches that store when `STS2_WORKFLOW_DISPATCH_LEDGER`
+  names an image path. The default stays session-lifetime, so which store a deployment commits its
+  receipts to remains an owner decision.
 - Only the Exo lane is recorded. The Ollama `HttpBody` boundary is advertised by the library but this
   served composition does not record it.
 - Live Exo connectivity, native-host progression, gameplay outcomes and any paid provider exchange
   remain unverified here; every fixture is synthetic and application-controlled.
 - A durable decision-level reconciliation port (see [ADR 0059](0059-held-live-decision-attempt.md))
   now exists: a composition that attaches one reloads the committed receipts and refuses a second
-  write after a restart. The served composition still attaches none by default, so unless the owner
-  attaches a store the once-only guarantee rests on the in-memory receipt ledger of one served
-  session plus the caller's held-attempt discipline.
+  write after a restart. The served composition attaches none unless the operator sets
+  `STS2_WORKFLOW_DISPATCH_LEDGER`, so without one the once-only guarantee still rests on the
+  in-memory receipt ledger of one served session plus the caller's held-attempt discipline.

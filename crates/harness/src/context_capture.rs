@@ -305,6 +305,7 @@ mod dispatch_controller;
 mod dispatch_error;
 mod dispatch_fences;
 mod dispatch_ledger_durable;
+mod dispatch_ledger_file;
 mod dispatch_lifecycle;
 mod dispatch_material;
 mod dispatch_port;
@@ -318,6 +319,7 @@ pub use dispatch_ledger_durable::{
     DURABLE_DISPATCH_LEDGER_SCHEMA, DispatchLedgerError, DispatchLedgerPort, DurableDispatchLedger,
     InMemoryDispatchLedgerPort, NoopDispatchLedgerPort,
 };
+pub use dispatch_ledger_file::{FileDispatchLedgerPort, MAX_DURABLE_DISPATCH_LEDGER_BYTES};
 pub use dispatch_lifecycle::{
     DispatchLedger, DispatchMetadata, DispatchOutcome, DispatchPreview, DispatchReceipt,
     DispatchState, PreparedDispatch,

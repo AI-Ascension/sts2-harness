@@ -78,7 +78,7 @@ fn factory(
 ) -> Result<Arc<dyn LiveWorkflowSessionFactory>, String> {
     let observations: Arc<dyn sts2_harness::LiveContextObservationPort> = context_owner.clone();
     let render: Arc<dyn sts2_harness::LiveContextRenderPort> = context_owner.clone();
-    Ok(Arc::new(ProductionLiveWorkflowSessionFactory::new(
+    let factory = ProductionLiveWorkflowSessionFactory::new(
         json!({"schema_version":"ascension.capabilities/v1","capabilities":["workflow.live","workflow.node.observe.v1","workflow.node.decide.v1","workflow.node.execute_action.v1","workflow.node.terminal.v1","workflow.execution.fence.mcp-observation.v1","observe.fair-play.v1","actions.catalog.v1","actions.settlement.v1","workflow.projection.fair-play.live.v1","workflow.provider.decision.live.v1","workflow.context.context.live.v1"]}),
         Arc::new(Catalog),
         Arc::new(Runtime {
@@ -88,7 +88,8 @@ fn factory(
         Arc::new(Provider),
         provider_policy,
         provider_capabilities.clone(),
-    ).map_err(|error| error.to_string())?
+    )
+    .map_err(|error| error.to_string())?
         .with_context_observations(observations)
         .with_context_render_port(render)
         // The served boundary records through this sink: the approved material and the bytes the
@@ -100,8 +101,17 @@ fn factory(
         )
         .with_inference_profile_catalog(Arc::new(
             inference_profiles::InferenceProfileCatalogProducer::new(provider_capabilities),
-        ))))
+        ));
+    // Which durable store a deployment commits its receipts to is an owner decision, so a store
+    // is attached only when the operator names one; see `dispatch_ledger`.
+    match dispatch_ledger::port_from_environment()? {
+        Some(port) => Ok(Arc::new(factory.with_dispatch_ledger_port(Box::new(port)))),
+        None => Ok(Arc::new(factory)),
+    }
 }
+
+#[path = "workflow_service_dispatch_ledger.rs"]
+mod dispatch_ledger;
 
 #[path = "workflow_service_inference_profiles.rs"]
 mod inference_profiles;
