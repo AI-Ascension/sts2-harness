@@ -5,6 +5,8 @@
 //! Harness-owned, fail-soft capture primitives.  The port receives the already encoded bytes at
 //! a named application boundary; it never edits provider payloads or owns provider/game access.
 
+use serde::{Deserialize, Serialize};
+
 #[path = "context_capture_input.rs"]
 mod input;
 pub use input::{PreparedAstraInput, PreparedOllamaInput};
@@ -35,7 +37,8 @@ impl CaptureMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub enum CaptureBoundary {
     HarnessRequest,
     ExoSessionRequest,
@@ -78,6 +81,27 @@ impl CaptureBoundary {
             Self::HarnessRequest => "harness.request",
             Self::ExoSessionRequest => "adapter.cli_input",
             Self::HttpBody | Self::ProviderRequest => "adapter.http_body",
+        }
+    }
+}
+
+impl From<CaptureBoundary> for String {
+    fn from(boundary: CaptureBoundary) -> Self {
+        boundary.as_str().to_owned()
+    }
+}
+
+impl TryFrom<String> for CaptureBoundary {
+    type Error = dispatch_error::DispatchError;
+
+    /// Parses the canonical wire label. `adapter.http_body` is the canonical HTTP-body boundary, so
+    /// its compatibility alias decodes to the same variant rather than a second one.
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() {
+            "harness.request" => Ok(Self::HarnessRequest),
+            "adapter.cli_input" => Ok(Self::ExoSessionRequest),
+            "adapter.http_body" => Ok(Self::HttpBody),
+            _ => Err(dispatch_error::DispatchError::InvalidMaterial),
         }
     }
 }
@@ -280,6 +304,7 @@ pub use memory::MemoryCapture;
 mod dispatch_controller;
 mod dispatch_error;
 mod dispatch_fences;
+mod dispatch_ledger_durable;
 mod dispatch_lifecycle;
 mod dispatch_material;
 mod dispatch_port;
@@ -289,6 +314,10 @@ mod dispatch_support;
 pub use dispatch_controller::PreparedDispatchController;
 pub use dispatch_error::DispatchError;
 pub use dispatch_fences::{DispatchFences, DriftAxis};
+pub use dispatch_ledger_durable::{
+    DURABLE_DISPATCH_LEDGER_SCHEMA, DispatchLedgerError, DispatchLedgerPort, DurableDispatchLedger,
+    InMemoryDispatchLedgerPort, NoopDispatchLedgerPort,
+};
 pub use dispatch_lifecycle::{
     DispatchLedger, DispatchMetadata, DispatchOutcome, DispatchPreview, DispatchReceipt,
     DispatchState, PreparedDispatch,

@@ -425,3 +425,7 @@ mod boundary_tests;
 #[cfg(test)]
 #[path = "production_boundary_ordering_tests.rs"]
 mod boundary_ordering_tests;
+
+#[cfg(test)]
+#[path = "production_boundary_durable_tests.rs"]
+mod boundary_durable_tests;

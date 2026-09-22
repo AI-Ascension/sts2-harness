@@ -6,7 +6,9 @@
 
 #[path = "production_context_ports.rs"]
 mod context_ports;
-pub use context_ports::{BoundaryCaptureSink, LiveContextObservationPort, LiveContextRenderPort};
+pub use context_ports::{
+    BoundaryCaptureSink, LiveContextObservationPort, LiveContextRenderPort, ServedDispatchLedger,
+};
 
 use serde_json::Value;
 use std::sync::Arc;
@@ -17,6 +19,7 @@ use super::super::inference_profile_binding::InferenceProfileBindingSet;
 use super::super::inference_profile_catalog::LiveInferenceProfileCatalogPort;
 use super::super::service::{LiveProviderPolicyPort, ManagementError};
 use super::session::{LiveWorkflowSession, LiveWorkflowSessionFactory};
+use crate::context_capture::DispatchLedgerPort;
 use crate::episode::{
     ActionIdentity, DecisionInput, DecisionSource, EpisodeLegalAction, EpisodeLegalActionSet,
     EpisodeObservation, EpisodeRuntimePort, RecoveryPort, TransitionReceipt, WaitSample,
@@ -107,6 +110,8 @@ pub struct ProductionLiveWorkflowSessionFactory {
     provider_policy: Arc<dyn LiveProviderPolicyPort>,
     provider_capabilities: NativeCapabilities,
     capture_sink: BoundaryCaptureSink,
+    /// Durable receipt ledger the served boundary persists its recorded receipts to.
+    dispatch_ledger: ServedDispatchLedger,
     context_observations: Option<Arc<dyn LiveContextObservationPort>>,
     context_render: Option<Arc<dyn LiveContextRenderPort>>,
     inference_profiles: Option<Arc<dyn LiveInferenceProfileCatalogPort>>,
@@ -136,6 +141,7 @@ impl ProductionLiveWorkflowSessionFactory {
             provider_policy,
             provider_capabilities,
             capture_sink: BoundaryCaptureSink::disabled(),
+            dispatch_ledger: ServedDispatchLedger::default(),
             context_observations: None,
             context_render: None,
             inference_profiles: None,
@@ -149,6 +155,15 @@ impl ProductionLiveWorkflowSessionFactory {
     /// boundary nothing recorded.
     pub fn with_capture_sink(mut self, capture_sink: BoundaryCaptureSink) -> Self {
         self.capture_sink = capture_sink;
+        self
+    }
+
+    /// Attaches the owner-supplied durable receipt ledger the served boundary persists to.
+    ///
+    /// The default port persists nothing, so a composition that attaches no store keeps the
+    /// in-session ledger rather than acquiring an undeclared durable surface.
+    pub fn with_dispatch_ledger_port(mut self, port: Box<dyn DispatchLedgerPort>) -> Self {
+        self.dispatch_ledger = ServedDispatchLedger::new(port);
         self
     }
 
@@ -216,29 +231,11 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
         definition_digest: &str,
         control_limits: Option<&super::super::ContextOwnerControlLimits>,
     ) -> Result<Box<dyn LiveWorkflowSession>, ManagementError> {
-        if self.context_observations.is_some() && control_limits.is_none() {
-            return Err(ManagementError::capability(
-                "selected_context_control_limits_required",
-                "served context observations require the admitted control limits",
-            ));
-        }
-        if control_limits.is_some() && self.context_observations.is_none() {
-            return Err(ManagementError::capability(
-                "selected_context_control_owner_unavailable",
-                "admitted context control limits have no attached enforcing owner",
-            ));
-        }
-        if self
-            .context_render
-            .as_ref()
-            .is_some_and(|render| render.render_required())
-            && (self.context_observations.is_none() || control_limits.is_none())
-        {
-            return Err(ManagementError::capability(
-                "selected_context_render_owner_unavailable",
-                "managed rendering requires the admitted observation and control owner",
-            ));
-        }
+        context_ports::validate_served_owner_composition(
+            self.context_observations.as_ref(),
+            self.context_render.as_ref(),
+            control_limits,
+        )?;
         let admitted_profiles = session::inference_profile::admit_inference_profiles(
             self.inference_profiles.as_deref(),
             actor,
@@ -253,6 +250,9 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
             definition_digest,
             &authority_binding,
         )?;
+        // The durable receipts are reloaded before the runtime is opened, so a composition that
+        // cannot read its own store refuses the session instead of leaking an opened runtime.
+        let boundary = ServedBoundaryLedger::restored(self.dispatch_ledger.clone())?;
         let runtime = self
             .runtime
             .open_runtime(request, actor, definition, definition_digest)?;
@@ -275,7 +275,7 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
             authority_binding,
             inference_profiles: self.inference_profiles.clone(),
             admitted_profiles,
-            boundary: ServedBoundaryLedger::default(),
+            boundary,
             boundary_capture: self.capture_sink.clone(),
         }))
     }

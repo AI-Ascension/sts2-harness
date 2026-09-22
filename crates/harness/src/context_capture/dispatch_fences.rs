@@ -9,7 +9,8 @@
 use super::dispatch_error::DispatchError;
 use super::valid_identity;
 
-fn valid_digest(value: &str) -> bool {
+/// Whether one bound axis is a canonical lowercase 64-character digest.
+pub(super) fn valid_digest(value: &str) -> bool {
     value.len() == 64
         && value
             .bytes()

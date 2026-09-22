@@ -2,8 +2,9 @@
 
 use super::*;
 use crate::context_capture::{
-    CaptureError, CaptureMode, CapturePort, MAX_CAPTURE_BYTES, MAX_CAPTURE_RECORDS, MemoryCapture,
-    NoopCapture,
+    CaptureError, CaptureMode, CapturePort, DispatchError, DispatchLedgerError, DispatchLedgerPort,
+    DurableDispatchLedger, MAX_CAPTURE_BYTES, MAX_CAPTURE_RECORDS, MemoryCapture, NoopCapture,
+    NoopDispatchLedgerPort,
 };
 use crate::management::{
     ContextOwnerControlLimits, ContextRenderSource, ContextRenderSourceIdentity,
@@ -67,10 +68,6 @@ pub trait LiveContextRenderPort: Send + Sync {
     fn render_required(&self) -> bool;
 }
 
-/// Why the served boundary capture sink could not be locked.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CaptureSinkUnavailable;
-
 /// The recording sink attached to the served boundary.
 ///
 /// The sink is the served boundary's write port: the approved material is handed to it exactly once
@@ -107,10 +104,11 @@ impl BoundaryCaptureSink {
     }
 
     /// Locks the attached sink for one served release.
-    pub(crate) fn lock(
-        &self,
-    ) -> Result<MutexGuard<'_, Box<dyn CapturePort>>, CaptureSinkUnavailable> {
-        self.0.lock().map_err(|_| CaptureSinkUnavailable)
+    ///
+    /// A sink that cannot be locked cannot record, so the release is refused before the provider
+    /// write rather than published for a boundary nothing observed.
+    pub(crate) fn lock(&self) -> Result<MutexGuard<'_, Box<dyn CapturePort>>, DispatchError> {
+        self.0.lock().map_err(|_| DispatchError::CaptureDisabled)
     }
 }
 
@@ -118,4 +116,77 @@ impl Default for BoundaryCaptureSink {
     fn default() -> Self {
         Self::disabled()
     }
+}
+
+/// The durable prepared-dispatch ledger a served boundary persists its recorded receipts to.
+///
+/// One instance is shared by every session a composition opens around it, so a composition that
+/// rebuilds its served session reloads the receipts the previous session committed instead of
+/// starting empty and writing an already-accepted boundary a second time. Nothing here chooses a
+/// store: the owner supplies the [`DispatchLedgerPort`], and the default persists nothing, so a
+/// composition that attaches no store keeps the in-session ledger rather than acquiring an
+/// undeclared durable surface.
+#[derive(Clone, Debug)]
+pub struct ServedDispatchLedger(Arc<Mutex<Box<dyn DispatchLedgerPort>>>);
+
+impl ServedDispatchLedger {
+    /// Wraps one owner-supplied durable ledger port.
+    pub fn new(port: Box<dyn DispatchLedgerPort>) -> Self {
+        Self(Arc::new(Mutex::new(port)))
+    }
+
+    /// The image this composition last persisted, or `None` when it never persisted one.
+    pub(super) fn load(&self) -> Result<Option<DurableDispatchLedger>, DispatchLedgerError> {
+        self.0
+            .lock()
+            .map_err(|_| DispatchLedgerError::Unavailable)?
+            .load()
+    }
+
+    /// Persists one image, so a restarted composition reloads the same receipts.
+    pub(super) fn save(&self, ledger: &DurableDispatchLedger) -> Result<(), DispatchLedgerError> {
+        self.0
+            .lock()
+            .map_err(|_| DispatchLedgerError::Unavailable)?
+            .save(ledger)
+    }
+}
+
+impl Default for ServedDispatchLedger {
+    fn default() -> Self {
+        Self::new(Box::new(NoopDispatchLedgerPort))
+    }
+}
+
+/// Confirms the served composition attaches a coherent observation, render and control set.
+///
+/// The three refusals are one rule: an enforcing owner needs the admitted control limits, admitted
+/// limits need the owner that enforces them, and managed rendering needs both. They live beside the
+/// ports they read, which are the only inputs they have.
+pub(super) fn validate_served_owner_composition(
+    observations: Option<&Arc<dyn LiveContextObservationPort>>,
+    render: Option<&Arc<dyn LiveContextRenderPort>>,
+    control_limits: Option<&ContextOwnerControlLimits>,
+) -> Result<(), ManagementError> {
+    let observed = observations.is_some();
+    let admitted = control_limits.is_some();
+    if observed && !admitted {
+        return Err(ManagementError::capability(
+            "selected_context_control_limits_required",
+            "served context observations require the admitted control limits",
+        ));
+    }
+    if admitted && !observed {
+        return Err(ManagementError::capability(
+            "selected_context_control_owner_unavailable",
+            "admitted context control limits have no attached enforcing owner",
+        ));
+    }
+    if render.is_some_and(|render| render.render_required()) && !(observed && admitted) {
+        return Err(ManagementError::capability(
+            "selected_context_render_owner_unavailable",
+            "managed rendering requires the admitted observation and control owner",
+        ));
+    }
+    Ok(())
 }
