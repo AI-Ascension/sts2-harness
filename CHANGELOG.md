@@ -11,10 +11,10 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 ## Unreleased
 
 - **Carry the served managed-boundary receipt ledger across a process restart.** A restarted served
-  composition rebuilt an empty in-memory ledger and wrote an already-accepted application boundary a
-  second time. The receipt ledger now has a versioned durable image and an owner-supplied port
-  (`with_dispatch_ledger_port`), so a restarted session reloads the committed receipts, refuses a
-  second write, and refuses an unreadable store before the runtime opens. Refs #108, #94.
+  composition rebuilt an empty in-memory ledger and wrote an accepted boundary a second time. The
+  receipt ledger now has a versioned durable image, an owner-supplied port (`with_dispatch_ledger_port`)
+  and a file-backed store the served binary attaches when `STS2_WORKFLOW_DISPATCH_LEDGER` names a path:
+  a restart reloads the receipts and refuses a second write or an unreadable store, and unset receipts stay session-lifetime. Refs #108, #94.
 - **Execute the shipped host-lease campaign downstream in the runtime peer contract lane.** The
   `the_env_configured_campaign_downstream_answers_a_signed_install` witness was declared
   operator-only and no step invoked it, so nothing in CI proved that the *environment-configured*

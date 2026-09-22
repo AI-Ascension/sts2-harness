@@ -31,7 +31,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 const EXECUTION_ID: &str = "model-execution-1";
 
 /// The dispatch identity the served boundary derives for the fixture execution.
-fn dispatch_id() -> String {
+pub(super) fn dispatch_id() -> String {
     format!("exo.{}", &crate::sha256_hex(EXECUTION_ID.as_bytes())[..32])
 }
 
@@ -78,7 +78,7 @@ impl ExoTransport for TimingOutTransport {
 }
 
 /// Builds the served session fixture with the recording sink the served composition attaches.
-fn served_session() -> (
+pub(super) fn served_session() -> (
     ProductionLiveWorkflowSession,
     Arc<Mutex<super::managed_render_tests::RenderState>>,
     Arc<AtomicUsize>,
