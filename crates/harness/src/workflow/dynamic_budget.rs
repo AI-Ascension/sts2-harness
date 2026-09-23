@@ -8,9 +8,8 @@
 //!
 //! [`ParallelBudget`] is the narrow seam: the scheduler asks the port only to
 //! reserve, report, or restore a reservation and never invents a provider.
-//! [`BranchBudgetLedger`] mirrors the admission-before-reservation discipline of
-//! [`super::provider::BudgetLedger`]: reservations are keyed by a stable branch
-//! identity, a repeated reservation for the same identity and cost is
+//! [`BranchBudgetLedger`] mirrors [`super::provider::BudgetLedger`]:
+//! reservations are keyed by a stable branch identity, a repeated reservation is
 //! idempotent, and a cancelled in-flight reservation is retained, never refunded.
 //! Cancellation and restart therefore refuse to re-dispatch a branch that may
 //! already have inferred.
@@ -30,8 +29,8 @@ pub const MAX_BUDGET_UNITS: u64 = 2_000_000;
 
 /// Stable identity of one reserved analysis branch.
 ///
-/// The plan digest plus node identity keeps a reservation stable across a cancel
-/// and a restart even though the owner loop rebuilds its scheduling state.
+/// The plan digest plus node identity keeps a reservation stable across a
+/// cancel and restart that rebuilds the owner loop's scheduling state.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct BranchBudgetKey {
     plan_digest: Digest,
@@ -42,11 +41,6 @@ impl BranchBudgetKey {
     #[must_use]
     pub fn new(plan_digest: Digest, node: NodeId) -> Self {
         Self { plan_digest, node }
-    }
-
-    #[must_use]
-    pub fn node(&self) -> &NodeId {
-        &self.node
     }
 }
 
@@ -61,11 +55,10 @@ pub struct BranchReservation {
 
 /// Narrow seam for "possible provider writes".
 ///
-/// The scheduler reserves units atomically across every branch before it can
-/// dispatch. Implementations own their interior synchronization.
+/// The scheduler reserves units atomically for every branch before dispatch.
 pub trait ParallelBudget: Send + Sync {
-    /// Atomically reserve `units` for `key`; a repeated reservation for the same
-    /// key and cost is idempotent and the aggregate never exceeds the limit.
+    /// Atomically reserve `units`; a repeat for the same key and cost is
+    /// idempotent and the aggregate never exceeds the limit.
     fn reserve(&self, key: &BranchBudgetKey, units: u64) -> Result<BranchReservation, BudgetError>;
 
     /// The reservation currently held for `key`, if any.
@@ -100,8 +93,8 @@ struct LedgerState {
 
 /// Atomic aggregate budget ledger for the bounded analysis route.
 ///
-/// One mutex protects the limit, the aggregate and every reservation, so a
-/// reservation is one atomic check-then-reserve.
+/// One mutex protects the limit, aggregate and reservations, so a reservation is
+/// one atomic check-then-reserve.
 #[derive(Debug)]
 pub struct BranchBudgetLedger {
     limit: u64,
