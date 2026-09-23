@@ -148,8 +148,8 @@ fn restored_broker_does_not_fabricate_attempt_counts() {
     assert_eq!(read_broker.history_read_count(), 1);
 
     let bytes = read_broker.snapshot_json().expect("snapshot");
-    let restored_read = ProviderSessionBroker::from_snapshot_json(&bytes, "replacement-owner")
-        .expect("restore");
+    let restored_read =
+        ProviderSessionBroker::from_snapshot_json(&bytes, "replacement-owner").expect("restore");
     assert_eq!(
         restored_read.history_read_count(),
         0,
@@ -160,7 +160,11 @@ fn restored_broker_does_not_fabricate_attempt_counts() {
     // A genuine dispatch admission is measured, then snapshotted and restored.
     let mut turn_broker = broker();
     let turn_binding = held_binding(&mut turn_broker);
-    let prepared = prepare(&mut turn_broker, &turn_binding.binding_id, "prepared-snapshot");
+    let prepared = prepare(
+        &mut turn_broker,
+        &turn_binding.binding_id,
+        "prepared-snapshot",
+    );
     turn_broker
         .explicit_resume("owner-fixture", &turn_binding.binding_id)
         .expect("resume");
@@ -175,8 +179,8 @@ fn restored_broker_does_not_fabricate_attempt_counts() {
     assert_eq!(turn_broker.provider_attempt_count(), 1);
 
     let bytes = turn_broker.snapshot_json().expect("snapshot");
-    let restored_turn = ProviderSessionBroker::from_snapshot_json(&bytes, "replacement-owner")
-        .expect("restore");
+    let restored_turn =
+        ProviderSessionBroker::from_snapshot_json(&bytes, "replacement-owner").expect("restore");
     assert_eq!(
         restored_turn.provider_attempt_count(),
         0,
