@@ -31,6 +31,12 @@ pub(super) type Shared<T> = Arc<Mutex<T>>;
 #[path = "production_duplicate_run_tests.rs"]
 mod duplicate_run_tests;
 
+/// `#94`: the execution-side catalog fence must be *wired* into the production adapter, not merely
+/// implemented, so a target that drifted after preflight is refused before the first effect.
+#[cfg(test)]
+#[path = "production_catalog_drift_tests.rs"]
+mod catalog_drift_tests;
+
 /// `#94`: a submission that already opened a session must tear it down before it is refused, and a
 /// teardown that fails has to be reported rather than discarded.
 #[cfg(test)]
