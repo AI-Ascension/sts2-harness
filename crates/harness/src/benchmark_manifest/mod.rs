@@ -6,6 +6,7 @@
 //! authorizes mutation. Only [`Manifest::public_projection`] is a public/model payload.
 
 mod contract;
+mod gate;
 mod receipt;
 mod validation;
 
@@ -14,6 +15,9 @@ use std::fmt;
 use serde::Serialize;
 
 use contract::Document;
+pub use gate::{
+    RerunAdmission, RerunAllocationSeam, RerunGateError, RerunRefusal, admit_and_allocate,
+};
 pub use receipt::{PlannedTrial, TrialStatus};
 
 /// Only supported private manifest version. Unknown semantics require a new version.
