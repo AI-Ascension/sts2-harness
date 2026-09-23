@@ -5,6 +5,7 @@
 //! A parsed manifest declares inputs; it neither attests native completeness nor
 //! authorizes mutation. Only [`Manifest::public_projection`] is a public/model payload.
 
+pub mod cold_launch;
 mod contract;
 mod gate;
 mod receipt;

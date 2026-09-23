@@ -10,6 +10,17 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Orchestrate isolated cold-launch benchmark trials from one pristine baseline.** A new
+  `benchmark_manifest::cold_launch` module fixes the per-trial isolation contract behind issue #122:
+  an immutable baseline binding the artifact digest, launch profile and closed telemetry exclusions;
+  an exclusive, bounded destination lease; an opaque gateway-attested process birth with its own
+  instance generation, since a PID can be reused; a readiness proof bound to that birth; a recorded
+  stage machine that reconciles a lost reply without adopting another trial's state and quarantines
+  an uncertain destination; and machine-readable cold-start evidence whose cleanup failure is
+  distinct from the gameplay outcome. Source-only: native process evidence and the real child-process
+  lane stay gated by sts2-game-mod#79
+  ([ADR 0068](docs/decisions/0068-cold-launch-trial-isolation.md)). Refs #122.
+
 - **Plan, schedule and report reproducible multi-policy benchmark suites.** A new
   `benchmark_manifest::suite` module freezes an ordered seed corpus, policy axis, repetition count,
   evaluator revision, declared budgets and predeclared metrics under a versioned manifest; plans one
@@ -519,14 +530,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   gross and named to say so. The projection is `derived_exact` under the fair-play taxonomy and is
   not host authority. Compatibility: additive; one new module and its re-exports, no change to an
   existing record, route, or digest. Refs #287.
-
-- Share one **bounded HTTP/1.1 response reader across provider bridges**. The strict reader that
-  refuses oversized headers, a duplicate `Content-Length`, both framings at once, a non-`chunked`
-  transfer coding, an oversized or short chunk, and any trailer after the terminal chunk moves from
-  the Ollama bridge's private `runtime_support` include to the shared `bin/support` tree, where a
-  second bridge reaches it the same way the Astra bridge reaches its accounting support. Refusals are
-  now a typed `ProviderResponseError` carrying a stable code per cause rather than an opaque string,
-  and the added negative tests pin the status, terminator, declared-length, absent-framing,
-  malformed-header, and non-JSON refusals that were previously only implied. The loopback-only
-  `ManagementClient` stays a separate boundary and is unchanged. Compatibility: no behaviour change;
-  `sts2-ollama-bridge` accepts and refuses exactly what it did before. Refs #282.
