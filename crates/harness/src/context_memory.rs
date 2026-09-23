@@ -48,8 +48,13 @@ mod context_memory_impl {
     include!("context_memory/occurrence.rs");
     include!("context_memory/concurrency.rs");
     include!("context_memory/security.rs");
+    include!("context_memory/workflow_history.rs");
+    include!("context_memory/workflow_history_ops.rs");
     include!("context_memory/tests.rs");
     include!("context_memory/debug_redaction_tests.rs");
+    include!("context_memory/workflow_history_tests.rs");
+    include!("context_memory/workflow_history_receipt_tests.rs");
+    include!("context_memory/workflow_history_scope_tests.rs");
 }
 
 pub use context_memory_impl::*;

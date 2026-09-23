@@ -26,6 +26,9 @@ mod model_view_path;
 mod model_view_projection;
 mod model_view_sentinels;
 mod model_view_walk;
+mod observation_slot;
+mod observation_slot_state;
+mod observation_slot_store;
 mod option_selection;
 mod render;
 mod state;
@@ -83,6 +86,16 @@ pub use model_view_projection::{
 };
 pub use model_view_sentinels::{
     catalog_paths, excluded_sentinel_paths, fair_play_verdict, reject_excluded_sentinels,
+};
+pub use observation_slot::{
+    AdmittedObservationSlot, MAX_SLOT_HISTORY, MAX_SLOT_LINEAGE, OBSERVATION_SLOT_SCHEMA,
+    ObservationSlotAdmission, ObservationSlotKey, ObservationSlotRefusal, SlotAdmission,
+    SupersessionReason, SupersessionRecord,
+};
+pub use observation_slot_state::{ObservationSelectionSlot, validate_slot_image};
+pub use observation_slot_store::{
+    DurableObservationSlots, MAX_OBSERVATION_SLOTS, OBSERVATION_SLOT_IMAGE_SCHEMA,
+    ObservationSlotStore,
 };
 pub use option_selection::{
     MAX_PRESENTED_OPTIONS, OPTION_SELECTION_SCHEMA, OptionSelection, PresentedOption,
