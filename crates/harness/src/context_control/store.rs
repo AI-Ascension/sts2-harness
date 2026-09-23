@@ -244,7 +244,7 @@ pub(super) fn decrypt_with_key(
         return Err(DurableControlStoreError::Corrupt);
     }
     let (nonce, ciphertext) = envelope.split_at(24);
-    let cipher = XChaCha20Poly1305::new(Key::from(*key));
+    let cipher = XChaCha20Poly1305::new(&Key::from(*key));
     let plaintext = cipher
         .decrypt(
             &XNonce::try_from(nonce).map_err(|_| DurableControlStoreError::Corrupt)?,

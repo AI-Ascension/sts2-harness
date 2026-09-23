@@ -30,7 +30,7 @@ pub(super) fn seal_test_plaintext(
     plain: &[u8],
 ) -> Result<Vec<u8>, LifecycleError> {
     let nonce = [1; 24];
-    let cipher = XChaCha20Poly1305::new(Key::from(*key));
+    let cipher = XChaCha20Poly1305::new(&Key::from(*key));
     let encrypted = cipher
         .encrypt(
             &XNonce::from(nonce),
@@ -58,7 +58,7 @@ pub fn encode(
     }
     let mut nonce = [0; 24];
     getrandom::fill(&mut nonce).map_err(|_| LifecycleError::Unavailable)?;
-    let cipher = XChaCha20Poly1305::new(Key::from(*key));
+    let cipher = XChaCha20Poly1305::new(&Key::from(*key));
     let encrypted = cipher
         .encrypt(
             &XNonce::from(nonce),
@@ -83,7 +83,7 @@ pub fn decode(
         return Err(LifecycleError::Corrupt);
     }
     let end_nonce = MAGIC.len() + 24;
-    let cipher = XChaCha20Poly1305::new(Key::from(*key));
+    let cipher = XChaCha20Poly1305::new(&Key::from(*key));
     let plain = cipher
         .decrypt(
             &XNonce::try_from(&bytes[MAGIC.len()..end_nonce])
