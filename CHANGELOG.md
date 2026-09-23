@@ -10,6 +10,17 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Plan, schedule and report reproducible multi-policy benchmark suites.** A new
+  `benchmark_manifest::suite` module freezes an ordered seed corpus, policy axis, repetition count,
+  evaluator revision, declared budgets and predeclared metrics under a versioned manifest; plans one
+  stable logical trial per suite revision/case/policy/repetition with its own provider/context
+  namespace; keeps retry-safe attempt lineage so a replayed settlement is idempotent and a conflicting
+  one is refused; preserves attempt counts across resume; and exports a sanitized aggregate with
+  explicit denominators, honest paired comparisons and metric availability, never counting an
+  infrastructure failure as a defeat, an unavailable cost as zero, or an unverified start inside an
+  exact-start group. Source-only: native exact-start certification stays gated by #126
+  ([ADR 0067](docs/decisions/0067-reproducible-benchmark-suite-scheduling-and-reports.md)). Refs #125.
+
 - **Add offline trace-bundle admission and a bounded reproducer for divergence diagnosis.** A new
   `trace_divergence` module derives an immutable `TraceBundleManifest` per bundle, admits two bundles
   by closure, profile and action-schema coverage *before* comparing, compares bounded record views,
@@ -519,18 +530,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   malformed-header, and non-JSON refusals that were previously only implied. The loopback-only
   `ManagementClient` stays a separate boundary and is unchanged. Compatibility: no behaviour change;
   `sts2-ollama-bridge` accepts and refuses exactly what it did before. Refs #282.
-
-- Record the **System One provider lane and its transport** in
-  [ADR 0053](docs/decisions/0053-system-one-provider-lane.md). A System One provider evaluates typed
-  questions against one state and returns structured answers with probabilities and a calibrated
-  confidence rather than text, so a host-generated action catalog becomes the option set of one typed
-  question and the returned distribution can gate the decision. The ADR admits it as a local bridge
-  kind on the legacy lane — digest pin, argument allowlist, and explicit combat gate intact, no
-  live-episode promotion, no reviewed-envelope admission, whose route axes bind one provider and host
-  by design — and decides that the bridge owns the request and answer contract while a pinned,
-  operator-owned executable owns the HTTPS exchange, following the precedent `sts2-astra-bridge` set.
-  A pure-Rust TLS client inside the bridge is recorded as the migration path with the reasons it is
-  not the first step, and the rejected alternatives are stated rather than implied. Published limits,
-  price, and documented model weaknesses are carried with `source-derived` labels and their sources;
-  the claim that this lane plays the game is `unverified` and no run exists. Compatibility:
-  documentation only; no code, dependency, or contract changes. Refs #286.

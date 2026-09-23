@@ -8,6 +8,7 @@
 mod contract;
 mod gate;
 mod receipt;
+pub mod suite;
 mod validation;
 
 use std::fmt;
