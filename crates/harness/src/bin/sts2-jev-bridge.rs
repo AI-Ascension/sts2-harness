@@ -9,7 +9,9 @@
 //! When the presented option set is larger than the question bound, the ask is split in two: a
 //! `kind` question followed by an `action` question restricted to the chosen kind. That keeps each
 //! question small, which is the reason the bound exists; both stages still print exactly one terminal
-//! decision, and the record states that two stages were used.
+//! decision, and the record states that two stages were used. The split needs two exchanges, so the
+//! profiles that permit only one transport invocation — the capture profile (`--audit-dir`) and the
+//! evaluation profile (`--tactical`) — keep asking the single question they were reviewed with.
 //!
 //! `--record` prints one object carrying the provider request, the provider response, and the
 //! decision, instead of the decision alone. The decision in that record is composed from the
@@ -152,7 +154,8 @@ fn run(options: &options::Options) -> Result<(), Box<dyn std::error::Error>> {
     if options.audit_dir.is_some() {
         println!("{}", capture::run(&bytes, options, &mut ask)?);
     } else if options.tactical {
-        let evidence = record_profile(&bytes, &options.model, gate(options), &mut ask, true)?;
+        let evidence =
+            record_profile(&bytes, &options.model, gate(options), &mut ask, true, false)?;
         let output = if options.record {
             evidence
         } else {
