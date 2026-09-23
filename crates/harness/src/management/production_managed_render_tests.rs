@@ -210,6 +210,20 @@ pub(super) fn render_test_session(
     render_test_session_with_state(render_state, config, limits, stale, on_exchange)
 }
 
+/// The owner-served render port a composition attaches, over one fixed source, so a composition
+/// test can build its factory without assembling a session field-by-field.
+pub(super) fn render_port(
+    source: ContextRenderSource,
+    limits: ContextRenderLimits,
+    stale: Arc<std::sync::atomic::AtomicBool>,
+) -> Arc<dyn LiveContextRenderPort> {
+    Arc::new(RenderPort {
+        state: Arc::new(Mutex::new(RenderState { source })),
+        stale,
+        limits,
+    })
+}
+
 /// Builds a served session over a caller-owned render state.
 ///
 /// Exposing the state lets a test mutate exactly one fenced identity field during inference, so it

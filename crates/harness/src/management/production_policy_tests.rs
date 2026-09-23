@@ -439,3 +439,6 @@ mod boundary_durable_tests;
 #[cfg(test)]
 #[path = "production_boundary_file_store_tests.rs"]
 mod boundary_file_store_tests;
+#[cfg(test)]
+#[path = "production_served_composition_tests.rs"]
+mod served_composition_tests;
