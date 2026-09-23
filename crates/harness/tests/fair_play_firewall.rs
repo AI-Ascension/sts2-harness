@@ -194,6 +194,59 @@ fn a_card_still_requires_the_fields_it_always_required() {
 }
 
 #[test]
+fn a_malformed_continuation_projection_is_refused() {
+    // The projection refuses a payload that does not carry the agreed continuation shape rather
+    // than dropping the action, so a malformed host offer fails the whole observation loudly.
+    for action in [
+        json!("continue_run"),
+        json!({"run_id": "profile1"}),
+        json!({"kind": 7}),
+        json!({"kind": "resume_run"}),
+    ] {
+        let mut value = observation();
+        value["legal_actions"] = json!([{"action_id": "continue_run:2", "action": action}]);
+        assert!(
+            SanitizedObservation::new(value).is_err(),
+            "the projection admitted a malformed continuation {action}"
+        );
+    }
+}
+
+#[test]
+fn a_continuation_discriminator_is_an_opaque_host_identity() {
+    // The host owns the run discriminator, and the projection admits only a plain identity. A value
+    // that tries to name another profile's storage or carries a structured selector is refused
+    // here, because the harness never resolves a profile or a save path itself.
+    for (action, expected) in [
+        (
+            json!({"kind": "continue_run", "run_id": "profile2\\saves\\current_run.save"}),
+            SandboxError::InvalidText,
+        ),
+        (
+            json!({"kind": "continue_run", "run_id": {"profile": "profile2"}}),
+            SandboxError::NotAnObservation,
+        ),
+        (
+            json!({"kind": "continue_run", "run_id": ""}),
+            SandboxError::InvalidText,
+        ),
+        (
+            json!({"kind": "continue_run", "profile": "profile2"}),
+            SandboxError::UnknownField,
+        ),
+        (
+            json!({"kind": "continue_run", "run_id": "profile2", "profile_path": "a/save"}),
+            SandboxError::UnknownField,
+        ),
+    ] {
+        let mut value = observation();
+        value["legal_actions"] =
+            json!([{"action_id": "continue_run:2:profile2", "action": action}]);
+        assert_eq!(SanitizedObservation::new(value), Err(expected));
+    }
+}
+
+#[test]
 fn an_offered_set_is_admitted_named_or_described() {
     // Every host today lists the offered set as identifiers, and that must keep working.
     let mut named = observation();

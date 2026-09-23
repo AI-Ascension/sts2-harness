@@ -79,6 +79,12 @@ pub(super) fn parse_actions(
 
 /// The allowlist is the single source of truth for both a kind's field contract and its typed
 /// action, so an unknown or malformed kind is refused here rather than coerced into another action.
+///
+/// The `continue_run` shape is frozen at `{"kind":"continue_run"}` and
+/// `{"kind":"continue_run","run_id":"<identity>"}`; a caller-supplied save path or extra field is
+/// refused, and `run_id` is an optional host-owned identity. Recorded in `docs/ARCHITECTURE.md`;
+/// agreed in `sts2-game-mod#210` (merge `8a655143694ae532be679c17c5d06a3c2ef31ae6`) and admitted
+/// consumer-first by `sts2-harness#415` (merge `551ec19d3e6b7dcf1634602f58a24ea5be9c9f4b`).
 fn payload_contract(
     kind: &str,
 ) -> Result<(&'static [&'static str], &'static [&'static str], ActionKind), String> {
