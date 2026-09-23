@@ -31,7 +31,7 @@ jobs:
       CARGO_BUILD_JOBS: '2'
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
-      DEFAULT_GATEWAY_REVISION: 5afe82e6436ee3da611238e99861b62c2f22c141
+      DEFAULT_GATEWAY_REVISION: 3692f4d60fff06b8b4e1a44b14449dec6f30d67c
       DEFAULT_MCP_REVISION: e6af39f30c14cd5ecc84be254511d4840bdb8fae
       # Peer binaries are identical for every executable-composition step, so they are declared once
       # here. Only `github`/`vars`/`secrets`/`inputs` are readable in a job-level env, so each step
