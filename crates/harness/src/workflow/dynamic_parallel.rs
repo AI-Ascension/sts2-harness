@@ -21,6 +21,46 @@ use super::dynamic_join::{BranchOutcome, JoinedResult, ParallelCap, join_digest}
 use super::ids::{NodeId, OperationRef};
 use super::values::AnalysisValue;
 
+/// Owner-loop decision for one ready node.
+pub(crate) enum Admission {
+    /// The node may be dispatched.
+    Dispatch,
+    /// The node is settled without dispatch, with this outcome.
+    Refused(BranchOutcome),
+}
+
+/// Per-dispatch admission asked by the owner loop before a branch is spawned.
+///
+/// The plain bounded route uses [`NoAdmission`], which always dispatches. The
+/// reserved route (`execute_plan_bounded_reserved`) supplies a budget-backed
+/// admission that reserves aggregate budget before dispatch and refuses to
+/// re-dispatch a branch whose reservation records a possible earlier provider
+/// write.
+pub(crate) trait DispatchAdmission {
+    fn admit(&self, node: &NodeId) -> Admission;
+
+    /// Record the outcome a dispatched branch reported, before it is joined.
+    fn record(&self, node: &NodeId, outcome: &BranchOutcome);
+
+    /// Whether the owner has been asked to cancel the run.
+    fn cancelled(&self) -> bool {
+        false
+    }
+
+    /// Called once when the run was cancelled, with the branches left in flight.
+    fn on_cancel(&self, _in_flight: &BTreeSet<NodeId>) {}
+}
+
+struct NoAdmission;
+
+impl DispatchAdmission for NoAdmission {
+    fn admit(&self, _node: &NodeId) -> Admission {
+        Admission::Dispatch
+    }
+
+    fn record(&self, _node: &NodeId, _outcome: &BranchOutcome) {}
+}
+
 struct Scheduled<'p> {
     node: &'p DynamicNode,
     inputs: BTreeSet<NodeId>,
@@ -174,40 +214,75 @@ pub fn execute_plan_bounded<A: ParallelAnalysisExecutor>(
     cap: ParallelCap,
     executor: &A,
 ) -> Result<JoinedResult, DynamicPlanError> {
+    drive(plan, cap, executor, &NoAdmission)
+}
+
+/// Owner loop shared by the plain and budget-reserved bounded routes.
+///
+/// Every dispatch first asks `admission` to admit the node, which lets the
+/// reserved route reserve aggregate budget before a branch can spawn. When the
+/// admission is cancelled the loop stops dispatching, tells the admission which
+/// branches were left in flight, and reports `Cancelled`.
+pub(crate) fn drive<A: ParallelAnalysisExecutor>(
+    plan: &DynamicPlan,
+    cap: ParallelCap,
+    executor: &A,
+    admission: &dyn DispatchAdmission,
+) -> Result<JoinedResult, DynamicPlanError> {
     let mut state = JoinState::new(plan)?;
     let (sender, receiver) = mpsc::channel::<(NodeId, BranchOutcome)>();
+    let mut cancelled = false;
     thread::scope(|scope| -> Result<(), DynamicPlanError> {
         let mut in_flight = 0usize;
+        let mut in_flight_ids: BTreeSet<NodeId> = BTreeSet::new();
         loop {
             while in_flight < cap.get() {
+                if admission.cancelled() {
+                    cancelled = true;
+                    break;
+                }
                 let Some(id) = state.next_ready() else { break };
                 match state.gather_inputs(&id) {
                     Err(outcome) => state.settle(id, outcome),
-                    Ok((node, inputs)) => {
-                        let sender = sender.clone();
-                        scope.spawn(move || {
-                            // An executor is caller-supplied, so a branch may unwind. Catch it
-                            // here: every spawned branch must report exactly once, or the owner
-                            // loop below would wait forever for a message that never arrives.
-                            let outcome =
-                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                    run_branch(executor, node, &inputs)
-                                }))
-                                .unwrap_or(BranchOutcome::Failed(DynamicPlanError::BranchLost));
-                            let _ = sender.send((node.id.clone(), outcome));
-                        });
-                        in_flight = in_flight.saturating_add(1);
-                    }
+                    Ok((node, inputs)) => match admission.admit(&node.id) {
+                        Admission::Dispatch => {
+                            let sender = sender.clone();
+                            scope.spawn(move || {
+                                // An executor is caller-supplied, so a branch may unwind. Catch it
+                                // here: every spawned branch must report exactly once, or the owner
+                                // loop below would wait forever for a message that never arrives.
+                                let outcome =
+                                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                        run_branch(executor, node, &inputs)
+                                    }))
+                                    .unwrap_or(BranchOutcome::Failed(DynamicPlanError::BranchLost));
+                                let _ = sender.send((node.id.clone(), outcome));
+                            });
+                            in_flight = in_flight.saturating_add(1);
+                            in_flight_ids.insert(node.id.clone());
+                        }
+                        Admission::Refused(outcome) => state.settle(id, outcome),
+                    },
                 }
+            }
+            if cancelled {
+                break;
             }
             if in_flight == 0 {
                 return Ok(());
             }
             let (id, outcome) = receiver.recv().map_err(|_| DynamicPlanError::BranchLost)?;
             in_flight = in_flight.saturating_sub(1);
+            admission.record(&id, &outcome);
+            in_flight_ids.remove(&id);
             state.settle(id, outcome);
         }
+        admission.on_cancel(&in_flight_ids);
+        Ok(())
     })?;
+    if cancelled {
+        return Err(DynamicPlanError::Cancelled);
+    }
     if state.outcomes.len() != state.graph.len() {
         return Err(DynamicPlanError::Cycle);
     }

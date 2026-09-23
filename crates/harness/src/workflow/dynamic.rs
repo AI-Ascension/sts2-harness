@@ -76,6 +76,8 @@ pub enum DynamicPlanError {
     UnsettledInput,
     BranchUnknown,
     BranchLost,
+    BudgetExhausted,
+    Cancelled,
 }
 
 impl std::fmt::Display for DynamicPlanError {
@@ -95,6 +97,8 @@ impl std::fmt::Display for DynamicPlanError {
             Self::UnsettledInput => "dynamic plan node has a declared input that did not settle",
             Self::BranchUnknown => "dynamic plan branch outcome is unknown",
             Self::BranchLost => "dynamic plan branch ended without reporting an outcome",
+            Self::BudgetExhausted => "dynamic plan branch budget could not be reserved",
+            Self::Cancelled => "dynamic plan execution was cancelled",
         })
     }
 }
