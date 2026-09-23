@@ -73,7 +73,7 @@ composition commit `03be7729635376325f2f6ee7c47c35896a742e0f`,
 require initial content and live snapshot identities. Its closed capability payload in
 `mapping_game_information_shapes.rs` advertises limits and snapshot policy without
 discovering those identities. The consumed runtime-v3 gameplay schema, SHA-256
-`8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63`, supplies state ID and
+`daa216902d3211b9537924105b27e7718dd93dec82969a3c550131a27147c06b`, supplies state ID and
 generation without content-manifest or lookup snapshot identity. These namespaces must
 not be equated.
 

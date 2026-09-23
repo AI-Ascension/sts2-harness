@@ -141,7 +141,7 @@ fn production_combat_operation_id_is_accepted_at_the_recovery_boundary() {
             "catalog_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         },
         "action": {
-            "schema_digest": "8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63",
+            "schema_digest": "daa216902d3211b9537924105b27e7718dd93dec82969a3c550131a27147c06b",
             "canonical_json_b64": "eyJhY3Rpb24iOnsia2luZCI6ImVuZF90dXJuIn0sImFjdGlvbl9pZCI6ImNvbWJhdC5lbmQtdHVybiJ9",
             "payload_digest": "150dbfb8ac3331371ecd80224e78274a8aa1d221916d867b6125bfe07ac88107"
         },

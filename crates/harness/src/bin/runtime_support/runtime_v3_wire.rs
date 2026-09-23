@@ -15,7 +15,7 @@ mod recovery_encoding;
 pub(super) use recovery_encoding::decode as decode_recovery_action;
 
 pub(super) const RUNTIME_V3_SCHEMA_DIGEST: &str =
-    "8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63";
+    "daa216902d3211b9537924105b27e7718dd93dec82969a3c550131a27147c06b";
 
 const CATALOG_REVISION: &str = "runtime-v3-gameplay-mcp";
 const EXPERT_CATALOG_REVISION: &str = "runtime-v4-expert-mcp";

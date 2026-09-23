@@ -434,9 +434,9 @@ from `AI-Ascension/sts2-protocol` main
 [conformance case](../conformance/cases/runtime-v3-gameplay.json) preserve the inventory's relative
 paths. Earlier relocated `UPSTREAM_SHA256SUMS` and `conformance.json` copies are removed.
 
-Schema SHA-256 is `8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63`;
+Schema SHA-256 is `daa216902d3211b9537924105b27e7718dd93dec82969a3c550131a27147c06b`;
 the authoritative inventory SHA-256 is
-`ddc7c0a3697bcb474de8e7967041302dab072e11bc9990ffd5a508eb391cc1db`.
+`ca0ddd2a3c1898c919954251fe0a46b44b2eaa0375e299d29063e9f9a83b365a`.
 This coordinated revision admits proceed, confirm-selection and cancel-selection in the typed
 policy and Exo action parser. Earlier digests fail closed; all consumers must migrate together.
 Regenerate only by copying the complete bundle and its source/conformance mirrors from a reviewed

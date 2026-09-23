@@ -156,7 +156,7 @@ fn mcp_script(log_path: &Path, mismatch: bool) -> Result<String, Box<dyn std::er
     };
     let template = json!({
         "protocol_version":"runtime-v3-gameplay",
-        "schema_digest":"8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63",
+        "schema_digest":"daa216902d3211b9537924105b27e7718dd93dec82969a3c550131a27147c06b",
         "provenance":{
             "artifact":"sts2-protocol/runtime-v3-gameplay",
             "source":"schemas/runtime-v3-gameplay.schema.json",
