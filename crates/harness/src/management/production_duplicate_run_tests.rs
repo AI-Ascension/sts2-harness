@@ -57,7 +57,7 @@ fn live_definition() -> serde_json::Value {
     value
 }
 
-fn target_descriptor() -> TargetDescriptor {
+pub(super) fn target_descriptor() -> TargetDescriptor {
     TargetDescriptor {
         instance_id: INSTANCE_ID.to_owned(),
         execution_profiles: vec![PROFILE.to_owned()],
@@ -184,7 +184,7 @@ pub(super) fn unused(surface: &str) -> StoreError {
     )
 }
 
-fn observation(state_id: &str, generation: u64) -> EpisodeObservation {
+pub(super) fn observation(state_id: &str, generation: u64) -> EpisodeObservation {
     EpisodeObservation::new(
         state_id,
         generation,
