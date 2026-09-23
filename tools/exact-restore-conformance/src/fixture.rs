@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 const RECOVERY_SCHEMA: &str = "fb934d3157485aaf6e13e6ebbb213ec8a14c7fc6f5eeebc06b7a22c1f0009217";
-const RUNTIME_V3_SCHEMA: &str = "8e99cea36b7ede97532348fd8efe302ca79260895265a7bf14ddf7e006d8ff63";
+const RUNTIME_V3_SCHEMA: &str = "daa216902d3211b9537924105b27e7718dd93dec82969a3c550131a27147c06b";
 const ZERO_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 fn run_case_inner(paths: &Paths, outcome: &str, root: &Path) -> Result<(), String> {
