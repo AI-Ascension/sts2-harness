@@ -10,6 +10,14 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Add offline trace-bundle admission and a bounded reproducer for divergence diagnosis.** A new
+  `trace_divergence` module derives an immutable `TraceBundleManifest` per bundle, admits two bundles
+  by closure, profile and action-schema coverage *before* comparing, compares bounded record views,
+  reports explicit record/entry/byte truncation, and exports a `ReproducerPrefix` that replays only
+  up to the failing boundary and validates against the original source. Offline and read-only; the
+  public status stays digest-free. Native mismatch validation remains gated by #123
+  ([ADR 0066](docs/decisions/0066-offline-trace-bundle-admission-and-reproducer.md)). Refs #124.
+
 - **Record the two source-only Jev-runner decisions.** The wall-clock-sensitive global-time-budget
   test's fixture strategy is recorded in
   [ADR 0063](docs/decisions/0063-jev-runner-first-arm-admission.md): the first scheduled arm is

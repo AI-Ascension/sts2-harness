@@ -99,6 +99,7 @@ mod runtime_v4_expert_rest_action;
 mod runtime_v4_expert_rest_action_artifact;
 pub mod semantic_history;
 mod trace_diagnosis;
+mod trace_divergence;
 
 pub mod worker_endpoint;
 pub mod worker_handoff;
@@ -210,7 +211,6 @@ pub use identity::{
     ActionId, ArtifactId, Digest, EpisodeId, GatewaySessionId, IdempotencyKey, InstanceId,
     ModelExecutionId, RecordId, RequestId, RunId, SchemaVersion, TraceId, TrajectoryId,
 };
-pub use management::*;
 pub use map::{
     AnalysisCacheKey, AnalysisConfig, ApproximationStatus, BoundedCache, BundleContents,
     BundleFileStore, BundleHistory, BundleManifest, BundleOrigin, BundlePresentation, CacheError,
@@ -304,4 +304,4 @@ pub use runtime_v4_expert_rest_action_artifact::{
     verify_runtime_v4_expert_rest_action_artifact,
 };
 pub use trace_diagnosis::{PublicDivergenceStatus, TraceDiagnosis, diagnose_traces};
-pub use {context_control::*, coop_native::*};
+pub use {context_control::*, coop_native::*, management::*, trace_divergence::*};
