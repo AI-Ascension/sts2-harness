@@ -6,6 +6,10 @@ use serde_json::{Value, json};
 
 use super::auth::AuthContext;
 use super::authoring::{AuthoringStore, MemoryAuthoringStore};
+use super::authoring_inference::{
+    AuthoringInferenceJournal, AuthoringInferencePort, UnavailableAuthoringInferenceJournal,
+    UnavailableAuthoringInferencePort,
+};
 use super::context_owner::ContextOwnerPort;
 use super::contract::{
     AuthoritySummary, CONTEXT_ASSOCIATION_SCHEMA_VERSION, CapabilityResponse, CleanupState,
@@ -30,6 +34,8 @@ use super::store::{
     MemoryWorkflowStore, StoreError, SubmissionLookup, WorkflowStore,
 };
 
+#[path = "service_authoring_inference.rs"]
+mod authoring_inference_ops;
 #[path = "service_authoring.rs"]
 mod authoring_ops;
 #[path = "service_constructors.rs"]
@@ -269,6 +275,8 @@ pub struct ManagementService {
     process_lifecycle: Arc<dyn super::lifecycle::ProcessLifecyclePort>,
     lifecycle_intents: Option<Arc<std::sync::Mutex<super::lifecycle_intent::LifecycleIntentStore>>>,
     journal: Arc<dyn InferenceProfileRevisionJournal>,
+    authoring_inference_provider: Arc<dyn AuthoringInferencePort>,
+    authoring_inference_journal: Arc<dyn AuthoringInferenceJournal>,
 }
 
 impl ManagementService {
@@ -297,6 +305,8 @@ impl ManagementService {
             process_lifecycle: Arc::new(super::lifecycle::UnavailableProcessLifecyclePort),
             lifecycle_intents: None,
             journal: Arc::new(UnavailableInferenceProfileRevisionJournal),
+            authoring_inference_provider: Arc::new(UnavailableAuthoringInferencePort),
+            authoring_inference_journal: Arc::new(UnavailableAuthoringInferenceJournal),
         }
     }
 
@@ -325,6 +335,23 @@ impl ManagementService {
         journal: Arc<dyn InferenceProfileRevisionJournal>,
     ) -> Self {
         self.journal = journal;
+        self
+    }
+
+    /// Attaches the single bounded proposal source.
+    pub fn with_authoring_inference_port(mut self, port: Arc<dyn AuthoringInferencePort>) -> Self {
+        self.authoring_inference_provider = port;
+        self
+    }
+
+    /// Attaches the server-owned authoring-operation journal. Without it the
+    /// route is composed but unavailable, so no proposal is accepted into a
+    /// process-local state an operator cannot see.
+    pub fn with_authoring_inference_journal(
+        mut self,
+        journal: Arc<dyn AuthoringInferenceJournal>,
+    ) -> Self {
+        self.authoring_inference_journal = journal;
         self
     }
 }
