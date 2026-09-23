@@ -18,15 +18,21 @@ pub(super) fn record(
     gate: f64,
     exchange: &mut Exchange<'_>,
 ) -> Result<Value, Failure> {
-    record_profile(bytes, model, gate, exchange, false)
+    record_profile(bytes, model, gate, exchange, false, true)
 }
 
+/// Records one decision, shaping the ask to what the caller's profile permits.
+///
+/// `tactical_enabled` selects the evaluation profile, which owns its own question-count contract.
+/// `two_stage_allowed` is `false` for a caller that permits only one transport invocation (the
+/// capture profile), so an above-bound set is asked as one question there rather than split.
 pub(super) fn record_profile(
     bytes: &[u8],
     model: &str,
     gate: f64,
     exchange: &mut Exchange<'_>,
     tactical_enabled: bool,
+    two_stage_allowed: bool,
 ) -> Result<Value, Failure> {
     if bytes.len() > LIMIT {
         return Err("request exceeds bound".into());
@@ -43,10 +49,11 @@ pub(super) fn record_profile(
     if let Some(record) = forced(&selection, &catalog, tactical_enabled)? {
         return Ok(record);
     }
-    // A presented set above the option bound is asked in two stages. The evaluation profile owns its
-    // own question-count contract, so the split is the production path's behaviour and the tactical
-    // arm keeps asking the single question it was reviewed with.
-    if selection.mode == SelectionMode::TwoStage && !tactical_enabled {
+    // A presented set above the option bound is asked in two stages when more than one exchange is
+    // allowed. The evaluation profile owns its own question-count contract, and the capture profile
+    // permits at most one transport invocation, so each keeps the single question it was reviewed
+    // with; the split is otherwise the production path's behaviour.
+    if selection.mode == SelectionMode::TwoStage && !tactical_enabled && two_stage_allowed {
         return two_stage_record(
             &request,
             observation,
@@ -76,11 +83,18 @@ pub(super) fn record_profile(
         ),
         &constraints(&request),
     )?;
+    // The record states how the ask was shaped. When the split was suppressed the whole set was
+    // asked in one question, so the mode is `single` even though the set exceeded the bound.
+    let ask_mode = if selection.mode == SelectionMode::TwoStage {
+        SelectionMode::Single
+    } else {
+        selection.mode
+    };
     exchange_record(
         body,
         &ids,
         catalog.len(),
-        selection.mode,
+        ask_mode,
         tactical_enabled,
         gate,
         exchange,

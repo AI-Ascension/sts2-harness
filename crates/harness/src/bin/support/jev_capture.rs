@@ -78,6 +78,8 @@ fn execute(
             gate(options),
             &mut counted,
             options.tactical,
+            // The capture profile permits at most one transport invocation, so the ask never splits.
+            false,
         )
     };
     let elapsed = started.elapsed().as_millis().min(9_007_199_254_740_991) as u64;

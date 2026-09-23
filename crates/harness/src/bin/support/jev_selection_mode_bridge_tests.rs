@@ -189,6 +189,31 @@ fn a_single_question_set_records_the_single_mode() {
 }
 
 #[test]
+fn a_suppressed_split_asks_one_question_and_records_single() {
+    // A profile that permits only one exchange must not split, even above the bound: it asks the
+    // whole set in one question and records that one question was asked.
+    let mut questions: Vec<&'static str> = Vec::new();
+    let record = record_profile(
+        &two_stage_request(),
+        "jev-latest",
+        decision::DEFAULT_CONFIDENCE_GATE,
+        &mut |body| {
+            let parsed: Value = serde_json::from_slice(body)?;
+            questions.push(question_name(&parsed));
+            Ok(stage_reply(&parsed, "play_card", "play:card-3"))
+        },
+        false,
+        false,
+    )
+    .expect("record");
+    assert_eq!(questions, vec![ACTION_QUESTION], "exactly one question");
+    assert_eq!(record["selection_mode"], json!("single"));
+    assert_eq!(record["provider_call"], json!(true));
+    assert!(record.get("class_question").is_none());
+    assert_eq!(record["decision"]["action_id"], json!("play:card-3"));
+}
+
+#[test]
 fn a_forced_action_records_the_forced_mode() {
     let record = record(
         &forced_turn_request(),

@@ -31,6 +31,7 @@ fn tactical_mode_uses_one_exchange_and_records_the_selected_evidence() {
             Ok(serde_json::to_vec(&fixture::reply(&body, "action-01"))?)
         },
         true,
+        false,
     )
     .expect("tactical record");
     assert_eq!(calls, 1);
@@ -69,6 +70,7 @@ fn explicit_disabled_profile_matches_the_legacy_record() {
             Ok(serde_json::to_vec(&fixture::reply(&body, "action-00"))?)
         },
         false,
+        true,
     )
     .expect("disabled profile");
     assert_eq!(baseline, disabled);
@@ -87,6 +89,7 @@ fn malformed_tactical_reply_is_not_retried() {
             Ok(b"{\"answers\":{}}".to_vec())
         },
         true,
+        false,
     );
     assert!(result.is_err());
     assert_eq!(calls, 1);
@@ -106,6 +109,7 @@ fn tactical_duplicate_catalog_is_rejected_before_egress() {
             Ok(Vec::new())
         },
         true,
+        false,
     );
     assert!(result.is_err());
     assert_eq!(calls, 0);

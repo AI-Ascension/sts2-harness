@@ -47,10 +47,18 @@ validated by named-field presence, so an existing reader ignores it.
 The evaluation profile owns a separate question-count contract (`1 + 7 * targets`) and is not part of
 this change; when `--tactical` is set the ask stays a single question regardless of the computed mode.
 
+The capture profile (`--audit-dir`) permits **at most one** transport invocation, so it also keeps
+the single question: the split is asked only when more than one exchange is allowed. A captured
+above-bound set therefore stays one question, and its record states `selection_mode: single` because
+one question was asked.
+
 ## Consequences
 
-- A presented set in `(24, 64]` costs two provider calls per decision instead of one. Above 64 the
-  builder refuses first, as before.
+- On the default path, a presented set above 24 costs two provider calls per decision instead of
+  one. The single-question bound is enforced per question, not over the total presented set: the
+  class question is bounded by the number of distinct kinds and the action question by the chosen
+  kind's options, so a total presented set above 64 can still be asked when each stage fits. The
+  capture and evaluation profiles are unchanged and still ask one question.
 - The two stages are each independently tested at the builder boundary and end to end through the
   bridge's offline fake exchange; the record states the mode so a two-stage ask is observable.
 - No vendor evidence exists for this shape: ADR 0053 records that no run in this repository has called

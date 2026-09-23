@@ -17,6 +17,23 @@ fn input(execution: &str) -> Value {
     })
 }
 
+/// A request whose presented set is above the split bound: 26 plays and ending the turn.
+fn above_bound_input(execution: &str) -> Value {
+    let mut ids: Vec<String> = (0..26)
+        .map(|index| format!("play:card-{index:02}"))
+        .collect();
+    ids.push("combat.end-turn".to_owned());
+    json!({
+        "model_execution_id": execution, "objective": "synthetic objective",
+        "hard_constraints": [], "legal_action_ids": ids,
+        "observation": {
+            "state_id": "synthetic-state", "generation": 3,
+            "player": {"hp": 30, "max_hp": 80, "energy": 3, "gold": 0, "hand": []},
+            "state": {"state": "combat", "turn_index": 2},
+        },
+    })
+}
+
 fn options(tactical: bool) -> options::Options {
     let mut args = vec!["--model", "jev-1.13.0", "--gate", "20"];
     if tactical {
@@ -208,6 +225,35 @@ mod unix {
         assert_eq!(captured["status"], "failed");
         assert_eq!(captured["provider_attempts"], 1);
         assert!(!captured.to_string().contains("PRIVATE_PROVIDER_ERROR"));
+    }
+
+    #[test]
+    fn capture_above_the_bound_asks_one_question_and_makes_one_exchange() {
+        // The capture profile permits at most one transport invocation, so a presented set above the
+        // split bound must still be asked as a single question rather than consuming two exchanges.
+        let root = Scratch::new();
+        let options = captured_options(&root, false);
+        let bytes = serde_json::to_vec(&above_bound_input("execution-above-bound")).expect("input");
+        let mut calls = 0;
+        let decision = execute(&bytes, &options, &"a".repeat(64), &mut |body| {
+            calls += 1;
+            let body: Value = serde_json::from_slice(body)?;
+            assert!(
+                body["questions"].get("kind").is_none(),
+                "capture must not split the ask into two stages"
+            );
+            Ok(serde_json::to_vec(
+                &super::super::super::tactical_fixture::reply(&body, "combat.end-turn"),
+            )?)
+        })
+        .expect("capture");
+        assert_eq!(calls, 1);
+        assert_eq!(decision["decision"], json!("action"));
+        let captured = result(&root);
+        assert_eq!(captured["status"], "complete");
+        assert_eq!(captured["provider_attempts"], 1);
+        assert_eq!(captured["decision"]["kind"], json!("action"));
+        assert_eq!(captured["decision"]["selected_index"], json!(0));
     }
 
     #[test]
