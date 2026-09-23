@@ -98,7 +98,7 @@ mod workflow_history_receipt_tests {
             sources: vec![source.clone()],
             cutoff: 8,
             corpus_generation: 1,
-            source_manifest_sha256: source_manifest_digest(&[source.clone()]),
+            source_manifest_sha256: source_manifest_digest(std::slice::from_ref(source)),
             generator_profile: "fake-v1".to_owned(),
             generator_prompt_sha256: sha256_hex("prompt"),
             output_schema_sha256: sha256_hex("schema"),
@@ -358,7 +358,7 @@ mod workflow_history_receipt_tests {
         let (_, proposal) = session
             .extract(
                 "proposal-1",
-                &[reference.clone()],
+                std::slice::from_ref(&reference),
                 8,
                 1,
                 NOW,

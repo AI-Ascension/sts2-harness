@@ -208,16 +208,15 @@ pub fn validate_slot_image(slot: &ObservationSelectionSlot) -> Result<(), Observ
         return Err(ObservationSlotRefusal::InvalidIdentity);
     }
     let mut effective_state = BTreeSet::new();
-    if let Some(effective) = &slot.effective {
-        if effective.schema != OBSERVATION_SLOT_SCHEMA
+    if let Some(effective) = &slot.effective
+        && (effective.schema != OBSERVATION_SLOT_SCHEMA
             || effective.slot_id != slot.slot_id
             || effective.key != slot.key
             || !boundary_complete(&effective.boundary)
             || !valid_expiry(&effective.admitted_at, &effective.expires_at)
-            || !effective_state.insert(effective.boundary.state_id.clone())
-        {
-            return Err(ObservationSlotRefusal::InvalidIdentity);
-        }
+            || !effective_state.insert(effective.boundary.state_id.clone()))
+    {
+        return Err(ObservationSlotRefusal::InvalidIdentity);
     }
     for entry in &slot.history {
         if entry.schema != OBSERVATION_SLOT_SCHEMA
