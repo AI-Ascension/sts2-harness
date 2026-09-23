@@ -66,7 +66,7 @@ issue's 0/12 and 0/40-isolated controls, i.e. it is the rarer member of the fami
 those 60 landed in the mid-band load the issue records, so the mid-band rate is not spoken to. What
 the differential does establish is mechanism-level: the 250 ms bound was load-bearing on real sibling
 assertions in the same file (5 of 60 pre-fix executions red at load ≥ 81, three of them the same
-`child_closed` signal at `runner-process.test.mjs:38`/`:66`), and the 1,000 ms bound produced 0 of 40
+`child_closed` signal at `runner-process.test.mjs:39`/`:67`), and the 1,000 ms bound produced 0 of 40
 reds under the same host load. A 1-in-16 rate is not measurable at these sample sizes; the decision
 rests on the measured kill-to-close tail (250-306 ms under load, ~565 ms in the escaped-session
 control) and on keeping the assertion strict, not on a measured rate change.
