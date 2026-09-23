@@ -515,3 +515,26 @@ that preceded the entries below is preserved in
   (`revision`, already published as `source_revision`) is named in code and pinned by test. Map,
   management and expert stay negative-only. Compatibility: additive.
   See [evidence](evidence/exo-advertised-variant-negatives-20260918.md). Refs #141.
+
+- Serve an **immutable inference-profile catalog** and admit typed profile bindings. `GET
+  /v1/inference-profiles` (`workflow:read`) returns a sealed, credential-free
+  `ascension.inference-profiles/v1` catalog of `ascension.inference-profile/v1` descriptors (adapter,
+  requested/resolved model, prompt/configuration revision, supported settings, operation allow-list,
+  context compatibility, continuity, effective budgets, select/edit grants, availability state). Live
+  admission resolves every `decision_profile_ref`/`planner_profile_ref` to an exact id/version/digest
+  revision before any reservation or provider exists, and persists the requested/resolved provenance
+  on the run's target admission. Unknown id, digest mismatch, revocation, and unsupported/stale/disabled
+  model or settings refuse before inference; a catalog refresh re-reads the owner and admits nothing on
+  its own. Reading the catalog confers no edit path, and adopting a newer revision changes a new
+  definition only — an admitted run keeps the revision it resolved (see
+  [ADR 0054](decisions/0054-inference-profile-revision-adoption-scope.md)). Compatibility: additive;
+  a versioned closed schema (`contracts/inference-profile/catalog.schema.json`) and one new route.
+  Evidence is synthetic/component only. Refs #104.
+
+- Remove an **orphaned `context_memory` source fragment** that made the repository impossible to
+  check out on Windows. `crates/harness/src/context_memory/aux.rs` was 188 lines beginning inside an
+  `impl` block and ending on a dangling attribute; nothing declared it, so no build, format, lint, or
+  test ever read it, and its live counterparts are `approval.rs` and `authorizer.rs`. Because `aux`
+  is a reserved Win32 device name with any extension, `git clone` on Windows stopped with
+  `error: invalid path` and left an incomplete tree that could not be built. Compatibility: no
+  behaviour change; the file was outside the module tree. Refs #281.
