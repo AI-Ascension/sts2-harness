@@ -24,7 +24,7 @@ only come from the pre-spawn branch. The red was load-dependent and CI masked it
 The issue named three candidate directions: make the fixture deterministic so the first arm is
 guaranteed to be spawned; give the budget headroom relative to the pre-spawn cost; or relax the
 assertion to `timeout + cancelled === 1`. The third was already rejected in the issue, because
-`runner.test.mjs:137` (`observed_provider_attempts_unknown_arms`) also differs between the two
+`runner.test.mjs:140` (`observed_provider_attempts_unknown_arms`) also differs between the two
 branches (1 vs 0), so a disjunction would weaken two assertions rather than one.
 
 ## Decision
