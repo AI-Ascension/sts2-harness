@@ -67,9 +67,8 @@ pub(super) fn parse_actions(
             .get("kind")
             .and_then(Value::as_str)
             .ok_or_else(|| String::from("Runtime-v3 legal action kind is invalid"))?;
-        validate_payload(payload, kind)?;
-        let action =
-            EpisodeLegalAction::new(action_id, action_kind(kind)).map_err(action_set_error)?;
+        let action = EpisodeLegalAction::new(action_id, validate_payload(payload, kind)?)
+            .map_err(action_set_error)?;
         payloads.insert(action_id.to_owned(), payload.clone());
         actions.push(action);
     }
@@ -78,23 +77,47 @@ pub(super) fn parse_actions(
     Ok((action_set, payloads))
 }
 
-fn validate_payload(value: &Value, kind: &str) -> Result<(), String> {
+/// The allowlist is the single source of truth for both a kind's field contract and its typed
+/// action, so an unknown or malformed kind is refused here rather than coerced into another action.
+fn payload_contract(
+    kind: &str,
+) -> Result<(&'static [&'static str], &'static [&'static str], ActionKind), String> {
+    match kind {
+        // `continue_run` is the only kind whose discriminator the host may omit: it names the saved
+        // run only when more than one can be resumed, so the field is admitted but never required.
+        "continue_run" => Ok((&["kind"], &["run_id"], ActionKind::ContinueRun)),
+        "start_run" => Ok((&["kind", "character_id"], &[], ActionKind::StartRun)),
+        "select_map_node" => Ok((&["kind", "node_id"], &[], ActionKind::SelectMapNode)),
+        "play_card" => Ok((&["kind", "card_id", "target_id"], &[], ActionKind::PlayCard)),
+        "end_turn" => Ok((&["kind"], &[], ActionKind::EndTurn)),
+        "choose_reward" => Ok((&["kind", "reward_id"], &[], ActionKind::ChooseReward)),
+        "skip_reward" => Ok((&["kind"], &[], ActionKind::SkipReward)),
+        "proceed" => Ok((&["kind"], &[], ActionKind::Proceed)),
+        "confirm_selection" => Ok((&["kind"], &[], ActionKind::ConfirmSelection)),
+        "cancel_selection" => Ok((&["kind"], &[], ActionKind::CancelSelection)),
+        "shop_purchase" => Ok((&["kind", "item_id"], &[], ActionKind::ShopPurchase)),
+        "shop_remove" => Ok((&["kind", "card_id"], &[], ActionKind::ShopRemove)),
+        "rest" => Ok((&["kind"], &[], ActionKind::Rest)),
+        "smith" => Ok((&["kind", "card_id"], &[], ActionKind::Smith)),
+        "event_choice" => Ok((&["kind", "choice_id"], &[], ActionKind::EventChoice)),
+        "select_card" => Ok((&["kind", "card_id"], &[], ActionKind::SelectCard)),
+        "confirm_victory" => Ok((&["kind"], &[], ActionKind::ConfirmVictory)),
+        "save_quit" => Ok((&["kind"], &[], ActionKind::SaveQuit)),
+        _ => Err(String::from("Runtime-v3 action kind is not allowlisted")),
+    }
+}
+
+fn validate_payload(value: &Value, kind: &str) -> Result<ActionKind, String> {
     let object = value
         .as_object()
         .ok_or_else(|| String::from("Runtime-v3 action payload is not an object"))?;
-    let fields: &[&str] = match kind {
-        "end_turn" | "skip_reward" | "rest" | "confirm_victory" | "save_quit" => &["kind"],
-        "proceed" | "confirm_selection" | "cancel_selection" => &["kind"],
-        "start_run" => &["kind", "character_id"],
-        "select_map_node" => &["kind", "node_id"],
-        "choose_reward" => &["kind", "reward_id"],
-        "shop_purchase" => &["kind", "item_id"],
-        "shop_remove" | "smith" | "select_card" => &["kind", "card_id"],
-        "event_choice" => &["kind", "choice_id"],
-        "play_card" => &["kind", "card_id", "target_id"],
-        _ => return Err(String::from("Runtime-v3 action kind is not allowlisted")),
-    };
-    if object.len() != fields.len() || fields.iter().any(|field| !object.contains_key(*field)) {
+    let (fields, optional, action) = payload_contract(kind)?;
+    if object.len() > fields.len() + optional.len()
+        || fields.iter().any(|field| !object.contains_key(*field))
+        || object
+            .keys()
+            .any(|key| !fields.contains(&key.as_str()) && !optional.contains(&key.as_str()))
+    {
         return Err(String::from(
             "Runtime-v3 action payload has an invalid field set",
         ));
@@ -102,45 +125,25 @@ fn validate_payload(value: &Value, kind: &str) -> Result<(), String> {
     if object.get("kind").and_then(Value::as_str) != Some(kind) {
         return Err(String::from("Runtime-v3 action kind is inconsistent"));
     }
-    for field in fields.iter().copied().filter(|field| *field != "kind") {
+    for field in fields
+        .iter()
+        .chain(optional.iter())
+        .copied()
+        .filter(|field| *field != "kind")
+    {
+        let Some(value) = object.get(field) else {
+            continue;
+        };
         let valid = if field == "target_id" {
-            object
-                .get(field)
-                .is_some_and(|value| value.is_null() || value.as_str().is_some_and(safe_identity))
+            value.is_null() || value.as_str().is_some_and(safe_identity)
         } else {
-            object
-                .get(field)
-                .and_then(Value::as_str)
-                .is_some_and(safe_identity)
+            value.as_str().is_some_and(safe_identity)
         };
         if !valid {
             return Err(String::from("Runtime-v3 action argument is invalid"));
         }
     }
-    Ok(())
-}
-
-fn action_kind(kind: &str) -> ActionKind {
-    match kind {
-        "start_run" => ActionKind::StartRun,
-        "select_map_node" => ActionKind::SelectMapNode,
-        "play_card" => ActionKind::PlayCard,
-        "end_turn" => ActionKind::EndTurn,
-        "choose_reward" => ActionKind::ChooseReward,
-        "skip_reward" => ActionKind::SkipReward,
-        "proceed" => ActionKind::Proceed,
-        "confirm_selection" => ActionKind::ConfirmSelection,
-        "cancel_selection" => ActionKind::CancelSelection,
-        "shop_purchase" => ActionKind::ShopPurchase,
-        "shop_remove" => ActionKind::ShopRemove,
-        "rest" => ActionKind::Rest,
-        "smith" => ActionKind::Smith,
-        "event_choice" => ActionKind::EventChoice,
-        "select_card" => ActionKind::SelectCard,
-        "confirm_victory" => ActionKind::ConfirmVictory,
-        "save_quit" => ActionKind::SaveQuit,
-        _ => ActionKind::SaveQuit,
-    }
+    Ok(action)
 }
 
 pub(crate) fn action_from_payload(
@@ -151,8 +154,7 @@ pub(crate) fn action_from_payload(
         .get("kind")
         .and_then(Value::as_str)
         .ok_or_else(|| String::from("Runtime-v3 stored action omitted its kind"))?;
-    validate_payload(payload, kind)?;
-    EpisodeLegalAction::new(action_id, action_kind(kind))
+    EpisodeLegalAction::new(action_id, validate_payload(payload, kind)?)
         .map_err(|error| format!("Runtime-v3 stored action identity is invalid: {error}"))
 }
 

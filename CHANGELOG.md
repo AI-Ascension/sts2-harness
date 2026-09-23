@@ -10,6 +10,17 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Admit the host-offered `continue_run` action in the runtime-v3 path.** A host that offered
+  `continue_run` beside `start_run` failed the whole observation: the production runtime-v3 parser
+  and the fair-play sanitizer both refused any action kind outside their allowlists, and the parser's
+  kind table fell through to `save_quit`. Both boundaries now admit the host-owned identity with an
+  optional `run_id` discriminator (`{"kind":"continue_run"}` or
+  `{"kind":"continue_run","run_id":"profile1"}`), preserve the host-generated `action_id`, and still
+  refuse a save path, a null or non-identity `run_id`, an unknown kind and an extra field. The
+  allowlist is now the single source of truth for a kind's field contract and its typed action, so an
+  unknown kind is rejected before dispatch instead of being coerced into another action, and the
+  continuation is bound to the offered generation so a stale catalog is refused before any effect.
+  Refs #390.
 - **Carry the served managed-boundary receipt ledger across a process restart.** A restarted served
   composition rebuilt an empty in-memory ledger and wrote an accepted boundary a second time. The
   receipt ledger now has a versioned durable image, an owner-supplied port (`with_dispatch_ledger_port`)
@@ -521,20 +532,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   is a reserved Win32 device name with any extension, `git clone` on Windows stopped with
   `error: invalid path` and left an incomplete tree that could not be built. Compatibility: no
   behaviour change; the file was outside the module tree. Refs #281.
-
-- Bind the Exo **evidence records to the revision that actually contains them**. Both oracle reports
-  derive `harness_revision` from `git rev-parse HEAD` while every other digest is computed from the
-  worktree, so a run on an uncommitted tree emitted a record naming a revision without the evidence
-  it binds — the 2026-09-17 record named `deb5df6d`, where the extension, the oracle and both
-  support modules differ or are absent. `support::assert_sources_are_committed` now fails the run
-  when a recorded source differs from `HEAD` or is untracked, both records are re-recorded at the
-  revision carrying their bytes, and the coupled manifest/`SHA256SUMS` digests are re-pinned. Refs #140.
-
-- Make the one-shot Exo bridge **advertise the variants it implements**. `--describe` publishes
-  `profile_support` (`map`/`management`/`expert` `unsupported`), `decision_support` (`recovery`
-  `unsupported`) and the two fail-closed codes, so a caller can pre-check support rather than infer it
-  from a rejection identical for every axis. The guard walks the one axis list the advertisement is
-  derived from, so an enforced axis is published in the step that enforces it; the single exempt axis
-  (`revision`, already published as `source_revision`) is named in code and pinned by test. Map,
-  management and expert stay negative-only. Compatibility: additive.
-  See [evidence](docs/evidence/exo-advertised-variant-negatives-20260918.md). Refs #141.

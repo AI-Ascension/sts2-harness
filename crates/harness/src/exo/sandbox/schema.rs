@@ -102,6 +102,9 @@ pub(super) fn is_allowed(kind: ValueKind, key: &str) -> bool {
         ValueKind::Action => &[
             "kind",
             "character_id",
+            // `continue_run` names the saved run only when more than one can be resumed, so the
+            // discriminator is admitted like an optional field rather than required.
+            "run_id",
             "node_id",
             "card_id",
             "player_id",
@@ -239,6 +242,9 @@ pub(super) fn validate_shape(
         ValueKind::LegalAction => require_exact(object, &["action_id", "action"]),
         ValueKind::Action => match object.get("kind").and_then(Value::as_str) {
             Some("start_run") => require_exact(object, &["kind", "character_id"]),
+            // The host names a run only when the choice is not already determined, so `run_id` is
+            // optional; an unknown key is still refused.
+            Some("continue_run") => require_fields(object, &["kind"], &["run_id"]),
             Some("select_map_node") => require_exact(object, &["kind", "node_id"]),
             Some("play_card") => require_exact(object, &["kind", "card_id", "target_id"]),
             Some("choose_reward") => require_exact(object, &["kind", "reward_id"]),

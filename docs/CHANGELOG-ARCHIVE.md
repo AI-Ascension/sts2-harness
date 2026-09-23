@@ -498,3 +498,20 @@ that preceded the entries below is preserved in
   bootstrap `error_response` on a 5xx answer instead of collapsing it to a retryable
   `gateway_unavailable`. Compatibility: internal; no schema, route or durable record changes.
   Refs #127, #276.
+
+- Bind the Exo **evidence records to the revision that actually contains them**. Both oracle reports
+  derive `harness_revision` from `git rev-parse HEAD` while every other digest is computed from the
+  worktree, so a run on an uncommitted tree emitted a record naming a revision without the evidence
+  it binds — the 2026-09-17 record named `deb5df6d`, where the extension, the oracle and both
+  support modules differ or are absent. `support::assert_sources_are_committed` now fails the run
+  when a recorded source differs from `HEAD` or is untracked, both records are re-recorded at the
+  revision carrying their bytes, and the coupled manifest/`SHA256SUMS` digests are re-pinned. Refs #140.
+
+- Make the one-shot Exo bridge **advertise the variants it implements**. `--describe` publishes
+  `profile_support` (`map`/`management`/`expert` `unsupported`), `decision_support` (`recovery`
+  `unsupported`) and the two fail-closed codes, so a caller can pre-check support rather than infer it
+  from a rejection identical for every axis. The guard walks the one axis list the advertisement is
+  derived from, so an enforced axis is published in the step that enforces it; the single exempt axis
+  (`revision`, already published as `source_revision`) is named in code and pinned by test. Map,
+  management and expert stay negative-only. Compatibility: additive.
+  See [evidence](evidence/exo-advertised-variant-negatives-20260918.md). Refs #141.

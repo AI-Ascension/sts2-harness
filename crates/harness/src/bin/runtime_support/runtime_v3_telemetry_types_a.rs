@@ -132,6 +132,7 @@ pub enum DecisionKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TelemetryActionKind {
     StartRun,
+    ContinueRun,
     SelectCharacter,
     SelectMapNode,
     PlayCard,
@@ -158,6 +159,7 @@ impl TelemetryActionKind {
     fn as_str(self) -> &'static str {
         match self {
             Self::StartRun => "start_run",
+            Self::ContinueRun => "continue_run",
             Self::SelectCharacter => "select_character",
             Self::SelectMapNode => "select_map_node",
             Self::PlayCard => "play_card",
@@ -186,6 +188,7 @@ impl From<ActionKind> for TelemetryActionKind {
     fn from(kind: ActionKind) -> Self {
         match kind {
             ActionKind::StartRun => Self::StartRun,
+            ActionKind::ContinueRun => Self::ContinueRun,
             ActionKind::SelectCharacter => Self::SelectCharacter,
             ActionKind::SelectMapNode => Self::SelectMapNode,
             ActionKind::PlayCard => Self::PlayCard,

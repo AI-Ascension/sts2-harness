@@ -9,6 +9,9 @@ use super::{action_set, observation, receipt, result_observation, wait_sample};
 #[path = "runtime_v3_contract_test.rs"]
 mod contract;
 
+#[path = "runtime_v3_parse_continuation_test.rs"]
+mod continuation;
+
 fn wire_text(value: &Value) -> String {
     value.to_string()
 }
