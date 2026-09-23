@@ -82,10 +82,10 @@ deadline.
 
 ## Out of scope for this record
 
-Per-branch provider budget reservation, the atomic replacement of the
-management in-flight counter, cancellation and restart of branches
-(sts2-harness#98 items 2–3, lane 98-B) and branch-state reporting to Studio
-(closed `RunSnapshot`/`RunEvent` schemas, lane 98-C) are separate decisions.
-Game mutations stay serialized at the protected action boundary; this route
-executes read-only analyses only. Native, provider and browser behavior are not
-established by the controlled executor used in `tests/workflow_dynamic_parallel.rs`.
+Per-branch provider budget reservation, cancellation and restart of branches
+(sts2-harness#98 items 2–3, lane 98-B) are decided by ADR 0065. Branch-state
+reporting to Studio (closed `RunSnapshot`/`RunEvent` schemas, lane 98-C) remains a
+separate decision in `ascension-workflow-studio`. Game mutations stay serialized
+at the protected action boundary; this route executes read-only analyses only.
+Native, provider and browser behavior are not established by the controlled
+executor used in `tests/workflow_dynamic_parallel.rs`.

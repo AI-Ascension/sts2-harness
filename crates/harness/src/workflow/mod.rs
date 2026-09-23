@@ -7,6 +7,7 @@ mod decoder;
 mod definition;
 mod diagnostic;
 mod dynamic;
+mod dynamic_budget;
 mod dynamic_join;
 mod dynamic_parallel;
 mod dynamic_runtime;
@@ -54,6 +55,10 @@ pub use dynamic::{
     AnalysisFault, DynamicEdge, DynamicNode, DynamicNodeKind, DynamicPlan, DynamicPlanError,
     DynamicPlanRegistry, DynamicPlanResult, ParallelAnalysisExecutor, PlanStore,
     PureAnalysisExecutor, execute_plan, validate_plan,
+};
+pub use dynamic_budget::{
+    BranchBudgetKey, BranchBudgetLedger, BranchReservation, CancelFlag, CancelSignal,
+    MAX_BUDGET_UNITS, ParallelBudget, execute_plan_bounded_reserved,
 };
 pub use dynamic_join::{BranchOutcome, JoinedResult, MAX_PARALLEL_ANALYSES, ParallelCap};
 pub use dynamic_parallel::execute_plan_bounded;

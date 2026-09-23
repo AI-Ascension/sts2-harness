@@ -5,6 +5,8 @@
 #[path = "workflow_dynamic_parallel/controlled.rs"]
 mod controlled;
 
+mod budget;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
