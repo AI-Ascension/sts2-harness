@@ -15,7 +15,7 @@ use std::thread;
 
 use sts2_harness::workflow::{
     BranchBudgetKey, BranchBudgetLedger, BranchOutcome, BudgetError, CancelFlag, CancelSignal,
-    Digest, DynamicPlanError, ParallelCap, ReservationState, execute_plan_bounded,
+    Digest, DynamicPlanError, ParallelBudget, ParallelCap, ReservationState, execute_plan_bounded,
     execute_plan_bounded_reserved,
 };
 
