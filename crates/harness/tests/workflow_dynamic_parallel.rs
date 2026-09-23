@@ -5,6 +5,7 @@
 #[path = "workflow_dynamic_parallel/controlled.rs"]
 mod controlled;
 
+#[path = "workflow_dynamic_parallel/budget.rs"]
 mod budget;
 
 use std::collections::{BTreeMap, BTreeSet};
