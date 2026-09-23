@@ -19,7 +19,7 @@ use sts2_harness::workflow::{
     execute_plan_bounded_reserved,
 };
 
-use super::controlled::{Controlled, analyze, node, plan};
+use super::controlled::{Controlled, Panics, analyze, node, plan};
 
 const UNITS: u64 = 3;
 const LIMIT: u64 = 6;
@@ -298,6 +298,49 @@ fn a_definite_failure_retries_once_while_a_possible_write_is_never_repeated() {
     assert_eq!(
         ledger.reservation(&failed).map(|entry| entry.actual_units),
         Some(Some(UNITS))
+    );
+}
+
+#[test]
+fn a_panicked_branch_is_retained_as_possibly_written_and_never_redispatched() {
+    let plan = plan(vec![analyze("a"), analyze("b")], Vec::new());
+    let cap = ParallelCap::new(2).expect("cap");
+    let ledger = BranchBudgetLedger::new(2 * UNITS).expect("limit");
+    let panicking = Panics {
+        unwound: std::collections::BTreeSet::from(["a".to_owned()]),
+    };
+
+    let first =
+        execute_plan_bounded_reserved(&plan, cap, &panicking, &ledger, UNITS, &CancelFlag::new())
+            .expect("joins despite the unwind");
+    assert!(matches!(
+        first.outcomes.get(&node("a")),
+        Some(BranchOutcome::Failed(_))
+    ));
+    let key_a = BranchBudgetKey::new(plan.digest().expect("digest"), node("a"));
+    assert_eq!(
+        ledger.reservation(&key_a).map(|entry| entry.state),
+        Some(ReservationState::Unknown),
+        "an unwind may already have written, so it is not retryable"
+    );
+
+    let second = Controlled::default();
+    let restarted =
+        execute_plan_bounded_reserved(&plan, cap, &second, &ledger, UNITS, &CancelFlag::new())
+            .expect("restart joins");
+    let log = second.log();
+    assert!(
+        !log.iter().any(|line| line == "start a"),
+        "a possibly-written branch is not re-dispatched: {log:?}"
+    );
+    assert_eq!(
+        restarted.outcomes.get(&node("a")),
+        Some(&BranchOutcome::Unknown)
+    );
+    assert_eq!(
+        ledger.reserved_units(),
+        2 * UNITS,
+        "no duplicate reservation"
     );
 }
 

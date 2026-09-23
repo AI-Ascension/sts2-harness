@@ -247,10 +247,9 @@ impl CancelSignal for CancelFlag {
 
 /// Owner-loop admission that reserves aggregate budget before every dispatch.
 ///
-/// A branch with a held, unknown, or completed reservation records a possible
-/// earlier provider write: it is never re-dispatched or re-reserved. Only a
-/// branch whose reservation is a definite failure may be retried, and that retry
-/// re-reserves idempotently.
+/// A held, unknown or completed reservation records a possible earlier provider
+/// write and is never re-dispatched or re-reserved; only a definite no-write
+/// failure may be retried, and that retry re-reserves idempotently.
 pub(crate) struct BudgetAdmission<'a> {
     budget: &'a dyn ParallelBudget,
     cancel: &'a dyn CancelSignal,
@@ -296,6 +295,8 @@ impl DispatchAdmission for BudgetAdmission<'_> {
         let key = self.key(node);
         let _reported = match outcome {
             BranchOutcome::Settled(_) => self.budget.complete(&key, self.units_per_branch),
+            // An unwind is indeterminate: the branch may already have written.
+            BranchOutcome::Failed(DynamicPlanError::BranchLost) => self.budget.mark_unknown(&key),
             BranchOutcome::Failed(_) => self.budget.fail(&key, None),
             BranchOutcome::Unknown => self.budget.mark_unknown(&key),
         };
@@ -319,10 +320,9 @@ impl DispatchAdmission for BudgetAdmission<'_> {
 /// A branch the ledger cannot reserve is recorded as `Failed(BudgetExhausted)`
 /// and never dispatched, so racing branches cannot oversubscribe the owner's
 /// limit. A cancel signal stops new dispatches, marks the reservations left in
-/// flight [`ReservationState::Unknown`] and returns
-/// [`DynamicPlanError::Cancelled`]; the reservations persist in `budget`, so a
-/// restart re-reserves nothing and re-dispatches no branch that may already have
-/// inferred.
+/// flight [`ReservationState::Unknown`] and returns [`DynamicPlanError::Cancelled`];
+/// the reservations persist in `budget`, so a restart re-reserves nothing and
+/// re-dispatches no branch that may already have inferred.
 pub fn execute_plan_bounded_reserved<A: ParallelAnalysisExecutor>(
     plan: &DynamicPlan,
     cap: ParallelCap,
