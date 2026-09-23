@@ -6,6 +6,7 @@ const MAX_ACTIONS: usize = 256;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ActionKind {
     StartRun,
+    ContinueRun,
     SelectCharacter,
     SelectMapNode,
     PlayCard,

@@ -3,6 +3,7 @@
 pub(super) const fn action_kind_name(kind: ActionKind) -> &'static str {
     match kind {
         ActionKind::StartRun => "start_run",
+        ActionKind::ContinueRun => "continue_run",
         ActionKind::SelectCharacter => "select_character",
         ActionKind::SelectMapNode => "select_map_node",
         ActionKind::PlayCard => "play_card",

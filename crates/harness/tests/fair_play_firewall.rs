@@ -257,6 +257,50 @@ fn a_player_carrying_nothing_is_unchanged() {
 }
 
 #[test]
+fn a_host_may_offer_a_saved_run_to_continue() {
+    // The host names a run only when the choice is not already determined by the screen, so both
+    // the bare kind and the discriminated form must reach the provider projection.
+    for action in [
+        json!({"kind": "continue_run"}),
+        json!({"kind": "continue_run", "run_id": "profile1"}),
+    ] {
+        let mut value = observation();
+        value["legal_actions"] = json!([{"action_id": "continue_run:2", "action": action}]);
+        assert!(SanitizedObservation::new(value).is_ok());
+    }
+}
+
+#[test]
+fn a_continuation_projection_carries_only_the_agreed_shape() {
+    for (action, expected) in [
+        (
+            json!({"kind": "continue_run", "save_path": "profile1/saves/current_run.save"}),
+            SandboxError::UnknownField,
+        ),
+        (
+            json!({"kind": "continue_run", "run_id": "profile1", "seed": "1"}),
+            SandboxError::UnknownField,
+        ),
+        (
+            json!({"kind": "continue_run", "run_id": null}),
+            SandboxError::NotAnObservation,
+        ),
+    ] {
+        let mut value = observation();
+        value["legal_actions"] = json!([{"action_id": "continue_run:2", "action": action}]);
+        assert_eq!(SanitizedObservation::new(value), Err(expected));
+    }
+
+    // A kind the host does not own is still refused rather than ignored.
+    let mut value = observation();
+    value["legal_actions"] = json!([{"action_id": "resume:2", "action": {"kind": "resume_run"}}]);
+    assert_eq!(
+        SanitizedObservation::new(value),
+        Err(SandboxError::UnknownField)
+    );
+}
+
+#[test]
 fn a_relic_or_potion_without_an_identity_or_name_is_refused() {
     for holding in [
         json!({"player_relics": [{"name": "Burning Blood"}]}),
