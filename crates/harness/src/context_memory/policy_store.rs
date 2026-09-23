@@ -229,7 +229,7 @@ fn encrypt(
     getrandom::fill(&mut nonce).map_err(|_| PolicyOwnerError::Unavailable)?;
     let result = XChaCha20Poly1305::new(key.into())
         .encrypt(
-            XNonce::from_slice(&nonce),
+            &XNonce::from(nonce),
             Payload {
                 msg: &plaintext,
                 aad: &aad(scope)?,
@@ -253,7 +253,7 @@ fn decrypt(
     }
     let mut plaintext = XChaCha20Poly1305::new(key.into())
         .decrypt(
-            XNonce::from_slice(&envelope[..24]),
+            &XNonce::try_from(&envelope[..24]).map_err(|_| PolicyOwnerError::Corrupt)?,
             Payload {
                 msg: &envelope[24..],
                 aad: &aad(scope)?,

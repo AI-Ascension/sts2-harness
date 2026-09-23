@@ -205,10 +205,11 @@ impl ContextControlStore {
         let mut nonce = [0_u8; 24];
         nonce[..16].copy_from_slice(first.as_bytes());
         nonce[16..].copy_from_slice(&second.as_bytes()[..8]);
-        let cipher = XChaCha20Poly1305::new(Key::from_slice(&self.key));
+        let cipher_key = Key::from(self.key);
+        let cipher = XChaCha20Poly1305::new(&cipher_key);
         let ciphertext = cipher
             .encrypt(
-                XNonce::from_slice(&nonce),
+                &XNonce::from(nonce),
                 Payload {
                     msg: plaintext,
                     aad,
@@ -243,10 +244,10 @@ pub(super) fn decrypt_with_key(
         return Err(DurableControlStoreError::Corrupt);
     }
     let (nonce, ciphertext) = envelope.split_at(24);
-    let cipher = XChaCha20Poly1305::new(Key::from_slice(key));
+    let cipher = XChaCha20Poly1305::new(Key::from(*key));
     let plaintext = cipher
         .decrypt(
-            XNonce::from_slice(nonce),
+            &XNonce::try_from(nonce).map_err(|_| DurableControlStoreError::Corrupt)?,
             Payload {
                 msg: ciphertext,
                 aad,

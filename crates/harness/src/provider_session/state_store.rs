@@ -281,10 +281,12 @@ impl ProviderSessionMetadataStore {
             .ok_or(ProviderSessionMetadataStoreError::Unsupported)?;
         let mut nonce = [0_u8; NONCE_BYTES];
         fill_random(&mut nonce).map_err(|_| ProviderSessionMetadataStoreError::Crypto)?;
-        let cipher = XChaCha20Poly1305::new(Key::from_slice(key.as_ref()));
+        let cipher_key = Key::try_from(&key.as_ref()[..])
+            .map_err(|_| ProviderSessionMetadataStoreError::Crypto)?;
+        let cipher = XChaCha20Poly1305::new(&cipher_key);
         let ciphertext = cipher
             .encrypt(
-                XNonce::from_slice(&nonce),
+                &XNonce::from(nonce),
                 Payload {
                     msg: plaintext,
                     aad: &self.aad(),
@@ -310,10 +312,13 @@ impl ProviderSessionMetadataStore {
             .ok_or(ProviderSessionMetadataStoreError::Unsupported)?;
         let nonce_start = STORE_MAGIC.len();
         let nonce_end = nonce_start + NONCE_BYTES;
-        let cipher = XChaCha20Poly1305::new(Key::from_slice(key.as_ref()));
+        let cipher_key = Key::try_from(&key.as_ref()[..])
+            .map_err(|_| ProviderSessionMetadataStoreError::Crypto)?;
+        let cipher = XChaCha20Poly1305::new(&cipher_key);
         cipher
             .decrypt(
-                XNonce::from_slice(&envelope[nonce_start..nonce_end]),
+                &XNonce::try_from(&envelope[nonce_start..nonce_end])
+                    .map_err(|_| ProviderSessionMetadataStoreError::Corrupt)?,
                 Payload {
                     msg: &envelope[nonce_end..],
                     aad: &self.aad(),

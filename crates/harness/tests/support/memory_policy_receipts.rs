@@ -191,7 +191,7 @@ fn malformed_envelope(original: &[u8], mutate: impl FnOnce(&mut Value)) -> Vec<u
     let cipher = XChaCha20Poly1305::new((&[7_u8; 32]).into());
     let plain = cipher
         .decrypt(
-            XNonce::from_slice(&original[..24]),
+            &XNonce::try_from(&original[..24]).unwrap(),
             Payload {
                 msg: &original[24..],
                 aad: &aad,
@@ -208,7 +208,7 @@ fn malformed_envelope(original: &[u8], mutate: impl FnOnce(&mut Value)) -> Vec<u
     envelope.extend(
         cipher
             .encrypt(
-                XNonce::from_slice(&nonce),
+                &XNonce::from(nonce),
                 Payload {
                     msg: &plaintext,
                     aad: &aad,

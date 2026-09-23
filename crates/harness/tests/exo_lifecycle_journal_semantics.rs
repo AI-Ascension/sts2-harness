@@ -58,11 +58,11 @@ fn aad(f: &Fixture) -> Vec<u8> {
 }
 
 fn decode(f: &Fixture, bytes: &[u8]) -> Value {
-    let cipher = XChaCha20Poly1305::new(Key::from_slice(&[7; 32]));
+    let cipher = XChaCha20Poly1305::new(&Key::from([7; 32]));
     let end = MAGIC.len() + 24;
     let plaintext = cipher
         .decrypt(
-            XNonce::from_slice(&bytes[MAGIC.len()..end]),
+            &XNonce::try_from(&bytes[MAGIC.len()..end]).unwrap(),
             Payload {
                 msg: &bytes[end..],
                 aad: &aad(f),
@@ -76,10 +76,10 @@ fn encode(f: &Fixture, value: &Value) -> Vec<u8> {
     // New random nonce for each synthetic authenticated-corruption fixture.
     let mut nonce = [0; 24];
     getrandom::fill(&mut nonce).expect("fixture nonce");
-    let cipher = XChaCha20Poly1305::new(Key::from_slice(&[7; 32]));
+    let cipher = XChaCha20Poly1305::new(&Key::from([7; 32]));
     let ciphertext = cipher
         .encrypt(
-            XNonce::from_slice(&nonce),
+            &XNonce::from(nonce),
             Payload {
                 msg: &serde_json::to_vec(value).expect("snapshot"),
                 aad: &aad(f),

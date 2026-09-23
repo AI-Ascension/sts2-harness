@@ -263,7 +263,7 @@ fn authenticated_wire_invalid_originals_cannot_claim_on_reopen() {
     let cipher = XChaCha20Poly1305::new((&[7_u8; 32]).into());
     let plain = cipher
         .decrypt(
-            XNonce::from_slice(&before.1[..24]),
+            &XNonce::try_from(&before.1[..24]).unwrap(),
             Payload {
                 msg: &before.1[24..],
                 aad: &aad,
@@ -287,7 +287,7 @@ fn authenticated_wire_invalid_originals_cannot_claim_on_reopen() {
         envelope.extend(
             cipher
                 .encrypt(
-                    XNonce::from_slice(&nonce),
+                    &XNonce::from(nonce),
                     Payload {
                         msg: &serde_json::to_vec(&journal).unwrap(),
                         aad: &aad,
