@@ -229,7 +229,7 @@ fn encrypt(
     getrandom::fill(&mut nonce).map_err(|_| PolicyOwnerError::Unavailable)?;
     let result = XChaCha20Poly1305::new(key.into())
         .encrypt(
-            XNonce::from_slice(&nonce),
+            (&nonce).into(),
             Payload {
                 msg: &plaintext,
                 aad: &aad(scope)?,
@@ -251,9 +251,12 @@ fn decrypt(
     if envelope.len() < 40 || envelope.len() > MAX_POLICY_JOURNAL_BYTES + 40 {
         return Err(PolicyOwnerError::Capacity);
     }
+    let nonce: &XNonce = (&envelope[..24])
+        .try_into()
+        .map_err(|_| PolicyOwnerError::Corrupt)?;
     let mut plaintext = XChaCha20Poly1305::new(key.into())
         .decrypt(
-            XNonce::from_slice(&envelope[..24]),
+            nonce,
             Payload {
                 msg: &envelope[24..],
                 aad: &aad(scope)?,
