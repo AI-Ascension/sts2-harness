@@ -203,6 +203,39 @@ fn mismatched_admission_is_rejected_at_the_execution_boundary() {
     }
 }
 
+/// The binding's own schema/identifier/digest validation is the first thing the
+/// execution-side request fence does; an invalid binding must be refused there,
+/// before any request/definition comparison can run — the "invalid binding" path.
+#[test]
+fn invalid_admission_binding_is_rejected_at_the_execution_boundary() {
+    type Tamper = fn(&mut TargetAdmissionBinding);
+    let cases: [(&str, Tamper, &str); 3] = [
+        (
+            "schema",
+            |admission| admission.schema_version = "ascension.target-admission.v0".to_owned(),
+            "target_admission_schema",
+        ),
+        (
+            "request_id",
+            |admission| admission.request_id = String::new(),
+            "invalid_identifier",
+        ),
+        (
+            "descriptor_digest",
+            |admission| admission.descriptor_digest = "not-a-digest".to_owned(),
+            "invalid_digest",
+        ),
+    ];
+    for (label, tamper, expected) in cases {
+        let (request, digest) = matching_admission();
+        let mut admission = request.admission.clone().expect("admission");
+        tamper(&mut admission);
+        let error = validate_live_admission(&request, &digest, &admission)
+            .expect_err("an invalid admission binding must be rejected");
+        assert_eq!(error.code, expected, "case {label}");
+    }
+}
+
 /// Positive control for the execution-side fences. If this stops passing, every
 /// refusal below is unfalsifiable: a fence that refuses everything proves
 /// nothing about the admission it is supposed to let through.
