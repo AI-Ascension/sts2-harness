@@ -325,3 +325,33 @@ fn an_absent_catalog_presents_nothing_and_withholds_nothing() {
     assert!(selection.withheld.is_empty());
     assert_eq!(selection.mode, SelectionMode::Single);
 }
+
+#[test]
+fn the_options_of_one_kind_are_exactly_the_presented_options_of_that_kind() {
+    let mut catalog: Vec<Value> = (0..30)
+        .map(|index| {
+            play(
+                &format!("play:card-{index}"),
+                &format!("card-{index}"),
+                &format!("enemy-{index}"),
+            )
+        })
+        .collect();
+    catalog.push(end_turn());
+    let selection = OptionSelection::from_observation(
+        &observation(json!([]), json!(catalog)),
+        MAX_PRESENTED_OPTIONS,
+    );
+
+    // The second stage is restricted to the chosen kind: every play, and only the plays.
+    let plays = selection.options_of_kind("play_card");
+    assert_eq!(plays.len(), 30);
+    assert!(plays.iter().all(|option| option.kind == "play_card"));
+
+    let ends = selection.options_of_kind("end_turn");
+    assert_eq!(ends.len(), 1);
+    assert_eq!(ends[0].action_id, "combat.end-turn");
+
+    // A kind that was not presented selects nothing, so no unlisted option can be re-offered.
+    assert!(selection.options_of_kind("shop").is_empty());
+}

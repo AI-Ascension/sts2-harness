@@ -413,17 +413,5 @@ fn a_record_beside_the_decision_proves_the_decision_is_a_function_of_the_respons
     assert_ne!(record["decision"]["rationale"], map(&moved)["rationale"]);
 }
 
-#[test]
-fn a_forced_action_records_that_no_provider_call_happened() {
-    let record = record(
-        &forced_turn_request(),
-        "jev-latest",
-        decision::DEFAULT_CONFIDENCE_GATE,
-        &mut |_| Err("the bridge must not ask".into()),
-    )
-    .expect("record");
-    assert_eq!(record["provider_call"], json!(false));
-    assert_eq!(record["provider_request"], json!(null));
-    assert_eq!(record["provider_response"], json!(null));
-    assert_eq!(record["decision"]["action_id"], json!("end:13"));
-}
+#[path = "jev_selection_mode_bridge_tests.rs"]
+mod selection_mode;

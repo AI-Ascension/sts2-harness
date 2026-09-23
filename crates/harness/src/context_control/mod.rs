@@ -36,6 +36,7 @@ mod store_receipts;
 mod store_render_sources;
 mod store_schema;
 mod store_types;
+mod systemone_class_request;
 mod systemone_request;
 mod types;
 
@@ -101,6 +102,7 @@ pub use store_types::{
     DurableContextOwnerControlReceipt, DurableContextSourceSnapshot, DurableControlStoreError,
     DurableStoreFailpoint, LegacyOpenError, StoreMode, StoreSnapshot,
 };
+pub use systemone_class_request::{KIND_QUESTION, build_class_system_one_request};
 pub use systemone_request::{
     ACTION_QUESTION, MAX_DESCRIPTION_BYTES, MAX_OPTIONS, MAX_STATE_AND_QUESTION_BYTES,
     SYSTEM_ONE_PATH, SystemOneOption, SystemOneRequestError, build_described_system_one_request,

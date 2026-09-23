@@ -142,6 +142,28 @@ pub fn build_described_system_one_request(
     objective: &str,
     constraints: &[String],
 ) -> Result<Value, SystemOneRequestError> {
+    build_choice_request(
+        model,
+        state,
+        ACTION_QUESTION,
+        options,
+        &action_instructions(objective, constraints),
+    )
+}
+
+/// Builds one request body carrying exactly one `choice` question under `question`.
+///
+/// # Errors
+///
+/// Returns a [`SystemOneRequestError`] for an empty, oversized, or malformed input. The builder never
+/// truncates the state to fit: a smaller state is the caller's decision to make, not a silent one.
+pub(super) fn build_choice_request(
+    model: &str,
+    state: &str,
+    question: &str,
+    options: &[SystemOneOption],
+    instructions: &str,
+) -> Result<Value, SystemOneRequestError> {
     if !printable(model) || model.is_empty() || model.len() > 240 {
         return Err(SystemOneRequestError::InvalidModel);
     }
@@ -149,13 +171,16 @@ pub fn build_described_system_one_request(
         return Err(SystemOneRequestError::EmptyState);
     }
     validate_options(options)?;
-    let questions = json!({
-        ACTION_QUESTION: {
+    let mut questions = serde_json::Map::new();
+    questions.insert(
+        question.to_owned(),
+        json!({
             "type": "choice",
-            "instructions": action_instructions(objective, constraints),
+            "instructions": instructions,
             "criteria": criteria(options),
-        },
-    });
+        }),
+    );
+    let questions = Value::Object(questions);
     let longest = longest_question_bytes(&questions);
     if state.len().saturating_add(longest) > MAX_STATE_AND_QUESTION_BYTES {
         return Err(SystemOneRequestError::OverBudget);

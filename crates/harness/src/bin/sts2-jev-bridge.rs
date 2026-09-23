@@ -6,6 +6,11 @@
 //! and prints exactly one terminal decision on standard output. Every refusal is fail-closed: a
 //! nonzero exit and no decision, never a guessed action.
 //!
+//! When the presented option set is larger than the question bound, the ask is split in two: a
+//! `kind` question followed by an `action` question restricted to the chosen kind. That keeps each
+//! question small, which is the reason the bound exists; both stages still print exactly one terminal
+//! decision, and the record states that two stages were used.
+//!
 //! `--record` prints one object carrying the provider request, the provider response, and the
 //! decision, instead of the decision alone. The decision in that record is composed from the
 //! response in the same record, so an evidence file built from it can show the decision is a
@@ -30,8 +35,8 @@ use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use sts2_harness::{
-    ACTION_QUESTION, MAX_PRESENTED_OPTIONS, OptionSelection, SYSTEM_ONE_PATH, SelectionMode,
-    build_described_system_one_request,
+    ACTION_QUESTION, KIND_QUESTION, MAX_PRESENTED_OPTIONS, OptionSelection, SYSTEM_ONE_PATH,
+    SelectionMode, build_class_system_one_request, build_described_system_one_request,
 };
 
 /// Largest request, response, and decision this bridge handles.
