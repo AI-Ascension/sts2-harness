@@ -281,10 +281,10 @@ impl<'a> BudgetAdmission<'a> {
 impl DispatchAdmission for BudgetAdmission<'_> {
     fn admit(&self, node: &NodeId) -> Admission {
         let key = self.key(node);
-        if let Some(existing) = self.budget.reservation(&key) {
-            if existing.state != ReservationState::Failed {
-                return Admission::Refused(BranchOutcome::Unknown);
-            }
+        if let Some(existing) = self.budget.reservation(&key)
+            && existing.state != ReservationState::Failed
+        {
+            return Admission::Refused(BranchOutcome::Unknown);
         }
         match self.budget.reserve(&key, self.units_per_branch) {
             Ok(_) => Admission::Dispatch,
