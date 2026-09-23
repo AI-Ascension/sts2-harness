@@ -175,5 +175,11 @@ fn project_draft(draft: &ContextDraft, prepared: &PreparedMembership) -> Context
         .filter(|item_id| visible.contains(item_id.as_str()))
         .cloned()
         .collect();
+    // Notes are ancestor annotations rendered directly from the registry, so they are narrowed to
+    // model-visible items exactly like pins. Under current-observation-only, no item is
+    // model-visible, so no ancestor note is published either.
+    projected
+        .notes
+        .retain(|note| visible.contains(note.reference.item_id.as_str()));
     projected
 }

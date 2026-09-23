@@ -71,6 +71,13 @@ pub struct ProviderSessionBroker {
     retirements: BTreeMap<String, Retirement>,
     events: Vec<SessionEvent>,
     inflight_turn: Option<String>,
+    // Process-local provider-continuity measurement. These counters are deliberately *not* part
+    // of `BrokerSnapshot`, so restoring a journal never fabricates an attempt history: a fresh
+    // broker starts both at zero. A read/history operation must leave `provider_attempts`
+    // untouched, and a dispatch admission must not touch `history_reads`; the two counters make
+    // that separation measurable rather than a typed assertion.
+    provider_attempts: u64,
+    history_reads: u64,
 }
 
 // Debug is allowlisted: formatting registry values would expose owner credentials, native
@@ -149,7 +156,31 @@ impl ProviderSessionBroker {
             retirements: BTreeMap::new(),
             events: Vec::new(),
             inflight_turn: None,
+            provider_attempts: 0,
+            history_reads: 0,
         })
+    }
+
+    /// Measures the provider attempts this broker admitted for dispatch.
+    ///
+    /// A "provider attempt" is a `Turn` operation admitted at the dispatch boundary: the durable
+    /// record that authorizes a provider turn. Served read/history operations never increment it,
+    /// so a caller can *measure* that reading continuity data caused zero inference instead of
+    /// trusting a boolean. The value is process-local and resets to zero when a snapshot is
+    /// restored, because it is not persisted.
+    #[must_use]
+    pub const fn provider_attempt_count(&self) -> u64 {
+        self.provider_attempts
+    }
+
+    /// Measures the read/history operations this broker served.
+    ///
+    /// This is the control for [`Self::provider_attempt_count`]: a positive value proves the
+    /// read path actually ran, so a zero provider-attempt count is not the vacuous result of
+    /// never serving a read.
+    #[must_use]
+    pub const fn history_read_count(&self) -> u64 {
+        self.history_reads
     }
 
     #[must_use]

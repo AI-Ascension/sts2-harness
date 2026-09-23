@@ -55,12 +55,13 @@ pub use lifetime_scope::{
 };
 pub use lifetime_state::LifetimePreview;
 pub use membership::{
-    CONTEXT_MEMBERSHIP_POLICY_SCHEMA, ContextMembershipBroaderScope, ContextMembershipError,
-    ContextMembershipPolicy, ContextMembershipScope, ContextMembershipSelector, ContextModelView,
-    EffectiveMembership, MAX_MEMBERSHIP_AUTHORIZED_AGENTS, MAX_MEMBERSHIP_WIDER_ITEMS,
-    MembershipCheckContext, MembershipContinuity, MembershipDecision, MembershipDispatchView,
-    MembershipDisposition, MembershipReasonCode, PreparedMembership, SHARED_MEMBERSHIP_KINDS,
-    prevalidate_and_bind, resolve_membership,
+    AncestorHistoryMode, CONTEXT_MEMBERSHIP_POLICY_SCHEMA, ContextMembershipBroaderScope,
+    ContextMembershipError, ContextMembershipPolicy, ContextMembershipScope,
+    ContextMembershipSelector, ContextModelView, EffectiveMembership,
+    MAX_MEMBERSHIP_AUTHORIZED_AGENTS, MAX_MEMBERSHIP_WIDER_ITEMS, MembershipCheckContext,
+    MembershipContinuity, MembershipDecision, MembershipDispatchView, MembershipDisposition,
+    MembershipReasonCode, PreparedMembership, SHARED_MEMBERSHIP_KINDS, prevalidate_and_bind,
+    resolve_membership,
 };
 pub use membership_render::{
     MembershipRenderError, MembershipRenderRequest, membership_check_from_boundary,

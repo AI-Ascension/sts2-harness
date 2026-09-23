@@ -8,9 +8,10 @@
 //! with them.
 
 use super::{
-    ContextMembershipError, ContextMembershipPolicy, ContextMembershipScope, EffectiveMembership,
-    MAX_CONTEXT_ITEMS, MembershipCheckContext, MembershipDecision, MembershipDispatchView,
-    MembershipDisposition, MembershipReasonCode, PreparedMembership, SHARED_MEMBERSHIP_KINDS,
+    AncestorHistoryMode, ContextMembershipError, ContextMembershipPolicy, ContextMembershipScope,
+    EffectiveMembership, MAX_CONTEXT_ITEMS, MembershipCheckContext, MembershipDecision,
+    MembershipDispatchView, MembershipDisposition, MembershipReasonCode, PreparedMembership,
+    SHARED_MEMBERSHIP_KINDS,
 };
 use crate::context_control::types::{ContextDraft, ContextItem, ContextItemRef};
 use crate::sha256_hex;
@@ -188,6 +189,14 @@ pub fn resolve_membership(
         });
     }
 
+    // Current-observation-only omits every reconstructed ancestor item from model-visible input.
+    // The ancestors stay in `included`/`mandatory` for owner legality, but no ancestor bytes are
+    // projected onto the provider request. The observation is carried separately by the render
+    // request, so this mode never claims effective observation absence.
+    if policy.ancestor_history == AncestorHistoryMode::CurrentObservationOnly {
+        model_visible.clear();
+    }
+
     // Record what exists but was not requested, so the effective set is fully explained.
     let requested: BTreeSet<(&str, u64)> = candidates
         .iter()
@@ -241,6 +250,7 @@ pub fn resolve_membership(
         decisions,
         policy_digest,
         observation_visible: policy.model_view.observation_visible,
+        ancestor_history: policy.ancestor_history,
     })
 }
 
@@ -256,6 +266,7 @@ fn dispatch_view(
         model_visible: effective.model_visible.clone(),
         decisions: effective.decisions.clone(),
         observation_visible: effective.observation_visible,
+        ancestor_history: effective.ancestor_history,
     }
 }
 

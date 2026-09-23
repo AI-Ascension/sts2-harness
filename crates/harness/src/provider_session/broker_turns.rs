@@ -222,6 +222,10 @@ impl ProviderSessionBroker {
             &request,
             true,
         )?;
+        // A newly admitted turn is the provider attempt the continuity broker authorizes. An
+        // idempotent replay returned above and does not count again, so the counter measures
+        // distinct dispatch admissions rather than retries.
+        self.provider_attempts = self.provider_attempts.saturating_add(1);
         self.inflight_turn = Some(operation.operation_id.clone());
         self.idempotency.insert(
             idempotency_key.to_owned(),
