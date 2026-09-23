@@ -8,11 +8,9 @@
 //!
 //! [`ParallelBudget`] is the narrow seam: the scheduler asks the port only to
 //! reserve, report, or restore a reservation and never invents a provider.
-//! [`BranchBudgetLedger`] mirrors [`super::provider::BudgetLedger`]:
-//! reservations are keyed by a stable branch identity, a repeated reservation is
-//! idempotent, and a cancelled in-flight reservation is retained, never refunded.
-//! Cancellation and restart therefore refuse to re-dispatch a branch that may
-//! already have inferred.
+//! [`BranchBudgetLedger`] keys reservations by a stable branch identity, repeats
+//! idempotently, retains a cancelled in-flight reservation, and never refunds it,
+//! so cancellation and restart cannot re-dispatch a branch that may have inferred.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -117,8 +115,7 @@ impl BranchBudgetLedger {
         self.limit
     }
 
-    /// Recover the last committed state if a holder panicked: the aggregate is
-    /// the owner's budget and must not be dropped on an unrelated unwind.
+    /// Recover committed state after a holder panic: drop the aggregate on no unwind.
     fn lock(&self) -> MutexGuard<'_, LedgerState> {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -150,12 +147,15 @@ impl ParallelBudget for BranchBudgetLedger {
             return Err(BudgetError::InvalidLimit);
         }
         let mut state = self.lock();
-        if let Some(existing) = state.reservations.get(key) {
-            return if existing.reserved_units == units {
-                Ok(existing.clone())
-            } else {
-                Err(BudgetError::Duplicate)
-            };
+        if let Some(existing) = state.reservations.get_mut(key) {
+            if existing.reserved_units != units {
+                return Err(BudgetError::Duplicate);
+            }
+            // A definite failure realized no write; every other state may have.
+            if existing.state == ReservationState::Failed && existing.actual_units.is_none() {
+                existing.state = ReservationState::Reserved;
+            }
+            return Ok(existing.clone());
         }
         let next = state
             .reserved
@@ -282,7 +282,7 @@ impl DispatchAdmission for BudgetAdmission<'_> {
     fn admit(&self, node: &NodeId) -> Admission {
         let key = self.key(node);
         if let Some(existing) = self.budget.reservation(&key)
-            && existing.state != ReservationState::Failed
+            && !(existing.state == ReservationState::Failed && existing.actual_units.is_none())
         {
             return Admission::Refused(BranchOutcome::Unknown);
         }
