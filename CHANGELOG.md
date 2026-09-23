@@ -10,6 +10,18 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Record the two source-only Jev-runner decisions.** The wall-clock-sensitive global-time-budget
+  test's fixture strategy is recorded in
+  [ADR 0063](docs/decisions/0063-jev-runner-first-arm-admission.md): the first scheduled arm is
+  admitted structurally rather than by fixture timing (#388). The 1,000 ms teardown cleanup bound is
+  accepted as a host-load-dependent contract in
+  [ADR 0064](docs/decisions/0064-jev-runner-teardown-cleanup-bound.md), with the strict closure
+  assertion intact and the sampling limitations retained (#394). The Jev-evaluation Node suite was
+  rerun without retry masking; first-attempt results are in
+  [the no-retry matrix evidence](docs/evidence/jev-evaluation-noretry-matrix-20260923.md).
+  Compatibility: documentation only; no code, record shape, or runner contract change.
+  Refs #388, #394.
+
 - **Admit the host-offered `continue_run` action in the runtime-v3 path.** A host that offered
   `continue_run` beside `start_run` failed the whole observation: the production runtime-v3 parser
   and the fair-play sanitizer both refused any action kind outside their allowlists, and the parser's
@@ -514,26 +526,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   price, and documented model weaknesses are carried with `source-derived` labels and their sources;
   the claim that this lane plays the game is `unverified` and no run exists. Compatibility:
   documentation only; no code, dependency, or contract changes. Refs #286.
-
-- Serve an **immutable inference-profile catalog** and admit typed profile bindings. `GET
-  /v1/inference-profiles` (`workflow:read`) returns a sealed, credential-free
-  `ascension.inference-profiles/v1` catalog of `ascension.inference-profile/v1` descriptors (adapter,
-  requested/resolved model, prompt/configuration revision, supported settings, operation allow-list,
-  context compatibility, continuity, effective budgets, select/edit grants, availability state). Live
-  admission resolves every `decision_profile_ref`/`planner_profile_ref` to an exact id/version/digest
-  revision before any reservation or provider exists, and persists the requested/resolved provenance
-  on the run's target admission. Unknown id, digest mismatch, revocation, and unsupported/stale/disabled
-  model or settings refuse before inference; a catalog refresh re-reads the owner and admits nothing on
-  its own. Reading the catalog confers no edit path, and adopting a newer revision changes a new
-  definition only — an admitted run keeps the revision it resolved (see
-  [ADR 0054](docs/decisions/0054-inference-profile-revision-adoption-scope.md)). Compatibility: additive;
-  a versioned closed schema (`contracts/inference-profile/catalog.schema.json`) and one new route.
-  Evidence is synthetic/component only. Refs #104.
-
-- Remove an **orphaned `context_memory` source fragment** that made the repository impossible to
-  check out on Windows. `crates/harness/src/context_memory/aux.rs` was 188 lines beginning inside an
-  `impl` block and ending on a dangling attribute; nothing declared it, so no build, format, lint, or
-  test ever read it, and its live counterparts are `approval.rs` and `authorizer.rs`. Because `aux`
-  is a reserved Win32 device name with any extension, `git clone` on Windows stopped with
-  `error: invalid path` and left an incomplete tree that could not be built. Compatibility: no
-  behaviour change; the file was outside the module tree. Refs #281.
