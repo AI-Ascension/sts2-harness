@@ -414,6 +414,12 @@ fn journal_only_change_with_same_active_generation_does_not_fence_decision() {
 #[path = "production_managed_render_tests.rs"]
 mod managed_render_tests;
 
+/// `#94`: served-live settlement of an accepted action and reconciliation of an
+/// accepted operation that cancellation cannot yet settle.
+#[cfg(test)]
+#[path = "production_managed_settlement_tests.rs"]
+mod managed_settlement_tests;
+
 #[cfg(test)]
 #[path = "production_membership_render_tests.rs"]
 mod membership_render_tests;
