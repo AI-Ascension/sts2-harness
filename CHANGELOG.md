@@ -21,6 +21,11 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   unknown kind is rejected before dispatch instead of being coerced into another action, and the
   continuation is bound to the offered generation so a stale catalog is refused before any effect.
   Refs #390.
+- **Freeze the host-offered `continue_run` admission contract and prove its consumer-first
+  boundary.** The two accepted shapes and the refusal list are now recorded beside the runtime-v3
+  admission (`payload_contract`), the Exo projection (`schema.rs`) and `docs/ARCHITECTURE.md`,
+  citing `sts2-harness#415` (`551ec19d`) and `sts2-game-mod#210` (`8a655143`); focused tests cover
+  the valid offer and the malformed, unknown-field, stale, foreign-profile and unoffered refusals. Refs #390.
 - **Carry the served managed-boundary receipt ledger across a process restart.** A restarted served
   composition rebuilt an empty in-memory ledger and wrote an accepted boundary a second time. The
   receipt ledger now has a versioned durable image, an owner-supplied port (`with_dispatch_ledger_port`)

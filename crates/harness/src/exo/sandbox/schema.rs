@@ -243,7 +243,9 @@ pub(super) fn validate_shape(
         ValueKind::Action => match object.get("kind").and_then(Value::as_str) {
             Some("start_run") => require_exact(object, &["kind", "character_id"]),
             // The host names a run only when the choice is not already determined, so `run_id` is
-            // optional; an unknown key is still refused.
+            // an optional host-owned identity; it must still be an identity, and an unknown key is
+            // still refused. Recorded in `docs/ARCHITECTURE.md` (`sts2-harness#415` merge
+            // `551ec19d`, agreed in `sts2-game-mod#210` merge `8a655143`).
             Some("continue_run") => require_fields(object, &["kind"], &["run_id"]),
             Some("select_map_node") => require_exact(object, &["kind", "node_id"]),
             Some("play_card") => require_exact(object, &["kind", "card_id", "target_id"]),

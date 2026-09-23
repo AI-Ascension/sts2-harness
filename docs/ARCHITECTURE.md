@@ -191,6 +191,17 @@ An explicit `STS2_EXO_FORWARD_VISIBLE_SEED=false` selects a seed-blind experimen
 `provider_redaction` tests cover both paths; ADR 0006 records the owner's correction of the
 earlier default-off decision. Hidden RNG internals remain excluded.
 
+The host-owned continuation is admitted by the same boundary. Its action shape is frozen at
+`{"kind":"continue_run"}` and `{"kind":"continue_run","run_id":"<identity>"}`: `run_id` is an
+optional identity the host supplies only when the screen does not already determine the saved run.
+No caller-supplied save path or extra field is admitted, and a null, blank, non-identity or
+structured `run_id` is refused, so the host keeps ownership of run and profile identity. The
+production parser refuses an unknown kind at the allowlist that decides it rather than coercing it
+into another action, and only the host-offered `action_id` is dispatchable, so a foreign-profile or
+unoffered continuation cannot be found or have an effect. The shape was agreed with the mod owner in
+`sts2-game-mod#210` (merge `8a655143694ae532be679c17c5d06a3c2ef31ae6`) and admitted consumer-first by
+`sts2-harness#415` (merge `551ec19d3e6b7dcf1634602f58a24ea5be9c9f4b`).
+
 Accepted mutation is not settlement. `ActionLedger` records operation identity, the stability barrier
 waits for a semantic successor or same-state mutation, and `verify_settlement` requires a fresh
 observation plus an independent effect witness. Unknown outcomes enter explicit recovery/reconcile
