@@ -83,20 +83,11 @@ pub fn map_decision(
     options: &[String],
     gate: f64,
 ) -> Result<Value, DecisionError> {
+    let choice = chosen_option(response, question, options)?;
     let answer = response
         .get("answers")
         .and_then(|answers| answers.get(question))
         .ok_or(DecisionError::MissingAnswer)?;
-    if answer.get("type").and_then(Value::as_str) != Some("choice") {
-        return Err(DecisionError::WrongAnswerType);
-    }
-    let choice = answer
-        .get("choice")
-        .and_then(Value::as_str)
-        .ok_or(DecisionError::MissingChoice)?;
-    if !options.iter().any(|option| option == choice) {
-        return Err(DecisionError::OutOfCatalog);
-    }
     let confidence = answer
         .get("confidence")
         .and_then(Value::as_f64)
@@ -104,7 +95,7 @@ pub fn map_decision(
         .ok_or(DecisionError::MissingConfidence)?;
 
     let probabilities = answer.get("probabilities");
-    let rationale = rationale(choice, confidence, probabilities);
+    let rationale = rationale(&choice, confidence, probabilities);
     if confidence < gate {
         // The choice is still to observe again. The option is carried so that a caller which has
         // re-asked this same state to its bound can act on what was already said, rather than
@@ -122,6 +113,40 @@ pub fn map_decision(
         "rationale": rationale,
         "confidence": percent(confidence),
     }))
+}
+
+/// Reads the chosen option of a `choice` answer, re-checking it against what was presented.
+///
+/// This is the first stage of [`map_decision`] split out, because the kind question of a two-stage
+/// ask carries no confidence gate: its answer names the option set the second stage is restricted
+/// to, and the gate applies to the action question, not to which question is asked next. The
+/// containment check is the same one the action stage applies, so a kind the host did not present is
+/// refused exactly as an out-of-catalog action is.
+///
+/// # Errors
+///
+/// Returns a [`DecisionError`] when the answer is absent, of the wrong type, missing its choice, or
+/// names an option that was not presented.
+pub fn chosen_option(
+    response: &Value,
+    question: &str,
+    options: &[String],
+) -> Result<String, DecisionError> {
+    let answer = response
+        .get("answers")
+        .and_then(|answers| answers.get(question))
+        .ok_or(DecisionError::MissingAnswer)?;
+    if answer.get("type").and_then(Value::as_str) != Some("choice") {
+        return Err(DecisionError::WrongAnswerType);
+    }
+    let choice = answer
+        .get("choice")
+        .and_then(Value::as_str)
+        .ok_or(DecisionError::MissingChoice)?;
+    if !options.iter().any(|option| option == choice) {
+        return Err(DecisionError::OutOfCatalog);
+    }
+    Ok(choice.to_owned())
 }
 
 /// Converts a unit confidence into the integer percentage the decision contract carries.

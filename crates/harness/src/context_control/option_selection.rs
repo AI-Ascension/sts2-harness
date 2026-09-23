@@ -180,6 +180,19 @@ impl OptionSelection {
         }
         classes
     }
+
+    /// The presented options of one kind, in catalog order.
+    ///
+    /// The second stage of a two-stage ask is restricted to exactly these options once the first
+    /// stage has named the kind, so the action question never re-offers an option outside the chosen
+    /// class and never offers one the host did not list.
+    #[must_use]
+    pub fn options_of_kind(&self, kind: &str) -> Vec<&PresentedOption> {
+        self.presented
+            .iter()
+            .filter(|option| option.kind == kind)
+            .collect()
+    }
 }
 
 /// One readable catalog entry.
