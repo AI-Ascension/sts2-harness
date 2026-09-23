@@ -10,6 +10,15 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Make the served capture surface configured and fail-closed.** Which sink the served composition
+  attaches and what it retains is now an owner decision recorded in
+  [ADR 0070](docs/decisions/0070-served-capture-configuration-and-retention.md): an unset surface
+  keeps the merged in-memory recording ring, `metadata` and `off` are selectable, and every
+  contradictory or out-of-range `STS2_WORKFLOW_CAPTURE_*` value is refused at startup rather than
+  silently downgraded. Restart-durable capture bytes and the unrecorded Ollama `HttpBody` boundary
+  remain accountable residuals (#145). Compatibility: no change to the served default behaviour.
+  Refs #398.
+
 - **Admit alternative gameplay forks from verified seeded replay prefixes.** A new
   `benchmark_manifest::prefix_fork` module fixes the effect-free fork-admission contract behind
   #117: an exact seed/profile/build/compatibility binding, a settled nonterminal boundary with
@@ -523,17 +532,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   on cost could only ever overrule that authority, and affordability stays in the derived-exact facts
   beside the state. Compatibility: additive; one new module and its re-exports, no change to an
   existing record, route, or digest. Refs #290.
-
-- Compute **exactly derivable combat facts** from an admitted observation, so a provider is handed
-  comparisons rather than operands. `context_control::DerivedExactFacts` states gross incoming
-  damage (revealed intent damage times hits, only when every listed enemy carries an intent), a
-  `fatal`/`heavy`/`survivable` label against current hit points, the hand cards current energy
-  covers, the hand cards whose cost is not a fixed number, the single lowest-hit-point enemy, and
-  the two counts a model would otherwise tally itself. It reads the admitted observation only, and
-  a value it cannot derive exactly is omitted rather than estimated: an unrevealed intent removes
-  the damage total and says so instead of counting as zero, and a tie names no weakest enemy. Two
-  boundaries come from the declared model-view vocabulary rather than from the game — a card carries
-  no attack value, so no lethal claim is derivable, and nothing carries block, so incoming damage is
-  gross and named to say so. The projection is `derived_exact` under the fair-play taxonomy and is
-  not host authority. Compatibility: additive; one new module and its re-exports, no change to an
-  existing record, route, or digest. Refs #287.

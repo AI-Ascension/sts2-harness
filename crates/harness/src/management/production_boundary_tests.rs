@@ -31,19 +31,19 @@ fn dispatch_id(execution_id: &str) -> String {
 
 /// One recorded observation of the served boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct SinkRecord {
-    state: TransportState,
-    boundary: String,
-    component: Option<ObservedComponent>,
+pub(super) struct SinkRecord {
+    pub(super) state: TransportState,
+    pub(super) boundary: String,
+    pub(super) component: Option<ObservedComponent>,
 }
 
 /// One exact component the sink observed, including the bytes themselves.
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct ObservedComponent {
-    kind: CaptureComponentKind,
-    ordinal: u16,
-    media_type: String,
-    bytes: Vec<u8>,
+pub(super) struct ObservedComponent {
+    pub(super) kind: CaptureComponentKind,
+    pub(super) ordinal: u16,
+    pub(super) media_type: String,
+    pub(super) bytes: Vec<u8>,
 }
 
 fn lifecycle(state: TransportState, boundary: CaptureBoundary) -> SinkRecord {
@@ -67,7 +67,7 @@ impl ObservingSink {
         }
     }
 
-    fn state(&self, state: TransportState) -> Vec<SinkRecord> {
+    pub(super) fn state(&self, state: TransportState) -> Vec<SinkRecord> {
         self.records
             .lock()
             .expect("sink records")
@@ -170,7 +170,7 @@ impl CapturePort for ObservingSink {
 ///
 /// Recomputed independently of the served path so the recording is compared with the approved
 /// material rather than with itself.
-fn expected_provider_bytes(
+pub(super) fn expected_provider_bytes(
     source: &ContextRenderSource,
     config: &ExoConfig,
     limits: ContextRenderLimits,
