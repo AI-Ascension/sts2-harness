@@ -6,8 +6,9 @@
 //! revision and the child label, and reserves one fresh provider/context namespace per trial so two
 //! children that share a policy still cannot share context or provider state.
 
-use super::declaration::{BranchExperimentManifest, CONTEXT_NAMESPACE_PREFIX, TRIAL_KEY_SEPARATOR};
+use super::declaration::BranchExperimentManifest;
 use super::error::BranchExperimentError;
+use super::label::{CONTEXT_NAMESPACE_PREFIX, MAX_BRANCH_LABEL_BYTES, TRIAL_KEY_SEPARATOR};
 
 /// One stable logical trial derived from an experiment declaration.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -23,6 +24,11 @@ pub struct PlannedBranchTrial {
 }
 
 /// Builds a stable trial key from the experiment revision and the child label.
+///
+/// A validated declaration bounds its child labels by
+/// [`MAX_CHILD_LABEL_BYTES`](super::label::MAX_CHILD_LABEL_BYTES), so a key derived here never
+/// exceeds [`MAX_BRANCH_LABEL_BYTES`] and can always be recorded in a
+/// [`BranchOutcome`](super::outcome::BranchOutcome).
 #[must_use]
 pub fn trial_key(revision: &str, child_label: &str) -> String {
     format!("{revision}{TRIAL_KEY_SEPARATOR}{child_label}")
@@ -42,8 +48,14 @@ pub fn plan(
         .iter()
         .map(|child| {
             let key = trial_key(&revision, &child.child_label);
+            let context_namespace = format!("{CONTEXT_NAMESPACE_PREFIX}{key}");
+            debug_assert!(
+                key.len() <= MAX_BRANCH_LABEL_BYTES
+                    && context_namespace.len() <= MAX_BRANCH_LABEL_BYTES,
+                "a validated declaration must derive bounded trial labels"
+            );
             PlannedBranchTrial {
-                context_namespace: format!("{CONTEXT_NAMESPACE_PREFIX}{key}"),
+                context_namespace,
                 trial_key: key,
                 child_label: child.child_label.clone(),
                 first_action: child.first_action.clone(),

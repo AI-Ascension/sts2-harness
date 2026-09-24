@@ -23,6 +23,7 @@ mod admission;
 mod comparison;
 mod declaration;
 mod error;
+mod label;
 mod outcome;
 mod plan;
 mod report;
@@ -32,11 +33,13 @@ pub use admission::{StartAdmission, admit_start, is_verified_start};
 pub use comparison::{aggregate, compare_branches};
 pub use declaration::{
     BRANCH_EXPERIMENT_VERSION, BranchBudgets, BranchExperimentManifest, BranchExperimentPublic,
-    CONTEXT_NAMESPACE_PREFIX, ChildPolicy, ForkStrategy, MAX_BRANCH_CHILDREN,
-    MAX_BRANCH_CONCURRENCY, MAX_BRANCH_LABEL_BYTES, MAX_MANIFEST_BYTES, StopCondition,
-    TRIAL_KEY_SEPARATOR,
+    ChildPolicy, ForkStrategy, MAX_BRANCH_CHILDREN, MAX_BRANCH_CONCURRENCY, MAX_MANIFEST_BYTES,
+    StopCondition,
 };
 pub use error::{AdmissionError, BranchExperimentError, ComparisonError};
+pub use label::{
+    CONTEXT_NAMESPACE_PREFIX, MAX_BRANCH_LABEL_BYTES, MAX_CHILD_LABEL_BYTES, TRIAL_KEY_SEPARATOR,
+};
 pub use outcome::{BranchOutcome, BranchStatus};
 pub use plan::{PlannedBranchTrial, plan, trial_key};
 pub use report::{BranchComparison, BranchDivergence, BranchExperimentReport};

@@ -71,6 +71,13 @@ pub struct BranchComparison {
     pub last_equal_ordinal: Option<u64>,
     /// Number of aligned boundaries examined.
     pub compared_actions: u64,
+    /// Boundaries present in one trace but not the other.
+    ///
+    /// A branch comparison has no authoritative side, so this count is symmetric: it reports how
+    /// many recorded boundaries one child has that the other does not, independent of argument
+    /// order. It is zero whenever the two traces diverge over their shared range.
+    #[serde(default)]
+    pub unobserved_records: u64,
 }
 
 impl BranchComparison {

@@ -33,11 +33,16 @@ A new module `crates/harness/src/benchmark_manifest/branch_experiment/` owns tha
 each file stays inside the production size budget, and is additive to the existing benchmark
 machinery:
 
-- **Versioned declaration (`declaration.rs`).** `BranchExperimentManifest` freezes one verified
-  `fork_point`, the `ForkStrategy`, the child policies, the stop conditions and the per-child/total
-  `BranchBudgets`, all validated and bounded (`MAX_BRANCH_CHILDREN`, `MAX_BRANCH_LABEL_BYTES`,
-  `MAX_BRANCH_CONCURRENCY`, `MAX_MANIFEST_BYTES`). `digest` is a canonical byte encoding hashed with
-  the crate SHA-256, so identical declarations share one revision and no field is silently dropped.
+- **Versioned declaration (`declaration.rs`, `label.rs`).** `BranchExperimentManifest` freezes one
+  verified `fork_point`, the `ForkStrategy`, the child policies, the stop conditions and the
+  per-child/total `BranchBudgets`, all validated and bounded (`MAX_BRANCH_CHILDREN`,
+  `MAX_BRANCH_LABEL_BYTES`, `MAX_BRANCH_CONCURRENCY`, `MAX_MANIFEST_BYTES`). `digest` is a canonical
+  byte encoding hashed with the crate SHA-256, so identical declarations share one revision and no
+  field is silently dropped. A child label carries a tighter bound (`MAX_CHILD_LABEL_BYTES`) than the
+  other labels: since its derived key and context namespace add a 64-hex revision, a separator and
+  `CONTEXT_NAMESPACE_PREFIX`, bounding the label at validation means a declaration that validates
+  always derives a key and namespace the rest of the module accepts, instead of accepting a label it
+  then refuses at every outcome check.
 - **Stable plan (`plan.rs`).** `plan` derives one `PlannedBranchTrial` per child in declaration order,
   each with a stable `trial_key` derived from the revision and its own fresh
   `CONTEXT_NAMESPACE_PREFIX` namespace, so two children that share a policy still cannot share
@@ -53,8 +58,11 @@ machinery:
 - **Honest comparison (`comparison.rs`, `report.rs`).** `compare_branches` performs an aligned scan
   over logical actions: an intentionally different first action under a declared policy difference is
   `PolicyDivergence`, a failure to restore the shared state is `RestoreFailure` and never a policy
-  result, and an equal endpoint does not erase an earlier divergence. `aggregate` emits a sanitized
-  `BranchExperimentReport` carrying a keyed handle and no exact digest.
+  result, and an equal endpoint does not erase an earlier divergence. Because a branch comparison has
+  no authoritative side, the shorter peer trace is used as the baseline so an unequal-length pair is
+  `IdenticalOverRecordedRange` with a non-zero `unobserved_records` on either argument order, rather
+  than flipping between `MissingCapture` and `IdenticalOverRecordedRange` with the order.
+  `aggregate` emits a sanitized `BranchExperimentReport` carrying a keyed handle and no exact digest.
 
 ## Consequences
 
@@ -69,15 +77,19 @@ machinery:
 
 ## Validation
 
-- `crates/harness/tests/branch_experiment.rs` covers a stable plan with one namespace per child, the
-  strategy/budget/duplicate/settings refusals, same-start admission (including a mismatched and an
-  unverified start), idempotent retry and conflicting-settlement refusal, a settled or cancelled trial
-  that is never restarted, resume that replays attempt lineage once, cancellation and budget
-  exhaustion staying out of a defeat tally, a restore failure that is not a policy result, a
-  different first action classified as policy divergence at ordinal zero, an identical endpoint that
-  does not erase an earlier divergence, incompatible and partial evidence labelled rather than
-  guessed, a prefix-only start excluded from exact-restore statistics, and a public report that
-  carries a keyed handle and no exact digest.
+- `crates/harness/tests/branch_experiment.rs` (declaration, plan, admission and scheduler) and
+  `crates/harness/tests/branch_experiment_comparison.rs` (comparison and report), over the shared
+  fixtures in `crates/harness/tests/support/branch_experiment.rs`, cover a stable plan with one
+  namespace per child; the strategy/budget/duplicate/settings refusals; a max-length child label that
+  validates, plans and settles while an over-long label is refused at `validate()`; same-start
+  admission (including a mismatched and an unverified start); idempotent retry and
+  conflicting-settlement refusal; a settled or cancelled trial that is never restarted; resume that
+  replays attempt lineage once; cancellation and budget exhaustion staying out of a defeat tally; a
+  restore failure that is not a policy result; a different first action classified as policy
+  divergence at ordinal zero; an identical endpoint that does not erase an earlier divergence;
+  unequal-length comparisons that are order-independent and surface their unobserved boundary count;
+  incompatible and partial evidence labelled rather than guessed; a prefix-only start excluded from
+  exact-restore statistics; and a public report that carries a keyed handle and no exact digest.
 - Source-only: no native run, checkpoint restore or provider call is exercised; the exact-host
   same-start witness and the real child-process lane remain unverified until their gates record
   evidence.
