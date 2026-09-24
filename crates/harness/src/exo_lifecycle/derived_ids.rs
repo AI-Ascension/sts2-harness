@@ -2,12 +2,16 @@
 
 //! Internal identities the owner mints by prefixing a caller-supplied `execution_id` (issue #458).
 //!
-//! Deriving an internal identity is deliberately *not* length-preserving. Each derived value is
-//! re-validated by the same identity predicate that accepted the input, so an `execution_id` the
-//! manifest accepts can derive a value the broker, the prepared-turn record or this crate refuses.
-//! A request in that band would be admitted and then stay permanently unsettleable, so the owner
-//! refuses the input up front and the accepted band and the derived band agree instead of
-//! diverging by the prefix width.
+//! Each derived value is re-validated by the 128-byte internal identity predicate, while the
+//! request-level identity it is derived from is admitted up to the published 512-byte wire width.
+//! Deriving by concatenation alone therefore diverged by the prefix width: an `execution_id` the
+//! manifest accepts could derive a value the broker, the prepared-turn record or this crate
+//! refuses, leaving an admitted request permanently unsettleable.
+//!
+//! A derived identity carries a digest of the identity rather than the identity itself, so its
+//! width is a function of the prefix and the digest alone and is independent of how wide the
+//! admitted identity is. Every admitted identity therefore derives a value the same predicate
+//! accepts, and no width the wire admits has a hidden ceiling (ADR 0077).
 
 use super::types::MAX_ID_BYTES;
 
@@ -26,12 +30,20 @@ pub(crate) const DERIVED_EXECUTION_ID_PREFIXES: [&str; 3] = [
     DERIVED_PROVIDER_ATTEMPT_PREFIX,
 ];
 
-/// Longest `execution_id` whose every derived internal identity still satisfies [`MAX_ID_BYTES`].
+/// Width of the lowercase hex SHA-256 that stands in for the identity inside a derived value.
+pub(crate) const IDENTITY_TOKEN_BYTES: usize = 64;
+
+/// Widest internal identity the owner mints: the widest prefix plus one identity token.
 ///
-/// The bound is computed from the prefixes actually used, so shortening or replacing a prefix moves
-/// the ceiling with it rather than leaving a stale magic number behind.
-pub const MAX_DERIVABLE_EXECUTION_ID_BYTES: usize =
-    MAX_ID_BYTES - longest_prefix(&DERIVED_EXECUTION_ID_PREFIXES);
+/// Computed from the prefixes actually used, so a prefix that grows past the internal identity
+/// bound is caught by the test beside this constant rather than leaving a stale magic number
+/// behind. It does not depend on the admitted identity width, which is the point.
+pub const MAX_DERIVED_ID_BYTES: usize =
+    longest_prefix(&DERIVED_EXECUTION_ID_PREFIXES) + IDENTITY_TOKEN_BYTES;
+
+/// A derived identity must stay inside the internal identity bound; a prefix that grows past it
+/// fails the build here rather than being discovered as a refusal at runtime.
+const _: () = assert!(MAX_DERIVED_ID_BYTES <= MAX_ID_BYTES);
 
 /// The widest derived prefix, in bytes.
 pub(crate) const fn longest_prefix(prefixes: &[&str]) -> usize {
@@ -47,11 +59,32 @@ pub(crate) const fn longest_prefix(prefixes: &[&str]) -> usize {
     longest
 }
 
-/// Whether `execution_id` can derive every internal identity the owner mints from it.
+/// A bounded, deterministic token standing in for an admitted request identity.
 ///
-/// Refusing here is what keeps an accepted request settleable: the caller sees the ordinary
-/// sanitized refusal, and no internal identity width is disclosed.
+/// The identity is digested rather than embedded, so a derived value's width does not grow with
+/// the admitted width and the admitted width is never disclosed by a derived value.
 #[must_use]
-pub(crate) fn execution_id_is_derivable(execution_id: &str) -> bool {
-    execution_id.len() <= MAX_DERIVABLE_EXECUTION_ID_BYTES
+pub(crate) fn identity_token(execution_id: &str) -> String {
+    crate::sha256_hex(execution_id)
+}
+
+/// The broker binding identity the owner mints for `execution_id`.
+#[must_use]
+pub(crate) fn derived_binding_id(execution_id: &str) -> String {
+    format!("{DERIVED_BINDING_PREFIX}{}", identity_token(execution_id))
+}
+
+/// The prepared-turn identity the owner mints for `execution_id`.
+#[must_use]
+pub(crate) fn derived_prepared_id(execution_id: &str) -> String {
+    format!("{DERIVED_PREPARED_PREFIX}{}", identity_token(execution_id))
+}
+
+/// The provider-attempt identity the owner mints for `execution_id`.
+#[must_use]
+pub(crate) fn derived_provider_attempt_id(execution_id: &str) -> String {
+    format!(
+        "{DERIVED_PROVIDER_ATTEMPT_PREFIX}{}",
+        identity_token(execution_id)
+    )
 }

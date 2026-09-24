@@ -8,8 +8,10 @@ use std::path::PathBuf;
 pub const MAX_LIFECYCLE_ENTRIES: usize = 128;
 pub const MAX_INPUT_BYTES: usize = 131_072;
 
-/// Longest identity the manifest's own identity predicate accepts.
+/// Envelope/control identity bound, per schema `$defs/control_id` (ADR 0017).
 pub const MAX_ID_BYTES: usize = 128;
+/// Request-level identity bound, per schema `$defs/id` (ADR 0077).
+pub const MAX_WIRE_ID_BYTES: usize = 512;
 
 /// Sanitized errors; no path, private input, native output or credential is carried.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -127,8 +129,10 @@ impl InvocationManifest {
             || a.auth_epoch == 0
             || a.session_epoch == 0
             || a.lease_epoch == 0
+            || [&self.execution_id, &a.state_id]
+                .iter()
+                .any(|v| !wire_id(v))
             || [
-                &self.execution_id,
                 &self.episode_attempt_id,
                 &self.trajectory_id,
                 &self.provider_attempt_id,
@@ -140,7 +144,6 @@ impl InvocationManifest {
                 &self.host_turn_id,
                 &self.model_revision,
                 &a.lease_id,
-                &a.state_id,
             ]
             .iter()
             .any(|v| !id(v))
@@ -297,8 +300,17 @@ impl LifecycleEntry {
 }
 
 pub(crate) fn id(value: &str) -> bool {
+    bounded_id(value, MAX_ID_BYTES)
+}
+
+/// Whether `value` is an admissible request-level identity, the two fields `wire_id` governs.
+pub(crate) fn wire_id(value: &str) -> bool {
+    bounded_id(value, MAX_WIRE_ID_BYTES)
+}
+
+fn bounded_id(value: &str, maximum: usize) -> bool {
     !value.is_empty()
-        && value.len() <= MAX_ID_BYTES
+        && value.len() <= maximum
         && value
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"._:/-".contains(&b))
