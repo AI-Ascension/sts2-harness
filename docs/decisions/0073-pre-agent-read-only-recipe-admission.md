@@ -51,6 +51,33 @@ production size budget, and is additive to the existing observation/legal-catalo
 - Bounds are structural, so an over-large or cyclic recipe is refused before any read is attempted.
 - The refusal vocabulary carries only structural identity, never a supplied argument value or game
   text, so a refusal can be logged without leaking authored content.
+- Every string field on a refusal that admission can populate is either a value that already passed
+  its bounded shape check or a typed identifier; `ZeroRevision.field` is a static literal and
+  `InvalidSchema.step` is only ever built as `None` today. `InvalidOutput` is the one refusal raised
+  *by* a failed check, so it names the offending **slot index** rather than the rejected name; a
+  refusal never carries text that failed admission. Should T2/T3 add authored intake, tighten
+  `InvalidSchema.step` to a typed identifier at the same time.
 - This slice deliberately maps no tool and persists nothing. Collection execution and provenance
   (issue #97 T2/T3), the Studio recipe round-trip, and the separately authorized real-tool lane for
   native mapping remain open and are not claimed satisfied here.
+
+## Amendment 2026-09-24: `InvalidOutput` no longer carries the rejected name
+
+The consequences above were the contract from the start, but one variant did not meet it:
+`RecipeAdmissionError::InvalidOutput` stored the raw `OutputSlot.name` that had just failed
+`is_identifier` — by construction a value *guaranteed* to violate the ≤96-byte, `[A-Za-z0-9._:-]`
+bound, and free to carry control bytes or arbitrary authored text. Every other string field admission
+populates holds a value that passed its shape check (`DuplicateOutput.output`) or a typed identifier
+(`step`, `tool`, `dependency`), so this was the single exception to a documented invariant.
+
+Reachability today is Rust-API-only: `RecipeDefinition`/`OutputSlot` carry no `serde` intake and the
+module has no consumer outside `recipe/` (plus its test), so no untrusted document can reach the
+error yet. The exposure would begin when T2/T3 add authored or Studio-facing intake, at which point a
+recipe document could place arbitrary bytes into a refusal string a log or UI renders verbatim.
+
+`InvalidOutput` now reports the offending **slot index** (`slot_index: usize`) and keeps the rejected
+name out of the refusal, matching how the other variants are built: diagnostic value ("step `x` slot
+3 is not portable") without unbounded text. Classification: **safety-correction** — the variant is
+public, but the crate is consumed only by its own workspace, and no record, schema, route, wire
+format or digest changes; admission behaviour (which recipe is refused, and where in the fixed order)
+is unchanged.

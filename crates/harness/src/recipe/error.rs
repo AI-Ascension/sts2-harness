@@ -111,8 +111,8 @@ pub enum RecipeAdmissionError {
     InvalidOutput {
         /// The step with the invalid output name.
         step: String,
-        /// The invalid output name.
-        output: String,
+        /// Zero-based position of the offending output slot in the step.
+        slot_index: usize,
     },
     /// Two output slots of one step share a name.
     DuplicateOutput {
@@ -208,10 +208,10 @@ impl Display for RecipeAdmissionError {
                 formatter,
                 "recipe step {step} exceeds the bound of {bound} outputs"
             ),
-            Self::InvalidOutput { step, output } => {
+            Self::InvalidOutput { step, slot_index } => {
                 write!(
                     formatter,
-                    "recipe step {step} names non-portable output {output}"
+                    "recipe step {step} declares output slot {slot_index} with a non-portable name"
                 )
             }
             Self::DuplicateOutput { step, output } => {

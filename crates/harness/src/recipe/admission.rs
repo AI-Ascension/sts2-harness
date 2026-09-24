@@ -185,11 +185,11 @@ fn admit_outputs(step: &RecipeStep, limits: &RecipeLimits) -> Result<(), RecipeA
         });
     }
     let mut names = BTreeSet::new();
-    for slot in &step.outputs {
+    for (slot_index, slot) in step.outputs.iter().enumerate() {
         if !is_identifier(&slot.name) {
             return Err(RecipeAdmissionError::InvalidOutput {
                 step: name,
-                output: slot.name.clone(),
+                slot_index,
             });
         }
         if !names.insert(slot.name.as_str()) {
