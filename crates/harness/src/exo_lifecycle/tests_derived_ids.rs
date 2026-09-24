@@ -59,9 +59,9 @@ fn the_longest_accepted_identity_derives_exactly_the_identity_bound() {
     );
 }
 
-/// One byte past the ceiling derives a value no acceptance predicate can admit. This is the
-/// regression: the input itself is still inside the manifest bound, so without the owner's guard
-/// it validates and then can never settle.
+/// One byte past the ceiling derives a value no acceptance predicate can admit, and the input
+/// itself is still inside the manifest bound — which is what makes it a trap. This is the
+/// regression: without the owner's guard the input validates and then can never settle.
 #[test]
 fn one_byte_past_the_ceiling_derives_an_illegal_identity() {
     let over = "e".repeat(MAX_DERIVABLE_EXECUTION_ID_BYTES + 1);
@@ -69,21 +69,56 @@ fn one_byte_past_the_ceiling_derives_an_illegal_identity() {
         types::id(&over),
         "the input is still accepted by the manifest predicate, which is what makes it a trap"
     );
-    for prefix in [
+
+    let illegal: Vec<&str> = [
         derived_ids::DERIVED_BINDING_PREFIX,
         derived_ids::DERIVED_PREPARED_PREFIX,
         derived_ids::DERIVED_PROVIDER_ATTEMPT_PREFIX,
-    ] {
-        let derived = format!("{prefix}{over}");
-        assert!(
-            derived.len() > MAX_ID_BYTES,
-            "{prefix} at one past the ceiling stays legal"
-        );
-        assert!(
-            !types::id(&derived),
-            "the derived value must be refused by the same predicate"
-        );
+    ]
+    .into_iter()
+    .filter(|prefix| !types::id(&format!("{prefix}{over}")))
+    .collect();
+
+    assert!(
+        !illegal.is_empty(),
+        "one past the ceiling must derive at least one illegal value"
+    );
+    assert_eq!(
+        illegal.len(),
+        2,
+        "both 19-byte prefixes overflow at 110; only the 18-byte binding prefix still fits"
+    );
+    for prefix in illegal {
+        assert_eq!(format!("{prefix}{over}").len(), MAX_ID_BYTES + 1);
     }
+}
+
+/// The binding prefix is one byte shorter, so on its own it would tolerate a 110-byte identity.
+/// The overall ceiling is therefore the *minimum* over the prefixes, not the maximum — the owner
+/// must satisfy the tightest derivation, and this test pins that distinction so a future edit
+/// cannot relax the bound to the loosest one.
+#[test]
+fn the_ceiling_follows_the_widest_prefix_not_the_narrowest_requirement() {
+    let at_ceiling = "e".repeat(MAX_DERIVABLE_EXECUTION_ID_BYTES);
+    let binding = format!("{}{at_ceiling}", derived_ids::DERIVED_BINDING_PREFIX);
+    assert_eq!(
+        binding.len(),
+        MAX_ID_BYTES - 1,
+        "the binding derivation is not the binding constraint"
+    );
+
+    let prepared = format!("{}{at_ceiling}", derived_ids::DERIVED_PREPARED_PREFIX);
+    let provider = format!(
+        "{}{at_ceiling}",
+        derived_ids::DERIVED_PROVIDER_ATTEMPT_PREFIX
+    );
+    assert_eq!(prepared.len(), MAX_ID_BYTES);
+    assert_eq!(provider.len(), MAX_ID_BYTES);
+    assert_eq!(
+        MAX_DERIVABLE_EXECUTION_ID_BYTES,
+        MAX_ID_BYTES - prepared.len() + at_ceiling.len(),
+        "the ceiling is set by the widest derived value being exactly legal"
+    );
 }
 
 /// The whole accepted band derives legal identities, so no accepted input is left unsettleable.
