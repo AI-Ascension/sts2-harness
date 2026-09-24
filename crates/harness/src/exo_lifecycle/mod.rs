@@ -9,6 +9,7 @@ mod bridge_v2;
 #[cfg(test)]
 mod bridge_v2_tests;
 mod completed_replay;
+mod derived_ids;
 mod migration;
 mod owner;
 mod ports;
@@ -27,6 +28,7 @@ mod validation;
 pub use bridge_v2::{
     EXO_LIFECYCLE_WIRE_V2, ExoLifecycleResponse, LifecycleOutcome, parse_lifecycle_response,
 };
+pub use derived_ids::MAX_DERIVABLE_EXECUTION_ID_BYTES;
 pub use owner::{InFlight, LifecycleOwner, StartOutcome};
 pub use ports::{
     AuthorityGuard, ClaimKind, EffectCompletion, EffectHandle, EffectPort, LifecycleAuthorityPort,
@@ -36,5 +38,5 @@ pub use process_effect::{LifecycleProcessEffect, LifecycleProcessHandle};
 pub use runtime_transport::{ExoLifecycleRuntimeTransport, LifecycleManifestFactory};
 pub use types::{
     AuthorityVector, InvocationManifest, JournalConfig, LifecycleEntry, LifecycleError,
-    LifecyclePhase, MAX_INPUT_BYTES, MAX_LIFECYCLE_ENTRIES, NativeIdentity,
+    LifecyclePhase, MAX_ID_BYTES, MAX_INPUT_BYTES, MAX_LIFECYCLE_ENTRIES, NativeIdentity,
 };
