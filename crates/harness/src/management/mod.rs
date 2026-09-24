@@ -43,6 +43,7 @@ mod live_workflow;
 mod provider_policy;
 mod provider_session_inspection;
 mod readiness_wait;
+mod save_profile_setup;
 mod service;
 mod store;
 mod synthetic_context_owner;
@@ -154,6 +155,13 @@ pub use provider_session_inspection::{
 pub use readiness_wait::{
     READINESS_CONTRACT_VERSION, ReadinessMilestone, ReadinessProgress, ReadinessTarget,
     ReadinessTerminal, ReadinessWait, ReadinessWaitError,
+};
+pub use save_profile_setup::{
+    AdmittedProfileSetup, MAX_PROFILE_ID_BYTES, PROFILE_ROUTE_CONTRACT, PROFILE_ROUTE_REVISION,
+    PROFILE_SETUP_SCHEMA_VERSION, ProfileBaselineFence, ProfileGrant, ProfileReadback,
+    ProfileSetupError, ProfileSetupGrants, ProfileSetupOperation, ProfileSetupOperationDocument,
+    ProfileSetupRequest, VerifiedProfileReadback, admit_profile_setup, is_instance_identity,
+    is_profile_identity,
 };
 pub use service::{
     CapabilityPort, CommandApplication, CommandContext, ContextInspectionPort,
