@@ -54,3 +54,14 @@ supported release or a second normative changelog.
   question is asked; the provider evaluates many per call in parallel, but an unconsumed question
   would spend tokens producing a number no code reads. Compatibility: additive; one new module and
   its re-exports, no change to an existing record, route, or digest. Refs #283.
+
+- **Let the jev execution budget govern arm admission, not filesystem timing.** The paired runner
+  re-checked the budget after reserving an arm, so a slow filesystem cancelled an admitted first arm
+  and made the offline global-time-budget contract test fail, with a re-run masking that red. An
+  admitted arm now launches its child bounded by the smaller of the two budgets. Refs #388.
+
+- **Freeze the host-offered `continue_run` admission contract and prove its consumer-first
+  boundary.** The two accepted shapes and the refusal list are now recorded beside the runtime-v3
+  admission (`payload_contract`), the Exo projection (`schema.rs`) and `docs/ARCHITECTURE.md`,
+  citing `sts2-harness#415` (`551ec19d`) and `sts2-game-mod#210` (`8a655143`); focused tests cover
+  the valid offer and the malformed, unknown-field, stale, foreign-profile and unoffered refusals. Refs #390.

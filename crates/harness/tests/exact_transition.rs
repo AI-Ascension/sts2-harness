@@ -166,6 +166,24 @@ fn broken_chains_and_non_monotonic_ordinals_are_rejected() {
 }
 
 #[test]
+fn an_empty_actual_trace_is_missing_capture_rather_than_an_underflow() {
+    let expected = trace(&['a', 'b', 'c', 'd'], "play_card", None);
+    let actual = TransitionTrace {
+        profile: "fixture-v1".to_owned(),
+        source_state: digest('a'),
+        records: Vec::new(),
+    };
+    assert_eq!(actual.validate(), Ok(()));
+
+    let comparison = compare_traces(&expected, &actual).expect("runs");
+    assert_eq!(comparison.outcome, TraceOutcome::MissingCapture);
+    assert_eq!(comparison.last_equal_ordinal, None);
+    assert_eq!(comparison.first_unequal_ordinal, Some(1));
+    assert_eq!(comparison.compared_records, 0);
+    assert_eq!(comparison.unobserved_records, 3);
+}
+
+#[test]
 fn missing_catalog_witness_is_reported_as_missing_capture() {
     let expected = trace(&['a', 'b', 'c'], "play_card", None);
     let mut actual = trace(&['a', 'b', 'c'], "play_card", None);

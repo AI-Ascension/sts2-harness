@@ -10,6 +10,15 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Return `MissingCapture` instead of panicking when the observed trace recorded no boundary.**
+  `compare_traces` derived `shared = min(expected, actual)` and then read `expected.records[shared - 1]`
+  with a raw subtraction, so a non-empty `expected` paired with a validated empty `actual` gave
+  `shared == 0` and underflowed. The function already used `checked_sub(1)` for the same purpose
+  inside its aligned scan; the branch now does too, and reports `MissingCapture` with no last-equal
+  boundary, the expected first boundary as the first unobserved one, and the full expected count as
+  unobserved. Source-only: no released artifact was affected and no live caller was reached.
+  Compatibility: none for any input that did not already panic. Refs #453.
+
 - **Map save-profile setup through a capability-gated operation contract.** A new
   `management::save_profile_setup` module fixes the source-only contract behind #102: authored
   discovery, selection and provisioning map one-to-one onto the accepted MCP tools and fixed
@@ -134,11 +143,6 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   unknown kind is rejected before dispatch instead of being coerced into another action, and the
   continuation is bound to the offered generation so a stale catalog is refused before any effect.
   Refs #390.
-- **Freeze the host-offered `continue_run` admission contract and prove its consumer-first
-  boundary.** The two accepted shapes and the refusal list are now recorded beside the runtime-v3
-  admission (`payload_contract`), the Exo projection (`schema.rs`) and `docs/ARCHITECTURE.md`,
-  citing `sts2-harness#415` (`551ec19d`) and `sts2-game-mod#210` (`8a655143`); focused tests cover
-  the valid offer and the malformed, unknown-field, stale, foreign-profile and unoffered refusals. Refs #390.
 - **Carry the served managed-boundary receipt ledger across a process restart.** A restarted served
   composition rebuilt an empty in-memory ledger and wrote an accepted boundary a second time. The
   receipt ledger now has a versioned durable image, an owner-supplied port (`with_dispatch_ledger_port`)
@@ -197,10 +201,6 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   session control proves the flag stays false when a bound is genuinely spent, so the assertion was
   strengthened rather than relaxed. Compatibility: none; the flag's meaning is unchanged. Refs #394.
 
-- **Let the jev execution budget govern arm admission, not filesystem timing.** The paired runner
-  re-checked the budget after reserving an arm, so a slow filesystem cancelled an admitted first arm
-  and made the offline global-time-budget contract test fail, with a re-run masking that red. An
-  admitted arm now launches its child bounded by the smaller of the two budgets. Refs #388.
 - **Admit a live episode from the provider lane's declared capability, not from a name.** A live
   `STS2_LIVE_EPISODE=true` run was admitted only when `STS2_PROVIDER_KIND` was exactly
   `openai-astra`, which left the Exo lane unable to be admitted for one, while any unimplemented name

@@ -245,7 +245,9 @@ pub fn compare_traces(
         }
     }
     if actual.records.len() < expected.records.len() {
-        let last_equal = Some(expected.records[shared - 1].ordinal);
+        let last_equal = shared
+            .checked_sub(1)
+            .map(|prior| expected.records[prior].ordinal);
         let missing = expected.records[shared].ordinal;
         return Ok(report(
             TraceOutcome::MissingCapture,
