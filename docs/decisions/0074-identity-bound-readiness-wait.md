@@ -41,7 +41,9 @@ stays inside the production size budget, and is additive to `lifecycle_readiness
   epoch yields `ForeignReadiness`, a superseded generation yields `StaleReadiness` without spending
   the budget, and an admitted observation below the target returns `AwaitingMore` without settling.
   `deny`, `cancel` and `invalidate_for_restart` each settle the wait once into a distinct
-  `ReadinessTerminal`, and the deadline or attempt budget yields `Timeout`.
+  `ReadinessTerminal`, and the deadline or attempt budget yields `Timeout`. An incomplete binding
+  (missing instance, zero epoch or zero generation) is reported as `InvalidBinding`, separately
+  from a structurally invalid target.
 
 ## Consequences
 
