@@ -15,15 +15,19 @@
 //! `&RerunAdmission` (see [`RerunAllocationSeam`]) cannot run before a successful
 //! comparison; [`admit_and_allocate`] is the single ordering point. The token also
 //! owns the exact admitted [`Manifest`] (reachable only through
-//! [`RerunAdmission::declaration`]), so an allocation can never be driven by a
-//! declaration other than the one that compared equal.
+//! [`RerunAdmission::declaration`]), so the seam is given exactly the admitted
+//! declaration as its authoritative input; implementors must allocate only for it.
 //!
-//! Scope note: this crate has no in-repo allocation/launch path for benchmark
-//! reruns — allocation is owned by the native/gateway launch path. This module is
-//! therefore the production pre-mutation contract and its consumer seam, not a
-//! call site attached to an existing allocator. A consumer attaches by
-//! implementing [`RerunAllocationSeam`] and holding the [`RerunAdmission`] it
-//! returns; the compare-before-allocation ordering is then structural.
+//! Scope note: no in-repo consumer of the benchmark manifest and no governed
+//! benchmark-rerun flow exist yet, so this module is the production pre-mutation
+//! contract and its consumer seam rather than a call site attached to an existing
+//! allocator. Attaching a real consumer — gating the in-repo seeded-launch path
+//! (`runtime_support/runtime_v3_seeded.rs`) on this admission — is owned by the
+//! runtime/gateway seeded-launch owner, alongside the native-admission recheck in
+//! sts2-harness#103 and sts2-game-mod#79. No new allocator is invented here. A
+//! consumer attaches by implementing [`RerunAllocationSeam`] and holding the
+//! [`RerunAdmission`] it returns; the compare-before-allocation ordering is then
+//! structural.
 //!
 //! An admitted rerun certifies equal *declarations only*: not native compatibility,
 //! not seed durability, and not authorization to mutate. Rechecking the settled
@@ -51,8 +55,8 @@ mod sealed {
 /// [`RerunAllocationSeam`], but it certifies equal declarations only: never native
 /// compatibility, seed durability, or authorization to mutate.
 ///
-/// The token owns the admitted declaration, so a seam cannot act on a different
-/// declaration than the one that compared equal.
+/// The token owns the admitted declaration and offers it to the seam as the
+/// authoritative input; implementors must allocate only for it.
 #[derive(Clone, Debug)]
 pub struct RerunAdmission {
     _seal: sealed::Admitted,
