@@ -84,7 +84,9 @@ fn entry_count_keeps_unknown_and_terminal_records_and_rejects_129() {
 fn exact_id_cursor_and_input_bounds_are_enforced() {
     let fixture = Fixture::new();
     let mut entry = entry(&fixture.config.scope, 0);
-    entry.manifest.execution_id = "e".repeat(128);
+    // The request-level identity is admitted up to the published wire width (ADR 0077), so the
+    // stored-and-validated boundary is 512 here; every other field keeps its own 128-byte bound.
+    entry.manifest.execution_id = "e".repeat(512);
     entry.native = Some(NativeIdentity {
         agent_id: "agent".into(),
         conversation_id: "conversation".into(),

@@ -16,6 +16,9 @@ mod history;
 #[path = "tests_derived_ids.rs"]
 mod derived_ids;
 
+#[path = "tests_identity_width.rs"]
+mod identity_width;
+
 #[test]
 fn faults_at_every_intent_admitted_sent_boundary_never_hand_off_or_restore_permit() {
     for skip in 0..3 {

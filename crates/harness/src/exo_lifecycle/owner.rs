@@ -6,8 +6,7 @@ use crate::provider_session::{NativeCapabilities, ProviderSessionBroker, Provide
 use std::sync::Arc;
 
 use super::derived_ids::{
-    DERIVED_BINDING_PREFIX, DERIVED_PREPARED_PREFIX, DERIVED_PROVIDER_ATTEMPT_PREFIX,
-    execution_id_is_derivable,
+    derived_binding_id, derived_prepared_id, derived_provider_attempt_id, identity_token,
 };
 
 pub struct LifecycleOwner {
@@ -52,17 +51,17 @@ impl LifecycleOwner {
         {
             return Err(LifecycleError::Invalid);
         }
-        // An identity the manifest predicate accepts can still be one the broker and the
-        // prepared-turn record cannot represent once this owner has minted their internal
-        // identities, so refuse it here rather than admitting a request that can never settle.
-        if !execution_id_is_derivable(&manifest.execution_id) {
-            return Err(LifecycleError::Invalid);
-        }
         if let Some(completed) = self.completed_manifest_for_request(&manifest, input)? {
             return Ok(completed);
         }
-        let binding_id = format!("{DERIVED_BINDING_PREFIX}{}", manifest.execution_id);
-        let prepared_id = format!("{DERIVED_PREPARED_PREFIX}{}", manifest.execution_id);
+        // The request-level identity is admitted up to the published 512-byte wire width, but
+        // every internal identity the manifest (`id`) and the broker (`provider_session::valid_id`)
+        // validate is capped at 128. Identifiers this owner mints from the identity therefore
+        // carry a digest of it instead of the identity itself, so their width is a function of
+        // the prefix alone and no admitted identity has a hidden ceiling (ADR 0077).
+        let selection_id = identity_token(&manifest.execution_id);
+        let binding_id = derived_binding_id(&manifest.execution_id);
+        let prepared_id = derived_prepared_id(&manifest.execution_id);
         if self.broker.binding(&binding_id).is_err() {
             self.broker
                 .admit_one_shot_binding(&self.token, &binding_id, expires_at)
@@ -79,7 +78,7 @@ impl LifecycleOwner {
             &prepared_id,
             &manifest.request_id,
             &manifest.host_turn_id,
-            &manifest.execution_id,
+            &selection_id,
             &manifest.host_turn_id,
             input.to_vec(),
             br#"{"type":"object"}"#.to_vec(),
@@ -101,15 +100,14 @@ impl LifecycleOwner {
                 &self.token,
                 &binding_id,
                 &prepared.prepared_id,
-                &manifest.execution_id,
+                &selection_id,
             )
             .map_err(|_| LifecycleError::Held)?;
         manifest.binding_id = binding.binding_id;
         manifest.prepared_id = prepared.prepared_id;
         manifest.operation_id = operation.operation_id;
         manifest.reservation_id = format!("provider-reservation-{}", manifest.operation_id);
-        manifest.provider_attempt_id =
-            format!("{DERIVED_PROVIDER_ATTEMPT_PREFIX}{}", manifest.execution_id);
+        manifest.provider_attempt_id = derived_provider_attempt_id(&manifest.execution_id);
         manifest.authority.owner_epoch = self.broker.owner_epoch();
         manifest.authority.auth_epoch = self.broker.owner_epoch();
         manifest.authority.session_epoch = binding.session_epoch;
