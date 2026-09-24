@@ -23,11 +23,11 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 - **Wait for an identity-bound readiness milestone.** A new
   `management::readiness_wait` module fixes the source-only contract behind #96: an authored
   workflow names a versioned milestone target with a bounded deadline and attempt budget, and a
-  per-generation wait settles only from fresh authoritative evidence bound to the same instance,
-  authority epoch and process generation, with distinguishable timeout, denial, cancellation and
+  per-generation wait settles only from an observation that carries its own sealed evidence,
+  milestone and generation, with distinguishable timeout, denial, cancellation and
   restart-invalidation outcomes and stale or foreign evidence refused
-  ([ADR 0074](docs/decisions/0074-identity-bound-readiness-wait.md)). The Studio round-trip and the
-  native loading verification remain open. Refs #96.
+  ([ADR 0074](docs/decisions/0074-identity-bound-readiness-wait.md)). The Studio round-trip and native
+  loading verification remain open. Refs #96.
 
 - **Admit a bounded pre-agent read-only recipe.** A new `recipe` module fixes the source-only
   contract behind #97: an authored workflow may declare a bounded, versioned recipe of approved

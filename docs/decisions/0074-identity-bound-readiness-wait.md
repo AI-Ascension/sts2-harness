@@ -36,14 +36,16 @@ stays inside the production size budget, and is additive to `lifecycle_readiness
   `deny_unknown_fields`, so an unknown member is refused at decode time, and `new` fails closed with
   `Incompatible` for an unsupported version and `InvalidTarget` for a zero deadline or attempt bound.
 - **Bounded wait (`wait.rs`, `error.rs`).** `ReadinessWait::begin` binds one instance, authority
-  epoch and process generation. `observe` accepts an existing sealed
-  `GameplayReadinessEvidence` plus the owner-reported milestone and generation: foreign instance or
-  epoch yields `ForeignReadiness`, a superseded generation yields `StaleReadiness` without spending
-  the budget, and an admitted observation below the target returns `AwaitingMore` without settling.
-  `deny`, `cancel` and `invalidate_for_restart` each settle the wait once into a distinct
-  `ReadinessTerminal`, and the deadline or attempt budget yields `Timeout`. An incomplete binding
-  (missing instance, zero epoch or zero generation) is reported as `InvalidBinding`, separately
-  from a structurally invalid target.
+  epoch and process generation. `observe` accepts a single owner-constructed
+  `MilestoneObservation`, which carries the sealed `GameplayReadinessEvidence`, the reported
+  milestone and the observed generation **together**: the milestone that decides settlement and the
+  generation that decides staleness are read from the observation itself, so neither can be supplied
+  apart from the evidence it belongs to. Foreign instance or epoch yields `ForeignReadiness`, a
+  superseded generation yields `StaleReadiness` without spending the budget, and an admitted
+  observation below the target returns `AwaitingMore` without settling. `deny`, `cancel` and
+  `invalidate_for_restart` each settle the wait once into a distinct `ReadinessTerminal`, and the
+  deadline or attempt budget yields `Timeout`. An incomplete binding (missing instance, zero epoch
+  or zero generation) is reported as `InvalidBinding`, separately from a structurally invalid target.
 
 ## Consequences
 

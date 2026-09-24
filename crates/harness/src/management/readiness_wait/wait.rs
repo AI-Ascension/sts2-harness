@@ -4,15 +4,58 @@
 //!
 //! A wait is started for one instance, authority epoch and process generation.
 //! It admits observations through a bounded deadline and attempt budget, and it
-//! settles only from an observation that is bound to that same instance and
-//! epoch, labelled with the current generation, and reporting a milestone that
-//! reaches the target. A foreign, stale or below-target observation cannot
-//! settle it, and a restart invalidates prior readiness so fresh proof is
-//! required.
+//! settles only from an observation that carries its own instance, epoch,
+//! generation and milestone as one value. Because the milestone that decides
+//! settlement and the generation that decides staleness are read from the
+//! observation itself, no caller can supply a label the observation does not
+//! carry. A foreign, stale or below-target observation cannot settle a wait, and
+//! a restart invalidates prior readiness so fresh proof is required.
 
 use crate::management::GameplayReadinessEvidence;
 
 use super::{ReadinessMilestone, ReadinessTarget, ReadinessWaitError};
+
+/// An owner-observed readiness milestone, bound to the evidence it came from.
+///
+/// The milestone and generation are carried *inside* this value rather than
+/// passed beside the evidence, so the label that decides settlement and the
+/// generation that decides staleness travel with the observation they belong to
+/// and cannot be supplied independently of it.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MilestoneObservation<E> {
+    evidence: E,
+    milestone: ReadinessMilestone,
+    generation: u64,
+}
+
+impl<E: GameplayReadinessEvidence> MilestoneObservation<E> {
+    /// Binds one owner-observed milestone to the evidence and generation.
+    pub const fn new(evidence: E, milestone: ReadinessMilestone, generation: u64) -> Self {
+        Self {
+            evidence,
+            milestone,
+            generation,
+        }
+    }
+
+    /// The sealed readiness evidence this milestone was observed with.
+    #[must_use]
+    pub const fn evidence(&self) -> &E {
+        &self.evidence
+    }
+
+    /// The milestone the observing owner reported.
+    #[must_use]
+    pub const fn milestone(&self) -> ReadinessMilestone {
+        self.milestone
+    }
+
+    /// The process generation the owner observed the milestone under.
+    #[must_use]
+    pub const fn generation(&self) -> u64 {
+        self.generation
+    }
+}
 
 /// How an admitted observation moved the wait.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -107,7 +150,10 @@ impl ReadinessWait {
 
     /// Admits one owner-observed milestone at `now_ms` milliseconds since start.
     ///
-    /// Fails closed when the evidence is for another instance or epoch
+    /// Reads the instance, authority epoch, generation and milestone from the
+    /// observation itself, so the settle-deciding milestone cannot be supplied
+    /// apart from the evidence it belongs to. Fails closed when the evidence is
+    /// for another instance or epoch
     /// ([`ReadinessWaitError::ForeignReadiness`]) or a superseded generation
     /// ([`ReadinessWaitError::StaleReadiness`]); such an observation never
     /// consumes the attempt budget. Exhausting the deadline or attempt budget
@@ -116,20 +162,18 @@ impl ReadinessWait {
     /// target settles the wait and returns [`ReadinessProgress::Satisfied`].
     pub fn observe<E: GameplayReadinessEvidence>(
         &mut self,
-        evidence: &E,
-        milestone: ReadinessMilestone,
-        generation: u64,
+        observation: &MilestoneObservation<E>,
         now_ms: u64,
     ) -> Result<ReadinessProgress, ReadinessWaitError> {
         if self.terminal.is_some() {
             return Err(ReadinessWaitError::Settled);
         }
-        if evidence.instance_id() != self.instance_id
-            || evidence.authority_epoch() != self.authority_epoch
+        if observation.evidence.instance_id() != self.instance_id
+            || observation.evidence.authority_epoch() != self.authority_epoch
         {
             return Err(ReadinessWaitError::ForeignReadiness);
         }
-        if generation != self.generation {
+        if observation.generation != self.generation {
             return Err(ReadinessWaitError::StaleReadiness);
         }
         if now_ms > self.target.deadline_ms {
@@ -141,7 +185,7 @@ impl ReadinessWait {
             self.terminal = Some(ReadinessTerminal::TimedOut);
             return Err(ReadinessWaitError::Timeout);
         }
-        if milestone.reaches(self.target.milestone) {
+        if observation.milestone.reaches(self.target.milestone) {
             self.terminal = Some(ReadinessTerminal::Satisfied);
             Ok(ReadinessProgress::Satisfied)
         } else {

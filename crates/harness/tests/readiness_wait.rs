@@ -6,9 +6,10 @@
 //! (issue #96, T1/T2). Every case is synthetic: it exercises the source-only
 //! contract and does not assert a native game effect.
 
+use sts2_harness::GameplayReadinessEvidence;
 use sts2_harness::management::{
-    READINESS_CONTRACT_VERSION, ReadinessMilestone, ReadinessObservation, ReadinessProgress,
-    ReadinessTarget, ReadinessTerminal, ReadinessWait, ReadinessWaitError,
+    MilestoneObservation, READINESS_CONTRACT_VERSION, ReadinessMilestone, ReadinessObservation,
+    ReadinessProgress, ReadinessTarget, ReadinessTerminal, ReadinessWait, ReadinessWaitError,
 };
 
 const INSTANCE: &str = "instance-1";
@@ -21,6 +22,14 @@ fn digest(seed: u8) -> String {
 
 fn observation() -> ReadinessObservation {
     ReadinessObservation::new(INSTANCE, EPOCH, "obs-1", digest(0xab)).expect("observation")
+}
+
+/// Binds an owner-observed milestone to the evidence and generation it came from.
+fn observed(
+    milestone: ReadinessMilestone,
+    generation: u64,
+) -> MilestoneObservation<ReadinessObservation> {
+    MilestoneObservation::new(observation(), milestone, generation)
 }
 
 fn target(milestone: ReadinessMilestone) -> ReadinessTarget {
@@ -104,19 +113,27 @@ fn milestone_labels_are_stable_and_ordered() {
 }
 
 #[test]
+fn an_observation_carries_its_own_milestone_and_generation() {
+    // The settle-deciding label and the staleness-deciding generation are part
+    // of the observation value, not separate arguments passed beside it.
+    let observation = observed(ReadinessMilestone::SetupAvailable, GENERATION);
+    assert_eq!(observation.milestone(), ReadinessMilestone::SetupAvailable);
+    assert_eq!(observation.generation(), GENERATION);
+    assert_eq!(observation.evidence().instance_id(), INSTANCE);
+    assert_eq!(observation.evidence().authority_epoch(), EPOCH);
+}
+
+#[test]
 fn wait_settles_only_when_the_target_milestone_is_reached() {
-    let evidence = observation();
     let mut wait = wait(ReadinessMilestone::LeaseInstalled);
     assert_eq!(
-        wait.observe(&evidence, ReadinessMilestone::Booted, GENERATION, 10),
+        wait.observe(&observed(ReadinessMilestone::Booted, GENERATION), 10),
         Ok(ReadinessProgress::AwaitingMore)
     );
     assert!(!wait.is_settled());
     assert_eq!(
         wait.observe(
-            &evidence,
-            ReadinessMilestone::LeaseInstalled,
-            GENERATION,
+            &observed(ReadinessMilestone::LeaseInstalled, GENERATION),
             20
         ),
         Ok(ReadinessProgress::Satisfied)
@@ -128,39 +145,34 @@ fn wait_settles_only_when_the_target_milestone_is_reached() {
 fn a_listening_port_cannot_satisfy_gameplay_readiness() {
     // A bootable process that answers on a port reports `Booted`, not
     // `Actionable`; it must never settle a gameplay-readiness wait.
-    let evidence = observation();
     let mut wait = wait(ReadinessMilestone::Actionable);
     assert_eq!(
-        wait.observe(&evidence, ReadinessMilestone::Booted, GENERATION, 5),
+        wait.observe(&observed(ReadinessMilestone::Booted, GENERATION), 5),
         Ok(ReadinessProgress::AwaitingMore)
     );
     assert!(!wait.is_settled());
 }
 
 #[test]
-fn foreign_instance_or_epoch_evidence_is_refused() {
-    let mut wait = wait(ReadinessMilestone::Booted);
-    let foreign_instance =
-        ReadinessObservation::new("instance-2", EPOCH, "obs-1", digest(0x01)).expect("observation");
+fn a_carried_below_target_milestone_cannot_settle_a_higher_target() {
+    // The milestone now travels with the observation, so a caller cannot settle
+    // a higher target with a label the observation does not carry.
+    let mut wait = wait(ReadinessMilestone::Actionable);
+    let below_target = observed(ReadinessMilestone::SetupAvailable, GENERATION);
     assert_eq!(
-        wait.observe(&foreign_instance, ReadinessMilestone::Booted, GENERATION, 1),
-        Err(ReadinessWaitError::ForeignReadiness)
-    );
-    let superseded_epoch =
-        ReadinessObservation::new(INSTANCE, EPOCH - 1, "obs-1", digest(0x02)).expect("observation");
-    assert_eq!(
-        wait.observe(&superseded_epoch, ReadinessMilestone::Booted, GENERATION, 2),
-        Err(ReadinessWaitError::ForeignReadiness)
+        wait.observe(&below_target, 1),
+        Ok(ReadinessProgress::AwaitingMore)
     );
     assert!(!wait.is_settled());
+    assert_eq!(wait.attempts(), 1);
 }
 
 #[test]
-fn stale_generation_is_refused_without_spending_the_budget() {
-    let evidence = observation();
+fn a_carried_superseded_generation_is_refused_without_spending_the_budget() {
     let mut wait = wait(ReadinessMilestone::Booted);
+    let superseded = observed(ReadinessMilestone::Actionable, GENERATION - 1);
     assert_eq!(
-        wait.observe(&evidence, ReadinessMilestone::Booted, GENERATION - 1, 1),
+        wait.observe(&superseded, 1),
         Err(ReadinessWaitError::StaleReadiness)
     );
     assert_eq!(wait.attempts(), 0);
@@ -168,23 +180,45 @@ fn stale_generation_is_refused_without_spending_the_budget() {
 }
 
 #[test]
+fn foreign_instance_or_epoch_evidence_is_refused() {
+    let mut wait = wait(ReadinessMilestone::Booted);
+    let foreign_instance = MilestoneObservation::new(
+        ReadinessObservation::new("instance-2", EPOCH, "obs-1", digest(0x01)).expect("observation"),
+        ReadinessMilestone::Booted,
+        GENERATION,
+    );
+    assert_eq!(
+        wait.observe(&foreign_instance, 1),
+        Err(ReadinessWaitError::ForeignReadiness)
+    );
+    let superseded_epoch = MilestoneObservation::new(
+        ReadinessObservation::new(INSTANCE, EPOCH - 1, "obs-1", digest(0x02)).expect("observation"),
+        ReadinessMilestone::Booted,
+        GENERATION,
+    );
+    assert_eq!(
+        wait.observe(&superseded_epoch, 2),
+        Err(ReadinessWaitError::ForeignReadiness)
+    );
+    assert!(!wait.is_settled());
+}
+
+#[test]
 fn deadline_exhaustion_times_out_and_is_terminal() {
-    let evidence = observation();
     let mut wait = wait(ReadinessMilestone::Booted);
     assert_eq!(
-        wait.observe(&evidence, ReadinessMilestone::Booted, GENERATION, 1_001),
+        wait.observe(&observed(ReadinessMilestone::Booted, GENERATION), 1_001),
         Err(ReadinessWaitError::Timeout)
     );
     assert_eq!(wait.terminal(), Some(ReadinessTerminal::TimedOut));
     assert_eq!(
-        wait.observe(&evidence, ReadinessMilestone::Booted, GENERATION, 1_002),
+        wait.observe(&observed(ReadinessMilestone::Booted, GENERATION), 1_002),
         Err(ReadinessWaitError::Settled)
     );
 }
 
 #[test]
 fn attempt_budget_exhaustion_times_out() {
-    let evidence = observation();
     let narrow = ReadinessTarget::new(
         ReadinessMilestone::Actionable,
         10_000,
@@ -194,20 +228,18 @@ fn attempt_budget_exhaustion_times_out() {
     .expect("target");
     let mut wait = ReadinessWait::begin(INSTANCE, EPOCH, GENERATION, narrow).expect("wait");
     assert_eq!(
-        wait.observe(&evidence, ReadinessMilestone::Booted, GENERATION, 1),
+        wait.observe(&observed(ReadinessMilestone::Booted, GENERATION), 1),
         Ok(ReadinessProgress::AwaitingMore)
     );
     assert_eq!(
         wait.observe(
-            &evidence,
-            ReadinessMilestone::AdapterCompatible,
-            GENERATION,
+            &observed(ReadinessMilestone::AdapterCompatible, GENERATION),
             2
         ),
         Ok(ReadinessProgress::AwaitingMore)
     );
     assert_eq!(
-        wait.observe(&evidence, ReadinessMilestone::LeaseInstalled, GENERATION, 3),
+        wait.observe(&observed(ReadinessMilestone::LeaseInstalled, GENERATION), 3),
         Err(ReadinessWaitError::Timeout)
     );
     assert_eq!(wait.terminal(), Some(ReadinessTerminal::TimedOut));
@@ -226,12 +258,11 @@ fn denial_and_cancellation_are_distinguishable() {
 
 #[test]
 fn a_restart_invalidates_prior_readiness_and_requires_a_fresh_wait() {
-    let evidence = observation();
     let mut wait = wait(ReadinessMilestone::Actionable);
     wait.invalidate_for_restart().expect("invalidate");
     assert_eq!(wait.terminal(), Some(ReadinessTerminal::Invalidated));
     assert_eq!(
-        wait.observe(&evidence, ReadinessMilestone::Actionable, GENERATION, 1),
+        wait.observe(&observed(ReadinessMilestone::Actionable, GENERATION), 1),
         Err(ReadinessWaitError::Settled)
     );
     let fresh = ReadinessWait::begin(
@@ -263,9 +294,8 @@ fn begin_refuses_incomplete_bindings() {
 
 #[test]
 fn settling_twice_is_refused() {
-    let evidence = observation();
     let mut wait = wait(ReadinessMilestone::Booted);
-    wait.observe(&evidence, ReadinessMilestone::Actionable, GENERATION, 1)
+    wait.observe(&observed(ReadinessMilestone::Actionable, GENERATION), 1)
         .expect("satisfy");
     assert_eq!(wait.deny(), Err(ReadinessWaitError::Settled));
     assert_eq!(wait.cancel(), Err(ReadinessWaitError::Settled));
