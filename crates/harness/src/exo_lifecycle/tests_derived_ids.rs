@@ -152,3 +152,59 @@ fn the_refusal_vocabulary_is_unchanged_and_value_free() {
     );
     assert_eq!(LifecycleError::Invalid, LifecycleError::Invalid);
 }
+
+/// Runs the real owner over one identity width after proving every other layer accepts the
+/// request, so the answer is the owner's own. `None` means the owner completed the manifest, which
+/// is only reachable by an identity whose every derived value is representable.
+fn owner_answer(width: usize) -> Result<Option<LifecycleError>, String> {
+    let mut fixture = Fixture::new();
+    let identity = "e".repeat(width);
+    let mut request = crate::parse_bridge_request(
+        include_bytes!("../../../../protocol-artifact/exo-bridge-v1/golden/request.json"),
+        MAX_INPUT_BYTES,
+    )
+    .expect("golden request");
+    request.model_execution_id = identity.clone();
+    let input = crate::encode_bridge_request("request-1", "turn-1", &request, MAX_INPUT_BYTES)
+        .expect("envelope");
+    let mut manifest = fixture.manifest.clone();
+    manifest.execution_id = identity;
+    manifest.input_digest = crate::sha256_hex(&input);
+    manifest.input_length = input.len();
+    if crate::exo_lifecycle::validation::input(&manifest, &input).is_err() {
+        return Err(String::from(
+            "the fixture must be admissible everywhere except the owner's derivation",
+        ));
+    }
+    let mut owner = fixture.owner();
+    match owner.prepare_one_shot_manifest(manifest, &input, "2030-01-01T00:00:00Z") {
+        Err(error) => Ok(Some(error)),
+        Ok(_) => Ok(None),
+    }
+}
+
+/// The regression is one byte wide, so the two cases differ by exactly one byte: the ceiling
+/// identity clears the owner's guard and is only then refused downstream, while one byte past it is
+/// refused by the guard itself as the ordinary sanitized `Invalid`.
+///
+/// This fixture's broker is not the reviewed one-shot profile, so its admission gate refuses with
+/// `Held` whatever reaches it. `Held` therefore marks "the guard let this through", which is what
+/// separates the two widths by variant alone: without the guard, the past-ceiling identity would
+/// report `Held` as well, and the prefix arithmetic in the other cases in this file proves that
+/// derivation is the over-long one no later layer can accept.
+#[test]
+fn the_owner_refuses_only_the_identity_whose_derivation_overflows() -> Result<(), String> {
+    let at_ceiling = owner_answer(MAX_DERIVABLE_EXECUTION_ID_BYTES)?;
+    assert_eq!(
+        at_ceiling,
+        Some(LifecycleError::Held),
+        "the ceiling identity must clear the guard and only then meet the broker"
+    );
+    let past_ceiling = owner_answer(MAX_DERIVABLE_EXECUTION_ID_BYTES + 1)?;
+    assert_eq!(
+        past_ceiling,
+        Some(LifecycleError::Invalid),
+        "one byte past the ceiling must be refused by the owner's guard"
+    );
+    Ok(())
+}
