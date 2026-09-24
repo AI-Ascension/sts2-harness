@@ -10,6 +10,17 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Extend the real pinned-Exo CI lane with the `#148` fault and isolation matrix.** The landed lane
+  executed the real Exo process oracle but exercised only a few admission rejections. A new
+  `fault_oracle` test proves the admission faults fail closed with zero model egress (config schema,
+  extension/node/executor pins, relative executor path, argv config identity, provider-route
+  refusal), that a model endpoint which consumes the request and then closes with no reply fails the
+  run within the bounded process lifetime, and that two sequential or concurrent runs each send
+  exactly one model request with no shared endpoint, temporary or state root (`#148` T3). The lane
+  writes a bounded `target/exo-fault-report.json` and asserts its revision against
+  `EXO_SOURCE_REVISION`. This is real-process evidence with a synthetic model and synthetic host;
+  live provider, game and native acceptance remain separate. Refs #148.
+
 - **Pin the authenticated-request constructor so the guard cannot silently stop naming it.** The
   fence pair added for `#481` cannot detect a *rename* of `from_transport`: renaming it while it
   stays `pub(crate)` leaves both fences green — the `compile_fail` snippet now dies of `E0599`,

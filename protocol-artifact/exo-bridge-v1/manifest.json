@@ -150,6 +150,7 @@
     "experiments/exo-agent/bridge/Cargo.lock",
     "experiments/exo-agent/bridge/tests/process_oracle.rs",
     "experiments/exo-agent/bridge/tests/lookup_oracle.rs",
+    "experiments/exo-agent/bridge/tests/fault_oracle.rs",
     "crates/harness/tests/context_render_selected_limits.rs",
     "crates/harness/tests/context_control_limit_enforcement.rs",
     "crates/harness/tests/context_branch_adversarial_marks.rs",

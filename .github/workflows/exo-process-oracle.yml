@@ -91,6 +91,24 @@ jobs:
             cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
             --test lookup_oracle -- --ignored
 
+      - name: Run the real-Exo fault matrix and run isolation
+        # Extends the lane with #148 T2/T3: the admission fault matrix (schema/pin/identity), a
+        # lost model reply, restart determinism and concurrent-run isolation. Same synthetic
+        # loopback model and synthetic host; no provider, credential, game or native instance.
+        run: |
+          STS2_EXO_TEST_NODE="$(command -v node)" \
+            CARGO_TARGET_DIR="$PWD/target/exo-executor" \
+            cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
+            --test fault_oracle -- --ignored
+
+      - name: Assert the fault report names the pinned revision
+        env:
+          EXO_REVISION: ${{ steps.exo-revision.outputs.revision }}
+        run: |
+          test -s target/exo-fault-report.json
+          test "$(jq -r .exo_revision target/exo-fault-report.json)" = "$EXO_REVISION"
+          test "$(jq -r .full_runtime_admission target/exo-fault-report.json)" = "false"
+
       - name: Assert the bounded evidence report names the pinned revision
         env:
           EXO_REVISION: ${{ steps.exo-revision.outputs.revision }}
@@ -104,6 +122,8 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: exo-process-oracle-report
-          path: target/exo-smoke-report.json
+          path: |
+            target/exo-smoke-report.json
+            target/exo-fault-report.json
           if-no-files-found: warn
           retention-days: 7
