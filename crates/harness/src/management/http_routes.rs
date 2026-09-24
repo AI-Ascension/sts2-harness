@@ -7,6 +7,7 @@ use super::super::context_owner::ContextBindingRequest;
 use super::super::contract_authoring::{
     StudioCreateDraftRequest, StudioPublishDraftRequest, StudioSaveDraftRequest,
 };
+use super::super::contract_authoring_inference::AuthoringInferenceRequest;
 use super::super::service::InferenceProfileRevisionRequest;
 use super::response::reason_phrase;
 use super::*;
@@ -96,6 +97,9 @@ fn dispatch_studio_or_run_route(
     actor: &super::super::auth::AuthContext,
     bearer: Option<&str>,
 ) -> Result<Value, ManagementError> {
+    if request.path.starts_with("/v1/studio/authoring-inference") {
+        return dispatch_studio_authoring_inference_route(request, service, actor);
+    }
     if request.path.starts_with("/v1/studio/") {
         return dispatch_studio_route(request, service, actor);
     }
@@ -155,10 +159,7 @@ fn dispatch_studio_route(
         || segments[2] != "studio"
         || segments[3] != "drafts"
     {
-        return Err(ManagementError::invalid(
-            "route_not_found",
-            "management route was not found",
-        ));
+        return Err(route_not_found());
     }
     let draft_id = segments[4];
     validate_identifier("draft_id", draft_id).map_err(ManagementError::from)?;
@@ -178,10 +179,47 @@ fn dispatch_studio_route(
                 .studio_publish_draft(actor, draft_id, body)
                 .and_then(|value| json_value(&value))
         }
-        _ => Err(ManagementError::invalid(
-            "route_not_found",
-            "management route was not found",
-        )),
+        _ => Err(route_not_found()),
+    }
+}
+
+/// `POST /v1/studio/authoring-inference` returns a proposal; `GET
+/// /v1/studio/authoring-inference/operations/{draft_id}/{client_mutation_id}`
+/// reads the durable outcome of one operation. Neither shape can publish a
+/// definition, start a run or reach a game instance.
+fn dispatch_studio_authoring_inference_route(
+    request: &HttpRequest,
+    service: &ManagementService,
+    actor: &super::super::auth::AuthContext,
+) -> Result<Value, ManagementError> {
+    let segments = request.path.split('/').collect::<Vec<_>>();
+    match (request.method.as_str(), segments.as_slice()) {
+        ("POST", ["", "v1", "studio", "authoring-inference"]) if request.query.is_empty() => {
+            let body: AuthoringInferenceRequest = decode_body_management(&request.body)?;
+            service
+                .authoring_inference_proposal(actor, body)
+                .and_then(|value| json_value(&value))
+        }
+        (
+            "GET",
+            [
+                "",
+                "v1",
+                "studio",
+                "authoring-inference",
+                "operations",
+                draft_id,
+                client_mutation_id,
+            ],
+        ) if request.query.is_empty() => {
+            validate_identifier("draft_id", draft_id).map_err(ManagementError::from)?;
+            validate_identifier("client_mutation_id", client_mutation_id)
+                .map_err(ManagementError::from)?;
+            service
+                .authoring_inference_operation(actor, draft_id, client_mutation_id)
+                .and_then(|value| json_value(&value))
+        }
+        _ => Err(route_not_found()),
     }
 }
 

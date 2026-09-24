@@ -2,6 +2,13 @@
 
 mod auth;
 mod authoring;
+mod authoring_inference;
+pub use authoring_inference::{
+    AuthoringInferenceBegin, AuthoringInferenceCandidate, AuthoringInferenceJournal,
+    AuthoringInferencePort, AuthoringInferenceProviderRequest, MemoryAuthoringInferenceJournal,
+    UnavailableAuthoringInferenceJournal, UnavailableAuthoringInferencePort,
+    authoring_inference_operation_id,
+};
 mod cli;
 mod context_binding_history;
 mod context_owner;
@@ -10,6 +17,7 @@ pub use context_binding_history::{
 };
 mod contract;
 mod contract_authoring;
+mod contract_authoring_inference;
 mod http;
 mod inference_profile_binding;
 pub use inference_profile_binding::{
@@ -105,6 +113,7 @@ pub use contract_authoring::{
     StudioDefinitionsResponse, StudioDraftConflict, StudioDraftRecord, StudioPublishDraftRequest,
     StudioPublishResponse, StudioSaveDraftRequest,
 };
+pub use contract_authoring_inference::*;
 pub use http::{
     ClientResponse, HttpError, HttpLimits, ManagementClient, ManagementServer, ServerConfig,
     ServerHandle,
