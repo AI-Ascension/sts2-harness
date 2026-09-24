@@ -8,6 +8,11 @@ adapter and the boundary validation are separate slices, and any real profile mu
 by the separately authorized gateway/game-mod lanes. It is ratified when the change carrying it
 merges.
 
+Revision, 2026-09-24: the baseline-fence rule was corrected to the owner's contract. The first
+merged revision required the fence to name the *same* profile as the selection, which the gateway
+does not require and which would have refused the owner's own accepted select fixture. See the
+Decision bullet on effect-free admission.
+
 ## Context
 
 Issue #102 requires the harness to drive save-profile setup through owner descriptors and the
@@ -43,10 +48,15 @@ file stays inside the production size budget:
   by the deployment, never by the request, so an authored workflow cannot widen its own permission.
 - **Effect-free admission (`setup.rs`, `error.rs`).** `admit_profile_setup` checks in a fixed
   order — schema and identity shape, permission, effect-free discovery, required profile, baseline
-  fence presence and identity, retained operation identity, active-run conflict — and refuses the
-  first violated property. Only a selection may carry a fence, and the fence must name the same
-  profile. A mutation admitted under an active run is refused. `AdmittedProfileSetup` exposes the
-  exact tool and route and performs no call.
+  fence presence, retained operation identity, active-run conflict — and refuses the first violated
+  property. Only a selection may carry a fence, and it must carry one; the fence mirrors the
+  owner's `ProfileBaseline` (`{ identity, digest }`), whose identity is the *baseline's* own
+  user-data identity and is independent of the selected slot. The harness imposes no equality
+  between the two, because the owner applies none: the gateway's own select fixture pairs
+  `profile_id:"slot-1"` with `baseline.identity:"baseline-1"` and is accepted, and its `Select`
+  validator shape-checks the two independently. Requiring equality would force a fabricated
+  baseline identity and refuse a valid selection. A mutation admitted under an active run is
+  refused. `AdmittedProfileSetup` exposes the exact tool and route and performs no call.
 - **Readback verification (`setup.rs`).** A mutation is not usable on admission. A readback is
   verified separately: the identity must match the admitted one, the baseline must be a lowercase
   SHA-256 digest that matches the admitted fence, and the owner must report the profile available.
