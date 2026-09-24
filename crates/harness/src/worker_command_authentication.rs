@@ -30,7 +30,11 @@ impl WorkerCapability {
 /// Transport code fills this only after protected local peer authentication. It has no public
 /// constructor and deliberately carries no boolean authentication claim.
 ///
-/// External callers cannot turn a marker string into authenticated admission:
+/// External callers cannot turn a marker string into authenticated admission. The code-bearing
+/// `compile_fail,E0624` annotation is parsed but not enforced by rustdoc, so this fence asserts
+/// only that the snippet fails to compile for *some* reason; the positive companion fence below
+/// pins the public reachability it depends on, so a removed or renamed re-export fails the pair
+/// rather than silently satisfying the negative fence.
 /// ```compile_fail,E0624
 /// use sts2_harness::{WorkerOwnerProof, worker_handoff::{
 ///     AuthenticatedWorkerRequest, WorkerCapability, WorkerRequest,
@@ -40,6 +44,15 @@ impl WorkerCapability {
 ///         request, WorkerCapability::Dispatch, proof,
 ///     );
 /// }
+/// ```
+///
+/// The same public paths must resolve, or the negative fence above would pass vacuously:
+/// ```
+/// use sts2_harness::{WorkerOwnerProof, worker_handoff::{
+///     AuthenticatedWorkerRequest, WorkerCapability, WorkerRequest,
+/// }};
+/// let _: Option<(WorkerRequest, WorkerCapability, WorkerOwnerProof)> = None;
+/// let _ = std::mem::size_of::<AuthenticatedWorkerRequest>();
 /// ```
 pub struct AuthenticatedWorkerRequest {
     pub(in crate::worker_handoff) request: WorkerRequest,

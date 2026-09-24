@@ -18,6 +18,14 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   --locked`, so that authority-boundary assertion (and any future doctest) is now executed and
   cannot rot silently. Compatibility: CI-only; no source, schema, route or behavior change.
   Refs #479.
+- **Pin the doctest guard's public reachability so it cannot pass vacuously.** The `Run doctests`
+  step executes the `compile_fail,E0624` fence on `AuthenticatedWorkerRequest`, but rustdoc parses
+  the `E0624` token and does not enforce it: a snippet failing with any error code (or none) still
+  reports `compile fail ... ok`. So deleting or renaming one of the four public re-exports the
+  snippet reaches the constructor through would let the fence pass while no longer testing the
+  authority boundary. An unannotated positive companion fence now imports the same public paths and
+  requires them to compile, so a removed re-export fails the pair instead of silently satisfying the
+  negative fence. Compatibility: CI-only; no source, schema, route or behavior change. Refs #481.
 - **Repair nine intra-doc-link defects and gate the class durably.** `sts2-harness` failed a
   documentation-integrity expectation its own gates could not see. Seven intra-doc links across six
   files named a type or method that does not resolve at the file's own scope — three of them
