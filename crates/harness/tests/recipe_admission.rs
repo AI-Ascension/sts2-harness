@@ -336,7 +336,7 @@ fn refuses_a_non_portable_output_name_without_echoing_it() {
         OutputSlot::required("state"),
         OutputSlot::optional(rejected),
     ];
-    let refusal = admit(&definition).expect_err("a non-portable output name is refused");
+    let refusal = admit(&definition).unwrap_err();
     assert_eq!(
         refusal,
         RecipeAdmissionError::InvalidOutput {
