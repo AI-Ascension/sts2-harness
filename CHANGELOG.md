@@ -10,6 +10,17 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Gate Exo compatibility with the real pinned Exo process in CI.** No workflow executed the
+  repository's own Exo bridge lane: `experiments/exo-agent/bridge` is `[workspace]`-excluded, so
+  `cargo test --workspace` could not reach the `#[ignore]`d `process_oracle`/`lookup_oracle` tests,
+  and the pinned `exoharness/exo` checkout in `ci.yml` fed only lifecycle fixtures. A new
+  `exo-process-oracle.yml` installs the pinned Node/pnpm, stages the owned extension into the pinned
+  read-only Exo checkout, builds the isolated `sts2-exo-executor` and `sts2-exo-bridge`, and runs both
+  oracles against the real Exo TypeScript runtime with a synthetic loopback model and synthetic host.
+  The `EXO_SOURCE_REVISION` pin is re-read at run time and the bounded evidence report is asserted to
+  name it. This proves process composition only; live provider, game and native acceptance remain
+  separate. Refs #148.
+
 - **Make the doctest gate's guarded property actually protected.** `#480` began executing the
   workspace's doctest, but its `compile_fail,E0624` annotation does not enforce the error code. On
   rustdoc 1.97.1 a snippet that dies of `E0432` (unresolved import) or `E0425` (undeclared name)
