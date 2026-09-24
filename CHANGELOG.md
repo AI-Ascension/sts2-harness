@@ -10,6 +10,12 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Bind a benchmark rerun admission to the exact declaration it compared equal.** `RerunAdmission`
+  now owns the admitted `Manifest`, reachable only through `RerunAdmission::declaration()`, so a
+  `RerunAllocationSeam` cannot allocate for a declaration other than the one whose controlled inputs
+  compared equal. Source-only contract tightening for #121; the equal path is unchanged.
+  Refs #121.
+
 - **Make the served capture surface configured and fail-closed.** Which sink the served composition
   attaches and what it retains is now an owner decision recorded in
   [ADR 0070](docs/decisions/0070-served-capture-configuration-and-retention.md): an unset surface
