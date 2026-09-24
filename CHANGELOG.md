@@ -10,6 +10,18 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Pin the authenticated-request constructor so the guard cannot silently stop naming it.** The
+  fence pair added for `#481` cannot detect a *rename* of `from_transport`: renaming it while it
+  stays `pub(crate)` leaves both fences green — the `compile_fail` snippet now dies of `E0599`,
+  which the inert `,E0624` clause ignores, and the compiling companion pins only the type paths and
+  `WorkerCapability::Dispatch`. Neither doc fence can close this by construction, because both
+  compile as an *external* crate and can never name a `pub(crate)` item. An in-crate
+  `#[cfg(test)]` assertion now pins the constructor's name and signature at its `pub(crate)` path;
+  it runs under the existing `Run Rust tests` target (`cargo test --lib`/`--all-targets`), which is
+  different from the `Run doctests` step, and fails to compile if the constructor is renamed or its
+  signature changes. Compatibility: test-only; no production code, schema, route or behavior
+  change. Refs #485.
+
 - **Gate Exo compatibility with the real pinned Exo process in CI.** No workflow executed the
   repository's own Exo bridge lane: `experiments/exo-agent/bridge` is `[workspace]`-excluded, so
   `cargo test --workspace` could not reach the `#[ignore]`d `process_oracle`/`lookup_oracle` tests,

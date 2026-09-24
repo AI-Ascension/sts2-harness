@@ -90,3 +90,28 @@ impl AuthenticatedWorkerRequest {
         &self.request
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{AuthenticatedWorkerRequest, WorkerCapability};
+    use crate::WorkerOwnerProof;
+    use crate::worker_handoff::WorkerRequest;
+
+    /// Pins the constructor's **name and signature** at its `pub(crate)` path.
+    ///
+    /// The doc fences above cannot assert this. Both compile as an *external* crate, so neither can
+    /// name a `pub(crate)` item: renaming `from_transport` leaves the `compile_fail` fence green
+    /// (the snippet now dies of `E0599`, which the inert `,E0624` clause ignores) and leaves the
+    /// compiling companion green (it pins the type paths, not the constructor). This assertion is
+    /// reached by `cargo test --lib`/`--all-targets` — a different target from the `Run doctests`
+    /// step — and fails to compile if the constructor is renamed or its signature changes, so the
+    /// guard cannot silently stop naming what it protects. See `sts2-harness#485`.
+    #[test]
+    fn constructor_name_and_signature_are_pinned() {
+        let _pinned: fn(
+            WorkerRequest,
+            WorkerCapability,
+            WorkerOwnerProof,
+        ) -> AuthenticatedWorkerRequest = AuthenticatedWorkerRequest::from_transport;
+    }
+}
