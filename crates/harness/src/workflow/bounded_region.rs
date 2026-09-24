@@ -16,9 +16,10 @@
 //! * **A mutation is not expressible.** [`DynamicPlan`] nodes are
 //!   [`DynamicNodeKind`] values, whose vocabulary is exactly `Analyze` and
 //!   `Decide`, and [`ParallelAnalysisExecutor::analyze`] returns an
-//!   [`AnalysisValue`]. A plan document that names any other kind is refused by
-//!   the `deny_unknown_fields` decoder before admission, so no bounded branch can
-//!   reach a game mutation through this route.
+//!   [`AnalysisValue`](super::AnalysisValue). A plan document that names any
+//!   other kind is refused by the `deny_unknown_fields` decoder before
+//!   admission, so no bounded branch can reach a game mutation through this
+//!   route.
 //! * **Admission precedes dispatch.** [`admit_bounded_region`] validates the cap,
 //!   the region's admissible operations, the plan's *region and planner-profile
 //!   identity* and the plan's structural validity *before* any branch is spawned,
