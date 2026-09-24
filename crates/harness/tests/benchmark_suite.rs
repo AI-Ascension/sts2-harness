@@ -12,10 +12,11 @@ use std::collections::BTreeSet;
 
 use fixtures::{key_of, manifest};
 use sts2_harness::benchmark_manifest::suite::{
-    CONTEXT_NAMESPACE_PREFIX, MAX_SUITE_LABEL_BYTES, MAX_SUITE_TRIAL_AXIS_BYTES,
-    MAX_TRIAL_KEY_BYTES, Metric, PolicyConfig, ReportError, SUITE_VERSION, SeedCase, SeedCorpus,
-    Settlement, SuiteBudgets, SuiteManifest, SuiteManifestError, SuiteScheduler, TrialOutcome,
-    TrialResult, aggregate, ensure_metric_coverage, plan,
+    CONTEXT_NAMESPACE_PREFIX, MAX_SUITE_LABEL_BYTES, MAX_SUITE_REPETITIONS,
+    MAX_SUITE_TRIAL_AXIS_BYTES, MAX_TRIAL_KEY_BYTES, Metric, PolicyConfig, ReportError,
+    SUITE_VERSION, SeedCase, SeedCorpus, Settlement, SuiteBudgets, SuiteManifest,
+    SuiteManifestError, SuiteScheduler, TrialOutcome, TrialResult, aggregate,
+    ensure_metric_coverage, plan, trial_key,
 };
 
 #[test]
@@ -221,6 +222,14 @@ fn manifest_validation_and_revision_identity_are_stable() {
 
 /// One case and one policy whose ids are exactly the requested lengths.
 fn axis_manifest(case_len: usize, policy_len: usize) -> SuiteManifest {
+    axis_manifest_with_repetitions(case_len, policy_len, 1)
+}
+
+fn axis_manifest_with_repetitions(
+    case_len: usize,
+    policy_len: usize,
+    repetitions: u32,
+) -> SuiteManifest {
     SuiteManifest {
         version: SUITE_VERSION.to_owned(),
         benchmark_ref: "benchmark:axis-envelope".to_owned(),
@@ -236,7 +245,7 @@ fn axis_manifest(case_len: usize, policy_len: usize) -> SuiteManifest {
             policy_id: "p".repeat(policy_len),
             settings_digest: "a".repeat(64),
         }],
-        repetitions: 1,
+        repetitions,
         evaluator_revision: "evaluator-2026-09-24".to_owned(),
         budgets: SuiteBudgets {
             max_steps_per_trial: 1,
@@ -251,35 +260,63 @@ fn axis_manifest(case_len: usize, policy_len: usize) -> SuiteManifest {
 
 #[test]
 fn a_max_length_axis_pair_plans_and_settles_rather_than_validating_into_an_unsettleable_key() {
-    // Combined axes exactly at the derived bound: `validate` accepts, the derived key lands
-    // exactly on the key bound, and the trial settles rather than being refused after acceptance.
-    let suite = axis_manifest(
+    // Combined axes exactly at the derived bound, with the widest repetition index the declared
+    // bound admits: `validate` accepts, the derived key lands exactly on the key bound, and the
+    // trial settles rather than being refused after acceptance. The repetition axis is what makes
+    // this case tight, so the widest accepted repetition (two digits) is the one to pin.
+    let repetitions = MAX_SUITE_REPETITIONS;
+    let suite = axis_manifest_with_repetitions(
         MAX_SUITE_LABEL_BYTES,
         MAX_SUITE_TRIAL_AXIS_BYTES - MAX_SUITE_LABEL_BYTES,
+        repetitions,
     );
     assert!(suite.validate().is_ok());
     let planned = plan(&suite).unwrap();
-    assert_eq!(planned.len(), 1);
-    let key = planned[0].trial_key.as_str();
+    assert_eq!(planned.len(), usize::try_from(repetitions).unwrap());
+    let key = planned
+        .iter()
+        .map(|trial| trial.trial_key.as_str())
+        .max_by_key(|trial_key| trial_key.len())
+        .unwrap();
     assert_eq!(
         key.len(),
         MAX_TRIAL_KEY_BYTES,
-        "the bound is tight: the longest accepted pair derives a key exactly at the key bound"
+        "the bound is tight: the longest accepted pair at the widest repetition derives a key \
+exactly at the key bound"
     );
     let mut scheduler = SuiteScheduler::new(&suite).unwrap();
-    assert_eq!(scheduler.start(key).unwrap(), 1);
-    assert_eq!(
-        scheduler
-            .settle(TrialOutcome::completed(key, TrialResult::Victory))
-            .unwrap(),
-        Settlement::Recorded
-    );
+    for trial in &planned {
+        let trial_key = trial.trial_key.as_str();
+        assert_eq!(scheduler.start(trial_key).unwrap(), 1);
+        assert_eq!(
+            scheduler
+                .settle(TrialOutcome::completed(trial_key, TrialResult::Victory))
+                .unwrap(),
+            Settlement::Recorded,
+            "every accepted trial settles, including the longest derived key"
+        );
+    }
 
-    // One byte past the bound. Before the envelope bound this validated and then derived a
-    // 257-byte key that `settle` refused forever; now it is refused at validation.
-    let over = axis_manifest(
+    // One byte past the pair bound, at the same repetition width. Every pre-envelope check still
+    // accepts both identifiers, so this declaration is excluded only by the pair bound: the key it
+    // would derive is over the key bound, and `TrialOutcome::validate` would refuse that outcome
+    // forever. `trial_key` is shown with a 64-hex revision, the exact shape `digest` returns.
+    let over = axis_manifest_with_repetitions(
         MAX_SUITE_LABEL_BYTES,
         MAX_SUITE_TRIAL_AXIS_BYTES - MAX_SUITE_LABEL_BYTES + 1,
+        repetitions,
+    );
+    assert!(over.corpus.cases[0].case_id.len() <= MAX_SUITE_LABEL_BYTES);
+    assert!(over.policies[0].policy_id.len() <= MAX_SUITE_LABEL_BYTES);
+    let would_be_derived = trial_key(
+        &"0".repeat(64),
+        &over.corpus.cases[0].case_id,
+        &over.policies[0].policy_id,
+        repetitions - 1,
+    );
+    assert!(
+        would_be_derived.len() > MAX_TRIAL_KEY_BYTES,
+        "the refused pair is refused because its derived key is over the key bound"
     );
     assert_eq!(
         over.validate().unwrap_err(),
