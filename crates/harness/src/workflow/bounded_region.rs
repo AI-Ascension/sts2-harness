@@ -15,8 +15,13 @@
 //!   the `deny_unknown_fields` decoder before admission, so no bounded branch can
 //!   reach a game mutation through this route.
 //! * **Admission precedes dispatch.** [`admit_bounded_region`] validates the cap,
-//!   the region's admissible operations and the plan *before* any branch is
-//!   spawned, and every refusal is a typed [`BoundedRegionRefusal`].
+//!   the region's admissible operations, the plan's *region and planner-profile
+//!   identity* and the plan's structural validity *before* any branch is spawned,
+//!   and every refusal is a typed [`BoundedRegionRefusal`]. Base-revision
+//!   continuity (`base_semantic_digest` / `base_revision`) is deliberately **not**
+//!   an admission input on this route: the region does not carry those fields and
+//!   the runtime supplies only [`WorkflowLimits`], so that comparison stays
+//!   [`DynamicPlanRegistry::accept`](super::DynamicPlanRegistry::accept)'s job.
 //!
 //! Reported branch states are read off the owner loop's join, never inferred
 //! from the plan's shape or from UI layout.
@@ -140,6 +145,9 @@ pub enum BoundedRegionRefusal {
     RegionAdmitsNoOperations,
     /// The region's node or edge bound is not representable as a budget.
     RegionBoundsUnrepresentable,
+    /// The plan belongs to a different region or planner profile than the one it
+    /// is admitted for.
+    PlanIdentityMismatch,
     /// The plan is not a valid bounded plan for this region.
     PlanRejected(DynamicPlanError),
 }
@@ -150,6 +158,9 @@ impl std::fmt::Display for BoundedRegionRefusal {
             Self::CapOutsideAdmittedRange => "parallel analysis cap is outside the admitted range",
             Self::RegionAdmitsNoOperations => "adaptive region admits no analysis operation",
             Self::RegionBoundsUnrepresentable => "adaptive region bounds are not representable",
+            Self::PlanIdentityMismatch => {
+                "bounded analysis plan belongs to a different region or planner profile"
+            }
             Self::PlanRejected(_) => "bounded analysis plan was rejected for this region",
         })
     }
@@ -173,6 +184,10 @@ pub fn admit_bounded_region(
         .collect::<BTreeSet<_>>();
     if allowed.is_empty() {
         return Err(BoundedRegionRefusal::RegionAdmitsNoOperations);
+    }
+    if plan.region_id != region.region_id || plan.planner_profile_ref != region.planner_profile_ref
+    {
+        return Err(BoundedRegionRefusal::PlanIdentityMismatch);
     }
     let max_nodes = usize::try_from(region.max_plan_nodes)
         .map_err(|_| BoundedRegionRefusal::RegionBoundsUnrepresentable)?;

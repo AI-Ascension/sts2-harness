@@ -13,8 +13,8 @@ use std::sync::atomic::Ordering;
 use serde_json::json;
 use sts2_harness::workflow::{
     AdaptiveRegionConfig, BoundedBranchState, BoundedRegionRefusal, BranchBudgetLedger, CancelFlag,
-    DynamicPlan, DynamicPlanError, DynamicRuntime, ParallelBudget, ParallelCap,
-    admit_bounded_region, is_analysis_kind, run_bounded_region,
+    DynamicPlan, DynamicPlanError, DynamicRuntime, ParallelBudget, ParallelCap, PlannerProfileId,
+    RegionId, admit_bounded_region, is_analysis_kind, run_bounded_region,
 };
 
 use super::controlled::{Controlled, allowed, analyze, decide, edge, limits, plan as build_plan};
@@ -89,6 +89,67 @@ fn a_refused_region_never_dispatches_a_branch() {
         )),
         "an operation outside the region is refused before dispatch"
     );
+}
+
+#[test]
+fn a_foreign_region_or_planner_plan_is_refused_by_identity_before_dispatch() {
+    let plan = build_plan(vec![analyze("a")], Vec::new());
+    // Positive control: the plan that names this region and profile is admitted.
+    assert_eq!(
+        admit_bounded_region(&plan, &region(), &limits(1)),
+        Ok(cap_of(1))
+    );
+
+    let mut foreign_region = plan.clone();
+    foreign_region.region_id = RegionId::new("region-2").expect("region id");
+    assert_eq!(
+        admit_bounded_region(&foreign_region, &region(), &limits(1)),
+        Err(BoundedRegionRefusal::PlanIdentityMismatch),
+        "a plan naming a different region is refused"
+    );
+
+    let mut foreign_profile = plan.clone();
+    foreign_profile.planner_profile_ref = PlannerProfileId::new("planner-2").expect("planner id");
+    assert_eq!(
+        admit_bounded_region(&foreign_profile, &region(), &limits(1)),
+        Err(BoundedRegionRefusal::PlanIdentityMismatch),
+        "a plan naming a different planner profile is refused"
+    );
+
+    // The identity gate runs before structural validation, so a foreign plan whose
+    // operations are also outside the region reports the identity reason, not a
+    // shadowing `PlanRejected`.
+    let mut foreign_and_stray = foreign_region.clone();
+    foreign_and_stray.nodes = vec![analyze("z")];
+    assert_eq!(
+        admit_bounded_region(&foreign_and_stray, &region(), &limits(1)),
+        Err(BoundedRegionRefusal::PlanIdentityMismatch),
+        "the identity gate is not shadowed by the structural plan check"
+    );
+
+    // Fail-closed: a foreign-region plan never reaches the executor.
+    let executor = Controlled::default();
+    let ledger = BranchBudgetLedger::new(UNITS).expect("limit");
+    let refused = run_bounded_region(
+        &foreign_region,
+        &region(),
+        &limits(1),
+        &executor,
+        &ledger,
+        UNITS,
+        &CancelFlag::new(),
+    );
+    assert_eq!(refused, Err(BoundedRegionRefusal::PlanIdentityMismatch));
+    assert_eq!(
+        executor.calls.load(Ordering::SeqCst),
+        0,
+        "identity admission precedes dispatch"
+    );
+    assert_eq!(ledger.reserved_units(), 0, "no budget was reserved");
+}
+
+fn cap_of(max_parallel_analyses: u64) -> ParallelCap {
+    ParallelCap::from_limits(&limits(max_parallel_analyses)).expect("cap")
 }
 
 #[test]
