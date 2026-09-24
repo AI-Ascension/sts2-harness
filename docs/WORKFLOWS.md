@@ -121,7 +121,17 @@ the default pins. Never substitute a branch name, moving default, or dirty tree.
 [`experiments/exo-agent/bridge/README.md`](../experiments/exo-agent/bridge/README.md). It installs the
 pinned Node runtime and pnpm, checks out `exoharness/exo` at the revision read from
 `EXO_SOURCE_REVISION`, builds the isolated `sts2-exo-executor` package and the `sts2-exo-bridge`
-binary, and executes the previously `#[ignore]`d `process_oracle` and `lookup_oracle` tests.
+binary, and executes the previously `#[ignore]`d `process_oracle`, `lookup_oracle` and `fault_oracle`
+tests.
+
+`fault_oracle` adds the `#148` T2/T3 fault and isolation matrix: the admission faults (config schema,
+pin and argv identity, provider-route refusal) must fail closed with **zero** model egress, a lost
+model reply must fail closed within the bounded process lifetime, and two sequential or concurrent
+runs must each send exactly one model request from a private endpoint, config directory and
+`TMPDIR`. State outside `TMPDIR` (the shared binaries, cargo target and Node install) is deliberately
+not asserted disjoint, and no barrier forces the concurrent runs to overlap. It emits the bounded
+`target/exo-fault-report.json`, whose `exo_revision` is asserted against the runtime pin so a moved
+pin cannot leave a stale report.
 
 The oracle drives the real pinned Exo TypeScript runtime. Only the model service is replaced with a
 bounded synthetic loopback endpoint and the native game with the declared synthetic host; no
