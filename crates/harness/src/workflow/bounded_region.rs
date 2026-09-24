@@ -2,26 +2,38 @@
 
 //! Fail-closed admission and reporting for a bounded parallel analysis region.
 //!
-//! The production [`DynamicRuntime`](super::DynamicRuntime) reaches this module
-//! through [`BoundedAnalysis`](super::BoundedAnalysis) so a declared adaptive
-//! region can be executed on the budget-reserved bounded route instead of only
-//! through a caller-supplied adaptive executor. Two properties are enforced
-//! here rather than asserted by a caller:
+//! [`DynamicRuntime::execute_bounded_region`](super::DynamicRuntime::execute_bounded_region)
+//! is the runtime's entry point into this module. It takes the caller's plan,
+//! region, executor, budget and cancel signal together with the workflow's own
+//! [`WorkflowLimits`], and it has no in-repo production caller yet: the dynamic
+//! runtime's *node* route is unchanged, so a declared `adaptive_region` node
+//! still dispatches to the caller-supplied executor through
+//! [`DynamicExecutorPort::execute_adaptive`](super::DynamicExecutorPort::execute_adaptive).
+//! The bounded route is therefore entered only when a caller asks for it by
+//! name, never by running the workflow. Two properties are enforced here rather
+//! than asserted by a caller:
 //!
 //! * **A mutation is not expressible.** [`DynamicPlan`] nodes are
 //!   [`DynamicNodeKind`] values, whose vocabulary is exactly `Analyze` and
 //!   `Decide`, and [`ParallelAnalysisExecutor::analyze`] returns an
-//!   [`AnalysisValue`]. A plan document that names any other kind is refused by
-//!   the `deny_unknown_fields` decoder before admission, so no bounded branch can
-//!   reach a game mutation through this route.
+//!   [`AnalysisValue`](super::AnalysisValue). A plan document that names any
+//!   other kind is refused by the `deny_unknown_fields` decoder before
+//!   admission, so no bounded branch can reach a game mutation through this
+//!   route.
 //! * **Admission precedes dispatch.** [`admit_bounded_region`] validates the cap,
 //!   the region's admissible operations, the plan's *region and planner-profile
 //!   identity* and the plan's structural validity *before* any branch is spawned,
-//!   and every refusal is a typed [`BoundedRegionRefusal`]. Base-revision
-//!   continuity (`base_semantic_digest` / `base_revision`) is deliberately **not**
-//!   an admission input on this route: the region does not carry those fields and
-//!   the runtime supplies only [`WorkflowLimits`], so that comparison stays
-//!   [`DynamicPlanRegistry::accept`](super::DynamicPlanRegistry::accept)'s job.
+//!   and every refusal is a typed [`BoundedRegionRefusal`]. Two further bindings
+//!   are deliberately **not** admission inputs on this route, because both the
+//!   plan and the region are caller-supplied and the runtime hands this module
+//!   only the workflow's [`WorkflowLimits`]: base-revision continuity
+//!   (`base_semantic_digest` / `base_revision`), which does not exist on the
+//!   region and stays
+//!   [`DynamicPlanRegistry::accept`](super::DynamicPlanRegistry::accept)'s job;
+//!   and the caller's region itself against the workflow's declared
+//!   `adaptive_region` node, which no runtime accessor exposes here. Binding the
+//!   caller's region to the declared node is a design extension, not a check
+//!   this route can make.
 //!
 //! Reported branch states are read off the owner loop's join, never inferred
 //! from the plan's shape or from UI layout.

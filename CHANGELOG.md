@@ -10,6 +10,29 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Correct the bounded-analysis module contract: it names an entry point that exists, stops
+  claiming a node-route change that was never made, and resolves both dangling doc links.** The
+  `workflow::bounded_region` module doc said the production `DynamicRuntime` *"reaches this module
+  through `BoundedAnalysis`"* — a type defined on no revision across all 64 remote refs, so the
+  intra-doc link was dangling — and that a declared adaptive region is now "executed on the
+  budget-reserved bounded route instead of only through a caller-supplied adaptive executor", which
+  the shipped wiring does not do: `DynamicRuntime::step()` still dispatches a declared
+  `adaptive_region` node through `Dispatch` to `DynamicExecutorPort::execute_adaptive`, and
+  `execute_bounded_region` has exactly one caller in the repository, a test. A second bare link in
+  the same block was dangling too: rustdoc resolves a bare link only against the *file's own*
+  scope, and `AnalysisValue` is imported by neither `use` statement here — the module's parent
+  re-export does not count — so it needed an explicit `super::AnalysisValue` path. No gate saw any
+  of this: no workflow runs `cargo doc`/`rustdoc` and the crate denies no
+  `rustdoc::broken_intra_doc_links`, so the module built, linted and tested green while its own
+  contract statement was false — and because `mod bounded_region` is private, a default rustdoc
+  run skips that module entirely. The doc now names the real entry point
+  (`DynamicRuntime::execute_bounded_region`) and its inputs, states that the node route is
+  unchanged and the bounded route has no in-repo production caller, resolves all four links, and
+  records the two bindings this route deliberately does not make — base-revision continuity, and
+  the caller-supplied region against the workflow's declared `adaptive_region` node, which no
+  runtime accessor exposes and which the #465 review left as a design extension. Compatibility: no
+  code, schema, route, refusal, bound or digest changes; documentation only. Source-only: no native
+  effect. Refs #470.
 - **Bind bounded-region admission to the plan's region and planner-profile identity.** A
   follow-up review of the bounded parallel analysis route found that
   `workflow::bounded_region::admit_bounded_region` checked the parallel cap, the region's
