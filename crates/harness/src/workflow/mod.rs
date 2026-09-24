@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod artifact;
+mod bounded_region;
 mod canonical;
 mod compiler;
 mod decoder;
@@ -33,6 +34,11 @@ pub mod types {
 
 pub use artifact::{
     ArtifactError, ArtifactManifest, CatalogError, CatalogInsert, WorkflowArtifact, WorkflowCatalog,
+};
+pub use bounded_region::{
+    BOUNDED_ANALYSIS_REPORT_SCHEMA, BoundedAnalysisOutcome, BoundedBranchState,
+    BoundedRegionRefusal, admit_bounded_region, admitted_nodes, is_analysis_kind, reason_of,
+    run_bounded_region,
 };
 pub use canonical::{CanonicalError, SemanticDiff, canonical_json_bytes, semantic_diff};
 pub use compiler::{CompileError, CompiledGraph, CompiledWorkflow};

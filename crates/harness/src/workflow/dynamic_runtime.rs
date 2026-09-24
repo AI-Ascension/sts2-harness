@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 
+use super::bounded_region::{BoundedAnalysisOutcome, BoundedRegionRefusal, run_bounded_region};
 use super::compiler::CompiledWorkflow;
-use super::definition::{AdaptiveRegionConfig, NodeDefinition, WorkflowMode};
+use super::definition::{AdaptiveRegionConfig, NodeDefinition, WorkflowLimits, WorkflowMode};
+use super::dynamic::{DynamicPlan, ParallelAnalysisExecutor};
+use super::dynamic_budget::{CancelSignal, ParallelBudget};
 use super::runtime::StrictRuntime;
 use super::runtime_types::{
     NodeExecutor, NodeOutcome, RuntimeContext, RuntimeFault, RuntimeRunReport, RuntimeSnapshot,
@@ -19,6 +22,8 @@ pub trait DynamicExecutorPort: NodeExecutor {
 pub struct DynamicRuntime<E> {
     runtime: StrictRuntime,
     executor: E,
+    limits: WorkflowLimits,
+    last_bounded: Option<BoundedAnalysisOutcome>,
 }
 
 impl<E: DynamicExecutorPort> DynamicRuntime<E> {
@@ -26,10 +31,51 @@ impl<E: DynamicExecutorPort> DynamicRuntime<E> {
         if workflow.definition().mode != WorkflowMode::Dynamic {
             return Err(RuntimeFault::InvalidState);
         }
+        let limits = workflow.definition().limits.clone();
         Ok(Self {
             runtime: StrictRuntime::new(workflow)?,
             executor,
+            limits,
+            last_bounded: None,
         })
+    }
+
+    /// Executes one declared analysis region on the budget-reserved bounded route.
+    ///
+    /// Admission runs first, so a region whose cap is outside the admitted range,
+    /// that admits no operation, or whose plan is invalid is refused with a typed
+    /// [`BoundedRegionRefusal`] before any branch can be dispatched. On success the
+    /// owner loop's actual per-branch states are retained for consumers, and the
+    /// outcome is also returned directly.
+    ///
+    /// The dispatched work is analysis only: a [`DynamicPlan`] cannot name a
+    /// mutating node kind, so this route cannot reach a concurrent game mutation.
+    pub fn execute_bounded_region<A: ParallelAnalysisExecutor>(
+        &mut self,
+        plan: &DynamicPlan,
+        region: &AdaptiveRegionConfig,
+        executor: &A,
+        budget: &dyn ParallelBudget,
+        units_per_branch: u64,
+        cancel: &dyn CancelSignal,
+    ) -> Result<BoundedAnalysisOutcome, BoundedRegionRefusal> {
+        let (outcome, _joined) = run_bounded_region(
+            plan,
+            region,
+            &self.limits,
+            executor,
+            budget,
+            units_per_branch,
+            cancel,
+        )?;
+        self.last_bounded = Some(outcome.clone());
+        Ok(outcome)
+    }
+
+    /// The most recent bounded-region report, or `None` if none ran.
+    #[must_use]
+    pub fn last_bounded_outcome(&self) -> Option<&BoundedAnalysisOutcome> {
+        self.last_bounded.as_ref()
     }
 
     pub fn step(&mut self) -> Result<RuntimeStatus, RuntimeFault> {

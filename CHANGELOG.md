@@ -10,6 +10,23 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Execute a bounded parallel analysis region through the production dynamic runtime.** The
+  budget-reserved bounded route (`execute_plan_bounded`,
+  `execute_plan_bounded_reserved`) had no production caller: a `DynamicRuntime` handled an
+  `adaptive_region` node purely by delegating to the caller-supplied executor, so the owner's
+  parallel cap, the atomic budget reservation and the per-branch join report were reachable only
+  from tests. A new `workflow::bounded_region` module admits a declared region fail-closed
+  *before* any branch is dispatched (cap from the workflow's own limits, admissible operations,
+  then `validate_plan`), runs it on the reserved route, and reports a versioned, digest-bound
+  outcome (`ascension.harness.bounded-analysis-report.v1`) that names each branch's actual joined
+  state — settled, failed with its own reason token, or unknown — instead of a settled count, so
+  a failed or lost branch can never be read as a success. `DynamicRuntime::execute_bounded_region`
+  retains that report for a consumer; the existing node route is unchanged. The mutation clause
+  holds by construction rather than by assertion: `DynamicNodeKind` is a `deny_unknown_fields`
+  `analyze`/`decide` enum and the executor returns an `AnalysisValue`, so a plan naming a mutating
+  node kind is refused at decode and no bounded branch can reach a game mutation. Compatibility:
+  additive; two new module files, one new runtime method, no change to an existing schema, route,
+  digest or node kind. Refs #98.
 - **Admit explicitly scoped research inspection of hidden checkpoint state.** A new
   `research_inspection` module fixes the source-only contract behind #129 and separates privileged
   research data from the ordinary player-visible boundary: an operator-supplied grant binds one exact
@@ -458,69 +475,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   chosen there is kept for the rest of the run, which is framing beside the objective rather than a
   claim in an option's description. The library default for the bound is 0, the previous behaviour.
   Refs #323.
-
-- **Stop re-asking a near-tie until a roll clears the gate.** System One is not deterministic, so
-  re-asking an unchanged state re-rolls the confidence, and a run advanced when a roll happened to
-  clear the gate rather than when anything was learned. One measured episode spent **140 of its 206
-  provider calls** that way: the same reward screen asked four times at 0.01, 0.06, 0.17 and 0.20
-  against a gate of 20. That was already acting on a low-confidence draw — it just paid for three
-  refusals first and took whichever roll came up highest. An abstention may now carry the option it
-  would have taken, as `candidate_action_id` and `candidate_confidence`, and the runner counts
-  consecutive abstentions on one `state_id` and `generation` and dispatches that option once
-  `STS2_MAX_CONSECUTIVE_REOBSERVE` (default 3) is reached. The candidate is evidence, not an
-  instruction: the decision is still to observe again, an action decision may not carry one at all,
-  a candidate the host no longer offers is dropped, and the settled action is validated against the
-  live catalogue like any other. Output says `abstention_settled` so the record distinguishes an
-  action settled under the bound from one chosen above the gate. The library default is 0, which is
-  the previous unbounded behaviour, so only the runtime changes. Refs #317.
-- **Let a reward say what it would offer before it is taken.** A reward is chosen on one screen and
-  its contents on the next, so the first choice was made blind: a card reward was an identifier and
-  nothing else until it had already been taken. In a recorded run the model committed to a card
-  reward at p=0.77, found three cards it could not tell apart, skipped, and was offered the same
-  reward again. A `Choice` now carries `contents`, the entries taking it would present next, and a
-  reward describes as `take the reward Card reward, offering Blood Wall (upgraded) [2 energy]
-  (rare): Gain 12 Block.` An entry inside `contents` has no `contents` of its own, so disclosure is
-  one level deep by construction and the projection needs no depth counter to stay bounded against a
-  host nesting an observation inside an observation. Additive and optional throughout: a reward that
-  discloses nothing describes exactly as before, and contents listed as bare identifiers are carried
-  as those identifiers rather than dropped. Refs #315.
-
-- **Describe the options and derive the arithmetic** for the System One lane, and stop asking about
-  the same play more than once. A live Linux episode recorded six options for one combat turn whose
-  criteria were their own identifiers: three of them were the same Defend and two the same Strike, so
-  the probability mass for playing a Defend was split three ways and the answer read as confidence
-  0.19 in a turn with an obvious play. The bridge now folds strategically identical entries through
-  the existing `OptionSelection`, so five catalog entries stand as three options; describes each one
-  from the same observation the state carries (`play Strike [1 energy] at Nibbit (44 hit points
-  left)`), so no identifier has to be resolved against the hand; and adds `DerivedExactFacts` to the
-  state, which states gross incoming damage, survival, affordable cards and the weakest enemy. Both
-  modules already existed, were reviewed and merged, and were reachable from nothing. A turn with one
-  legal action is now taken without a provider call at all, because asking spends a call to be told
-  the only thing that can happen. `ValueKind::Card` additionally admits `description`, the host's own
-  card text, which the sandbox previously refused: a host that carries it can now say what a card
-  does, and a host that does not is unaffected. Nothing here invents an account of the game: every
-  word of a description is either a host-supplied value or a fixed label for the host's own action
-  kind, and an unlabelled kind still reads as its identifier. Refs #313.
-
-- **Let a host describe the set it offers**, and make an optional field actually optional.
-  `require_exact` counts keys, so admitting a field in the allow-list alone still refused the object
-  for carrying one key too many: `description` on a card was admitted and then rejected by the shape.
-  `require_fields` states required and optional fields separately, and a card may now carry the
-  host's own text. `state.choices` and `state.options` accept a described entry as well as the bare
-  identifier every host sends today, so a reward screen can say `choose Tremble [2 energy]
-  (uncommon): Apply 3 Vulnerable to ALL enemies.` instead of `select_card:123:card:22:Tremble`. The
-  identifier form is unchanged and still admitted. `skip_reward` and `proceed` are labelled rather
-  than left to fall back to their identifiers. This is capacity, not behaviour: the offered set is
-  unmodeled upstream, which `sts2-game-core` records as a deliberate exclusion of `RewardChoicePicks`
-  because "the offered set is unmodeled, so no identity or rarity is inferred", so nothing populates
-  the described form until a host does. Refs #315.
-- Add the **campaign episode mode** for a local provider bridge. A local bridge previously had two
-  modes to name: the combat demo and the live episode, and the live episode is restricted to the
-  OpenAI Astra provider. That left `typesafe-jev` with only the combat demo, which acts solely while
-  the host is already in combat and never leaves a menu, so the provider could observe a campaign but
-  never begin one: against a freshly launched host it polled an unchanging main-menu observation
-  until its bound elapsed and was asked for nothing. `STS2_CAMPAIGN_EPISODE=true` names the third
-  mode, which runs the ordinary episode runner and so reaches the host's whole action catalogue,
-  `start_run` included. It is exclusive with the combat demo rather than layered, because the two
-  take different runners and a vector naming both states no intent. The bridge digest check and the
-  argument allow-list are unchanged and still apply to every mode. Refs #311.
