@@ -2,7 +2,8 @@
 
 //! Stable trial keys and the deterministic case-major plan of a suite.
 
-use super::manifest::{SuiteManifest, SuiteManifestError};
+use super::error::SuiteManifestError;
+use super::manifest::SuiteManifest;
 use super::results::MAX_TRIAL_KEY_BYTES;
 
 /// Separator between the parts of a stable trial key.
