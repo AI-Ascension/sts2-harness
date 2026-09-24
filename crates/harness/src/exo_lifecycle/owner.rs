@@ -5,6 +5,11 @@ use crate::provider_session::owner_journal::{JournalSnapshot, OwnerJournal};
 use crate::provider_session::{NativeCapabilities, ProviderSessionBroker, ProviderSessionPolicy};
 use std::sync::Arc;
 
+use super::derived_ids::{
+    DERIVED_BINDING_PREFIX, DERIVED_PREPARED_PREFIX, DERIVED_PROVIDER_ATTEMPT_PREFIX,
+    execution_id_is_derivable,
+};
+
 pub struct LifecycleOwner {
     pub(super) broker: ProviderSessionBroker,
     pub(super) token: zeroize::Zeroizing<String>,
@@ -47,11 +52,17 @@ impl LifecycleOwner {
         {
             return Err(LifecycleError::Invalid);
         }
+        // An identity the manifest predicate accepts can still be one the broker and the
+        // prepared-turn record cannot represent once this owner has minted their internal
+        // identities, so refuse it here rather than admitting a request that can never settle.
+        if !execution_id_is_derivable(&manifest.execution_id) {
+            return Err(LifecycleError::Invalid);
+        }
         if let Some(completed) = self.completed_manifest_for_request(&manifest, input)? {
             return Ok(completed);
         }
-        let binding_id = format!("lifecycle-binding-{}", manifest.execution_id);
-        let prepared_id = format!("lifecycle-prepared-{}", manifest.execution_id);
+        let binding_id = format!("{DERIVED_BINDING_PREFIX}{}", manifest.execution_id);
+        let prepared_id = format!("{DERIVED_PREPARED_PREFIX}{}", manifest.execution_id);
         if self.broker.binding(&binding_id).is_err() {
             self.broker
                 .admit_one_shot_binding(&self.token, &binding_id, expires_at)
@@ -97,7 +108,8 @@ impl LifecycleOwner {
         manifest.prepared_id = prepared.prepared_id;
         manifest.operation_id = operation.operation_id;
         manifest.reservation_id = format!("provider-reservation-{}", manifest.operation_id);
-        manifest.provider_attempt_id = format!("provider-execution-{}", manifest.execution_id);
+        manifest.provider_attempt_id =
+            format!("{DERIVED_PROVIDER_ATTEMPT_PREFIX}{}", manifest.execution_id);
         manifest.authority.owner_epoch = self.broker.owner_epoch();
         manifest.authority.auth_epoch = self.broker.owner_epoch();
         manifest.authority.session_epoch = binding.session_epoch;

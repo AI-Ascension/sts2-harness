@@ -8,6 +8,9 @@ use std::path::PathBuf;
 pub const MAX_LIFECYCLE_ENTRIES: usize = 128;
 pub const MAX_INPUT_BYTES: usize = 131_072;
 
+/// Longest identity the manifest's own identity predicate accepts.
+pub const MAX_ID_BYTES: usize = 128;
+
 /// Sanitized errors; no path, private input, native output or credential is carried.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LifecycleError {
@@ -295,7 +298,7 @@ impl LifecycleEntry {
 
 pub(crate) fn id(value: &str) -> bool {
     !value.is_empty()
-        && value.len() <= 128
+        && value.len() <= MAX_ID_BYTES
         && value
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"._:/-".contains(&b))

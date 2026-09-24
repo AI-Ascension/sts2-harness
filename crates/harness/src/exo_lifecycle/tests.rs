@@ -13,6 +13,9 @@ use fixture::{Effect, Fixture};
 #[path = "tests_history.rs"]
 mod history;
 
+#[path = "tests_derived_ids.rs"]
+mod derived_ids;
+
 #[test]
 fn faults_at_every_intent_admitted_sent_boundary_never_hand_off_or_restore_permit() {
     for skip in 0..3 {
