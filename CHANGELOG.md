@@ -48,6 +48,21 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   rustdoc run skips the private modules that hold four of the seven unresolved links; no workflow had
   run `cargo doc`/`rustdoc` before, so nothing owned the class. Refs #477.
 
+- **Keep the rejected output name out of the recipe refusal.** The pre-agent recipe admission
+  contract documents that its refusal vocabulary "carries only structural identity, never a supplied
+  argument value or game text", and every variant met that except one:
+  `RecipeAdmissionError::InvalidOutput` stored the raw `OutputSlot.name` that had just failed
+  `is_identifier` — by construction a value guaranteed to violate the ≤96-byte, `[A-Za-z0-9._:-]`
+  bound, and free to carry control bytes or arbitrary authored text. It now reports the offending
+  slot **index** instead, matching how the other variants are built (the step and dependency fields
+  are typed identifiers; `DuplicateOutput.output` passed its shape check). Reachability is
+  Rust-API-only today — `RecipeDefinition`/`OutputSlot` have no `serde` intake and the module has no
+  consumer outside `recipe/` and its test — so nothing untrusted could reach the error yet; the
+  exposure would have begun when T2/T3 add authored or Studio-facing intake. Compatibility:
+  safety-correction — the variant is public but the crate is consumed only by its own workspace, no
+  record/schema/route/digest changes, and which recipe is refused (and at which point in the fixed
+  admission order) is unchanged. Refs #97; see
+  [ADR 0073](docs/decisions/0073-pre-agent-read-only-recipe-admission.md).
 - **Correct the bounded-analysis documentation contract.** The `workflow::bounded_region` module
   doc cited a `BoundedAnalysis` type defined on no revision across all 64 remote refs and the bare
   `[`AnalysisValue`]` beside it — both dangling intra-doc links — and claimed a declared adaptive

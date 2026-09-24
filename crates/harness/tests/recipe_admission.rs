@@ -326,6 +326,39 @@ fn refuses_a_duplicate_output_name() {
     );
 }
 
+/// The refusal vocabulary must carry no value that failed admission, so the
+/// rejected output name identifies its slot rather than quoting itself back.
+#[test]
+fn refuses_a_non_portable_output_name_without_echoing_it() {
+    let rejected = "state; drop table\u{7}";
+    let mut definition = base_recipe();
+    definition.steps[0].outputs = vec![
+        OutputSlot::required("state"),
+        OutputSlot::optional(rejected),
+    ];
+    let refusal = admit(&definition).unwrap_err();
+    assert_eq!(
+        refusal,
+        RecipeAdmissionError::InvalidOutput {
+            step: "observe".to_owned(),
+            slot_index: 1,
+        }
+    );
+    let rendered = refusal.to_string();
+    assert!(
+        !rendered.contains(rejected) && !rendered.contains("drop table"),
+        "refusal leaked the rejected name: {rendered}"
+    );
+    assert!(
+        !rendered.contains('\u{7}'),
+        "refusal leaked a control byte: {rendered:?}"
+    );
+    assert!(
+        rendered.contains("slot 1"),
+        "refusal should still locate the offending slot: {rendered}"
+    );
+}
+
 #[test]
 fn refuses_a_zero_or_oversized_timeout() {
     let mut definition = base_recipe();
