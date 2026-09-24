@@ -11,21 +11,16 @@ use std::collections::BTreeSet;
 use crate::{ExactCheckpointReference, OccurrenceId, ProjectionError, ProjectionKey, sha256_hex};
 
 use super::error::BranchExperimentError;
+use super::label::{child_label_ok, digest_ok, label_ok};
 
 /// Only supported branch-experiment declaration version.
 pub const BRANCH_EXPERIMENT_VERSION: &str = "ascension.branch-experiment.v1";
 /// Maximum children in one experiment.
 pub const MAX_BRANCH_CHILDREN: usize = 64;
-/// Maximum bytes of a branch-experiment, child, trial or context label.
-pub const MAX_BRANCH_LABEL_BYTES: usize = 256;
 /// Whole-declaration bound, checked before deriving a digest.
 pub const MAX_MANIFEST_BYTES: usize = 32 * 1024;
 /// Maximum provider/context concurrency one experiment may declare.
 pub const MAX_BRANCH_CONCURRENCY: u32 = 32;
-/// Prefix of the fresh per-trial provider/context namespace.
-pub const CONTEXT_NAMESPACE_PREFIX: &str = "branch-trial:";
-/// Separator between the parts of a stable trial key.
-pub const TRIAL_KEY_SEPARATOR: char = '/';
 
 /// How the first action of each child is chosen.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -184,7 +179,7 @@ impl BranchExperimentManifest {
         }
         let mut seen = BTreeSet::new();
         for child in &self.children {
-            if !label_ok(&child.child_label) {
+            if !child_label_ok(&child.child_label) {
                 return Err(BranchExperimentError::InvalidLabel);
             }
             if !seen.insert(child.child_label.as_str()) {
@@ -300,18 +295,4 @@ impl BranchExperimentManifest {
             child_count: self.children.len(),
         })
     }
-}
-
-/// Reports whether a bounded label is non-empty, within its bound and NUL-free.
-#[must_use]
-pub(crate) fn label_ok(value: &str) -> bool {
-    !value.is_empty() && value.len() <= MAX_BRANCH_LABEL_BYTES && !value.contains('\0')
-}
-
-fn digest_ok(value: &str) -> bool {
-    let hex = value.strip_prefix("sha256:").unwrap_or("");
-    hex.len() == 64
-        && hex
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }

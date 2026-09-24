@@ -10,8 +10,8 @@
 use crate::{ExactAssurance, TransitionTrace};
 
 use super::admission::is_verified_start;
-use super::declaration::label_ok;
 use super::error::BranchExperimentError;
+use super::label::label_ok;
 
 use crate::benchmark_manifest::suite::Measurement;
 

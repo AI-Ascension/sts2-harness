@@ -9,7 +9,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{ProjectionKey, TraceOutcome, compare_traces};
+use crate::{ProjectionKey, TraceOutcome, TransitionTrace, compare_traces};
 
 use super::declaration::BranchExperimentManifest;
 use super::error::{BranchExperimentError, ComparisonError};
@@ -52,6 +52,7 @@ pub fn compare_branches(
             None,
             None,
             0,
+            0,
         ));
     };
     let exact_restore = outcome_a.exact_restore_eligible() && outcome_b.exact_restore_eligible();
@@ -66,6 +67,7 @@ pub fn compare_branches(
             None,
             None,
             0,
+            0,
         ));
     }
     let (Some(trace_a), Some(trace_b)) = (&outcome_a.trace, &outcome_b.trace) else {
@@ -77,9 +79,11 @@ pub fn compare_branches(
             None,
             None,
             0,
+            0,
         ));
     };
-    let compared = compare_traces(trace_a, trace_b)
+    let (baseline, observed) = ordered_for_comparison(trace_a, trace_b);
+    let compared = compare_traces(baseline, observed)
         .map_err(|_| ComparisonError::InvalidOutcome(BranchExperimentError::InvalidOutcome))?;
     let declared_divergence = policy_a.settings_digest != policy_b.settings_digest
         || policy_a.first_action != policy_b.first_action;
@@ -91,7 +95,27 @@ pub fn compare_branches(
         compared.first_unequal_ordinal,
         compared.last_equal_ordinal,
         u64::try_from(compared.compared_records).unwrap_or(u64::MAX),
+        u64::try_from(compared.unobserved_records).unwrap_or(u64::MAX),
     ))
+}
+
+/// Orders two peer traces so their comparison never depends on the operand order.
+///
+/// A branch comparison has no authoritative `expected` side: both traces are peers. Handing the
+/// shorter trace to [`compare_traces`] as its baseline makes a strict prefix classify as
+/// `IdenticalOverRecordedRange` with a non-zero
+/// [`unobserved_records`](crate::TraceComparison::unobserved_records) on either argument order,
+/// instead of flipping between `MissingCapture` and `IdenticalOverRecordedRange` with the order.
+/// Equal-length traces classify symmetrically, so their order is left unchanged.
+fn ordered_for_comparison<'a>(
+    a: &'a TransitionTrace,
+    b: &'a TransitionTrace,
+) -> (&'a TransitionTrace, &'a TransitionTrace) {
+    if a.records.len() <= b.records.len() {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }
 
 /// Builds the sanitized aggregate report with a keyed experiment handle.
@@ -176,6 +200,7 @@ fn comparison(
     first_divergence_ordinal: Option<u64>,
     last_equal_ordinal: Option<u64>,
     compared_actions: u64,
+    unobserved_records: u64,
 ) -> BranchComparison {
     BranchComparison {
         child_a: child_a.to_owned(),
@@ -185,6 +210,7 @@ fn comparison(
         first_divergence_ordinal,
         last_equal_ordinal,
         compared_actions,
+        unobserved_records,
     }
 }
 

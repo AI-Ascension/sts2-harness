@@ -4,131 +4,22 @@
 
 // AC1: two children from one verified checkpoint produce independently stored outcomes, and
 // same-start admission is checked for each trial.
-// AC3: different legal first actions are identified at the correct ordinal; an identical endpoint
-// does not erase an earlier divergence; incompatible and partial traces are labelled.
 // AC4: budget exhaustion, cancellation and a crash neither duplicate trials nor turn an unknown or
 // partial outcome into a defeat.
-// AC5: a prefix-only start stays out of exact-restore statistics.
-// AC6: the public export carries a keyed handle and no exact digest.
 
+#[path = "support/branch_experiment.rs"]
+mod support;
+
+use sts2_harness::ExactAssurance;
 use sts2_harness::benchmark_manifest::branch_experiment::{
-    AdmissionError, BRANCH_EXPERIMENT_VERSION, BranchBudgets, BranchDivergence,
-    BranchExperimentError, BranchExperimentManifest, BranchExperimentScheduler, BranchOutcome,
-    ChildPolicy, ForkStrategy, ScheduleError, Settlement, StopCondition, TrialPhase, admit_start,
-    aggregate, compare_branches, plan,
-};
-use sts2_harness::{
-    ExactAssurance, ExactCheckpointId, ExactCheckpointReference, ExactStateDigest, ProjectionKey,
-    TransitionRecord, TransitionTrace,
+    AdmissionError, BranchExperimentError, BranchExperimentScheduler, BranchOutcome, ForkStrategy,
+    MAX_BRANCH_LABEL_BYTES, MAX_CHILD_LABEL_BYTES, ScheduleError, Settlement, TrialPhase,
+    admit_start, aggregate, plan,
 };
 
-fn state(value: u64) -> ExactStateDigest {
-    ExactStateDigest::parse(&format!("asc-state:v1:sha256:{value:064x}")).expect("state digest")
-}
-
-fn checkpoint(assurance: ExactAssurance) -> ExactCheckpointReference {
-    ExactCheckpointReference {
-        exact_state_digest: state(0),
-        exact_checkpoint_id: ExactCheckpointId::parse(&format!(
-            "asc-checkpoint:v1:sha256:{}",
-            "c".repeat(64)
-        ))
-        .expect("checkpoint id"),
-        boundary_kind: String::from("decision"),
-        boundary_phase: String::from("combat"),
-        assurance,
-    }
-}
-
-fn trace(profile: &str, source: u64, after_base: u64, actions: &[&str]) -> TransitionTrace {
-    let source_state = state(source);
-    let mut records = Vec::new();
-    let mut before = source_state.clone();
-    let mut previous: Option<String> = None;
-    for (index, action) in actions.iter().enumerate() {
-        let after = state(after_base + index as u64);
-        let record = TransitionRecord {
-            ordinal: index as u64,
-            boundary_kind: String::from("decision"),
-            boundary_phase: String::from("combat"),
-            before: before.clone(),
-            after: after.clone(),
-            action_key: (*action).to_owned(),
-            action_schema: String::from("action.v1"),
-            catalog_witness: None,
-            external_input_digest: None,
-            previous_commitment: previous.clone(),
-        };
-        previous = Some(record.commitment().expect("commitment"));
-        before = after;
-        records.push(record);
-    }
-    TransitionTrace {
-        profile: profile.to_owned(),
-        source_state,
-        records,
-    }
-}
-
-fn settings(seed: char) -> String {
-    format!("sha256:{}", seed.to_string().repeat(64))
-}
-
-fn child(label: &str, seed: char, first_action: Option<&str>) -> ChildPolicy {
-    ChildPolicy {
-        child_label: label.to_owned(),
-        settings_digest: settings(seed),
-        first_action: first_action.map(str::to_owned),
-    }
-}
-
-fn manifest(strategy: ForkStrategy, children: Vec<ChildPolicy>) -> BranchExperimentManifest {
-    BranchExperimentManifest {
-        version: BRANCH_EXPERIMENT_VERSION.to_owned(),
-        experiment_id: String::from("exp-1"),
-        benchmark_ref: String::from("bench-1"),
-        fork_point: checkpoint(ExactAssurance::RestoreVerified),
-        strategy,
-        context_policy: String::from("context-default"),
-        stop_conditions: vec![
-            StopCondition::TerminalOutcome,
-            StopCondition::BudgetExhausted,
-        ],
-        budgets: BranchBudgets {
-            max_decisions_per_child: 10,
-            max_total_decisions: 20,
-            max_total_duration_millis: 60_000,
-            max_provider_spend_micros: Some(1_000_000),
-            max_concurrency: 1,
-        },
-        children,
-    }
-}
-
-fn alternate(first: &str, second: &str) -> BranchExperimentManifest {
-    manifest(
-        ForkStrategy::AlternativeFirstAction,
-        vec![child("a", 'a', Some(first)), child("b", 'b', Some(second))],
-    )
-}
-
-fn key(manifest: &BranchExperimentManifest, label: &str) -> String {
-    plan(manifest)
-        .expect("plan")
-        .into_iter()
-        .find(|trial| trial.child_label == label)
-        .expect("planned trial")
-        .trial_key
-}
-
-fn completed(key: &str) -> BranchOutcome {
-    BranchOutcome::completed(key, trace("action.v1", 0, 100, &["x"]))
-        .with_start(ExactAssurance::RestoreVerified)
-}
-
-fn projection_key(seed: u8) -> ProjectionKey {
-    ProjectionKey::new(&[seed; 32]).expect("projection key")
-}
+use support::{
+    alternate, checkpoint, child, completed, key, manifest, projection_key, state, trace,
+};
 
 #[test]
 fn planning_is_stable_and_each_child_gets_its_own_namespace() {
@@ -140,6 +31,60 @@ fn planning_is_stable_and_each_child_gets_its_own_namespace() {
     assert_ne!(planned[0].context_namespace, planned[1].context_namespace);
     assert_eq!(planned, plan(&manifest).expect("plan"));
     assert_eq!(manifest.digest().expect("digest").len(), 64);
+}
+
+// AC1: a declaration that validates is always settleable. A max-length child label must derive a
+// trial key and context namespace inside MAX_BRANCH_LABEL_BYTES, and an over-long label must be
+// refused at validate() rather than accepted and then rejected by every outcome check.
+#[test]
+fn a_max_length_child_label_validates_plans_and_settles() {
+    let label = "c".repeat(MAX_CHILD_LABEL_BYTES);
+    let experiment = manifest(
+        ForkStrategy::AlternatePolicy,
+        vec![child(&label, 'a', None), child("b", 'b', None)],
+    );
+    assert!(experiment.validate().is_ok());
+
+    let revision = experiment.digest().expect("digest");
+    let planned = plan(&experiment).expect("plan");
+    let trial = planned
+        .iter()
+        .find(|trial| trial.child_label == label)
+        .expect("planned trial");
+    assert_eq!(trial.trial_key, format!("{revision}/{label}"));
+    assert_eq!(
+        trial.context_namespace,
+        format!("branch-trial:{}", trial.trial_key)
+    );
+    assert!(trial.trial_key.len() <= MAX_BRANCH_LABEL_BYTES);
+    assert!(trial.context_namespace.len() <= MAX_BRANCH_LABEL_BYTES);
+
+    let mut scheduler = BranchExperimentScheduler::new(&experiment).expect("scheduler");
+    assert_eq!(scheduler.start(&trial.trial_key).expect("start"), 1);
+    let outcome = BranchOutcome::completed(&trial.trial_key, trace("action.v1", 0, 100, &["x"]))
+        .with_start(ExactAssurance::RestoreVerified);
+    assert!(outcome.validate().is_ok());
+    assert_eq!(
+        scheduler.settle(outcome).expect("settle"),
+        Settlement::Recorded
+    );
+
+    let over_bound = manifest(
+        ForkStrategy::AlternatePolicy,
+        vec![child(&"c".repeat(MAX_CHILD_LABEL_BYTES + 1), 'a', None)],
+    );
+    assert_eq!(
+        over_bound.validate(),
+        Err(BranchExperimentError::InvalidLabel)
+    );
+    let at_label_bound = manifest(
+        ForkStrategy::AlternatePolicy,
+        vec![child(&"c".repeat(MAX_BRANCH_LABEL_BYTES), 'a', None)],
+    );
+    assert_eq!(
+        at_label_bound.validate(),
+        Err(BranchExperimentError::InvalidLabel)
+    );
 }
 
 #[test]
@@ -297,129 +242,4 @@ fn cancel_and_budget_exhaustion_stay_out_of_a_defeat_tally() {
     assert_eq!(report.cancelled, 1);
     assert_eq!(report.exact_restore_settled, 1);
     assert_eq!(report.restore_failures, 0);
-}
-
-#[test]
-fn restore_failure_is_not_a_policy_result() {
-    let manifest = alternate("a", "b");
-    let a = key(&manifest, "a");
-    let b = key(&manifest, "b");
-    let outcomes = vec![
-        BranchOutcome::restore_failed(&a).with_start(ExactAssurance::RestoreSupported),
-        completed(&b),
-    ];
-    let comparison = compare_branches(&manifest, &outcomes, "a", "b").expect("compare");
-    assert_eq!(comparison.divergence, BranchDivergence::RestoreFailure);
-    assert_eq!(comparison.first_divergence_ordinal, None);
-}
-
-#[test]
-fn different_first_actions_are_policy_divergence_at_ordinal_zero() {
-    let manifest = alternate("play_card:strike", "play_card:defend");
-    let a = key(&manifest, "a");
-    let b = key(&manifest, "b");
-    let outcomes = vec![
-        BranchOutcome::completed(&a, trace("action.v1", 0, 100, &["play_card:strike"]))
-            .with_start(ExactAssurance::RestoreVerified),
-        BranchOutcome::completed(&b, trace("action.v1", 0, 100, &["play_card:defend"]))
-            .with_start(ExactAssurance::RestoreVerified),
-    ];
-    let comparison = compare_branches(&manifest, &outcomes, "a", "b").expect("compare");
-    assert_eq!(comparison.divergence, BranchDivergence::PolicyDivergence);
-    assert_eq!(comparison.first_divergence_ordinal, Some(0));
-    assert!(comparison.exact_restore);
-    assert!(comparison.is_policy_divergence());
-}
-
-#[test]
-fn an_identical_endpoint_does_not_erase_an_earlier_divergence() {
-    let manifest = manifest(
-        ForkStrategy::AlternatePolicy,
-        vec![child("a", 'a', None), child("b", 'a', None)],
-    );
-    let a = key(&manifest, "a");
-    let b = key(&manifest, "b");
-    let outcomes = vec![
-        BranchOutcome::completed(&a, trace("action.v1", 0, 100, &["x", "y"]))
-            .with_start(ExactAssurance::RestoreVerified),
-        BranchOutcome::completed(&b, trace("action.v1", 0, 100, &["x", "z"]))
-            .with_start(ExactAssurance::RestoreVerified),
-    ];
-    let comparison = compare_branches(&manifest, &outcomes, "a", "b").expect("compare");
-    assert_eq!(comparison.divergence, BranchDivergence::DifferentAction);
-    assert_eq!(comparison.first_divergence_ordinal, Some(1));
-    assert_eq!(comparison.last_equal_ordinal, Some(0));
-}
-
-#[test]
-fn incompatible_and_partial_evidence_is_labelled_not_guessed() {
-    let manifest = alternate("a", "b");
-    let a = key(&manifest, "a");
-    let b = key(&manifest, "b");
-    let only_a = vec![completed(&a)];
-    let missing = compare_branches(&manifest, &only_a, "a", "b").expect("compare");
-    assert_eq!(missing.divergence, BranchDivergence::MissingCapture);
-    assert!(!missing.exact_restore);
-
-    let outcomes = vec![
-        BranchOutcome::completed(&a, trace("profile-1", 0, 100, &["x"]))
-            .with_start(ExactAssurance::RestoreVerified),
-        BranchOutcome::completed(&b, trace("profile-2", 0, 100, &["x"]))
-            .with_start(ExactAssurance::RestoreVerified),
-    ];
-    let incompatible = compare_branches(&manifest, &outcomes, "a", "b").expect("compare");
-    assert_eq!(incompatible.divergence, BranchDivergence::IncompatibleTrace);
-    assert_eq!(
-        compare_branches(&manifest, &outcomes, "a", "a"),
-        Err(
-            sts2_harness::benchmark_manifest::branch_experiment::ComparisonError::RepeatedChild(
-                String::from("a")
-            )
-        )
-    );
-    assert!(matches!(
-        compare_branches(&manifest, &outcomes, "a", "z"),
-        Err(sts2_harness::benchmark_manifest::branch_experiment::ComparisonError::UnknownChild(_))
-    ));
-}
-
-#[test]
-fn a_prefix_only_start_is_excluded_from_exact_restore_statistics() {
-    let manifest = alternate("a", "b");
-    let a = key(&manifest, "a");
-    let b = key(&manifest, "b");
-    let outcomes = vec![
-        BranchOutcome::completed(&a, trace("action.v1", 0, 100, &["x"]))
-            .with_start(ExactAssurance::PublicObservationOnly),
-        completed(&b),
-    ];
-    assert!(!outcomes[0].exact_restore_eligible());
-    let comparison = compare_branches(&manifest, &outcomes, "a", "b").expect("compare");
-    assert!(!comparison.exact_restore);
-    let report = aggregate(&manifest, &outcomes, &projection_key(7)).expect("aggregate");
-    assert_eq!(report.settled, 2);
-    assert_eq!(report.exact_restore_settled, 1);
-}
-
-#[test]
-fn the_public_export_carries_a_keyed_handle_and_no_exact_digest() {
-    let manifest = alternate("a", "b");
-    let a = key(&manifest, "a");
-    let b = key(&manifest, "b");
-    let outcomes = vec![
-        BranchOutcome::completed(&a, trace("action.v1", 0, 100, &["x"]))
-            .with_start(ExactAssurance::RestoreVerified),
-        BranchOutcome::completed(&b, trace("action.v1", 0, 100, &["y"]))
-            .with_start(ExactAssurance::RestoreVerified),
-    ];
-    let report = aggregate(&manifest, &outcomes, &projection_key(7)).expect("aggregate");
-    let json = report.to_json_pretty().expect("json");
-    assert!(report.experiment_ref.starts_with("ckpt-h1:"));
-    assert_eq!(report.comparisons.len(), 1);
-    for needle in ["asc-state", "asc-checkpoint", "sha256", "action.v1"] {
-        assert!(!json.contains(needle), "public report leaked {needle}");
-    }
-    let other = aggregate(&manifest, &outcomes, &projection_key(9)).expect("aggregate");
-    assert_ne!(report.experiment_ref, other.experiment_ref);
-    assert!(ProjectionKey::new(&[0_u8; 8]).is_err());
 }
