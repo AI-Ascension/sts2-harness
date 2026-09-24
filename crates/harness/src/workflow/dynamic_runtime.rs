@@ -40,13 +40,20 @@ impl<E: DynamicExecutorPort> DynamicRuntime<E> {
         })
     }
 
-    /// Executes one declared analysis region on the budget-reserved bounded route.
+    /// Executes one caller-supplied analysis region on the budget-reserved
+    /// bounded route.
     ///
     /// Admission runs first, so a region whose cap is outside the admitted range,
-    /// that admits no operation, or whose plan is invalid is refused with a typed
+    /// that admits no operation, whose plan names a different region or planner
+    /// profile, or whose plan is invalid is refused with a typed
     /// [`BoundedRegionRefusal`] before any branch can be dispatched. On success the
     /// owner loop's actual per-branch states are retained for consumers, and the
     /// outcome is also returned directly.
+    ///
+    /// The `region` is supplied by the caller and is checked only against the
+    /// plan; it is not matched against any declared `AdaptiveRegion` node in this
+    /// runtime's workflow. [`admit_bounded_region`](super::admit_bounded_region)
+    /// records that boundary.
     ///
     /// The dispatched work is analysis only: a [`DynamicPlan`] cannot name a
     /// mutating node kind, so this route cannot reach a concurrent game mutation.
