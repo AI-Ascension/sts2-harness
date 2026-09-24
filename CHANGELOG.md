@@ -10,6 +10,20 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Deny the two rustdoc lint classes the doc gate was only warning about.** The `Check documentation
+  links` step denied only `rustdoc::broken_intra_doc_links`, so it exited 0 while printing `generated
+  5 warnings`: four `private_intra_doc_links` sites where public documentation linked to a private
+  item and resolved *only* because `--document-private-items` was passed (`final_budget_prepare.rs`,
+  `capability.rs`, `contract_commands.rs`, `research_inspection/mod.rs`), and one
+  `redundant_explicit_links` target (`membership_render.rs`). The step now also denies
+  `private_intra_doc_links` and `redundant_explicit_links`, and the five sites are repaired by
+  unlinking the private or redundant target while keeping the prose — except
+  `capability.rs`'s `[`Self::profile_name`]`, which is `pub` and therefore left as a working link.
+  A private link can only resolve under `--document-private-items`, so it breaks for every external
+  consumer even while the gate is green; escalation is the point, not the warning count.
+  Compatibility: CI and doc comments only; no production code, schema, route or behavior change.
+  Closes #489.
+
 - **Extend the real pinned-Exo CI lane with the `#148` fault and isolation matrix.** The landed lane
   executed the real Exo process oracle but exercised only a few admission rejections. A new
   `fault_oracle` test proves the admission faults fail closed with zero model egress (config schema,

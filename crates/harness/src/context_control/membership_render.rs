@@ -3,7 +3,7 @@
 //! Wires the per-invocation membership boundary into the production render path.
 //!
 //! Until this module existed, [`resolve_membership`](super::resolve_membership) and
-//! [`prevalidate_and_bind`](super::prevalidate_and_bind) had no production caller: the live managed
+//! [`prevalidate_and_bind`] had no production caller: the live managed
 //! render always published every `draft.selected_items` reference, so a per-invocation inclusion
 //! policy could not actually change application bytes.
 //!

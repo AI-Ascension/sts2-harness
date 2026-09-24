@@ -56,7 +56,7 @@ impl UnsupportedProfileAxis {
     ///
     /// This is the list [`unsupported_profile_axis`] walks, so it is the guard *and* the source of
     /// the advertisement rather than a second list that could fall behind either. Adding a variant
-    /// does not compile until [`Self::is_present`] and [`Self::profile_name`] handle it (both are
+    /// does not compile until `Self::is_present` and [`Self::profile_name`] handle it (both are
     /// exhaustive matches); adding it here is what makes the guard reject it, and it is published in
     /// the same step.
     pub const ALL: [Self; 4] = [Self::Revision, Self::Map, Self::Management, Self::Expert];
