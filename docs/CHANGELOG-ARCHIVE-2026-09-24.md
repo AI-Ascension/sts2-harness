@@ -22,3 +22,35 @@ supported release or a second normative changelog.
   on cost could only ever overrule that authority, and affordability stays in the derived-exact facts
   beside the state. Compatibility: additive; one new module and its re-exports, no change to an
   existing record, route, or digest. Refs #290.
+
+- Admit a **`typesafe-jev` local bridge provider kind**, fail-closed. The kind joins `ollama` and
+  `openai-astra` on the legacy local-bridge lane and keeps every guard that lane applies: the
+  SHA-256 digest computed from the bytes at `STS2_EXO_BRIDGE_BINARY`, the explicit combat-demo or
+  live-episode requirement, and the per-kind argument allowlist. It is not promoted to live-episode
+  mode, which stays Astra-only, and not to the reviewed envelope, whose route axes bind one provider
+  and host by design. Its admitted argument form is exactly
+  `["--model", MODEL, "--transport", PATH]` with an absolute transport path, re-parsed with the same
+  parser the bridge executable uses so admission and the executable cannot disagree about what a
+  valid invocation is. Argument admission moves out of `runtime_v3_settings.rs`, which was at its
+  300-line preferred budget, into `runtime_v3_settings_local_bridge.rs` with the existing Ollama
+  shape and its tests. The provider credential needs no code: the bridge process is spawned with a
+  cleared environment and only the names in the operator's `STS2_EXO_INHERITED_ENV_JSON` pass
+  through, so `TYPESAFE_API_KEY` reaches it by name and never as an argument or a record.
+  Compatibility: additive; one new accepted value, no change to an existing shape, record, or digest.
+  With the kind admitted and no bridge executable present, the runtime still fails closed at digest
+  verification. Refs #285.
+
+- Build a **System One provider request** from a bridge decision request.
+  `context_control::build_system_one_request` turns a rendered observation and a presented action
+  catalog into the body of one typed question: a `choice` whose option identifiers are exactly the
+  catalog, with the request's objective and hard constraints carried in its instruction. It sits
+  beside the existing provider projection and is pure — no socket, no environment, no credential —
+  so every refusal happens before any of those exist. It refuses an empty, oversized, duplicated, or
+  non-printable option set, a malformed model identifier, an empty state, and a state that would
+  exceed a conservative byte ceiling for the published 32k-token state-and-question budget, and it
+  never truncates a state to make it fit. Serialization is byte-stable, so
+  `system_one_questions_digest` gives a run record the honest analogue of the reviewed envelope's
+  `prompt_digest`: a question set is data, so its digest states exactly what was asked. Exactly one
+  question is asked; the provider evaluates many per call in parallel, but an unconsumed question
+  would spend tokens producing a number no code reads. Compatibility: additive; one new module and
+  its re-exports, no change to an existing record, route, or digest. Refs #283.
