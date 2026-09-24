@@ -42,6 +42,7 @@ mod lifecycle_readiness;
 mod live_workflow;
 mod provider_policy;
 mod provider_session_inspection;
+mod readiness_wait;
 mod service;
 mod store;
 mod synthetic_context_owner;
@@ -149,6 +150,10 @@ pub use provider_policy::{
 };
 pub use provider_session_inspection::{
     ProviderSessionBrokerInspectionPort, ProviderSessionPolicyOwnerPort,
+};
+pub use readiness_wait::{
+    READINESS_CONTRACT_VERSION, ReadinessMilestone, ReadinessProgress, ReadinessTarget,
+    ReadinessTerminal, ReadinessWait, ReadinessWaitError,
 };
 pub use service::{
     CapabilityPort, CommandApplication, CommandContext, ContextInspectionPort,
