@@ -10,6 +10,14 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Run the workspace doctests in CI.** No gate executed doctests: the `rust` job runs
+  `cargo test --workspace --all-targets --all-features --locked`, and `--all-targets` excludes the
+  `--doc` target by definition, so the repository's single doctest — the `compile_fail,E0624` guard
+  proving that an external caller cannot construct an `AuthenticatedWorkerRequest` — had never been
+  compiled in CI. A new `Run doctests` step runs `cargo test --workspace --doc --all-features
+  --locked`, so that authority-boundary assertion (and any future doctest) is now executed and
+  cannot rot silently. Compatibility: CI-only; no source, schema, route or behavior change.
+  Refs #479.
 - **Repair nine intra-doc-link defects and gate the class durably.** `sts2-harness` failed a
   documentation-integrity expectation its own gates could not see. Seven intra-doc links across six
   files named a type or method that does not resolve at the file's own scope — three of them
