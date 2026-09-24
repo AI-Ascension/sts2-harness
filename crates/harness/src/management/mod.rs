@@ -153,8 +153,8 @@ pub use provider_session_inspection::{
     ProviderSessionBrokerInspectionPort, ProviderSessionPolicyOwnerPort,
 };
 pub use readiness_wait::{
-    READINESS_CONTRACT_VERSION, ReadinessMilestone, ReadinessProgress, ReadinessTarget,
-    ReadinessTerminal, ReadinessWait, ReadinessWaitError,
+    MilestoneObservation, READINESS_CONTRACT_VERSION, ReadinessExpiry, ReadinessMilestone,
+    ReadinessProgress, ReadinessTarget, ReadinessTerminal, ReadinessWait, ReadinessWaitError,
 };
 pub use save_profile_setup::{
     AdmittedProfileSetup, MAX_PROFILE_ID_BYTES, PROFILE_ROUTE_CONTRACT, PROFILE_ROUTE_REVISION,
