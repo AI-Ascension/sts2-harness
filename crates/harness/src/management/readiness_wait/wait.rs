@@ -53,7 +53,8 @@ impl ReadinessWait {
     /// Starts a bounded wait for the current instance, epoch and generation.
     ///
     /// Refuses a missing instance identity, a zero authority epoch, a zero
-    /// generation or an invalid target before any observation is admitted.
+    /// generation ([`ReadinessWaitError::InvalidBinding`]) or an invalid target
+    /// before any observation is admitted.
     pub fn begin(
         instance_id: impl Into<String>,
         authority_epoch: u64,
@@ -62,7 +63,7 @@ impl ReadinessWait {
     ) -> Result<Self, ReadinessWaitError> {
         let instance_id = instance_id.into();
         if instance_id.is_empty() || authority_epoch == 0 || generation == 0 {
-            return Err(ReadinessWaitError::InvalidTarget);
+            return Err(ReadinessWaitError::InvalidBinding);
         }
         Ok(Self {
             instance_id,

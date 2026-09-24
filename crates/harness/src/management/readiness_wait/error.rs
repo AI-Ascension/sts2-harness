@@ -15,6 +15,8 @@ pub enum ReadinessWaitError {
     Incompatible,
     /// The target was structurally unusable (zero deadline or zero attempt bound).
     InvalidTarget,
+    /// The wait's identity binding was incomplete (missing instance, epoch or generation).
+    InvalidBinding,
     /// The wait already settled, was cancelled or invalidated by a restart.
     Settled,
     /// The evidence named a different instance or authority epoch.
@@ -32,6 +34,7 @@ impl std::fmt::Display for ReadinessWaitError {
         let label = match self {
             Self::Incompatible => "readiness target contract version is unsupported",
             Self::InvalidTarget => "readiness target is structurally invalid",
+            Self::InvalidBinding => "readiness wait binding is incomplete",
             Self::Settled => "readiness wait is already settled",
             Self::ForeignReadiness => "readiness evidence is for another instance or epoch",
             Self::StaleReadiness => "readiness evidence is stale for this generation",

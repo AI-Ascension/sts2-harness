@@ -249,15 +249,15 @@ fn a_restart_invalidates_prior_readiness_and_requires_a_fresh_wait() {
 fn begin_refuses_incomplete_bindings() {
     assert_eq!(
         ReadinessWait::begin("", EPOCH, GENERATION, target(ReadinessMilestone::Booted)),
-        Err(ReadinessWaitError::InvalidTarget)
+        Err(ReadinessWaitError::InvalidBinding)
     );
     assert_eq!(
         ReadinessWait::begin(INSTANCE, 0, GENERATION, target(ReadinessMilestone::Booted)),
-        Err(ReadinessWaitError::InvalidTarget)
+        Err(ReadinessWaitError::InvalidBinding)
     );
     assert_eq!(
         ReadinessWait::begin(INSTANCE, EPOCH, 0, target(ReadinessMilestone::Booted)),
-        Err(ReadinessWaitError::InvalidTarget)
+        Err(ReadinessWaitError::InvalidBinding)
     );
 }
 
