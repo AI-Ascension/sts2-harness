@@ -80,6 +80,7 @@ mod protocol_artifact_coop_receipt_query;
 mod provider;
 pub mod provider_session;
 pub mod recipe;
+pub mod research_inspection;
 #[cfg(unix)]
 pub use operation_journal::{
     JournalDecision, JournalEntry, JournalError, JournalKey, JournalOutcome, MAX_JOURNAL_ENTRIES,
