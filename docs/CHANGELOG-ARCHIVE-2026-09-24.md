@@ -54,3 +54,43 @@ supported release or a second normative changelog.
   question is asked; the provider evaluates many per call in parallel, but an unconsumed question
   would spend tokens producing a number no code reads. Compatibility: additive; one new module and
   its re-exports, no change to an existing record, route, or digest. Refs #283.
+
+- Fix the **option-selection fold key**, which folded distinct host-listed actions. The key was built
+  from a fixed list of seven identity fields, so any action whose identity lived outside that list
+  collapsed into a neighbour and was recorded as an intentional duplicate: two different cards aimed
+  at one enemy differed only in `card_id`, and `use_potion`, `rest_option`, `select_card`,
+  `confirm_selection` and `cancel_selection` carry `potion_id`, `rest_option_id` and `selection_id`,
+  which the model-view vocabulary does not declare at all. The key is now built from the whole action
+  the host emitted, so it is injective on whatever the host carries, declared here or not. Exactly
+  one substitution remains and it is the only thing that folds anything: a `card_id` that resolves to
+  a card in hand is replaced by that card's identity — name, cost, upgraded — so two copies of one
+  card aimed at the same target still fold, while two different cards, two costs, an upgrade, or a
+  card that does not resolve never do. Reported against the merged #295. Compatibility: fewer options
+  are withheld, and no option that the host listed can now be hidden behind an unrelated one. Refs
+  #302.
+
+- Let an operator **set the System One confidence gate** per invocation. `sts2-jev-bridge` gains
+  `--gate PERCENT`, an integer percentage so an argument vector carries no locale-dependent
+  separator and admission can compare it exactly; absent, the bridge's own default still applies.
+  The admitted argument form for `typesafe-jev` accordingly accepts either the four-element model and
+  transport pair or that pair followed by `--gate PERCENT`, and nothing else. This exists because a
+  gate is a measurement rather than a taste: the first two recorded live answers came back at `0.44`
+  and `0.42` against a `0.55` default, so a lane left at the default would return `reobserve` on
+  states like those and never act. Changing it through the recorded argument vector keeps that
+  visible in a run's identity instead of hidden in a rebuild. `--describe` reports the gate the
+  invocation would use. Compatibility: additive; the existing four-element form and the default gate
+  are unchanged. Refs #308.
+
+  The HTTPS exchange is performed by an operator-owned transport executable named by `--transport`,
+  following the precedent `sts2-astra-bridge` set; request construction, bounds, catalog membership,
+  the confidence gate and the decision shape stay inside the digest-pinned binary, and the credential
+  never reaches this process. Standard input and output are serviced on their own threads and the
+  transport is killed at a deadline, so neither side can deadlock on a full pipe.
+  `systemone_decision` maps the answer: an in-catalog choice at or above the confidence gate becomes
+  an `action` carrying the confidence as the percentage the decision contract already accepts, and
+  one below it becomes `reobserve` rather than a guess. The `rationale` is composed from the returned
+  distribution and labelled bridge-authored, because this provider generates no text and a fluent
+  sentence presented as model reasoning would be a fabricated record.
+  Compatibility: additive; one new binary, one new support module, one new document.
+  `confirmed` only for the offline suite; a live call, the TLS path, decision quality, and any
+  gameplay outcome are `unverified`. Refs #284, #288.

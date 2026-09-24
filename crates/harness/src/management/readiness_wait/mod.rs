@@ -23,4 +23,6 @@ mod wait;
 pub use error::ReadinessWaitError;
 pub use milestone::ReadinessMilestone;
 pub use target::{READINESS_CONTRACT_VERSION, ReadinessTarget};
-pub use wait::{ReadinessProgress, ReadinessTerminal, ReadinessWait};
+pub use wait::{
+    MilestoneObservation, ReadinessExpiry, ReadinessProgress, ReadinessTerminal, ReadinessWait,
+};
