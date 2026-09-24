@@ -10,6 +10,13 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Admit a bounded pre-agent read-only recipe.** A new `recipe` module fixes the source-only
+  contract behind #97: an authored workflow may declare a bounded, versioned recipe of approved
+  read-only tool reads that the harness admits before provider dispatch, with a fixed refusal order,
+  a declared topological step order with no cycles or forward references, and mutation tools refused
+  from the read-only catalog ([ADR 0073](docs/decisions/0073-pre-agent-read-only-recipe-admission.md)).
+  Collection execution, provenance and the Studio round-trip remain open. Refs #97.
+
 - **Plan, schedule and compare bounded same-start branch experiments.** A new
   `benchmark_manifest::branch_experiment` module fixes the effect-free contract behind issue #119: a
   versioned declaration of one verified fork point, a fork strategy, child policies and per-child and
