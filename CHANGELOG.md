@@ -10,34 +10,25 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
-- **Correct the bounded-route method contract to match the corrected module contract.** The
-  `DynamicRuntime::execute_bounded_region` rustdoc called its region "declared" and listed the
-  admission refusals without the #465 region/planner-profile identity check, so it still implied
-  the region came from the workflow. It now says the region is caller-supplied, names
-  `BoundedRegionRefusal::PlanIdentityMismatch`, and states that the region is checked against the
-  plan but never against a declared `adaptive_region` node. Documentation only; no behavior,
-  schema, route, refusal, bound or digest change. Source-only: no native effect. Refs #470.
-
-- **Correct the bounded-analysis module contract: it names an entry point that exists and stops
-  claiming a node-route change that was never made.** The `workflow::bounded_region` module doc
-  said the production `DynamicRuntime` *"reaches this module through `BoundedAnalysis`"* — a type
-  defined on no revision across all 64 remote refs, so the intra-doc link was dangling; the bare
-  `[`AnalysisValue`]` beside it was dangling too, because rustdoc resolves a bare link only against
-  the file's own scope and that type is imported nowhere in the module. The same sentence said
-  a declared adaptive region is now "executed on the budget-reserved bounded route instead of only
-  through a caller-supplied adaptive executor", which the shipped wiring does not do:
-  `DynamicRuntime::step()` still dispatches a declared `adaptive_region` node through `Dispatch` to
-  `DynamicExecutorPort::execute_adaptive`, and `execute_bounded_region` has exactly one caller in
-  the repository, a test. No gate saw any of it: no workflow runs `cargo doc`/`rustdoc` and the
-  crate denies no `rustdoc::broken_intra_doc_links`, so the module built, linted and tested green
-  while its own contract statement was false — and being private, a default rustdoc run skips the
-  module entirely. The doc now names the real entry point
-  (`DynamicRuntime::execute_bounded_region`) and its inputs, states that the node route is
-  unchanged and the bounded route has no in-repo production caller, and records the two bindings
-  this route deliberately does not make — base-revision continuity, and the caller-supplied region
-  against the workflow's declared `adaptive_region` node, which no runtime accessor exposes and
-  which the #465 review left as a design extension. Compatibility: no code, schema, route, refusal,
-  bound or digest changes; documentation only. Source-only: no native effect. Refs #470.
+- **Correct the bounded-analysis documentation contract.** The `workflow::bounded_region` module
+  doc cited a `BoundedAnalysis` type defined on no revision across all 64 remote refs and the bare
+  `[`AnalysisValue`]` beside it — both dangling intra-doc links — and claimed a declared adaptive
+  region now runs "on the budget-reserved bounded route instead of only through a caller-supplied
+  adaptive executor", which the shipped wiring does not do: `DynamicRuntime::step()` still
+  dispatches a declared `adaptive_region` node to `DynamicExecutorPort::execute_adaptive`, and
+  `execute_bounded_region` has exactly one caller, a test. No gate saw it — no workflow runs
+  `cargo doc`/`rustdoc`, the crate denies no `rustdoc::broken_intra_doc_links`, and the private
+  module is skipped by a default rustdoc run — so it built, linted and tested green while its own
+  contract statement was false. The module doc now names the real entry point
+  (`DynamicRuntime::execute_bounded_region`) and its inputs, states the node route is unchanged and
+  the bounded route has no in-repo production caller, and records the two bindings the route
+  deliberately does not make: base-revision continuity, and the caller-supplied region against the
+  workflow's declared `adaptive_region` node, which no accessor exposes (the #465 review left it a
+  design extension). The public `execute_bounded_region` rustdoc is corrected to match — the region
+  is *caller-supplied* and is checked against the plan
+  (`BoundedRegionRefusal::PlanIdentityMismatch`) but never a declared node. Compatibility: no code,
+  schema, route, refusal, bound or digest change; documentation only. Source-only: no native
+  effect. Refs #470.
 - **Bind bounded-region admission to the plan's region and planner-profile identity.** A
   follow-up review of the bounded parallel analysis route found that
   `workflow::bounded_region::admit_bounded_region` checked the parallel cap, the region's
