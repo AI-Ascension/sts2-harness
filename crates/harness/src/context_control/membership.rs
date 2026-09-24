@@ -172,6 +172,35 @@ pub struct ContextModelView {
     pub observation_visible: bool,
 }
 
+/// How much reconstructed ancestor history one branch invocation carries.
+///
+/// This is the branch-context axis requested by issue #118: a child may either carry the permitted
+/// ancestor items selected through its fork occurrence, or run in an explicitly chosen
+/// current-observation-only mode that omits all ancestor history while still carrying the live
+/// observation. It is orthogonal to [`ContextModelView::observation_visible`]: this axis controls
+/// the *ancestor items*, that axis controls the *observation*, so an invocation can be
+/// current-observation-only without ever claiming effective absence of the observation.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AncestorHistoryMode {
+    /// Carry the permitted ancestor history selected through the fork occurrence. The default.
+    #[default]
+    ThroughFork,
+    /// Omit all ancestor history; carry only the current observation.
+    CurrentObservationOnly,
+}
+
+impl AncestorHistoryMode {
+    /// Stable wire label for this mode.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ThroughFork => "through_fork",
+            Self::CurrentObservationOnly => "current_observation_only",
+        }
+    }
+}
+
 impl ContextModelView {
     /// The default view: the observation is visible.
     #[must_use]
@@ -197,6 +226,9 @@ pub struct ContextMembershipPolicy {
     #[serde(default)]
     pub broader_scope: ContextMembershipBroaderScope,
     pub model_view: ContextModelView,
+    /// How much reconstructed ancestor history this invocation carries.
+    #[serde(default)]
+    pub ancestor_history: AncestorHistoryMode,
 }
 
 impl ContextMembershipPolicy {
@@ -285,6 +317,9 @@ pub struct EffectiveMembership {
     pub policy_digest: String,
     /// Whether the observation may appear in model-visible input.
     pub observation_visible: bool,
+    /// The ancestor-history mode this set was resolved under.
+    #[serde(default)]
+    pub ancestor_history: AncestorHistoryMode,
 }
 
 /// The model-visible projection plus its witness. Carries no item content, so a caller cannot widen
@@ -299,6 +334,9 @@ pub struct MembershipDispatchView {
     pub model_visible: Vec<ContextItemRef>,
     pub decisions: Vec<MembershipDecision>,
     pub observation_visible: bool,
+    /// The ancestor-history mode this dispatch view was resolved under.
+    #[serde(default)]
+    pub ancestor_history: AncestorHistoryMode,
 }
 
 /// The current invocation state a revalidation is checked against.

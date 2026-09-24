@@ -80,6 +80,7 @@ pub fn policy(
         inherit_pins: false,
         broader_scope: ContextMembershipBroaderScope::default(),
         model_view: ContextModelView::visible(),
+        ancestor_history: sts2_harness::context_control::AncestorHistoryMode::ThroughFork,
     }
 }
 

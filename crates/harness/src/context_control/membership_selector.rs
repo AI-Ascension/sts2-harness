@@ -6,8 +6,8 @@
 //! mints the finished, versioned policy for one invocation of one draft revision.
 
 use super::{
-    CONTEXT_MEMBERSHIP_POLICY_SCHEMA, ContextMembershipBroaderScope, ContextMembershipError,
-    ContextMembershipPolicy, ContextModelView, MembershipDisposition,
+    AncestorHistoryMode, CONTEXT_MEMBERSHIP_POLICY_SCHEMA, ContextMembershipBroaderScope,
+    ContextMembershipError, ContextMembershipPolicy, ContextModelView, MembershipDisposition,
 };
 use crate::context_control::types::ContextItemRef;
 use crate::sha256_hex;
@@ -30,6 +30,9 @@ pub struct ContextMembershipSelector {
     #[serde(default)]
     pub broader_scope: ContextMembershipBroaderScope,
     pub model_view: ContextModelView,
+    /// How much reconstructed ancestor history this invocation carries.
+    #[serde(default)]
+    pub ancestor_history: AncestorHistoryMode,
 }
 
 impl ContextMembershipSelector {
@@ -42,6 +45,21 @@ impl ContextMembershipSelector {
             inherit_pins: false,
             broader_scope: ContextMembershipBroaderScope::default(),
             model_view: ContextModelView::visible(),
+            ancestor_history: AncestorHistoryMode::ThroughFork,
+        }
+    }
+
+    /// An `include` selector that carries only the current observation and omits all ancestor
+    /// history, while keeping a visible observation.
+    ///
+    /// This is the explicitly selected *current-observation-only* branch-context mode from issue
+    /// #118: the child receives the live observation through the selected occurrence but no
+    /// reconstructed ancestor items.
+    #[must_use]
+    pub fn current_observation_only() -> Self {
+        Self {
+            ancestor_history: AncestorHistoryMode::CurrentObservationOnly,
+            ..Self::include()
         }
     }
 
@@ -57,6 +75,7 @@ impl ContextMembershipSelector {
             inherit_pins: self.inherit_pins,
             broader_scope: self.broader_scope.clone(),
             model_view: self.model_view,
+            ancestor_history: self.ancestor_history,
         }
     }
 

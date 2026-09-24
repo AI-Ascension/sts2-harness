@@ -89,6 +89,9 @@ impl ProviderSessionBroker {
             &request,
             false,
         )?;
+        // Refresh is the served read/history operation. It records that a read ran without
+        // touching `provider_attempts`: reading continuity data must never start inference.
+        self.history_reads = self.history_reads.saturating_add(1);
         let entry = self.histories.entry(binding_id.to_owned()).or_default();
         *entry = items;
         if let Some(binding) = self.bindings.get_mut(binding_id) {
