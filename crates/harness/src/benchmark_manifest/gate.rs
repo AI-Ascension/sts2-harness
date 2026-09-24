@@ -13,7 +13,20 @@
 //! then, on an empty mismatch set, mints a [`RerunAdmission`]. Because
 //! `RerunAdmission` has a private constructor, any allocation/launch path that takes
 //! `&RerunAdmission` (see [`RerunAllocationSeam`]) cannot run before a successful
-//! comparison; [`admit_and_allocate`] is the single ordering point.
+//! comparison; [`admit_and_allocate`] is the single ordering point. The token also
+//! owns the exact admitted [`Manifest`] (reachable only through
+//! [`RerunAdmission::declaration`]), so the only declaration the seam is offered is
+//! the one that compared equal; `allocate(&self, …)` must therefore source its
+//! declaration from the token rather than from any other field or argument.
+//!
+//! Scope note: this crate has no in-repo *consumer of this manifest gate* — the
+//! seeded launch path (`bin/runtime_support/runtime_v3_seeded.rs`) and the source-only
+//! suite planner are not driven by a benchmark [`Manifest`], and native allocation is
+//! owned by the native/gateway launch path. This module is therefore the production
+//! pre-mutation contract and its consumer seam, not a call site attached to an
+//! existing manifest-aware allocator. A consumer attaches by implementing
+//! [`RerunAllocationSeam`] and holding the [`RerunAdmission`] it returns; the
+//! compare-before-allocation ordering is then structural.
 //!
 //! An admitted rerun certifies equal *declarations only*: not native compatibility,
 //! not seed durability, and not authorization to mutate. Rechecking the settled
@@ -37,12 +50,16 @@ mod sealed {
 /// Proof that two manifests declared identical controlled inputs.
 ///
 /// Minted only by [`Manifest::admit_rerun`] and [`admit_and_allocate`] after an empty
-/// [`Manifest::compare`]. Holding one is necessary to cross a [`RerunAllocationSeam`],
-/// but it certifies equal declarations only: never native compatibility, seed
-/// durability, or authorization to mutate.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// [`Manifest::compare`]. Holding one is necessary and sufficient to cross a
+/// [`RerunAllocationSeam`], but it certifies equal declarations only: never native
+/// compatibility, seed durability, or authorization to mutate.
+///
+/// The token owns the admitted declaration, so a seam sources its declaration from
+/// exactly the manifest that compared equal.
+#[derive(Clone, Debug)]
 pub struct RerunAdmission {
     _seal: sealed::Admitted,
+    declaration: Manifest,
 }
 
 impl RerunAdmission {
@@ -53,6 +70,16 @@ impl RerunAdmission {
     #[must_use]
     pub const fn evidence(&self) -> &'static str {
         "declared_inputs_equal"
+    }
+
+    /// The exact declaration whose [`Manifest::compare`] produced this admission.
+    ///
+    /// This is the only declaration a [`RerunAllocationSeam`] may allocate for; it
+    /// is the immutable artifact compared against the incumbent, never a later or
+    /// unrelated manifest.
+    #[must_use]
+    pub fn declaration(&self) -> &Manifest {
+        &self.declaration
     }
 }
 
@@ -92,6 +119,7 @@ impl Manifest {
         if mismatches.is_empty() {
             Ok(RerunAdmission {
                 _seal: sealed::Admitted,
+                declaration: candidate.clone(),
             })
         } else {
             Err(RerunRefusal { mismatches })
@@ -101,10 +129,11 @@ impl Manifest {
 
 /// The pre-mutation allocation/launch boundary a governed rerun must cross.
 ///
-/// Implementors receive a [`RerunAdmission`]. Because that token has a private
+/// Implementors receive a [`RerunAdmission`] whose [`RerunAdmission::declaration`]
+/// is the only declaration that compared equal. Because that token has a private
 /// constructor, an implementation cannot be reached before the declarations compare
 /// equal, so the compare-before-allocation ordering is structural rather than
-/// conventional.
+/// conventional. Allocation must read its inputs from the admission token.
 pub trait RerunAllocationSeam {
     /// Result of the allocation/launch step.
     type Output;
