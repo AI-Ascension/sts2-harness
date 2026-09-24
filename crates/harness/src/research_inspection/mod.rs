@@ -3,7 +3,7 @@
 //! Explicitly scoped research inspection of hidden checkpoint state (issue #129).
 //!
 //! Ordinary gameplay, provider and tool lanes carry only public observation and
-//! keyed checkpoint handles ([`crate::checkpoint_projection`]). A researcher
+//! keyed checkpoint handles (`crate::checkpoint_projection`). A researcher
 //! sometimes needs more than that: the hidden ordered piles, unrevealed
 //! assignments and RNG streams a capture recorded. That is a *different*
 //! permission, so it is admitted separately, bound to one exact checkpoint and
