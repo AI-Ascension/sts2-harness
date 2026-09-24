@@ -72,7 +72,7 @@ impl CommandOutcome {
     /// (`ascension.workflow-event/v1`) already carries `rejected`.
     ///
     /// A command that faults before executing anything is `Applied` with reason
-    /// [`LIVE_EXECUTION_FAILED`]: the cursor does not move and no operation is admitted, so
+    /// `LIVE_EXECUTION_FAILED`: the cursor does not move and no operation is admitted, so
     /// reporting `Settled` would present a failure as forward progress to any consumer that treats
     /// a settled step as completed.
     #[must_use]

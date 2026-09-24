@@ -42,7 +42,7 @@ impl AssembledInputBound {
     ///
     /// The bound's own surface ceiling is validated where the value is authored, not here: the
     /// memory surface bounds `whole_input_byte_bound` by [`MAX_JOB_INPUT_BYTES`] in
-    /// [`PreparedInputLimits::validate`], and the context-owner surface bounds
+    /// `PreparedInputLimits::validate`, and the context-owner surface bounds
     /// `max_context_bytes` in `validate_limits`. Applying either constant here would reject the
     /// other surface's legal value.
     pub fn new(
