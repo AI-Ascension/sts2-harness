@@ -8,9 +8,10 @@
 //! credit. Corpus/order randomization, the native game seed and the optional provider sampling seed
 //! are separate typed fields and are never substituted for one another.
 
-use std::fmt;
-
 use serde::{Deserialize, Serialize};
+
+use super::error::SuiteManifestError;
+use super::results::MAX_TRIAL_KEY_BYTES;
 
 /// Only supported suite-manifest version; unknown semantics require a new version.
 pub const SUITE_VERSION: &str = "ascension.benchmark-suite.v1";
@@ -28,79 +29,20 @@ pub const MAX_SUITE_CONCURRENCY: usize = 32;
 pub const MAX_SUITE_LABEL_BYTES: usize = 128;
 /// Maximum predeclared metrics.
 pub const MAX_SUITE_METRICS: usize = 32;
-
-/// Rejection reasons for a suite manifest or the work it declares.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SuiteManifestError {
-    /// The declared version is not [`SUITE_VERSION`].
-    UnsupportedVersion,
-    /// The benchmark reference is empty, oversized or contains a NUL separator.
-    InvalidBenchmarkRef,
-    /// The evaluator revision is empty, oversized or contains a NUL separator.
-    InvalidEvaluatorRevision,
-    /// A case, policy, metric or settings label is empty, oversized or contains a NUL separator.
-    InvalidLabel,
-    /// The corpus declares no case.
-    EmptyCorpus,
-    /// The corpus exceeds [`MAX_SUITE_CASES`].
-    TooManyCases,
-    /// Two cases share a `case_id`.
-    DuplicateCase,
-    /// The suite declares no policy.
-    EmptyPolicies,
-    /// The suite exceeds [`MAX_SUITE_POLICIES`].
-    TooManyPolicies,
-    /// Two policies share a `policy_id`.
-    DuplicatePolicy,
-    /// A policy settings digest is empty, oversized or contains a NUL separator.
-    InvalidSettingsDigest,
-    /// The repetition count is zero or exceeds [`MAX_SUITE_REPETITIONS`].
-    InvalidRepetitions,
-    /// The suite declares no metric.
-    EmptyMetrics,
-    /// The suite exceeds [`MAX_SUITE_METRICS`].
-    TooManyMetrics,
-    /// Two metrics share a name.
-    DuplicateMetric,
-    /// A budget bound is zero, or the concurrency bound is outside `1..=MAX_SUITE_CONCURRENCY`.
-    InvalidBudget,
-    /// The declared axes would overflow the planned trial count.
-    PlanOverflow,
-    /// The canonical encoding exceeded [`MAX_SUITE_MANIFEST_BYTES`].
-    TooLarge,
-    /// The manifest could not be encoded canonically.
-    NotEncodable,
-}
-
-impl fmt::Display for SuiteManifestError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let message = match self {
-            Self::UnsupportedVersion => "unsupported suite version",
-            Self::InvalidBenchmarkRef => "invalid benchmark reference",
-            Self::InvalidEvaluatorRevision => "invalid evaluator revision",
-            Self::InvalidLabel => "invalid label",
-            Self::EmptyCorpus => "empty seed corpus",
-            Self::TooManyCases => "too many seed cases",
-            Self::DuplicateCase => "duplicate seed case",
-            Self::EmptyPolicies => "empty policy axis",
-            Self::TooManyPolicies => "too many policies",
-            Self::DuplicatePolicy => "duplicate policy",
-            Self::InvalidSettingsDigest => "invalid settings digest",
-            Self::InvalidRepetitions => "invalid repetition count",
-            Self::EmptyMetrics => "empty metric set",
-            Self::TooManyMetrics => "too many metrics",
-            Self::DuplicateMetric => "duplicate metric",
-            Self::InvalidBudget => "invalid budget",
-            Self::PlanOverflow => "planned trial count overflow",
-            Self::TooLarge => "suite manifest exceeds the byte bound",
-            Self::NotEncodable => "suite manifest is not encodable",
-        };
-        formatter.write_str(message)
-    }
-}
-
-impl std::error::Error for SuiteManifestError {}
+/// Bytes a derived trial key spends outside the two free axes: a 64-hex suite revision, the three
+/// separators around case/policy/repetition, and a repetition of at most two digits (repetitions
+/// stay below [`MAX_SUITE_REPETITIONS`]).
+const TRIAL_KEY_FIXED_BYTES: usize = 64 + 3 + 2;
+/// Maximum combined bytes of one case id and one policy id so the derived trial key stays within
+/// [`MAX_TRIAL_KEY_BYTES`].
+///
+/// A case id and a policy id are each bounded to [`MAX_SUITE_LABEL_BYTES`] on their own, but
+/// [`trial_key`](super::plan::trial_key) concatenates both around a 64-hex revision, so two
+/// individually valid labels can still derive a key that
+/// [`TrialOutcome::validate`](super::results::TrialOutcome::validate) refuses — a manifest that
+/// validates while its trials can never settle. Bounding the pair keeps a validating manifest
+/// plan-and-settleable.
+pub const MAX_SUITE_TRIAL_AXIS_BYTES: usize = MAX_TRIAL_KEY_BYTES - TRIAL_KEY_FIXED_BYTES;
 
 /// One immutable seed case: a stable identifier bound to the native game seed it starts.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -190,6 +132,7 @@ impl SuiteManifest {
         }
         self.validate_metrics()?;
         self.validate_budgets()?;
+        self.validate_trial_envelope()?;
         self.planned_count().map(|_| ())
     }
 
@@ -230,6 +173,26 @@ impl SuiteManifest {
             if !seen.insert(policy.policy_id.as_str()) {
                 return Err(SuiteManifestError::DuplicatePolicy);
             }
+        }
+        Ok(())
+    }
+
+    fn validate_trial_envelope(&self) -> Result<(), SuiteManifestError> {
+        let longest_case = self
+            .corpus
+            .cases
+            .iter()
+            .map(|case| case.case_id.len())
+            .max()
+            .unwrap_or(0);
+        let longest_policy = self
+            .policies
+            .iter()
+            .map(|policy| policy.policy_id.len())
+            .max()
+            .unwrap_or(0);
+        if longest_case + longest_policy > MAX_SUITE_TRIAL_AXIS_BYTES {
+            return Err(SuiteManifestError::TrialKeyOverflow);
         }
         Ok(())
     }

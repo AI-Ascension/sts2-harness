@@ -4,8 +4,89 @@
 
 use std::fmt;
 
-use super::manifest::SuiteManifestError;
+use serde::Serialize;
+
 use super::results::TrialOutcomeError;
+
+/// Rejection reasons for a suite manifest or the work it declares.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SuiteManifestError {
+    /// The declared version is not [`SUITE_VERSION`](super::manifest::SUITE_VERSION).
+    UnsupportedVersion,
+    /// The benchmark reference is empty, oversized or contains a NUL separator.
+    InvalidBenchmarkRef,
+    /// The evaluator revision is empty, oversized or contains a NUL separator.
+    InvalidEvaluatorRevision,
+    /// A case, policy, metric or settings label is empty, oversized or contains a NUL separator.
+    InvalidLabel,
+    /// The corpus declares no case.
+    EmptyCorpus,
+    /// The corpus exceeds [`MAX_SUITE_CASES`](super::manifest::MAX_SUITE_CASES).
+    TooManyCases,
+    /// Two cases share a `case_id`.
+    DuplicateCase,
+    /// The suite declares no policy.
+    EmptyPolicies,
+    /// The suite exceeds [`MAX_SUITE_POLICIES`](super::manifest::MAX_SUITE_POLICIES).
+    TooManyPolicies,
+    /// Two policies share a `policy_id`.
+    DuplicatePolicy,
+    /// A case id and a policy id pair would derive a trial key beyond
+    /// [`MAX_TRIAL_KEY_BYTES`](super::results::MAX_TRIAL_KEY_BYTES).
+    TrialKeyOverflow,
+    /// A policy settings digest is empty, oversized or contains a NUL separator.
+    InvalidSettingsDigest,
+    /// The repetition count is zero or exceeds
+    /// [`MAX_SUITE_REPETITIONS`](super::manifest::MAX_SUITE_REPETITIONS).
+    InvalidRepetitions,
+    /// The suite declares no metric.
+    EmptyMetrics,
+    /// The suite exceeds [`MAX_SUITE_METRICS`](super::manifest::MAX_SUITE_METRICS).
+    TooManyMetrics,
+    /// Two metrics share a name.
+    DuplicateMetric,
+    /// A budget bound is zero, or the concurrency bound is outside
+    /// `1..=MAX_SUITE_CONCURRENCY` ([`MAX_SUITE_CONCURRENCY`](super::manifest::MAX_SUITE_CONCURRENCY)).
+    InvalidBudget,
+    /// The declared axes would overflow the planned trial count.
+    PlanOverflow,
+    /// The canonical encoding exceeded
+    /// [`MAX_SUITE_MANIFEST_BYTES`](super::manifest::MAX_SUITE_MANIFEST_BYTES).
+    TooLarge,
+    /// The manifest could not be encoded canonically.
+    NotEncodable,
+}
+
+impl fmt::Display for SuiteManifestError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::UnsupportedVersion => "unsupported suite version",
+            Self::InvalidBenchmarkRef => "invalid benchmark reference",
+            Self::InvalidEvaluatorRevision => "invalid evaluator revision",
+            Self::InvalidLabel => "invalid label",
+            Self::EmptyCorpus => "empty seed corpus",
+            Self::TooManyCases => "too many seed cases",
+            Self::DuplicateCase => "duplicate seed case",
+            Self::EmptyPolicies => "empty policy axis",
+            Self::TooManyPolicies => "too many policies",
+            Self::DuplicatePolicy => "duplicate policy",
+            Self::TrialKeyOverflow => "case and policy axes overflow the trial key bound",
+            Self::InvalidSettingsDigest => "invalid settings digest",
+            Self::InvalidRepetitions => "invalid repetition count",
+            Self::EmptyMetrics => "empty metric set",
+            Self::TooManyMetrics => "too many metrics",
+            Self::DuplicateMetric => "duplicate metric",
+            Self::InvalidBudget => "invalid budget",
+            Self::PlanOverflow => "planned trial count overflow",
+            Self::TooLarge => "suite manifest exceeds the byte bound",
+            Self::NotEncodable => "suite manifest is not encodable",
+        };
+        formatter.write_str(message)
+    }
+}
+
+impl std::error::Error for SuiteManifestError {}
 
 /// Rejection reasons for a scheduling transition.
 #[derive(Clone, Debug, Eq, PartialEq)]

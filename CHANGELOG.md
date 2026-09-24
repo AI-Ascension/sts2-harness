@@ -41,6 +41,16 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   ([ADR 0076](docs/decisions/0076-scoped-research-inspection-of-hidden-checkpoint-state.md)). The
   native capture read adapter and the capture-manifest agreement remain open. Refs #129.
 
+- **Refuse a suite whose case and policy axes cannot derive a settleable trial key.** `SuiteManifest`
+  bounded a `case_id` and a `policy_id` separately at `MAX_SUITE_LABEL_BYTES` (128), while
+  `TrialOutcome::validate` refuses a `trial_key` over `MAX_TRIAL_KEY_BYTES` (256) and the key
+  concatenates both labels around a 64-hex suite revision. A manifest that validated could therefore
+  plan a trial whose outcome `settle` refused forever. The combined pair is now bounded by a derived
+  `MAX_SUITE_TRIAL_AXIS_BYTES`, so every accepted manifest is plan-and-settleable, and an oversized
+  single id is still refused as an invalid label. Source-only: no released artifact was affected and
+  no live caller reached the case. Compatibility: an input that previously validated and then failed
+  at settlement is now refused at validation.
+
 - **Bind readiness settlement to its proof, and let a starved wait expire.** The
   `management::readiness_wait` contract behind #96 now admits one `MilestoneObservation`, which binds
   the sealed owner readiness proof to the milestone and process generation that owner reported, so
