@@ -10,6 +10,20 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Bind bounded-region admission to the plan's region and planner-profile identity.** A
+  follow-up review of the bounded parallel analysis route found that
+  `workflow::bounded_region::admit_bounded_region` checked the parallel cap, the region's
+  admissible operations and the plan's structural validity but never compared the plan's
+  `region_id` / `planner_profile_ref` against the region it was admitted for, unlike the sibling
+  `DynamicPlanRegistry::accept`. Because both the plan and the region are caller-supplied, a plan
+  that named a different region or planner profile was admitted whenever its operations fell inside
+  the caller-supplied `allowed_operations`. Admission now refuses such a plan with a dedicated typed
+  reason, `BoundedRegionRefusal::PlanIdentityMismatch`, before any branch is dispatched, and the
+  module contract states that base-revision continuity remains `accept`'s responsibility because the
+  region does not carry the base digest or revision and the runtime supplies only the workflow
+  limits. Compatibility: tightening — this route has no in-repo caller, and a plan that names its own
+  region and profile is unaffected. Source-only: no native effect. Refs #465.
+
 - **Execute a bounded parallel analysis region through the production dynamic runtime.** The
   budget-reserved bounded route (`execute_plan_bounded`,
   `execute_plan_bounded_reserved`) had no production caller: a `DynamicRuntime` handled an
