@@ -10,7 +10,7 @@
 //! the ring bounds with `STS2_WORKFLOW_CAPTURE_MODE`, `STS2_WORKFLOW_CAPTURE_RECORDS` and
 //! `STS2_WORKFLOW_CAPTURE_BYTES`, and every unrecognised or contradictory value is refused at
 //! startup rather than silently downgraded, so a misconfigured deployment cannot lose a boundary it
-//! believes it recorded. See ADR 0065.
+//! believes it recorded. See ADR 0070.
 
 use sts2_harness::management::BoundaryCaptureSink;
 use sts2_harness::{CaptureMode, MAX_CAPTURE_BYTES, MAX_CAPTURE_RECORDS, MemoryCapture};

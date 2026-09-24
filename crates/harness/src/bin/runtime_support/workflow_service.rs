@@ -95,7 +95,7 @@ fn factory(
         // The served boundary records through the sink the configured capture surface selects: the
         // approved material and the bytes the boundary wrote are one value only if the sink records
         // the release before the write, so the served composition attaches a recording sink rather
-        // than the inert default; see `capture` and ADR 0065.
+        // than the inert default; see `capture` and ADR 0070.
         .with_capture_sink(capture::sink_from_environment()?)
         .with_inference_profile_catalog(Arc::new(
             inference_profiles::InferenceProfileCatalogProducer::new(provider_capabilities),

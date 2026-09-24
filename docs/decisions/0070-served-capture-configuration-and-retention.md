@@ -1,4 +1,4 @@
-# ADR 0065: The served composition records through a configured capture surface
+# ADR 0070: The served composition records through a configured capture surface
 
 Status: accepted for the served managed boundary in `crates/harness`. It records the owner decision
 issue [#398](https://github.com/AI-Ascension/sts2-harness/issues/398) leaves open — which sink the

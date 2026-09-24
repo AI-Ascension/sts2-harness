@@ -12,7 +12,7 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 - **Make the served capture surface configured and fail-closed.** Which sink the served composition
   attaches and what it retains is now an owner decision recorded in
-  [ADR 0065](docs/decisions/0065-served-capture-configuration-and-retention.md): an unset surface
+  [ADR 0070](docs/decisions/0070-served-capture-configuration-and-retention.md): an unset surface
   keeps the merged in-memory recording ring, `metadata` and `off` are selectable, and every
   contradictory or out-of-range `STS2_WORKFLOW_CAPTURE_*` value is refused at startup rather than
   silently downgraded. Restart-durable capture bytes and the unrecorded Ollama `HttpBody` boundary
