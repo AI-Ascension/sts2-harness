@@ -1,0 +1,109 @@
+name: Exo process oracle
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  STS2_EXO_TEST_SOURCE: ${{ github.workspace }}/target/exo-test-source
+
+concurrency:
+  group: exo-process-oracle-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  exo-process-oracle:
+    name: Exo process oracle (real pinned Exo, synthetic model/host)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      # Keep Corepack non-interactive: it must not block on a download prompt.
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read reviewed Exo source revision
+        id: exo-revision
+        run: |
+          revision="$(sed -n 's/^pub const EXO_SOURCE_REVISION: &str = "\([0-9a-f]\{40\}\)";$/\1/p' crates/harness/src/exo/contract/mod.rs)"
+          test "${#revision}" -eq 40
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+
+      - name: Check out reviewed Exo source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: exoharness/exo
+          ref: ${{ steps.exo-revision.outputs.revision }}
+          path: target/exo-test-source
+          persist-credentials: false
+
+      - name: Install the pinned Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22.14.0'
+          package-manager-cache: false
+
+      - name: Install pinned Exo dependencies and stage the owned extension
+        # Mirrors experiments/exo-agent/bridge/README.md: pnpm 10.26.2 installs the
+        # pinned read-only Exo checkout; generated files stay under target/.
+        run: |
+          corepack pnpm@10.26.2 --dir target/exo-test-source install --frozen-lockfile
+          mkdir -p target/exo-test-source/experiments/exo-agent/extension/src
+          cp experiments/exo-agent/extension/src/*.ts \
+            target/exo-test-source/experiments/exo-agent/extension/src/
+          cp experiments/exo-agent/extension/package.json \
+            target/exo-test-source/experiments/exo-agent/extension/
+          corepack pnpm@10.26.2 --dir target/exo-test-source/experiments/exo-agent/extension run check
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --no-self-update
+
+      - name: Build the isolated executor and the production bridge
+        run: |
+          CARGO_TARGET_DIR="$PWD/target/exo-executor" cargo build --locked \
+            --manifest-path experiments/exo-agent/bridge/Cargo.toml
+          cargo build --locked --config 'profile.dev.package.sha2.opt-level=3' \
+            --package sts2-harness --bin sts2-exo-bridge
+
+      - name: Run the real-Exo process oracle
+        # Drives the real pinned Exo TypeScript runtime through the built executor,
+        # replacing only the model service with a synthetic loopback endpoint and
+        # the native game with the declared synthetic host. No provider, credential,
+        # game, save or native instance is used.
+        run: |
+          STS2_EXO_TEST_NODE="$(command -v node)" \
+            CARGO_TARGET_DIR="$PWD/target/exo-executor" \
+            cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
+            --test process_oracle -- --ignored
+
+      - name: Run the real-Exo duplex lookup oracle
+        run: |
+          STS2_EXO_TEST_NODE="$(command -v node)" \
+            CARGO_TARGET_DIR="$PWD/target/exo-executor" \
+            cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
+            --test lookup_oracle -- --ignored
+
+      - name: Assert the bounded evidence report names the pinned revision
+        env:
+          EXO_REVISION: ${{ steps.exo-revision.outputs.revision }}
+        run: |
+          test -s target/exo-smoke-report.json
+          test "$(jq -r .exo_revision target/exo-smoke-report.json)" = "$EXO_REVISION"
+          test "$(jq -r .full_runtime_admission target/exo-smoke-report.json)" = "false"
+
+      - name: Upload the bounded process evidence report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: exo-process-oracle-report
+          path: target/exo-smoke-report.json
+          if-no-files-found: warn
+          retention-days: 7

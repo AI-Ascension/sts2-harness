@@ -115,6 +115,21 @@ full 40-hex gateway and/or MCP revisions; the checkout HEADs are compared to
 those inputs. Review the resulting positive and negative evidence before editing
 the default pins. Never substitute a branch name, moving default, or dirty tree.
 
+## Exo process oracle
+
+`exo-process-oracle.yml` runs the repository-owned, Linux x86_64 loopback lane documented in
+[`experiments/exo-agent/bridge/README.md`](../experiments/exo-agent/bridge/README.md). It installs the
+pinned Node runtime and pnpm, checks out `exoharness/exo` at the revision read from
+`EXO_SOURCE_REVISION`, builds the isolated `sts2-exo-executor` package and the `sts2-exo-bridge`
+binary, and executes the previously `#[ignore]`d `process_oracle` and `lookup_oracle` tests.
+
+The oracle drives the real pinned Exo TypeScript runtime. Only the model service is replaced with a
+bounded synthetic loopback endpoint and the native game with the declared synthetic host; no
+provider, credential, game, save or native instance is used. The lane proves real Exo **process
+composition**, not live model or game compatibility, and it stays separate from the live-provider and
+native-host acceptance in the Exo integration tracker. The bridge package is `[workspace]`-excluded,
+so this is the only gate that reaches it.
+
 ## Authoring rules
 
 - Keep each workflow focused and under 200 nonblank lines, preferably under 160.
