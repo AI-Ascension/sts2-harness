@@ -2,8 +2,8 @@
 
 Status: accepted for the harness-owned, source-only slice of issue
 [#103](https://github.com/AI-Ascension/sts2-harness/issues/103) — one bounded canonical seed per
-logical run, drawn once and persisted before any setup mutation, bound to the run's instance,
-baseline, lease and setup. It launches no game: native seed acceptance stays gated by
+logical run, drawn once per persisted record (no redraw once a record exists) and persisted before
+any setup mutation, bound to the run's instance, baseline, lease and setup. It launches no game: native seed acceptance stays gated by
 [sts2-game-mod#79](https://github.com/AI-Ascension/sts2-game-mod/issues/79). It is ratified when the
 change carrying it merges.
 
@@ -37,8 +37,8 @@ inside the production size budget, and is additive to the existing seeded-run ma
 - **Durable binding (`resolve.rs`).** `SeedStore` persists at most one `SeedRecord` per operation, and
   `SeedSource` injects entropy so the draw count is observable. `resolve_seed` validates the setup
   first, then either restores an existing record or resolves a new one: a generate-once request draws
-  exactly once, an explicit request normalizes the supplied seed, and the record is persisted before
-  the call returns. A persistence failure fails closed. A restored record must match the request's
+  at most once (a retry after a failed persist may redraw, since no record exists yet), an explicit
+  request normalizes the supplied seed, and the record is persisted before the call returns. A persistence failure fails closed. A restored record must match the request's
   instance, baseline, lease, setup and mode, and its length-prefixed, mode-tagged binding digest must
   verify, or the request is refused. `requested_seed` and `effective_seed` stay distinct fields.
 - **Start handoff (`resolve.rs`).** `dispatch_start` sends a `SentStart` carrying the persisted
@@ -47,8 +47,9 @@ inside the production size budget, and is additive to the existing seeded-run ma
 
 ## Consequences
 
-- One logical run yields one effective seed: a duplicate request, a lost reply and a restart all
-  restore the persisted record without drawing again, because reuse never enters the draw path.
+- One logical run yields one effective seed once a record persists: a duplicate request, a lost
+  reply and a restart all restore the persisted record without drawing again, because reuse never
+  enters the draw path. Only a retry after a failed persist can redraw, before any record exists.
 - Setup cannot be mutated on an unpersisted seed, because the record is written before resolution
   returns and a write failure is an error.
 - A seed bound to the wrong instance, a stale baseline or lease, an unsupported setup, or a prior
