@@ -143,7 +143,7 @@ impl ManagementService {
             &catalog,
             &candidate.definition,
         )
-        .map_err(|error| {
+        .inspect_err(|error| {
             let _ = self.complete(
                 &operation_id,
                 AuthoringInferenceOperationState::Refused,
@@ -151,7 +151,6 @@ impl ManagementService {
                 None,
                 &error.code,
             );
-            error
         })?;
         if cost.provider_calls > reserved.provider_calls
             || cost.output_tokens > request.budget.max_output_tokens
