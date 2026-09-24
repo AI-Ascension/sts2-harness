@@ -23,6 +23,11 @@ Four failure modes had to be excluded by construction:
 3. an unbounded wait with no distinguishable timeout, denial or cancellation outcome;
 4. a restart leaving prior readiness usable, so cached pre-restart state settles a later wait.
 
+Two further modes were excluded in the hardening pass recorded below, because the first landing
+left them open: an owner's sealed proof could be paired with a milestone or generation that owner
+never reported, and a wait that received no observation never consulted its bounded deadline, so a
+starved wait stayed open indefinitely.
+
 ## Decision
 
 A new module `crates/harness/src/management/readiness_wait/` owns the contract, split so each file
@@ -36,14 +41,30 @@ stays inside the production size budget, and is additive to `lifecycle_readiness
   `deny_unknown_fields`, so an unknown member is refused at decode time, and `new` fails closed with
   `Incompatible` for an unsupported version and `InvalidTarget` for a zero deadline or attempt bound.
 - **Bounded wait (`wait.rs`, `error.rs`).** `ReadinessWait::begin` binds one instance, authority
-  epoch and process generation. `observe` accepts an existing sealed
-  `GameplayReadinessEvidence` plus the owner-reported milestone and generation: foreign instance or
-  epoch yields `ForeignReadiness`, a superseded generation yields `StaleReadiness` without spending
-  the budget, and an admitted observation below the target returns `AwaitingMore` without settling.
-  `deny`, `cancel` and `invalidate_for_restart` each settle the wait once into a distinct
+  epoch and process generation. `observe` accepts one [`MilestoneObservation`], which binds the
+  sealed owner proof to the owner-reported milestone and generation in a single value, so the facts
+  that decide settlement cannot be supplied separately: foreign instance or epoch yields
+  `ForeignReadiness`, a superseded generation yields `StaleReadiness` without spending the budget,
+  and an admitted observation below the target returns `AwaitingMore` without settling. `deny`,
+  `cancel` and `invalidate_for_restart` each settle the wait once into a distinct
   `ReadinessTerminal`, and the deadline or attempt budget yields `Timeout`. An incomplete binding
   (missing instance, zero epoch or zero generation) is reported as `InvalidBinding`, separately
   from a structurally invalid target.
+- **Explicit clock advance (`wait.rs`).** The wait owns no clock, so the deadline is enforced
+  wherever the wait is advanced: an admitted observation past the deadline times out, and
+  `expire_if_elapsed` times out a wait that receives none, so a starved wait cannot stay open
+  forever. It reports `StillOpen`, `TimedOut`, or `AlreadySettled(terminal)` and never re-settles a
+  wait that already has an outcome.
+
+### Hardening pass
+
+The first landing (ADR 0074 as originally accepted) took the milestone and generation as `observe`
+arguments beside a borrowed `GameplayReadinessEvidence`, and enforced the bounded deadline only
+inside `observe`. Independent review of the merged code found both gaps, and this pass closes them
+without changing the milestone vocabulary, the versioned target or the refusal vocabulary: the
+settle-deciding facts now travel inside `MilestoneObservation`, and the deadline can be applied to a
+starved wait through `expire_if_elapsed`. No production caller existed, so no consumer migration was
+required.
 
 ## Consequences
 
@@ -52,6 +73,10 @@ stays inside the production size budget, and is additive to `lifecycle_readiness
 - The refusal vocabulary separates timeout, denial, cancellation, restart invalidation and
   incompatibility for explicit workflow routing, and an unsupported target is refused before any
   work starts.
+- A starved wait is still bounded: a scheduler that advances the wait's clock times it out, and an
+  expired wait cannot later be satisfied by an in-window observation. The harness owns no wall
+  clock, so a caller that never advances the wait is a caller-visible, documented misuse rather
+  than a silently unbounded wait.
 - This slice maps no live gateway/mod evidence and performs no native loading. Studio capability
   fields and the native check that a listening port cannot satisfy gameplay readiness (issue #96
   T3) remain open and are not claimed satisfied here.
