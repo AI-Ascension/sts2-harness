@@ -172,10 +172,10 @@ impl ProfileReadback {
         {
             return Err(ProfileSetupError::ReadbackMismatch);
         }
-        if let Some(fenced) = admitted_baseline {
-            if self.baseline_digest != fenced {
-                return Err(ProfileSetupError::ReadbackMismatch);
-            }
+        if let Some(fenced) = admitted_baseline
+            && self.baseline_digest != fenced
+        {
+            return Err(ProfileSetupError::ReadbackMismatch);
         }
         Ok(VerifiedProfileReadback {
             profile_id: self.profile_id,

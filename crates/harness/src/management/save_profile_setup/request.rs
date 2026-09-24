@@ -157,15 +157,15 @@ pub(crate) fn validate_request(request: &ProfileSetupRequest) -> Result<(), Prof
     if !is_instance_identity(&request.instance_id) {
         return Err(ProfileSetupError::InvalidRequest);
     }
-    if let Some(profile_id) = request.profile_id.as_deref() {
-        if !is_profile_identity(profile_id) {
-            return Err(ProfileSetupError::InvalidRequest);
-        }
+    if let Some(profile_id) = request.profile_id.as_deref()
+        && !is_profile_identity(profile_id)
+    {
+        return Err(ProfileSetupError::InvalidRequest);
     }
-    if let Some(operation_id) = request.operation_id.as_deref() {
-        if !is_profile_identity(operation_id) {
-            return Err(ProfileSetupError::InvalidRequest);
-        }
+    if let Some(operation_id) = request.operation_id.as_deref()
+        && !is_profile_identity(operation_id)
+    {
+        return Err(ProfileSetupError::InvalidRequest);
     }
     if let Some(baseline) = request.baseline.as_ref() {
         baseline.validate()?;
