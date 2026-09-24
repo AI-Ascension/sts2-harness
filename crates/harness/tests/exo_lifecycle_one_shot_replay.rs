@@ -13,13 +13,14 @@ use sts2_harness as harness_api;
 use sts2_harness::exo_lifecycle::{
     AuthorityVector, EXO_LIFECYCLE_WIRE_V2, ExoLifecycleRuntimeTransport, InvocationManifest,
     JournalConfig, LifecycleAuthorityPort, LifecycleError, LifecycleOwner, LifecycleProcessEffect,
+    MAX_INPUT_BYTES, MAX_WIRE_ID_BYTES,
 };
 use sts2_harness::provider_session::{
     NativeCapabilities, ProviderSessionBroker, ProviderSessionMode, ProviderSessionPolicy,
 };
 use sts2_harness::{
     ExecutionCancellation, ExecutionStore, ExoDecisionRequest, ExoProcessConfig, ExoTransport,
-    sha256_hex,
+    encode_bridge_request, parse_bridge_request, sha256_hex,
 };
 
 #[path = "support/exo_lifecycle.rs"]
@@ -91,6 +92,45 @@ fn unknown_one_shot_duplicate_stays_held_without_a_retry() -> Result<(), String>
     if transport.exchange(&fixture.input, 8 * 1024, 1_000).is_ok() || effect_count(&log)? != 1 {
         return Err(String::from(
             "unknown duplicate retried the provider effect",
+        ));
+    }
+    Ok(())
+}
+
+/// The published wire width has to survive composition, not just validation. `tests_identity_width`
+/// proves the manifest predicate admits 512 bytes; this drives a maximum-width identity through the
+/// real one-shot path — owner mint, broker admission, dispatch and receipt — because that is where
+/// the hidden ceiling used to appear and where the request was admitted and then never settled.
+#[test]
+fn a_maximum_width_identity_dispatches_through_the_one_shot_path() -> Result<(), String> {
+    let mut fixture = fixture::Fixture::new();
+    let mut request = parse_bridge_request(
+        include_bytes!("../../../protocol-artifact/exo-bridge-v1/golden/request.json"),
+        MAX_INPUT_BYTES,
+    )
+    .map_err(|error| error.to_string())?;
+    request.model_execution_id = "e".repeat(MAX_WIRE_ID_BYTES);
+    let input = encode_bridge_request("request-1", "turn-1", &request, MAX_INPUT_BYTES)
+        .map_err(|error| error.to_string())?;
+    let mut candidate = pending_manifest(&fixture.manifest);
+    candidate.execution_id = request.model_execution_id.clone();
+    let candidate = Rc::new(RefCell::new(candidate));
+    let (mut transport, store, log) = configured_transport(&mut fixture, candidate, false)?;
+    let response = transport
+        .exchange(&input, 8 * 1024, 1_000)
+        .map_err(|error| format!("{error:?}"))?;
+    if response.is_empty() || effect_count(&log)? != 1 {
+        return Err(String::from(
+            "a maximum-width identity did not dispatch exactly one provider effect",
+        ));
+    }
+    let decision = store
+        .borrow()
+        .decision(&request.model_execution_id)
+        .map_err(|error| error.to_string())?;
+    if decision.unknown || !decision.completed {
+        return Err(String::from(
+            "a maximum-width identity was admitted without settling",
         ));
     }
     Ok(())
