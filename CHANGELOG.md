@@ -10,6 +10,13 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Admit alternative gameplay forks from verified seeded replay prefixes.** A new
+  `benchmark_manifest::prefix_fork` module fixes the effect-free fork-admission contract behind
+  #117: an exact seed/profile/build/compatibility binding, a settled nonterminal boundary with
+  complete receipts and one resolved legal action, a zero-provider-call replay, bounded sibling
+  forks with distinct identities, and a forward-only replay-to-child handoff that reconciles a lost
+  target. Source-only ([ADR 0069](docs/decisions/0069-prefix-fork-admission.md)). Refs #117.
+
 - **Orchestrate isolated cold-launch benchmark trials from one pristine baseline.** A new
   `benchmark_manifest::cold_launch` module fixes the per-trial isolation contract behind issue #122:
   an immutable baseline binding the artifact digest, launch profile and closed telemetry exclusions;

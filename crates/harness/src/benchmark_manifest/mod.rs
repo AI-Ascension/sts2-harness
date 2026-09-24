@@ -8,6 +8,7 @@
 pub mod cold_launch;
 mod contract;
 mod gate;
+pub mod prefix_fork;
 mod receipt;
 pub mod suite;
 mod validation;
