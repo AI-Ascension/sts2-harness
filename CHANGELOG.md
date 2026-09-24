@@ -31,10 +31,11 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 - **Resolve and durably bind an authored workflow's seed.** A new `seed_binding` module fixes the
   source-only contract behind #103: an explicit or generate-once seed normalizes to one bounded
-  canonical UTF-8 form, a generate-once run draws exactly once and reuses the persisted effective
-  seed across duplicate requests, lost responses and restarts, the effective seed is persisted before
-  any setup mutation (failing closed), and a wrong instance, stale baseline or lease, unsupported
-  setup, or conflicting persisted seed is refused before any draw. A recording transport proves the
+  canonical UTF-8 form, a generate-once run draws at most once per persisted record and the persisted
+  effective seed is reused across duplicate requests, lost responses and restarts without a redraw
+  (only a retry after a failed persist may redraw, before any record exists), the effective seed is
+  persisted before any setup mutation (failing closed), and a wrong instance, stale baseline or lease,
+  unsupported setup, or conflicting persisted seed is refused before any draw. A recording transport proves the
   persisted effective seed and operation identity are sent unchanged. Native seed acceptance stays
   gated by sts2-game-mod#79
   ([ADR 0071](docs/decisions/0071-authored-seed-binding.md)). Refs #103.
