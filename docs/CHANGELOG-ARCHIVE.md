@@ -5,9 +5,11 @@ This file preserves the completed `## Unreleased` history that was moved out of
 Entries are unchanged from the revision that introduced them; this archive is a verbatim record, not
 a supported release or a second normative changelog. The closed 2026-09-10 bounded-campaign wave
 that preceded the entries below is preserved in
-[`CHANGELOG-ARCHIVE-2026-09-10.md`](CHANGELOG-ARCHIVE-2026-09-10.md), and the entries archived on
+[`CHANGELOG-ARCHIVE-2026-09-10.md`](CHANGELOG-ARCHIVE-2026-09-10.md), the entries archived on
 2026-09-23 are preserved in
-[`CHANGELOG-ARCHIVE-2026-09-23.md`](CHANGELOG-ARCHIVE-2026-09-23.md).
+[`CHANGELOG-ARCHIVE-2026-09-23.md`](CHANGELOG-ARCHIVE-2026-09-23.md), and the entries archived on
+2026-09-24 are preserved in
+[`CHANGELOG-ARCHIVE-2026-09-24.md`](CHANGELOG-ARCHIVE-2026-09-24.md).
 
 ### Archived from CHANGELOG.md
 

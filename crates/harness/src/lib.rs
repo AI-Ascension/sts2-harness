@@ -97,6 +97,7 @@ mod runtime_v4_expert_action_artifact;
 mod runtime_v4_expert_artifact;
 mod runtime_v4_expert_rest_action;
 mod runtime_v4_expert_rest_action_artifact;
+pub mod seed_binding;
 pub mod semantic_history;
 mod trace_diagnosis;
 mod trace_divergence;

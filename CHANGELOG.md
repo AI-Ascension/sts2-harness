@@ -10,6 +10,16 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Resolve and durably bind an authored workflow's seed.** A new `seed_binding` module fixes the
+  source-only contract behind #103: an explicit or generate-once seed normalizes to one bounded
+  canonical UTF-8 form, a generate-once run draws exactly once and reuses the persisted effective
+  seed across duplicate requests, lost responses and restarts, the effective seed is persisted before
+  any setup mutation (failing closed), and a wrong instance, stale baseline or lease, unsupported
+  setup, or conflicting persisted seed is refused before any draw. A recording transport proves the
+  persisted effective seed and operation identity are sent unchanged. Native seed acceptance stays
+  gated by sts2-game-mod#79
+  ([ADR 0071](docs/decisions/0071-authored-seed-binding.md)). Refs #103.
+
 - **Bind a benchmark rerun admission to the exact declaration it compared equal.** `RerunAdmission`
   now owns the admitted `Manifest`, reachable only through `RerunAdmission::declaration()`, so a
   `RerunAllocationSeam` cannot allocate for a declaration other than the one whose controlled inputs
@@ -523,18 +533,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   question is asked; the provider evaluates many per call in parallel, but an unconsumed question
   would spend tokens producing a number no code reads. Compatibility: additive; one new module and
   its re-exports, no change to an existing record, route, or digest. Refs #283.
-
-- Derive the **presented option set from the state** instead of offering a provider the whole legal
-  catalog. `context_control::OptionSelection` folds catalog entries that are identical under the
-  admitted action vocabulary — the same kind aimed at the same target, differing only in which copy
-  of a card in hand it names — into one presented option, and records every fold with the option it
-  folded into, so a replay can show exactly what the provider was and was not offered. It reports
-  `forced` when one action is legal and no question is needed, `single` when the presented options
-  fit one question, and `two_stage` above a declared bound, where a kind is asked before an action
-  within it. Presented and withheld entries partition the catalog; presented order is catalog order
-  and nothing here ranks, scores, or prefers an action. A selection that would leave fewer than two
-  options presents the catalog unchanged, because one option is not a question. Affordability is
-  deliberately not a withholding rule: the host lists an action only when it is legal, so filtering
-  on cost could only ever overrule that authority, and affordability stays in the derived-exact facts
-  beside the state. Compatibility: additive; one new module and its re-exports, no change to an
-  existing record, route, or digest. Refs #290.
