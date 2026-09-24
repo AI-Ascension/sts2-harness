@@ -107,6 +107,23 @@ fn shorter_and_longer_actual_traces_report_the_unobserved_interval() {
 }
 
 #[test]
+fn empty_actual_trace_reports_missing_capture_without_underflow() {
+    let expected = trace(&['a', 'b', 'c'], "play_card", None);
+    let empty = TransitionTrace {
+        profile: "fixture-v1".to_owned(),
+        source_state: digest('a'),
+        records: Vec::new(),
+    };
+    assert_eq!(empty.validate(), Ok(()));
+    let comparison = compare_traces(&expected, &empty).expect("runs");
+    assert_eq!(comparison.outcome, TraceOutcome::MissingCapture);
+    assert_eq!(comparison.last_equal_ordinal, None);
+    assert_eq!(comparison.first_unequal_ordinal, Some(1));
+    assert_eq!(comparison.compared_records, 0);
+    assert_eq!(comparison.unobserved_records, 2);
+}
+
+#[test]
 fn genesis_and_profile_mismatches_are_separated() {
     let expected = trace(&['a', 'b', 'c'], "play_card", None);
     let other_origin = trace(&['2', 'b', 'c'], "play_card", None);
