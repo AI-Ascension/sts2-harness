@@ -12,6 +12,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use super::results::MAX_TRIAL_KEY_BYTES;
+
 /// Only supported suite-manifest version; unknown semantics require a new version.
 pub const SUITE_VERSION: &str = "ascension.benchmark-suite.v1";
 /// Whole manifest byte bound, checked before the digest is computed.
@@ -28,6 +30,20 @@ pub const MAX_SUITE_CONCURRENCY: usize = 32;
 pub const MAX_SUITE_LABEL_BYTES: usize = 128;
 /// Maximum predeclared metrics.
 pub const MAX_SUITE_METRICS: usize = 32;
+/// Bytes a derived trial key spends outside the two free axes: a 64-hex suite revision, the three
+/// separators around case/policy/repetition, and a repetition of at most two digits (repetitions
+/// stay below [`MAX_SUITE_REPETITIONS`]).
+const TRIAL_KEY_FIXED_BYTES: usize = 64 + 3 + 2;
+/// Maximum combined bytes of one case id and one policy id so the derived trial key stays within
+/// [`MAX_TRIAL_KEY_BYTES`].
+///
+/// A case id and a policy id are each bounded to [`MAX_SUITE_LABEL_BYTES`] on their own, but
+/// [`trial_key`](super::plan::trial_key) concatenates both around a 64-hex revision, so two
+/// individually valid labels can still derive a key that
+/// [`TrialOutcome::validate`](super::results::TrialOutcome::validate) refuses — a manifest that
+/// validates while its trials can never settle. Bounding the pair keeps a validating manifest
+/// plan-and-settleable.
+pub const MAX_SUITE_TRIAL_AXIS_BYTES: usize = MAX_TRIAL_KEY_BYTES - TRIAL_KEY_FIXED_BYTES;
 
 /// Rejection reasons for a suite manifest or the work it declares.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -53,6 +69,8 @@ pub enum SuiteManifestError {
     TooManyPolicies,
     /// Two policies share a `policy_id`.
     DuplicatePolicy,
+    /// A case id and a policy id pair would derive a trial key beyond [`MAX_TRIAL_KEY_BYTES`].
+    TrialKeyOverflow,
     /// A policy settings digest is empty, oversized or contains a NUL separator.
     InvalidSettingsDigest,
     /// The repetition count is zero or exceeds [`MAX_SUITE_REPETITIONS`].
@@ -86,6 +104,7 @@ impl fmt::Display for SuiteManifestError {
             Self::EmptyPolicies => "empty policy axis",
             Self::TooManyPolicies => "too many policies",
             Self::DuplicatePolicy => "duplicate policy",
+            Self::TrialKeyOverflow => "case and policy axes overflow the trial key bound",
             Self::InvalidSettingsDigest => "invalid settings digest",
             Self::InvalidRepetitions => "invalid repetition count",
             Self::EmptyMetrics => "empty metric set",
@@ -190,6 +209,7 @@ impl SuiteManifest {
         }
         self.validate_metrics()?;
         self.validate_budgets()?;
+        self.validate_trial_envelope()?;
         self.planned_count().map(|_| ())
     }
 
@@ -230,6 +250,26 @@ impl SuiteManifest {
             if !seen.insert(policy.policy_id.as_str()) {
                 return Err(SuiteManifestError::DuplicatePolicy);
             }
+        }
+        Ok(())
+    }
+
+    fn validate_trial_envelope(&self) -> Result<(), SuiteManifestError> {
+        let longest_case = self
+            .corpus
+            .cases
+            .iter()
+            .map(|case| case.case_id.len())
+            .max()
+            .unwrap_or(0);
+        let longest_policy = self
+            .policies
+            .iter()
+            .map(|policy| policy.policy_id.len())
+            .max()
+            .unwrap_or(0);
+        if longest_case + longest_policy > MAX_SUITE_TRIAL_AXIS_BYTES {
+            return Err(SuiteManifestError::TrialKeyOverflow);
         }
         Ok(())
     }

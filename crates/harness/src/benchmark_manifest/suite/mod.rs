@@ -32,8 +32,9 @@ pub use comparison::{PairedComparison, compare_paired_policies};
 pub use error::{ReportError, ScheduleError};
 pub use manifest::{
     MAX_SUITE_CASES, MAX_SUITE_CONCURRENCY, MAX_SUITE_LABEL_BYTES, MAX_SUITE_MANIFEST_BYTES,
-    MAX_SUITE_METRICS, MAX_SUITE_POLICIES, MAX_SUITE_REPETITIONS, PolicyConfig, SUITE_VERSION,
-    SeedCase, SeedCorpus, SuiteBudgets, SuiteManifest, SuiteManifestError,
+    MAX_SUITE_METRICS, MAX_SUITE_POLICIES, MAX_SUITE_REPETITIONS, MAX_SUITE_TRIAL_AXIS_BYTES,
+    PolicyConfig, SUITE_VERSION, SeedCase, SeedCorpus, SuiteBudgets, SuiteManifest,
+    SuiteManifestError,
 };
 pub use plan::{CONTEXT_NAMESPACE_PREFIX, PlannedSuiteTrial, TRIAL_KEY_SEPARATOR, plan, trial_key};
 pub use report::{

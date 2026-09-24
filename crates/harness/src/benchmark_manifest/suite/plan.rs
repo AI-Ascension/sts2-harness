@@ -3,6 +3,7 @@
 //! Stable trial keys and the deterministic case-major plan of a suite.
 
 use super::manifest::{SuiteManifest, SuiteManifestError};
+use super::results::MAX_TRIAL_KEY_BYTES;
 
 /// Separator between the parts of a stable trial key.
 pub const TRIAL_KEY_SEPARATOR: char = '/';
@@ -45,6 +46,10 @@ pub fn plan(manifest: &SuiteManifest) -> Result<Vec<PlannedSuiteTrial>, SuiteMan
         for policy in &manifest.policies {
             for repetition in 0..manifest.repetitions {
                 let key = trial_key(&revision, &case.case_id, &policy.policy_id, repetition);
+                debug_assert!(
+                    key.len() <= MAX_TRIAL_KEY_BYTES,
+                    "a validated manifest derives a settleable trial key"
+                );
                 planned.push(PlannedSuiteTrial {
                     context_namespace: format!("{CONTEXT_NAMESPACE_PREFIX}{key}"),
                     trial_key: key,

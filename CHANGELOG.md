@@ -10,6 +10,16 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Refuse a suite whose case and policy axes cannot derive a settleable trial key.** `SuiteManifest`
+  bounded a `case_id` and a `policy_id` separately at `MAX_SUITE_LABEL_BYTES` (128), while
+  `TrialOutcome::validate` refuses a `trial_key` over `MAX_TRIAL_KEY_BYTES` (256) and the key
+  concatenates both labels around a 64-hex suite revision. A manifest that validated could therefore
+  plan a trial whose outcome `settle` refused forever. The combined pair is now bounded by a derived
+  `MAX_SUITE_TRIAL_AXIS_BYTES`, so every accepted manifest is plan-and-settleable, and an oversized
+  single id is still refused as an invalid label. Source-only: no released artifact was affected and
+  no live caller reached the case. Compatibility: an input that previously validated and then failed
+  at settlement is now refused at validation.
+
 - **Map save-profile setup through a capability-gated operation contract.** A new
   `management::save_profile_setup` module fixes the source-only contract behind #102: authored
   discovery, selection and provisioning map one-to-one onto the accepted MCP tools and fixed

@@ -12,8 +12,10 @@ use std::collections::BTreeSet;
 
 use fixtures::{key_of, manifest};
 use sts2_harness::benchmark_manifest::suite::{
-    CONTEXT_NAMESPACE_PREFIX, Metric, ReportError, SuiteManifestError, TrialOutcome, TrialResult,
-    aggregate, ensure_metric_coverage, plan,
+    CONTEXT_NAMESPACE_PREFIX, MAX_SUITE_LABEL_BYTES, MAX_SUITE_TRIAL_AXIS_BYTES,
+    MAX_TRIAL_KEY_BYTES, Metric, PolicyConfig, ReportError, SUITE_VERSION, SeedCase, SeedCorpus,
+    Settlement, SuiteBudgets, SuiteManifest, SuiteManifestError, SuiteScheduler, TrialOutcome,
+    TrialResult, aggregate, ensure_metric_coverage, plan,
 };
 
 #[test]
@@ -215,4 +217,86 @@ fn manifest_validation_and_revision_identity_are_stable() {
     let mut changed_corpus = suite.clone();
     changed_corpus.corpus.cases[0].native_game_seed += 1;
     assert_ne!(revision, changed_corpus.digest().unwrap());
+}
+
+/// One case and one policy whose ids are exactly the requested lengths.
+fn axis_manifest(case_len: usize, policy_len: usize) -> SuiteManifest {
+    SuiteManifest {
+        version: SUITE_VERSION.to_owned(),
+        benchmark_ref: "benchmark:axis-envelope".to_owned(),
+        corpus: SeedCorpus {
+            cases: vec![SeedCase {
+                case_id: "c".repeat(case_len),
+                native_game_seed: 7,
+            }],
+            corpus_randomization_seed: 1,
+            provider_sampling_seed: 2,
+        },
+        policies: vec![PolicyConfig {
+            policy_id: "p".repeat(policy_len),
+            settings_digest: "a".repeat(64),
+        }],
+        repetitions: 1,
+        evaluator_revision: "evaluator-2026-09-24".to_owned(),
+        budgets: SuiteBudgets {
+            max_steps_per_trial: 1,
+            max_total_steps: 1,
+            max_total_duration_millis: 1,
+            max_concurrency: 1,
+            max_provider_spend_micros: None,
+        },
+        metrics: vec!["reached_floor".to_owned()],
+    }
+}
+
+#[test]
+fn a_max_length_axis_pair_plans_and_settles_rather_than_validating_into_an_unsettleable_key() {
+    // Combined axes exactly at the derived bound: `validate` accepts, the derived key lands
+    // exactly on the key bound, and the trial settles rather than being refused after acceptance.
+    let suite = axis_manifest(
+        MAX_SUITE_LABEL_BYTES,
+        MAX_SUITE_TRIAL_AXIS_BYTES - MAX_SUITE_LABEL_BYTES,
+    );
+    assert!(suite.validate().is_ok());
+    let planned = plan(&suite).unwrap();
+    assert_eq!(planned.len(), 1);
+    let key = planned[0].trial_key.as_str();
+    assert_eq!(
+        key.len(),
+        MAX_TRIAL_KEY_BYTES,
+        "the bound is tight: the longest accepted pair derives a key exactly at the key bound"
+    );
+    let mut scheduler = SuiteScheduler::new(&suite).unwrap();
+    assert_eq!(scheduler.start(key).unwrap(), 1);
+    assert_eq!(
+        scheduler
+            .settle(TrialOutcome::completed(key, TrialResult::Victory))
+            .unwrap(),
+        Settlement::Recorded
+    );
+
+    // One byte past the bound. Before the envelope bound this validated and then derived a
+    // 257-byte key that `settle` refused forever; now it is refused at validation.
+    let over = axis_manifest(
+        MAX_SUITE_LABEL_BYTES,
+        MAX_SUITE_TRIAL_AXIS_BYTES - MAX_SUITE_LABEL_BYTES + 1,
+    );
+    assert_eq!(
+        over.validate().unwrap_err(),
+        SuiteManifestError::TrialKeyOverflow
+    );
+
+    // Two individually valid 128-byte labels would derive a 325-byte key; the pair is refused.
+    let both_max = axis_manifest(MAX_SUITE_LABEL_BYTES, MAX_SUITE_LABEL_BYTES);
+    assert_eq!(
+        both_max.validate().unwrap_err(),
+        SuiteManifestError::TrialKeyOverflow
+    );
+
+    // The per-label bound is unchanged: an oversized case id is still an invalid label.
+    let long_case = axis_manifest(MAX_SUITE_LABEL_BYTES + 1, 1);
+    assert_eq!(
+        long_case.validate().unwrap_err(),
+        SuiteManifestError::InvalidLabel
+    );
 }

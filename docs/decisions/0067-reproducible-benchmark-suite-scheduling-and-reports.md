@@ -34,9 +34,11 @@ inside the production size budget:
   `SeedCorpus`, the ordered `PolicyConfig` axis, the repetition count, the evaluator revision, the
   declared `SuiteBudgets` and the predeclared metric names. Corpus randomization, the native game
   seed of each case and the optional provider sampling seed are separate typed fields and are never
-  substituted for one another. `validate` bounds every axis and `digest` gives the suite revision
-  identity, so changing the corpus, policies, evaluator or budgets produces a new revision and
-  preserves prior results.
+  substituted for one another. `validate` bounds every axis — including the combined case/policy
+  label length, so a case id and a policy id that are each valid cannot derive a trial key beyond
+  `MAX_TRIAL_KEY_BYTES` and leave an accepted manifest whose trials can never settle — and `digest`
+  gives the suite revision identity, so changing the corpus, policies, evaluator or budgets
+  produces a new revision and preserves prior results.
 - **Stable plan and scheduler (`plan.rs`, `scheduler.rs`).** `plan` derives one trial per suite
   revision, case, policy and repetition, in deterministic case-major order, each with its own
   `suite-trial:` context namespace. `SuiteScheduler` keeps attempt lineage: `start` records a retry,
@@ -81,8 +83,11 @@ Studio UI, matching requirement 6 of the issue.
 ## Validation
 
 - `crates/harness/tests/benchmark_suite.rs` plans the 2x2x2 suite (eight distinct keys, eight distinct
-  namespaces, every cell once), checks the complete result table and metric availability, and checks
-  the manifest rejections and revision identity.
+  namespaces, every cell once), checks the complete result table and metric availability, checks the
+  manifest rejections and revision identity, and drives a max-length case/policy pair through
+  `validate` → `plan` → `start` → `settle` — the longest accepted pair derives a key exactly at
+  `MAX_TRIAL_KEY_BYTES` and settles, one byte past it is refused at validation, and an oversized
+  single label stays an invalid label.
 - `crates/harness/tests/benchmark_suite_schedule.rs` covers retry, idempotent replay, conflicting
   settlement, cancellation, unknown/malformed input, resume and the frozen corpus.
 - `crates/harness/tests/benchmark_suite_report.rs` covers censored, infrastructure, cancelled and
