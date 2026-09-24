@@ -95,11 +95,12 @@ pub fn admit_profile_setup(
         return Err(ProfileSetupError::ProfileRequired);
     }
     if operation.requires_baseline_fence() {
-        let baseline = request
-            .baseline
-            .as_ref()
-            .ok_or(ProfileSetupError::BaselineFenceMismatch)?;
-        if Some(baseline.profile_id.as_str()) != request.profile_id.as_deref() {
+        // A selection must carry a fence, but the fence names the owner's
+        // user-data baseline identity, which is a namespace of its own and is
+        // independent of the selected slot. The owner applies no equality rule
+        // (its select fixture pairs `slot-1` with baseline `baseline-1`), so
+        // none is imposed here — only presence is required.
+        if request.baseline.is_none() {
             return Err(ProfileSetupError::BaselineFenceMismatch);
         }
     } else if request.baseline.is_some() {

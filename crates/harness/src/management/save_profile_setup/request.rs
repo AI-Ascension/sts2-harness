@@ -18,24 +18,33 @@ pub const PROFILE_SETUP_SCHEMA_VERSION: &str = "ascension.save-profile-setup/v1"
 pub const MAX_PROFILE_ID_BYTES: usize = 128;
 
 /// An admitted baseline a selection must fence against.
+///
+/// The fence mirrors the owner's `ProfileBaseline`: the baseline's own
+/// user-data identity plus the lowercase SHA-256 digest of that baseline. The
+/// identity is the baseline's identity, **not** the selected slot's profile id,
+/// so it is validated for shape only and deliberately never compared to
+/// [`ProfileSetupRequest::profile_id`]. The owner applies no equality rule
+/// between the two namespaces — its own select fixture pairs `slot-1` with
+/// baseline `baseline-1` and is accepted — so requiring one here would refuse
+/// the owner's normal happy path.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProfileBaselineFence {
-    /// The profile identity the baseline was read for.
-    pub profile_id: String,
+    /// The owner-reported identity of the baseline being fenced.
+    pub identity: String,
     /// Lowercase SHA-256 digest of the admitted baseline.
-    pub baseline_digest: String,
+    pub digest: String,
 }
 
 impl ProfileBaselineFence {
-    /// Validates the fence's profile identity and digest shape.
+    /// Validates the fence's baseline identity and digest shape.
     pub fn validate(&self) -> Result<(), ProfileSetupError> {
-        if !is_profile_identity(&self.profile_id) {
+        if !is_profile_identity(&self.identity) {
             return Err(ProfileSetupError::InvalidRequest);
         }
-        if self.baseline_digest.len() != 64
+        if self.digest.len() != 64
             || !self
-                .baseline_digest
+                .digest
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
         {

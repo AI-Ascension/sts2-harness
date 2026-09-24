@@ -113,8 +113,8 @@ fn ungranted_operations_are_refused_before_any_effect() {
     let mut select = request(ProfileSetupOperationDocument::Select);
     select.profile_id = Some(PROFILE.to_owned());
     select.baseline = Some(ProfileBaselineFence {
-        profile_id: PROFILE.to_owned(),
-        baseline_digest: digest(0x11),
+        identity: "baseline-1".to_owned(),
+        digest: digest(0x11),
     });
     // Discovery-only deployment cannot select.
     let discovery_only = ProfileSetupGrants {
@@ -138,8 +138,8 @@ fn discovery_cannot_name_a_profile_or_a_baseline() {
 
     let mut fenced = request(ProfileSetupOperationDocument::Current);
     fenced.baseline = Some(ProfileBaselineFence {
-        profile_id: PROFILE.to_owned(),
-        baseline_digest: digest(0x22),
+        identity: "baseline-1".to_owned(),
+        digest: digest(0x22),
     });
     assert_eq!(
         admit_profile_setup(&fenced, all_grants()),
@@ -148,26 +148,22 @@ fn discovery_cannot_name_a_profile_or_a_baseline() {
 }
 
 #[test]
-fn selection_requires_a_matching_baseline_fence() {
+fn selection_requires_a_baseline_fence_but_not_a_matching_identity() {
     let mut select = request(ProfileSetupOperationDocument::Select);
     select.profile_id = Some(PROFILE.to_owned());
+    // A selection with no fence is refused: the fence is required.
     assert_eq!(
         admit_profile_setup(&select, all_grants()),
         Err(ProfileSetupError::BaselineFenceMismatch)
     );
 
+    // The fence's baseline identity is a namespace independent of the selected
+    // slot, so a *different* identity is admitted. This mirrors the owner's own
+    // select fixture (`profile_id:"slot-1"` with `baseline.identity:"baseline-1"`)
+    // and its accepted readback, which applies no equality rule.
     select.baseline = Some(ProfileBaselineFence {
-        profile_id: "save.other.v1".to_owned(),
-        baseline_digest: digest(0x33),
-    });
-    assert_eq!(
-        admit_profile_setup(&select, all_grants()),
-        Err(ProfileSetupError::BaselineFenceMismatch)
-    );
-
-    select.baseline = Some(ProfileBaselineFence {
-        profile_id: PROFILE.to_owned(),
-        baseline_digest: digest(0x44),
+        identity: "baseline-1".to_owned(),
+        digest: digest(0x33),
     });
     let admitted = admit_profile_setup(&select, all_grants()).expect("fenced selection");
     assert!(admitted.is_mutation());
@@ -178,8 +174,8 @@ fn selection_requires_a_matching_baseline_fence() {
 fn selection_without_a_profile_identity_is_refused() {
     let mut select = request(ProfileSetupOperationDocument::Select);
     select.baseline = Some(ProfileBaselineFence {
-        profile_id: PROFILE.to_owned(),
-        baseline_digest: digest(0x55),
+        identity: "baseline-1".to_owned(),
+        digest: digest(0x55),
     });
     assert_eq!(
         admit_profile_setup(&select, all_grants()),
@@ -191,8 +187,8 @@ fn selection_without_a_profile_identity_is_refused() {
 fn a_disposable_provision_may_not_fence_a_baseline_it_does_not_have() {
     let mut provision = request(ProfileSetupOperationDocument::CreateDisposable);
     provision.baseline = Some(ProfileBaselineFence {
-        profile_id: PROFILE.to_owned(),
-        baseline_digest: digest(0x66),
+        identity: "baseline-1".to_owned(),
+        digest: digest(0x66),
     });
     assert_eq!(
         admit_profile_setup(&provision, all_grants()),
@@ -268,8 +264,8 @@ fn readback_must_match_the_admitted_identity_before_setup_progresses() {
     select.profile_id = Some(PROFILE.to_owned());
     let baseline = digest(0x77);
     select.baseline = Some(ProfileBaselineFence {
-        profile_id: PROFILE.to_owned(),
-        baseline_digest: baseline.clone(),
+        identity: "baseline-1".to_owned(),
+        digest: baseline.clone(),
     });
     let admitted = admit_profile_setup(&select, all_grants()).expect("selection");
 
@@ -336,8 +332,8 @@ fn malformed_baseline_digests_are_refused_at_admission_and_readback() {
     let mut select = request(ProfileSetupOperationDocument::Select);
     select.profile_id = Some(PROFILE.to_owned());
     select.baseline = Some(ProfileBaselineFence {
-        profile_id: PROFILE.to_owned(),
-        baseline_digest: "NOT-A-DIGEST".to_owned(),
+        identity: "baseline-1".to_owned(),
+        digest: "NOT-A-DIGEST".to_owned(),
     });
     assert_eq!(
         admit_profile_setup(&select, all_grants()),
