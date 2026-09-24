@@ -10,7 +10,7 @@
 //! The owner API is deliberately small:
 //!
 //! - declare: [`BranchExperimentManifest`] freezes the fork point, child policies, strategy, stop
-//!   conditions and per-child/total budgets, and [`plan`] derives one stable trial per child;
+//!   conditions and per-child/total budgets, and [`plan()`] derives one stable trial per child;
 //! - admit: [`admit_start`] re-checks same-start admission for each trial;
 //! - run: [`BranchExperimentScheduler::start`]/[`BranchExperimentScheduler::settle`]/
 //!   [`BranchExperimentScheduler::cancel`]/[`BranchExperimentScheduler::resume`];

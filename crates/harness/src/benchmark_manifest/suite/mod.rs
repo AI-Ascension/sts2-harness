@@ -7,7 +7,7 @@
 //! covers every path an operator needs without launching a game or spending provider credit:
 //!
 //! - validate: [`SuiteManifest::validate`] and [`SuiteManifest::digest`];
-//! - run: [`plan`] plus [`SuiteScheduler::start`]/[`SuiteScheduler::settle`];
+//! - run: [`plan()`] plus [`SuiteScheduler::start`]/[`SuiteScheduler::settle`];
 //! - status: [`SuiteScheduler::pending`], [`SuiteScheduler::phase_of`] and
 //!   [`SuiteScheduler::attempts`];
 //! - resume: [`SuiteScheduler::resume`] replays recorded outcomes over the frozen plan;

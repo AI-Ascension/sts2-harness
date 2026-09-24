@@ -16,7 +16,7 @@
 //! - An identity collection is a terminal value; it has no members to name.
 //! - Every required model-visible root field must be reached, so a recipe cannot quietly drop the
 //!   observation's identity, player, or state aggregates.
-//! - Every [`FieldProtection::OwnerOnly`] field is refused, including the legal-action catalog and
+//! - Every [`FieldProtection::OwnerOnly`](super::model_view_catalog::FieldProtection::OwnerOnly) field is refused, including the legal-action catalog and
 //!   the owner's unseen card piles.
 
 use super::model_view_catalog::{FieldShape, MAX_MODEL_VIEW_FIELDS, ViewContext};
