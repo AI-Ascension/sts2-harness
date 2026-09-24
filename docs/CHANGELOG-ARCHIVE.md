@@ -276,15 +276,6 @@ that preceded the entries below is preserved in
   schema, contract version or durable record changes, and `legacy` behaviour is unchanged. See
   [ADR 0032](decisions/0032-inspected-admission-identity.md). Refs #139.
 
-- Add the **`sts2-jev-bridge` executable**, which asks one typed question of a System One provider
-  and returns one terminal decision. It reads a bounded decision request on standard input, builds
-  the request from the host-generated catalog, runs one bounded exchange, maps the answer, and prints
-  exactly one decision. Every refusal is fail-closed — a nonzero exit and nothing on standard output
-  — for an oversized request, an absent or malformed catalog, a transport failure or nonzero exit, an
-  unreadable or oversized reply, an answer of the wrong type, and a choice outside the presented
-  options. `--describe` prints the requested configuration without reading input or starting a
-  process, and reports requested configuration rather than availability.
-
 - Make the harness library **compile for Windows** again, and add a lane that keeps it that way.
   `exo_lifecycle/process_effect.rs` guarded one unix-only call and then used `rustix::process` —
   whose `process` module is unix-only — unconditionally for the child's identity and for killing its

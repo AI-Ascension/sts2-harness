@@ -146,6 +146,14 @@ supported release or a second normative changelog.
   invocation would use. Compatibility: additive; the existing four-element form and the default gate
   are unchanged. Refs #308.
 
+- Add the **`sts2-jev-bridge` executable**, which asks one typed question of a System One provider
+  and returns one terminal decision. It reads a bounded decision request on standard input, builds
+  the request from the host-generated catalog, runs one bounded exchange, maps the answer, and prints
+  exactly one decision. Every refusal is fail-closed — a nonzero exit and nothing on standard output
+  — for an oversized request, an absent or malformed catalog, a transport failure or nonzero exit, an
+  unreadable or oversized reply, an answer of the wrong type, and a choice outside the presented
+  options. `--describe` prints the requested configuration without reading input or starting a
+  process, and reports requested configuration rather than availability.
   The HTTPS exchange is performed by an operator-owned transport executable named by `--transport`,
   following the precedent `sts2-astra-bridge` set; request construction, bounds, catalog membership,
   the confidence gate and the decision shape stay inside the digest-pinned binary, and the credential
