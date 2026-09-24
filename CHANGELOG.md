@@ -10,6 +10,14 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Correct the bounded-route method contract to match the corrected module contract.** The
+  `DynamicRuntime::execute_bounded_region` rustdoc called its region "declared" and listed the
+  admission refusals without the #465 region/planner-profile identity check, so it still implied
+  the region came from the workflow. It now says the region is caller-supplied, names
+  `BoundedRegionRefusal::PlanIdentityMismatch`, and states that the region is checked against the
+  plan but never against a declared `adaptive_region` node. Documentation only; no behavior,
+  schema, route, refusal, bound or digest change. Source-only: no native effect. Refs #470.
+
 - **Correct the bounded-analysis module contract: it names an entry point that exists and stops
   claiming a node-route change that was never made.** The `workflow::bounded_region` module doc
   said the production `DynamicRuntime` *"reaches this module through `BoundedAnalysis`"* — a type
