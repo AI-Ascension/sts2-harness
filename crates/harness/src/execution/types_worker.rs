@@ -26,7 +26,7 @@ use std::sync::{Arc, Weak};
 /// The one-time authorization produced only by a fresh worker-handoff insert.
 ///
 /// A permit deliberately has no public constructor, clone, serialization, or identity accessor.
-/// It is consumed by [`ExecutionStore::mark_worker_handoff_running`](super::ExecutionStore::mark_worker_handoff_running)
+/// It is consumed by [`ExecutionStore::mark_worker_handoff_running`](super::super::ExecutionStore::mark_worker_handoff_running)
 /// so a duplicate or reopened handoff can never be turned back into execution authority.
 pub struct WorkerExecutionPermit {
     handoff_id: String,

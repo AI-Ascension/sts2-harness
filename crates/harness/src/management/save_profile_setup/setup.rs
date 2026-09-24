@@ -76,7 +76,7 @@ impl AdmittedProfileSetup {
 /// rule for a mutation. The returned value is a mapping only; nothing is called.
 ///
 /// An admitted mutation must still be reconciled: see
-/// [`VerifiedProfileReadback::verify`].
+/// [`ProfileReadback::verify`].
 pub fn admit_profile_setup(
     request: &ProfileSetupRequest,
     grants: ProfileSetupGrants,

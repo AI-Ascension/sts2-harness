@@ -2,7 +2,7 @@
 
 //! Per-invocation context membership policy.
 //!
-//! Until this module existed, one owner-issued [`ContextDraft`] decided what entered every model
+//! Until this module existed, one owner-issued [`ContextDraft`](super::types::ContextDraft) decided what entered every model
 //! request. Two invocations could not disagree about inclusion without rewriting a persisted
 //! revision, nothing recorded *why* an item was included or excluded, and there was no way to keep a
 //! mandatory host prerequisite in the owner's state while omitting it from model-visible input.

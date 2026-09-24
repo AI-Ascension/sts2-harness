@@ -136,7 +136,7 @@ impl NativeCapabilities {
     }
 
     /// Selected-profile admission for a session policy value. Schema validity is checked separately
-    /// by [`ProviderSessionPolicy::validate_schema`]; this answers only whether the selected
+    /// by [`ProviderSessionPolicy::validate_schema`](crate::provider_session::ProviderSessionPolicy::validate_schema); this answers only whether the selected
     /// adapter profile can execute it.
     ///
     /// # Errors

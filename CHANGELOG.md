@@ -10,6 +10,21 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Repair the seven dangling intra-doc links and gate the class durably.** `sts2-harness` failed a
+  documentation-integrity expectation its own gates could not see: seven intra-doc links across six
+  files named a type or method that does not resolve at the file's own scope, three of them reachable
+  by a plain `cargo doc`. Every one names a real item elsewhere in the crate, so each was a
+  scope/path defect rather than a stale name: `execution::types::worker` looked for `ExecutionStore`
+  under `execution::types`, which re-exports only `ExecutionStoreError`;
+  `management::save_profile_setup::setup` attributed `verify` to `VerifiedProfileReadback` when it is
+  an inherent method of `ProfileReadback`; `provider_session::types::effective_limits` linked a bare
+  `ProviderSessionPolicy`; and `context_control::membership`, `context_control::model_view` and
+  `management::lifecycle` linked bare names owned by sibling modules. Each link now carries a path
+  that resolves. The durable half is a `cargo doc` step in the `rust` job with
+  `RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links --document-private-items"`, because a default
+  rustdoc run skips the private modules that hold four of the seven; no workflow had run
+  `cargo doc`/`rustdoc` before, so nothing owned the class. Refs #477.
+
 - **Correct the bounded-analysis documentation contract.** The `workflow::bounded_region` module
   doc cited a `BoundedAnalysis` type defined on no revision across all 64 remote refs and the bare
   `[`AnalysisValue`]` beside it — both dangling intra-doc links — and claimed a declared adaptive

@@ -23,7 +23,7 @@ jobs:
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -81,6 +81,9 @@ jobs:
 
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      - name: Check documentation links
+        run: RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links --document-private-items" cargo doc --package sts2-harness --no-deps --locked
 
       - name: Run Rust tests
         run: cargo test --workspace --all-targets --all-features --locked

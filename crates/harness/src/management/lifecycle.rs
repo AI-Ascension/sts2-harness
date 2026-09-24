@@ -15,8 +15,8 @@
 //! 2. **Exact instance identity.** The target instance is resolved from the
 //!    run's own admitted target binding. A run without that binding fails
 //!    closed, so there is no configured or default instance to fall back to.
-//! 3. **Launch is not readiness.** [`LaunchAcknowledgement`] is deliberately
-//!    not the type [`LifecycleReadiness`] accepts as evidence; see
+//! 3. **Launch is not readiness.** [`LaunchAcknowledgement`](super::lifecycle_readiness::LaunchAcknowledgement) is deliberately
+//!    not the type [`LifecycleReadiness`](super::lifecycle_readiness::LifecycleReadiness) accepts as evidence; see
 //!    `lifecycle_readiness.rs`.
 
 use serde::{Deserialize, Serialize};
