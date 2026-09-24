@@ -10,6 +10,18 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Make the doctest gate's guarded property actually protected.** `#480` began executing the
+  workspace's doctest, but its `compile_fail,E0624` annotation does not enforce the error code. On
+  rustdoc 1.97.1 a snippet that dies of `E0432` (unresolved import) or `E0425` (undeclared name)
+  still reports `ok`, and an unknown code such as `E9999` is accepted silently, so only
+  "compilation fails for some reason" was ever asserted. The fence reaches the `pub(crate)`
+  constructor through four public re-exports, so removing any one of them would have left CI green
+  while the assertion stopped testing the constructor at all — the same class the parent gate was
+  added to prevent, one level up. The doc comment now carries a second, **compiling** fence that
+  pins those same paths and turns red the moment one is renamed or removed; the `compile_fail`
+  fence is left to assert the authority property it can actually assert. Compatibility: docs and
+  doctest only; no production code, schema, route or behavior change. Refs #481.
+
 - **Run the workspace doctests in CI.** No gate executed doctests: the `rust` job runs
   `cargo test --workspace --all-targets --all-features --locked`, and `--all-targets` excludes the
   `--doc` target by definition, so the repository's single doctest — the `compile_fail,E0624` guard
