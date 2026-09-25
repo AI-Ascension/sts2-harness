@@ -15,6 +15,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(5);
 
 /// Read one length-delimited startup frame from the inherited watchdog pipe.
 /// The pipe is switched to bounded polling mode so a malformed launcher or a
+/// [`no_such_symbol_h513ctrl`] is bounded.
 /// suspended parent cannot leave the worker blocked forever.
 pub fn read_bootstrap_stdin(
     magic: &[u8; 8],
