@@ -115,6 +115,41 @@ jobs:
       - name: Check the workspace for Windows
         run: cargo check --workspace --all-features --locked --target x86_64-pc-windows-gnu
 
+      # The documentation gate in the `rust` job runs on this Linux runner, where the
+      # `#[cfg(windows)]` surface of `worker_endpoint.rs` is compiled out: a broken intra-doc
+      # link inside it cannot fail that gate, and `cargo doc` never parses the body. This target
+      # is already installed above for `cargo check`, and the mingw cross linker is required
+      # here too — the build script of a workspace dependency invokes the C compiler for this
+      # target before any lint runs.
+      #
+      # `-A dead_code` is allowed for this target only, for the reason the check step above
+      # records: unix-gated modules leave dead code on a Windows target, so those warnings are
+      # noise here and the three rustdoc denies are what this step enforces. It belongs in
+      # `RUSTFLAGS`, not `RUSTDOCFLAGS`, and that distinction is measured rather than stylistic:
+      # `cargo doc --package sts2-harness` documents this crate's bins as well as its lib, the
+      # bins link the lib, and the lib is therefore built once by **rustc**, which `RUSTDOCFLAGS`
+      # never reaches. With the flag in `RUSTDOCFLAGS` alone this step failed its own first
+      # hosted run — `windows-doc: exit=0 errors=0 warnings=4`, all four `dead_code`
+      # (`persistence`, `as_str`, `is_empty`, and the crate summary; job 108000689696) — while a
+      # run scoped to `--lib` prints no `dead_code` at all because no bin links the lib there.
+      # Acceptance is still read from the log rather than the step conclusion — a misspelled deny
+      # is an inert `unknown lint` diagnostic and still exits 0, so a green conclusion alone is
+      # not evidence.
+      - name: Document the Windows-target code the quality-gate job compiles out
+        run: |
+          set -o pipefail
+          log=target/windows-doc.log
+          status=0
+          RUSTFLAGS="-A dead_code" \
+            RUSTDOCFLAGS="-A dead_code -D rustdoc::broken_intra_doc_links -D rustdoc::private_intra_doc_links -D rustdoc::redundant_explicit_links --document-private-items" \
+            cargo doc --package sts2-harness --no-deps --locked --target x86_64-pc-windows-gnu 2>&1 | tee "$log" || status=$?
+          errors=$(awk '/^error/{count++} END{print count+0}' "$log")
+          unknown=$(awk '/unknown lint/{count++} END{print count+0}' "$log")
+          documented=$(awk '/Generated .*doc\/sts2_harness\/index.html/{count++} END{print count+0}' "$log")
+          warnings=$(awk '/^warning/{count++} END{print count+0}' "$log")
+          echo "windows-doc: exit=$status errors=$errors warnings=$warnings unknown_lints=$unknown documented=$documented"
+          [ "$status" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$warnings" -eq 0 ] && [ "$unknown" -eq 0 ] && [ "$documented" -eq 1 ]
+
       - name: Build the provider bridges for Windows
         run: |
           cargo build --locked --release --target x86_64-pc-windows-gnu \
