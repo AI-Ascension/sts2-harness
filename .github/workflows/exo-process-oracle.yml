@@ -81,15 +81,15 @@ jobs:
         run: |
           STS2_EXO_TEST_NODE="$(command -v node)" \
             CARGO_TARGET_DIR="$PWD/target/exo-executor" \
-            cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
-            --test process_oracle -- --ignored
+            $GITHUB_WORKSPACE/tools/exact-gate.sh - cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
+            --test process_oracle -- --ignored --exact real_exo_process_matrix
 
       - name: Run the real-Exo duplex lookup oracle
         run: |
           STS2_EXO_TEST_NODE="$(command -v node)" \
             CARGO_TARGET_DIR="$PWD/target/exo-executor" \
-            cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
-            --test lookup_oracle -- --ignored
+            $GITHUB_WORKSPACE/tools/exact-gate.sh - cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
+            --test lookup_oracle -- --ignored --exact real_exo_duplex_lookup_round_trips
 
       - name: Run the real-Exo fault matrix and run isolation
         # Extends the lane with #148 T2/T3: the admission fault matrix (schema/pin/identity), a
@@ -98,8 +98,8 @@ jobs:
         run: |
           STS2_EXO_TEST_NODE="$(command -v node)" \
             CARGO_TARGET_DIR="$PWD/target/exo-executor" \
-            cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
-            --test fault_oracle -- --ignored
+            $GITHUB_WORKSPACE/tools/exact-gate.sh - cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
+            --test fault_oracle -- --ignored --exact real_exo_fault_matrix_and_run_isolation
 
       - name: Run the real-Exo bound and turn-budget oracle
         # Extends the lane with #148's remaining source-only halves: writer-side back-pressure at
@@ -109,14 +109,14 @@ jobs:
         run: |
           STS2_EXO_TEST_NODE="$(command -v node)" \
             CARGO_TARGET_DIR="$PWD/target/exo-executor" \
-            cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
-            --test bound_oracle -- --ignored
+            $GITHUB_WORKSPACE/tools/exact-gate.sh - cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
+            --test bound_oracle -- --ignored --exact real_exo_back_pressure_and_budget_exhaustion
 
       - name: Run the real-Exo advertised-variant oracle
         # Fifth leg (#531); `bootstrap_oracle` is deliberately manual, see the bridge README.
         run: |
           STS2_EXO_TEST_NODE="$(command -v node)" CARGO_TARGET_DIR="$PWD/target/exo-executor" \
-            cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml --test advertised_variant_oracle -- --ignored
+            $GITHUB_WORKSPACE/tools/exact-gate.sh - cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml --test advertised_variant_oracle -- --ignored --exact advertised_variants_and_zero_model_probes
 
       - name: Assert the fault report names the pinned revision
         env:
