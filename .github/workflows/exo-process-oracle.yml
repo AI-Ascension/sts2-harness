@@ -112,6 +112,12 @@ jobs:
             cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
             --test bound_oracle -- --ignored
 
+      - name: Run the real-Exo advertised-variant oracle
+        # Fifth leg (#531); `bootstrap_oracle` is deliberately manual, see the bridge README.
+        run: |
+          STS2_EXO_TEST_NODE="$(command -v node)" CARGO_TARGET_DIR="$PWD/target/exo-executor" \
+            cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml --test advertised_variant_oracle -- --ignored
+
       - name: Assert the fault report names the pinned revision
         env:
           EXO_REVISION: ${{ steps.exo-revision.outputs.revision }}
@@ -156,6 +162,10 @@ jobs:
           test "$(jq -r .maximum_source_bytes target/exo-lookup-oracle-report.json)" = "65536"
           test "$(jq -r .maximum_source_turns target/exo-lookup-oracle-report.json)" = "24"
 
+      - name: Assert the advertised-variant report records zero model probes
+        run: |
+          jq --exit-status --arg rev "${{ steps.exo-revision.outputs.revision }}" '.schema == "sts2.exo-advertised-variant-evidence-v1" and .exo_revision == $rev and .full_runtime_admission == false and .model_requests == 0 and (.probes | length) == 5' target/exo-advertised-report.json
+
       - name: Upload the bounded process evidence report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -166,5 +176,6 @@ jobs:
             target/exo-fault-report.json
             target/exo-bound-report.json
             target/exo-lookup-oracle-report.json
+            target/exo-advertised-report.json
           if-no-files-found: warn
           retention-days: 7

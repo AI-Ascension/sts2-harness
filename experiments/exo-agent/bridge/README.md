@@ -73,6 +73,13 @@ STS2_EXO_TEST_NODE="$NODE_BIN_DIR/node" CARGO_TARGET_DIR="$PWD/target/exo-execut
   --test bound_oracle -- --ignored
 ```
 
+`tests/advertised_variant_oracle.rs` is wired into the same workflow as a fifth leg, so the
+advertisement it checks is re-derived on every run instead of only being byte-pinned; its
+`target/exo-advertised-report.json` is asserted for zero model requests and uploaded with its
+siblings. `tests/bootstrap_oracle.rs` is **deliberately manual** (`sts2-harness#531`): it is a
+round-trip test that writes no report, so it has no artifact to assert or upload, and it needs the
+built relay plus the pinned Exo checkout in the same way the wired legs do.
+
 `tests/bound_oracle.rs` measures the two source-only remainders recorded on `sts2-harness#148`
 after the process/fault slices: writer-side back-pressure at the bridge request bound and the
 executor's own read bound, and the `timeout_millis`/`max_output_tokens` turn budgets. It emits

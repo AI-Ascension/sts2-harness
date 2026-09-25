@@ -134,8 +134,9 @@ the default pins. Never substitute a branch name, moving default, or dirty tree.
 [`experiments/exo-agent/bridge/README.md`](../experiments/exo-agent/bridge/README.md). It installs the
 pinned Node runtime and pnpm, checks out `exoharness/exo` at the revision read from
 `EXO_SOURCE_REVISION`, builds the isolated `sts2-exo-executor` package and the `sts2-exo-bridge`
-binary, and executes the previously `#[ignore]`d `process_oracle`, `lookup_oracle`, `fault_oracle`
-and `bound_oracle` tests.
+binary, and executes the previously `#[ignore]`d `process_oracle`, `lookup_oracle`, `fault_oracle`,
+`bound_oracle` and `advertised_variant_oracle` tests. `bootstrap_oracle` is the one remaining
+manual bridge oracle: it writes no report, so there is no artifact for the lane to assert.
 
 `fault_oracle` adds the `#148` T2/T3 fault and isolation matrix: the admission faults (config schema,
 pin and argv identity, provider-route refusal) must fail closed with **zero** model egress, a lost
