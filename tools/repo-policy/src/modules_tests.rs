@@ -132,7 +132,10 @@ fn ignores_declarations_inside_comments_and_strings() {
     );
     assert_eq!(
         reported,
-        BTreeSet::from(["src/comment_only.rs".to_owned(), "src/string_only.rs".to_owned()])
+        BTreeSet::from([
+            "src/comment_only.rs".to_owned(),
+            "src/string_only.rs".to_owned()
+        ])
     );
 }
 
@@ -212,7 +215,8 @@ fn scans_a_crate_on_disk_with_controls() -> Result<(), Box<dyn Error>> {
         fs::write(root.join(format!("crate/src/{name}")), "")?;
     }
     fs::write(root.join("spike/standalone.rs"), "")?;
-    let policy = Policy::load(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../policy.toml"))?;
+    let policy =
+        Policy::load(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../policy.toml"))?;
     let files = collect(root, &policy)?;
     let reported: BTreeSet<String> = findings(root, &files)
         .iter()

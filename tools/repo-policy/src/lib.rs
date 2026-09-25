@@ -7,6 +7,8 @@ mod files;
 mod license;
 mod markdown;
 mod module_lexer;
+mod module_paths;
+mod module_roots;
 mod module_scan;
 mod modules;
 mod rust;
