@@ -116,6 +116,42 @@ fn inline_module_owns_a_directory() {
     assert_eq!(reported, BTreeSet::from(["src/inner.rs".to_owned()]));
 }
 
+/// `mod r#move;` is legal and common where the module name is a keyword, and
+/// rustc resolves it to `move.rs` — `rustc` on `mod r#move;` with only
+/// `r#move.rs` present fails `E0583: file not found for module \`r#move\`` and
+/// names `src/move.rs` as the file to create. Reading the declaration as the
+/// literal text `r#move` would report a file rustc compiles.
+#[test]
+fn raw_identifier_module_resolves_to_the_bare_stem() {
+    let reported = unreachable(
+        &[
+            ("src/lib.rs", "mod r#move;\n"),
+            ("src/move.rs", ""),
+            ("src/r#move.rs", ""),
+        ],
+        &["src/lib.rs"],
+    );
+    // The `r#`-prefixed filename is the orphan: rustc never loads it.
+    assert_eq!(reported, BTreeSet::from(["src/r#move.rs".to_owned()]));
+}
+
+/// An inline raw-identifier module scopes its children under the bare name:
+/// `mod r#type { mod child; }` in `src/lib.rs` resolves `child` in `src/type/`,
+/// not `src/r#type/` (verified with `rustc 1.97.1`: the prefixed directory fails
+/// `E0583`).
+#[test]
+fn inline_raw_identifier_module_owns_its_bare_directory() {
+    let reported = unreachable(
+        &[
+            ("src/lib.rs", "mod r#type {\n    mod child;\n}\n"),
+            ("src/type/child.rs", ""),
+            ("src/r#type/child.rs", ""),
+        ],
+        &["src/lib.rs"],
+    );
+    assert_eq!(reported, BTreeSet::from(["src/r#type/child.rs".to_owned()]));
+}
+
 #[test]
 fn ignores_declarations_inside_comments_and_strings() {
     let reported = unreachable(

@@ -39,6 +39,11 @@ The checker is deliberately bounded: it does not prove runtime behavior, schema 
 correctness, game compatibility, artifact confidentiality, or that an implementation respects every
 architectural invariant. Those require tests, review, and controlled evidence.
 
+`RUST002` follows rustc's own name resolution for the declaration forms it recognises, so it must
+never report a file rustc compiles. That includes raw identifiers: `mod r#move;` resolves to
+`move.rs` and an inline `mod r#type { }` owns `type/`, not `r#move.rs` or `r#type/`. A name is only
+the stem rustc looks up for, whether or not the keyword form `r#` prefix was needed to write it.
+
 ## Configuration and exemptions
 
 `policy.toml` lists required files, ignored build/editor/vendor directories, limits, and exact-path
