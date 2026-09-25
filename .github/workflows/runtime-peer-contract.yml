@@ -104,7 +104,7 @@ jobs:
         working-directory: harness
         env:
           STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR: ${{ runner.temp }}/runtime-peer-contract
-        run: cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact executable_runtime_v4_composes_unknown_reconcile_and_foreign_state_fence
+        run: $GITHUB_WORKSPACE/harness/tools/exact-gate.sh - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact executable_runtime_v4_composes_unknown_reconcile_and_foreign_state_fence
 
       - name: Exercise executable REST selector composition
         working-directory: harness
@@ -112,34 +112,34 @@ jobs:
           # write_evidence writes result.json; keep it out of the generic step's directory.
           STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR: ${{ runner.temp }}/runtime-peer-contract/rest
         run: |
-          cargo test --locked -j 2 --package sts2-harness --test runtime_v4_rest_executable_composition -- --ignored --exact executable_runtime_v4_rest_composes_full_selection_recovery_chain
-          cargo test --locked -j 2 --package sts2-harness --test runtime_v4_rest_executable_composition -- --ignored --exact executable_runtime_v4_rest_composes_native_selector_id_chain
+          "$GITHUB_WORKSPACE/harness/tools/exact-gate.sh" - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_rest_executable_composition -- --ignored --exact executable_runtime_v4_rest_composes_full_selection_recovery_chain
+          "$GITHUB_WORKSPACE/harness/tools/exact-gate.sh" - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_rest_executable_composition -- --ignored --exact executable_runtime_v4_rest_composes_native_selector_id_chain
 
       - name: Exercise served policy routes, settled action, and idle-adoption rebind
         working-directory: harness
         run: |
-          cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_workflow_settles_action_with_adopted_provider_policy
-          cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_decision_survives_changed_policy_adopted_while_idle
+          "$GITHUB_WORKSPACE/harness/tools/exact-gate.sh" - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_workflow_settles_action_with_adopted_provider_policy
+          "$GITHUB_WORKSPACE/harness/tools/exact-gate.sh" - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_decision_survives_changed_policy_adopted_while_idle
 
       - name: Exercise served unknown-effect restart refusal
         working-directory: harness
-        run: cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_restart_refuses_unknown_effect_without_redispatch
+        run: $GITHUB_WORKSPACE/harness/tools/exact-gate.sh - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_restart_refuses_unknown_effect_without_redispatch
 
       - name: Exercise served context-source adoption and pre-provider refusal
         working-directory: harness
-        run: cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_workflow_adopts_context_source_before_managed_decision
+        run: $GITHUB_WORKSPACE/harness/tools/exact-gate.sh - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_workflow_adopts_context_source_before_managed_decision
 
       - name: Exercise served cancellation reconciliation against pinned peers
         working-directory: harness
-        run: cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_cancel_reconciles_an_accepted_unsettled_action
+        run: $GITHUB_WORKSPACE/harness/tools/exact-gate.sh - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_cancel_reconciles_an_accepted_unsettled_action
 
       - name: Exercise served peer-negative and authored-graph acceptance
         working-directory: harness
-        run: cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_peer_acceptance_rejects_bad_bindings_and_tracks_authored_graph
+        run: $GITHUB_WORKSPACE/harness/tools/exact-gate.sh - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_peer_acceptance_rejects_bad_bindings_and_tracks_authored_graph
 
       - name: Exercise served context receipt recovery after process restart
         working-directory: harness
-        run: cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_workflow_recovers_context_receipt_after_process_restart
+        run: $GITHUB_WORKSPACE/harness/tools/exact-gate.sh - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_workflow_recovers_context_receipt_after_process_restart
 
       - name: Require the pinned peers to serve the recovery sideband contract
         working-directory: harness
@@ -148,8 +148,8 @@ jobs:
           STS2_GATEWAY_PEER_ROOT: ${{ github.workspace }}/gateway
           STS2_MCP_PEER_ROOT: ${{ github.workspace }}/mcp
         run: |
-          cargo test --locked -j 2 --package sts2-harness --test runtime_peer_recovery_sideband -- --ignored --exact configured_mcp_peer_serves_the_watchdog_recovery_sideband
-          cargo test --locked -j 2 --package sts2-harness --test runtime_peer_recovery_sideband -- --ignored --exact declared_peers_carry_one_recovery_frame_contract
+          "$GITHUB_WORKSPACE/harness/tools/exact-gate.sh" - cargo test --locked -j 2 --package sts2-harness --test runtime_peer_recovery_sideband -- --ignored --exact configured_mcp_peer_serves_the_watchdog_recovery_sideband
+          "$GITHUB_WORKSPACE/harness/tools/exact-gate.sh" - cargo test --locked -j 2 --package sts2-harness --test runtime_peer_recovery_sideband -- --ignored --exact declared_peers_carry_one_recovery_frame_contract
 
       - name: Exercise the shipped host-lease campaign downstream
         working-directory: harness
@@ -157,7 +157,7 @@ jobs:
           binary=$(cargo test --locked -j 2 --package sts2-harness --test synthetic_mod_server --no-run \
             --message-format=json | grep -o '"executable":"[^"]*synthetic_mod_server-[^"]*"' | tail -n1 | cut -d'"' -f4)
           test -x "$binary"
-          STS2_SYNTHETIC_MOD_SERVER_BINARY="$binary" cargo test --locked -j 2 --package sts2-harness --test host_lease_control_served -- --ignored --exact the_env_configured_campaign_downstream_answers_a_signed_install
+          STS2_SYNTHETIC_MOD_SERVER_BINARY="$binary" "$GITHUB_WORKSPACE/harness/tools/exact-gate.sh" - cargo test --locked -j 2 --package sts2-harness --test host_lease_control_served -- --ignored --exact the_env_configured_campaign_downstream_answers_a_signed_install
 
       - name: Exercise hostile startup and cancellation cleanup regressions
         working-directory: harness
