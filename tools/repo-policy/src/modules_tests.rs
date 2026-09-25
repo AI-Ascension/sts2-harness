@@ -103,6 +103,26 @@ fn include_reaches_source_and_its_children() {
     assert!(reported.is_empty(), "{reported:?}");
 }
 
+/// An `include!`d file is compiled in place, so a `mod child;` inside it
+/// resolves beside **the fragment**, not beside the includer. The flat test
+/// above cannot discriminate: there both directories are the same. Measured
+/// with `rustc 1.97.1`: with `deeper.rs` beside the fragment the crate builds
+/// (exit 0), and moving it to the includer's directory fails `E0583` pointing
+/// at `src/inc/leaf.rs:1:1`, so the includer-local file is the orphan.
+#[test]
+fn included_fragment_owns_its_own_directory() {
+    let reported = unreachable(
+        &[
+            ("src/lib.rs", "include!(\"inc/leaf.rs\");\n"),
+            ("src/inc/leaf.rs", "mod deeper;\n"),
+            ("src/inc/deeper.rs", ""),
+            ("src/deeper.rs", ""),
+        ],
+        &["src/lib.rs"],
+    );
+    assert_eq!(reported, BTreeSet::from(["src/deeper.rs".to_owned()]));
+}
+
 #[test]
 fn inline_module_owns_a_directory() {
     let reported = unreachable(

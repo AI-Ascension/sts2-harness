@@ -10,6 +10,20 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Stop `RUST002` from reporting two rustc-valid module shapes as unreachable.** The rule must never
+  red a file rustc compiles, and it did so twice. A declaration written with a raw identifier lost
+  its edge entirely — `identifier()` read only `r` from `r#move` and stopped at `#`, so the rule
+  looked for `r#move.rs` and reported the real `move.rs`, which `rustc` loads (with only `r#move.rs`
+  present it fails `E0583` and names `src/move.rs` as the file to create). An inline
+  `mod r#type { }` likewise owns `type/`, not `r#type/`. Separately, an `include!`d file carried the
+  **includer's** directory forward, so a `mod child;` written inside a fragment was resolved beside
+  the includer instead of beside the fragment that is compiled in place; that inverted the finding
+  in both directions, missing the includer-local decoy and flagging the fragment-local file. The raw
+  form and the fragment's own directory are now both honoured, each with a regression test proven to
+  fail against the pre-fix code. The first defect was live: `sts2-game-mod` declares `mod r#move;`
+  beside a compiled `move.rs` and was red for it. Compatibility: analysis only; no runtime,
+  provider, game, or native behavior changes. Closes #495.
+
 - **Deny the two rustdoc lint classes the doc gate was only warning about.** The `Check documentation
   links` step denied only `rustdoc::broken_intra_doc_links`, so it exited 0 while printing `generated
   5 warnings`: four `private_intra_doc_links` sites where public documentation linked to a private
@@ -469,66 +483,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   Runtime stdout stays one decision; storage failures refuse it. Add a redacted paired reader and
   CI for the offline evaluation tests. Windows capture, native gameplay benefit and live paired
   orchestration remain unverified. See [capture documentation](experiments/jev-evaluation/CAPTURE.md).
-
-- Let a provider ask **bounded semantic history through one harness-owned agent tool**. The history
-  a run records was queryable inside the harness but not through the boundary an agent actually
-  drives, so nothing could ask what happened without reaching around that boundary. The tool
-  vocabulary is closed to the branch, kind, origin, subject, episode, sequence, limit and
-  continuation axes — a question naming a path, bucket, artifact, record ordinal, offset, owner, run
-  or epoch is refused rather than read — so the MCP game adapter cannot bypass the owned port to
-  arbitrary artifact storage or reverse-call the harness. Selecting history is additive over the
-  bootstrap profile: the advertised schema, tool set and digest widen to include the new tool, no
-  shipped tool or inherited authority axis changes, and each additive turn keeps its own wire pin, so
-  a relay holding an earlier profile's pin cannot relabel a frame into a history question and a
-  bootstrap turn is refused on the pin history added. History is served only from the store the owner
-  attached, that grant is re-checked on every read, and a session with no attachment refuses by
-  capability name rather than answering an empty history; an episode travels per event, so the
-  question cannot name one as a session axis. One answer must fit one feedback envelope, and an
-  archive replay of a history turn diverges rather than being presented as a replayed read.
-  Compatibility: additive — the v1 and v2 advertisements, pins and tool descriptions stay
-  byte-compatible, the profile is opt-in, and no durable record or published schema changes. See
-  [ADR 0057](docs/decisions/0057-harness-semantic-history.md). Refs #128.
-
-- Record **queryable semantic combat and run history with causal provenance**. The host's bounded
-  semantic event vocabulary had no harness-owned durable history behind it, so a run could not be
-  asked what happened or why a value changed. The new `semantic_history` module appends each event
-  against one run, branch, episode and authority epoch on a strictly advancing sequence, and carries
-  both ends of an event — an actor and a target, each in the namespace it was minted in — plus the
-  content a card play, pile move, purchase or offer names. A detail the kind requires and the host
-  omitted is refused rather than stored as absent, as is a capture gap closed with an invented
-  event; a causal parent is admitted only when the host stated one, in the same branch and epoch and
-  strictly before its child, and an imported event never states one. An identical re-append replays
-  and writes nothing while different content under one identity is a conflict; retention redacts a
-  value in place rather than deleting the event or zeroing it. History is readable only through the
-  harness-owned port, which re-checks owner and epoch on every read and refuses a caller naming
-
-  A run's history is written out and read back as one document, and restoration re-derives
-  every rule the append path applies — each record's shape, the epoch and coverage it claims,
-  its stated parent, its recomputed digest and the branch lineage — so a truncated, reordered
-  or edited document is refused rather than loaded as a history this boundary never wrote.
-  An advance to a new authority epoch, which restarts host sequencing honestly, survives that
-  restart with the sequencing expectation of the epoch now in force.
-  Native saved history is backfilled through the same owned port and only as opaque bytes, so an
-  importer cannot state a window, scope, epoch or cause the harness would then trust: a batch that
-  names another scope, epoch or branch, an unknown member, another schema or a non-opaque identity
-  is refused, an event that claims a native origin is refused rather than stamped as imported,
-  imported records keep the coverage and source label they were captured under, and a batch that
-  fails partway writes nothing at all. A granted reader can now spend a page's continuation and ask
-  for a bounded causal explanation.
-  storage directly; see [ADR 0057](docs/decisions/0057-harness-semantic-history.md). Refs #128.
-
-- Name the **host's recovery reason** in an episode failure instead of reporting every recovery
-  condition with one sentence. A runtime-v3 recovery state carries the condition that produced it
-  in the sibling `code`, but the parser read only the stage, so a refused launch contract
-  (`launch_contract_refused_<reason>`), an unconfigured host and an unavailable observation all
-  arrived as `episode requires recovery before policy can continue`. The code is now bound to the
-  observation and named in the failure when the host named one, and the established sentence is
-  unchanged when it named none. It is held to the same identity rule as `state_id`, and only a
-  recovery observation may carry one, so a reason the host names later needs no second change here
-  while a code the schema cannot carry still fails closed. The same reason now survives the expert
-  runtime profiles, whose observation is composed from the expert projection rather than carried
-  over from the runtime-v3 read, so `runtime-v4-expert` and `runtime-v4-expert-rest-action` name it
-  too. Compatibility: `breaking` for
-  `EpisodeRunnerError::RecoveryRequired`, now a struct variant with an optional `code`; no wire
-  field, schema or durable record changes, and the directory diagnostic stays in `game.log`
-  unread. See [ADR 0056](docs/decisions/0056-harness-recovery-reason-token.md). Refs #355.
