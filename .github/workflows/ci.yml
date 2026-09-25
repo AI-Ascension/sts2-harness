@@ -148,7 +148,7 @@ jobs:
           errors=$(awk '/^error/{count++} END{print count+0}' "$log")
           unknown=$(awk '/unknown lint/{count++} END{print count+0}' "$log")
           documented=$(awk '/Documenting sts2-harness(-windows-boundary)? v0\.0\.0/{count++} END{print count+0}' "$log")
-          items=$(awk 'BEGIN{n=0} {n+=gsub(/"[A-Za-z_][A-Za-z0-9_]*/,"&")} END{print n+0}' target/x86_64-pc-windows-gnu/doc/sts2_harness_windows_boundary/sidebar-items.js 2>/dev/null)
+          items=0; [ -f target/x86_64-pc-windows-gnu/doc/sts2_harness_windows_boundary/sidebar-items.js ] && items=$(awk 'BEGIN{n=0} {n+=gsub(/"[A-Za-z_][A-Za-z0-9_]*/,"&")} END{print n+0}' target/x86_64-pc-windows-gnu/doc/sts2_harness_windows_boundary/sidebar-items.js)
           warnings=$(awk '/^warning/{count++} END{print count+0}' "$log")
           echo "windows-doc: exit=$status errors=$errors warnings=$warnings unknown_lints=$unknown documented=$documented items=$items"
           [ "$status" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$warnings" -eq 0 ] && [ "$unknown" -eq 0 ] && [ "$documented" -eq 2 ] && [ "$items" -gt 0 ]
