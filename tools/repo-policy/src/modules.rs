@@ -240,6 +240,10 @@ fn bases(file: &str, child_dir: &str, declarations: &[Declaration], position: us
                     .map(|path| Base {
                         dir: join(&base, path),
                         pending: Vec::new(),
+                        // Anchored: the inner `#[path]` is relative to the
+                        // directory the outer one named, not to the carrying
+                        // file. `inline_path_attribute_inside_a_path_module_is_anchored`
+                        // is the only shape that reaches this flag.
                         anchored: true,
                     })
                     .collect()
