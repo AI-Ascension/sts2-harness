@@ -9,7 +9,20 @@
 //! `DIR/x.rs` then `DIR/x/mod.rs`; a `#[path]` file keeps its children in the
 //! file's own directory; crate roots, each `[[bin]]` path, and `mod.rs` child
 //! lookup are honoured. `cfg` and `cfg_attr` gates are treated as always taken,
-//! so only a file reachable from no target under any gate is reported.
+//! so every branch of a gated declaration is credited.
+//!
+//! That is a deliberate over-approximation with one visible consequence: a file
+//! reached only through a name-based branch that no configuration actually
+//! takes stays silent. For an exhaustive `#[cfg_attr(unix, path = "a.rs")]` /
+//! `#[cfg_attr(not(unix), path = "b.rs")]` pair on one `mod imp;`, the plain
+//! `src/imp.rs` is unreachable under every gate yet is still credited, because a
+//! declaration whose gates are all false carries no `#[path]` at all and the
+//! scan cannot evaluate them. Silence is chosen over reporting here: dropping
+//! the name branch would report a *live* file for a shape like
+//! `#[cfg_attr(feature = "x", path = "a.rs")] #[cfg_attr(feature = "y", path =
+//! "b.rs")] mod m;`, where `src/m.rs` is live under the default build. A missed
+//! orphan costs a future lost `mod` line; a false report costs a live file, so
+//! the asymmetry decides. `cfg_attr_path_pairs` pins both sides.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fs;

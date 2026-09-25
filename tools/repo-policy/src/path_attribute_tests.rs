@@ -46,6 +46,80 @@ fn cfg_attr_path_reaches_every_branch() {
     assert!(reported.is_empty(), "{reported:?}");
 }
 
+/// The deliberate over-approximation, pinned so a future tightening is a red
+/// test rather than a silent behaviour change: when a plain same-named sibling
+/// exists beside an **exhaustive** `#[cfg_attr]` pair, that sibling is dead
+/// under every configuration but stays silent.
+///
+/// Measured (`rustc 1.97.1`, per-file markers): with `unix` / `not(unix)` on one
+/// `mod snap;`, `src/snap_unix.rs` fires and `src/snap_other.rs` does not, so
+/// `src/snap.rs` is read by no configuration. The same rule covers the inline
+/// block form: `src/m/child.rs` carries no firing marker while
+/// `src/altu/child.rs` does. A scan that dropped the name branch to report these
+/// would instead report a live file on `a_non_exhaustive_pair_keeps_the_name_branch`.
+#[test]
+fn cfg_attr_path_pairs() {
+    let semicolon = unreachable(
+        &[
+            (
+                "src/lib.rs",
+                "#[cfg_attr(unix, path = \"snap_unix.rs\")]\n\
+                 #[cfg_attr(not(unix), path = \"snap_other.rs\")]\n\
+                 mod snap;\n",
+            ),
+            ("src/snap_unix.rs", ""),
+            ("src/snap_other.rs", ""),
+            ("src/snap.rs", ""),
+        ],
+        &["src/lib.rs"],
+    );
+    assert!(semicolon.is_empty(), "{semicolon:?}");
+
+    let inline = unreachable(
+        &[
+            (
+                "src/lib.rs",
+                "#[cfg_attr(unix, path = \"altu\")]\n\
+                 #[cfg_attr(not(unix), path = \"altw\")]\n\
+                 mod m { pub mod child; }\n",
+            ),
+            ("src/altu/child.rs", ""),
+            ("src/altw/child.rs", ""),
+            ("src/m/child.rs", ""),
+        ],
+        &["src/lib.rs"],
+    );
+    assert!(inline.is_empty(), "{inline:?}");
+}
+
+/// The counterexample that decides the direction above: a pair whose gates are
+/// **not** exhaustive leaves the plain name live. With
+/// `#[cfg_attr(feature = "x", path = "a.rs")]` and
+/// `#[cfg_attr(feature = "y", path = "b.rs")]` on one `mod m;`, a per-file
+/// marker fires for `src/m.rs` under the default build, for `src/a.rs` with
+/// `--cfg 'feature="x"'`, and for `src/b.rs` with `--cfg 'feature="y"'` — all
+/// three are real, so nothing may be reported. Keying the name branch off the
+/// *number* of `#[path]` attributes reports `src/m.rs` here, which is why the
+/// branch is kept rather than narrowed.
+#[test]
+fn a_non_exhaustive_pair_keeps_the_name_branch() {
+    let reported = unreachable(
+        &[
+            (
+                "src/lib.rs",
+                "#[cfg_attr(feature = \"x\", path = \"a.rs\")]\n\
+                 #[cfg_attr(feature = \"y\", path = \"b.rs\")]\n\
+                 mod m;\n",
+            ),
+            ("src/m.rs", ""),
+            ("src/a.rs", ""),
+            ("src/b.rs", ""),
+        ],
+        &["src/lib.rs"],
+    );
+    assert!(reported.is_empty(), "{reported:?}");
+}
+
 /// A **pair** of mutually exclusive `#[cfg_attr]`s is the case where the
 /// branch-union rule costs precision, so the cost is pinned here rather than
 /// left implicit. With `#[cfg_attr(unix, path = "a.rs")]` and
