@@ -68,7 +68,18 @@ cargo build --locked --config 'profile.dev.package.sha2.opt-level=3' \
 STS2_EXO_TEST_NODE="$NODE_BIN_DIR/node" CARGO_TARGET_DIR="$PWD/target/exo-executor" \
   cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
   --test process_oracle -- --ignored
+STS2_EXO_TEST_NODE="$NODE_BIN_DIR/node" CARGO_TARGET_DIR="$PWD/target/exo-executor" \
+  cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
+  --test bound_oracle -- --ignored
 ```
+
+`tests/bound_oracle.rs` measures the two source-only remainders recorded on `sts2-harness#148`
+after the process/fault slices: writer-side back-pressure at the bridge request bound and the
+executor's own read bound, and the `timeout_millis`/`max_output_tokens` turn budgets. It emits
+`target/exo-bound-report.json` and refuses to record it unless every recorded source is committed
+at `HEAD`. Its evidence class is the same real-process/synthetic-model/no-game class as the
+oracles above: the model service is a loopback endpoint the test controls, and nothing here
+reaches a provider, credential, game, save or native host.
 
 The SHA-256 optimization affects build performance, not admission policy; hashing large debug
 binaries without it is slow. Release builds optimize that dependency normally. The isolated
@@ -143,8 +154,13 @@ Do not invoke it without applicable provider authorization and bounds.
 
 Every run also requires the SHA-256 of the exact configuration bytes as the final argument.
 Requests require EOF within five seconds and are bounded to 131072 bytes. The executor has
-a bounded turn deadline, an empty model-tool registry and one fresh conversation. Response
-envelopes obey both the existing 8192-byte ceiling and the request's lower cap.
+a bounded turn deadline (`timeout_millis`, at most 120000, measured against an endpoint that
+holds the reply outstanding) and a bounded output budget (`max_output_tokens`, at most 4096, so a
+truncated reply yields no decision rather than a fabricated one), an isolated 160 KiB input read,
+an empty model-tool registry and one fresh conversation. A handoff at that read bound is admitted
+but its turn is then denied locally by the extension's equal model-write bound, so the read bound
+is not a size that returns a decision. Response envelopes obey both the existing 8192-byte
+ceiling and the request's lower cap.
 
 Only actual Exo turn/session IDs and fetch-attempt counts are emitted as bounded stderr metadata.
 They do not prove provider usage, game action settlement, cancellation or durable recovery.
