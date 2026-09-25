@@ -137,6 +137,11 @@ pinned Node runtime and pnpm, checks out `exoharness/exo` at the revision read f
 binary, and executes the previously `#[ignore]`d `process_oracle`, `lookup_oracle`, `fault_oracle`,
 `bound_oracle` and `advertised_variant_oracle` tests. `bootstrap_oracle` is the one remaining
 manual bridge oracle: it writes no report, so there is no artifact for the lane to assert.
+Each executed leg names its single test (`-- --ignored --exact <name>`) and runs through
+`tools/exact-gate.sh`, so a renamed, dropped, or un-ignored test fails the step instead of reporting
+a green empty run (`sts2-harness#535`). The covering check is
+`crates/harness/tests/exact_gate_lane_coverage.rs`, which sweeps every workflow file rather than an
+enumerated few (`sts2-harness#536`).
 
 `fault_oracle` adds the `#148` T2/T3 fault and isolation matrix: the admission faults (config schema,
 pin and argv identity, provider-route refusal) must fail closed with **zero** model egress, a lost
