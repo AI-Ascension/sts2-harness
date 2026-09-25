@@ -110,7 +110,10 @@ fn reachable(
         }
         for include in &includes {
             let target = join(&directory(&file), include);
-            enqueue(&mut pending, sources, target, child_dir.clone());
+            // An `include!`d file is compiled in place, so its own directory,
+            // not the includer's, is the base for a `mod child;` written in it.
+            let fragment_dir = directory(&target);
+            enqueue(&mut pending, sources, target, fragment_dir);
         }
     }
     reached
