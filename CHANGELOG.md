@@ -10,29 +10,6 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
-- **Measure the two source-only Exo bounds `#148` had left, and report the one that is not what it
-  looks like.** `process_oracle` writes 131,073 bytes and *then* sends EOF, which exercises the
-  bridge's read/parse bound; it says nothing about how many bytes a writer gets into a peer that has
-  already stopped reading, and nothing about the executor's turn budgets. `bound_oracle` drives both
-  shipped entrypoints against the real pinned Exo runtime and a **test-controlled loopback endpoint**
-  (so `timeout_millis` can be measured against a reply that is genuinely outstanding) and pins three
-  separate boundaries rather than one: a writer offering 131,072 and 131,073 bytes is stopped by the
-  bridge's own `exo_bridge_invalid_request` **pre-inference**, with zero model connections; the
-  executor reads at most 160 KiB and kills the pipe (`exo_executor_input_bound`), so offering 8×
-  that figure is stopped rather than silently swallowed; and — the uncomfortable half — **a handoff
-  padded to exactly the executor's 160 KiB read bound is admitted by it and still returns no
-  decision**, because the projected model request then trips the extension's *equal* model-write
-  bound and three SDK attempts are denied locally before any inference. The case therefore reports
-  that bound as reachable only by a direct drive instead of implying a bound-sized handoff yields a
-  decision, and it also measures that a saturated bridge projection (32 constraints of 512 bytes)
-  cannot approach 160 KiB at all — the read bound is **unreachable through the bridge**, which builds
-  no `exo_bridge_input_bound` code path. The budget half proves `timeout_millis` is a real deadline
-  (a 10 s budget aborts a held turn at 10 s and reports the typed `exo_executor_turn_timeout`) and
-  that a reply truncated at `max_output_tokens` yields `decision: null` with `exo_turn_failed`
-  rather than a fabricated decision. Evidence class: **real pinned Exo process composition with a
-  synthetic model and no game** — no provider, credential, game, save or native effect is claimed,
-  and the new report carries `full_runtime_admission: false`. Compatibility: tests, documentation and
-  one CI step; no shipped boundary changed. Refs #148.
 - **Persist authoring-inference reservations in the management store instead of only in memory.**
   Requirement 4 of the bounded authoring-inference surface says a reservation is *persisted* and
   AC4 says a *restart* preserves one operation with an honest cost/outcome state, but the only
@@ -50,6 +27,33 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   exists to prevent. Additive: the in-memory journal is unchanged, no route or schema is removed.
   Refs #105. The issue stays open for the HTTP-boundary conflict case and for the owner's
   scoping decision on whether AC4's restart is meant to be cross-process.
+
+- **Measure the two source-only Exo bounds `#148` had left, and report the one that is not what it
+  looks like.** `process_oracle` writes 131,073 bytes and *then* sends EOF, which exercises the
+  bridge's read/parse bound; it says nothing about how many bytes a writer gets into a peer that has
+  already stopped reading, and nothing about the executor's turn budgets. `bound_oracle` drives both
+  shipped entrypoints against the real pinned Exo runtime and a **test-controlled loopback endpoint**
+  (so `timeout_millis` can be measured against a reply that is genuinely outstanding) and pins three
+  separate boundaries rather than one: a writer offering 131,072 and 131,073 bytes is stopped by the
+  bridge's own `exo_bridge_invalid_request` **pre-inference**, with zero model connections; the
+  executor reads at most 160 KiB and kills the pipe (`exo_executor_input_bound`), so offering 8×
+  that figure is stopped rather than silently swallowed; and — the uncomfortable half — **a handoff
+  padded to exactly the executor's 160 KiB read bound is admitted by it and still returns no
+  decision**, because the projected model request then trips the extension's *equal* model-write
+  bound and every SDK attempt is denied locally before any inference; the case records the
+  `fetch_attempts`/`denied_requests` counts it asserts instead of stating a count in prose. The case
+  therefore reports that bound as reachable only by a direct drive instead of implying a
+  bound-sized handoff yields a decision, and it also measures why the bound cannot be approached
+  through the bridge at all: the envelope's `hard_constraints` are schema-capped at 32 items of 512
+  bytes (`protocol-artifact/exo-bridge-v1/schema.json`), so a saturated projection tops out near
+  16 KiB and the read bound is **unreachable through the bridge**, which builds no
+  `exo_bridge_input_bound` code path. The budget half proves `timeout_millis` is a real deadline
+  (a 10 s budget aborts a held turn at 10 s and reports the typed `exo_executor_turn_timeout`) and
+  that a reply truncated at `max_output_tokens` yields `decision: null` with `exo_turn_failed`
+  rather than a fabricated decision. Evidence class: **real pinned Exo process composition with a
+  synthetic model and no game** — no provider, credential, game, save or native effect is claimed,
+  and the new report carries `full_runtime_admission: false`. Compatibility: tests, documentation and
+  one CI step; no shipped boundary changed. Refs #148.
 
 - **Cover the one `RUST002` `#[path]` anchoring branch the suite could lose silently.** The
   `Base`/`bases()` mechanism added in #499 exists to distinguish an *unnested* `#[path]` value —
@@ -517,33 +521,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 - Run the existing compiled Jev paired-replay and frozen-pilot tests in both Node CI checks
   through a locked-build [entrypoint](experiments/jev-evaluation/compiled-ci.sh). Failures do not
   silently skip coverage. The transport stays synthetic; live gameplay benefit remains unverified.
-
-- **Enforce the prepared-input token-measurement invariant on the read path.** `TokenMeasurement`
-  claimed that `tokens` is `None` exactly when the provenance is `Unavailable`, but its fields were
-  public and its derived deserializer accepted any shape, so a record claiming an absent provenance
-  beside a byte count deserialized and `PreparedInputBudget::tokens()` reported that byte count as a
-  token count. The fields are now private behind read accessors, and deserialization re-validates
-  exactly what the constructors validate: `Unavailable` with a quantity, a non-`Unavailable`
-  provenance with no quantity, `tokens == 0` and an invalid method are rejected rather than read
-  back as a measurement. The Unicode eviction test now discriminates byte accounting from character
-  accounting. No durable record, published schema, or consumer pin changes. Refs #381.
-
-- **Refuse a served assembled input that does not fit beside its advertised output reserve.** The
-  pre-existing `max_context_bytes` check bounded the request bytes alone; there was no served bound
-  over the whole bytes actually sent. `ContextRenderLimits` and the context-owner descriptor both
-  gain an optional `output_reserve_bytes`: `None` is exactly the prior contract, where response
-  capacity stays bounded by the provider configuration, and a published reserve makes
-  `max_context_bytes` the combined whole-input bound. The served managed decision then admits the
-  assembled provider bytes against that bound before any dispatch, refusing
-  `context_whole_input_budget_exceeded` and an unusable advertised reserve with
-  `context_whole_input_budget_invalid`. Compatibility: additive; the field is optional and
-  skip-serialized, so a descriptor that does not advertise it serializes byte-identically. See
-  [ADR 0058](docs/decisions/0058-served-whole-input-output-reserve.md). Refs #107.
-
-- Add a read-only [frozen Jev pilot profile](experiments/jev-evaluation/PILOT.md): ten pairs,
-  twenty reserved attempts, exact-manifest reconciliation, per-arm refusal/gate diagnostics and
-  matched input-token/latency accounting. No policy change or live gameplay benefit is claimed.
-
-- Add an explicitly approved [paired Jev replay runner](experiments/jev-evaluation/RUNNER.md):
-  pinned matching inputs, reserved budgets, independent redacted captures, bounded Unix processes
-  and read-only recovery. No game action is dispatched; native/provider benefit remains unverified.

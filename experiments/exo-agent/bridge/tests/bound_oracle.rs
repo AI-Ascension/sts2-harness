@@ -133,10 +133,14 @@ fn bridge_read_bound_is_not_back_pressure(
             "evidence": "bridge-parse-refusal-pre-spawn"}));
     }
 
-    // A bridge-issued handoff cannot approach the executor's read bound: the projection the bridge
-    // builds carries at most 32 constraints, so its parse bound always fires first. This records
-    // that measured relationship instead of implying the executor bound is unreachable through the
-    // bridge.
+    // A bridge-issued handoff cannot approach the executor's read bound, and the reason is the
+    // schema rather than this fixture: `hard_constraints` is capped at 32 items of 512 bytes
+    // (`protocol-artifact/exo-bridge-v1/schema.json`), so a schema-legal projection tops out near
+    // 16 KiB — an order of magnitude below the 163,840-byte read bound — while the accepted
+    // envelope itself is already capped at 131,072. The `< LIMIT / 4` threshold below is a function
+    // of the constant under test, so a tightened read bound is still caught; the case records the
+    // saturated projection *and* the cap it saturates against instead of implying the executor
+    // bound is unreachable through the bridge for an unstated reason.
     let mut saturated = bounds::request_envelope(&bounds::workspace_root()?)?;
     saturated["request"]["hard_constraints"] = json!(
         (0..32)
@@ -159,6 +163,7 @@ fn bridge_read_bound_is_not_back_pressure(
         "saturated_projection_bytes": projected.len(),
         "executor_input_limit": EXECUTOR_INPUT_LIMIT,
         "bridge_request_bound": BRIDGE_REQUEST_BOUND,
+        "constraint_schema_cap": {"items": 32, "item_bytes": 512},
         "model_requests": 0, "evidence": "measured-at-maximum-constraints"}),
     );
     Ok(())
@@ -171,10 +176,12 @@ fn bridge_read_bound_is_not_back_pressure(
 /// way rather than as a single "at the bound, the turn completes" claim. At `INPUT_LIMIT` the executor
 /// reads the whole handoff and admits it, but the turn then fails **locally in the extension's own
 /// model-write guard**: the projected request body is larger than the extension's 160 KiB bound, so
-/// it denies three SDK attempts before any inference and the endpoint sees zero requests. This lane
-/// therefore reports the read bound as reachable-but-not-sufficient, instead of implying that a
-/// handoff at 160 KiB yields a decision. One size below (`INPUT_LIMIT - 4 KiB`) completes a real
-/// turn, so the refusal at the bound is the projection guard and not a broken drive.
+/// it denies every attempt before any inference and the endpoint sees zero requests. The receipt's
+/// `fetch_attempts` and `denied_requests` are recorded in the case rather than counted in prose, so
+/// the refusal stays checkable from the report alone. This lane therefore reports the read bound as
+/// reachable-but-not-sufficient, instead of implying that a handoff at 160 KiB yields a decision.
+/// One size below (`INPUT_LIMIT - 4 KiB`) completes a real turn, so the refusal at the bound is the
+/// projection guard and not a broken drive.
 fn executor_stops_reading_at_its_own_bound(
     root: &Path,
     config: &Path,
@@ -195,6 +202,9 @@ fn executor_stops_reading_at_its_own_bound(
         4096,
     )?;
     model.reset()?;
+    // The at-bound case's denial counts are recorded into its report entry rather than only
+    // asserted, so the refusal is checkable from the emitted evidence instead of from prose.
+    let mut recorded_attempts = None;
     for (name, target, outcome) in [
         (
             "executor_handoff_below_projection_bound",
@@ -269,6 +279,10 @@ fn executor_stops_reading_at_its_own_bound(
                     0,
                     "{name} must be denied locally, before the endpoint"
                 );
+                recorded_attempts = Some((
+                    receipt["fetch_attempts"].clone(),
+                    receipt["denied_requests"].clone(),
+                ));
             }
             _ => {
                 assert!(!run.output.status.success(), "{name}");
@@ -276,12 +290,17 @@ fn executor_stops_reading_at_its_own_bound(
                 assert_eq!(model.request_count(), 0, "{name}");
             }
         }
-        cases.push(json!({"case": name, "passed": true, "bytes": target,
+        let mut entry = json!({"case": name, "passed": true, "bytes": target,
             "outcome": outcome,
             "written": run.written, "processes": run.processes,
             "error_line": run.stderr_line(),
             "model_requests": model.request_count(),
-            "evidence": "executor-read-bound"}));
+            "evidence": "executor-read-bound"});
+        if let Some((fetch_attempts, denied_requests)) = recorded_attempts.take() {
+            entry["fetch_attempts"] = fetch_attempts;
+            entry["denied_requests"] = denied_requests;
+        }
+        cases.push(entry);
     }
     std::fs::remove_file(&bounded)?;
 

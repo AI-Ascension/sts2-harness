@@ -7,9 +7,11 @@ a supported release or a second normative changelog. The closed 2026-09-10 bound
 that preceded the entries below is preserved in
 [`CHANGELOG-ARCHIVE-2026-09-10.md`](CHANGELOG-ARCHIVE-2026-09-10.md), the entries archived on
 2026-09-23 are preserved in
-[`CHANGELOG-ARCHIVE-2026-09-23.md`](CHANGELOG-ARCHIVE-2026-09-23.md), and the entries archived on
+[`CHANGELOG-ARCHIVE-2026-09-23.md`](CHANGELOG-ARCHIVE-2026-09-23.md), the entries archived on
 2026-09-24 are preserved in
-[`CHANGELOG-ARCHIVE-2026-09-24.md`](CHANGELOG-ARCHIVE-2026-09-24.md).
+[`CHANGELOG-ARCHIVE-2026-09-24.md`](CHANGELOG-ARCHIVE-2026-09-24.md), and the entries archived on
+2026-09-25 are preserved in
+[`CHANGELOG-ARCHIVE-2026-09-25.md`](CHANGELOG-ARCHIVE-2026-09-25.md).
 
 ### Archived from CHANGELOG.md
 
@@ -539,4 +541,3 @@ that preceded the entries below is preserved in
   Runtime stdout stays one decision; storage failures refuse it. Add a redacted paired reader and
   CI for the offline evaluation tests. Windows capture, native gameplay benefit and live paired
   orchestration remain unverified. See [capture documentation](../experiments/jev-evaluation/CAPTURE.md).
-
