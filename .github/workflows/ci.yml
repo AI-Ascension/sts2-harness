@@ -122,30 +122,33 @@ jobs:
       # here too — the build script of a workspace dependency invokes the C compiler for this
       # target before any lint runs.
       #
-      # `dead_code` is allowed for this target only, for the reason the check step above records:
-      # unix-gated modules leave dead code on a Windows target, so those warnings are noise here
-      # and the three rustdoc denies are what this step enforces. Acceptance is still read from
-      # the log rather than the step conclusion — a misspelled deny is an inert `unknown lint`
-      # diagnostic and still exits 0, so a green conclusion alone is not evidence.
+      # `-A dead_code` is allowed for this target only, for the reason the check step above
+      # records: unix-gated modules leave dead code on a Windows target, so those warnings are
+      # noise here and the three rustdoc denies are what this step enforces. It belongs in
+      # `RUSTFLAGS`, not `RUSTDOCFLAGS`, and that distinction is measured rather than stylistic:
+      # `cargo doc --package sts2-harness` documents this crate's bins as well as its lib, the
+      # bins link the lib, and the lib is therefore built once by **rustc**, which `RUSTDOCFLAGS`
+      # never reaches. With the flag in `RUSTDOCFLAGS` alone this step failed its own first
+      # hosted run — `windows-doc: exit=0 errors=0 warnings=4`, all four `dead_code`
+      # (`persistence`, `as_str`, `is_empty`, and the crate summary; job 108000689696) — while a
+      # run scoped to `--lib` prints no `dead_code` at all because no bin links the lib there.
+      # Acceptance is still read from the log rather than the step conclusion — a misspelled deny
+      # is an inert `unknown lint` diagnostic and still exits 0, so a green conclusion alone is
+      # not evidence.
       - name: Document the Windows-target code the quality-gate job compiles out
         run: |
           set -o pipefail
           log=target/windows-doc.log
           status=0
-          RUSTDOCFLAGS="-A dead_code -D rustdoc::broken_intra_doc_links -D rustdoc::private_intra_doc_links -D rustdoc::redundant_explicit_links --document-private-items" \
+          RUSTFLAGS="-A dead_code" \
+            RUSTDOCFLAGS="-A dead_code -D rustdoc::broken_intra_doc_links -D rustdoc::private_intra_doc_links -D rustdoc::redundant_explicit_links --document-private-items" \
             cargo doc --package sts2-harness --no-deps --locked --target x86_64-pc-windows-gnu 2>&1 | tee "$log" || status=$?
           errors=$(awk '/^error/{count++} END{print count+0}' "$log")
           unknown=$(awk '/unknown lint/{count++} END{print count+0}' "$log")
           documented=$(awk '/Generated .*doc\/sts2_harness\/index.html/{count++} END{print count+0}' "$log")
-          echo "windows-doc: exit=$status errors=$errors unknown_lints=$unknown documented=$documented"
-          awk '/^(warning|error)/ {if (seen < 5) print "  diagnostic: " $0; seen++}' "$log"
-          # No blanket `warning` count. Recomputing one was tried twice and measured wrong both
-          # times: the dead-code warnings this target emits are re-reported at document time even
-          # with the lint allowed, which is the same reason the check step above does not deny
-          # warnings here. The conditions below still bind the properties that matter: the three
-          # denies are fatal when they fire (exit), they are real lints and not inert misspellings
-          # (unknown_lints), and this crate was genuinely documented on this target (documented).
-          [ "$status" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$unknown" -eq 0 ] && [ "$documented" -eq 1 ]
+          warnings=$(awk '/^warning/{count++} END{print count+0}' "$log")
+          echo "windows-doc: exit=$status errors=$errors warnings=$warnings unknown_lints=$unknown documented=$documented"
+          [ "$status" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$warnings" -eq 0 ] && [ "$unknown" -eq 0 ] && [ "$documented" -eq 1 ]
 
       - name: Build the provider bridges for Windows
         run: |
