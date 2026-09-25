@@ -195,11 +195,23 @@ pub(crate) fn ident(text: &str, index: usize) -> (String, usize) {
     (text[index..cursor].to_owned(), cursor)
 }
 
+/// Reads an identifier, raw form included, with any `r#` prefix stripped.
+///
+/// rustc resolves `mod r#move;` to `move.rs` and gives an inline
+/// `mod r#type { }` its children under `type/`, so the bare stem is the name
+/// that decides file lookup. Treating `r#move` as the literal name would report
+/// a compiling module as unreachable.
 pub(crate) fn identifier(text: &str, index: usize) -> Option<(String, usize)> {
-    if !text.as_bytes().get(index).copied().is_some_and(ident_start) {
+    let bytes = text.as_bytes();
+    let start = if bytes.get(index) == Some(&b'r') && bytes.get(index + 1) == Some(&b'#') {
+        index + 2
+    } else {
+        index
+    };
+    if !bytes.get(start).copied().is_some_and(ident_start) {
         return None;
     }
-    Some(ident(text, index))
+    Some(ident(text, start))
 }
 
 pub(crate) fn advance(text: &str, index: usize) -> usize {
