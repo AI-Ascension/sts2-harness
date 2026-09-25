@@ -31,6 +31,7 @@ when a mandatory rule or warning fails.
 | `WF004` | External actions use full immutable commit SHAs |
 | `WF005` | Workflow commands cannot hide failure with `|| true` |
 | `RUST001` | Cargo workspace has matching toolchain, lockfile, and lint policy |
+| `RUST002` | Every tracked Rust source is reachable from a crate root through `mod`, `#[path]`, or `include!` |
 | `LANG001` | Python source and package metadata are prohibited |
 | `LIC001-003` | MIT license and Rust source headers are present |
 

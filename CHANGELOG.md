@@ -23,6 +23,17 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   consumer even while the gate is green; escalation is the point, not the warning count.
   Compatibility: CI and doc comments only; no production code, schema, route or behavior change.
   Closes #489.
+- **Retire five unreachable Rust sources and gate the whole class.** `#491` found five tracked `.rs`
+  files that no crate root reached, so they never compiled and their tests never ran. Four are
+  superseded duplicates: `runtime_v3_episode_actions.rs` against the `include!`d
+  `runtime_v3_episode_helpers.rs` (whose `retain_operation` is stricter, including the payload
+  check), `runtime_v3_lifecycle_reconnect_test.rs` against the recovered reconnect test, and the
+  `#220` residue `policy_owner/owner_impl.rs`/`change.rs`. The fifth, `sts2-astra-bridge_tests.rs`,
+  held one assertion with no live counterpart, now ported into `sts2_astra_bridge_tests.rs`.
+  `repo-policy` enforces `RUST002`: a tracked `.rs` inside a compiled crate that no crate root
+  reaches through `mod`, `#[path]`, `#[cfg_attr(..., path = ...)]`, or `include!` now fails
+  `--strict`, so a lost `mod` line turns a check red instead of silently dropping coverage. No
+  runtime, provider, game, or native behavior changes. Closes #491.
 
 - **Extend the real pinned-Exo CI lane with the `#148` fault and isolation matrix.** The landed lane
   executed the real Exo process oracle but exercised only a few admission rejections. A new
