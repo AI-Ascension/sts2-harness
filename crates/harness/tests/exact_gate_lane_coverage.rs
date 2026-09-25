@@ -9,6 +9,11 @@
 //! This check keeps the wiring honest: every invocation in the three
 //! name-filtering lanes must either be guarded by that gate or be exempt.
 //!
+//! `exo-process-oracle.yml` is watched too, at the checkout-rooted path its own
+//! job uses (see [`ORACLE_GATE`]). Its five legs filter the bridge crate's
+//! real-Exo oracles by name, so before this they were the one remaining place a
+//! renamed oracle could still report green -- the class issue #531 named.
+//!
 //! The one exemption is not a hole. `exact-restore-conformance.yml` compiles a
 //! filtered target with `--no-run` and deliberately executes nothing, so a match
 //! assertion there would fail a healthy build; it carries a source comment
@@ -22,12 +27,24 @@ const GAME_INFORMATION_LANE: &str =
     include_str!("../../../.github/workflows/game-information-peer-contract.yml");
 const EXACT_RESTORE_LANE: &str =
     include_str!("../../../.github/workflows/exact-restore-conformance.yml");
+const EXO_PROCESS_ORACLE_LANE: &str =
+    include_str!("../../../.github/workflows/exo-process-oracle.yml");
 
 /// The gate as the workflows address it. Every harness lane checks this
 /// repository out at `path: harness`, so the gate's checkout-rooted path is
 /// `$GITHUB_WORKSPACE/harness/tools/exact-gate.sh` — not the repository-relative
 /// one, which does not exist on a runner.
 const GATE: &str = "harness/tools/exact-gate.sh";
+
+/// The same gate as `exo-process-oracle.yml` must address it.
+///
+/// That job checks the repository out at the **repository root** — its
+/// `actions/checkout` step carries no `path:` input — so the gate is at
+/// `$GITHUB_WORKSPACE/tools/exact-gate.sh` there, one directory up from the
+/// other lanes' form. Addressing it as `harness/tools/...` in this lane would
+/// exit 127 on every leg, which is why the two forms are separate constants
+/// rather than one prefix test.
+const ORACLE_GATE: &str = "$GITHUB_WORKSPACE/tools/exact-gate.sh";
 const FILTER: &str = "--ignored --exact";
 
 /// Marker the `--no-run` build gate must carry so a later reader does not "fix"
@@ -89,6 +106,10 @@ fn gated(invocation: &Invocation) -> bool {
     invocation.text.contains(GATE)
 }
 
+fn gated_at(invocation: &Invocation, gate: &str) -> bool {
+    invocation.text.contains(gate)
+}
+
 fn assert_all_gated(name: &str, lane: &str, expected: usize) {
     let invocations = named_invocations(lane);
     assert_eq!(
@@ -108,6 +129,27 @@ fn assert_all_gated(name: &str, lane: &str, expected: usize) {
     }
 }
 
+/// Like [`assert_all_gated`], for the lane whose job checks out at the
+/// repository root and therefore addresses the gate through [`ORACLE_GATE`].
+fn assert_all_gated_at(name: &str, lane: &str, gate: &str, expected: usize) {
+    let invocations = named_invocations(lane);
+    assert_eq!(
+        invocations.len(),
+        expected,
+        "{name} no longer carries the {expected} name-filtering invocations this check was \
+         written against; update the count deliberately"
+    );
+    for invocation in &invocations {
+        assert!(
+            gated_at(invocation, gate),
+            "{name} line {} filters a test by name without {gate}, so a renamed test would run \
+             nothing and the step would still report green: {}",
+            invocation.line_number,
+            invocation.text
+        );
+    }
+}
+
 #[test]
 fn every_invocation_in_the_runtime_lane_is_gated() {
     assert_all_gated("runtime-peer-contract.yml", RUNTIME_LANE, 13);
@@ -120,6 +162,56 @@ fn every_invocation_in_the_game_information_lane_is_gated() {
         GAME_INFORMATION_LANE,
         4,
     );
+}
+
+#[test]
+fn every_invocation_in_the_exo_process_oracle_lane_is_gated() {
+    assert_all_gated_at(
+        "exo-process-oracle.yml",
+        EXO_PROCESS_ORACLE_LANE,
+        ORACLE_GATE,
+        5,
+    );
+}
+
+/// The oracle lane checks out at the repository root, so the gate must not be
+/// addressed through the `harness/`-prefixed form the other lanes use: that
+/// path does not exist on its runner and every leg would exit 127.
+#[test]
+fn the_oracle_lane_does_not_use_the_harness_prefixed_gate_path() {
+    assert!(
+        !EXO_PROCESS_ORACLE_LANE.contains(GATE),
+        "exo-process-oracle.yml checks out at the repository root; addressing the gate as \
+         {GATE} would exit 127 on every leg. Use {ORACLE_GATE} instead."
+    );
+}
+
+/// Each oracle leg must name the test it filters.
+///
+/// `--exact` with no positional filter does not witness a specific test: in that
+/// form libtest runs every filtered test in the target, so a renamed oracle
+/// would still execute under its new name and the leg would stay green -- the
+/// #524 class this gate exists to close. The oracle lane always writes the name
+/// after the filter, so requiring a non-flag token there is exact for this lane;
+/// the other lanes also use a leading-filter form (`<name> -- --ignored --exact`),
+/// which this assertion deliberately does not constrain.
+#[test]
+fn every_oracle_leg_names_the_test_it_filters() {
+    for invocation in named_invocations(EXO_PROCESS_ORACLE_LANE) {
+        let text = invocation.text.as_str();
+        let Some((_, after)) = text.split_once(FILTER) else {
+            continue;
+        };
+        let name = after.split_whitespace().next();
+        assert!(
+            matches!(name, Some(token) if !token.starts_with('-')),
+            "exo-process-oracle.yml line {} filters with {FILTER} but names no test after it; \
+             an unnamed filter runs every ignored test in the target and so cannot witness that \
+             the named oracle still exists: {}",
+            invocation.line_number,
+            text
+        );
+    }
 }
 
 /// The `--no-run` build gate must stay ungated and must say why.
