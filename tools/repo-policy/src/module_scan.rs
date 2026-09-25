@@ -15,6 +15,10 @@ pub(crate) struct Declaration {
     pub(crate) name: String,
     pub(crate) paths: Vec<String>,
     pub(crate) semi: bool,
+    /// `true` when a `#[cfg_attr(...)]` contributed this declaration's
+    /// attributes, so the non-`path` half of the declaration is still real
+    /// under the branch that takes it.
+    pub(crate) conditional: bool,
     pub(crate) start: usize,
     pub(crate) end: usize,
 }
@@ -78,6 +82,7 @@ pub(crate) fn scan(text: &str) -> (Vec<Declaration>, Vec<String>) {
                             name,
                             paths: path_values(&attributes),
                             semi: true,
+                            conditional: conditional(&attributes),
                             start,
                             end: terminator + 1,
                         });
@@ -90,6 +95,7 @@ pub(crate) fn scan(text: &str) -> (Vec<Declaration>, Vec<String>) {
                             name,
                             paths: path_values(&attributes),
                             semi: false,
+                            conditional: conditional(&attributes),
                             start,
                             end,
                         });
@@ -134,6 +140,21 @@ fn path_values(attributes: &[String]) -> Vec<String> {
         collect_paths(attribute, &mut values);
     }
     values
+}
+
+/// Whether any enclosing attribute is a `#[cfg_attr(...)]`. A gate is treated
+/// as always taken, so the declaration keeps every branch it could resolve
+/// under, including the name-based one its `#[path]` would otherwise replace.
+fn conditional(attributes: &[String]) -> bool {
+    attributes.iter().any(|attribute| {
+        let text = attribute.trim_start_matches('#').trim_start_matches('[');
+        let name: String = text
+            .trim_start()
+            .chars()
+            .take_while(|character| character.is_alphanumeric() || *character == '_')
+            .collect();
+        name == "cfg_attr"
+    })
 }
 
 fn collect_paths(attribute: &str, values: &mut Vec<String>) {
