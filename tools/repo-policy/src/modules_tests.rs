@@ -136,6 +136,120 @@ fn inline_module_owns_a_directory() {
     assert_eq!(reported, BTreeSet::from(["src/inner.rs".to_owned()]));
 }
 
+/// A `#[path]` on an **inline** module names the directory its children live in;
+/// rustc reads no file there at all. `rustc 1.97.1` exits 0 with
+/// `src/thread/child.rs` present, and moving it to `src/child.rs` fails `E0583`
+/// naming `src/thread/child.rs`, so the directory-valued branch is what reaches
+/// the child and the module owns nothing of its own.
+#[test]
+fn inline_path_attribute_names_its_childrens_directory() {
+    let reported = unreachable(
+        &[
+            (
+                "src/lib.rs",
+                "#[path = \"thread\"]\nmod m { pub mod child; }\n",
+            ),
+            ("src/thread/child.rs", ""),
+            ("src/child.rs", ""),
+        ],
+        &["src/lib.rs"],
+    );
+    assert_eq!(reported, BTreeSet::from(["src/child.rs".to_owned()]));
+}
+
+/// The inline `#[path]` value is relative to the directory of the *file* that
+/// carries it when the declaration is unnested — `src/` for `src/x.rs` — not the
+/// `src/x/` stem directory its ordinary `mod` children use. rustc reaches
+/// `src/thread/child.rs` and ignores a decoy at `src/x/thread/child.rs`.
+#[test]
+fn inline_path_attribute_is_relative_to_the_carrying_file() {
+    let reported = unreachable(
+        &[
+            ("src/lib.rs", "mod x;\n"),
+            (
+                "src/x.rs",
+                "#[path = \"thread\"]\nmod m { pub mod child; }\n",
+            ),
+            ("src/thread/child.rs", ""),
+            ("src/x/thread/child.rs", ""),
+        ],
+        &["src/lib.rs"],
+    );
+    assert_eq!(
+        reported,
+        BTreeSet::from(["src/x/thread/child.rs".to_owned()])
+    );
+}
+
+/// An enclosing inline module is part of the base before the `#[path]` is
+/// applied, and the path then supersedes it: rustc reaches
+/// `src/x/a/thread/child.rs`, not `src/a/thread/child.rs` or `src/thread/`.
+#[test]
+fn inline_path_attribute_keeps_its_enclosing_directories() {
+    let reported = unreachable(
+        &[
+            ("src/lib.rs", "mod x;\n"),
+            (
+                "src/x.rs",
+                "pub mod a { #[path = \"thread\"] pub mod b { pub mod child; } }\n",
+            ),
+            ("src/x/a/thread/child.rs", ""),
+            ("src/a/thread/child.rs", ""),
+            ("src/thread/child.rs", ""),
+        ],
+        &["src/lib.rs"],
+    );
+    assert_eq!(
+        reported,
+        BTreeSet::from([
+            "src/a/thread/child.rs".to_owned(),
+            "src/thread/child.rs".to_owned(),
+        ])
+    );
+}
+
+/// The file named by an inline `#[path]` is **not** compiled — a
+/// `compile_error!` in it never fires, and rustc's own hint for a missing child
+/// is `src/sub/x.rs/child.rs` — so the rule must keep reporting the named file.
+/// This is the control that stops the fix from becoming a blanket exemption for
+/// any module carrying a `#[path]`.
+#[test]
+fn an_inline_path_attribute_does_not_reach_the_file_it_names() {
+    let reported = unreachable(
+        &[
+            (
+                "src/lib.rs",
+                "#[path = \"sub/x.rs\"]\nmod m { pub mod child; }\n",
+            ),
+            ("src/sub/x.rs", ""),
+        ],
+        &["src/lib.rs"],
+    );
+    assert_eq!(reported, BTreeSet::from(["src/sub/x.rs".to_owned()]));
+}
+
+/// A `#[path]` on a semicolon module always names a **file**; a directory value
+/// is a rustc error (`couldn't read \`src/thread\`: Is a directory`), so
+/// `DIR/mod.rs` must not be reached from it. This pins the deliberate omission.
+#[test]
+fn a_semicolon_path_attribute_does_not_reach_a_directory_body() {
+    let reported = unreachable(
+        &[
+            ("src/lib.rs", "#[path = \"thread\"]\nmod m;\n"),
+            ("src/thread/mod.rs", ""),
+            ("src/thread/child.rs", ""),
+        ],
+        &["src/lib.rs"],
+    );
+    assert_eq!(
+        reported,
+        BTreeSet::from([
+            "src/thread/child.rs".to_owned(),
+            "src/thread/mod.rs".to_owned(),
+        ])
+    );
+}
+
 /// `mod r#move;` is legal and common where the module name is a keyword, and
 /// rustc resolves it to `move.rs` — `rustc` on `mod r#move;` with only
 /// `r#move.rs` present fails `E0583: file not found for module \`r#move\`` and
