@@ -266,7 +266,9 @@ fn the_swept_site_table_matches_the_workflows_and_covers_every_file() {
 /// addressed at that root and **not** through the `harness/`-prefixed form the
 /// other lanes use: that path does not exist on its runner and every leg would
 /// exit 127. The sweep's [`GATE`] substring matches both forms, so this is the
-/// check that pins *which* root this lane uses.
+/// check that pins *which* root this lane uses. The pin is **per leg**: a
+/// file-level `contains` stays satisfied while one leg keeps the exact form and
+/// another points anywhere else containing [`GATE`], so the loop below repeats it.
 #[test]
 fn the_oracle_lane_addresses_the_gate_at_its_own_checkout_root() {
     let files = lane_files();
@@ -281,6 +283,15 @@ fn the_oracle_lane_addresses_the_gate_at_its_own_checkout_root() {
         "exo-process-oracle.yml checks out at the repository root; addressing the gate as \
          {HARNESS_PREFIXED_GATE} would exit 127 on every leg. Use {ORACLE_GATE} instead."
     );
+    for invocation in named_invocations(&oracle.name, &oracle.source) {
+        assert!(
+            invocation.text.contains(ORACLE_GATE),
+            "exo-process-oracle.yml line {} must address the gate as {ORACLE_GATE} exactly, \
+             not any other path containing {GATE}: {}",
+            invocation.line_number,
+            invocation.text
+        );
+    }
 }
 
 /// Each oracle leg must name the test it filters.
