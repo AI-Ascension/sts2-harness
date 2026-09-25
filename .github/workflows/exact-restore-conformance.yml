@@ -99,6 +99,9 @@ jobs:
           cargo build --locked --jobs 2 --manifest-path mcp/Cargo.toml --bin sts2-mcp-server
           cargo build --locked --jobs 2 --manifest-path game-mod/Cargo.toml -p sts2-game-mod --example exact_restore_peer
           cargo build --locked --jobs 2 --manifest-path harness/Cargo.toml --bin sts2-harness-runtime
+          # exempt from harness/tools/exact-gate.sh: --no-run compiles the filtered target and executes
+          # nothing (zero `test result:` lines), so a match assertion here would fail a healthy
+          # build. Every other name-filtering invocation in this repository is guarded by that gate.
           cargo test --locked --jobs 2 --manifest-path harness/Cargo.toml --bin sts2-harness-runtime \
             actual_production_entrypoint_exact_restore_matrix_case --no-run -- --ignored --exact
           cargo build --locked --jobs 2 --manifest-path harness/Cargo.toml --bin sts2-exact-restore-conformance

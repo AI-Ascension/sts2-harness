@@ -18,9 +18,11 @@ jobs:
     name: Game-information entry against negotiated runtime peers
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # GitHub's unspecified-shell default is `bash -e {0}` without `pipefail`, so a
-    # `cargo test ... | tee` step reported tee's exit status and masked test failures.
-    # The explicit bash shell runs with `-eo pipefail` and fails the step on the test.
+    # The explicit bash shell runs with `-eo pipefail`, which an earlier revision needed
+    # because a `cargo test ... | tee` step reported tee's exit status and masked test
+    # failures. The four evidence steps now pass their log path to
+    # tools/exact-gate.sh instead of piping to tee, so no step here relies on a
+    # pipeline's exit status; the explicit shell is kept so that stays true if one returns.
     defaults:
       run:
         shell: bash
@@ -76,10 +78,9 @@ jobs:
           STS2_LIVE_EPISODE: 'true'
           STS2_EXO_LOOKUP_BOOTSTRAP: 'true'
         run: |
-          cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
+          "$GITHUB_WORKSPACE/harness/tools/exact-gate.sh" "$RUNNER_TEMP/runtime-game-information-entry/positive.log" cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
             'runtime_support::runtime_v3::game_information_owner::owner_management_tests::entry_tests::runtime_entry_adopts_queries_and_replays_through_real_gateway_and_mcp_processes' \
-            -- --ignored --exact --nocapture \
-            2>&1 | tee "$RUNNER_TEMP/runtime-game-information-entry/positive.log"
+            -- --ignored --exact --nocapture
 
       - name: Exercise foreign-manifest refusal
         if: always()
@@ -91,10 +92,9 @@ jobs:
           STS2_LIVE_EPISODE: 'true'
           STS2_EXO_LOOKUP_BOOTSTRAP: 'true'
         run: |
-          cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
+          "$GITHUB_WORKSPACE/harness/tools/exact-gate.sh" "$RUNNER_TEMP/runtime-game-information-entry/negative.log" cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
             'runtime_support::runtime_v3::game_information_owner::owner_management_tests::entry_tests::runtime_entry_refuses_foreign_manifest_before_query_or_agent_delivery' \
-            -- --ignored --exact --nocapture \
-            2>&1 | tee "$RUNNER_TEMP/runtime-game-information-entry/negative.log"
+            -- --ignored --exact --nocapture
 
       - name: Exercise stale-generation bootstrap refusal
         if: always()
@@ -105,10 +105,9 @@ jobs:
           STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
           STS2_LIVE_EPISODE: 'true'
         run: |
-          cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
+          "$GITHUB_WORKSPACE/harness/tools/exact-gate.sh" "$RUNNER_TEMP/runtime-game-information-entry/negative-stale.log" cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
             'runtime_support::runtime_v3::game_information_owner::owner_management_tests::entry_tests::runtime_entry_refuses_stale_bootstrap_generation_before_agent_delivery' \
-            -- --ignored --exact --nocapture \
-            2>&1 | tee "$RUNNER_TEMP/runtime-game-information-entry/negative-stale.log"
+            -- --ignored --exact --nocapture
 
       - name: Exercise not-observable bootstrap refusal
         if: always()
@@ -119,11 +118,13 @@ jobs:
           STS2_HARNESS_RUNTIME_BINARY: ${{ github.workspace }}/harness/target/debug/sts2-harness-runtime
           STS2_LIVE_EPISODE: 'true'
         run: |
-          cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
+          "$GITHUB_WORKSPACE/harness/tools/exact-gate.sh" "$RUNNER_TEMP/runtime-game-information-entry/negative-not-observable.log" cargo test --locked -j 2 --package sts2-harness --bin sts2-harness-runtime \
             'runtime_support::runtime_v3::game_information_owner::owner_management_tests::entry_tests::runtime_entry_reports_not_observable_bootstrap_as_missing_capability_without_content_query' \
-            -- --ignored --exact --nocapture \
-            2>&1 | tee "$RUNNER_TEMP/runtime-game-information-entry/negative-not-observable.log"
+            -- --ignored --exact --nocapture
 
+      # The four evidence logs are written by tools/exact-gate.sh, which truncates and
+      # rewrites its log path, so a step that stops executing leaves an absent file —
+      # exactly what this step's `test -f` skip and the artifact upload surface.
       - name: Record peer and fixture-log checksums
         if: always()
         run: |
