@@ -134,24 +134,24 @@ jobs:
       # (`persistence`, `as_str`, `is_empty`, and the crate summary; job 108000689696) — while a
       # run scoped to `--lib` prints no `dead_code` at all because no bin links the lib there.
       # Acceptance is still read from the log rather than the step conclusion — a misspelled deny
-      # is an inert `unknown lint` diagnostic and still exits 0, so a green conclusion alone is
-      # not evidence. `--workspace` makes cargo emit one aggregate `Generated ... and N other files`
-      # line rather than one per package, so the count asserts the two `Documenting` lines — the
-      # harness and the Windows boundary — instead of one generated page path.
+      # is an inert `unknown lint` diagnostic that still exits 0, so a green conclusion alone is
+      # not evidence. `--workspace` emits one aggregate `Generated ... and N other files` line, so
+      # the count asserts the two `Documenting` lines; the boundary page's own item list is then
+      # read from disk, because a target that compiles the crate to nothing lists nothing (#517).
       - name: Document the Windows-target code the quality-gate job compiles out
         run: |
           set -o pipefail
           log=target/windows-doc.log
           status=0
-          RUSTFLAGS="-A dead_code" \
-            RUSTDOCFLAGS="-A dead_code -D rustdoc::broken_intra_doc_links -D rustdoc::private_intra_doc_links -D rustdoc::redundant_explicit_links --document-private-items" \
+          RUSTFLAGS="-A dead_code" RUSTDOCFLAGS="-A dead_code -D rustdoc::broken_intra_doc_links -D rustdoc::private_intra_doc_links -D rustdoc::redundant_explicit_links --document-private-items" \
             cargo doc --workspace --no-deps --locked --target x86_64-pc-windows-gnu 2>&1 | tee "$log" || status=$?
           errors=$(awk '/^error/{count++} END{print count+0}' "$log")
           unknown=$(awk '/unknown lint/{count++} END{print count+0}' "$log")
           documented=$(awk '/Documenting sts2-harness(-windows-boundary)? v0\.0\.0/{count++} END{print count+0}' "$log")
+          items=$(awk 'BEGIN{n=0} {n+=gsub(/"[A-Za-z_][A-Za-z0-9_]*/,"&")} END{print n+0}' target/x86_64-pc-windows-gnu/doc/sts2_harness_windows_boundary/sidebar-items.js 2>/dev/null)
           warnings=$(awk '/^warning/{count++} END{print count+0}' "$log")
-          echo "windows-doc: exit=$status errors=$errors warnings=$warnings unknown_lints=$unknown documented=$documented"
-          [ "$status" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$warnings" -eq 0 ] && [ "$unknown" -eq 0 ] && [ "$documented" -eq 2 ]
+          echo "windows-doc: exit=$status errors=$errors warnings=$warnings unknown_lints=$unknown documented=$documented items=$items"
+          [ "$status" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$warnings" -eq 0 ] && [ "$unknown" -eq 0 ] && [ "$documented" -eq 2 ] && [ "$items" -gt 0 ]
 
       - name: Build the provider bridges for Windows
         run: |
