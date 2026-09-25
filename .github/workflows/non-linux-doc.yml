@@ -70,3 +70,63 @@ jobs:
           warnings=$(awk '/^warning/{count++} END{print count+0}' "$log")
           echo "freebsd-doc: exit=$status errors=$errors warnings=$warnings unknown_lints=$unknown documented=$documented"
           [ "$status" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$warnings" -eq 0 ] && [ "$unknown" -eq 0 ] && [ "$documented" -eq 1 ]
+
+  windows-boundary-doc:
+    name: Windows-boundary package documentation surface
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the pinned toolchain and the Windows target
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --no-self-update
+          rustup target add --toolchain 1.97.1 x86_64-pc-windows-gnu
+
+      # Every other doc gate in this repository selects `--package sts2-harness`, and the workspace has
+      # six members: `crates/windows-worker-boundary` (package `sts2-harness-windows-boundary`, 1462
+      # lines, 21 `pub` items, 11 `///` lines) is documented by none of them — `sts2-harness#513`. It
+      # is `#![cfg(windows)]`, so on the host and on FreeBSD its body compiles to nothing: `cargo doc`
+      # still exits 0 and still prints `Generated .../index.html`, but the page's own `sidebar-items.js`
+      # is empty and no lint can bite. That is why the item count below is asserted rather than exit
+      # alone — `documented=1` would be satisfied by exactly that vacuous page, which is the failure
+      # shape this repository's doc steps were built to avoid.
+      #
+      # Scoping to the package is also what keeps this leg free of the mingw cross linker the
+      # `windows-check` job installs: this package depends on `sha2`, `zeroize` and `windows-sys` only.
+      # Measured on `22b1acad`, `cargo doc --workspace --no-deps --target x86_64-pc-windows-gnu` exits
+      # 101 in `libsqlite3-sys`'s build script (`failed to find tool "x86_64-w64-mingw32-gcc"`), while
+      # the package-scoped command below exits 0 and prints `Documenting sts2-harness-windows-boundary`
+      # on a runner with no C cross toolchain, because selecting one package leaves `libsqlite3-sys`
+      # outside the build graph entirely and `cargo doc` does not link. A step inside `windows-check` would need no linker
+      # either once scoped, but that job's step already carries its own acceptance contract, and
+      # `ci.yml` sits at `workflow_preferred` (156 of 160 non-blank), so this file is the home.
+      #
+      # No `-A dead_code` here, unlike the two `sts2-harness` doc steps: that lint is noise for those
+      # because their unix-gated modules are compiled out on a Windows target, whereas this package is
+      # entirely Windows-gated, so nothing is dead. Measured with warnings required to be zero.
+      #
+      # Acceptance is read from the log rather than the step conclusion. A misspelled deny is an inert
+      # `unknown lint` diagnostic and still exits 0, so a green conclusion is not evidence: the step
+      # requires exit 0, zero `error` and zero `unknown lint` diagnostics, the package's `index.html`
+      # generated, and a non-empty sidebar.
+      - name: Document the Windows-target package no other doc gate selects
+        run: |
+          set -o pipefail
+          log=target/windows-boundary-doc.log
+          mkdir -p target
+          status=0
+          RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links -D rustdoc::private_intra_doc_links -D rustdoc::redundant_explicit_links --document-private-items" \
+            cargo doc --package sts2-harness-windows-boundary --no-deps --locked --target x86_64-pc-windows-gnu 2>&1 | tee "$log" || status=$?
+          errors=$(awk '/^error/{count++} END{print count+0}' "$log")
+          unknown=$(awk '/unknown lint/{count++} END{print count+0}' "$log")
+          documented=$(awk '/Generated .*doc\/sts2_harness_windows_boundary\/index.html/{count++} END{print count+0}' "$log")
+          warnings=$(awk '/^warning/{count++} END{print count+0}' "$log")
+          sidebar=target/x86_64-pc-windows-gnu/doc/sts2_harness_windows_boundary/sidebar-items.js
+          items=0
+          if [ -f "$sidebar" ]; then items=$(grep -o '"[A-Za-z_][A-Za-z0-9_]*"' "$sidebar" | wc -l); fi
+          echo "windows-boundary-doc: exit=$status errors=$errors warnings=$warnings unknown_lints=$unknown documented=$documented items=$items"
+          [ "$status" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$warnings" -eq 0 ] && [ "$unknown" -eq 0 ] && [ "$documented" -eq 1 ] && [ "$items" -gt 0 ]

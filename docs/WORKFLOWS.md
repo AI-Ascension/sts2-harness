@@ -33,6 +33,22 @@ refused by `getrandom`, so `x86_64-unknown-freebsd` is the leg. It is a separate
 enforces. Acceptance is read from the log — exit 0, zero `error` and zero `unknown lint` diagnostics, and
 the crate's `index.html` generated — not the step conclusion.
 
+## Windows boundary package documentation surface
+
+`non-linux-doc.yml` also carries `windows-boundary-doc`, which documents `sts2-harness-windows-boundary`
+— the `crates/windows-worker-boundary` package — for `x86_64-pc-windows-gnu`. Every other doc gate in
+the repository selects `--package sts2-harness`, so that workspace member (1462 lines, 21 `pub` items,
+11 `///` lines) was documented by no leg while its code was compiled by the Windows check. The package
+is `#![cfg(windows)]`, so on the host and on FreeBSD its body compiles to nothing and rustdoc has no
+items to lint: the command exits 0, prints `Generated .../index.html`, and covers nothing — green and
+vacuous. The step is scoped to the package rather than the workspace because
+`cargo doc --workspace --no-deps` for this target dies in `libsqlite3-sys`'s build script without the
+mingw cross linker, while the boundary package's `sha2`, `zeroize` and `windows-sys` dependency set
+documents with no C toolchain at all. Acceptance is read from the log — exit 0, zero `error` and zero
+`unknown lint` diagnostics, the package's `index.html` generated, and a non-empty sidebar item count.
+The count is asserted because the exit code cannot distinguish coverage from the appearance of it.
+`#513`.
+
 ## Studio consumer contract
 
 `studio-contract.yml` tests the candidate harness against the immutable Studio
