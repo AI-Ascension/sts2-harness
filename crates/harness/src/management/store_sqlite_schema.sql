@@ -115,3 +115,11 @@ CREATE TABLE IF NOT EXISTS management_inference_profile_mutations (
     revision BLOB NOT NULL,
     PRIMARY KEY (profile_id, mutation_id)
 );
+
+CREATE TABLE IF NOT EXISTS management_authoring_inference_operations (
+    operation_id TEXT PRIMARY KEY NOT NULL,
+    draft_id TEXT NOT NULL,
+    client_mutation_id TEXT NOT NULL,
+    request_digest TEXT NOT NULL,
+    record TEXT NOT NULL
+);

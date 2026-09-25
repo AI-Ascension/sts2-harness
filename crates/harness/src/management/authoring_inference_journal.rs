@@ -225,7 +225,7 @@ fn unavailable() -> StoreError {
     )
 }
 
-fn validate_identity(
+pub(crate) fn validate_identity(
     draft_id: &str,
     client_mutation_id: &str,
     request_digest: &str,
@@ -254,7 +254,7 @@ fn validate_identity(
     Ok(())
 }
 
-fn bounded_detail(detail: &str) -> String {
+pub(crate) fn bounded_detail(detail: &str) -> String {
     if detail.len() <= MAX_DETAIL_BYTES {
         return detail.to_owned();
     }
@@ -264,3 +264,7 @@ fn bounded_detail(detail: &str) -> String {
     }
     detail[..end].to_owned()
 }
+
+#[path = "authoring_inference_journal_sqlite.rs"]
+mod sqlite;
+pub use sqlite::SqliteAuthoringInferenceJournal;
