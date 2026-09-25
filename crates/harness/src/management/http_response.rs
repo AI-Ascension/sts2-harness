@@ -92,26 +92,50 @@ pub(super) fn read_with_deadline(
     buffer: &mut [u8],
     deadline: Instant,
 ) -> Result<usize, HttpError> {
-    let timeout = deadline.saturating_duration_since(Instant::now());
-    if timeout.is_zero() {
-        return Err(HttpError::new(
-            "deadline_exceeded",
-            "request deadline exceeded",
-        ));
-    }
-    stream
-        .set_read_timeout(Some(timeout))
-        .map_err(io_http_error)?;
-    stream.read(buffer).map_err(|error| {
-        if matches!(
-            error.kind(),
-            io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
-        ) {
-            HttpError::new("deadline_exceeded", "request deadline exceeded")
-        } else {
-            io_http_error(error)
-        }
+    retry_transient(deadline, "request deadline exceeded", |timeout| {
+        stream.set_read_timeout(Some(timeout))?;
+        stream.read(buffer)
     })
+}
+
+// One syscall's worth of the read/write attempt is passed in so the retry
+// policy here can be driven by a deterministic sequence of `io::Error`s in
+// tests rather than by racing a real signal against a real socket.
+fn retry_transient<T>(
+    deadline: Instant,
+    deadline_message: &'static str,
+    mut attempt: impl FnMut(Duration) -> io::Result<T>,
+) -> Result<T, HttpError> {
+    loop {
+        let timeout = deadline.saturating_duration_since(Instant::now());
+        if timeout.is_zero() {
+            return Err(deadline_exceeded(deadline_message));
+        }
+        match attempt(timeout) {
+            // `Interrupted` is retryable by contract and is not a property of
+            // the peer: a signal delivered to this thread mid-syscall makes the
+            // kernel report the call as restartable even though the peer is
+            // still healthy and still writing. Surfacing it turns a delivered
+            // `SIGCHLD` into a fatal, status-400 management error for a request
+            // that never failed. The deadline is re-derived from
+            // `Instant::now()` on each pass, so this cannot spin: a peer that
+            // never writes still terminates as `deadline_exceeded`.
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                ) =>
+            {
+                return Err(deadline_exceeded(deadline_message));
+            }
+            result => return result.map_err(io_http_error),
+        }
+    }
+}
+
+fn deadline_exceeded(message: &'static str) -> HttpError {
+    HttpError::new("deadline_exceeded", message)
 }
 
 pub(super) fn write_with_deadline(
@@ -129,6 +153,16 @@ pub(super) fn write_with_deadline(
     stream
         .set_write_timeout(Some(timeout))
         .map_err(io_http_error)?;
+    // `Interrupted` needs no arm here, unlike `read_with_deadline`: this call
+    // is `Write::write_all`, whose default implementation already retries
+    // `ErrorKind::Interrupted` and resumes the partial write, so a
+    // `SIGCHLD` delivered mid-write cannot surface through it. Two independent
+    // confirmations, because this is the whole reason the write path is left
+    // alone: `std::net::TcpStream` does not override `write_all`, and the
+    // default implementation in `std::io` carries `Err(ref e) if
+    // e.is_interrupted() => {}`. A synthetic writer that returns `Interrupted`
+    // for its first attempt returns `Ok(())` from `write_all` after exactly two
+    // `write` calls. Adding a retry here would be uncovered code.
     stream.write_all(bytes).map_err(io_http_error)
 }
 
@@ -228,6 +262,10 @@ impl From<AuthError> for HttpError {
 pub(super) fn auth_http_error(error: AuthError) -> HttpError {
     error.into()
 }
+
+#[cfg(test)]
+#[path = "http_response_tests.rs"]
+mod tests;
 
 fn management_status(class: &ErrorClass) -> u16 {
     match class {
