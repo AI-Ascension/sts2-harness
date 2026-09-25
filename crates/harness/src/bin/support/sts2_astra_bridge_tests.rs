@@ -3,6 +3,21 @@
 use super::*;
 
 #[test]
+fn map_input_bound_is_wider_but_ordinary_input_bound_stays_128k() {
+    assert_eq!(
+        request_limit(&json!({"schema": "sts2.exo-decision-v1"})),
+        OUTPUT_LIMIT
+    );
+    assert_eq!(
+        request_limit(&json!({
+            "schema": "sts2.exo-decision-map-v1",
+            "map_context": {}
+        })),
+        INPUT_LIMIT
+    );
+}
+
+#[test]
 fn model_output_must_be_a_bounded_catalog_choice() {
     let ids = vec![json!("end:1")];
     assert!(validate(r#"{"action_ids":["end:1"],"rationale":"No energy"}"#, &ids).is_ok());

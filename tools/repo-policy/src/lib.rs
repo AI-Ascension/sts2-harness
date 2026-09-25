@@ -6,6 +6,11 @@ mod diagnostic;
 mod files;
 mod license;
 mod markdown;
+mod module_lexer;
+mod module_paths;
+mod module_roots;
+mod module_scan;
+mod modules;
 mod rust;
 mod workflow;
 
@@ -55,6 +60,7 @@ pub fn check(root: &Path, strict: bool) -> Result<Outcome, String> {
     findings.extend(markdown::findings(root, &repository_files));
     findings.extend(adr::findings(root, &repository_files));
     findings.extend(rust::findings(root));
+    findings.extend(modules::findings(root, &repository_files));
     findings.sort_by(|left, right| {
         left.path
             .cmp(&right.path)

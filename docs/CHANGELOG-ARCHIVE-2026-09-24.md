@@ -267,3 +267,15 @@ supported release or a second normative changelog.
   chosen there is kept for the rest of the run, which is framing beside the objective rather than a
   claim in an option's description. The library default for the bound is 0, the previous behaviour.
   Refs #323.
+
+- Admit the **refused-launch-contract recovery code** on the legal-action read. The game-mod answers
+  a refused launch contract with `503 launch_contract_refused`, or the prefix, `_`, and one bounded
+  reason token, while the adapter admitted only `stale_generation`, `host_not_configured`, and
+  `host_observation_unavailable`, so a refusal stayed fatal instead of becoming the bounded
+  reobservation it names. The admitted set is now the producer's own rule rather than a second list:
+  the bare prefix, or the prefix, `_`, and a token of 1 to 64 ASCII alphanumerics, `_`, or `-`. A
+  code the mod cannot compose — a trailing separator, a dot, a slash, a space, a non-ASCII byte, a
+  65-byte token, or a neighbouring string that merely starts the same way — still fails closed, as do
+  other statuses, extra fields, and mismatched correlation. This mirrors
+  `AI-Ascension/sts2-gateway#85`; the MCP consumer is a separate change and the native recovered
+  screen transition remains unverified.
