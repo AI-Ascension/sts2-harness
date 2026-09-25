@@ -143,11 +143,17 @@ fn targets(
         // value is only a prefix. On a semicolon module it always names a file:
         // a directory value is a rustc error (`Is a directory`), not a missed
         // reachability, so `DIR/mod.rs` is deliberately not consulted.
+        //
+        // A `#[cfg_attr]`-gated `#[path]` replaces the name-based lookup only on
+        // the branch that takes it, so when the attribute is conditional the
+        // ordinary child lookup below still runs: under the default build rustc
+        // reads `src/m/child.rs` for `#[cfg_attr(feature = "x", path = "alt")]
+        // mod m { pub mod child; }`, and neither branch may be reported.
         if !declaration.semi {
             return Vec::new();
         }
-        return states
-            .into_iter()
+        let mut targets: Vec<(String, String)> = states
+            .iter()
             .flat_map(|state| {
                 let base = state.base(file);
                 let paths = declaration.paths.clone();
@@ -158,22 +164,42 @@ fn targets(
                 })
             })
             .collect();
+        // A `#[cfg_attr]`-gated `mod NAME;` keeps the ordinary lookup as well:
+        // `src/m.rs` under the default build and `src/alt.rs` with the gate
+        // taken are each real on their own branch, so both are credited.
+        if !declaration.conditional {
+            return targets;
+        }
+        targets.extend(
+            states
+                .into_iter()
+                .flat_map(|state| ordinary_children(&state, declaration)),
+        );
+        return targets;
     }
     if !declaration.semi {
         return Vec::new();
     }
     states
         .into_iter()
-        .flat_map(|state| {
-            let dir = state.children_dir();
-            let children = join(&dir, &declaration.name);
-            let stem = join(&dir, &format!("{}.rs", declaration.name));
-            let nested = join(&children, "mod.rs");
-            [(stem, children.clone()), (nested, children)]
-        })
+        .flat_map(|state| ordinary_children(&state, declaration))
         .collect()
 }
 
+/// The ordinary `NAME.rs` / `NAME/mod.rs` lookup for a `mod NAME;` declaration,
+/// resolved inside the directory its enclosing blocks contributed.
+fn ordinary_children(state: &Base, declaration: &Declaration) -> Vec<(String, String)> {
+    let dir = state.children_dir();
+    let children = join(&dir, &declaration.name);
+    let stem = join(&dir, &format!("{}.rs", declaration.name));
+    let nested = join(&children, "mod.rs");
+    [(stem, children.clone()), (nested, children)]
+        .into_iter()
+        .collect()
+}
+
+/// The `#[cfg_attr]`-gated `#[path]` targets, which resolve against the same
+/// base the ordinary lookup uses.
 /// Where a declaration's own resolution starts, one entry per `#[path]` branch.
 struct Base {
     dir: String,
@@ -224,29 +250,34 @@ fn bases(file: &str, child_dir: &str, declarations: &[Declaration], position: us
         states = states
             .into_iter()
             .flat_map(|state| {
-                if ancestor.paths.is_empty() {
+                // A conditional block keeps the name-based state *as well as*
+                // its `#[path]` states: the path only replaces the name on the
+                // branch that takes it, so a child written in the block is
+                // reachable under both directories.
+                let base = state.base(file);
+                let mut branches = Vec::new();
+                if ancestor.paths.is_empty() || ancestor.conditional {
                     let mut nested = state.pending;
                     nested.push(ancestor.name.clone());
-                    return vec![Base {
+                    branches.push(Base {
                         dir: state.dir,
                         pending: nested,
                         anchored: state.anchored,
-                    }];
+                    });
                 }
-                let base = state.base(file);
-                ancestor
-                    .paths
-                    .iter()
-                    .map(|path| Base {
-                        dir: join(&base, path),
-                        pending: Vec::new(),
-                        // Anchored: the inner `#[path]` is relative to the
-                        // directory the outer one named, not to the carrying
-                        // file. `inline_path_attribute_inside_a_path_module_is_anchored`
-                        // is the only shape that reaches this flag.
-                        anchored: true,
-                    })
-                    .collect()
+                if ancestor.paths.is_empty() {
+                    return branches;
+                }
+                branches.extend(ancestor.paths.iter().map(|path| Base {
+                    dir: join(&base, path),
+                    pending: Vec::new(),
+                    // Anchored: the inner `#[path]` is relative to the
+                    // directory the outer one named, not to the carrying
+                    // file. `inline_path_attribute_inside_a_path_module_is_anchored`
+                    // is the only shape that reaches this flag.
+                    anchored: true,
+                }));
+                branches
             })
             .collect();
     }

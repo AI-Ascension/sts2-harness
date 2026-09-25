@@ -46,6 +46,36 @@ fn cfg_attr_path_reaches_every_branch() {
     assert!(reported.is_empty(), "{reported:?}");
 }
 
+/// A **pair** of mutually exclusive `#[cfg_attr]`s is the case where the
+/// branch-union rule costs precision, so the cost is pinned here rather than
+/// left implicit. With `#[cfg_attr(unix, path = "a.rs")]` and
+/// `#[cfg_attr(not(unix), path = "b.rs")]` on one `mod imp;`, a host build
+/// reads `src/a.rs` only (`src/b.rs` and `src/imp.rs` carry no marker that
+/// fires), yet the scan still credits the ordinary `NAME.rs` lookup because a
+/// gate it cannot evaluate may have left the declaration without any
+/// `#[path]` at all. `src/imp.rs` is therefore silent, not reported. This
+/// mirrors the merged `sts2-gateway` copy at tree `f9ba7ff9`, which is also
+/// silent here; it is a deliberate both-branches over-approximation, and losing
+/// the name branch instead would report a live file.
+#[test]
+fn a_pair_of_mutually_exclusive_cfg_attr_paths_still_credits_the_name_branch() {
+    let reported = unreachable(
+        &[
+            (
+                "src/lib.rs",
+                "#[cfg_attr(unix, path = \"a.rs\")]\n\
+                 #[cfg_attr(not(unix), path = \"b.rs\")]\n\
+                 mod imp;\n",
+            ),
+            ("src/a.rs", ""),
+            ("src/b.rs", ""),
+            ("src/imp.rs", ""),
+        ],
+        &["src/lib.rs"],
+    );
+    assert!(reported.is_empty(), "{reported:?}");
+}
+
 /// A `#[path]` on an **inline** module names the directory its children live in;
 /// rustc reads no file there at all. `rustc 1.97.1` exits 0 with
 /// `src/thread/child.rs` present, and moving it to `src/child.rs` fails `E0583`
@@ -201,4 +231,47 @@ fn a_semicolon_path_attribute_nested_in_an_inline_module_keeps_its_directory() {
         &["src/lib.rs"],
     );
     assert_eq!(reported, BTreeSet::from(["src/x.rs".to_owned()]));
+}
+
+/// A `#[cfg_attr]`-gated `#[path]` on an **inline** module replaces the
+/// name-based lookup only on the branch that takes it, so the other branch's
+/// directory is still reached. `rustc 1.97.1` under the default build reads
+/// `src/m/child.rs` (a marker there fails the build; the same marker in
+/// `src/alt/child.rs` is never read), so reporting the live file is the
+/// delete-a-live-file direction. Before this was handled the gate reported
+/// `src/m/child.rs` as unreachable.
+#[test]
+fn a_cfg_attr_path_on_an_inline_block_keeps_the_name_based_branch() {
+    let reported = unreachable(
+        &[
+            (
+                "src/lib.rs",
+                "#[cfg_attr(feature = \"x\", path = \"alt\")]\nmod m { pub mod child; }\n",
+            ),
+            ("src/m/child.rs", ""),
+            ("src/alt/child.rs", ""),
+        ],
+        &["src/lib.rs"],
+    );
+    assert!(reported.is_empty(), "{reported:?}");
+}
+
+/// The same rule for a **semicolon** `mod`: `#[cfg_attr(feature = "x",
+/// path = "alt.rs")] mod m;` reads `src/m.rs` under the default build and
+/// `src/alt.rs` with the gate taken, so both branches must be credited and
+/// neither is an orphan.
+#[test]
+fn a_cfg_attr_path_on_a_semicolon_mod_reaches_every_branch() {
+    let reported = unreachable(
+        &[
+            (
+                "src/lib.rs",
+                "#[cfg_attr(feature = \"x\", path = \"alt.rs\")]\nmod m;\n",
+            ),
+            ("src/m.rs", ""),
+            ("src/alt.rs", ""),
+        ],
+        &["src/lib.rs"],
+    );
+    assert!(reported.is_empty(), "{reported:?}");
 }
