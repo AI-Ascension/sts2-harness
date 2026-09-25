@@ -211,5 +211,6 @@ pub(super) fn admitted_capabilities(capabilities: &Value) -> Vec<String> {
 mod journal;
 pub use journal::{
     AuthoringInferenceBegin, AuthoringInferenceJournal, MemoryAuthoringInferenceJournal,
-    UnavailableAuthoringInferenceJournal, authoring_inference_operation_id,
+    SqliteAuthoringInferenceJournal, UnavailableAuthoringInferenceJournal,
+    authoring_inference_operation_id,
 };

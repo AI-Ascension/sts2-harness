@@ -6,8 +6,8 @@ mod authoring_inference;
 pub use authoring_inference::{
     AuthoringInferenceBegin, AuthoringInferenceCandidate, AuthoringInferenceJournal,
     AuthoringInferencePort, AuthoringInferenceProviderRequest, MemoryAuthoringInferenceJournal,
-    UnavailableAuthoringInferenceJournal, UnavailableAuthoringInferencePort,
-    authoring_inference_operation_id,
+    SqliteAuthoringInferenceJournal, UnavailableAuthoringInferenceJournal,
+    UnavailableAuthoringInferencePort, authoring_inference_operation_id,
 };
 mod cli;
 mod context_binding_history;
