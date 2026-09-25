@@ -20,6 +20,19 @@ Do not create empty success jobs for future game, provider, replay, or release l
 only when its command, inputs, outputs, and evidence semantics are real and make it a required check
 only after branch protection is configured externally.
 
+## Non-Linux documentation surface
+
+`non-linux-doc.yml` documents `sts2-harness` for `x86_64-unknown-freebsd`, the target whose `cfg` set
+reaches `worker_endpoint.rs`'s `#[cfg(not(any(target_os = "linux", windows)))]` arm — the arm the host doc
+gate and the `windows-check` doc step compile out. It exists to make that file's coverage 3 of 3 rather
+than 2 of 3, the count an earlier repository in this org once closed incorrectly. The target must be real,
+not a flag: `--cfg` cannot unset a built-in `target_os`. Of the targets whose predicate is true,
+`x86_64-apple-darwin` needs a macOS C toolchain the org does not have and `wasm32-unknown-unknown` is
+refused by `getrandom`, so `x86_64-unknown-freebsd` is the leg. It is a separate workflow rather than a
+`ci.yml` step because `ci.yml` sits at the `workflow_preferred` budget that `repo-policy --strict`
+enforces. Acceptance is read from the log — exit 0, zero `error` and zero `unknown lint` diagnostics, and
+the crate's `index.html` generated — not the step conclusion.
+
 ## Studio consumer contract
 
 `studio-contract.yml` tests the candidate harness against the immutable Studio
