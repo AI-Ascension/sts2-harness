@@ -108,15 +108,24 @@ jobs:
           hash_binary() {
             local label="$1"
             local path="$2"
-            printf '%s  %s\n' "$(sha256sum "$path" | cut -d' ' -f1)" "$label"
+            local digest
+            digest="$(sha256sum "$path" | cut -d' ' -f1)"
+            if [[ ${#digest} -ne 64 || "$digest" == *[!0-9a-f]* ]]; then
+              printf 'refusing to record provenance: no sha256 for %s (%s)\n' "$label" "$path" >&2
+              return 1
+            fi
+            printf '%s  %s\n' "$digest" "$label"
           }
+          ok=1
           {
-            hash_binary harness/target/debug/sts2-harness-runtime harness/target/debug/sts2-harness-runtime
-            hash_binary harness/target/debug/sts2-exact-restore-conformance harness/target/debug/sts2-exact-restore-conformance
-            hash_binary mcp/target/debug/sts2-mcp-server mcp/target/debug/sts2-mcp-server
-            hash_binary gateway/target/debug/sts2-gateway-runtime gateway/target/debug/sts2-gateway-runtime
-            hash_binary game-mod/target/debug/examples/exact_restore_peer game-mod/target/debug/examples/exact_restore_peer
-          } > "$GITHUB_WORKSPACE/exact-restore-conformance-artifacts/binary-sha256sums.txt"
+            hash_binary harness/target/debug/sts2-harness-runtime harness/target/debug/sts2-harness-runtime || ok=0
+            hash_binary harness/target/debug/sts2-exact-restore-conformance harness/target/debug/sts2-exact-restore-conformance || ok=0
+            hash_binary mcp/target/debug/sts2-mcp-server mcp/target/debug/sts2-mcp-server || ok=0
+            hash_binary gateway/target/debug/sts2-gateway-runtime gateway/target/debug/sts2-gateway-runtime || ok=0
+            hash_binary game-mod/target/debug/examples/exact_restore_peer game-mod/target/debug/examples/exact_restore_peer || ok=0
+          } > "$GITHUB_WORKSPACE/exact-restore-conformance-artifacts/binary-sha256sums.txt.part"
+          [ "$ok" -eq 1 ] || { rm -f "$GITHUB_WORKSPACE/exact-restore-conformance-artifacts/binary-sha256sums.txt.part"; echo 'provenance incomplete: binary-sha256sums.txt not published' >&2; exit 1; }
+          mv "$GITHUB_WORKSPACE/exact-restore-conformance-artifacts/binary-sha256sums.txt.part" "$GITHUB_WORKSPACE/exact-restore-conformance-artifacts/binary-sha256sums.txt"
 
       - name: Run all three exact-restore outcomes
         env:
