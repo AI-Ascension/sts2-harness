@@ -44,10 +44,14 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   `fetch_attempts`/`denied_requests` counts it asserts instead of stating a count in prose. The case
   therefore reports that bound as reachable only by a direct drive instead of implying a
   bound-sized handoff yields a decision, and it also measures why the bound cannot be approached
-  through the bridge at all: the envelope's `hard_constraints` are schema-capped at 32 items of 512
-  bytes (`protocol-artifact/exo-bridge-v1/schema.json`), so a saturated projection tops out near
-  16 KiB and the read bound is **unreachable through the bridge**, which builds no
-  `exo_bridge_input_bound` code path. Both bounds the oracle pins are hand-copies of shipped values,
+  through the bridge at all: the bridge parses under its own 131,072-byte bound, below the executor's
+  163,840, so the read bound is **unreachable through the bridge**, which builds no
+  `exo_bridge_input_bound` code path. The projected fields do **not** carry that claim on their own —
+  `legal_action_ids` alone is schema-capped at 256 ids of 512 bytes
+  (`protocol-artifact/exo-bridge-v1/schema.json`), enough to exceed the bridge's own bound — so the
+  case saturates `hard_constraints` only, leaves `legal_action_ids` at fixture size, and records
+  that measurement beside both caps rather than a projection ceiling. Both bounds the oracle pins
+  are hand-copies of shipped values,
   so the oracle reads the shipped declarations (`bridge/src/main.rs` and `sts2-exo-bridge.rs`) before
   driving anything and fails if either moves, and the report records the shipped values beside the
   pins — no gate other than this one reads the sources those constants mirror. The budget half

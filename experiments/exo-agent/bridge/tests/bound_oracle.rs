@@ -24,7 +24,7 @@ use bounds::{Loopback, Result};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
-// Hand-copies of shipped bounds; `bounds::pinned_bounds` fails if either moves (see its module).
+// Hand-copies of shipped bounds; `bounds::pinned_bounds` fails if either moves.
 const EXECUTOR_INPUT_LIMIT: usize = 160 * 1024;
 const BRIDGE_REQUEST_BOUND: usize = 131_072;
 
@@ -138,13 +138,12 @@ fn bridge_read_bound_is_not_back_pressure(
             "evidence": "bridge-parse-refusal-pre-spawn"}));
     }
 
-    // A bridge-issued handoff cannot approach the executor's read bound, and the reason is the
-    // schema rather than this fixture: `hard_constraints` is capped at 32 items of 512 bytes
-    // (`protocol-artifact/exo-bridge-v1/schema.json`), so a schema-legal projection tops out near
-    // 16 KiB — an order of magnitude below the 163,840-byte read bound — while the accepted
-    // envelope itself is already capped at 131,072. The `< LIMIT / 4` threshold below is a function
-    // of the constant under test, so a tightened read bound is still caught; the case records the
-    // saturated projection *and* the cap it saturates against.
+    // A bridge-issued handoff cannot approach the executor's read bound; the binding reason is the
+    // bridge's own parse bound (131,072 < 163,840). The projected fields do *not* carry that —
+    // `legal_action_ids` alone caps at 256 ids of 512 bytes (see `exo-bridge-v1/schema.json`), over
+    // the bridge bound — so this case is fixture-scoped: it saturates `hard_constraints` only,
+    // leaves `legal_action_ids` at fixture size, and records it beside both caps. `< LIMIT / 4`
+    // tracks the constant under test, not a projection ceiling.
     let mut saturated = bounds::request_envelope(&bounds::workspace_root()?)?;
     saturated["request"]["hard_constraints"] = json!(
         (0..32)
@@ -159,31 +158,32 @@ fn bridge_read_bound_is_not_back_pressure(
     }))?;
     assert!(
         projected.len() < EXECUTOR_INPUT_LIMIT / 4,
-        "a saturated bridge projection must stay far below the executor bound: {}",
+        "this fixture's saturated-constraint projection must stay far below the bound: {}",
         projected.len()
     );
     cases.push(
-        json!({"case": "bridge_projection_cannot_reach_executor_bound", "passed": true,
+        json!({"case": "fixture_projection_stays_below_executor_bound", "passed": true,
         "saturated_projection_bytes": projected.len(),
         "executor_input_limit": EXECUTOR_INPUT_LIMIT,
         "bridge_request_bound": BRIDGE_REQUEST_BOUND,
-        "constraint_schema_cap": {"items": 32, "item_bytes": 512},
-        "model_requests": 0, "evidence": "measured-at-maximum-constraints"}),
+        // Both caps: the smaller is not the projection's ceiling (see above).
+        "schema_caps": {"hard_constraints": {"items": 32, "item_bytes": 512},
+            "legal_action_ids": {"items": 256, "item_bytes": 512}},
+        "model_requests": 0, "evidence": "measured-at-fixture-maximum-constraints"}),
     );
     Ok(())
 }
 
 /// The executor stops reading at its own bound and kills the pipe, so a writer offering far more is
-/// stopped at roughly `INPUT_LIMIT` — an EPIPE rather than a silent truncation.
-///
-/// Three padded sizes pin the boundary, and the middle one is the reason the case is written this
-/// way rather than as a single "at the bound, the turn completes" claim. At `INPUT_LIMIT` the executor
-/// reads the whole handoff and admits it, but the turn then fails **locally in the extension's own
+/// stopped at roughly `INPUT_LIMIT` — an EPIPE rather than a silent truncation. Three padded sizes
+/// pin the boundary, and the middle one is the reason the case is written this way rather than as a
+/// single "at the bound, the turn completes" claim. At `INPUT_LIMIT` the executor reads the whole
+/// handoff and admits it, but the turn then fails **locally in the extension's own
 /// model-write guard**: the projected request body is larger than the extension's 160 KiB bound, so
 /// it denies every attempt before any inference and the endpoint sees zero requests. The receipt's
 /// `fetch_attempts` and `denied_requests` are recorded in the case rather than counted in prose, so
-/// the refusal stays checkable from the report alone. This lane therefore reports the read bound as
-/// reachable-but-not-sufficient, instead of implying that a handoff at 160 KiB yields a decision.
+/// the refusal stays checkable from the report alone: the read bound is reachable-but-not-sufficient
+/// rather than a handoff at 160 KiB yielding a decision.
 /// One size below (`INPUT_LIMIT - 4 KiB`) completes a real turn, so the refusal at the bound is the
 /// projection guard and not a broken drive.
 fn executor_stops_reading_at_its_own_bound(
