@@ -24,8 +24,8 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   kind, while the sibling `inference_profile_revision_sqlite.rs` it names as its pattern already
   opened one. Two store instances over one file is the shape that matters, since the `Mutex` orders
   callers only inside one process; the new regression test drives that topology and covers the
-  `begin` half, the `complete` half being closed by the transaction's construction. Compatibility:
-  additive; no route, schema or wire change. Closes #509.
+  `begin` half, the transaction closing the `complete` half's stale read and a second case covering the
+  idempotent same-state repeat. Compatibility: additive; no route, schema or wire change. Closes #509.
 
 - **Measure the two source-only Exo bounds `#148` had left, and report the one that is not what it
   looks like.** `process_oracle` writes 131,073 bytes and *then* sends EOF, which exercises the
