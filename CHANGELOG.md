@@ -47,7 +47,11 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   through the bridge at all: the envelope's `hard_constraints` are schema-capped at 32 items of 512
   bytes (`protocol-artifact/exo-bridge-v1/schema.json`), so a saturated projection tops out near
   16 KiB and the read bound is **unreachable through the bridge**, which builds no
-  `exo_bridge_input_bound` code path. The budget half proves `timeout_millis` is a real deadline
+  `exo_bridge_input_bound` code path. Both bounds the oracle pins are hand-copies of shipped values,
+  so the oracle reads the shipped declarations (`bridge/src/main.rs` and `sts2-exo-bridge.rs`) before
+  driving anything and fails if either moves, and the report records the shipped values beside the
+  pins — no gate other than this one reads the sources those constants mirror. The budget half
+  proves `timeout_millis` is a real deadline
   (a 10 s budget aborts a held turn at 10 s and reports the typed `exo_executor_turn_timeout`) and
   that a reply truncated at `max_output_tokens` yields `decision: null` with `exo_turn_failed`
   rather than a fabricated decision. Evidence class: **real pinned Exo process composition with a

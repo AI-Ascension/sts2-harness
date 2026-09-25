@@ -24,6 +24,7 @@ use bounds::{Loopback, Result};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
+// Hand-copies of shipped bounds; `bounds::pinned_bounds` fails if either moves (see its module).
 const EXECUTOR_INPUT_LIMIT: usize = 160 * 1024;
 const BRIDGE_REQUEST_BOUND: usize = 131_072;
 
@@ -31,6 +32,7 @@ const BRIDGE_REQUEST_BOUND: usize = 131_072;
 #[ignore = "requires built bridge/executor, pinned Exo source/dependencies and Node; see README"]
 fn real_exo_back_pressure_and_budget_exhaustion() -> Result {
     let root = bounds::workspace_root()?;
+    let shipped = bounds::pinned_bounds(&root, EXECUTOR_INPUT_LIMIT, BRIDGE_REQUEST_BOUND)?;
     let bridge = root.join("target/debug/sts2-exo-bridge");
     let executor = root.join("target/exo-executor/debug/sts2-exo-executor");
     let envelope = bounds::request_envelope(&root)?;
@@ -51,6 +53,9 @@ fn real_exo_back_pressure_and_budget_exhaustion() -> Result {
             "experiments/exo-agent/bridge/tests/bound_oracle.rs",
             "experiments/exo-agent/bridge/tests/support/bounds.rs",
             "experiments/exo-agent/bridge/tests/support/loopback.rs",
+            "experiments/exo-agent/bridge/tests/support/shipped_bounds.rs",
+            "experiments/exo-agent/bridge/src/main.rs",
+            "crates/harness/src/bin/sts2-exo-bridge.rs",
         ],
     )?;
     let report = json!({
@@ -72,6 +77,9 @@ fn real_exo_back_pressure_and_budget_exhaustion() -> Result {
             "bridge_request_parse_bound_bytes": BRIDGE_REQUEST_BOUND,
             "executor_read_bound_bytes": EXECUTOR_INPUT_LIMIT,
             "extension_model_write_bound_bytes": EXECUTOR_INPUT_LIMIT,
+            // From the shipped sources, so a reader can check the pin from the artifact alone.
+            "shipped_executor_read_bound_bytes": shipped.input_limit,
+            "shipped_bridge_request_parse_bound_bytes": shipped.request_bound,
             "executor_read_bound_reachable_through_the_bridge": false,
             "note": "The executor read bound admits a 160 KiB handoff, but the turn is then denied \
                      locally by the extension's equal model-write bound before any inference, so the \
@@ -92,14 +100,11 @@ fn real_exo_back_pressure_and_budget_exhaustion() -> Result {
 /// The bridge reads at most 131,072 bytes, so a writer offering one byte past that is stopped by the
 /// bridge's own parse refusal while the executor — reached only after a valid envelope — is stopped
 /// by its 160 KiB read bound. The byte count the writer got in is reported, not asserted exactly:
-/// it is a property of the kernel pipe buffer as much as of the process.
-///
-/// The two offers pin the read count itself: 131,072 bytes are the most the bridge will read (and
-/// still fail to parse, because the payload is not an envelope), and 131,073 is one byte over the
-/// `take` bound. The process count is recorded rather than asserted, because the bridge's config
-/// load spawns transient `git` children (`rev-parse`, `status`) that a single sample can catch. The
-/// pre-inference claim is carried by the model's own connection count, which is exact: no executor
-/// and no model request is reached.
+/// it is a property of the kernel pipe buffer as much as of the process. The two offers pin the read
+/// count itself (131,072 is the most the bridge will read, 131,073 one byte over the `take` bound),
+/// and the process count is recorded rather than asserted because the bridge's config load spawns
+/// transient `git` children. The pre-inference claim is carried by the model's own connection count,
+/// which is exact: no executor and no model request is reached.
 fn bridge_read_bound_is_not_back_pressure(
     bridge: &Path,
     config: &Path,
@@ -139,8 +144,7 @@ fn bridge_read_bound_is_not_back_pressure(
     // 16 KiB — an order of magnitude below the 163,840-byte read bound — while the accepted
     // envelope itself is already capped at 131,072. The `< LIMIT / 4` threshold below is a function
     // of the constant under test, so a tightened read bound is still caught; the case records the
-    // saturated projection *and* the cap it saturates against instead of implying the executor
-    // bound is unreachable through the bridge for an unstated reason.
+    // saturated projection *and* the cap it saturates against.
     let mut saturated = bounds::request_envelope(&bounds::workspace_root()?)?;
     saturated["request"]["hard_constraints"] = json!(
         (0..32)
@@ -202,8 +206,8 @@ fn executor_stops_reading_at_its_own_bound(
         4096,
     )?;
     model.reset()?;
-    // The at-bound case's denial counts are recorded into its report entry rather than only
-    // asserted, so the refusal is checkable from the emitted evidence instead of from prose.
+    // The at-bound case's denial counts are recorded into its entry, not only asserted, so the
+    // refusal is checkable from the emitted evidence rather than from prose.
     let mut recorded_attempts = None;
     for (name, target, outcome) in [
         (

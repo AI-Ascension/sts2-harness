@@ -27,9 +27,11 @@ use std::time::{Duration, Instant};
 
 pub mod loopback;
 pub mod process;
+pub mod shipped_bounds;
 
 pub use loopback::{Loopback, one_shot_wait, truncated_at_budget};
 pub use process::{assert_no_private_argv, descendants};
+pub use shipped_bounds::pinned_bounds;
 
 pub type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 
