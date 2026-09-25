@@ -19,7 +19,7 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   directory of the file carrying the declaration (or the enclosing inline module's directory when
   nested), which is what rustc does. The sibling form is deliberately **not** changed: a `#[path]` on
   a semicolon `mod` always names a file, so a directory value there is a rustc error
-  (`couldn't read `src/thread`: Is a directory`), never a miss. Six regression tests, four of them
+  (``couldn't read `src/thread`: Is a directory``), never a miss. Five regression tests, four of them
   failing against the pre-fix rule; `--strict` on this repository is unchanged.
 
 - **Stop `RUST002` from reporting two rustc-valid module shapes as unreachable.** The rule must never
