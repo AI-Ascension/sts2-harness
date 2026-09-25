@@ -79,27 +79,39 @@ jobs:
         # the native game with the declared synthetic host. No provider, credential,
         # game, save or native instance is used.
         run: |
+          set -o pipefail
+          log=target/exo-process-oracle.log; status=0
           STS2_EXO_TEST_NODE="$(command -v node)" \
             CARGO_TARGET_DIR="$PWD/target/exo-executor" \
             cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
-            --test process_oracle -- --ignored
+            --test process_oracle -- --ignored 2>&1 | tee "$log" || status=$?
+          ran=$(grep -c 'test result: ok\. [1-9][0-9]* passed; 0 failed;' "$log") || ran=0
+          echo "exo-process-oracle: exit=$status executed=$ran"; [ "$status" -eq 0 ] && [ "$ran" -ge 1 ]
 
       - name: Run the real-Exo duplex lookup oracle
         run: |
+          set -o pipefail
+          log=target/exo-lookup-oracle.log; status=0
           STS2_EXO_TEST_NODE="$(command -v node)" \
             CARGO_TARGET_DIR="$PWD/target/exo-executor" \
             cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
-            --test lookup_oracle -- --ignored
+            --test lookup_oracle -- --ignored 2>&1 | tee "$log" || status=$?
+          ran=$(grep -c 'test result: ok\. [1-9][0-9]* passed; 0 failed;' "$log") || ran=0
+          echo "exo-lookup-oracle: exit=$status executed=$ran"; [ "$status" -eq 0 ] && [ "$ran" -ge 1 ]
 
       - name: Run the real-Exo fault matrix and run isolation
         # Extends the lane with #148 T2/T3: the admission fault matrix (schema/pin/identity), a
         # lost model reply, restart determinism and concurrent-run isolation. Same synthetic
         # loopback model and synthetic host; no provider, credential, game or native instance.
         run: |
+          set -o pipefail
+          log=target/exo-fault-oracle.log; status=0
           STS2_EXO_TEST_NODE="$(command -v node)" \
             CARGO_TARGET_DIR="$PWD/target/exo-executor" \
             cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
-            --test fault_oracle -- --ignored
+            --test fault_oracle -- --ignored 2>&1 | tee "$log" || status=$?
+          ran=$(grep -c 'test result: ok\. [1-9][0-9]* passed; 0 failed;' "$log") || ran=0
+          echo "exo-fault-oracle: exit=$status executed=$ran"; [ "$status" -eq 0 ] && [ "$ran" -ge 1 ]
 
       - name: Run the real-Exo bound and turn-budget oracle
         # Extends the lane with #148's remaining source-only halves: writer-side back-pressure at
@@ -107,10 +119,14 @@ jobs:
         # `timeout_millis` and `max_output_tokens` turn budgets. Same synthetic loopback model and
         # synthetic host; no provider, credential, game or native instance.
         run: |
+          set -o pipefail
+          log=target/exo-bound-oracle.log; status=0
           STS2_EXO_TEST_NODE="$(command -v node)" \
             CARGO_TARGET_DIR="$PWD/target/exo-executor" \
             cargo test --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml \
-            --test bound_oracle -- --ignored
+            --test bound_oracle -- --ignored 2>&1 | tee "$log" || status=$?
+          ran=$(grep -c 'test result: ok\. [1-9][0-9]* passed; 0 failed;' "$log") || ran=0
+          echo "exo-bound-oracle: exit=$status executed=$ran"; [ "$status" -eq 0 ] && [ "$ran" -ge 1 ]
 
       - name: Assert the fault report names the pinned revision
         env:
@@ -138,6 +154,14 @@ jobs:
           test "$(jq -r '.boundaries.executor_read_bound_bytes' target/exo-bound-report.json)" = "163840"
           test "$(jq -r '.boundaries.bridge_request_parse_bound_bytes' target/exo-bound-report.json)" = "131072"
 
+      - name: Assert the duplex lookup report names the pinned revision
+        env:
+          EXO_REVISION: ${{ steps.exo-revision.outputs.revision }}
+        run: |
+          test -s target/exo-lookup-oracle-report.json
+          test "$(jq -r .exo_revision target/exo-lookup-oracle-report.json)" = "$EXO_REVISION"
+          test "$(jq -r .complete_tool_payload target/exo-lookup-oracle-report.json)" = "true"
+
       - name: Upload the bounded process evidence report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -147,5 +171,6 @@ jobs:
             target/exo-smoke-report.json
             target/exo-fault-report.json
             target/exo-bound-report.json
+            target/exo-lookup-oracle-report.json
           if-no-files-found: warn
           retention-days: 7
