@@ -533,3 +533,10 @@ that preceded the entries below is preserved in
   is a reserved Win32 device name with any extension, `git clone` on Windows stopped with
   `error: invalid path` and left an incomplete tree that could not be built. Compatibility: no
   behaviour change; the file was outside the module tree. Refs #281.
+
+- Add opt-in Jev `--audit-dir` metadata sidecars with bounded, create-only Unix reservations,
+  separate execution/input fingerprints, no raw prompts or action IDs, and no extra provider calls.
+  Runtime stdout stays one decision; storage failures refuse it. Add a redacted paired reader and
+  CI for the offline evaluation tests. Windows capture, native gameplay benefit and live paired
+  orchestration remain unverified. See [capture documentation](../experiments/jev-evaluation/CAPTURE.md).
+

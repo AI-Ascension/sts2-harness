@@ -10,6 +10,30 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Measure the two source-only Exo bounds `#148` had left, and report the one that is not what it
+  looks like.** `process_oracle` writes 131,073 bytes and *then* sends EOF, which exercises the
+  bridge's read/parse bound; it says nothing about how many bytes a writer gets into a peer that has
+  already stopped reading, and nothing about the executor's turn budgets. `bound_oracle` drives both
+  shipped entrypoints against the real pinned Exo runtime and a **test-controlled loopback endpoint**
+  (so `timeout_millis` can be measured against a reply that is genuinely outstanding) and pins three
+  separate boundaries rather than one: a writer offering 131,072 and 131,073 bytes is stopped by the
+  bridge's own `exo_bridge_invalid_request` **pre-inference**, with zero model connections; the
+  executor reads at most 160 KiB and kills the pipe (`exo_executor_input_bound`), so offering 8×
+  that figure is stopped rather than silently swallowed; and — the uncomfortable half — **a handoff
+  padded to exactly the executor's 160 KiB read bound is admitted by it and still returns no
+  decision**, because the projected model request then trips the extension's *equal* model-write
+  bound and three SDK attempts are denied locally before any inference. The case therefore reports
+  that bound as reachable only by a direct drive instead of implying a bound-sized handoff yields a
+  decision, and it also measures that a saturated bridge projection (32 constraints of 512 bytes)
+  cannot approach 160 KiB at all — the read bound is **unreachable through the bridge**, which builds
+  no `exo_bridge_input_bound` code path. The budget half proves `timeout_millis` is a real deadline
+  (a 10 s budget aborts a held turn at 10 s and reports the typed `exo_executor_turn_timeout`) and
+  that a reply truncated at `max_output_tokens` yields `decision: null` with `exo_turn_failed`
+  rather than a fabricated decision. Evidence class: **real pinned Exo process composition with a
+  synthetic model and no game** — no provider, credential, game, save or native effect is claimed,
+  and the new report carries `full_runtime_admission: false`. Compatibility: tests, documentation and
+  one CI step; no shipped boundary changed. Refs #148.
+
 - **Cover the one `RUST002` `#[path]` anchoring branch the suite could lose silently.** The
   `Base`/`bases()` mechanism added in #499 exists to distinguish an *unnested* `#[path]` value —
   relative to the directory of the file carrying it — from an *anchored* one, where an enclosing
@@ -506,9 +530,3 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 - Add an explicitly approved [paired Jev replay runner](experiments/jev-evaluation/RUNNER.md):
   pinned matching inputs, reserved budgets, independent redacted captures, bounded Unix processes
   and read-only recovery. No game action is dispatched; native/provider benefit remains unverified.
-
-- Add opt-in Jev `--audit-dir` metadata sidecars with bounded, create-only Unix reservations,
-  separate execution/input fingerprints, no raw prompts or action IDs, and no extra provider calls.
-  Runtime stdout stays one decision; storage failures refuse it. Add a redacted paired reader and
-  CI for the offline evaluation tests. Windows capture, native gameplay benefit and live paired
-  orchestration remain unverified. See [capture documentation](experiments/jev-evaluation/CAPTURE.md).

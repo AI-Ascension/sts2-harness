@@ -121,8 +121,8 @@ the default pins. Never substitute a branch name, moving default, or dirty tree.
 [`experiments/exo-agent/bridge/README.md`](../experiments/exo-agent/bridge/README.md). It installs the
 pinned Node runtime and pnpm, checks out `exoharness/exo` at the revision read from
 `EXO_SOURCE_REVISION`, builds the isolated `sts2-exo-executor` package and the `sts2-exo-bridge`
-binary, and executes the previously `#[ignore]`d `process_oracle`, `lookup_oracle` and `fault_oracle`
-tests.
+binary, and executes the previously `#[ignore]`d `process_oracle`, `lookup_oracle`, `fault_oracle`
+and `bound_oracle` tests.
 
 `fault_oracle` adds the `#148` T2/T3 fault and isolation matrix: the admission faults (config schema,
 pin and argv identity, provider-route refusal) must fail closed with **zero** model egress, a lost
@@ -132,6 +132,21 @@ runs must each send exactly one model request from a private endpoint, config di
 not asserted disjoint, and no barrier forces the concurrent runs to overlap. It emits the bounded
 `target/exo-fault-report.json`, whose `exo_revision` is asserted against the runtime pin so a moved
 pin cannot leave a stale report.
+
+`bound_oracle` adds the two source-only remainders `#148` recorded after those slices: writer-side
+back-pressure and the executor's turn budget. A writer offering 131,072 and 131,073 bytes gets the
+bridge's own pre-inference parse refusal with **zero** model connections, and the report records the
+byte count the writer got in rather than asserting it exactly, because it is partly a kernel pipe
+property. The executor's 160 KiB read bound is then pinned by handoffs padded to the bound, one byte
+past it, and 4 KiB below it: the middle size is *admitted* by the read bound but the turn is denied
+locally by the extension's equal model-write bound, so the read bound is reported as reachable only
+by a direct drive rather than as a size that yields a decision. A saturated bridge projection (32
+constraints of 512 bytes) is measured below the executor bound, which is why the bridge cannot reach
+it. The budget half drives the executor against an endpoint that holds the reply outstanding, so the
+typed `exo_executor_turn_timeout` is measured against a real deadline, and against a reply the
+provider truncated at `max_output_tokens`, so no decision is fabricated.
+`target/exo-bound-report.json` carries the same asserted `exo_revision` and
+`full_runtime_admission: false` as the sibling reports.
 
 The oracle drives the real pinned Exo TypeScript runtime. Only the model service is replaced with a
 bounded synthetic loopback endpoint and the native game with the declared synthetic host; no
