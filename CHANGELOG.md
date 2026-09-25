@@ -33,6 +33,23 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   synthetic model and no game** — no provider, credential, game, save or native effect is claimed,
   and the new report carries `full_runtime_admission: false`. Compatibility: tests, documentation and
   one CI step; no shipped boundary changed. Refs #148.
+- **Persist authoring-inference reservations in the management store instead of only in memory.**
+  Requirement 4 of the bounded authoring-inference surface says a reservation is *persisted* and
+  AC4 says a *restart* preserves one operation with an honest cost/outcome state, but the only
+  non-test journal was `MemoryAuthoringInferenceJournal` — a process-local map — so the guarantee
+  held no further than a re-composition inside one process. The new
+  `SqliteAuthoringInferenceJournal` keeps each reservation and its terminal outcome in the same
+  `SqliteWorkflowStore` the served composition already opens: `begin` inserts with
+  `INSERT OR IGNORE` and reads back, so two callers cannot both start, and `complete` repeats the
+  terminal guard as a `WHERE ... json_extract(record,'$.state') = 'pending'` predicate, so a racing
+  terminal write cannot be overwritten. The existing restart test could not see the gap: it passed
+  the *same* `Arc<MemoryAuthoringInferenceJournal>` to both services. The added test drops the
+  first service, reopens the database from disk and re-composes over a **new** journal; the
+  counterfactual (the same test with the in-memory journal in both services) fails at the provider
+  call count, 2 instead of 1 — i.e. it re-contacts the provider, which is the harm the requirement
+  exists to prevent. Additive: the in-memory journal is unchanged, no route or schema is removed.
+  Refs #105. The issue stays open for the HTTP-boundary conflict case and for the owner's
+  scoping decision on whether AC4's restart is meant to be cross-process.
 
 - **Cover the one `RUST002` `#[path]` anchoring branch the suite could lose silently.** The
   `Base`/`bases()` mechanism added in #499 exists to distinguish an *unnested* `#[path]` value —

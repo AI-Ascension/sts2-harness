@@ -15,7 +15,9 @@ use std::sync::Arc;
 use serde_json::json;
 use sts2_harness::management::{
     AuthoringInferenceCost, AuthoringInferenceJournal, AuthoringInferenceOperationState,
-    AuthoringStore, ErrorClass, ManagementError, authoring_inference_operation_id, digest_value,
+    AuthoringStore, ErrorClass, ManagementError, MemoryAuthoringStore,
+    SqliteAuthoringInferenceJournal, SqliteWorkflowStore, authoring_inference_operation_id,
+    digest_value,
 };
 
 #[path = "support/authoring_inference_harness.rs"]
@@ -274,5 +276,75 @@ fn an_unresolved_reservation_and_a_reused_identity_are_actionable_conflicts()
     )?;
     assert_eq!(conflict.code, "authoring_inference_operation_conflict");
     assert_eq!(suite.provider.calls(), 0);
+    Ok(())
+}
+
+/// AC4 says a *restart* preserves one operation and an honest cost/outcome
+/// state, and requirement 4 says the reservation is *persisted*. The in-memory
+/// restart test above passes the same `Arc<MemoryAuthoringInferenceJournal>` to
+/// both services, so it proves an in-process re-composition. This test closes
+/// the store, reopens it from disk, and re-composes over a *new* journal
+/// instance: the replay below can only succeed if the reservation and its
+/// terminal outcome actually survived the process-local map.
+#[test]
+fn a_reopened_database_replays_the_one_recorded_operation_without_a_second_provider_call()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = std::env::temp_dir().join(format!(
+        "sts2-authoring-inference-journal-{}-{}",
+        std::process::id(),
+        line!()
+    ));
+    std::fs::create_dir_all(&directory)?;
+    let path = directory.join("management.sqlite3");
+
+    let authoring = Arc::new(MemoryAuthoringStore::new());
+    let catalog = baseline_catalog();
+    let execution = RecordingExecutionPort::new();
+    let provider = RecordingAuthoringProvider::returning(candidate(definition(), 1, 512));
+    let actor = actor()?;
+
+    let first_service = service_with_journal(
+        &authoring,
+        &provider,
+        Arc::new(SqliteAuthoringInferenceJournal::new(Arc::new(
+            SqliteWorkflowStore::open(&path)?,
+        ))),
+        &catalog,
+        &execution,
+    );
+    let draft = first_service.studio_create_draft(&actor, create_request(base_document()))?;
+    let request = request_for(&draft, &catalog, "mutation-reopen")?;
+    let first = first_service.authoring_inference_proposal(&actor, request.clone())?;
+    assert_eq!(provider.calls(), 1);
+    let recorded =
+        first_service.authoring_inference_operation(&actor, DRAFT_ID, "mutation-reopen")?;
+    assert_eq!(recorded.state, AuthoringInferenceOperationState::Proposed);
+
+    // Every handle onto the first store is gone before the reopen, so nothing
+    // can be replayed from a live in-process journal.
+    drop(first_service);
+    let reopened = Arc::new(SqliteWorkflowStore::open(&path)?);
+    let restarted = service_with_journal(
+        &authoring,
+        &provider,
+        Arc::new(SqliteAuthoringInferenceJournal::new(reopened.clone())),
+        &catalog,
+        &execution,
+    );
+
+    let second = restarted.authoring_inference_proposal(&actor, request)?;
+    assert_eq!(second, first);
+    assert_eq!(
+        provider.calls(),
+        1,
+        "a restart across a reopened store must replay the recorded proposal, not regenerate it"
+    );
+    let recovered = restarted.authoring_inference_operation(&actor, DRAFT_ID, "mutation-reopen")?;
+    assert_eq!(recovered, recorded);
+    assert_eq!(recovered.cost, first.cost);
+    assert_eq!(
+        recovered.proposal_id.as_deref(),
+        Some(first.proposal_id.as_str())
+    );
     Ok(())
 }

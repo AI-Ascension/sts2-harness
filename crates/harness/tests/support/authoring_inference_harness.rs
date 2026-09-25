@@ -23,10 +23,11 @@ use std::sync::atomic::Ordering;
 use serde_json::{Value, json};
 use sts2_harness::management::{
     AUTHORING_INFERENCE_REQUEST_SCHEMA_VERSION, AuthContext, AuthoringInferenceBase,
-    AuthoringInferenceBudget, AuthoringInferenceCatalogs, AuthoringInferenceRequest,
-    AuthoringInferenceRequirement, InferenceProfileCatalog, ManagementError, ManagementService,
-    MemoryAuthoringInferenceJournal, MemoryAuthoringStore, MemoryWorkflowStore,
-    STUDIO_SCHEMA_VERSION, StudioCreateDraftRequest, StudioDraftRecord, digest_value,
+    AuthoringInferenceBudget, AuthoringInferenceCatalogs, AuthoringInferenceJournal,
+    AuthoringInferenceRequest, AuthoringInferenceRequirement, InferenceProfileCatalog,
+    ManagementError, ManagementService, MemoryAuthoringInferenceJournal, MemoryAuthoringStore,
+    MemoryWorkflowStore, STUDIO_SCHEMA_VERSION, StudioCreateDraftRequest, StudioDraftRecord,
+    digest_value,
 };
 
 pub(crate) const DRAFT_ID: &str = "draft-authoring-inference";
@@ -110,6 +111,18 @@ pub(crate) fn service_with(
     catalog: &InferenceProfileCatalog,
     execution: &Arc<RecordingExecutionPort>,
 ) -> ManagementService {
+    service_with_journal(authoring, provider, journal.clone(), catalog, execution)
+}
+
+/// The same composition over any journal implementation, so a test can drive a
+/// durable journal without a second copy of the wiring.
+pub(crate) fn service_with_journal(
+    authoring: &Arc<MemoryAuthoringStore>,
+    provider: &Arc<RecordingAuthoringProvider>,
+    journal: Arc<dyn AuthoringInferenceJournal>,
+    catalog: &InferenceProfileCatalog,
+    execution: &Arc<RecordingExecutionPort>,
+) -> ManagementService {
     ManagementService::new(Arc::new(MemoryWorkflowStore::new()))
         .with_authoring_store(authoring.clone())
         .with_capability_port(Arc::new(AuthoringCapabilityDouble {
@@ -118,7 +131,7 @@ pub(crate) fn service_with(
         .with_definition_port(Arc::new(AuthoringDefinitionDouble))
         .with_execution_port(execution.clone())
         .with_authoring_inference_port(provider.clone())
-        .with_authoring_inference_journal(journal.clone())
+        .with_authoring_inference_journal(journal)
 }
 
 /// One assembled suite: the service under test plus the exact seams a test
