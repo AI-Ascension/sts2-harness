@@ -1,0 +1,72 @@
+name: Non-Linux documentation surface
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: non-linux-doc-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  freebsd-doc:
+    name: FreeBSD-target documentation surface
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the pinned toolchain and the FreeBSD target
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --no-self-update
+          rustup target add --toolchain 1.97.1 x86_64-unknown-freebsd
+
+      # `worker_endpoint.rs` splits `run_from_environment` three ways: `#[cfg(target_os = "linux")]`,
+      # `#[cfg(windows)]`, and `#[cfg(not(any(target_os = "linux", windows)))]`. The doc gate in the
+      # `rust` job runs on this Linux runner, where the third arm is compiled out; the `#505` doc step
+      # in `windows-check` reaches the Windows arm but not the third. So the third arm — a real item
+      # with its own `///` block, and therefore genuinely doc-checkable — is compiled by no leg, which
+      # is exactly the "2 of 3 arms" coverage gap `sts2-harness#506` records.
+      #
+      # Reaching it needs a real target whose `cfg` set makes the predicate true, not a flag:
+      # `--cfg` cannot unset a built-in `target_os` (`#[deny(explicit_builtin_cfgs_in_flags)]`). The
+      # two targets that first look cheap are blocked for reasons no step flag fixes —
+      # `x86_64-apple-darwin` dies in `libsqlite3-sys`'s build script invoking `cc` for a macOS SDK
+      # the org does not have, and `wasm32-unknown-unknown` dies in `getrandom`'s supported-target
+      # set. `x86_64-unknown-freebsd` satisfies the same predicate, is a supported std target, and
+      # needs no macOS C toolchain, so it is the leg that closes the gap.
+      #
+      # `-A dead_code` is allowed for this target for the reason the `#505` step records: unix-gated
+      # modules are compiled out on this non-Linux target, so their unused symbols are noise here and
+      # the three rustdoc denies are what this step enforces. It belongs in `RUSTFLAGS` as well as
+      # `RUSTDOCFLAGS`: `cargo doc --package sts2-harness` documents the crate's bins too, the bins
+      # link the lib, and the lib is therefore built once by **rustc**, which `RUSTDOCFLAGS` never
+      # reaches.
+      #
+      # Acceptance is read from the log rather than the step conclusion. A misspelled deny is an inert
+      # `unknown lint` diagnostic and still exits 0, so a green conclusion is not evidence: the step
+      # requires exit 0, zero `error` and zero `unknown lint` diagnostics, and the crate's
+      # `index.html` actually generated.
+      - name: Document the non-Linux, non-Windows surface the quality-gate job compiles out
+        run: |
+          set -o pipefail
+          log=target/freebsd-doc.log
+          mkdir -p target
+          status=0
+          RUSTFLAGS="-A dead_code" \
+            RUSTDOCFLAGS="-A dead_code -D rustdoc::broken_intra_doc_links -D rustdoc::private_intra_doc_links -D rustdoc::redundant_explicit_links --document-private-items" \
+            cargo doc --package sts2-harness --no-deps --locked --target x86_64-unknown-freebsd 2>&1 | tee "$log" || status=$?
+          errors=$(awk '/^error/{count++} END{print count+0}' "$log")
+          unknown=$(awk '/unknown lint/{count++} END{print count+0}' "$log")
+          documented=$(awk '/Generated .*doc\/sts2_harness\/index.html/{count++} END{print count+0}' "$log")
+          warnings=$(awk '/^warning/{count++} END{print count+0}' "$log")
+          echo "freebsd-doc: exit=$status errors=$errors warnings=$warnings unknown_lints=$unknown documented=$documented"
+          [ "$status" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$warnings" -eq 0 ] && [ "$unknown" -eq 0 ] && [ "$documented" -eq 1 ]
