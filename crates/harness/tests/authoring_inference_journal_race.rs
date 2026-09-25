@@ -167,3 +167,69 @@ fn a_terminal_state_on_another_connection_replays_rather_than_starts()
     }
     Ok(())
 }
+
+/// Re-completing one identity with the state it already stores is an idempotent
+/// repeat, and the journal must return the stored record rather than an error
+/// (`sts2-harness#518`).
+///
+/// The guard above `complete`'s write fires only when the stored terminal state
+/// *differs* from the requested one, so a repeat with the *same* terminal state
+/// falls through to the `UPDATE`, whose `state = 'pending'` predicate matches no
+/// row on an already-terminal identity. That leaves the rowcount branch at
+/// `authoring_inference_journal_sqlite.rs:205` — the one written for this case —
+/// as the path taken, and no merged test drove it before this one.
+#[test]
+fn re_completing_with_the_stored_state_returns_the_stored_record()
+-> Result<(), Box<dyn std::error::Error>> {
+    let path = scratch_path("idempotent-complete");
+    let journal = SqliteAuthoringInferenceJournal::new(Arc::new(SqliteWorkflowStore::open(&path)?));
+    let operation_id =
+        authoring_inference_operation_id("draft-cross-connection", "mutation-idempotent");
+
+    match begin(&journal, &operation_id)? {
+        AuthoringInferenceBegin::Started(_) => {}
+        other => return Err(format!("the first reservation must start, got {other:?}").into()),
+    }
+    let first = journal.complete(
+        &operation_id,
+        AuthoringInferenceOperationState::Cancelled,
+        reserved(),
+        None,
+        "cancelled",
+    )?;
+    let repeated = journal.complete(
+        &operation_id,
+        AuthoringInferenceOperationState::Cancelled,
+        reserved(),
+        None,
+        "cancelled again",
+    )?;
+
+    // The repeat returns the *stored* record, so the second detail is not
+    // persisted: an idempotent repeat is not a rewrite, and a caller must not be
+    // handed `Ok` for an outcome the journal silently discarded.
+    assert_eq!(repeated, first);
+    assert_eq!(repeated.state, AuthoringInferenceOperationState::Cancelled);
+    assert_eq!(repeated.detail, "cancelled");
+
+    // The refusal that shares this path must still be a refusal: a terminal
+    // identity cannot be rewritten to a different terminal state.
+    let rewritten = journal.complete(
+        &operation_id,
+        AuthoringInferenceOperationState::Proposed,
+        reserved(),
+        None,
+        "proposed after cancellation",
+    );
+    match rewritten {
+        Err(error) => assert_eq!(error.code, "authoring_inference_journal_invalid_transition"),
+        Ok(record) => {
+            return Err(format!(
+                "a terminal outcome must not be rewritten, got {:?}",
+                record.state
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
