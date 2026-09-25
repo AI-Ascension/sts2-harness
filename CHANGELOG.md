@@ -10,6 +10,23 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Cover the one `RUST002` `#[path]` anchoring branch the suite could lose silently.** The
+  `Base`/`bases()` mechanism added in #499 exists to distinguish an *unnested* `#[path]` value —
+  relative to the directory of the file carrying it — from an *anchored* one, where an enclosing
+  `#[path]` already named the directory. The anchored case lived in one flag with no test: setting
+  `modules.rs`'s `anchored: true` to `false` left the whole suite green (**32 passed**) and, on the
+  only fixture that reaches the branch, inverted the verdict — it reported `src/thread/other.rs`,
+  the file `rustc 1.97.1` actually compiles, and stayed silent on the real orphan `src/other.rs`,
+  pointing a `"delete it"` remedy at live code. The repository's own tree cannot exercise the branch
+  either: it contains no brace-form `#[path]` at all, so nothing but a unit test can hold it. The
+  same mutation now reds
+  `inline_path_attribute_inside_a_path_module_is_anchored` (inverted polarity shown above) while
+  the other 33 tests stay green, and a second case pins the semicolon form nested in a plain inline
+  module. `modules_tests.rs` was at 398 of its 400-line preferred budget, so the `#[path]` family
+  moved verbatim into a sibling `path_attribute_tests.rs` — the split already used for
+  `traversal_tests.rs` in this package — leaving both files inside budget without an exemption.
+  Compatibility: tests and comments only; the rule's shipped behavior is unchanged. Closes #501.
+
 - Stop `RUST002` reporting the children of an inline `#[path]` module as unreachable. A
   `#[path = "thread"] mod m { pub mod child; }` names the **directory** its children live in —
   `src/thread/child.rs` — and rustc reads no file there at all, so the rule's file-only path branch
