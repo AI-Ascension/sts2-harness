@@ -14,10 +14,21 @@
 //! The store is held behind an `Arc` because the served composition passes the
 //! same database to the run store and to this journal; both must observe one
 //! connection so the terminal write and its read-back are one boundary.
+//!
+//! That boundary is a real transaction, not the shared `Mutex` alone. The mutex
+//! serializes callers inside one process, but the durable journal's stated
+//! purpose is to survive a restart, and a restart is exactly the case where a
+//! second process, or a second `SqliteWorkflowStore` over the same file, holds a
+//! different connection: a competing statement can land between this module's
+//! write and its read-back. `TransactionBehavior::Immediate` takes the write
+//! lock up front, so the reservation row and the read that classifies it cannot
+//! be separated by another writer. This follows
+//! `inference_profile_revision_sqlite.rs`, the sibling this module already names
+//! as its pattern.
 
 use std::sync::Arc;
 
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{OptionalExtension, TransactionBehavior, params};
 
 use super::super::super::contract_authoring_inference::{
     AUTHORING_INFERENCE_OPERATION_SCHEMA_VERSION, AuthoringInferenceCost,
@@ -51,8 +62,15 @@ impl AuthoringInferenceJournal for SqliteAuthoringInferenceJournal {
         reserved: AuthoringInferenceCost,
     ) -> Result<AuthoringInferenceBegin, StoreError> {
         validate_identity(draft_id, client_mutation_id, request_digest)?;
-        let connection = self.store.connection.lock().map_err(|_| poisoned())?;
-        if let Some(existing) = read_record(&connection, operation_id)? {
+        let mut connection = self.store.connection.lock().map_err(|_| poisoned())?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sqlite_error)?;
+        if let Some(existing) = read_record(&transaction, operation_id)? {
+            // Nothing was written on this path, but the transaction still has to
+            // be closed rather than dropped: `Immediate` has already taken the
+            // write lock, and a dropped transaction rolls back and releases it.
+            transaction.commit().map_err(sqlite_error)?;
             return Ok(if existing.request_digest != request_digest {
                 AuthoringInferenceBegin::Conflict(Box::new(existing))
             } else if existing.state.is_terminal() {
@@ -74,8 +92,15 @@ impl AuthoringInferenceJournal for SqliteAuthoringInferenceJournal {
             detail: "reserved before provider exchange".to_owned(),
         };
         // A concurrent reservation of the same identity loses the insert and
-        // reads the winner's row instead, so two callers cannot both start.
-        connection
+        // reads the winner's row instead, so two callers cannot both start. The
+        // losing caller must then be classified from that row rather than
+        // assumed to have won: the row already existed before this insert, so it
+        // is not the reservation this call just built, and reporting it as
+        // `Started` would send a second caller to the provider for one identity
+        // — the re-contact that the reservation exists to prevent. The rowcount
+        // is what separates the winner's fresh row from the loser's read of a
+        // row that may already be terminal.
+        let inserted = transaction
             .execute(
                 "INSERT OR IGNORE INTO management_authoring_inference_operations
                  (operation_id, draft_id, client_mutation_id, request_digest, record)
@@ -89,16 +114,29 @@ impl AuthoringInferenceJournal for SqliteAuthoringInferenceJournal {
                 ],
             )
             .map_err(sqlite_error)?;
-        match read_record(&connection, operation_id)? {
-            Some(stored) if stored.request_digest != request_digest => {
-                Ok(AuthoringInferenceBegin::Conflict(Box::new(stored)))
-            }
-            Some(stored) => Ok(AuthoringInferenceBegin::Started(Box::new(stored))),
-            None => Err(StoreError::new(
+        let stored = read_record(&transaction, operation_id)?.ok_or_else(|| {
+            StoreError::new(
                 "authoring_inference_operation_not_found",
                 "the authoring-inference reservation did not persist",
-            )),
+            )
+        })?;
+        if inserted == 1 {
+            debug_assert_eq!(
+                stored.state,
+                AuthoringInferenceOperationState::Pending,
+                "a fresh reservation must persist the pending state it built"
+            );
+            transaction.commit().map_err(sqlite_error)?;
+            return Ok(AuthoringInferenceBegin::Started(Box::new(stored)));
         }
+        transaction.commit().map_err(sqlite_error)?;
+        Ok(if stored.request_digest != request_digest {
+            AuthoringInferenceBegin::Conflict(Box::new(stored))
+        } else if stored.state.is_terminal() {
+            AuthoringInferenceBegin::Replayed(Box::new(stored))
+        } else {
+            AuthoringInferenceBegin::InProgress(Box::new(stored))
+        })
     }
 
     fn complete(
@@ -115,14 +153,19 @@ impl AuthoringInferenceJournal for SqliteAuthoringInferenceJournal {
                 "a completed operation cannot be reset to pending",
             ));
         }
-        let connection = self.store.connection.lock().map_err(|_| poisoned())?;
-        let Some(current) = read_record(&connection, operation_id)? else {
+        let mut connection = self.store.connection.lock().map_err(|_| poisoned())?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(sqlite_error)?;
+        let Some(current) = read_record(&transaction, operation_id)? else {
+            transaction.commit().map_err(sqlite_error)?;
             return Err(StoreError::new(
                 "authoring_inference_operation_not_found",
                 "the authoring-inference operation was not reserved",
             ));
         };
         if current.state.is_terminal() && current.state != state {
+            transaction.commit().map_err(sqlite_error)?;
             return Err(StoreError::new(
                 "authoring_inference_journal_invalid_transition",
                 "a terminal authoring-inference outcome cannot be rewritten",
@@ -144,8 +187,13 @@ impl AuthoringInferenceJournal for SqliteAuthoringInferenceJournal {
             detail: bounded_detail(detail),
         };
         // The WHERE clause repeats the in-process terminal check as a predicate,
-        // so a racing terminal write cannot be overwritten by a later one.
-        let changed = connection
+        // so a racing terminal write cannot be overwritten by a later one. The
+        // transaction is what keeps the two in agreement: outside one, a
+        // competitor can terminalize the row between the read above and this
+        // update, leaving `current` stale so the guard at the top cannot fire,
+        // and this caller is then handed `Ok` for an outcome the journal
+        // silently discarded.
+        let changed = transaction
             .execute(
                 "UPDATE management_authoring_inference_operations
                  SET record = ?2
@@ -155,14 +203,19 @@ impl AuthoringInferenceJournal for SqliteAuthoringInferenceJournal {
             )
             .map_err(sqlite_error)?;
         if changed == 0 && current.state.is_terminal() && current.state == state {
+            // An idempotent repeat of the winning terminal write: nothing changed,
+            // but the lock is held until the transaction is closed.
+            transaction.commit().map_err(sqlite_error)?;
             return Ok(current);
         }
-        read_record(&connection, operation_id)?.ok_or_else(|| {
+        let stored = read_record(&transaction, operation_id)?.ok_or_else(|| {
             StoreError::new(
                 "authoring_inference_operation_not_found",
                 "the authoring-inference outcome did not persist",
             )
-        })
+        })?;
+        transaction.commit().map_err(sqlite_error)?;
+        Ok(stored)
     }
 
     fn get(

@@ -10,23 +10,22 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
-- **Persist authoring-inference reservations in the management store instead of only in memory.**
-  Requirement 4 of the bounded authoring-inference surface says a reservation is *persisted* and
-  AC4 says a *restart* preserves one operation with an honest cost/outcome state, but the only
-  non-test journal was `MemoryAuthoringInferenceJournal` — a process-local map — so the guarantee
-  held no further than a re-composition inside one process. The new
-  `SqliteAuthoringInferenceJournal` keeps each reservation and its terminal outcome in the same
-  `SqliteWorkflowStore` the served composition already opens: `begin` inserts with
-  `INSERT OR IGNORE` and reads back, so two callers cannot both start, and `complete` repeats the
-  terminal guard as a `WHERE ... json_extract(record,'$.state') = 'pending'` predicate, so a racing
-  terminal write cannot be overwritten. The existing restart test could not see the gap: it passed
-  the *same* `Arc<MemoryAuthoringInferenceJournal>` to both services. The added test drops the
-  first service, reopens the database from disk and re-composes over a **new** journal; the
-  counterfactual (the same test with the in-memory journal in both services) fails at the provider
-  call count, 2 instead of 1 — i.e. it re-contacts the provider, which is the harm the requirement
-  exists to prevent. Additive: the in-memory journal is unchanged, no route or schema is removed.
-  Refs #105. The issue stays open for the HTTP-boundary conflict case and for the owner's
-  scoping decision on whether AC4's restart is meant to be cross-process.
+- **Stop the durable authoring-inference journal telling the loser of a reservation race that it
+  won.** `SqliteAuthoringInferenceJournal::begin` inserted with `INSERT OR IGNORE` and then read the
+  row back, but the read-back tested the request digest only, so the caller that lost the insert was
+  classified exactly like the winner and returned `Started`; `complete` read the row and then
+  updated it under a `state = 'pending'` predicate with no transaction between the two, so a
+  competitor that terminalised the row in the gap left that local stale, the guard above never
+  fired, and the loser was handed `Ok` for an outcome the journal had discarded. Both halves now run
+  inside `TransactionBehavior::Immediate`, and `begin` binds the insert rowcount as the
+  discriminator — `inserted == 1` is `Started`, and a lost insert takes the same digest-then-terminal
+  branch the pre-check already used, so a reservation race cannot return two starters. The module doc
+  claimed the write and its read-back were one boundary and the file contained no transaction of any
+  kind, while the sibling `inference_profile_revision_sqlite.rs` it names as its pattern already
+  opened one. Two store instances over one file is the shape that matters, since the `Mutex` orders
+  callers only inside one process; the new regression test drives that topology and covers the
+  `begin` half, the `complete` half being closed by the transaction's construction. Compatibility:
+  additive; no route, schema or wire change. Closes #509.
 
 - **Measure the two source-only Exo bounds `#148` had left, and report the one that is not what it
   looks like.** `process_oracle` writes 131,073 bytes and *then* sends EOF, which exercises the
