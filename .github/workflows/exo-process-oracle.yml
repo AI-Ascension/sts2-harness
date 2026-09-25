@@ -138,6 +138,24 @@ jobs:
           test "$(jq -r '.boundaries.executor_read_bound_bytes' target/exo-bound-report.json)" = "163840"
           test "$(jq -r '.boundaries.bridge_request_parse_bound_bytes' target/exo-bound-report.json)" = "131072"
 
+      - name: Assert the duplex lookup report records the round trips
+        # The other three oracle legs each assert on the report their test writes; this
+        # leg's report is the only one nothing downstream read, so a dropped `lookup_oracle`
+        # invocation left the step green with no evidence. Same synthetic model/host: no
+        # provider, credential, game, save or native instance is involved.
+        env:
+          EXO_REVISION: ${{ steps.exo-revision.outputs.revision }}
+        run: |
+          test -s target/exo-lookup-oracle-report.json
+          test "$(jq -r .exo_revision target/exo-lookup-oracle-report.json)" = "$EXO_REVISION"
+          test "$(jq -r .evidence target/exo-lookup-oracle-report.json)" = "confirmed-real-pinned-Exo-synthetic-model-no-game"
+          test "$(jq -r .model_requests target/exo-lookup-oracle-report.json)" = "3"
+          test "$(jq -r .tool_round_trips target/exo-lookup-oracle-report.json)" = "2"
+          test "$(jq -r .complete_tool_payload target/exo-lookup-oracle-report.json)" = "true"
+          test "$(jq -r '.rejected_feedback_cases | length' target/exo-lookup-oracle-report.json)" = "2"
+          test "$(jq -r .maximum_source_bytes target/exo-lookup-oracle-report.json)" = "65536"
+          test "$(jq -r .maximum_source_turns target/exo-lookup-oracle-report.json)" = "24"
+
       - name: Upload the bounded process evidence report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -147,5 +165,6 @@ jobs:
             target/exo-smoke-report.json
             target/exo-fault-report.json
             target/exo-bound-report.json
+            target/exo-lookup-oracle-report.json
           if-no-files-found: warn
           retention-days: 7
