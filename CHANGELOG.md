@@ -10,6 +10,18 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- Stop `RUST002` reporting the children of an inline `#[path]` module as unreachable. A
+  `#[path = "thread"] mod m { pub mod child; }` names the **directory** its children live in —
+  `src/thread/child.rs` — and rustc reads no file there at all, so the rule's file-only path branch
+  fell through and the early return then suppressed the name-based lookup: nothing was reached from
+  that declaration, and the module's own `mod.rs` and every child under it were reported as orphans
+  with the remedy "delete it". The children now resolve one level below the named directory, at the
+  directory of the file carrying the declaration (or the enclosing inline module's directory when
+  nested), which is what rustc does. The sibling form is deliberately **not** changed: a `#[path]` on
+  a semicolon `mod` always names a file, so a directory value there is a rustc error
+  (`couldn't read `src/thread`: Is a directory`), never a miss. Six regression tests, four of them
+  failing against the pre-fix rule; `--strict` on this repository is unchanged.
+
 - **Stop `RUST002` from reporting two rustc-valid module shapes as unreachable.** The rule must never
   red a file rustc compiles, and it did so twice. A declaration written with a raw identifier lost
   its edge entirely — `identifier()` read only `r` from `r#move` and stopped at `#`, so the rule

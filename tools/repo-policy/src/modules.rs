@@ -136,48 +136,117 @@ fn targets(
     declaration: &Declaration,
     declarations: &[Declaration],
 ) -> Vec<(String, String)> {
-    let components = enclosing(declarations, declaration.start);
+    let states = bases(file, child_dir, declarations, declaration.start);
     if !declaration.paths.is_empty() {
-        let base = if components.is_empty() {
-            directory(file)
-        } else {
-            join_all(child_dir, &components)
-        };
-        return declaration
-            .paths
-            .iter()
-            .map(|path| {
-                let target = join(&base, path);
-                let directory = directory(&target);
-                (target, directory)
+        // `#[path]` on an inline module names the directory its children live in;
+        // rustc reads no file there, so the module owns nothing itself and the
+        // value is only a prefix. On a semicolon module it always names a file:
+        // a directory value is a rustc error (`Is a directory`), not a missed
+        // reachability, so `DIR/mod.rs` is deliberately not consulted.
+        if !declaration.semi {
+            return Vec::new();
+        }
+        return states
+            .into_iter()
+            .flat_map(|state| {
+                let base = state.base(file);
+                let paths = declaration.paths.clone();
+                paths.into_iter().map(move |path| {
+                    let target = join(&base, &path);
+                    let directory = directory(&target);
+                    (target, directory)
+                })
             })
             .collect();
     }
     if !declaration.semi {
         return Vec::new();
     }
-    let dir = join_all(child_dir, &components);
-    let children = join(&dir, &declaration.name);
-    vec![
-        (
-            join(&dir, &format!("{}.rs", declaration.name)),
-            children.clone(),
-        ),
-        (join(&children, "mod.rs"), children),
-    ]
+    states
+        .into_iter()
+        .flat_map(|state| {
+            let dir = state.children_dir();
+            let children = join(&dir, &declaration.name);
+            let stem = join(&dir, &format!("{}.rs", declaration.name));
+            let nested = join(&children, "mod.rs");
+            [(stem, children.clone()), (nested, children)]
+        })
+        .collect()
 }
 
-/// Inline `mod name { }` blocks that textually contain `position`, outermost first.
-fn enclosing(declarations: &[Declaration], position: usize) -> Vec<String> {
-    let mut components: Vec<(usize, String)> = declarations
+/// Where a declaration's own resolution starts, one entry per `#[path]` branch.
+struct Base {
+    dir: String,
+    pending: Vec<String>,
+    anchored: bool,
+}
+
+impl Base {
+    /// The directory a `#[path]` value is relative to. An unnested declaration
+    /// resolves against the directory of the file that carries it — that is
+    /// `src/` for `src/x.rs`, not the `src/x/` its ordinary children use.
+    fn base(&self, file: &str) -> String {
+        if self.anchored || !self.pending.is_empty() {
+            join_all(&self.dir, &self.pending)
+        } else {
+            directory(file)
+        }
+    }
+
+    /// The directory an ordinary `mod name;` child resolves in.
+    fn children_dir(&self) -> String {
+        join_all(&self.dir, &self.pending)
+    }
+}
+
+/// The state of every inline `mod` block enclosing `position`, outermost first.
+///
+/// A plain inline module nests one directory deeper, while one carrying a
+/// `#[path]` names its children's directory outright: its own name is dropped
+/// and any enclosing names are superseded, because rustc resolves that path
+/// against the directory holding the *file*, then treats it as the module's
+/// directory. Each `#[cfg_attr]` branch is a separate state, since each is a
+/// real directory on the platform that selects it.
+fn bases(file: &str, child_dir: &str, declarations: &[Declaration], position: usize) -> Vec<Base> {
+    let mut enclosing: Vec<&Declaration> = declarations
         .iter()
         .filter(|declaration| {
             !declaration.semi && declaration.start < position && position < declaration.end
         })
-        .map(|declaration| (declaration.start, declaration.name.clone()))
         .collect();
-    components.sort_by_key(|(start, _)| *start);
-    components.into_iter().map(|(_, name)| name).collect()
+    enclosing.sort_by_key(|declaration| declaration.start);
+    let mut states = vec![Base {
+        dir: child_dir.to_owned(),
+        pending: Vec::new(),
+        anchored: false,
+    }];
+    for ancestor in enclosing {
+        states = states
+            .into_iter()
+            .flat_map(|state| {
+                if ancestor.paths.is_empty() {
+                    let mut nested = state.pending;
+                    nested.push(ancestor.name.clone());
+                    return vec![Base {
+                        dir: state.dir,
+                        pending: nested,
+                        anchored: state.anchored,
+                    }];
+                }
+                let base = state.base(file);
+                ancestor
+                    .paths
+                    .iter()
+                    .map(|path| Base {
+                        dir: join(&base, path),
+                        pending: Vec::new(),
+                        anchored: true,
+                    })
+                    .collect()
+            })
+            .collect();
+    }
+    states
 }
 
 #[cfg(test)]

@@ -44,7 +44,13 @@ never report a file rustc compiles. That holds for raw identifiers — `mod r#mo
 `move.rs` and an inline `mod r#type { }` owns `type/`, not `r#move.rs` or `r#type/`, because the
 name is the stem rustc looks up for whether or not the `r#` form was needed to write it — and for
 `include!`, whose target is compiled in place, so a `mod child;` inside the fragment resolves beside
-the fragment rather than beside the file that included it.
+the fragment rather than beside the file that included it. It also holds for `#[path]`, whose two
+forms differ: on an inline `mod m { }` it names the **directory** the module's children live in
+(`#[path = "thread"] mod m { pub mod child; }` compiles `thread/child.rs` and reads no file named
+`thread` at all), while on a semicolon `mod m;` it always names a **file**, so a directory value
+there is a rustc error rather than a reachable module body. A `#[path]` value is relative to the
+directory of the file carrying it when the declaration is unnested, and to the enclosing inline
+module's directory when it is nested.
 
 ## Configuration and exemptions
 
