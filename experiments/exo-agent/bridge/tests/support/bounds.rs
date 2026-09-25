@@ -140,8 +140,8 @@ pub fn executor_handoff(
 /// Serializes `handoff` padded to exactly `target` bytes with one synthetic constraint.
 ///
 /// The executor's read bound is the only boundary in this lane that the bridge cannot reach: the
-/// projection the bridge builds carries at most 32 constraints of 512 bytes, so a bridge-issued
-/// handoff is always far below 160 KiB and the bridge's own 131,072-byte parse bound fires first.
+/// bridge refuses any request over its own 131,072-byte parse bound, which is 32 KiB under the
+/// read bound, and the handoff framing it adds on top is a few hundred bytes at any real path.
 /// This padding therefore probes the *executor's* contract directly, where `input` only has to be
 /// an object, and the case says so rather than implying the bridge could produce it.
 ///

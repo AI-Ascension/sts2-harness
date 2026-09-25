@@ -154,8 +154,10 @@ property. The executor's 160 KiB read bound is then pinned by handoffs padded to
 past it, and 4 KiB below it: the middle size is *admitted* by the read bound but the turn is denied
 locally by the extension's equal model-write bound, so the read bound is reported as reachable only
 by a direct drive rather than as a size that yields a decision. A saturated bridge projection (32
-constraints of 512 bytes) is measured below the executor bound, which is why the bridge cannot reach
-it. The budget half drives the executor against an endpoint that holds the reply outstanding, so the
+constraints of 512 bytes) is measured below the executor bound, and the reason the read bound is
+unreachable is the bridge's own 131,072-byte parse bound, 32 KiB under the read bound, plus a few
+hundred bytes of handoff framing — not the constraint cap the case happens to saturate.
+The budget half drives the executor against an endpoint that holds the reply outstanding, so the
 typed `exo_executor_turn_timeout` is measured against a real deadline, and against a reply the
 provider truncated at `max_output_tokens`, so no decision is fabricated.
 `target/exo-bound-report.json` carries the same asserted `exo_revision` and
