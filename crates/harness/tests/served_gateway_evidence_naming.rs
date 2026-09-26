@@ -145,12 +145,13 @@ fn no_served_composition_hand_rolls_the_teardown_check() -> Result<(), Box<dyn s
 /// workflow hands its served steps — `<tmp>/runtime-peer-contract/<per-step>` — which is what
 /// makes the `find` root and the per-step directory the same relative path CI uses.
 #[test]
-fn gateway_streams_are_written_at_the_depth_the_dump_step_reads() {
-    let temporary = process::TempDir::new().expect("a temporary directory is needed");
+fn gateway_streams_are_written_at_the_depth_the_dump_step_reads()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temporary = process::TempDir::new()?;
     let dump_root = temporary.path.join("runtime-peer-contract");
     let per_step = dump_root.join("served-policy-gate");
     // The child's exit status carries the result: the child asserts, the parent relays.
-    let status = write_streams_in_child(&per_step);
+    let status = write_streams_in_child(&per_step)?;
     assert!(
         status.success(),
         "the child that drives the real writer exited {status}, so the depth assertions below \
@@ -158,7 +159,7 @@ fn gateway_streams_are_written_at_the_depth_the_dump_step_reads() {
     );
 
     let mut files = Vec::new();
-    collect_files(&dump_root, &mut files).expect("the evidence tree must be readable");
+    collect_files(&dump_root, &mut files)?;
     assert!(
         !files.is_empty(),
         "the writer produced nothing under {}, so the lane's dump step would print no evidence \
@@ -176,6 +177,7 @@ fn gateway_streams_are_written_at_the_depth_the_dump_step_reads() {
             file.display()
         );
     }
+    Ok(())
 }
 
 /// Env var marking the depth child. Absent in an ordinary run, so the child is not entered
@@ -185,8 +187,8 @@ const CHILD: &str = "STS2_DEPTH_CHILD";
 const DEPTH_DIR: &str = "STS2_DEPTH_EVIDENCE_DIR";
 
 /// Run [`gateway_streams_depth_child`] in a child process and return its exit status.
-fn write_streams_in_child(per_step: &Path) -> std::process::ExitStatus {
-    std::process::Command::new(std::env::current_exe().expect("this test binary is re-executable"))
+fn write_streams_in_child(per_step: &Path) -> Result<std::process::ExitStatus, std::io::Error> {
+    Ok(std::process::Command::new(std::env::current_exe()?)
         .args(["--exact", "gateway_streams_depth_child", "--nocapture"])
         .env(CHILD, "1")
         .env(DEPTH_DIR, per_step)
@@ -195,8 +197,7 @@ fn write_streams_in_child(per_step: &Path) -> std::process::ExitStatus {
         // write path and the child exits 0 having written nothing — which is exactly the
         // #548 defect this check exists to catch, and exactly what the assertion reported.
         .env("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR", per_step)
-        .status()
-        .expect("the child binary starts")
+        .status()?)
 }
 
 /// The child half of the depth check: drive the real writer into `per_step`.
@@ -238,7 +239,10 @@ fn gateway_streams_depth_child() {
     // bytes landed here, and exit non-zero otherwise, so the parent's `status.success()` is a
     // real control rather than a rubber stamp on a child that quietly did nothing.
     let mut written = Vec::new();
-    collect_files(&per_step, &mut written).expect("the per-step evidence directory is readable");
+    if let Err(error) = collect_files(&per_step, &mut written) {
+        eprintln!("could not read {}: {error}", per_step.display());
+        std::process::exit(6);
+    }
     if written.is_empty() {
         eprintln!("the writer persisted nothing under {}", per_step.display());
         std::process::exit(4);
