@@ -10,6 +10,23 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Bound the served gateway evidence capture, which #548 left write-through.** #548 made every
+  served failure persist the gateway's own streams, but `write_gateway_streams` wrote them
+  unbounded while the gateway is spawned `Stdio::piped()` with no cap and `stop()` collects via
+  `wait_with_output()` — so the volume was the child's to choose, and the one *unbounded* path in
+  the lane was the failure path, whose whole purpose is to explain a red. A capture above 4 MiB
+  (the bound the REST evidence writer already uses) is now persisted as a byte-exact prefix plus
+  an explicit truncation marker, so a cut stream cannot be mistaken for a complete one. The
+  in-band `gateway_stdout=`/`gateway_stderr=` text is deliberately **not** bounded: truncating the
+  attribution would trade a disk problem for the unattributable failure #548 exists to prevent.
+  The bound is covered by unit tests on the writer itself rather than by an end-to-end case,
+  because the spawn path cannot deliver an oversized capture: `ready()` polls `try_wait` and
+  `TcpStream::connect` without reading either pipe, so a gateway writing more than the kernel's
+  64 KiB pipe buffer blocks on the write and never reaches its `bind`. Measured with a
+  `Stdio::piped()` child writing 6 MiB before binding, `stop()` collected exactly 65,536 bytes
+  and the child was still alive at the readiness deadline — so the bound is defence in depth
+  against a future spawn that drains its pipes, and those tests assert the cut, the
+  byte-exact prefix and the marker directly. Closes #555.
 - **Stop the served compositions discarding the gateway's stderr, and stop their error strings
   implying they carried it.** Every served composition spawns the gateway with piped
   stdout/stderr and reads both back out of `stop`, but the only consumer of those bytes was

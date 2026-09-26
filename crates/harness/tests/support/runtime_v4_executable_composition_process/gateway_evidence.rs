@@ -9,6 +9,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
+/// The most of either captured stream this writer will persist.
+///
+/// The gateway is spawned `Stdio::piped()` with no cap and [`stop`] collects the pipes with
+/// `wait_with_output()`, so the volume reaching this writer is chosen entirely by the child.
+/// Without a bound the *failure* path is the one unbounded path in the lane — a wedged or
+/// chatty gateway can fill the runner's disk, and the failure-only dump step then `sed`s
+/// whatever landed there into the job log. 4 MiB matches the capture bound the REST
+/// composition evidence writer already uses, so both evidence paths carry the same ceiling.
+const MAX_GATEWAY_CAPTURE_BYTES: usize = 4 * 1024 * 1024;
+
+/// Appended to a truncated capture, so a reader can tell a bounded prefix from a complete one.
+const TRUNCATION_NOTICE: &str =
+    "\n--- gateway stream truncated at 4194304 bytes; the child's full output was larger ---";
+
 /// Persist the gateway's own captured streams for one served scenario, then hand the
 /// failure back with those streams attached.
 ///
@@ -71,10 +85,37 @@ fn write_gateway_streams(
 ) -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(root)?;
     let stem = sanitize_label(label);
-    fs::write(root.join(format!("gateway-{stem}.stdout")), &gateway.stdout)?;
-    fs::write(root.join(format!("gateway-{stem}.stderr")), &gateway.stderr)?;
+    fs::write(
+        root.join(format!("gateway-{stem}.stdout")),
+        bounded(&gateway.stdout),
+    )?;
+    fs::write(
+        root.join(format!("gateway-{stem}.stderr")),
+        bounded(&gateway.stderr),
+    )?;
     Ok(())
 }
+
+/// A bounded copy of one captured stream, with a marker when it was cut.
+///
+/// The bound applies to the *persisted* copy only. The in-band `gateway_stdout=`/
+/// `gateway_stderr=` text in the returned error is the full stream, because that is the
+/// attribution #548 exists to provide and truncating it would trade a disk problem for an
+/// unattributable one. The persisted copy exists for the dump step, where a marker saying
+/// "this was cut" is worth more than the missing tail.
+fn bounded(stream: &[u8]) -> Vec<u8> {
+    if stream.len() <= MAX_GATEWAY_CAPTURE_BYTES {
+        return stream.to_vec();
+    }
+    let mut copy = Vec::with_capacity(MAX_GATEWAY_CAPTURE_BYTES + TRUNCATION_NOTICE.len());
+    copy.extend_from_slice(&stream[..MAX_GATEWAY_CAPTURE_BYTES]);
+    copy.extend_from_slice(TRUNCATION_NOTICE.as_bytes());
+    copy
+}
+
+#[cfg(test)]
+#[path = "gateway_evidence_tests.rs"]
+mod tests;
 
 /// Reduce a failure context to a single safe path component.
 ///
