@@ -62,6 +62,23 @@ CAPS=json.loads({capabilities})
 SETTLED=json.loads({settled})
 def emit(value):
     print(json.dumps(value,separators=(',',':'),sort_keys=True),flush=True)
+def post_json(path, encoded, headers):
+    # Suppress, do not name, the encoding header. CPython's http.client sends
+    # `Accept-Encoding: identity` from putrequest on every HTTP/1.1 request unless the
+    # caller opts out with skip_accept_encoding=True. The gateway enforces a CLOSED
+    # header allow-list (service_authorization.rs::header_is_allowed) that has no
+    # accept-encoding entry, so that library default is refused with a 400
+    # unsupported_header before routing -- and the peer never asked for it.
+    # Passing an explicit `Accept-Encoding` header would NOT fix this: it is
+    # byte-identical to the library default on the wire, and the gateway matches on
+    # the header NAME. Only putrequest's skip_accept_encoding=True removes the name
+    # from the request, which is what "send no header we did not ask for" requires.
+    connection=http.client.HTTPConnection(os.environ["STS2_GATEWAY_ADDR"],timeout=5)
+    connection.putrequest("POST",path,skip_accept_encoding=True)
+    for name,value in headers.items():
+        connection.putheader(name,value)
+    connection.endheaders(encoded)
+    return json.loads(connection.getresponse().read())
 def envelope(i, body, is_error=False):
     return {{"jsonrpc":"2.0","id":i,"result":{{"isError":is_error,"content":[{{"type":"text","text":json.dumps(body,separators=(',',':'),sort_keys=True)}}]}}}}
 def secrets_absent():
@@ -90,15 +107,13 @@ def query_response(i, a):
       "cursor":a["cursor"]
     }}
     if live:
-        connection=http.client.HTTPConnection(os.environ["STS2_GATEWAY_ADDR"],timeout=5)
         body={{"query":query,"correlation_id":str(i)}}
         encoded=json.dumps(body,separators=(',',':')).encode()
-        connection.request("POST","/v1/instances/"+a["instance_id"]+"/game-information/detail",
-          body=encoded,headers={{"Content-Type":"application/json","Content-Length":str(len(encoded)),
+        return post_json("/v1/instances/"+a["instance_id"]+"/game-information/detail",
+          encoded,{{"Content-Type":"application/json","Content-Length":str(len(encoded)),
             "x-mcp-session-id":a["mcp_session_id"],"x-sts2-instance-id":a["instance_id"],
             "x-sts2-session-id":os.environ["STS2_SESSION_ID"],"x-sts2-lease-id":a["lease_id"],
             "x-sts2-lease-epoch":str(a["lease_epoch"]),"x-sts2-correlation-id":str(i)}})
-        return json.loads(connection.getresponse().read())
     page={{"items":[],"final_page":True,"next_cursor":None,"cursor_binding":None,
           "coverage":"complete","total_count_known":True,"total_count":0,
           "ordering":{{"key":"definition_ref","direction":"ascending",
@@ -127,14 +142,12 @@ def bootstrap_proxy(i, a):
         "content_manifest_id":a["content_manifest_id"],"locale":a["locale"]}},
       "limits":{{"max_visible_entities":64,"max_item_bytes":65536,"max_message_bytes":262144}},
       "parent_observation":None,"visible_entities":None,"owner_provenance":None,"error":None}}
-    connection=http.client.HTTPConnection(os.environ["STS2_GATEWAY_ADDR"],timeout=5)
     body=json.dumps(request,separators=(',',':')).encode()
-    connection.request("POST","/v1/instances/"+a["instance_id"]+"/game-information/live-observation-bootstrap",
-      body=body,headers={{"Content-Type":"application/json","Content-Length":str(len(body)),
+    return post_json("/v1/instances/"+a["instance_id"]+"/game-information/live-observation-bootstrap",
+      body,{{"Content-Type":"application/json","Content-Length":str(len(body)),
         "x-mcp-session-id":a["mcp_session_id"],"x-sts2-instance-id":a["instance_id"],
         "x-sts2-session-id":os.environ["STS2_SESSION_ID"],"x-sts2-lease-id":a["lease_id"],
         "x-sts2-lease-epoch":str(a["lease_epoch"]),"x-sts2-correlation-id":str(i)}})
-    return json.loads(connection.getresponse().read())
 for line in sys.stdin:
     req=json.loads(line); i=req.get("id"); method=req.get("method")
     params=req.get("params",{{}})
