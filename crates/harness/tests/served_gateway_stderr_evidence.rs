@@ -251,7 +251,15 @@ fn served_gateway_stderr_child() {
         }
     };
     let outcome = if cleanup {
-        process::run_served_peer_acceptance(&gateway_stub, &service_stub, &service_stub)
+        // The real workflow service, unlike the #548 stub: the negative acceptance case has to
+        // get far enough to *reject* a run for a truthful reason, which only the real service
+        // can do. A stub service exits at readiness, so the scenario would fail before the
+        // cleanup check the case exists to reach.
+        process::run_served_peer_acceptance(
+            &gateway_stub,
+            &service_stub,
+            env!("CARGO_BIN_EXE_sts2-harness-runtime"),
+        )
     } else {
         process::run_served_policy_gate(&gateway_stub, &service_stub, &service_stub)
     };

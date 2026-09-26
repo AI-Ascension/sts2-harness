@@ -17,6 +17,7 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::process::Output;
 
 use super::{CLEANUP_MARKER, process, run_in_child};
 
@@ -30,6 +31,85 @@ const CLEANUP_EXIT_CODE: u8 = 9;
 /// assertion and keep it passing. It is the `wrong-instance` negative case's own label, which
 /// is what the peer-acceptance step persists under.
 const CLEANUP_CASE_LABEL: &str = "wrong-instance";
+
+/// A clean teardown must stay clean: a SIGKILLed gateway is not a cleanup failure.
+///
+/// `stop` SIGKILLs the gateway's process group, so *every* healthy served scenario leaves
+/// `signal() == Some(9)`. If the helper treated that as a failure, all eight sites would report
+/// on every successful run — so the passing half of the condition is asserted directly, from a
+/// synthesised status rather than by waiting on a real teardown. Together with the child-process
+/// test below this pins both directions: a signal is a pass, and a signal-free non-zero exit is
+/// the only failure.
+#[test]
+fn a_sigkilled_gateway_is_not_a_cleanup_failure() -> Result<(), Box<dyn std::error::Error>> {
+    assert!(
+        process::gateway_cleanup_failure(CLEANUP_CASE_LABEL, &output_signaled(9)).is_ok(),
+        "a gateway the lane itself SIGKILLed is a clean teardown, not a failure; reporting it \
+         would make every served step fail (sts2-harness#556)."
+    );
+    assert!(
+        process::gateway_cleanup_failure(CLEANUP_CASE_LABEL, &output_exited(0)).is_ok(),
+        "a gateway that exited zero on its own is a clean teardown, not a failure \
+         (sts2-harness#556)."
+    );
+    Ok(())
+}
+
+/// A gateway that exited non-zero with **no signal** is the only cleanup failure.
+///
+/// This is the branch the seven remaining sites share, asserted through the same helper the
+/// sites call, and it is stated as this test's own literals rather than by importing the
+/// composition's condition — so a change to the rule has to fail here deliberately.
+#[test]
+fn a_signal_free_non_zero_gateway_exit_is_a_cleanup_failure()
+-> Result<(), Box<dyn std::error::Error>> {
+    let error = process::gateway_cleanup_failure(
+        CLEANUP_CASE_LABEL,
+        &output_exited(i32::from(CLEANUP_EXIT_CODE)),
+    )
+    .expect_err("a signal-free non-zero exit must take the cleanup-failure branch");
+    let error = error.to_string();
+    assert!(
+        error.contains(&format!("{CLEANUP_CASE_LABEL}: gateway cleanup failed")),
+        "the failure must name the scenario under its own label, or the reader cannot tell \
+         which scenario the streams belong to (sts2-harness#556). It was: {error}"
+    );
+    assert!(
+        error.contains(&format!("gateway_stderr={CLEANUP_MARKER}")),
+        "the failure must carry the gateway's own streams in band (sts2-harness#556). \
+         It was: {error}"
+    );
+    Ok(())
+}
+
+/// An [`Output`] whose gateway **exited** with `code`, carrying the marker on its stderr.
+///
+/// Synthesised rather than obtained from a real teardown so the condition can be tested at
+/// both ends without depending on process scheduling under a contended host. `code == 9` here
+/// means *exit* 9 with no signal, which is the failure shape — it is not the SIGKILL that a
+/// clean teardown produces, and [`output_signaled`] is the one that models that.
+fn output_exited(code: i32) -> Output {
+    use std::os::unix::process::ExitStatusExt;
+    Output {
+        status: std::process::ExitStatus::from_raw(code << 8),
+        stdout: Vec::new(),
+        stderr: format!("{CLEANUP_MARKER}\n").into_bytes(),
+    }
+}
+
+/// An [`Output`] whose gateway was **killed** by `signal`, carrying the marker on its stderr.
+///
+/// This is what a clean teardown leaves behind, and the reason the branch has to accept it: a
+/// gateway the lane itself killed reported nothing, so calling that a failure would fire on
+/// every healthy run.
+fn output_signaled(signal: i32) -> Output {
+    use std::os::unix::process::ExitStatusExt;
+    Output {
+        status: std::process::ExitStatus::from_raw(signal),
+        stdout: Vec::new(),
+        stderr: format!("{CLEANUP_MARKER}\n").into_bytes(),
+    }
+}
 
 /// A gateway that exited non-zero on its own must be reported with its own bytes attached.
 ///
