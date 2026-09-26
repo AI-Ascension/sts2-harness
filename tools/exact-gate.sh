@@ -12,8 +12,17 @@
 #
 # The named count is the number of `--exact` tokens, not the token after the last
 # one, because the lanes pass the filter both as `-- --ignored --exact <name>` and
-# as `<name> -- --ignored --exact --nocapture`. The matched count is the number of
-# `test result: ok. 1 passed;` lines, which is what a single-test filter emits.
+# as `<name> -- --ignored --exact --nocapture`. The executed count is the number of
+# libtest result lines whose `passed`+`failed` count is at least one, which is what
+# distinguishes "the named tests ran" from "the filter matched nothing".
+#
+# It counts EXECUTIONS, not passes. A test that ran and FAILED is an execution: the
+# gate must still refuse it (the command's own exit status already does) but it must
+# not report `0 executed`, which would be false -- the run was not empty, and it did
+# not pass (sts2-harness#540). Counting `test result: ok. 1 passed;` also made a
+# single invocation naming several `--exact` filters unsatisfiable, because one
+# `cargo test` invocation emitting `ok. 2 passed;` matches no such line; the
+# result-line form counts those executions too, so batching filters now works.
 #
 # It deliberately does not use a pipeline: every lane invocation it wraps is the
 # last command of its step, so the shell's `errexit` sees the gate's own status.
@@ -28,6 +37,10 @@
 #     of several names matched is not identified;
 #   - a command whose `--exact` filters legitimately execute zero tests cannot be
 #     distinguished from a renamed one, and is rejected rather than accepted.
+#   - the guard refuses when the guarded command reads the log path itself (the
+#     shell has already truncated it, so the log is empty). This fails CLOSED --
+#     a red lane, never a false green -- and no lane in this repository does it:
+#     all of them pass `-`, so the gate uses a private mktemp file.
 #
 # usage: exact-gate.sh <log-path|-> <command...>
 set -uo pipefail
@@ -57,16 +70,43 @@ fi
 status=$?
 cat "$log"
 
-matched=$(awk '/^test result: ok\. 1 passed;/ {count++} END {print count+0}' "$log")
-printf 'exact-gate: exit=%s named=%s matched=%s log=%s\n' "$status" "$names" "$matched" "$log"
+executed=$(awk '
+    # Per-test lines are libtest'"'"'s default output. They count one execution
+    # per test, so a single invocation naming several --exact filters reports
+    # several executions, not one.
+    /^test [^[:space:]]+ \.\.\. (ok|FAILED)/ { from_tests++ }
+    # Result lines are the fallback: a lane using --quiet or a terse format
+    # prints no per-test lines, but always prints the summary. Summing
+    # passed+failed over them counts executions without double counting, since
+    # a summary line reports totals rather than one event.
+    /^test result:/ {
+        passed = 0
+        failed = 0
+        for (i = 1; i <= NF; i++) {
+            if ($i == "passed;") passed = $(i - 1) + 0
+            if ($i == "failed;") failed = $(i - 1) + 0
+        }
+        from_summary += passed + failed
+    }
+    END {
+        count = from_tests > from_summary ? from_tests : from_summary
+        print count + 0
+    }
+' "$log")
+printf 'exact-gate: exit=%s named=%s executed=%s log=%s\n' "$status" "$names" "$executed" "$log"
 
-if [ "$status" -eq 0 ] && [ "$matched" -ge "$names" ]; then
+if [ "$status" -eq 0 ] && [ "$executed" -ge "$names" ]; then
     if [ "$cleanup" -eq 1 ]; then
         rm -f "$log"
     fi
     exit 0
 fi
 
-printf 'exact-gate: REFUSED: %s --exact filter(s) named but %s executed; a renamed or removed test would have passed as an empty run\n' \
-    "$names" "$matched" >&2
+if [ "$status" -ne 0 ]; then
+    printf 'exact-gate: REFUSED: the guarded command exited %s; %s --exact filter(s) named, %s executed. The failure above is the command'\''s own, not a renamed or removed test (see the log for the failing assertion).\n' \
+        "$status" "$names" "$executed" >&2
+else
+    printf 'exact-gate: REFUSED: %s --exact filter(s) named but %s executed; a renamed or removed test would have passed as an empty run\n' \
+        "$names" "$executed" >&2
+fi
 exit 1
