@@ -71,6 +71,18 @@ const GATEWAY_MARKER: &str = "sts2-harness-548-stub-gateway-stderr-marker";
 /// own label, which is what makes the attribution checkable rather than merely present.
 const SERVICE_MARKER: &str = "sts2-harness-548-stub-service-stderr-marker";
 
+/// The per-stream ceiling the evidence writer enforces, mirrored here so the assertion below
+/// states the bound as a number rather than importing the implementation's own constant and
+/// therefore agreeing with it by construction.
+const MAX_PERSISTED_CAPTURE_BYTES: usize = 4 * 1024 * 1024;
+
+/// The marker a truncated capture carries. Spelled out rather than imported for the same
+/// reason: a test that reads the implementation's constant cannot fail when the constant moves.
+const TRUNCATION_MARKER: &str = "gateway stream truncated at";
+
+/// How much the `flood` stub emits, comfortably past the bound so the cut is unambiguous.
+const FLOOD_BYTES: usize = 6 * 1024 * 1024;
+
 /// A served scenario must report the gateway's stderr when it fails.
 ///
 /// Acceptance criterion 1. On `main` the served path discards the gateway's bytes, so
@@ -155,6 +167,57 @@ fn a_served_scenario_persists_its_gateway_streams_under_the_evidence_directory()
     Ok(())
 }
 
+/// An oversized capture must be bounded on disk *and* marked, without losing the attribution.
+///
+/// The gateway is spawned piped with no cap, so the volume is the child's to choose. Without
+/// a bound the failure path is the one unbounded path in the lane, and the dump step `sed`s
+/// whatever landed there into the job log. The bound must not become a second way to lose a
+/// refusal: the persisted copy is cut with an explicit marker, and the in-band
+/// `gateway_stdout=`/`gateway_stderr=` text keeps the full stream (sts2-harness#555).
+#[test]
+fn an_oversized_gateway_capture_is_bounded_on_disk_and_still_attributed()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temporary = process::TempDir::new()?;
+    let evidence = temporary.path.join("served-evidence");
+    let report = run_in_child("flood", Some(&evidence))?;
+
+    // The in-band attribution is the full stream, unbounded: this is the text a reader sees
+    // first, and #548's whole point is that it is not truncated into meaninglessness.
+    assert!(
+        report.contains(GATEWAY_MARKER),
+        "a bounded capture dropped the gateway's own marker from the in-band report, which \
+         would trade a disk problem for an unattributable one (sts2-harness#555). It carried: \
+         {report}"
+    );
+
+    // What reached the disk is bounded, and says so rather than looking like a complete stream.
+    let mut files = Vec::new();
+    collect_files(&evidence, &mut files)?;
+    assert!(
+        !files.is_empty(),
+        "the bounded capture wrote nothing at all"
+    );
+    let mut persisted_size = 0_usize;
+    let mut persisted = String::new();
+    for file in files {
+        let bytes = fs::read(&file)?;
+        persisted_size += bytes.len();
+        persisted.push_str(&String::from_utf8_lossy(&bytes));
+    }
+    assert!(
+        persisted_size <= 2 * (MAX_PERSISTED_CAPTURE_BYTES + TRUNCATION_MARKER.len()),
+        "the persisted capture is {persisted_size} bytes, above the {MAX_PERSISTED_CAPTURE_BYTES}-\
+         byte-per-stream bound, so the write path is still unbounded (sts2-harness#555)"
+    );
+    assert!(
+        persisted.contains(TRUNCATION_MARKER),
+        "a capture that exceeded the bound was persisted without a truncation marker, so a \
+         reader following the dump step would take a cut stream for a complete one \
+         (sts2-harness#555)"
+    );
+    Ok(())
+}
+
 /// Launch this test binary as a child running `case`, and return the failure report it
 /// printed on its standard error.
 ///
@@ -203,7 +266,8 @@ fn served_gateway_stderr_child() {
             return;
         }
     };
-    let gateway_stub = match stub_gateway(&temporary.path) {
+    let flood = case_name == "flood";
+    let gateway_stub = match stub_gateway(&temporary.path, flood) {
         Ok(path) => path,
         Err(error) => {
             eprintln!("child could not write its gateway stub: {error}");
@@ -286,7 +350,7 @@ fn collect_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), Box<dyn st
 /// A stub rather than the pinned peer is deliberate: the claim is about this repository's
 /// plumbing, and asserting against the real gateway would pass vacuously whenever the peer is
 /// silent — the condition #541 observed, and the reason its flake could never be reproduced.
-fn stub_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn stub_gateway(directory: &Path, flood: bool) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let path = directory.join("stub-gateway.sh");
     fs::write(
         &path,
@@ -296,11 +360,24 @@ fn stub_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>>
             // which would leave the `while` body at column zero and fail with an
             // `IndentationError` — the script must reach the served path, and a stub that
             // dies at bind time never gets there.
-            "{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
+            "{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
             "#!/bin/sh\n",
             "printf '%s\\n' '",
             GATEWAY_MARKER,
             "' >&2\n",
+            // The flood case emits far more than the evidence writer's per-stream bound before
+            // it binds, so the capture is oversized no matter which stream is read. The marker
+            // above is already on stderr, so the in-band attribution assertion holds even when
+            // the persisted copy is cut. `dd` writes a fixed byte count in blocks, so the
+            // volume is deterministic rather than however much a loop iteration managed.
+            if flood {
+                format!(
+                    "dd if=/dev/zero bs=1048576 count={} 2>/dev/null | tr '\\0' 'x' >&2\n",
+                    FLOOD_BYTES / (1024 * 1024)
+                )
+            } else {
+                String::new()
+            },
             "exec python3 - <<'PY'\n",
             "import os, socket\n",
             "addr = os.environ[\"STS2_GATEWAY_ADDR\"]\n",
