@@ -26,6 +26,13 @@ const CAPTURE_LIMIT: usize = 4 * 1024 * 1024;
 /// The marker's leading phrase, likewise spelled out for the same reason.
 const MARKER_FRAGMENT: &str = "gateway stream truncated at";
 
+/// The **whole** marker, including the cut point. Asserting the full text is what makes a moved
+/// bound fail: the implementation interpolates the number from its own constant, so if the bound
+/// changes without this literal changing, the marker and this expectation diverge and the test
+/// goes red instead of the persisted evidence quietly misreporting where the cut happened.
+const FULL_MARKER: &str =
+    "\n--- gateway stream truncated at 4194304 bytes; the child's full output was larger ---";
+
 /// A stream of `size` bytes whose content is position-dependent, so a cut is detectable as
 /// content rather than merely as a length.
 fn stream_of(size: usize) -> Vec<u8> {
@@ -81,6 +88,18 @@ fn a_capture_many_times_the_bound_is_cut_to_the_limit_plus_its_marker() {
         text.contains(MARKER_FRAGMENT),
         "an 8x-oversized stream lost its truncation marker (sts2-harness#555)"
     );
+    assert!(
+        text.contains(FULL_MARKER),
+        "the marker does not name the bound this build actually enforces: expected \
+         {FULL_MARKER:?} in a marker reporting a different cut point. A marker that \
+         misreports where the cut happened is worse than one carrying no number \
+         (sts2-harness#555)"
+    );
+    assert!(
+        FULL_MARKER.contains(&CAPTURE_LIMIT.to_string()),
+        "this test's expected marker names {FULL_MARKER:?}, which does not contain the \
+         {CAPTURE_LIMIT} this file asserts, so the two have drifted apart"
+    );
     // Located without `expect`/`panic`, both of which this workspace denies. `0` is the
     // unfound sentinel here rather than a large value, so an absent marker fails the position
     // assertion below instead of passing it.
@@ -106,14 +125,16 @@ fn both_streams_of_an_oversized_gateway_land_on_disk_bounded_and_marked()
     let root = std::env::temp_dir().join(format!("gateway-evidence-555-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
 
-    // Both streams oversized at once, and different lengths, so a per-stream bound is
-    // distinguishable from a bound on the pair.
+    // Both streams oversized at once, and both well past the bound rather than barely past it, so
+    // that an unbounded writer cannot satisfy the size assertion either. A stream of
+    // `CAPTURE_LIMIT + 7` would not do: a pre-fix writer persists exactly that many bytes, which
+    // passes a `<= CAPTURE_LIMIT + 1024` check, leaving the size half of this test unable to fail.
     let gateway = Output {
         status: std::process::Command::new("sh")
             .args(["-c", "exit 7"])
             .status()?,
         stdout: stream_of(6 * CAPTURE_LIMIT),
-        stderr: stream_of(CAPTURE_LIMIT + 7),
+        stderr: stream_of(7 * CAPTURE_LIMIT),
     };
     write_gateway_streams(&root, "served policy gate: oversized", &gateway)?;
 

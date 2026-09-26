@@ -20,8 +20,16 @@ use std::process::Output;
 const MAX_GATEWAY_CAPTURE_BYTES: usize = 4 * 1024 * 1024;
 
 /// Appended to a truncated capture, so a reader can tell a bounded prefix from a complete one.
-const TRUNCATION_NOTICE: &str =
-    "\n--- gateway stream truncated at 4194304 bytes; the child's full output was larger ---";
+///
+/// The cut point is interpolated from [`MAX_GATEWAY_CAPTURE_BYTES`] rather than written as a
+/// literal. A marker whose whole purpose is to be trusted cannot carry a hand-copied number that
+/// silently keeps reporting the old cut point if the bound ever moves.
+fn truncation_notice() -> String {
+    format!(
+        "\n--- gateway stream truncated at {MAX_GATEWAY_CAPTURE_BYTES} bytes; \
+         the child's full output was larger ---"
+    )
+}
 
 /// Persist the gateway's own captured streams for one served scenario, then hand the
 /// failure back with those streams attached.
@@ -107,9 +115,10 @@ fn bounded(stream: &[u8]) -> Vec<u8> {
     if stream.len() <= MAX_GATEWAY_CAPTURE_BYTES {
         return stream.to_vec();
     }
-    let mut copy = Vec::with_capacity(MAX_GATEWAY_CAPTURE_BYTES + TRUNCATION_NOTICE.len());
+    let notice = truncation_notice();
+    let mut copy = Vec::with_capacity(MAX_GATEWAY_CAPTURE_BYTES + notice.len());
     copy.extend_from_slice(&stream[..MAX_GATEWAY_CAPTURE_BYTES]);
-    copy.extend_from_slice(TRUNCATION_NOTICE.as_bytes());
+    copy.extend_from_slice(notice.as_bytes());
     copy
 }
 
