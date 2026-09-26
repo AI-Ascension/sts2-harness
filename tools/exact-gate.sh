@@ -41,6 +41,12 @@
 #     shell has already truncated it, so the log is empty). This fails CLOSED --
 #     a red lane, never a false green -- and no lane in this repository does it:
 #     all of them pass `-`, so the gate uses a private mktemp file.
+#   - the guard reads the command's OUTPUT, so a test whose own stdout printed a
+#     libtest summary or per-test line could satisfy it without running. This is
+#     pre-existing (the pre-fix counter had the same property) and no test in
+#     this repository emits those lines. A lane that guards against a
+#     test-tampering adversary needs a different instrument, not a stricter
+#     pattern here.
 #
 # usage: exact-gate.sh <log-path|-> <command...>
 set -uo pipefail

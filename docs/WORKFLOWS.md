@@ -150,6 +150,10 @@ renamed-or-removed diagnosis that would send a reader after the wrong cause
 (`sts2-harness#540`). One invocation naming several `--exact` filters counts one execution per
 test, so batching filters is satisfiable.
 
+The gate reads the guarded command's output, so it guards against a *renamed, dropped or
+un-ignored* test, not against a test that prints libtest's own summary lines itself. That limit is
+pre-existing and is recorded in the script header.
+
 `fault_oracle` adds the `#148` T2/T3 fault and isolation matrix: the admission faults (config schema,
 pin and argv identity, provider-route refusal) must fail closed with **zero** model egress, a lost
 model reply must fail closed within the bounded process lifetime, and two sequential or concurrent
