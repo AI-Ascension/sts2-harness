@@ -17,14 +17,17 @@
 
 use super::peer::mcp_server_script;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpListener;
+use std::net::{SocketAddr, TcpListener};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
+#[path = "runtime_v3_game_information_entry_peer_headers_wire_tests.rs"]
+mod wire_tests;
+
 /// `service_authorization.rs` at `cd7e80c6`, `header_is_allowed`, lines 219-241.
-const GATEWAY_ALLOWED_HEADERS: &[&str] = &[
+pub(super) const GATEWAY_ALLOWED_HEADERS: &[&str] = &[
     "authorization",
     "connection",
     "content-length",
@@ -47,19 +50,19 @@ const GATEWAY_ALLOWED_HEADERS: &[&str] = &[
 
 /// A header the peer must never grow: the fix is scoped suppression, not a wider
 /// header set, so a "just send everything" edit has to fail here.
-const UNSET_HEADER_SENTINEL: &str = "x-sts2-capabilities-version";
+pub(super) const UNSET_HEADER_SENTINEL: &str = "x-sts2-capabilities-version";
 
 /// Both gateway call sites in the generated script. `query_response` and
 /// `bootstrap_proxy` post independently, so each is probed on the real wire rather
 /// than inferred from a source count.
-const GATEWAY_TOOLS: &[&str] = &[
+pub(super) const GATEWAY_TOOLS: &[&str] = &[
     "sts2.game_information_detail",
     "sts2.game_information.live_observation_bootstrap",
 ];
 
 /// The request line each probe tool must still produce. Suppression must not
 /// disturb routing.
-const GATEWAY_PATHS: &[(&str, &str)] = &[
+pub(super) const GATEWAY_PATHS: &[(&str, &str)] = &[
     (
         "sts2.game_information_detail",
         "/v1/instances/instance-1/game-information/detail",
@@ -74,7 +77,7 @@ fn python() -> PathBuf {
     std::fs::canonicalize("/usr/bin/python3").expect("Python interpreter for the peer")
 }
 
-fn temporary_directory(name: &str) -> PathBuf {
+pub(super) fn temporary_directory(name: &str) -> PathBuf {
     // Tests run in parallel threads inside one process, and several probe the same
     // tool. A directory keyed only on tool name is therefore shared: one test
     // would `remove_dir_all` the script another test had just written, and that
@@ -100,7 +103,7 @@ fn temporary_directory(name: &str) -> PathBuf {
 /// quoting: the only `#` characters in this script are comment markers, and a
 /// `#` inside a string would merely be preserved, never dropped, so the result is
 /// a superset of the executable text and the assertion stays conservative.
-fn strip_python_comments(source: &str) -> String {
+pub(super) fn strip_python_comments(source: &str) -> String {
     let mut stripped = String::with_capacity(source.len());
     for line in source.lines() {
         let executable = match line.find('#') {
@@ -116,7 +119,7 @@ fn strip_python_comments(source: &str) -> String {
 /// One request exactly as a listener received it: the raw request line and headers,
 /// plus the declared body length.
 #[derive(Debug)]
-struct CapturedRequest {
+pub(super) struct CapturedRequest {
     request_line: String,
     headers: Vec<(String, String)>,
 }
@@ -141,7 +144,7 @@ impl CapturedRequest {
 /// answer it. It never inspects the allow-list: these tests assert on the bytes the
 /// peer emitted, so a request the gateway would refuse still arrives here intact and
 /// can be compared against the allow-list by the test.
-fn capture_one_request() -> (TcpListener, mpsc::Receiver<CapturedRequest>) {
+fn capture_one_request() -> (SocketAddr, mpsc::Receiver<CapturedRequest>) {
     let (sender, receiver) = mpsc::channel();
     // Bind on the calling thread and hand the live listener to the worker. The
     // obvious alternative — bind, read the address, drop, rebind in the worker —
@@ -149,6 +152,10 @@ fn capture_one_request() -> (TcpListener, mpsc::Receiver<CapturedRequest>) {
     // in between, and the worker's bind then fails, the channel closes, and the
     // test fails as a 20s timeout with no indication of the real cause.
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback listener");
+    // Read the address here, before the listener is moved into the worker thread.
+    // The port stays reserved for the life of the probe because the worker holds
+    // the bound listener itself.
+    let address = listener.local_addr().expect("loopback address");
     std::thread::spawn(move || {
         let (mut socket, _) = match listener.accept() {
             Ok(accepted) => accepted,
@@ -200,7 +207,7 @@ fn capture_one_request() -> (TcpListener, mpsc::Receiver<CapturedRequest>) {
             headers,
         });
     });
-    (listener, receiver)
+    (address, receiver)
 }
 
 /// Drive the *generated* peer script through one live-observation tool call and return
@@ -209,11 +216,10 @@ fn capture_one_request() -> (TcpListener, mpsc::Receiver<CapturedRequest>) {
 /// The script is written to disk by `mcp_server_script` exactly as the fixture setup
 /// writes it, then executed by the pinned interpreter. No part of the request is
 /// re-derived in Rust.
-fn peer_request_for(tool: &str) -> CapturedRequest {
-    // The listener stays bound on this thread for the life of the probe, so a
-    // parallel test cannot take the port between reservation and accept.
-    let (listener, captured) = capture_one_request();
-    let address = listener.local_addr().expect("loopback address");
+pub(super) fn peer_request_for(tool: &str) -> CapturedRequest {
+    // The worker holds the bound listener for the life of the probe, so a parallel
+    // test cannot take the port between reservation and accept.
+    let (address, captured) = capture_one_request();
     let root = temporary_directory(tool);
     let script = root.join("entry-mcp.py");
     let log = root.join("entry-mcp.jsonl");
@@ -301,180 +307,4 @@ fn peer_request_for(tool: &str) -> CapturedRequest {
     let _ = child.wait();
     let _ = std::fs::remove_dir_all(&root);
     request
-}
-
-/// The gateway refuses any header outside its closed allow-list, and `http.client`
-/// injects `Accept-Encoding: identity` on its own unless told not to. This asserts the
-/// injected header is genuinely absent from the bytes the peer emits.
-///
-/// Non-vacuous: before the fix the peer produced a request carrying exactly one
-/// `accept-encoding` header (measured at 10 headers versus 9 after). A test asserting
-/// only that the request "succeeds" would have passed both before and after.
-#[test]
-fn peer_request_carries_no_accept_encoding_header() {
-    for tool in GATEWAY_TOOLS {
-        let request = peer_request_for(tool);
-        let names = request.names();
-        assert!(
-            !names.iter().any(|name| name == "accept-encoding"),
-            "{tool} must not send a header it never asked for; got {names:?}"
-        );
-        assert_eq!(
-            names.iter().filter(|name| *name == "host").count(),
-            1,
-            "http.client still supplies Host exactly once for {tool}: {names:?}"
-        );
-        let path = GATEWAY_PATHS
-            .iter()
-            .find(|(probed, _)| probed == tool)
-            .map(|(_, path)| *path)
-            .expect("every probed tool declares its request path");
-        assert!(
-            request.request_line.starts_with(&format!("POST {path} ")),
-            "suppression must not disturb the {tool} request line: {}",
-            request.request_line
-        );
-        let declared: usize = request
-            .value("content-length")
-            .expect("the peer must still declare a body length")
-            .parse()
-            .expect("content-length is a decimal byte count");
-        assert!(
-            declared > 0,
-            "the {tool} body is non-empty, so a declared length is required"
-        );
-        assert!(
-            request.value("content-type") == Some("application/json"),
-            "the scripted content type survives suppression for {tool}: {:?}",
-            request.value("content-type")
-        );
-    }
-}
-
-/// Every header the peer actually emits is a member of the gateway's published
-/// allow-list, so a future header cannot be introduced into this fixture and left to be
-/// discovered as an unattributable 400 in CI.
-#[test]
-fn every_peer_header_is_on_the_gateway_allow_list() {
-    for tool in GATEWAY_TOOLS {
-        let request = peer_request_for(tool);
-        let names = request.names();
-        assert!(
-            !names.is_empty(),
-            "the {tool} probe must capture a real request, not an empty one"
-        );
-        for name in &names {
-            assert!(
-                GATEWAY_ALLOWED_HEADERS.contains(&name.as_str()),
-                "{tool} sent header {name:?}, which is not on the gateway allow-list at \
-                 cd7e80c6; sent: {names:?}"
-            );
-        }
-    }
-}
-
-/// The fix is scoped suppression, not a wider header set: a header the script does not
-/// set is still absent, so a later "just allow everything" edit fails here.
-#[test]
-fn a_header_the_peer_does_not_set_is_still_absent() {
-    for tool in GATEWAY_TOOLS {
-        let request = peer_request_for(tool);
-        let names = request.names();
-        assert!(
-            !names.iter().any(|name| name == UNSET_HEADER_SENTINEL),
-            "{tool}: {UNSET_HEADER_SENTINEL} is allow-listed but never set by the peer; it must \
-             stay absent"
-        );
-        for absent in ["authorization", "x-mcp-request-id", "x-sts2-caller-id"] {
-            assert!(
-                !names.iter().any(|name| name == absent),
-                "{tool}: the peer must not invent {absent:?}; sent: {names:?}"
-            );
-        }
-        assert_eq!(
-            names.len(),
-            9,
-            "exactly the nine scripted/library headers are expected for {tool}; sent: {names:?}"
-        );
-    }
-}
-
-/// The allow-list is a membership test on header *names*, so the value the peer would
-/// have sent is irrelevant to the refusal. This records why the value `identity` does
-/// not appear anywhere in the generated script, pinning the measured basis for the fix.
-#[test]
-fn the_peer_script_never_names_accept_encoding_itself() {
-    let root = temporary_directory("static");
-    let script = root.join("entry-mcp.py");
-    let log = root.join("entry-mcp.jsonl");
-    let source = mcp_server_script(&log);
-    std::fs::write(&script, &source).expect("write generated peer script");
-    // Strip comments before searching. The fix's own explanatory comment quotes
-    // the rejected form on purpose, and a naive substring search over the raw
-    // script reports that comment as the very header the test forbids — the
-    // assertion would fail on correct code and pass on the defect it exists to
-    // catch. Only executable text can put a header on the wire.
-    let code = strip_python_comments(&source).to_ascii_lowercase();
-    assert!(
-        !code.contains("\"accept-encoding\"") && !code.contains("'accept-encoding'"),
-        "the peer must not name accept-encoding as a header value; the gateway refuses the name. \
-         Executable text was: {code}"
-    );
-    assert!(
-        code.contains("skip_accept_encoding=true"),
-        "the peer must suppress the library default explicitly"
-    );
-    let _ = std::fs::remove_dir_all(&root);
-}
-
-/// Both call sites route through the shared helper, so a fix applied to only one would
-/// leave the other refused. This asserts both are present in the generated bytes.
-#[test]
-fn both_gateway_call_sites_use_the_header_suppressing_helper() {
-    let root = temporary_directory("sites");
-    let script = root.join("entry-mcp.py");
-    let log = root.join("entry-mcp.jsonl");
-    let source = mcp_server_script(&log);
-    std::fs::write(&script, &source).expect("write generated peer script");
-    let uses = source.matches("post_gateway(").count();
-    assert_eq!(
-        uses, 3,
-        "one definition plus both call sites must route through post_gateway; found {uses}"
-    );
-    for path in [
-        "/game-information/detail",
-        "/game-information/live-observation-bootstrap",
-    ] {
-        assert!(source.contains(path), "the peer must still address {path}");
-    }
-    let _ = std::fs::remove_dir_all(&root);
-}
-
-/// A guard on the embedded allow-list itself: if the gateway's list is edited here, the
-/// tests above would silently test a different list. This fails on any change so the
-/// edit is a deliberate one against a fresh read of the gateway.
-#[test]
-fn the_embedded_allow_list_is_the_pinned_gateway_list() {
-    assert_eq!(
-        GATEWAY_ALLOWED_HEADERS.len(),
-        18,
-        "service_authorization.rs at cd7e80c6 matches 18 names"
-    );
-    assert!(
-        !GATEWAY_ALLOWED_HEADERS.contains(&"accept-encoding"),
-        "accept-encoding is not on the pinned list; that is why the peer must suppress it"
-    );
-    let mut sorted = GATEWAY_ALLOWED_HEADERS.to_vec();
-    sorted.sort_unstable();
-    sorted.dedup();
-    assert_eq!(
-        sorted.len(),
-        GATEWAY_ALLOWED_HEADERS.len(),
-        "the embedded list must not contain duplicates"
-    );
-    assert!(
-        GATEWAY_ALLOWED_HEADERS.contains(&"host"),
-        "the library-supplied Host header is allow-listed, which is why suppressing only \
-         accept-encoding leaves a fully admitted request"
-    );
 }
