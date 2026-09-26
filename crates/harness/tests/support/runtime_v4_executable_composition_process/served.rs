@@ -189,11 +189,8 @@ fn run_served_policy_gate_inner(
     if let Some(output) = &restarted_output {
         assert_killed(output, "restarted served workflow")?;
     }
-    if gateway_output.status.code() != Some(0) && !gateway_output.status.signal().is_some() {
-        return Err(gateway_failure_evidence(
-            &format!("{label}: gateway cleanup failed: {}", gateway_output.status),
-            &gateway_output,
-        ));
+    if let Some(error) = gateway_teardown_failure(label, &gateway_output) {
+        return Err(error);
     }
     if !ledger.errors.is_empty() {
         return Err(format!("served fixture failed: {:?}", ledger.errors).into());
