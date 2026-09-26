@@ -93,11 +93,24 @@ def query_response(i, a):
         connection=http.client.HTTPConnection(os.environ["STS2_GATEWAY_ADDR"],timeout=5)
         body={{"query":query,"correlation_id":str(i)}}
         encoded=json.dumps(body,separators=(',',':')).encode()
-        connection.request("POST","/v1/instances/"+a["instance_id"]+"/game-information/detail",
-          body=encoded,headers={{"Content-Type":"application/json","Content-Length":str(len(encoded)),
-            "x-mcp-session-id":a["mcp_session_id"],"x-sts2-instance-id":a["instance_id"],
-            "x-sts2-session-id":os.environ["STS2_SESSION_ID"],"x-sts2-lease-id":a["lease_id"],
-            "x-sts2-lease-epoch":str(a["lease_epoch"]),"x-sts2-correlation-id":str(i)}})
+        # The Gateway refuses any header outside its closed allow-list, and CPython's
+        # `HTTPConnection.request` injects `Accept-Encoding: identity` on its own for
+        # every HTTP/1.1 request. Suppress that default rather than naming the header
+        # ourselves: an explicit `Accept-Encoding` would still put the refused name on
+        # the wire (the Gateway tests the name, not the value), so only suppression
+        # states the guarantee this peer actually needs -- no header reaches the
+        # Gateway that this script did not ask to send. (Refs #541, #547)
+        connection.putrequest("POST","/v1/instances/"+a["instance_id"]+"/game-information/detail",
+          skip_accept_encoding=True)
+        connection.putheader("Content-Type","application/json")
+        connection.putheader("Content-Length",str(len(encoded)))
+        connection.putheader("x-mcp-session-id",a["mcp_session_id"])
+        connection.putheader("x-sts2-instance-id",a["instance_id"])
+        connection.putheader("x-sts2-session-id",os.environ["STS2_SESSION_ID"])
+        connection.putheader("x-sts2-lease-id",a["lease_id"])
+        connection.putheader("x-sts2-lease-epoch",str(a["lease_epoch"]))
+        connection.putheader("x-sts2-correlation-id",str(i))
+        connection.endheaders(encoded)
         return json.loads(connection.getresponse().read())
     page={{"items":[],"final_page":True,"next_cursor":None,"cursor_binding":None,
           "coverage":"complete","total_count_known":True,"total_count":0,
@@ -129,11 +142,21 @@ def bootstrap_proxy(i, a):
       "parent_observation":None,"visible_entities":None,"owner_provenance":None,"error":None}}
     connection=http.client.HTTPConnection(os.environ["STS2_GATEWAY_ADDR"],timeout=5)
     body=json.dumps(request,separators=(',',':')).encode()
-    connection.request("POST","/v1/instances/"+a["instance_id"]+"/game-information/live-observation-bootstrap",
-      body=body,headers={{"Content-Type":"application/json","Content-Length":str(len(body)),
-        "x-mcp-session-id":a["mcp_session_id"],"x-sts2-instance-id":a["instance_id"],
-        "x-sts2-session-id":os.environ["STS2_SESSION_ID"],"x-sts2-lease-id":a["lease_id"],
-        "x-sts2-lease-epoch":str(a["lease_epoch"]),"x-sts2-correlation-id":str(i)}})
+    # See `query_response`: CPython injects `Accept-Encoding: identity` unless this
+    # request opts out, and the Gateway's closed allow-list has no such entry, so a
+    # correct caller has to suppress the library default rather than name the header.
+    # (Refs #541, #547)
+    connection.putrequest("POST","/v1/instances/"+a["instance_id"]+"/game-information/live-observation-bootstrap",
+      skip_accept_encoding=True)
+    connection.putheader("Content-Type","application/json")
+    connection.putheader("Content-Length",str(len(body)))
+    connection.putheader("x-mcp-session-id",a["mcp_session_id"])
+    connection.putheader("x-sts2-instance-id",a["instance_id"])
+    connection.putheader("x-sts2-session-id",os.environ["STS2_SESSION_ID"])
+    connection.putheader("x-sts2-lease-id",a["lease_id"])
+    connection.putheader("x-sts2-lease-epoch",str(a["lease_epoch"]))
+    connection.putheader("x-sts2-correlation-id",str(i))
+    connection.endheaders(body)
     return json.loads(connection.getresponse().read())
 for line in sys.stdin:
     req=json.loads(line); i=req.get("id"); method=req.get("method")
