@@ -163,7 +163,31 @@ pub(super) fn write_with_deadline(
     // e.is_interrupted() => {}`. A synthetic writer that returns `Interrupted`
     // for its first attempt returns `Ok(())` from `write_all` after exactly two
     // `write` calls. Adding a retry here would be uncovered code.
-    stream.write_all(bytes).map_err(io_http_error)
+    write_result(stream.write_all(bytes))
+}
+
+// The write-side mirror of `retry_transient`'s timeout arm. A blocking
+// `TcpStream` with a write timeout reports a full send buffer as
+// `WouldBlock` (Linux) or `TimedOut` (other platforms) rather than as a
+// broken pipe, so both kinds mean the same thing here that they mean on the
+// read side: this request hit the deadline, and saying `io_error` would
+// report a status-400 client error for a request the caller did not get to
+// finish. Every other kind is still a genuine `io_error`. The mapping is
+// split out so it can be driven by a deterministic sequence of `io::Error`s in
+// tests rather than by racing a real socket against a real clock, matching how
+// `retry_transient` is tested.
+fn write_result(result: io::Result<()>) -> Result<(), HttpError> {
+    match result {
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+            ) =>
+        {
+            Err(deadline_exceeded("response deadline exceeded"))
+        }
+        result => result.map_err(io_http_error),
+    }
 }
 
 pub(super) fn find_header_end(bytes: &[u8]) -> Option<usize> {
