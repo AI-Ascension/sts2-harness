@@ -302,6 +302,12 @@ pub(crate) use assertions::{assert_foreign_state_rejected, assert_success};
 
 #[path = "runtime_v4_executable_composition_process/gateway_evidence.rs"]
 mod gateway_evidence;
+// `sanitize_label` is reached by `served_gateway_evidence_naming` through this re-export and by
+// no served composition itself, so in the `runtime_v4_executable_composition` binary -- which
+// compiles this module but never names the helper -- the import reads as unused. This module is
+// shared by three test binaries and each uses a different subset of it, exactly as the
+// `assertions` re-export above is scoped for the same reason.
+#[allow(unused_imports)]
 pub(crate) use gateway_evidence::{
     gateway_failure_evidence, gateway_teardown_failure, sanitize_label,
 };
