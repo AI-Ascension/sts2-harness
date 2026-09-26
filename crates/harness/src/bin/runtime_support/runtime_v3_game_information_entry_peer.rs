@@ -62,6 +62,21 @@ CAPS=json.loads({capabilities})
 SETTLED=json.loads({settled})
 def emit(value):
     print(json.dumps(value,separators=(',',':'),sort_keys=True),flush=True)
+def post_gateway(connection, body, headers, path):
+    # http.client injects "Accept-Encoding: identity" on every HTTP/1.1 request
+    # unless the caller already supplied one, so this peer would send a header
+    # it never asked for. The gateway's header allow-list is a closed membership
+    # test on the header *name* (sts2-gateway service_authorization.rs at
+    # cd7e80c6, header_is_allowed, 18 names, no accept-encoding), so it refuses
+    # the request with 400 unsupported_header before routing. Suppressing the
+    # default is the only form that removes the name from the wire: passing
+    # "Accept-Encoding" in `headers` merely tells http.client to skip its own
+    # default and then send the caller's identical header, so the bytes are
+    # unchanged. Suppress it, so the request carries exactly the headers below.
+    connection.putrequest("POST",path,skip_accept_encoding=True)
+    for name,value in headers.items():
+        connection.putheader(name,value)
+    connection.endheaders(body)
 def envelope(i, body, is_error=False):
     return {{"jsonrpc":"2.0","id":i,"result":{{"isError":is_error,"content":[{{"type":"text","text":json.dumps(body,separators=(',',':'),sort_keys=True)}}]}}}}
 def secrets_absent():
@@ -93,11 +108,12 @@ def query_response(i, a):
         connection=http.client.HTTPConnection(os.environ["STS2_GATEWAY_ADDR"],timeout=5)
         body={{"query":query,"correlation_id":str(i)}}
         encoded=json.dumps(body,separators=(',',':')).encode()
-        connection.request("POST","/v1/instances/"+a["instance_id"]+"/game-information/detail",
-          body=encoded,headers={{"Content-Type":"application/json","Content-Length":str(len(encoded)),
+        post_gateway(connection,encoded,
+          {{"Content-Type":"application/json","Content-Length":str(len(encoded)),
             "x-mcp-session-id":a["mcp_session_id"],"x-sts2-instance-id":a["instance_id"],
             "x-sts2-session-id":os.environ["STS2_SESSION_ID"],"x-sts2-lease-id":a["lease_id"],
-            "x-sts2-lease-epoch":str(a["lease_epoch"]),"x-sts2-correlation-id":str(i)}})
+            "x-sts2-lease-epoch":str(a["lease_epoch"]),"x-sts2-correlation-id":str(i)}},
+          "/v1/instances/"+a["instance_id"]+"/game-information/detail")
         return json.loads(connection.getresponse().read())
     page={{"items":[],"final_page":True,"next_cursor":None,"cursor_binding":None,
           "coverage":"complete","total_count_known":True,"total_count":0,
@@ -129,11 +145,12 @@ def bootstrap_proxy(i, a):
       "parent_observation":None,"visible_entities":None,"owner_provenance":None,"error":None}}
     connection=http.client.HTTPConnection(os.environ["STS2_GATEWAY_ADDR"],timeout=5)
     body=json.dumps(request,separators=(',',':')).encode()
-    connection.request("POST","/v1/instances/"+a["instance_id"]+"/game-information/live-observation-bootstrap",
-      body=body,headers={{"Content-Type":"application/json","Content-Length":str(len(body)),
+    post_gateway(connection,body,
+      {{"Content-Type":"application/json","Content-Length":str(len(body)),
         "x-mcp-session-id":a["mcp_session_id"],"x-sts2-instance-id":a["instance_id"],
         "x-sts2-session-id":os.environ["STS2_SESSION_ID"],"x-sts2-lease-id":a["lease_id"],
-        "x-sts2-lease-epoch":str(a["lease_epoch"]),"x-sts2-correlation-id":str(i)}})
+        "x-sts2-lease-epoch":str(a["lease_epoch"]),"x-sts2-correlation-id":str(i)}},
+      "/v1/instances/"+a["instance_id"]+"/game-information/live-observation-bootstrap")
     return json.loads(connection.getresponse().read())
 for line in sys.stdin:
     req=json.loads(line); i=req.get("id"); method=req.get("method")
