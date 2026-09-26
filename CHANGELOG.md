@@ -19,7 +19,14 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   an explicit truncation marker, so a cut stream cannot be mistaken for a complete one. The
   in-band `gateway_stdout=`/`gateway_stderr=` text is deliberately **not** bounded: truncating the
   attribution would trade a disk problem for the unattributable failure #548 exists to prevent.
-  A regression test drives a stub gateway that emits 6 MiB and asserts both halves. Closes #555.
+  The bound is covered by unit tests on the writer itself rather than by an end-to-end case,
+  because the spawn path cannot deliver an oversized capture: `ready()` polls `try_wait` and
+  `TcpStream::connect` without reading either pipe, so a gateway writing more than the kernel's
+  64 KiB pipe buffer blocks on the write and never reaches its `bind`. Measured with a
+  `Stdio::piped()` child writing 6 MiB before binding, `stop()` collected exactly 65,536 bytes
+  and the child was still alive at the readiness deadline — so the bound is defence in depth
+  against a future spawn that drains its pipes, and those tests assert the cut, the
+  byte-exact prefix and the marker directly. Closes #555.
 - **Stop the served compositions discarding the gateway's stderr, and stop their error strings
   implying they carried it.** Every served composition spawns the gateway with piped
   stdout/stderr and reads both back out of `stop`, but the only consumer of those bytes was

@@ -113,6 +113,10 @@ fn bounded(stream: &[u8]) -> Vec<u8> {
     copy
 }
 
+#[cfg(test)]
+#[path = "gateway_evidence_tests.rs"]
+mod tests;
+
 /// Reduce a failure context to a single safe path component.
 ///
 /// Only `[A-Za-z0-9._-]` survive; runs of anything else become a single `_`, and the result is
