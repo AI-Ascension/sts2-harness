@@ -143,6 +143,17 @@ a green empty run (`sts2-harness#535`). The covering check is
 `crates/harness/tests/exact_gate_lane_coverage.rs`, which sweeps every workflow file rather than an
 enumerated few (`sts2-harness#536`).
 
+The gate's own accounting is covered by `tools/exact-gate-selftest.sh`, which `policy.yml` runs on
+every PR. It counts *executions* rather than passes, so a test that ran and failed is reported as
+`executed=1` alongside the command's own failure, not as `0 executed` with a
+renamed-or-removed diagnosis that would send a reader after the wrong cause
+(`sts2-harness#540`). One invocation naming several `--exact` filters counts one execution per
+test, so batching filters is satisfiable.
+
+The gate reads the guarded command's output, so it guards against a *renamed, dropped or
+un-ignored* test, not against a test that prints libtest's own summary lines itself. That limit is
+pre-existing and is recorded in the script header.
+
 `fault_oracle` adds the `#148` T2/T3 fault and isolation matrix: the admission faults (config schema,
 pin and argv identity, provider-route refusal) must fail closed with **zero** model egress, a lost
 model reply must fail closed within the bounded process lifetime, and two sequential or concurrent

@@ -30,5 +30,12 @@ jobs:
       - name: Test repository policy tool
         run: cargo test --locked --package repo-policy
 
+      # The execution gate is what stands between a renamed or dropped test and a
+      # green empty lane run, and its own accounting is only ever read when a lane
+      # is already red. Test it here, on a workflow that runs on every PR, rather
+      # than leaving it to the next lane that trips it (sts2-harness#540).
+      - name: Self-test the exact execution gate
+        run: bash tools/exact-gate-selftest.sh
+
       - name: Enforce repository policy
         run: cargo run --locked --package repo-policy -- --strict
