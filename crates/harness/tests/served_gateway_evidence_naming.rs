@@ -74,6 +74,61 @@ fn scenarios_sharing_a_lane_step_persist_to_distinct_files() {
          second run's gateway stderr would overwrite the first's. stems were: {stems:?}"
     );
 }
+/// No served composition may re-hand-roll the teardown check.
+///
+/// The seven unwrapped sites in #556 were not an oversight in one file; they were eight
+/// hand-written copies of one condition, and the copies drifted. #548 fixed the copy it
+/// happened to touch and the other seven kept the old shape, with nothing to fail. So
+/// `gateway_teardown_failure` is now the only spelling of that condition, and this pins that
+/// structurally: a `served` file that writes the predicate out again — in any polarity, with
+/// any status field — fails here instead of quietly re-opening the #556 gap.
+///
+/// It reads the repository's own sources the way the policy gate does. It is a companion to,
+/// not a substitute for, the behavioural test in `served_gateway_stderr_evidence.rs`: that one
+/// proves the helper carries the bytes, and this one proves nobody bypasses the helper.
+#[test]
+fn no_served_composition_hand_rolls_the_teardown_check() -> Result<(), Box<dyn std::error::Error>> {
+    let served = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/support/runtime_v4_executable_composition_process/served");
+    let mut entries = std::fs::read_dir(&served)?
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|value| value == "rs"))
+        .collect::<Vec<_>>();
+    entries.sort();
+    assert!(
+        !entries.is_empty(),
+        "no served sources were read under {}, so this check proved nothing",
+        served.display()
+    );
+    let offenders = entries
+        .iter()
+        .filter_map(|path| {
+            let source = std::fs::read_to_string(path).ok()?;
+            // `assert_killed` checks the *workflow service* was killed, not the gateway, and
+            // reads `output` rather than `gateway_output`. Matching on the gateway's own
+            // binding is what keeps this check from flagging that unrelated correct predicate.
+            let hand_rolled = source
+                .lines()
+                .filter(|line| {
+                    let trimmed = line.trim_start();
+                    trimmed.contains("gateway_output.status.code()")
+                        || trimmed.contains("gateway_output.status.signal()")
+                })
+                .count();
+            (hand_rolled > 0).then(|| format!("{}: {hand_rolled}", path.display()))
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        offenders.is_empty(),
+        "a served composition re-spelled the gateway teardown condition instead of calling \
+         `gateway_teardown_failure`, so it can drop the gateway's streams again \
+         (sts2-harness#556). Files: {offenders:?}"
+    );
+    Ok(())
+}
+
 /// The evidence files must land where the lane's failure-only dump step can see them.
 ///
 /// That step runs `find "$RUNNER_TEMP/runtime-peer-contract" -type f -maxdepth 2`, so a file
@@ -135,9 +190,11 @@ fn write_streams_in_child(per_step: &Path) -> std::process::ExitStatus {
         .args(["--exact", "gateway_streams_depth_child", "--nocapture"])
         .env(CHILD, "1")
         .env(DEPTH_DIR, per_step)
-        // Clear the lane variable in the child too: `gateway_failure_evidence` reads it, and a
-        // CI-provided value left in place would redirect this check away from `per_step`.
-        .env_remove("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR")
+        // The lane variable is what `gateway_failure_evidence` actually reads, so this is the
+        // real CI wiring, not a simulation of it. Without it the helper is a no-op on the
+        // write path and the child exits 0 having written nothing — which is exactly the
+        // #548 defect this check exists to catch, and exactly what the assertion reported.
+        .env("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR", per_step)
         .status()
         .expect("the child binary starts")
 }
@@ -175,6 +232,27 @@ fn gateway_streams_depth_child() {
     if !error.to_string().contains("gateway stderr marker") {
         eprintln!("the writer did not attach the gateway's stderr: {error}");
         std::process::exit(3);
+    }
+    // The helper is a deliberate no-op on the write path when the evidence variable is unset,
+    // so attaching the streams in-band says nothing about having persisted them. Assert the
+    // bytes landed here, and exit non-zero otherwise, so the parent's `status.success()` is a
+    // real control rather than a rubber stamp on a child that quietly did nothing.
+    let mut written = Vec::new();
+    collect_files(&per_step, &mut written).expect("the per-step evidence directory is readable");
+    if written.is_empty() {
+        eprintln!("the writer persisted nothing under {}", per_step.display());
+        std::process::exit(4);
+    }
+    let mut persisted = String::new();
+    for file in &written {
+        match std::fs::read_to_string(file) {
+            Ok(contents) => persisted.push_str(&contents),
+            Err(error) => eprintln!("could not read back {}: {error}", file.display()),
+        }
+    }
+    if !persisted.contains("gateway stderr marker") {
+        eprintln!("the persisted evidence did not carry the gateway's stderr: {persisted}");
+        std::process::exit(5);
     }
     std::process::exit(0);
 }

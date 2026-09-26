@@ -6,6 +6,7 @@
 //! the repository preferred file-size budget.
 
 use std::fs;
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
@@ -31,10 +32,6 @@ pub(crate) fn gateway_failure_evidence(
     label: &str,
     gateway: &Output,
 ) -> Box<dyn std::error::Error> {
-    // TEMPORARY NON-VACUITY EXPERIMENT -- REVERT BEFORE COMMIT
-    if std::env::var_os("STS2_NONVACUITY_548").is_some() {
-        return format!("{label}").into();
-    }
     if let Some(root) = std::env::var_os("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR") {
         let root = PathBuf::from(root);
         if let Err(error) = write_gateway_streams(&root, label, gateway) {
@@ -57,6 +54,42 @@ pub(crate) fn gateway_failure_evidence(
         String::from_utf8_lossy(&gateway.stderr),
     )
     .into()
+}
+
+/// The `served_*` teardown check, in one place, carrying the gateway's streams.
+///
+/// Every served composition ends by asking whether the gateway died *on its own*:
+///
+/// ```ignore
+/// gateway_output.status.code() != Some(0) && gateway_output.status.signal().is_none()
+/// ```
+///
+/// `stop` SIGKILLs a still-running gateway, so a healthy teardown has `signal() == Some(9)`
+/// and does not take this branch. A gateway that refused or crashed before teardown does —
+/// and that is precisely the moment its own explanation exists and is worth having. Eight
+/// sites spelled that condition out by hand, and seven of them returned a bare
+/// `"… gateway cleanup failed"` with the bytes dropped on the floor
+/// (sts2-harness#556). Hand-written copies are why the gap survived #548: the fix for one
+/// site is not evidence about the other seven, and nothing failed when a later site kept
+/// the old shape.
+///
+/// Routing all eight through this one function makes the invariant mechanical instead of
+/// repeated: a served teardown failure either carries `gateway_stdout=`/`gateway_stderr=`
+/// and persists them, or it does not exist as a separate code path. It also keeps each
+/// served file from growing — the wrap this replaces is six lines per site, and
+/// `served/receipt_recovery.rs` sits exactly on the `rust_test_preferred` line budget, so
+/// the inline form could not be landed at all.
+pub(crate) fn gateway_teardown_failure(
+    label: &str,
+    gateway: &Output,
+) -> Option<Box<dyn std::error::Error>> {
+    if gateway.status.code() == Some(0) || gateway.status.signal().is_some() {
+        return None;
+    }
+    Some(gateway_failure_evidence(
+        &format!("{label}: gateway cleanup failed: {}", gateway.status),
+        gateway,
+    ))
 }
 
 /// Write one served scenario's gateway streams, so the lane's failure-only dump step has

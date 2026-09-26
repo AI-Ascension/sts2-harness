@@ -289,7 +289,9 @@ pub(crate) use assertions::{assert_foreign_state_rejected, assert_success};
 
 #[path = "runtime_v4_executable_composition_process/gateway_evidence.rs"]
 mod gateway_evidence;
-pub(crate) use gateway_evidence::{gateway_failure_evidence, sanitize_label};
+pub(crate) use gateway_evidence::{
+    gateway_failure_evidence, gateway_teardown_failure, sanitize_label,
+};
 
 include!("runtime_v4_executable_composition_malformed.rs");
 

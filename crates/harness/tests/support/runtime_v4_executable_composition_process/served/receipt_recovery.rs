@@ -314,14 +314,13 @@ pub(crate) fn run_served_context_receipt_recovery(
     })();
     let gateway_output = stop(gateway)?;
     let ledger = mod_server.finish();
-    result.map_err(|error| {
-        gateway_failure_evidence(
-            &format!("served context receipt recovery: {error}"),
-            &gateway_output,
-        )
-    })?;
-    if gateway_output.status.code() != Some(0) && gateway_output.status.signal().is_none() {
-        return Err(format!("gateway cleanup failed: {}", gateway_output.status).into());
+    let label = "served context receipt recovery";
+    let evidence = |error: Box<dyn std::error::Error>| {
+        gateway_failure_evidence(&format!("{label}: {error}"), &gateway_output)
+    };
+    result.map_err(evidence)?;
+    if let Some(error) = gateway_teardown_failure(label, &gateway_output) {
+        return Err(error);
     }
     if !ledger.errors.is_empty() {
         return Err(format!("receipt recovery fixture failed: {:?}", ledger.errors).into());

@@ -56,7 +56,7 @@ mod process;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
 /// Env var naming the case the child process should run. Absent in an ordinary run, so each
 /// helper below is a no-op unless a parent test launched this binary deliberately.
@@ -130,7 +130,11 @@ fn a_served_scenario_labels_the_service_stream_so_it_cannot_be_read_as_the_gatew
 fn a_served_scenario_persists_its_gateway_streams_under_the_evidence_directory()
 -> Result<(), Box<dyn std::error::Error>> {
     let temporary = process::TempDir::new()?;
-    let evidence = temporary.path.join("served-evidence");
+    // A sibling of the child's own temp directory, not a child *inside* it. The child
+    // drops its `TempDir` on the way out, which would delete a nested evidence directory
+    // before this parent could read it back — and it does so even when the served path
+    // already wrote into it, so the directory would be empty rather than absent.
+    let evidence = temporary.path.with_extension("evidence");
     run_in_child("report", Some(&evidence))?;
 
     // Read the directory back the way the lane's dump step does: every file under it.
@@ -165,7 +169,14 @@ fn run_in_child(case: &str, evidence: Option<&Path>) -> Result<String, Box<dyn s
     let mut command = Command::new(std::env::current_exe()?);
     command
         .args(["--exact", "served_gateway_stderr_child", "--nocapture"])
-        .env(CASE, case);
+        .env(CASE, case)
+        // Explicitly *unset* the evidence variable when this case does not name one, rather
+        // than inheriting whatever the ambient environment holds. This change is what gives
+        // every served lane step an evidence directory, so a developer running the suite with
+        // one exported — or a future step that exports it before invoking `cargo test` — would
+        // otherwise have the stub gateway's marker persisted as if it were a real gateway's
+        // report. The two report tests assert on the in-band text, so nothing is lost.
+        .env_remove("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR");
     if let Some(root) = evidence {
         command.env("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR", root);
     }
@@ -223,6 +234,83 @@ fn served_gateway_stderr_child() {
     }
 }
 
+/// An [`Output`] whose status this test controls, with `stderr` set to `marker`.
+///
+/// `std::process::ExitStatus` has no public constructor, so a status is obtained by actually
+/// running a process that exits the way the case under test needs. That is a few milliseconds
+/// per case, and it buys a real `ExitStatus` in both the `code()` and the `signal()` shape.
+fn output_with_status(marker: &str, status: std::process::ExitStatus) -> Output {
+    Output {
+        status,
+        stdout: Vec::new(),
+        stderr: marker.as_bytes().to_vec(),
+    }
+}
+
+/// A status produced by exiting normally with `code`.
+fn exit_status_with_code(code: i32) -> std::process::ExitStatus {
+    Command::new("sh")
+        .args(["-c", &format!("exit {code}")])
+        .status()
+        .expect("sh runs")
+}
+
+/// A status produced by being killed with `SIGKILL`, which is how `stop` reaps a gateway that
+/// is still running at teardown.
+fn exit_status_signalled() -> std::process::ExitStatus {
+    Command::new("sh")
+        .args(["-c", "kill -9 $$"])
+        .status()
+        .expect("sh runs")
+}
+
+/// A gateway that died on its own must reach a served teardown failure carrying its streams.
+///
+/// The branch the served compositions share is
+/// `status.code() != Some(0) && status.signal().is_none()`: `stop` SIGKILLs a still-running
+/// gateway, so only a gateway that already exited on its own reaches it. That is the moment
+/// its explanation exists, and it is the #541 shape. Seven of the eight sites returned a bare
+/// `"… gateway cleanup failed"` here with the bytes dropped (sts2-harness#556), and the
+/// #548 test could not see that because its stub gateway deliberately stays alive.
+///
+/// A stub cannot reach this branch through a real served run — the branch sits *after* the
+/// scenario's own assertions, so reaching it end to end needs a gateway that passes a real
+/// policy gate and then dies. So it is pinned directly against real `ExitStatus` values.
+#[test]
+fn a_gateway_that_died_on_its_own_reaches_a_teardown_failure_carrying_its_streams() {
+    let output = output_with_status(GATEWAY_MARKER, exit_status_with_code(7));
+    let error = process::gateway_teardown_failure("served fixture", &output)
+        .expect("a gateway that exited 7 without a signal is a teardown failure");
+    let report = error.to_string();
+    assert!(
+        report.contains(&format!("gateway_stderr={GATEWAY_MARKER}")),
+        "a gateway that refused on its own must carry its own explanation into the teardown \
+         failure, or the refusal stays unattributable (sts2-harness#556). The report was: {report}"
+    );
+    assert!(
+        !bare_stderr_label_carries(&report, GATEWAY_MARKER),
+        "the teardown report must not present the gateway's bytes behind a bare `stderr=` \
+         label (sts2-harness#556). The report was: {report}"
+    );
+}
+
+/// A gateway that was healthy, or was torn down by `stop`, is not a teardown failure.
+///
+/// The other half of the same condition: `stop` SIGKILLs a still-running gateway, so a normal
+/// teardown has `signal() == Some(9)`. Treating a signalled exit as a failure would fail every
+/// served scenario in the suite on every run.
+#[test]
+fn a_gateway_stop_killed_or_exited_cleanly_is_not_a_teardown_failure() {
+    for status in [exit_status_with_code(0), exit_status_signalled()] {
+        let output = output_with_status(GATEWAY_MARKER, status);
+        assert!(
+            process::gateway_teardown_failure("served fixture", &output).is_none(),
+            "a gateway that exited 0 or was SIGKILLed by `stop` is a healthy teardown and must \
+             not be reported as a gateway failure (sts2-harness#556). status was {status:?}"
+        );
+    }
+}
+
 /// True when `report` places `marker` immediately behind a **bare** `stderr=` label.
 ///
 /// A plain `contains("stderr=…")` cannot express this: the qualified `service_stderr=` label
@@ -263,4 +351,72 @@ fn collect_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), Box<dyn st
     }
     files.sort();
     Ok(())
+}
+
+/// A stub "gateway": it writes [`GATEWAY_MARKER`] to its own stderr, binds
+/// `STS2_GATEWAY_ADDR`, and keeps accepting until it is killed.
+///
+/// It is spawned through the same `gateway_with_identity` helper the real compositions use,
+/// so it inherits exactly the environment the real gateway would, including the cleared
+/// environment and `STS2_GATEWAY_ADDR`.
+///
+/// **It must stay alive rather than exit immediately.** `ready`
+/// (`runtime_v4_executable_composition_process.rs:169`) checks `try_wait` *before* it attempts
+/// to connect, so a stub that exits at once fails the served scenario at gateway startup —
+/// before the workflow service is ever spawned — and the service's own stream never reaches the
+/// report. Holding the socket open lets the scenario pass readiness and fail later on the
+/// *service*, so one report carries **both** markers, each under its own label. That combined
+/// report is what makes attribution checkable rather than merely present, and it is the #541
+/// shape: the gateway said something, the served path reported a failure, and the gateway's own
+/// explanation was dropped.
+///
+/// The marker is printed before the bind, so it is on stderr whichever exit the scenario takes.
+/// A stub rather than the pinned peer is deliberate: the claim is about this repository's
+/// plumbing, and asserting against the real gateway would pass vacuously whenever the peer is
+/// silent — the condition #541 observed, and the reason its flake could never be reproduced.
+fn stub_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let path = directory.join("stub-gateway.sh");
+    fs::write(
+        &path,
+        format!(
+            // Each Python line is its own `format!` element carrying its own leading spaces.
+            // A `\`-continued Rust string strips the indentation of every continued line,
+            // which would leave the `while` body at column zero and fail with an
+            // `IndentationError` — the script must reach the served path, and a stub that
+            // dies at bind time never gets there.
+            "{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
+            "#!/bin/sh\n",
+            "printf '%s\\n' '",
+            GATEWAY_MARKER,
+            "' >&2\n",
+            "exec python3 - <<'PY'\n",
+            "import os, socket\n",
+            "addr = os.environ[\"STS2_GATEWAY_ADDR\"]\n",
+            "host, _, port = addr.rpartition(\":\")\n",
+            "listener = socket.socket()\n",
+            "listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n",
+            "listener.bind((host, int(port)))\n",
+            "listener.listen(8)\n",
+            "while True:\n",
+            "    connection, _ = listener.accept()\n",
+            "    connection.close()\nPY\n",
+        ),
+    )?;
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
+    Ok(path)
+}
+
+/// A stub workflow service: it writes [`SERVICE_MARKER`] to its own stderr and exits non-zero.
+///
+/// `wait_for_workflow_service` observes the exit inside the served scenario and fails there
+/// rather than at its readiness deadline. The stub is passed as the harness binary too, since
+/// the served scenario never reaches a step that would execute it.
+fn stub_service(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let path = directory.join("stub-service.sh");
+    fs::write(
+        &path,
+        format!("#!/bin/sh\nprintf '%s\\n' '{SERVICE_MARKER}' >&2\nexit 3\n"),
+    )?;
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
+    Ok(path)
 }
