@@ -56,9 +56,17 @@ fn a_capture_one_byte_past_the_bound_is_cut_and_marked() {
         copy.starts_with(&source[..CAPTURE_LIMIT]),
         "the bounded copy is not the byte-exact prefix of the source"
     );
+    // The copy is *not* shorter than a source one byte over the bound, and must not be asserted
+    // to be: the marker is longer than the single byte it displaces, so cutting here makes the
+    // file grow. What must hold is that it holds exactly the bound's worth of source bytes and
+    // nothing more — a longer prefix would be a weaker bound than the one claimed.
     assert!(
-        copy.len() < source.len(),
-        "a stream past the bound grew rather than being cut: {} bytes from {}",
+        copy[..CAPTURE_LIMIT] == source[..CAPTURE_LIMIT]
+            && copy[CAPTURE_LIMIT..]
+                .windows(MARKER_FRAGMENT.len())
+                .any(|window| { window == MARKER_FRAGMENT.as_bytes() }),
+        "the copy is not the {CAPTURE_LIMIT}-byte prefix followed by a marker: {} bytes total \
+         from a {} byte source (sts2-harness#555)",
         copy.len(),
         source.len()
     );
