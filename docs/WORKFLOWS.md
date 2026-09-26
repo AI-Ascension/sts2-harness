@@ -143,6 +143,15 @@ a green empty run (`sts2-harness#535`). The covering check is
 `crates/harness/tests/exact_gate_lane_coverage.rs`, which sweeps every workflow file rather than an
 enumerated few (`sts2-harness#536`).
 
+The gate counts executions from the per-test lines libtest prints (`test <name> ... ok` and
+`test <name> ... FAILED`), not from the `test result:` summary: a test that ran and failed reports
+`FAILED. 0 passed; 1 failed;`, whose `0 passed` is indistinguishable from the `0 passed; N filtered
+out` of a run that matched nothing. A test libtest lists as `... ignored` was selected and then
+skipped, so it is not counted as executed either. A refusal therefore distinguishes the two reasons a
+lane can stop -- the named test never ran, or it ran and failed -- instead of reporting both as an
+empty run (`sts2-harness#540`). `crates/harness/tests/exact_gate_execution_count.rs` pins those
+shapes against the committed script.
+
 `fault_oracle` adds the `#148` T2/T3 fault and isolation matrix: the admission faults (config schema,
 pin and argv identity, provider-route refusal) must fail closed with **zero** model egress, a lost
 model reply must fail closed within the bounded process lifetime, and two sequential or concurrent
