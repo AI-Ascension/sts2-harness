@@ -32,9 +32,6 @@ pub(crate) fn gateway_failure_evidence(
     label: &str,
     gateway: &Output,
 ) -> Box<dyn std::error::Error> {
-    if std::env::var_os("STS2_NONVACUITY_548").is_some() {
-        return format!("{label}").into();
-    }
     if let Some(root) = std::env::var_os("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR") {
         let root = PathBuf::from(root);
         if let Err(error) = write_gateway_streams(&root, label, gateway) {
