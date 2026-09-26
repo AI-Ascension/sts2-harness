@@ -73,14 +73,17 @@ fn a_capture_many_times_the_bound_is_cut_to_the_limit_plus_its_marker() {
         text.contains(MARKER_FRAGMENT),
         "an 8x-oversized stream lost its truncation marker (sts2-harness#555)"
     );
+    // Located without `expect`/`panic`, both of which this workspace denies. `0` is the
+    // unfound sentinel here rather than a large value, so an absent marker fails the position
+    // assertion below instead of passing it.
     let marker_at = copy
         .windows(MARKER_FRAGMENT.len())
         .position(|window| window == MARKER_FRAGMENT.as_bytes())
-        .expect("marker is present, so it is locatable");
+        .unwrap_or(0);
     assert!(
         marker_at >= CAPTURE_LIMIT,
-        "the marker was written at {marker_at}, inside the {CAPTURE_LIMIT}-byte prefix, so the \
-         source was cut short of the bound"
+        "the marker sits at byte {marker_at}, inside the {CAPTURE_LIMIT}-byte prefix, so either \
+         it was never written or the source was cut short of the bound (sts2-harness#555)"
     );
     assert_eq!(
         &copy[..CAPTURE_LIMIT],
