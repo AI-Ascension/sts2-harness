@@ -128,6 +128,8 @@ markdown_max = 700
 
 # Exact repository-relative paths only. Every exception needs a durable reason.
 [exemptions]
+".github/workflows/runtime-peer-contract.yml" = "The runtime-peer-contract lane keeps every served_* step's own `runner.temp` evidence directory beside the step that needs it, because a job-level env cannot read `runner.temp`; its 168 nonblank lines remain below the 200-line workflow hard limit."
+"CHANGELOG.md" = "The active changelog is archived by a separate, dated owner-reviewed wave once it approaches its preferred budget; the #548 entry stays beside its neighbours and its 519 nonblank lines remain below the 700-line markdown hard limit."
 "crates/harness/src/execution/store_ops.rs" = "The operation ledger is a single transaction-state module; its 334-line implementation is below the hard limit and is covered by the durable operation fault matrix."
 "crates/harness/src/execution/store_provider.rs" = "The provider reservation ledger is a single transaction-state module; its 336-line implementation is below the hard limit and keeps reservation transitions reviewable together."
 "crates/harness/src/execution/types_records.rs" = "The durable record/error vocabulary is kept together to preserve cross-record invariants; its 331-line implementation is below the hard limit."

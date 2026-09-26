@@ -14,27 +14,24 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   implying they carried it.** Every served composition spawns the gateway with piped
   stdout/stderr and reads both back out of `stop`, but the only consumer of those bytes was
   `write_evidence`, which no `served_*` scenario calls, and no `served_*` lane step named an
-  evidence directory — so on all six served paths the gateway's own stream was captured and then
+  evidence directory — so on every served path the gateway's own stream was captured and then
   dropped. The gateway is the process that names a refused request header
-  (`sts2-gateway#114`, merged as `ff4cd1c6`), which is why #541's named refusal could never be
-  attributed and why that flake was never reproduced. The worse half of the same defect was
-  invisible rather than absent: six `served/*` error strings interpolated the **workflow
-  service's** bytes behind a bare `stderr=` label, so a reader saw a diagnostic that looked like
-  gateway output and reasonably concluded the gateway had reported when it had not. Each of
-  those sites now qualifies its label (`service_stdout=`/`service_stderr=`), and each served
-  scenario attaches the gateway's own streams to its failure through one shared helper that also
-  persists them under `STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR`, so the lane's
-  *"Show owned-process diagnostics"* step finally has bytes to print for a served step. Two sites
-  beyond the six the issue enumerated were the same defect and are corrected the same way: the
-  policy-gate scenario's own first-attempt string, and the context-receipt-recovery scenario.
-  The regression test drives the **real** `run_served_policy_gate` against a stub gateway and a
-  stub workflow service that each write a recognisable marker to their own stderr, so it asserts
-  this repository's plumbing rather than whether some particular peer revision happens to speak —
-  an assertion against the real gateway would pass vacuously whenever the peer is silent, which
-  is exactly the condition #541 observed. It is not `#[ignore]`d, needs no operator-built binary,
-  and asserts marker presence rather than an execution count, so it runs in an ordinary
-  `cargo test` and cannot pass by being renamed. Compatibility: test-support and CI only; no
-  production, protocol, or runtime behaviour changes. Closes #548.
+  (`sts2-gateway#114`), which is why #541's named refusal could never be attributed. The worse
+  half of the same defect was invisible rather than absent: the `served/*` error strings
+  interpolated the **workflow service's** bytes behind a bare `stderr=` label, so a reader saw a
+  diagnostic that looked like gateway output and concluded the gateway had reported when it had
+  not. Those sites now qualify their label
+  (`service_stdout=`/`service_stderr=`), and each served scenario attaches the gateway's own
+  streams to its failure through one shared helper that also persists them under
+  `STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR`, so the lane's diagnostic dump step finally has bytes
+  to print for a served step. The regression test drives the **real** `run_served_policy_gate`
+  against a stub gateway and stub workflow service that each write a marker to their own stderr,
+  so it asserts this repository's plumbing rather than whether some peer revision happens to
+  speak — an assertion against the real gateway would pass vacuously whenever the peer is silent,
+  the condition #541 observed. It is not `#[ignore]`d, needs no operator-built binary, and
+  asserts marker presence rather than an execution count, so it cannot pass by being renamed.
+  Compatibility: test-support and CI only; no production, protocol, or runtime behaviour changes.
+  Closes #548.
 
 - **Stop the durable authoring-inference journal telling the loser of a reservation race that it
   won.** `SqliteAuthoringInferenceJournal::begin` inserted with `INSERT OR IGNORE` and then read the
