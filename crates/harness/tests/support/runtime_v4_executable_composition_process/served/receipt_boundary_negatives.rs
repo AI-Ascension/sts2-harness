@@ -247,7 +247,7 @@ pub(super) fn run_receipt_boundary_negatives(
         let output = stop(service)?;
         attempt.map_err(|error| {
             format!(
-                "boundary-negative workflow failed: {error}; stdout={}; stderr={}",
+                "boundary-negative workflow failed: {error}; service_stdout={}; service_stderr={}",
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             )
@@ -257,7 +257,13 @@ pub(super) fn run_receipt_boundary_negatives(
     })();
     let gateway_output = stop(gateway_process)?;
     let ledger = mod_server.finish();
-    result?;
+    result.map_err(|error| {
+        gateway_failure_evidence(
+            "receipt-boundary",
+            &format!("receipt boundary negatives: {error}"),
+            &gateway_output,
+        )
+    })?;
     if gateway_output.status.code() != Some(0) && gateway_output.status.signal().is_none() {
         return Err(format!("boundary gateway cleanup failed: {}", gateway_output.status).into());
     }

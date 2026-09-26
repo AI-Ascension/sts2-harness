@@ -203,7 +203,7 @@ pub(crate) fn run_served_cancel_after_accepted_barrier(
         let output = stop(service)?;
         attempt.map_err(|error| {
             format!(
-                "served accepted-barrier cancellation failed: {error}; stdout={}; stderr={}",
+                "served accepted-barrier cancellation failed: {error}; service_stdout={}; service_stderr={}",
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr),
             )
@@ -212,7 +212,13 @@ pub(crate) fn run_served_cancel_after_accepted_barrier(
     })();
     let gateway_output = stop(gateway_process)?;
     let ledger = mod_server.finish();
-    result?;
+    result.map_err(|error| {
+        gateway_failure_evidence(
+            "cancellation",
+            &format!("served accepted-barrier cancellation: {error}"),
+            &gateway_output,
+        )
+    })?;
     if gateway_output.status.code() != Some(0) && !gateway_output.status.signal().is_some() {
         return Err(format!("gateway cleanup failed: {}", gateway_output.status).into());
     }

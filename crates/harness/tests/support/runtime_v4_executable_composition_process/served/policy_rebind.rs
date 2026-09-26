@@ -160,7 +160,7 @@ pub(crate) fn run_served_policy_rebind_after_idle_adoption(
         let output = stop(service)?;
         attempt.map_err(|error| {
             format!(
-                "served policy-rebind attempt failed: {error}; stdout={}; stderr={}",
+                "served policy-rebind attempt failed: {error}; service_stdout={}; service_stderr={}",
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr),
             )
@@ -173,7 +173,13 @@ pub(crate) fn run_served_policy_rebind_after_idle_adoption(
     if gateway_output.status.code() != Some(0) && gateway_output.status.signal().is_none() {
         return Err(format!("gateway cleanup failed: {}", gateway_output.status).into());
     }
-    result?;
+    result.map_err(|error| {
+        gateway_failure_evidence(
+            "policy-rebind",
+            &format!("served policy-rebind: {error}"),
+            &gateway_output,
+        )
+    })?;
     if !ledger.errors.is_empty() {
         return Err(format!("policy-rebind gateway fixture failed: {:?}", ledger.errors).into());
     }

@@ -336,3 +336,99 @@ pub(crate) fn write_evidence(
     )?;
     Ok(())
 }
+
+/// The environment variable the workflow sets on each `served_*` step.
+const SERVED_EVIDENCE_DIR: &str = "STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR";
+
+/// Bounded so a wedged child cannot fill the runner's disk. Matches the capture bound the
+/// REST composition evidence writer already uses.
+const MAX_GATEWAY_CAPTURE_BYTES: usize = 4 * 1024 * 1024;
+
+/// Persist the gateway's own captured streams for one served scenario, then hand the
+/// failure back with those streams attached.
+///
+/// The `served_*` compositions never call [`write_evidence`], so before this helper the
+/// gateway's stderr — the one stream that names a refused request header — was captured
+/// by [`stop`], handed to the caller, and then dropped on every served path
+/// (sts2-harness#548). Two things follow from that. A reader of a served failure saw a
+/// `stderr=` label carrying the *workflow service's* bytes and reasonably concluded the
+/// gateway's own refusal had been reported; it never had been. And the lane's
+/// *"Show owned-process diagnostics"* step had nothing to print for a served step, because
+/// no served step ever named an evidence directory.
+///
+/// This attaches the gateway's streams to the error **unconditionally** and, when
+/// [`SERVED_EVIDENCE_DIR`] is set, additionally persists them so the dump step has bytes.
+/// It stays a separate function from [`write_evidence`] because the served scenarios have
+/// no `ScenarioResult` pair and no downstream ledger to summarise: they assert against the
+/// synthetic mod ledger inline instead.
+///
+/// It is called from `map_err`, so a **passing** served scenario persists nothing. That is
+/// deliberate — the evidence exists to explain a red — but it means an empty evidence
+/// directory after a green step means "passed", not "the write never ran".
+///
+/// `label` is a human-readable scenario name for the message only. It is **never** used to
+/// build a path: it embeds child-process output, which routinely contains `/`, newlines and
+/// `..`, so using it as a filename would let a child's bytes shape the evidence tree and
+/// could walk the write outside the evidence directory. The filename comes from `slug`.
+pub(crate) fn gateway_failure_evidence(
+    slug: &str,
+    label: &str,
+    gateway: &Output,
+) -> Box<dyn std::error::Error> {
+    let mut message = format!(
+        "{label}: gateway_stdout={}; gateway_stderr={}",
+        String::from_utf8_lossy(&gateway.stdout),
+        String::from_utf8_lossy(&gateway.stderr),
+    );
+    // A persistence failure is *appended*, never substituted for the scenario's own
+    // message. Returning early here would demote the CI-relevant failure to a storage
+    // complaint and lose the gateway refusal that made this issue worth filing.
+    if let Some(root) = std::env::var_os(SERVED_EVIDENCE_DIR) {
+        let root = PathBuf::from(root);
+        if let Err(error) = write_gateway_streams(&root, slug, gateway) {
+            message.push_str(&format!(
+                "\n--- gateway peer ({slug}) evidence was NOT persisted under {}: {error} ---",
+                root.display()
+            ));
+        }
+    }
+    message.into()
+}
+
+/// Write one served scenario's gateway streams, so the lane's failure-only dump step has
+/// bytes to print.
+///
+/// `slug` is caller-chosen and must already be restricted to `[A-Za-z0-9._-]`; it is the
+/// only caller-supplied value in the path. Each served CI step also names its own evidence
+/// subdirectory, and a slug that repeats within one step would overwrite — which is why
+/// the graph lane folds `request_id` into its slug, since that lane runs twice per step.
+fn write_gateway_streams(
+    root: &Path,
+    slug: &str,
+    gateway: &Output,
+) -> Result<(), Box<dyn std::error::Error>> {
+    debug_assert!(
+        !slug.is_empty()
+            && slug
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')),
+        "an evidence slug must be a bare filename component, got {slug:?}"
+    );
+    if gateway.stdout.len() > MAX_GATEWAY_CAPTURE_BYTES
+        || gateway.stderr.len() > MAX_GATEWAY_CAPTURE_BYTES
+    {
+        return Err(format!(
+            "gateway capture exceeds the bounded limit of {MAX_GATEWAY_CAPTURE_BYTES} bytes"
+        )
+        .into());
+    }
+    fs::create_dir_all(root)?;
+    // Private, because this is `env_clear`-ed child output: the REST evidence writer
+    // documents the same directory as holding unsanitised child bytes.
+    for (name, bytes) in [("stdout", &gateway.stdout), ("stderr", &gateway.stderr)] {
+        let path = root.join(format!("gateway-{slug}.{name}"));
+        fs::write(&path, bytes)?;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
