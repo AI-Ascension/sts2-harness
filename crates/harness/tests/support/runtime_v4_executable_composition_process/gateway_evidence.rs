@@ -31,6 +31,10 @@ pub(crate) fn gateway_failure_evidence(
     label: &str,
     gateway: &Output,
 ) -> Box<dyn std::error::Error> {
+    // TEMPORARY NON-VACUITY EXPERIMENT -- REVERT BEFORE COMMIT
+    if std::env::var_os("STS2_NONVACUITY_548").is_some() {
+        return format!("{label}").into();
+    }
     if let Some(root) = std::env::var_os("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR") {
         let root = PathBuf::from(root);
         if let Err(error) = write_gateway_streams(&root, label, gateway) {
@@ -83,7 +87,7 @@ fn write_gateway_streams(
 /// leading words are the scenario's own stable name (e.g. `wrong-instance`, `graph-changed`),
 /// so the cap still leaves the cases that share a lane step distinguishable, which is the
 /// collision this guards against.
-fn sanitize_label(label: &str) -> String {
+pub(crate) fn sanitize_label(label: &str) -> String {
     let mut stem = String::with_capacity(label.len().min(120));
     let mut last_was_separator = false;
     for value in label.chars() {

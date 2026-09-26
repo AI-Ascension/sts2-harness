@@ -4,12 +4,6 @@ use super::*;
 use rusqlite::Connection;
 use sts2_harness::{ExecutionStore, OperationState, StoredOperation};
 
-// `use super::*` does not carry the parent's `pub(crate) use` re-exports into this module,
-// so the shared gateway-evidence helper has to be named explicitly. It is re-exported with
-// `pub(super)` so the `served/*` scenarios, which resolve names through their own
-// `use super::*`, inherit it the same way they inherit the other shared served helpers.
-pub(super) use super::gateway_failure_evidence;
-
 #[path = "served/session.rs"]
 mod session;
 use session::{
@@ -176,12 +170,12 @@ fn run_served_policy_gate_inner(
     })();
     let gateway_output = stop(gateway)?;
     let ledger = mod_server.finish();
-    // Both served scenarios in this function share one label, so the label says which
+    // Both served scenarios in this function share one label, so the label names which
     // witness rather than which function: they differ only in `restart_after_unknown`.
     let label = if restart_after_unknown {
-        "served restart refusal"
+        "served-restart-refusal"
     } else {
-        "served policy gate"
+        "served-policy-gate"
     };
     let (service_output, restarted_output, operation) = result
         .map_err(|error| gateway_failure_evidence(&format!("{label}: {error}"), &gateway_output))?;
@@ -190,10 +184,7 @@ fn run_served_policy_gate_inner(
         assert_killed(output, "restarted served workflow")?;
     }
     if gateway_output.status.code() != Some(0) && !gateway_output.status.signal().is_some() {
-        return Err(gateway_failure_evidence(
-            &format!("{label}: gateway cleanup failed: {}", gateway_output.status),
-            &gateway_output,
-        ));
+        return Err(format!("gateway cleanup failed: {}", gateway_output.status).into());
     }
     if !ledger.errors.is_empty() {
         return Err(format!("served fixture failed: {:?}", ledger.errors).into());
