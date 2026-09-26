@@ -58,6 +58,32 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   asserted by inspection.
   Compatibility: test-support and CI only; no production, protocol, or runtime behaviour changes.
   Closes #548.
+- **Stop the runtime peer contract lane accepting a peer revision that is not an immutable
+  40-hex commit.** `choose_revision` validated its `workflow_dispatch` input with
+  `printf '%s' "$supplied" | grep -Eq '^[0-9a-f]{40}$'`, but that guard could not fail: a
+  function's exit status is the status of its last command, and the last command was an
+  unconditional `printf '%s' "$supplied"`, so the helper returned 0 for **any** value and
+  `refs/heads/attacker-branch` was written to `$GITHUB_OUTPUT` — both peer checkouts then
+  followed an operator-supplied ref. The lane's later "Verify peer revisions" step cannot catch
+  it, because it compares `git rev-parse HEAD` against the same unvalidated value, so a recorded
+  "ran against gateway \`<sha>\`" claim was only as trustworthy as the dispatch input. Two bash
+  rules had to be defeated together, and both were measured before the fix: `errexit` does not
+  propagate into a command-substitution subshell, **and** a function's status is its last
+  command's status. The guard is now the last thing that can fail, writes
+  `invalid immutable peer revision: <value>` to stderr, and returns non-zero, so the step's own
+  `gateway_revision=$(choose_revision ...)` assignment fails and the lane aborts before either
+  peer is checked out. The empty-input fallback and a valid 40-hex commit are unchanged. The
+  selftest **executes** the committed function body under `bash -e` in the production
+  command-substitution shape rather than asserting on workflow text, because the unfixed text
+  still contains the `grep` and only the executed exit status distinguishes the two; it
+  extracts the body from the workflow so a reverted workflow is what fails. It runs in the
+  `policy` gate on every PR and needs no cargo, matching the existing
+  `tools/exact-gate-selftest.sh` precedent.
+  Deliberately **not** changed, as owner scope: whether any valid 40-hex commit — including a
+  fork- or operator-controlled one — should be accepted at all. This fixes the guard the
+  workflow's own input description already promised.
+  Compatibility: CI/workflow only; no production, protocol, or runtime behaviour changes.
+  Closes #561.
 
 - **Stop the durable authoring-inference journal telling the loser of a reservation race that it
   won.** `SqliteAuthoringInferenceJournal::begin` inserted with `INSERT OR IGNORE` and then read the
