@@ -42,15 +42,15 @@
 #![cfg(unix)]
 
 #[path = "support/runtime_v4_executable_composition_fixture.rs"]
-// This test binary compiles the shared fixture and process support but exercises only
-// the served policy scenario, so several `FixtureMode` variants, fixture helpers, and
-// the served re-exports are unused *here* while remaining live in
-// `runtime_v4_executable_composition`. Suppressing per binary, rather than in the shared
-// support files, keeps that other binary's own dead-code analysis intact.
-#[allow(dead_code, unused_imports)]
+// This test binary compiles the shared fixture and process support but exercises only the
+// served policy scenario, so several `FixtureMode` variants and fixture helpers are unused
+// *here* while remaining live in `runtime_v4_executable_composition`. The process support
+// module carries its own crate-level `allow(dead_code)`, so this suppression is only needed
+// for the fixture, and it is scoped to this binary rather than added to the shared file so
+// that other binary keeps its own dead-code analysis.
+#[allow(dead_code)]
 mod fixture;
 #[path = "support/runtime_v4_executable_composition_process.rs"]
-#[allow(dead_code, unused_imports)]
 mod process;
 
 use std::fs;
@@ -164,11 +164,7 @@ fn a_served_scenario_persists_its_gateway_streams_under_the_evidence_directory()
 fn run_in_child(case: &str, evidence: Option<&Path>) -> Result<String, Box<dyn std::error::Error>> {
     let mut command = Command::new(std::env::current_exe()?);
     command
-        .args([
-            "--exact",
-            &format!("served_gateway_stderr_child"),
-            "--nocapture",
-        ])
+        .args(["--exact", "served_gateway_stderr_child", "--nocapture"])
         .env(CASE, case);
     if let Some(root) = evidence {
         command.env("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR", root);
@@ -300,9 +296,11 @@ fn stub_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>>
             // which would leave the `while` body at column zero and fail with an
             // `IndentationError` — the script must reach the served path, and a stub that
             // dies at bind time never gets there.
-            "{}{}{}{}{}{}{}{}{}{}{}{}{}",
+            "{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
             "#!/bin/sh\n",
-            format!("printf '%s\\n' '{GATEWAY_MARKER}' >&2\n"),
+            "printf '%s\\n' '",
+            GATEWAY_MARKER,
+            "' >&2\n",
             "exec python3 - <<'PY'\n",
             "import os, socket\n",
             "addr = os.environ[\"STS2_GATEWAY_ADDR\"]\n",
