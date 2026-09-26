@@ -229,7 +229,7 @@ fn run_negative_case(
         let service_output = stop(service)?;
         attempt.map_err(|error| {
             format!(
-                "{} failed: {error}; stdout={}; stderr={}",
+                "{} failed: {error}; service_stdout={}; service_stderr={}",
                 case.label(),
                 String::from_utf8_lossy(&service_output.stdout),
                 String::from_utf8_lossy(&service_output.stderr)
@@ -240,7 +240,9 @@ fn run_negative_case(
     })();
     let gateway_output = stop(gateway_process)?;
     let ledger = mod_server.finish();
-    result?;
+    result.map_err(|error| {
+        gateway_failure_evidence(&format!("{}: {error}", case.label()), &gateway_output)
+    })?;
     if gateway_output.status.code() != Some(0) && !gateway_output.status.signal().is_some() {
         return Err(format!("{} gateway cleanup failed", case.label()).into());
     }

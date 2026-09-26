@@ -314,7 +314,12 @@ pub(crate) fn run_served_context_receipt_recovery(
     })();
     let gateway_output = stop(gateway)?;
     let ledger = mod_server.finish();
-    result?;
+    result.map_err(|error| {
+        gateway_failure_evidence(
+            &format!("served context receipt recovery: {error}"),
+            &gateway_output,
+        )
+    })?;
     if gateway_output.status.code() != Some(0) && gateway_output.status.signal().is_none() {
         return Err(format!("gateway cleanup failed: {}", gateway_output.status).into());
     }

@@ -252,7 +252,7 @@ fn run_context_source_scenario(
         let output = stop(service)?;
         let adopted = attempt.map_err(|error| {
             format!(
-                "served context-source attempt failed: {error}; stdout={}; stderr={}",
+                "served context-source attempt failed: {error}; service_stdout={}; service_stderr={}",
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr),
             )
@@ -265,7 +265,9 @@ fn run_context_source_scenario(
     if gateway_output.status.code() != Some(0) && gateway_output.status.signal().is_none() {
         return Err(format!("gateway cleanup failed: {}", gateway_output.status).into());
     }
-    let adopted = result?;
+    let adopted = result.map_err(|error| {
+        gateway_failure_evidence(&format!("served context-source: {error}"), &gateway_output)
+    })?;
     if !ledger.errors.is_empty() {
         return Err(format!("context-source gateway fixture failed: {:?}", ledger.errors).into());
     }
