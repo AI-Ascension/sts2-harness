@@ -143,16 +143,21 @@ pub(super) fn write_with_deadline(
     bytes: &[u8],
     deadline: Instant,
 ) -> Result<(), HttpError> {
-    let timeout = deadline.saturating_duration_since(Instant::now());
-    if timeout.is_zero() {
-        return Err(HttpError::new(
-            "deadline_exceeded",
-            "response deadline exceeded",
-        ));
-    }
-    stream
-        .set_write_timeout(Some(timeout))
-        .map_err(io_http_error)?;
+    // The same `TimedOut | WouldBlock` kinds the read path terminates on are
+    // exactly what a blocking `TcpStream` write reports when the send buffer
+    // fills against a peer that is not reading, so they are classified by the
+    // shared retry policy rather than by a local mapping. The prior
+    // `io_http_error` mapping sent both kinds to `io_error` and code
+    // `io_error`, so a write that hit its deadline reported itself as a
+    // transport fault rather than as the deadline it actually hit.
+    //
+    // Routing through `retry_transient` rather than adding a local arm keeps
+    // the two deadline spellings in one place: the timeout is re-derived per
+    // pass, an already-expired deadline is refused before any syscall, and the
+    // `deadline_exceeded` code and message come from the same helper the read
+    // path uses. The kinds this call raises are terminal in that policy, so
+    // the write is not retried.
+    //
     // `Interrupted` needs no arm here, unlike `read_with_deadline`: this call
     // is `Write::write_all`, whose default implementation already retries
     // `ErrorKind::Interrupted` and resumes the partial write, so a
@@ -163,7 +168,22 @@ pub(super) fn write_with_deadline(
     // e.is_interrupted() => {}`. A synthetic writer that returns `Interrupted`
     // for its first attempt returns `Ok(())` from `write_all` after exactly two
     // `write` calls. Adding a retry here would be uncovered code.
-    stream.write_all(bytes).map_err(io_http_error)
+    //
+    // A `WouldBlock` must be terminal rather than retried, and that is a
+    // stronger claim than "no partial write can reach us": a scripted writer
+    // that consumes 4 bytes and *then* returns `WouldBlock` makes `write_all`
+    // return `Err(WouldBlock)` to this caller, so the buffer is in fact
+    // partially consumed at the point the error surfaces. The progress
+    // `write_all` made is held inside that call and is gone when it returns.
+    // Re-driving the closure with the same `bytes` would therefore re-send the
+    // prefix and corrupt the peer's view of the response. The arm above
+    // terminates instead of re-entering, which is what makes the lossy
+    // partial write harmless: the connection is abandoned as `deadline_exceeded`
+    // rather than resumed.
+    retry_transient(deadline, "response deadline exceeded", |timeout| {
+        stream.set_write_timeout(Some(timeout))?;
+        stream.write_all(bytes)
+    })
 }
 
 pub(super) fn find_header_end(bytes: &[u8]) -> Option<usize> {
