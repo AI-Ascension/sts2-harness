@@ -237,8 +237,8 @@ fn served_gateway_stderr_child() {
 /// An [`Output`] whose status this test controls, with `stderr` set to `marker`.
 ///
 /// `std::process::ExitStatus` has no public constructor, so a status is obtained by actually
-/// running a process that exits the way the case under test needs. That is a few milliseconds
-/// per case, and it buys a real `ExitStatus` in both the `code()` and the `signal()` shape.
+/// running a process that exits the way the case under test needs, which buys a real
+/// `ExitStatus` in both the `code()` and the `signal()` shape.
 fn output_with_status(marker: &str, status: std::process::ExitStatus) -> Output {
     Output {
         status,
@@ -248,20 +248,16 @@ fn output_with_status(marker: &str, status: std::process::ExitStatus) -> Output 
 }
 
 /// A status produced by exiting normally with `code`.
-fn exit_status_with_code(code: i32) -> std::process::ExitStatus {
+fn exit_status_with_code(code: i32) -> Result<std::process::ExitStatus, std::io::Error> {
     Command::new("sh")
         .args(["-c", &format!("exit {code}")])
         .status()
-        .expect("sh runs")
 }
 
 /// A status produced by being killed with `SIGKILL`, which is how `stop` reaps a gateway that
 /// is still running at teardown.
-fn exit_status_signalled() -> std::process::ExitStatus {
-    Command::new("sh")
-        .args(["-c", "kill -9 $$"])
-        .status()
-        .expect("sh runs")
+fn exit_status_signalled() -> Result<std::process::ExitStatus, std::io::Error> {
+    Command::new("sh").args(["-c", "kill -9 $$"]).status()
 }
 
 /// A gateway that died on its own must reach a served teardown failure carrying its streams.
@@ -277,10 +273,11 @@ fn exit_status_signalled() -> std::process::ExitStatus {
 /// scenario's own assertions, so reaching it end to end needs a gateway that passes a real
 /// policy gate and then dies. So it is pinned directly against real `ExitStatus` values.
 #[test]
-fn a_gateway_that_died_on_its_own_reaches_a_teardown_failure_carrying_its_streams() {
-    let output = output_with_status(GATEWAY_MARKER, exit_status_with_code(7));
+fn a_gateway_that_died_on_its_own_reaches_a_teardown_failure_carrying_its_streams()
+-> Result<(), Box<dyn std::error::Error>> {
+    let output = output_with_status(GATEWAY_MARKER, exit_status_with_code(7)?);
     let error = process::gateway_teardown_failure("served fixture", &output)
-        .expect("a gateway that exited 7 without a signal is a teardown failure");
+        .ok_or("a gateway that exited 7 without a signal is a teardown failure")?;
     let report = error.to_string();
     assert!(
         report.contains(&format!("gateway_stderr={GATEWAY_MARKER}")),
@@ -292,6 +289,7 @@ fn a_gateway_that_died_on_its_own_reaches_a_teardown_failure_carrying_its_stream
         "the teardown report must not present the gateway's bytes behind a bare `stderr=` \
          label (sts2-harness#556). The report was: {report}"
     );
+    Ok(())
 }
 
 /// A gateway that was healthy, or was torn down by `stop`, is not a teardown failure.
@@ -300,8 +298,9 @@ fn a_gateway_that_died_on_its_own_reaches_a_teardown_failure_carrying_its_stream
 /// teardown has `signal() == Some(9)`. Treating a signalled exit as a failure would fail every
 /// served scenario in the suite on every run.
 #[test]
-fn a_gateway_stop_killed_or_exited_cleanly_is_not_a_teardown_failure() {
-    for status in [exit_status_with_code(0), exit_status_signalled()] {
+fn a_gateway_stop_killed_or_exited_cleanly_is_not_a_teardown_failure()
+-> Result<(), Box<dyn std::error::Error>> {
+    for status in [exit_status_with_code(0)?, exit_status_signalled()?] {
         let output = output_with_status(GATEWAY_MARKER, status);
         assert!(
             process::gateway_teardown_failure("served fixture", &output).is_none(),
@@ -309,6 +308,7 @@ fn a_gateway_stop_killed_or_exited_cleanly_is_not_a_teardown_failure() {
              not be reported as a gateway failure (sts2-harness#556). status was {status:?}"
         );
     }
+    Ok(())
 }
 
 /// True when `report` places `marker` immediately behind a **bare** `stderr=` label.
