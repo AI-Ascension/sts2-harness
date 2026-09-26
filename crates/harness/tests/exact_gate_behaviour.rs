@@ -74,6 +74,10 @@ const ONE_PASSED: &str = "running 1 test\n\ntest real_name ... ok\n\ntest result
 const ONE_FAILED: &str = "running 1 test\n\ntest real_name ... FAILED\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.03s\n";
 const NONE_RUN: &str = "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s\n";
 const TWO_PASSED: &str = "running 2 tests\n\ntest a ... ok\ntest b ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.02s\n";
+/// The same passing log with CRLF line endings. No harness lane runs on Windows
+/// today, but a counter that reports 0 for a CRLF log would be refused with a
+/// *false* "renamed or removed test" diagnosis, which is the class #540 removes.
+const ONE_PASSED_CRLF: &str = "running 1 test\r\n\r\ntest real_name ... ok\r\n\r\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.01s\r\n";
 
 /// The gate's decision is the product of its execution count and the command's
 /// exit status, so each log shape is asserted on both.
@@ -107,6 +111,13 @@ fn the_gate_counts_executions_and_reports_them_truthfully() {
             filters: &["--exact", "a", "--exact", "b"],
             accept: true,
             executed: 2,
+        },
+        Case {
+            label: "a-crlf-log-still-counts-its-execution",
+            log: ONE_PASSED_CRLF,
+            filters: &["--exact", "real_name"],
+            accept: true,
+            executed: 1,
         },
     ];
     for case in cases {
@@ -142,6 +153,32 @@ fn the_gate_counts_executions_and_reports_them_truthfully() {
             case.label
         );
     }
+}
+
+/// A command with no `--exact` filter is refused before it runs, with exit 2.
+/// This is the guard that stops a mis-wired lane from being waved through on the
+/// strength of an unrelated passing test, so it is pinned here.
+#[test]
+fn a_command_naming_no_filter_is_refused_before_it_runs() {
+    let directory = scratch("no-filter-refused");
+    let command = fake_test(&directory, ONE_PASSED);
+    let output = Command::new("bash")
+        .arg(gate_path())
+        .arg("-")
+        .arg(&command)
+        .env("TMPDIR", &directory)
+        .output()
+        .expect("run the gate");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "a filterless command is a wiring error, not a test failure: {stderr}"
+    );
+    assert!(
+        stderr.contains("carries no --exact filter"),
+        "the refusal must name the wiring error: {stderr}"
+    );
 }
 
 /// A failing test is a command failure, not an empty run. The banner must say so:

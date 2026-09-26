@@ -23,6 +23,14 @@
 # per-test line) while making the count mean what the banner says it means
 # (sts2-harness#540).
 #
+# The per-test pattern ends at end-of-line on purpose. libtest only prints
+# `... ok` / `... FAILED` when it captured the test's output, so with
+# `--nocapture` the line gains whatever the test printed:
+# `test foo ... ok some debug output`. An unanchored match would count that
+# twice. Instead the log is normalised (a trailing CR is dropped) and the name
+# is matched loosely, so the counter stays correct for a CRLF log and for a test
+# name containing a space without opening the `--nocapture` hole.
+#
 # It deliberately does not use a pipeline: every lane invocation it wraps is the
 # last command of its step, so the shell's `errexit` sees the gate's own status.
 #
@@ -71,8 +79,8 @@ fi
 status=$?
 cat "$log"
 
-executed=$(awk '/^test [^[:space:]]+ \.\.\. (ok|FAILED)$/ {count++} END {print count+0}' "$log")
-passed=$(awk '/^test [^[:space:]]+ \.\.\. ok$/ {count++} END {print count+0}' "$log")
+executed=$(awk '{ sub(/\r$/, "") } /^test .* \.\.\. (ok|FAILED)$/ {count++} END {print count+0}' "$log")
+passed=$(awk '{ sub(/\r$/, "") } /^test .* \.\.\. ok$/ {count++} END {print count+0}' "$log")
 printf 'exact-gate: exit=%s named=%s matched=%s passed=%s log=%s\n' \
     "$status" "$names" "$executed" "$passed" "$log"
 
