@@ -188,7 +188,7 @@ const DEPTH_DIR: &str = "STS2_DEPTH_EVIDENCE_DIR";
 
 /// Run [`gateway_streams_depth_child`] in a child process and return its exit status.
 fn write_streams_in_child(per_step: &Path) -> Result<std::process::ExitStatus, std::io::Error> {
-    Ok(std::process::Command::new(std::env::current_exe()?)
+    std::process::Command::new(std::env::current_exe()?)
         .args(["--exact", "gateway_streams_depth_child", "--nocapture"])
         .env(CHILD, "1")
         .env(DEPTH_DIR, per_step)
@@ -197,7 +197,7 @@ fn write_streams_in_child(per_step: &Path) -> Result<std::process::ExitStatus, s
         // write path and the child exits 0 having written nothing — which is exactly the
         // #548 defect this check exists to catch, and exactly what the assertion reported.
         .env("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR", per_step)
-        .status()?)
+        .status()
 }
 
 /// The child half of the depth check: drive the real writer into `per_step`.
