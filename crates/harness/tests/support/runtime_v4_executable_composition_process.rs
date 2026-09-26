@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: MIT
 
+// This module is a shared test-support library compiled into multiple integration-test
+// binaries (`runtime_v4_executable_composition` and `served_gateway_stderr_evidence`). Each
+// binary exercises a different subset of the scenarios and helpers below, so items that one
+// binary does not call are still needed by the other. Treat "never used" here as expected
+// rather than a defect, the same way the other shared support modules do.
+#![allow(dead_code)]
+
 use std::fs;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::os::unix::fs::PermissionsExt;
@@ -277,6 +284,11 @@ pub(crate) fn run_scenario(
 
 #[path = "runtime_v4_executable_composition_process/served.rs"]
 mod served;
+// This support module is compiled into more than one integration-test binary, and each
+// binary exercises a different subset of the served scenarios. The re-exports below are the
+// shared entry points; a given binary will not use every one of them, so an unused re-export
+// in one binary is expected rather than a defect.
+#[allow(unused_imports)]
 pub(crate) use served::{
     paths, run_served_cancel_after_accepted_barrier, run_served_context_receipt_recovery,
     run_served_context_source_adoption, run_served_peer_acceptance, run_served_policy_gate,
@@ -285,7 +297,12 @@ pub(crate) use served::{
 
 #[path = "runtime_v4_executable_composition_process/assertions.rs"]
 mod assertions;
+#[allow(unused_imports)]
 pub(crate) use assertions::{assert_foreign_state_rejected, assert_success};
+
+#[path = "runtime_v4_executable_composition_process/gateway_evidence.rs"]
+mod gateway_evidence;
+pub(crate) use gateway_evidence::gateway_failure_evidence;
 
 include!("runtime_v4_executable_composition_malformed.rs");
 

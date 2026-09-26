@@ -4,6 +4,12 @@ use super::*;
 use rusqlite::Connection;
 use sts2_harness::{ExecutionStore, OperationState, StoredOperation};
 
+// `use super::*` does not carry the parent's `pub(crate) use` re-exports into this module,
+// so the shared gateway-evidence helper has to be named explicitly. It is re-exported with
+// `pub(super)` so the `served/*` scenarios, which resolve names through their own
+// `use super::*`, inherit it the same way they inherit the other shared served helpers.
+pub(super) use super::gateway_failure_evidence;
+
 #[path = "served/session.rs"]
 mod session;
 use session::{
@@ -97,7 +103,7 @@ fn run_served_policy_gate_inner(
         let first_output = stop(service)?;
         let submission = first_attempt.map_err(|error| {
             format!(
-                "first served workflow attempt failed: {error}; stdout={}; stderr={}",
+                "first served workflow attempt failed: {error}; service_stdout={}; service_stderr={}",
                 String::from_utf8_lossy(&first_output.stdout),
                 String::from_utf8_lossy(&first_output.stderr),
             )
@@ -170,13 +176,24 @@ fn run_served_policy_gate_inner(
     })();
     let gateway_output = stop(gateway)?;
     let ledger = mod_server.finish();
-    let (service_output, restarted_output, operation) = result?;
+    // Both served scenarios in this function share one label, so the label says which
+    // witness rather than which function: they differ only in `restart_after_unknown`.
+    let label = if restart_after_unknown {
+        "served restart refusal"
+    } else {
+        "served policy gate"
+    };
+    let (service_output, restarted_output, operation) = result
+        .map_err(|error| gateway_failure_evidence(&format!("{label}: {error}"), &gateway_output))?;
     assert_killed(&service_output, "first served workflow")?;
     if let Some(output) = &restarted_output {
         assert_killed(output, "restarted served workflow")?;
     }
     if gateway_output.status.code() != Some(0) && !gateway_output.status.signal().is_some() {
-        return Err(format!("gateway cleanup failed: {}", gateway_output.status).into());
+        return Err(gateway_failure_evidence(
+            &format!("{label}: gateway cleanup failed: {}", gateway_output.status),
+            &gateway_output,
+        ));
     }
     if !ledger.errors.is_empty() {
         return Err(format!("served fixture failed: {:?}", ledger.errors).into());

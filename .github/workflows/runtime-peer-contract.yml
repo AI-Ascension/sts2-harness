@@ -117,28 +117,41 @@ jobs:
 
       - name: Exercise served policy routes, settled action, and idle-adoption rebind
         working-directory: harness
+        env:
+          # Before #548 the served path captured the gateway's stderr and dropped it.
+          STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR: ${{ runner.temp }}/runtime-peer-contract/served-policy-gate
         run: |
           "$GITHUB_WORKSPACE/harness/tools/exact-gate.sh" - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_workflow_settles_action_with_adopted_provider_policy
           "$GITHUB_WORKSPACE/harness/tools/exact-gate.sh" - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_decision_survives_changed_policy_adopted_while_idle
 
       - name: Exercise served unknown-effect restart refusal
         working-directory: harness
+        env:
+          STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR: ${{ runner.temp }}/runtime-peer-contract/served-restart-refusal
         run: $GITHUB_WORKSPACE/harness/tools/exact-gate.sh - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_restart_refuses_unknown_effect_without_redispatch
 
       - name: Exercise served context-source adoption and pre-provider refusal
         working-directory: harness
+        env:
+          STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR: ${{ runner.temp }}/runtime-peer-contract/served-context-source
         run: $GITHUB_WORKSPACE/harness/tools/exact-gate.sh - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_workflow_adopts_context_source_before_managed_decision
 
       - name: Exercise served cancellation reconciliation against pinned peers
         working-directory: harness
+        env:
+          STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR: ${{ runner.temp }}/runtime-peer-contract/served-cancellation
         run: $GITHUB_WORKSPACE/harness/tools/exact-gate.sh - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_cancel_reconciles_an_accepted_unsettled_action
 
       - name: Exercise served peer-negative and authored-graph acceptance
         working-directory: harness
+        env:
+          STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR: ${{ runner.temp }}/runtime-peer-contract/served-peer-acceptance
         run: $GITHUB_WORKSPACE/harness/tools/exact-gate.sh - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_peer_acceptance_rejects_bad_bindings_and_tracks_authored_graph
 
       - name: Exercise served context receipt recovery after process restart
         working-directory: harness
+        env:
+          STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR: ${{ runner.temp }}/runtime-peer-contract/served-receipt-recovery
         run: $GITHUB_WORKSPACE/harness/tools/exact-gate.sh - cargo test --locked -j 2 --package sts2-harness --test runtime_v4_executable_composition -- --ignored --exact served_workflow_recovers_context_receipt_after_process_restart
 
       - name: Require the pinned peers to serve the recovery sideband contract

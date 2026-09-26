@@ -143,7 +143,7 @@ fn run_graph(
         let service_output = stop(service)?;
         let value = attempt.map_err(|error| {
             format!(
-                "graph workflow failed: {error}; stdout={}; stderr={}",
+                "graph workflow failed: {error}; service_stdout={}; service_stderr={}",
                 String::from_utf8_lossy(&service_output.stdout),
                 String::from_utf8_lossy(&service_output.stderr)
             )
@@ -153,7 +153,12 @@ fn run_graph(
     })();
     let gateway_output = stop(gateway_process)?;
     let ledger = mod_server.finish();
-    let value = result?;
+    // The graph lane runs `run_graph` twice per step, once per authored definition, so the
+    // label carries `request_id`: without it the second run would overwrite the first run's
+    // persisted streams in the same evidence directory.
+    let value = result.map_err(|error| {
+        gateway_failure_evidence(&format!("graph {request_id}: {error}"), &gateway_output)
+    })?;
     if gateway_output.status.code() != Some(0) && !gateway_output.status.signal().is_some() {
         return Err("graph gateway cleanup failed".into());
     }
