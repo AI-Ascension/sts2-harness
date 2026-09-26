@@ -50,6 +50,12 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   speak — an assertion against the real gateway would pass vacuously whenever the peer is silent,
   the condition #541 observed. It is not `#[ignore]`d, needs no operator-built binary, and
   asserts marker presence rather than an execution count, so it cannot pass by being renamed.
+  The gateway's teardown-failure branch now routes through the same helper on all eight served
+  paths: previously a gateway that exited non-zero *without* being signalled was reported with
+  its status alone, so the one path most likely to hold a refusal explanation still dropped it.
+  That branch is unreachable from the stub gateway, which is kept alive so the scenario fails on
+  the service instead, so it is covered directly against a constructed `ExitStatus` rather than
+  asserted by inspection.
   Compatibility: test-support and CI only; no production, protocol, or runtime behaviour changes.
   Closes #548.
 

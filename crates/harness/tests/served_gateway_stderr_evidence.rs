@@ -56,7 +56,7 @@ mod process;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
 /// Env var naming the case the child process should run. Absent in an ordinary run, so each
 /// helper below is a no-op unless a parent test launched this binary deliberately.
@@ -130,7 +130,11 @@ fn a_served_scenario_labels_the_service_stream_so_it_cannot_be_read_as_the_gatew
 fn a_served_scenario_persists_its_gateway_streams_under_the_evidence_directory()
 -> Result<(), Box<dyn std::error::Error>> {
     let temporary = process::TempDir::new()?;
-    let evidence = temporary.path.join("served-evidence");
+    // A sibling of the child's own temp directory, not a child *inside* it. The child
+    // drops its `TempDir` on the way out, which would delete a nested evidence directory
+    // before this parent could read it back — and it does so even when the served path
+    // already wrote into it, so the directory would be empty rather than absent.
+    let evidence = temporary.path.with_extension("evidence");
     run_in_child("report", Some(&evidence))?;
 
     // Read the directory back the way the lane's dump step does: every file under it.
@@ -165,7 +169,14 @@ fn run_in_child(case: &str, evidence: Option<&Path>) -> Result<String, Box<dyn s
     let mut command = Command::new(std::env::current_exe()?);
     command
         .args(["--exact", "served_gateway_stderr_child", "--nocapture"])
-        .env(CASE, case);
+        .env(CASE, case)
+        // Explicitly *unset* the evidence variable when this case does not name one, rather
+        // than inheriting whatever the ambient environment holds. This change is what gives
+        // every served lane step an evidence directory, so a developer running the suite with
+        // one exported — or a future step that exports it before invoking `cargo test` — would
+        // otherwise have the stub gateway's marker persisted as if it were a real gateway's
+        // report. The two report tests assert on the in-band text, so nothing is lost.
+        .env_remove("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR");
     if let Some(root) = evidence {
         command.env("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR", root);
     }
@@ -220,6 +231,83 @@ fn served_gateway_stderr_child() {
     match process::run_served_policy_gate(&gateway_stub, &service_stub, &service_stub) {
         Ok(()) => eprintln!("{case_name}: the served scenario unexpectedly succeeded"),
         Err(error) => eprintln!("{case_name}: {error}"),
+    }
+}
+
+/// An [`Output`] whose status this test controls, with `stderr` set to `marker`.
+///
+/// `std::process::ExitStatus` has no public constructor, so a status is obtained by actually
+/// running a process that exits the way the case under test needs. That is a few milliseconds
+/// per case, and it buys a real `ExitStatus` in both the `code()` and the `signal()` shape.
+fn output_with_status(marker: &str, status: std::process::ExitStatus) -> Output {
+    Output {
+        status,
+        stdout: Vec::new(),
+        stderr: marker.as_bytes().to_vec(),
+    }
+}
+
+/// A status produced by exiting normally with `code`.
+fn exit_status_with_code(code: i32) -> std::process::ExitStatus {
+    Command::new("sh")
+        .args(["-c", &format!("exit {code}")])
+        .status()
+        .expect("sh runs")
+}
+
+/// A status produced by being killed with `SIGKILL`, which is how `stop` reaps a gateway that
+/// is still running at teardown.
+fn exit_status_signalled() -> std::process::ExitStatus {
+    Command::new("sh")
+        .args(["-c", "kill -9 $$"])
+        .status()
+        .expect("sh runs")
+}
+
+/// A gateway that died on its own must reach a served teardown failure carrying its streams.
+///
+/// The branch the served compositions share is
+/// `status.code() != Some(0) && status.signal().is_none()`: `stop` SIGKILLs a still-running
+/// gateway, so only a gateway that already exited on its own reaches it. That is the moment
+/// its explanation exists, and it is the #541 shape. Seven of the eight sites returned a bare
+/// `"… gateway cleanup failed"` here with the bytes dropped (sts2-harness#556), and the
+/// #548 test could not see that because its stub gateway deliberately stays alive.
+///
+/// A stub cannot reach this branch through a real served run — the branch sits *after* the
+/// scenario's own assertions, so reaching it end to end needs a gateway that passes a real
+/// policy gate and then dies. So it is pinned directly against real `ExitStatus` values.
+#[test]
+fn a_gateway_that_died_on_its_own_reaches_a_teardown_failure_carrying_its_streams() {
+    let output = output_with_status(GATEWAY_MARKER, exit_status_with_code(7));
+    let error = process::gateway_teardown_failure("served fixture", &output)
+        .expect("a gateway that exited 7 without a signal is a teardown failure");
+    let report = error.to_string();
+    assert!(
+        report.contains(&format!("gateway_stderr={GATEWAY_MARKER}")),
+        "a gateway that refused on its own must carry its own explanation into the teardown \
+         failure, or the refusal stays unattributable (sts2-harness#556). The report was: {report}"
+    );
+    assert!(
+        !bare_stderr_label_carries(&report, GATEWAY_MARKER),
+        "the teardown report must not present the gateway's bytes behind a bare `stderr=` \
+         label (sts2-harness#556). The report was: {report}"
+    );
+}
+
+/// A gateway that was healthy, or was torn down by `stop`, is not a teardown failure.
+///
+/// The other half of the same condition: `stop` SIGKILLs a still-running gateway, so a normal
+/// teardown has `signal() == Some(9)`. Treating a signalled exit as a failure would fail every
+/// served scenario in the suite on every run.
+#[test]
+fn a_gateway_stop_killed_or_exited_cleanly_is_not_a_teardown_failure() {
+    for status in [exit_status_with_code(0), exit_status_signalled()] {
+        let output = output_with_status(GATEWAY_MARKER, status);
+        assert!(
+            process::gateway_teardown_failure("served fixture", &output).is_none(),
+            "a gateway that exited 0 or was SIGKILLed by `stop` is a healthy teardown and must \
+             not be reported as a gateway failure (sts2-harness#556). status was {status:?}"
+        );
     }
 }
 
@@ -291,7 +379,7 @@ fn stub_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>>
     fs::write(
         &path,
         format!(
-            // Each Python line is its own `concat!` element carrying its own leading spaces.
+            // Each Python line is its own `format!` element carrying its own leading spaces.
             // A `\`-continued Rust string strips the indentation of every continued line,
             // which would leave the `while` body at column zero and fail with an
             // `IndentationError` — the script must reach the served path, and a stub that

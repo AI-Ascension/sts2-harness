@@ -263,8 +263,8 @@ pub(super) fn run_receipt_boundary_negatives(
             &gateway_output,
         )
     })?;
-    if gateway_output.status.code() != Some(0) && gateway_output.status.signal().is_none() {
-        return Err(format!("boundary gateway cleanup failed: {}", gateway_output.status).into());
+    if let Some(error) = gateway_teardown_failure("boundary", &gateway_output) {
+        return Err(error);
     }
     if !ledger.errors.is_empty()
         || ledger
