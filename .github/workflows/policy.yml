@@ -37,5 +37,14 @@ jobs:
       - name: Self-test the exact execution gate
         run: bash tools/exact-gate-selftest.sh
 
+      # `choose_revision` in the runtime-peer-contract lane guarded its dispatch
+      # input with a `grep` whose failure status was discarded, so a non-40-hex
+      # ref was accepted and both peer checkouts followed it. The guard is only
+      # real if the function's exit status is non-zero, which is a property of
+      # the executed shell, not of the committed text, so it is executed here.
+      # This gate runs on every PR and needs no cargo (sts2-harness#561).
+      - name: Self-test the runtime peer contract revision guard
+        run: bash tools/runtime-peer-contract-revision-selftest.sh
+
       - name: Enforce repository policy
         run: cargo run --locked --package repo-policy -- --strict

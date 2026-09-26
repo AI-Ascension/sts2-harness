@@ -59,7 +59,10 @@ jobs:
               printf '%s' "$fallback"
               return
             fi
-            printf '%s' "$supplied" | grep -Eq '^[0-9a-f]{40}$'
+            if ! printf '%s' "$supplied" | grep -Eq '^[0-9a-f]{40}$'; then
+              printf 'invalid immutable peer revision: %s\n' "$supplied" >&2
+              return 1
+            fi
             printf '%s' "$supplied"
           }
           gateway_revision=$(choose_revision "$INPUT_GATEWAY_REVISION" "$DEFAULT_GATEWAY_REVISION")
