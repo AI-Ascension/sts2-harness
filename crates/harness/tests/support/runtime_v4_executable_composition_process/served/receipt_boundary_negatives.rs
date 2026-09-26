@@ -263,9 +263,7 @@ pub(super) fn run_receipt_boundary_negatives(
             &gateway_output,
         )
     })?;
-    if gateway_output.status.code() != Some(0) && gateway_output.status.signal().is_none() {
-        return Err(format!("boundary gateway cleanup failed: {}", gateway_output.status).into());
-    }
+    gateway_cleanup_failure("receipt boundary negatives", &gateway_output)?;
     if !ledger.errors.is_empty()
         || ledger
             .requests

@@ -262,9 +262,7 @@ fn run_context_source_scenario(
     })();
     let gateway_output = stop(gateway_process)?;
     let ledger = mod_server.finish();
-    if gateway_output.status.code() != Some(0) && gateway_output.status.signal().is_none() {
-        return Err(format!("gateway cleanup failed: {}", gateway_output.status).into());
-    }
+    gateway_cleanup_failure("served context-source", &gateway_output)?;
     let adopted = result.map_err(|error| {
         gateway_failure_evidence(&format!("served context-source: {error}"), &gateway_output)
     })?;

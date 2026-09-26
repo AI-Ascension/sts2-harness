@@ -320,9 +320,7 @@ pub(crate) fn run_served_context_receipt_recovery(
             &gateway_output,
         )
     })?;
-    if gateway_output.status.code() != Some(0) && gateway_output.status.signal().is_none() {
-        return Err(format!("gateway cleanup failed: {}", gateway_output.status).into());
-    }
+    gateway_cleanup_failure("served context receipt recovery", &gateway_output)?;
     if !ledger.errors.is_empty() {
         return Err(format!("receipt recovery fixture failed: {:?}", ledger.errors).into());
     }

@@ -55,6 +55,36 @@ pub(crate) fn gateway_failure_evidence(
     .into()
 }
 
+/// Decide a served scenario's teardown, attaching the gateway's own streams when it failed.
+///
+/// A clean teardown SIGKILLs the gateway's process group, so a *successful* cleanup reports
+/// `signal() == Some(9)` and a zero exit code. Only a gateway that exited non-zero **on its
+/// own**, with no signal, is a failure: that is a gateway that died mid-run for reasons the
+/// lane never asked for, and until #556 the seven `served/*` sites that reach here reported it
+/// as a bare `gateway cleanup failed` with no gateway bytes attached and nothing persisted.
+///
+/// This owns the condition as well as the wrapping so the sites cannot drift apart again —
+/// they are structurally identical, and that identity is exactly what let #548 reach eight of
+/// nine paths and leave these seven unwrapped. `label` doubles as the persisted file stem, so
+/// each caller keeps its own scenario-distinguishing name (a `case.label()`, a `request_id`, a
+/// lane prefix) and two scenarios sharing one lane step cannot overwrite each other.
+///
+/// A clean teardown is the common case and must not cost a diagnostic write, so `Ok(())`
+/// carries no label and the failure text is built here, in the one place that knows the
+/// condition and the two stream names together.
+pub(crate) fn gateway_cleanup_failure(
+    label: &str,
+    gateway: &Output,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if gateway.status.code() == Some(0) || gateway.status.signal().is_some() {
+        return Ok(());
+    }
+    Err(gateway_failure_evidence(
+        &format!("{label}: gateway cleanup failed: {}", gateway.status),
+        gateway,
+    ))
+}
+
 /// Write one served scenario's gateway streams, so the lane's failure-only dump step has
 /// bytes to print. Each served step names its own subdirectory, so `label` also keeps two
 /// scenarios that share a step — the peer-acceptance step runs four negative cases and the

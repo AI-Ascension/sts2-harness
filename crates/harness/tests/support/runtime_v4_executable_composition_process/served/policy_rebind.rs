@@ -170,9 +170,7 @@ pub(crate) fn run_served_policy_rebind_after_idle_adoption(
     })();
     let gateway_output = stop(gateway_process)?;
     let ledger = mod_server.finish();
-    if gateway_output.status.code() != Some(0) && gateway_output.status.signal().is_none() {
-        return Err(format!("gateway cleanup failed: {}", gateway_output.status).into());
-    }
+    gateway_cleanup_failure("served policy-rebind", &gateway_output)?;
     result.map_err(|error| {
         gateway_failure_evidence(&format!("served policy-rebind: {error}"), &gateway_output)
     })?;

@@ -10,6 +10,27 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Stop the remaining seven served gateway-cleanup failures dropping the gateway's own bytes.**
+  #548 wrapped eight of the nine served paths, and the ninth was the only one whose *teardown*
+  was covered; the other seven reported a gateway that exited non-zero on its own as a bare
+  `gateway cleanup failed`, with no gateway stream attached and nothing persisted, so a gateway
+  that died mid-run for reasons the lane never asked for was as unattributable as the refusal
+  #548 fixed. The branch itself is narrow and is unchanged: a clean teardown SIGKILLs the
+  gateway's process group, so only a gateway that exited by itself — non-zero, no signal — can
+  take it. What changed is that the condition and the wrapping now live in one shared
+  `gateway_cleanup_failure` helper, so all eight sites state the rule once and cannot drift
+  apart again, which is exactly how these seven were left behind. Each site keeps its own label
+  (the peer-acceptance case label, the graph request id, the lane prefixes), and the label is
+  also the persisted file stem, so two scenarios sharing one lane step still cannot overwrite
+  each other. The regression test drives the **real** peer-acceptance negative case against a
+  stub gateway that answers one request and then leaves on its own — the only shape that reaches
+  this branch — and asserts the label, the in-band `gateway_stderr=`, and the persisted file by
+  exact name. Separately, the two existing evidence tests that pass no directory now clear an
+  ambient `STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR` from the child environment instead of
+  inheriting it; no lane step sets that variable, so this cannot fire in CI today.
+  Compatibility: test-support and CI only; no production, protocol, or runtime behaviour changes.
+  Closes #556.
+
 - **Stop the served compositions discarding the gateway's stderr, and stop their error strings
   implying they carried it.** Every served composition spawns the gateway with piped
   stdout/stderr and reads both back out of `stop`, but the only consumer of those bytes was

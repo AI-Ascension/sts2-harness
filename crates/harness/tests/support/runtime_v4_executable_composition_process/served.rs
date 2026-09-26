@@ -5,10 +5,10 @@ use rusqlite::Connection;
 use sts2_harness::{ExecutionStore, OperationState, StoredOperation};
 
 // `use super::*` does not carry the parent's `pub(crate) use` re-exports into this module,
-// so the shared gateway-evidence helper has to be named explicitly. It is re-exported with
-// `pub(super)` so the `served/*` scenarios, which resolve names through their own
-// `use super::*`, inherit it the same way they inherit the other shared served helpers.
-pub(super) use super::gateway_failure_evidence;
+// so the shared gateway-evidence helpers have to be named explicitly. They are re-exported
+// with `pub(super)` so the `served/*` scenarios, which resolve names through their own
+// `use super::*`, inherit them the same way they inherit the other shared served helpers.
+pub(super) use super::{gateway_cleanup_failure, gateway_failure_evidence};
 
 #[path = "served/session.rs"]
 mod session;

@@ -71,6 +71,17 @@ const GATEWAY_MARKER: &str = "sts2-harness-548-stub-gateway-stderr-marker";
 /// own label, which is what makes the attribution checkable rather than merely present.
 const SERVICE_MARKER: &str = "sts2-harness-548-stub-service-stderr-marker";
 
+/// The line the *cleanup* stub gateway writes, so a reader can tell the #556 report apart from
+/// the #548 one and can see the gateway explained itself immediately before it died.
+const CLEANUP_MARKER: &str = "sts2-harness-556-stub-gateway-cleanup-exit-marker";
+
+// The cleanup case's own assertion, marker label and stub live in a sibling module so this
+// binary stays inside the repository's preferred test-file size budget. It is a separate file
+// rather than a shorter test because the stub is a *different shape* of gateway — one that
+// leaves on its own — and that difference is the substance of the test, not an aside.
+#[path = "support/served_gateway_cleanup_evidence.rs"]
+mod cleanup;
+
 /// A served scenario must report the gateway's stderr when it fails.
 ///
 /// Acceptance criterion 1. On `main` the served path discards the gateway's bytes, so
@@ -168,10 +179,23 @@ fn run_in_child(case: &str, evidence: Option<&Path>) -> Result<String, Box<dyn s
         .env(CASE, case);
     if let Some(root) = evidence {
         command.env("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR", root);
+    } else {
+        // The second half of #556: the two report tests pass `None`, and `Command::new`
+        // inherits the parent environment, so with this variable set ambiently the children
+        // wrote their stub markers into the ambient directory. No lane step sets it, so this
+        // cannot fire in CI today; the point is that `None` now means unset, as it reads.
+        command.env_remove("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR");
     }
     let output = command.output()?;
     let report = String::from_utf8_lossy(&output.stderr).into_owned();
-    if !report.contains(GATEWAY_MARKER) {
+    // Each case carries its own marker, so "did the child reach the assertion under test" is
+    // one check here instead of a per-case special case at every call site.
+    let reached = if case == "cleanup" {
+        CLEANUP_MARKER
+    } else {
+        GATEWAY_MARKER
+    };
+    if !report.contains(reached) {
         return Err(format!(
             "the child served scenario did not reach the assertion under test. The child exited \
              with {} and printed: {report}",
@@ -203,7 +227,16 @@ fn served_gateway_stderr_child() {
             return;
         }
     };
-    let gateway_stub = match stub_gateway(&temporary.path) {
+    // The `cleanup` case drives the peer-acceptance negative case against a gateway that leaves
+    // on its own, so the scenario reaches its own cleanup check with a gateway that died by
+    // itself. Every other case uses the #548 stubs and the already-wrapped `served.rs` site.
+    let cleanup = case_name == "cleanup";
+    let gateway = if cleanup {
+        cleanup::stub_gateway_exiting_non_zero
+    } else {
+        stub_gateway
+    };
+    let gateway_stub = match gateway(&temporary.path) {
         Ok(path) => path,
         Err(error) => {
             eprintln!("child could not write its gateway stub: {error}");
@@ -217,7 +250,12 @@ fn served_gateway_stderr_child() {
             return;
         }
     };
-    match process::run_served_policy_gate(&gateway_stub, &service_stub, &service_stub) {
+    let outcome = if cleanup {
+        process::run_served_peer_acceptance(&gateway_stub, &service_stub, &service_stub)
+    } else {
+        process::run_served_policy_gate(&gateway_stub, &service_stub, &service_stub)
+    };
+    match outcome {
         Ok(()) => eprintln!("{case_name}: the served scenario unexpectedly succeeded"),
         Err(error) => eprintln!("{case_name}: {error}"),
     }

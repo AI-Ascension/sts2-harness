@@ -159,9 +159,7 @@ fn run_graph(
     let value = result.map_err(|error| {
         gateway_failure_evidence(&format!("graph {request_id}: {error}"), &gateway_output)
     })?;
-    if gateway_output.status.code() != Some(0) && !gateway_output.status.signal().is_some() {
-        return Err("graph gateway cleanup failed".into());
-    }
+    gateway_cleanup_failure(&format!("graph {request_id}"), &gateway_output)?;
     let expert_states = validate_graph_ledger(&ledger)?;
     Ok((value.0, value.1, expert_states))
 }
