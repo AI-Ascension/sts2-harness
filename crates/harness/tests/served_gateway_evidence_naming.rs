@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-//! The gateway-evidence *naming* rules, pinned separately from the served-report tests.
-//! Refs #548.
+//! The gateway-evidence *naming* and *placement* rules, pinned separately from the
+//! served-report tests. Refs #548.
 //!
 //! Split from `served_gateway_stderr_evidence.rs` so both files stay inside the repository's
-//! preferred test-file size budget.
+//! preferred test-file size budget. The stubs and markers that actually drive a served failure
+//! live in that file; nothing here spawns a gateway or a service, so nothing here depends on
+//! the host's load or on the pinned peer's behaviour.
 
 #![cfg(unix)]
 
@@ -72,123 +74,107 @@ fn scenarios_sharing_a_lane_step_persist_to_distinct_files() {
          second run's gateway stderr would overwrite the first's. stems were: {stems:?}"
     );
 }
-
 /// The evidence files must land where the lane's failure-only dump step can see them.
 ///
 /// That step runs `find "$RUNNER_TEMP/runtime-peer-contract" -type f -maxdepth 2`, so a file
-/// written anywhere deeper is invisible no matter how correct its contents are. Each served
-/// step names a subdirectory of that root and the helper writes directly into it, which puts
-/// every file at exactly depth 2.
+/// written anywhere deeper is invisible no matter how correct its contents are.
+///
+/// The risk here is *silent*: `find -maxdepth 2` matching nothing still exits 0, so a writer
+/// that nested its output one level too deep would leave a green lane printing no evidence at
+/// all. That is the same shape as the original #548 defect, so the placement is driven through
+/// the real writer rather than asserted by reading the helper's arithmetic.
+///
+/// `STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR` is process-wide and this workspace forbids
+/// `unsafe`, so the write is exercised in a child process exactly as
+/// `served_gateway_stderr_evidence.rs` does it. The child is given the directory layout the
+/// workflow hands its served steps — `<tmp>/runtime-peer-contract/<per-step>` — which is what
+/// makes the `find` root and the per-step directory the same relative path CI uses.
 #[test]
 fn gateway_streams_are_written_at_the_depth_the_dump_step_reads() {
-    let temporary = match process::TempDir::new() {
-        Ok(temporary) => temporary,
-        Err(error) => {
-            eprintln!("could not create a temporary directory: {error}");
-            return;
-        }
-    };
-    let root = temporary
-        .path
-        .join("runtime-peer-contract")
-        .join("served-policy-gate");
-    let gateway = std::process::Output {
-        status: std::process::ExitStatus::default(),
-        stdout: b"gateway stdout marker".to_vec(),
-        stderr: b"gateway stderr marker".to_vec(),
-    };
-    // Drive the real writer rather than re-implementing the path arithmetic.
-    let error = process::gateway_failure_evidence("served-policy-gate: probe", &gateway);
+    let temporary = process::TempDir::new().expect("a temporary directory is needed");
+    let dump_root = temporary.path.join("runtime-peer-contract");
+    let per_step = dump_root.join("served-policy-gate");
+    // The child's exit status carries the result: the child asserts, the parent relays.
+    let status = write_streams_in_child(&per_step);
     assert!(
-        error.to_string().contains("gateway stderr marker"),
-        "the helper did not attach the gateway's stderr to the failure text, so this probe \
-         never exercised the write path"
+        status.success(),
+        "the child that drives the real writer exited {status}, so the depth assertions below \
+         never ran and this test would have passed without checking anything"
     );
-    // The evidence directory is process-wide, so only exercise the write when this test
-    // actually owns it: the child-driven test sets it, and an ordinary run must not be
-    // redirected. Setting it here would also race the other tests in this binary.
-    if std::env::var_os("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR").is_none() {
-        eprintln!("skipped the write-path depth check: the evidence directory is process-wide");
-        return;
-    }
+
     let mut files = Vec::new();
-    collect_files(&root, &mut files).unwrap_or_default();
-    // The child case owns the directory in the parent, so assert the shape rather than a
-    // specific file: everything written is at most one level below the per-step directory.
+    collect_files(&dump_root, &mut files).expect("the evidence tree must be readable");
+    assert!(
+        !files.is_empty(),
+        "the writer produced nothing under {}, so the lane's dump step would print no evidence \
+         for a served step at all",
+        dump_root.display()
+    );
+    // Exactly depth 2 relative to the `find` root: `<root>/<per-step>/<file>`. A file one level
+    // deeper is invisible to `-maxdepth 2`; a file at the root instead means the per-step
+    // directory the workflow names is not the one actually being written.
     for file in files {
         assert!(
-            file.parent() == Some(root.as_path()),
-            "evidence file {} is not directly inside the per-step directory, so the dump \
-             step's -maxdepth 2 may not reach it",
+            file.parent() == Some(per_step.as_path()),
+            "evidence file {} is not at depth 2 under the lane's find root, so `find -type f \
+             -maxdepth 2` will not print it even though it exists",
             file.display()
         );
     }
 }
 
-/// A stub "gateway": it writes [`GATEWAY_MARKER`] to its own stderr, binds
-/// `STS2_GATEWAY_ADDR`, and keeps accepting until it is killed.
-///
-/// It is spawned through the same `gateway_with_identity` helper the real compositions use,
-/// so it inherits exactly the environment the real gateway would, including the cleared
-/// environment and `STS2_GATEWAY_ADDR`.
-///
-/// **It must stay alive rather than exit immediately.** `ready`
-/// (`runtime_v4_executable_composition_process.rs:169`) checks `try_wait` *before* it attempts
-/// to connect, so a stub that exits at once fails the served scenario at gateway startup —
-/// before the workflow service is ever spawned — and the service's own stream never reaches the
-/// report. Holding the socket open lets the scenario pass readiness and fail later on the
-/// *service*, so one report carries **both** markers, each under its own label. That combined
-/// report is what makes attribution checkable rather than merely present, and it is the #541
-/// shape: the gateway said something, the served path reported a failure, and the gateway's own
-/// explanation was dropped.
-///
-/// The marker is printed before the bind, so it is on stderr whichever exit the scenario takes.
-/// A stub rather than the pinned peer is deliberate: the claim is about this repository's
-/// plumbing, and asserting against the real gateway would pass vacuously whenever the peer is
-/// silent — the condition #541 observed, and the reason its flake could never be reproduced.
-fn stub_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let path = directory.join("stub-gateway.sh");
-    fs::write(
-        &path,
-        format!(
-            // Each Python line is its own `concat!` element carrying its own leading spaces.
-            // A `\`-continued Rust string strips the indentation of every continued line,
-            // which would leave the `while` body at column zero and fail with an
-            // `IndentationError` — the script must reach the served path, and a stub that
-            // dies at bind time never gets there.
-            "{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}",
-            "#!/bin/sh\n",
-            "printf '%s\\n' '",
-            GATEWAY_MARKER,
-            "' >&2\n",
-            "exec python3 - <<'PY'\n",
-            "import os, socket\n",
-            "addr = os.environ[\"STS2_GATEWAY_ADDR\"]\n",
-            "host, _, port = addr.rpartition(\":\")\n",
-            "listener = socket.socket()\n",
-            "listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n",
-            "listener.bind((host, int(port)))\n",
-            "listener.listen(8)\n",
-            "while True:\n",
-            "    connection, _ = listener.accept()\n",
-            "    connection.close()\nPY\n",
-        ),
-    )?;
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
-    Ok(path)
+/// Env var marking the depth child. Absent in an ordinary run, so the child is not entered
+/// when the whole binary is executed by `cargo test`.
+const CHILD: &str = "STS2_DEPTH_CHILD";
+/// Env var carrying the per-step evidence directory into the depth child.
+const DEPTH_DIR: &str = "STS2_DEPTH_EVIDENCE_DIR";
+
+/// Run [`gateway_streams_depth_child`] in a child process and return its exit status.
+fn write_streams_in_child(per_step: &Path) -> std::process::ExitStatus {
+    std::process::Command::new(std::env::current_exe().expect("this test binary is re-executable"))
+        .args(["--exact", "gateway_streams_depth_child", "--nocapture"])
+        .env(CHILD, "1")
+        .env(DEPTH_DIR, per_step)
+        // Clear the lane variable in the child too: `gateway_failure_evidence` reads it, and a
+        // CI-provided value left in place would redirect this check away from `per_step`.
+        .env_remove("STS2_EXECUTABLE_COMPOSITION_EVIDENCE_DIR")
+        .status()
+        .expect("the child binary starts")
 }
 
-/// A stub workflow service: it writes [`SERVICE_MARKER`] to its own stderr and exits non-zero.
+/// The child half of the depth check: drive the real writer into `per_step`.
 ///
-/// `wait_for_workflow_service` observes the exit inside the served scenario and fails there
-/// rather than at its readiness deadline. The stub is passed as the harness binary too, since
-/// the served scenario never reaches a step that would execute it.
-fn stub_service(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let path = directory.join("stub-service.sh");
-    fs::write(
-        &path,
-        format!("#!/bin/sh\nprintf '%s\\n' '{SERVICE_MARKER}' >&2\nexit 3\n"),
-    )?;
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
-    Ok(path)
+/// It exits non-zero rather than asserting, because the parent process owns the assertions
+/// that matter: a panic here would still fail the run, but an explicit status makes the
+/// "the child never ran" case distinguishable from "the child ran and the placement is wrong".
+#[test]
+fn gateway_streams_depth_child() {
+    if std::env::var_os(CHILD).is_none() {
+        return;
+    }
+    let per_step = match std::env::var_os(DEPTH_DIR) {
+        Some(value) => PathBuf::from(value),
+        None => {
+            eprintln!("{CHILD} ran without {DEPTH_DIR}");
+            std::process::exit(2);
+        }
+    };
+    // A deliberately awkward label: a slash, a space, a newline, and a tail far past the
+    // 120-character cap. The writer must sanitise it, and the placement check above then
+    // measures real sanitised output rather than a trivially legal file name.
+    let label = format!(
+        "served-policy-gate: nested/path with spaces\nand a long tail {}",
+        "x".repeat(200)
+    );
+    let gateway = std::process::Output {
+        status: std::process::ExitStatus::default(),
+        stdout: b"gateway stdout marker".to_vec(),
+        stderr: b"gateway stderr marker".to_vec(),
+    };
+    let error = process::gateway_failure_evidence(&label, &gateway);
+    if !error.to_string().contains("gateway stderr marker") {
+        eprintln!("the writer did not attach the gateway's stderr: {error}");
+        std::process::exit(3);
+    }
+    std::process::exit(0);
 }
