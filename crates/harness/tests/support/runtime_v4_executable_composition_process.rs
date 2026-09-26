@@ -121,7 +121,7 @@ pub(super) fn gateway(
     binary: &Path,
     address: SocketAddr,
     mod_address: SocketAddr,
-) -> Result<Child, Box<dyn std::error::Error>> {
+) -> Result<GatewayProcess, Box<dyn std::error::Error>> {
     gateway_with_identity(
         binary,
         address,
@@ -139,7 +139,7 @@ pub(super) fn gateway_with_identity(
     instance_id: &str,
     lease_id: &str,
     lease_epoch: u64,
-) -> Result<Child, Box<dyn std::error::Error>> {
+) -> Result<GatewayProcess, Box<dyn std::error::Error>> {
     let mut command = Command::new(binary);
     command
         .env_clear()
@@ -157,21 +157,35 @@ pub(super) fn gateway_with_identity(
         .stderr(Stdio::piped());
     use std::os::unix::process::CommandExt;
     command.process_group(0);
-    Ok(command.spawn()?)
+    // The pipes are taken and drained here, at spawn, rather than after the gateway has been
+    // killed. That is the whole fix for #559: a pipe holds one buffer before the writer blocks,
+    // so reading only at `stop` truncated a chatty gateway at one buffer and silently lost the
+    // rest. `GatewayProcess::attach` also owns the failure path, so a gateway that is spawned
+    // but cannot be captured is killed here rather than leaked.
+    let child = command.spawn()?;
+    Ok(GatewayProcess::attach(child)?)
 }
 
 pub(super) fn ready(
-    child: &mut Child,
+    gateway_process: &mut GatewayProcess,
     address: SocketAddr,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Checked before polling so a capture that has already broken is reported as itself, not
+    // as a readiness timeout.
+    gateway_process.check_capture()?;
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        if let Some(status) = child.try_wait()? {
+        if let Some(status) = gateway_process.try_wait()? {
             return Err(format!("gateway exited: {status}").into());
         }
         if TcpStream::connect(address).is_ok() {
+            // The capture has been draining since spawn, so readiness is not the point that
+            // the gateway's own bytes are first read. This only surfaces a capture that broke
+            // while the gateway was coming up.
+            gateway_process.check_capture()?;
             return Ok(());
         }
+        gateway_process.check_capture()?;
         if Instant::now() >= deadline {
             return Err("gateway readiness deadline exceeded".into());
         }
@@ -179,8 +193,41 @@ pub(super) fn ready(
     }
 }
 
-pub(super) fn stop(mut child: Child) -> Result<Output, Box<dyn std::error::Error>> {
+pub(super) fn stop(gateway_process: GatewayProcess) -> Result<Output, Box<dyn std::error::Error>> {
+    let mut gateway_process = gateway_process;
+    if gateway_process.try_wait()?.is_none() {
+        let group = Command::new("kill")
+            .args(["-KILL", "--", &format!("-{}", gateway_process.id())])
+            .status()?;
+        if !group.success() {
+            gateway_process.kill()?;
+        }
+    }
+    // Reaping the child first is what closes its end of both pipes, so the drain reaches end of
+    // file and the capture completes on its own. `wait_with_output` is deliberately not used:
+    // it would read the pipes itself, and the bytes are already being read here.
+    let status = gateway_process.wait()?;
+    Ok(gateway_process.finish(status)?)
+}
+
+/// Stop a child that is *not* the served gateway — the workflow service — and return its
+/// streams.
+///
+/// This is the pre-existing `stop`, kept verbatim for the service child. It is **not** the
+/// #559 path and is deliberately not given a live drain: the service is spawned inside the
+/// scenario and reaped within the same closure, so its output is bounded by what it writes
+/// before it exits, and the workflow service is not the stream a served failure is read for.
+/// Giving it a drain would be scope creep against #556's seven sites, which are a separate
+/// lane. Only the gateway capture was changed, because only the gateway was previously read
+/// after being killed.
+pub(super) fn stop_service(mut child: Child) -> Result<Output, Box<dyn std::error::Error>> {
     if child.try_wait()?.is_none() {
+        // Signalled by process group, exactly as the shared `stop` always has. The workflow
+        // service is spawned with `process_group(0)` and is told to launch `STS2_MCP_BINARY`
+        // and the exo bridge, so a leader-only `child.kill()` would leave those grandchildren
+        // running after teardown. The group signal is what reaps the whole subtree; the
+        // per-child kill is only the fallback for when the group signal itself fails, and it
+        // keeps the pre-existing behaviour that a still-running child is never left behind.
         let group = Command::new("kill")
             .args(["-KILL", "--", &format!("-{}", child.id())])
             .status()?;
@@ -311,6 +358,15 @@ mod gateway_evidence;
 pub(crate) use gateway_evidence::{
     gateway_failure_evidence, gateway_teardown_failure, sanitize_label,
 };
+
+// The served gateway's own streams are drained while it runs, not after it is killed.
+// Refs sts2-harness#559. Split into its own module so this one stays inside the repository's
+// preferred test-file size budget.
+#[path = "runtime_v4_executable_composition_process/gateway_capture.rs"]
+mod gateway_capture;
+// `pub(crate)`, matching the `gateway_evidence` re-export above: the module itself is private, so
+// a `pub(super)` item inside it could not be re-exported through this `use`.
+pub(crate) use gateway_capture::GatewayProcess;
 
 include!("runtime_v4_executable_composition_malformed.rs");
 

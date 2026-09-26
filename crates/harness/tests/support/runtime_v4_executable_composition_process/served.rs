@@ -100,7 +100,7 @@ fn run_served_policy_gate_inner(
             let client = wait_for_workflow_service(&mut service, workflow_address)?;
             submit_and_step_policy_gate(&client, if restart_after_unknown { 3 } else { 4 })
         })();
-        let first_output = stop(service)?;
+        let first_output = stop_service(service)?;
         let submission = first_attempt.map_err(|error| {
             format!(
                 "first served workflow attempt failed: {error}; service_stdout={}; service_stderr={}",
@@ -165,7 +165,7 @@ fn run_served_policy_gate_inner(
             }
             Ok(())
         })();
-        let restarted_output = stop(restarted_service)?;
+        let restarted_output = stop_service(restarted_service)?;
         restart_attempt?;
         let operation_after_restart =
             ExecutionStore::open_read_only(&execution_store)?.operation(operation_id)?;

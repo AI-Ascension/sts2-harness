@@ -200,7 +200,7 @@ pub(crate) fn run_served_cancel_after_accepted_barrier(
             }
             Ok(())
         })();
-        let output = stop(service)?;
+        let output = stop_service(service)?;
         attempt.map_err(|error| {
             format!(
                 "served accepted-barrier cancellation failed: {error}; service_stdout={}; service_stderr={}",

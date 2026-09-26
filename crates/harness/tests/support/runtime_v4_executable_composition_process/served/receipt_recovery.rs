@@ -199,7 +199,7 @@ pub(crate) fn run_served_context_receipt_recovery(
             }
             Ok((run_id, receipt, command))
         })();
-        let first_output = stop(service)?;
+        let first_output = stop_service(service)?;
         let (run_id, receipt, command) =
             write_result.map_err(|error| format!("receipt writer phase: {error}"))?;
         assert_killed(&first_output, "receipt writer workflow")?;
@@ -278,7 +278,7 @@ pub(crate) fn run_served_context_receipt_recovery(
             assert_not_recorded(metadata_response, "metadata-only command")?;
             Ok(())
         })();
-        let restarted_output = stop(restarted_service)?;
+        let restarted_output = stop_service(restarted_service)?;
         restart_result.map_err(|error| format!("restart recovery phase: {error}"))?;
         assert_killed(&restarted_output, "receipt recovery workflow")?;
 
@@ -307,7 +307,7 @@ pub(crate) fn run_served_context_receipt_recovery(
             }
             Ok(())
         })();
-        let foreign_output = stop(foreign_service)?;
+        let foreign_output = stop_service(foreign_service)?;
         foreign_result.map_err(|error| format!("foreign actor phase: {error}"))?;
         assert_killed(&foreign_output, "foreign receipt reader")?;
         Ok(())

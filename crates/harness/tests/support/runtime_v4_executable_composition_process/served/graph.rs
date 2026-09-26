@@ -140,7 +140,7 @@ fn run_graph(
                 .to_owned();
             Ok((digest, order))
         })();
-        let service_output = stop(service)?;
+        let service_output = stop_service(service)?;
         let value = attempt.map_err(|error| {
             format!(
                 "graph workflow failed: {error}; service_stdout={}; service_stderr={}",

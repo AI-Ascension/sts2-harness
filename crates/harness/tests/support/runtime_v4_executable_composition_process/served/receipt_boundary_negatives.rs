@@ -244,7 +244,7 @@ pub(super) fn run_receipt_boundary_negatives(
             }
             Ok(())
         })();
-        let output = stop(service)?;
+        let output = stop_service(service)?;
         attempt.map_err(|error| {
             format!(
                 "boundary-negative workflow failed: {error}; service_stdout={}; service_stderr={}",

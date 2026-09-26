@@ -10,6 +10,29 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Drain the served gateway's streams while it runs, so a chatty gateway is no longer clipped at
+  one pipe buffer.** The served compositions spawn the gateway with piped stdout/stderr and, until
+  this change, read **neither** pipe until `stop()` had already SIGKILLed the process group and
+  called `wait_with_output()`. A pipe holds one buffer (65,536 bytes on Linux) before its writer
+  blocks, so a gateway that wrote more than that was still blocked mid-write when the group was
+  killed: every byte it had not yet written was discarded with no error, no truncation notice, and
+  no diagnostic — the tail of a refusal, the panic after a large log line, exactly the bytes a
+  reader needs. The served path was not "unbounded" as #555 assumed; it was bounded far *below*
+  what the evidence layer is meant to preserve, and the bound was invisible. Both pipes are now
+  taken at spawn and drained by a single background thread for the whole life of the gateway, on
+  a bounded deadline, with a stated **4 MiB per-stream and 8 MiB total** capture ceiling; bytes
+  past either ceiling are drained and dropped behind a machine-readable truncation notice, so a
+  clipped stream is never mistaken for a whole one. A capture that cannot start kills *and reaps*
+  the child rather than leaking it, and a scenario that returns early (`?`, a failed assertion)
+  drops a `GatewayProcess` that now reaps its own gateway instead of leaving it serving. A
+  quiet gateway's capture is byte-for-byte unchanged, and the seven `stop()` teardown sites keep
+  their current semantics (`signal() == Some(9)`, `gateway_failure_evidence` still attached to
+  `gateway_stderr=`). The workflow service child is untouched and keeps its own bounded
+  `stop_service()`; only the gateway capture changed, because only the gateway was previously
+  read after being killed. Both ceilings are covered by unit tests, and the end-to-end test — a
+  stub that floods its own stderr past the pipe buffer and *then* keeps serving — recovers the
+  full 2 MiB and fails against the old read-after-SIGKILL shape. Compatibility: test-support and
+  CI only; no production, protocol, or runtime behaviour changes. Refs #559.
 - **Bound the served gateway evidence capture, which #548 left write-through.** #548 made every
   served failure persist the gateway's own streams, but `write_gateway_streams` wrote them
   unbounded while the gateway is spawned `Stdio::piped()` with no cap and `stop()` collects via
