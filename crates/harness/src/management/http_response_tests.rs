@@ -271,7 +271,7 @@ fn a_partial_write_that_then_times_out_reaches_the_caller_with_no_progress_kept(
         calls: 0,
     };
     let error = writer
-        .write_all(&vec![b'z'; 10])
+        .write_all(&[b'z'; 10])
         .expect_err("a timeout after a partial write must surface");
     assert_eq!(
         error.kind(),
