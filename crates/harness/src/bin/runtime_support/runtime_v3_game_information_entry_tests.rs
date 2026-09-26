@@ -258,6 +258,8 @@ mod gateway;
 mod live_peers;
 #[path = "runtime_v3_game_information_entry_peer.rs"]
 mod peer;
+#[path = "runtime_v3_game_information_entry_peer_encoding_tests.rs"]
+mod peer_encoding_tests;
 #[path = "runtime_v3_game_information_entry_support.rs"]
 mod support;
 #[path = "runtime_v3_game_information_entry_tests_verification.rs"]
