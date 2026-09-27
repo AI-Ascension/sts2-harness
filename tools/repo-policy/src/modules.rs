@@ -47,15 +47,19 @@ pub(crate) fn findings(root: &Path, files: &[PathBuf]) -> Vec<Finding> {
         .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
         .map(|path| relative_text(root, path))
         .collect();
-    let crates = crates(root, files, &sources);
+    // An unreadable manifest is excluded but never dropped: an empty graph is
+    // not a clean pass when a bad manifest is why. See `module_roots`.
+    let (crates, mut reported) = crates(root, files, &sources);
     if crates.is_empty() {
-        return Vec::new();
+        return reported;
     }
     let contents = contents(root, files, &sources);
-    orphans(&sources, &contents, &crates)
-        .into_iter()
-        .map(|source| Finding::error(RULE, &source, MESSAGE))
-        .collect()
+    reported.extend(
+        orphans(&sources, &contents, &crates)
+            .into_iter()
+            .map(|source| Finding::error(RULE, &source, MESSAGE)),
+    );
+    reported
 }
 
 fn contents(
@@ -77,9 +81,8 @@ fn contents(
         // keeps the file in the graph. A replacement character can only stand
         // where an invalid sequence was, never inside an ASCII keyword.
         //
-        // A file that cannot be read at all is still skipped: `collect` only
-        // yields paths that exist, and an unreadable path is not a module-graph
-        // fact this rule can speak to.
+        // A file that cannot be read at all is skipped: `collect` only yields
+        // paths that exist, and an unreadable path is not a fact here.
         if let Some(bytes) = read_bytes(path) {
             contents.insert(relative, String::from_utf8_lossy(&bytes).into_owned());
         }
