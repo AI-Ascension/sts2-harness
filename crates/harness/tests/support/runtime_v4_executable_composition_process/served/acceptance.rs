@@ -226,7 +226,7 @@ fn run_negative_case(
             }
             Ok(())
         })();
-        let service_output = stop(service)?;
+        let service_output = stop_service(service)?;
         attempt.map_err(|error| {
             format!(
                 "{} failed: {error}; service_stdout={}; service_stderr={}",

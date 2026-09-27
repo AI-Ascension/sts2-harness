@@ -157,7 +157,7 @@ pub(crate) fn run_served_policy_rebind_after_idle_adoption(
             }
             Ok(())
         })();
-        let output = stop(service)?;
+        let output = stop_service(service)?;
         attempt.map_err(|error| {
             format!(
                 "served policy-rebind attempt failed: {error}; service_stdout={}; service_stderr={}",

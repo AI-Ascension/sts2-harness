@@ -249,7 +249,7 @@ fn run_context_source_scenario(
             }
             Ok(adopt_before_decision)
         })();
-        let output = stop(service)?;
+        let output = stop_service(service)?;
         let adopted = attempt.map_err(|error| {
             format!(
                 "served context-source attempt failed: {error}; service_stdout={}; service_stderr={}",
