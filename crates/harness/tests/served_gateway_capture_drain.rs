@@ -224,7 +224,9 @@ const FLOOD_DONE_SOCKET: &str = "flood-done.sock";
 /// the value is interpolated into generated source, and a quote here would end the literal
 /// rather than appear in it.
 fn python_string(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
-    let text = path.to_str().ok_or("the flood-completion path is not UTF-8")?;
+    let text = path
+        .to_str()
+        .ok_or("the flood-completion path is not UTF-8")?;
     let mut literal = String::with_capacity(text.len() + 2);
     literal.push('\'');
     for character in text.chars() {
@@ -244,10 +246,7 @@ fn python_string(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
 /// the kernel, so binding late would silently lose the signal and hang the test.
 fn flood_done_socket(path: &Path) -> Result<UnixDatagram, Box<dyn std::error::Error>> {
     UnixDatagram::bind(path).map_err(|error| -> Box<dyn std::error::Error> {
-        format!(
-            "the flood-completion socket could not be bound: {error} (sts2-harness#629)"
-        )
-        .into()
+        format!("the flood-completion socket could not be bound: {error} (sts2-harness#629)").into()
     })
 }
 
@@ -539,7 +538,10 @@ fn quiet_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>
 /// cannot mistake it for the child's output.
 fn both_pipes_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let path = directory.join("both-pipes-gateway.sh");
-    let done_path = python_string(&path.join(FLOOD_DONE_SOCKET))?;
+    // Joined onto the directory, not onto `path`: the signal socket is a sibling
+    // of the script, not a child of the script file. This must be the same path
+    // the test binds, or the datagram is sent to a socket nobody is reading.
+    let done_path = python_string(&directory.join(FLOOD_DONE_SOCKET))?;
     fs::write(
         &path,
         format!(
