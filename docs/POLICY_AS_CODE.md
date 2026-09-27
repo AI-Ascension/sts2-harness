@@ -23,6 +23,7 @@ when a mandatory rule or warning fails.
 | `DOC001` | Required foundation files exist |
 | `DOC002` | Local Markdown link targets exist |
 | `ADR001` | ADR decision records use unique four-digit numbers |
+| `CONFLICT001` | No tracked text file carries an unresolved conflict marker |
 | `SIZE001` | Rust, workflow, and Markdown files stay within budgets |
 | `EXC001` | Exemptions are exact existing paths with meaningful reasons |
 | `WF001` | Workflows declare top-level permissions |
