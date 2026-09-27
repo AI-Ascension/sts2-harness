@@ -13,6 +13,10 @@ mod store_error;
 use atomic_replace::atomic_write;
 pub(crate) use owner_lease::PolicyOwnerLease;
 use state_store_io::{read_restricted_file, validate_store_path};
+// Re-exported for the unix-only lease implementation in `owner_lease`. On
+// non-unix targets that implementation compiles to an `Unsupported` stub which
+// never calls them, so re-exporting there would be an unused import.
+#[cfg(unix)]
 pub(crate) use state_store_io::{restricted_directory, restricted_file};
 pub use store_error::ProviderSessionMetadataStoreError;
 

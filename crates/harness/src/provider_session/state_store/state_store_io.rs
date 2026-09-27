@@ -8,7 +8,9 @@
 //! `atomic_replace`, so the path-safety rules can be read, and changed, as one unit.
 
 use super::ProviderSessionMetadataStoreError;
-use std::fs::{self, File};
+use std::fs;
+#[cfg(unix)]
+use std::fs::File;
 #[cfg(not(unix))]
 use std::io;
 use std::path::{Component, Path, PathBuf};
