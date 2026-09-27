@@ -10,6 +10,23 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **The `provider_session_policy_http` suite is split, and the `policy.toml` exemption that hid a
+  114-line breach is gone.** The authenticated loopback contract suite was **714** nonblank lines
+  against a 600-line test hard limit, and `repo-policy --strict` reported 0 errors — because the
+  path carried an exemption whose reason asserted the opposite: *"its 557 nonblank lines remain
+  below the 600-line test hard limit."* An exemption skips the size check entirely
+  (`tools/repo-policy/src/files.rs`), and the tool validates only that a reason is at least 20
+  characters and that the file exists, so a count written in prose can rot indefinitely while the
+  gate stays green. The suite is now three files — a shared fixtures module, plus the route tests
+  and the command-lifecycle tests split along the seam between *reading the policy* and *driving
+  the lifecycle* — at 282, 280 and 175 nonblank lines, all well inside the limit, so the exemption
+  is deleted rather than re-pointed at a smaller file. The gate now covers three files where it
+  covered one: **1985 sized files checked, up from 1982**. Verified by re-inflating the main file
+  by 400 lines, which the gate now reports as `ERROR SIZE001 … 682 nonblank lines exceeds hard
+  maximum 600` — the same shape of change it could not see before. The other two exemption counts
+  (`runtime-peer-contract.yml` at 168, `CHANGELOG.md` at 594) were already corrected by #566 and
+  are accurate as written.
+
 - **Drain the served gateway's streams while it runs, so a chatty gateway is no longer clipped at
   one pipe buffer.** The served compositions spawn the gateway with piped stdout/stderr and, until
   this change, read **neither** pipe until `stop()` had already SIGKILLed the process group and
