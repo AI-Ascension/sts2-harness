@@ -48,20 +48,19 @@
 mod fixture;
 #[path = "support/runtime_v4_executable_composition_process.rs"]
 mod process;
-
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+#[path = "support/served_gateway_capture_drain_stub.rs"]
+mod stub;
 
 use process::{TempDir, free_address};
 
 use process::{MAX_CAPTURE_BYTES, MAX_TOTAL_CAPTURE_BYTES, TRUNCATION_NOTICE};
+use stub::{both_pipes_gateway, chatty_gateway, quiet_gateway};
 
 /// How many bytes the chatty stub writes to its own stderr before it serves.
 ///
 /// Comfortably more than one pipe buffer, so the assertion is about recovering far more than
 /// 64 KiB rather than about a marginal difference at the boundary.
-const CHATTY_BYTES: usize = 2 * 1024 * 1024;
+pub(crate) const CHATTY_BYTES: usize = 2 * 1024 * 1024;
 
 /// The Linux default pipe capacity. Named so the assertion can *report* the wall it is beating
 /// instead of only reporting the failure.
@@ -71,7 +70,7 @@ const PIPE_BUFFER_BYTES: usize = 64 * 1024;
 ///
 /// It stands in for the refusal-and-context that #548's attribution depends on, so this test
 /// also proves the fix did not buy its tail by dropping the head.
-const HEAD_MARKER: &str = "sts2-harness-559-chatty-gateway-head-marker";
+pub(crate) const HEAD_MARKER: &str = "sts2-harness-559-chatty-gateway-head-marker";
 
 /// A gateway that wrote far more than one pipe buffer must have far more than one pipe buffer
 /// recovered.
@@ -169,10 +168,10 @@ fn a_quiet_gateway_still_reports_exactly_what_it_wrote() -> Result<(), Box<dyn s
 
 /// The marker written *after* the flood, so the tail's arrival is a positive fact rather than
 /// an inference from a byte count.
-const CHATTY_TAIL_MARKER: &str = "sts2-harness-559-chatty-gateway-tail-marker";
+pub(crate) const CHATTY_TAIL_MARKER: &str = "sts2-harness-559-chatty-gateway-tail-marker";
 
 /// A quiet gateway's only line.
-const QUIET_MARKER: &str = "sts2-harness-559-quiet-gateway-marker";
+pub(crate) const QUIET_MARKER: &str = "sts2-harness-559-quiet-gateway-marker";
 
 /// #567's end-to-end case: a served gateway that writes past the **shared** total across **both**
 /// pipes.
@@ -186,7 +185,7 @@ const QUIET_MARKER: &str = "sts2-harness-559-quiet-gateway-marker";
 /// Each pipe is flooded to *past the per-stream ceiling on its own* and past the total together.
 /// That is deliberate. A stub that flooded one pipe to 5 MiB and left the other empty would never
 /// touch the shared budget, so it would pass on a build whose total ceiling did not exist.
-const BOTH_PIPES_BYTES: usize = 6 * 1024 * 1024;
+pub(crate) const BOTH_PIPES_BYTES: usize = 6 * 1024 * 1024;
 
 /// #567 acceptance criterion 1, end to end: the pair the harness hands back never exceeds the
 /// shared total, each cut stream announces itself, and the notice is paid for **inside** the
@@ -208,6 +207,14 @@ fn a_gateway_flooding_both_pipes_is_bounded_by_the_shared_total()
 
     let mut gateway_process = process::gateway(&stub, address, mod_address)?;
     process::ready(&mut gateway_process, address)?;
+    // Wait for the flood itself, not just for the port. The stub binds before it floods (see
+    // `BIND_LISTENER`), so `ready` now returns while the flood is still being written; stopping
+    // here would measure how much the drain took before the kill rather than the shared ceiling.
+    // Both pipes carry `BOTH_PIPES_BYTES` apiece, and the count is of bytes the drain *read*,
+    // including bytes it later drops at a ceiling, so this threshold is reached only once every
+    // flooded byte has actually crossed the pipe. It is deliberately the sum of both pipes and not
+    // one pipe's worth, so a stub that flooded only one side could not satisfy it.
+    gateway_process.await_bytes(2 * BOTH_PIPES_BYTES, std::time::Duration::from_secs(30))?;
     let output = process::stop(gateway_process)?;
 
     let stdout = &output.stdout;
@@ -269,124 +276,4 @@ fn a_gateway_inside_the_shared_total_carries_no_truncation_notice()
         );
     }
     Ok(())
-}
-
-/// The tail of both stubs: bind the address the harness handed them and accept forever, so the
-/// gateway is still serving when the scenario stops it.
-///
-/// Shared rather than repeated so the two stubs cannot drift into testing different things: the
-/// only difference between them is what they write to their own stderr, which is the variable
-/// under test.
-const SERVE_LOOP: &str = concat!(
-    "addr = os.environ[\"STS2_GATEWAY_ADDR\"]\n",
-    "host, _, port = addr.rpartition(\":\")\n",
-    "listener = socket.socket()\n",
-    "listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n",
-    "listener.bind((host, int(port)))\n",
-    "listener.listen(8)\n",
-    "while True:\n",
-    "    connection, _ = listener.accept()\n",
-    "    connection.close()\n",
-    "PY\n",
-);
-
-/// A stub gateway that floods its own stderr, then keeps serving until it is killed.
-///
-/// The flood is written in Python rather than a shell loop so the write rate is high enough to
-/// fill the pipe quickly and the script is small enough to read. The `try` around the write is
-/// deliberate: if the drain is *not* working, the gateway blocks mid-flood and never reaches
-/// the tail marker, which is what makes this test fail loudly on the pre-#559 shape instead of
-/// passing by accident.
-fn chatty_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let path = directory.join("chatty-gateway.sh");
-    fs::write(
-        &path,
-        format!(
-            concat!(
-                "#!/bin/sh\n",
-                "printf '%s\\n' '",
-                "{head}",
-                "' >&2\n",
-                "exec python3 - <<'PY'\n",
-                "import os, socket, sys\n",
-                "total = {flood}\n",
-                "stderr = sys.stderr.buffer\n",
-                "block = b'x' * 8192\n",
-                "written = 0\n",
-                "while written < total:\n",
-                "    count = min(len(block), total - written)\n",
-                "    stderr.write(block[:count])\n",
-                "    written += count\n",
-                "stderr.flush()\n",
-                "stderr.write(b'{tail}\\n')\n",
-                "stderr.flush()\n",
-                "{serve}",
-            ),
-            head = HEAD_MARKER,
-            flood = CHATTY_BYTES,
-            tail = CHATTY_TAIL_MARKER,
-            serve = SERVE_LOOP,
-        ),
-    )?;
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
-    Ok(path)
-}
-
-/// A stub gateway that writes one line to its own stderr and then keeps serving until killed.
-fn quiet_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let path = directory.join("quiet-gateway.sh");
-    fs::write(
-        &path,
-        format!(
-            concat!(
-                "#!/bin/sh\n",
-                "printf '%s\\n' '",
-                "{marker}",
-                "' >&2\n",
-                "exec python3 - <<'PY'\n",
-                "import os, socket\n",
-                "{serve}",
-            ),
-            marker = QUIET_MARKER,
-            serve = SERVE_LOOP,
-        ),
-    )?;
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
-    Ok(path)
-}
-
-/// A stub gateway that floods **both** its pipes past the shared total, then keeps serving.
-///
-/// The two pipes are flooded to the same size, each past the 4 MiB per-stream ceiling on its own,
-/// so the pair has to contend for the 8 MiB total that #567 is about. Writing them in the same
-/// loop — rather than filling one and then the other — keeps the two drains genuinely concurrent,
-/// so which one spends the shared budget first is left to the harness rather than prescribed by
-/// the stub.
-fn both_pipes_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let path = directory.join("both-pipes-gateway.sh");
-    fs::write(
-        &path,
-        format!(
-            concat!(
-                "#!/bin/sh\n",
-                "exec python3 - <<'PY'\n",
-                "import os, socket, sys\n",
-                "total = {flood}\n",
-                "block = b'x' * 8192\n",
-                "written = 0\n",
-                "while written < total:\n",
-                "    count = min(len(block), total - written)\n",
-                "    sys.stdout.buffer.write(block[:count])\n",
-                "    sys.stdout.buffer.flush()\n",
-                "    sys.stderr.buffer.write(block[:count])\n",
-                "    sys.stderr.buffer.flush()\n",
-                "    written += count\n",
-                "{serve}",
-            ),
-            flood = BOTH_PIPES_BYTES,
-            serve = SERVE_LOOP,
-        ),
-    )?;
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
-    Ok(path)
 }

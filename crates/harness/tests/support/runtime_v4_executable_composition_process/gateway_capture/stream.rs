@@ -9,7 +9,7 @@
 
 use std::io::{ErrorKind, Read};
 use std::os::fd::AsFd;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -51,6 +51,15 @@ pub(super) const POLL_SLICE: Duration = Duration::from_millis(20);
 pub(super) const FINAL_DRAIN_GRACE: Duration = Duration::from_secs(5);
 
 /// The bytes one drained gateway produced.
+///
+/// Neither field is a count of everything the drain read. `stdout.len()` and `stderr.len()` are
+/// what survived the ceilings, so a stream cut short is visibly short of what crossed its pipe.
+/// The running total of bytes *read* is deliberately not a field here: it is published through
+/// [`GatewayCapture`]'s live counter instead, so a scenario can ask how far the drain has got
+/// while the gateway is still running. That distinction is the point — a scenario that needs to
+/// know the gateway has finished producing has to be able to ask without stopping the gateway,
+/// because stopping it is what would truncate the very bytes being waited on. Refs
+/// sts2-harness#629.
 pub(super) struct Captured {
     pub(super) stdout: Vec<u8>,
     pub(super) stderr: Vec<u8>,
@@ -89,6 +98,9 @@ pub(super) struct Stream<R> {
     reader: R,
     label: &'static str,
     bytes: Vec<u8>,
+    /// Every byte this stream has read off the pipe, including bytes later dropped by a ceiling.
+    /// Published live so a scenario can observe progress without stopping the gateway.
+    seen: usize,
     /// False once the writer has closed, so the loop can stop polling this descriptor.
     open: bool,
     /// False once polling this descriptor cannot be trusted, so the loop stops waiting on it.
@@ -110,6 +122,7 @@ where
             reader,
             label,
             bytes: Vec::with_capacity(8192),
+            seen: 0,
             open: true,
             pollable: true,
             retain: true,
@@ -136,6 +149,7 @@ where
                 }
                 Ok(count) => {
                     taken += count;
+                    self.seen += count;
                     self.retain(&chunk[..count], budget);
                 }
                 Err(error) if error.kind() == ErrorKind::Interrupted => continue,
@@ -197,6 +211,11 @@ where
         self.retain = false;
     }
 
+    /// How many bytes this stream has read off its pipe, published live.
+    fn seen(&self) -> usize {
+        self.seen
+    }
+
     /// The stream's first real error, if it had one.
     fn error(&self) -> Option<&String> {
         self.error.as_ref()
@@ -208,7 +227,12 @@ where
 ///
 /// The two readers are separate type parameters, not one: a child hands back a `ChildStdout` and
 /// a `ChildStderr`, which are different types, so a single `R` for both would never compile.
-pub(super) fn drain_both<O, E>(stdout: O, stderr: E, stop: &AtomicBool) -> Result<Captured, String>
+pub(super) fn drain_both<O, E>(
+    stdout: O,
+    stderr: E,
+    stop: &AtomicBool,
+    progress: Option<&AtomicUsize>,
+) -> Result<Captured, String>
 where
     O: Read + AsFd,
     E: Read + AsFd,
@@ -220,6 +244,12 @@ where
     loop {
         stdout.drain_once(&mut budget);
         stderr.drain_once(&mut budget);
+        if let Some(progress) = progress {
+            progress.store(
+                stdout.seen().saturating_add(stderr.seen()),
+                Ordering::Relaxed,
+            );
+        }
         if !stdout.open && !stderr.open {
             break;
         }

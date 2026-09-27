@@ -55,7 +55,7 @@
 //!   never become a hung test binary.
 
 use std::process::{Child, ChildStderr, ChildStdout, ExitStatus, Output};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -127,6 +127,42 @@ impl GatewayProcess {
             return Err(error);
         }
         Ok(())
+    }
+
+    /// Wait until the drain has read at least `bytes` from the gateway's two pipes together.
+    ///
+    /// This is how a scenario waits for a flood to finish **without stopping the gateway**, which
+    /// is the only correct order: `stop` SIGKILLs the process group, so a scenario that stopped
+    /// first and looked afterwards would be measuring how much the drain happened to take before
+    /// the kill, not the ceiling the test is about. Refs sts2-harness#629.
+    ///
+    /// The wait is bounded and reports the shortfall on expiry rather than looping forever, so a
+    /// gateway that dies mid-flood fails as a diagnosable error instead of a hung test binary.
+    pub(crate) fn await_bytes(&self, bytes: usize, deadline: Duration) -> Result<(), String> {
+        let Some(capture) = self.capture.as_ref() else {
+            return Err(String::from(
+                "the served gateway's capture was already taken, so its progress cannot be \
+                 awaited (sts2-harness#629)",
+            ));
+        };
+        let limit = Instant::now() + deadline;
+        loop {
+            // Checked before the count so a capture that broke while waiting is reported as the
+            // real defect rather than as a timeout.
+            self.check_capture()?;
+            let seen = capture.progress.load(Ordering::Relaxed);
+            if seen >= bytes {
+                return Ok(());
+            }
+            if Instant::now() >= limit {
+                return Err(format!(
+                    "the served gateway produced only {seen} of the {bytes} bytes this scenario \
+                     waited for, so the measurement it is about to take is not defined \
+                     (sts2-harness#629)"
+                ));
+            }
+            thread::sleep(Duration::from_millis(2));
+        }
     }
 
     /// Reap the gateway without collecting its streams, reporting whether it had already
@@ -234,6 +270,9 @@ struct GatewayCapture {
     drain: Option<thread::JoinHandle<()>>,
     outcome: Arc<Mutex<Option<Result<Captured, String>>>>,
     stop: Arc<AtomicBool>,
+    /// Bytes the drain has read so far, published while the gateway is still running so a
+    /// scenario can wait for the gateway to finish producing before it stops it. Refs #629.
+    progress: Arc<AtomicUsize>,
 }
 
 impl GatewayCapture {
@@ -243,12 +282,14 @@ impl GatewayCapture {
         set_nonblocking(&stderr, "stderr")?;
         let outcome: Arc<Mutex<Option<Result<Captured, String>>>> = Arc::new(Mutex::new(None));
         let stop = Arc::new(AtomicBool::new(false));
+        let progress = Arc::new(AtomicUsize::new(0));
         let worker_outcome = Arc::clone(&outcome);
         let worker_stop = Arc::clone(&stop);
+        let worker_progress = Arc::clone(&progress);
         let drain = thread::Builder::new()
             .name(String::from("sts2-gateway-capture"))
             .spawn(move || {
-                let captured = drain_both(stdout, stderr, &worker_stop);
+                let captured = drain_both(stdout, stderr, &worker_stop, Some(&worker_progress));
                 publish(&worker_outcome, captured);
             })
             .map_err(|error| {
@@ -258,6 +299,7 @@ impl GatewayCapture {
             drain: Some(drain),
             outcome,
             stop,
+            progress,
         })
     }
 
