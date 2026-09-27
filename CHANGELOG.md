@@ -46,10 +46,10 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   each removal by the commit that removed it. No clause rests on a branch, a rebase, or a count, and
   every citation is a commit rather than a branch tip, because a tip can be closed or superseded
   while the prose still names it. `main` is the only ref whose state is asserted.
-  `501a711`, the `#601` merge, introduced the line-29 artifact, reached `main`, and `#618` removed
-  it; `8e3ffea` added a second at line 45, which no commit in its own history has removed and which
-  is not on `main`; `696e56f` added one at line 60, which `cba9be8` removed; and `df9ef25` added one at
-  line 100, which `94802b8` removed. Of the four, only `501a711` is on `main`.
+  `501a711`, the `#601` merge, introduced the line-29 artifact, reached `main`, and `06eba7e6`
+  (`#618`) removed it; `8e3ffea` added a second at line 45, which no commit in its own history has
+  removed and which is not on `main`; `696e56f` added one at line 60, which `cba9be8` removed; and
+  `df9ef25` added one at line 100, which `94802b8` removed. Of the four, only `501a711` is on `main`.
   `repo-policy` gains
   `CONFLICT001`, which reports any tracked text file with a line *starting* with seven or more `<`,
   `=` or `>`, naming the path and the line number so review can act on it.
