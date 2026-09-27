@@ -125,16 +125,25 @@ pub struct ClientResponse {
 
 /// Build the request head this client puts on the wire.
 ///
-/// The header set here is deliberately the minimum the gateway's allow-list
-/// admits, and nothing more. `accept` is **not** in that allow-list, and the
-/// gateway pins the refusal with a test of its own
-/// (`service_auth_tests.rs`), so sending it made every management request over
-/// the gateway hop fail `400 unsupported_header` — see issue #560.
+/// The header set here is the minimum the far end accepts, and nothing more.
+/// `accept` is **not** in the gateway's `header_is_allowed` list, and the
+/// gateway pins the refusal with a test of its own (`service_auth_tests.rs`),
+/// so sending it made every management request over the gateway hop fail
+/// `400 unsupported_header` — see issue #560.
 ///
 /// The client reads a whole JSON body and the gateway answers with a single
 /// JSON representation, so there is no content negotiation to perform here:
 /// `Accept: application/json` was a statement with no recipient. Add a header
 /// only once something on the far side actually admits it.
+///
+/// One emitted header is **not** gateway-admissible: the optional
+/// `Idempotency-Key`. That is deliberate, and it is safe only because the
+/// callers that supply a key — the game-information policy-owner path — reach
+/// the harness management service on loopback, which never runs
+/// `header_is_allowed`. Every other caller of this client traverses the
+/// gateway and passes no key, so the two header sets never mix on the wire.
+/// If a keyed caller is ever pointed at the gateway, that header is the one
+/// that will be refused, and the fix is at the call site, not here.
 fn request_head(
     address: SocketAddr,
     bearer_token: &str,

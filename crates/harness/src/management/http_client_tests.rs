@@ -45,9 +45,19 @@ fn the_request_head_carries_no_accept_header() {
 
 #[test]
 fn every_sent_header_is_one_the_gateway_allow_list_admits() {
-    // The gateway's allow-list, transcribed. Keep this in step with
-    // `header_is_allowed` in sts2-gateway; a name added to the client without
-    // being admitted there is the same defect this issue is about.
+    // The gateway's allow-list, transcribed from `header_is_allowed` in
+    // sts2-gateway (`service_authorization.rs`). Keep it in step with that
+    // function; a name added to this client without being admitted there is
+    // the same defect this issue is about.
+    //
+    // `idempotency-key` is deliberately NOT listed. It is not in the gateway's
+    // allow-list either. The `request_json_with_idempotency_key` callers are
+    // the game-information policy-owner path, which talks to the harness
+    // management service on loopback -- and that service does not run
+    // `header_is_allowed` at all, so the name is harmless there. Listing it
+    // here would assert something untrue; dropping it from the *client* would
+    // remove a header the harness service does accept. See
+    // `idempotency_key_is_not_a_gateway_header` for the boundary.
     const ALLOWED: &[&str] = &[
         "authorization",
         "connection",
@@ -67,8 +77,6 @@ fn every_sent_header_is_one_the_gateway_allow_list_admits() {
         "x-sts2-episode-profile",
         "x-sts2-peer-token",
         "x-sts2-recovery-capability",
-        // Admitted by the gateway as a non-gateway header.
-        "idempotency-key",
     ];
     for name in header_names(&head()) {
         assert!(
@@ -77,6 +85,63 @@ fn every_sent_header_is_one_the_gateway_allow_list_admits() {
              with 400 unsupported_header"
         );
     }
+}
+
+#[test]
+fn the_allow_list_this_test_asserts_against_matches_the_gateway() {
+    // Guards the transcription above against drifting from the gateway. The
+    // names are asserted explicitly rather than by count, so a gateway-side
+    // addition that is not mirrored here is visible as a failure to add it
+    // deliberately rather than as a silent widening.
+    const ALLOWED: &[&str] = &[
+        "authorization",
+        "connection",
+        "content-length",
+        "content-type",
+        "host",
+        "x-mcp-request-id",
+        "x-mcp-session-id",
+        "x-sts2-instance-id",
+        "x-sts2-caller-id",
+        "x-sts2-session-id",
+        "x-sts2-lease-id",
+        "x-sts2-lease-epoch",
+        "x-sts2-workflow-boot-epoch",
+        "x-sts2-correlation-id",
+        "x-sts2-capabilities-version",
+        "x-sts2-episode-profile",
+        "x-sts2-peer-token",
+        "x-sts2-recovery-capability",
+    ];
+    assert_eq!(ALLOWED.len(), 18, "the gateway allow-list has 18 names");
+    for name in ["accept", "idempotency-key", "user-agent", "expect"] {
+        assert!(
+            !ALLOWED.contains(&name),
+            "{name:?} is asserted as admitted but is not in the gateway allow-list"
+        );
+    }
+}
+
+#[test]
+fn idempotency_key_is_not_a_gateway_header() {
+    // The boundary, stated as a test so it cannot be quietly forgotten: the
+    // key IS emitted when a caller supplies one, and the gateway would refuse
+    // it. That is acceptable only because every such caller is loopback to the
+    // harness management service, which does not enforce the allow-list. If a
+    // caller is ever pointed at the gateway, this is the header that breaks.
+    let head = request_head(
+        "127.0.0.1:1".parse().expect("loopback address parses"),
+        "test-token",
+        "POST",
+        "/v1/memory-policy-owner/proposals",
+        Some("suffix-propose"),
+        2,
+    );
+    let names = header_names(&head);
+    assert!(
+        names.iter().any(|name| name == "idempotency-key"),
+        "{names:?}"
+    );
 }
 
 #[test]
