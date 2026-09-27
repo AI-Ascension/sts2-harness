@@ -104,6 +104,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{Finding, outcome};
+    use crate::Severity;
 
     #[test]
     fn strict_mode_promotes_warnings() {
@@ -142,16 +143,34 @@ mod tests {
     ///
     /// `repository_satisfies_strict_policy` below only asserts that nothing fails, so it
     /// still passes if the `EXEMPTED` finding is computed and then discarded — which is
-    /// the exact #569 defect, reintroduced with a green suite. This test fails if the
-    /// exempted count ever falls to zero while over-limit exemptions exist.
+    /// the exact #569 defect, reintroduced with a green suite.
+    ///
+    /// The assertion is deliberately on the *property* — every over-limit file that has
+    /// an exemption is reported as waived — rather than on a literal count. A fixed count
+    /// would make this gate block the very fixes it exists to encourage: splitting an
+    /// over-limit exempted file (#564) legitimately drops the count, and a hard-coded
+    /// number turns each such improvement into a red build. The count is derived here
+    /// from `policy.toml` and the real file sizes, so it moves with the tree.
     #[test]
     fn repository_reports_its_waived_breaches() -> Result<(), Box<dyn Error>> {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let outcome = super::check(&root, true)?;
+        // Every file the policy exempts *and* that is genuinely over its hard limit must
+        // appear as a reported `EXEMPTED` breach. Recomputing the expected set from the
+        // same inputs `check` uses keeps the test honest without freezing a number.
+        let policy = super::config::Policy::load(&root.join("policy.toml"))
+            .map_err(|error| -> Box<dyn Error> { Box::from(error) })?;
+        let repository_files = super::files::collect(&root, &policy)?;
+        let (_checked, size_findings) =
+            super::files::size_findings(&root, &repository_files, &policy);
+        let expected_breaching_exemptions = size_findings
+            .iter()
+            .filter(|finding| finding.severity == Severity::Exempted)
+            .count();
         assert_eq!(
             outcome.exempted,
-            6,
-            "expected the six tracked hard-limit breaches to be reported as waived; \
+            expected_breaching_exemptions,
+            "every over-limit exempted file must be reported as a waived breach; \
              diagnostics were: {}",
             outcome.diagnostics.join("; ")
         );
