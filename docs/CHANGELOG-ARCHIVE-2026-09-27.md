@@ -60,7 +60,7 @@ supported release or a second normative changelog.
   find the contract pins, the memory fixtures, or the gates was told, correctly, that none of them
   exist. The listing now carries every tracked top-level directory, names the real test and fixture
   homes, and generalises the changelog-archive entry to one file per archive pass rather than
-  pinning only the 2026-09-10 wave while four later archives sit beside it. Compatibility:
+  pinning only the 2026-09-10 wave while the later dated archives sit beside it. Compatibility:
   documentation only; no code, schema, policy, bound, or digest change. Source-only: no native
   effect. Refs the `docs/REPOSITORY_LAYOUT.md` drift.
 
