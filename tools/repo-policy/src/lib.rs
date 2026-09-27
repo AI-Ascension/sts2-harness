@@ -2,6 +2,7 @@
 
 mod adr;
 mod config;
+mod conflict;
 mod diagnostic;
 mod exemptions;
 mod files;
@@ -54,6 +55,7 @@ pub fn check(root: &Path, strict: bool) -> Result<Outcome, String> {
     let (checked_files, size_findings) = files::size_findings(root, &repository_files, &policy);
 
     let mut findings = Vec::new();
+    findings.extend(conflict::findings(root, &repository_files));
     findings.extend(files::required_file_findings(root, &policy));
     findings.extend(files::exemption_findings(root, &policy));
     findings.extend(files::language_findings(root, &repository_files));

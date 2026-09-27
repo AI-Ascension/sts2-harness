@@ -11,6 +11,24 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Refuse to ship a conflict marker, because deleting this one line proves the gates will not.**
+  `main` carried a bare `=======` in this file at line 29, left by the `#601` merge as a
+  three-way-resolution artifact with no `<<<<<<<` or `>>>>>>>` counterpart, sitting between the
+  `#614` and `#601` entries. It survived a merge and fourteen green CI runs, and it survived
+  because both of the gates that cover this file are shaped so that it passes: `SIZE001` scored
+  the removal as a *reduction* in nonblank lines, and `DOC003` asserts that markers are present,
+  not that conflict debris is absent. `#606`'s resolution left a similar line earlier. Deleting
+  the line alone therefore fixes one instance and leaves the class open — the next rebase across
+  that boundary puts it back. `repo-policy` gains `CONFLICT001`, which reports any tracked text
+  file carrying a line that *begins* with a run of seven or more `<`, `=` or `>`, naming the
+  path and the line number so review can act on it. The run is anchored to the start of the line
+  rather than matched as a substring, because a `contains` check would fire on prose that merely
+  names a marker — the defect `#620` is fixing in `DOC003` — and an equals run inside a sentence
+  is ordinary text. What follows the run is unconstrained, because that is the ref label git
+  writes: an opener and a closer each end in one, and requiring the run to be the *whole* line
+  would have matched only the bare separator that reached `main`. A shorter run stays clean, so
+  setext heading underlines are not caught by it. Verified by reproduction in all three marker
+  forms against a real `git merge` conflict, not by construction alone. Closes #624.
 - **Assert the changelog's own structure, because a size gate cannot see the loss of it.** The
   `#606` merge resolved a `CHANGELOG.md` conflict by keeping the bullet list and dropping the title,
   the preamble and the `## Unreleased` heading, and every gate stayed green: all twelve deleted
