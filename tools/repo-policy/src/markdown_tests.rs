@@ -129,7 +129,70 @@ fn markers_out_of_their_declared_order_are_reported() {
     );
 }
 
-/// One repeated heading must not satisfy the whole preamble.
+/// The at-most-one-marker-per-line property, which the ordered scan exists to
+/// enforce. A per-marker search hands the *same* line to every marker it
+/// happens to equal, so a heading that appears once can stand in for a marker
+/// declared several times over.
+///
+/// The declared preamble repeats `## Unreleased` twice and the file supplies
+/// it once. Both the pre-#634 `text.contains` loop and a per-marker search
+/// find that one line twice and report nothing; the ordered scan lets each
+/// line consume at most the next unclaimed marker, so the third marker is
+/// reported.
+fn policy_with_a_repeated_marker() -> Policy {
+    let mut required_preambles = BTreeMap::new();
+    required_preambles.insert(
+        "CHANGELOG.md".to_owned(),
+        vec![
+            "# Changelog".to_owned(),
+            "## Unreleased".to_owned(),
+            "## Unreleased".to_owned(),
+        ],
+    );
+    Policy::with_preambles(required_preambles)
+}
+
+#[test]
+fn one_heading_supplied_once_does_not_satisfy_a_repeated_marker() {
+    let policy = policy_with_a_repeated_marker();
+    let mut findings = Vec::new();
+    check_required_preamble(
+        "CHANGELOG.md",
+        "# Changelog\n\n## Unreleased\n",
+        &policy,
+        &mut findings,
+    );
+    assert_eq!(
+        findings.len(),
+        1,
+        "the single `## Unreleased` line cannot satisfy the second declaration: {findings:?}"
+    );
+    assert_eq!(findings[0].rule, "DOC003");
+    assert!(
+        findings[0].message.contains("marker 2"),
+        "the *repeated* marker must be the one reported: {findings:?}"
+    );
+}
+
+/// The well-formed counterpart: the same policy satisfied by a heading that
+/// really is repeated. Without this pairing the test above would also pass
+/// against a rule that reported every marker unconditionally.
+#[test]
+fn a_repeated_marker_satisfied_by_a_repeated_heading_produces_no_finding() {
+    let policy = policy_with_a_repeated_marker();
+    let mut findings = Vec::new();
+    check_required_preamble(
+        "CHANGELOG.md",
+        "# Changelog\n\n## Unreleased\n\n## Unreleased\n",
+        &policy,
+        &mut findings,
+    );
+    assert!(findings.is_empty(), "unexpected findings: {findings:?}");
+}
+
+/// A repeated *different* heading must not stand in for a missing marker
+/// either: the two `# Changelog` lines are not the `## Unreleased` heading the
+/// policy declares.
 #[test]
 fn a_repeated_marker_does_not_stand_in_for_a_missing_one() {
     let policy = policy_with_changelog_markers();
