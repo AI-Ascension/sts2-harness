@@ -88,6 +88,11 @@ fn a_chatty_gateway_has_more_than_one_pipe_buffer_recovered()
 
     let mut gateway_process = process::gateway(&stub, address, mod_address)?;
     process::ready(&mut gateway_process, address)?;
+    // The stub binds before it floods (see `BIND_LISTENER`), so `ready` returns while the flood
+    // is still in flight; stopping here would measure how much the drain took before the kill
+    // rather than whether the whole flood was recovered. The tail marker rides the same flood, so
+    // waiting for the flood's byte count covers both assertions below.
+    gateway_process.await_bytes(CHATTY_BYTES, std::time::Duration::from_secs(30))?;
     let output = process::stop(gateway_process)?;
     let captured = String::from_utf8_lossy(&output.stderr);
 
@@ -123,6 +128,10 @@ fn a_chatty_gateway_keeps_its_head_and_its_tail() -> Result<(), Box<dyn std::err
 
     let mut gateway_process = process::gateway(&stub, address, mod_address)?;
     process::ready(&mut gateway_process, address)?;
+    // Same ordering hazard as the test above, and the same remedy: the bind precedes the flood, so
+    // the tail marker this test asserts is written after `ready` returns. Waiting for the flood to
+    // cross the pipe is what makes the marker reachable.
+    gateway_process.await_bytes(CHATTY_BYTES, std::time::Duration::from_secs(30))?;
     let output = process::stop(gateway_process)?;
     let captured = String::from_utf8_lossy(&output.stderr);
 
