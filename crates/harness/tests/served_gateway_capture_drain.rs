@@ -52,6 +52,8 @@ mod process;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use process::{TempDir, free_address};
 
@@ -89,6 +91,11 @@ fn a_chatty_gateway_has_more_than_one_pipe_buffer_recovered()
 
     let mut gateway_process = process::gateway(&stub, address, mod_address)?;
     process::ready(&mut gateway_process, address)?;
+    wait_for_flood(
+        &temporary.path.join("flood-complete"),
+        CHATTY_BYTES,
+        &mut gateway_process,
+    )?;
     let output = process::stop(gateway_process)?;
     let captured = String::from_utf8_lossy(&output.stderr);
 
@@ -124,6 +131,11 @@ fn a_chatty_gateway_keeps_its_head_and_its_tail() -> Result<(), Box<dyn std::err
 
     let mut gateway_process = process::gateway(&stub, address, mod_address)?;
     process::ready(&mut gateway_process, address)?;
+    wait_for_flood(
+        &temporary.path.join("flood-complete"),
+        CHATTY_BYTES,
+        &mut gateway_process,
+    )?;
     let output = process::stop(gateway_process)?;
     let captured = String::from_utf8_lossy(&output.stderr);
 
@@ -188,6 +200,46 @@ const QUIET_MARKER: &str = "sts2-harness-559-quiet-gateway-marker";
 /// touch the shared budget, so it would pass on a build whose total ceiling did not exist.
 const BOTH_PIPES_BYTES: usize = 6 * 1024 * 1024;
 
+/// Wait until a stub reports that it has written everything it intends to write.
+///
+/// Readiness cannot carry this. The stub binds before it floods (see [`BIND_AND_LISTEN`]), so
+/// `ready()` returns while the flood is still running, and stopping there would clip the capture
+/// at whatever point the connect landed — measured at 0.4–1.4 MiB against a ceiling of 8 MiB, and
+/// short of the tail marker the chatty tests assert on. The marker is a file the stub creates only
+/// after its last write is flushed, so its presence is a fact about the stub rather than an
+/// inference from a byte count.
+///
+/// The wait is bounded and reports the child rather than looping forever: a stub that died before
+/// it finished flooding is exactly the case this exists to distinguish, and it has to surface as
+/// itself.
+fn wait_for_flood(
+    marker: &Path,
+    written: usize,
+    gateway_process: &mut process::GatewayProcess,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !marker.exists() {
+        if let Some(status) = gateway_process.try_wait()? {
+            return Err(format!(
+                "the gateway exited with {status} before it finished writing {written} bytes, so \
+                 this capture cannot reach the ceiling it is supposed to exercise \
+                 (sts2-harness#629)"
+            )
+            .into());
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "the gateway did not report that it finished writing {written} bytes within 30s, \
+                 so this capture cannot reach the ceiling it is supposed to exercise \
+                 (sts2-harness#629)"
+            )
+            .into());
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    Ok(())
+}
+
 /// #567 acceptance criterion 1, end to end: the pair the harness hands back never exceeds the
 /// shared total, each cut stream announces itself, and the notice is paid for **inside** the
 /// total rather than added on top of it.
@@ -208,6 +260,11 @@ fn a_gateway_flooding_both_pipes_is_bounded_by_the_shared_total()
 
     let mut gateway_process = process::gateway(&stub, address, mod_address)?;
     process::ready(&mut gateway_process, address)?;
+    wait_for_flood(
+        &temporary.path.join("flood-complete"),
+        BOTH_PIPES_BYTES,
+        &mut gateway_process,
+    )?;
     let output = process::stop(gateway_process)?;
 
     let stdout = &output.stdout;
@@ -271,19 +328,114 @@ fn a_gateway_inside_the_shared_total_carries_no_truncation_notice()
     Ok(())
 }
 
-/// The tail of both stubs: bind the address the harness handed them and accept forever, so the
-/// gateway is still serving when the scenario stops it.
+/// #629 acceptance criterion 1: a stub that has *lost* its address must not be reported ready.
 ///
-/// Shared rather than repeated so the two stubs cannot drift into testing different things: the
-/// only difference between them is what they write to their own stderr, which is the variable
-/// under test.
-const SERVE_LOOP: &str = concat!(
+/// This is the defect #629 was filed for, reproduced directly rather than waited for. The harness
+/// hands a stub an address that `free_address()` has already released, so another process can take
+/// it. `ready()` asks only whether `TcpStream::connect` succeeds, so against a thief it succeeds
+/// instantly and the scenario proceeds to stop a gateway that never started — the 0-byte capture
+/// the non-vacuity guard above catches.
+///
+/// The thief here is a listener this test binds on the stub's address *after* the stub has been
+/// spawned. On the pre-fix shape — stub floods, then binds — the stub's own `bind` then fails with
+/// `EADDRINUSE` (`SO_REUSEADDR` does not permit a second live `LISTEN`er) and the capture is empty,
+/// so this test fails with the 0-byte message. On the fixed shape the stub claims the address before
+/// it floods, the thief's `bind` is the one that is refused, and readiness is answered by the stub
+/// that is actually draining.
+///
+/// The assertion is that *somebody* served the address and the capture still describes the stub we
+/// spawned, so the test is not asserting which of the two processes won the race.
+#[test]
+fn a_gateway_that_lost_its_address_is_not_reported_ready()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temporary = TempDir::new()?;
+    let stub = both_pipes_gateway(&temporary.path)?;
+    let address = free_address()?;
+    let mod_address = free_address()?;
+
+    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
+
+    // Steal the address the stub was told to use. This is what any other process drawing the same
+    // port from the released pool does, and it is the whole mechanism.
+    let thief = match std::net::TcpListener::bind(address) {
+        Ok(thief) => thief,
+        // The stub already claimed it, which is the fixed shape. Nothing to steal, and nothing to
+        // assert: the scenario below is the ordinary one and the stub owns its address.
+        Err(_) => {
+            process::ready(&mut gateway_process, address)?;
+            let output = process::stop(gateway_process)?;
+            assert!(
+                !output.stdout.is_empty() && !output.stderr.is_empty(),
+                "the stub owned its address and still produced an empty capture on both pipes, so \
+                 the capture does not work at all (sts2-harness#629)"
+            );
+            return Ok(());
+        }
+    };
+
+    // The thief answers readiness exactly as an unrelated process would, so `ready` has to get
+    // past the connect and then notice that the gateway it spawned is not the one serving.
+    let ready = process::ready(&mut gateway_process, address);
+    let output = process::stop(gateway_process)?;
+
+    match ready {
+        Err(error) => assert!(
+            error.to_string().contains("#629") || error.to_string().contains("already exited"),
+            "readiness was refused for a reason that does not name the address theft, so this \
+             test would pass on a defect it is not measuring: {error}"
+        ),
+        Ok(()) => assert!(
+            // Readiness succeeded, so nothing noticed. The only way that is honest is if the stub
+            // is the one that answered — which it cannot be, because the thief holds the address.
+            // Report the emptiness that #629 is about rather than passing.
+            !(output.stdout.is_empty() && output.stderr.is_empty()),
+            "readiness was reported ready against a foreign listener and the capture came back \
+             empty on both pipes, which is exactly the #629 failure this test exists to pin. The \
+             stub owned the address, so `ready` must reject this (sts2-harness#629)"
+        ),
+    }
+    drop(thief);
+    Ok(())
+}
+
+/// Claim the address the harness handed us, and listen on it.
+///
+/// This runs **before** any flood, and that ordering is the whole fix for #629.
+/// `free_address()` binds `127.0.0.1:0`, reads the port, and drops the listener, so the port goes
+/// back into the kernel's free pool. A stub that floods first and binds afterwards leaves that port
+/// unowned for the whole flood — measured here at seconds under the binary's 19-way parallelism.
+/// Anything else that draws the same port in that window takes it, `SO_REUSEADDR` does not permit
+/// a second live `LISTEN`er, and this stub's `bind` then fails. `ready()` only asks whether
+/// `TcpStream::connect` succeeds, so it connects to *that* listener, returns in 0 ms, and `stop`
+/// kills a group whose stub has produced nothing: a capture of exactly 0 bytes on both pipes.
+///
+/// Binding first means this process owns the address for its whole life, so `ready()` can only
+/// ever be answered by the stub that was spawned, and it means what every other test in this file
+/// already assumes it means.
+///
+/// A refusal is reported on this stub's own stderr and exits non-zero rather than dying in silence.
+/// The capture is bounded, so a stub that died without a word used to reach the assertion as a bare
+/// byte count with no explanation attached.
+const BIND_AND_LISTEN: &str = concat!(
     "addr = os.environ[\"STS2_GATEWAY_ADDR\"]\n",
     "host, _, port = addr.rpartition(\":\")\n",
     "listener = socket.socket()\n",
     "listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n",
-    "listener.bind((host, int(port)))\n",
+    "try:\n",
+    "    listener.bind((host, int(port)))\n",
+    "except OSError as error:\n",
+    "    sys.stderr.write('the stub gateway could not claim ' + addr + ': ' + str(error) + '\\n')\n",
+    "    sys.stderr.flush()\n",
+    "    raise SystemExit(1)\n",
     "listener.listen(8)\n",
+);
+
+/// The tail of all three stubs: accept forever, so the gateway is still serving when the scenario
+/// stops it.
+///
+/// Shared rather than repeated so the stubs cannot drift into testing different things: the only
+/// difference between them is what they write to their own pipes, which is the variable under test.
+const ACCEPT_FOREVER: &str = concat!(
     "while True:\n",
     "    connection, _ = listener.accept()\n",
     "    connection.close()\n",
@@ -299,16 +451,17 @@ const SERVE_LOOP: &str = concat!(
 /// passing by accident.
 fn chatty_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let path = directory.join("chatty-gateway.sh");
+    let marker = directory.join("flood-complete");
     fs::write(
         &path,
         format!(
             concat!(
                 "#!/bin/sh\n",
-                "printf '%s\\n' '",
-                "{head}",
-                "' >&2\n",
                 "exec python3 - <<'PY'\n",
                 "import os, socket, sys\n",
+                "{bind}",
+                "sys.stderr.write('{head}\\n')\n",
+                "sys.stderr.flush()\n",
                 "total = {flood}\n",
                 "stderr = sys.stderr.buffer\n",
                 "block = b'x' * 8192\n",
@@ -320,12 +473,15 @@ fn chatty_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error
                 "stderr.flush()\n",
                 "stderr.write(b'{tail}\\n')\n",
                 "stderr.flush()\n",
+                "open('{marker}', 'w').close()\n",
                 "{serve}",
             ),
+            bind = BIND_AND_LISTEN,
             head = HEAD_MARKER,
             flood = CHATTY_BYTES,
             tail = CHATTY_TAIL_MARKER,
-            serve = SERVE_LOOP,
+            marker = marker.to_str().ok_or("the flood marker path is not UTF-8")?,
+            serve = ACCEPT_FOREVER,
         ),
     )?;
     fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
@@ -340,15 +496,16 @@ fn quiet_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>
         format!(
             concat!(
                 "#!/bin/sh\n",
-                "printf '%s\\n' '",
-                "{marker}",
-                "' >&2\n",
                 "exec python3 - <<'PY'\n",
-                "import os, socket\n",
+                "import os, socket, sys\n",
+                "{bind}",
+                "sys.stderr.write('{marker}\\n')\n",
+                "sys.stderr.flush()\n",
                 "{serve}",
             ),
+            bind = BIND_AND_LISTEN,
             marker = QUIET_MARKER,
-            serve = SERVE_LOOP,
+            serve = ACCEPT_FOREVER,
         ),
     )?;
     fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
@@ -362,8 +519,25 @@ fn quiet_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>
 /// loop — rather than filling one and then the other — keeps the two drains genuinely concurrent,
 /// so which one spends the shared budget first is left to the harness rather than prescribed by
 /// the stub.
+///
+/// The listener is claimed **before** the flood, not after it. That is the #629 fix: the harness
+/// hands this stub an address it reserved and then released, so a flood-then-bind stub spends the
+/// whole flood racing every other process that could draw the same port, and `ready()` will happily
+/// report success against a listener that is not this stub. Claiming the address first means the
+/// stub owns it for its whole life, and `ready()` returning means the stub is serving.
+///
+/// Readiness therefore returns *during* the flood, so the harness stops the stub partway through
+/// on purpose. That is the scenario #567 asks for — a chatty gateway clipped at the shared total —
+/// and it is only sound now that the address cannot be lost: the capture is bounded regardless of
+/// how far the flood got, and the assertions below are on the bound, not on the flood completing.
+///
+/// `ready()` returning mid-flood is also why the flood-completion wait below is not optional. Bound
+/// first means the stub is serving *while* it floods, so a harness that stopped on readiness alone
+/// would clip the stub at whatever point the connect happened to land. Measured: 0.4–1.4 MiB,
+/// against a test that requires the shared total to be reached.
 fn both_pipes_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let path = directory.join("both-pipes-gateway.sh");
+    let marker = directory.join("flood-complete");
     fs::write(
         &path,
         format!(
@@ -371,6 +545,7 @@ fn both_pipes_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::E
                 "#!/bin/sh\n",
                 "exec python3 - <<'PY'\n",
                 "import os, socket, sys\n",
+                "{bind}",
                 "total = {flood}\n",
                 "block = b'x' * 8192\n",
                 "written = 0\n",
@@ -381,10 +556,13 @@ fn both_pipes_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::E
                 "    sys.stderr.buffer.write(block[:count])\n",
                 "    sys.stderr.buffer.flush()\n",
                 "    written += count\n",
+                "open('{marker}', 'w').close()\n",
                 "{serve}",
             ),
+            bind = BIND_AND_LISTEN,
             flood = BOTH_PIPES_BYTES,
-            serve = SERVE_LOOP,
+            marker = marker.to_str().ok_or("the flood marker path is not UTF-8")?,
+            serve = ACCEPT_FOREVER,
         ),
     )?;
     fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;

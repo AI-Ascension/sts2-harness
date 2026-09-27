@@ -183,6 +183,28 @@ pub(super) fn ready(
             // the gateway's own bytes are first read. This only surfaces a capture that broke
             // while the gateway was coming up.
             gateway_process.check_capture()?;
+            // A successful connect is only evidence that *something* is listening on the address.
+            // `free_address()` reserves a port by binding `127.0.0.1:0` and then dropping the
+            // listener, so the address is unowned from the moment it is handed out. If the child
+            // has not claimed it yet an unrelated process can claim it, and this connect is then
+            // answered by that process: readiness reports a gateway ready that never started. That
+            // is how #629 produced a capture of exactly 0 bytes — readiness returned in 0 ms
+            // against a foreign listener, and the scenario stopped a stub that had written
+            // nothing.
+            //
+            // This is a narrowing of the window, not a proof: the gap between this check and the
+            // connect above is still a gap. The stubs this defect was found in also bind before
+            // they serve, so the child holds the address for its whole life and nothing else can
+            // answer at all. What this check buys is that a stub which binds late, or dies, is
+            // reported as itself instead of as a bare byte count.
+            if gateway_process.try_wait()?.is_some() {
+                return Err(format!(
+                    "the gateway answered readiness on {address} but its own process had already \
+                     exited, so the address was being served by another process and this capture \
+                     describes nothing (sts2-harness#629)"
+                )
+                .into());
+            }
             return Ok(());
         }
         gateway_process.check_capture()?;

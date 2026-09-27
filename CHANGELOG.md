@@ -11,6 +11,26 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Stop a served gateway from losing the address it was handed.** `free_address()` binds
+  `127.0.0.1:0`, reads the port, and drops the listener, so the address it returns is unowned from
+  the moment it is handed out. The flooding stub in `served_gateway_capture_drain` then wrote 6 MiB
+  to each of its two pipes *before* binding, leaving that address claimable for the whole flood.
+  When anything else claimed it, the stub's own `bind` was refused — `SO_REUSEADDR` does not permit
+  a second live `LISTEN`er — and `ready()`, which only asks whether `TcpStream::connect` succeeds,
+  was answered by the other process in 0 ms. `stop` then killed a process group whose gateway had
+  written nothing, and the test's own non-vacuity guard caught a capture of exactly 0 bytes on both
+  pipes. Root reproduced it 10 of 10 with a faithful replica of the spawn/drain/`ready`/`stop`
+  sequence, and measured duplicate address draws at 39 in 11,400 (0.34%), which is why it presented
+  as an intermittent flake rather than a constant failure. The stubs now bind before they flood, so
+  the gateway owns its address for its whole life and a refusal to claim it is reported on its own
+  stderr instead of dying silently. Because binding first means readiness returns *during* the
+  flood, the flooding stubs also write a completion marker the scenario waits on, so it stops after
+  the flood rather than wherever the connect happened to land — binding alone clipped the capture
+  at 0.4–1.4 MiB against a ceiling of 8 MiB. `ready` additionally reports a child that had already
+  exited, so a gateway that lost its address is named instead of reaching an assertion as a bare
+  byte count. This is harness test-support only and is not a claim about a native game, provider,
+  host, loader, save, release, deployment, or production effect. Refs #629.
+
 - **Split the provider renderer under the production size limit instead of acknowledging the
   breach.** `context_control/render.rs` sat 199 nonblank lines over `rust_production_max` and was
   held there by a `policy.toml` exemption. The renderer carried four separable concerns that had
