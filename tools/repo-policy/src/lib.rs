@@ -150,9 +150,10 @@ mod tests {
         let outcome = super::check(&root, true)?;
         assert_eq!(
             outcome.exempted,
-            6,
-            "expected the six tracked hard-limit breaches to be reported as waived; \
-             diagnostics were: {}",
+            5,
+            "expected the five remaining tracked hard-limit breaches to be reported as \
+             waived; #564 split the sixth file below the limit so its exemption was \
+             removed rather than left to hide the file; diagnostics were: {}",
             outcome.diagnostics.join("; ")
         );
         assert!(
