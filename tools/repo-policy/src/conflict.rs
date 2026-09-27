@@ -14,18 +14,20 @@ const MARKER_RUN: usize = 7;
 
 /// Reports every tracked file that still carries an unresolved conflict marker.
 ///
-/// The stray `=======` that sat in `CHANGELOG.md` survived a merge and fourteen
-/// green CI runs, and it survived because both gates covering that file are
+/// The stray `=======` that sat in `CHANGELOG.md` survived a merge and a full
+/// round of green CI, and it survived because both gates covering that file are
 /// shaped so that it passes: the size rule scored the removal as a *reduction*
 /// in nonblank lines, and `DOC003` asserts that markers are *present*, not that
 /// conflict debris is absent. Each instance is cited by the commit that
-/// introduced it, and each removal by the commit that removed it, so no clause
-/// rests on a branch, a rebase, or a count. `501a711` (the #601 merge)
-/// introduced the line-29 artifact, reached `main`, and #618 removed it;
-/// `8e3ffea` added one at line 45, which no commit has removed and which is
-/// present at the #573 tip `2c01a45`; `696e56f` added one at line 60, which
-/// `cba9be8` removed; `df9ef25` added one at line 100, which `94802b8` removed.
-/// Of the four, only `501a711` is on `main`.
+/// introduced it, and each removal by the commit that removed it. No clause
+/// rests on a branch, a rebase, or a count, and every citation is a commit
+/// rather than a branch tip, because a tip can be closed or superseded while
+/// the prose still names it. `main` is the only ref whose state is asserted.
+/// `501a711` (the #601 merge) introduced the line-29 artifact, reached `main`,
+/// and #618 removed it; `8e3ffea` added a second at line 45, which no commit
+/// in its own history has removed and which is not on `main`; `696e56f` added
+/// one at line 60, which `cba9be8` removed; `df9ef25` added one at line 100,
+/// which `94802b8` removed. Of the four, only `501a711` is on `main`.
 /// A rebase across the changelog boundary reintroduces exactly this, so it is
 /// checked rather than trusted.
 ///
