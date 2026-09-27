@@ -125,25 +125,42 @@ pub struct ClientResponse {
 
 /// Build the request head this client puts on the wire.
 ///
-/// The header set here is the minimum the far end accepts, and nothing more.
-/// `accept` is **not** in the gateway's `header_is_allowed` list, and the
-/// gateway pins the refusal with a test of its own (`service_auth_tests.rs`),
-/// so sending it made every management request over the gateway hop fail
-/// `400 unsupported_header` — see issue #560.
+/// # The invariant
 ///
-/// The client reads a whole JSON body and the gateway answers with a single
-/// JSON representation, so there is no content negotiation to perform here:
-/// `Accept: application/json` was a statement with no recipient. Add a header
-/// only once something on the far side actually admits it.
+/// Every header this client sends is admitted by **the server it is pointed at** — and
+/// today that server is the harness management listener, which runs no allow-list of its
+/// own. This is deliberately not "every header here is gateway-admissible": one is not, and
+/// pretending otherwise is how #598 happened. A caller pointed at a different server has to
+/// re-check this list against that server, not inherit this one's conclusion.
 ///
-/// One emitted header is **not** gateway-admissible: the optional
-/// `Idempotency-Key`. That is deliberate, and it is safe only because the
-/// callers that supply a key — the game-information policy-owner path — reach
-/// the harness management service on loopback, which never runs
-/// `header_is_allowed`. Every other caller of this client traverses the
-/// gateway and passes no key, so the two header sets never mix on the wire.
-/// If a keyed caller is ever pointed at the gateway, that header is the one
-/// that will be refused, and the fix is at the call site, not here.
+/// # Why `accept` is gone
+///
+/// `accept` is **not** in the gateway's `header_is_allowed` list, and the gateway pins the
+/// refusal with a test of its own (`service_auth_tests.rs`), so sending it made every
+/// management request over the gateway hop fail `400 unsupported_header` — see issue #560.
+/// The client reads a whole JSON body and the gateway answers with a single JSON
+/// representation, so there is no content negotiation to perform here: `Accept:
+/// application/json` was a statement with no recipient. Add a header only once something on
+/// the far side actually admits it.
+///
+/// # Why `Idempotency-Key` stays
+///
+/// It is the one header emitted here that the gateway refuses, and it is required by the
+/// server that actually receives it: `http_routes_memory_owner.rs` answers
+/// `idempotency_key_required` when a policy mutation arrives without it, and 16 operations
+/// across `contracts/context-memory/memory-api.openapi.json` (10) and
+/// `contracts/context-control/control-api.openapi.json` (6) declare it `"in": "header",
+/// "required": true`. Deleting it would convert those mutations into 400s.
+///
+/// The two header sets never mix because the two hops never mix: keyed callers are
+/// policy-owner mutations against the harness management listener on loopback, and every
+/// other caller crosses the gateway and passes no key. Note that all nine
+/// `request_json_with_idempotency_key` call sites are `#[cfg(test)]`-gated today, so the
+/// header currently rides only on test traffic — it is not dead code, because the listener
+/// requires it and the first production policy-owner caller will need it.
+///
+/// If a keyed caller is ever pointed at the gateway, that header is the one that will be
+/// refused, and the fix is at the call site, not here. See issues #597 and #598.
 fn request_head(
     address: SocketAddr,
     bearer_token: &str,

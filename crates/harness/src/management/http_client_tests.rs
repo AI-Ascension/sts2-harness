@@ -39,6 +39,36 @@ use super::*;
 // the allow-list below and made the idempotent path actually asserted: the previous version
 // asserted only over a head built with `None`, so the entry could neither fail nor be reached.
 
+/// The gateway's allow-list, transcribed from `header_is_allowed` in sts2-gateway
+/// (`crates/gateway/src/bin/runtime_support/service_authorization.rs`). Keep it in step with
+/// that function.
+///
+/// One const, one consumer. When this list was declared separately inside each test, the
+/// copies could disagree and the guard read the copy nothing checked -- inserting
+/// `idempotency-key` into the enforcing copy left the whole suite green, which is the
+/// defect #598 exists to remove. Hoisting is what makes a transcription error detectable:
+/// `the_transcribed_allow_list_matches_the_gateway` reads this exact const.
+const GATEWAY_ALLOW_LIST: &[&str] = &[
+    "authorization",
+    "connection",
+    "content-length",
+    "content-type",
+    "host",
+    "x-mcp-request-id",
+    "x-mcp-session-id",
+    "x-sts2-instance-id",
+    "x-sts2-caller-id",
+    "x-sts2-session-id",
+    "x-sts2-lease-id",
+    "x-sts2-lease-epoch",
+    "x-sts2-workflow-boot-epoch",
+    "x-sts2-correlation-id",
+    "x-sts2-capabilities-version",
+    "x-sts2-episode-profile",
+    "x-sts2-peer-token",
+    "x-sts2-recovery-capability",
+];
+
 /// A plain head: no idempotency key, so this is the *minimum* header set.
 fn head() -> String {
     request_head(
@@ -90,35 +120,13 @@ fn every_sent_header_is_one_the_gateway_allow_list_admits() {
     // with `header_is_allowed` in sts2-gateway. A name added to the client without being
     // admitted there is the defect #560 was; a name added to *this* list without being
     // admitted there converts a real refusal into a green build, which is worse than no test.
-    const ALLOWED: &[&str] = &[
-        "authorization",
-        "connection",
-        "content-length",
-        "content-type",
-        "host",
-        "x-mcp-request-id",
-        "x-mcp-session-id",
-        "x-sts2-instance-id",
-        "x-sts2-caller-id",
-        "x-sts2-session-id",
-        "x-sts2-lease-id",
-        "x-sts2-lease-epoch",
-        "x-sts2-workflow-boot-epoch",
-        "x-sts2-correlation-id",
-        "x-sts2-capabilities-version",
-        "x-sts2-episode-profile",
-        "x-sts2-peer-token",
-        "x-sts2-recovery-capability",
-        // `idempotency-key` is deliberately absent and is NOT an oversight: this is a
-        // different hop from the one that requires it. See the module comment above.
-    ];
     // The PLAIN head must satisfy the gateway list outright. This is the request
     // that could be pointed at the gateway with no rework.
     let plain_names = header_names(&head());
     assert!(
         plain_names
             .iter()
-            .all(|name| ALLOWED.contains(&name.as_str())),
+            .all(|name| GATEWAY_ALLOW_LIST.contains(&name.as_str())),
         "the plain head sends a header outside the gateway allow-list, which would be \
          refused with 400 unsupported_header; sent headers were {plain_names:?}"
     );
@@ -130,7 +138,7 @@ fn every_sent_header_is_one_the_gateway_allow_list_admits() {
     let idempotent_names = header_names(&idempotent_head());
     let refused_by_gateway: Vec<&String> = idempotent_names
         .iter()
-        .filter(|name| !ALLOWED.contains(&name.as_str()))
+        .filter(|name| !GATEWAY_ALLOW_LIST.contains(&name.as_str()))
         .collect();
     assert_eq!(
         refused_by_gateway,
@@ -138,6 +146,35 @@ fn every_sent_header_is_one_the_gateway_allow_list_admits() {
         "the idempotent head must differ from the gateway list by exactly the one header \
          that separates the two hops; anything else is a new unadmitted header: {idempotent_names:?}"
     );
+}
+
+/// Pins the transcription itself, which is the half a behavioural test cannot reach.
+///
+/// `every_sent_header_is_one_the_gateway_allow_list_admits` proves the client sends nothing
+/// outside this list. It cannot prove the list matches the gateway, because a name the
+/// gateway never had would be admitted by the test just as readily as a real one -- and a
+/// name added here silently converts a real refusal into a green build.
+///
+/// This is deliberately the weaker claim, not a cross-repo one: reading the gateway's
+/// `header_is_allowed` at test time would make a unit test depend on a sibling repository's
+/// checkout. Asserting the exact count and the exact negative names makes a gateway-side
+/// change visible as a deliberate edit here rather than as a silent divergence, and the
+/// independent re-derivation against the real `header_is_allowed` is the reviewer's job.
+#[test]
+fn the_transcribed_allow_list_matches_the_gateway() {
+    assert_eq!(
+        GATEWAY_ALLOW_LIST.len(),
+        18,
+        "header_is_allowed admits exactly 18 names; a count change means the gateway's list \
+         moved and this transcription must be updated deliberately"
+    );
+    for name in ["accept", "idempotency-key", "user-agent", "expect"] {
+        assert!(
+            !GATEWAY_ALLOW_LIST.contains(&name),
+            "{name:?} is asserted as admitted by the gateway but is not in \
+             header_is_allowed"
+        );
+    }
 }
 
 /// The idempotent head is not a gateway request, so the gateway's allow-list does not
@@ -201,27 +238,6 @@ fn an_idempotency_key_is_still_emitted_when_one_is_supplied() {
 /// the list, the guard happily passed over a head the gateway refuses.
 #[test]
 fn the_allow_list_guard_is_not_vacuous() {
-    const ALLOWED: &[&str] = &[
-        "authorization",
-        "connection",
-        "content-length",
-        "content-type",
-        "host",
-        "x-mcp-request-id",
-        "x-mcp-session-id",
-        "x-sts2-instance-id",
-        "x-sts2-caller-id",
-        "x-sts2-session-id",
-        "x-sts2-lease-id",
-        "x-sts2-lease-epoch",
-        "x-sts2-workflow-boot-epoch",
-        "x-sts2-correlation-id",
-        "x-sts2-capabilities-version",
-        "x-sts2-episode-profile",
-        "x-sts2-peer-token",
-        "x-sts2-recovery-capability",
-    ];
-
     // The contested header is real, is sent, and is NOT admitted by the gateway. If the
     // idempotent head ever stopped carrying it, the guard above would be asserting over a
     // request that does not exist.
@@ -231,12 +247,14 @@ fn the_allow_list_guard_is_not_vacuous() {
         "the idempotent path must actually carry the header: {names:?}"
     );
     assert!(
-        !ALLOWED.contains(&"idempotency-key"),
+        !GATEWAY_ALLOW_LIST.contains(&"idempotency-key"),
         "the gateway does not admit idempotency-key; if this becomes true the two hops have \
          converged and the module comment must be revisited"
     );
     assert!(
-        !names.iter().all(|name| ALLOWED.contains(&name.as_str())),
+        !names
+            .iter()
+            .all(|name| GATEWAY_ALLOW_LIST.contains(&name.as_str())),
         "a head the gateway refuses must not pass an allow-list guard, or the guard proves \
          nothing about the header it exists to police"
     );
@@ -249,7 +267,7 @@ fn the_allow_list_guard_is_not_vacuous() {
     assert!(
         !header_names(&mutated)
             .iter()
-            .all(|name| ALLOWED.contains(&name.as_str())),
+            .all(|name| GATEWAY_ALLOW_LIST.contains(&name.as_str())),
         "an unadmitted header must fail the guard"
     );
 }
