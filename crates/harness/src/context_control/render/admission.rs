@@ -32,7 +32,7 @@ pub(super) fn admit(
     now: u64,
     limits: &ContextRenderLimits,
 ) -> Result<AdmittedDraft, ContextRenderError> {
-    validate_request(&request)?;
+    validate_request(request)?;
     if draft.selected_items.len() > MAX_CONTEXT_ITEMS || draft.notes.len() > MAX_CONTEXT_NOTES {
         return Err(ContextRenderError::TooLarge);
     }
