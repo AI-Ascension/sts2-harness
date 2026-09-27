@@ -55,6 +55,8 @@ use std::path::{Path, PathBuf};
 
 use process::{TempDir, free_address};
 
+use process::{MAX_CAPTURE_BYTES, MAX_TOTAL_CAPTURE_BYTES, TRUNCATION_NOTICE};
+
 /// How many bytes the chatty stub writes to its own stderr before it serves.
 ///
 /// Comfortably more than one pipe buffer, so the assertion is about recovering far more than
@@ -172,6 +174,103 @@ const CHATTY_TAIL_MARKER: &str = "sts2-harness-559-chatty-gateway-tail-marker";
 /// A quiet gateway's only line.
 const QUIET_MARKER: &str = "sts2-harness-559-quiet-gateway-marker";
 
+/// #567's end-to-end case: a served gateway that writes past the **shared** total across **both**
+/// pipes.
+///
+/// The unit-level tests in `gateway_capture/stream_tests.rs` drive `Stream::retain` directly,
+/// which is where the accounting lives, but #567's criterion 1 asks for something narrower and
+/// different: a *served gateway* that writes more than 8 MiB **across both pipes**. This stub is
+/// that gateway. It is spawned through the same `gateway_with_identity` the real compositions
+/// use, so it inherits the same pipes, the same `process_group(0)`, and the same shared budget.
+///
+/// Each pipe is flooded to *past the per-stream ceiling on its own* and past the total together.
+/// That is deliberate. A stub that flooded one pipe to 5 MiB and left the other empty would never
+/// touch the shared budget, so it would pass on a build whose total ceiling did not exist.
+const BOTH_PIPES_BYTES: usize = 6 * 1024 * 1024;
+
+/// #567 acceptance criterion 1, end to end: the pair the harness hands back never exceeds the
+/// shared total, each cut stream announces itself, and the notice is paid for **inside** the
+/// total rather than added on top of it.
+///
+/// The excess is checked as `held <= MAX_TOTAL_CAPTURE_BYTES` rather than `held == total - notice`
+/// because the exact number depends on how the two drains interleave — whichever pipe happens to
+/// be drained first spends the budget first. The load-bearing half of this assertion is the
+/// `held` side: a build that charged the notice *after* the total was computed hands back
+/// `total + notice`, and fails here. The unit test in `stream_tests.rs` pins the exact figure for
+/// a single drain order; this one pins the bound that must hold for every one of them.
+#[test]
+fn a_gateway_flooding_both_pipes_is_bounded_by_the_shared_total()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temporary = TempDir::new()?;
+    let stub = both_pipes_gateway(&temporary.path)?;
+    let address = free_address()?;
+    let mod_address = free_address()?;
+
+    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
+    process::ready(&mut gateway_process, address)?;
+    let output = process::stop(gateway_process)?;
+
+    let stdout = &output.stdout;
+    let stderr = &output.stderr;
+    let held = stdout.len() + stderr.len();
+
+    assert!(
+        held <= MAX_TOTAL_CAPTURE_BYTES,
+        "the served capture returned {held} bytes across both pipes, over the shared ceiling of \
+         {MAX_TOTAL_CAPTURE_BYTES} (sts2-harness#567)"
+    );
+    assert!(
+        held > MAX_CAPTURE_BYTES,
+        "the served capture returned only {held} bytes across both pipes, so the shared total \
+         of {MAX_TOTAL_CAPTURE_BYTES} was never reached and this test proves nothing \
+         (sts2-harness#567)"
+    );
+
+    // Both pipes were flooded past the per-stream ceiling, so both carry a notice. A build that
+    // announced neither is handing a reader a capture that looks whole when the pair was cut.
+    for (label, stream) in [("stdout", stdout), ("stderr", stderr)] {
+        assert!(
+            stream
+                .windows(TRUNCATION_NOTICE.len())
+                .any(|window| window == TRUNCATION_NOTICE),
+            "the {label} pipe was flooded to {BOTH_PIPES_BYTES} bytes, over the per-stream ceiling \
+             of {MAX_CAPTURE_BYTES}, yet its capture carries no truncation notice. A reader is \
+             handed a stream that looks whole when it was cut (sts2-harness#567)"
+        );
+    }
+    Ok(())
+}
+
+/// The control for the test above: a gateway that stays inside the shared total carries **no**
+/// notice on either pipe.
+///
+/// Without this, "every served gateway carries a notice" would satisfy the acceptance criterion —
+/// a capture that announces truncation unconditionally is trivially bounded and useless.
+#[test]
+fn a_gateway_inside_the_shared_total_carries_no_truncation_notice()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temporary = TempDir::new()?;
+    let stub = quiet_gateway(&temporary.path)?;
+    let address = free_address()?;
+    let mod_address = free_address()?;
+
+    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
+    process::ready(&mut gateway_process, address)?;
+    let output = process::stop(gateway_process)?;
+
+    for (label, stream) in [("stdout", &output.stdout), ("stderr", &output.stderr)] {
+        assert!(
+            !stream
+                .windows(TRUNCATION_NOTICE.len())
+                .any(|window| window == TRUNCATION_NOTICE),
+            "the {label} pipe carried a truncation notice although the gateway stayed inside \
+             every ceiling, so a reader cannot tell a cut capture from a whole one \
+             (sts2-harness#567)"
+        );
+    }
+    Ok(())
+}
+
 /// The tail of both stubs: bind the address the harness handed them and accept forever, so the
 /// gateway is still serving when the scenario stops it.
 ///
@@ -249,6 +348,42 @@ fn quiet_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>
                 "{serve}",
             ),
             marker = QUIET_MARKER,
+            serve = SERVE_LOOP,
+        ),
+    )?;
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
+    Ok(path)
+}
+
+/// A stub gateway that floods **both** its pipes past the shared total, then keeps serving.
+///
+/// The two pipes are flooded to the same size, each past the 4 MiB per-stream ceiling on its own,
+/// so the pair has to contend for the 8 MiB total that #567 is about. Writing them in the same
+/// loop — rather than filling one and then the other — keeps the two drains genuinely concurrent,
+/// so which one spends the shared budget first is left to the harness rather than prescribed by
+/// the stub.
+fn both_pipes_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let path = directory.join("both-pipes-gateway.sh");
+    fs::write(
+        &path,
+        format!(
+            concat!(
+                "#!/bin/sh\n",
+                "exec python3 - <<'PY'\n",
+                "import os, socket, sys\n",
+                "total = {flood}\n",
+                "block = b'x' * 8192\n",
+                "written = 0\n",
+                "while written < total:\n",
+                "    count = min(len(block), total - written)\n",
+                "    sys.stdout.buffer.write(block[:count])\n",
+                "    sys.stdout.buffer.flush()\n",
+                "    sys.stderr.buffer.write(block[:count])\n",
+                "    sys.stderr.buffer.flush()\n",
+                "    written += count\n",
+                "{serve}",
+            ),
+            flood = BOTH_PIPES_BYTES,
             serve = SERVE_LOOP,
         ),
     )?;

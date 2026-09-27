@@ -367,6 +367,12 @@ mod gateway_capture;
 // `pub(crate)`, matching the `gateway_evidence` re-export above: the module itself is private, so
 // a `pub(super)` item inside it could not be re-exported through this `use`.
 pub(crate) use gateway_capture::GatewayProcess;
+// The three ceilings the #567 end-to-end test asserts against. They live two modules below this
+// one, so they are re-exposed here — the same indirection the `GatewayProcess` re-export above
+// already uses — rather than reached into from the test binary.
+pub(crate) use gateway_capture::stream::{
+    MAX_CAPTURE_BYTES, MAX_TOTAL_CAPTURE_BYTES, TRUNCATION_NOTICE,
+};
 
 include!("runtime_v4_executable_composition_malformed.rs");
 

@@ -10,6 +10,22 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-09-27.md).
 
 ## Unreleased
+- **Pin the shared 8 MiB capture total across both served gateway pipes, with the truncation
+  notice paid for out of it.** #559 bounded each served pipe separately (4 MiB per stream) and
+  added an 8 MiB ceiling across the pair, but the two bounds were only ever verified apart, and
+  the interaction is the part that can go quietly wrong: a pipe cut by the *shared* budget trims
+  its own notice to fit and charges it against already-retained bytes, and a bug there produces a
+  capture that announces itself while silently omitting evidence. This change adds the tests for
+  that combination. A served gateway that floods **both** pipes past the per-stream ceiling is now
+  driven end to end: the pair the harness hands back never exceeds `MAX_TOTAL_CAPTURE_BYTES`, each
+  cut pipe carries a truncation notice, and a gateway that stays inside every ceiling carries
+  none — so "a notice is always present" cannot pass. The accounting is pinned at the unit level
+  too, with the mutations named in #567 each shown to fail: charging the notice after the total is
+  computed, dropping the trim-back, and charging the shared total against bytes that were never
+  retained. The first of those is unobservable in the combined-flood shape alone and is caught by
+  the per-stream form instead, which is why both shapes are kept. No served capture's bound
+  changes: the ceilings were merged in #559; this only proves they hold together.
+
 
 - **Split the provider-session policy HTTP suite so it stops hiding a 114-line hard-limit breach
   behind a false exemption count.** `provider_session_policy_http.rs` measured **714** nonblank

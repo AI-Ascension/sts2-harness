@@ -19,14 +19,14 @@ use rustix::fs::{OFlags, fcntl_getfl, fcntl_setfl};
 use rustix::io::Errno;
 
 /// Appended to a stream whose bytes past `MAX_CAPTURE_BYTES` were drained and dropped.
-const TRUNCATION_NOTICE: &[u8] = b"\n{\"event\":\"gateway_output_truncated\"}\n";
+pub(crate) const TRUNCATION_NOTICE: &[u8] = b"\n{\"event\":\"gateway_output_truncated\"}\n";
 
 /// How many bytes the drain retains from *one* stream.
 ///
 /// #559's acceptance criterion 1 asks for a stated per-stream ceiling, and this is it. The
 /// total ceiling is [`MAX_TOTAL_CAPTURE_BYTES`], which both streams share, so a gateway cannot
 /// reach twice this by splitting its output across the two pipes.
-pub(super) const MAX_CAPTURE_BYTES: usize = 4 * 1024 * 1024;
+pub(crate) const MAX_CAPTURE_BYTES: usize = 4 * 1024 * 1024;
 
 /// How many bytes the drain retains across *both* streams together.
 ///
@@ -35,7 +35,7 @@ pub(super) const MAX_CAPTURE_BYTES: usize = 4 * 1024 * 1024;
 /// [`MAX_CAPTURE_BYTES`]. The total is charged first, so a stream cut by the shared budget is
 /// announced exactly like one cut by its own ceiling: a reader is never handed a stream that
 /// looks whole when the *pair* was clipped.
-pub(super) const MAX_TOTAL_CAPTURE_BYTES: usize = 8 * 1024 * 1024;
+pub(crate) const MAX_TOTAL_CAPTURE_BYTES: usize = 8 * 1024 * 1024;
 
 /// Reads one stream in a single drain call. Bounds a peer that keeps the descriptor readable,
 /// so one drain can never monopolise the loop.
