@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 //! The gateway stubs the capture scenarios spawn, and the shared Python fragments they build.
 //!
 //! Split out of `served_gateway_capture_drain.rs` so the scenarios and the stub *sources* move
@@ -11,7 +13,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use super::BOTH_PIPES_BYTES;
+use super::{BOTH_PIPES_BYTES, CHATTY_BYTES, CHATTY_TAIL_MARKER, HEAD_MARKER, QUIET_MARKER};
 
 /// Split into `BIND_LISTENER` and `SERVE_LOOP` rather than kept as one block, because the two
 /// stubs now need them at different points: `BIND_LISTENER` runs **before** the flood and

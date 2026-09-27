@@ -60,7 +60,7 @@ use stub::{both_pipes_gateway, chatty_gateway, quiet_gateway};
 ///
 /// Comfortably more than one pipe buffer, so the assertion is about recovering far more than
 /// 64 KiB rather than about a marginal difference at the boundary.
-const CHATTY_BYTES: usize = 2 * 1024 * 1024;
+pub(crate) const CHATTY_BYTES: usize = 2 * 1024 * 1024;
 
 /// The Linux default pipe capacity. Named so the assertion can *report* the wall it is beating
 /// instead of only reporting the failure.
@@ -70,7 +70,7 @@ const PIPE_BUFFER_BYTES: usize = 64 * 1024;
 ///
 /// It stands in for the refusal-and-context that #548's attribution depends on, so this test
 /// also proves the fix did not buy its tail by dropping the head.
-const HEAD_MARKER: &str = "sts2-harness-559-chatty-gateway-head-marker";
+pub(crate) const HEAD_MARKER: &str = "sts2-harness-559-chatty-gateway-head-marker";
 
 /// A gateway that wrote far more than one pipe buffer must have far more than one pipe buffer
 /// recovered.
@@ -168,10 +168,10 @@ fn a_quiet_gateway_still_reports_exactly_what_it_wrote() -> Result<(), Box<dyn s
 
 /// The marker written *after* the flood, so the tail's arrival is a positive fact rather than
 /// an inference from a byte count.
-const CHATTY_TAIL_MARKER: &str = "sts2-harness-559-chatty-gateway-tail-marker";
+pub(crate) const CHATTY_TAIL_MARKER: &str = "sts2-harness-559-chatty-gateway-tail-marker";
 
 /// A quiet gateway's only line.
-const QUIET_MARKER: &str = "sts2-harness-559-quiet-gateway-marker";
+pub(crate) const QUIET_MARKER: &str = "sts2-harness-559-quiet-gateway-marker";
 
 /// #567's end-to-end case: a served gateway that writes past the **shared** total across **both**
 /// pipes.

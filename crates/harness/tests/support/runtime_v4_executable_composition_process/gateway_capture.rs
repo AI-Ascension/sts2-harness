@@ -138,7 +138,7 @@ impl GatewayProcess {
     ///
     /// The wait is bounded and reports the shortfall on expiry rather than looping forever, so a
     /// gateway that dies mid-flood fails as a diagnosable error instead of a hung test binary.
-    pub(super) fn await_bytes(&self, bytes: usize, deadline: Duration) -> Result<(), String> {
+    pub(crate) fn await_bytes(&self, bytes: usize, deadline: Duration) -> Result<(), String> {
         let Some(capture) = self.capture.as_ref() else {
             return Err(String::from(
                 "the served gateway's capture was already taken, so its progress cannot be \
