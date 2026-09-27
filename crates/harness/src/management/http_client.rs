@@ -140,10 +140,13 @@ pub struct ClientResponse {
 /// `Idempotency-Key`. That is deliberate, and it is safe only because the
 /// callers that supply a key — the game-information policy-owner path — reach
 /// the harness management service on loopback, which never runs
-/// `header_is_allowed`. Every other caller of this client traverses the
-/// gateway and passes no key, so the two header sets never mix on the wire.
-/// If a keyed caller is ever pointed at the gateway, that header is the one
-/// that will be refused, and the fix is at the call site, not here.
+/// `header_is_allowed`. Every other caller of this client that traverses the
+/// gateway passes no key, so the two header sets never mix on the wire. (The
+/// `--listen` address is operator-configurable, so "traverses the gateway" is a
+/// deployment property rather than a code one; the client never sends a key
+/// that a non-gateway caller would receive.) If a keyed caller is ever pointed
+/// at the gateway, that header is the one that will be refused, and the fix is
+/// at the call site, not here.
 fn request_head(
     address: SocketAddr,
     bearer_token: &str,
