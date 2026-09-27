@@ -10,6 +10,26 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Correct the repository-layout document, which had drifted from the tracked tree.** The
+  `docs/REPOSITORY_LAYOUT.md` tree listing was written at Wave 2 and never revisited, so it no
+  longer described the repository. It listed a top-level `tests/` directory — **no such directory
+  exists**; `git ls-files tests` returns nothing, and the deterministic suites live beside the code
+  they cover under `crates/harness/tests/`, which the "Planned responsibility placement" table then
+  repeated as the initial home for tests and conformance. It also omitted **four** tracked
+  top-level directories that carry reviewed contract, fixture, and gate material —
+  `contract-artifact/` (per-capability consumer contract pins with golden vectors and `SHA256SUMS`
+  digests), `contracts/` (the reviewable wire pins shared with the companion console, plus the
+  effective-limit and runtime-peer-lane pins), `fixtures/` (the synthetic context-control and
+  context-memory corpora the suites consume), and `.github/` (the ten workflows the required gates
+  run from, plus the pull-request template) — and described `schemas/`, `conformance/`, and
+  `experiments/` as "future" work when all three are populated (11, 37, and 108 tracked files
+  respectively, with a README in every `experiments/` subdirectory). A reader using this document to
+  find the contract pins, the memory fixtures, or the gates was told, correctly, that none of them
+  exist. The listing now carries every tracked top-level directory, names the real test and fixture
+  homes, and generalises the changelog-archive entry to one file per archive pass rather than
+  pinning only the 2026-09-10 wave while four later archives sit beside it. Compatibility:
+  documentation only; no code, schema, policy, bound, or digest change. Source-only: no native
+  effect. Refs the `docs/REPOSITORY_LAYOUT.md` drift.
 - **The revision-guard self-test now pins *which* revision resolves, and refuses to run at all
   against a workflow that defines `choose_revision` twice.** The suite added for #561 asserted
   only that a success captured *something* and that a refusal captured nothing, which left two
@@ -28,7 +48,6 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   the same reason — a mixed supplied/empty pair, and an explicit count of what the extractor
   finds. The #561 defect itself is still caught: reinstating the original inert body fails 12
   cases, and deleting the helper bails.
-
 - **Drain the served gateway's streams while it runs, so a chatty gateway is no longer clipped at
   one pipe buffer.** The served compositions spawn the gateway with piped stdout/stderr and, until
   this change, read **neither** pipe until `stop()` had already SIGKILLed the process group and
