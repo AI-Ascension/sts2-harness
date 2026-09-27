@@ -27,12 +27,13 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   three-way-resolution artifact with no `<<<<<<<` or `>>>>>>>` counterpart, and it survived a merge
   and fourteen green CI runs. It survived because both gates covering this file are shaped so that
   it passes: the size rule scored the removal as a *reduction* in nonblank lines, and `DOC003`
-  asserts that markers are *present*, not that conflict debris is absent. `#606`'s resolution left
-  a similar line earlier. #618 removed this instance incidentally, while re-resolving this file for
-  an unrelated entry; deleting it fixes one occurrence and leaves the class open, because the next
-  rebase across this boundary puts it back. `repo-policy` gains `CONFLICT001`, which reports any
-  tracked text file with a line *starting* with seven or more `<`, `=` or `>`, naming the path and
-  the line number so review can act on it.
+  asserts that markers are *present*, not that conflict debris is absent. #618 removed this
+  instance incidentally, while re-resolving this file for an unrelated entry; deleting it fixes one
+  occurrence and leaves the class open, because the next rebase across this boundary puts it back.
+  The class is not hypothetical: commit `8e3ffea` carries two such lines, at 29 and 45, from the
+  same re-resolve-this-file-against-`main` operation on the #573 branch. `repo-policy` gains
+  `CONFLICT001`, which reports any tracked text file with a line *starting* with seven or more `<`,
+  `=` or `>`, naming the path and the line number so review can act on it.
 
   The match is positional rather than a substring search, because `contains` would fire on prose
   that merely names a marker — the defect `#620` is fixing in `DOC003` — and an equals run inside a
