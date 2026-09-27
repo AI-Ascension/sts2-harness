@@ -11,6 +11,28 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Match the required-preamble markers as whole lines, in order, anchored to the first nonblank
+  line, because half of them were satisfiable by prose.** #611 added `DOC003` to stop a merge from
+  dropping this file's title and `## Unreleased` heading, but it tested each marker with
+  `text.contains`, which matches anywhere in the file. `CHANGELOG.md` quotes the literal string
+  `## Unreleased` in the very entry describing the loss below, so on a tree with the real heading
+  deleted the marker was still "present" and the rule never fired for it: measured on `main`, the
+  heading deleted leaves `grep -c '^## Unreleased'` at 0 and `grep -c '## Unreleased'` at 1, with
+  `repo-policy --strict` still reporting 0 errors. Markers now match a whole line rather than a
+  substring, must appear in their declared relative order, and the first must be the file's first
+  nonblank line — which is what "preamble" means, and which nothing enforced before despite the
+  rule's own doc comment claiming markers were checked in order. A file whose title survives but
+  has been pushed below other content is now reported, and one whose markers are present in the
+  wrong order is now reported; both passed silently. Verified by mutation on the real tree rather
+  than by construction, with the exemption's stated line count re-derived for each so the `EXC002`
+  signal stayed separate: prose-mention-only, the real heading deleted, the title displaced, and
+  the two markers swapped each reported 0 findings before this change and fail after it. Five new
+  tests join the three existing ones: the prose mention that used to pass, a heading with trailing
+  content on its line, a displaced title, swapped markers, and a tolerated leading blank line. Two
+  existing expectations moved from 2 findings to 3, because a file that has lost its title is now
+  also reported for the displaced anchor; no assertion was weakened to make a test pass. This
+  widens an assertion only; no file is newly exempted and the `policy.toml` shape is unchanged,
+  because a list of markers already implies its order. Closes #620 and #621.
 - **Assert the changelog's own structure, because a size gate cannot see the loss of it.** The
   `#606` merge resolved a `CHANGELOG.md` conflict by keeping the bullet list and dropping the title,
   the preamble and the `## Unreleased` heading, and every gate stayed green: all twelve deleted
