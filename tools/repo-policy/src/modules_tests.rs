@@ -274,3 +274,44 @@ fn real_repository_controls_are_reachable() -> Result<(), Box<dyn Error>> {
     assert!(reported.is_empty(), "unexpected orphans: {reported:?}");
     Ok(())
 }
+
+/// #638: a source file that is not valid UTF-8 must stay in the module graph.
+///
+/// Before the fix the reachability map was built from decoded reads, so one
+/// invalid byte anywhere in `lib.rs` dropped that file from the map entirely.
+/// The crate root then had no contents to scan, so the `mod child;` it declares
+/// was never followed and `child.rs` was reported as an orphan -- a structural
+/// rule firing a false accusation, caused by a byte it could not decode and
+/// never needed to read.
+#[test]
+fn a_non_utf8_crate_root_does_not_make_its_children_look_orphaned() -> Result<(), Box<dyn Error>> {
+    let fixture = Fixture::new()?;
+    let root = &fixture.0;
+    fs::create_dir_all(root.join("crate/src"))?;
+    fs::write(root.join("Cargo.toml"), "[workspace]\nmembers = [\"crate\"]\n")?;
+    fs::write(
+        root.join("crate/Cargo.toml"),
+        "[package]\nname = \"demo\"\nversion = \"0.0.0\"\n",
+    )?;
+    // A comment and a string literal carrying invalid bytes: legal in a real
+    // file, fatal to `read_to_string`, and irrelevant to a scan that only looks
+    // for `mod`.
+    fs::write(
+        root.join("crate/src/lib.rs"),
+        b"// \xff\xfe\nmod child;\npub const NOTE: &str = \"\xfe\xff\";\n",
+    )?;
+    fs::write(root.join("crate/src/child.rs"), "pub fn f() {}\n")?;
+
+    let policy =
+        Policy::load(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../policy.toml"))?;
+    let files = collect(root, &policy)?;
+    let reported: BTreeSet<String> = findings(root, &files)
+        .iter()
+        .map(|finding| finding.path.clone())
+        .collect();
+    assert!(
+        reported.is_empty(),
+        "a non-UTF-8 crate root must not orphan its children: {reported:?}"
+    );
+    Ok(())
+}
