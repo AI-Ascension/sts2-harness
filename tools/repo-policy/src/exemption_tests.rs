@@ -84,6 +84,7 @@ fn policy_with(rust: (usize, usize)) -> Result<Policy, Box<dyn Error>> {
      required_files = []\n\
      ignored_directories = []\n\
      ignored_path_prefixes = []\n\
+     [project.required_preambles]\n\
      [limits]\n\
      rust_production_preferred = {}\n\
      rust_production_max = {}\n\

@@ -11,6 +11,22 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Assert the changelog's own structure, because a size gate cannot see the loss of it.** The
+  `#606` merge resolved a `CHANGELOG.md` conflict by keeping the bullet list and dropping the title,
+  the preamble and the `## Unreleased` heading, and every gate stayed green: all twelve deleted
+  lines were nonblank, so the size check scored the deletion as a *reduction* and passed. The file
+  stopped identifying itself, and with the preamble went the pointers to
+  `docs/CHANGELOG-ARCHIVE.md` and the dated archives — leaving the active changelog
+  structurally indistinguishable from an archive, under an exemption that still called it "the
+  active changelog". #611 restored the text; this adds the check that was missing. `policy.toml`
+  gains a `project.required_preambles` table mapping an exact path to the markers that file must
+  carry, and `repo-policy` reports `DOC003` for any that are absent. It is deliberately not a size
+  rule and deliberately not an exemption — a waiver is the mechanism that let the original defect
+  hide, so the assertion is a hard error on an exempt file too. Verified by reproduction, not just
+  by construction: with the preamble deleted, `repo-policy --strict` reports both missing markers;
+  restored, it is clean. Three tests cover the present case, the exact regressed shape (a bare
+  bullet list), and a file outside the table. Closes #614.
+
 - **Make the management client's header allow-list guard non-vacuous, and correct the criteria
   that produced it.** The guard added for the `Accept` fix transcribed the gateway's
   `header_is_allowed` exactly, then added a nineteenth entry, `idempotency-key`, under the comment
