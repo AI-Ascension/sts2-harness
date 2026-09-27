@@ -64,13 +64,26 @@ fn check_required_preamble(
     // line satisfy several markers, so a file repeating one heading could
     // stand in for the whole preamble. This walks the file once and lets each
     // line consume at most the next unclaimed marker.
+    //
+    // The scan stops at the last marker, so a *second* copy of a marker that
+    // follows it was invisible: `## Unreleased` repeated 40 lines later, with
+    // the preamble prose copied beside it, left every assertion satisfied and
+    // every gate green. Presence and order say nothing about uniqueness, and
+    // duplication is the mirror of the substitution case above, so the count
+    // is checked here too rather than left to whoever edits the file.
     let mut missing = vec![true; markers.len()];
+    let mut seen = vec![0usize; markers.len()];
     let mut cursor = 0;
     for line in &lines {
-        if cursor >= markers.len() {
-            break;
+        let line = line.trim();
+        // Count every occurrence, including lines that match a marker other
+        // than the one the cursor is waiting for.
+        for (index, marker) in markers.iter().enumerate() {
+            if line == marker.trim() {
+                seen[index] += 1;
+            }
         }
-        if line.trim() == markers[cursor].trim() {
+        if cursor < markers.len() && line == markers[cursor].trim() {
             missing[cursor] = false;
             cursor += 1;
         }
@@ -104,6 +117,46 @@ fn check_required_preamble(
             format!(
                 "{detail} this file's identity is asserted by policy.toml and is not \
                  covered by any size check"
+            ),
+        ));
+    }
+
+    // A policy may deliberately declare the same marker twice, and then two
+    // occurrences is the shape it asked for — `a_repeated_marker_satisfied_by_
+    // a_repeated_heading_produces_no_finding` pins that. So the comparison is
+    // surplus over *declared*, not against a hardcoded one. Grouping by value
+    // keeps a two-slot declaration from reporting each slot separately.
+    let mut declared: Vec<(&str, usize)> = Vec::new();
+    for marker in markers {
+        match declared
+            .iter_mut()
+            .find(|(value, _)| *value == marker.trim())
+        {
+            Some((_, count)) => *count += 1,
+            None => declared.push((marker.trim(), 1)),
+        }
+    }
+    for (value, declared_count) in declared {
+        // Each declared slot counted the same file lines, so they are
+        // identical; take the first rather than summing, or a two-slot
+        // declaration would report four occurrences in a file holding two.
+        let found = markers
+            .iter()
+            .enumerate()
+            .filter(|(_index, marker)| marker.trim() == value)
+            .map(|(index, _)| seen[index])
+            .next()
+            .unwrap_or(0);
+        if found <= declared_count {
+            continue;
+        }
+        findings.push(Finding::error(
+            "DOC003",
+            relative,
+            format!(
+                "required structural marker {value:?} occurs {found} times but policy.toml \
+                 declares it {declared_count}; this file's identity is asserted by policy.toml \
+                 and is not covered by any size check"
             ),
         ));
     }

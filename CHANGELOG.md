@@ -11,6 +11,17 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Assert that a required structural marker occurs exactly as often as policy declares it.**
+  `check_required_preamble` walked the file with an ordered scan that stopped consuming markers once
+  they were all satisfied, so a *second* copy of a marker past the last one was never examined. A
+  changelog that repeated `## Unreleased` with the six preamble lines copied above it satisfied
+  every assertion the rule made, which is how a duplicate shipped in #676 and survived #680: the
+  first marker check tested presence and order, and neither of those is uniqueness. The scan now
+  counts every occurrence of every marker and reports a `DOC003` finding when a file supplies more
+  copies than `policy.toml` declares. The comparison is surplus over *declared*, not a hardcoded
+  one, so a policy that deliberately declares a marker twice is still satisfied by two headings and
+  still reports a third as surplus. The duplicated preamble and heading themselves are removed here,
+  and the changelog's waiver count is restated to match the cleaned file. Closes #682.
 - **Split the control authority under the production size limit instead of acknowledging the
   breach.** `context_control/state.rs` sat 171 nonblank lines over `rust_production_max` and was
   held there by a `policy.toml` exemption. The one `impl ControlAuthority` had grown four separable
