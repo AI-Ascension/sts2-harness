@@ -61,7 +61,7 @@ fn scenarios_sharing_a_lane_step_persist_to_distinct_files() {
         format!("invalid-binding: {shared_tail}"),
         format!("unavailable-provider: {shared_tail}"),
         format!("graph graph-changed: {shared_tail}"),
-        format!("graph graph-original: {shared_tail}"),
+        format!("graph graph-base: {shared_tail}"),
     ];
     let mut stems: Vec<String> = labels.iter().map(|l| sanitize_label(l)).collect();
     let total = stems.len();
