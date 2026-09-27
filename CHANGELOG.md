@@ -10,6 +10,25 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **The revision-guard self-test now pins *which* revision resolves, and refuses to run at all
+  against a workflow that defines `choose_revision` twice.** The suite added for #561 asserted
+  only that a success captured *something* and that a refusal captured nothing, which left two
+  ways to get past it with the suite green. Changing the helper's success path to return its
+  fallback instead of the supplied revision left every case passing, so the workflow would have
+  silently ignored every operator-supplied pin while checking the defaults. Adding a second,
+  inert copy of the original pre-#561 helper is sharper still: bash resolves a function name to
+  the **last** definition, so the step would accept `refs/heads/attacker-branch` again — the
+  #561 defect returning intact — and because the extractor took the *first* match, the suite
+  never saw the copy at all. Every accept case now compares the resolved value against the
+  supplied one on a whole-line basis, so a value carrying a suffix cannot pass as a prefix; the
+  step's two `revision=$(choose_revision …)` assignments are **extracted** from the workflow
+  rather than transcribed, which makes the call-site wiring a tested property too; and a workflow
+  defining the helper more than once is a hard bail naming bash's last-definition rule, because
+  continuing would test whichever copy the extractor happened to pick. Two cases were added for
+  the same reason — a mixed supplied/empty pair, and an explicit count of what the extractor
+  finds. The #561 defect itself is still caught: reinstating the original inert body fails 12
+  cases, and deleting the helper bails.
+
 - **Drain the served gateway's streams while it runs, so a chatty gateway is no longer clipped at
   one pipe buffer.** The served compositions spawn the gateway with piped stdout/stderr and, until
   this change, read **neither** pipe until `stop()` had already SIGKILLed the process group and
