@@ -12,6 +12,22 @@
 //! The totals are restated as literals rather than imported, so this file cannot agree with the
 //! implementation by construction: moving a constant has to move the number here, or these
 //! assertions fail. That is the point — a bound that silently drifts is worse than no bound.
+//!
+//! #567 measured the mutation matrix for the pair-of-pipes cases added here, and two of the three
+//! mutations #567's brief asked for do not hold up. Both are recorded rather than papered over:
+//!
+//! - **Dropping the notice's trim-back** (append the notice on top of the tail instead of cutting
+//!   the tail to make room) overspends the total by exactly the notice's length, 38 bytes. Killed
+//!   by `both_pipes_flooded_past_the_total_are_clipped_together` and
+//!   `the_truncation_notice_is_charged_to_the_shared_total`, and by the two #559 tests.
+//! - **Dropping the notice's `charge` entirely** is *not* observable from any pair test, and is
+//!   not an overspend. The trim-back removes the same bytes the notice adds, so a clipped stream
+//!   holds `reached` bytes either way; the charge only leaves the budget stricter, and a stream
+//!   that is already clipped cannot spend the difference. It is conservative-accounting drift.
+//! - **Charging the total on read rather than on retain** is likewise not observable here, and for
+//!   a structural reason: every test in this file drives [`Stream::retain`] directly, so
+//!   `drain_once`'s read path is never entered. Catching that mutation needs a test that drains a
+//!   real pipe, which is what `served_gateway_capture_drain.rs` is for.
 
 use super::{Budget, MAX_CAPTURE_BYTES, MAX_TOTAL_CAPTURE_BYTES, Stream};
 
@@ -108,7 +124,7 @@ fn two_individually_small_streams_are_clipped_at_the_shared_total() {
     }
     let held = first.bytes.len() + second.bytes.len();
     assert!(
-        held <= TOTAL + 2 * NOTICE.len(),
+        held <= TOTAL,
         "the two streams together retained {held} bytes, past the {TOTAL}-byte shared total \
          (sts2-harness#559)"
     );
@@ -178,5 +194,154 @@ fn a_clipped_stream_keeps_draining_but_stops_retaining() {
         stream.bytes.len(),
         after_clip,
         "a clipped stream kept growing past its ceiling"
+    );
+}
+
+/// Feed `size` bytes to `stream` in realistic read-sized chunks, the way `drain_once` would.
+fn feed(stream: &mut Stream<std::io::Empty>, size: usize, chunk: &[u8], budget: &mut Budget) {
+    let mut remaining = size;
+    while remaining > 0 {
+        let take = chunk.len().min(remaining);
+        stream.retain(&chunk[..take], budget);
+        remaining -= take;
+    }
+}
+
+/// The combined-total ceiling, exercised the way #567 asks: a gateway that floods *both* pipes
+/// past `MAX_TOTAL_CAPTURE_BYTES` while neither pipe alone reaches its own per-stream ceiling.
+///
+/// This is the case the two ceilings only produce together. One test drives the per-stream axis
+/// and another drives the starvation axis, but neither puts two *individually small* streams
+/// across the total. Each stream here writes `TOTAL / 2 + slack`, which is under `PER_STREAM` on
+/// its own and over `TOTAL` as a pair, so the cut is attributable to the shared budget alone.
+#[test]
+fn both_pipes_flooded_past_the_total_are_clipped_together() {
+    let mut budget = Budget::new();
+    let mut stdout = empty_stream("stdout");
+    let mut stderr = empty_stream("stderr");
+    let chunk = bytes_of(64 * 1024);
+    // `PER_STREAM * 2 == TOTAL` exactly, so a pair of streams can never each stay strictly under
+    // their own ceiling and still *exceed* the total on write size alone: the per-stream axis
+    // always binds first. What the total actually adds is the notice bytes, so each stream is
+    // driven one byte past its own ceiling and the pair's overspend is attributable to the
+    // notice, not to the per-stream cap. This is asserted rather than assumed, so a future change
+    // to the two constants that *did* separate the axes would be caught here.
+    let per_stream_write = PER_STREAM + 1;
+    assert!(
+        per_stream_write > PER_STREAM,
+        "each stream must be driven past its own ceiling for the shared total to be the axis \
+         that clips it"
+    );
+    assert_eq!(
+        PER_STREAM * 2,
+        TOTAL,
+        "the per-stream and total ceilings are no longer in the exact 2:1 ratio this test was \
+         written against; the two axes are now separable and the test should be redesigned"
+    );
+    feed(&mut stdout, per_stream_write, &chunk, &mut budget);
+    feed(&mut stderr, per_stream_write, &chunk, &mut budget);
+
+    // AC1: the combined retained total never exceeds the shared ceiling, asserted exactly.
+    // No slack term. `retain` trims the notice against the ceiling actually reached and then
+    // charges it, so the bytes a clipped stream ends holding are always a subset of the bytes
+    // the budget paid for. The old `TOTAL + 2 * NOTICE.len()` slack was never needed and would
+    // have hidden a real overspend of up to 76 bytes.
+    let held = stdout.bytes.len() + stderr.bytes.len();
+    assert!(
+        held <= TOTAL,
+        "the two streams together retained {held} bytes, past the {TOTAL}-byte shared total \
+         (sts2-harness#567)"
+    );
+
+    // AC2: a stream the total clipped carries the notice, so a reader is never handed a short
+    // stream that looks whole.
+    let stdout_text = String::from_utf8_lossy(&stdout.bytes);
+    let stderr_text = String::from_utf8_lossy(&stderr.bytes);
+    assert!(
+        stdout_text.contains(NOTICE) && stderr_text.contains(NOTICE),
+        "both pipes were driven past the {TOTAL}-byte shared total, so both must be marked \
+         truncated; a clipped stream that carries no notice reads as a whole one \
+         (sts2-harness#567)"
+    );
+}
+
+/// The notice must be paid for out of the shared total, not added on top of it.
+///
+/// This is the "charged to the budget" half of #567's acceptance criteria, and it is enforced by
+/// the *trim-back*: a clipped stream cuts its own tail off to make room for the notice, so the
+/// notice is never appended on top of bytes the total already paid for. Dropping the trim-back is
+/// exactly the mutation that overspends the total, and the pair assertion below catches it.
+///
+/// One honest limit, recorded because #567's brief asked for it. The `charge` call for the notice
+/// is *not* separately observable, and this test deliberately does not pretend otherwise. The
+/// trim-back removes the same bytes the notice adds, so a clipped stream holds `reached` bytes
+/// whether or not the charge is applied; charging it only leaves the budget stricter by the
+/// notice's length, and no already-clipped stream can spend those bytes. So dropping the charge is
+/// conservative-accounting drift (a budget up to 2 notices, 76 bytes, stricter than it needs to
+/// be), not an overspend, and no test on this pair can turn red for it. See the root comment on
+/// sts2-harness#567.
+#[test]
+fn the_truncation_notice_is_charged_to_the_shared_total() {
+    let mut budget = Budget::new();
+    let mut stdout = empty_stream("stdout");
+    let mut stderr = empty_stream("stderr");
+    let chunk = bytes_of(64 * 1024);
+    // Both pipes flood, so the total is exhausted and the second clip is the one whose notice has
+    // to be paid for out of what the first one left.
+    feed(&mut stdout, PER_STREAM * 2, &chunk, &mut budget);
+    feed(&mut stderr, PER_STREAM * 2, &chunk, &mut budget);
+    let held_by_stdout = stdout.bytes.len();
+    assert!(
+        held_by_stdout <= PER_STREAM,
+        "one stream retained {held_by_stdout} bytes, past the {PER_STREAM}-byte per-stream ceiling"
+    );
+    assert!(
+        String::from_utf8_lossy(&stdout.bytes).contains(NOTICE),
+        "the flooded stdout should have been marked truncated; if it was not, this test is not \
+         exercising the notice path at all"
+    );
+    assert!(
+        String::from_utf8_lossy(&stderr.bytes).contains(NOTICE),
+        "the flooded stderr should have been marked truncated; if it was not, the pair never \
+         exhausted the shared total and this test proves nothing"
+    );
+    // The whole point: the two notices ride inside the total rather than on top of it. Appending a
+    // notice without trimming the tail back first is what would push the pair past `TOTAL` here.
+    let held = stdout.bytes.len() + stderr.bytes.len();
+    assert!(
+        held <= TOTAL,
+        "the pair retained {held} bytes, so a truncation notice was added on top of the shared \
+         total instead of being trimmed into it (sts2-harness#567)"
+    );
+}
+
+/// A stream the total never reached must NOT carry a notice.
+///
+/// The failure this guards against is a capture that clips nothing but still marks a stream as
+/// truncated, which teaches a reader to distrust a complete capture. Another test covers the
+/// single-stream case; this covers the *pair*, where a greedy `stdout` could leave a small `stderr`
+/// marked in association with the wrong ceiling.
+#[test]
+fn an_uncut_stream_in_a_bounded_pair_carries_no_notice() {
+    let mut budget = Budget::new();
+    let mut loud = empty_stream("stdout");
+    let mut quiet = empty_stream("stderr");
+    let chunk = bytes_of(64 * 1024);
+    feed(&mut loud, PER_STREAM * 2, &chunk, &mut budget);
+    feed(&mut quiet, 4096, &chunk, &mut budget);
+    assert!(
+        String::from_utf8_lossy(&loud.bytes).contains(NOTICE),
+        "the flooded stream should have been marked truncated; if it was not, this test is not \
+         exercising the notice path at all"
+    );
+    assert_eq!(
+        quiet.bytes.len(),
+        4096,
+        "the quiet stream's bytes were altered by the loud stream's clipping"
+    );
+    assert!(
+        !String::from_utf8_lossy(&quiet.bytes).contains(NOTICE),
+        "a stream that was never clipped carries a truncation notice, so a reader would \
+         distrust a capture that is actually complete (sts2-harness#567)"
     );
 }
