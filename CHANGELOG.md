@@ -30,11 +30,13 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   asserts that markers are *present*, not that conflict debris is absent. #618 removed this
   instance incidentally, while re-resolving this file for an unrelated entry; deleting it fixes one
   occurrence and leaves the class open, because the next rebase across this boundary puts it back.
-  The class is not hypothetical, and its instances have different origins. The line-29 artifact
-  arrived with `501a711`, the `#601` merge, reached `main`, and was removed by `#618`; `8e3ffea`
-  adds one more at line 45 and is not the same operation. Two further instances are off `main`:
-  `696e56f` on the #571 branch carries one at line 60, and `df9ef25` on that same branch carries one
-  at line 100, left by the split that rebased this file onto the gate, which `94802b8` removes.
+  The class is not hypothetical: it has recurred, and every instance below is checkable with one
+  `git show <ref>:CHANGELOG.md | grep -c '^=\{7,\}'`, comparing `<ref>` against `<ref>^`. The
+  line-29 artifact arrived with `501a711`, the `#601` merge, whose parent had none, reached
+  `main`, and was removed by `#618`, which also took a parent-held line to none; `8e3ffea` adds a
+  second at line 45 and is not the same operation. Two further instances are off `main`, each
+  added by the commit that carries it: `696e56f` at line 60 and `df9ef25` at line 100, the latter
+  on the same split after that split was rebased, and `94802b8` removes it.
   `repo-policy` gains
   `CONFLICT001`, which reports any tracked text file with a line *starting* with seven or more `<`,
   `=` or `>`, naming the path and the line number so review can act on it.

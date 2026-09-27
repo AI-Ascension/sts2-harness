@@ -18,12 +18,15 @@ const MARKER_RUN: usize = 7;
 /// green CI runs, and it survived because both gates covering that file are
 /// shaped so that it passes: the size rule scored the removal as a *reduction*
 /// in nonblank lines, and `DOC003` asserts that markers are *present*, not that
-/// conflict debris is absent. The instances have different origins: the
-/// line-29 artifact arrived with `501a711`, the #601 merge, reached `main`, and
-/// was removed by #618; `8e3ffea` adds one more at line 45 and is not the same
-/// operation; `696e56f` on the #571 branch carries one at line 60, and `df9ef25`
-/// one at line 100, left by the split that rebased this file onto the gate, which
-/// `94802b8` removes. Neither is on `main`.
+/// conflict debris is absent. The class has recurred, and every instance below is
+/// checkable with one `git show <ref>:CHANGELOG.md | grep -c '^=\{7,\}'`,
+/// comparing `<ref>` against `<ref>^`: the line-29 artifact arrived with
+/// `501a711`, the #601 merge, whose parent had none, reached `main`, and was
+/// removed by #618, which also took a parent-held line to none; `8e3ffea` adds a
+/// second at line 45 and is not the same operation; `696e56f` at line 60 and
+/// `df9ef25` at line 100 are each off `main` and each added by the commit that
+/// carries it, the latter on the same split after that split was rebased, and
+/// `94802b8` removes it.
 /// A rebase across the changelog boundary reintroduces exactly this, so it is
 /// checked rather than trusted.
 ///
