@@ -48,7 +48,6 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
   the same reason — a mixed supplied/empty pair, and an explicit count of what the extractor
   finds. The #561 defect itself is still caught: reinstating the original inert body fails 12
   cases, and deleting the helper bails.
-
 - **Drain the served gateway's streams while it runs, so a chatty gateway is no longer clipped at
   one pipe buffer.** The served compositions spawn the gateway with piped stdout/stderr and, until
   this change, read **neither** pipe until `stop()` had already SIGKILLed the process group and

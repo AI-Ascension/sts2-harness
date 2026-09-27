@@ -19,6 +19,7 @@ and report. It does not turn unrelated directories into implementation claims.
 ├── docs/                 # architecture, policy, decisions, research, and testing guidance
 │   ├── CHANGELOG-ARCHIVE.md           # verbatim completed changelog entries moved out of the active file
 │   └── CHANGELOG-ARCHIVE-<date>.md    # one verbatim closed wave per archive pass
+├── .github/              # required policy, CI, and lane workflows plus the pull-request template
 ├── tools/repo-policy/    # current Rust foundation checker
 └── MINIMAL_POC_REPORT.md # exact offline trace and evidence classification
 ```
