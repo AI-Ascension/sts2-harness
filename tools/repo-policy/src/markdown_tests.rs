@@ -205,10 +205,27 @@ fn a_repeated_marker_does_not_stand_in_for_a_missing_one() {
     );
     assert_eq!(
         findings.len(),
-        1,
-        "the second `# Changelog` is not `## Unreleased`: {findings:?}"
+        2,
+        "the second `# Changelog` is not `## Unreleased`, and it is also a \
+         duplicate of a marker the policy declares once: {findings:?}"
     );
-    assert_eq!(findings[0].rule, "DOC003");
+    assert!(
+        findings.iter().all(|finding| finding.rule == "DOC003"),
+        "{findings:?}"
+    );
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.message.contains("marker 1 is missing")),
+        "the missing `## Unreleased` must still be reported: {findings:?}"
+    );
+    assert!(
+        findings.iter().any(|finding| finding
+            .message
+            .contains("occurs 2 times but policy.toml declares it 1")),
+        "the surplus title must be reported as a duplication, not silently \
+         dropped: {findings:?}"
+    );
 }
 
 /// A title that survives but has been pushed below the content has still
@@ -246,4 +263,134 @@ fn leading_blank_lines_do_not_break_the_opening_anchor() {
         &mut findings,
     );
     assert!(findings.is_empty(), "unexpected findings: {findings:?}");
+}
+
+/// The residue that shipped on `main` as `ea296ea6`: a second `## Unreleased`
+/// heading with the six preamble lines copied above it. Both markers are
+/// present, in order, and the title still opens the file, so every assertion
+/// this rule previously made was satisfied and the whole repository gate was
+/// green on the duplication. Presence and order are not uniqueness.
+#[test]
+fn a_duplicated_marker_is_reported() {
+    let policy = policy_with_changelog_markers();
+    let mut findings = Vec::new();
+    check_required_preamble(
+        "CHANGELOG.md",
+        concat!(
+            "# Changelog\n\n",
+            "All notable changes are documented here.\n\n",
+            "## Unreleased\n\n- an entry\n",
+            "All notable changes are documented here.\n",
+            "## Unreleased\n- a second entry\n",
+        ),
+        &policy,
+        &mut findings,
+    );
+    assert_eq!(
+        findings.len(),
+        1,
+        "the duplicate `## Unreleased` is the only defect here: {findings:?}"
+    );
+    assert_eq!(findings[0].rule, "DOC003");
+    assert!(
+        findings[0]
+            .message
+            .contains("occurs 2 times but policy.toml declares it 1"),
+        "the finding must name the duplication, not report a missing marker: \
+         {}",
+        findings[0].message
+    );
+}
+
+/// The duplicate is reported once per surplus occurrence, and the count in the
+/// message is the real one, so a file that triples a marker cannot hide behind
+/// a single finding.
+#[test]
+fn a_tripled_marker_reports_its_true_count() {
+    let policy = policy_with_changelog_markers();
+    let mut findings = Vec::new();
+    check_required_preamble(
+        "CHANGELOG.md",
+        "# Changelog\n\n## Unreleased\n\n## Unreleased\n\n## Unreleased\n",
+        &policy,
+        &mut findings,
+    );
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert!(
+        findings[0]
+            .message
+            .contains("occurs 3 times but policy.toml declares it 1"),
+        "{}",
+        findings[0].message
+    );
+}
+
+/// A duplicated *title* is the same defect seen from the other end: the
+/// anchor check only inspects the opening line, so a second `# Changelog`
+/// further down was as invisible as a second `## Unreleased`.
+#[test]
+fn a_duplicated_opening_marker_is_reported() {
+    let policy = policy_with_changelog_markers();
+    let mut findings = Vec::new();
+    check_required_preamble(
+        "CHANGELOG.md",
+        "# Changelog\n\n## Unreleased\n\n# Changelog\n\n## Unreleased\n",
+        &policy,
+        &mut findings,
+    );
+    assert_eq!(findings.len(), 2, "{findings:?}");
+    assert!(
+        findings.iter().all(|finding| finding.rule == "DOC003"),
+        "{findings:?}"
+    );
+    assert!(
+        findings.iter().all(|finding| finding
+            .message
+            .contains("occurs 2 times but policy.toml declares it 1")),
+        "{findings:?}"
+    );
+}
+
+/// **Non-vacuity.** This transcribes the pre-fix scan verbatim — the
+/// `missing`/`cursor` walk with no `seen` counter — and asserts it reports
+/// nothing for the same input the new code rejects. Without this, a rule that
+/// duplicated every marker unconditionally would also pass the tests above.
+#[test]
+fn pre_fix_scan_accepts_the_duplicated_changelog() {
+    fn pre_fix(text: &str, markers: &[&str]) -> Vec<usize> {
+        let lines: Vec<&str> = text.lines().map(str::trim_end).collect();
+        let mut missing = vec![true; markers.len()];
+        let mut cursor = 0;
+        for line in &lines {
+            if cursor >= markers.len() {
+                break;
+            }
+            if line.trim() == markers[cursor].trim() {
+                missing[cursor] = false;
+                cursor += 1;
+            }
+        }
+        missing
+            .iter()
+            .enumerate()
+            .filter(|(_, gone)| **gone)
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    let missing = pre_fix(
+        concat!(
+            "# Changelog\n\n",
+            "All notable changes are documented here.\n\n",
+            "## Unreleased\n\n- an entry\n",
+            "All notable changes are documented here.\n",
+            "## Unreleased\n- a second entry\n",
+        ),
+        &["# Changelog", "## Unreleased"],
+    );
+    assert!(
+        missing.is_empty(),
+        "the pre-fix scan found every marker, which is why the duplication on \
+         main passed every gate: {missing:?}"
+    );
 }
