@@ -6,6 +6,15 @@ use std::fmt;
 pub(crate) enum Severity {
     Warning,
     Error,
+    /// A finding that a policy exemption explicitly acknowledges.
+    ///
+    /// It is reported and counted, but it never fails the gate. An exemption that waives a
+    /// hard limit is precisely the machine-checkable acknowledgement of that breach, so
+    /// surfacing the breach as a *failure* would make the exemption mechanism unusable and
+    /// leave the tree with no way to converge. Dropping it silently — the defect #569
+    /// reports — is equally wrong, because the evidence disappears with it. This severity
+    /// keeps the evidence visible without pretending the limit was met.
+    Exempted,
 }
 
 impl fmt::Display for Severity {
@@ -13,6 +22,7 @@ impl fmt::Display for Severity {
         match self {
             Self::Warning => formatter.write_str("WARNING"),
             Self::Error => formatter.write_str("ERROR"),
+            Self::Exempted => formatter.write_str("EXEMPTED"),
         }
     }
 }
@@ -32,6 +42,10 @@ impl Finding {
 
     pub(crate) fn error(rule: &'static str, path: &str, message: impl Into<String>) -> Self {
         Self::new(Severity::Error, rule, path, message)
+    }
+
+    pub(crate) fn exempted(rule: &'static str, path: &str, message: impl Into<String>) -> Self {
+        Self::new(Severity::Exempted, rule, path, message)
     }
 
     fn new(severity: Severity, rule: &'static str, path: &str, message: impl Into<String>) -> Self {

@@ -53,7 +53,8 @@ impl Policy {
         Self::parse(&text)
     }
 
-    fn parse(text: &str) -> Result<Self, String> {
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn parse(text: &str) -> Result<Self, String> {
         let value = toml::from_str::<Value>(text)
             .map_err(|error| format!("cannot parse policy.toml: {error}"))?;
         let root = value

@@ -9,9 +9,11 @@ that preceded the entries below is preserved in
 2026-09-23 are preserved in
 [`CHANGELOG-ARCHIVE-2026-09-23.md`](CHANGELOG-ARCHIVE-2026-09-23.md), the entries archived on
 2026-09-24 are preserved in
-[`CHANGELOG-ARCHIVE-2026-09-24.md`](CHANGELOG-ARCHIVE-2026-09-24.md), and the entries archived on
+[`CHANGELOG-ARCHIVE-2026-09-24.md`](CHANGELOG-ARCHIVE-2026-09-24.md), the entries archived on
 2026-09-25 are preserved in
-[`CHANGELOG-ARCHIVE-2026-09-25.md`](CHANGELOG-ARCHIVE-2026-09-25.md).
+[`CHANGELOG-ARCHIVE-2026-09-25.md`](CHANGELOG-ARCHIVE-2026-09-25.md), and the entries archived on
+2026-09-27 are preserved in
+[`CHANGELOG-ARCHIVE-2026-09-27.md`](CHANGELOG-ARCHIVE-2026-09-27.md).
 
 ### Archived from CHANGELOG.md
 

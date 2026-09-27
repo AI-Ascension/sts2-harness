@@ -6,6 +6,7 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::config::{Policy, SizeCategory};
 use crate::diagnostic::Finding;
+use crate::exemptions::exemption_count_findings;
 
 const PYTHON_MANIFESTS: &[&str] = &[
     ".python-version",
@@ -77,6 +78,8 @@ pub(crate) fn exemption_findings(root: &Path, policy: &Policy) -> Vec<Finding> {
                 relative,
                 "exempted file does not exist",
             ));
+        } else {
+            findings.extend(exemption_count_findings(root, relative, reason, policy));
         }
     }
     findings
@@ -121,12 +124,14 @@ pub(crate) fn size_findings(
         let Some(category) = size_category(Path::new(&relative)) else {
             continue;
         };
-        if exempt.contains(relative.as_str()) {
-            continue;
-        }
+        // An exemption waives the limit, but it is still an accountable claim about the
+        // tree: the file is counted and checked so a hard-limit breach is reported rather
+        // than suppressed. Exempt files are not counted toward the budget denominator's
+        // breach total, so this cannot be mistaken for a budget that silently grew.
+        let is_exempt = exempt.contains(relative.as_str());
         checked += 1;
         match fs::read_to_string(path) {
-            Ok(text) => check_size(&relative, &text, policy, category, &mut findings),
+            Ok(text) => check_size(&relative, &text, policy, category, is_exempt, &mut findings),
             Err(error) => findings.push(Finding::error(
                 "SIZE001",
                 &relative,
@@ -142,6 +147,7 @@ fn check_size(
     text: &str,
     policy: &Policy,
     category: SizeCategory,
+    is_exempt: bool,
     findings: &mut Vec<Finding>,
 ) {
     let lines = text.lines().filter(|line| !line.trim().is_empty()).count();
@@ -154,15 +160,33 @@ fn check_size(
         return;
     };
     if lines > budget.maximum {
-        findings.push(Finding::error(
-            "SIZE001",
-            relative,
-            format!(
-                "{lines} nonblank lines exceeds hard maximum {}",
-                budget.maximum
-            ),
-        ));
-    } else if lines > budget.preferred {
+        if is_exempt {
+            // Report the waived breach so the exemption is an explicit, machine-checkable
+            // acknowledgement of an over-limit file rather than a way to hide one.
+            findings.push(Finding::exempted(
+                "SIZE001",
+                relative,
+                format!(
+                    "{lines} nonblank lines exceeds hard maximum {}; waived by a policy exemption, \
+                     which acknowledges the breach rather than removing the file from the check",
+                    budget.maximum
+                ),
+            ));
+        } else {
+            findings.push(Finding::error(
+                "SIZE001",
+                relative,
+                format!(
+                    "{lines} nonblank lines exceeds hard maximum {}",
+                    budget.maximum
+                ),
+            ));
+        }
+    } else if lines > budget.preferred && !is_exempt {
+        // An exempt file that is merely over its *preferred* budget is exactly what an
+        // exemption is for, and raising it would make the table permanently red. The
+        // hard-maximum case above is different: there the exemption is an acknowledgement
+        // of a breach that stays visible.
         findings.push(Finding::warning(
             "SIZE001",
             relative,
@@ -174,7 +198,7 @@ fn check_size(
     }
 }
 
-fn size_category(relative: &Path) -> Option<SizeCategory> {
+pub(crate) fn size_category(relative: &Path) -> Option<SizeCategory> {
     let text = relative.to_string_lossy().replace('\\', "/");
     let name = relative.file_name()?.to_string_lossy().to_ascii_lowercase();
     if text.starts_with(".github/workflows/")
