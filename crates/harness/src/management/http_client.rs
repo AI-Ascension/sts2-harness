@@ -102,12 +102,13 @@ impl ManagementClient {
         let deadline = Instant::now() + self.deadline;
         let mut stream =
             TcpStream::connect_timeout(&self.address, self.deadline).map_err(io_http_error)?;
-        let head = format!(
-            "{method} {path} HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nAccept: application/json\r\nContent-Type: application/json\r\n{}Content-Length: {}\r\nConnection: close\r\n\r\n",
+        let head = request_head(
             self.address,
-            self.bearer_token,
-            idempotency_key.map_or_else(String::new, |key| format!("Idempotency-Key: {key}\r\n")),
-            body.len()
+            &self.bearer_token,
+            method,
+            path,
+            idempotency_key,
+            body.len(),
         );
         let mut request = head.into_bytes();
         request.extend_from_slice(body);
@@ -120,6 +121,32 @@ impl ManagementClient {
 pub struct ClientResponse {
     pub status: u16,
     pub body: Vec<u8>,
+}
+
+/// Build the request head this client puts on the wire.
+///
+/// The header set here is deliberately the minimum the gateway's allow-list
+/// admits, and nothing more. `accept` is **not** in that allow-list, and the
+/// gateway pins the refusal with a test of its own
+/// (`service_auth_tests.rs`), so sending it made every management request over
+/// the gateway hop fail `400 unsupported_header` — see issue #560.
+///
+/// The client reads a whole JSON body and the gateway answers with a single
+/// JSON representation, so there is no content negotiation to perform here:
+/// `Accept: application/json` was a statement with no recipient. Add a header
+/// only once something on the far side actually admits it.
+fn request_head(
+    address: SocketAddr,
+    bearer_token: &str,
+    method: &str,
+    path: &str,
+    idempotency_key: Option<&str>,
+    body_len: usize,
+) -> String {
+    format!(
+        "{method} {path} HTTP/1.1\r\nHost: {address}\r\nAuthorization: Bearer {bearer_token}\r\nContent-Type: application/json\r\n{}Content-Length: {body_len}\r\nConnection: close\r\n\r\n",
+        idempotency_key.map_or_else(String::new, |key| format!("Idempotency-Key: {key}\r\n")),
+    )
 }
 
 fn read_client_response(
@@ -216,3 +243,7 @@ fn read_client_response(
     }
     Ok(ClientResponse { status, body })
 }
+
+#[cfg(test)]
+#[path = "http_client_tests.rs"]
+mod tests;
