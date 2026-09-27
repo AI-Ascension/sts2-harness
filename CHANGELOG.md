@@ -1,3 +1,16 @@
+# Changelog
+
+All notable user-visible or operational changes to this project are documented here.
+
+The project follows Semantic Versioning once versioned releases begin. Foundation work does not
+claim a released harness version or runtime compatibility.
+
+Completed entries that no longer fit the active file's preferred size budget are preserved verbatim
+in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archives beside it,
+including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-09-27.md).
+
+## Unreleased
+
 - **Make the management client's header allow-list guard non-vacuous, and correct the criteria
   that produced it.** The guard added for the `Accept` fix transcribed the gateway's
   `header_is_allowed` exactly, then added a nineteenth entry, `idempotency-key`, under the comment
