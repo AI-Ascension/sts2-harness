@@ -11,6 +11,35 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Refuse to ship a conflict marker, because deleting the one that reached `main` proved the gates
+  would not.** A bare `=======` sat in this file at line 29, left by the `#601` merge as a
+  three-way-resolution artifact with no `<<<<<<<` or `>>>>>>>` counterpart, and it survived a merge
+  and fourteen green CI runs. It survived because both gates covering this file are shaped so that
+  it passes: the size rule scored the removal as a *reduction* in nonblank lines, and `DOC003`
+  asserts that markers are *present*, not that conflict debris is absent. `#606`'s resolution left
+  a similar line earlier. #618 removed this instance incidentally, while re-resolving this file for
+  an unrelated entry; deleting it fixes one occurrence and leaves the class open, because the next
+  rebase across this boundary puts it back. `repo-policy` gains `CONFLICT001`, which reports any
+  tracked text file with a line *starting* with seven or more `<`, `=` or `>`, naming the path and
+  the line number so review can act on it.
+
+  The match is positional rather than a substring search, because `contains` would fire on prose
+  that merely names a marker — the defect `#620` is fixing in `DOC003` — and an equals run inside a
+  sentence is ordinary text. It is anchored at the start of a line rather than requiring the line to
+  be *entirely* a run, and that is the difference between a gate that works and one that does not:
+  git writes its opener and closer with a label attached (`<<<<<<< HEAD`, `>>>>>>> topic`), so a
+  whole-line test would match only the bare separator — the one case that happened to exist here —
+  and would then stay silent through every future rebase leaving a complete block behind.
+  Indentation is not a marker, since a merge never indents one and an indented run is an indented
+  code sample.
+
+  Fenced code blocks are deliberately **not** excluded. Excluding them would exempt the
+  documentation of this very defect while still letting a real artifact inside a fence through, and
+  prose about a marker never puts one at column zero, so the common case is clean without the
+  exclusion. A setext underline of seven or more is reported, because git's separator is exactly
+  seven and any longer threshold would miss the defect; this repository uses ATX headings
+  throughout, so nothing in the tree is near that boundary. Verified by reproduction in all three
+  marker forms under `--strict`, not by construction alone. Refs #624, #625.
 - **Assert the changelog's own structure, because a size gate cannot see the loss of it.** The
   `#606` merge resolved a `CHANGELOG.md` conflict by keeping the bullet list and dropping the title,
   the preamble and the `## Unreleased` heading, and every gate stayed green: all twelve deleted
