@@ -13,8 +13,8 @@ fn main() -> ExitCode {
                 println!("{diagnostic}");
             }
             println!(
-                "Policy check: {} sized files, {} warning(s), {} error(s)",
-                outcome.checked_files, outcome.warnings, outcome.errors
+                "Policy check: {} sized files, {} warning(s), {} error(s), {} exempted breach(es)",
+                outcome.checked_files, outcome.warnings, outcome.errors, outcome.exempted
             );
             if outcome.passed(strict) {
                 ExitCode::SUCCESS

@@ -3,6 +3,7 @@
 mod adr;
 mod config;
 mod diagnostic;
+mod exemptions;
 mod files;
 mod license;
 mod markdown;
@@ -24,6 +25,8 @@ pub struct Outcome {
     pub checked_files: usize,
     pub warnings: usize,
     pub errors: usize,
+    /// Breaches an exemption explicitly acknowledges. Reported, never failing.
+    pub exempted: usize,
     pub diagnostics: Vec<String>,
 }
 
@@ -75,6 +78,10 @@ fn outcome(checked_files: usize, strict: bool, findings: &[Finding]) -> Outcome 
         .iter()
         .filter(|finding| finding.severity == Severity::Warning)
         .count();
+    let exempted = findings
+        .iter()
+        .filter(|finding| finding.severity == Severity::Exempted)
+        .count();
     let mut errors = findings
         .iter()
         .filter(|finding| finding.severity == Severity::Error)
@@ -86,6 +93,7 @@ fn outcome(checked_files: usize, strict: bool, findings: &[Finding]) -> Outcome 
         checked_files,
         warnings,
         errors,
+        exempted,
         diagnostics: findings.iter().map(Finding::render).collect(),
     }
 }
@@ -104,6 +112,30 @@ mod tests {
         assert_eq!(result.warnings, 1);
         assert_eq!(result.errors, 1);
         assert!(!result.passed(true));
+    }
+
+    #[test]
+    fn an_exempted_breach_is_reported_without_failing_the_gate() {
+        // The exemption is the acknowledgement, so a waived hard-limit breach must be
+        // visible in the output yet still let the tree converge under --strict.
+        let findings = [Finding::exempted(
+            "SIZE001",
+            "src/lib.rs",
+            "931 nonblank lines exceeds hard maximum 400; waived by a policy exemption",
+        )];
+        let result = outcome(1, true, &findings);
+        assert_eq!(result.exempted, 1);
+        assert_eq!(result.errors, 0);
+        assert_eq!(result.warnings, 0);
+        assert!(result.passed(true));
+        assert!(result.diagnostics[0].starts_with("EXEMPTED SIZE001"));
+    }
+
+    #[test]
+    fn an_exempted_breach_is_not_silently_dropped() {
+        let findings = [Finding::exempted("SIZE001", "src/lib.rs", "waived")];
+        let result = outcome(1, true, &findings);
+        assert_eq!(result.diagnostics.len(), 1);
     }
 
     /// The repository itself must satisfy strict policy. This is the check that a preferred-size
