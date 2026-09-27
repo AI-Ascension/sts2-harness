@@ -39,7 +39,8 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   limit, so the exemption is **deleted** rather than reworded. This is a pure source move: every
   item is re-exported from the parent so its public path, serde attributes and schema strings are
   unchanged, and no behaviour differs. `repo-policy --strict` reports one fewer exempted breach
-  (4, down from 5). No production, protocol, or runtime effect.
+  (3, down from 4; #606 took the pre-#606 count of 5 to 4), and `membership.rs` is gone from that
+  list. No production, protocol, or runtime effect.
 - **Make the management client's header allow-list guard non-vacuous, and correct the criteria
   that produced it.** The guard added for the `Accept` fix transcribed the gateway's
   `header_is_allowed` exactly, then added a nineteenth entry, `idempotency-key`, under the comment
