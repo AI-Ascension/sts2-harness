@@ -257,6 +257,62 @@ fn a_gateway_flooding_both_pipes_is_bounded_by_the_shared_total()
     Ok(())
 }
 
+/// #673: an address served by **someone else** must not be mistaken for this gateway.
+///
+/// `free_address` binds `:0`, reads the port and drops the listener, so the address is unowned
+/// from that instant. A live `LISTEN` on it is refused with `EADDRINUSE` even when `SO_REUSEADDR`
+/// is set on both sockets, so a squatter is a hard block, not a shared bind. A squatter is held
+/// here for the whole scenario, standing in for the sibling test that won the port.
+///
+/// The stub writes **nothing** before its `bind`, so when the squatter wins the stub dies at
+/// `bind` having emitted none of its own flood. `ready` still returns, because all it requires is
+/// that *something* answers on the address — and the squatter answers. The scenario must then
+/// fail on that, by name.
+///
+/// This is the residual half of #673, and it is the half the allocator fix alone does not close.
+/// Once `free_address` returns a held listener no squatter can win, so this scenario stops being
+/// reachable at all; until then, a squatter that *does* win must never be read as a quiet success.
+/// The failure is asserted on the **message**, not on the byte count: an earlier draft asserted
+/// `held > 0` and passed for the wrong reason — the killed stub's Python `EADDRINUSE` traceback
+/// lands on stderr, so a capture the harness never verified is enough to satisfy it. What has to
+/// hold is that the scenario names the child's death rather than reporting a byte shortfall or, far
+/// worse, proceeding to measure.
+#[test]
+fn a_gateway_is_not_measured_through_a_squatted_address() -> Result<(), Box<dyn std::error::Error>>
+{
+    let temporary = TempDir::new()?;
+    let stub = both_pipes_gateway(&temporary.path)?;
+    // Bound, not asked for: the squatter must hold the address before the stub can take it.
+    let squatter = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let address = squatter.local_addr()?;
+    std::thread::spawn(move || {
+        for stream in squatter.incoming() {
+            drop(stream);
+        }
+    });
+    let mod_address = free_address()?;
+
+    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
+    process::ready(&mut gateway_process, address)?;
+    // The stub is blocked out of its own `bind`, so it can never reach its flood. `ready`
+    // nonetheless succeeded, against the squatter — which is exactly the #673 hazard.
+    let outcome =
+        gateway_process.await_bytes(2 * BOTH_PIPES_BYTES, std::time::Duration::from_secs(30));
+    // Reaped rather than measured: the capture here is whatever the dying child wrote on its way
+    // out, which is the stub's own error text and not a property of the harness.
+    process::stop(gateway_process)?;
+
+    assert!(
+        matches!(outcome, Err(ref reported) if reported.contains("gateway exited")),
+        "a squatted address must make this scenario fail on the child's own death, but the wait \
+         reported {outcome:?}. Either the drain read {BOTH_PIPES_BYTES} bytes on each pipe from a \
+         gateway that never bound them, or the failure was reported as something other than the \
+         exit — in both cases the squatter's address was mistaken for this child \
+         (sts2-harness#673)"
+    );
+    Ok(())
+}
+
 /// The control for the test above: a gateway that stays inside the shared total carries **no**
 /// notice on either pipe.
 ///
