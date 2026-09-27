@@ -97,9 +97,8 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   unchanged, and no behaviour differs. `repo-policy --strict` reports one fewer exempted breach
   (3, down from 4; #606 took the pre-#606 count of 5 to 4), and `membership.rs` is gone from that
   list. No production, protocol, or runtime effect.
-=======
-- **Split the provider-session metadata store's filesystem boundary into two modules, so the file
-  that hid a 57-line hard-limit breach is gone rather than reworded.** `state_store.rs` measured
+- **Split the provider-session metadata store's filesystem boundary into three sibling
+  modules, so the file that hid a 57-line hard-limit breach is gone rather than reworded.** `state_store.rs` measured
   **457** nonblank lines against `rust_production_max` of **400**, and its `policy.toml` exemption
   asserted that 457 "remains below the hard limit" — false on the direction, and invisible to the
   size gate, because `size_findings` skips an exempt path before reading it. #569's exemption
