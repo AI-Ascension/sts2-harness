@@ -37,6 +37,15 @@ pub(crate) fn findings(root: &Path, files: &[PathBuf], policy: &Policy) -> Vec<F
 /// and passes. The repository lost `CHANGELOG.md`'s title, preamble and
 /// `## Unreleased` heading exactly that way, with `repo-policy --strict`
 /// green throughout.
+///
+/// A marker matches a **whole line**, not a substring, and the first marker
+/// must be the file's first nonblank line. Substring matching made the rule
+/// inert for exactly the marker it existed to protect: `CHANGELOG.md`
+/// describes its own `## Unreleased` heading in prose, so deleting the
+/// heading while the prose survived still satisfied `text.contains`. Whole
+/// lines close that, and anchoring the first marker is what makes "opens
+/// with" mean something — a file whose title has been pushed down or
+/// replaced has lost its identity even if every marker still appears.
 fn check_required_preamble(
     relative: &str,
     text: &str,
@@ -46,18 +55,57 @@ fn check_required_preamble(
     let Some(markers) = policy.required_preambles.get(relative) else {
         return;
     };
-    for (index, marker) in markers.iter().enumerate() {
-        if !text.contains(marker) {
-            findings.push(Finding::error(
-                "DOC003",
-                relative,
-                format!(
-                    "required structural marker {index} is missing: {marker}; \
-                     this file's identity is asserted by policy.toml and is not \
-                     covered by any size check"
-                ),
-            ));
+    let lines: Vec<&str> = text.lines().map(str::trim_end).collect();
+    let opening = lines.iter().find(|line| !line.trim().is_empty()).copied();
+
+    // Ordered scan rather than a per-marker search. `contains` never checked
+    // order despite the doc comment claiming it, so a file carrying its
+    // markers in reverse passed; and a search per marker would let a single
+    // line satisfy several markers, so a file repeating one heading could
+    // stand in for the whole preamble. This walks the file once and lets each
+    // line consume at most the next unclaimed marker.
+    let mut missing = vec![true; markers.len()];
+    let mut cursor = 0;
+    for line in &lines {
+        if cursor >= markers.len() {
+            break;
         }
+        if line.trim() == markers[cursor].trim() {
+            missing[cursor] = false;
+            cursor += 1;
+        }
+    }
+
+    // The first marker is not just present, it *opens* the file. A title that
+    // survives further down has still lost the identity this rule asserts, so
+    // the ordered scan's "found it somewhere" result does not clear it.
+    if let Some(first) = markers.first()
+        && opening != Some(first.trim())
+    {
+        missing[0] = true;
+    }
+
+    for (index, marker) in markers.iter().enumerate() {
+        if !missing[index] {
+            continue;
+        }
+        let detail = match (index, opening) {
+            (0, Some(opening)) if opening != marker.trim() => {
+                format!(
+                    "required structural marker {index} is not the file's opening line: \
+                     {marker} (found {opening:?} instead);"
+                )
+            }
+            _ => format!("required structural marker {index} is missing: {marker};"),
+        };
+        findings.push(Finding::error(
+            "DOC003",
+            relative,
+            format!(
+                "{detail} this file's identity is asserted by policy.toml and is not \
+                 covered by any size check"
+            ),
+        ));
     }
 }
 
@@ -92,66 +140,5 @@ fn link_targets(text: &str) -> impl Iterator<Item = &str> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{check_required_preamble, link_targets};
-    use crate::config::Policy;
-    use std::collections::BTreeMap;
-
-    #[test]
-    fn extracts_inline_markdown_targets() {
-        let targets: Vec<_> =
-            link_targets("[one](docs/one.md) and [two](https://example.test)").collect();
-        assert_eq!(targets, ["docs/one.md", "https://example.test"]);
-    }
-
-    fn policy_with_changelog_markers() -> Policy {
-        let mut required_preambles = BTreeMap::new();
-        required_preambles.insert(
-            "CHANGELOG.md".to_owned(),
-            vec!["# Changelog".to_owned(), "## Unreleased".to_owned()],
-        );
-        Policy::with_preambles(required_preambles)
-    }
-
-    #[test]
-    fn a_changelog_carrying_its_markers_produces_no_finding() {
-        let policy = policy_with_changelog_markers();
-        let mut findings = Vec::new();
-        check_required_preamble(
-            "CHANGELOG.md",
-            "# Changelog\n\n## Unreleased\n\n- an entry\n",
-            &policy,
-            &mut findings,
-        );
-        assert!(findings.is_empty(), "unexpected findings: {findings:?}");
-    }
-
-    /// The exact state `main` was left in by the #606 merge: the bullet list
-    /// promoted to the top of the file, every preamble line deleted. This is
-    /// the regression the rule exists to catch, and the size gate passes it.
-    #[test]
-    fn a_changelog_that_lost_its_title_and_unreleased_heading_is_reported() {
-        let policy = policy_with_changelog_markers();
-        let mut findings = Vec::new();
-        check_required_preamble(
-            "CHANGELOG.md",
-            "- **An entry.** With the preamble gone.\n",
-            &policy,
-            &mut findings,
-        );
-        assert_eq!(
-            findings.len(),
-            2,
-            "expected both markers reported: {findings:?}"
-        );
-        assert!(findings.iter().all(|finding| finding.rule == "DOC003"));
-    }
-
-    #[test]
-    fn a_file_outside_the_preamble_table_is_not_checked() {
-        let policy = policy_with_changelog_markers();
-        let mut findings = Vec::new();
-        check_required_preamble("README.md", "no markers here\n", &policy, &mut findings);
-        assert!(findings.is_empty(), "unexpected findings: {findings:?}");
-    }
-}
+#[path = "markdown_tests.rs"]
+mod tests;

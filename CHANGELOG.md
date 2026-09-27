@@ -11,6 +11,17 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Match `DOC003`'s structural markers as whole lines, in order, anchored to the file's opening
+  line.** The rule tested each marker with `text.contains`, so a marker was satisfied by its own
+  string appearing anywhere in the file — including inside prose describing it. `CHANGELOG.md`
+  documents its `## Unreleased` heading in prose, so deleting the real heading while that sentence
+  survived reported nothing: root measured `0 warning(s), 0 error(s)` and exit 0 on a `CHANGELOG.md`
+  with the heading deleted and the nonblank line count held at 493, which is the exact false green
+  the rule was added to end. Markers now match whole lines, are consumed in declared order so one
+  repeated heading cannot stand in for the preamble, and the first marker must be the file's first
+  nonblank line — which is what the doc comment on `check_required_preamble` already claimed and
+  the substring test never enforced. Closes #620.
+
 - **Refuse to ship a conflict marker, because deleting the one that reached `main` proved the gates
   would not.** A bare `=======` sat in this file at line 29, left by the `#601` merge as a
   three-way-resolution artifact with no `<<<<<<<` or `>>>>>>>` counterpart, and it survived a merge
