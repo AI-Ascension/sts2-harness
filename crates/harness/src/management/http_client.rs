@@ -137,13 +137,25 @@ pub struct ClientResponse {
 /// only once something on the far side actually admits it.
 ///
 /// One emitted header is **not** gateway-admissible: the optional
-/// `Idempotency-Key`. That is deliberate, and it is safe only because the
-/// callers that supply a key — the game-information policy-owner path — reach
-/// the harness management service on loopback, which never runs
-/// `header_is_allowed`. Every other caller of this client traverses the
-/// gateway and passes no key, so the two header sets never mix on the wire.
+/// `Idempotency-Key`. The two are different servers with different rules: the
+/// harness management listener *requires* that header on policy mutations
+/// (`idempotency_key_required`, and both OpenAPI contracts declare it
+/// `"required": true`), while the gateway refuses it by name. So the invariant
+/// is not "every header here is gateway-admissible" — it is "every header here
+/// is admitted by the server this client is pointed at", and today that server
+/// is the harness management listener.
+///
+/// That holds because the two header sets never mix on the wire. Every caller
+/// that supplies a key today is a `#[cfg(test)]` policy-owner mutation that
+/// reaches the harness management listener on loopback, where
+/// `header_is_allowed` is never consulted; every other caller crosses the
+/// gateway and passes no key. So the header is currently carried only by test
+/// traffic, but it is not dead code — the management listener requires it, and
+/// the first production policy-owner caller will need it.
+///
 /// If a keyed caller is ever pointed at the gateway, that header is the one
-/// that will be refused, and the fix is at the call site, not here.
+/// that will be refused, and the fix is at the call site, not here. See issues
+/// #597 and #598.
 fn request_head(
     address: SocketAddr,
     bearer_token: &str,
