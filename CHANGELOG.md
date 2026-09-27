@@ -31,11 +31,13 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   instance incidentally, while re-resolving this file for an unrelated entry; deleting it fixes one
   occurrence and leaves the class open, because the next rebase across this boundary puts it back.
   The class is not hypothetical. Each instance is cited by the commit that *introduced* it, and
-  each removal by the commit that removed it, so no clause rests on a branch, a rebase, or a count.
+  each removal by the commit that removed it. Every citation below is a commit, never a branch tip,
+  because a tip can be closed or superseded while the prose still names it, and `main` is
+  the only ref whose state is asserted.
   `501a711`, the `#601` merge, introduced the line-29 artifact, reached `main`, and `#618` removed
-  it; `8e3ffea` added one at line 45, which no commit has removed and which is present at the #573
-  tip `2c01a45`; `696e56f` added one at line 60, which `cba9be8` removed; and `df9ef25` added one at
-  line 100, which `94802b8` removed. Of the four, only `501a711` is on `main`.
+  it; `8e3ffea` added one at line 45 and no commit ever merged it, so `main` carries no marker;
+  `696e56f` added one at line 60, which `cba9be8` removed; and `df9ef25` added one at line 100,
+  which `94802b8` removed. Of the four, only `501a711` is on `main`.
   `repo-policy` gains
   `CONFLICT001`, which reports any tracked text file with a line *starting* with seven or more `<`,
   `=` or `>`, naming the path and the line number so review can act on it.
