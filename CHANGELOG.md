@@ -31,9 +31,10 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   instance incidentally, while re-resolving this file for an unrelated entry; deleting it fixes one
   occurrence and leaves the class open, because the next rebase across this boundary puts it back.
   The class is not hypothetical, and it has two instances with different origins: the line-29
-  artifact arrived with `501a711`, the `#601` merge, and is on `main`, while `696e56f` on the #571
-  branch carries another at line 60, is not on `main`, and was left by re-resolving this file
-  against it — `cba9be8` records that and names it the same shape. `repo-policy` gains
+  artifact arrived with `501a711`, the `#601` merge, reached `main`, and was removed incidentally
+  by `#618`; separately, `696e56f` on the #571 branch carries another at line 60, is not on
+  `main`, and was left by re-resolving this file against it — `cba9be8` records that and names it
+  the same shape. `repo-policy` gains
   `CONFLICT001`, which reports any tracked text file with a line *starting* with seven or more `<`,
   `=` or `>`, naming the path and the line number so review can act on it.
 
