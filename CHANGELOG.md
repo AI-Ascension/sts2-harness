@@ -23,18 +23,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   the same treatment `#643` gave the provider-session metadata store, and it removes the largest
   of the three breaches that `#640` tracks. Closes #572.
 
-- **Split the provider renderer under the production size limit instead of acknowledging the
-  breach.** `context_control/render.rs` sat 199 nonblank lines over `rust_production_max` and was
-  held there by a `policy.toml` exemption. The renderer carried four separable concerns that had
-  grown into one file: budget accounting, admission of context items, Exo request conversion, and
-  the shared Ollama projection. They are now `render/limits.rs`, `render/admission.rs`,
-  `render/exo_request.rs`, and `render/ollama.rs`, leaving `render.rs` as the boundary that
-  declares and re-exports them. No public item was added, removed, or renamed — the split is
-  verified item-for-item against the pre-split file — and the exemption is deleted rather than
-  reworded, so the size rule now measures these modules for real instead of waiving them. This is
-  the same treatment `#643` gave the provider-session metadata store, and it removes the largest
-  of the three breaches that `#640` tracks. Closes #572.
-
 - **Match `DOC003`'s structural markers as whole lines, in order, anchored to the file's opening
   line.** The rule tested each marker with `text.contains`, so a marker was satisfied by its own
   string appearing anywhere in the file — including inside prose describing it. `CHANGELOG.md`
