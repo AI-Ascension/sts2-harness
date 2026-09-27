@@ -11,6 +11,18 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Split the control authority under the production size limit instead of acknowledging the
+  breach.** `context_control/state.rs` sat 171 nonblank lines over `rust_production_max` and was
+  held there by a `policy.toml` exemption. The one `impl ControlAuthority` had grown four separable
+  concerns: the gate transitions, operation admission and settlement, the durable journal
+  boundary, the idempotency/event-ledger bookkeeping those transitions share, and the digests they
+  depend on. They are now `state/gate.rs`, `state/operations.rs`, `state/journal.rs`,
+  `state/ledger.rs`, and `state/digest.rs`, leaving `state.rs` as the authority's types and its
+  remaining stop, boundary, and plan-admission transitions. The
+  exemption is deleted rather than reworded, so the size rule measures these modules for real
+  instead of waiving them — which removes the last exempted breach the repository carried. This
+  completes the three splits that `#640` tracks. No public item was added, removed, or renamed; the
+  split is verified method-for-method against the pre-split file. Closes #574.
 - **Split the provider renderer under the production size limit instead of acknowledging the
   breach.** `context_control/render.rs` sat 199 nonblank lines over `rust_production_max` and was
   held there by a `policy.toml` exemption. The renderer carried four separable concerns that had
@@ -22,6 +34,35 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   reworded, so the size rule now measures these modules for real instead of waiving them. This is
   the same treatment `#643` gave the provider-session metadata store, and it removes the largest
   of the three breaches that `#640` tracks. Closes #572.
+
+- **Split the provider renderer under the production size limit instead of acknowledging the
+  breach.** `context_control/render.rs` sat 199 nonblank lines over `rust_production_max` and was
+  held there by a `policy.toml` exemption. The renderer carried four separable concerns that had
+  grown into one file: budget accounting, admission of context items, Exo request conversion, and
+  the shared Ollama projection. They are now `render/limits.rs`, `render/admission.rs`,
+  `render/exo_request.rs`, and `render/ollama.rs`, leaving `render.rs` as the boundary that
+  declares and re-exports them. No public item was added, removed, or renamed — the split is
+  verified item-for-item against the pre-split file — and the exemption is deleted rather than
+  reworded, so the size rule now measures these modules for real instead of waiving them. This is
+  the same treatment `#643` gave the provider-session metadata store, and it removes the largest
+  of the three breaches that `#640` tracks. Closes #572.
+# Changelog
+All notable user-visible or operational changes to this project are documented here.
+The project follows Semantic Versioning once versioned releases begin. Foundation work does not
+claim a released harness version or runtime compatibility.
+Completed entries that no longer fit the active file's preferred size budget are preserved verbatim
+in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archives beside it,
+including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-09-27.md).
+## Unreleased
+- **Stop requiring a waived breach to exist before the policy gate will pass.** The
+  `repository_reports_its_waived_breaches` test exists so the `EXEMPTED` finding cannot be computed
+  and then silently discarded — the `#569` defect. It asserted both that the reported count matches
+  the recomputed one *and* that at least one `EXEMPTED SIZE001` line appears. Once the last size
+  exemption was replaced by a real split, that second assertion failed on a repository that is now
+  fully compliant: there was correctly nothing left to waive, and the gate reported it as an error.
+  The counting assertion — the one that actually catches a discarded finding — is unchanged, and a
+  new assertion now pins the zero case explicitly, so the test still fails if a waiver is dropped
+  from the output and still fails if one is invented where none is owed. Refs #574.
 
 - **Match `DOC003`'s structural markers as whole lines, in order, anchored to the file's opening
   line.** The rule tested each marker with `text.contains`, so a marker was satisfied by its own

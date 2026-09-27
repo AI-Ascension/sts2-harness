@@ -177,12 +177,16 @@ mod tests {
              diagnostics were: {}",
             outcome.diagnostics.join("; ")
         );
-        assert!(
-            outcome
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.starts_with("EXEMPTED SIZE001")),
-            "no waived breach appears in the output: {}",
+        // When the repository has no over-limit exempted file left — the state reached once every
+        // size exemption was replaced by a real split — there is correctly nothing to report, and
+        // the only honest assertion is that none was invented. The counting assertion above is
+        // what keeps the test meaningful in both states: it still fails if a waived breach is
+        // dropped from the output, and it still passes at zero without special-casing.
+        assert_eq!(
+            outcome.exempted > 0,
+            expected_breaching_exemptions > 0,
+            "a waived breach must be reported exactly when the policy exempts an over-limit \
+             file; diagnostics were: {}",
             outcome.diagnostics.join("; ")
         );
         Ok(())
