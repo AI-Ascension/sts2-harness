@@ -9,6 +9,8 @@
 
 use super::ProviderSessionMetadataStoreError;
 use std::fs::{self, File};
+#[cfg(not(unix))]
+use std::io;
 use std::path::{Component, Path, PathBuf};
 
 #[cfg(unix)]
