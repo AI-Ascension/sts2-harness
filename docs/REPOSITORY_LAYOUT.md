@@ -10,7 +10,7 @@ and report. It does not turn unrelated directories into implementation claims.
 .
 ├── crates/harness/       # target-owned coordinator ports, records, and deterministic tests
 ├── protocol-artifact/     # copied, release-like poc-v1 contract consumed by the harness
-├── contract-artifact/     # per-capability consumer contract pins with golden vectors and digests
+├── contract-artifact/     # per-capability consumer contract pins; some carry golden vectors and `SHA256SUMS`
 ├── contracts/            # reviewed wire pins shared with companion owners, plus effective-limit pins
 ├── fixtures/             # small original synthetic fixtures for the deterministic test suites
 ├── experiments/          # experiment definitions, local harnesses, and controlled-run guidance
