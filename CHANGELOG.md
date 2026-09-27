@@ -1,3 +1,30 @@
+# Changelog
+
+All notable user-visible or operational changes to this project are documented here.
+
+The project follows Semantic Versioning once versioned releases begin. Foundation work does not
+claim a released harness version or runtime compatibility.
+
+Completed entries that no longer fit the active file's preferred size budget are preserved verbatim
+in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archives beside it,
+including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-09-27.md).
+
+## Unreleased
+- **Split the context-membership refusal vocabulary out of the policy module, so the file that
+  hid a 21-line hard-limit breach is gone rather than reworded.** `membership.rs` measured **421**
+  nonblank lines against `rust_production_max` of **400**, and its `policy.toml` exemption claimed
+  **421** was "below the hard limit" — false on both the count and the direction, and false in a way
+  #569's verifier is now able to refute. `ContextMembershipError` and its `Display` and
+  `reason_code` impls move to `membership_error.rs`, matching the sibling `lifetime_error.rs` and
+  `model_view_error.rs` the module tree already uses. `membership.rs` is **340** nonblank lines and
+  the new file **92**, both inside the limit, and the exemption is **deleted** rather than
+  reworded: correcting the count instead of splitting the file is the exact failure this entry
+  describes. The policy vocabulary and the refusal vocabulary are better separated anyway — one is
+  a schema a caller fills in, the other is the set of gates that can refuse it. No behaviour change:
+  the enum, its variants, its codes, and its `Display` text are byte-identical, and
+  `super::membership::ContextMembershipError` still resolves for the render path and both
+  submodules, so no call site outside `context_control` moves. Refs #573.
+
 - **Make the management client's header allow-list guard non-vacuous, and correct the criteria
   that produced it.** The guard added for the `Accept` fix transcribed the gateway's
   `header_is_allowed` exactly, then added a nineteenth entry, `idempotency-key`, under the comment
