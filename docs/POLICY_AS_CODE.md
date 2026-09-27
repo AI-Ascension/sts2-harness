@@ -25,6 +25,9 @@ when a mandatory rule or warning fails.
 | `ADR001` | ADR decision records use unique four-digit numbers |
 | `SIZE001` | Rust, workflow, and Markdown files stay within budgets |
 | `EXC001` | Exemptions are exact existing paths with meaningful reasons |
+| `EXC002` | An exemption's stated line count is wrong, but the file is still within its hard maximum |
+| `EXC003` | An exemption waives a file that is over its hard maximum |
+| `EXC004` | An exemption's cited hard limit disagrees with `[limits]` |
 | `WF001` | Workflows declare top-level permissions |
 | `WF002` | `pull_request_target` is prohibited |
 | `WF003` | `continue-on-error: true` is prohibited |
@@ -57,6 +60,24 @@ module's directory when it is nested.
 `policy.toml` lists required files, ignored build/editor/vendor directories, limits, and exact-path
 exemptions. An exemption must explain provenance or regeneration in at least twenty characters. Do not
 use wildcards, broad prefixes, or an exemption to preserve copied implementation source.
+
+An exemption waives the size budget for one file, so the reason is the only record of whether the file
+is still inside it. That record is therefore verified rather than trusted. Each number in the reason
+is classified by the words beside it: a count introduced by `nonblank` describes the file, and a
+number on the far side of a `hard limit` phrase is the budget being cited.
+
+- The file's own count must equal the file's real nonblank line count, measured exactly as `SIZE001`
+  measures it. A wrong count is `EXC002` when the file is still within its hard maximum.
+- A cited hard limit must equal the matching `[limits]` value. A limit is widened in `[limits]`, never
+  in prose, so a sentence that disagrees is `EXC004`.
+- A file over its hard maximum is `EXC003` until the reason carries
+  `` `over-hard-maximum: #NNN` `` naming the tracked issue that owns the breach. This is what makes a
+  waiver machine-checkable: the exemption can no longer absorb a breach into silence, and the debt
+  always points at the issue that closes it by splitting the file.
+
+Prose that states no count cannot misstate one, so an exemption without a number stays valid.
+Prose offering two competing counts of the same file is ambiguous and is not checked, because
+guessing which one is meant would be worse than reporting nothing.
 
 Rust `src/bin` production source is traversed despite the generic generated-output `bin` ignore.
 The traversal regression proves file collection and size/language findings while preserving ignored

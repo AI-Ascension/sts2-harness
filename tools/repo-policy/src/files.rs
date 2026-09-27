@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use crate::config::{Policy, SizeCategory};
 use crate::diagnostic::Finding;
@@ -53,33 +53,6 @@ pub(crate) fn required_file_findings(root: &Path, policy: &Policy) -> Vec<Findin
         .filter(|relative| !root.join(relative).is_file())
         .map(|relative| Finding::error("DOC001", relative, "required file is missing"))
         .collect()
-}
-
-pub(crate) fn exemption_findings(root: &Path, policy: &Policy) -> Vec<Finding> {
-    let mut findings = Vec::new();
-    for (relative, reason) in &policy.exemptions {
-        let path = Path::new(relative);
-        if path.is_absolute() || path.components().any(|part| part == Component::ParentDir) {
-            findings.push(Finding::error(
-                "EXC001",
-                relative,
-                "exemption must be an exact repository-relative path",
-            ));
-        } else if reason.trim().len() < 20 {
-            findings.push(Finding::error(
-                "EXC001",
-                relative,
-                "exemption reason must contain at least 20 characters",
-            ));
-        } else if !root.join(path).is_file() {
-            findings.push(Finding::error(
-                "EXC001",
-                relative,
-                "exempted file does not exist",
-            ));
-        }
-    }
-    findings
 }
 
 pub(crate) fn language_findings(root: &Path, files: &[PathBuf]) -> Vec<Finding> {
@@ -174,7 +147,7 @@ fn check_size(
     }
 }
 
-fn size_category(relative: &Path) -> Option<SizeCategory> {
+pub(crate) fn size_category(relative: &Path) -> Option<SizeCategory> {
     let text = relative.to_string_lossy().replace('\\', "/");
     let name = relative.file_name()?.to_string_lossy().to_ascii_lowercase();
     if text.starts_with(".github/workflows/")

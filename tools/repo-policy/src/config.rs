@@ -53,6 +53,12 @@ impl Policy {
         Self::parse(&text)
     }
 
+    /// Parses policy text directly, so a focused test can exercise a rule without a whole tree.
+    #[cfg(test)]
+    pub(crate) fn parse_text(text: &str) -> Result<Self, String> {
+        Self::parse(text)
+    }
+
     fn parse(text: &str) -> Result<Self, String> {
         let value = toml::from_str::<Value>(text)
             .map_err(|error| format!("cannot parse policy.toml: {error}"))?;

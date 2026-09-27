@@ -3,6 +3,7 @@
 mod adr;
 mod config;
 mod diagnostic;
+mod exemptions;
 mod files;
 mod license;
 mod markdown;
@@ -52,7 +53,7 @@ pub fn check(root: &Path, strict: bool) -> Result<Outcome, String> {
 
     let mut findings = Vec::new();
     findings.extend(files::required_file_findings(root, &policy));
-    findings.extend(files::exemption_findings(root, &policy));
+    findings.extend(exemptions::findings(root, &policy));
     findings.extend(files::language_findings(root, &repository_files));
     findings.extend(size_findings);
     findings.extend(workflow::findings(root, &repository_files));

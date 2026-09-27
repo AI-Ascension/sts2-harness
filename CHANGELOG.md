@@ -10,6 +10,21 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md).
 
 ## Unreleased
 
+- **Make a size exemption prove what it claims, and stop it from hiding a breach.** An exemption in
+  `policy.toml` removed its file from the size check entirely, so the sentence in the reason was the
+  only record of whether the file was still inside its budget — and nothing ever compared the count
+  in that sentence with the file. 21 of the 25 exemptions carried a stale count, and 6 of those were
+  hiding a real breach of a hard maximum, including a 931-line module behind a 400-line limit. A
+  green policy gate therefore could not distinguish a bounded file from an unbounded one.
+  The checker now classifies each number in a reason by the words beside it, verifies the file's own
+  count against the file, and verifies a cited hard limit against `[limits]`, which stays the single
+  source of truth for budgets. A stale count within budget is `EXC002`; a file over its hard maximum
+  is `EXC003` until the reason carries `over-hard-maximum: #NNN` naming the tracked issue that owns
+  the breach, which turns the waiver into a greppable pointer at the work that removes it; a cited
+  limit that disagrees with `[limits]` is `EXC004`. All 25 reasons were re-derived from the files
+  they describe, and the six waived breaches now point at the issues that track their splits. Prose
+  that states no count remains valid, and prose offering two competing counts is left unchecked
+  rather than guessed at. Refs #569, #564.
 - **Correct the repository-layout document, which had drifted from the tracked tree.** The
   `docs/REPOSITORY_LAYOUT.md` tree listing was written at Wave 2 and never revisited, so it no
   longer described the repository. It listed a top-level `tests/` directory — **no such directory
