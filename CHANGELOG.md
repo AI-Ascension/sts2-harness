@@ -35,7 +35,8 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   because a tip can be closed or superseded while the prose still names it, and `main` is
   the only ref whose state is asserted.
   `501a711`, the `#601` merge, introduced the line-29 artifact, reached `main`, and `#618` removed
-  it; `8e3ffea` added one at line 45 and no commit ever merged it, so `main` carries no marker;
+  it; `8e3ffea` added a second at line 45, which no commit in its own history has removed and which
+  is not on `main`;
   `696e56f` added one at line 60, which `cba9be8` removed; and `df9ef25` added one at line 100,
   which `94802b8` removed. Of the four, only `501a711` is on `main`.
   `repo-policy` gains
