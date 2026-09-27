@@ -193,20 +193,6 @@ pub(super) fn ready(
     }
 }
 
-/// Wait until the served gateway's capture has read `bytes` from its two pipes together.
-///
-/// `ready` answers "is a port accepting connections", which says nothing about how much the
-/// gateway has produced. A scenario that measures a flood has to wait for the flood instead, and
-/// it has to do so *before* calling `stop`, because `stop` kills the process group and would
-/// truncate the bytes being measured. Refs sts2-harness#629.
-pub(super) fn await_bytes(
-    gateway_process: &GatewayProcess,
-    bytes: usize,
-    deadline: Duration,
-) -> Result<(), Box<dyn std::error::Error>> {
-    Ok(gateway_process.await_bytes(bytes, deadline)?)
-}
-
 pub(super) fn stop(gateway_process: GatewayProcess) -> Result<Output, Box<dyn std::error::Error>> {
     let mut gateway_process = gateway_process;
     if gateway_process.try_wait()?.is_none() {
