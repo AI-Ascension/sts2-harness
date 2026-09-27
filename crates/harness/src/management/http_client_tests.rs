@@ -10,11 +10,11 @@ use super::*;
 // catch this class of defect: a request that is "logically the same" but carries
 // one extra header is refused in production and accepted here.
 //
-// ## Which server, and why the two allow-lists differ
+// ## Which server, and why only one of them has an allow-list
 //
 // The invariant enforced below is **"every header this client sends is admitted
 // by the server it is pointed at."** That server is today the harness management
-// listener, not the gateway, and the two have different allow-lists.
+// listener, not the gateway. Only the gateway enforces a header allow-list;
 // `Idempotency-Key` is the case that makes the difference visible:
 //
 // * It is **required** by the harness management server -- `http_routes_memory_owner.rs`
@@ -23,6 +23,11 @@ use super::*;
 //   OpenAPI contracts.
 // * It is **absent** from the gateway's `header_is_allowed`, which has no exemption
 //   clause at all.
+//
+// The harness management server runs no allow-list of its own, so there is nothing to
+// assert the rest of the keyed head against; only the requirement above is pinned. A
+// hand-written "management allow-list" would be fiction, and treating fiction as a
+// server contract is the mistake #598 recorded.
 //
 // So the header must be sent, and it must never be sent to the gateway. These tests are
 // pinned to the harness listener's requirements; a reader must not conclude from this file
@@ -135,28 +140,25 @@ fn every_sent_header_is_one_the_gateway_allow_list_admits() {
     );
 }
 
-/// The idempotent head is not a gateway request, so it is checked against the hop it
-/// is for: the harness management server, which *requires* `idempotency-key` and
-/// admits the same base set. Pinning this here is what stops someone "fixing" the
-/// allow-list test by deleting the header, which would turn 16 contract-required
-/// policy mutations into 400s.
+/// The idempotent head is not a gateway request, so the gateway's allow-list does not
+/// govern it. This pins the half that *is* real: the harness management server
+/// **requires** `idempotency-key`, so the client must still send it.
+///
+/// There is deliberately no `MANAGEMENT_ALLOWED` list to check the rest of the head
+/// against. The harness management server runs no header allow-list at all — it has
+/// no `header_is_allowed` equivalent and never returns `unsupported_header`; the only
+/// header it inspects is `idempotency-key`, in
+/// `http_routes_memory_owner.rs::idempotency_key`, which requires it to be present,
+/// non-empty, and at most 128 bytes. A hand-written list of names it "admits" would
+/// assert an enforcement rule that does not exist, which is the same mistake #598
+/// recorded: inventing a list and then treating the list as the server's contract.
+///
+/// Pinning only the requirement is what stops someone "fixing" the allow-list test
+/// by deleting the header, which would turn 16 contract-required policy mutations
+/// into 400s.
 #[test]
-fn the_idempotent_head_satisfies_the_management_server_it_is_actually_for() {
-    const MANAGEMENT_ALLOWED: &[&str] = &[
-        "authorization",
-        "connection",
-        "content-length",
-        "content-type",
-        "host",
-        "idempotency-key",
-    ];
+fn the_idempotent_key_the_management_server_requires_is_still_sent() {
     let names = header_names(&idempotent_head());
-    assert!(
-        names
-            .iter()
-            .all(|name| MANAGEMENT_ALLOWED.contains(&name.as_str())),
-        "the idempotent head sends a header the management server does not admit: {names:?}"
-    );
     assert!(
         names.iter().any(|name| name == "idempotency-key"),
         "policy mutations require this header; without it the server returns \
