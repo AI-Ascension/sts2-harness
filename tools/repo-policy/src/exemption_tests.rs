@@ -214,3 +214,50 @@ fn findings_carry_a_stable_rule_for_every_reported_case() -> Result<(), Box<dyn 
     assert!(findings.iter().all(|finding| finding.rule == "EXC002"));
     Ok(())
 }
+
+/// #638: the verified count is a line count, which is decidable on bytes.
+///
+/// Before the fix this read decoded the file, so a single non-UTF-8 byte
+/// anywhere failed the read of the whole file and returned an empty finding
+/// set. An empty set is indistinguishable from a correctly-verified exemption,
+/// so one stray byte turned a stale, understated count into a silent pass --
+/// the exact case this rule exists to catch.
+#[test]
+fn a_non_utf8_byte_cannot_silence_a_stale_exemption_count() -> Result<(), Box<dyn Error>> {
+    let root = temp_root("non-utf8")?;
+    let path = root.join("crates/harness/src/lib.rs");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    // 500 nonblank lines, so the exemption's claimed 300 is a real understatement,
+    // plus a single invalid byte that used to void the whole check.
+    let mut bytes = (0..500)
+        .flat_map(|index| format!("line {index}\n\n").into_bytes())
+        .collect::<Vec<u8>>();
+    // The invalid byte rides INSIDE the last line rather than after its
+    // newline. `nonblank_line_count` splits on `\n` and keeps any segment that
+    // is not entirely ASCII whitespace, so a trailing `\xff\xfe` past the final
+    // newline would be a segment of its own and would count as a 501st
+    // nonblank line -- making this test assert a number its fixture never set
+    // out to produce. Splicing the byte into `line 499` keeps the count at the
+    // 500 the test is about, and still makes the whole file undecodable.
+    bytes.truncate(bytes.len() - 2);
+    bytes.extend_from_slice(b"\xff\xfe\n\n");
+    std::fs::write(&path, bytes)?;
+
+    let policy = policy_with((300, 400))?;
+    let findings = exemption_count_findings(
+        &root,
+        "crates/harness/src/lib.rs",
+        "its 300 nonblank lines remain below the hard limit",
+        &policy,
+    );
+
+    assert_eq!(
+        findings.len(),
+        1,
+        "the stale count must still be reported for a non-UTF-8 file: {findings:?}"
+    );
+    assert!(findings[0].message.contains("500"), "{findings:?}");
+    Ok(())
+}

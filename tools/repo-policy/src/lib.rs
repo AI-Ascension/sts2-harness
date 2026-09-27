@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod adr;
+mod byte_scan;
 mod config;
 mod conflict;
 mod diagnostic;

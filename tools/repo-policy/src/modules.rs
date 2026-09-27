@@ -25,9 +25,9 @@
 //! the asymmetry decides. `cfg_attr_path_pairs` pins both sides.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::byte_scan::read_bytes;
 use crate::diagnostic::Finding;
 use crate::files::relative_text;
 use crate::module_paths::{directory, join, join_all};
@@ -66,10 +66,22 @@ fn contents(
     let mut contents = BTreeMap::new();
     for path in files {
         let relative = relative_text(root, path);
-        if sources.contains(&relative)
-            && let Ok(text) = fs::read_to_string(path)
-        {
-            contents.insert(relative, text);
+        if !sources.contains(&relative) {
+            continue;
+        }
+        // A source file that is not valid UTF-8 still participates in the module
+        // graph, and dropping it here is worse than a missed marker: the file
+        // becomes unreachable, so every module declared inside it is reported as
+        // an orphan. `scan` only looks for `mod`, `#[path]` and `include!`
+        // tokens, which are ASCII keywords, so a lossy decode is sufficient and
+        // keeps the file in the graph. A replacement character can only stand
+        // where an invalid sequence was, never inside an ASCII keyword.
+        //
+        // A file that cannot be read at all is still skipped: `collect` only
+        // yields paths that exist, and an unreadable path is not a module-graph
+        // fact this rule can speak to.
+        if let Some(bytes) = read_bytes(path) {
+            contents.insert(relative, String::from_utf8_lossy(&bytes).into_owned());
         }
     }
     contents

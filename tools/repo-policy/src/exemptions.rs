@@ -4,9 +4,9 @@
 //! record that an exempted file is over budget, because the size check skips exempted files
 //! entirely. These helpers verify that record instead of trusting it.
 
-use std::fs;
 use std::path::Path;
 
+use crate::byte_scan::{nonblank_line_count, read_bytes};
 use crate::config::Policy;
 use crate::diagnostic::Finding;
 
@@ -26,10 +26,14 @@ pub(crate) fn exemption_count_findings(
         return Vec::new();
     };
     let path = root.join(relative);
-    let Ok(text) = fs::read_to_string(&path) else {
+    // Byte-level, so the count this rule verifies cannot be silenced by one
+    // non-UTF-8 byte anywhere in the file. The claim being checked is a line
+    // count, which is decidable on bytes; a decode failure here used to return
+    // an empty result set, which is indistinguishable from a passing exemption.
+    let Some(bytes) = read_bytes(&path) else {
         return Vec::new();
     };
-    let actual = text.lines().filter(|line| !line.trim().is_empty()).count();
+    let actual = nonblank_line_count(&bytes);
     if claimed == actual {
         return Vec::new();
     }
