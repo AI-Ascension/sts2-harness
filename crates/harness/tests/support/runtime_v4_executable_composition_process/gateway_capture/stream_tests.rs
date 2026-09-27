@@ -20,10 +20,15 @@
 //!   the tail to make room) overspends the total by exactly the notice's length, 38 bytes. Killed
 //!   by `both_pipes_flooded_past_the_total_are_clipped_together` and
 //!   `the_truncation_notice_is_charged_to_the_shared_total`, and by the two #559 tests.
-//! - **Dropping the notice's `charge` entirely** is *not* observable from any pair test, and is
-//!   not an overspend. The trim-back removes the same bytes the notice adds, so a clipped stream
-//!   holds `reached` bytes either way; the charge only leaves the budget stricter, and a stream
-//!   that is already clipped cannot spend the difference. It is conservative-accounting drift.
+//! - **Dropping the notice's `charge` entirely** is *not* observable from any pair test, but it is
+//!   only safe while `reached >= TRUNCATION_NOTICE.len()`. In that range the trim-back removes the
+//!   same bytes the notice adds, so a clipped stream holds `reached` bytes either way and the
+//!   charge only leaves the budget stricter. When `reached` is *below* the notice's length the
+//!   trim-back saturates to zero, the stream truncates to nothing, and the full 38-byte notice is
+//!   appended on top of a budget that only paid for `reached` — a pair can then hold
+//!   `TOTAL + (38 - reached)`, overspending the shared ceiling by up to 37 bytes. The `charge` is
+//!   what prevents that, and no test here reaches `reached < 38`, so the bound is latent rather
+//!   than live. See the identical hazard stated in `stream.rs`.
 //! - **Charging the total on read rather than on retain** is likewise not observable here, and for
 //!   a structural reason: every test in this file drives [`Stream::retain`] directly, so
 //!   `drain_once`'s read path is never entered. Catching that mutation needs a test that drains a
@@ -273,13 +278,15 @@ fn both_pipes_flooded_past_the_total_are_clipped_together() {
 /// exactly the mutation that overspends the total, and the pair assertion below catches it.
 ///
 /// One honest limit, recorded because #567's brief asked for it. The `charge` call for the notice
-/// is *not* separately observable, and this test deliberately does not pretend otherwise. The
-/// trim-back removes the same bytes the notice adds, so a clipped stream holds `reached` bytes
-/// whether or not the charge is applied; charging it only leaves the budget stricter by the
-/// notice's length, and no already-clipped stream can spend those bytes. So dropping the charge is
-/// conservative-accounting drift (a budget up to 2 notices, 76 bytes, stricter than it needs to
-/// be), not an overspend, and no test on this pair can turn red for it. See the root comment on
-/// sts2-harness#567.
+/// is *not* separately observable from this pair, and this test deliberately does not pretend
+/// otherwise. While `reached` is at least the notice's length, the trim-back removes the same
+/// bytes the notice adds, so a clipped stream holds `reached` bytes whether or not the charge is
+/// applied; charging it only leaves the budget stricter. That reasoning stops holding once
+/// `reached` drops below the notice's length — the trim-back saturates to zero and the stream
+/// holds a full 38-byte notice the budget never paid for, so dropping the charge would overspend
+/// the shared total by `38 - reached`. No test on this pair reaches that state (the chunked
+/// `feed` lands on 1 MiB boundaries and a clipping stream is fed at least `PER_STREAM`), so the
+/// bound is latent; the `charge` in `stream.rs` is what holds it. See the root comment above.
 #[test]
 fn the_truncation_notice_is_charged_to_the_shared_total() {
     let mut budget = Budget::new();
