@@ -10,19 +10,26 @@ and report. It does not turn unrelated directories into implementation claims.
 .
 ├── crates/harness/       # target-owned coordinator ports, records, and deterministic tests
 ├── protocol-artifact/     # copied, release-like poc-v1 contract consumed by the harness
-├── experiments/          # future experiment definitions and controlled runs
-├── schemas/              # future harness-owned record/artifact contracts
-├── conformance/          # future implementation-neutral cases
+├── contract-artifact/     # per-capability consumer contract pins with golden vectors and digests
+├── contracts/            # reviewed wire pins shared with companion owners, plus effective-limit pins
+├── fixtures/             # small original synthetic fixtures for the deterministic test suites
+├── experiments/          # experiment definitions, local harnesses, and controlled-run guidance
+├── schemas/              # harness-owned record/artifact contracts
+├── conformance/          # implementation-neutral cases and mutations
 ├── docs/                 # architecture, policy, decisions, research, and testing guidance
 │   ├── CHANGELOG-ARCHIVE.md           # verbatim completed changelog entries moved out of the active file
-│   └── CHANGELOG-ARCHIVE-2026-09-10.md # verbatim closed wave moved out of that archive
-├── tests/                # future deterministic component/integration tests
+│   └── CHANGELOG-ARCHIVE-<date>.md    # one verbatim closed wave per archive pass
 ├── tools/repo-policy/    # current Rust foundation checker
 └── MINIMAL_POC_REPORT.md # exact offline trace and evidence classification
 ```
 
-The `experiments` directory is preserved. If an interop experiment is added later, it remains an
-explicit boundary experiment and does not grant the harness game or host authority.
+Deterministic component and integration tests live beside the code they cover, under
+`crates/harness/tests/`; this repository has no top-level `tests/` directory. The
+`conformance/` tree carries the implementation-neutral cases, and `fixtures/` carries the
+synthetic corpora the suites consume.
+
+The `experiments` directory is preserved. Each subdirectory is an explicit boundary experiment with
+its own README, and none of them grants the harness game or host authority.
 
 ## Planned responsibility placement
 
@@ -35,7 +42,7 @@ explicit boundary experiment and does not grant the harness game or host authori
 | Replay/scoring | separate cohesive modules | deterministic inputs and explicit divergence/evaluator versions |
 | Artifacts/datasets | artifact/lineage module | hashes, manifests, retention, license, and consumer identity |
 | Research specifications | `docs/research/` | self-contained, evidence-labeled architecture and evaluation research; generated package is a requirements baseline, not runtime proof |
-| Tests/conformance | `tests/` and `conformance/` | fakes and bounded fixtures; no proprietary host files |
+| Tests/conformance | `crates/harness/tests/` and `conformance/` | fakes and bounded fixtures; no proprietary host files |
 
 This table is not permission to create empty placeholder crates or duplicate another repository's
 implementation. Any additional component needs a requirement, owner, dependency review, and tests.
