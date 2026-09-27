@@ -26,23 +26,20 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   by construction: with the preamble deleted, `repo-policy --strict` reports both missing markers;
   restored, it is clean. Three tests cover the present case, the exact regressed shape (a bare
   bullet list), and a file outside the table. Closes #614.
-=======
-- **Pin the shared 8 MiB capture total across both served gateway pipes, with the truncation
-  notice paid for out of it.** #559 bounded each served pipe separately (4 MiB per stream) and
-  added an 8 MiB ceiling across the pair, but the two bounds were only ever verified apart, and
-  the interaction is the part that can go quietly wrong: a pipe cut by the *shared* budget trims
-  its own notice to fit and charges it against already-retained bytes, and a bug there produces a
-  capture that announces itself while silently omitting evidence. This change adds the tests for
-  that combination. A served gateway that floods **both** pipes past the per-stream ceiling is now
-  driven end to end: the pair the harness hands back never exceeds `MAX_TOTAL_CAPTURE_BYTES`, each
-  cut pipe carries a truncation notice, and a gateway that stays inside every ceiling carries
-  none — so "a notice is always present" cannot pass. The accounting is pinned at the unit level
-  too, with the mutations named in #567 each shown to fail: charging the notice after the total is
-  computed, dropping the trim-back, and charging the shared total against bytes that were never
-  retained. The first of those is unobservable in the combined-flood shape alone and is caught by
-  the per-stream form instead, which is why both shapes are kept. No served capture's bound
-  changes: the ceilings were merged in #559; this only proves they hold together.
-
+- **Split `context_control/membership.rs` so it stops hiding a 21-line hard-limit breach behind an
+  exemption that denied it.** The file measured **421** nonblank lines against
+  `rust_production_max = 400`. Its `policy.toml` exemption stated that count accurately and then
+  asserted the implementation "remains below the hard limit" — false, and a claim the size gate
+  was in a position to refute and did not, because `size_findings` skips an exempt path *before*
+  reading it, so the prose was the only place the breach was recorded. The
+  effective set, its per-reference outcomes, the dispatch projection, the revalidation state and
+  the typed error vocabulary now live in a sibling `membership_effective.rs`, following the same
+  `#[path]` idiom the module already used for `membership_resolution.rs` and
+  `membership_selector.rs`, at **274** and **167** nonblank lines — both inside the 400-line hard
+  limit, so the exemption is **deleted** rather than reworded. This is a pure source move: every
+  item is re-exported from the parent so its public path, serde attributes and schema strings are
+  unchanged, and no behaviour differs. `repo-policy --strict` reports one fewer exempted breach
+  (4, down from 5). No production, protocol, or runtime effect.
 - **Make the management client's header allow-list guard non-vacuous, and correct the criteria
   that produced it.** The guard added for the `Accept` fix transcribed the gateway's
   `header_is_allowed` exactly, then added a nineteenth entry, `idempotency-key`, under the comment
