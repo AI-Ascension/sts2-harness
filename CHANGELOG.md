@@ -98,6 +98,27 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   unchanged, and no behaviour differs. `repo-policy --strict` reports one fewer exempted breach
   (3, down from 4; #606 took the pre-#606 count of 5 to 4), and `membership.rs` is gone from that
   list. No production, protocol, or runtime effect.
+- **Split the provider-session metadata store's filesystem boundary into three sibling
+  modules, so the file that hid a 57-line hard-limit breach is gone rather than reworded.** `state_store.rs` measured
+  **457** nonblank lines against `rust_production_max` of **400**, and its `policy.toml` exemption
+  asserted that 457 "remains below the hard limit" — false on the direction, and invisible to the
+  size gate, because `size_findings` skips an exempt path before reading it. #569's exemption
+  verifier is now able to refute exactly that sentence. The file carried two separable concerns:
+  the **read and path-safety** rules (open without following a symlink, reject a path that escapes
+  its directory or has a permissive mode), the **durable write** (write a uniquely named temporary
+  file, give it private permissions, flush, then rename over the target), and the **refusal
+  vocabulary**. Those move to `state_store_io.rs`, `atomic_replace.rs` and `store_error.rs` under
+  the existing `state_store/` directory, beside `owner_lease.rs`, and the parent keeps the
+  envelope, key and scope handling. The result is **272** / **110** / **68** / **49** nonblank
+  lines — all inside both the 400 hard limit and the 300 preferred limit — and the exemption is
+  **deleted**, not corrected: rewording the count instead of splitting the file is the exact
+  failure this entry describes. This is a pure source move, checked mechanically against `main`:
+  all **32** items the original file declared are present after the split, with none added and none
+  dropped. No behaviour change — the `unix` and non-`unix` variants of each platform-sensitive
+  helper move together, `owner_lease.rs` keeps its existing `super::` imports through a re-export,
+  and the error enum is re-exported from the parent so `ProviderSessionMetadataStoreError` keeps
+  its public path. Closes #571.
+
 - **Make the management client's header allow-list guard non-vacuous, and correct the criteria
   that produced it.** The guard added for the `Accept` fix transcribed the gateway's
   `header_is_allowed` exactly, then added a nineteenth entry, `idempotency-key`, under the comment
