@@ -31,6 +31,23 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   header this client sends is admitted by the server it is pointed at, which today is the harness
   management listener, not the gateway. Refs #598, #560.
 
+- **Split the synthetic management adapter so it stops hiding a 531-line hard-limit breach behind a
+  false exemption.** `management/workflow_ports.rs` measured **931** nonblank lines against a
+  `rust_max` of **400** — more than double — and its `policy.toml` exemption claimed the file
+  "remain[s] below the hard limit". Because `size_findings` skips exempt paths *before* reading
+  them, the stated count is the only assertion of that count anywhere, so nothing prompted anyone
+  to check it and the breach stayed green. The file is now nine modules, largest **293** nonblank,
+  all inside the 400-line hard limit, and the exemption is **deleted** rather than reworded. The
+  modules group along their own seams — definition admission, context inspection, capability
+  reporting, in-memory and persistent execution, replay — plus a small shared support module for
+  error translation, with the three fixture constructors left in `workflow_ports.rs`. The split is
+  behaviour-preserving: every one of the 931 original nonblank body lines survives, modulo the
+  deliberate `pub(super)` visibility the module boundaries require and the re-wrapping of the
+  original single `use` block into eight per-module ones. Splitting a file is exactly the kind of
+  change that silently drops an import or a visibility edge, so the split was verified by compiling
+  rather than by inspection: `cargo check -p sts2-harness --lib` passes with **0 errors and 0
+  warnings**, and `repo-policy --strict` reports **0 warnings, 0 errors**. Refs #570.
+
 - **Split the provider-session policy HTTP suite so it stops hiding a 114-line hard-limit breach
   behind a false exemption count.** `provider_session_policy_http.rs` measured **714** nonblank
   lines against a `rust_test_max` of **600**, and its `policy.toml` exemption claimed **557** and

@@ -129,7 +129,7 @@ markdown_max = 700
 # Exact repository-relative paths only. Every exception needs a durable reason.
 [exemptions]
 ".github/workflows/runtime-peer-contract.yml" = "The runtime-peer-contract lane keeps every served_* step's own `runner.temp` evidence directory beside the step that needs it, because a job-level env cannot read `runner.temp`; its 168 nonblank lines remain below the 200-line workflow hard limit."
-"CHANGELOG.md" = "The active changelog is archived by a separate, dated owner-reviewed wave once it approaches its preferred budget; its 432 nonblank lines remain below the 700-line markdown hard limit."
+"CHANGELOG.md" = "The active changelog is archived by a separate, dated owner-reviewed wave once it approaches its preferred budget; its 448 nonblank lines remain below the 700-line markdown hard limit."
 "crates/harness/src/execution/store_ops.rs" = "The operation ledger is a single transaction-state module; its 270-line implementation is below the hard limit and is covered by the durable operation fault matrix."
 "crates/harness/src/execution/store_provider.rs" = "The provider reservation ledger is a single transaction-state module; its 185-line implementation is below the hard limit and keeps reservation transitions reviewable together."
 "crates/harness/src/execution/types_records.rs" = "The durable record/error vocabulary is kept together to preserve cross-record invariants; its 245-line implementation is below the hard limit."
@@ -137,8 +137,7 @@ markdown_max = 700
 "crates/harness/src/workflow/runtime.rs" = "The strict reducer keeps cursor, guard, loop, and terminal transitions together for one auditable state machine; its 367-line implementation remains below the hard limit."
 "crates/harness/src/workflow/dynamic.rs" = "The dynamic plan registry, validator, and deterministic pure executor are reviewed as one bounded planning boundary; its 349-line implementation remains below the hard limit."
 "crates/harness/src/workflow/provider.rs" = "The provider registry, typed context projection, and reservation ledger share one budget boundary; its 356-line implementation remains below the hard limit."
-"crates/harness/src/management/workflow_ports.rs" = "The synthetic management adapter keeps definition admission, runtime control, replay, and capability wiring together so the process driver exercises one shared boundary; its 931-line implementation remains below the hard limit."
-"crates/harness/src/management/mod.rs" = "The management module aggregator declares the bounded authoring-inference surface beside the existing submodules so one module list stays reviewable; its 322-line declaration set remains below the hard limit."
+"crates/harness/src/management/mod.rs" = "The management module aggregator declares the bounded authoring-inference surface and the synthetic `workflow_ports_*` siblings beside the existing submodules so one module list stays reviewable; its 330-line declaration set remains below the hard limit."
 "crates/harness/src/management/service.rs" = "The management service keeps the proposal-only authoring-inference port and journal fields beside the existing owner ports and their constructors; its 322-line wiring remains below the hard limit."
 "crates/harness/src/bin/sts2-astra-bridge.rs" = "The Astra bridge keeps bounded process execution, capture sideband emission, and decision validation together so the executable remains one auditable provider boundary; its 313-line implementation remains below the hard limit."
 "crates/harness/src/exo/protocol.rs" = "The Exo protocol adapter keeps request bounds, transport lifecycle, and capture sideband transitions together so provider admission remains reviewable as one boundary; its 325-line implementation remains below the hard limit."
