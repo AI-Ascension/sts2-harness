@@ -40,6 +40,7 @@ pub(crate) struct Budget {
 #[derive(Debug)]
 pub(crate) struct Policy {
     pub(crate) required_files: Vec<String>,
+    pub(crate) required_preambles: BTreeMap<String, Vec<String>>,
     pub(crate) ignored_directories: BTreeSet<String>,
     pub(crate) ignored_path_prefixes: BTreeSet<String>,
     pub(crate) exemptions: BTreeMap<String, String>,
@@ -68,10 +69,19 @@ impl Policy {
         }
 
         let project = table(root.get("project"), "project")?;
+        let required_preambles = match project.get("required_preambles") {
+            Some(value) => preamble_table(
+                value
+                    .as_table()
+                    .ok_or_else(|| "project.required_preambles must be a table".to_owned())?,
+            )?,
+            None => BTreeMap::new(),
+        };
         let limits = table(root.get("limits"), "limits")?;
         let exemptions = table(root.get("exemptions"), "exemptions")?;
         Ok(Self {
             required_files: string_array(project.get("required_files"), "required_files")?,
+            required_preambles,
             ignored_directories: string_array(
                 project.get("ignored_directories"),
                 "ignored_directories",
@@ -92,6 +102,48 @@ impl Policy {
     pub(crate) fn budget(&self, category: SizeCategory) -> Option<Budget> {
         self.limits.get(category.key()).copied()
     }
+
+    /// A policy carrying only the preamble requirements under test.
+    #[cfg(test)]
+    pub(crate) fn with_preambles(required_preambles: BTreeMap<String, Vec<String>>) -> Self {
+        Self {
+            required_files: Vec::new(),
+            required_preambles,
+            ignored_directories: BTreeSet::new(),
+            ignored_path_prefixes: BTreeSet::new(),
+            exemptions: BTreeMap::new(),
+            limits: BTreeMap::new(),
+        }
+    }
+}
+
+/// Reads `project.required_preambles`, a map from exact repository-relative
+/// path to the ordered lines that must appear in that file, in order, before
+/// any other content.
+fn preamble_table(
+    table: &toml::map::Map<String, Value>,
+) -> Result<BTreeMap<String, Vec<String>>, String> {
+    table
+        .iter()
+        .map(|(path, value)| {
+            let entry = value
+                .as_table()
+                .ok_or_else(|| format!("required_preambles[{path}] must be a table"))?;
+            let markers = entry
+                .get("markers")
+                .ok_or_else(|| format!("required_preambles[{path}] must declare markers"))?;
+            let markers = string_array(
+                Some(markers),
+                &format!("required_preambles[{path}].markers"),
+            )?;
+            if markers.is_empty() {
+                return Err(format!(
+                    "required_preambles[{path}].markers cannot be empty"
+                ));
+            }
+            Ok((path.clone(), markers))
+        })
+        .collect()
 }
 
 fn parse_limits(
@@ -189,7 +241,7 @@ markdown_max = 25
     fn parses_complete_policy() -> Result<(), String> {
         let text = format!(
             "policy_version = 1\n[project]\nrequired_files = [\"README.md\"]\n\
-             ignored_directories = [\"target\"]\nignored_path_prefixes = []\n\
+             ignored_directories = [\"target\"]\nignored_path_prefixes = []\n[project.required_preambles]\n\
              {LIMITS}\n[exemptions]\n"
         );
         let policy = Policy::parse(&text)?;
@@ -207,7 +259,7 @@ markdown_max = 25
     fn rejects_inverted_budget() {
         let text = format!(
             "policy_version = 1\n[project]\nrequired_files = []\n\
-             ignored_directories = []\nignored_path_prefixes = []\n\
+             ignored_directories = []\nignored_path_prefixes = []\n[project.required_preambles]\n\
              {}\n[exemptions]\n",
             LIMITS.replace("rust_production_max = 20", "rust_production_max = 5")
         );

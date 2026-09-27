@@ -60,7 +60,7 @@ pub fn check(root: &Path, strict: bool) -> Result<Outcome, String> {
     findings.extend(size_findings);
     findings.extend(workflow::findings(root, &repository_files));
     findings.extend(license::findings(root, &repository_files));
-    findings.extend(markdown::findings(root, &repository_files));
+    findings.extend(markdown::findings(root, &repository_files, &policy));
     findings.extend(adr::findings(root, &repository_files));
     findings.extend(rust::findings(root));
     findings.extend(modules::findings(root, &repository_files));
