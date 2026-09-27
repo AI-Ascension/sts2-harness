@@ -162,7 +162,7 @@ pub(super) fn gateway_with_identity(
     // so reading only at `stop` truncated a chatty gateway at one buffer and silently lost the
     // rest. `GatewayProcess::attach` also owns the failure path, so a gateway that is spawned
     // but cannot be captured is killed here rather than leaked.
-    let child = command.spawn()?;
+    let child = spawn::retrying_text_busy(&mut command)?;
     Ok(GatewayProcess::attach(child)?)
 }
 
@@ -239,7 +239,7 @@ pub(super) fn stop_service(mut child: Child) -> Result<Output, Box<dyn std::erro
 }
 
 fn bounded(mut command: Command) -> Result<Output, Box<dyn std::error::Error>> {
-    let mut child = command.spawn()?;
+    let mut child = spawn::retrying_text_busy(&mut command)?;
     let deadline = Instant::now() + Duration::from_secs(20);
     loop {
         if child.try_wait()?.is_some() {
@@ -342,6 +342,9 @@ pub(crate) use served::{
     run_served_policy_rebind_after_idle_adoption, run_served_restart_refuses_duplicate_effect,
 };
 
+#[path = "runtime_v4_executable_composition_process/spawn.rs"]
+mod spawn;
+
 #[path = "runtime_v4_executable_composition_process/assertions.rs"]
 mod assertions;
 #[allow(unused_imports)]
@@ -364,9 +367,13 @@ pub(crate) use gateway_evidence::{
 // preferred test-file size budget.
 #[path = "runtime_v4_executable_composition_process/gateway_capture.rs"]
 mod gateway_capture;
-// `pub(crate)`, matching the `gateway_evidence` re-export above: the module itself is private, so
-// a `pub(super)` item inside it could not be re-exported through this `use`.
 pub(crate) use gateway_capture::GatewayProcess;
+// The three ceilings #567 asserts against; only `served_gateway_capture_drain` names them of the
+// four binaries compiling this module, so the rest read it as unused — as the re-exports above.
+#[allow(unused_imports)]
+pub(crate) use gateway_capture::stream::{
+    MAX_CAPTURE_BYTES, MAX_TOTAL_CAPTURE_BYTES, TRUNCATION_NOTICE,
+};
 
 include!("runtime_v4_executable_composition_malformed.rs");
 
