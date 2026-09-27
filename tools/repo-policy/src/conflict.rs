@@ -21,8 +21,9 @@ const MARKER_RUN: usize = 7;
 /// conflict debris is absent. The instances have different origins: the
 /// line-29 artifact arrived with `501a711`, the #601 merge, reached `main`, and
 /// was removed by #618; `8e3ffea` adds one more at line 45 and is not the same
-/// operation; `696e56f` on the #571 branch carries one at line 60, and `d7dfbca`
-/// one at line 100 that `94802b8` removes. None of the last two is on `main`.
+/// operation; `696e56f` on the #571 branch carries one at line 60, and `df9ef25`
+/// one at line 100, left by the split that rebased this file onto the gate, which
+/// `94802b8` removes. Neither is on `main`.
 /// A rebase across the changelog boundary reintroduces exactly this, so it is
 /// checked rather than trusted.
 ///

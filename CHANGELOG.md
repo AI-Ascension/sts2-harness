@@ -33,8 +33,9 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   The class is not hypothetical, and its instances have different origins. The line-29 artifact
   arrived with `501a711`, the `#601` merge, reached `main`, and was removed by `#618`; `8e3ffea`
   adds one more at line 45 and is not the same operation. Two further instances are off `main`:
-  `696e56f` on the #571 branch carries one at line 60, and `d7dfbca` carries one at line 100 that
-  `94802b8` removes — that rebase onto this very gate put it there. `repo-policy` gains
+  `696e56f` on the #571 branch carries one at line 60, and `df9ef25` on that same branch carries one
+  at line 100, left by the split that rebased this file onto the gate, which `94802b8` removes.
+  `repo-policy` gains
   `CONFLICT001`, which reports any tracked text file with a line *starting* with seven or more `<`,
   `=` or `>`, naming the path and the line number so review can act on it.
 
