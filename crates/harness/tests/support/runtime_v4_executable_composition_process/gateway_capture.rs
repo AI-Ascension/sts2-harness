@@ -137,20 +137,32 @@ impl GatewayProcess {
     /// the kill, not the ceiling the test is about. Refs sts2-harness#629.
     ///
     /// The wait is bounded and reports the shortfall on expiry rather than looping forever, so a
-    /// gateway that dies mid-flood fails as a diagnosable error instead of a hung test binary.
-    pub(crate) fn await_bytes(&self, bytes: usize, deadline: Duration) -> Result<(), String> {
+    /// gateway that dies mid-flood fails as a diagnosable error instead of a hung test binary. A
+    /// gateway that has already exited is reported as `gateway exited: {status}`, the way `ready`
+    /// does, so a child that died at its own `bind` (the residual port-theft window `free_address`
+    /// still leaves open, tracked in sts2-harness#673) surfaces its real cause immediately instead
+    /// of stalling the full deadline and then misreporting the cause as a byte shortfall.
+    pub(crate) fn await_bytes(&mut self, bytes: usize, deadline: Duration) -> Result<(), String> {
         let Some(capture) = self.capture.as_ref() else {
             return Err(String::from(
                 "the served gateway's capture was already taken, so its progress cannot be \
                  awaited (sts2-harness#629)",
             ));
         };
+        // Cloned so the loop can call `try_wait` (which needs `&mut self`) while still reading
+        // the same shared counter the drain thread publishes into.
+        let progress = Arc::clone(&capture.progress);
         let limit = Instant::now() + deadline;
         loop {
             // Checked before the count so a capture that broke while waiting is reported as the
             // real defect rather than as a timeout.
             self.check_capture()?;
-            let seen = capture.progress.load(Ordering::Relaxed);
+            // Reaped here, before the count, so an already-dead gateway is reported as itself
+            // rather than as a byte shortfall it can no longer cause.
+            if let Some(status) = self.try_wait().map_err(|error| error.to_string())? {
+                return Err(format!("gateway exited: {status}"));
+            }
+            let seen = progress.load(Ordering::Relaxed);
             if seen >= bytes {
                 return Ok(());
             }
