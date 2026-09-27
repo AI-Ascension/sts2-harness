@@ -16,7 +16,9 @@ mod lifetime_restore;
 mod lifetime_scope;
 mod lifetime_state;
 mod membership;
+mod membership_error;
 mod membership_render;
+mod membership_witness;
 mod model_view;
 mod model_view_catalog;
 mod model_view_elements;
@@ -59,16 +61,19 @@ pub use lifetime_scope::{
 pub use lifetime_state::LifetimePreview;
 pub use membership::{
     AncestorHistoryMode, CONTEXT_MEMBERSHIP_POLICY_SCHEMA, ContextMembershipBroaderScope,
-    ContextMembershipError, ContextMembershipPolicy, ContextMembershipScope,
-    ContextMembershipSelector, ContextModelView, EffectiveMembership,
-    MAX_MEMBERSHIP_AUTHORIZED_AGENTS, MAX_MEMBERSHIP_WIDER_ITEMS, MembershipCheckContext,
-    MembershipContinuity, MembershipDecision, MembershipDispatchView, MembershipDisposition,
-    MembershipReasonCode, PreparedMembership, SHARED_MEMBERSHIP_KINDS, prevalidate_and_bind,
+    ContextMembershipPolicy, ContextMembershipScope, ContextMembershipSelector, ContextModelView,
+    MAX_MEMBERSHIP_AUTHORIZED_AGENTS, MAX_MEMBERSHIP_WIDER_ITEMS, MembershipContinuity,
+    MembershipDisposition, MembershipReasonCode, SHARED_MEMBERSHIP_KINDS, prevalidate_and_bind,
     resolve_membership,
 };
+pub use membership_error::ContextMembershipError;
 pub use membership_render::{
     MembershipRenderError, MembershipRenderRequest, membership_check_from_boundary,
     membership_scope_from_boundary, render_with_membership,
+};
+pub use membership_witness::{
+    EffectiveMembership, MembershipCheckContext, MembershipDecision, MembershipDispatchView,
+    PreparedMembership,
 };
 pub use model_view::{
     ALL_ITEMS_MARKER, MODEL_VIEW_PROJECTION_SCHEMA, ModelViewProjection, ModelViewSelectorRegistry,
