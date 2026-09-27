@@ -34,13 +34,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   reworded, so the size rule now measures these modules for real instead of waiving them. This is
   the same treatment `#643` gave the provider-session metadata store, and it removes the largest
   of the three breaches that `#640` tracks. Closes #572.
-All notable user-visible or operational changes to this project are documented here.
-The project follows Semantic Versioning once versioned releases begin. Foundation work does not
-claim a released harness version or runtime compatibility.
-Completed entries that no longer fit the active file's preferred size budget are preserved verbatim
-in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archives beside it,
-including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-09-27.md).
-## Unreleased
 - **Stop requiring a waived breach to exist before the policy gate will pass.** The
   `repository_reports_its_waived_breaches` test exists so the `EXEMPTED` finding cannot be computed
   and then silently discarded — the `#569` defect. It asserted both that the reported count matches
