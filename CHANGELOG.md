@@ -51,6 +51,21 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   seven and any longer threshold would miss the defect; this repository uses ATX headings
   throughout, so nothing in the tree is near that boundary. Verified by reproduction in all three
   marker forms under `--strict`, not by construction alone. Refs #624, #625.
+- **Charge the truncation notice to the budget in a way a test can actually see.** #601 closed
+  #567 on the strength of a served-gateway test that drives both pipes past the shared 8 MiB
+  ceiling, and that test is sound for what it asserts. But #567's second acceptance criterion also
+  asks the suite to fail when the notice is *emitted without being charged* to the budget, and it
+  did not: deleting `budget.charge(TRUNCATION_NOTICE.len())` left all nineteen tests green, because
+  the notice's trim-back already discards exactly the bytes the notice adds, so the removal changes
+  no retained byte and no assertion on the retained total can see it. The charge is not cosmetic —
+  it is what keeps a stream clipped from an already-exhausted budget from holding a notice the
+  ceiling never paid for — so the new test compares the bytes the budget was charged against the
+  bytes the capture actually holds. On correct code the total is charged 38 bytes more than the
+  pair retains; with the charge deleted the two figures are equal, the pair sits exactly on the
+  ceiling, and the test fails. The module comment that recorded this bound as "latent rather than
+  live" is corrected. The bare `=======` conflict-resolution artifact that the `#601` merge left in this
+  file between two entries was already removed on `main` by `#618`, so this change does not
+  remove it; `#630` now gates the whole class with `CONFLICT001`. Refs #567, closes #624.
 - **Assert the changelog's own structure, because a size gate cannot see the loss of it.** The
   `#606` merge resolved a `CHANGELOG.md` conflict by keeping the bullet list and dropping the title,
   the preamble and the `## Unreleased` heading, and every gate stayed green: all twelve deleted

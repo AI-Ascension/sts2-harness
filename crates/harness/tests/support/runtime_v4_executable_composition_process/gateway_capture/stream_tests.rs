@@ -20,15 +20,16 @@
 //!   the tail to make room) overspends the total by exactly the notice's length, 38 bytes. Killed
 //!   by `both_pipes_flooded_past_the_total_are_clipped_together` and
 //!   `the_truncation_notice_is_charged_to_the_shared_total`, and by the two #559 tests.
-//! - **Dropping the notice's `charge` entirely** is *not* observable from any pair test, but it is
-//!   only safe while `reached >= TRUNCATION_NOTICE.len()`. In that range the trim-back removes the
-//!   same bytes the notice adds, so a clipped stream holds `reached` bytes either way and the
-//!   charge only leaves the budget stricter. When `reached` is *below* the notice's length the
-//!   trim-back saturates to zero, the stream truncates to nothing, and the full 38-byte notice is
-//!   appended on top of a budget that only paid for `reached` — a pair can then hold
-//!   `TOTAL + (38 - reached)`, overspending the shared ceiling by up to 37 bytes. The `charge` is
-//!   what prevents that, and no test here reaches `reached < 38`, so the bound is latent rather
-//!   than live. See the identical hazard stated in `stream.rs`.
+//! - **Dropping the notice's `charge` entirely** leaves every *retained* byte unchanged, so no
+//!   assertion on `held` can see it. It is caught only by comparing what the budget was charged
+//!   against what the capture holds, in
+//!   `the_bytes_held_are_charged_for_and_the_notice_leaves_a_surplus`. The defect it permits is
+//!   real: while
+//!   `reached >= TRUNCATION_NOTICE.len()` the trim-back removes the same bytes the notice adds, but
+//!   once the shared total is exhausted `reached` is `0`, the trim-back saturates, and the stream
+//!   holds a full 38-byte notice the total never paid for — so a capture can overspend the shared
+//!   ceiling by 38 bytes per stream clipped from an empty buffer. See the identical hazard stated
+//!   in `stream.rs`.
 //! - **Charging the total on read rather than on retain** is likewise not observable here, and for
 //!   a structural reason: every test in this file drives [`Stream::retain`] directly, so
 //!   `drain_once`'s read path is never entered. Catching that mutation needs a test that drains a
@@ -350,5 +351,65 @@ fn an_uncut_stream_in_a_bounded_pair_carries_no_notice() {
         !String::from_utf8_lossy(&quiet.bytes).contains(NOTICE),
         "a stream that was never clipped carries a truncation notice, so a reader would \
          distrust a capture that is actually complete (sts2-harness#567)"
+    );
+}
+
+/// The bytes the capture holds are always a subset of the bytes the budget was charged for.
+///
+/// This is the assertion that makes #567's acceptance criterion 2 falsifiable, and it is the only
+/// one in this file that can. Criterion 2's mutation — dropping
+/// `budget.charge(TRUNCATION_NOTICE.len())` — changes **no retained byte at all**: the trim-back
+/// already removes exactly the bytes the notice adds, so the buffer is length-neutral at the clip
+/// point. Deleting the charge is therefore invisible to any assertion on `held`, and the full
+/// `served_gateway_capture_drain` binary stays 19/19 green with the charge removed. What the charge
+/// actually does is make the budget *stricter* than the bytes held, and that surplus is the signal:
+/// on correct code the shared total ends up charged strictly more than the capture holds, by
+/// exactly the one notice that was not refunded.
+///
+/// The direction of the inequality is the whole content of this test, so it is worth being exact
+/// about why it is `>` and not `>=`:
+///
+/// - `retain` charges `remaining`, then the trim-back **discards** `min(reached, notice)` bytes that
+///   were already charged, then the notice is appended and charged again. The discarded bytes are
+///   never refunded, so a clipped stream leaves a permanent surplus of exactly one notice.
+/// - Once the shared total is exhausted, `remaining` is `0`, so `reached` is `0`, the trim-back
+///   saturates and discards nothing, and the notice is charged 38 bytes against a total that is
+///   already spent. `Budget::charge` saturates rather than panicking, so the capture holds a notice
+///   the total could not pay for — the very hazard the `charge` exists to hold closed.
+/// - With the charge removed, both of those surpluses vanish and the pair holds exactly what the
+///   total paid for. So `charged > held` here is not a slack term; it is the assertion.
+///
+/// Measured, driven through the real `retain` on the committed tree: `charged = 8388608`,
+/// `held = 8388570`, surplus `38`. With the charge deleted: `charged = 8388608`, `held = 8388608`,
+/// surplus `0`, and the capture sits *exactly* on the ceiling with nothing to spare.
+#[test]
+fn the_bytes_held_are_charged_for_and_the_notice_leaves_a_surplus() {
+    let mut budget = Budget::new();
+    let chunk = bytes_of(64 * 1024);
+    // The first stream is clipped by its own per-stream ceiling, which is reached first because
+    // `PER_STREAM` is half the total. The second then meets the shared total partway through, so
+    // the pair exercises the *shared* axis rather than the per-stream one twice.
+    let mut first = empty_stream("stdout");
+    feed(&mut first, PER_STREAM + 1, &chunk, &mut budget);
+    let mut second = empty_stream("stderr");
+    feed(&mut second, PER_STREAM * 2, &chunk, &mut budget);
+
+    let held = first.bytes.len() + second.bytes.len();
+    let charged = TOTAL - budget.remaining();
+    let carries_notice =
+        |stream: &Stream<std::io::Empty>| String::from_utf8_lossy(&stream.bytes).contains(NOTICE);
+    assert!(
+        carries_notice(&first) && carries_notice(&second),
+        "both streams are driven past both ceilings, so both must carry a notice; if either does \
+         not, this test is not exercising the notice path it was written for \
+         (sts2-harness#567)"
+    );
+    assert!(
+        charged > held,
+        "the budget was charged {charged} bytes and the capture holds {held}, so the pair holds \
+         every byte the shared total paid for and the truncated bytes behind the notices were not \
+         charged. The truncation notice is being emitted without being charged to the budget, so \
+         each notice rides on top of the shared ceiling instead of inside it \
+         (sts2-harness#567)"
     );
 }
