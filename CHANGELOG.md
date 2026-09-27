@@ -26,7 +26,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   by construction: with the preamble deleted, `repo-policy --strict` reports both missing markers;
   restored, it is clean. Three tests cover the present case, the exact regressed shape (a bare
   bullet list), and a file outside the table. Closes #614.
-=======
 - **Pin the shared 8 MiB capture total across both served gateway pipes, with the truncation
   notice paid for out of it.** #559 bounded each served pipe separately (4 MiB per stream) and
   added an 8 MiB ceiling across the pair, but the two bounds were only ever verified apart, and
@@ -43,6 +42,21 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   the per-stream form instead, which is why both shapes are kept. No served capture's bound
   changes: the ceilings were merged in #559; this only proves they hold together.
 
+- **Split `context_control/membership.rs` so it stops hiding a 21-line hard-limit breach behind an
+  exemption that denied it.** The file measured **421** nonblank lines against
+  `rust_production_max = 400`. Its `policy.toml` exemption stated that count accurately and then
+  asserted the implementation "remains below the hard limit" — false, and a claim the size gate
+  was in a position to refute and did not, because `size_findings` skips an exempt path *before*
+  reading it, so the prose was the only place the breach was recorded. The
+  effective set, its per-reference outcomes, the dispatch projection, the revalidation state and
+  the typed error vocabulary now live in a sibling `membership_effective.rs`, following the same
+  `#[path]` idiom the module already used for `membership_resolution.rs` and
+  `membership_selector.rs`, at **274** and **167** nonblank lines — both inside the 400-line hard
+  limit, so the exemption is **deleted** rather than reworded. This is a pure source move: every
+  item is re-exported from the parent so its public path, serde attributes and schema strings are
+  unchanged, and no behaviour differs. `repo-policy --strict` reports one fewer exempted breach
+  (3, down from 4; #606 took the pre-#606 count of 5 to 4), and `membership.rs` is gone from that
+  list. No production, protocol, or runtime effect.
 - **Make the management client's header allow-list guard non-vacuous, and correct the criteria
   that produced it.** The guard added for the `Accept` fix transcribed the gateway's
   `header_is_allowed` exactly, then added a nineteenth entry, `idempotency-key`, under the comment
