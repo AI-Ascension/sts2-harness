@@ -53,6 +53,14 @@ pub use synthetic_inference_profiles::{
     SYNTHETIC_INFERENCE_OWNER_ID, synthetic_inference_profile_catalog,
 };
 mod workflow_ports;
+mod workflow_ports_capability;
+mod workflow_ports_context;
+mod workflow_ports_definition;
+mod workflow_ports_execution;
+mod workflow_ports_execution_inmemory;
+mod workflow_ports_execution_persistent;
+mod workflow_ports_replay;
+mod workflow_ports_support;
 
 pub use cli::run_cli;
 
