@@ -6,20 +6,24 @@
 //! bounded `BrokerSnapshot` journal owned by this crate. Native persistent operation must still
 //! supply an independently verified encrypted state boundary before an enabled profile is allowed.
 
+mod atomic_replace;
 mod owner_lease;
+mod state_store_io;
+mod store_error;
+use atomic_replace::atomic_write;
 pub(crate) use owner_lease::PolicyOwnerLease;
+use state_store_io::{read_restricted_file, validate_store_path};
+pub(crate) use state_store_io::{restricted_directory, restricted_file};
+pub use store_error::ProviderSessionMetadataStoreError;
 
 use super::{
     MAX_HISTORY_BYTES, NativeCapabilities, ProviderSessionBroker, ProviderSessionPolicy,
-    SessionError, SessionScope,
+    SessionScope,
 };
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
 use getrandom::fill as fill_random;
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
-use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::{Path, PathBuf};
 use zeroize::Zeroizing;
 
 const STORE_MAGIC: &[u8] = b"ASCENSION-PROVIDER-METADATA-ENC1\0";
@@ -27,58 +31,11 @@ const NONCE_BYTES: usize = 24;
 const TAG_BYTES: usize = 16;
 const MAX_ENVELOPE_BYTES: usize = STORE_MAGIC.len() + NONCE_BYTES + TAG_BYTES + MAX_HISTORY_BYTES;
 const AAD_PREFIX: &[u8] = b"ascension.provider-session.metadata.v1\0";
-static TEMP_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderSessionMetadataMode {
     Volatile,
     EncryptedPersistent,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ProviderSessionMetadataStoreError {
-    InvalidScope,
-    InvalidKey,
-    InvalidPath,
-    ScopeMismatch,
-    NotFound,
-    Capacity,
-    Corrupt,
-    Crypto,
-    /// The exclusive policy-owner lease is held by another live owner.
-    Busy,
-    Io,
-    Unsupported,
-    Session(SessionError),
-}
-
-impl std::fmt::Display for ProviderSessionMetadataStoreError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidScope => formatter.write_str("provider metadata store scope is invalid"),
-            Self::InvalidKey => formatter.write_str("provider metadata store key is invalid"),
-            Self::InvalidPath => formatter.write_str("provider metadata store path is invalid"),
-            Self::ScopeMismatch => {
-                formatter.write_str("provider metadata store scope does not match")
-            }
-            Self::NotFound => formatter.write_str("provider metadata store journal was not found"),
-            Self::Capacity => formatter.write_str("provider metadata store is over its bound"),
-            Self::Corrupt => formatter.write_str("provider metadata store envelope is corrupt"),
-            Self::Crypto => formatter.write_str("provider metadata store authentication failed"),
-            Self::Busy => formatter.write_str("provider metadata journal already has an owner"),
-            Self::Io => formatter.write_str("provider metadata store filesystem operation failed"),
-            Self::Unsupported => formatter.write_str("provider metadata store mode is unsupported"),
-            Self::Session(error) => error.fmt(formatter),
-        }
-    }
-}
-
-impl std::error::Error for ProviderSessionMetadataStoreError {}
-
-impl From<SessionError> for ProviderSessionMetadataStoreError {
-    fn from(error: SessionError) -> Self {
-        Self::Session(error)
-    }
 }
 
 pub struct ProviderSessionMetadataStore {
@@ -331,164 +288,4 @@ impl ProviderSessionMetadataStore {
         aad.extend_from_slice(super::digest_scope(&self.scope).as_bytes());
         aad
     }
-}
-
-#[cfg(unix)]
-fn read_restricted_file(path: &Path) -> Result<Vec<u8>, ProviderSessionMetadataStoreError> {
-    use rustix::fs::{Mode, OFlags, open};
-    use std::io::Read;
-
-    let descriptor = open(
-        path,
-        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
-        Mode::empty(),
-    )
-    .map_err(|error| {
-        if error == rustix::io::Errno::NOENT {
-            ProviderSessionMetadataStoreError::NotFound
-        } else {
-            ProviderSessionMetadataStoreError::InvalidPath
-        }
-    })?;
-    let mut file = File::from(descriptor);
-    let metadata = file
-        .metadata()
-        .map_err(|_| ProviderSessionMetadataStoreError::Io)?;
-    if !metadata.file_type().is_file() || !restricted_file(&metadata) {
-        return Err(ProviderSessionMetadataStoreError::InvalidPath);
-    }
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)
-        .map_err(|_| ProviderSessionMetadataStoreError::Io)?;
-    Ok(bytes)
-}
-
-#[cfg(not(unix))]
-fn read_restricted_file(path: &Path) -> Result<Vec<u8>, ProviderSessionMetadataStoreError> {
-    let metadata = fs::symlink_metadata(path).map_err(|error| {
-        if error.kind() == io::ErrorKind::NotFound {
-            ProviderSessionMetadataStoreError::NotFound
-        } else {
-            ProviderSessionMetadataStoreError::Io
-        }
-    })?;
-    if !metadata.file_type().is_file() {
-        return Err(ProviderSessionMetadataStoreError::InvalidPath);
-    }
-    fs::read(path).map_err(|_| ProviderSessionMetadataStoreError::Io)
-}
-
-fn validate_store_path(path: &Path) -> Result<(), ProviderSessionMetadataStoreError> {
-    if !path.is_absolute()
-        || path.as_os_str().is_empty()
-        || path
-            .components()
-            .any(|component| matches!(component, Component::ParentDir | Component::CurDir))
-    {
-        return Err(ProviderSessionMetadataStoreError::InvalidPath);
-    }
-    let Some(parent) = path.parent() else {
-        return Err(ProviderSessionMetadataStoreError::InvalidPath);
-    };
-    if !safe_directory(parent) {
-        return Err(ProviderSessionMetadataStoreError::InvalidPath);
-    }
-    if let Ok(metadata) = fs::symlink_metadata(path)
-        && (!metadata.file_type().is_file() || !restricted_file(&metadata))
-    {
-        return Err(ProviderSessionMetadataStoreError::InvalidPath);
-    }
-    Ok(())
-}
-
-fn atomic_write(path: &Path, envelope: &[u8]) -> Result<(), ProviderSessionMetadataStoreError> {
-    let parent = path
-        .parent()
-        .ok_or(ProviderSessionMetadataStoreError::InvalidPath)?;
-    if !safe_directory(parent) || envelope.len() > MAX_ENVELOPE_BYTES {
-        return Err(ProviderSessionMetadataStoreError::InvalidPath);
-    }
-    let file_name = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .ok_or(ProviderSessionMetadataStoreError::InvalidPath)?;
-    let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let temporary = parent.join(format!(".{file_name}.tmp-{}-{counter}", std::process::id()));
-    let mut file = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&temporary)
-        .map_err(|_| ProviderSessionMetadataStoreError::Io)?;
-    set_private_file_mode(&file).map_err(|_| ProviderSessionMetadataStoreError::Io)?;
-    file.write_all(envelope)
-        .map_err(|_| ProviderSessionMetadataStoreError::Io)?;
-    file.sync_all()
-        .map_err(|_| ProviderSessionMetadataStoreError::Io)?;
-    drop(file);
-    if fs::symlink_metadata(path)
-        .is_ok_and(|metadata| !metadata.file_type().is_file() || !restricted_file(&metadata))
-    {
-        let _ = fs::remove_file(&temporary);
-        return Err(ProviderSessionMetadataStoreError::InvalidPath);
-    }
-    fs::rename(&temporary, path).map_err(|_| {
-        let _ = fs::remove_file(&temporary);
-        ProviderSessionMetadataStoreError::Io
-    })?;
-    Ok(())
-}
-
-fn set_private_file_mode(file: &File) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        file.set_permissions(fs::Permissions::from_mode(0o600))?;
-    }
-    #[cfg(windows)]
-    {
-        // There is no mode to narrow here. A file created inside the private state root inherits
-        // that directory's access control, which is where the restriction lives on this platform.
-        let _ = file;
-    }
-    Ok(())
-}
-
-fn safe_directory(path: &Path) -> bool {
-    fs::symlink_metadata(path).is_ok_and(|metadata| {
-        metadata.is_dir() && !has_symlink_component(path) && restricted_directory(&metadata)
-    })
-}
-
-#[cfg(unix)]
-fn restricted_file(metadata: &fs::Metadata) -> bool {
-    use rustix::process::geteuid;
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
-
-    metadata.uid() == geteuid().as_raw() && metadata.permissions().mode() & 0o077 == 0
-}
-
-#[cfg(not(unix))]
-fn restricted_file(_metadata: &fs::Metadata) -> bool {
-    false
-}
-
-#[cfg(unix)]
-fn restricted_directory(metadata: &fs::Metadata) -> bool {
-    use rustix::process::geteuid;
-    use std::os::unix::fs::{MetadataExt, PermissionsExt};
-
-    metadata.uid() == geteuid().as_raw() && metadata.permissions().mode() & 0o077 == 0
-}
-
-#[cfg(not(unix))]
-fn restricted_directory(_metadata: &fs::Metadata) -> bool {
-    false
-}
-
-fn has_symlink_component(path: &Path) -> bool {
-    let mut current = PathBuf::new();
-    path.components().any(|component| {
-        current.push(component.as_os_str());
-        fs::symlink_metadata(&current).is_ok_and(|metadata| metadata.file_type().is_symlink())
-    })
 }
