@@ -138,6 +138,34 @@ mod tests {
         assert_eq!(result.diagnostics.len(), 1);
     }
 
+    /// Pins that the real tree actually *reports* its waived breaches.
+    ///
+    /// `repository_satisfies_strict_policy` below only asserts that nothing fails, so it
+    /// still passes if the `EXEMPTED` finding is computed and then discarded — which is
+    /// the exact #569 defect, reintroduced with a green suite. This test fails if the
+    /// exempted count ever falls to zero while over-limit exemptions exist.
+    #[test]
+    fn repository_reports_its_waived_breaches() -> Result<(), Box<dyn Error>> {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let outcome = super::check(&root, true)?;
+        assert_eq!(
+            outcome.exempted,
+            6,
+            "expected the six tracked hard-limit breaches to be reported as waived; \
+             diagnostics were: {}",
+            outcome.diagnostics.join("; ")
+        );
+        assert!(
+            outcome
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.starts_with("EXEMPTED SIZE001")),
+            "no waived breach appears in the output: {}",
+            outcome.diagnostics.join("; ")
+        );
+        Ok(())
+    }
+
     /// The repository itself must satisfy strict policy. This is the check that a preferred-size
     /// regression actually breaks: `CHANGELOG.md` grew past `markdown_preferred` on `main`, and the
     /// policy workflow promotes that warning to an error, so every open pull request failed its

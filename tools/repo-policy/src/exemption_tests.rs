@@ -36,6 +36,32 @@ fn a_reason_without_a_count_claims_nothing() {
 }
 
 #[test]
+fn a_limit_is_never_read_as_the_files_count() {
+    // The `-line` form has no `the` asymmetry to protect it, so `below its 400-line
+    // hard limit` would otherwise read 400 as the file's size and fail a compliant
+    // file. Only a noun that describes the file makes the phrase a count.
+    assert_eq!(
+        stated_line_count(
+            "the service keeps its ports together; this stays below its 400-line hard limit"
+        ),
+        None
+    );
+    assert_eq!(
+        stated_line_count("this stays below its 600-line limit"),
+        None
+    );
+    assert_eq!(
+        stated_line_count("its 400-line maximum is not the size"),
+        None
+    );
+    // The genuine count form still reads, even when a limit follows it.
+    assert_eq!(
+        stated_line_count("its 931-line implementation exceeds the 400-line hard limit"),
+        Some(931)
+    );
+}
+
+#[test]
 fn an_unparseable_asserted_count_fails_closed() {
     // The sentence asserts a count but does not match the grammar. Reporting nothing
     // here would silently trust the number, which is the defect this check closes.
@@ -164,7 +190,7 @@ fn an_unparseable_count_is_reported_rather_than_trusted() -> Result<(), Box<dyn 
     let findings = exemption_count_findings(
         &root,
         "crates/harness/src/lib.rs",
-        "its  lines remain below the 400-line hard limit",
+        "its  nonblank lines remain below the hard limit",
         &policy,
     );
     assert_eq!(findings.len(), 1);
