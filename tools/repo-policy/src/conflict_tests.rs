@@ -252,8 +252,7 @@ fn reports_a_marker_in_a_file_that_is_not_valid_utf8() -> Result<(), Box<dyn Err
 /// A complete conflict block in a non-UTF-8 file, so the fix is not narrowly
 /// limited to the bare separator: all three marker lines fire.
 #[test]
-fn reports_a_full_conflict_block_in_a_file_that_is_not_valid_utf8(
-) -> Result<(), Box<dyn Error>> {
+fn reports_a_full_conflict_block_in_a_file_that_is_not_valid_utf8() -> Result<(), Box<dyn Error>> {
     let fixture = Fixture::new()?;
     let path = fixture.0.join("bad.md");
     std::fs::write(
@@ -265,9 +264,7 @@ fn reports_a_full_conflict_block_in_a_file_that_is_not_valid_utf8(
 
     for line in ["line 1", "line 4", "line 6"] {
         assert!(
-            found
-                .iter()
-                .any(|finding| finding.message.contains(line)),
+            found.iter().any(|finding| finding.message.contains(line)),
             "expected {line} to be reported: {found:?}"
         );
     }

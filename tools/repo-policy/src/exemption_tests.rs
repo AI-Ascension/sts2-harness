@@ -234,7 +234,15 @@ fn a_non_utf8_byte_cannot_silence_a_stale_exemption_count() -> Result<(), Box<dy
     let mut bytes = (0..500)
         .flat_map(|index| format!("line {index}\n\n").into_bytes())
         .collect::<Vec<u8>>();
-    bytes.extend_from_slice(b"\xff\xfe");
+    // The invalid byte rides INSIDE the last line rather than after its
+    // newline. `nonblank_line_count` splits on `\n` and keeps any segment that
+    // is not entirely ASCII whitespace, so a trailing `\xff\xfe` past the final
+    // newline would be a segment of its own and would count as a 501st
+    // nonblank line -- making this test assert a number its fixture never set
+    // out to produce. Splicing the byte into `line 499` keeps the count at the
+    // 500 the test is about, and still makes the whole file undecodable.
+    bytes.truncate(bytes.len() - 2);
+    bytes.extend_from_slice(b"\xff\xfe\n\n");
     std::fs::write(&path, bytes)?;
 
     let policy = policy_with((300, 400))?;

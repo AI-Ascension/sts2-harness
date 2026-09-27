@@ -288,7 +288,10 @@ fn a_non_utf8_crate_root_does_not_make_its_children_look_orphaned() -> Result<()
     let fixture = Fixture::new()?;
     let root = &fixture.0;
     fs::create_dir_all(root.join("crate/src"))?;
-    fs::write(root.join("Cargo.toml"), "[workspace]\nmembers = [\"crate\"]\n")?;
+    fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crate\"]\n",
+    )?;
     fs::write(
         root.join("crate/Cargo.toml"),
         "[package]\nname = \"demo\"\nversion = \"0.0.0\"\n",
