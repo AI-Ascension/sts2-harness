@@ -63,7 +63,7 @@ use std::time::{Duration, Instant};
 /// The per-pipe drain mechanics live in a sibling module so neither file exceeds the
 /// repository's preferred test-file size budget.
 #[path = "gateway_capture/stream.rs"]
-mod stream;
+pub(crate) mod stream;
 
 use self::stream::{Captured, FINAL_DRAIN_GRACE, drain_both, lock, publish, set_nonblocking};
 
