@@ -18,8 +18,8 @@ const MARKER_RUN: usize = 7;
 /// green CI runs, and it survived because both gates covering that file are
 /// shaped so that it passes: the size rule scored the removal as a *reduction*
 /// in nonblank lines, and `DOC003` asserts that markers are *present*, not that
-/// conflict debris is absent. Commit `8e3ffea` carries two such lines, from the
-/// same re-resolve-against-`main` operation on the #573 branch.
+/// conflict debris is absent. Commit `8e3ffea` adds one such line; the
+/// other arrived earlier, with the `#601` merge.
 /// A rebase across the changelog boundary reintroduces exactly this, so it is
 /// checked rather than trusted.
 ///

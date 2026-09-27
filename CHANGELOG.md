@@ -30,8 +30,11 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   asserts that markers are *present*, not that conflict debris is absent. #618 removed this
   instance incidentally, while re-resolving this file for an unrelated entry; deleting it fixes one
   occurrence and leaves the class open, because the next rebase across this boundary puts it back.
-  The class is not hypothetical: commit `8e3ffea` carries two such lines, at 29 and 45, from the
-  same re-resolve-this-file-against-`main` operation on the #573 branch. `repo-policy` gains
+  The class is not hypothetical, and its instances have different origins. The line-29 artifact
+  arrived with `501a711`, the `#601` merge, reached `main`, and was removed by `#618`; the only run
+  commit `8e3ffea` adds is line 45, and it is not the same operation. Two further instances are off
+  `main` entirely: `d7dfbca` on the #571 branch carries one at line 100, which `94802b8` removes —
+  the rebase of the metadata-store split onto this gate. `repo-policy` gains
   `CONFLICT001`, which reports any tracked text file with a line *starting* with seven or more `<`,
   `=` or `>`, naming the path and the line number so review can act on it.
 
