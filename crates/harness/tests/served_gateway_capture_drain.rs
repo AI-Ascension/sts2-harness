@@ -51,6 +51,7 @@ mod process;
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 
 use process::{TempDir, free_address};
@@ -188,6 +189,94 @@ const QUIET_MARKER: &str = "sts2-harness-559-quiet-gateway-marker";
 /// touch the shared budget, so it would pass on a build whose total ceiling did not exist.
 const BOTH_PIPES_BYTES: usize = 6 * 1024 * 1024;
 
+/// The datagram `both_pipes_gateway` sends once its flood is **finished**.
+///
+/// #629 measured `held == 0` on this test in CI. The stub floods 12 MiB across two pipes and
+/// binds its listener only afterwards, so the flood is nominally over before `process::ready`
+/// can connect — but "nominally" is the whole defect. `process::free_address` binds port 0,
+/// reads the port, and drops the listener, so the address is unowned by the time the stub
+/// reaches `bind`. A sibling test in this same binary, running in parallel on another test
+/// thread, can be handed the same port and be serving it, and then `ready` returns on a socket
+/// that is not this child at all. `stop` then SIGKILLs the group while the stub is still in its
+/// first iterations, and a `SIGKILL` discards writes still queued in the kernel — so the
+/// capture comes back empty rather than merely short. That is the "0 bytes" in the issue title.
+///
+/// The sibling `chatty_gateway` is stable *because* it writes a tail marker after its flood:
+/// completion is observable. This stub writes to two pipes and has no single stream to carry a
+/// marker on, so the completion signal travels out of band on a datagram socket. Waiting for it
+/// makes the test's precondition actually hold — a finished flood — instead of being inferred
+/// from a socket that may or may not belong to this process.
+///
+/// The signal is a datagram rather than a file or a pipe byte because a *blocking receive* is
+/// the whole point: the test must not poll, sleep, or retry, and must not burn a grace period
+/// hoping bytes turned up. A datagram the stub sends is a fact the kernel delivers; the test
+/// blocks on the receive and is released the instant the send happens. There is no settle time
+/// to tune and nothing that could make a later measurement differ from an earlier one.
+const FLOOD_DONE_SIGNAL: &[u8] = b"flooded";
+
+/// The socket path, inside the scenario's own `TempDir`, that carries [`FLOOD_DONE_SIGNAL`].
+const FLOOD_DONE_SOCKET: &str = "flood-done.sock";
+
+/// `path` as a Python string literal, for the one line of the stub that names it.
+///
+/// `TempDir` builds its own paths under `std::env::temp_dir()`, so this is not a constant and
+/// cannot be pasted into the script as a literal. Backslashes and quotes are escaped because
+/// the value is interpolated into generated source, and a quote here would end the literal
+/// rather than appear in it.
+fn python_string(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let text = path.to_str().ok_or("the flood-completion path is not UTF-8")?;
+    let mut literal = String::with_capacity(text.len() + 2);
+    literal.push('\'');
+    for character in text.chars() {
+        if character == '\'' || character == '\\' {
+            literal.push('\\');
+        }
+        literal.push(character);
+    }
+    literal.push('\'');
+    Ok(literal)
+}
+
+/// Bind the end of the flood-completion handshake that the stub will send to.
+///
+/// Bound *before* the gateway is spawned, so the socket the stub is told to send to already
+/// exists when the stub reaches its send. A datagram sent to an unbound path is discarded by
+/// the kernel, so binding late would silently lose the signal and hang the test.
+fn flood_done_socket(path: &Path) -> Result<UnixDatagram, Box<dyn std::error::Error>> {
+    UnixDatagram::bind(path).map_err(|error| -> Box<dyn std::error::Error> {
+        format!(
+            "the flood-completion socket could not be bound: {error} (sts2-harness#629)"
+        )
+        .into()
+    })
+}
+
+/// Block until the both-pipes stub reports that its flood finished.
+///
+/// This is one blocking `recv`. It is not a poll loop, a retry, or a timed wait: the stub sends
+/// the datagram after its final `flush` on both pipes returns, so the receive returns at the
+/// moment the flood is a completed fact, and the test cannot measure before that.
+fn wait_for_flood(socket: &UnixDatagram) -> Result<(), Box<dyn std::error::Error>> {
+    let mut received = [0u8; 16];
+    let read = socket
+        .recv(&mut received)
+        .map_err(|error| -> Box<dyn std::error::Error> {
+            format!(
+                "the flood-completion signal was never received: {error} \
+                 (sts2-harness#629)"
+            )
+            .into()
+        })?;
+    if received[..read] != *FLOOD_DONE_SIGNAL {
+        return Err(format!(
+            "the gateway sent {read} unexpected bytes on its flood-completion socket instead of \
+             reporting a finished flood (sts2-harness#629)"
+        )
+        .into());
+    }
+    Ok(())
+}
+
 /// #567 acceptance criterion 1, end to end: the pair the harness hands back never exceeds the
 /// shared total, each cut stream announces itself, and the notice is paid for **inside** the
 /// total rather than added on top of it.
@@ -203,11 +292,19 @@ fn a_gateway_flooding_both_pipes_is_bounded_by_the_shared_total()
 -> Result<(), Box<dyn std::error::Error>> {
     let temporary = TempDir::new()?;
     let stub = both_pipes_gateway(&temporary.path)?;
+    // Bound before the spawn so the signal cannot be lost to a not-yet-existing socket.
+    let flood_done = flood_done_socket(&temporary.path.join(FLOOD_DONE_SOCKET))?;
     let address = free_address()?;
     let mod_address = free_address()?;
 
     let mut gateway_process = process::gateway(&stub, address, mod_address)?;
     process::ready(&mut gateway_process, address)?;
+    // `ready` returned, but the flood is not thereby known to have finished. Measuring now is
+    // what produced `held == 0` in CI — see FLOOD_DONE_SIGNAL. Waiting for the stub to prove the
+    // flood finished makes the precondition hold on every path, including the one where `ready`
+    // returned against a sibling test's listener rather than this child's. The receive blocks
+    // until the stub says its flood is done, so this is a fact rather than a wait.
+    wait_for_flood(&flood_done)?;
     let output = process::stop(gateway_process)?;
 
     let stdout = &output.stdout;
@@ -236,6 +333,73 @@ fn a_gateway_flooding_both_pipes_is_bounded_by_the_shared_total()
             "the {label} pipe was flooded to {BOTH_PIPES_BYTES} bytes, over the per-stream ceiling \
              of {MAX_CAPTURE_BYTES}, yet its capture carries no truncation notice. A reader is \
              handed a stream that looks whole when it was cut (sts2-harness#567)"
+        );
+    }
+    Ok(())
+}
+
+/// #629's regression: a gateway whose address is served by **someone else** must still be
+/// measured, not counted as zero bytes.
+///
+/// This is the shape the CI failure actually took. `free_address` drops its listener, so two
+/// tests in this binary can be handed one port; when the other test is already serving it,
+/// `process::ready` connects to *that* gateway and returns, and `stop` then SIGKILLs this
+/// child's group before the stub has written anything. Because a `SIGKILL` discards writes
+/// still queued in the kernel, the capture is empty rather than short — the `held == 0` in
+/// #629, and the reason its assertion is worded "proves nothing".
+///
+/// The test holds a real listener on the address for the whole scenario, so `ready` returns
+/// against a socket this child never binds. Measured on this host, that makes the kill land
+/// anywhere from 0 to ~0.5 s into a flood that needs ~1 s, so without the flood-completion wait
+/// the capture is empty in most runs and short in the rest — the `held == 0` in the CI failure.
+/// With the wait, the flood always finishes first and the same bound holds every time. That is
+/// the property being pinned: the measurement depends on the child finishing its flood, not on
+/// which process happened to answer on the address.
+#[test]
+fn a_both_pipes_gateway_is_measured_even_when_its_address_is_already_served()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temporary = TempDir::new()?;
+    let stub = both_pipes_gateway(&temporary.path)?;
+    let flood_done = flood_done_socket(&temporary.path.join(FLOOD_DONE_SOCKET))?;
+    // Stand in for the sibling test that won the port: a listener that is up before the
+    // gateway is spawned and stays up until this scenario is done.
+    let squatter = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let address = squatter.local_addr()?;
+    std::thread::spawn(move || {
+        for stream in squatter.incoming() {
+            drop(stream);
+        }
+    });
+    let mod_address = free_address()?;
+
+    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
+    process::ready(&mut gateway_process, address)?;
+    wait_for_flood(&flood_done)?;
+    let output = process::stop(gateway_process)?;
+
+    let stdout = &output.stdout;
+    let stderr = &output.stderr;
+    let held = stdout.len() + stderr.len();
+
+    assert!(
+        held <= MAX_TOTAL_CAPTURE_BYTES,
+        "the served capture returned {held} bytes across both pipes, over the shared ceiling of \
+         {MAX_TOTAL_CAPTURE_BYTES} (sts2-harness#567)"
+    );
+    assert!(
+        held > MAX_CAPTURE_BYTES,
+        "the served capture returned only {held} bytes across both pipes even though this \
+         gateway's flood completed, so the shared total of {MAX_TOTAL_CAPTURE_BYTES} was never \
+         reached and this test proves nothing (sts2-harness#567, #629)"
+    );
+    for (label, stream) in [("stdout", stdout), ("stderr", stderr)] {
+        assert!(
+            stream
+                .windows(TRUNCATION_NOTICE.len())
+                .any(|window| window == TRUNCATION_NOTICE),
+            "the {label} pipe was flooded to {BOTH_PIPES_BYTES} bytes, over the per-stream ceiling \
+             of {MAX_CAPTURE_BYTES}, yet its capture carries no truncation notice \
+             (sts2-harness#567)"
         );
     }
     Ok(())
@@ -362,8 +526,20 @@ fn quiet_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>
 /// loop — rather than filling one and then the other — keeps the two drains genuinely concurrent,
 /// so which one spends the shared budget first is left to the harness rather than prescribed by
 /// the stub.
+///
+/// Once the flood is finished it sends [`FLOOD_DONE_SIGNAL`] on [`FLOOD_DONE_SOCKET`], which is
+/// what lets the test above measure a *completed* flood. The concurrency the test exists to
+/// exercise is untouched: both pipes are still written interleaved in one loop, still 6 MiB
+/// each, and still drained by two independent threads racing for the one shared budget. The
+/// signal is sent once, after the last of those 12 MiB, and it neither serialises the pipes nor
+/// relieves either of them of contention — it only reports when the contention is over.
+///
+/// The send is out of band on purpose. It is *not* a byte on either pipe, so it cannot be
+/// retained, truncated, or charged against the very budget the test measures — and the test
+/// cannot mistake it for the child's output.
 fn both_pipes_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let path = directory.join("both-pipes-gateway.sh");
+    let done_path = python_string(&path.join(FLOOD_DONE_SOCKET))?;
     fs::write(
         &path,
         format!(
@@ -381,9 +557,13 @@ fn both_pipes_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::error::E
                 "    sys.stderr.buffer.write(block[:count])\n",
                 "    sys.stderr.buffer.flush()\n",
                 "    written += count\n",
+                "signal = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)\n",
+                "signal.sendto(b'flooded', {done_path})\n",
+                "signal.close()\n",
                 "{serve}",
             ),
             flood = BOTH_PIPES_BYTES,
+            done_path = done_path,
             serve = SERVE_LOOP,
         ),
     )?;
