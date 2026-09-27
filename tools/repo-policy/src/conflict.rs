@@ -18,10 +18,11 @@ const MARKER_RUN: usize = 7;
 /// green CI runs, and it survived because both gates covering that file are
 /// shaped so that it passes: the size rule scored the removal as a *reduction*
 /// in nonblank lines, and `DOC003` asserts that markers are *present*, not that
-/// conflict debris is absent. Two instances with different origins: the
-/// line-29 artifact arrived with `501a711`, the #601 merge, and is on `main`;
-/// `696e56f` on the #571 branch carries another at line 60, is not on `main`,
-/// and was left by re-resolving this file against `main`.
+/// conflict debris is absent. The instances have different origins: the
+/// line-29 artifact arrived with `501a711`, the #601 merge, reached `main`, and
+/// was removed by #618; `8e3ffea` adds one more at line 45 and is not the same
+/// operation; `696e56f` on the #571 branch carries one at line 60, and `d7dfbca`
+/// one at line 100 that `94802b8` removes. None of the last two is on `main`.
 /// A rebase across the changelog boundary reintroduces exactly this, so it is
 /// checked rather than trusted.
 ///
