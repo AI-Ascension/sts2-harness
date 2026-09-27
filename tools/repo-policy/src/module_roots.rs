@@ -6,13 +6,49 @@
 //! `[[example]]`, `build.rs`) and from Cargo's auto-discovery conventions
 //! (`src/lib.rs`, `src/main.rs`, `src/bin/*.rs`, `src/bin/<name>/main.rs`,
 //! `tests|benches|examples/*.rs`).
+//!
+//! A manifest that cannot be decoded or cannot be parsed is **reported**, not
+//! skipped. Dropping it made the crate vanish from the graph entirely, so
+//! `RUST002` never evaluated it and the coverage it appeared to provide was
+//! never real. A crate whose roots are unknown cannot be checked, and an
+//! unchecked crate is a silent gap rather than a clean pass.
+//!
+//! ## Why the crate is reported and excluded, not retained
+//!
+//! The obvious alternative — keep the crate in the graph with an empty root
+//! set — is strictly worse. `RUST002` decides orphans by `owned()`, which
+//! claims every file under a crate's directory. A crate with no roots would
+//! own its whole directory while *nothing* in it is reachable, so a single
+//! stray byte would be reported as an orphan for every source file the crate
+//! holds. That converts one honest coverage gap into a wave of false
+//! accusations, and a false accusation is the more expensive error for this
+//! rule: a missed orphan costs one lost `mod` line, while a spurious one
+//! points at a live file.
+//!
+//! Reporting is also the consistent choice within this tool. `RUST001` already
+//! reports "cannot parse Rust configuration" rather than dropping the file, and
+//! #666 (`38ca3f9e`) removed exactly this species of silent decode skip for the
+//! size and conflict rules. Silence was the defect; an explicit error is the
+//! fix.
+//!
+//! The exclusion is *per-crate*, not per-run. Every manifest that does parse is
+//! still resolved and checked, so an unreadable manifest costs its own crate
+//! its reachability check and costs the rest of the tree nothing.
+//!
+//! There is no byte-level fallback, unlike #666's size and conflict fixes. Those
+//! ask a question bytes can answer (how many nonblank lines, does this line
+//! match a marker). This asks a TOML *parse*, which has no meaningful
+//! approximation: guessing a crate's roots from undecodable bytes would
+//! invent a module graph, and a wrong graph produces wrong orphans in both
+//! directions. Reporting the unresolvable manifest is the honest outcome.
 
 use std::collections::BTreeSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use toml::Value;
 
+use crate::byte_scan::read_bytes;
+use crate::diagnostic::Finding;
 use crate::files::relative_text;
 
 pub(crate) struct Krate {
@@ -20,16 +56,66 @@ pub(crate) struct Krate {
     pub(crate) roots: BTreeSet<String>,
 }
 
-pub(crate) fn crates(root: &Path, files: &[PathBuf], sources: &BTreeSet<String>) -> Vec<Krate> {
+/// A manifest present in the tree that `RUST002` could not turn into roots.
+struct Unreadable {
+    path: String,
+    reason: String,
+}
+
+/// The rule id for an unreadable manifest. Distinct from `RUST002` because
+/// "this crate could not be checked" and "this file is unreachable" are
+/// different facts; conflating them is the ambiguity that hid #671.
+const MANIFEST_RULE: &str = "RUST003";
+const MANIFEST_MESSAGE: &str =
+    "cannot read the crate manifest, so its module reachability was not checked: ";
+
+/// Resolves every crate in the tree.
+///
+/// The second element carries one `RUST003` finding per manifest that could not
+/// be decoded or parsed, in path order. Such a manifest is *not* treated as a
+/// crate with no roots, because such a crate would own its whole directory and
+/// report every file in it as an orphan — a coverage gap would become a wave of
+/// false accusations instead of one honest error.
+///
+/// The two are separate rather than a `Result` because the failure is
+/// per-manifest, not per-run: one unreadable manifest must not cost the tree the
+/// reachability check on every crate that *did* parse. A `Result` would discard
+/// the resolved crates along with the complaint.
+pub(crate) fn crates(
+    root: &Path,
+    files: &[PathBuf],
+    sources: &BTreeSet<String>,
+) -> (Vec<Krate>, Vec<Finding>) {
     let mut crates = Vec::new();
+    let mut unreadable = Vec::new();
     for manifest in files
         .iter()
         .filter(|path| path.file_name().is_some_and(|name| name == "Cargo.toml"))
     {
-        let Ok(text) = fs::read_to_string(manifest) else {
+        let relative = relative_text(root, manifest);
+        // Bytes, not a decoded read: a single invalid byte must reach the
+        // reporter as a fact rather than disappearing into a failed decode.
+        // There is no byte-level fallback for a manifest, because the decision
+        // being made is a TOML *parse*, not a line count or a pattern match.
+        let Some(bytes) = read_bytes(manifest) else {
+            unreadable.push(Unreadable {
+                path: relative,
+                reason: "cannot read manifest".to_owned(),
+            });
             continue;
         };
-        let Ok(value) = toml::from_str::<Value>(&text) else {
+        let Ok(text) = std::str::from_utf8(&bytes) else {
+            unreadable.push(Unreadable {
+                path: relative,
+                reason: "manifest is not valid UTF-8".to_owned(),
+            });
+            continue;
+        };
+        let Ok(value) = toml::from_str::<Value>(text) else {
+            unreadable.push(Unreadable {
+                path: relative,
+                reason: "manifest is not valid TOML".to_owned(),
+            });
             continue;
         };
         if value.get("package").is_none()
@@ -47,7 +133,13 @@ pub(crate) fn crates(root: &Path, files: &[PathBuf], sources: &BTreeSet<String>)
             crates.push(Krate { dir, roots });
         }
     }
-    crates
+    let findings = unreadable
+        .iter()
+        .map(|Unreadable { path, reason }| {
+            Finding::error(MANIFEST_RULE, path, format!("{MANIFEST_MESSAGE}{reason}"))
+        })
+        .collect();
+    (crates, findings)
 }
 
 fn roots(dir: &str, manifest: &Value, sources: &BTreeSet<String>) -> BTreeSet<String> {

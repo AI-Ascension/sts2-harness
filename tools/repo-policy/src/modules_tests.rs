@@ -15,6 +15,9 @@ use crate::files::collect;
 #[path = "path_attribute_tests.rs"]
 mod path_attribute_tests;
 
+#[path = "manifest_unreadable_tests.rs"]
+mod manifest_unreadable_tests;
+
 /// Builds an in-memory tree whose single crate owns every file, then returns the
 /// files the rule reports as unreachable.
 fn unreachable(files: &[(&str, &str)], roots: &[&str]) -> BTreeSet<String> {
