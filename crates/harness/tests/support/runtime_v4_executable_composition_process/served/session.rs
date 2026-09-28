@@ -7,6 +7,11 @@ use std::os::unix::process::CommandExt;
 #[path = "session/spawn.rs"]
 mod spawn;
 
+// This module is itself reached through a `#[path]`, so its children resolve against this
+// file's own directory — `served/` — not against the parent module's.
+#[path = "health_probe.rs"]
+pub(super) mod health_probe;
+
 pub(super) struct WorkflowServiceConfig<'a> {
     pub(super) harness_binary: &'a Path,
     pub(super) mcp_binary: &'a Path,
@@ -118,24 +123,11 @@ pub(super) use spawn::{
     spawn_workflow_service, spawn_workflow_service_as_foreign, spawn_workflow_service_from,
 };
 
-pub(super) fn wait_for_workflow_service(
+pub(crate) fn wait_for_workflow_service(
     service: &mut Child,
     address: SocketAddr,
 ) -> Result<ManagementClient, Box<dyn std::error::Error>> {
-    let client = ManagementClient::new(address, "served-workflow-token")?;
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        if let Some(status) = service.try_wait()? {
-            return Err(format!("served workflow exited: {status}").into());
-        }
-        if client.request_json("GET", "/v1/health", None).is_ok() {
-            return Ok(client);
-        }
-        if Instant::now() >= deadline {
-            return Err("served workflow readiness deadline exceeded".into());
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
+    health_probe::wait_for_workflow_service(service, address)
 }
 
 pub(super) fn submit_and_step_policy_gate(

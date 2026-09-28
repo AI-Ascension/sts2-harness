@@ -16,6 +16,13 @@ use session::{
     WorkflowServiceConfig, response, served_runtime_run_id, spawn_workflow_service,
     submit_and_step_policy_gate, wait_for_workflow_service, workflow_service_command,
 };
+// #651's readiness-probe regressions, surfaced here so an integration-test binary can run them.
+// They hang off `health_probe` in `session`, so the name is resolved through the probe module
+// rather than through `session` itself.
+pub(crate) use session::health_probe::{
+    the_workflow_health_predicate_accepts_only_the_services_own_envelope,
+    the_workflow_readiness_probe_rejects_an_impostor_that_answers,
+};
 
 #[path = "served/context_source.rs"]
 mod context_source;
