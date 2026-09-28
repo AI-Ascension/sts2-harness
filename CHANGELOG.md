@@ -55,16 +55,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   landed with no review of record.
   It is installed as a new Rust workspace tool, `tools/review-gate`, plus `review-gate.yml`, and
   not vendored verbatim: this repository's `LANG001` rule prohibits Python source and
-=======
-  substitute for review, but nothing here enforced it: ten workflows, none of them a review
-  gate, and eleven merges since 2026-09-26 with no review of record. The gate exists and is
-  reviewed in `AI-Ascension/.github` (`review-gate.yml` plus `tools/review_gate.py`) and is
-  installed in exactly one of sixteen repositories -- the one that ships no product code.
-  `sts2-harness` is 48 of the 57 merges in that window and 11 of the 12 no-review merges, so it
-  is where the gate belongs.
-  What lands here is the tool half only, as a new Rust workspace tool, `tools/review-gate`; the
-  `review-gate.yml` workflow follows in a separate pull request. It is a port rather than a
-  verbatim vendor: this repository's `LANG001` rule prohibits Python source and
   `repo-policy --strict` enforces it, so the reference could not be copied without breaking the
   build. The decision logic is a case-for-case port, and the ported suite pins every branch the
   reference's own 25 tests pin -- the head-pin rule, the `COMMENT`-state rule, the
