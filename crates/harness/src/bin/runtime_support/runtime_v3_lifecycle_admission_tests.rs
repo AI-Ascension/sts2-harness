@@ -11,6 +11,13 @@ use sts2_harness::exo_lifecycle::{AuthorityGuard, InvocationManifest, LifecycleE
 use super::super::super::lifecycle_authority::RuntimeLifecycleFence;
 use super::Fixture;
 
+/// The turn ceiling used by the admission tests, which assert admission rather than timing.
+///
+/// This is not the effect's own budget. The fixture's lifecycle effect is armed from the
+/// `ExoConfig` timeout (1000 ms by default), and a caller ceiling below that value can only be
+/// reached by a host slow enough to have already spent the effect's budget scheduling the child.
+const ADMISSION_TURN_BUDGET_MILLIS: u32 = 30_000;
+
 struct RecordingFence {
     calls: Arc<Mutex<Vec<Option<String>>>>,
     releases: Arc<AtomicUsize>,
@@ -49,7 +56,12 @@ fn inspected_runtime_admission_executes_one_valid_durable_exchange() {
     );
     let mut transport = fixture.admit().expect("actual lifecycle admission");
     let bytes = serde_json::to_vec(&fixture.request).expect("request");
-    let response = transport.exchange(&bytes, 8192, 1000);
+    // This test's subject is admission, not the turn deadline. The budget below is the turn
+    // ceiling the admitted transport clamps against `max_turn_time_millis`; it is sized to the
+    // effect's own budget rather than to how fast a loaded host happens to schedule a child, so
+    // a slow runner cannot turn an admitted exchange into a reported timeout. Timeout behaviour
+    // is asserted deterministically elsewhere, against a peer that overran its ceiling.
+    let response = transport.exchange(&bytes, 8192, ADMISSION_TURN_BUDGET_MILLIS);
     assert!(
         response.is_ok(),
         "current observed turn is admitted; response={response:?}, effect_started={}",
@@ -78,7 +90,7 @@ fn configured_runtime_fence_is_held_across_send_and_result_consumption() {
     let mut transport = fixture.admit().expect("actual lifecycle admission");
     let bytes = serde_json::to_vec(&fixture.request).expect("request");
     transport
-        .exchange(&bytes, 8192, 1000)
+        .exchange(&bytes, 8192, ADMISSION_TURN_BUDGET_MILLIS)
         .expect("fenced exchange");
     let stored = fixture
         .durable
@@ -111,6 +123,9 @@ fn stale_observation_and_swapped_catalog_fail_before_the_lifecycle_effect() {
             request["observation"]["state_id"] = json!("combat-stale");
         }
         let bytes = serde_json::to_vec(&request).expect("request");
+        // A deadline reached here would still satisfy this assertion, so the call keeps the
+        // fixture's own short budget: `is_err()` is the claim under test, and the assertions that
+        // follow (`!fixture.calls.exists()`) are what keep a timeout from passing it vacuously.
         assert!(transport.exchange(&bytes, 8192, 1000).is_err());
         assert!(!fixture.calls.exists());
     }
@@ -146,6 +161,9 @@ fn authority_revocation_after_send_prevents_result_consumption() {
         std::fs::write(release, b"release").map_err(|error| error.to_string())
     });
     let bytes = serde_json::to_vec(&fixture.request).expect("request");
+    // Revocation is the claim, and a deadline reaching this point would report the same
+    // `Err` while still recording an unknown, uncompleted decision. The assertions below name
+    // both, so the fixture keeps the budget that makes the race reachable on purpose.
     let response = transport.exchange(&bytes, 8192, 1000);
     invalidator
         .join()

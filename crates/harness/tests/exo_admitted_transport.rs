@@ -249,3 +249,87 @@ fn underlying_response_bound_is_checked_even_for_noncompliant_transport() {
         (256, 120_000)
     );
 }
+
+/// A peer that overruns the turn budget is the inner transport's to report, because only the
+/// inner transport can tell an overrunning peer from a slow host. The adapter passes the ceiling
+/// down and surfaces whatever the inner transport concluded; it does not re-decide the deadline
+/// against its own wall clock once the exchange has already returned.
+struct BudgetReportingTransport {
+    decision: Value,
+    /// Set when the peer ignores its ceiling entirely, as a provider that never answers would.
+    overruns: bool,
+    /// Wall-clock the peer spends inside the exchange before answering within its own budget.
+    inner_latency: std::time::Duration,
+}
+
+impl ExoTransport for BudgetReportingTransport {
+    fn exchange(
+        &mut self,
+        _request: &[u8],
+        maximum: usize,
+        timeout: u32,
+    ) -> Result<Vec<u8>, ExoTransportError> {
+        if self.overruns {
+            return Err(ExoTransportError::Timeout);
+        }
+        // A peer that finishes inside the budget it was actually given must not be second-guessed
+        // by how long the caller's surrounding work took.
+        assert!(timeout > 0 && maximum > 0);
+        std::thread::sleep(self.inner_latency);
+        Ok(response(self.decision.clone()))
+    }
+
+    fn close(&mut self) -> Result<(), ExoTransportError> {
+        Ok(())
+    }
+}
+
+fn admitted_with(
+    transport: BudgetReportingTransport,
+) -> ExoAdmittedTransport<BudgetReportingTransport> {
+    let (descriptor, trusted) = configuration();
+    ExoAdmittedTransport::new(
+        transport,
+        &descriptor,
+        &trusted,
+        "execution-1".into(),
+        "request-7".into(),
+        "turn-9".into(),
+    )
+    .expect("synthetic admission")
+}
+
+#[test]
+fn turn_ceiling_is_enforced_by_the_inner_transport_not_re_measured_afterwards() {
+    let decision = json!({"decision": "action",
+        "action_id": request()["legal_action_ids"][0], "rationale": "safe"});
+    let bytes = serde_json::to_vec(&request()).expect("request");
+
+    // The deadline is still live: a peer that overruns it is reported as a timeout.
+    let mut overrunning = admitted_with(BudgetReportingTransport {
+        decision: decision.clone(),
+        overruns: true,
+        inner_latency: std::time::Duration::ZERO,
+    });
+    assert_eq!(
+        overrunning.exchange(&bytes, 8192, 1000),
+        Err(ExoTransportError::Timeout)
+    );
+
+    // A compliant peer's answer is returned even though the exchange itself outlasts the
+    // caller's 1000 ms ceiling. Reporting `Timeout` here is the defect this test exists to catch:
+    // the peer answered inside the budget it was given, so the ambiguity the caller would have to
+    // resolve is not a timeout at all. The latency is spent inside the inner transport, which is
+    // the window a post-hoc wall-clock re-measurement would misread.
+    let mut compliant = admitted_with(BudgetReportingTransport {
+        decision: decision.clone(),
+        overruns: false,
+        inner_latency: std::time::Duration::from_millis(1_200),
+    });
+    assert_eq!(
+        compliant
+            .exchange(&bytes, 8192, 1000)
+            .expect("in-budget answer"),
+        serde_json::to_vec(&decision).expect("canonical")
+    );
+}

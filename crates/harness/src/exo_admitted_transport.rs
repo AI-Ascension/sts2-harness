@@ -30,7 +30,13 @@ impl std::error::Error for ExoAdmissionError {}
 ///
 /// Construction performs offline admission only. A valid exchange consumes this wrapper even
 /// when the peer fails: no retry or gameplay fallback is implicit. The underlying transport owns
-/// enforcement of the supplied deadline; this adapter also rejects late returned responses.
+/// enforcement of the supplied deadline.
+///
+/// The ceiling is not re-measured against the wall clock after the inner exchange returns. Doing
+/// so reported a durable exchange that had already completed within the inner effect's own
+/// deadline as `Timeout` purely because the host was slow, which is the ambiguity this type
+/// exists to remove: a peer that answered is answered, and the authoritative deadline is the one
+/// the inner transport enforced.
 pub struct ExoAdmittedTransport<T> {
     inner: T,
     report: ExoPreflightReport,
@@ -118,11 +124,7 @@ impl<T: ExoTransport> ExoTransport for ExoAdmittedTransport<T> {
             encode_bridge_request(&self.request_id, &self.turn_id, &request, request_limit)
                 .map_err(wire_error)?;
         self.consumed = true;
-        let started = std::time::Instant::now();
         let response = self.inner.exchange(&envelope, response_limit, timeout)?;
-        if started.elapsed() >= std::time::Duration::from_millis(u64::from(timeout)) {
-            return Err(ExoTransportError::Timeout);
-        }
         if response.len() > response_limit {
             return Err(ExoTransportError::OversizedResponse);
         }
