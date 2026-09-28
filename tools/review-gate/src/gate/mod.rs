@@ -11,6 +11,7 @@
 //! API, and `check` covers the composition of the two.
 
 mod check;
+mod deadline;
 mod decision;
 mod runner;
 
