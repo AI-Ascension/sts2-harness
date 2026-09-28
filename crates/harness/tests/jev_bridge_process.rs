@@ -20,6 +20,24 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
+/// Serialises every case that launches the bridge, so this binary never holds more than one
+/// bridge and its transport alive at a time.
+///
+/// Each invocation costs a child process plus two worker threads inside it. Left to the default
+/// test-thread count, the eight cases below created those concurrently, and a runner that could
+/// not fork answered `EAGAIN`. That surfaced as a case whose transport never ran, which the
+/// non-vacuity guard below reported as a behavioural failure — the guard was right that the case
+/// proved nothing, and wrong about why. Serialising keeps the suite's process cost bounded at one
+/// bridge, so the guard can only fire for the reason it exists to detect.
+fn bridge_slot() -> MutexGuard<'static, ()> {
+    static SLOT: OnceLock<Mutex<()>> = OnceLock::new();
+    let lock = SLOT.get_or_init(|| Mutex::new(()));
+    // A panicking case poisons the slot, and the next case must still be able to run: the panic
+    // belongs to the case that caused it, not to every case that follows it.
+    lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 /// The one line a refused run prints, on standard error rather than standard output.
 const FAILURE_LINE: &str = "System One bridge failed validation or transport";
@@ -149,6 +167,7 @@ fn run(
     environment: &[(&str, &str)],
     arguments: &[&str],
 ) -> Result<Output, String> {
+    let _slot = bridge_slot();
     let mut child = launched(transport, environment, arguments)?
         .spawn()
         .map_err(|error| format!("cannot run the bridge: {error}"))?;
@@ -175,6 +194,7 @@ fn run_without_input(
     environment: &[(&str, &str)],
     arguments: &[&str],
 ) -> Result<Output, String> {
+    let _slot = bridge_slot();
     launched(transport, environment, arguments)?
         .output()
         .map_err(|error| format!("cannot run the bridge: {error}"))
