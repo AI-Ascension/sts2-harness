@@ -11,6 +11,15 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Restore headroom in the active changelog before the next entry breaches it.** `#725` left
+  `CHANGELOG.md` at exactly 700 nonblank lines against `markdown_max = 700`, so it was compliant
+  with **zero** headroom and the next one-line entry would have been a waived `SIZE001` breach --
+  the size check reports only *above* the maximum, which is why nothing was red while the
+  condition was real. The two oldest completed entries (`Refs #148`, `Refs #255`) move verbatim
+  into `docs/CHANGELOG-ARCHIVE-2026-09-28.md`, taking the file from 700 to 693 -- 16 lines
+  returned by the move, less the 7 this entry costs. No entry text is shortened, no limit is
+  raised, and the `policy.toml` waiver is re-anchored to the new count so `EXC002` keeps
+  verifying it. Refs #726.
 - **The process-group timeout test no longer fails against correct code.** `kill -0` succeeds for
   a **zombie** as well as a running process, so a reaped-but-uncollected descendant read as alive.
   It failed 5 runs in 20 on fixed `main`; the probe now also reads the process state. Refs #722.
@@ -724,21 +733,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   and the tied identifier named in the bridge-authored rationale is the one the sorted probability map
   orders last, so the same answer produces the same rationale whatever order the provider wrote its
   keys in. Refs #284, #285, #288.
-
-- **Route the executable REST selector composition into the runtime peer contract lane.** The
-  `runtime_v4_rest_executable_composition` witnesses (issue #148) assert the authored
-  observe → decide → execute-action → terminal graph settles each durable REST receipt before it
-  advances, but no gate invoked them, so the regressions they pin were as invisible as if they had
-  never been written. The lane now runs both against the pinned gateway and MCP peers, each with
-  its own evidence directory so a REST run cannot overwrite the generic composition's
-  `result.json`. The peer-binary environment those steps repeated moves to one job-level `env:`
-  block, which keeps the workflow inside its nonblank-line budget after the addition, and the
-  fail-closed lane check now covers both composition binaries. Refs #148.
-
-- **Execute the idle-adoption policy-rebind regression in the runtime peer contract lane.** The
-  `served_decision_survives_changed_policy_adopted_while_idle` witness was written for the permanent
-  mid-run policy-adoption fence (issue #255) with the same `#[ignore]` operator marker as its
-  siblings, but no lane step invoked it, so the regression was as invisible as if it had never been
-  written. The served policy step now also runs it against the pinned gateway and MCP peers, and a
-  fail-closed lane check rejects a declared operator-only composition test that no lane step executes
-  or a lane `--exact` invocation that names no declared test. Refs #255.
