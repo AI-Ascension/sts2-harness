@@ -11,6 +11,27 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **A bridge refusal now says which refusal it was, so a refusal that never reached the provider
+  can no longer be mistaken for one that did.** `sts2-jev-bridge` printed one line —
+  `System One bridge failed validation or transport` — and discarded the error, so six distinct
+  failures reached the caller as the same two bytes: a transport that could not be spawned, one
+  killed at the deadline, one that exited nonzero, and a response that is not a decision. The
+  process suite in `tests/jev_bridge_process.rs` reconstructs which of those happened from a
+  side effect — a marker file the transport writes — and asserts it after the bridge has exited.
+  That reconstruction is the test's own non-vacuity guard, and it fired on `main` at `fd4dc88d`
+  (CI run `36338651404`, attempt 1, job `108674271612`):
+  `a_raw_http_error_status_line_is_refused_without_a_decision ... FAILED` with
+  `Error: "raw-503.sh refused before the provider answer arrived, so the case proves nothing"`.
+  The failing run completed in 2.3 ms while every sibling case that also spawns a transport took
+  26–109 ms, and `exchange` polls at a 25 ms interval
+  (`sts2-jev-bridge.rs`, `POLL`), so the poll loop cannot have run even once: the transport was
+  never started. The guard was a true positive about a real, correctly-refused run, not a race
+  and not a stale marker. The bridge now prints the reason as a second line, keeping the refusal
+  itself one line long, and names a transport spawn failure and a non-JSON response specifically.
+  `a_raw_http_error_status_line_is_refused_without_a_decision` now asserts the named reason, so
+  the case proves the status line was refused *for not being a decision* rather than passing on
+  any refusal at all. The guard is retained unchanged; no retry, sleep, grace period, or
+  `#[ignore]` was added. Refs #645.
 - **The review-of-record gate is no longer unmergeable after its own review lands.** The
   `concurrency` group added for #729 was keyed on the pull request number and head SHA but not on
   the event name, so a `pull_request` run and a `pull_request_review` run for the same head landed

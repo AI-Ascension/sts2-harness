@@ -223,13 +223,13 @@ fn exchange_record(
     if response.len() > LIMIT {
         return Err("provider response exceeds bound".into());
     }
-    let mut record = finish_record(
-        body,
-        serde_json::from_slice(&response)?,
-        prepared,
-        ids,
-        gate,
-    )?;
+    // A response the bridge cannot read as JSON is the refusal this bridge exists to make
+    // fail-closed on: an HTTP error status line, an error page, a truncated body. It is named
+    // rather than left to the parser's message so the refusal says *this* was a response that was
+    // not a decision, which is a different fact from a transport that failed or was killed.
+    let parsed: Value = serde_json::from_slice(&response)
+        .map_err(|error| format!("provider response is not JSON: {error}"))?;
+    let mut record = finish_record(body, parsed, prepared, ids, gate)?;
     record["selection_mode"] = json!(mode);
     Ok(record)
 }

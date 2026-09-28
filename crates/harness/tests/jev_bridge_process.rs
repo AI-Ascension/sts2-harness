@@ -24,6 +24,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// The one line a refused run prints, on standard error rather than standard output.
 const FAILURE_LINE: &str = "System One bridge failed validation or transport";
 
+/// The line a refused run prints naming which refusal it was.
+///
+/// Every refusal is one line long and every refusal names itself, so this line is what separates
+/// "the provider answered and the answer was refused" from "no provider answer was ever
+/// requested" — two cases a `FAILURE_LINE`-only assertion cannot tell apart.
+const REASON_LINE: &str = "reason: ";
+
 /// The environment name the operator supplies the provider credential in.
 const CREDENTIAL_NAME: &str = "TYPESAFE_API_KEY";
 
@@ -227,6 +234,12 @@ fn refused_without_a_decision(output: &Output) -> Result<(), String> {
             stderr_of(output)
         ));
     }
+    if !named_reason(&stderr_of(output)) {
+        return Err(format!(
+            "the refusal did not say which refusal it was: {:?}",
+            stderr_of(output)
+        ));
+    }
     match output.status.code() {
         Some(2) => Ok(()),
         code => Err(format!(
@@ -236,12 +249,37 @@ fn refused_without_a_decision(output: &Output) -> Result<(), String> {
     }
 }
 
+/// The reason a refused run named, or an error saying it named none.
+fn named_reason(stderr: &str) -> bool {
+    stderr.lines().any(|line| {
+        let line = line.trim_start();
+        line.starts_with(REASON_LINE) && line.len() > REASON_LINE.len()
+    })
+}
+
+/// Asserts a refused run named `expected` as its reason.
+///
+/// A refusal that names a different reason is a different refusal, so asserting only that a run
+/// exited nonzero and named itself would accept a refusal from any cause at all.
+fn refused_because(output: &Output, expected: &str) -> Result<(), String> {
+    let stderr = stderr_of(output);
+    if !named_reason(&stderr) {
+        return Err(format!("the refusal named no reason: {stderr:?}"));
+    }
+    if !stderr.contains(expected) {
+        return Err(format!(
+            "the refusal named another reason than {expected:?}: {stderr:?}"
+        ));
+    }
+    Ok(())
+}
+
 /// Runs one prepared transport and asserts the refusal came after it ran.
 fn assert_refused_after_the_transport_ran(
     scratch: &Scratch,
     name: &str,
     transport: &Path,
-) -> Result<(), String> {
+) -> Result<Output, String> {
     let output = run(transport, &[], &[])?;
     refused_without_a_decision(&output)?;
     if !scratch.invoked() {
@@ -249,7 +287,7 @@ fn assert_refused_after_the_transport_ran(
             "{name} refused before the provider answer arrived, so the case proves nothing"
         ));
     }
-    Ok(())
+    Ok(output)
 }
 
 /// A provider answer that is not a `200` is the transport's failure, and the bridge reports it as
@@ -258,7 +296,7 @@ fn assert_refused_after_the_transport_ran(
 fn a_transport_that_refuses_a_non_200_status_is_refused_without_a_decision() -> Result<(), String> {
     let scratch = Scratch::new("non-200")?;
     let transport = scratch.transport("refuse-503.sh", "exit 22")?;
-    assert_refused_after_the_transport_ran(&scratch, "refuse-503.sh", &transport)
+    assert_refused_after_the_transport_ran(&scratch, "refuse-503.sh", &transport).map(|_| ())
 }
 
 /// A transport that writes the error *message* instead of the body is refused too, so a status line
@@ -270,7 +308,11 @@ fn a_raw_http_error_status_line_is_refused_without_a_decision() -> Result<(), St
         "raw-503.sh",
         "printf 'HTTP/1.1 503 Service Unavailable\\r\\nContent-Length: 0\\r\\n\\r\\n'",
     )?;
-    assert_refused_after_the_transport_ran(&scratch, "raw-503.sh", &transport)
+    let output = assert_refused_after_the_transport_ran(&scratch, "raw-503.sh", &transport)?;
+    // The transport ran and produced an answer, so the refusal has to be *this* refusal: the
+    // answer arrived and was rejected for not being a decision. A bridge that refused for any
+    // other reason would satisfy the guard above and still leave this case proving nothing.
+    refused_because(&output, "provider response is not JSON")
 }
 
 #[test]
@@ -278,14 +320,14 @@ fn an_out_of_catalog_choice_is_refused_without_a_decision() -> Result<(), String
     let scratch = Scratch::new("out-of-catalog")?;
     let transport =
         scratch.transport_serving("out-of-catalog.sh", &answer("play:card-99", 0.99))?;
-    assert_refused_after_the_transport_ran(&scratch, "out-of-catalog.sh", &transport)
+    assert_refused_after_the_transport_ran(&scratch, "out-of-catalog.sh", &transport).map(|_| ())
 }
 
 #[test]
 fn a_malformed_envelope_is_refused_without_a_decision() -> Result<(), String> {
     let scratch = Scratch::new("malformed")?;
     let transport = scratch.transport_serving("malformed.sh", "{\"answers\": {}}")?;
-    assert_refused_after_the_transport_ran(&scratch, "malformed.sh", &transport)
+    assert_refused_after_the_transport_ran(&scratch, "malformed.sh", &transport).map(|_| ())
 }
 
 /// A well-formed answer that is past the bound is refused as oversized rather than read, and this
@@ -304,14 +346,14 @@ fn an_oversized_response_is_refused_without_a_decision() -> Result<(), String> {
         ));
     }
     let transport = scratch.transport_serving("oversized.sh", &body)?;
-    assert_refused_after_the_transport_ran(&scratch, "oversized.sh", &transport)
+    assert_refused_after_the_transport_ran(&scratch, "oversized.sh", &transport).map(|_| ())
 }
 
 #[test]
 fn a_transport_failure_is_refused_without_a_decision() -> Result<(), String> {
     let scratch = Scratch::new("transport-failure")?;
     let transport = scratch.transport("fail.sh", "exit 3")?;
-    assert_refused_after_the_transport_ran(&scratch, "fail.sh", &transport)
+    assert_refused_after_the_transport_ran(&scratch, "fail.sh", &transport).map(|_| ())
 }
 
 /// A well-formed answer still produces one decision, so the refusals above are not a bridge that

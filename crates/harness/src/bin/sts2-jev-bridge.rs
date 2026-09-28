@@ -100,8 +100,22 @@ fn main() {
         println!("{}", describe(&options));
         return;
     }
-    if run(&options).is_err() {
+    if let Err(reason) = run(&options) {
         eprintln!("System One bridge failed validation or transport");
+        // The refusal itself is the contract: a nonzero exit, no decision, and one line naming
+        // itself. The reason is a second line, so a refusal stays one line long while still
+        // saying which refusal it was. Without it every failure this binary can have — a
+        // transport that could not be spawned, one that timed out, one that exited nonzero, and
+        // an answer that is not a decision — reaches the caller as the same two bytes, and a
+        // caller that has to tell "the provider answered and the answer was refused" from "no
+        // provider answer ever existed" cannot. That distinction is what the process suite's
+        // non-vacuity guard reconstructs from a side effect, and reconstructing it that way makes
+        // the guard fire on a spawn that never happened.
+        //
+        // The reason is a transport or protocol failure description and never carries the
+        // credential, the request, or the response: it is the error text of a `Box<dyn Error>`
+        // raised before any of those are formatted into it.
+        eprintln!("reason: {reason}");
         std::process::exit(2);
     }
 }
@@ -212,11 +226,15 @@ fn exchange(
     body: &[u8],
     timeout: Duration,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    // A spawn that fails is the one transport failure that produces no exchange at all, so it is
+    // named rather than collapsed: the caller is entitled to know that no provider answer was
+    // ever requested, which is a different fact from a provider answer that was refused.
     let mut child = Command::new(transport)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .spawn()?;
+        .spawn()
+        .map_err(|error| format!("the transport could not be started: {error}"))?;
     let mut input = child.stdin.take().ok_or("transport stdin is unavailable")?;
     let mut output = child
         .stdout
