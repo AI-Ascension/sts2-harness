@@ -34,7 +34,10 @@ fn every_workspace_wide_cargo_test_in_ci_keeps_running_after_a_failure() {
 
     for entry in std::fs::read_dir(&directory).expect("workflows directory") {
         let path = entry.expect("workflow entry").path();
-        if path.extension().and_then(std::ffi::OsStr::to_str) != Some("yml") {
+        if !matches!(
+            path.extension().and_then(std::ffi::OsStr::to_str),
+            Some("yml" | "yaml")
+        ) {
             continue;
         }
         let text = std::fs::read_to_string(&path).expect("workflow text");
@@ -48,11 +51,12 @@ fn every_workspace_wide_cargo_test_in_ci_keeps_running_after_a_failure() {
             let Some(command) = line.split_once("cargo test").map(|(_, rest)| rest) else {
                 continue;
             };
-            // A doctest run is a different mechanism: `--doc` selects doc-tests
-            // rather than test binaries, so there are no later binaries for
-            // fail-fast to skip. The sibling "Run doctests" step is therefore out
-            // of scope, and demanding the flag there would be a rule with no
-            // defect behind it.
+            // Doctests are out of scope for this change, so the sibling "Run
+            // doctests" step is left alone. Note that `--doc` does *not* make
+            // fail-fast harmless: doctests still fail fast per crate, so a
+            // `repo-policy` doctest failure suppresses every later member's.
+            // The fix for that is the same flag, and it belongs in the
+            // doctest step rather than here; see sts2-harness#645.
             if command.contains("--doc") {
                 continue;
             }

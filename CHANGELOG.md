@@ -15,9 +15,9 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   `cargo test` executes each test target as a separate binary and aborts the whole invocation at
   the first failing one unless `--no-fail-fast` is passed, and this crate's integration tests are
   individual binaries that cargo runs alphabetically by filename. On `9a128059` a single failure in
-  `jev_bridge_process.rs` (position 128) stopped the run before `served_gateway_capture_drain.rs`
-  (position 245) executed, so 117 later binaries — including
-  `runtime_v4_executable_composition.rs` and `exact_gate_lane_coverage.rs` — never ran, and a green
+  `jev_bridge_process.rs` (position 128) stopped the run after 128 of the workspace's 264 binaries,
+  so 136 never ran — including `served_gateway_capture_drain.rs` (position 245),
+  `runtime_v4_executable_composition.rs` and `exact_gate_lane_coverage.rs` — and a green
   `Continuous integration` certified only that every binary *up to the first failure* passed. The
   step now passes `--no-fail-fast`, which adds no retry and hides nothing: a genuinely failing test
   still fails the step and the job on its own merits. A new check asserts the invariant rather than
