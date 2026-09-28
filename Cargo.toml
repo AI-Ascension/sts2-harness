@@ -1,7 +1,8 @@
 [workspace]
 members = [
-    "tools/repo-policy",
-    "tools/patch-diff",
+  "tools/repo-policy",
+  "tools/repo-census",
+  "tools/patch-diff",
     "tools/review-gate",
     "tools/exact-restore-conformance",
     "crates/harness",

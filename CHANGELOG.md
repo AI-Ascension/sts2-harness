@@ -11,6 +11,18 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **A census that names what it could not read.** `tools/repo-census` measures merged pull
+  requests and their review record org-wide, and treats "the tool exited 0 but its own output
+  does not parse" as a named, non-retryable outcome rather than an empty result. `gh api` 2.23.0
+  does exactly that on a compact response containing a backslash escape — it re-serialises with one
+  extra backslash, so the document is invalid JSON — and a census built on it silently loses the
+  object, and loses the whole page when the object sits in a paged listing. Measured on this branch
+  across all 18 repositories: 636 merged pull requests read, 104 carrying a review pinned to the
+  merged head, 6 carrying reviews pinned to a superseded commit, 526 with no review at all, and
+  exactly 1 page unreadable (`sts2-game-mod` page 1, which the previous tooling would have reported
+  as that repository having 0 merged pull requests). The CLI exits non-zero when anything could not
+  be read, so a gate built on it cannot report a clean measurement over a partial one. Refs
+  .github#49, .github#50.
 - **The review-of-record gate is no longer unmergeable after its own review lands.** The
   `concurrency` group added for #729 was keyed on the pull request number and head SHA but not on
   the event name, so a `pull_request` run and a `pull_request_review` run for the same head landed
