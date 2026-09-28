@@ -23,6 +23,34 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   still fails the step and the job on its own merits. A new check asserts the invariant rather than
   the flag text — any workspace-wide `cargo test` must carry the flag — and carries a vacuity guard
   so a sweep that matches nothing cannot report success. Refs #645.
+- **Install the review gate in `sts2-harness`.** `CONTRIBUTING.md` says a green run does not
+  substitute for review, but nothing here enforced it: eleven workflows, none of them a review
+  gate, and eleven merges since 2026-09-26 with no review of record. The gate exists and is
+  reviewed in `AI-Ascension/.github` (`review-gate.yml` plus `tools/review_gate.py`) and is
+  installed in exactly one of sixteen repositories -- the one that ships no product code.
+  `sts2-harness` is 48 of the 57 merges in that window and 11 of the 12 no-review merges, so it
+  is where the gate belongs.
+  What lands here is the tool half only, as a new Rust workspace tool, `tools/review-gate`; the
+  `review-gate.yml` workflow follows in a separate pull request. It is a port rather than a
+  verbatim vendor: this repository's `LANG001` rule prohibits Python source and
+  `repo-policy --strict` enforces it, so the reference could not be copied without breaking the
+  build. The decision logic is a case-for-case port, and the ported suite pins every branch the
+  reference's own 25 tests pin -- the head-pin rule, the `COMMENT`-state rule, the
+  all-reviews-not-just-latest regression, and every fail-closed path.
+  The tool lands first and the workflow second, because the workflow deliberately runs the gate
+  from the default branch -- so a pull request cannot edit the gate into passing itself -- and a
+  single combined pull request would check out a `main` that has neither the tool nor its tests,
+  and would fail for a reason that has nothing to do with review. The no-review-merge gap is
+  therefore closable by this change but not yet closed: until the workflow lands, nothing here
+  enforces the gate on this repository.
+  One test-harness defect found by CI while landing it, and fixed here rather than papered over:
+  the fake `gh` the `runner` tests execute derived its temp path from a hash of the *body* it would
+  print, so two tests that legitimately pass the same body -- `real_subprocess_roundtrip` and
+  `head_sha_extracted_from_payload`, both `{"head": {"sha": HEAD}}` -- resolved to the same file.
+  One `execve`d the stub while the other was still writing it and lost with `ETXTBSY` ("Text file
+  busy"). The name is now unique per call from an atomic counter, so the outcome no longer depends
+  on scheduling: reproduced 1 run in 8 against the old naming, 0 in 12 after.
+  Refs #668, #49.
 - **Assert that a required structural marker occurs exactly as often as policy declares it.**
   `check_required_preamble` walked the file with an ordered scan that stopped consuming markers once
   they were all satisfied, so a *second* copy of a marker past the last one was never examined. A
