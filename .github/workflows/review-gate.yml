@@ -34,63 +34,63 @@ permissions:
 # run for the same head instead of yielding to it.
 #
 # What this block does NOT do: change the conclusion of a run that has already
-# COMPLETED -- a concurrency group governs runs not yet dispatched or still
-# running. A completed red is not, however, permanent, though this file
-# previously said so; #710 below refutes that.
+# COMPLETED. A concurrency group governs runs not yet dispatched or still
+# running; once a run has completed, its conclusion stands until that SAME run
+# is rewritten. A completed red required check is sticky -- see the controlled
+# test below, which is why this file no longer says otherwise.
 #
-# An earlier version asserted the check-resolution rule that under ruleset
-# 24104281 a completed red is NOT superseded by a later green of the same
-# context. PR #710 refutes it: it merged at 92232e2a on 2026-09-28T08:28:36Z
-# with the ruleset already active (created 07:59:06Z, zero bypass actors). Its
-# head fc3b1d4f carried a FAILING `review-of-record` (108844282103, completed
-# 08:18:57; run 36396574820, still run_attempt=1 -- never re-run) and a failing
-# check-suite (98547418364) beside two LATER greens of the same context
-# (08:19:27, 08:19:54), and the merge succeeded. A later green DOES supersede a
-# completed red here; a completed red is NOT sticky. Do not reason otherwise.
+# THE CONTROLLED TEST (#738, head 99d1c307, all on main). One head, one
+# completed red, then three later greens of the SAME context:
 #
-# The head cited as evidence for that rule, 86712e4f, does not support it
-# either. Its red completed at 15:29:07Z and a green completed at 15:44:48Z, but
-# the `blocked` state was observed at 15:44:10Z -- 38 seconds BEFORE the green
-# completed, when the red was still the only completed run of the context. The
-# red was rewritten in place at 15:47:54Z, 49s before the merge. No merge
-# attempt was ever refused after a green completed on that head.
+#   109042000852  failure  17:07:55Z  event=pull_request         (run 36455890941)
+#   109042978838  success  17:11:13Z  event=pull_request_review
+#   109044866037  success  17:15:10Z  event=pull_request_review
+#   109045381854  success  17:16:28Z  event=pull_request_review
 #
-# `gh run rerun --failed` rewrites a red run's conclusion in place (attempt 1
-# failure -> attempt 2 success), and it RE-ENTERS the concurrency group -- see
-# the hazard below. A newly dispatched green is the cleaner route, since #710
-# shows it suffices on its own.
+# mergeStateStatus was BLOCKED. Three greens did not clear one red. The
+# required check resolves per (context, event): a completed red on the
+# `pull_request` trigger is NOT cleared by a green of the same context
+# arriving via `pull_request_review`. Rerunning the failed run rewrote it in
+# place (attempt 1 failure 17:07:55Z -> attempt 2 success 17:18:58Z) and the PR
+# went CLEAN on the next read, with the red check-run gone from the head.
+#
+# #710 is NOT counter-evidence, though it reads that way at a glance. It merged
+# at 92232e2a on 2026-09-28T08:28:36Z carrying a never-rerun red (36396574820,
+# run_attempt=1) -- but its `event=pull_request` run 36396626420 was itself
+# GREEN, created 08:18:56Z in the same dispatch batch. So #710 had a green
+# push-triggered run at merge time. It shows a red can be merged past when the
+# same event also went green, not that another event's green clears it.
+#
+# `gh run rerun --failed` is therefore the only thing that clears a red here:
+# it rewrites the SAME run in place (attempt 1 failure -> attempt 2 success).
+# Note that it RE-ENTERS the concurrency group -- see the hazard below.
 #
 # The event name is part of the group key, and that is load-bearing rather than
-# decorative. The two `pull_request*` triggers share a PR number and a head SHA,
-# so without it they land in ONE group. Measured on #733 head 4b20402e, where
-# both resolved to `review-of-record-733-4b20402e`:
-#
-#   15:53:46Z  36447039873  pull_request         created
-#   15:54:25Z  36447039873  attempt 1            FAILED
-#   15:54:40Z  36447155603  pull_request_review  created   <- newer run
-#   15:54:53Z  36447039873  attempt 2            started     <- `gh run rerun --failed`
-#   15:54:56Z  36447155603  CANCELLED                        (16s in, 0 steps run)
-#   15:57:28Z  36447039873  attempt 2            completed/success
+# decorative. The two `pull_request*` triggers share a PR number and head SHA, so
+# without it they land in ONE group. Measured on #733 head 4b20402e, where both
+# resolved to `review-of-record-733-4b20402e`: push run 36447039873 started
+# 15:53:46Z and its attempt 1 FAILED at 15:54:25Z; review run 36447155603 was
+# created 15:54:40Z, the NEWER run; attempt 2 of the push run started 15:54:53Z
+# via `gh run rerun --failed`; the review run was CANCELLED at 15:54:56Z having
+# run 0 steps.
 #
 # Two details are easy to state backwards. First, `cancel-in-progress: false` on
-# the review event does NOT protect the review run: that expression only decides
-# whether the ARRIVING run may supersede, and cannot stop an in-flight
-# PREDECESSOR from cancelling the arrival. Second, the predecessor that killed
-# the review run was attempt 2 of the PUSH run -- the documented red-clearing
-# RERUN re-entered the shared group and cancelled the review run 3s later. So
-# this is a race between a rerun and a review submission, which is why a green
-# main never caught it. The push run also always ends red on a fresh head, since
-# it evaluates before any review of record exists, so the review trigger is the
-# only path to green and losing it strands the check. Refs #735.
+# the review event does NOT protect the review run: it only decides whether the
+# ARRIVING run may supersede, and cannot stop an in-flight PREDECESSOR from
+# cancelling the arrival. Second, the predecessor that killed the review run was
+# attempt 2 of the PUSH run -- the red-clearing RERUN re-entered the shared
+# group 3s earlier. So this is a race between a rerun and a review submission,
+# which is why a green main never caught it. The push run also always ends red
+# on a fresh head, since it evaluates before any review of record exists, so
+# losing the review trigger strands the check. Refs #735.
 #
 # `strict_required_status_checks_policy: true` is the setting that would make
 # the newest run authoritative; it is untested here and is the ruleset owner's
-# call. Nothing above depends on it: #710 merged under the non-strict ruleset.
+# call. Nothing above depends on it.
 #
 # Keying the group on the head SHA is deliberate: keyed on the PR number alone, a
-# push would cancel runs belonging to the *previous* head, throwing away work
-# that is still valid. With the SHA in the key, a push only supersedes its own
-# earlier run on that head.
+# push would cancel runs belonging to the *previous* head, throwing away valid
+# work. With the SHA in the key, a push only supersedes its own earlier run.
 #
 # `cancel-in-progress` is true only for a push, so a push supersedes its own
 # earlier push run on the same head. It is false for a review, which keeps a
