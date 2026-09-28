@@ -62,9 +62,11 @@ permissions:
 # What actually clears a red is changing that run's conclusion in place, not
 # waiting for a newer one to appear: `gh run rerun --failed` rewrites the run
 # (attempt 1 failure -> attempt 2 success) rather than adding a run beside the
-# red one. That is the manual workaround, and this block does not remove the
-# need for it. If you are debugging a merge that will not go, rerun the failed
-# job; nobody has established that a later green would have done it on its own.
+# red one. Every green that has followed a red in this repository's history came
+# from a rerun of that same run, never a separately dispatched run, so whether a
+# later green would supersede a completed red on its own remains untested. If
+# you are debugging a merge that will not go, rerun the failed job. That is the
+# manual workaround, and this block does not remove the need for it.
 # `strict_required_status_checks_policy: true` is the setting that would make
 # the newest run authoritative; it is untested here and is the ruleset owner's
 # call.
