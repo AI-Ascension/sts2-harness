@@ -3,6 +3,7 @@
 use super::super::super::super::super::runtime_v3_settings::live_admission::admitted_live_episode;
 use super::*;
 use serde_json::Value;
+use std::cell::Cell;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -75,7 +76,7 @@ impl LivePeers {
             .set_nonblocking(true)
             .map_err(|_| "synthetic mod listener setup")?;
         let mod_address = listener.local_addr().map_err(|_| "synthetic mod address")?;
-        let address = free_address()?;
+        let reservation = reserve_address()?;
         let stop = Arc::new(AtomicBool::new(false));
         let requests = Arc::new(Mutex::new(Vec::new()));
         let worker = spawn_mod_server(listener, Arc::clone(&stop), Arc::clone(&requests), negative);
@@ -83,7 +84,6 @@ impl LivePeers {
         gateway
             .env_clear()
             .env("PATH", "/usr/bin:/bin")
-            .env("STS2_GATEWAY_ADDR", address.to_string())
             .env("STS2_MOD_ADDR", mod_address.to_string())
             .env("STS2_GATEWAY_TOKEN", "gateway-token")
             .env("STS2_MOD_TOKEN", "mod-token")
@@ -102,6 +102,10 @@ impl LivePeers {
             .env("STS2_GAME_INFORMATION_LIVE_BOOTSTRAP_ENABLED", "true")
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
+        // Released as the last statement before the spawn, so the port is held from
+        // allocation until the child is spawned and free the instant after. Refs #701.
+        let address = reservation.release();
+        gateway.env("STS2_GATEWAY_ADDR", address.to_string());
         let mut gateway = gateway
             .spawn()
             .map_err(|_| String::from("pinned Gateway process did not start"))?;
@@ -189,10 +193,52 @@ pub(super) fn pinned_binary(environment: &str) -> Result<std::path::PathBuf, Str
     }
 }
 
-fn free_address() -> Result<SocketAddr, String> {
-    TcpListener::bind("127.0.0.1:0")
-        .and_then(|listener| listener.local_addr())
-        .map_err(|_| String::from("loopback test address unavailable"))
+// A loopback address whose port stays bound until `ReservedAddress::release`.
+//
+// The old allocator read `local_addr()` and dropped the listener inside the same
+// expression, so the port was unowned from that instant until the child bound it.
+// Anything that could take it in that window -- a parallel scenario, another test
+// binary drawing `:0` -- would leave the child's `bind` to fail with `EADDRINUSE`
+// while `wait_until_listening` reported success, because it connects to whatever is
+// listening rather than to the child. Refs #701, and #673 for the same shape in the
+// test tree.
+struct ReservedAddress {
+    address: SocketAddr,
+    // `Cell` rather than `Option` because `release` takes `&self` and the
+    // reservation is a local of `LivePeers::start`, not a field.
+    listener: Cell<Option<TcpListener>>,
+}
+
+impl ReservedAddress {
+    // Give up the reservation and return the address the child should bind.
+    //
+    // Call it as the last statement before `Command::spawn()`. Calling it again
+    // after the reservation is spent is a no-op that returns the same address,
+    // not an error.
+    fn release(&self) -> SocketAddr {
+        let Some(listener) = self.listener.take() else {
+            return self.address;
+        };
+        // Closing is what releases the port. A listener that was only ever
+        // `bind`-ed, never `listen`-ed and never `accept`-ed has nothing pending to
+        // flush, so there is no error a caller could act on. `drop` states that
+        // this is the release rather than an accident of scope.
+        drop(listener);
+        self.address
+    }
+}
+
+// Draw a loopback port and **keep it** until `ReservedAddress::release` is called.
+fn reserve_address() -> Result<ReservedAddress, String> {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .map_err(|_| String::from("loopback test address unavailable"))?;
+    let address = listener
+        .local_addr()
+        .map_err(|_| String::from("loopback test address unavailable"))?;
+    Ok(ReservedAddress {
+        address,
+        listener: Cell::new(Some(listener)),
+    })
 }
 
 fn wait_until_listening(address: SocketAddr, child: &mut Child) -> Result<(), String> {
