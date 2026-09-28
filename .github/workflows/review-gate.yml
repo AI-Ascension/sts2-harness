@@ -34,15 +34,37 @@ permissions:
 # run for the same head instead of yielding to it.
 #
 # What this block does NOT do, stated here because the opposite was previously
-# recorded in this file and in #729: it cannot clear a completed red run. Under
-# ruleset 24104281 (`strict_required_status_checks_policy: false`) a completed
-# red run for a required context is NOT superseded by a later green run of that
-# same context. On this workflow's own head (86712e4f) a red `pull_request` run
-# at 15:29:07Z and a green `pull_request_review` run at 15:44:48Z coexisted, and
-# the merge endpoint still refused with "Required status check
-# "review-of-record" is failing". A concurrency group governs runs that are not
-# yet dispatched or are still running; a run that has already completed red is
-# immutable history on that head.
+# recorded in this file and in #729: it cannot clear a completed red run. A
+# concurrency group governs runs that are not yet dispatched or are still
+# running; a run that has already completed red is immutable history on that
+# head, and no later run in this workflow retracts it.
+#
+# An earlier version of this comment went further and asserted a
+# check-resolution rule from that fact: that under ruleset 24104281
+# (`strict_required_status_checks_policy: false`) a completed red run for a
+# required context is NOT superseded by a later green run of the same context.
+# That rule is contradicted by this repository's own merges and should not be
+# relied on. PR #710 merged at 92232e2a on 2026-09-28T08:28:36Z, with the
+# ruleset already active (created 07:59:06Z, no bypass actors). Its head
+# fc3b1d4f carried a completed FAILING `review-of-record` run (108844282103,
+# completed 08:18:57) and a completed failing check-suite (98547418364) next to
+# two later completed green runs of the same context (08:19:27, 08:19:54). The
+# merge succeeded, and that failing run was never re-run -- run 36396574820 is
+# still run_attempt=1, conclusion=failure.
+#
+# The head cited as evidence for that rule, 86712e4f, does not support it
+# either. Its red completed at 15:29:07Z and a green completed at 15:44:48Z, but
+# the `blocked` state was observed at 15:44:10Z -- 38 seconds BEFORE the green
+# completed, when the red was still the only completed run of the context. The
+# red was then rewritten in place at 15:47:54Z, 49 seconds before the merge. No
+# merge attempt was ever refused after a green run had completed on that head.
+#
+# So what actually clears a red here is changing that run's conclusion, not
+# waiting for a newer one to appear -- and whether a later green would have
+# sufficed on its own is untested. `gh run rerun --failed` does it in one step
+# and is the reason none of these PRs stayed blocked. If you are debugging a
+# merge that will not go, rerun the failed job; do not assume a later green run
+# has already done it, because nobody has established that it does.
 #
 # What does clear it is changing the red run's conclusion in place --
 # `gh run rerun --failed` rewrites the existing run (attempt 1 failure ->
