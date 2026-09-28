@@ -4,72 +4,14 @@
 //!
 //! These drive the real seam so failure is demonstrated, not asserted.
 
-use super::HEAD;
+use super::{HEAD, fake_gh};
 use crate::decision::ReviewGateError;
 use crate::{GH_TIMEOUT, GhRunner};
 use std::error::Error;
 use std::fs::File;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use serde_json::json;
-
-/// A fake `gh` that prints `body` on stdout, `stderr` on stderr, and exits `code`.
-fn fake_gh(body: &str, stderr: &str, code: i32) -> Result<PathBuf, Box<dyn Error>> {
-    // The directory name must be unique per CALL, not per body. Two tests here legitimately pass
-    // the same body -- `real_subprocess_roundtrip_extracts_head_and_reviews` and
-    // `head_sha_extracted_from_payload` both use `{"head": {"sha": HEAD}}` -- and a name derived
-    // from the body's length gave them the same path. They then raced: one `execve`d the stub
-    // while the other was still writing it, and the loser failed with `ETXTBSY` ("Text file busy",
-    // os error 26). That is a real defect rather than a flake, because the test outcome depended
-    // on scheduling.
-    //
-    // The counter is process-local and `fetch_add` is atomic, so every call in this process gets a
-    // distinct name, and the process id separates concurrent test binaries. `create_dir_all`
-    // tolerates the collision rather than being the thing that reports it, which is why a lost race
-    // used to surface much later as a confusing exec failure instead of here.
-    static NEXT_FAKE_GH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let nonce = NEXT_FAKE_GH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let directory = std::env::temp_dir().join(format!(
-        "sts2-review-gate-test-{}-{nonce}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&directory)?;
-    let path = directory.join("gh");
-    let script = format!(
-        "#!/bin/sh\ncat <<'BODY'\n{body}\nBODY\ncat >&2 <<'ERR'\n{stderr}\nERR\nexit {code}\n"
-    );
-    std::fs::write(&path, script)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
-    }
-    Ok(path)
-}
-
-/// A fake `gh` that never exits, so the timeout is the only thing that can end it.
-///
-/// `sleep` rather than a busy loop: the point is to model a `gh` blocked on the
-/// network, and a spinning child would make this test a CPU-burner on a host that
-/// is already loaded.
-fn hanging_gh() -> Result<PathBuf, Box<dyn Error>> {
-    static NEXT_HANGING_GH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let nonce = NEXT_HANGING_GH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let directory = std::env::temp_dir().join(format!(
-        "sts2-review-gate-hang-{}-{nonce}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&directory)?;
-    let path = directory.join("gh");
-    std::fs::write(&path, "#!/bin/sh\nsleep 3600\n")?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
-    }
-    Ok(path)
-}
 
 /// A runner wired to a fake `gh` that answers every call with `body`.
 fn runner_for(body: &str) -> Result<GhRunner, Box<dyn Error>> {
@@ -208,7 +150,6 @@ fn reviews_not_list_raises() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-<<<<<<< HEAD
 /// A regression that fails on the pre-#707 implementation.
 ///
 /// The real flake is a `fork`-inherits-a-write-descriptor race, rare enough that asserting "the
@@ -292,72 +233,8 @@ fn an_unretried_exec_of_a_held_open_stub_is_refused() -> Result<(), Box<dyn Erro
     };
     assert_eq!(
         error.raw_os_error(),
-        Some(crate::TEXT_FILE_BUSY),
+        Some(crate::process::TEXT_FILE_BUSY),
         "the control must fail with ETXTBSY, not some unrelated error: {error}"
     );
     Ok(())
 }
-=======
-/// A hung `gh` is reported as a timeout, not waited on forever.
-///
-/// The port used `Command::output`, which has no deadline, so this call returned
-/// only when the child did. This is the regression test for that: the stub never
-/// exits, so the assertion can only pass if something enforces the timeout. The
-/// production timeout is 60s, which is far too long to spend in a test, so this
-/// drives a runner configured with a short one.
-#[test]
-fn a_hung_gh_is_reported_as_a_timeout() -> Result<(), Box<dyn Error>> {
-    let runner = GhRunner {
-        gh_path: hanging_gh()?.to_string_lossy().into_owned(),
-        timeout: std::time::Duration::from_millis(200),
-    };
-    let started = std::time::Instant::now();
-    let outcome = runner.head_sha("AI-Ascension/sts2-harness", 693);
-    let elapsed = started.elapsed();
-    let error = outcome.expect_err("a hung `gh` must not yield a verdict");
-    assert!(
-        matches!(&error, ReviewGateError(message) if message.contains("timed out")),
-        "a hung `gh` reported {error:?} rather than a timeout, so the deadline is not enforced"
-    );
-    assert!(
-        elapsed < std::time::Duration::from_secs(30),
-        "the call took {elapsed:?}, so it waited on the child rather than on the deadline"
-    );
-    Ok(())
-}
-
-/// The timeout names the endpoint, so the check-run says which call hung.
-#[test]
-fn the_timeout_names_the_endpoint_it_gave_up_on() -> Result<(), Box<dyn Error>> {
-    let runner = GhRunner {
-        gh_path: hanging_gh()?.to_string_lossy().into_owned(),
-        timeout: std::time::Duration::from_millis(200),
-    };
-    let error = runner
-        .reviews("AI-Ascension/sts2-harness", 693)
-        .expect_err("a hung `gh` must not yield reviews");
-    assert!(
-        matches!(&error, ReviewGateError(message)
-            if message.contains("timed out") && message.contains("pulls/693/reviews")),
-        "the timeout message {error:?} does not name the endpoint, so a failing check-run would \
-         not say which call hung"
-    );
-    Ok(())
-}
-
-/// A `gh` that finishes inside the deadline is unaffected by having one.
-///
-/// The negative control for the two tests above. Without it, a runner that failed
-/// every call immediately would satisfy them.
-#[test]
-fn a_gh_that_finishes_in_time_still_succeeds() -> Result<(), Box<dyn Error>> {
-    let runner = GhRunner {
-        gh_path: fake_gh(&json!({"head": {"sha": HEAD}}).to_string(), "", 0)?
-            .to_string_lossy()
-            .into_owned(),
-        timeout: std::time::Duration::from_secs(30),
-    };
-    assert_eq!(runner.head_sha("AI-Ascension/sts2-harness", 693)?, HEAD);
-    Ok(())
-}
->>>>>>> c83d8f74 (fix(review-gate): give the gh api call the 60s timeout its reference has (Refs #702))

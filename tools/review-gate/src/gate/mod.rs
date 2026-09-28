@@ -8,16 +8,56 @@
 //!
 //! The suite is split by the half of the tool it exercises: `decision` covers the
 //! rule that reads reviews, `runner` covers the `gh` subprocess seam that reads the
-//! API, and `check` covers the composition of the two.
+//! API, `timeout` covers the deadline on that seam, and `check` covers the
+//! composition of the two.
 
 mod check;
 mod decision;
 mod runner;
+mod timeout;
+
+use std::error::Error;
+use std::path::PathBuf;
 
 use serde_json::Value;
 
 pub(super) const HEAD: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 pub(super) const OTHER: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+/// A fake `gh` that prints `body` on stdout, `stderr` on stderr, and exits `code`.
+///
+/// The directory name must be unique per CALL, not per body. Two tests legitimately pass the
+/// same body -- `real_subprocess_roundtrip_extracts_head_and_reviews` and
+/// `head_sha_extracted_from_payload` both use `{"head": {"sha": HEAD}}` -- and a name derived
+/// from the body's length gave them the same path. They then raced: one `execve`d the stub
+/// while the other was still writing it, and the loser failed with `ETXTBSY` ("Text file busy",
+/// os error 26). That is a real defect rather than a flake, because the test outcome depended
+/// on scheduling.
+///
+/// The counter is process-local and `fetch_add` is atomic, so every call in this process gets a
+/// distinct name, and the process id separates concurrent test binaries. `create_dir_all`
+/// tolerates the collision rather than being the thing that reports it, which is why a lost race
+/// used to surface much later as a confusing exec failure instead of here.
+pub(super) fn fake_gh(body: &str, stderr: &str, code: i32) -> Result<PathBuf, Box<dyn Error>> {
+    static NEXT_FAKE_GH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let nonce = NEXT_FAKE_GH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let directory = std::env::temp_dir().join(format!(
+        "sts2-review-gate-test-{}-{nonce}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&directory)?;
+    let path = directory.join("gh");
+    let script = format!(
+        "#!/bin/sh\ncat <<'BODY'\n{body}\nBODY\ncat >&2 <<'ERR'\n{stderr}\nERR\nexit {code}\n"
+    );
+    std::fs::write(&path, script)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(path)
+}
 
 /// A review as the API returns it: an identity, a state, the commit it is pinned
 /// to, and when it was submitted.
