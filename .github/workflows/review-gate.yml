@@ -28,33 +28,39 @@ permissions:
   contents: read
   pull-requests: read
 
-# #729: this workflow was the only one in the repository without a concurrency
-# group, and that omission is what made it unmergeable rather than merely red.
+# This block is queue hygiene, not a fix for a proven merge block. It is here
+# because the gate triggers on `pull_request` as well as `pull_request_review`,
+# and without a group a slow push-triggered run overlaps the review-triggered
+# run for the same head instead of yielding to it.
 #
-# The gate triggers on `pull_request` as well as `pull_request_review`, and
-# without a concurrency group each trigger starts a *new* check-run instead of
-# superseding the previous one. The `pull_request` trigger fires on every push,
-# which necessarily happens BEFORE any review of record can exist for that head,
-# so that run always ends red with "no review pinned to head". The later
-# `pull_request_review` run for the same head is green -- but the ruleset
-# (24104281) resolves a required check against the runs recorded for the head,
-# and the red one is still among them, so the PR stays blocked no matter how many
-# green runs follow. Measured on #727: the head carried a red run and three green
-# ones and the merge API still refused with "the base branch policy prohibits
-# the merge". `gh run rerun --failed` clears it, and the accompanying empty
-# commit also worked, but both are manual workarounds for a defect the workflow
-# can prevent.
+# What this block does NOT do, stated here because the opposite was previously
+# recorded in this file and in #729: it cannot clear a completed red run. Under
+# ruleset 24104281 (`strict_required_status_checks_policy: false`) a completed
+# red run for a required context is NOT superseded by a later green run of that
+# same context. On this workflow's own head (86712e4f) a red `pull_request` run
+# at 15:29:07Z and a green `pull_request_review` run at 15:44:48Z coexisted, and
+# the merge endpoint still refused with "Required status check
+# "review-of-record" is failing". A concurrency group governs runs that are not
+# yet dispatched or are still running; a run that has already completed red is
+# immutable history on that head.
 #
-# Keying the group on the head SHA is deliberate and load-bearing. Keyed on the
-# PR number alone, a run for the new head would cancel the run for the previous
-# head -- which is exactly how a stale red is left behind, so it would make this
-# worse. With the SHA in the key, a push supersedes only its own earlier run.
+# What does clear it is changing the red run's conclusion in place --
+# `gh run rerun --failed` rewrites the existing run (attempt 1 failure ->
+# attempt 2 success) rather than adding a second run beside the red one. That
+# is a manual workaround, and this block does not remove the need for it.
+# `strict_required_status_checks_policy: true` is the setting that would make
+# the newest run authoritative; it is untested here and is the ruleset owner's
+# call.
 #
-# `cancel-in-progress` is keyed on the event name so that a review submission is
+# Keying the group on the head SHA is deliberate. Keyed on the PR number alone, a
+# push would cancel in-flight runs belonging to the *previous* head, throwing
+# away work that is still valid. With the SHA in the key, a push only ever
+# supersedes its own earlier run.
+#
+# `cancel-in-progress` is keyed on the event name so a review submission is
 # never cancelled by an unrelated push. This workflow's green path IS the
-# `pull_request_review` trigger: if a review were cancelled, the check would stay
-# red and reintroduce the "no review of record" failure this block exists to
-# remove. Only a push (a genuinely superseded head) cancels.
+# `pull_request_review` trigger, so cancelling one would strand the check red.
+# Only a push (a genuinely superseded head) cancels.
 concurrency:
   group: review-of-record-${{ github.event.pull_request.number || github.event.review.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.event.review.pull_request.head.sha || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
