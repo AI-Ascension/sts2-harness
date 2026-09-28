@@ -11,18 +11,17 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
-- **The `grandchild_gh` stub no longer leaks a temp directory per run.** `#718` fixed the
-  process-group kill and its new test helper created a `$TMPDIR` directory per call that nothing
-  removed, reintroducing the `#713` leak one PR after that issue was closed. It accumulates
-  separately from `#713`'s because the name prefix differs (`-grandchild-` vs `-test-`), and it
-  fires on every run of the suite. The helper now uses the `TempDir` owner that `#713` added for
-  exactly this shape, and a second control asserts the new call site, because the existing one
-  covered only `fake_gh` -- which is why the leak passed a property that was already green.
-  Refs #719.
-- **Give the `gh api` call the 60-second timeout the reference has.** The reference bounds every call; the Rust port used `Command::output`, which waits forever, so a hung `gh` spends the whole `timeout-minutes: 5` job.
-  It fails closed rather than wrongly, so the cost was availability, not correctness. A timeout
-  kills the whole process group, not just the child, so helpers `gh` spawned do not survive
-  holding the pipes. Refs #702.
+- **Stop the group-kill test counting a zombie as a surviving descendant.** `#718`'s test probed
+  the descendant once with `kill -0`, which runs only existence and permission checks and so
+  answers *successfully for a zombie* — a process killed and merely awaiting its reap. The
+  descendant is re-parented only after the gate reaps the stub script, so that window is real, and
+  sampling inside it failed **4 of 20** full-suite runs against correct code — a coin flip on a
+  required check. The failure text was worse than the flake: it claimed "only the direct child was
+  killed", which is the mutation-detection message, so a red run pointed at a regression that did
+  not exist. The probe now polls to a deadline and treats "exited" as good enough, using
+  `waitid(EXITED | NOHANG | NOWAIT)` — `NOWAIT` leaves the status for a real parent, so asking
+  never steals a reap. **30 of 30** full-suite runs green after, and removing the group kill while
+  keeping the direct kill still fails it, so the test remains non-vacuous. Refs #722.
 - **Own the `src/bin` loopback port until the child that binds it is spawned.**
   `runtime_v3_game_information_entry_support.rs` drew its loopback address with a
   `free_loopback_address()` that read `local_addr()` and dropped the listener inside the same

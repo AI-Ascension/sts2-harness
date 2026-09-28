@@ -17,6 +17,15 @@ use std::path::PathBuf;
 
 use serde_json::json;
 
+/// How long a killed descendant is given to leave the process table.
+///
+/// The group kill is `SIGKILL`, so the descendant is gone from the scheduler essentially at once
+/// and this only has to cover the bookkeeping after it. It is generous because exceeding it is a
+/// real failure worth reporting, not a nuisance to be tuned away: a descendant still running
+/// seconds after its group's `SIGKILL` means the signal did not reach it, which is the defect
+/// this test exists to catch.
+const DESCENDANT_EXIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// A fake `gh` that never exits, so the timeout is the only thing that can end it.
 ///
 /// `sleep` rather than a busy loop: the point is to model a `gh` blocked on the
@@ -136,32 +145,42 @@ fn a_timeout_kills_the_whole_process_group() -> Result<(), Box<dyn Error>> {
         "expected a timeout, got {error:?}"
     );
 
-    // The stub writes the pid file before it blocks, so it exists by the time the deadline
-    // expires. Reading it rather than assuming a layout means a failure below names the pid
-    // that survived, rather than reporting only that "something" survived.
-    let recorded = std::fs::read_to_string(&pid_file)
-        .map_err(|error| format!("the stub wrote no pid file at {pid_file:?}: {error}"))?;
-    let pid: i32 = recorded
-        .trim()
-        .parse()
-        .map_err(|error| format!("the stub recorded {recorded:?}, which is not a pid: {error}"))?;
+    // The stub writes the pid file before it blocks, but the deadline can beat the shell to it,
+    // so the file is polled for rather than assumed. Reading the recorded pid rather than
+    // assuming a layout is what lets the failure below name the pid that survived.
+    let pid = recorded_descendant_pid(&pid_file)?;
 
-    // `kill -0` is the portable liveness probe: it succeeds for a live process and fails with
-    // ESRCH for a reaped one, and it needs no privilege because the group kill ran as this
-    // same user.
-    let alive = std::process::Command::new("kill")
-        .arg("-0")
-        .arg(pid.to_string())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false);
-    assert!(
-        !alive,
-        "pid {pid} survived the timeout, so only the direct child was killed and the \
-         descendant `gh` started is still running"
-    );
+    // #722: the property under test is that nothing the timed-out `gh` started is still
+    // *running* -- that the group kill released the pipes the drain threads were waiting on.
+    // Whether the kernel has finished bookkeeping that pid is a different question, and the
+    // difference is what this poll exists to express.
+    //
+    // A one-shot `kill -0` cannot express it. `kill(pid, 0)` runs only the existence and
+    // permission checks, so it answers **successfully for a zombie**: a process that has been
+    // killed and is merely waiting to be reaped still answers. The descendant's parent is the
+    // stub script, and the gate kills and reaps that script itself, so the descendant is only
+    // re-parented (and only finished reaping) after the gate's own `wait`. Sampling once inside
+    // that window reported a surviving process on 4 of 20 full-suite runs against the fixed
+    // code -- a coin flip on a required status check.
+    //
+    // So: poll to a deadline, and treat "exited" as good enough. `waitid(EXITED | NOHANG |
+    // NOWAIT)` with `NOWAIT` is what distinguishes the two -- it reports a process that has
+    // exited without consuming its status, so asking never steals the reap from a real parent.
+    let deadline = std::time::Instant::now() + DESCENDANT_EXIT_TIMEOUT;
+    loop {
+        if !descendant_is_running(pid) {
+            break;
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(format!(
+                "the descendant {pid} is still running {DESCENDANT_EXIT_TIMEOUT:?} after the \
+                 timeout killed its group, so only the direct child was killed and the work \
+                 `gh` started outlived the bound the gate reported"
+            )
+            .into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     Ok(())
 }
 
@@ -198,4 +217,61 @@ pub(super) fn grandchild_gh() -> Result<(TempDir, PathBuf, PathBuf), Box<dyn Err
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
     }
     Ok((directory, path, pid_file))
+}
+
+/// Read the pid the stub recorded, polling because the deadline can beat the shell to it.
+///
+/// Without a recorded pid there is nothing to assert about, so this is where a stub that failed to
+/// background anything is reported rather than silently passing the assertion below it.
+#[cfg(unix)]
+fn recorded_descendant_pid(pid_file: &std::path::Path) -> Result<i32, Box<dyn Error>> {
+    let deadline = std::time::Instant::now() + DESCENDANT_EXIT_TIMEOUT;
+    loop {
+        if let Ok(recorded) = std::fs::read_to_string(pid_file)
+            && let Ok(pid) = recorded.trim().parse::<i32>()
+        {
+            return Ok(pid);
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(format!(
+                "the stub never recorded a descendant pid at {}",
+                pid_file.display()
+            )
+            .into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+/// Report whether the descendant is still running, treating "exited" as gone.
+///
+/// #722: the group kill leaves the descendant a zombie until someone collects it, and a zombie
+/// answers every existence probe, so "gone" has to be established rather than sampled. The
+/// descendant's parent is the stub script, which the gate kills and then reaps in `reap()`; once
+/// that happens the descendant is re-parented to init, which reaps it. This process is therefore
+/// usually *not* its parent, which is why `waitid` is a query here rather than a wait: asking
+/// about a process that is not this process's child fails with `ECHILD`, and that is a normal
+/// answer, not an error to propagate.
+#[cfg(unix)]
+fn descendant_is_running(pid: i32) -> bool {
+    let Some(pid) = rustix::process::Pid::from_raw(pid) else {
+        // Not a usable pid, so it cannot be a running process.
+        return false;
+    };
+    // `NOWAIT` leaves the status for a real parent to collect, so this never steals a reap.
+    let options = rustix::process::WaitIdOptions::EXITED
+        | rustix::process::WaitIdOptions::NOHANG
+        | rustix::process::WaitIdOptions::NOWAIT;
+    match rustix::process::waitid(rustix::process::WaitId::Pid(pid), options) {
+        // A status is waiting: the process has exited, so whatever state it is in, it is not
+        // running and it is not holding the pipes. This is the zombie case, and treating it as
+        // gone is the whole point.
+        Ok(Some(_status)) => false,
+        // No status yet: still running.
+        Ok(None) => true,
+        // `ECHILD` means it is not this process's child, so there is no status here to wait for
+        // and the pid has to be probed the other way. `kill(pid, 0)` can only over-report now --
+        // a zombie would read as alive -- which is why this is the fallback and not the primary.
+        Err(_) => matches!(rustix::process::test_kill_process(pid), Ok(())),
+    }
 }
