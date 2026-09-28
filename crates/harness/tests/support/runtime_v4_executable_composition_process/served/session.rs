@@ -10,17 +10,7 @@ mod spawn;
 // This module is itself reached through a `#[path]`, so its children resolve against this
 // file's own directory — `served/` — not against the parent module's.
 #[path = "health_probe.rs"]
-mod health_probe;
-use health_probe::{describe_unexpected_health, is_workflow_service_health};
-
-// #651's regression scenarios for the probe above. Re-exported through `served` so the
-// integration-test binary can run them under their own names.
-#[path = "health_probe_tests.rs"]
-mod health_probe_tests;
-pub(crate) use health_probe_tests::{
-    the_workflow_health_predicate_accepts_only_the_services_own_envelope,
-    the_workflow_readiness_probe_rejects_an_impostor_that_answers,
-};
+pub(super) mod health_probe;
 
 pub(super) struct WorkflowServiceConfig<'a> {
     pub(super) harness_binary: &'a Path,
@@ -137,41 +127,7 @@ pub(crate) fn wait_for_workflow_service(
     service: &mut Child,
     address: SocketAddr,
 ) -> Result<ManagementClient, Box<dyn std::error::Error>> {
-    let client = ManagementClient::new(address, "served-workflow-token")?;
-    let deadline = Instant::now() + Duration::from_secs(5);
-    // The last answer that was not the real service. Retained so a timeout can name the squatter
-    // rather than reporting a bare deadline: an address served by something else must be
-    // reported as that, never silently retried until the deadline. Declared before the loop
-    // because the deadline can be reached on the first pass, before any arm has assigned.
-    let mut impostor: Option<String>;
-    loop {
-        if let Some(status) = service.try_wait()? {
-            return Err(format!("served workflow exited: {status}").into());
-        }
-        match client.request_json("GET", "/v1/health", None) {
-            Ok(health) if is_workflow_service_health(&health) => return Ok(client),
-            // `request_json` is `Ok` for *any* completed exchange, so a foreign listener that
-            // answers at all used to satisfy this probe — the same squatter-satisfiable
-            // readiness that #673 documented for `ready()`. On sts2-harness#651 the synthetic
-            // downstream answered here and the scenario failed much later, on the provider
-            // fixture's error *identity*, which named neither the theft nor the impostor.
-            Ok(health) => {
-                impostor = Some(describe_unexpected_health(&health));
-            }
-            Err(_) => impostor = None,
-        }
-        if Instant::now() >= deadline {
-            return Err(match impostor {
-                Some(description) => format!(
-                    "served workflow readiness deadline exceeded, and the address was answering \
-                     for something else: {description}"
-                )
-                .into(),
-                None => "served workflow readiness deadline exceeded".into(),
-            });
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
+    health_probe::wait_for_workflow_service(service, address)
 }
 
 pub(super) fn submit_and_step_policy_gate(

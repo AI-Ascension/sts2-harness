@@ -11,12 +11,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use super::health_probe::is_workflow_service_health;
-use super::wait_for_workflow_service;
-// This module sits under `served::session`, so the shared process support — which re-exports
-// `reserve` — is two levels up rather than reachable as `crate::process`: these files are
+// This module hangs off `served::session::health_probe`, so its parent is the probe module and
+// the session it serves is one level further up. The shared process support — which re-exports
+// `reserve` — is three levels up rather than reachable as `crate::process`: these files are
 // compiled as modules of the integration-test binary, not as a library with that path.
 use super::super::super::reserve;
+use super::is_workflow_service_health;
+use super::wait_for_workflow_service;
 use sts2_harness::management::{ClientResponse, MANAGEMENT_SCHEMA_VERSION};
 
 /// How long the stand-in child is held open. The real service is never started in these tests, so
