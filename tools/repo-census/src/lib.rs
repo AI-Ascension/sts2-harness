@@ -6,4 +6,5 @@
 //! `.github#49` (remedy: count parse failures and name the objects).
 
 pub mod census;
+pub mod paginate;
 pub mod transport;

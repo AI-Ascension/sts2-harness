@@ -57,7 +57,8 @@ fn main() -> ExitCode {
     for repository in &repositories {
         let census = census_merged_pulls(repository, &host);
         println!(
-            "{repository}: merged={} pinned={} unpinned={} absent={} unreadable={}",
+            "{repository}: pages={} merged={} pinned={} unpinned={} absent={} unreadable={}",
+            census.pages_read,
             census.classified,
             census.pinned,
             census.unpinned,
@@ -71,6 +72,7 @@ fn main() -> ExitCode {
             );
         }
         complete &= census.is_complete();
+        total.pages_read += census.pages_read;
         total.classified += census.classified;
         total.pinned += census.pinned;
         total.unpinned += census.unpinned;
@@ -79,7 +81,8 @@ fn main() -> ExitCode {
     }
 
     println!(
-        "TOTAL: merged={} pinned={} unpinned={} absent={} unreadable={}",
+        "TOTAL: pages={} merged={} pinned={} unpinned={} absent={} unreadable={}",
+        total.pages_read,
         total.classified,
         total.pinned,
         total.unpinned,
@@ -95,8 +98,9 @@ fn main() -> ExitCode {
         // read another way.
         eprintln!(
             "census incomplete: {} object(s) could not be read; the counts above \
-             cover only what was read",
-            total.unreadable.len()
+             cover only the {} page(s) that were read",
+            total.unreadable.len(),
+            total.pages_read
         );
         ExitCode::FAILURE
     }

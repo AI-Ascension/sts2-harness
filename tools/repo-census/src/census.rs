@@ -16,7 +16,7 @@
 
 use serde::Deserialize;
 
-use crate::transport::{Fetch, ReadFailure, read_json_list};
+use crate::transport::{Fetch, PageOutcome, ReadFailure, read_all_pages, read_json_list};
 
 #[derive(Debug, Deserialize)]
 struct PullRequestSummary {
@@ -90,6 +90,8 @@ pub struct RepoCensus {
     pub pinned: u64,
     pub unpinned: u64,
     pub absent: u64,
+    /// Pages of the merged-pull-request listing this run read.
+    pub pages_read: u64,
     /// Everything that could not be read, in discovery order.
     pub unreadable: Vec<Unreadable>,
 }
@@ -147,6 +149,13 @@ pub fn review_record(head_sha: &str, reviews: &[ReviewProbe]) -> ReviewRecord {
 
 /// Census every merged pull request in one repository.
 ///
+/// The listing is traversed in full. Reading a single page and treating it as
+/// the whole listing is the failure this tool exists to prevent: a repository
+/// whose merged pull requests run past one page would be reported as having
+/// only the merged pull requests on page one, and the run would still exit
+/// zero. The traversal follows the server's `rel="next"` links, so it ends
+/// where the server says the listing ends rather than at an assumed page count.
+///
 /// A page that does not parse is recorded and **counted once per page**, with
 /// the page's own identity, because that is the true blast radius: a single
 /// unreadable object invalidates every object on its page. The affected pull
@@ -158,15 +167,40 @@ pub fn census_merged_pulls(repository: &str, host: &str) -> RepoCensus {
     };
 
     let path = format!("repos/AI-Ascension/{repository}/pulls?state=closed&per_page=100&page=1");
-    let merged: Vec<PullRequestSummary> = match read_json_list(&path, host) {
-        Fetch::Parsed(pulls) => pulls,
-        Fetch::Failed(failure) => {
-            census.record(&path, failure);
+    let pulls: Vec<PullRequestSummary> = match read_all_pages(&path, host) {
+        PageOutcome::Complete { items, pages } => {
+            census.pages_read = pages;
+            items
+        }
+        PageOutcome::Failed {
+            items,
+            pages,
+            failed_page,
+            failure,
+        } => {
+            // The pages before the failure are a prefix, not the listing. They
+            // are classified so the run still measures what it could reach,
+            // and the failed page is recorded so the total is known to be
+            // short rather than merely small.
+            census.record(&failed_page, failure);
+            census.pages_read = pages;
+            classify_pulls(&mut census, &items, repository, host);
             return census;
         }
     };
 
-    for pull in merged {
+    classify_pulls(&mut census, &pulls, repository, host);
+    census
+}
+
+/// Classify each merged pull request, reading its reviews.
+fn classify_pulls(
+    census: &mut RepoCensus,
+    pulls: &[PullRequestSummary],
+    repository: &str,
+    host: &str,
+) {
+    for pull in pulls {
         if pull.merged_at.is_none() {
             continue;
         }
@@ -183,8 +217,6 @@ pub fn census_merged_pulls(repository: &str, host: &str) -> RepoCensus {
             Fetch::Failed(failure) => census.record(&subject, failure),
         }
     }
-
-    census
 }
 
 #[cfg(test)]

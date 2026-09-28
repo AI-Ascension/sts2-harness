@@ -11,6 +11,20 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **The census now reads every page of a listing, not just the first.** The listing of merged pull
+  requests was requested with `page=1` hardcoded and no pagination loop, so any repository whose
+  merged pull requests ran past one page was reported as having only the merged pull requests on
+  page one — and the run still exited zero. Measured on this branch before the fix,
+  `sts2-harness` reported `merged=62`; the repository actually has **451** merged pull requests
+  across 6 pages of 100, so 389 (86.3%) were silently lost and `unreadable=0` claimed the
+  measurement was clean. This is the same class of silent under-report the tool was written to
+  prevent, arriving through a different door: the transport named the objects it could not read,
+  but nothing noticed the objects it never asked for. The traversal now follows the server's own
+  `rel="next"` Link header until the server stops offering a successor, so it ends where GitHub
+  says the listing ends rather than at an assumed page count, and a page that cannot be read
+  fails the run closed with that page's own identity. Each repository and the run total now also
+  report `pages=`, the size of the traversal actually performed, so a one-page measurement can
+  never again be mistaken for a complete one. Refs .github#49.
 - **A census that names what it could not read.** `tools/repo-census` measures merged pull
   requests and their review record org-wide, and treats "the tool exited 0 but its own output
   does not parse" as a named, non-retryable outcome rather than an empty result. `gh api` 2.23.0
@@ -20,9 +34,12 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   across all 18 repositories: 636 merged pull requests read, 104 carrying a review pinned to the
   merged head, 6 carrying reviews pinned to a superseded commit, 526 with no review at all, and
   exactly 1 page unreadable (`sts2-game-mod` page 1, which the previous tooling would have reported
-  as that repository having 0 merged pull requests). The CLI exits non-zero when anything could not
-  be read, so a gate built on it cannot report a clean measurement over a partial one. Refs
-  .github#49, .github#50.
+  as that repository having 0 merged pull requests). **Those totals were themselves measured with
+  the single-page defect described above and are therefore undercounts for every repository with
+  more than one page**; they are left here as originally recorded rather than restated, and
+  re-measurement belongs with the fix. The CLI exits non-zero when anything could not be read, so
+  a gate built on it cannot report a clean measurement over a partial one. Refs .github#49,
+  .github#50.
 - **The review-of-record gate is no longer unmergeable after its own review lands.** The
   `concurrency` group added for #729 was keyed on the pull request number and head SHA but not on
   the event name, so a `pull_request` run and a `pull_request_review` run for the same head landed
