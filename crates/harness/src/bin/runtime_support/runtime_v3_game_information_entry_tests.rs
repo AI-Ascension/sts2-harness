@@ -124,7 +124,9 @@ fn run_runtime_entry(mode: EntryMode) {
     let gateway_address = gateway
         .as_ref()
         .map(|listener| listener.local_addr().expect("gateway address"));
-    let management_address = free_loopback_address();
+    // #681: hold the port from allocation until the child that binds it is spawned, instead of
+    // drawing an address nobody owns and hoping nothing takes it first. See `loopback::reserve`.
+    let management_address = reserve().expect("reserve management loopback address");
     let config_path = &fixture.config_path;
     let archive_path = &fixture.archive_path;
 
@@ -153,7 +155,7 @@ fn run_runtime_entry(mode: EntryMode) {
             corpus_path,
             policy_path,
             archive_path,
-            management_address,
+            management_address.address(),
             replay,
         );
         let mut live = match (mode, gateway_binary.as_deref()) {
@@ -168,6 +170,10 @@ fn run_runtime_entry(mode: EntryMode) {
             .map(live_peers::LivePeers::address)
             .or(gateway_address)
             .expect("gateway address");
+        // Release the reservation as the last step before the fork: the child binds this port, and
+        // a listener we still held would refuse it. `release` is idempotent, so the replay pass
+        // below — which rebinds the same address after the first child has been reaped — is fine.
+        let management_address = management_address.release();
         let mut child = start_runtime_child(
             gateway_address,
             config_path,
@@ -256,6 +262,8 @@ mod fixture_setup;
 mod gateway;
 #[path = "runtime_v3_game_information_entry_live_peers.rs"]
 mod live_peers;
+#[path = "runtime_v3_game_information_entry_loopback.rs"]
+mod loopback;
 #[path = "runtime_v3_game_information_entry_peer.rs"]
 mod peer;
 #[path = "runtime_v3_game_information_entry_peer_encoding_tests.rs"]
@@ -267,7 +275,8 @@ mod verification;
 
 use gateway::serve_gateway;
 use live_peers::PeerNegative;
+use loopback::reserve;
 use support::{
-    explicit_revalidation_approval_and_adoption, finish_child, free_loopback_address,
-    start_runtime_child, wait_for_management, write_owner_config, write_private,
+    explicit_revalidation_approval_and_adoption, finish_child, start_runtime_child,
+    wait_for_management, write_owner_config, write_private,
 };
