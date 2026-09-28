@@ -11,8 +11,30 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
-- **Give the `gh api` call the 60-second timeout the reference has.** The reference bounds every call; the Rust port used `Command::output`, which waits forever, so a hung `gh` spends the whole `timeout-minutes: 5` job.
-  It fails closed rather than wrongly, so the cost was availability, not correctness. Refs #702.
+- **Kill the `gh` process group on timeout, not only the process the gate spawned.** `#702`'s
+  "correct child reaping" criterion is only half-landed. The 60s deadline, the concurrent pipe
+  drain, and the `ETXTBSY` retry all shipped in `#712`, and the timeout path does kill the child
+  it spawned — but `Child::kill()` sends `SIGKILL` to exactly one pid, and `gh` is not a leaf
+  process. A descendant that outlives the direct child keeps the stdout and stderr pipes open, so
+  the reader threads never see EOF. The gate's *call* is bounded while the *work it started* is
+  not, which is the assumption the timeout's value silently rested on.
+  The child is now put in its own process group at spawn (`Command::process_group(0)`, unix) and
+  the reap signals that group, so a descendant the `gh` spawned dies with it and the pipes reach
+  EOF. The direct `child.kill()` is kept as a fallback rather than replaced, so the child is still
+  signalled when the group signal is refused. This is the same remedy the harness already
+  measured and uses for the Exo lifecycle bridge
+  (`crates/harness/src/exo_lifecycle/process_reap.rs`), ported for the same reason; `rustix` was
+  already a workspace dependency, so no new crate enters the tree.
+  The asymmetry is stated rather than implied: `std::process::Command` has no `process_group`
+  equivalent on Windows, so there only the direct child is killed and a Windows operator's
+  transport owns the cleanup of anything it spawned. `review-of-record` runs on `ubuntu-latest`,
+  so the bounded path is the one that ships.
+  The new test is deliberately a **grandparent** stub — it backgrounds a long `sleep`, records the
+  pid it was given, then blocks itself — because the existing deadline tests cannot detect this:
+  they hang the stub's *own* shell, and killing the direct child ends that either way, so both
+  pass against the incomplete implementation. With the group signal removed and the direct kill
+  kept, this is the one test in the suite that fails, and it fails naming the surviving
+  descendant. Refs #717, #702.
 - **Own the `src/bin` loopback port until the child that binds it is spawned.**
   `runtime_v3_game_information_entry_support.rs` drew its loopback address with a
   `free_loopback_address()` that read `local_addr()` and dropped the listener inside the same
@@ -37,44 +59,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   negative control, so the reservation test cannot pass for the wrong reason. No test here is
   known to fail this way and none is claimed to; the fix is on the verified code shape and the
   verified reachable call path. Refs #681, #673.
-- **Stop the review gate's own test suite from failing on `ETXTBSY` while a stub is being
-  written.**
-  `review-of-record` is a required check on every pull request and it runs the gate's own tests, so
-  a test-only race here blocked unrelated work at random — including after the author had already
-  posted a correct review, which is the one signal that makes people re-run instead of read. Run
-  `36386964129` failed on `tests::runner::head_sha_extracted_from_payload` with `Text file busy
-  (os error 26)`, and run `36389325307` attempt 1 failed the same way on the same head that attempt
-  2 and run `36389016026` passed: identical commit, opposite verdicts.
-  The mechanism is **not** a path collision, and the per-call nonce `#700` added is not what was
-  missing. `fs::write` closes its handle before returning, so nothing leaks: the window is the few
-  microseconds between that close and `execve`, and `Command::output()` reaches the stub through
-  `fork` + `exec`. If any *other* test thread is inside its own write-to-exec window at that
-  instant, the forked child inherits that thread's still-open write descriptor, and the kernel
-  refuses to `execve` an image any live descriptor holds open for writing. Each stub has its own
-  directory and filename, so no per-call uniqueness can prevent it — the coupling is the inherited
-  descriptor, not the name. Reproduced deterministically with distinct paths and distinct inodes:
-  thread A holds its own stub open for writing, thread B forks 60 children on its own stub, and
-  A's `execve` fails `ETXTBSY` 3 times in 3. That also makes the earlier diagnosis on the issue
-  wrong in a way that matters: its supporting control — "8 threads rewriting and execing *their
-  own distinct path*, 0 failures" — never put a `fork` inside another thread's write-to-exec
-  window, so it reproduced the clean case and was read as the dirty one.
-  This repository had already measured and fixed exactly this for its own written stubs:
-  `tests/support/runtime_v4_executable_composition_process/spawn.rs` records **5 failures in 240
-  spawns** without a retry and **0 in 240** with one. `tools/review-gate` never adopted it, which
-  is why the one caller still exposed was the required check's own suite. The bounded retry is
-  ported for the same measured reason, and `Command::output()`'s stdio wiring is reproduced
-  explicitly, since a bare `spawn` would otherwise capture no output and fail every read closed.
-  Retrying is sound because the offending descriptor is always closed by its owner, so the
-  condition is transient and the deadline cannot be outlived by a persistent one.
-  The regression manufactures the condition rather than looping the suite and hoping, which is what
-  let this survive `#700`: that fix was real, but was verified with **1 failing run in 8 against
-  the old code and 0 in 12 after**, a rate that cannot distinguish "fixed" from "almost never hit"
-  — one failure in 40 full-suite runs here. The new test holds a write descriptor open on the stub
-  it is about to exec, releases it the way a forked child would, and asserts the runner still
-  succeeds; verified to fail against the pre-fix implementation. A companion control asserts an
-  un-retried `Command` on the same held-open stub still fails with `ETXTBSY`, so the regression
-  cannot pass by never provoking the condition.
-  Refs #707, #668, #609, #700.
 - **Hold the `LivePeers` gateway port until the child is spawned.**
   `runtime_v3_game_information_entry_live_peers.rs` drew its gateway address with a
   `free_address()` that read `local_addr()` and dropped the listener inside the same expression, so

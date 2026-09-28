@@ -8,6 +8,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::decision::{ReviewGateError, require_full_sha, validate_reviews};
+use crate::reap;
 
 /// `ETXTBSY`, the errno `execve` returns when the image is still open for writing anywhere.
 pub(crate) const TEXT_FILE_BUSY: i32 = 26;
@@ -61,8 +62,15 @@ impl GhRunner {
         // #707: retry while the exec is refused with ETXTBSY, because a stub or image that some
         // other thread still holds open for writing is transient by construction.
         // #702: once the child exists, bound the wait, because `gh` blocked on the network is not.
+        // #717: put the child in its own process group before it is spawned, so the reap can
+        // reach a descendant the `gh` spawned and not only the `gh` itself.
+        reap::into_own_process_group(&mut command);
         let mut child = spawn_retrying_text_busy(&mut command)
             .map_err(|error| ReviewGateError(format!("unable to run {}: {error}", self.gh_path)))?;
+        // Read while the child is still running: the group id is the child's pid, which is only
+        // known once it exists, and an already-exited child reports `None` so it is reaped the
+        // same way on both platforms rather than appearing reapable here and not there.
+        let group = reap::group_handle(&child);
 
         // Both pipes are drained on their own threads. Reading them inline after
         // the child exits would deadlock the other way round: a child that fills a
@@ -74,7 +82,7 @@ impl GhRunner {
         let stdout_reader = thread::spawn(move || read_pipe(stdout));
         let stderr_reader = thread::spawn(move || read_pipe(stderr));
 
-        let status = self.wait_with_timeout(&mut child, endpoint)?;
+        let status = self.wait_with_timeout(&mut child, group, endpoint)?;
         let stdout = stdout_reader.join().unwrap_or_default();
         let stderr = stderr_reader.join().unwrap_or_default();
 
@@ -112,10 +120,15 @@ impl GhRunner {
     /// an unreaped one, and the reader threads spawned in [`run`] would be the only
     /// things still holding its pipes.
     ///
+    /// `group` is the child's own process group, and it is what makes the bound mean what it
+    /// says: [`crate::reap`] signals the group, so a descendant that outlived the direct child
+    /// dies with it instead of holding the pipes open behind the timeout.
+    ///
     /// [`run`]: GhRunner::run
     fn wait_with_timeout(
         &self,
         child: &mut Child,
+        group: Option<reap::GroupHandle>,
         endpoint: &str,
     ) -> Result<ExitStatus, ReviewGateError> {
         let deadline = Instant::now() + self.timeout;
@@ -125,7 +138,7 @@ impl GhRunner {
                 // Still running. Fall through to the deadline check.
                 Ok(None) => {}
                 Err(error) => {
-                    reap(child);
+                    reap::reap(child, group);
                     return Err(ReviewGateError(format!(
                         "unable to wait for {}: {error}",
                         self.gh_path
@@ -133,7 +146,7 @@ impl GhRunner {
                 }
             }
             if Instant::now() >= deadline {
-                reap(child);
+                reap::reap(child, group);
                 return Err(ReviewGateError(format!(
                     "gh api timed out after {}s for {endpoint}",
                     self.timeout.as_secs()
@@ -251,13 +264,4 @@ fn read_pipe<R: Read + Send + 'static>(pipe: Option<R>) -> Vec<u8> {
     let mut collected = Vec::new();
     let _ = pipe.read_to_end(&mut collected);
     collected
-}
-
-/// Kill a child and reap it, so a timeout does not leave a process behind.
-fn reap(child: &mut Child) {
-    // Both calls are best-effort by design. A child that already exited between the
-    // deadline check and the kill reports failure here; the `wait` that follows is
-    // still correct, because it is the call that reaps.
-    let _ = child.kill();
-    let _ = child.wait();
 }

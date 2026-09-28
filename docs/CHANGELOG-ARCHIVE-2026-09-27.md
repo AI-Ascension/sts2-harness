@@ -327,3 +327,45 @@ supported release or a second normative changelog.
   receipt ledger now has a versioned durable image, an owner-supplied port (`with_dispatch_ledger_port`)
   and a file-backed store the served binary attaches when `STS2_WORKFLOW_DISPATCH_LEDGER` names a path:
   a restart reloads the receipts and refuses a second write or an unreadable store, and unset receipts stay session-lifetime. Refs #108, #94.
+
+- **Give the `gh api` call the 60-second timeout the reference has.** The reference bounds every call; the Rust port used `Command::output`, which waits forever, so a hung `gh` spends the whole `timeout-minutes: 5` job.
+  It fails closed rather than wrongly, so the cost was availability, not correctness. Refs #702.
+
+- **Stop the review gate's own test suite from failing on `ETXTBSY` while a stub is being
+  written.**
+  `review-of-record` is a required check on every pull request and it runs the gate's own tests, so
+  a test-only race here blocked unrelated work at random — including after the author had already
+  posted a correct review, which is the one signal that makes people re-run instead of read. Run
+  `36386964129` failed on `tests::runner::head_sha_extracted_from_payload` with `Text file busy
+  (os error 26)`, and run `36389325307` attempt 1 failed the same way on the same head that attempt
+  2 and run `36389016026` passed: identical commit, opposite verdicts.
+  The mechanism is **not** a path collision, and the per-call nonce `#700` added is not what was
+  missing. `fs::write` closes its handle before returning, so nothing leaks: the window is the few
+  microseconds between that close and `execve`, and `Command::output()` reaches the stub through
+  `fork` + `exec`. If any *other* test thread is inside its own write-to-exec window at that
+  instant, the forked child inherits that thread's still-open write descriptor, and the kernel
+  refuses to `execve` an image any live descriptor holds open for writing. Each stub has its own
+  directory and filename, so no per-call uniqueness can prevent it — the coupling is the inherited
+  descriptor, not the name. Reproduced deterministically with distinct paths and distinct inodes:
+  thread A holds its own stub open for writing, thread B forks 60 children on its own stub, and
+  A's `execve` fails `ETXTBSY` 3 times in 3. That also makes the earlier diagnosis on the issue
+  wrong in a way that matters: its supporting control — "8 threads rewriting and execing *their
+  own distinct path*, 0 failures" — never put a `fork` inside another thread's write-to-exec
+  window, so it reproduced the clean case and was read as the dirty one.
+  This repository had already measured and fixed exactly this for its own written stubs:
+  `tests/support/runtime_v4_executable_composition_process/spawn.rs` records **5 failures in 240
+  spawns** without a retry and **0 in 240** with one. `tools/review-gate` never adopted it, which
+  is why the one caller still exposed was the required check's own suite. The bounded retry is
+  ported for the same measured reason, and `Command::output()`'s stdio wiring is reproduced
+  explicitly, since a bare `spawn` would otherwise capture no output and fail every read closed.
+  Retrying is sound because the offending descriptor is always closed by its owner, so the
+  condition is transient and the deadline cannot be outlived by a persistent one.
+  The regression manufactures the condition rather than looping the suite and hoping, which is what
+  let this survive `#700`: that fix was real, but was verified with **1 failing run in 8 against
+  the old code and 0 in 12 after**, a rate that cannot distinguish "fixed" from "almost never hit"
+  — one failure in 40 full-suite runs here. The new test holds a write descriptor open on the stub
+  it is about to exec, releases it the way a forked child would, and asserts the runner still
+  succeeds; verified to fail against the pre-fix implementation. A companion control asserts an
+  un-retried `Command` on the same held-open stub still fails with `ETXTBSY`, so the regression
+  cannot pass by never provoking the condition.
+  Refs #707, #668, #609, #700.
