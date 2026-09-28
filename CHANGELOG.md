@@ -17,14 +17,14 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   individual binaries that cargo runs alphabetically by filename. On `9a128059` a single failure in
   `jev_bridge_process.rs` (position 128) stopped the run after 128 of the workspace's 264 binaries,
   so 136 never ran — including `served_gateway_capture_drain.rs` (position 245),
-  `runtime_v4_executable_composition.rs` and `exact_gate_lane_coverage.rs` — and a green
-  `Continuous integration` certified only that every binary *up to the first failure* passed. The
-  step now passes `--no-fail-fast`, which adds no retry and hides nothing: a genuinely failing test
-  still fails the step and the job on its own merits. A new check asserts the invariant rather than
-  the flag text — any workspace-wide `cargo test` must carry the flag — and carries a vacuity guard
-  so a sweep that matches nothing cannot report success. Refs #645.
+  `runtime_v4_executable_composition.rs` (position 222) and `workflow_store.rs` (position 264, the
+  last) — and a green `Continuous integration` certified only that every binary *up to the first
+  failure* passed. The step now passes `--no-fail-fast`, which adds no retry and hides nothing: a
+  genuinely failing test still fails the step and the job on its own merits. A new check asserts
+  the invariant rather than the flag text — any workspace-wide `cargo test` must carry the flag —
+  and carries a vacuity guard so a sweep that matches nothing cannot report success. Refs #645.
 - **Install the review gate in `sts2-harness`.** `CONTRIBUTING.md` says a green run does not
-  substitute for review, but nothing here enforced it: eleven workflows, none of them a review
+  substitute for review, but nothing here enforced it: ten workflows, none of them a review
   gate, and eleven merges since 2026-09-26 with no review of record. The gate exists and is
   reviewed in `AI-Ascension/.github` (`review-gate.yml` plus `tools/review_gate.py`) and is
   installed in exactly one of sixteen repositories -- the one that ships no product code.
