@@ -46,12 +46,13 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   the flag text — any workspace-wide `cargo test` must carry the flag — and carries a vacuity guard
   so a sweep that matches nothing cannot report success. Refs #645.
 - **Install the review gate in `sts2-harness`.** `CONTRIBUTING.md` says a green run does not
-  substitute for review, but nothing here enforced it: ten workflows, none of them a review
-  gate, and 51 merges since 2026-09-26, 11 of them with no review of record. The gate exists
-  and is reviewed in `AI-Ascension/.github` (`review-gate.yml` plus `tools/review_gate.py`),
-  and is installed in exactly one of sixteen repositories -- the one that ships no product code.
-  `sts2-harness` is 48 of the 57 merges in that window and 11 of the 12 no-review merges, so it
-  is where the gate belongs.
+  substitute for review, but nothing here enforced it: every workflow this repository ran was a
+  product or policy check, none of them a review gate, and merges landed here with no review of
+  record. The gate exists and is reviewed in `AI-Ascension/.github` (`review-gate.yml` plus
+  `tools/review_gate.py`), and until this change it was installed in exactly one repository in the
+  campaign -- the one that ships no product code. `sts2-harness` is where the gate belongs: it
+  carries the large majority of the campaign's merges, and the large majority of the ones that
+  landed with no review of record.
   It is installed as a new Rust workspace tool, `tools/review-gate`, plus `review-gate.yml`, and
   not vendored verbatim: this repository's `LANG001` rule prohibits Python source and
   `repo-policy --strict` enforces it, so the reference could not be copied without breaking the
