@@ -27,7 +27,7 @@ const BACKOFF: Duration = Duration::from_millis(2);
 /// availability one. `review-of-record` is a required status check on `main` since
 /// ruleset `24104281`, and its job has `timeout-minutes: 5`, so a hung `gh` does not
 /// merely waste the job -- it burns the whole five-minute budget and reports a job
-/// timeout rather than the actionable "gh api timed out after 60s for <endpoint>".
+/// timeout rather than the actionable "gh api timed out after 60s for `<endpoint>`".
 pub(crate) const GH_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// How often the child is polled while waiting for it.
