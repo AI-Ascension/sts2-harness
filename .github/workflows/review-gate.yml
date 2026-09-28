@@ -1,0 +1,91 @@
+name: Review of record
+
+on:
+  pull_request:
+    # Re-run whenever the head moves, so a push after the last review unpins
+    # that review and turns the check red again on the head that would merge.
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  pull_request_review:
+    # Re-run when a review lands, so a PR that opened with no review of record
+    # turns green when it gets one instead of waiting for the next push.
+    types: [submitted, edited, dismissed]
+  workflow_dispatch:
+    inputs:
+      number:
+        description: Pull request number to evaluate
+        required: true
+        # `number`, not `string`. GitHub coerces this to an integer before the
+        # workflow runs, so a value like `$(echo ...` cannot reach the `run:`
+        # block below as text. `run:` interpolates `${{ }}` into a shell
+        # script, and surrounding double quotes do NOT neutralise `$(...)` or
+        # backticks. With `type: string` a workflow_dispatch caller could
+        # inject shell into a job that holds a token. `workflow_dispatch`
+        # already requires write access, so the practical severity was low --
+        # but the input does not need to be a string, so it should not be one.
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  review-of-record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Run the gate from the DEFAULT BRANCH, never from the pull request.
+          #
+          # The gate reads the head SHA and the review list from the API; it
+          # needs no code from the pull request at all. Checking out the PR head
+          # would mean executing code the pull request controls, with a token
+          # in the job -- so a PR that edits both `tools/review-gate/src/main.rs`
+          # and `tools/review-gate/src/tests.rs` could make the gate pass itself
+          # with zero reviews. Pinning the checkout removes that class entirely
+          # and costs nothing: everything the gate evaluates comes from the API.
+          #
+          # It is pinned to the default branch, so the gate that runs is the one
+          # already on `main` -- including the unit tests below, which are run
+          # from that same checkout for the same reason.
+          #
+          # This is legal on `pull_request` (unlike `pull_request_target`),
+          # which is why the gate is not guarded by the
+          # `github.ref == default_branch` condition that `metadata-drift.yml`
+          # uses -- that workflow only reports, so it can wait for a trusted
+          # ref, while this one must answer on every pull request.
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Test the review gate
+        # The gate itself is a Rust workspace tool, so this repository's LANG001
+        # rule ("Python source is prohibited; repository tooling is Rust") holds:
+        # the reference implementation in AI-Ascension/.github is ported rather
+        # than vendored. These are its own tests, ported case for case.
+        run: cargo test -p sts2-review-gate --locked
+      - name: Require a review pinned to the pull-request head
+        # Reviews live on the base repository even when the head is a fork, so
+        # this always reads `github.repository` and never the head repo.
+        # `github.token` on a `pull_request` event is a read-only token scoped
+        # to the pull request, which is all this read needs.
+        #
+        # The PR number is read from `github.event.pull_request.number` on
+        # `pull_request`, and from `github.event.review.pull_request.number` on
+        # `pull_request_review` -- that event has no `github.event.pull_request`
+        # context at all. Resolving both here keeps the trigger honest: without
+        # the second expression this step would pass an empty `--number` and
+        # argparse would exit 2 on every review submission.
+        #
+        # `--number` is parsed as int by argparse, so an unresolved value is a
+        # hard error rather than a silent zero. If the number cannot be
+        # resolved the job fails, which is the intended fail-closed direction.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          number="${{ inputs.number || github.event.pull_request.number || github.event.review.pull_request.number }}"
+          if [ -z "$number" ]; then
+            echo "::error::could not resolve a pull-request number from this event"
+            exit 1
+          fi
+          cargo run -p sts2-review-gate --locked --release -- \
+            --repository "${{ github.repository }}" \
+            --number "$number"
