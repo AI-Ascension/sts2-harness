@@ -11,18 +11,16 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
-- **A CI run on an unchanged head is no longer cancelled out from under itself.** `ci.yml`'s
-  `concurrency` group was keyed on the workflow and the pull request number but not on the head
-  SHA, so every run for a given PR shared one group and a later dispatch cancelled an earlier
-  in-flight run even when the head had not moved. Measured on #733 head `323ec399`: run
-  `36454156407` recorded `Rust quality gates` and `Windows cross-compilation check` as
-  `completed`/`cancelled` — killed by the runner's own post-job cleanup at 16:56:22Z, not failed on
-  their merits — while the other two jobs of that same run on that same head finished
-  `completed`/`success`. A cancelled check is a no-result rather than a pass, so the required check
-  went red for reasons an author cannot see or act on, and only `gh run rerun --failed` cleared it.
-  The key now ends in the head SHA, as `review-gate.yml` already did: a new head still supersedes
-  the previous head's run, but a re-dispatch on an unchanged head is a separate group and can no
-  longer cancel it. Refs #740.
+- **Each pull request head now gets its own `ci.yml` concurrency group.** The group was keyed on
+  the workflow and the pull request number but not on the head SHA, so every head of a given pull
+  request shared one group and `cancel-in-progress` stopped a superseded head's in-flight run
+  partway through. The key now ends in the head SHA, matching what `review-gate.yml` already
+  carried, so a run is cancelled only by another dispatch on the *same* head and a superseded head
+  always runs to completion. This trades runner minutes for a complete run per head, and it does
+  not change the required merge gate: the only required status check is `review-of-record`, which
+  `review-gate.yml` produces under its own group and which a `ci.yml` group kill cannot reach.
+  Note the direction of the axis — a *new* head no longer cancels the *previous* head's run, while
+  two dispatches on the *same* head still share a group. Refs #740.
 - **The review-of-record gate is no longer unmergeable after its own review lands.** The
   `concurrency` group added for #729 was keyed on the pull request number and head SHA but not on
   the event name, so a `pull_request` run and a `pull_request_review` run for the same head landed
