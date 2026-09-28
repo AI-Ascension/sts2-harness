@@ -132,6 +132,11 @@ fn run_negative_case(
         lease_id,
         lease_epoch,
     };
+    // A plain `ModServer::new` is sufficient here, and deliberately so: both scenario
+    // reservations above are still held at this point, so the kernel cannot issue either port
+    // to this downstream's own `bind(":0")`. #651 was the case where the two were drawn as bare
+    // addresses with the listener already dropped, which left the kernel free to hand the
+    // workflow service's port to this fixture. `reserve` closes that at the source.
     let mod_server = ModServer::new(FixtureMode::Success)?;
     let mut gateway_process = if matches!(case, NegativeCase::StaleLease) {
         gateway_with_identity(

@@ -7,6 +7,12 @@ use std::os::unix::process::CommandExt;
 #[path = "session/spawn.rs"]
 mod spawn;
 
+// This module is itself reached through a `#[path]`, so its children resolve against this
+// file's own directory — `served/` — not against the parent module's.
+#[path = "health_probe.rs"]
+mod health_probe;
+use health_probe::{describe_unexpected_health, is_workflow_service_health};
+
 pub(super) struct WorkflowServiceConfig<'a> {
     pub(super) harness_binary: &'a Path,
     pub(super) mcp_binary: &'a Path,
@@ -124,15 +130,36 @@ pub(super) fn wait_for_workflow_service(
 ) -> Result<ManagementClient, Box<dyn std::error::Error>> {
     let client = ManagementClient::new(address, "served-workflow-token")?;
     let deadline = Instant::now() + Duration::from_secs(5);
+    // The last answer that was not the real service. Retained so a timeout can name the squatter
+    // rather than reporting a bare deadline: an address served by something else must be
+    // reported as that, never silently retried until the deadline. Declared before the loop
+    // because the deadline can be reached on the first pass, before any arm has assigned.
+    let mut impostor: Option<String>;
     loop {
         if let Some(status) = service.try_wait()? {
             return Err(format!("served workflow exited: {status}").into());
         }
-        if client.request_json("GET", "/v1/health", None).is_ok() {
-            return Ok(client);
+        match client.request_json("GET", "/v1/health", None) {
+            Ok(health) if is_workflow_service_health(&health) => return Ok(client),
+            // `request_json` is `Ok` for *any* completed exchange, so a foreign listener that
+            // answers at all used to satisfy this probe — the same squatter-satisfiable
+            // readiness that #673 documented for `ready()`. On sts2-harness#651 the synthetic
+            // downstream answered here and the scenario failed much later, on the provider
+            // fixture's error *identity*, which named neither the theft nor the impostor.
+            Ok(health) => {
+                impostor = Some(describe_unexpected_health(&health));
+            }
+            Err(_) => impostor = None,
         }
         if Instant::now() >= deadline {
-            return Err("served workflow readiness deadline exceeded".into());
+            return Err(match impostor {
+                Some(description) => format!(
+                    "served workflow readiness deadline exceeded, and the address was answering \
+                     for something else: {description}"
+                )
+                .into(),
+                None => "served workflow readiness deadline exceeded".into(),
+            });
         }
         thread::sleep(Duration::from_millis(20));
     }
