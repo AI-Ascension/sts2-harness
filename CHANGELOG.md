@@ -11,6 +11,18 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **A CI run on an unchanged head is no longer cancelled out from under itself.** `ci.yml`'s
+  `concurrency` group was keyed on the workflow and the pull request number but not on the head
+  SHA, so every run for a given PR shared one group and a later dispatch cancelled an earlier
+  in-flight run even when the head had not moved. Measured on #733 head `323ec399`: run
+  `36454156407` recorded `Rust quality gates` and `Windows cross-compilation check` as
+  `completed`/`cancelled` — killed by the runner's own post-job cleanup at 16:56:22Z, not failed on
+  their merits — while the other two jobs of that same run on that same head finished
+  `completed`/`success`. A cancelled check is a no-result rather than a pass, so the required check
+  went red for reasons an author cannot see or act on, and only `gh run rerun --failed` cleared it.
+  The key now ends in the head SHA, as `review-gate.yml` already did: a new head still supersedes
+  the previous head's run, but a re-dispatch on an unchanged head is a separate group and can no
+  longer cancel it. Refs #740.
 - **The review-of-record gate is no longer unmergeable after its own review lands.** The
   `concurrency` group added for #729 was keyed on the pull request number and head SHA but not on
   the event name, so a `pull_request` run and a `pull_request_review` run for the same head landed
