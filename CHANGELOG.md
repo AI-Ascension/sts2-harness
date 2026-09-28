@@ -35,6 +35,44 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   negative control, so the reservation test cannot pass for the wrong reason. No test here is
   known to fail this way and none is claimed to; the fix is on the verified code shape and the
   verified reachable call path. Refs #681, #673.
+- **Stop the review gate's own test suite from failing on `ETXTBSY` while a stub is being
+  written.**
+  `review-of-record` is a required check on every pull request and it runs the gate's own tests, so
+  a test-only race here blocked unrelated work at random — including after the author had already
+  posted a correct review, which is the one signal that makes people re-run instead of read. Run
+  `36386964129` failed on `tests::runner::head_sha_extracted_from_payload` with `Text file busy
+  (os error 26)`, and run `36389325307` attempt 1 failed the same way on the same head that attempt
+  2 and run `36389016026` passed: identical commit, opposite verdicts.
+  The mechanism is **not** a path collision, and the per-call nonce `#700` added is not what was
+  missing. `fs::write` closes its handle before returning, so nothing leaks: the window is the few
+  microseconds between that close and `execve`, and `Command::output()` reaches the stub through
+  `fork` + `exec`. If any *other* test thread is inside its own write-to-exec window at that
+  instant, the forked child inherits that thread's still-open write descriptor, and the kernel
+  refuses to `execve` an image any live descriptor holds open for writing. Each stub has its own
+  directory and filename, so no per-call uniqueness can prevent it — the coupling is the inherited
+  descriptor, not the name. Reproduced deterministically with distinct paths and distinct inodes:
+  thread A holds its own stub open for writing, thread B forks 60 children on its own stub, and
+  A's `execve` fails `ETXTBSY` 3 times in 3. That also makes the earlier diagnosis on the issue
+  wrong in a way that matters: its supporting control — "8 threads rewriting and execing *their
+  own distinct path*, 0 failures" — never put a `fork` inside another thread's write-to-exec
+  window, so it reproduced the clean case and was read as the dirty one.
+  This repository had already measured and fixed exactly this for its own written stubs:
+  `tests/support/runtime_v4_executable_composition_process/spawn.rs` records **5 failures in 240
+  spawns** without a retry and **0 in 240** with one. `tools/review-gate` never adopted it, which
+  is why the one caller still exposed was the required check's own suite. The bounded retry is
+  ported for the same measured reason, and `Command::output()`'s stdio wiring is reproduced
+  explicitly, since a bare `spawn` would otherwise capture no output and fail every read closed.
+  Retrying is sound because the offending descriptor is always closed by its owner, so the
+  condition is transient and the deadline cannot be outlived by a persistent one.
+  The regression manufactures the condition rather than looping the suite and hoping, which is what
+  let this survive `#700`: that fix was real, but was verified with **1 failing run in 8 against
+  the old code and 0 in 12 after**, a rate that cannot distinguish "fixed" from "almost never hit"
+  — one failure in 40 full-suite runs here. The new test holds a write descriptor open on the stub
+  it is about to exec, releases it the way a forked child would, and asserts the runner still
+  succeeds; verified to fail against the pre-fix implementation. A companion control asserts an
+  un-retried `Command` on the same held-open stub still fails with `ETXTBSY`, so the regression
+  cannot pass by never provoking the condition.
+  Refs #707, #668, #609, #700.
 - **Hold the `LivePeers` gateway port until the child is spawned.**
   `runtime_v3_game_information_entry_live_peers.rs` drew its gateway address with a
   `free_address()` that read `local_addr()` and dropped the listener inside the same expression, so
@@ -648,12 +686,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   citing `sts2-harness#415` (`551ec19d`) and `sts2-game-mod#210` (`8a655143`); focused tests cover
   the valid offer and the malformed, unknown-field, stale, foreign-profile and unoffered refusals. Refs #390.
 
-- **Carry the served managed-boundary receipt ledger across a process restart.** A restarted served
-  composition rebuilt an empty in-memory ledger and wrote an accepted boundary a second time. The
-  receipt ledger now has a versioned durable image, an owner-supplied port (`with_dispatch_ledger_port`)
-  and a file-backed store the served binary attaches when `STS2_WORKFLOW_DISPATCH_LEDGER` names a path:
-  a restart reloads the receipts and refuses a second write or an unreadable store, and unset receipts stay session-lifetime. Refs #108, #94.
-
 - **Execute the shipped host-lease campaign downstream in the runtime peer contract lane.** The
   `the_env_configured_campaign_downstream_answers_a_signed_install` witness was declared
   operator-only and no step invoked it, so nothing in CI proved that the *environment-configured*
@@ -696,37 +728,12 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   fail-closed lane check rejects a declared operator-only composition test that no lane step executes
   or a lane `--exact` invocation that names no declared test. Refs #255.
 
-- **Record the served managed boundary before it writes.** The exact material a served managed
-  decision approved was never compared with the bytes it wrote. The exchange now runs inside the
-  recording write port, so a session with no recording sink refuses (`prepared_boundary_unsupported`)
-  instead of publishing exactness, and the served composition attaches a bounded recording ring so a
-  managed decision records its boundary rather than refusing. See
-  [ADR 0061](docs/decisions/0061-served-managed-boundary-recording.md). Refs #108.
-
 - **Size the jev process-teardown pipe-cleanup bound above host-load jitter.** The paired runner gave
   a killed process group 250 ms to close an inherited pipe and reported `child_closed: false` past
   that, but a clean host's kill-to-close tail already reaches 250-306 ms under load, so the flag read
   "closure unconfirmed" for a process that closed a millisecond later and the offline runner-process
   contract test flaked. The grace is now a documented 1000 ms contract value, and a new escaped-
   session control proves the flag stays false when a bound is genuinely spent, so the assertion was
-  strengthened rather than relaxed. Compatibility: none; the flag's meaning is unchanged. Refs #394.
-
-- **Let the jev execution budget govern arm admission, not filesystem timing.** The paired runner
-  re-checked the budget after reserving an arm, so a slow filesystem cancelled an admitted first arm
-  and made the offline global-time-budget contract test fail, with a re-run masking that red. An
-  admitted arm now launches its child bounded by the smaller of the two budgets. Refs #388.
-
-- **Admit a live episode from the provider lane's declared capability, not from a name.** A live
-  `STS2_LIVE_EPISODE=true` run was admitted only when `STS2_PROVIDER_KIND` was exactly
-  `openai-astra`, which left the Exo lane unable to be admitted for one, while any unimplemented name
-  fell through the non-bridge branch and ran under the reviewed Exo source revision. The kind is now
-  a type whose declarations decide whether the lane is a locally launched bridge and whether it
-  claims live-episode capability (`openai-astra` and `exo`); an unimplemented name is refused while
-  settings are assembled, and `exo` carries a live episode only under `STS2_EXO_ADMISSION=envelope`.
-  The admitted mode is installed once and is what the replay stream and the live diagnostics read.
-  Compatibility: the documented lanes are unchanged; a `STS2_PROVIDER_KIND` no lane implements is
-  now refused instead of running silently as the reviewed executor. See
-  [ADR 0060](docs/decisions/0060-live-episode-capability-admission.md). Refs #145.
 - Add Linux [Jev streaming mode](experiments/jev-plays-sts2/STREAMING.md): retain the game with manual resume; preserve timed benchmarks. Automatic terminal progression remains unavailable.
 
 - **Hold one live decision attempt so a lost reply cannot buy a second one.** A live `Decide` node
@@ -735,7 +742,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   `Step` paid the provider again. The attempt is now installed and durably recorded before
   `decide_for`, released only by a refusal the provider owner reported before it could write, and
   re-used by a retry that reproduces the admitted request digest. Compatibility: additive; no wire or durable record changes. See [ADR 0059](docs/decisions/0059-held-live-decision-attempt.md). Refs #108.
-
-- Run the existing compiled Jev paired-replay and frozen-pilot tests in both Node CI checks
-  through a locked-build [entrypoint](experiments/jev-evaluation/compiled-ci.sh). Failures do not
-  silently skip coverage. The transport stays synthetic; live gameplay benefit remains unverified.
