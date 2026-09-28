@@ -36,7 +36,8 @@ permissions:
 # What this block does NOT do, stated here because the opposite was previously
 # recorded in this file and in #729: it cannot clear a completed red run. A
 # concurrency group governs runs that are not yet dispatched or are still
-# running, so it has no effect on a run that has already completed.
+# running; a run that has already completed red is immutable history on that
+# head, and no later run in this workflow retracts it.
 #
 # An earlier version of this comment went further and asserted a
 # check-resolution rule from that fact: that under ruleset 24104281
@@ -58,13 +59,28 @@ permissions:
 # red was then rewritten in place at 15:47:54Z, 49 seconds before the merge. No
 # merge attempt was ever refused after a green run had completed on that head.
 #
-# So a later green run of the same context does supersede the red on its own,
-# and the `gh run rerun --failed` used in the incidents above was a convenience
-# rather than a necessity. It is still the fastest way to clear a red when
-# debugging a merge that will not go, because it rewrites the run's conclusion
-# in place (attempt 1 failure -> attempt 2 success) rather than waiting on a
-# new run to be dispatched and finish.
+# So what actually clears a red here is changing that run's conclusion, not
+# waiting for a newer one to appear. Every green that has followed a red in this
+# repository's history came from `gh run rerun --failed` rewriting the SAME run
+# in place, never a separately dispatched run, so whether a new green would
+# supersede a completed red on its own remains untested. If you are debugging a
+# merge that will not go, rerun the failed job.
 #
+# The event name is part of the group key, and that is load-bearing rather than
+# decorative. The two `pull_request*` triggers share a PR number and a head SHA,
+# so without it they land in ONE group and become mutually superseding. When a
+# still-in-flight `pull_request` run and an arriving `pull_request_review` run
+# contend, the newer run is cancelled -- and that is the review run, the only
+# path to green, because the push-triggered run necessarily evaluates before any
+# review exists and so always ends red. Measured on #733: review run 36447155603
+# was recorded `completed/cancelled` after 14s, that head carried both a
+# cancelled and a green `review-of-record`, and the merge endpoint refused.
+# Refs #735.
+#
+# What does clear it is changing the red run's conclusion in place --
+# `gh run rerun --failed` rewrites the existing run (attempt 1 failure ->
+# attempt 2 success) rather than adding a second run beside the red one. That
+# is a manual workaround, and this block does not remove the need for it.
 # `strict_required_status_checks_policy: true` is the setting that would make
 # the newest run authoritative; it is untested here and is the ruleset owner's
 # call.
@@ -79,7 +95,7 @@ permissions:
 # `pull_request_review` trigger, so cancelling one would strand the check red.
 # Only a push (a genuinely superseded head) cancels.
 concurrency:
-  group: review-of-record-${{ github.event.pull_request.number || github.event.review.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.event.review.pull_request.head.sha || github.sha }}
+  group: review-of-record-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.review.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.event.review.pull_request.head.sha || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
