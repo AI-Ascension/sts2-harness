@@ -11,6 +11,17 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **A durable exchange that completed is no longer reported as a turn timeout.** The admitted
+  transport re-measured the caller's ceiling against its own wall clock *after* the inner
+  transport returned, so an exchange the inner effect had already completed inside its own
+  deadline was reported as `Timeout` whenever the surrounding host was slow. That is the exact
+  ambiguity the admission layer exists to remove: the inner transport already owns the deadline
+  and can tell an overrunning peer from a slow scheduler, so the adapter now passes the ceiling
+  down and surfaces the inner verdict instead of re-deciding it. The admission tests that assert
+  a *successful* exchange were also handed the fixture's own effect budget, which made "the host
+  was slow" indistinguishable from "admission refused"; they now use a ceiling above the effect's
+  budget, and timeout behaviour is asserted deterministically against a peer that overruns.
+  Refs #716.
 - **The review-of-record gate's runs are now serialised per head.**
   `review-gate.yml` triggers on `pull_request` as well as `pull_request_review`, and without a
   `concurrency` group a slow push-triggered run overlaps the review-triggered run for the same head
