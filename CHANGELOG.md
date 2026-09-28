@@ -11,6 +11,15 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Pin the gateway allow-list's contents, not only its count.** The transcription guard in
+  `management::http::client` asserted that the list had 18 entries and that none of `accept`,
+  `idempotency-key`, `user-agent`, `expect` appeared in it. That observes additions and removals,
+  but it is blind to a *substitution*: replacing one real gateway name with a fabricated one
+  leaves the count at 18 and moves none of the four pinned negatives, so the whole guard stayed
+  green over a list that had stopped matching `header_is_allowed`. The guard now pins the exact
+  ordered contents, which is what observes *which* names are present; the count and the negatives
+  are kept as separate assertions because they report differently. A fabricated name, a renamed
+  one, a reorder, and a drop-and-replace are each now caught. Closes #613.
 - **Split the control authority under the production size limit instead of acknowledging the
   breach.** `context_control/state.rs` sat 171 nonblank lines over `rust_production_max` and was
   held there by a `policy.toml` exemption. The one `impl ControlAuthority` had grown four separable

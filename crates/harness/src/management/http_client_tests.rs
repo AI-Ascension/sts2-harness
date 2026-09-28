@@ -155,11 +155,20 @@ fn every_sent_header_is_one_the_gateway_allow_list_admits() {
 /// gateway never had would be admitted by the test just as readily as a real one -- and a
 /// name added here silently converts a real refusal into a green build.
 ///
-/// This is deliberately the weaker claim, not a cross-repo one: reading the gateway's
+/// This is deliberately a self-contained claim, not a cross-repo one: reading the gateway's
 /// `header_is_allowed` at test time would make a unit test depend on a sibling repository's
-/// checkout. Asserting the exact count and the exact negative names makes a gateway-side
-/// change visible as a deliberate edit here rather than as a silent divergence, and the
-/// independent re-derivation against the real `header_is_allowed` is the reviewer's job.
+/// checkout. Pinning the **exact ordered contents** makes a gateway-side change visible as a
+/// deliberate edit here rather than as a silent divergence, and the independent
+/// re-derivation against the real `header_is_allowed` is the reviewer's job.
+///
+/// #613: the pin used to be a count plus four negatives, and that is blind to a substitution.
+/// Replacing one real name with a fabricated one leaves the count at 18 and moves none of the
+/// four pinned negatives, so the whole guard stayed green over a list that had stopped
+/// matching the gateway. Asserting the exact slice is what observes *which* names are here,
+/// so a swap cannot hide in it. The count and the negatives are kept as separate assertions
+/// because they report differently: a count failure says the gateway's list grew or shrank, a
+/// contents failure says this transcription is wrong right now, and a negative failure says a
+/// name was added that the gateway refuses.
 #[test]
 fn the_transcribed_allow_list_matches_the_gateway() {
     assert_eq!(
@@ -167,6 +176,37 @@ fn the_transcribed_allow_list_matches_the_gateway() {
         18,
         "header_is_allowed admits exactly 18 names; a count change means the gateway's list \
          moved and this transcription must be updated deliberately"
+    );
+    // The load-bearing half. A same-count substitution is invisible to the assertions
+    // below, so the contents themselves are pinned: a fabricated name, a renamed one,
+    // and a drop-and-replace inside the list all change this comparison.
+    assert_eq!(
+        GATEWAY_ALLOW_LIST,
+        [
+            "authorization",
+            "connection",
+            "content-length",
+            "content-type",
+            "host",
+            "x-mcp-request-id",
+            "x-mcp-session-id",
+            "x-sts2-instance-id",
+            "x-sts2-caller-id",
+            "x-sts2-session-id",
+            "x-sts2-lease-id",
+            "x-sts2-lease-epoch",
+            "x-sts2-workflow-boot-epoch",
+            "x-sts2-correlation-id",
+            "x-sts2-capabilities-version",
+            "x-sts2-episode-profile",
+            "x-sts2-peer-token",
+            "x-sts2-recovery-capability",
+        ],
+        "the transcribed allow-list's contents must match the gateway's `header_is_allowed` \
+exactly. A count alone cannot see a same-count substitution: replacing a real name \
+with a fabricated one leaves the count at 18 and moves none of the pinned negatives, \
+which is the defect sts2-harness#613 records. The names are ordered as the gateway \
+orders them, so a reorder is a deliberate edit too."
     );
     for name in ["accept", "idempotency-key", "user-agent", "expect"] {
         assert!(
