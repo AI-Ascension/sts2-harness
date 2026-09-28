@@ -86,6 +86,58 @@ cargo test --workspace --all-targets --all-features --locked
 These commands are the local/CI entrypoint for the current workspace. They do not launch a game,
 provider, gateway, MCP server, or external artifact store.
 
+## Reading a CI result honestly
+
+`review-of-record` is a required status check, so deciding whether a pull request is mergeable
+means reading a run's outcome. **A GitHub run object reports only its final attempt.** It will
+answer `success` for a run whose earlier attempts failed, and `gh run list` shows the same single
+conclusion, so a red attempt behind a green one is invisible unless you ask for it.
+
+Measured on run `36401685554` (head `e65244ab`): the run object reported `conclusion: success`,
+while attempts 1 and 2 were both `failure` and only attempt 3 passed — the same head, the same
+code, three times. A lane reading only the run object concludes the gate is green because attempt 3
+got lucky, which is a confident wrong answer rather than an error.
+
+When a run's outcome decides a disposition, read the attempts, not the run:
+
+```bash
+# The run object alone. Insufficient on its own -- this is the hazard.
+gh run view <run-id> --json conclusion
+
+# What actually happened, attempt by attempt. The run object carries the final
+# attempt's number in `run_attempt`; there is no bulk attempts listing, so walk
+# 1..N and stop when the endpoint 404s past the last attempt.
+repo=AI-Ascension/sts2-harness
+run=<run-id>
+n=$(gh api "repos/$repo/actions/runs/$run" --jq '.run_attempt')
+for ((a=1; a<=n; a++)); do
+  gh api "repos/$repo/actions/runs/$run/attempts/$a" \
+    --jq '"attempt \(.run_attempt): \(.status)/\(.conclusion) @\(.head_sha[0:7])"'
+  gh api "repos/$repo/actions/runs/$run/attempts/$a/jobs" \
+    --jq '.jobs[] | "    \(.name): \(.conclusion)"'
+done
+```
+
+On run `36401685554` that loop reports `failure`, `failure`, `success` for the same
+`e65244a` head. Note that the non-final attempts' jobs are only visible through the
+per-attempt `/attempts/N/jobs` endpoint: the run-level `/jobs` endpoint returns the
+final attempt's jobs only, so a job list read from the run object cannot show a red
+attempt.
+
+Three rules follow, and they apply to every claim about a run, not only to merges:
+
+- A run that required a re-run is not described as "green". It is described as "green at attempt
+  N", with the earlier conclusions named.
+- The attempt count is stated wherever a run's result is reported, or the report says explicitly
+  that only the final attempt was inspected.
+- A `cancelled` job is a **no-result, never a pass**. It is the shape a concurrency-group kill
+  leaves behind, and it is indistinguishable from a real failure at the merge gate — so it is
+  reported as neither success nor a genuine defect until the log says which.
+
+`gh run rerun --failed` rewrites a run in place (attempt 1 failure → attempt 2 success) rather than
+adding a run beside the failed one, so the same run id carries the whole history. Reading attempts
+is what makes that history visible.
+
 The POC parses the copied source/package schema, five goldens, invalid fixture, and conformance case,
 checks their exact release checksums, and records the actual ordered fake-hop ledger. The report
 records the exact trace and labels each claim as `confirmed` (deterministic fake only),
