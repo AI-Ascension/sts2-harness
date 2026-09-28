@@ -85,7 +85,7 @@ elif [ "$definitions" -ne 1 ]; then
     exit 2
 fi
 
-DEFAULT_GATEWAY_REVISION=3692f4d60fff06b8b4e1a44b14449dec6f30d67c
+DEFAULT_GATEWAY_REVISION=ff4cd1c6c0a0e6c4dd2e599e7e07025bed062f69
 DEFAULT_MCP_REVISION=e6af39f30c14cd5ecc84be254511d4840bdb8fae
 
 passed=0
@@ -208,11 +208,11 @@ run_case reject_pull_ref refs/pull/1/head "$DEFAULT_GATEWAY_REVISION" 1 no
 run_case reject_bare_branch main "$DEFAULT_GATEWAY_REVISION" 1 no
 run_case reject_short_sha e6af39f3 "$DEFAULT_MCP_REVISION" 1 no
 run_case reject_garbage "not a revision" "$DEFAULT_GATEWAY_REVISION" 1 no
-run_case reject_39_hex 3692f4d60fff06b8b4e1a44b14449dec6f30d67 "$DEFAULT_GATEWAY_REVISION" 1 no
-run_case reject_41_hex 3692f4d60fff06b8b4e1a44b14449dec6f30d67c0 "$DEFAULT_GATEWAY_REVISION" 1 no
+run_case reject_39_hex ff4cd1c6c0a0e6c4dd2e599e7e07025bed062f6 "$DEFAULT_GATEWAY_REVISION" 1 no
+run_case reject_41_hex ff4cd1c6c0a0e6c4dd2e599e7e07025bed062f690 "$DEFAULT_GATEWAY_REVISION" 1 no
 # The guard's pattern is lower-case only, so an upper-case SHA-1 is not 40-hex as
 # this workflow defines it and must be refused rather than quietly normalised.
-run_case reject_upper_case 3692F4D60FFF06B8B4E1A44B14449DEC6F30D67C "$DEFAULT_GATEWAY_REVISION" 1 no
+run_case reject_upper_case FF4CD1C6C0A0E6C4DD2E599E7E07025BED062F69 "$DEFAULT_GATEWAY_REVISION" 1 no
 run_case reject_traversal "../../etc" "$DEFAULT_GATEWAY_REVISION" 1 no
 
 # A valid 40-hex commit is returned unchanged and the step carries on.
