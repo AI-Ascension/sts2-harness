@@ -33,64 +33,70 @@ permissions:
 # and without a group a slow push-triggered run overlaps the review-triggered
 # run for the same head instead of yielding to it.
 #
-# What this block does NOT do, stated here because the opposite was previously
-# recorded in this file and in #729: it cannot clear a completed red run. A
-# concurrency group governs runs that are not yet dispatched or are still
-# running; a run that has already completed red is immutable history on that
-# head, and no later run in this workflow retracts it.
+# What this block does NOT do: change the conclusion of a run that has already
+# COMPLETED -- a concurrency group governs runs not yet dispatched or still
+# running. A completed red is not, however, permanent, though this file
+# previously said so; #710 below refutes that.
 #
-# An earlier version of this comment went further and asserted a
-# check-resolution rule from that fact: that under ruleset 24104281
-# (`strict_required_status_checks_policy: false`) a completed red run for a
-# required context is NOT superseded by a later green run of the same context.
-# That rule is contradicted by this repository's own merges and should not be
-# relied on. PR #710 merged at 92232e2a on 2026-09-28T08:28:36Z, with the
-# ruleset already active (created 07:59:06Z, no bypass actors). Its head
-# fc3b1d4f carried a completed FAILING `review-of-record` run (108844282103,
-# completed 08:18:57) and a completed failing check-suite (98547418364) next to
-# two later completed green runs of the same context (08:19:27, 08:19:54). The
-# merge succeeded, and that failing run was never re-run -- run 36396574820 is
-# still run_attempt=1, conclusion=failure.
+# An earlier version asserted the check-resolution rule that under ruleset
+# 24104281 a completed red is NOT superseded by a later green of the same
+# context. PR #710 refutes it: it merged at 92232e2a on 2026-09-28T08:28:36Z
+# with the ruleset already active (created 07:59:06Z, zero bypass actors). Its
+# head fc3b1d4f carried a FAILING `review-of-record` (108844282103, completed
+# 08:18:57; run 36396574820, still run_attempt=1 -- never re-run) and a failing
+# check-suite (98547418364) beside two LATER greens of the same context
+# (08:19:27, 08:19:54), and the merge succeeded. A later green DOES supersede a
+# completed red here; a completed red is NOT sticky. Do not reason otherwise.
 #
 # The head cited as evidence for that rule, 86712e4f, does not support it
 # either. Its red completed at 15:29:07Z and a green completed at 15:44:48Z, but
 # the `blocked` state was observed at 15:44:10Z -- 38 seconds BEFORE the green
 # completed, when the red was still the only completed run of the context. The
-# red was then rewritten in place at 15:47:54Z, 49 seconds before the merge. No
-# merge attempt was ever refused after a green run had completed on that head.
+# red was rewritten in place at 15:47:54Z, 49s before the merge. No merge
+# attempt was ever refused after a green completed on that head.
 #
-# What actually clears a red is changing that run's conclusion in place, not
-# waiting for a newer one to appear: `gh run rerun --failed` rewrites the run
-# (attempt 1 failure -> attempt 2 success) rather than adding a run beside the
-# red one. That is the manual workaround, and this block does not remove the
-# need for it. If you are debugging a merge that will not go, rerun the failed
-# job; nobody has established that a later green would have done it on its own.
-# `strict_required_status_checks_policy: true` is the setting that would make
-# the newest run authoritative; it is untested here and is the ruleset owner's
-# call.
+# `gh run rerun --failed` rewrites a red run's conclusion in place (attempt 1
+# failure -> attempt 2 success), and it RE-ENTERS the concurrency group -- see
+# the hazard below. A newly dispatched green is the cleaner route, since #710
+# shows it suffices on its own.
 #
-# `cancel-in-progress` keyed on the event name makes a push run cancel its own
-# earlier push run, but it does NOT shield a newer run from an older one: within
-# a group, whichever run is in flight when the other is queued is the one that
-# gets cancelled, and that is the predecessor, not the arrival. So the expression
-# alone cannot keep a review run alive.
-#
-# Measured on #733 head 4b20402e. The key then omitted the event name, so both
-# triggers resolved to the same group `review-of-record-733-4b20402e`:
+# The event name is part of the group key, and that is load-bearing rather than
+# decorative. The two `pull_request*` triggers share a PR number and a head SHA,
+# so without it they land in ONE group. Measured on #733 head 4b20402e, where
+# both resolved to `review-of-record-733-4b20402e`:
 #
 #   15:53:46Z  36447039873  pull_request         created
+#   15:54:25Z  36447039873  attempt 1            FAILED
 #   15:54:40Z  36447155603  pull_request_review  created   <- newer run
-#   15:54:56Z  36447155603  CANCELLED                        (16s in)
-#   15:57:28Z  36447039873  completed/success
+#   15:54:53Z  36447039873  attempt 2            started     <- `gh run rerun --failed`
+#   15:54:56Z  36447155603  CANCELLED                        (16s in, 0 steps run)
+#   15:57:28Z  36447039873  attempt 2            completed/success
 #
-# The review run was the newer one and was still cancelled, because the push run
-# it collided with stayed in flight until 15:57:28. The review trigger is the
-# only path to green, so the head was left carrying a cancelled `review-of-record`
-# beside a green one and the ruleset resolved the required check to the cancelled
-# run; the merge API refused. Hence the event name in the key: it gives the two
-# events separate groups, so a review submission is never cancelled by a push,
-# while a push still supersedes its own earlier push run (same event, same key).
-# The head SHA stays in the key so a push cannot cancel a previous head's run.
+# Two details are easy to state backwards. First, `cancel-in-progress: false` on
+# the review event does NOT protect the review run: that expression only decides
+# whether the ARRIVING run may supersede, and cannot stop an in-flight
+# PREDECESSOR from cancelling the arrival. Second, the predecessor that killed
+# the review run was attempt 2 of the PUSH run -- the documented red-clearing
+# RERUN re-entered the shared group and cancelled the review run 3s later. So
+# this is a race between a rerun and a review submission, which is why a green
+# main never caught it. The push run also always ends red on a fresh head, since
+# it evaluates before any review of record exists, so the review trigger is the
+# only path to green and losing it strands the check. Refs #735.
+#
+# `strict_required_status_checks_policy: true` is the setting that would make
+# the newest run authoritative; it is untested here and is the ruleset owner's
+# call. Nothing above depends on it: #710 merged under the non-strict ruleset.
+#
+# Keying the group on the head SHA is deliberate: keyed on the PR number alone, a
+# push would cancel runs belonging to the *previous* head, throwing away work
+# that is still valid. With the SHA in the key, a push only supersedes its own
+# earlier run on that head.
+#
+# `cancel-in-progress` is true only for a push, so a push supersedes its own
+# earlier push run on the same head. It is false for a review, which keeps a
+# review run from cancelling its predecessor -- but, as the measured
+# cancellation above shows, that is not sufficient on its own, which is why the
+# event name also has to be in the KEY.
 concurrency:
   group: review-of-record-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.review.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.event.review.pull_request.head.sha || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
