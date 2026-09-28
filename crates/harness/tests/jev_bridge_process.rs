@@ -29,12 +29,12 @@ use scratch::Scratch;
 /// bridge and its transport alive at a time.
 ///
 /// Each invocation costs a child process plus two worker threads inside it. Left to the default
-/// test-thread count, the cases below created those concurrently, and a runner that could not fork
-/// answered `EAGAIN` from the transport launch. The bridge reported that as the refusal it already
-/// models and exited 2, so the transport never ran and the marker was never written, which the
-/// non-vacuity guard below reported as a case that proves nothing. The guard was right about that,
-/// and right about why: no provider exchange happened. Serialising keeps the suite's process and
-/// thread cost bounded at one bridge, so the guard only fires for the reason it exists to detect.
+/// test-thread count, the cases below created those concurrently, and a runner under pressure could
+/// not always create them. A launch that fails is refused like any other transport failure, so the
+/// transport may never run, the marker is never written, and the non-vacuity guard below reports a
+/// case that proves nothing — correctly, because no provider exchange happened. Serialising keeps
+/// the suite's process and thread cost bounded at one bridge, so the guard only fires for the
+/// reason it exists to detect.
 fn bridge_slot() -> MutexGuard<'static, ()> {
     static SLOT: OnceLock<Mutex<()>> = OnceLock::new();
     let lock = SLOT.get_or_init(|| Mutex::new(()));

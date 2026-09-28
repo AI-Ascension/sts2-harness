@@ -213,9 +213,8 @@ use recording::{record, record_profile};
 /// A thread that cannot be created is a transport failure, not a reason to abort the process. The
 /// two workers are therefore built with `Builder::spawn`, which reports `EAGAIN` as an `Err`
 /// instead of unwinding the way `std::thread::spawn` does, so a host that cannot create them is
-/// reported rather than crashing. The transport launch above is the more common source of the same
-/// exhaustion, and it already took this path: `Command::spawn` returns the `EAGAIN`, the `?` makes
-/// it an `Err`, and `main` reports it as the refusal it is.
+/// reported rather than crashing. A launch that fails this way is indistinguishable at the exit
+/// status from a behavioural refusal, which is why `main` also prints the cause.
 ///
 /// The credential is never passed here: the transport reads it from the environment the runtime
 /// declared, so it is never an argument of this process, a captured byte, or a record.
