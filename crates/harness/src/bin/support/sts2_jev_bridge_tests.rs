@@ -201,7 +201,7 @@ fn a_missing_or_oversized_catalog_is_refused_before_any_exchange() {
 
 /// Writes an executable shell fixture and returns its path.
 #[cfg(unix)]
-fn shell_fixture(name: &str, script: &str) -> std::path::PathBuf {
+pub(super) fn shell_fixture(name: &str, script: &str) -> std::path::PathBuf {
     use std::os::unix::fs::PermissionsExt;
     let path = std::env::temp_dir().join(name);
     std::fs::write(&path, script).expect("write fixture");

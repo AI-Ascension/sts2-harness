@@ -116,3 +116,21 @@ supported release or a second normative changelog.
   [the no-retry matrix evidence](evidence/jev-evaluation-noretry-matrix-20260923.md).
   Compatibility: documentation only; no code, record shape, or runner contract change.
   Refs #388, #394.
+
+- **Add offline trace-bundle admission and a bounded reproducer for divergence diagnosis.** A new
+  `trace_divergence` module derives an immutable `TraceBundleManifest` per bundle, admits two bundles
+  by closure, profile and action-schema coverage *before* comparing, compares bounded record views,
+  reports explicit record/entry/byte truncation, and exports a `ReproducerPrefix` that replays only
+  up to the failing boundary and validates against the original source. Offline and read-only; the
+  public status stays digest-free. Native mismatch validation remains gated by #123
+  ([ADR 0066](../docs/decisions/0066-offline-trace-bundle-admission-and-reproducer.md)). Refs #124.
+- **Plan, schedule and report reproducible multi-policy benchmark suites.** A new
+  `benchmark_manifest::suite` module freezes an ordered seed corpus, policy axis, repetition count,
+  evaluator revision, declared budgets and predeclared metrics under a versioned manifest; plans one
+  stable logical trial per suite revision/case/policy/repetition with its own provider/context
+  namespace; keeps retry-safe attempt lineage so a replayed settlement is idempotent and a conflicting
+  one is refused; preserves attempt counts across resume; and exports a sanitized aggregate with
+  explicit denominators, honest paired comparisons and metric availability, never counting an
+  infrastructure failure as a defeat, an unavailable cost as zero, or an unverified start inside an
+  exact-start group. Source-only: native exact-start certification stays gated by #126
+  ([ADR 0067](../docs/decisions/0067-reproducible-benchmark-suite-scheduling-and-reports.md)). Refs #125.

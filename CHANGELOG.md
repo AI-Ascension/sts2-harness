@@ -11,6 +11,15 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **A transport that cannot be given a worker thread is killed, not orphaned.**
+  #746 made the bridge report a failed thread spawn instead of panicking, and #747 then killed the
+  child when the *reader* worker could not start. The writer arm was left returning the error with a
+  plain `?`, and the transport is already running by then: `std::process::Child` has no `Drop` that
+  signals the process, so dropping it closes the handles and leaves the child alive. A host that
+  could not give the bridge its *first* worker thread therefore reported the failure correctly and
+  still orphaned the transport. Both arms now go through one `kill_child` helper, and the
+  regression test asserts the process table rather than the error string, which is byte-identical
+  either way. Refs #748.
 - **A bridge that never launched now says so, instead of posing as a behavioural refusal.**
   `main` was `if run(&options).is_err()`, which discarded the error entirely, so every refusal —
   whether the provider answered wrongly or the host could not fork — printed the same single line
@@ -720,21 +729,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   lane stay gated by sts2-game-mod#79
   ([ADR 0068](docs/decisions/0068-cold-launch-trial-isolation.md)). Refs #122.
 
-- **Plan, schedule and report reproducible multi-policy benchmark suites.** A new
-  `benchmark_manifest::suite` module freezes an ordered seed corpus, policy axis, repetition count,
-  evaluator revision, declared budgets and predeclared metrics under a versioned manifest; plans one
-  stable logical trial per suite revision/case/policy/repetition with its own provider/context
-  namespace; keeps retry-safe attempt lineage so a replayed settlement is idempotent and a conflicting
-  one is refused; preserves attempt counts across resume; and exports a sanitized aggregate with
-  explicit denominators, honest paired comparisons and metric availability, never counting an
-  infrastructure failure as a defeat, an unavailable cost as zero, or an unverified start inside an
-  exact-start group. Source-only: native exact-start certification stays gated by #126
-  ([ADR 0067](docs/decisions/0067-reproducible-benchmark-suite-scheduling-and-reports.md)). Refs #125.
-
-- **Add offline trace-bundle admission and a bounded reproducer for divergence diagnosis.** A new
-  `trace_divergence` module derives an immutable `TraceBundleManifest` per bundle, admits two bundles
-  by closure, profile and action-schema coverage *before* comparing, compares bounded record views,
-  reports explicit record/entry/byte truncation, and exports a `ReproducerPrefix` that replays only
-  up to the failing boundary and validates against the original source. Offline and read-only; the
-  public status stays digest-free. Native mismatch validation remains gated by #123
-  ([ADR 0066](docs/decisions/0066-offline-trace-bundle-admission-and-reproducer.md)). Refs #124.
