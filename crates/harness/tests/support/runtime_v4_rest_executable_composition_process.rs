@@ -18,16 +18,6 @@ use super::fixture::{
 // The loopback allocator, shared with the executable-composition process support so both
 // binaries reserve their ports the same way. Refs sts2-harness#673.
 #[path = "loopback_address.rs"]
-// This target shares the allocator file with the executable-composition process
-// support, so it compiles a copy of the whole file. It only ever holds one of
-// the two shapes: the runtime connects to a gateway this file already reserved,
-// and the downstream is a live `ModServer` in the fixture. `ModAddress` and
-// `release_onto_gateway` exist for the served scenarios that hand a child a port
-// they are giving up, and nothing in this target spawns one, so naming them here
-// would be an import nothing reads. The allow is scoped to this module
-// declaration, so the sibling target that does spawn those children keeps the
-// lint live.
-#[allow(dead_code)]
 mod loopback_address;
 use loopback_address::{ReservedAddress, reserve};
 use serde_json::{Value, json};

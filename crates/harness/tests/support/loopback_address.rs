@@ -140,46 +140,6 @@ pub(crate) fn reserve() -> Result<ReservedAddress, Box<dyn std::error::Error>> {
     })
 }
 
-/// A downstream address, in the two forms a test actually holds one in.
-///
-/// A live `ModServer` is a *real* listener that keeps serving for the whole scenario, so the
-/// composition tests hand over an address this test genuinely already owns and no reservation is
-/// involved. The capture scenarios have no downstream at all — their stub never dials it — so
-/// theirs is a [`ReservedAddress`] held purely to stop a parallel scenario drawing that port.
-/// [`ModAddress::release`] makes the two indistinguishable at the spawn, which is the point: the
-/// child is told a port nothing else in the binary is holding, either because this test held it
-/// until now or because this test never let go of it.
-#[derive(Debug)]
-pub(crate) enum ModAddress {
-    /// An address a live `ModServer` in this test is already serving.
-    Live(SocketAddr),
-    /// An address this test reserved and is giving up at the spawn.
-    Reserved(ReservedAddress),
-}
-
-impl ModAddress {
-    /// The address to hand the child, releasing the reservation if this is one.
-    ///
-    /// Call it as the last statement before `Command::spawn()`, for the same reason
-    /// [`ReservedAddress::release`] has to be there.
-    pub(crate) fn release(&self) -> SocketAddr {
-        match self {
-            ModAddress::Live(address) => *address,
-            ModAddress::Reserved(reservation) => reservation.release(),
-        }
-    }
-}
-
-/// Name the gateway and downstream addresses on `command`, releasing both reservations first.
-///
-/// This is the one place the release happens, so it is also the one place a caller can check that
-/// a scenario did it. Call it last before the spawn: the child owns the `bind`, and the parent
-/// cannot observe it, so the gap between this and the child's own `bind` is what remains of #673.
-pub(crate) fn release_onto_gateway(
-    command: &mut std::process::Command,
-    gateway: &ReservedAddress,
-    mod_address: &ModAddress,
-) {
-    command.env("STS2_GATEWAY_ADDR", gateway.release().to_string());
-    command.env("STS2_MOD_ADDR", mod_address.release().to_string());
-}
+// The downstream-shaped half of this module -- `ModAddress` and `release_onto_gateway` --
+// lives in `loopback_gateway_address.rs`: this file is compiled into two test binaries and
+// only one of them spawns a child with a downstream. See that file.

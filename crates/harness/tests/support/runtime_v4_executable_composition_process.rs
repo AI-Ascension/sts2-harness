@@ -295,11 +295,17 @@ mod spawn;
 
 #[path = "loopback_address.rs"]
 mod loopback_address;
+#[path = "loopback_gateway_address.rs"]
+mod loopback_gateway_address;
 #[allow(unused_imports)]
-// `ReservedAddress` and `release_onto_gateway` are reached by the gateway spawn module and by
-// `served::session` through `super::super::`, so they are re-exported here rather than imported
-// for this file's own use.
-pub(crate) use loopback_address::{ModAddress, ReservedAddress, release_onto_gateway, reserve};
+// Reached by the gateway spawn module and by `served::session` through `super::super::`, so they
+// are re-exported here rather than imported for this file's own use. `ModAddress` and
+// `release_onto_gateway` live in their own module: `loopback_address` is compiled into the REST
+// composition binary too, which never gives a port up at a spawn and would fail `-D warnings` on
+// them. See `loopback_gateway_address`.
+pub(crate) use loopback_address::{ReservedAddress, reserve};
+#[allow(unused_imports)]
+pub(crate) use loopback_gateway_address::{ModAddress, release_onto_gateway};
 
 #[path = "runtime_v4_executable_composition_process/assertions.rs"]
 mod assertions;
