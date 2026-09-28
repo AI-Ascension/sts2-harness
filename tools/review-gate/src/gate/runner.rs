@@ -5,8 +5,8 @@
 //! These drive the real seam so failure is demonstrated, not asserted.
 
 use super::HEAD;
-use crate::GhRunner;
 use crate::decision::ReviewGateError;
+use crate::{GH_TIMEOUT, GhRunner};
 use std::error::Error;
 use std::fs::File;
 use std::path::PathBuf;
@@ -15,7 +15,7 @@ use std::time::Duration;
 use serde_json::json;
 
 /// A fake `gh` that prints `body` on stdout, `stderr` on stderr, and exits `code`.
-fn fake_gh(body: &str, stderr: &str, code: i32) -> Result<PathBuf, Box<dyn Error>> {
+pub(super) fn fake_gh(body: &str, stderr: &str, code: i32) -> Result<PathBuf, Box<dyn Error>> {
     // The directory name must be unique per CALL, not per body. Two tests here legitimately pass
     // the same body -- `real_subprocess_roundtrip_extracts_head_and_reviews` and
     // `head_sha_extracted_from_payload` both use `{"head": {"sha": HEAD}}` -- and a name derived
@@ -53,6 +53,7 @@ fn runner_for(body: &str) -> Result<GhRunner, Box<dyn Error>> {
     let path = fake_gh(body, "", 0)?;
     Ok(GhRunner {
         gh_path: path.to_string_lossy().into_owned(),
+        timeout: GH_TIMEOUT,
     })
 }
 
@@ -62,6 +63,7 @@ fn nonzero_exit_raises() -> Result<(), Box<dyn Error>> {
     let path = fake_gh("", "gh: Not Found (HTTP 404)", 1)?;
     let runner = GhRunner {
         gh_path: path.to_string_lossy().into_owned(),
+        timeout: GH_TIMEOUT,
     };
     let outcome = runner.head_sha("AI-Ascension/.github", 49);
     assert!(matches!(outcome, Err(ReviewGateError(_))));
@@ -108,6 +110,7 @@ fn head_payload_that_is_not_object_raises() -> Result<(), Box<dyn Error>> {
 fn missing_executable_raises() -> Result<(), Box<dyn Error>> {
     let runner = GhRunner {
         gh_path: String::from("/nonexistent/gh-binary"),
+        timeout: GH_TIMEOUT,
     };
     let outcome = runner.head_sha("AI-Ascension/.github", 49);
     assert!(matches!(outcome, Err(ReviewGateError(_))));
@@ -265,7 +268,7 @@ fn an_unretried_exec_of_a_held_open_stub_is_refused() -> Result<(), Box<dyn Erro
     };
     assert_eq!(
         error.raw_os_error(),
-        Some(crate::TEXT_FILE_BUSY),
+        Some(crate::gh_api::TEXT_FILE_BUSY),
         "the control must fail with ETXTBSY, not some unrelated error: {error}"
     );
     Ok(())
