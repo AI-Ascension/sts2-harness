@@ -28,7 +28,8 @@
 //!   derived from the same reviewed data.
 
 use std::env;
-use std::process::{Command, ExitCode};
+use std::io::Read;
+use std::process::{Child, Command, ExitCode, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -53,35 +54,67 @@ const DEADLINE: Duration = Duration::from_secs(10);
 /// microseconds, so a long backoff would only add latency; short is bounded by the deadline.
 const BACKOFF: Duration = Duration::from_millis(2);
 
+/// How long a single `gh api` call may take before the gate gives up on it.
+///
+/// The reference implementation passes `timeout=self.timeout` to `subprocess.run`
+/// with a default of 60 seconds, and the port dropped it: the Rust seam used
+/// `Command::output`, which waits forever. That is a fidelity gap and an
+/// availability one. `review-of-record` is a required status check on `main` since
+/// ruleset `24104281`, and its job has `timeout-minutes: 5`, so a hung `gh` does not
+/// merely waste the job -- it burns the whole five-minute budget and reports a job
+/// timeout rather than the actionable "gh api timed out after 60s for <endpoint>".
+pub(crate) const GH_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// How often the child is polled while waiting for it.
+///
+/// Short enough that a timeout is not reported materially later than it happened,
+/// long enough that the wait is not a busy loop.
+const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(25);
+
 /// Thin `gh api` seam for reading pull-request state.
 ///
 /// Shells out to the authenticated `gh` executable, surfaces failures as
 /// [`ReviewGateError`], and never swallows an error into an empty-but-successful read.
 struct GhRunner {
     gh_path: String,
+    timeout: Duration,
 }
 
 impl GhRunner {
     fn run(&self, endpoint: &str) -> Result<serde_json::Value, ReviewGateError> {
         let mut command = Command::new(&self.gh_path);
         command.arg("api").arg(endpoint);
-        // The same stdio wiring `Command::output()` applies, which the bare `spawn` below does
-        // not: stdout and stderr are captured for the caller's own error reporting, and stdin is
-        // closed rather than inherited so `gh` can never block waiting on the gate's terminal.
-        // Without this the retry would be faithful and the tool would still be broken, because
-        // the captured body would be empty and every read would fail closed.
         command
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
-        let output = spawn_retrying_text_busy(&mut command)
-            .and_then(|child| child.wait_with_output())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        // Spawned through the `ETXTBSY` retry rather than a bare `spawn()`. The timeout work
+        // below replaces `Command::output()` with an explicit spawn so the child can be polled,
+        // and a bare spawn is exactly what #707 was about: a `fork`ed sibling can inherit another
+        // thread's write descriptor and the kernel refuses the exec. The retry is orthogonal to
+        // the timeout, so dropping it here would silently revert #711 the moment this lands.
+        let mut child = spawn_retrying_text_busy(&mut command)
             .map_err(|error| ReviewGateError(format!("unable to run {}: {error}", self.gh_path)))?;
-        if !output.status.success() {
-            let message = String::from_utf8_lossy(&output.stderr);
+
+        // Both pipes are drained on their own threads. Reading them inline after
+        // the child exits would deadlock the other way round: a child that fills a
+        // pipe buffer blocks in `write` while we block in `read`, and neither side
+        // makes progress. Draining concurrently lets the child always finish
+        // writing, however large the body is.
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+        let stdout_reader = thread::spawn(move || read_pipe(stdout));
+        let stderr_reader = thread::spawn(move || read_pipe(stderr));
+
+        let status = self.wait_with_timeout(&mut child, endpoint)?;
+        let stdout = stdout_reader.join().unwrap_or_default();
+        let stderr = stderr_reader.join().unwrap_or_default();
+
+        if !status.success() {
+            let message = String::from_utf8_lossy(&stderr);
             let message = message.trim();
             let message = if message.is_empty() {
-                String::from_utf8_lossy(&output.stdout).trim().to_owned()
+                String::from_utf8_lossy(&stdout).trim().to_owned()
             } else {
                 message.to_owned()
             };
@@ -94,7 +127,7 @@ impl GhRunner {
                 "gh api failed for {endpoint}: {message}"
             )));
         }
-        let raw = String::from_utf8_lossy(&output.stdout);
+        let raw = String::from_utf8_lossy(&stdout);
         if raw.trim().is_empty() {
             return Err(ReviewGateError(format!(
                 "gh api returned an empty body for {endpoint}"
@@ -102,6 +135,44 @@ impl GhRunner {
         }
         serde_json::from_str(&raw)
             .map_err(|_| ReviewGateError(format!("gh api returned a non-JSON body for {endpoint}")))
+    }
+
+    /// Wait for `child`, killing it if it outlives the timeout.
+    ///
+    /// The kill is followed by a `wait` on purpose. A killed child is not reaped
+    /// until someone waits on it, so skipping that would trade a hung subprocess for
+    /// an unreaped one, and the reader threads spawned in [`run`] would be the only
+    /// things still holding its pipes.
+    ///
+    /// [`run`]: GhRunner::run
+    fn wait_with_timeout(
+        &self,
+        child: &mut Child,
+        endpoint: &str,
+    ) -> Result<ExitStatus, ReviewGateError> {
+        let deadline = Instant::now() + self.timeout;
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => return Ok(status),
+                // Still running. Fall through to the deadline check.
+                Ok(None) => {}
+                Err(error) => {
+                    reap(child);
+                    return Err(ReviewGateError(format!(
+                        "unable to wait for {}: {error}",
+                        self.gh_path
+                    )));
+                }
+            }
+            if Instant::now() >= deadline {
+                reap(child);
+                return Err(ReviewGateError(format!(
+                    "gh api timed out after {}s for {endpoint}",
+                    self.timeout.as_secs()
+                )));
+            }
+            thread::sleep(WAIT_POLL_INTERVAL);
+        }
     }
 
     fn head_sha(&self, repository: &str, number: u64) -> Result<String, ReviewGateError> {
@@ -151,6 +222,7 @@ impl GhRunner {
 fn check(repository: &str, number: u64) -> Result<Verdict, ReviewGateError> {
     let runner = GhRunner {
         gh_path: String::from("gh"),
+        timeout: GH_TIMEOUT,
     };
     let head = runner.head_sha(repository, number)?;
     let reviews = runner.reviews(repository, number)?;
@@ -202,6 +274,30 @@ fn spawn_retrying_text_busy(command: &mut Command) -> Result<std::process::Child
             Err(error) => return Err(error),
         }
     }
+}
+
+/// Drain one pipe to a `Vec<u8>` on a dedicated thread.
+///
+/// A read error yields whatever was collected before it, which is the same
+/// fail-closed direction as every other error here: a truncated body cannot parse
+/// as the JSON the caller requires, so a partial read becomes a reported failure
+/// rather than a silently short one.
+fn read_pipe<R: Read + Send + 'static>(pipe: Option<R>) -> Vec<u8> {
+    let Some(mut pipe) = pipe else {
+        return Vec::new();
+    };
+    let mut collected = Vec::new();
+    let _ = pipe.read_to_end(&mut collected);
+    collected
+}
+
+/// Kill a child and reap it, so a timeout does not leave a process behind.
+fn reap(child: &mut Child) {
+    // Both calls are best-effort by design. A child that already exited between the
+    // deadline check and the kill reports failure here; the `wait` that follows is
+    // still correct, because it is the call that reaps.
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn main() -> ExitCode {
