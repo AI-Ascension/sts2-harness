@@ -724,21 +724,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   and the tied identifier named in the bridge-authored rationale is the one the sorted probability map
   orders last, so the same answer produces the same rationale whatever order the provider wrote its
   keys in. Refs #284, #285, #288.
-
-- **Route the executable REST selector composition into the runtime peer contract lane.** The
-  `runtime_v4_rest_executable_composition` witnesses (issue #148) assert the authored
-  observe → decide → execute-action → terminal graph settles each durable REST receipt before it
-  advances, but no gate invoked them, so the regressions they pin were as invisible as if they had
-  never been written. The lane now runs both against the pinned gateway and MCP peers, each with
-  its own evidence directory so a REST run cannot overwrite the generic composition's
-  `result.json`. The peer-binary environment those steps repeated moves to one job-level `env:`
-  block, which keeps the workflow inside its nonblank-line budget after the addition, and the
-  fail-closed lane check now covers both composition binaries. Refs #148.
-
-- **Execute the idle-adoption policy-rebind regression in the runtime peer contract lane.** The
-  `served_decision_survives_changed_policy_adopted_while_idle` witness was written for the permanent
-  mid-run policy-adoption fence (issue #255) with the same `#[ignore]` operator marker as its
-  siblings, but no lane step invoked it, so the regression was as invisible as if it had never been
-  written. The served policy step now also runs it against the pinned gateway and MCP peers, and a
-  fail-closed lane check rejects a declared operator-only composition test that no lane step executes
-  or a lane `--exact` invocation that names no declared test. Refs #255.
