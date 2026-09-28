@@ -86,7 +86,8 @@ jobs:
         run: RUSTDOCFLAGS="-D unknown_lints -D rustdoc::broken_intra_doc_links -D rustdoc::private_intra_doc_links -D rustdoc::redundant_explicit_links --document-private-items" cargo doc --package sts2-harness --no-deps --locked
 
       - name: Run Rust tests
-        run: cargo test --workspace --all-targets --all-features --locked
+        # `--no-fail-fast` is load-bearing (sts2-harness#645): no retry, see the test.
+        run: cargo test --workspace --all-targets --all-features --locked --no-fail-fast
 
       - name: Run doctests
         run: cargo test --workspace --doc --all-features --locked

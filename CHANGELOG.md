@@ -11,6 +11,18 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Run every test binary in the CI test step instead of stopping at the first failure.**
+  `cargo test` executes each test target as a separate binary and aborts the whole invocation at
+  the first failing one unless `--no-fail-fast` is passed, and this crate's integration tests are
+  individual binaries that cargo runs alphabetically by filename. On `9a128059` a single failure in
+  `jev_bridge_process.rs` (position 128) stopped the run after 128 of the workspace's 264 binaries,
+  so 136 never ran — including `served_gateway_capture_drain.rs` (position 245),
+  `runtime_v4_executable_composition.rs` and `exact_gate_lane_coverage.rs` — and a green
+  `Continuous integration` certified only that every binary *up to the first failure* passed. The
+  step now passes `--no-fail-fast`, which adds no retry and hides nothing: a genuinely failing test
+  still fails the step and the job on its own merits. A new check asserts the invariant rather than
+  the flag text — any workspace-wide `cargo test` must carry the flag — and carries a vacuity guard
+  so a sweep that matches nothing cannot report success. Refs #645.
 - **Assert that a required structural marker occurs exactly as often as policy declares it.**
   `check_required_preamble` walked the file with an ordered scan that stopped consuming markers once
   they were all satisfied, so a *second* copy of a marker past the last one was never examined. A

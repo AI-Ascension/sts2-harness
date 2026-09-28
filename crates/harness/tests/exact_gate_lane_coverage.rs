@@ -419,3 +419,6 @@ fn the_coverage_check_folds_continuations_and_requires_a_gate_prefix() {
     assert!(named_invocations("sample.yml", unfiltered).is_empty());
     assert!(named_invocations("sample.yml", comment_quoting_the_filter).is_empty());
 }
+
+#[path = "support/no_fail_fast_coverage.rs"]
+mod no_fail_fast_coverage;
