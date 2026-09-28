@@ -157,16 +157,43 @@ fn every_sent_header_is_one_the_gateway_allow_list_admits() {
 ///
 /// This is deliberately the weaker claim, not a cross-repo one: reading the gateway's
 /// `header_is_allowed` at test time would make a unit test depend on a sibling repository's
-/// checkout. Asserting the exact count and the exact negative names makes a gateway-side
-/// change visible as a deliberate edit here rather than as a silent divergence, and the
-/// independent re-derivation against the real `header_is_allowed` is the reviewer's job.
+/// checkout. Asserting the exact name *set* makes a gateway-side change visible as a deliberate
+/// edit here rather than as a silent divergence, and the independent re-derivation against the
+/// real `header_is_allowed` is the reviewer's job.
 #[test]
 fn the_transcribed_allow_list_matches_the_gateway() {
+    // Asserted by name, not by count. A count plus a few negative names cannot see a
+    // *substitution*: replace one real name with a fabricated one, keep the length at
+    // 18, and the count still matches while none of the negatives moved. That is the
+    // hole #613 exists to close -- #608's reviewer explicitly declined to sign off the
+    // 18 names on a count pin alone, for exactly this reason. Every name is named
+    // here, so a swap fails on the name that is no longer present.
+    const EXPECTED: &[&str] = &[
+        "authorization",
+        "connection",
+        "content-length",
+        "content-type",
+        "host",
+        "x-mcp-request-id",
+        "x-mcp-session-id",
+        "x-sts2-instance-id",
+        "x-sts2-caller-id",
+        "x-sts2-session-id",
+        "x-sts2-lease-id",
+        "x-sts2-lease-epoch",
+        "x-sts2-workflow-boot-epoch",
+        "x-sts2-correlation-id",
+        "x-sts2-capabilities-version",
+        "x-sts2-episode-profile",
+        "x-sts2-peer-token",
+        "x-sts2-recovery-capability",
+    ];
     assert_eq!(
-        GATEWAY_ALLOW_LIST.len(),
-        18,
-        "header_is_allowed admits exactly 18 names; a count change means the gateway's list \
-         moved and this transcription must be updated deliberately"
+        GATEWAY_ALLOW_LIST, EXPECTED,
+        "header_is_allowed in sts2-gateway \
+         (crates/gateway/src/bin/runtime_support/service_authorization.rs) admits a different \
+         name set than this transcription; a count and a few negatives cannot see a \
+         same-count substitution, so every name is compared"
     );
     for name in ["accept", "idempotency-key", "user-agent", "expect"] {
         assert!(
@@ -175,6 +202,52 @@ fn the_transcribed_allow_list_matches_the_gateway() {
              header_is_allowed"
         );
     }
+}
+
+/// **Non-vacuity.** The guard above compares two consts, so a linter or a future
+/// edit could make the expected list track the actual one and the assertion would
+/// pass on a corrupted transcription. This is the substitution from #613 measured
+/// directly: swap one real gateway name for a fabricated one, keeping the length
+/// unchanged, and confirm the shape the old guard could not see now fails.
+#[test]
+fn a_same_count_substitution_is_caught() {
+    // The pre-#613 guard, transcribed: length plus the four negatives.
+    fn pre_fix_guard(list: &[&str]) -> bool {
+        list.len() == 18
+            && !["accept", "idempotency-key", "user-agent", "expect"]
+                .iter()
+                .any(|name| list.contains(name))
+    }
+    assert!(
+        pre_fix_guard(GATEWAY_ALLOW_LIST),
+        "the real transcription must satisfy the pre-fix guard, or this control \
+         is not measuring the substitution it claims to"
+    );
+
+    // Exactly the defect #613 reports: a real name replaced by a fabricated one,
+    // length unchanged, none of the four negatives touched.
+    let mut substituted = GATEWAY_ALLOW_LIST.to_vec();
+    let index = substituted
+        .iter()
+        .position(|name| *name == "x-sts2-peer-token")
+        .expect("the transcription contains the name the issue substitutes");
+    substituted[index] = "x-sts2-fabricated-header";
+    assert_eq!(
+        substituted.len(),
+        GATEWAY_ALLOW_LIST.len(),
+        "the substitution must preserve the count, or it is not the defect in question"
+    );
+    assert!(
+        pre_fix_guard(&substituted),
+        "the pre-fix guard is expected to ACCEPT this substitution -- that is the \
+         defect. If it now rejects, this control no longer measures what #613 reports."
+    );
+    assert_ne!(
+        GATEWAY_ALLOW_LIST,
+        substituted.as_slice(),
+        "the name-set guard must reject a same-count substitution, which is the \
+         whole of #613"
+    );
 }
 
 /// The idempotent head is not a gateway request, so the gateway's allow-list does not
