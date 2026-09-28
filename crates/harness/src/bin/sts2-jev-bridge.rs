@@ -100,8 +100,13 @@ fn main() {
         println!("{}", describe(&options));
         return;
     }
-    if run(&options).is_err() {
+    if let Err(error) = run(&options) {
         eprintln!("System One bridge failed validation or transport");
+        // A launch that never happened and a behavioural refusal are the same exit status and the
+        // same first line, so a reader of this process cannot tell them apart. The test suite
+        // asserts only the first line, so this second line is additive: it names the cause without
+        // changing what a refused run prints as its contract.
+        eprintln!("cause: {error}");
         std::process::exit(2);
     }
 }
@@ -223,15 +228,23 @@ fn exchange(
         .take()
         .ok_or("transport stdout is unavailable")?;
     let payload = body.to_vec();
-    let writer = std::thread::spawn(move || input.write_all(&payload));
-    let reader = std::thread::spawn(move || {
-        let mut received = Vec::new();
-        output
-            .by_ref()
-            .take((LIMIT + 1) as u64)
-            .read_to_end(&mut received)
-            .map(|_| received)
-    });
+    // `std::thread::spawn` panics when the host cannot create a thread (`EAGAIN` on process
+    // slots), and a panic here takes the whole process down with exit 101 -- indistinguishable
+    // from a crash, and with no `Err` for `main` to report. `Builder::spawn` returns that failure
+    // instead, so a host that cannot fork is reported as the transport failure it is.
+    let writer = std::thread::Builder::new()
+        .spawn(move || input.write_all(&payload))
+        .map_err(|error| format!("cannot start the transport writer: {error}"))?;
+    let reader = std::thread::Builder::new()
+        .spawn(move || {
+            let mut received = Vec::new();
+            output
+                .by_ref()
+                .take((LIMIT + 1) as u64)
+                .read_to_end(&mut received)
+                .map(|_| received)
+        })
+        .map_err(|error| format!("cannot start the transport reader: {error}"))?;
     let deadline = Instant::now() + timeout;
     let status = loop {
         if let Some(status) = child.try_wait()? {

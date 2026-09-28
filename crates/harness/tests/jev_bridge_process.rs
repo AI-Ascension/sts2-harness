@@ -273,6 +273,46 @@ fn a_raw_http_error_status_line_is_refused_without_a_decision() -> Result<(), St
     assert_refused_after_the_transport_ran(&scratch, "raw-503.sh", &transport)
 }
 
+/// A transport that cannot be launched at all is refused *and says which launch failed*.
+///
+/// Without this, a host that cannot fork and a provider that refused produce byte-identical
+/// standard error, and a case that only asserts the refusal was driven past the transport can
+/// still pass on a refusal produced by a cause it never reached. The cause line is what separates
+/// the two, so this asserts on it at the real process boundary rather than in-process.
+#[test]
+fn a_transport_that_cannot_be_launched_names_the_launch_failure() -> Result<(), String> {
+    let scratch = Scratch::new("unlaunchable")?;
+    // A path that exists but is not executable: `execve` refuses it with `EACCES`, so the
+    // transport never runs and the marker is never written.
+    let transport = scratch.path("not-executable.sh");
+    fs::write(&transport, "#!/bin/sh\nexit 0\n")
+        .map_err(|error| format!("cannot write the transport: {error}"))?;
+    let output = run(&transport, &[], &[])?;
+    refused_without_a_decision(&output)?;
+    if scratch.invoked() {
+        return Err("the transport ran, so this case did not exercise a failed launch".to_owned());
+    }
+    let stderr = stderr_of(&output);
+    if !stderr.contains("cause:") {
+        return Err(format!(
+            "a refusal that could not launch did not name the cause: {stderr:?}"
+        ));
+    }
+    // The launch error names the *reason* the host gave, not the path, so this asserts the
+    // reported cause is a real `execve` refusal rather than a behavioural message: it must not be
+    // the string every behavioural refusal carries.
+    let cause = stderr
+        .lines()
+        .find_map(|line| line.strip_prefix("cause: "))
+        .ok_or_else(|| format!("the refusal carried no cause line: {stderr:?}"))?;
+    if cause == "transport reported failure" || cause == "transport timeout" {
+        return Err(format!(
+            "the launch failure reported a behavioural cause instead of the real one: {cause:?}"
+        ));
+    }
+    Ok(())
+}
+
 #[test]
 fn an_out_of_catalog_choice_is_refused_without_a_decision() -> Result<(), String> {
     let scratch = Scratch::new("out-of-catalog")?;
