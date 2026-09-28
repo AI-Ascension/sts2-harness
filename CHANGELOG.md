@@ -52,19 +52,20 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   installed in exactly one of sixteen repositories -- the one that ships no product code.
   `sts2-harness` is 48 of the 57 merges in that window and 11 of the 12 no-review merges, so it
   is where the gate belongs.
-  What lands here is the tool half only, as a new Rust workspace tool, `tools/review-gate`; the
-  `review-gate.yml` workflow follows in a separate pull request. It is a port rather than a
-  verbatim vendor: this repository's `LANG001` rule prohibits Python source and
+  It is installed as a new Rust workspace tool, `tools/review-gate`, plus `review-gate.yml`, and
+  not vendored verbatim: this repository's `LANG001` rule prohibits Python source and
   `repo-policy --strict` enforces it, so the reference could not be copied without breaking the
   build. The decision logic is a case-for-case port, and the ported suite pins every branch the
   reference's own 25 tests pin -- the head-pin rule, the `COMMENT`-state rule, the
   all-reviews-not-just-latest regression, and every fail-closed path.
-  The tool lands first and the workflow second, because the workflow deliberately runs the gate
-  from the default branch -- so a pull request cannot edit the gate into passing itself -- and a
-  single combined pull request would check out a `main` that has neither the tool nor its tests,
-  and would fail for a reason that has nothing to do with review. The no-review-merge gap is
-  therefore closable by this change but not yet closed: until the workflow lands, nothing here
-  enforces the gate on this repository.
+  The workflow checks out the **default branch** and runs the gate from there, so a pull request
+  cannot edit the gate into passing itself: the one property worth more than the convenience of
+  testing the pull request's own copy. The two halves therefore had to land in order -- the tool
+  first, then the workflow -- because a single combined pull request would have checked out a
+  `main` holding neither the tool nor its tests, and would have failed for a reason that has
+  nothing to do with review. The job also runs the gate's own tests from that same default-branch
+  checkout, so the gate cannot be weakened on `main` without turning its own check red. Refs #668,
+  #49.
   One test-harness defect found by CI while landing it, and fixed here rather than papered over:
   the fake `gh` the `runner` tests execute derived its temp path from a hash of the *body* it would
   print, so two tests that legitimately pass the same body -- `real_subprocess_roundtrip` and
