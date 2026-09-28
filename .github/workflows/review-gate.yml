@@ -59,32 +59,40 @@ permissions:
 # red was then rewritten in place at 15:47:54Z, 49 seconds before the merge. No
 # merge attempt was ever refused after a green run had completed on that head.
 #
-# So what actually clears a red here is changing that run's conclusion, not
-# waiting for a newer one to appear -- and whether a later green would have
-# sufficed on its own is untested. `gh run rerun --failed` does it in one step
-# and is the reason none of these PRs stayed blocked. If you are debugging a
-# merge that will not go, rerun the failed job; do not assume a later green run
-# has already done it, because nobody has established that it does.
-#
-# What does clear it is changing the red run's conclusion in place --
-# `gh run rerun --failed` rewrites the existing run (attempt 1 failure ->
-# attempt 2 success) rather than adding a second run beside the red one. That
-# is a manual workaround, and this block does not remove the need for it.
+# What actually clears a red is changing that run's conclusion in place, not
+# waiting for a newer one to appear: `gh run rerun --failed` rewrites the run
+# (attempt 1 failure -> attempt 2 success) rather than adding a run beside the
+# red one. That is the manual workaround, and this block does not remove the
+# need for it. If you are debugging a merge that will not go, rerun the failed
+# job; nobody has established that a later green would have done it on its own.
 # `strict_required_status_checks_policy: true` is the setting that would make
 # the newest run authoritative; it is untested here and is the ruleset owner's
 # call.
 #
-# Keying the group on the head SHA is deliberate. Keyed on the PR number alone, a
-# push would cancel in-flight runs belonging to the *previous* head, throwing
-# away work that is still valid. With the SHA in the key, a push only ever
-# supersedes its own earlier run.
+# `cancel-in-progress` keyed on the event name makes a push run cancel its own
+# earlier push run, but it does NOT shield a newer run from an older one: within
+# a group, whichever run is in flight when the other is queued is the one that
+# gets cancelled, and that is the predecessor, not the arrival. So the expression
+# alone cannot keep a review run alive.
 #
-# `cancel-in-progress` is keyed on the event name so a review submission is
-# never cancelled by an unrelated push. This workflow's green path IS the
-# `pull_request_review` trigger, so cancelling one would strand the check red.
-# Only a push (a genuinely superseded head) cancels.
+# Measured on #733 head 4b20402e. The key then omitted the event name, so both
+# triggers resolved to the same group `review-of-record-733-4b20402e`:
+#
+#   15:53:46Z  36447039873  pull_request         created
+#   15:54:40Z  36447155603  pull_request_review  created   <- newer run
+#   15:54:56Z  36447155603  CANCELLED                        (16s in)
+#   15:57:28Z  36447039873  completed/success
+#
+# The review run was the newer one and was still cancelled, because the push run
+# it collided with stayed in flight until 15:57:28. The review trigger is the
+# only path to green, so the head was left carrying a cancelled `review-of-record`
+# beside a green one and the ruleset resolved the required check to the cancelled
+# run; the merge API refused. Hence the event name in the key: it gives the two
+# events separate groups, so a review submission is never cancelled by a push,
+# while a push still supersedes its own earlier push run (same event, same key).
+# The head SHA stays in the key so a push cannot cancel a previous head's run.
 concurrency:
-  group: review-of-record-${{ github.event.pull_request.number || github.event.review.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.event.review.pull_request.head.sha || github.sha }}
+  group: review-of-record-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.review.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.event.review.pull_request.head.sha || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
