@@ -163,9 +163,18 @@ fn a_timeout_kills_the_whole_process_group() -> Result<(), Box<dyn Error>> {
     // that window reported a surviving process on 4 of 20 full-suite runs against the fixed
     // code -- a coin flip on a required status check.
     //
-    // So: poll to a deadline, and treat "exited" as good enough. `waitid(EXITED | NOHANG |
-    // NOWAIT)` with `NOWAIT` is what distinguishes the two -- it reports a process that has
-    // exited without consuming its status, so asking never steals the reap from a real parent.
+    // So: poll to a deadline, and treat "exited" as good enough. The poll is what makes the
+    // distinction, not any single probe: a one-shot sample is exactly what lost the race, and
+    // re-reading until the descendant leaves the process table closes the window the first
+    // sample could land in. `waitid(EXITED | NOHANG | NOWAIT)` is the preferred way to ask
+    // because `NOWAIT` leaves the status for a real parent, so asking never steals a reap.
+    //
+    // In this topology `waitid` normally answers `ECHILD` rather than a status, because the
+    // descendant's parent is the stub script and not this process, so the `kill(pid, 0)`
+    // fallback is the arm that usually runs. That is safe precisely because the loop bounds it:
+    // the fallback can over-report liveness for a zombie, and over-reporting only costs another
+    // probe, so a descendant killed by the group kill is picked up on a later pass once the
+    // re-parenting interval has passed.
     let deadline = std::time::Instant::now() + DESCENDANT_EXIT_TIMEOUT;
     loop {
         if !descendant_is_running(pid) {
@@ -249,9 +258,10 @@ fn recorded_descendant_pid(pid_file: &std::path::Path) -> Result<i32, Box<dyn Er
 /// answers every existence probe, so "gone" has to be established rather than sampled. The
 /// descendant's parent is the stub script, which the gate kills and then reaps in `reap()`; once
 /// that happens the descendant is re-parented to init, which reaps it. This process is therefore
-/// usually *not* its parent, which is why `waitid` is a query here rather than a wait: asking
-/// about a process that is not this process's child fails with `ECHILD`, and that is a normal
-/// answer, not an error to propagate.
+/// usually *not* its parent, so `waitid` is a query here rather than a wait: asking about a
+/// process that is not this process's child fails with `ECHILD`, and that is a normal answer,
+/// not an error to propagate. The fallback then applies, and the caller's poll is what settles
+/// the zombie either way.
 #[cfg(unix)]
 fn descendant_is_running(pid: i32) -> bool {
     let Some(pid) = rustix::process::Pid::from_raw(pid) else {

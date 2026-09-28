@@ -18,10 +18,10 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   sampling inside it failed **4 of 20** full-suite runs against correct code — a coin flip on a
   required check. The failure text was worse than the flake: it claimed "only the direct child was
   killed", which is the mutation-detection message, so a red run pointed at a regression that did
-  not exist. The probe now polls to a deadline and treats "exited" as good enough, using
-  `waitid(EXITED | NOHANG | NOWAIT)` — `NOWAIT` leaves the status for a real parent, so asking
-  never steals a reap. **30 of 30** full-suite runs green after, and removing the group kill while
-  keeping the direct kill still fails it, so the test remains non-vacuous. Refs #722.
+  not exist. The probe now polls to a deadline and treats "exited" as good enough, so a sample can
+  no longer land inside the window that lost the race. **30 of 30** full-suite runs green after,
+  and removing the group kill while keeping the direct kill still fails it, so the test remains
+  non-vacuous. Refs #722.
 - **Own the `src/bin` loopback port until the child that binds it is spawned.**
   `runtime_v3_game_information_entry_support.rs` drew its loopback address with a
   `free_loopback_address()` that read `local_addr()` and dropped the listener inside the same
