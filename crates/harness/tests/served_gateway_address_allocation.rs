@@ -38,6 +38,7 @@ mod fixture;
 #[path = "support/runtime_v4_executable_composition_process.rs"]
 mod process;
 #[path = "support/served_gateway_capture_drain_stub.rs"]
+#[allow(dead_code)]
 mod stub;
 
 use std::net::{SocketAddr, TcpListener};
@@ -50,11 +51,12 @@ use announcement::announced_address;
 use process::TempDir;
 use stub::both_pipes_gateway;
 
-// The stub module writes these markers and sizes into the scripts it generates, and it reads
-// them from its parent. This binary only asserts the allocation property, so it needs the
-// values rather than the tests that assert on them; they are duplicated here rather than
-// imported so that `served_gateway_capture_drain` keeps ownership of the capture assertions and
-// the two binaries cannot be made to disagree by editing one of them.
+// The stub module reads these from its parent when it builds the scripts it generates, so the
+// whole set has to be resolvable even though this binary only calls `both_pipes_gateway`. The
+// unused ones are not dead — the stub module references them — so they are supplied rather than
+// deleted, and duplicated rather than imported so that `served_gateway_capture_drain` keeps
+// ownership of the capture assertions and the two binaries cannot be made to disagree by editing
+// one of them.
 pub(crate) const CHATTY_BYTES: usize = 2 * 1024 * 1024;
 pub(crate) const HEAD_MARKER: &str = "sts2-harness-559-chatty-gateway-head-marker";
 pub(crate) const CHATTY_TAIL_MARKER: &str = "sts2-harness-559-chatty-gateway-tail-marker";

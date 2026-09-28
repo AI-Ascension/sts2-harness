@@ -23,7 +23,7 @@ use super::{BOTH_PIPES_BYTES, CHATTY_BYTES, CHATTY_TAIL_MARKER, HEAD_MARKER, QUI
 /// `rust_test_preferred`, and growing it would trip the size gate for a change that does not
 /// belong there. It also means the protocol cannot be forgotten by one stub: the path comes from
 /// the same `$0` the parent derives it from, so a stub and its parent cannot disagree about it.
-pub(super) const ANNOUNCE_EXPORT: &str = concat!("export STS2_ANNOUNCED_PATH=\"$0.announced\"\n",);
+pub(super) const ANNOUNCE_EXPORT: &str = "export STS2_ANNOUNCED_PATH=\"$0.announced\"\n";
 
 /// Split into `BIND_LISTENER` and `SERVE_LOOP` rather than kept as one block, because the two
 /// stubs now need them at different points: `BIND_LISTENER` runs **before** the flood and
