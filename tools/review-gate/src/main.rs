@@ -32,6 +32,7 @@ use std::process::ExitCode;
 
 mod decision;
 mod gh_api;
+mod reap;
 
 use decision::{ReviewGateError, Verdict, check_with};
 use gh_api::{GH_TIMEOUT, GhRunner};
