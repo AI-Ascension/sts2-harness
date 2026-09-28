@@ -17,24 +17,29 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   and exited 2. `main` now prints the cause on a second line, leaving the first line's contract
   untouched: the suite asserts `stderr.contains(FAILURE_LINE)`, not equality.
   The second half is the larger of the two. `exchange` started its two pipe-servicing threads with
-  `std::thread::spawn`, which *panics* when the host answers `EAGAIN` — verified on this
-  toolchain: under `ulimit -u 1` it dies `panicked at std/src/thread/functions.rs:131` with exit
-  101, where `Builder::spawn` returns `Resource temporarily unavailable (os error 11)`. A panic
-  leaves no `Err` for `main` to report, so a contended runner killed the process with a
-  test-harness abort and no failure line at all, and the caller's non-vacuity guard reported a
-  behavioural failure for what was resource exhaustion. Both workers now use `Builder::spawn`, so
-  a host that cannot create them is reported as the transport failure it is, and the child is
-  killed if the *second* worker cannot start so the first is never orphaned on a pipe nobody is
-  servicing.
-  The process-level suite also serialises its bridge launches, because each invocation costs a
-  child process plus two threads and eight concurrently is what exhausted the runner in the first
-  place. That bounds the suite's own process cost; it is not a retry and not a delay.
+  `std::thread::spawn`, which *unwinds* on `EAGAIN` rather than returning the error — verified
+  here: under `ulimit -u 1` it dies `panicked at std/src/thread/functions.rs:131` with exit 101,
+  where `Builder::spawn` returns `Resource temporarily unavailable (os error 11)`. A panic leaves
+  no `Err` for `main`, so a worker that cannot start would abort the process with no failure line
+  at all. Both workers now use `Builder::spawn`, so a host that cannot create them is reported as
+  the transport failure it is.
+  That panic is a real sibling failure, but it is **not** what the original CI event was. That run
+  (`36338651404`, attempt 1) failed the non-vacuity guard, which is only reached after
+  `refused_without_a_decision` has already confirmed the run exited nonzero, wrote nothing to
+  stdout, printed the bridge's own failure line, and exited exactly 2 — so the bridge took its
+  normal refusal path rather than unwinding. What matches the log is the transport launch:
+  `Command::spawn` returns `EAGAIN`, the `?` makes it an `Err`, `main` prints the failure line and
+  exits 2, and the transport never runs, so its marker is never written.
+  The process-level suite therefore serialises its bridge launches: each invocation costs a child
+  process plus two threads, and running the cases concurrently is what produced the pressure — a
+  bound on the suite's own cost, not a retry and not a delay. `exchange` also kills the child if
+  the *second* worker cannot start, so the running first worker is never left on a dead pipe.
   This does not claim the flake is fixed. It removes the two paths on which the bridge could not
   tell a launch failure from a refusal, and the guard that fired in CI stays armed — the new
   end-to-end case asserts a transport that cannot be launched is refused *and* names a cause other
   than the one every behavioural refusal carries, so a case driven past the transport can no longer
   pass on a refusal produced by a cause it never reached; the guard itself is unchanged and still
-  fires when a case genuinely fails to reach the provider. Refs #645.
+  fires when a case genuinely fails to reach the provider, which a mutation confirms. Refs #645.
 - **The census now reads every page of a listing, not just the first.** The listing of merged pull
   requests was requested with `page=1` hardcoded and no pagination loop, so any repository whose
   merged pull requests ran past one page was reported as having only the merged pull requests on
