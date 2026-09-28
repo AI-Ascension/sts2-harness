@@ -9,6 +9,7 @@
 
 use super::HEAD;
 use super::runner::fake_gh;
+use super::tempdir::TempDir;
 use crate::decision::ReviewGateError;
 use crate::gh_api::GhRunner;
 use std::error::Error;
@@ -21,30 +22,30 @@ use serde_json::json;
 /// `sleep` rather than a busy loop: the point is to model a `gh` blocked on the
 /// network, and a spinning child would make this test a CPU-burner on a host that
 /// is already loaded.
-fn hanging_gh() -> Result<PathBuf, Box<dyn Error>> {
-    static NEXT_HANGING_GH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let nonce = NEXT_HANGING_GH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let directory = std::env::temp_dir().join(format!(
-        "sts2-review-gate-hang-{}-{nonce}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&directory)?;
-    let path = directory.join("gh");
+///
+/// The guard comes back with the path because the stub has to still be on disk when the
+/// runner `exec`s it, which is after this returns. #713: this helper had the same leak as
+/// `fake_gh` -- a directory created per call and never removed.
+fn hanging_gh() -> Result<(TempDir, PathBuf), Box<dyn Error>> {
+    let directory = TempDir::new("hang")?;
+    let path = directory.path.join("gh");
     std::fs::write(&path, "#!/bin/sh\nsleep 3600\n")?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
     }
-    Ok(path)
+    Ok((directory, path))
 }
 
 /// A runner bound to a `gh` that will never return, and a deadline short enough to test.
-fn hanging_runner() -> Result<GhRunner, Box<dyn Error>> {
-    Ok(GhRunner {
-        gh_path: hanging_gh()?.to_string_lossy().into_owned(),
+fn hanging_runner() -> Result<(TempDir, GhRunner), Box<dyn Error>> {
+    let (guard, path) = hanging_gh()?;
+    let runner = GhRunner {
+        gh_path: path.to_string_lossy().into_owned(),
         timeout: std::time::Duration::from_millis(200),
-    })
+    };
+    Ok((guard, runner))
 }
 
 /// A hung `gh` is reported as a timeout, not waited on forever.
@@ -54,7 +55,7 @@ fn hanging_runner() -> Result<GhRunner, Box<dyn Error>> {
 /// exits, so the assertion can only pass if something enforces the timeout.
 #[test]
 fn a_hung_gh_is_reported_as_a_timeout() -> Result<(), Box<dyn Error>> {
-    let runner = hanging_runner()?;
+    let (_guard, runner) = hanging_runner()?;
     let started = std::time::Instant::now();
     let outcome = runner.head_sha("AI-Ascension/sts2-harness", 693);
     let elapsed = started.elapsed();
@@ -75,7 +76,7 @@ fn a_hung_gh_is_reported_as_a_timeout() -> Result<(), Box<dyn Error>> {
 /// The timeout names the endpoint, so the check-run says which call hung.
 #[test]
 fn the_timeout_names_the_endpoint_it_gave_up_on() -> Result<(), Box<dyn Error>> {
-    let runner = hanging_runner()?;
+    let (_guard, runner) = hanging_runner()?;
     let outcome = runner.reviews("AI-Ascension/sts2-harness", 693);
     let Err(error) = outcome else {
         return Err("a hung `gh` must not yield reviews".into());
@@ -95,10 +96,9 @@ fn the_timeout_names_the_endpoint_it_gave_up_on() -> Result<(), Box<dyn Error>> 
 /// every call immediately would satisfy them.
 #[test]
 fn a_gh_that_finishes_in_time_still_succeeds() -> Result<(), Box<dyn Error>> {
+    let (_guard, path) = fake_gh(&json!({"head": {"sha": HEAD}}).to_string(), "", 0)?;
     let runner = GhRunner {
-        gh_path: fake_gh(&json!({"head": {"sha": HEAD}}).to_string(), "", 0)?
-            .to_string_lossy()
-            .into_owned(),
+        gh_path: path.to_string_lossy().into_owned(),
         timeout: std::time::Duration::from_secs(30),
     };
     assert_eq!(runner.head_sha("AI-Ascension/sts2-harness", 693)?, HEAD);

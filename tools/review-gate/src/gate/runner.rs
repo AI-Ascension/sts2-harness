@@ -5,6 +5,7 @@
 //! These drive the real seam so failure is demonstrated, not asserted.
 
 use super::HEAD;
+use super::tempdir::TempDir;
 use crate::decision::ReviewGateError;
 use crate::{GH_TIMEOUT, GhRunner};
 use std::error::Error;
@@ -15,7 +16,16 @@ use std::time::Duration;
 use serde_json::json;
 
 /// A fake `gh` that prints `body` on stdout, `stderr` on stderr, and exits `code`.
-pub(super) fn fake_gh(body: &str, stderr: &str, code: i32) -> Result<PathBuf, Box<dyn Error>> {
+///
+/// The returned [`TempDir`] owns the directory the stub lives in, and the path is only valid
+/// while that value is alive, so callers that need the path later keep the guard in a binding
+/// that outlives the runner -- `runner_for` folds both into one returned value for exactly
+/// that reason.
+pub(super) fn fake_gh(
+    body: &str,
+    stderr: &str,
+    code: i32,
+) -> Result<(TempDir, PathBuf), Box<dyn Error>> {
     // The directory name must be unique per CALL, not per body. Two tests here legitimately pass
     // the same body -- `real_subprocess_roundtrip_extracts_head_and_reviews` and
     // `head_sha_extracted_from_payload` both use `{"head": {"sha": HEAD}}` -- and a name derived
@@ -24,18 +34,11 @@ pub(super) fn fake_gh(body: &str, stderr: &str, code: i32) -> Result<PathBuf, Bo
     // os error 26). That is a real defect rather than a flake, because the test outcome depended
     // on scheduling.
     //
-    // The counter is process-local and `fetch_add` is atomic, so every call in this process gets a
-    // distinct name, and the process id separates concurrent test binaries. `create_dir_all`
-    // tolerates the collision rather than being the thing that reports it, which is why a lost race
-    // used to surface much later as a confusing exec failure instead of here.
-    static NEXT_FAKE_GH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let nonce = NEXT_FAKE_GH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let directory = std::env::temp_dir().join(format!(
-        "sts2-review-gate-test-{}-{nonce}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&directory)?;
-    let path = directory.join("gh");
+    // `create_dir_all` tolerates a name collision rather than being the thing that reports it,
+    // which is why a lost race used to surface much later as a confusing exec failure instead of
+    // here. The uniqueness that actually prevents the race is `TempDir::new`'s per-call nonce.
+    let directory = TempDir::new("test")?;
+    let path = directory.path.join("gh");
     let script = format!(
         "#!/bin/sh\ncat <<'BODY'\n{body}\nBODY\ncat >&2 <<'ERR'\n{stderr}\nERR\nexit {code}\n"
     );
@@ -45,22 +48,28 @@ pub(super) fn fake_gh(body: &str, stderr: &str, code: i32) -> Result<PathBuf, Bo
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
     }
-    Ok(path)
+    Ok((directory, path))
 }
 
 /// A runner wired to a fake `gh` that answers every call with `body`.
-fn runner_for(body: &str) -> Result<GhRunner, Box<dyn Error>> {
-    let path = fake_gh(body, "", 0)?;
-    Ok(GhRunner {
+///
+/// The guard is returned next to the runner rather than dropped here, because `GhRunner` holds
+/// only the stub's path as a `String` and would otherwise outlive the directory it points into.
+/// Callers bind it as `let (_guard, runner) = ...`, which keeps the directory present for the
+/// test and removes it when the binding goes out of scope.
+fn runner_for(body: &str) -> Result<(TempDir, GhRunner), Box<dyn Error>> {
+    let (guard, path) = fake_gh(body, "", 0)?;
+    let runner = GhRunner {
         gh_path: path.to_string_lossy().into_owned(),
         timeout: GH_TIMEOUT,
-    })
+    };
+    Ok((guard, runner))
 }
 
 /// `test_nonzero_exit_raises`
 #[test]
 fn nonzero_exit_raises() -> Result<(), Box<dyn Error>> {
-    let path = fake_gh("", "gh: Not Found (HTTP 404)", 1)?;
+    let (_guard, path) = fake_gh("", "gh: Not Found (HTTP 404)", 1)?;
     let runner = GhRunner {
         gh_path: path.to_string_lossy().into_owned(),
         timeout: GH_TIMEOUT,
@@ -73,7 +82,7 @@ fn nonzero_exit_raises() -> Result<(), Box<dyn Error>> {
 /// `test_empty_body_raises`
 #[test]
 fn empty_body_raises() -> Result<(), Box<dyn Error>> {
-    let runner = runner_for("")?;
+    let (_guard, runner) = runner_for("")?;
     assert!(runner.head_sha("AI-Ascension/.github", 1).is_err());
     Ok(())
 }
@@ -81,7 +90,7 @@ fn empty_body_raises() -> Result<(), Box<dyn Error>> {
 /// `test_non_json_body_raises`
 #[test]
 fn non_json_body_raises() -> Result<(), Box<dyn Error>> {
-    let runner = runner_for("<html>nope</html>")?;
+    let (_guard, runner) = runner_for("<html>nope</html>")?;
     assert!(runner.head_sha("AI-Ascension/.github", 1).is_err());
     Ok(())
 }
@@ -92,7 +101,7 @@ fn non_json_body_raises() -> Result<(), Box<dyn Error>> {
 /// as an empty review set it would turn a failed read into a decided pass.
 #[test]
 fn error_object_body_is_rejected_not_accepted() -> Result<(), Box<dyn Error>> {
-    let runner = runner_for(&json!({"message": "Not Found"}).to_string())?;
+    let (_guard, runner) = runner_for(&json!({"message": "Not Found"}).to_string())?;
     assert!(runner.reviews("AI-Ascension/.github", 1).is_err());
     Ok(())
 }
@@ -100,7 +109,7 @@ fn error_object_body_is_rejected_not_accepted() -> Result<(), Box<dyn Error>> {
 /// `test_head_payload_that_is_not_object_raises`
 #[test]
 fn head_payload_that_is_not_object_raises() -> Result<(), Box<dyn Error>> {
-    let runner = runner_for(&json!([{"sha": HEAD}]).to_string())?;
+    let (_guard, runner) = runner_for(&json!([{"sha": HEAD}]).to_string())?;
     assert!(runner.head_sha("AI-Ascension/.github", 1).is_err());
     Ok(())
 }
@@ -122,7 +131,7 @@ fn missing_executable_raises() -> Result<(), Box<dyn Error>> {
 /// End-to-end through the actual subprocess seam.
 #[test]
 fn real_subprocess_roundtrip_extracts_head_and_reviews() -> Result<(), Box<dyn Error>> {
-    let runner = runner_for(&json!({"head": {"sha": HEAD}}).to_string())?;
+    let (_guard, runner) = runner_for(&json!({"head": {"sha": HEAD}}).to_string())?;
     assert_eq!(runner.head_sha("AI-Ascension/.github", 1)?, HEAD);
     Ok(())
 }
@@ -136,8 +145,8 @@ fn real_subprocess_roundtrip_extracts_head_and_reviews() -> Result<(), Box<dyn E
 #[test]
 fn two_runners_with_one_payload_get_distinct_paths() -> Result<(), Box<dyn Error>> {
     let body = json!({"head": {"sha": HEAD}}).to_string();
-    let first = runner_for(&body)?;
-    let second = runner_for(&body)?;
+    let (_first_guard, first) = runner_for(&body)?;
+    let (_second_guard, second) = runner_for(&body)?;
     assert_ne!(
         first.gh_path, second.gh_path,
         "two fake `gh` builds from one payload must not share a path"
@@ -150,7 +159,7 @@ fn two_runners_with_one_payload_get_distinct_paths() -> Result<(), Box<dyn Error
 /// `test_head_sha_extracted_from_payload`
 #[test]
 fn head_sha_extracted_from_payload() -> Result<(), Box<dyn Error>> {
-    let runner = runner_for(&json!({"head": {"sha": HEAD}}).to_string())?;
+    let (_guard, runner) = runner_for(&json!({"head": {"sha": HEAD}}).to_string())?;
     assert_eq!(runner.head_sha("AI-Ascension/sts2-harness", 693)?, HEAD);
     Ok(())
 }
@@ -158,7 +167,7 @@ fn head_sha_extracted_from_payload() -> Result<(), Box<dyn Error>> {
 /// `test_head_sha_missing_in_payload_raises`
 #[test]
 fn head_sha_missing_in_payload_raises() -> Result<(), Box<dyn Error>> {
-    let runner = runner_for(&json!({"head": {}}).to_string())?;
+    let (_guard, runner) = runner_for(&json!({"head": {}}).to_string())?;
     assert!(runner.head_sha("AI-Ascension/.github", 1).is_err());
     Ok(())
 }
@@ -170,7 +179,7 @@ fn head_sha_missing_in_payload_raises() -> Result<(), Box<dyn Error>> {
 fn reviews_nested_pages_flattened() -> Result<(), Box<dyn Error>> {
     // `gh api` may return a list directly, or (with `--slurp`) a list of pages.
     let body = json!([[{"id": 1}], [{"id": 2}]]);
-    let runner = runner_for(&body.to_string())?;
+    let (_guard, runner) = runner_for(&body.to_string())?;
     let reviews = runner.reviews("AI-Ascension/.github", 1)?;
     assert_eq!(reviews.as_array().map(Vec::len), Some(2));
     Ok(())
@@ -179,7 +188,7 @@ fn reviews_nested_pages_flattened() -> Result<(), Box<dyn Error>> {
 /// `test_reviews_not_list_raises`
 #[test]
 fn reviews_not_list_raises() -> Result<(), Box<dyn Error>> {
-    let runner = runner_for(&json!({"message": "Not Found"}).to_string())?;
+    let (_guard, runner) = runner_for(&json!({"message": "Not Found"}).to_string())?;
     let outcome = runner.reviews("AI-Ascension/.github", 1);
     assert!(matches!(outcome, Err(ReviewGateError(_))));
     Ok(())
@@ -208,7 +217,7 @@ fn reviews_not_list_raises() -> Result<(), Box<dyn Error>> {
 #[test]
 fn exec_succeeds_while_another_descriptor_holds_the_stub_for_writing() -> Result<(), Box<dyn Error>>
 {
-    let runner = runner_for(&json!({"head": {"sha": HEAD}}).to_string())?;
+    let (_guard, runner) = runner_for(&json!({"head": {"sha": HEAD}}).to_string())?;
 
     // Re-open the runner's own stub for writing and hold it across the exec, which is the state
     // the kernel refuses. `fs::write` inside `fake_gh` is long since closed by now, so this
@@ -249,7 +258,7 @@ fn exec_succeeds_while_another_descriptor_holds_the_stub_for_writing() -> Result
 /// identical to a working fix.
 #[test]
 fn an_unretried_exec_of_a_held_open_stub_is_refused() -> Result<(), Box<dyn Error>> {
-    let runner = runner_for(&json!({"head": {"sha": HEAD}}).to_string())?;
+    let (_guard, runner) = runner_for(&json!({"head": {"sha": HEAD}}).to_string())?;
     let holder = File::options()
         .write(true)
         .truncate(false)

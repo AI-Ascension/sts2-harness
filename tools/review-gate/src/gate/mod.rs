@@ -14,6 +14,9 @@ mod check;
 mod deadline;
 mod decision;
 mod runner;
+mod tempdir;
+#[cfg(test)]
+mod tempdir_tests;
 
 use serde_json::Value;
 
