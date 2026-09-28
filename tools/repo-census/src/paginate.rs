@@ -187,12 +187,12 @@ fn read_page<T: serde::de::DeserializeOwned>(
 ///
 /// # Why this exists
 ///
-/// [`read_json_list`] reads exactly one page. A caller that stops at the first
-/// page of a longer listing reports a smaller number than exists and still
-/// exits successfully — the silent under-report this tool exists to prevent,
-/// arriving through a different door. The only correct end to a traversal is
-/// the one the server names, so this follows `rel="next"` until the server
-/// stops offering one.
+/// [`read_json_list`](crate::transport::read_json_list) reads exactly one page.
+/// A caller that stops at the first page of a longer listing reports a smaller
+/// number than exists and still exits successfully — the silent under-report
+/// this tool exists to prevent, arriving through a different door. The only
+/// correct end to a traversal is the one the server names, so this follows
+/// `rel="next"` until the server stops offering one.
 ///
 /// # Fail-closed behaviour
 ///
