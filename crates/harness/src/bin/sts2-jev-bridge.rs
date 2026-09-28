@@ -210,6 +210,13 @@ use recording::{record, record_profile};
 /// Standard input and output are serviced on their own threads, so neither side can deadlock on a
 /// full pipe, and the child is killed at the deadline rather than waited on indefinitely.
 ///
+/// A thread that cannot be created is a transport failure, not a reason to abort the process. The
+/// two workers are therefore built with `Builder::spawn`, which reports `EAGAIN` as an `Err`
+/// instead of panicking the way `std::thread::spawn` does. On a contended host the panic would
+/// unwind through `main`, so the process would die with a test-harness abort rather than the
+/// refusal's own exit status, and the caller would see a transport that never ran rather than the
+/// resource exhaustion that actually stopped it.
+///
 /// The credential is never passed here: the transport reads it from the environment the runtime
 /// declared, so it is never an argument of this process, a captured byte, or a record.
 fn exchange(
@@ -233,9 +240,11 @@ fn exchange(
     // from a crash, and with no `Err` for `main` to report. `Builder::spawn` returns that failure
     // instead, so a host that cannot fork is reported as the transport failure it is.
     let writer = std::thread::Builder::new()
+        .name("jev-transport-writer".to_owned())
         .spawn(move || input.write_all(&payload))
         .map_err(|error| format!("cannot start the transport writer: {error}"))?;
     let reader = std::thread::Builder::new()
+        .name("jev-transport-reader".to_owned())
         .spawn(move || {
             let mut received = Vec::new();
             output
@@ -243,6 +252,12 @@ fn exchange(
                 .take((LIMIT + 1) as u64)
                 .read_to_end(&mut received)
                 .map(|_| received)
+        })
+        // The reader is the second thread, so it is the one that can fail after the writer is
+        // already running. Returning here would drop the writer's handle and leave the child
+        // waiting on a pipe nobody is servicing, so the child is killed on the way out.
+        .inspect_err(|_| {
+            let _ = child.kill();
         })
         .map_err(|error| format!("cannot start the transport reader: {error}"))?;
     let deadline = Instant::now() + timeout;

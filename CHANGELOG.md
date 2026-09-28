@@ -17,32 +17,38 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   and exited 2. `main` now prints the cause on a second line, leaving the first line's contract
   untouched: the suite asserts `stderr.contains(FAILURE_LINE)`, not equality.
   The second half is the larger of the two. `exchange` started its two pipe-servicing threads with
-  `std::thread::spawn`, which *panics* when the host refuses a thread (`EAGAIN` on process slots)
-  — verified on this toolchain: under `ulimit -u 1` it dies `panicked at
-  std/src/thread/functions.rs:131` with exit 101, where `Builder::spawn` returns
-  `Resource temporarily unavailable (os error 11)`. A panic leaves no `Err` for `main` to report,
-  so a process-bound suite on a contended runner could exit 101 with nothing written, which is
-  exactly the shape that fired in CI and was misread there as a fixture race. Both threads now use
-  `Builder::spawn`, so a host that cannot create them is reported as the transport failure it is.
+  `std::thread::spawn`, which *panics* when the host answers `EAGAIN` — verified on this
+  toolchain: under `ulimit -u 1` it dies `panicked at std/src/thread/functions.rs:131` with exit
+  101, where `Builder::spawn` returns `Resource temporarily unavailable (os error 11)`. A panic
+  leaves no `Err` for `main` to report, so a contended runner killed the process with a
+  test-harness abort and no failure line at all, and the caller's non-vacuity guard reported a
+  behavioural failure for what was resource exhaustion. Both workers now use `Builder::spawn`, so
+  a host that cannot create them is reported as the transport failure it is, and the child is
+  killed if the *second* worker cannot start so the first is never orphaned on a pipe nobody is
+  servicing.
+  The process-level suite also serialises its bridge launches, because each invocation costs a
+  child process plus two threads and eight concurrently is what exhausted the runner in the first
+  place. That bounds the suite's own process cost; it is not a retry and not a delay.
   This does not claim the flake is fixed. It removes the two paths on which the bridge could not
   tell a launch failure from a refusal, and the guard that fired in CI stays armed — the new
   end-to-end case asserts a transport that cannot be launched is refused *and* names a cause other
   than the one every behavioural refusal carries, so a case driven past the transport can no longer
-  pass on a refusal produced by a cause it never reached. Refs #645.
+  pass on a refusal produced by a cause it never reached; the guard itself is unchanged and still
+  fires when a case genuinely fails to reach the provider. Refs #645.
 - **The census now reads every page of a listing, not just the first.** The listing of merged pull
   requests was requested with `page=1` hardcoded and no pagination loop, so any repository whose
   merged pull requests ran past one page was reported as having only the merged pull requests on
   page one — and the run still exited zero. Measured on this branch before the fix,
-  `sts2-harness` reported `merged=62`; the repository actually has **451** merged pull requests
-  across 6 pages of 100, so 389 (86.3%) were silently lost and `unreadable=0` claimed the
+  `sts2-harness` reported `merged=62`; the repository actually has **452** merged pull requests
+  across 6 pages of 100, so 390 (86.3%) were silently lost and `unreadable=0` claimed the
   measurement was clean. This is the same class of silent under-report the tool was written to
   prevent, arriving through a different door: the transport named the objects it could not read,
   but nothing noticed the objects it never asked for. The traversal now follows the server's own
   `rel="next"` Link header until the server stops offering a successor, so it ends where GitHub
   says the listing ends rather than at an assumed page count, and a page that cannot be read
   fails the run closed with that page's own identity. Each repository and the run total now also
-  report `pages=`, the size of the traversal actually performed, so a one-page measurement can
-  never again be mistaken for a complete one. Refs .github#49.
+  report `pages=`, the size of the traversal actually performed, so a one-page measurement cannot
+  be mistaken for a complete one. Refs .github#49.
 - **A census that names what it could not read.** `tools/repo-census` measures merged pull
   requests and their review record org-wide, and treats "the tool exited 0 but its own output
   does not parse" as a named, non-retryable outcome rather than an empty result. `gh api` 2.23.0
@@ -728,4 +734,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   up to the failing boundary and validates against the original source. Offline and read-only; the
   public status stays digest-free. Native mismatch validation remains gated by #123
   ([ADR 0066](docs/decisions/0066-offline-trace-bundle-admission-and-reproducer.md)). Refs #124.
-
