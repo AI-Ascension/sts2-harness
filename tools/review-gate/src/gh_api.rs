@@ -8,6 +8,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::decision::{ReviewGateError, require_full_sha, validate_reviews};
+use crate::reap::reap;
 
 /// `ETXTBSY`, the errno `execve` returns when the image is still open for writing anywhere.
 pub(crate) const TEXT_FILE_BUSY: i32 = 26;
@@ -58,6 +59,20 @@ impl GhRunner {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        // The child leads its own process group, so a timeout can terminate everything
+        // `gh` started rather than only `gh` itself. #702 calls this out explicitly:
+        // killing the direct child "is not sufficient; it may have spawned its own
+        // children, and a timeout path that leaves a zombie or an unreaped process is
+        // worse than the current behaviour". See [`reap`] for what the kill covers,
+        // and for the platform where it covers less.
+        //
+        // `process_group` comes from `CommandExt`, so it needs the unix-qualified
+        // import; there is no equivalent on the Windows path.
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
         // #707: retry while the exec is refused with ETXTBSY, because a stub or image that some
         // other thread still holds open for writing is transient by construction.
         // #702: once the child exists, bound the wait, because `gh` blocked on the network is not.
@@ -251,13 +266,4 @@ fn read_pipe<R: Read + Send + 'static>(pipe: Option<R>) -> Vec<u8> {
     let mut collected = Vec::new();
     let _ = pipe.read_to_end(&mut collected);
     collected
-}
-
-/// Kill a child and reap it, so a timeout does not leave a process behind.
-fn reap(child: &mut Child) {
-    // Both calls are best-effort by design. A child that already exited between the
-    // deadline check and the kill reports failure here; the `wait` that follows is
-    // still correct, because it is the call that reaps.
-    let _ = child.kill();
-    let _ = child.wait();
 }
