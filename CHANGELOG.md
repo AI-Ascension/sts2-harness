@@ -43,6 +43,13 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   and would fail for a reason that has nothing to do with review. The no-review-merge gap is
   therefore closable by this change but not yet closed: until the workflow lands, nothing here
   enforces the gate on this repository.
+  One test-harness defect found by CI while landing it, and fixed here rather than papered over:
+  the fake `gh` the `runner` tests execute derived its temp path from a hash of the *body* it would
+  print, so two tests that legitimately pass the same body -- `real_subprocess_roundtrip` and
+  `head_sha_extracted_from_payload`, both `{"head": {"sha": HEAD}}` -- resolved to the same file.
+  One `execve`d the stub while the other was still writing it and lost with `ETXTBSY` ("Text file
+  busy"). The name is now unique per call from an atomic counter, so the outcome no longer depends
+  on scheduling: reproduced 1 run in 8 against the old naming, 0 in 12 after.
   Refs #668, #49.
 - **Assert that a required structural marker occurs exactly as often as policy declares it.**
   `check_required_preamble` walked the file with an ordered scan that stopped consuming markers once

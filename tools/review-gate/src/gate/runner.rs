@@ -14,10 +14,23 @@ use serde_json::json;
 
 /// A fake `gh` that prints `body` on stdout, `stderr` on stderr, and exits `code`.
 fn fake_gh(body: &str, stderr: &str, code: i32) -> Result<PathBuf, Box<dyn Error>> {
+    // The directory name must be unique per CALL, not per body. Two tests here legitimately pass
+    // the same body -- `real_subprocess_roundtrip_extracts_head_and_reviews` and
+    // `head_sha_extracted_from_payload` both use `{"head": {"sha": HEAD}}` -- and a name derived
+    // from the body's length gave them the same path. They then raced: one `execve`d the stub
+    // while the other was still writing it, and the loser failed with `ETXTBSY` ("Text file busy",
+    // os error 26). That is a real defect rather than a flake, because the test outcome depended
+    // on scheduling.
+    //
+    // The counter is process-local and `fetch_add` is atomic, so every call in this process gets a
+    // distinct name, and the process id separates concurrent test binaries. `create_dir_all`
+    // tolerates the collision rather than being the thing that reports it, which is why a lost race
+    // used to surface much later as a confusing exec failure instead of here.
+    static NEXT_FAKE_GH: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let nonce = NEXT_FAKE_GH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let directory = std::env::temp_dir().join(format!(
-        "sts2-review-gate-test-{}-{}",
-        std::process::id(),
-        body.len() * 31 + stderr.len() * 7 + code.unsigned_abs() as usize
+        "sts2-review-gate-test-{}-{nonce}",
+        std::process::id()
     ));
     std::fs::create_dir_all(&directory)?;
     let path = directory.join("gh");
