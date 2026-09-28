@@ -7,12 +7,14 @@ claim a released harness version or runtime compatibility.
 
 Completed entries that no longer fit the active file's preferred size budget are preserved verbatim
 in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archives beside it,
-including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-09-27.md).
+including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
 
 - **Give the `gh api` call the 60-second timeout the reference has.** The reference bounds every call; the Rust port used `Command::output`, which waits forever, so a hung `gh` spends the whole `timeout-minutes: 5` job.
-  It fails closed rather than wrongly, so the cost was availability, not correctness. Refs #702.
+  It fails closed rather than wrongly, so the cost was availability, not correctness. A timeout
+  kills the whole process group, not just the child, so helpers `gh` spawned do not survive
+  holding the pipes. Refs #702.
 - **Own the `src/bin` loopback port until the child that binds it is spawned.**
   `runtime_v3_game_information_entry_support.rs` drew its loopback address with a
   `free_loopback_address()` that read `local_addr()` and dropped the listener inside the same
@@ -729,18 +731,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   written. The served policy step now also runs it against the pinned gateway and MCP peers, and a
   fail-closed lane check rejects a declared operator-only composition test that no lane step executes
   or a lane `--exact` invocation that names no declared test. Refs #255.
-
-- **Size the jev process-teardown pipe-cleanup bound above host-load jitter.** The paired runner gave
-  a killed process group 250 ms to close an inherited pipe and reported `child_closed: false` past
-  that, but a clean host's kill-to-close tail already reaches 250-306 ms under load, so the flag read
-  "closure unconfirmed" for a process that closed a millisecond later and the offline runner-process
-  contract test flaked. The grace is now a documented 1000 ms contract value, and a new escaped-
-  session control proves the flag stays false when a bound is genuinely spent, so the assertion was
-- Add Linux [Jev streaming mode](experiments/jev-plays-sts2/STREAMING.md): retain the game with manual resume; preserve timed benchmarks. Automatic terminal progression remains unavailable.
-
-- **Hold one live decision attempt so a lost reply cannot buy a second one.** A live `Decide` node
-  took a fresh `ModelExecutionId` on every entry and kept no record of the attempt, so an
-  `Unresolved` refusal left the run `NeedsOperator` with `pending_operation: null` and the next
-  `Step` paid the provider again. The attempt is now installed and durably recorded before
-  `decide_for`, released only by a refusal the provider owner reported before it could write, and
-  re-used by a retry that reproduces the admitted request digest. Compatibility: additive; no wire or durable record changes. See [ADR 0059](docs/decisions/0059-held-live-decision-attempt.md). Refs #108.

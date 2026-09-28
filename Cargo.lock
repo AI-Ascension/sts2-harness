@@ -1087,6 +1087,7 @@ dependencies = [
 name = "sts2-review-gate"
 version = "0.1.0"
 dependencies = [
+ "rustix",
  "serde",
  "serde_json",
 ]
