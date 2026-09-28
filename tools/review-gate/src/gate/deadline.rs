@@ -146,23 +146,75 @@ fn a_timeout_kills_the_whole_process_group() -> Result<(), Box<dyn Error>> {
         .parse()
         .map_err(|error| format!("the stub recorded {recorded:?}, which is not a pid: {error}"))?;
 
-    // `kill -0` is the portable liveness probe: it succeeds for a live process and fails with
-    // ESRCH for a reaped one, and it needs no privilege because the group kill ran as this
-    // same user.
-    let alive = std::process::Command::new("kill")
-        .arg("-0")
-        .arg(pid.to_string())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false);
+    // `kill -0` alone cannot answer this, which is #722. It sends no signal and only runs the
+    // existence and permission checks, so it succeeds for a **zombie** as well as for a running
+    // process: the pid still resolves until the parent reaps. A zombie is not running, is not
+    // holding the stdout pipe, and is precisely what the group kill is supposed to leave behind,
+    // so counting one as "alive" made this test fail against the fixed code -- measured on merged
+    // `main` at 5 failures in 20 runs, each one sampling inside the reaping window.
+    let alive = descendant_is_running(pid);
     assert!(
         !alive,
         "pid {pid} survived the timeout, so only the direct child was killed and the \
          descendant `gh` started is still running"
     );
     Ok(())
+}
+
+/// How many probes `descendant_is_running` makes before calling a pid still running.
+///
+/// A descendant of a killed child is re-parented when its parent dies, and it is not reapable
+/// until that completes, so "present in the process table" lags "dead" by a scheduling-dependent
+/// interval. The loop exits on the first probe that sees it gone, so this bound only costs time
+/// when the descendant really is still running -- which is the case this test must catch.
+const REAP_SETTLE_PROBES: usize = 200;
+
+/// The gap between probes, chosen so the full bound is about a second.
+const REAP_SETTLE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(5);
+
+/// Whether `pid` is still *running*, as opposed to merely present in the process table.
+///
+/// `kill -0` cannot make that distinction, so this asks the kernel twice: existence via
+/// `kill -0`, and then, where the platform exposes it, the one-character state from `/proc`. A
+/// `Z` (zombie) or `X` (dead) state means the process is gone for every purpose this test cares
+/// about. Where `/proc` is absent the answer degrades to the `kill -0` behaviour plus the settle
+/// window, which is no weaker than the check this replaces.
+fn descendant_is_running(pid: i32) -> bool {
+    let procfs = std::path::Path::new("/proc/self/stat").is_file();
+    for _ in 0..REAP_SETTLE_PROBES {
+        if !pid_exists(pid) {
+            return false;
+        }
+        if procfs && matches!(process_state(pid), Some('Z' | 'X')) {
+            return false;
+        }
+        std::thread::sleep(REAP_SETTLE_INTERVAL);
+    }
+    true
+}
+
+/// Whether `pid` still resolves, via `kill -0`, which needs no privilege here because the group
+/// kill ran as this same user.
+fn pid_exists(pid: i32) -> bool {
+    std::process::Command::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+/// The one-character process state from `/proc/<pid>/stat`, or `None` if it cannot be read.
+///
+/// The second field is the executable name in parentheses and may itself contain spaces and
+/// parentheses, so the state is taken from the token after the **last** `)` rather than by
+/// counting fields from the start.
+fn process_state(pid: i32) -> Option<char> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let after_name = &stat[stat.rfind(')')? + 1..];
+    after_name.split_whitespace().next()?.chars().next()
 }
 
 /// A stub `gh` that backgrounds a long `sleep` and then blocks forever.

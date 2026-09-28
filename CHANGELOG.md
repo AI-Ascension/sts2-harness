@@ -11,6 +11,9 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **The process-group timeout test no longer fails against correct code.** `kill -0` succeeds for
+  a **zombie** as well as a running process, so a reaped-but-uncollected descendant read as alive.
+  It failed 5 runs in 20 on fixed `main`; the probe now also reads the process state. Refs #722.
 - **The `grandchild_gh` stub no longer leaks a temp directory per run.** `#718` fixed the
   process-group kill and its new test helper created a `$TMPDIR` directory per call that nothing
   removed, reintroducing the `#713` leak one PR after that issue was closed. It accumulates
