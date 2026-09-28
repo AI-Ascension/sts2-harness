@@ -9,7 +9,7 @@
   "immutable_peers": {
     "gateway": {
       "repository": "AI-Ascension/sts2-gateway",
-      "revision": "3692f4d60fff06b8b4e1a44b14449dec6f30d67c",
+      "revision": "ff4cd1c6c0a0e6c4dd2e599e7e07025bed062f69",
       "source_kind": "active_runtime_dependency",
       "binary": "sts2-gateway-runtime"
     },
