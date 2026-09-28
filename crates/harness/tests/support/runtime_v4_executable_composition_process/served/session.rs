@@ -13,6 +13,15 @@ mod spawn;
 mod health_probe;
 use health_probe::{describe_unexpected_health, is_workflow_service_health};
 
+// #651's regression scenarios for the probe above. Re-exported through `served` so the
+// integration-test binary can run them under their own names.
+#[path = "health_probe_tests.rs"]
+mod health_probe_tests;
+pub(crate) use health_probe_tests::{
+    the_workflow_health_predicate_accepts_only_the_services_own_envelope,
+    the_workflow_readiness_probe_rejects_an_impostor_that_answers,
+};
+
 pub(super) struct WorkflowServiceConfig<'a> {
     pub(super) harness_binary: &'a Path,
     pub(super) mcp_binary: &'a Path,
@@ -124,7 +133,7 @@ pub(super) use spawn::{
     spawn_workflow_service, spawn_workflow_service_as_foreign, spawn_workflow_service_from,
 };
 
-pub(super) fn wait_for_workflow_service(
+pub(crate) fn wait_for_workflow_service(
     service: &mut Child,
     address: SocketAddr,
 ) -> Result<ManagementClient, Box<dyn std::error::Error>> {

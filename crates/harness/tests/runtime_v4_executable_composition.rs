@@ -17,6 +17,27 @@ use process::{
     write_evidence,
 };
 
+/// #651's regression: a squatter on the workflow address is not adopted as the service.
+///
+/// The reasoning and the impostor fixture live in
+/// `support/runtime_v4_executable_composition_process/served/health_probe_tests.rs`; this binary
+/// re-exports that test so it runs with the rest of the served scenarios. It is deliberately
+/// *not* `#[ignore]`d, unlike its neighbours in this file: it builds no gateway, MCP, or harness
+/// peer, so it needs nothing an operator has to build first, and the defect it guards is one that
+/// must not be able to come back unnoticed between operator runs.
+#[test]
+fn the_workflow_readiness_probe_rejects_an_impostor_that_answers()
+-> Result<(), Box<dyn std::error::Error>> {
+    process::the_workflow_readiness_probe_rejects_an_impostor_that_answers()
+}
+
+/// The other half of #651's non-vacuity: the real service's own answer is still accepted.
+#[test]
+fn the_workflow_health_predicate_accepts_only_the_services_own_envelope()
+-> Result<(), Box<dyn std::error::Error>> {
+    process::the_workflow_health_predicate_accepts_only_the_services_own_envelope()
+}
+
 #[test]
 #[ignore = "operator-only test; requires explicitly built gateway, MCP, and harness binaries"]
 fn executable_runtime_v4_composes_unknown_reconcile_and_foreign_state_fence()
