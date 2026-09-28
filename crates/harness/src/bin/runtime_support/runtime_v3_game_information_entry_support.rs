@@ -2,19 +2,12 @@
 
 use super::*;
 use serde_json::{Value, json};
-use std::net::{SocketAddr, TcpListener};
+use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Child, Command, Output};
 use std::time::{Duration, Instant};
 use sts2_harness::context_memory::policy_owner::SavedPolicyRef;
 use sts2_harness::management::ManagementClient;
-
-pub(super) fn free_loopback_address() -> SocketAddr {
-    TcpListener::bind("127.0.0.1:0")
-        .expect("reserve loopback port")
-        .local_addr()
-        .expect("loopback address")
-}
 
 pub(super) fn finish_child(mut child: Child) -> Output {
     let deadline = Instant::now() + Duration::from_secs(30);
