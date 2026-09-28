@@ -5,8 +5,8 @@
 //! These drive the real seam so failure is demonstrated, not asserted.
 
 use super::HEAD;
-use crate::{GH_TIMEOUT, GhRunner};
 use crate::decision::ReviewGateError;
+use crate::{GH_TIMEOUT, GhRunner};
 use std::error::Error;
 use std::fs::File;
 use std::path::PathBuf;
