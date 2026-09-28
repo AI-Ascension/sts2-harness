@@ -44,8 +44,8 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   last) — and the rerun then went green, certifying only that every binary *up to the first
   failure* passed. The step now passes `--no-fail-fast`, which adds no retry and hides nothing: a
   genuinely failing test still fails the step and the job on its own merits. A new check asserts
-  the invariant rather than the flag text — any workspace-wide `cargo test` must carry the flag —
-  and carries a vacuity guard so a sweep that matches nothing cannot report success. Refs #645.
+  the invariant rather than the flag text — any workspace-wide `cargo test` must carry it — and
+  carries a vacuity guard so a sweep that matches nothing cannot report success. Refs #645.
 - **Install the review gate in `sts2-harness`.** `CONTRIBUTING.md` says a green run does not
   substitute for review, but nothing here enforced it: every workflow this repository ran was a
   product or policy check, none of them a review gate, and merges landed here with no review of
