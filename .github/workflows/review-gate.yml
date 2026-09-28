@@ -28,6 +28,37 @@ permissions:
   contents: read
   pull-requests: read
 
+# #729: this workflow was the only one in the repository without a concurrency
+# group, and that omission is what made it unmergeable rather than merely red.
+#
+# The gate triggers on `pull_request` as well as `pull_request_review`, and
+# without a concurrency group each trigger starts a *new* check-run instead of
+# superseding the previous one. The `pull_request` trigger fires on every push,
+# which necessarily happens BEFORE any review of record can exist for that head,
+# so that run always ends red with "no review pinned to head". The later
+# `pull_request_review` run for the same head is green -- but the ruleset
+# (24104281) resolves a required check against the runs recorded for the head,
+# and the red one is still among them, so the PR stays blocked no matter how many
+# green runs follow. Measured on #727: the head carried a red run and three green
+# ones and the merge API still refused with "the base branch policy prohibits
+# the merge". `gh run rerun --failed` clears it, and the accompanying empty
+# commit also worked, but both are manual workarounds for a defect the workflow
+# can prevent.
+#
+# Keying the group on the head SHA is deliberate and load-bearing. Keyed on the
+# PR number alone, a run for the new head would cancel the run for the previous
+# head -- which is exactly how a stale red is left behind, so it would make this
+# worse. With the SHA in the key, a push supersedes only its own earlier run.
+#
+# `cancel-in-progress` is keyed on the event name so that a review submission is
+# never cancelled by an unrelated push. This workflow's green path IS the
+# `pull_request_review` trigger: if a review were cancelled, the check would stay
+# red and reintroduce the "no review of record" failure this block exists to
+# remove. Only a push (a genuinely superseded head) cancels.
+concurrency:
+  group: review-of-record-${{ github.event.pull_request.number || github.event.review.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.event.review.pull_request.head.sha || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   review-of-record:
     runs-on: ubuntu-latest
