@@ -11,6 +11,30 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Own the `src/bin` loopback port until the child that binds it is spawned.**
+  `runtime_v3_game_information_entry_support.rs` drew its loopback address with a
+  `free_loopback_address()` that read `local_addr()` and dropped the listener inside the same
+  expression, so the port was unowned from that instant until the child bound it. That is the
+  `#673` defect; `#693` fixed it in `tests/support/**` only, and deliberately did not reach
+  `crates/harness/src/`.
+  It is reachable end to end. `run_runtime_entry` puts the address in the owner config as
+  `management_listen`, the runtime child binds it, and `wait_for_management` then polls
+  `ManagementClient` until the route answers -- so a port taken in the window left the child's
+  `bind` to fail with `EADDRINUSE` while the readiness check reported success, because it
+  connects to whatever is listening rather than to the child.
+  The two remaining call sites needed different fixes, and using one shape for both would have
+  been wrong. `peer_encoding_tests.rs` rebinds in-process on the very next statement, so it now
+  binds `:0` once and keeps that listener; there is no window to close and a reservation there
+  would be pure ceremony. `entry_tests.rs` hands the address to a child, so it holds the listener
+  in a `ReservedAddress` and releases it as the last statement before `Command::spawn()`.
+  `release` is idempotent, which is what lets the replay pass rebind one address across two
+  spawns without a separate flag. The allocator's prescribed fix -- returning the bound
+  `TcpListener` -- is the same framing the `LivePeers` entry below records as measured and
+  refuted on this kernel, so both sites take the reservation shape `#693` landed.
+  The regression tests include `the_pre_fix_shape_really_does_leave_the_port_unowned` as a
+  negative control, so the reservation test cannot pass for the wrong reason. No test here is
+  known to fail this way and none is claimed to; the fix is on the verified code shape and the
+  verified reachable call path. Refs #681, #673.
 - **Hold the `LivePeers` gateway port until the child is spawned.**
   `runtime_v3_game_information_entry_live_peers.rs` drew its gateway address with a
   `free_address()` that read `local_addr()` and dropped the listener inside the same expression, so

@@ -11,11 +11,10 @@
 //! Asserting only "the request succeeded" would be vacuous: it passed before the fix on
 //! any listener that ignores unknown headers. The load-bearing assertion is ABSENCE.
 
+use super::loopback::bind_loopback;
 use super::peer::mcp_server_script;
-use super::support::free_loopback_address;
 use std::collections::BTreeSet;
 use std::io::{Read, Write};
-use std::net::TcpListener;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -49,9 +48,10 @@ const GATEWAY_HEADER_ALLOW_LIST: [&str; 18] = [
 
 /// Capture the header block of a single HTTP/1.1 request from a loopback listener.
 fn capture_request_headers() -> Result<Vec<String>, String> {
-    let address = free_loopback_address();
-    let listener =
-        TcpListener::bind(address).map_err(|error| format!("bind {address}: {error}"))?;
+    // #681: the binder here is THIS process, on the next statement, so the right fix is not a
+    // reservation but no second bind at all: draw `:0` once and keep the listener we just got.
+    // There is no window to close because the port is never unowned.
+    let (listener, address) = bind_loopback()?;
     let accept = std::thread::spawn(move || {
         let (mut stream, _) = listener
             .accept()
