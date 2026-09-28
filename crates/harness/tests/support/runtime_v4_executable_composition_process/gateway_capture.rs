@@ -139,9 +139,15 @@ impl GatewayProcess {
     /// The wait is bounded and reports the shortfall on expiry rather than looping forever, so a
     /// gateway that dies mid-flood fails as a diagnosable error instead of a hung test binary. A
     /// gateway that has already exited is reported as `gateway exited: {status}`, the way `ready`
-    /// does, so a child that died at its own `bind` (the residual port-theft window `free_address`
-    /// still leaves open, tracked in sts2-harness#673) surfaces its real cause immediately instead
-    /// of stalling the full deadline and then misreporting the cause as a byte shortfall.
+    /// does. That matters for the port-theft window of sts2-harness#673: the gateway's address is
+    /// now [`reserved`](super::loopback_address) from allocation until the statements before the
+    /// `fork`, which narrows the unowned window from "all of setup, including `python3` startup"
+    /// to the gap between the harness's `close` and the child's own `bind` — but it does not
+    /// close it, because the child owns that `bind` and the parent cannot observe it. So a
+    /// `EADDRINUSE` at the child's `bind` is still reachable, and this is where it is named: a
+    /// gateway that exits having written nothing is reported by its own status rather than
+    /// stalling the full deadline and then misreporting the cause as a byte shortfall. Narrowing
+    /// that window is what made the failure rare; surfacing it is what made it debuggable.
     pub(crate) fn await_bytes(&mut self, bytes: usize, deadline: Duration) -> Result<(), String> {
         let Some(capture) = self.capture.as_ref() else {
             return Err(String::from(

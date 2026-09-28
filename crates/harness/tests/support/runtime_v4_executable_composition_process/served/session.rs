@@ -3,12 +3,17 @@
 use super::*;
 use std::os::unix::process::CommandExt;
 
+// The spawn paths, split out so this module stays inside the preferred test-file size budget.
+#[path = "session/spawn.rs"]
+mod spawn;
+
 pub(super) struct WorkflowServiceConfig<'a> {
     pub(super) harness_binary: &'a Path,
     pub(super) mcp_binary: &'a Path,
     pub(super) bridge: &'a Path,
-    pub(super) gateway_address: SocketAddr,
-    pub(super) workflow_address: SocketAddr,
+    /// Both are reserved by this test until the child that binds them is spawned.
+    pub(super) gateway_address: &'a super::super::ReservedAddress,
+    pub(super) workflow_address: &'a super::super::ReservedAddress,
     pub(super) policy_store: &'a Path,
     pub(super) context_store: &'a Path,
     pub(super) execution_store: &'a Path,
@@ -40,7 +45,14 @@ pub(super) fn workflow_service_command(
         .arg("serve-workflow")
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
-        .env("STS2_WORKFLOW_LISTEN", config.workflow_address.to_string())
+        // Replaced with the released address by `spawn_workflow_service`, which is the only path
+        // that spawns this command. It is set here as well so the value is present and
+        // self-consistent for a reader, and so no code path can spawn without going through the
+        // release.
+        .env(
+            "STS2_WORKFLOW_LISTEN",
+            config.workflow_address.address().to_string(),
+        )
         .env("STS2_WORKFLOW_STORE", config.workflow_store)
         .env("STS2_WORKFLOW_AUTH_PROFILE", "served")
         .env("STS2_WORKFLOW_TOKEN_SERVED", "served-workflow-token")
@@ -58,7 +70,10 @@ pub(super) fn workflow_service_command(
             "2222222222222222222222222222222222222222222222222222222222222222",
         )
         .env("STS2_EXECUTION_STORE_PATH", config.execution_store)
-        .env("STS2_GATEWAY_ADDR", config.gateway_address.to_string())
+        .env(
+            "STS2_GATEWAY_ADDR",
+            config.gateway_address.address().to_string(),
+        )
         .env("STS2_GATEWAY_TOKEN", "gateway-token")
         .env("STS2_MCP_BINARY", config.mcp_binary)
         .env("STS2_RUNTIME_PROFILE", "runtime-v4-expert")
@@ -92,6 +107,16 @@ pub(super) struct SubmittedRun {
     pub(super) revision: u64,
     pub(super) operation_id: Option<String>,
 }
+
+/// Spawn the served workflow service, giving up the workflow address's reservation first.
+///
+/// The command is built first because everything a scenario adds to it after
+/// `workflow_service_command` — the cancellation barrier bounds, the receipt scenario's foreign
+/// auth profile — is part of what gets spawned. Releasing inside `workflow_service_command`
+/// would reopen the window for each of those mutations. Refs sts2-harness#673.
+pub(super) use spawn::{
+    spawn_workflow_service, spawn_workflow_service_as_foreign, spawn_workflow_service_from,
+};
 
 pub(super) fn wait_for_workflow_service(
     service: &mut Child,

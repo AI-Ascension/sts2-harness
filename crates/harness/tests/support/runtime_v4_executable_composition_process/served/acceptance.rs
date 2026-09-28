@@ -6,7 +6,8 @@ mod graph;
 use graph::run_graph_case;
 use session::{
     WorkflowServiceConfig, response, served_definition, served_runtime_run_id_with,
-    submit_policy_gate_with, wait_for_workflow_service, workflow_service_command,
+    spawn_workflow_service, submit_policy_gate_with, wait_for_workflow_service,
+    workflow_service_command,
 };
 
 const STALE_LEASE_ID: &str = "lease-stale";
@@ -110,12 +111,17 @@ fn run_negative_case(
     } else {
         bridge.as_path()
     };
+    // Bound to locals rather than reserved inline: a `ReservedAddress` in a struct literal would
+    // be a temporary that dropped at the end of that statement, taking the reservation with it and
+    // leaving the config holding a port nothing holds.
+    let gateway_address = reserve()?;
+    let workflow_address = reserve()?;
     let service_config = WorkflowServiceConfig {
         harness_binary,
         mcp_binary,
         bridge: provider_path,
-        gateway_address: free_address()?,
-        workflow_address: free_address()?,
+        gateway_address: &gateway_address,
+        workflow_address: &workflow_address,
         policy_store: &policy_store,
         context_store: &context_store,
         execution_store: &execution_store,
@@ -130,8 +136,8 @@ fn run_negative_case(
     let mut gateway_process = if matches!(case, NegativeCase::StaleLease) {
         gateway_with_identity(
             gateway_binary,
-            service_config.gateway_address,
-            mod_server.address,
+            &gateway_address,
+            ModAddress::Live(mod_server.address),
             INSTANCE_ID,
             lease_id,
             lease_epoch,
@@ -139,15 +145,16 @@ fn run_negative_case(
     } else {
         gateway(
             gateway_binary,
-            service_config.gateway_address,
-            mod_server.address,
+            &gateway_address,
+            ModAddress::Live(mod_server.address),
         )?
     };
     let result: Result<(), Box<dyn std::error::Error>> = (|| {
-        ready(&mut gateway_process, service_config.gateway_address)?;
-        let mut service = workflow_service_command(&service_config)?.spawn()?;
+        ready(&mut gateway_process, gateway_address.address())?;
+        let mut command = workflow_service_command(&service_config)?;
+        let mut service = spawn_workflow_service(&mut command, &workflow_address)?;
         let attempt: Result<(), Box<dyn std::error::Error>> = (|| {
-            let client = wait_for_workflow_service(&mut service, service_config.workflow_address)?;
+            let client = wait_for_workflow_service(&mut service, workflow_address.address())?;
             let error = match submit_policy_gate_with(
                 &client,
                 definition,

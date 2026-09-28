@@ -50,8 +50,13 @@ mod fixture;
 mod process;
 #[path = "support/served_gateway_capture_drain_stub.rs"]
 mod stub;
+// The #673 regression scenario, kept beside the other support modules because its reasoning is
+// long and this file is at its size budget. It is re-exported and run from below under its own
+// test name, so splitting it out does not change what this binary executes.
+#[path = "support/loopback_reservation_tests.rs"]
+mod loopback_reservation;
 
-use process::{TempDir, free_address};
+use process::{ModAddress, TempDir, reserve};
 
 use process::{MAX_CAPTURE_BYTES, MAX_TOTAL_CAPTURE_BYTES, TRUNCATION_NOTICE};
 use stub::{both_pipes_gateway, chatty_gateway, quiet_gateway};
@@ -83,11 +88,14 @@ fn a_chatty_gateway_has_more_than_one_pipe_buffer_recovered()
 -> Result<(), Box<dyn std::error::Error>> {
     let temporary = TempDir::new()?;
     let stub = chatty_gateway(&temporary.path)?;
-    let address = free_address()?;
-    let mod_address = free_address()?;
+    let address = reserve()?;
+    // Reserved like the gateway address, and for the same reason. The stub never connects to the
+    // mod endpoint, so nothing here needs the port to be *free* — it needs it to be *ours*, so
+    // that drawing it cannot collide with a scenario that does bind it.
+    let mod_address = reserve()?;
 
-    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
-    process::ready(&mut gateway_process, address)?;
+    let mut gateway_process = process::gateway(&stub, &address, ModAddress::Reserved(mod_address))?;
+    process::ready(&mut gateway_process, address.address())?;
     // The stub binds before it floods (see `BIND_LISTENER`), so `ready` returns while the flood
     // is still in flight; stopping here would measure how much the drain took before the kill
     // rather than whether the whole flood was recovered. The tail marker rides the same flood, so
@@ -123,11 +131,14 @@ fn a_chatty_gateway_has_more_than_one_pipe_buffer_recovered()
 fn a_chatty_gateway_keeps_its_head_and_its_tail() -> Result<(), Box<dyn std::error::Error>> {
     let temporary = TempDir::new()?;
     let stub = chatty_gateway(&temporary.path)?;
-    let address = free_address()?;
-    let mod_address = free_address()?;
+    let address = reserve()?;
+    // Reserved like the gateway address, and for the same reason. The stub never connects to the
+    // mod endpoint, so nothing here needs the port to be *free* — it needs it to be *ours*, so
+    // that drawing it cannot collide with a scenario that does bind it.
+    let mod_address = reserve()?;
 
-    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
-    process::ready(&mut gateway_process, address)?;
+    let mut gateway_process = process::gateway(&stub, &address, ModAddress::Reserved(mod_address))?;
+    process::ready(&mut gateway_process, address.address())?;
     // Same ordering hazard as the test above, and the same remedy: the bind precedes the flood, so
     // the tail marker this test asserts is written after `ready` returns. Waiting for the flood to
     // cross the pipe is what makes the marker reachable.
@@ -159,11 +170,14 @@ fn a_chatty_gateway_keeps_its_head_and_its_tail() -> Result<(), Box<dyn std::err
 fn a_quiet_gateway_still_reports_exactly_what_it_wrote() -> Result<(), Box<dyn std::error::Error>> {
     let temporary = TempDir::new()?;
     let stub = quiet_gateway(&temporary.path)?;
-    let address = free_address()?;
-    let mod_address = free_address()?;
+    let address = reserve()?;
+    // Reserved like the gateway address, and for the same reason. The stub never connects to the
+    // mod endpoint, so nothing here needs the port to be *free* — it needs it to be *ours*, so
+    // that drawing it cannot collide with a scenario that does bind it.
+    let mod_address = reserve()?;
 
-    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
-    process::ready(&mut gateway_process, address)?;
+    let mut gateway_process = process::gateway(&stub, &address, ModAddress::Reserved(mod_address))?;
+    process::ready(&mut gateway_process, address.address())?;
     let output = process::stop(gateway_process)?;
     let captured = String::from_utf8_lossy(&output.stderr);
 
@@ -211,11 +225,14 @@ fn a_gateway_flooding_both_pipes_is_bounded_by_the_shared_total()
 -> Result<(), Box<dyn std::error::Error>> {
     let temporary = TempDir::new()?;
     let stub = both_pipes_gateway(&temporary.path)?;
-    let address = free_address()?;
-    let mod_address = free_address()?;
+    let address = reserve()?;
+    // Reserved like the gateway address, and for the same reason. The stub never connects to the
+    // mod endpoint, so nothing here needs the port to be *free* — it needs it to be *ours*, so
+    // that drawing it cannot collide with a scenario that does bind it.
+    let mod_address = reserve()?;
 
-    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
-    process::ready(&mut gateway_process, address)?;
+    let mut gateway_process = process::gateway(&stub, &address, ModAddress::Reserved(mod_address))?;
+    process::ready(&mut gateway_process, address.address())?;
     // Wait for the flood itself, not just for the port. The stub binds before it floods (see
     // `BIND_LISTENER`), so `ready` now returns while the flood is still being written; stopping
     // here would measure how much the drain took before the kill rather than the shared ceiling.
@@ -264,14 +281,24 @@ fn a_gateway_flooding_both_pipes_is_bounded_by_the_shared_total()
 /// is set on both sockets, so a squatter is a hard block, not a shared bind. A squatter is held
 /// here for the whole scenario, standing in for the sibling test that won the port.
 ///
+/// The gateway here is spawned with [`process::spawn_on_squatted_address`] rather than
+/// [`process::gateway`], and that is the point: every other scenario in this binary spawns
+/// through `gateway`, which takes a `ReservedAddress` and therefore makes this situation
+/// unreachable. This one has to be able to *arrange* the squatter, because the guarantee under
+/// test is not "the harness cannot be squatted" — that is the reservation's job — but "a gateway
+/// that is squatted is reported as dead rather than measured as quiet".
+///
 /// The stub writes **nothing** before its `bind`, so when the squatter wins the stub dies at
 /// `bind` having emitted none of its own flood. `ready` still returns, because all it requires is
 /// that *something* answers on the address — and the squatter answers. The scenario must then
 /// fail on that, by name.
 ///
 /// This is the residual half of #673, and it is the half the allocator fix alone does not close.
-/// Once `free_address` returns a held listener no squatter can win, so this scenario stops being
-/// reachable at all; until then, a squatter that *does* win must never be read as a quiet success.
+/// The reservation closes the window for every scenario that holds its address — including the
+/// two adjacent syscalls the parent cannot observe — so a squatter arriving on its own can no
+/// longer win one of these ports. A squatter that is *handed* one, as here, still can, and the
+/// harness has to name the child's death rather than report a byte shortfall or, far worse,
+/// proceed to measure.
 /// The failure is asserted on the **message**, not on the byte count: an earlier draft asserted
 /// `held > 0` and passed for the wrong reason — the killed stub's Python `EADDRINUSE` traceback
 /// lands on stderr, so a capture the harness never verified is enough to satisfy it. What has to
@@ -290,9 +317,12 @@ fn a_gateway_is_not_measured_through_a_squatted_address() -> Result<(), Box<dyn 
             drop(stream);
         }
     });
-    let mod_address = free_address()?;
+    // The mod address is still reserved like everywhere else; only the gateway address is the
+    // squatter's, so the test bypasses the reservation on exactly the one axis it is testing.
+    let mod_address = reserve()?;
 
-    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
+    let mut gateway_process =
+        process::spawn_on_squatted_address(&stub, address, ModAddress::Reserved(mod_address))?;
     process::ready(&mut gateway_process, address)?;
     // The stub is blocked out of its own `bind`, so it can never reach its flood. `ready`
     // nonetheless succeeded, against the squatter — which is exactly the #673 hazard.
@@ -323,11 +353,14 @@ fn a_gateway_inside_the_shared_total_carries_no_truncation_notice()
 -> Result<(), Box<dyn std::error::Error>> {
     let temporary = TempDir::new()?;
     let stub = quiet_gateway(&temporary.path)?;
-    let address = free_address()?;
-    let mod_address = free_address()?;
+    let address = reserve()?;
+    // Reserved like the gateway address, and for the same reason. The stub never connects to the
+    // mod endpoint, so nothing here needs the port to be *free* — it needs it to be *ours*, so
+    // that drawing it cannot collide with a scenario that does bind it.
+    let mod_address = reserve()?;
 
-    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
-    process::ready(&mut gateway_process, address)?;
+    let mut gateway_process = process::gateway(&stub, &address, ModAddress::Reserved(mod_address))?;
+    process::ready(&mut gateway_process, address.address())?;
     let output = process::stop(gateway_process)?;
 
     for (label, stream) in [("stdout", &output.stdout), ("stderr", &output.stderr)] {
@@ -341,4 +374,15 @@ fn a_gateway_inside_the_shared_total_carries_no_truncation_notice()
         );
     }
     Ok(())
+}
+
+/// #673's regression: an address drawn from the pool cannot be stolen while this test holds it.
+///
+/// The reasoning and the fixture live in
+/// [`loopback_reservation::a_reserved_address_cannot_be_taken_by_a_concurrent_listener`]; this
+/// binary re-exports that test so it runs here with the rest of the capture scenarios.
+#[test]
+fn a_reserved_address_cannot_be_taken_by_a_concurrent_listener()
+-> Result<(), Box<dyn std::error::Error>> {
+    loopback_reservation::a_reserved_address_cannot_be_taken_by_a_concurrent_listener()
 }

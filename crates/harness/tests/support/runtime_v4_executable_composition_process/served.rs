@@ -13,8 +13,8 @@ pub(super) use super::gateway_failure_evidence;
 #[path = "served/session.rs"]
 mod session;
 use session::{
-    WorkflowServiceConfig, response, served_runtime_run_id, submit_and_step_policy_gate,
-    wait_for_workflow_service, workflow_service_command,
+    WorkflowServiceConfig, response, served_runtime_run_id, spawn_workflow_service,
+    submit_and_step_policy_gate, wait_for_workflow_service, workflow_service_command,
 };
 
 #[path = "served/context_source.rs"]
@@ -68,8 +68,8 @@ fn run_served_policy_gate_inner(
     } else {
         FixtureMode::Success
     })?;
-    let gateway_address = free_address()?;
-    let workflow_address = free_address()?;
+    let gateway_address = reserve()?;
+    let workflow_address = reserve()?;
     let policy_store = temporary.path.join("served-provider-policy.sqlite3");
     let context_store = temporary.path.join("served-context.sqlite3");
     let execution_store = temporary.path.join("served-execution.sqlite3");
@@ -80,8 +80,8 @@ fn run_served_policy_gate_inner(
         harness_binary,
         mcp_binary,
         bridge: &bridge,
-        gateway_address,
-        workflow_address,
+        gateway_address: &gateway_address,
+        workflow_address: &workflow_address,
         policy_store: &policy_store,
         context_store: &context_store,
         execution_store: &execution_store,
@@ -92,12 +92,17 @@ fn run_served_policy_gate_inner(
         lease_id: LEASE_ID,
         lease_epoch: LEASE_EPOCH,
     };
-    let mut gateway = gateway(gateway_binary, gateway_address, mod_server.address)?;
+    let mut gateway = gateway(
+        gateway_binary,
+        &gateway_address,
+        ModAddress::Live(mod_server.address),
+    )?;
     let result: Result<RestartScenarioResult, Box<dyn std::error::Error>> = (|| {
-        ready(&mut gateway, gateway_address)?;
-        let mut service = workflow_service_command(&service_config)?.spawn()?;
+        ready(&mut gateway, gateway_address.address())?;
+        let mut command = workflow_service_command(&service_config)?;
+        let mut service = spawn_workflow_service(&mut command, &workflow_address)?;
         let first_attempt = (|| {
-            let client = wait_for_workflow_service(&mut service, workflow_address)?;
+            let client = wait_for_workflow_service(&mut service, workflow_address.address())?;
             submit_and_step_policy_gate(&client, if restart_after_unknown { 3 } else { 4 })
         })();
         let first_output = stop_service(service)?;
@@ -123,9 +128,12 @@ fn run_served_policy_gate_inner(
             operation_id,
         )?;
 
-        let mut restarted_service = workflow_service_command(&service_config)?.spawn()?;
+        let mut restarted_command = workflow_service_command(&service_config)?;
+        let mut restarted_service =
+            spawn_workflow_service(&mut restarted_command, &workflow_address)?;
         let restart_attempt: Result<(), Box<dyn std::error::Error>> = (|| {
-            let client = wait_for_workflow_service(&mut restarted_service, workflow_address)?;
+            let client =
+                wait_for_workflow_service(&mut restarted_service, workflow_address.address())?;
             let status_response = client.request_json(
                 "GET",
                 &format!("/v1/workflow-runs/{}", submission.run_id),

@@ -122,21 +122,27 @@ pub(super) fn quiet_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::er
 /// so which one spends the shared budget first is left to the harness rather than prescribed by
 /// the stub.
 ///
-/// The listener is taken by `BIND_LISTENER` **before** the flood, and that ordering is the fix
-/// for #629 rather than a stylistic choice. `free_address` picks a port by binding `:0`, reading
-/// the port back and dropping the listener, so between that drop and the stub's own `bind` the
-/// port is unowned and any concurrent test in the same binary can take it. A second live
-/// `LISTEN` is refused with `EADDRINUSE` even when **both** sockets set `SO_REUSEADDR`, which
-/// only relaxes the `TIME_WAIT` rule for a port whose previous listener is already closed — it
-/// does not permit two simultaneous listeners.
+/// The listener is taken by `BIND_LISTENER` **before** the flood, and that ordering is part of the
+/// fix for #629 rather than a stylistic choice. A second live `LISTEN` on one port is refused with
+/// `EADDRINUSE` even when **both** sockets set `SO_REUSEADDR`, which only relaxes the `TIME_WAIT`
+/// rule for a port whose previous listener is already closed — it does not permit two simultaneous
+/// listeners. So whatever owns the port when the stub starts is the only thing that can end up
+/// serving it.
 ///
-/// When that happened the stub died at its `bind` having written nothing at all, and `ready` —
-/// which only checks that a TCP connect succeeds — connected to the *foreign* listener in about
-/// a millisecond and reported the gateway ready. `stop` then reaped a process that had never
-/// written a byte, and the test's own guard fired: `held == 0`, so the shared total was never
-/// reached and the test proved nothing. Binding first removes the window entirely: the port is
-/// held from the moment the stub starts, and the flood runs against a listener nobody else can
-/// take.
+/// When the port was unowned, a concurrent test in the same binary could take it, and then the
+/// stub died at its `bind` having written nothing at all, while `ready` — which only checks that a
+/// TCP connect succeeds — connected to the *foreign* listener in about a millisecond and reported
+/// the gateway ready. `stop` then reaped a process that had never written a byte, and the test's
+/// own guard fired: `held == 0`, so the shared total was never reached and the test proved
+/// nothing.
+///
+/// The port is no longer unowned, but that is now the *harness's* reservation doing the holding
+/// rather than the stub's own bind: `reserve` (sts2-harness#673) takes the port and keeps the
+/// listener, and `process::gateway` gives it up in the statements immediately before the `fork`,
+/// so the window is the gap between that release and the stub's `BIND_LISTENER` below — a couple
+/// of syscalls, not the whole of `python3` startup. Binding first matters all the same: it is what
+/// turns that narrow window into a port the stub holds for the whole flood, and it keeps the flood
+/// running against a listener nobody else can take.
 ///
 /// Binding first is necessary but **not** sufficient, and the second half matters as much. Once
 /// the listener is up, `ready` succeeds while the flood is still in flight — that is exactly what

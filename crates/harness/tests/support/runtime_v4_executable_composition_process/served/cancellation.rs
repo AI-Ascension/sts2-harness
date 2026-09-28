@@ -25,8 +25,8 @@ pub(crate) fn run_served_cancel_after_accepted_barrier(
     let temporary = TempDir::new()?;
     let bridge = temporary.bridge()?;
     let (mod_server, gate) = ModServer::accepted_barrier_then_settled()?;
-    let gateway_address = free_address()?;
-    let workflow_address = free_address()?;
+    let gateway_address = reserve()?;
+    let workflow_address = reserve()?;
     let policy_store = temporary.path.join("served-provider-policy.sqlite3");
     let context_store = temporary.path.join("served-context.sqlite3");
     let execution_store = temporary.path.join("served-execution.sqlite3");
@@ -37,8 +37,8 @@ pub(crate) fn run_served_cancel_after_accepted_barrier(
         harness_binary,
         mcp_binary,
         bridge: &bridge,
-        gateway_address,
-        workflow_address,
+        gateway_address: &gateway_address,
+        workflow_address: &workflow_address,
         policy_store: &policy_store,
         context_store: &context_store,
         execution_store: &execution_store,
@@ -49,20 +49,25 @@ pub(crate) fn run_served_cancel_after_accepted_barrier(
         lease_id: LEASE_ID,
         lease_epoch: LEASE_EPOCH,
     };
-    let mut gateway_process = gateway(gateway_binary, gateway_address, mod_server.address)?;
+    let mut gateway_process = gateway(
+        gateway_binary,
+        &gateway_address,
+        ModAddress::Live(mod_server.address),
+    )?;
     let result: Result<(), Box<dyn std::error::Error>> = (|| {
-        ready(&mut gateway_process, gateway_address)?;
+        ready(&mut gateway_process, gateway_address.address())?;
         let mut command = workflow_service_command(&service_config)?;
         command
             .env("STS2_BARRIER_MAX_POLLS", "1")
             .env("STS2_BARRIER_WAIT_MILLIS", "1");
-        let mut service = command.spawn()?;
+        let mut service = spawn_workflow_service(&mut command, &workflow_address)?;
         let attempt: Result<(), Box<dyn std::error::Error>> = (|| {
-            let client = wait_for_workflow_service(&mut service, workflow_address)?;
+            let client = wait_for_workflow_service(&mut service, workflow_address.address())?;
             let submitted = submit_and_step_policy_gate(&client, 2)?;
             let run_id = submitted.run_id.clone();
             let revision = submitted.revision;
-            let action_client = ManagementClient::new(workflow_address, "served-workflow-token")?;
+            let action_client =
+                ManagementClient::new(workflow_address.address(), "served-workflow-token")?;
             let action = std::thread::spawn(move || -> Result<_, String> {
                 let command = CommandRequest {
                     schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
