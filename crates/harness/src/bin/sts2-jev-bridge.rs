@@ -35,7 +35,6 @@
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
-use std::thread;
 use std::time::{Duration, Instant};
 use sts2_harness::{
     ACTION_QUESTION, KIND_QUESTION, MAX_PRESENTED_OPTIONS, OptionSelection, SYSTEM_ONE_PATH,
