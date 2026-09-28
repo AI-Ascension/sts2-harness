@@ -11,6 +11,20 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **The review-of-record gate is no longer unmergeable after its own review lands.** The
+  `concurrency` group added for #729 was keyed on the pull request number and head SHA but not on
+  the event name, so a `pull_request` run and a `pull_request_review` run for the same head landed
+  in the same group. Measured on #733 head `4b20402e`: push run `36447039873` was created at
+  15:53:46Z and ran until 15:57:28Z, and review run `36447155603` — the **newer** of the two — was
+  created at 15:54:40Z and cancelled at 15:54:56Z. `cancel-in-progress` gated on the event name did
+  not prevent it, because that expression only decides whether the *arriving* run supersedes; it
+  cannot stop an in-flight predecessor from cancelling the arrival. Since the review trigger is
+  the only path that turns the check green, the head was left carrying a cancelled
+  `review-of-record` beside a green run of the same context, and under ruleset 24104281 the
+  required check resolved to the cancelled run, so the merge API refused. The group key now carries
+  the event name, giving the two triggers separate groups: a review submission can no longer be
+  cancelled by a push, while a push still supersedes its own earlier push run and the head SHA
+  still prevents a push from cancelling a previous head's run. Refs #735.
 - **A durable exchange that completed is no longer reported as a turn timeout.** The admitted
   transport re-measured the caller's ceiling against its own wall clock *after* the inner
   transport returned, so an exchange the inner effect had already completed inside its own
