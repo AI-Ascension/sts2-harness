@@ -86,21 +86,7 @@ jobs:
         run: RUSTDOCFLAGS="-D unknown_lints -D rustdoc::broken_intra_doc_links -D rustdoc::private_intra_doc_links -D rustdoc::redundant_explicit_links --document-private-items" cargo doc --package sts2-harness --no-deps --locked
 
       - name: Run Rust tests
-        # `--no-fail-fast` is load-bearing, not a convenience (sts2-harness#645).
-        # `cargo test` runs each test target as a separate binary and aborts the whole
-        # invocation at the first failing one. This crate's integration tests are
-        # individual binaries in `crates/harness/tests/`, and cargo runs them
-        # alphabetically by filename, so without this flag a single failure in an
-        # early-alphabet binary (e.g. `jev_bridge_process.rs`, position 128) stops
-        # the run before later binaries execute at all -- 117 of them on this
-        # revision, including `served_gateway_capture_drain.rs` at position 245.
-        # A green "Continuous integration" then certifies only "every binary up to
-        # the first failure passed", not "the suite passed", which is how a flake
-        # silently suppresses all later coverage.
-        #
-        # This adds no retry and hides nothing: a genuinely failing test still fails
-        # this step and the job, and it still fails on its own merits. The flag only
-        # decides whether *subsequent* binaries run after one has already failed.
+        # `--no-fail-fast` is load-bearing (sts2-harness#645): no retry, see the test.
         run: cargo test --workspace --all-targets --all-features --locked --no-fail-fast
 
       - name: Run doctests
