@@ -36,11 +36,12 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 - **Run every test binary in the CI test step instead of stopping at the first failure.**
   `cargo test` executes each test target as a separate binary and aborts the whole invocation at
   the first failing one unless `--no-fail-fast` is passed, and this crate's integration tests are
-  individual binaries that cargo runs alphabetically by filename. On `9a128059` a single failure in
-  `jev_bridge_process.rs` (position 128) stopped the run after 128 of the workspace's 264 binaries,
-  so 136 never ran — including `served_gateway_capture_drain.rs` (position 245),
+  individual binaries that cargo runs alphabetically by filename. On the first attempt of
+  `Continuous integration` run `36338651404` at `fd4dc88d`, a single failure in
+  `jev_bridge_process.rs` (position 128) stopped the run after 128 of the 264 top-level test
+  binaries, so 136 never ran — including `served_gateway_capture_drain.rs` (position 245),
   `runtime_v4_executable_composition.rs` (position 222) and `workflow_store.rs` (position 264, the
-  last) — and a green `Continuous integration` certified only that every binary *up to the first
+  last) — and the rerun then went green, certifying only that every binary *up to the first
   failure* passed. The step now passes `--no-fail-fast`, which adds no retry and hides nothing: a
   genuinely failing test still fails the step and the job on its own merits. A new check asserts
   the invariant rather than the flag text — any workspace-wide `cargo test` must carry the flag —
