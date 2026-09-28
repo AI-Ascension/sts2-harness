@@ -122,6 +122,26 @@ fn real_subprocess_roundtrip_extracts_head_and_reviews() -> Result<(), Box<dyn E
     Ok(())
 }
 
+/// `test_two_runners_with_one_payload_get_distinct_paths`
+///
+/// The property the per-call nonce exists to provide, asserted rather than assumed: the two tests
+/// above deliberately share a body, so a name derived from the body alone hands both the same
+/// path and they race on the executable. Distinct paths are the fix; both runners must still work,
+/// so a fix that made the paths differ by breaking the call would not pass either.
+#[test]
+fn two_runners_with_one_payload_get_distinct_paths() -> Result<(), Box<dyn Error>> {
+    let body = json!({"head": {"sha": HEAD}}).to_string();
+    let first = runner_for(&body)?;
+    let second = runner_for(&body)?;
+    assert_ne!(
+        first.gh_path, second.gh_path,
+        "two fake `gh` builds from one payload must not share a path"
+    );
+    assert_eq!(first.head_sha("AI-Ascension/.github", 1)?, HEAD);
+    assert_eq!(second.head_sha("AI-Ascension/sts2-harness", 693)?, HEAD);
+    Ok(())
+}
+
 /// `test_head_sha_extracted_from_payload`
 #[test]
 fn head_sha_extracted_from_payload() -> Result<(), Box<dyn Error>> {
