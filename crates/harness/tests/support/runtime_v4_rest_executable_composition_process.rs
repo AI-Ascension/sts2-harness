@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::io::Read;
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpStream};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -15,6 +15,11 @@ use super::fixture::{
     CALLER_ID, DownstreamLedger, INSTANCE_ID, LEASE_EPOCH, LEASE_ID, MCP_SESSION_ID, ModServer,
     REST_SCHEMA_DIGEST, SESSION_ID, SelectorEncoding,
 };
+// The loopback allocator, shared with the executable-composition process support so both
+// binaries reserve their ports the same way. Refs sts2-harness#673.
+#[path = "loopback_address.rs"]
+mod loopback_address;
+use loopback_address::{ReservedAddress, reserve};
 use serde_json::{Value, json};
 
 const MAX_CAPTURE_BYTES: usize = 4 * 1024 * 1024;
@@ -135,20 +140,14 @@ fn sha256_file(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
     Ok(sts2_harness::sha256_hex(fs::read(path)?))
 }
 
-fn free_address() -> Result<SocketAddr, Box<dyn std::error::Error>> {
-    let listener = TcpListener::bind("127.0.0.1:0")?;
-    Ok(listener.local_addr()?)
-}
-
 fn gateway(
     binary: &Path,
-    address: SocketAddr,
+    address: &ReservedAddress,
     mod_address: SocketAddr,
 ) -> Result<Child, Box<dyn std::error::Error>> {
     let mut command = Command::new(binary);
     command
         .env_clear()
-        .env("STS2_GATEWAY_ADDR", address.to_string())
         .env("STS2_MOD_ADDR", mod_address.to_string())
         .env("STS2_GATEWAY_TOKEN", "gateway-token")
         .env("STS2_MOD_TOKEN", "mod-token")
@@ -160,6 +159,10 @@ fn gateway(
         .env("STS2_LEASE_EPOCH", LEASE_EPOCH.to_string())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // Released as the last statement before the fork, so the port is held from allocation until
+    // the child is spawned and free the instant after. See `loopback_address` for the one window
+    // that remains and why the parent cannot close it.
+    command.env("STS2_GATEWAY_ADDR", address.release().to_string());
     Ok(command.spawn()?)
 }
 
@@ -207,15 +210,15 @@ pub(crate) fn run_scenario_with_style(
     selector_encoding: SelectorEncoding,
 ) -> Result<ScenarioResult, Box<dyn std::error::Error>> {
     let mod_server = ModServer::new_with_style(selector_encoding)?;
-    let address = free_address()?;
+    let address = reserve()?;
     let execution_store = bridge
         .parent()
         .map(|path| path.join("execution.sqlite3"))
         .ok_or("synthetic bridge has no parent directory")?;
-    let mut gateway_process = gateway(gateway_binary, address, mod_server.address)?;
+    let mut gateway_process = gateway(gateway_binary, &address, mod_server.address)?;
     let bridge_revision = sha256_file(bridge)?;
     let runtime = (|| {
-        ready(&mut gateway_process, address)?;
+        ready(&mut gateway_process, address.address())?;
         // Live recording is enabled only for this local synthetic bridge so the executable's
         // bounded action_receipt stream is captured with the child diagnostics. The shell
         // redirects the recorder's stdout to stderr; the runtime completion report and receipt
@@ -227,7 +230,11 @@ pub(crate) fn run_scenario_with_style(
         command
             .env_clear()
             .env("STS2_EXECUTION_STORE_PATH", execution_store)
-            .env("STS2_GATEWAY_ADDR", address.to_string())
+            // The runtime *connects* to the gateway, it does not bind it, and the gateway above
+            // has already released the reservation at its own spawn. So this reads the address
+            // rather than releasing anything: by the time this child starts, the port is the
+            // gateway's to answer on.
+            .env("STS2_GATEWAY_ADDR", address.address().to_string())
             .env("STS2_GATEWAY_TOKEN", "gateway-token")
             .env("STS2_MCP_BINARY", mcp_binary)
             .env("STS2_RUNTIME_PROFILE", "runtime-v4-expert-rest-action")

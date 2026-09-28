@@ -56,14 +56,14 @@ fn run_graph(
     let execution_store = temporary.path.join("execution.sqlite3");
     let workflow_store = temporary.path.join("workflow.sqlite3");
     seed_adopted_runtime_policy(&policy_store, &runtime_run_id)?;
-    let gateway_address = free_address()?;
-    let workflow_address = free_address()?;
+    let gateway_address = reserve()?;
+    let workflow_address = reserve()?;
     let service_config = WorkflowServiceConfig {
         harness_binary,
         mcp_binary,
         bridge: &bridge,
-        gateway_address,
-        workflow_address,
+        gateway_address: &gateway_address,
+        workflow_address: &workflow_address,
         policy_store: &policy_store,
         context_store: &context_store,
         execution_store: &execution_store,
@@ -75,12 +75,17 @@ fn run_graph(
         lease_epoch: LEASE_EPOCH,
     };
     let mod_server = ModServer::new(FixtureMode::Success)?;
-    let mut gateway_process = gateway(gateway_binary, gateway_address, mod_server.address)?;
+    let mut gateway_process = gateway(
+        gateway_binary,
+        &gateway_address,
+        ModAddress::Live(mod_server.address),
+    )?;
     let result: Result<(String, Vec<String>), Box<dyn std::error::Error>> = (|| {
-        ready(&mut gateway_process, gateway_address)?;
-        let mut service = workflow_service_command(&service_config)?.spawn()?;
+        ready(&mut gateway_process, gateway_address.address())?;
+        let mut command = workflow_service_command(&service_config)?;
+        let mut service = spawn_workflow_service(&mut command, &workflow_address)?;
         let attempt: Result<(String, Vec<String>), Box<dyn std::error::Error>> = (|| {
-            let client = wait_for_workflow_service(&mut service, workflow_address)?;
+            let client = wait_for_workflow_service(&mut service, workflow_address.address())?;
             let submission = submit_policy_gate_with(&client, definition, INSTANCE_ID, request_id)?;
             let mut revision = submission.revision;
             let steps = if changed { 6 } else { 5 };

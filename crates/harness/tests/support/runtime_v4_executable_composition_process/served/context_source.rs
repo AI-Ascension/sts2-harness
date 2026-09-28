@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use session::{WorkflowServiceConfig, response, submit_policy_gate};
+use session::{WorkflowServiceConfig, response, spawn_workflow_service, submit_policy_gate};
 use sts2_harness::context_control::{
     ContextDraft, ContextItem, ContextItemRef, ContextSourceDocument, context_source_digest,
 };
@@ -31,8 +31,8 @@ fn run_context_source_scenario(
     let provider_capture = temporary.path.join("provider-request.json");
     let bridge = temporary.bridge_capturing(&provider_capture)?;
     let mod_server = ModServer::new(FixtureMode::Success)?;
-    let gateway_address = free_address()?;
-    let workflow_address = free_address()?;
+    let gateway_address = reserve()?;
+    let workflow_address = reserve()?;
     let policy_store = temporary.path.join("served-provider-policy.sqlite3");
     let context_store = temporary.path.join("served-context.sqlite3");
     let execution_store = temporary.path.join("served-execution.sqlite3");
@@ -55,8 +55,8 @@ fn run_context_source_scenario(
         harness_binary,
         mcp_binary,
         bridge: &bridge,
-        gateway_address,
-        workflow_address,
+        gateway_address: &gateway_address,
+        workflow_address: &workflow_address,
         policy_store: &policy_store,
         context_store: &context_store,
         execution_store: &execution_store,
@@ -67,12 +67,17 @@ fn run_context_source_scenario(
         lease_id: LEASE_ID,
         lease_epoch: LEASE_EPOCH,
     };
-    let mut gateway_process = gateway(gateway_binary, gateway_address, mod_server.address)?;
+    let mut gateway_process = gateway(
+        gateway_binary,
+        &gateway_address,
+        ModAddress::Live(mod_server.address),
+    )?;
     let result: Result<bool, Box<dyn std::error::Error>> = (|| {
-        ready(&mut gateway_process, gateway_address)?;
-        let mut service = workflow_service_command(&service_config)?.spawn()?;
+        ready(&mut gateway_process, gateway_address.address())?;
+        let mut command = workflow_service_command(&service_config)?;
+        let mut service = spawn_workflow_service(&mut command, &workflow_address)?;
         let attempt: Result<bool, Box<dyn std::error::Error>> = (|| {
-            let client = wait_for_workflow_service(&mut service, workflow_address)?;
+            let client = wait_for_workflow_service(&mut service, workflow_address.address())?;
             let submission = submit_policy_gate(&client)?;
             let run_id = submission.run_id.as_str();
 

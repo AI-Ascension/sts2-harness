@@ -8,7 +8,7 @@
 #![allow(dead_code)]
 
 use std::fs;
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpStream};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
@@ -112,60 +112,6 @@ pub(crate) fn executable(name: &str) -> Result<PathBuf, Box<dyn std::error::Erro
     }
 }
 
-pub(super) fn free_address() -> Result<SocketAddr, Box<dyn std::error::Error>> {
-    let listener = TcpListener::bind("127.0.0.1:0")?;
-    Ok(listener.local_addr()?)
-}
-
-pub(super) fn gateway(
-    binary: &Path,
-    address: SocketAddr,
-    mod_address: SocketAddr,
-) -> Result<GatewayProcess, Box<dyn std::error::Error>> {
-    gateway_with_identity(
-        binary,
-        address,
-        mod_address,
-        INSTANCE_ID,
-        LEASE_ID,
-        LEASE_EPOCH,
-    )
-}
-
-pub(super) fn gateway_with_identity(
-    binary: &Path,
-    address: SocketAddr,
-    mod_address: SocketAddr,
-    instance_id: &str,
-    lease_id: &str,
-    lease_epoch: u64,
-) -> Result<GatewayProcess, Box<dyn std::error::Error>> {
-    let mut command = Command::new(binary);
-    command
-        .env_clear()
-        .env("STS2_GATEWAY_ADDR", address.to_string())
-        .env("STS2_MOD_ADDR", mod_address.to_string())
-        .env("STS2_GATEWAY_TOKEN", "gateway-token")
-        .env("STS2_MOD_TOKEN", "mod-token")
-        .env("STS2_INSTANCE_ID", instance_id)
-        .env("STS2_CALLER_ID", CALLER_ID)
-        .env("STS2_SESSION_ID", SESSION_ID)
-        .env("STS2_MCP_SESSION_ID", MCP_SESSION_ID)
-        .env("STS2_LEASE_ID", lease_id)
-        .env("STS2_LEASE_EPOCH", lease_epoch.to_string())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    use std::os::unix::process::CommandExt;
-    command.process_group(0);
-    // The pipes are taken and drained here, at spawn, rather than after the gateway has been
-    // killed. That is the whole fix for #559: a pipe holds one buffer before the writer blocks,
-    // so reading only at `stop` truncated a chatty gateway at one buffer and silently lost the
-    // rest. `GatewayProcess::attach` also owns the failure path, so a gateway that is spawned
-    // but cannot be captured is killed here rather than leaked.
-    let child = spawn::retrying_text_busy(&mut command)?;
-    Ok(GatewayProcess::attach(child)?)
-}
-
 pub(super) fn ready(
     gateway_process: &mut GatewayProcess,
     address: SocketAddr,
@@ -262,7 +208,7 @@ pub(crate) fn run_scenario(
     mode: FixtureMode,
 ) -> Result<ScenarioResult, Box<dyn std::error::Error>> {
     let mod_server = ModServer::new(mode)?;
-    let address = free_address()?;
+    let address = reserve()?;
     let execution_store = bridge
         .parent()
         .map(|path| {
@@ -275,8 +221,10 @@ pub(crate) fn run_scenario(
             })
         })
         .ok_or("synthetic bridge has no parent directory")?;
-    let mut gateway_process = gateway(gateway_binary, address, mod_server.address)?;
+    let mod_address = ModAddress::Live(mod_server.address);
+    let mut gateway_process = gateway(gateway_binary, &address, mod_address)?;
     let runtime = (|| {
+        let address = address.address();
         ready(&mut gateway_process, address)?;
         let mut command = Command::new(harness_binary);
         command
@@ -345,6 +293,14 @@ pub(crate) use served::{
 #[path = "runtime_v4_executable_composition_process/spawn.rs"]
 mod spawn;
 
+#[path = "loopback_address.rs"]
+mod loopback_address;
+#[allow(unused_imports)]
+// `ReservedAddress` and `release_onto_gateway` are reached by the gateway spawn module and by
+// `served::session` through `super::super::`, so they are re-exported here rather than imported
+// for this file's own use.
+pub(crate) use loopback_address::{ModAddress, ReservedAddress, release_onto_gateway, reserve};
+
 #[path = "runtime_v4_executable_composition_process/assertions.rs"]
 mod assertions;
 #[allow(unused_imports)]
@@ -374,6 +330,14 @@ pub(crate) use gateway_capture::GatewayProcess;
 pub(crate) use gateway_capture::stream::{
     MAX_CAPTURE_BYTES, MAX_TOTAL_CAPTURE_BYTES, TRUNCATION_NOTICE,
 };
+
+// Every path that spawns the served gateway, including the one that hands a child an address this
+// test does not own (the #673 squatter scenario). Split out so this one stays inside the size
+// budget, as `gateway_capture` is.
+#[path = "runtime_v4_executable_composition_process/gateway_spawn.rs"]
+mod gateway_spawn;
+#[allow(unused_imports)]
+pub(crate) use gateway_spawn::{gateway, gateway_with_identity, spawn_on_squatted_address};
 
 include!("runtime_v4_executable_composition_malformed.rs");
 

@@ -2,8 +2,8 @@
 
 use super::*;
 use session::{
-    WorkflowServiceConfig, response, served_runtime_run_id, submit_policy_gate,
-    wait_for_workflow_service, workflow_service_command,
+    WorkflowServiceConfig, response, served_runtime_run_id, spawn_workflow_service,
+    submit_policy_gate, wait_for_workflow_service, workflow_service_command,
 };
 use sts2_harness::management::{
     CommandKind, CommandParameters, CommandRequest, CommandResponse, MANAGEMENT_SCHEMA_VERSION,
@@ -32,8 +32,8 @@ pub(crate) fn run_served_policy_rebind_after_idle_adoption(
     let provider_capture = temporary.path.join("provider-request.json");
     let bridge = temporary.bridge_capturing(&provider_capture)?;
     let mod_server = ModServer::new(FixtureMode::Success)?;
-    let gateway_address = free_address()?;
-    let workflow_address = free_address()?;
+    let gateway_address = reserve()?;
+    let workflow_address = reserve()?;
     let policy_store = temporary.path.join("served-provider-policy.sqlite3");
     let context_store = temporary.path.join("served-context.sqlite3");
     let execution_store = temporary.path.join("served-execution.sqlite3");
@@ -44,8 +44,8 @@ pub(crate) fn run_served_policy_rebind_after_idle_adoption(
         harness_binary,
         mcp_binary,
         bridge: &bridge,
-        gateway_address,
-        workflow_address,
+        gateway_address: &gateway_address,
+        workflow_address: &workflow_address,
         policy_store: &policy_store,
         context_store: &context_store,
         execution_store: &execution_store,
@@ -56,12 +56,17 @@ pub(crate) fn run_served_policy_rebind_after_idle_adoption(
         lease_id: LEASE_ID,
         lease_epoch: LEASE_EPOCH,
     };
-    let mut gateway_process = gateway(gateway_binary, gateway_address, mod_server.address)?;
+    let mut gateway_process = gateway(
+        gateway_binary,
+        &gateway_address,
+        ModAddress::Live(mod_server.address),
+    )?;
     let result: Result<(), Box<dyn std::error::Error>> = (|| {
-        ready(&mut gateway_process, gateway_address)?;
-        let mut service = workflow_service_command(&service_config)?.spawn()?;
+        ready(&mut gateway_process, gateway_address.address())?;
+        let mut command = workflow_service_command(&service_config)?;
+        let mut service = spawn_workflow_service(&mut command, &workflow_address)?;
         let attempt: Result<(), Box<dyn std::error::Error>> = (|| {
-            let client = wait_for_workflow_service(&mut service, workflow_address)?;
+            let client = wait_for_workflow_service(&mut service, workflow_address.address())?;
             let submission = submit_policy_gate(&client)?;
             let run_id = submission.run_id.as_str();
 

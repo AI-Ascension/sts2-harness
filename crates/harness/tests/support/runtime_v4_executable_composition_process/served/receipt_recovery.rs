@@ -3,8 +3,8 @@
 use super::*;
 use serde_json::Value;
 use session::{
-    WorkflowServiceConfig, response, served_runtime_run_id, submit_policy_gate,
-    wait_for_workflow_service, workflow_service_command,
+    WorkflowServiceConfig, response, served_runtime_run_id, spawn_workflow_service_as_foreign,
+    spawn_workflow_service_from, submit_policy_gate, wait_for_workflow_service,
 };
 use sts2_harness::context_control::{
     ContextDraft, ContextItem, ContextItemRef, ContextSourceDocument, context_source_digest,
@@ -29,8 +29,8 @@ pub(crate) fn run_served_context_receipt_recovery(
     let provider_capture = temporary.path.join("receipt-provider-request.json");
     let bridge = temporary.bridge_capturing(&provider_capture)?;
     let mod_server = ModServer::new(FixtureMode::Success)?;
-    let gateway_address = free_address()?;
-    let workflow_address = free_address()?;
+    let gateway_address = reserve()?;
+    let workflow_address = reserve()?;
     let policy_store = temporary.path.join("receipt-provider-policy.sqlite3");
     let context_store = temporary.path.join("receipt-context.sqlite3");
     let execution_store = temporary.path.join("receipt-execution.sqlite3");
@@ -53,8 +53,8 @@ pub(crate) fn run_served_context_receipt_recovery(
         harness_binary,
         mcp_binary,
         bridge: &bridge,
-        gateway_address,
-        workflow_address,
+        gateway_address: &gateway_address,
+        workflow_address: &workflow_address,
         policy_store: &policy_store,
         context_store: &context_store,
         execution_store: &execution_store,
@@ -65,15 +65,17 @@ pub(crate) fn run_served_context_receipt_recovery(
         lease_id: LEASE_ID,
         lease_epoch: LEASE_EPOCH,
     };
-    let mut gateway = gateway(gateway_binary, gateway_address, mod_server.address)?;
+    let mod_address = ModAddress::Live(mod_server.address);
+    let mut gateway = gateway(gateway_binary, &gateway_address, mod_address)?;
     let result: Result<(), Box<dyn std::error::Error>> = (|| {
-        ready(&mut gateway, gateway_address)?;
-        let mut service = workflow_service_command(&service_config)?.spawn()?;
+        ready(&mut gateway, gateway_address.address())?;
+        let mut service = spawn_workflow_service_from(&service_config, &workflow_address)?;
+        let workflow = workflow_address.address();
         let write_result: Result<
             (String, ContextControlReceipt, ContextControlCommand),
             Box<dyn std::error::Error>,
         > = (|| {
-            let client = wait_for_workflow_service(&mut service, workflow_address)?;
+            let client = wait_for_workflow_service(&mut service, workflow)?;
             let submission = submit_policy_gate(&client)?;
             let run_id = submission.run_id.clone();
             let status_path = format!("/v1/workflow-runs/{run_id}/context-owner-source-status");
@@ -204,9 +206,9 @@ pub(crate) fn run_served_context_receipt_recovery(
             write_result.map_err(|error| format!("receipt writer phase: {error}"))?;
         assert_killed(&first_output, "receipt writer workflow")?;
 
-        let mut restarted_service = workflow_service_command(&service_config)?.spawn()?;
+        let mut restarted = spawn_workflow_service_from(&service_config, &workflow_address)?;
         let restart_result: Result<(), Box<dyn std::error::Error>> = (|| {
-            let client = wait_for_workflow_service(&mut restarted_service, workflow_address)?;
+            let client = wait_for_workflow_service(&mut restarted, workflow)?;
             let association_path = format!("/v1/workflow-runs/{run_id}/context-owner-association");
             let association = client.request_json("GET", &association_path, None)?;
             let association_body: Value = serde_json::from_slice(&association.body)?;
@@ -278,18 +280,14 @@ pub(crate) fn run_served_context_receipt_recovery(
             assert_not_recorded(metadata_response, "metadata-only command")?;
             Ok(())
         })();
-        let restarted_output = stop_service(restarted_service)?;
+        let restarted_output = stop_service(restarted)?;
         restart_result.map_err(|error| format!("restart recovery phase: {error}"))?;
         assert_killed(&restarted_output, "receipt recovery workflow")?;
 
-        let mut foreign_service = workflow_service_command(&service_config)?;
-        foreign_service
-            .env("STS2_WORKFLOW_AUTH_PROFILE", "foreign")
-            .env("STS2_WORKFLOW_TOKEN_FOREIGN", "foreign-workflow-token");
-        let mut foreign_service = foreign_service.spawn()?;
+        let mut foreign = spawn_workflow_service_as_foreign(&service_config, &workflow_address)?;
         let foreign_result: Result<(), Box<dyn std::error::Error>> = (|| {
-            let _ = wait_for_workflow_service(&mut foreign_service, workflow_address)?;
-            let client = ManagementClient::new(workflow_address, "foreign-workflow-token")?;
+            let _ = wait_for_workflow_service(&mut foreign, workflow)?;
+            let client = ManagementClient::new(workflow, "foreign-workflow-token")?;
             let receipt_path =
                 format!("/v1/workflow-runs/{run_id}/context-control-receipts/lookup");
             let denied =
@@ -307,7 +305,7 @@ pub(crate) fn run_served_context_receipt_recovery(
             }
             Ok(())
         })();
-        let foreign_output = stop_service(foreign_service)?;
+        let foreign_output = stop_service(foreign)?;
         foreign_result.map_err(|error| format!("foreign actor phase: {error}"))?;
         assert_killed(&foreign_output, "foreign receipt reader")?;
         Ok(())
