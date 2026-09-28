@@ -11,18 +11,14 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
-- **The review-of-record gate can no longer be stranded red by its own push-triggered run.**
-  `review-gate.yml` was the only workflow in the repository without a `concurrency` group. The gate
-  triggers on `pull_request` as well as `pull_request_review`, and with no group each trigger starts
-  a new check-run instead of superseding the previous one. The `pull_request` trigger fires on every
-  push, necessarily before any review of record can exist for that head, so that run always ends red
-  with "no review pinned to head"; the later review-triggered run for the same head is green, but the
-  required check still resolves against the runs recorded for the head, so the pull request stays
-  unmergeable however many green runs follow. On #727 one head carried a red run and three green ones
-  and the merge API still refused. The group is keyed on the head SHA as well as the number, because
-  keying on the number alone would let a new head cancel the previous head's run and leave the stale
-  red behind, and `cancel-in-progress` is gated on the event name so a review submission is never
-  cancelled, since that trigger is what turns the check green. Refs #729.
+- **The review-of-record gate's runs are now serialised per head.**
+  `review-gate.yml` triggers on `pull_request` as well as `pull_request_review`, and without a
+  `concurrency` group a slow push-triggered run overlaps the review-triggered run for the same head
+  instead of yielding to it. The group is keyed on the head SHA as well as the pull request number,
+  so a push never cancels work belonging to the previous head, and `cancel-in-progress` is gated on
+  the event name so a review submission is never cancelled, since that trigger is what turns the
+  check green. This is queue hygiene: it does **not** clear a completed red run, and it does not
+  make a required check resolve against the newest run. Refs #729.
 - **The process-group timeout test no longer fails against correct code.** `kill -0` succeeds for
   a **zombie** as well as a running process, so a reaped-but-uncollected descendant read as alive.
   It failed 5 runs in 20 on fixed `main`; the probe now also reads the process state. Refs #722.
