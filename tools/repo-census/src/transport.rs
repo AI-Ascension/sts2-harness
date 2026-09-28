@@ -16,6 +16,10 @@
 use std::io::Read as _;
 use std::process::{Command, Stdio};
 
+// The paging surface lives in `paginate`, but a caller reading one listing
+// should not have to know which file a function was declared in.
+pub use crate::paginate::{Page, PageOutcome, next_link, read_all_pages};
+
 /// Why a single requested object could not be turned into usable data.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadFailure {
@@ -162,9 +166,13 @@ pub fn read_json<T: serde::de::DeserializeOwned>(path: &str, host: &str) -> Fetc
 pub fn read_json_list<T: serde::de::DeserializeOwned>(path: &str, host: &str) -> Fetch<Vec<T>> {
     read_json::<Vec<T>>(path, host)
 }
-
 #[cfg(test)]
 mod tests {
+    // A test asserts; these lints forbid the assertion forms in the code under
+    // test, which is the point of them, and the convention for relaxing them in
+    // test code is a scoped allow rather than a weaker workspace lint.
+    #![allow(clippy::expect_used, clippy::panic)]
+
     use super::{Fetch, ReadFailure, read_json};
 
     #[test]
