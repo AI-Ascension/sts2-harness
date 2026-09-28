@@ -11,6 +11,28 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Hold the `LivePeers` gateway port until the child is spawned.**
+  `runtime_v3_game_information_entry_live_peers.rs` drew its gateway address with a
+  `free_address()` that read `local_addr()` and dropped the listener inside the same expression, so
+  the port was unowned from that instant until the pinned Gateway bound it. That is the `#673`
+  defect, and `#693` fixed it in `tests/support/**` only. This is the third `src/bin` instance; the
+  other two are `#681`, which does not name this file, so closing `#673` retired the only tracker
+  for a defect that was still live.
+  It is reachable end to end: `LivePeers::start` hands the address to a real spawned Gateway through
+  `STS2_GATEWAY_ADDR` and then waits on `wait_until_listening`, whose success condition is
+  `TcpStream::connect(address).is_ok()`. Anything that took the port in the window -- a parallel
+  scenario, another test binary drawing `:0` -- left the child's `bind` to fail with `EADDRINUSE`
+  while the readiness check reported success, because it connects to whatever is listening rather
+  than to the child.
+  The allocator is now a reservation, the shape `#693` landed: the listener is held in
+  `ReservedAddress` and released as the last statement before `Command::spawn()`. `#681`'s framing
+  proposes "identical in shape to `#673`'s: return the bound `TcpListener`", and that was measured
+  and refuted on this kernel -- a second concurrent `LISTEN` on one `addr:port` is refused under
+  every socket-option combination, so a parent-held listener blocks the intended child too.
+  The mod listener ten lines above is untouched and stays correct: it is bound, kept, and accepted
+  on by `spawn_mod_server`, so that address is owned continuously. No test here is known to fail
+  this way and none is claimed to; the fix is on the verified code shape and the verified reachable
+  call path. Refs #701, #681, #673.
 - **Run every test binary in the CI test step instead of stopping at the first failure.**
   `cargo test` executes each test target as a separate binary and aborts the whole invocation at
   the first failing one unless `--no-fail-fast` is passed, and this crate's integration tests are
