@@ -292,3 +292,38 @@ supported release or a second normative changelog.
   consumer even while the gate is green; escalation is the point, not the warning count.
   Compatibility: CI and doc comments only; no production code, schema, route or behavior change.
   Closes #489.
+
+- **Admit a live episode from the provider lane's declared capability, not from a name.** A live
+  `STS2_LIVE_EPISODE=true` run was admitted only when `STS2_PROVIDER_KIND` was exactly
+  `openai-astra`, which left the Exo lane unable to be admitted for one, while any unimplemented name
+  fell through the non-bridge branch and ran under the reviewed Exo source revision. The kind is now
+  a type whose declarations decide whether the lane is a locally launched bridge and whether it
+  claims live-episode capability (`openai-astra` and `exo`); an unimplemented name is refused while
+  settings are assembled, and `exo` carries a live episode only under `STS2_EXO_ADMISSION=envelope`.
+  The admitted mode is installed once and is what the replay stream and the live diagnostics read.
+  Compatibility: the documented lanes are unchanged; a `STS2_PROVIDER_KIND` no lane implements is
+  now refused instead of running silently as the reviewed executor. See
+  [ADR 0060](decisions/0060-live-episode-capability-admission.md). Refs #145.
+
+- **Record the served managed boundary before it writes.** The exact material a served managed
+  decision approved was never compared with the bytes it wrote. The exchange now runs inside the
+  recording write port, so a session with no recording sink refuses (`prepared_boundary_unsupported`)
+  instead of publishing exactness, and the served composition attaches a bounded recording ring so a
+  managed decision records its boundary rather than refusing. See
+  [ADR 0061](../docs/decisions/0061-served-managed-boundary-recording.md). Refs #108.
+  strengthened rather than relaxed. Compatibility: none; the flag's meaning is unchanged. Refs #394.
+
+- **Let the jev execution budget govern arm admission, not filesystem timing.** The paired runner
+  re-checked the budget after reserving an arm, so a slow filesystem cancelled an admitted first arm
+  and made the offline global-time-budget contract test fail, with a re-run masking that red. An
+  admitted arm now launches its child bounded by the smaller of the two budgets. Refs #388.
+
+
+- Run the existing compiled Jev paired-replay and frozen-pilot tests in both Node CI checks
+  through a locked-build [entrypoint](../experiments/jev-evaluation/compiled-ci.sh). Failures do not
+  silently skip coverage. The transport stays synthetic; live gameplay benefit remains unverified.
+- **Carry the served managed-boundary receipt ledger across a process restart.** A restarted served
+  composition rebuilt an empty in-memory ledger and wrote an accepted boundary a second time. The
+  receipt ledger now has a versioned durable image, an owner-supplied port (`with_dispatch_ledger_port`)
+  and a file-backed store the served binary attaches when `STS2_WORKFLOW_DISPATCH_LEDGER` names a path:
+  a restart reloads the receipts and refuses a second write or an unreadable store, and unset receipts stay session-lifetime. Refs #108, #94.

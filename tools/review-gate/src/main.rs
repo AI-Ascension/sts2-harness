@@ -29,6 +29,8 @@
 
 use std::env;
 use std::process::{Command, ExitCode};
+use std::thread;
+use std::time::{Duration, Instant};
 
 mod decision;
 
@@ -41,6 +43,16 @@ use decision::{ReviewGateError, Verdict, check_with, require_full_sha, validate_
 /// head and mask a real pin, and cannot be mistaken for a real SHA.
 pub(crate) const FULL_SHA_LENGTH: usize = 40;
 
+/// `ETXTBSY`, the errno `execve` returns when the image is still open for writing anywhere.
+pub(crate) const TEXT_FILE_BUSY: i32 = 26;
+
+/// How long to keep re-trying before giving up and surfacing the original error.
+const DEADLINE: Duration = Duration::from_secs(10);
+
+/// How long to wait between attempts. The holder of the descriptor closes it within
+/// microseconds, so a long backoff would only add latency; short is bounded by the deadline.
+const BACKOFF: Duration = Duration::from_millis(2);
+
 /// Thin `gh api` seam for reading pull-request state.
 ///
 /// Shells out to the authenticated `gh` executable, surfaces failures as
@@ -51,10 +63,19 @@ struct GhRunner {
 
 impl GhRunner {
     fn run(&self, endpoint: &str) -> Result<serde_json::Value, ReviewGateError> {
-        let output = Command::new(&self.gh_path)
-            .arg("api")
-            .arg(endpoint)
-            .output()
+        let mut command = Command::new(&self.gh_path);
+        command.arg("api").arg(endpoint);
+        // The same stdio wiring `Command::output()` applies, which the bare `spawn` below does
+        // not: stdout and stderr are captured for the caller's own error reporting, and stdin is
+        // closed rather than inherited so `gh` can never block waiting on the gate's terminal.
+        // Without this the retry would be faithful and the tool would still be broken, because
+        // the captured body would be empty and every read would fail closed.
+        command
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        let output = spawn_retrying_text_busy(&mut command)
+            .and_then(|child| child.wait_with_output())
             .map_err(|error| ReviewGateError(format!("unable to run {}: {error}", self.gh_path)))?;
         if !output.status.success() {
             let message = String::from_utf8_lossy(&output.stderr);
@@ -134,6 +155,53 @@ fn check(repository: &str, number: u64) -> Result<Verdict, ReviewGateError> {
     let head = runner.head_sha(repository, number)?;
     let reviews = runner.reviews(repository, number)?;
     check_with(&reviews, &head)
+}
+
+/// Spawn `command`, retrying only while it is refused with `ETXTBSY`.
+///
+/// # Why this is needed
+///
+/// `execve` refuses to run a file that any live descriptor holds open for writing, and returns
+/// `ETXTBSY` (`errno 26`) when it does. The stubs this crate's own tests execute are produced by
+/// [`fs::write`](std::fs::write) followed by `chmod 0o755` and then exec, and the test binary runs
+/// its tests in parallel threads. So while thread A is between its own `write` and its own `exec`,
+/// thread B can `fork`, inherit that still-open write descriptor, and `exec` -- and whichever
+/// `exec` lands first loses.
+///
+/// This is a genuine kernel race, not a defect in the stubs. Each stub gets its own directory and
+/// filename, so the two threads never touch the same path; the coupling is the inherited
+/// descriptor, not the name. It is rare enough to be unreproducible on demand: #707 records one
+/// failure in 40 full-suite runs, and 200 consecutive clean full-suite runs on this host did not
+/// reproduce it at all. That rarity is why it survived a fix that removed a genuine path collision
+/// and then declared victory on 12 clean runs -- a rate that cannot distinguish "fixed" from
+/// "almost never hit", which is why the regression test here manufactures the condition instead of
+/// looping the suite and hoping. Because `review-of-record` is a required check on every pull
+/// request, an occurrence blocks unrelated work at random, after the author has already done the
+/// right thing, which trains re-running instead of reading. See #707.
+///
+/// This is the same remedy the harness test support already uses, and for the same measured
+/// reason: `crates/harness/tests/support/runtime_v4_executable_composition_process/spawn.rs`
+/// measured **5 failures in 240 spawns** without the retry and **0 in 240** with it.
+///
+/// Retrying is sound because the descriptor that caused the refusal is always closed by its
+/// owner -- `fs::write` returns only after the `File` drops -- so the condition is transient by
+/// construction and the deadline cannot be outlived by a *persistent* one. A script held open for
+/// writing by some other process would instead burn the full [`DEADLINE`] and then report the
+/// original `ETXTBSY` rather than hanging forever, and any other errno propagates on the first
+/// attempt with no delay at all.
+fn spawn_retrying_text_busy(command: &mut Command) -> Result<std::process::Child, std::io::Error> {
+    let deadline = Instant::now() + DEADLINE;
+    loop {
+        match command.spawn() {
+            Ok(child) => return Ok(child),
+            Err(error)
+                if error.raw_os_error() == Some(TEXT_FILE_BUSY) && Instant::now() < deadline =>
+            {
+                thread::sleep(BACKOFF);
+            }
+            Err(error) => return Err(error),
+        }
+    }
 }
 
 fn main() -> ExitCode {

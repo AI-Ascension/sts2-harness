@@ -8,7 +8,9 @@ use super::HEAD;
 use crate::GhRunner;
 use crate::decision::ReviewGateError;
 use std::error::Error;
+use std::fs::File;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use serde_json::json;
 
@@ -177,5 +179,94 @@ fn reviews_not_list_raises() -> Result<(), Box<dyn Error>> {
     let runner = runner_for(&json!({"message": "Not Found"}).to_string())?;
     let outcome = runner.reviews("AI-Ascension/.github", 1);
     assert!(matches!(outcome, Err(ReviewGateError(_))));
+    Ok(())
+}
+
+/// A regression that fails on the pre-#707 implementation.
+///
+/// The real flake is a `fork`-inherits-a-write-descriptor race, rare enough that asserting "the
+/// suite passes" cannot detect it -- #707 reports one failure in 40 full-suite runs, and 200
+/// consecutive clean full-suite runs on the same host did not reproduce it. That is exactly what
+/// let it survive a fix verified on 12 clean runs. So this test does not run the suite in a loop and
+/// hope. It *manufactures* the condition deterministically: it holds a write descriptor open on
+/// the very stub the runner is about to exec, in the same way an overlapping `fork` would, releases
+/// it the way the forked child would, and asserts the runner still succeeds.
+///
+/// Against the old `Command::output()` this fails with `Text file busy`. It passes only because
+/// `spawn_retrying_text_busy` waits for the holder to close, which is the actual defect being
+/// fixed.
+///
+/// The holder is released on a background thread rather than inline, and that is load-bearing
+/// rather than incidental. The retry is sound only because the descriptor is *transiently* held
+/// and always closed by its owner; a holder that never released would simply burn the full
+/// deadline and still fail. Releasing it from another thread reproduces the real ordering --
+/// holder's window overlapping the exec, then holder's owner closing -- so the test exercises the
+/// wait rather than the timeout.
+#[test]
+fn exec_succeeds_while_another_descriptor_holds_the_stub_for_writing() -> Result<(), Box<dyn Error>>
+{
+    let runner = runner_for(&json!({"head": {"sha": HEAD}}).to_string())?;
+
+    // Re-open the runner's own stub for writing and hold it across the exec, which is the state
+    // the kernel refuses. `fs::write` inside `fake_gh` is long since closed by now, so this
+    // descriptor is the only one standing in for the forked child. Opened write-only and *not*
+    // truncated or written: a write would corrupt the shebang and make the stub's output empty,
+    // which is a different failure than the one under test.
+    let holder = File::options()
+        .write(true)
+        .truncate(false)
+        .open(&runner.gh_path)?;
+
+    // Stand in for the forked child: the descriptor is open when the exec is attempted, and its
+    // owner closes it a moment later, unprompted.
+    let releaser = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(50));
+        drop(holder);
+    });
+
+    let outcome = runner.head_sha("AI-Ascension/.github", 1);
+    // Propagated rather than unwrapped: the crate denies `expect`, and a panicking releaser
+    // would leave the descriptor open, so the failure must be reported, not swallowed.
+    releaser
+        .join()
+        .map_err(|_| "the releasing thread panicked")?;
+    assert_eq!(
+        outcome?, HEAD,
+        "the runner must survive a concurrent write handle"
+    );
+    Ok(())
+}
+
+/// The control for the regression above, so it cannot pass vacuously.
+///
+/// If the retry were removed, the test above would still pass for the wrong reason if the
+/// descriptor it opened were somehow not on the exec'd path. This asserts the refusal is real
+/// and reachable at all: a plain, un-retried `Command` on the same held-open stub must fail with
+/// `ETXTBSY`. Without this, a broken regression that never provoked the condition would look
+/// identical to a working fix.
+#[test]
+fn an_unretried_exec_of_a_held_open_stub_is_refused() -> Result<(), Box<dyn Error>> {
+    let runner = runner_for(&json!({"head": {"sha": HEAD}}).to_string())?;
+    let holder = File::options()
+        .write(true)
+        .truncate(false)
+        .open(&runner.gh_path)?;
+    // Never written: a write would truncate the shebang and turn the control into a different
+    // failure. The descriptor being open for writing is the whole condition.
+
+    let unretried = std::process::Command::new(&runner.gh_path)
+        .arg("api")
+        .arg("repos/AI-Ascension/.github/pulls/1")
+        .output();
+    drop(holder);
+
+    let Err(error) = unretried else {
+        return Err("an un-retried exec of a held-open stub must fail".into());
+    };
+    assert_eq!(
+        error.raw_os_error(),
+        Some(crate::TEXT_FILE_BUSY),
+        "the control must fail with ETXTBSY, not some unrelated error: {error}"
+    );
     Ok(())
 }
