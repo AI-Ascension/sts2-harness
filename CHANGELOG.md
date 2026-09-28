@@ -46,10 +46,10 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
   the flag text — any workspace-wide `cargo test` must carry the flag — and carries a vacuity guard
   so a sweep that matches nothing cannot report success. Refs #645.
 - **Install the review gate in `sts2-harness`.** `CONTRIBUTING.md` says a green run does not
-  substitute for review, but nothing here enforced it: eleven workflows, none of them a review
-  gate, and eleven merges since 2026-09-26 with no review of record. The gate exists and is
-  reviewed in `AI-Ascension/.github` (`review-gate.yml` plus `tools/review_gate.py`) and is
-  installed in exactly one of sixteen repositories -- the one that ships no product code.
+  substitute for review, but nothing here enforced it: ten workflows, none of them a review
+  gate, and 51 merges since 2026-09-26, 11 of them with no review of record. The gate exists
+  and is reviewed in `AI-Ascension/.github` (`review-gate.yml` plus `tools/review_gate.py`),
+  and is installed in exactly one of sixteen repositories -- the one that ships no product code.
   `sts2-harness` is 48 of the 57 merges in that window and 11 of the 12 no-review merges, so it
   is where the gate belongs.
   It is installed as a new Rust workspace tool, `tools/review-gate`, plus `review-gate.yml`, and
