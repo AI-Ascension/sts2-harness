@@ -15,6 +15,16 @@ use std::path::{Path, PathBuf};
 
 use super::{BOTH_PIPES_BYTES, CHATTY_BYTES, CHATTY_TAIL_MARKER, HEAD_MARKER, QUIET_MARKER};
 
+/// The line every stub runs before handing over to Python, exporting where it will announce the
+/// address it bound.
+///
+/// Derived from `$0` rather than passed in by the parent so the spawn path in
+/// `runtime_v4_executable_composition_process.rs` needs no new argument — that file is already at
+/// `rust_test_preferred`, and growing it would trip the size gate for a change that does not
+/// belong there. It also means the protocol cannot be forgotten by one stub: the path comes from
+/// the same `$0` the parent derives it from, so a stub and its parent cannot disagree about it.
+pub(super) const ANNOUNCE_EXPORT: &str = concat!("export STS2_ANNOUNCED_PATH=\"$0.announced\"\n",);
+
 /// Split into `BIND_LISTENER` and `SERVE_LOOP` rather than kept as one block, because the two
 /// stubs now need them at different points: `BIND_LISTENER` runs **before** the flood and
 /// `SERVE_LOOP` after it. Keeping one combined block would put the bind back after the flood,
@@ -23,13 +33,32 @@ use super::{BOTH_PIPES_BYTES, CHATTY_BYTES, CHATTY_TAIL_MARKER, HEAD_MARKER, QUI
 /// The bind is not wrapped in a `try`. A gateway that cannot take its own address has failed
 /// the scenario, and the traceback it leaves on stderr is the evidence; swallowing it would let
 /// the harness go on to report a capture that says nothing.
+///
+/// The port is `:0` rather than the address the harness chose, and that is the whole of the
+/// #673 fix. The harness used to allocate the port itself and hand it over, which left it
+/// unowned between the allocation and this `bind`; a parallel test could be serving it by then,
+/// and `ready` would connect to *that* listener and call the gateway up while this process died
+/// here with `EADDRINUSE`. Binding `:0` makes the kernel allocate the port atomically, so it is
+/// owned continuously from allocation to service and there is no window to lose. The parent
+/// cannot hold a reservation instead, because a second concurrent `LISTEN` is refused whatever
+/// the socket options are — including `SO_REUSEADDR` and `SO_REUSEPORT`, which only relax the
+/// `TIME_WAIT` rule and never permit two live listeners on one address.
+///
+/// The bound address is announced to the parent by appending it to `"$0.announced"` — the path
+/// is derived from the script's own location so the spawn path needs no new argument, and the
+/// file is written *after* `listen`, so its appearance proves the port is live. The write is
+/// atomic (write to a temporary name, then rename) because the parent polls this path and must
+/// never observe a half-written address.
 pub(super) const BIND_LISTENER: &str = concat!(
-    "addr = os.environ[\"STS2_GATEWAY_ADDR\"]\n",
-    "host, _, port = addr.rpartition(\":\")\n",
     "listener = socket.socket()\n",
     "listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n",
-    "listener.bind((host, int(port)))\n",
+    "listener.bind((\"127.0.0.1\", 0))\n",
     "listener.listen(8)\n",
+    "announced = os.environ[\"STS2_ANNOUNCED_PATH\"]\n",
+    "pending = announced + \".pending\"\n",
+    "with open(pending, \"w\") as handle:\n",
+    "    handle.write(\"%s:%d\" % listener.getsockname()[:2])\n",
+    "os.replace(pending, announced)\n",
 );
 
 /// The tail of both stubs: accept forever on the listener bound before the flood, so the
@@ -59,6 +88,7 @@ pub(super) fn chatty_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::e
         format!(
             concat!(
                 "#!/bin/sh\n",
+                "{announce}",
                 "printf '%s\\n' '",
                 "{head}",
                 "' >&2\n",
@@ -83,6 +113,7 @@ pub(super) fn chatty_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::e
             flood = CHATTY_BYTES,
             tail = CHATTY_TAIL_MARKER,
             serve = SERVE_LOOP,
+            announce = ANNOUNCE_EXPORT,
         ),
     )?;
     fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
@@ -100,14 +131,16 @@ pub(super) fn quiet_gateway(directory: &Path) -> Result<PathBuf, Box<dyn std::er
                 "printf '%s\\n' '",
                 "{marker}",
                 "' >&2\n",
+                "{announce}",
                 "exec python3 - <<'PY'\n",
-                "import os, socket\n",
+                "import os, socket, sys\n",
                 "{bind}",
                 "{serve}",
             ),
             marker = QUIET_MARKER,
             bind = BIND_LISTENER,
             serve = SERVE_LOOP,
+            announce = ANNOUNCE_EXPORT,
         ),
     )?;
     fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
@@ -162,6 +195,7 @@ pub(super) fn both_pipes_gateway(directory: &Path) -> Result<PathBuf, Box<dyn st
         format!(
             concat!(
                 "#!/bin/sh\n",
+                "{announce}",
                 "exec python3 - <<'PY'\n",
                 "import os, socket, sys\n",
                 "{bind}",
@@ -180,6 +214,7 @@ pub(super) fn both_pipes_gateway(directory: &Path) -> Result<PathBuf, Box<dyn st
             bind = BIND_LISTENER,
             flood = BOTH_PIPES_BYTES,
             serve = SERVE_LOOP,
+            announce = ANNOUNCE_EXPORT,
         ),
     )?;
     fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;

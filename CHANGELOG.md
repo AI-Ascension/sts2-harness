@@ -11,6 +11,26 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-27.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Never hand the gateway an address nobody owns, and stop `ready` from being fooled by a
+  squatter.** `free_address()` chose a loopback port by binding `:0`, reading the assigned port
+  back and **dropping the listener**, and the gateway was then told to bind that port itself. In
+  the window between the drop and the gateway's own `bind` the port belonged to nobody, so a test
+  running in parallel in the same binary could be handed it and be serving it. The gateway then
+  died at its `bind` with `EADDRINUSE` while `ready()` — which only requires a TCP connect to
+  succeed — had already connected to the *foreign* listener and reported the gateway up, so the
+  capture was measured empty. That is the `held == 0` shape behind #629, and it is why a capture
+  assertion could be satisfied by a squatted address rather than only by a real fault.
+  Holding the port in the parent is **not** the fix, and the reason is worth recording: the
+  gateway has to `bind` the address itself, and a second concurrent `LISTEN` on one `addr:port`
+  is refused whatever the socket options are — with none, with `SO_REUSEADDR`, with
+  `SO_REUSEPORT`, and with both. A parent-held listener does not reserve the port, it blocks the
+  gateway from taking it. So the port is not chosen in the parent at all: each capture stub binds
+  `127.0.0.1:0` and **announces** the address it actually got, which the kernel allocates
+  atomically, so the port is owned continuously from allocation to service and there is no window
+  to lose. `served_gateway_address_allocation` is the regression, and it is adversarial rather
+  than a timing coincidence: a squatter thread binds ephemeral ports in a tight loop for the
+  whole scenario, which is exactly the adversary the old allocator handed a free port to. Closes
+  #673.
 - **Assert that a required structural marker occurs exactly as often as policy declares it.**
   `check_required_preamble` walked the file with an ordered scan that stopped consuming markers once
   they were all satisfied, so a *second* copy of a marker past the last one was never examined. A

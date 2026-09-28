@@ -38,6 +38,8 @@
 
 #![cfg(unix)]
 
+#[path = "support/gateway_address_announcement.rs"]
+mod announcement;
 #[path = "support/runtime_v4_executable_composition_fixture.rs"]
 // This test binary compiles the shared fixture but exercises only the capture path, so several
 // `FixtureMode` variants and fixture helpers are unused here while remaining live in
@@ -51,9 +53,11 @@ mod process;
 #[path = "support/served_gateway_capture_drain_stub.rs"]
 mod stub;
 
+use announcement::announced_address;
 use process::{TempDir, free_address};
 
 use process::{MAX_CAPTURE_BYTES, MAX_TOTAL_CAPTURE_BYTES, TRUNCATION_NOTICE};
+use std::net::SocketAddr;
 use stub::{both_pipes_gateway, chatty_gateway, quiet_gateway};
 
 /// How many bytes the chatty stub writes to its own stderr before it serves.
@@ -83,10 +87,14 @@ fn a_chatty_gateway_has_more_than_one_pipe_buffer_recovered()
 -> Result<(), Box<dyn std::error::Error>> {
     let temporary = TempDir::new()?;
     let stub = chatty_gateway(&temporary.path)?;
-    let address = free_address()?;
     let mod_address = free_address()?;
 
-    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
+    // The stub binds `:0` and announces what it got, so no port is ever unowned between
+    // allocation and service. See `gateway_address_announcement` for why the parent cannot
+    // hold the port instead.
+    let placeholder = std::net::SocketAddr::from(([127, 0, 0, 1], 0));
+    let mut gateway_process = process::gateway(&stub, placeholder, mod_address)?;
+    let address = announced_address(&stub, announcement::ANNOUNCE_TIMEOUT)?;
     process::ready(&mut gateway_process, address)?;
     // The stub binds before it floods (see `BIND_LISTENER`), so `ready` returns while the flood
     // is still in flight; stopping here would measure how much the drain took before the kill
@@ -123,10 +131,14 @@ fn a_chatty_gateway_has_more_than_one_pipe_buffer_recovered()
 fn a_chatty_gateway_keeps_its_head_and_its_tail() -> Result<(), Box<dyn std::error::Error>> {
     let temporary = TempDir::new()?;
     let stub = chatty_gateway(&temporary.path)?;
-    let address = free_address()?;
     let mod_address = free_address()?;
 
-    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
+    // The stub binds `:0` and announces what it got, so no port is ever unowned between
+    // allocation and service. See `gateway_address_announcement` for why the parent cannot
+    // hold the port instead.
+    let placeholder = std::net::SocketAddr::from(([127, 0, 0, 1], 0));
+    let mut gateway_process = process::gateway(&stub, placeholder, mod_address)?;
+    let address = announced_address(&stub, announcement::ANNOUNCE_TIMEOUT)?;
     process::ready(&mut gateway_process, address)?;
     // Same ordering hazard as the test above, and the same remedy: the bind precedes the flood, so
     // the tail marker this test asserts is written after `ready` returns. Waiting for the flood to
@@ -159,10 +171,14 @@ fn a_chatty_gateway_keeps_its_head_and_its_tail() -> Result<(), Box<dyn std::err
 fn a_quiet_gateway_still_reports_exactly_what_it_wrote() -> Result<(), Box<dyn std::error::Error>> {
     let temporary = TempDir::new()?;
     let stub = quiet_gateway(&temporary.path)?;
-    let address = free_address()?;
     let mod_address = free_address()?;
 
-    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
+    // The stub binds `:0` and announces what it got, so no port is ever unowned between
+    // allocation and service. See `gateway_address_announcement` for why the parent cannot
+    // hold the port instead.
+    let placeholder = std::net::SocketAddr::from(([127, 0, 0, 1], 0));
+    let mut gateway_process = process::gateway(&stub, placeholder, mod_address)?;
+    let address = announced_address(&stub, announcement::ANNOUNCE_TIMEOUT)?;
     process::ready(&mut gateway_process, address)?;
     let output = process::stop(gateway_process)?;
     let captured = String::from_utf8_lossy(&output.stderr);
@@ -211,10 +227,14 @@ fn a_gateway_flooding_both_pipes_is_bounded_by_the_shared_total()
 -> Result<(), Box<dyn std::error::Error>> {
     let temporary = TempDir::new()?;
     let stub = both_pipes_gateway(&temporary.path)?;
-    let address = free_address()?;
     let mod_address = free_address()?;
 
-    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
+    // The stub binds `:0` and announces what it got, so no port is ever unowned between
+    // allocation and service. See `gateway_address_announcement` for why the parent cannot
+    // hold the port instead.
+    let placeholder = std::net::SocketAddr::from(([127, 0, 0, 1], 0));
+    let mut gateway_process = process::gateway(&stub, placeholder, mod_address)?;
+    let address = announced_address(&stub, announcement::ANNOUNCE_TIMEOUT)?;
     process::ready(&mut gateway_process, address)?;
     // Wait for the flood itself, not just for the port. The stub binds before it floods (see
     // `BIND_LISTENER`), so `ready` now returns while the flood is still being written; stopping
@@ -259,32 +279,44 @@ fn a_gateway_flooding_both_pipes_is_bounded_by_the_shared_total()
 
 /// #673: an address served by **someone else** must not be mistaken for this gateway.
 ///
-/// `free_address` binds `:0`, reads the port and drops the listener, so the address is unowned
-/// from that instant. A live `LISTEN` on it is refused with `EADDRINUSE` even when `SO_REUSEADDR`
-/// is set on both sockets, so a squatter is a hard block, not a shared bind. A squatter is held
-/// here for the whole scenario, standing in for the sibling test that won the port.
+/// `free_address` used to bind `:0`, read the port and drop the listener, leaving the address
+/// unowned. A live `LISTEN` on it is refused with `EADDRINUSE` even when `SO_REUSEADDR` is set on
+/// both sockets, so a squatter was a hard block rather than a shared bind, and the stub died at
+/// its `bind` having written none of its flood. `ready` still returned, because all it requires
+/// is that *something* answers on the address — and the squatter answered.
 ///
-/// The stub writes **nothing** before its `bind`, so when the squatter wins the stub dies at
-/// `bind` having emitted none of its own flood. `ready` still returns, because all it requires is
-/// that *something* answers on the address — and the squatter answers. The scenario must then
-/// fail on that, by name.
+/// A squatter is still held here for the whole scenario, standing in for the sibling test that
+/// used to win the port. The gateway no longer takes a port the harness chose, so the squatter's
+/// address is simply never contended for.
 ///
-/// This is the residual half of #673, and it is the half the allocator fix alone does not close.
-/// Once `free_address` returns a held listener no squatter can win, so this scenario stops being
-/// reachable at all; until then, a squatter that *does* win must never be read as a quiet success.
-/// The failure is asserted on the **message**, not on the byte count: an earlier draft asserted
-/// `held > 0` and passed for the wrong reason — the killed stub's Python `EADDRINUSE` traceback
-/// lands on stderr, so a capture the harness never verified is enough to satisfy it. What has to
-/// hold is that the scenario names the child's death rather than reporting a byte shortfall or, far
-/// worse, proceeding to measure.
+/// This test originally asserted the *other* half — that a squatter which wins the port makes the
+/// scenario fail by name — and that assertion was correct for the shape that existed then. The
+/// allocator is now fixed, so the squatter can no longer win, and this test has been turned around
+/// to assert the property that actually matters now: **a squatter holding a port is irrelevant,
+/// because the gateway never uses a port the harness chose for it.**
+///
+/// The turn-around is the point, not a workaround. The previous version bound the squatter first
+/// and handed its address to the gateway, which made the scenario fail with `gateway exited` — a
+/// correct report of a defect that no longer exists. Asserting that would pin the *old* allocator
+/// in place: any future change that let the harness choose the port again would make this test go
+/// green again while the defect returned. So the squatter is still bound and still holds a live
+/// `LISTEN` for the whole scenario, but the gateway binds `:0` for itself and is unaffected, and
+/// the assertion is that the gateway's own flood is measured.
+///
+/// The byte count is the assertion, and it is safe here in a way it was not in the old draft: the
+/// gateway here *is* the one that bound the address it announced, so the bytes on both pipes are
+/// genuinely its own. The old draft could not assert a byte count because the dying stub's Python
+/// `EADDRINUSE` traceback lands on stderr and satisfied a non-empty check on its own.
 #[test]
 fn a_gateway_is_not_measured_through_a_squatted_address() -> Result<(), Box<dyn std::error::Error>>
 {
     let temporary = TempDir::new()?;
     let stub = both_pipes_gateway(&temporary.path)?;
-    // Bound, not asked for: the squatter must hold the address before the stub can take it.
+    // Bound and held for the whole scenario, standing in for the sibling test that used to win
+    // the port the harness had allocated. The gateway binds `:0` for itself, so this address is
+    // never contended for and the squatter cannot affect it.
     let squatter = std::net::TcpListener::bind("127.0.0.1:0")?;
-    let address = squatter.local_addr()?;
+    let squatted = squatter.local_addr()?;
     std::thread::spawn(move || {
         for stream in squatter.incoming() {
             drop(stream);
@@ -292,23 +324,37 @@ fn a_gateway_is_not_measured_through_a_squatted_address() -> Result<(), Box<dyn 
     });
     let mod_address = free_address()?;
 
-    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
+    let mut gateway_process =
+        process::gateway(&stub, SocketAddr::from(([127, 0, 0, 1], 0)), mod_address)?;
+    let address = announced_address(&stub, announcement::ANNOUNCE_TIMEOUT)?;
     process::ready(&mut gateway_process, address)?;
-    // The stub is blocked out of its own `bind`, so it can never reach its flood. `ready`
-    // nonetheless succeeded, against the squatter — which is exactly the #673 hazard.
+    assert_ne!(
+        address, squatted,
+        "the gateway bound the address the squatter was already holding, so the squatter is \
+         still able to deny it a port (sts2-harness#673)"
+    );
+    // The gateway is its own listener and reaches its flood, so both pipes carry real bytes from
+    // a process that actually bound the address it announced.
     let outcome =
         gateway_process.await_bytes(2 * BOTH_PIPES_BYTES, std::time::Duration::from_secs(30));
-    // Reaped rather than measured: the capture here is whatever the dying child wrote on its way
-    // out, which is the stub's own error text and not a property of the harness.
-    process::stop(gateway_process)?;
+    let output = process::stop(gateway_process)?;
 
     assert!(
-        matches!(outcome, Err(ref reported) if reported.contains("gateway exited")),
-        "a squatted address must make this scenario fail on the child's own death, but the wait \
-         reported {outcome:?}. Either the drain read {BOTH_PIPES_BYTES} bytes on each pipe from a \
-         gateway that never bound them, or the failure was reported as something other than the \
-         exit — in both cases the squatter's address was mistaken for this child \
-         (sts2-harness#673)"
+        outcome.is_ok(),
+        "a squatter holding a port must not affect a gateway that chose its own: the wait \
+         reported {outcome:?}, so the gateway did not deliver the flood on a port it bound for \
+         itself (sts2-harness#673)"
+    );
+    // The same "this test proves something" bar the flood test uses: the capture must carry more
+    // than one pipe buffer across both pipes, so a gateway that died quietly at its own `bind`
+    // and contributed only a Python traceback could not satisfy it. The gateway here really did
+    // bind the address it announced, so the bytes are its own rather than a failure's noise.
+    let held = output.stdout.len() + output.stderr.len();
+    assert!(
+        held > MAX_CAPTURE_BYTES,
+        "the served capture returned only {held} bytes across both pipes while a squatter held \
+         an unrelated port, so the gateway's own flood was not recovered and this test proves \
+         nothing (sts2-harness#673)"
     );
     Ok(())
 }
@@ -323,10 +369,14 @@ fn a_gateway_inside_the_shared_total_carries_no_truncation_notice()
 -> Result<(), Box<dyn std::error::Error>> {
     let temporary = TempDir::new()?;
     let stub = quiet_gateway(&temporary.path)?;
-    let address = free_address()?;
     let mod_address = free_address()?;
 
-    let mut gateway_process = process::gateway(&stub, address, mod_address)?;
+    // The stub binds `:0` and announces what it got, so no port is ever unowned between
+    // allocation and service. See `gateway_address_announcement` for why the parent cannot
+    // hold the port instead.
+    let placeholder = std::net::SocketAddr::from(([127, 0, 0, 1], 0));
+    let mut gateway_process = process::gateway(&stub, placeholder, mod_address)?;
+    let address = announced_address(&stub, announcement::ANNOUNCE_TIMEOUT)?;
     process::ready(&mut gateway_process, address)?;
     let output = process::stop(gateway_process)?;
 
