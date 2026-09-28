@@ -123,7 +123,7 @@ fn a_gh_that_finishes_in_time_still_succeeds() -> Result<(), Box<dyn Error>> {
 #[cfg(unix)]
 #[test]
 fn a_timeout_kills_the_whole_process_group() -> Result<(), Box<dyn Error>> {
-    let (stub, pid_file) = grandchild_gh()?;
+    let (_guard, stub, pid_file) = grandchild_gh()?;
     let runner = GhRunner {
         gh_path: stub.to_string_lossy().into_owned(),
         timeout: std::time::Duration::from_millis(200),
@@ -170,18 +170,21 @@ fn a_timeout_kills_the_whole_process_group() -> Result<(), Box<dyn Error>> {
 /// Returns the stub path and the file it writes the background pid into. The background job
 /// is what makes this a grandchild case: the recorded pid belongs to a child of the script,
 /// not to the pid the gate spawned, so a kill aimed at the spawned pid alone misses it.
+///
+/// The guard comes back with the paths because the stub has to still be on disk when the
+/// runner `exec`s it, which is after this returns, and the test reads the pid file while the
+/// guard is alive.
+///
+/// #719: this helper was added by #718 after #713 was closed, and it reintroduced the exact
+/// leak #713 fixed -- a `create_dir_all` per call that nothing ever removed, so every run of
+/// the suite left an `sts2-review-gate-grandchild-*` directory in `$TMPDIR` behind. `TempDir`
+/// is the landed remedy for this shape, and `fake_gh_leaves_no_directory_behind` is the
+/// control that keeps it honest.
 #[cfg(unix)]
-fn grandchild_gh() -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
-    static NEXT_GRANDCHILD_GH: std::sync::atomic::AtomicUsize =
-        std::sync::atomic::AtomicUsize::new(0);
-    let nonce = NEXT_GRANDCHILD_GH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let directory = std::env::temp_dir().join(format!(
-        "sts2-review-gate-grandchild-{}-{nonce}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&directory)?;
-    let path = directory.join("gh");
-    let pid_file = directory.join("background.pid");
+pub(super) fn grandchild_gh() -> Result<(TempDir, PathBuf, PathBuf), Box<dyn Error>> {
+    let directory = TempDir::new("grandchild")?;
+    let path = directory.path.join("gh");
+    let pid_file = directory.path.join("background.pid");
     // `sleep 3600 &` is the descendant: it outlives the script and inherits stdout, so it
     // keeps the pipe open after the script itself is killed. `wait` then blocks the script
     // forever, which is the hang the deadline has to end.
@@ -194,5 +197,5 @@ fn grandchild_gh() -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
     }
-    Ok((path, pid_file))
+    Ok((directory, path, pid_file))
 }

@@ -11,6 +11,14 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **The `grandchild_gh` stub no longer leaks a temp directory per run.** `#718` fixed the
+  process-group kill and its new test helper created a `$TMPDIR` directory per call that nothing
+  removed, reintroducing the `#713` leak one PR after that issue was closed. It accumulates
+  separately from `#713`'s because the name prefix differs (`-grandchild-` vs `-test-`), and it
+  fires on every run of the suite. The helper now uses the `TempDir` owner that `#713` added for
+  exactly this shape, and a second control asserts the new call site, because the existing one
+  covered only `fake_gh` -- which is why the leak passed a property that was already green.
+  Refs #719.
 - **Give the `gh api` call the 60-second timeout the reference has.** The reference bounds every call; the Rust port used `Command::output`, which waits forever, so a hung `gh` spends the whole `timeout-minutes: 5` job.
   It fails closed rather than wrongly, so the cost was availability, not correctness. A timeout
   kills the whole process group, not just the child, so helpers `gh` spawned do not survive
