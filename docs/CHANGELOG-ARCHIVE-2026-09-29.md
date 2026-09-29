@@ -34,3 +34,9 @@ not a supported release or a second normative changelog.
   distinct from the gameplay outcome. Source-only: native process evidence and the real child-process
   lane stay gated by sts2-game-mod#79
   ([ADR 0068](decisions/0068-cold-launch-trial-isolation.md)). Refs #122.
+
+- **Bind a benchmark rerun admission to the exact declaration it compared equal.** `RerunAdmission`
+  now owns the admitted `Manifest`, reachable only through `RerunAdmission::declaration()`, so a
+  `RerunAllocationSeam` cannot allocate for a declaration other than the one whose controlled inputs
+  compared equal. Source-only contract tightening for #121; the equal path is unchanged.
+  Refs #121.
