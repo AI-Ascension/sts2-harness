@@ -108,8 +108,10 @@ exchange as the artifact's `provider_response`.
 - **Nothing about decision quality.** One state is not a measurement. Whether Defend over Bash was
   correct here is a judgement this report does not make; the model preferred blocking against 12
   incoming damage at 34 hit points and was not confident about it.
-- **Nothing about the bridge's own TLS.** The exchange was made by the transport executable using its
-  own TLS stack. The bridge still contains no TLS client, which is the subject of issue #299.
+- **Nothing about the bridge's own TLS.** The exchange recorded here was made by the transport
+  executable using its own TLS stack, so this artifact is not evidence for the in-process
+  `rustls` client the bridge now uses. That path is covered only by the offline suite, which does
+  not reach a live provider.
 - **Nothing about a full run.** One call is not an episode. Rate behaviour, sustained cost, and
   latency under a real turn loop are unmeasured.
 
