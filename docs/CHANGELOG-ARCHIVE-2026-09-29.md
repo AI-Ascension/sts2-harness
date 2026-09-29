@@ -40,3 +40,15 @@ not a supported release or a second normative changelog.
   `RerunAllocationSeam` cannot allocate for a declaration other than the one whose controlled inputs
   compared equal. Source-only contract tightening for #121; the equal path is unchanged.
   Refs #121.
+
+- **Plan, schedule and compare bounded same-start branch experiments.** A new
+  `benchmark_manifest::branch_experiment` module fixes the effect-free contract behind issue #119: a
+  versioned declaration of one verified fork point, a fork strategy, child policies and per-child and
+  total budgets; a stable per-child trial key with its own fresh provider/context namespace; a
+  same-start admission re-check that keeps a prefix-only start out of exact-restore statistics; a
+  retry-safe recorded scheduler that reconciles a lost reply without double-scoring a trial; an
+  aligned comparison that separates declared policy divergence from restore failure and does not let
+  an identical endpoint erase an earlier divergence; and a sanitized report carrying a keyed handle
+  and no exact digest. Source-only
+  ([ADR 0072](decisions/0072-branch-experiment-comparison.md)): the live children, the restore
+  and the provider calls stay with the gateway and game-mod. Refs #119.

@@ -25,7 +25,12 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   `429` and `529`) fail closed, and a TLS failure is never a downgrade or a retry. Neither
   `rustls` backend is pure Rust — `ring` 0.17.14 carries 17 `.c` and 73 `.S`, `aws-lc-sys` 0.39.0
   662 `.c`/`.h` and 849 `.S` — so that part of the issue was unsatisfiable as written; `ring` was
-  taken as the smaller, and this workspace already compiles C for `rusqlite`. See ADR 0053.
+  taken as the smaller, and this workspace already compiles C for `rusqlite`. The compiled-bridge
+  evaluation lane narrowed with it: it staged a synthetic `--transport` the bridge no longer
+  reads, so its nine provider-answer cases are retired rather than left failing. Response classes
+  are asserted in-process against bytes and the ordering a real peer shows against a loopback TLS
+  server, which leaves no automated lane driving a provider exchange through the compiled binary
+  end to end; ADR 0053 records that gap and the seam that would close it.
 - **A transport that succeeds with a malformed body is reported as the parse error.** #752 read
   the exit status ahead of the worker joins and fixed the *refusal* case, but on a successful exit
   the writer's `EPIPE` still pre-empted the body-parse error: a transport that answers without
@@ -708,18 +713,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   a declared topological step order with no cycles or forward references, and mutation tools refused
   from the read-only catalog ([ADR 0073](docs/decisions/0073-pre-agent-read-only-recipe-admission.md)).
   Collection execution, provenance and the Studio round-trip remain open. Refs #97.
-
-- **Plan, schedule and compare bounded same-start branch experiments.** A new
-  `benchmark_manifest::branch_experiment` module fixes the effect-free contract behind issue #119: a
-  versioned declaration of one verified fork point, a fork strategy, child policies and per-child and
-  total budgets; a stable per-child trial key with its own fresh provider/context namespace; a
-  same-start admission re-check that keeps a prefix-only start out of exact-restore statistics; a
-  retry-safe recorded scheduler that reconciles a lost reply without double-scoring a trial; an
-  aligned comparison that separates declared policy divergence from restore failure and does not let
-  an identical endpoint erase an earlier divergence; and a sanitized report carrying a keyed handle
-  and no exact digest. Source-only
-  ([ADR 0072](docs/decisions/0072-branch-experiment-comparison.md)): the live children, the restore
-  and the provider calls stay with the gateway and game-mod. Refs #119.
 
 - **Resolve and durably bind an authored workflow's seed.** A new `seed_binding` module fixes the
   source-only contract behind #103: an explicit or generate-once seed normalizes to one bounded

@@ -96,6 +96,32 @@ The offline tests remain honest without a fake transport: a TLS server in CI wou
 deterministic fixture, so the response classes the provider can return are asserted in-process
 against bytes, and the credential assertions run at the real process boundary.
 
+**What this cost the compiled-bridge lane, stated rather than absorbed.**
+`experiments/jev-evaluation/compiled-bridge.integration.mjs` drove the real compiled binary
+end to end by staging a socket-free synthetic `--transport` beside it, and asserted the paired
+runner's accounting of provider attempts across all eight response classes. Since the bridge
+performs the exchange itself, that staging became inert: host, port, and root store are
+compile-time constants with no injection seam, so a synthetic peer cannot satisfy the binary, and
+a local server presenting a substituted CA is refused by design. Nine of its eleven cases could no
+longer reach a successful answer and were retired rather than left failing; the two that are
+genuinely provider-independent — the runner's digest admission of the real binary, and the
+bridge's pre-exchange refusals — are kept.
+
+The response-class coverage those nine carried is not dropped, it moves: framing, status,
+`chunked`, and `close_notify` are asserted against literal bytes in `jev_tls_transport_tests.rs`,
+catalog and confidence refusals in `sts2_jev_bridge_tests.rs`, and the ordering that only a real
+peer can show — handshake completing before a request is written, and a peer that never answers
+being refused on the deadline — in `jev_tls_transport_loopback_tests.rs` against a loopback TLS
+server. The manifest schema still carries a `transport` field and the runner still re-pins it;
+that field is now vestigial for this bridge and retiring it is separate work.
+
+The gap this leaves is real and is not papered over: **no automated lane exercises a provider
+exchange end to end through the compiled binary.** Restoring one would mean adding a test-only
+seam to production TLS code — a feature-gated host and root override, or an injected transport —
+which widens the production surface to serve a test and needs its own review. Until that is
+decided on its own merits, the compiled lane proves admission and pre-exchange refusal, and the
+in-process and loopback suites prove the exchange.
+
 **The crypto backend is `ring`, and the "pure Rust" condition could not be met.** `rustls` 0.23
 declares exactly two crypto providers and no others — `crypto::ring` and `crypto::aws_lc_rs`,
 each behind its own feature, with `custom-provider` reserved for a provider the caller supplies.
