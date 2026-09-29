@@ -63,3 +63,13 @@ not a supported release or a second normative changelog.
   persisted effective seed and operation identity are sent unchanged. Native seed acceptance stays
   gated by sts2-game-mod#79
   ([ADR 0071](decisions/0071-authored-seed-binding.md)). Refs #103.
+
+- **Refuse a suite whose case and policy axes cannot derive a settleable trial key.** `SuiteManifest`
+  bounded a `case_id` and a `policy_id` separately at `MAX_SUITE_LABEL_BYTES` (128), while
+  `TrialOutcome::validate` refuses a `trial_key` over `MAX_TRIAL_KEY_BYTES` (256) and the key
+  concatenates both labels around a 64-hex suite revision. A manifest that validated could therefore
+  plan a trial whose outcome `settle` refused forever. The combined pair is now bounded by a derived
+  `MAX_SUITE_TRIAL_AXIS_BYTES`, so every accepted manifest is plan-and-settleable, and an oversized
+  single id is still refused as an invalid label. Source-only: no released artifact was affected and
+  no live caller reached the case. Compatibility: an input that previously validated and then failed
+  at settlement is now refused at validation.
