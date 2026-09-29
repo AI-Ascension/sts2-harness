@@ -53,7 +53,14 @@ test('independent paired execution preserves both inputs and integrates the exis
   assert.notEqual(proofs[0].input.model_execution_id, proofs[1].input.model_execution_id);
   for (const proof of proofs) {
     delete proof.input.model_execution_id;
-    assert.ok(proof.args.includes(f.transport)); assert.equal(proof.args.includes('--record'), false);
+    // The bridge performs the exchange itself, so the invocation names the model and nothing else
+    // an operator has to pin. What this case still proves is that the proof recorded the real
+    // argument vector: the model is named, and neither the retired `--transport` flag nor a
+    // transport path appears in it now that there is no second artifact to pass.
+    assert.ok(proof.args.includes(f.manifest.model));
+    assert.equal(proof.args.includes('--transport'), false);
+    assert.equal(proof.args.some(argument => argument.includes('System One transport')), false);
+    assert.equal(proof.args.includes('--record'), false);
     assert.equal(proof.secret_present, true);
     assert.equal(proof.environment_names.includes('UNDECLARED_SECRET'), false);
     assert.equal(proof.environment_names.includes('HOME'), false);

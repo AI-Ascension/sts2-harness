@@ -60,7 +60,11 @@ if (mode !== 'no_capture') write('result', result);
 if (mode === 'extra_file') writeFileSync(join(directory, 'unexpected.json'), '{}', { mode: 0o600 });
 if (mode === 'exit_after_complete') process.exit(3);
 if (mode === 'invalid_stdout') { process.stdout.write('{ invalid synthetic-secret'); process.exit(0); }
-if (mode === 'mutate_transport') writeFileSync(flags.transport, 'changed synthetic transport');
+// The drift case replaces the artifact the runner re-pins between arms. It used to be the
+// operator-owned transport, which no longer exists now that the bridge performs the exchange
+// itself, so the bridge is the artifact whose replacement must still stop the run. The mode name
+// is kept so the case still reads as "an artifact was replaced mid-run" rather than as a rename.
+if (mode === 'mutate_transport') writeFileSync(process.argv[1], 'changed synthetic bridge');
 if (mode === 'bad_stdout') selected = catalog.length > 1 ? (selected === 0 ? 1 : 0) : null;
 process.stdout.write(JSON.stringify(lowEvidence ? { decision: 'reobserve', rationale: 'synthetic refusal' }
   : { decision: 'action', action_id: selected === null ? 'out-of-catalog' : catalog[selected],
