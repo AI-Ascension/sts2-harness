@@ -166,6 +166,10 @@ pub fn preflight(
     if profile_state != ExoCapabilityState::Supported {
         return Err(ExoPreflightError::ProfileUnsupported);
     }
+    // `context_modes` describes what the build implements, not what a caller may request, and no
+    // wire request field can select one, so `Continuity` is unreachable on the wire today. This
+    // guard is deliberately retained rather than deleted: it is the only place a future build that
+    // genuinely adds a non-fresh mode would be caught. Refs #760.
     if trusted.context_mode == ExoContextMode::Continuity
         && !descriptor
             .context_modes
