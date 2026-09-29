@@ -218,8 +218,7 @@ use transport_worker::{Reader, Writer, spawn_transport_worker};
 /// two workers are therefore built with `Builder::spawn`, which reports `EAGAIN` as an `Err`
 /// instead of panicking the way `std::thread::spawn` does. On a contended host the panic would
 /// unwind through `main`, so the process would die with a test-harness abort rather than the
-/// refusal's own exit status, and the caller would see a transport that never ran rather than the
-/// resource exhaustion that actually stopped it.
+/// refusal's own exit status, and the caller would see a transport that never ran.
 ///
 /// The credential is never passed here: the transport reads it from the environment the runtime
 /// declared, so it is never an argument of this process, a captured byte, or a record.
@@ -291,11 +290,15 @@ fn exchange(
         }
         std::thread::sleep(POLL);
     };
-    writer.join().map_err(|_| "transport writer failed")??;
-    let received = reader.join().map_err(|_| "transport reader failed")??;
+    // The exit status is read BEFORE either worker is joined, and deliberately so. A transport that
+    // refuses usually exits without draining its stdin, so the writer's `write_all` fails with
+    // `EPIPE`; joining first reported that artifact instead of the refusal (Refs #751). The status
+    // does not depend on scheduling, so it is classified first; the workers are still joined.
     if !status.success() {
         return Err("transport reported failure".into());
     }
+    writer.join().map_err(|_| "transport writer failed")??;
+    let received = reader.join().map_err(|_| "transport reader failed")??;
     Ok(received)
 }
 
