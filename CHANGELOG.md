@@ -10,6 +10,20 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **A transport that succeeds with a malformed body is reported as the parse error.** #752 read
+  the exit status ahead of the worker joins and fixed the *refusal* case, but on a successful exit
+  the writer's `EPIPE` still pre-empted the body-parse error: a transport that answers without
+  draining its stdin — one answering from a cache, or short-circuiting — closes the pipe early,
+  so the named cause was `Broken pipe (os error 32)` or the parse error depending on which finished
+  first. Measured on `main` at `82259540`, 40 runs per case: 27 wrong / 13 right, unchanged across
+  the #752 fix, so this was its residual rather than a regression. Once the child has exited
+  successfully the status has classified the run and the response is waiting in the stdout pipe,
+  so the writer's `EPIPE` is no longer propagated; a non-`EPIPE` I/O failure or a panicked worker
+  still is. The new case runs the exchange 12 times and asserts `Broken pipe` never appears and
+  that every run names the same cause — an invariant, since pinning either outcome alone would
+  flake in the direction it forbids. Verified non-vacuous: with only the production change
+  reverted it fails on run 0. Refs #753, #751.
+
 
 - **A transport that refuses a request is reported as the refusal, not as a broken pipe.**
   #746 made the bridge print `cause: {error}`, but the workers were joined before the transport's
@@ -707,30 +721,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   `RerunAllocationSeam` cannot allocate for a declaration other than the one whose controlled inputs
   compared equal. Source-only contract tightening for #121; the equal path is unchanged.
   Refs #121.
-
-- **Make the served capture surface configured and fail-closed.** Which sink the served composition
-  attaches and what it retains is now an owner decision recorded in
-  [ADR 0070](docs/decisions/0070-served-capture-configuration-and-retention.md): an unset surface
-  keeps the merged in-memory recording ring, `metadata` and `off` are selectable, and every
-  contradictory or out-of-range `STS2_WORKFLOW_CAPTURE_*` value is refused at startup rather than
-  silently downgraded. Restart-durable capture bytes and the unrecorded Ollama `HttpBody` boundary
-  remain accountable residuals (#145). Compatibility: no change to the served default behaviour.
-  Refs #398.
-
-- **Admit alternative gameplay forks from verified seeded replay prefixes.** A new
-  `benchmark_manifest::prefix_fork` module fixes the effect-free fork-admission contract behind
-  #117: an exact seed/profile/build/compatibility binding, a settled nonterminal boundary with
-  complete receipts and one resolved legal action, a zero-provider-call replay, bounded sibling
-  forks with distinct identities, and a forward-only replay-to-child handoff that reconciles a lost
-  target. Source-only ([ADR 0069](docs/decisions/0069-prefix-fork-admission.md)). Refs #117.
-
-- **Orchestrate isolated cold-launch benchmark trials from one pristine baseline.** A new
-  `benchmark_manifest::cold_launch` module fixes the per-trial isolation contract behind issue #122:
-  an immutable baseline binding the artifact digest, launch profile and closed telemetry exclusions;
-  an exclusive, bounded destination lease; an opaque gateway-attested process birth with its own
-  instance generation, since a PID can be reused; a readiness proof bound to that birth; a recorded
-  stage machine that reconciles a lost reply without adopting another trial's state and quarantines
-  an uncertain destination; and machine-readable cold-start evidence whose cleanup failure is
-  distinct from the gameplay outcome. Source-only: native process evidence and the real child-process
-  lane stay gated by sts2-game-mod#79
-  ([ADR 0068](docs/decisions/0068-cold-launch-trial-isolation.md)). Refs #122.
