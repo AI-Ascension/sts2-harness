@@ -112,8 +112,10 @@ The response-class coverage those nine carried is not dropped, it moves: framing
 catalog and confidence refusals in `sts2_jev_bridge_tests.rs`, and the ordering that only a real
 peer can show — handshake completing before a request is written, and a peer that never answers
 being refused on the deadline — in `jev_tls_transport_loopback_tests.rs` against a loopback TLS
-server. The manifest schema still carries a `transport` field and the runner still re-pins it;
-that field is now vestigial for this bridge and retiring it is separate work.
+server. The `transport` entry the manifest schema used to require is gone: `runner-contract.mjs`
+is at `ascension.jev-paired-runner.v2`, the field is in neither the admitted key set nor any
+verification or report path, and a manifest that still carries one is refused by the name
+`runner_retired_transport` rather than having the field quietly dropped.
 
 The gap this leaves is real and is not papered over: **no automated lane exercises a provider
 exchange end to end through the compiled binary.** Restoring one would mean adding a test-only
@@ -176,7 +178,8 @@ the pinned binary, which is exactly the part that must stay reviewable here.
 
 - One more provider kind, one more executable, and one more document; no change to the reviewed
   envelope, the game boundary, the gateway, or the MCP path.
-- A run using this lane records two digests, the bridge and the transport, rather than one.
+- A run using this lane records one digest, the bridge. The retired second artifact is refused at
+  admission instead of admitted and ignored.
 - The offline test suite covers request construction, response framing, decision mapping, and every
   fail-closed refusal. It does not cover TLS, a live endpoint, or answer quality.
 
