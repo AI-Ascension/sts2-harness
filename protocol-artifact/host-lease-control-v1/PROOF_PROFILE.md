@@ -22,7 +22,6 @@ These six values are the `domain` field of every case in
 `proof-vectors.json` `frame_proof_cases`, each with its own `proof` and
 `fixture_sha256`, so the table is checkable against the shipped vectors rather
 than asserted here. Do not accept a caller-selected domain. Compute:
-Do not accept a caller-selected domain. Compute:
 
 ```text
 unsigned_frame = complete frame with only auth.proof omitted
