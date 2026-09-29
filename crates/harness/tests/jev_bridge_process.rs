@@ -8,8 +8,8 @@
 //! The unit suite inside the binary calls `decide` and `record` in process, so it proves a refusal
 //! is *returned* but not that the executable turns that refusal into the exit status and the empty
 //! standard output the runtime lane reads. These cases run the real binary against a transport
-//! executable, which is the seam the bridge actually owns, and they add the two response classes the
-//! in-process suite had no case for: an answer that is not a `200`, and the operator credential.
+//! executable, the seam the bridge actually owns, and they add the response classes the in-process
+//! suite had no case for: an answer that is not a `200`, and the operator credential.
 //!
 //! Every refusal case is driven past the request, so the transport is invoked and its marker is
 //! written before the refusal happens. A case whose transport never ran would refuse for the wrong
@@ -24,21 +24,22 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 #[path = "support/jev_bridge_process_scratch.rs"]
 mod scratch;
 use scratch::Scratch;
+#[path = "support/jev_bridge_process_malformed_body.rs"]
+mod malformed_body;
 
 /// Serialises every case that launches the bridge, so this binary never holds more than one
 /// bridge and its transport alive at a time.
 ///
 /// Each invocation costs a child process plus two worker threads inside it. Left to the default
-/// test-thread count, the eight cases below created those concurrently, and a runner that could
-/// not fork answered `EAGAIN`. That surfaced as a case whose transport never ran, which the
-/// non-vacuity guard below reported as a behavioural failure — the guard was right that the case
-/// proved nothing, and wrong about why. Serialising keeps the suite's process cost bounded at one
-/// bridge, so the guard can only fire for the reason it exists to detect.
+/// test-thread count, the cases below created those concurrently, and a runner that could not fork
+/// answered `EAGAIN`. That surfaced as a case whose transport never ran, which the non-vacuity
+/// guard below reported as a behavioural failure — the guard was right that the case proved
+/// nothing, and wrong about why. Serialising bounds the cost at one bridge.
 fn bridge_slot() -> MutexGuard<'static, ()> {
     static SLOT: OnceLock<Mutex<()>> = OnceLock::new();
     let lock = SLOT.get_or_init(|| Mutex::new(()));
-    // A panicking case poisons the slot, and the next case must still be able to run: the panic
-    // belongs to the case that caused it, not to every case that follows it.
+    // A panicking case poisons the slot, and the next case must still run: the panic belongs to
+    // the case that caused it, not to every case that follows it.
     lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
@@ -102,7 +103,7 @@ fn run(
 }
 
 /// Runs the real bridge once with a caller-chosen request on standard input.
-fn run_with(
+pub(crate) fn run_with(
     transport: &Path,
     environment: &[(&str, &str)],
     arguments: &[&str],
@@ -169,7 +170,7 @@ fn stderr_of(output: &Output) -> String {
 }
 
 /// A refused run exits nonzero, prints no decision, and says why.
-fn refused_without_a_decision(output: &Output) -> Result<(), String> {
+pub(crate) fn refused_without_a_decision(output: &Output) -> Result<(), String> {
     if output.status.success() {
         return Err(format!(
             "the bridge exited zero and printed {}",
@@ -222,14 +223,13 @@ fn a_transport_that_refuses_a_non_200_status_is_refused_without_a_decision() -> 
     assert_refused_after_the_transport_ran(&scratch, "refuse-503.sh", &transport)
 }
 
-/// A transport that refuses a request is reported as the refusal, not as a failed write to its pipe.
-/// A transport that exits without draining its stdin fails the bridge's writer with `EPIPE`, and
-/// reporting that artifact instead of the refusal left the cause line saying `Broken pipe (os error
-/// 32)` for a provider that had refused in the most ordinary way (Refs #751).
-///
-/// Both details below were found by reverting the fix and watching this stay green: the transport
-/// must refuse WITHOUT reading stdin, and the request must exceed the pipe buffer; `Scratch`
-/// documents each and why. The cause is asserted positively, so deleting it fails here.
+/// A transport that refuses a request is reported as the refusal, not as a failed write to its
+/// pipe. A transport that exits without draining its stdin fails the bridge's writer with `EPIPE`,
+/// and reporting that artifact instead of the refusal left the cause line saying `Broken pipe
+/// (os error 32)` for a provider that had refused in the most ordinary way (Refs #751). Both
+/// details below were found by reverting the fix and watching this stay green: the transport must
+/// refuse WITHOUT reading stdin, and the request must exceed the pipe buffer. The cause is asserted
+/// positively, so deleting it fails here.
 #[test]
 fn a_refused_transport_is_reported_as_the_refusal_and_not_as_a_broken_pipe() -> Result<(), String> {
     let scratch = Scratch::new("refusal-named")?;
@@ -274,7 +274,7 @@ fn a_raw_http_error_status_line_is_refused_without_a_decision() -> Result<(), St
 /// Without this, a host that cannot fork and a provider that refused produce byte-identical
 /// standard error, and a case that only asserts the refusal was driven past the transport can
 /// still pass on a refusal produced by a cause it never reached. The cause line is what separates
-/// the two, so this asserts on it at the real process boundary rather than in-process.
+/// the two, so this asserts on it at the real process boundary.
 #[test]
 fn a_transport_that_cannot_be_launched_names_the_launch_failure() -> Result<(), String> {
     let scratch = Scratch::new("unlaunchable")?;

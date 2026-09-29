@@ -207,7 +207,7 @@ use recording::{record, record_profile};
 
 #[path = "support/jev_transport_worker.rs"]
 mod transport_worker;
-use transport_worker::{Reader, Writer, spawn_transport_worker};
+use transport_worker::{Reader, Writer, join_writer, spawn_transport_worker};
 
 /// Runs the operator-owned transport for exactly one bounded exchange.
 ///
@@ -290,14 +290,13 @@ fn exchange(
         }
         std::thread::sleep(POLL);
     };
-    // The exit status is read BEFORE either worker is joined, and deliberately so. A transport that
-    // refuses usually exits without draining its stdin, so the writer's `write_all` fails with
-    // `EPIPE`; joining first reported that artifact instead of the refusal (Refs #751). The status
-    // does not depend on scheduling, so it is classified first; the workers are still joined.
+    // The status is read BEFORE either worker is joined, because it does not depend on scheduling
+    // and the writer's `EPIPE` usually beats it (Refs #751); `join_writer` absorbs that same early
+    // close afterwards (Refs #753).
     if !status.success() {
         return Err("transport reported failure".into());
     }
-    writer.join().map_err(|_| "transport writer failed")??;
+    join_writer(writer)?;
     let received = reader.join().map_err(|_| "transport reader failed")??;
     Ok(received)
 }

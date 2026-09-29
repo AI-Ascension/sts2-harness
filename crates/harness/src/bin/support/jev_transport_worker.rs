@@ -113,3 +113,25 @@ impl Drop for RefusalGuard {
         DECLINED_PID_FILE.with(|file| *file.borrow_mut() = None);
     }
 }
+
+/// Joins the transport writer once the child has already exited, and reports only a real failure.
+///
+/// A transport usually exits without draining its stdin, so the writer's `write_all` fails with
+/// `EPIPE`. Joining first reported that artifact instead of the fact the bridge already held: the
+/// refusal (Refs #751), and then, once the status was classified ahead of the joins, the body-parse
+/// error, which it beat on a scheduling race (Refs #753).
+///
+/// The early close is therefore absorbed, because on an exited child it says nothing about the
+/// response, which is in the stdout pipe for the reader to deliver. Every other I/O error is still
+/// surfaced, and a panicked worker is still a failure: a thread that died without writing is not a
+/// transport that answered.
+pub(super) fn join_writer(
+    writer: std::thread::JoinHandle<std::io::Result<()>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match writer.join() {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(error)) if error.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+        Ok(Err(error)) => Err(error.into()),
+        Err(_) => Err("transport writer failed".into()),
+    }
+}
