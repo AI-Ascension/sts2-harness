@@ -204,6 +204,14 @@ mod tls;
 mod tls_fixture;
 
 #[cfg(test)]
+#[path = "support/jev_tls_transport_loopback_fixture.rs"]
+mod tls_loopback_fixture;
+
+#[cfg(test)]
+#[path = "support/jev_tls_transport_loopback_tests.rs"]
+mod tls_loopback_tests;
+
+#[cfg(test)]
 #[path = "support/jev_tls_transport_tests.rs"]
 mod tls_transport_tests;
 

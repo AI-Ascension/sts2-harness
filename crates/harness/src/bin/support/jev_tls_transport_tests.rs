@@ -188,6 +188,82 @@ fn a_chunked_body_is_decoded_and_a_broken_one_is_refused() {
     assert!(parse_body(both).is_err());
 }
 
+/// The chunked terminator has to be complete, trailers and all.
+///
+/// The grammar is a zero-size chunk, then a trailer section, then the blank line that ends it.
+/// Accepting the body the moment the zero chunk is seen would accept `0\r\n` as a finished message
+/// and ignore whatever the peer claimed came next -- the same "the first half of a message is a
+/// message" mistake the declared-length path refuses. Each of these is a well-formed prefix of a
+/// complete terminator, and none of them is a complete terminator.
+#[test]
+fn a_chunked_terminator_missing_its_trailer_section_is_refused() {
+    // The zero chunk and nothing after it: the trailer section and its terminating CRLF are absent.
+    assert!(
+        parse_body(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n6\r\n{\"a\":}\r\n0\r\n")
+            .is_err(),
+        "a zero chunk with no trailer terminator is not a whole body"
+    );
+    // Present but malformed: a trailer line with no field name is not a header.
+    assert!(
+        parse_body(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n6\r\n{\"a\":}\r\n0\r\nnot-a-header\r\n\r\n"
+                as &[u8]
+        )
+        .is_err(),
+        "a malformed trailer is refused rather than skipped"
+    );
+    // And the complete form, which is accepted -- so the two above fail on the missing grammar
+    // rather than on chunked framing being refused outright.
+    let mut with_trailer =
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n6\r\n{\"a\":}\r\n0\r\n".to_vec();
+    with_trailer.extend_from_slice(b"X-Checksum: 0\r\n\r\n");
+    assert_eq!(
+        parse_body(&with_trailer).expect("a complete terminator with trailers"),
+        b"{\"a\":}".to_vec()
+    );
+}
+
+/// Only `chunked` is decoded, and only when it is the coding that was asked for.
+///
+/// A transport that searched the header for the substring `chunked` would decode a body a peer had
+/// framed some other way, or that named the coding twice. Those are the shapes a proxy produces when
+/// it wants two readings of the same bytes, so each is refused by name rather than decoded on a
+/// guess.
+#[test]
+fn a_transfer_coding_this_transport_cannot_decode_is_refused() {
+    for header in [
+        // A coding this transport does not implement, with and without `chunked` alongside it.
+        "Transfer-Encoding: gzip",
+        "Transfer-Encoding: gzip, chunked",
+        // The word present but not as a coding token: a substring match would decode these.
+        "Transfer-Encoding: xchunked",
+        "Transfer-Encoding: chunkedx",
+        // `chunked` is defined as the final coding, so one that is not last is not this framing.
+        "Transfer-Encoding: chunked, gzip",
+        // Two `chunked` codings make the wire format ambiguous.
+        "Transfer-Encoding: chunked, chunked",
+    ] {
+        let raw = format!("HTTP/1.1 200 OK\r\n{header}\r\n\r\n0\r\n\r\n");
+        assert_eq!(
+            parse_body(raw.as_bytes())
+                .map(|_| ())
+                .unwrap_err()
+                .to_string(),
+            "the provider response used a transfer coding this transport cannot decode",
+            "expected {header:?} to be refused rather than decoded"
+        );
+    }
+    // The exact token, alone, is the one framing that is implemented.
+    assert_eq!(
+        parse_body(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: Chunked\r\n\r\n6\r\n{\"a\":}\r\n0\r\n\r\n"
+                as &[u8]
+        )
+        .expect("the chunked token, matched case-insensitively"),
+        b"{\"a\":}".to_vec()
+    );
+}
+
 /// The request carries the credential in a header and never as an argument or a body field.
 #[test]
 fn the_credential_is_carried_only_in_the_authorization_header() {

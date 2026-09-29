@@ -28,7 +28,7 @@ pub(super) mod framing;
 
 /// The TLS session, behind one small surface so a certificate refusal precedes the request.
 #[path = "jev_tls_transport_session.rs"]
-mod session;
+pub(super) mod session;
 
 use session::tls_session;
 
@@ -68,7 +68,12 @@ pub(super) const MAX_HEADER_BYTES: usize = 8192;
 pub(super) const MAX_CREDENTIAL_BYTES: usize = 4096;
 
 /// How long the whole exchange may take, covering connect, handshake, write, and read.
-const DEADLINE: Duration = Duration::from_secs(100);
+///
+/// Read by [`deadline`] rather than named here so the session module can reach it without this
+/// module's private constant being duplicated across a `use`.
+fn deadline() -> Duration {
+    Duration::from_secs(100)
+}
 
 /// How long one connection attempt may take before it is a refusal.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -95,6 +100,10 @@ pub(super) fn post(body: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut session = tls_session(connect(started)?, started)?;
 
     let request = build_request(body, &credential);
+    // The write timeout was last set at connect time, against the deadline as it stood then. It is
+    // refreshed against the same original deadline so a slow handshake cannot hand the writer a
+    // stale allowance that outlives the bound the run promised.
+    bound_socket(session.get_mut(), started)?;
     session
         .write_all(&request)
         .map_err(|_| "the provider connection failed while sending the request")?;
@@ -163,7 +172,7 @@ fn connect(started: Instant) -> Result<TcpStream, Box<dyn std::error::Error>> {
         .map_err(|_| "the provider connection could not be configured")?;
     // The handshake is driven on this socket directly, so the read and write timeouts have to be
     // present before the first byte moves, not only before the first read of the response.
-    bound_socket(&stream)?;
+    bound_socket(&stream, started)?;
     Ok(stream)
 }
 
@@ -172,12 +181,21 @@ fn connect(started: Instant) -> Result<TcpStream, Box<dyn std::error::Error>> {
 /// A timeout is set in both directions deliberately. Read-only bounds still let a peer that stops
 /// reading leave the bridge blocked in `write` indefinitely, because a full socket buffer blocks
 /// the writer rather than returning a timeout, and that is the shape a stalled provider takes.
-fn bound_socket(stream: &TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+///
+/// `started` is the whole-exchange start, not the present moment. Re-deriving the allowance from
+/// `Instant::now()` on every call would hand each phase a fresh 100 seconds, which is the same
+/// unbounded wait the bound exists to prevent -- a peer dribbling bytes inside every individual
+/// interval could keep a run open forever. Every refresh therefore computes what is left of the
+/// one deadline.
+pub(super) fn bound_socket(
+    stream: &TcpStream,
+    started: Instant,
+) -> Result<(), Box<dyn std::error::Error>> {
     stream
-        .set_read_timeout(Some(remaining(Instant::now())))
+        .set_read_timeout(Some(remaining(started)))
         .map_err(|_| "the provider connection timeout could not be set")?;
     stream
-        .set_write_timeout(Some(remaining(Instant::now())))
+        .set_write_timeout(Some(remaining(started)))
         .map_err(|_| "the provider connection timeout could not be set")?;
     Ok(())
 }
@@ -187,7 +205,7 @@ fn bound_socket(stream: &TcpStream) -> Result<(), Box<dyn std::error::Error>> {
 /// A zero duration passed to `set_read_timeout` means "block forever" on some platforms and
 /// "fail immediately" on others, so the remainder is floored rather than allowed to reach zero.
 fn remaining(started: Instant) -> Duration {
-    DEADLINE
+    deadline()
         .saturating_sub(started.elapsed())
         .max(Duration::from_millis(1))
 }

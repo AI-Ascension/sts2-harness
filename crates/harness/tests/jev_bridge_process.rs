@@ -88,6 +88,11 @@ fn launched(environment: &[(&str, &str)], arguments: &[&str]) -> Result<Command,
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // The credential variable is removed before anything else is applied, so a test that means to
+    // exercise "no credential is present" cannot accidentally inherit one from the developer
+    // running the suite. Without this the test only passes on a machine where the variable is
+    // unset, and fails -- or worse, silently authenticates -- on a machine where it is set.
+    command.env_remove(CREDENTIAL_NAME);
     for (name, value) in environment {
         command.env(name, value);
     }
