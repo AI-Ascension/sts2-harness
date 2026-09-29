@@ -40,7 +40,7 @@ impl std::fmt::Display for ProfileSetupError {
                 "save-profile discovery must not name a profile or a baseline fence"
             }
             Self::BaselineFenceMismatch => {
-                "save-profile baseline fence does not match the operation"
+                "save-profile baseline fence is required or prohibited by the operation"
             }
             Self::ActiveRunConflict => "save-profile mutation conflicts with the active run state",
             Self::ReadbackMismatch => "save-profile readback does not match the admitted identity",

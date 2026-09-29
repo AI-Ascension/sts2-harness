@@ -6,6 +6,10 @@ use sts2_harness::{ExoProcessConfig, ExoProcessConfigError};
 #[cfg(unix)]
 use sts2_harness::{ExoProcessTransport, ExoTransport, ExoTransportError};
 
+#[cfg(unix)]
+#[path = "support/exo_process_argv_separation.rs"]
+mod exo_process_argv_separation;
+
 #[test]
 fn process_configuration_requires_direct_bounded_inputs() {
     assert_eq!(

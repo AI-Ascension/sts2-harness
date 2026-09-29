@@ -31,6 +31,20 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   are asserted in-process against bytes and the ordering a real peer shows against a loopback TLS
   server, which leaves no automated lane driving a provider exchange through the compiled binary
   end to end; ADR 0053 records that gap and the seam that would close it.
+
+- **A baseline-fence refusal now reports presence, not disagreement.** Since #468 the save-profile
+  fence rule is presence-only: the owner checks the profile identity and the baseline independently
+  and imposes no equality between them, so a distinct-but-valid fence can no longer be refused.
+  `ProfileSetupError::BaselineFenceMismatch` means only that a required fence was absent or a
+  prohibited one supplied, and its doc comment already said so — but the router-visible `Display`
+  string still read `save-profile baseline fence does not match the operation`, the superseded
+  meaning. A router branching on a refusal, or an operator reading one, was told the fence disagreed
+  with something when a required fence was missing or a prohibited one supplied. The string is now
+  `save-profile baseline fence is required or prohibited by the operation`, and a table test pins
+  the whole `ProfileSetupError` vocabulary, asserting no refusal leaks a supplied profile value, a
+  host path or game text. The admission rule and #102's T2 adapter slice are unchanged and remain
+  open. Refs #102.
+
 - **A transport that succeeds with a malformed body is reported as the parse error.** #752 read
   the exit status ahead of the worker joins and fixed the *refusal* case, but on a successful exit
   the writer's `EPIPE` still pre-empted the body-parse error: a transport that answers without
@@ -713,14 +727,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   a declared topological step order with no cycles or forward references, and mutation tools refused
   from the read-only catalog ([ADR 0073](docs/decisions/0073-pre-agent-read-only-recipe-admission.md)).
   Collection execution, provenance and the Studio round-trip remain open. Refs #97.
-
-- **Resolve and durably bind an authored workflow's seed.** A new `seed_binding` module fixes the
-  source-only contract behind #103: an explicit or generate-once seed normalizes to one bounded
-  canonical UTF-8 form, a generate-once run draws at most once per persisted record and the persisted
-  effective seed is reused across duplicate requests, lost responses and restarts without a redraw
-  (only a retry after a failed persist may redraw, before any record exists), the effective seed is
-  persisted before any setup mutation (failing closed), and a wrong instance, stale baseline or lease,
-  unsupported setup, or conflicting persisted seed is refused before any draw. A recording transport proves the
-  persisted effective seed and operation identity are sent unchanged. Native seed acceptance stays
-  gated by sts2-game-mod#79
-  ([ADR 0071](docs/decisions/0071-authored-seed-binding.md)). Refs #103.
