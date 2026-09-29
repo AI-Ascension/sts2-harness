@@ -8,8 +8,9 @@
 # the game and the gateway share, and a separate gateway credential the gateway, the MCP server and
 # the harness share. Nothing is read from a saved setting and no token has to be known in advance.
 #
-# The provider credential is read from key.txt beside this script and reaches only the transport the
-# bridge spawns. It is never an argument and never logged.
+# The provider credential is read from key.txt beside this script and reaches only the bridge
+# process, which reads it by name and holds it for the one POST. It is never an argument and never
+# logged.
 #
 # AUTHORIZATION: these episodes make provider calls. The owner asked for a model-driven loop on this
 # lane and reaffirmed it, and every episode records that in authorization.json beside its evidence.
@@ -49,7 +50,8 @@ $baselineProfile = Join-Path $deployment 'profile'
 $runs = Join-Path $root 'runs'
 
 $bridge = Join-Path $root 'sts2-jev-bridge.exe'
-$transport = Join-Path $root 'systemone_transport.cmd'
+# The bridge performs the System One exchange itself with a pinned in-process TLS client, so there
+# is no operator-owned transport executable to require or to name in the argument vector.
 $harness = Join-Path $root 'sts2-harness-runtime.exe'
 if (-not (Test-Path $harness)) { $harness = Join-Path $peers 'sts2-harness-runtime.exe' }
 $mcp = Join-Path $peers 'sts2-mcp-server.exe'
@@ -277,7 +279,7 @@ function Wait-ForModRuntime {
     throw "the mod runtime session never opened within $Seconds seconds. See game.log in the run directory."
 }
 
-foreach ($required in @($bridge, $transport, $harness, $mcp, $gateway, $game, $keyFile)) {
+foreach ($required in @($bridge, $harness, $mcp, $gateway, $game, $keyFile)) {
     if (-not (Test-Path $required)) { throw "missing required component: $required" }
 }
 New-Item -ItemType Directory -Force -Path $runs | Out-Null
@@ -421,20 +423,15 @@ config/custom_user_dir_name="$userDir"
         $env:STS2_EXO_BRIDGE_BINARY = $bridge
         $env:STS2_EXO_REVISION = $digest
         $env:STS2_EXO_BRIDGE_ARGS_JSON =
-            "[""--model"",""jev-latest"",""--transport"",""$($transport -replace '\\', '\\')"",""--gate"",""$GatePercent""]"
+            "[""--model"",""jev-latest"",""--gate"",""$GatePercent""]"
         # Written literally: ConvertTo-Json unwraps a single-element array into a bare string, which
         # the runtime rejects as not being a JSON array.
         #
-        # PATH and SystemRoot are on the list for the transport rather than for the credential or
-        # the recording. The runtime spawns the bridge with the environment cleared but for this
-        # list, and the bridge hands its own environment to the transport it spawns, so this list is
-        # the transport's whole environment. Here the transport is a .cmd that runs Windows
-        # PowerShell, and without PATH the command interpreter cannot find powershell.exe at all
-        # (exit 9009); with PATH but without SystemRoot it finds it and the interpreter cannot load
-        # its own managed assemblies (0x8009001d). Both were measured on the guest. Neither is a
-        # credential, and neither is read by anything else this lane starts.
-        $env:STS2_EXO_INHERITED_ENV_JSON =
-            '["TYPESAFE_API_KEY","JEV_CONTEXT_LOG","PATH","SystemRoot"]'
+        # Only the credential and the recording cross into the bridge. PATH and SystemRoot used to
+        # be here because the operator-owned transport was a .cmd that ran Windows PowerShell, and
+        # without PATH the command interpreter could not find powershell.exe (exit 9009). The
+        # exchange is now in-process and needs neither, so neither is inherited.
+        $env:STS2_EXO_INHERITED_ENV_JSON = '["TYPESAFE_API_KEY","JEV_CONTEXT_LOG"]'
         $env:TYPESAFE_API_KEY = $apiKey
         # Every exchange with the provider is recorded here: the state, the instructions, every
         # option, and what came back. Read it with jev-context.py.

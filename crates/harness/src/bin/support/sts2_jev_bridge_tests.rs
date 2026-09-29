@@ -82,7 +82,13 @@ fn describe_reports_configuration_without_opening_a_connection() {
         described["endpoint"],
         json!("https://api.typesafe.ai/v1/systemone")
     );
-    assert_eq!(described["transport"], json!(null));
+    // The exchange is in-process now, and the description names the trust anchor so a run record
+    // can state which roots verified the peer rather than saying "it used the system roots".
+    assert_eq!(described["transport"], json!("in-process"));
+    assert_eq!(
+        described["tls_root_store"],
+        json!("webpki-roots (pinned in Cargo.lock)")
+    );
 }
 
 #[test]
@@ -197,69 +203,6 @@ fn a_missing_or_oversized_catalog_is_refused_before_any_exchange() {
 
     let (oversized, _) = decide_with(&vec![b'x'; LIMIT + 1], Ok(Vec::new()));
     assert!(oversized.is_err());
-}
-
-/// Writes an executable shell fixture and returns its path.
-#[cfg(unix)]
-pub(super) fn shell_fixture(name: &str, script: &str) -> std::path::PathBuf {
-    use std::os::unix::fs::PermissionsExt;
-    let path = std::env::temp_dir().join(name);
-    std::fs::write(&path, script).expect("write fixture");
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod fixture");
-    path
-}
-
-#[cfg(unix)]
-#[test]
-fn the_transport_runs_the_named_executable_and_returns_its_output() {
-    let body = String::from_utf8(response("combat.end-turn", 0.9)).unwrap_or_default();
-    let script = shell_fixture(
-        "sts2-jev-transport-reply.sh",
-        &format!("#!/bin/sh\ncat > /dev/null\nprintf '%s' '{body}'\n"),
-    );
-    let received = exchange(
-        script.to_str().unwrap_or_default(),
-        b"{}",
-        Duration::from_secs(10),
-    )
-    .expect("exchange");
-    let received: Value = serde_json::from_slice(&received).unwrap_or_default();
-    assert_eq!(
-        received["answers"]["action"]["choice"],
-        json!("combat.end-turn")
-    );
-    let _ = std::fs::remove_file(&script);
-}
-
-#[cfg(unix)]
-#[test]
-fn a_transport_that_never_exits_is_killed_at_the_deadline() {
-    let script = shell_fixture("sts2-jev-transport-hang.sh", "#!/bin/sh\nsleep 30\n");
-    let started = Instant::now();
-    let outcome = exchange(
-        script.to_str().unwrap_or_default(),
-        b"{}",
-        Duration::from_millis(200),
-    );
-    assert!(outcome.is_err());
-    assert!(started.elapsed() < Duration::from_secs(5));
-    let _ = std::fs::remove_file(&script);
-}
-
-#[cfg(unix)]
-#[test]
-fn a_transport_that_exits_nonzero_is_refused() {
-    let script = shell_fixture(
-        "sts2-jev-transport-fail.sh",
-        "#!/bin/sh\ncat > /dev/null\nexit 3\n",
-    );
-    let outcome = exchange(
-        script.to_str().unwrap_or_default(),
-        b"{}",
-        Duration::from_secs(10),
-    );
-    assert!(outcome.is_err());
-    let _ = std::fs::remove_file(&script);
 }
 
 /// A combat turn holding three identical Defends and two identical Strikes.

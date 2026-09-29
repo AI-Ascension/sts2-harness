@@ -3,10 +3,16 @@
 Status: opt-in source candidate. Runtime, provider compatibility, calibration, and gameplay benefit
 remain **unverified**. Synthetic tests are specifications, not recorded game outcomes.
 
+> **Superseded in part (Refs #299).** The `--transport` argument recorded below no longer exists:
+> the bridge now performs the System One exchange itself with a pinned in-process TLS client, so
+> the admitted shapes are `--model MODEL [--gate PERCENT] [--tactical]`. See ADR 0053 and
+> `docs/JEV_MODEL_SELECTION.md`. This document is kept as the record of the proposal as it stood;
+> its `--tactical` suffix, its status, and its "unchanged" claims are unaffected.
+
 ## Owned boundary
 
-The implementation belongs to the `sts2-jev-bridge` executable and its existing operator-owned
-transport port. The library's pure coordination boundary, host-generated legal catalog, ordinary
+The implementation belongs to the `sts2-jev-bridge` executable and its existing transport port. The
+library's pure coordination boundary, host-generated legal catalog, ordinary
 harness/MCP/gateway/mod execution path, and post-action settlement remain unchanged. There is no new
 network client, credential path, game rule, save access, simulator, or direct game operation.
 

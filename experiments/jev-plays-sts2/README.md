@@ -171,13 +171,20 @@ same host authenticates and answers, so the outage was the transport never start
 invisible because the runtime and the bridge both spawn the child with its stderr discarded, and a
 transport that exits before it reads its request writes no record.
 
-The lane now declares `PATH` and `SystemRoot` alongside the two names it already declared. Neither
+The lane then declared `PATH` and `SystemRoot` alongside the two names it already declared. Neither
 is a credential, and neither is read by anything else the lane starts. The test
-`crates/harness/tests/jev_loop_windows_transport_environment.rs` scans the real script and fails if a
-name the transport needs is dropped, if a name it does not need is added -- the list is a clearance,
+`crates/harness/tests/jev_loop_windows_bridge_environment.rs` scans the real script and fails if a
+name the exchange needs is dropped, if a name it does not need is added -- the list is a clearance,
 not a convenience -- or if the declaration is repeated, since the process environment holds one
 value and an appended declaration would silently replace this one. The confirmation is the next
 native episode: a non-empty `jev-context.jsonl` and no `provider is unavailable`.
+
+Both names are gone again as of Refs #299, because the condition that required them is. The
+exchange is now performed in-process by the bridge rather than by a `.cmd` that had to resolve
+`powershell.exe`, so no command interpreter is started and the clearance is back to the credential
+and the recording path. The test now asserts that too: re-adding `PATH` or `SystemRoot` is a
+failure, so the clearance cannot silently widen back to the shape that only the retired transport
+needed.
 
 ## Fullscreen on the Linux guest
 

@@ -21,9 +21,15 @@ Windows ACL enforcement. A separately reviewed ACL implementation is still neede
 For an already reviewed deployment, the argument shapes are:
 
 ```text
---model REVIEWED_MODEL --transport ABSOLUTE_TRANSPORT --gate 20 --audit-dir PRIVATE_DIRECTORY
---model REVIEWED_MODEL --transport ABSOLUTE_TRANSPORT --gate 20 --tactical --audit-dir PRIVATE_DIRECTORY
+--model REVIEWED_MODEL --gate 20 --audit-dir PRIVATE_DIRECTORY
+--model REVIEWED_MODEL --gate 20 --tactical --audit-dir PRIVATE_DIRECTORY
 ```
+
+There is no `--transport` argument. The bridge performs the System One exchange itself with a
+pinned in-process TLS client whose trust anchors are compiled in from `webpki-roots`, so a run
+carries one digest-pinned artifact rather than a bridge plus an operator-installed second
+executable. A configuration that still carries `--transport` is refused at admission rather than
+silently narrowed. See ADR 0053.
 
 Pass the shape through `STS2_EXO_BRIDGE_ARGS_JSON` only after rebuilding, checking and
 re-pinning the bridge through the existing admission procedure. No script in this change

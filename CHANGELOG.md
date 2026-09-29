@@ -10,6 +10,22 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **The System One bridge performs its own HTTPS exchange, so a run carries one digest instead of
+  two.** It previously spawned an operator-owned transport named by `--transport`, so a run pinned
+  two artifacts and the runtime verified one. It now uses a pinned `rustls` client with trust
+  anchors compiled in from `webpki-roots`, so a run record can name which roots verified the peer.
+  `--transport` is gone and the runtime admits `["--model", MODEL]`, so a stale four-element
+  configuration is refused rather than silently narrowed. The handshake completes before a
+  request is built, so a certificate or hostname refusal discloses nothing; the deadline bounds
+  connect, handshake, write, and read in both directions; the `128 KiB` bound applies to the body
+  against a checked `Content-Length` or `chunked` framing, so a truncated response cannot be
+  parsed as a whole one; a TCP close without `close_notify` is a refusal rather than an end of
+  message; and a missing, empty, oversized, or header-unsafe credential is refused before a
+  socket is opened instead of becoming an empty `Bearer` header. Non-`200` refusals (including
+  `429` and `529`) fail closed, and a TLS failure is never a downgrade or a retry. Neither
+  `rustls` backend is pure Rust — `ring` 0.17.14 carries 17 `.c` and 73 `.S`, `aws-lc-sys` 0.39.0
+  662 `.c`/`.h` and 849 `.S` — so that part of the issue was unsatisfiable as written; `ring` was
+  taken as the smaller, and this workspace already compiles C for `rusqlite`. See ADR 0053.
 - **A transport that succeeds with a malformed body is reported as the parse error.** #752 read
   the exit status ahead of the worker joins and fixed the *refusal* case, but on a successful exit
   the writer's `EPIPE` still pre-empted the body-parse error: a transport that answers without

@@ -19,23 +19,20 @@
 //! function of the response rather than a second field written down separately. The default output
 //! is unchanged.
 //!
-//! The HTTPS exchange itself is performed by an operator-owned transport executable, named by
-//! `--transport` and pinned by the operator's own digest, following the precedent
-//! `sts2-astra-bridge` set for a provider whose transport this repository does not own. This binary
-//! keeps everything that has to stay reviewable: request construction, bounds, catalog membership,
-//! the confidence gate, and the decision shape. See ADR 0053.
+//! The HTTPS exchange itself is performed in process, by a pinned `rustls` client whose trust
+//! anchors are compiled in from `webpki-roots`. This is the migration ADR 0053 named: a run now
+//! carries one digest-pinned artifact rather than a bridge plus an operator-installed transport,
+//! and the operator no longer has to install and pin a second executable.
 //!
-//! The transport contract is deliberately tiny. The transport reads one request body on standard
-//! input, performs one `POST` to the provider endpoint with the bearer credential from its own
-//! environment, and writes the response body — the JSON, not an HTTP message — on standard output.
-//! It never sees the catalog or the decision, and the credential never reaches this process.
+//! This binary still keeps everything that has to stay reviewable: request construction, bounds,
+//! catalog membership, the confidence gate, and the decision shape. The transport module owns
+//! only the socket, the TLS session, and the framing of one `POST`. It never sees the catalog or
+//! the decision, and a TLS failure is a reported refusal rather than a downgrade or a retry.
 
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
 use serde_json::{Value, json};
-use std::io::{Read, Write};
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+use std::io::Read;
 use sts2_harness::{
     ACTION_QUESTION, KIND_QUESTION, MAX_PRESENTED_OPTIONS, OptionSelection, SYSTEM_ONE_PATH,
     SelectionMode, build_class_system_one_request, build_described_system_one_request,
@@ -43,12 +40,6 @@ use sts2_harness::{
 
 /// Largest request, response, and decision this bridge handles.
 const LIMIT: usize = 128 * 1024;
-
-/// How long the transport has to complete one exchange.
-const TIMEOUT: Duration = Duration::from_secs(100);
-
-/// How often the transport is checked for completion.
-const POLL: Duration = Duration::from_millis(25);
 
 /// Provider host this lane is admitted against.
 const PROVIDER_HOST: &str = "api.typesafe.ai";
@@ -91,7 +82,7 @@ use request_support::{catalog, constraints, present, state_with_derived_facts};
 fn main() {
     let Ok(options) = options::Options::parse(std::env::args().skip(1)) else {
         eprintln!(
-            "Usage: sts2-jev-bridge [--model MODEL] [--transport PATH] [--gate PERCENT] \
+            "Usage: sts2-jev-bridge [--model MODEL] [--gate PERCENT] \
              [--record] [--describe] [--tactical] [--audit-dir DIR]"
         );
         std::process::exit(2);
@@ -120,7 +111,8 @@ fn describe(options: &options::Options) -> Value {
         "provider": PROVIDER,
         "model": options.model,
         "endpoint": format!("https://{PROVIDER_HOST}{SYSTEM_ONE_PATH}"),
-        "transport": options.transport,
+        "transport": "in-process",
+        "tls_root_store": "webpki-roots (pinned in Cargo.lock)",
         "question": ACTION_QUESTION,
         "confidence_gate": gate(options),
     });
@@ -147,15 +139,11 @@ fn gate(options: &options::Options) -> f64 {
 
 /// Reads the request, performs one exchange, and prints one decision or one record.
 fn run(options: &options::Options) -> Result<(), Box<dyn std::error::Error>> {
-    let transport = options
-        .transport
-        .as_deref()
-        .ok_or("a transport executable is required")?;
     let mut bytes = Vec::new();
     std::io::stdin()
         .take((LIMIT + 1) as u64)
         .read_to_end(&mut bytes)?;
-    let mut ask = |body: &[u8]| exchange(transport, body, TIMEOUT);
+    let mut ask = |body: &[u8]| tls::post(body);
     if options.audit_dir.is_some() {
         println!("{}", capture::run(&bytes, options, &mut ask)?);
     } else if options.tactical {
@@ -205,118 +193,19 @@ fn decide(
 mod recording;
 use recording::{record, record_profile};
 
-#[path = "support/jev_transport_worker.rs"]
-mod transport_worker;
-use transport_worker::{Reader, Writer, join_writer, spawn_transport_worker};
-
-/// Runs the operator-owned transport for exactly one bounded exchange.
-///
-/// Standard input and output are serviced on their own threads, so neither side can deadlock on a
-/// full pipe, and the child is killed at the deadline rather than waited on indefinitely.
-///
-/// A thread that cannot be created is a transport failure, not a reason to abort the process. The
-/// two workers are therefore built with `Builder::spawn`, which reports `EAGAIN` as an `Err`
-/// instead of panicking the way `std::thread::spawn` does. On a contended host the panic would
-/// unwind through `main`, so the process would die with a test-harness abort rather than the
-/// refusal's own exit status, and the caller would see a transport that never ran.
-///
-/// The credential is never passed here: the transport reads it from the environment the runtime
-/// declared, so it is never an argument of this process, a captured byte, or a record.
-fn exchange(
-    transport: &str,
-    body: &[u8],
-    timeout: Duration,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let mut child = Command::new(transport)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()?;
-    let mut input = child.stdin.take().ok_or("transport stdin is unavailable")?;
-    let mut output = child
-        .stdout
-        .take()
-        .ok_or("transport stdout is unavailable")?;
-    let payload = body.to_vec();
-    // `std::thread::spawn` panics when the host cannot create a thread (`EAGAIN` on process
-    // slots), and a panic here takes the whole process down with exit 101 -- indistinguishable
-    // from a crash, and with no `Err` for `main` to report. `Builder::spawn` returns that failure
-    // instead, so a host that cannot fork is reported as the transport failure it is.
-    //
-    // Both arms kill the child on the way out, because `Child`'s `Drop` closes its handles without
-    // signalling the process. The writer arm needs it as much as the reader arm: the transport is
-    // already running by the time the first thread is attempted, so a failure there would orphan
-    // it just as surely on the host that had no spare thread to give.
-    let writer = spawn_transport_worker(
-        std::thread::Builder::new().name("jev-transport-writer".to_owned()),
-        Writer,
-        move || input.write_all(&payload),
-    )
-    .map_err(|error| {
-        kill_child(
-            &mut child,
-            format!("cannot start the transport writer: {error}"),
-        )
-    })?;
-    let reader = spawn_transport_worker(
-        std::thread::Builder::new().name("jev-transport-reader".to_owned()),
-        Reader,
-        move || {
-            let mut received = Vec::new();
-            output
-                .by_ref()
-                .take((LIMIT + 1) as u64)
-                .read_to_end(&mut received)
-                .map(|_| received)
-        },
-    )
-    // The reader is the second thread, so it is the one that can fail after the writer is
-    // already running. Returning here would drop the writer's handle and leave the child
-    // waiting on a pipe nobody is servicing, so the child is killed on the way out.
-    .map_err(|error| {
-        kill_child(
-            &mut child,
-            format!("cannot start the transport reader: {error}"),
-        )
-    })?;
-    let deadline = Instant::now() + timeout;
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            return Err("transport timeout".into());
-        }
-        std::thread::sleep(POLL);
-    };
-    // The status is read BEFORE either worker is joined, because it does not depend on scheduling
-    // and the writer's `EPIPE` usually beats it (Refs #751); `join_writer` absorbs that same early
-    // close afterwards (Refs #753).
-    if !status.success() {
-        return Err("transport reported failure".into());
-    }
-    join_writer(writer)?;
-    let received = reader.join().map_err(|_| "transport reader failed")??;
-    Ok(received)
-}
-
-/// Kills `child`, then hands back the error that made the bridge give up on it.
-///
-/// `std::process::Child` has no `Drop` that signals the process -- dropping it closes the handles
-/// and leaves the transport running -- so returning a spawn failure without this would report the
-/// failure correctly and still orphan a child, on precisely the host that had nothing to spare.
-fn kill_child(child: &mut Child, error: String) -> String {
-    let _ = child.kill();
-    error
-}
 #[cfg(test)]
 #[path = "support/sts2_jev_bridge_tests.rs"]
 mod tests;
+#[path = "support/jev_tls_transport.rs"]
+mod tls;
 
 #[cfg(test)]
-#[path = "support/jev_transport_child_tests.rs"]
-mod transport_child_tests;
+#[path = "support/jev_tls_transport_fixture.rs"]
+mod tls_fixture;
+
+#[cfg(test)]
+#[path = "support/jev_tls_transport_tests.rs"]
+mod tls_transport_tests;
 
 #[cfg(test)]
 #[path = "support/jev_tactical_bridge_tests.rs"]

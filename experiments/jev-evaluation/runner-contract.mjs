@@ -128,8 +128,10 @@ export function payload(input, manifestHash, slot) {
 }
 
 export function bridgeArguments(manifest, arm, directory) {
-  const args = ['--model', manifest.model, '--transport', manifest.transport.path,
-    '--gate', String(manifest.confidence_gate_percent)];
+  // The bridge performs the exchange itself with a pinned in-process TLS client, so there is no
+  // operator-owned transport to name. A manifest that still carries one is refused by admission
+  // rather than quietly ignored, which is why `transport` is no longer read here.
+  const args = ['--model', manifest.model, '--gate', String(manifest.confidence_gate_percent)];
   if (arm === 'tactical') args.push('--tactical');
   args.push('--audit-dir', directory);
   return args;

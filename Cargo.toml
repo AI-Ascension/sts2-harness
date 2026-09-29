@@ -28,6 +28,9 @@ rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled
 rustix = { version = "=1.1.5", features = ["event", "fs", "net", "pipe", "process"] }
 getrandom = "=0.4.3"
 png = "=0.18.1"
+rustls = { version = "=0.23.45", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "=1.0.9"
+rustls-pki-types = "=1.15.1"
 sts2-protocol = { git = "https://github.com/AI-Ascension/sts2-protocol.git", rev = "0bc689eabc5542ede2b09b030d9ea32daa8a73e7" }
 tokio = { version = "=1.53.1", default-features = false, features = ["io-std", "io-util", "macros", "process", "rt", "sync", "time"] }
 zeroize = "=1.9.0"

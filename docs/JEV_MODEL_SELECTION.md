@@ -16,54 +16,54 @@ inference used that model. Identifiers must be nonempty, at most 240 UTF-8 bytes
 whitespace or control characters, and must not start with `-`. Unknown, duplicate, or malformed
 options fail before input is read or a process is started.
 
-## The transport executable
+## The transport
 
-This bridge does not open the network. It spawns an operator-owned executable, named by
-`--transport` as an absolute path, and that executable performs exactly one HTTPS exchange. The
-reasons are recorded in [ADR 0053](decisions/0053-system-one-provider-lane.md): this workspace has
-no TLS stack, the provider publishes no Rust SDK, and everything that has to stay reviewable —
-request construction, bounds, catalog membership, the confidence gate, the decision shape — stays
-inside the digest-pinned Rust binary either way.
+This bridge opens the network itself. It performs exactly one HTTPS exchange with a pinned
+`rustls` client whose trust anchors are compiled in from `webpki-roots`, and there is no
+`--transport` option and no operator-supplied executable. This is the migration
+[ADR 0053](decisions/0053-system-one-provider-lane.md) named as the better end state: a run now
+carries one digest-pinned artifact instead of two, and the runtime verifies the one artifact that
+performs the exchange.
 
-The contract is one exchange over standard streams, and nothing else:
+The contract is one exchange, and nothing else:
 
-1. The transport reads one request body, which is JSON, on standard input until end of file.
-2. It performs one `POST https://api.typesafe.ai/v1/systemone` with
+1. The bridge builds one `POST https://api.typesafe.ai/v1/systemone` with
    `Authorization: Bearer $TYPESAFE_API_KEY` and `Content-Type: application/json`.
-3. It writes the response body — the JSON, not an HTTP message — on standard output and exits `0`.
-4. Any failure is a nonzero exit. The bridge treats a nonzero exit, an unreadable reply, and a reply
-   above `128 KiB` identically: no decision, nonzero exit, nothing written to standard output.
+2. The certificate chain and the hostname are verified against the pinned roots for
+   `api.typesafe.ai` only. A peer naming another host fails in the handshake, before the request
+   is sent.
+3. Only a `200` response is read. A non-`200` — including a `429` and a `529` — an unverifiable
+   certificate, a body above `128 KiB`, a body that disagrees with its declared `Content-Length` or
+   `chunked` framing, a TCP close without a TLS `close_notify`, and a missed deadline are all the
+   same outcome: no decision, nonzero exit, nothing written to standard output. The `128 KiB` bound
+   is on the body itself, with headers bounded separately at `8 KiB`.
+4. There is no retry and no fallback to plaintext. A retry policy belongs to the caller, and a
+   downgrade would make a run's evidence unable to say what terminated the connection.
 
-The transport never sees the action catalog, never sees the decision, and is never given the
-credential as an argument. A `429` or `529` from the provider is a transport failure like any other;
-retry and backoff policy belongs to the caller, not to the bridge.
+The transport layer never sees the action catalog, never sees the decision, and is never given the
+credential as an argument. The credential is read by name from the inherited environment for the
+one `POST` and is not written to a record, a log, a capture, or a `--describe` output. A credential
+that is missing, empty, longer than `4096` bytes, or carries a control character or a space is
+refused **before** any socket is opened, so a misconfigured run never puts a request in front of
+the provider and cannot inject a header of its own.
 
-A minimal reference transport, which is an operator artifact and not part of this repository:
+The trust anchor is `webpki-roots`, pinned by version in `Cargo.toml` and carried in `Cargo.lock`.
+It is compiled into the binary rather than read from the host's system store, so a run record can
+state which roots verified the peer instead of saying "it used the system roots".
 
-```python
-#!/usr/bin/env python3
-"""Reads one request body on stdin, posts it, writes the response body on stdout."""
-import os
-import sys
-import urllib.request
+### On the pure-Rust requirement
 
-body = sys.stdin.buffer.read()
-request = urllib.request.Request(
-    "https://api.typesafe.ai/v1/systemone",
-    data=body,
-    headers={
-        "Authorization": "Bearer " + os.environ["TYPESAFE_API_KEY"],
-        "Content-Type": "application/json",
-    },
-    method="POST",
-)
-with urllib.request.urlopen(request, timeout=60) as response:
-    sys.stdout.buffer.write(response.read())
-```
-
-The vendor also publishes JavaScript and Python SDKs; either may back a transport. Whatever is used,
-record its SHA-256 with the experiment configuration: a run on this lane has two digests, the bridge
-and the transport, and only the first is verified by the runtime.
+The original issue asked for a pure-Rust TLS client with no C or assembly crypto backend. `rustls`
+0.23 declares exactly two crypto providers, `crypto::ring` and `crypto::aws_lc_rs`, and **both
+compile C and/or assembly** (17 `.c` and 73 `.S` files in `ring` 0.17.14; 662 `.c`/`.h` and 849
+`.S` in `aws-lc-sys` 0.39.0). There is no pure-Rust option, so that requirement cannot be met as
+written by any `rustls` configuration. This
+workspace already compiles C — `rusqlite` is used with `bundled` sqlite3, and the `Rust quality
+gates` job already installs a C toolchain for exactly that reason — so the honest reading is that
+the constraint asked for something the ecosystem does not offer, and the choice taken is the
+smaller and better-reviewed of the two real backends. `ring` was taken over `aws-lc-rs` because it
+adds about 1m36s of release compile against the former's 3m33s, and neither needs the CI timeout
+raised. See ADR 0053.
 
 ## Runtime configuration
 
@@ -75,7 +75,7 @@ export STS2_EXO_ADMISSION=legacy
 export STS2_COMBAT_DEMO=true
 export STS2_EXO_BRIDGE_BINARY="$(pwd)/target/debug/sts2-jev-bridge"
 export STS2_EXO_REVISION="$(sha256sum "$STS2_EXO_BRIDGE_BINARY" | cut -d ' ' -f 1)"
-export STS2_EXO_BRIDGE_ARGS_JSON='["--model","jev-1.13.0","--transport","/opt/providers/systemone"]'
+export STS2_EXO_BRIDGE_ARGS_JSON='["--model","jev-1.13.0"]'
 export STS2_EXO_INHERITED_ENV_JSON='["TYPESAFE_API_KEY"]'
 ```
 
@@ -87,7 +87,13 @@ binds one provider, host, and route, and this is not that route.
 
 The credential enters by name only. The bridge process is spawned with a cleared environment, and
 only the names in `STS2_EXO_INHERITED_ENV_JSON` are passed through, so `TYPESAFE_API_KEY` reaches the
-transport and nothing else does. It is never an argument, never captured, and never recorded.
+bridge and nothing else does. It is never an argument, never captured, and never recorded.
+
+The argument vector lost `--transport`: a configuration that still carries it is refused at
+admission rather than silently narrowed, so an operator upgrading an existing
+`STS2_EXO_BRIDGE_ARGS_JSON` is told their four-element vector no longer admits instead of having
+the pair dropped and the run proceeding as though the configuration they reviewed were the one that
+ran.
 
 These settings are only the provider portion of a runtime configuration. They do not launch the
 game or replace gateway/MCP configuration, leases, or fixture authorization. The existing Astra-only

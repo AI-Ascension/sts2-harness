@@ -8,12 +8,16 @@
 //!
 //! Nothing here is inferred from game or model output, and the credential is not an argument: it
 //! reaches the bridge through the operator-declared inherited environment, never a command line.
+//!
+//! There is no `--transport` option any more. The bridge performs the exchange itself with a
+//! pinned in-process TLS client, so a run carries one digest-pinned artifact rather than a bridge
+//! plus an operator-installed transport the runtime cannot verify.
 
 /// Model identifier used when the operator does not select one.
 pub(super) const DEFAULT_MODEL: &str = "jev-latest";
 
-/// Largest transport path this parser accepts.
-const MAX_TRANSPORT_BYTES: usize = 4096;
+/// Largest private sidecar directory this parser accepts.
+const MAX_DIRECTORY_BYTES: usize = 4096;
 
 /// Largest confidence gate this parser accepts, in hundredths.
 ///
@@ -25,8 +29,6 @@ const MAX_GATE_PERCENT: u32 = 100;
 pub(super) struct Options {
     /// Provider model identifier, sent unchanged.
     pub model: String,
-    /// Absolute path of the operator-owned executable that performs the HTTPS exchange.
-    pub transport: Option<String>,
     /// Print the requested configuration and exit without opening a connection.
     pub describe: bool,
     /// Print one record object instead of the bare decision: `schema`, `provider_call`,
@@ -55,7 +57,6 @@ impl Options {
     pub fn parse(arguments: impl IntoIterator<Item = String>) -> Result<Self, &'static str> {
         let mut arguments = arguments.into_iter();
         let mut model = None;
-        let mut transport = None;
         let mut gate_percent = None;
         let mut describe = false;
         let mut record = false;
@@ -68,7 +69,7 @@ impl Options {
                 "--tactical" if !tactical => tactical = true,
                 "--audit-dir" if audit_dir.is_none() => {
                     let value = arguments.next().ok_or("missing audit directory")?;
-                    if !valid_identifier(&value, MAX_TRANSPORT_BYTES)
+                    if !valid_identifier(&value, MAX_DIRECTORY_BYTES)
                         || !std::path::Path::new(&value).is_absolute()
                     {
                         return Err("invalid audit directory");
@@ -81,13 +82,6 @@ impl Options {
                         return Err("invalid model identifier");
                     }
                     model = Some(value);
-                }
-                "--transport" if transport.is_none() => {
-                    let value = arguments.next().ok_or("missing transport path")?;
-                    if !valid_transport(&value) {
-                        return Err("invalid transport path");
-                    }
-                    transport = Some(value);
                 }
                 "--gate" if gate_percent.is_none() => {
                     let value = arguments.next().ok_or("missing confidence gate")?;
@@ -107,7 +101,6 @@ impl Options {
         }
         Ok(Self {
             model: model.unwrap_or_else(|| DEFAULT_MODEL.to_owned()),
-            transport,
             describe,
             record,
             gate_percent,
@@ -127,17 +120,6 @@ fn valid_identifier(value: &str, maximum: usize) -> bool {
         && !value.starts_with('-')
         && !value.chars().any(char::is_whitespace)
         && !value.chars().any(char::is_control)
-}
-
-/// Admits one bounded absolute executable path without trimming or splitting it.
-///
-/// The bridge passes this exact value to `Command::new`, never to a shell. Spaces therefore remain
-/// path data. Control characters remain forbidden, including NUL and line separators used in logs.
-fn valid_transport(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= MAX_TRANSPORT_BYTES
-        && !value.chars().any(char::is_control)
-        && std::path::Path::new(value).is_absolute()
 }
 
 #[cfg(test)]
