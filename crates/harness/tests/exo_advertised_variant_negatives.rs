@@ -11,7 +11,7 @@
 //! These tests drive the real code path the binary uses — the strict envelope parser, the shared
 //! profile classifier, the receipt/decision validators and the response encoder — rather than a
 //! reimplementation, so a guard that is deleted here fails a test rather than silently widening
-//! what the shipped bridge accepts.
+//! what the shipped bridge accepts. The context axis has its own module.
 
 use serde_json::{Value, json};
 use sts2_harness::exo_bridge_configuration as config;
@@ -20,6 +20,8 @@ use sts2_harness::{
     parse_bridge_decision, parse_bridge_request_envelope,
 };
 
+#[path = "support/exo_advertised_context_mode_reachability.rs"]
+mod context_mode_reachability;
 // Reuse the reviewed map request fixture instead of hand-rolling a second one.
 #[path = "support/exo_contract_map.rs"]
 mod exo_contract_map;
@@ -28,7 +30,7 @@ const REQUEST: &[u8] =
     include_bytes!("../../../protocol-artifact/exo-bridge-v1/golden/request.json");
 
 /// The request/turn envelope the bridge reads from stdin.
-fn envelope() -> Value {
+pub(crate) fn envelope() -> Value {
     json!({
         "wire_version": "sts2.exo-bridge-wire-v1",
         "request_id": "request-1",
@@ -42,7 +44,7 @@ fn envelope_bytes(value: &Value) -> Vec<u8> {
 }
 
 /// The bridge's own stdin read bound; a larger frame cannot be read at all.
-const STDIN_BOUND: usize = 131_072;
+pub(crate) const STDIN_BOUND: usize = 131_072;
 
 /// The golden envelope with the one field that carries `axis` set to an unsupported value.
 ///
@@ -79,8 +81,6 @@ fn every_unsupported_profile_axis_is_rejected_before_inference() {
         fields["unsupported_recovery_code"],
         json!(config::UNSUPPORTED_RECOVERY_CODE)
     );
-    assert_eq!(fields["profiles"], json!(["standard"]));
-    assert_eq!(fields["context_modes"], json!(["fresh"]));
 
     // Driven by `ALL`, the list the guard walks, and each case must report *that* axis.
     for axis in config::UnsupportedProfileAxis::ALL {
@@ -113,12 +113,13 @@ fn every_unsupported_profile_axis_is_rejected_before_inference() {
 ///
 /// `profile_support` is the only way a caller can pre-check support, so an enforced but absent axis
 /// is undiscoverable except by triggering the deliberately identical rejection code. This is the
-/// regression test for the `management` axis; both sides now derive from
-/// [`config::UnsupportedProfileAxis::ALL`], so this pins the one exempt axis and both directions.
+/// regression test for the `management` axis; both sides derive from
+/// [`config::UnsupportedProfileAxis::ALL`], pinning the one exempt axis and both directions.
 #[test]
 fn every_classifier_profile_axis_is_advertised() {
     let fields =
         config::capability_fields(&config::SUPPORTED_DECISIONS, &config::UNSUPPORTED_DECISIONS);
+    assert_eq!(fields["profiles"], json!(["standard"]));
     let advertised = fields["profile_support"]
         .as_object()
         .expect("profile_support is an object");
@@ -198,11 +199,7 @@ fn malformed_and_out_of_bounds_input_never_yields_a_dispatchable_request() {
 
     let cases: Vec<(&str, Vec<u8>, ExoWireError)> = vec![
         ("empty_input", Vec::new(), ExoWireError::TooLarge),
-        (
-            "oversized_input",
-            vec![b'x'; STDIN_BOUND + 1],
-            ExoWireError::TooLarge,
-        ),
+        ("oversized_input", vec![b'x'; STDIN_BOUND + 1], ExoWireError::TooLarge),
         ("invalid_utf8", bad_utf8, ExoWireError::InvalidUtf8),
         (
             "unknown_field",
