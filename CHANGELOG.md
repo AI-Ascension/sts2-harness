@@ -10,6 +10,19 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **The chunked-body size regression test now fails when the arithmetic it covers is reverted.**
+  `decode_chunked` guards a peer-chosen chunk size with `checked_add` and a saturating
+  subtraction, and #758 landed that fix — but the test shipped beside it could not fail. Its
+  hostile frame declared the over-large size as the *first* chunk, so `decoded.len()` was 0 when
+  the size was read, and `0 + 0xffffffffffffffff` does not wrap: the bound guard refused the frame
+  for an entirely honest reason, the assertion was satisfied, and the suite stayed green through
+  a revert of the very arithmetic it appeared to pin. The wrap needs a nonzero accumulator, so
+  the hostile frames here lead with a small valid chunk and `decoded.len() == 2` when the hostile
+  size is read; measured in `--release` against the pre-fix guards, both tests then fail with
+  `range end index 18446744073709551614 out of range for slice of length 8`, and pass against the
+  fix. `parse_body` returns `Result`, so an unwind there is a contract violation rather than an
+  outcome, which is what `catch_unwind` asserts. Refs #299.
+
 - **The System One bridge performs its own HTTPS exchange, so a run carries one digest instead of
   two.** It previously spawned an operator-owned transport named by `--transport`, so a run pinned
   two artifacts and the runtime verified one. It now uses a pinned `rustls` client with trust
@@ -60,25 +73,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   reverted it fails on run 0. Refs #753, #751.
 
 
-- **A transport that refuses a request is reported as the refusal, not as a broken pipe.**
-  #746 made the bridge print `cause: {error}`, but the workers were joined before the transport's
-  exit status was read, and a transport that exits without draining its stdin fails the writer's
-  `write_all` with `EPIPE` — so `??` returned on that plumbing artifact and the `status.success()`
-  check never ran, so an operator transport declining a request with a non-`200` was reported as
-  `cause: Broken pipe (os error 32)`. The exit status does not depend on scheduling, so it is read
-  first; the workers are still joined, so a real transport I/O failure is still surfaced. New case
-  `a_refused_transport_is_reported_as_the_refusal_and_not_as_a_broken_pipe` asserts the cause is the refusal and is not `Broken pipe`. Refs #751.
-- **A transport that cannot be given a worker thread is killed, not orphaned.**
-  #746 made the bridge report a failed thread spawn instead of panicking, and #747 then killed the
-  child when the *reader* worker could not start. The writer arm was left returning the error with a
-  plain `?`, and the transport is already running by then: `std::process::Child` has no `Drop` that
-  signals the process, so dropping it closes the handles and leaves the child alive. A host that
-  could not give the bridge its *first* worker thread therefore reported the failure correctly and
-  still orphaned the transport. Both arms now go through one `kill_child` helper, and the
-  regression tests assert the process table rather than the error string, which is byte-identical
-  either way. Each arm's case drives a refusal through the real `exchange`, with a real child and
-  real pipes, and reverting *either* arm to a plain `map_err` leaves the transport running and
-  fails that arm's case — so the wiring is asserted, not merely the helper. Refs #748.
 - **A bridge that never launched now says so, instead of posing as a behavioural refusal.**
   `main` was `if run(&options).is_err()`, which discarded the error entirely, so every refusal —
   whether the provider answered wrongly or the host could not fork — printed the same single line

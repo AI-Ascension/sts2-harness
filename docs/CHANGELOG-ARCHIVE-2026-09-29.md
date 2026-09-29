@@ -63,3 +63,22 @@ not a supported release or a second normative changelog.
   persisted effective seed and operation identity are sent unchanged. Native seed acceptance stays
   gated by sts2-game-mod#79
   ([ADR 0071](decisions/0071-authored-seed-binding.md)). Refs #103.
+- **A transport that refuses a request is reported as the refusal, not as a broken pipe.**
+  #746 made the bridge print `cause: {error}`, but the workers were joined before the transport's
+  exit status was read, and a transport that exits without draining its stdin fails the writer's
+  `write_all` with `EPIPE` — so `??` returned on that plumbing artifact and the `status.success()`
+  check never ran, so an operator transport declining a request with a non-`200` was reported as
+  `cause: Broken pipe (os error 32)`. The exit status does not depend on scheduling, so it is read
+  first; the workers are still joined, so a real transport I/O failure is still surfaced. New case
+  `a_refused_transport_is_reported_as_the_refusal_and_not_as_a_broken_pipe` asserts the cause is the refusal and is not `Broken pipe`. Refs #751.
+- **A transport that cannot be given a worker thread is killed, not orphaned.**
+  #746 made the bridge report a failed thread spawn instead of panicking, and #747 then killed the
+  child when the *reader* worker could not start. The writer arm was left returning the error with a
+  plain `?`, and the transport is already running by then: `std::process::Child` has no `Drop` that
+  signals the process, so dropping it closes the handles and leaves the child alive. A host that
+  could not give the bridge its *first* worker thread therefore reported the failure correctly and
+  still orphaned the transport. Both arms now go through one `kill_child` helper, and the
+  regression tests assert the process table rather than the error string, which is byte-identical
+  either way. Each arm's case drives a refusal through the real `exchange`, with a real child and
+  real pipes, and reverting *either* arm to a plain `map_err` leaves the transport running and
+  fails that arm's case — so the wiring is asserted, not merely the helper. Refs #748.
