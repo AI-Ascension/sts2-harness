@@ -358,3 +358,69 @@ fn portable_identities_refuse_paths_urls_and_oversized_values() {
     assert!(!is_profile_identity(""));
     assert!(!is_profile_identity(&"a".repeat(129)));
 }
+
+#[test]
+fn every_refusal_reports_its_structural_property_in_router_vocabulary() {
+    let cases = [
+        (
+            ProfileSetupError::Incompatible,
+            "save-profile setup contract version is unsupported",
+        ),
+        (
+            ProfileSetupError::InvalidRequest,
+            "save-profile setup request is structurally invalid",
+        ),
+        (
+            ProfileSetupError::PermissionDenied,
+            "save-profile operation requires a permission that is not granted",
+        ),
+        (
+            ProfileSetupError::ProfileRequired,
+            "save-profile operation requires a profile identity",
+        ),
+        (
+            ProfileSetupError::DiscoveryMustBeEffectFree,
+            "save-profile discovery must not name a profile or a baseline fence",
+        ),
+        (
+            ProfileSetupError::BaselineFenceMismatch,
+            "save-profile baseline fence is required or prohibited by the operation",
+        ),
+        (
+            ProfileSetupError::ActiveRunConflict,
+            "save-profile mutation conflicts with the active run state",
+        ),
+        (
+            ProfileSetupError::ReadbackMismatch,
+            "save-profile readback does not match the admitted identity",
+        ),
+    ];
+    for (error, label) in cases {
+        let rendered = error.to_string();
+        assert_eq!(rendered, label);
+        // Every refusal names the structural property that failed, in the
+        // shared lowercase form, and never a supplied profile value, host
+        // path or game text.
+        assert!(!rendered.ends_with('.'), "{rendered} ends with a period");
+        assert!(
+            !rendered.contains(PROFILE),
+            "{rendered} leaks a profile value"
+        );
+        assert!(!rendered.contains('\\'), "{rendered} leaks a host path");
+    }
+}
+
+#[test]
+fn the_baseline_fence_refusal_reports_presence_not_disagreement() {
+    // Since #468 the fence rule is presence-only: no equality rule is imposed,
+    // so this variant can no longer mean that a fence disagreed with the
+    // operation. It reports a missing required fence or a prohibited one, and
+    // the router-visible string must not still claim a mismatch.
+    let rendered = ProfileSetupError::BaselineFenceMismatch.to_string();
+    assert!(
+        !rendered.contains("does not match the operation"),
+        "{rendered} still describes the superseded mismatch meaning"
+    );
+    assert!(rendered.contains("required"), "{rendered} omits presence");
+    assert!(rendered.contains("prohibited"), "{rendered} omits presence");
+}

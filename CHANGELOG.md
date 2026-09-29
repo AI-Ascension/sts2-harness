@@ -10,6 +10,19 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **A baseline-fence refusal now reports presence, not disagreement.** Since #468 the save-profile
+  fence rule is presence-only: the owner checks the profile identity and the baseline independently
+  and imposes no equality between them, so a distinct-but-valid fence can no longer be refused.
+  `ProfileSetupError::BaselineFenceMismatch` means only that a required fence was absent or a
+  prohibited one supplied, and its doc comment already said so — but the router-visible `Display`
+  string still read `save-profile baseline fence does not match the operation`, the superseded
+  meaning. A router branching on a refusal, or an operator reading one, was told the fence disagreed
+  with something when a required fence was missing or a prohibited one supplied. The string is now
+  `save-profile baseline fence is required or prohibited by the operation`, and a table test pins
+  the whole `ProfileSetupError` vocabulary, asserting no refusal leaks a supplied profile value, a
+  host path or game text. The admission rule and #102's T2 adapter slice are unchanged and remain
+  open. Refs #102.
+
 - **A transport that succeeds with a malformed body is reported as the parse error.** #752 read
   the exit status ahead of the worker joins and fixed the *refusal* case, but on a successful exit
   the writer's `EPIPE` still pre-empted the body-parse error: a transport that answers without
