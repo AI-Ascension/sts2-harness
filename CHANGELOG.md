@@ -68,17 +68,18 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   `cause: Broken pipe (os error 32)`. The exit status does not depend on scheduling, so it is read
   first; the workers are still joined, so a real transport I/O failure is still surfaced. New case
   `a_refused_transport_is_reported_as_the_refusal_and_not_as_a_broken_pipe` asserts the cause is the refusal and is not `Broken pipe`. Refs #751.
-- **A transport that cannot be given a worker thread is killed, not orphaned.**
-  #746 made the bridge report a failed thread spawn instead of panicking, and #747 then killed the
-  child when the *reader* worker could not start. The writer arm was left returning the error with a
-  plain `?`, and the transport is already running by then: `std::process::Child` has no `Drop` that
-  signals the process, so dropping it closes the handles and leaves the child alive. A host that
-  could not give the bridge its *first* worker thread therefore reported the failure correctly and
-  still orphaned the transport. Both arms now go through one `kill_child` helper, and the
-  regression tests assert the process table rather than the error string, which is byte-identical
-  either way. Each arm's case drives a refusal through the real `exchange`, with a real child and
-  real pipes, and reverting *either* arm to a plain `map_err` leaves the transport running and
-  fails that arm's case — so the wiring is asserted, not merely the helper. Refs #748.
+- **A transport that could not be given a worker thread was never orphaned, and is now moot.**
+  The writer arm returned a failed thread spawn with a plain `?`, by which point the transport was
+  already running, and `std::process::Child` has no `Drop` that signals the process — so it reported
+  the failure correctly and orphaned the child anyway. #750 routed both arms through one
+  `kill_child` helper, asserted at the real call sites — a first attempt was vacuous, since deleting
+  either arm's left the suite green. **Superseded, not regressed:** #758 removed the child entirely
+  — the bridge now exchanges in-process over a `TcpStream`, with no operator-owned `--transport`
+  subprocess — so there is nothing left to orphan.
+  `kill_child` and the three tests that drove refusals through `exchange` went with it in
+  `08a47648`; coverage moved to `jev_tls_transport_loopback_tests.rs`, which completes a real
+  handshake against a loopback TLS peer and refuses an unknown CA, a peer that closes mid-handshake,
+  and one that never answers. Refs #748, #758, #299.
 - **A bridge that never launched now says so, instead of posing as a behavioural refusal.**
   `main` was `if run(&options).is_err()`, which discarded the error entirely, so every refusal —
   whether the provider answered wrongly or the host could not fork — printed the same single line
@@ -684,16 +685,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   paging is bounded so a partial page is never labelled complete
   ([ADR 0076](docs/decisions/0076-scoped-research-inspection-of-hidden-checkpoint-state.md)). The
   native capture read adapter and the capture-manifest agreement remain open. Refs #129.
-
-- **Refuse a suite whose case and policy axes cannot derive a settleable trial key.** `SuiteManifest`
-  bounded a `case_id` and a `policy_id` separately at `MAX_SUITE_LABEL_BYTES` (128), while
-  `TrialOutcome::validate` refuses a `trial_key` over `MAX_TRIAL_KEY_BYTES` (256) and the key
-  concatenates both labels around a 64-hex suite revision. A manifest that validated could therefore
-  plan a trial whose outcome `settle` refused forever. The combined pair is now bounded by a derived
-  `MAX_SUITE_TRIAL_AXIS_BYTES`, so every accepted manifest is plan-and-settleable, and an oversized
-  single id is still refused as an invalid label. Source-only: no released artifact was affected and
-  no live caller reached the case. Compatibility: an input that previously validated and then failed
-  at settlement is now refused at validation.
 
 - **Bind readiness settlement to its proof, and let a starved wait expire.** The
   `management::readiness_wait` contract behind #96 now admits one `MilestoneObservation`, which binds
