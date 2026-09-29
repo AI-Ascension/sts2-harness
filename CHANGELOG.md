@@ -715,9 +715,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   persisted effective seed and operation identity are sent unchanged. Native seed acceptance stays
   gated by sts2-game-mod#79
   ([ADR 0071](docs/decisions/0071-authored-seed-binding.md)). Refs #103.
-
-- **Bind a benchmark rerun admission to the exact declaration it compared equal.** `RerunAdmission`
-  now owns the admitted `Manifest`, reachable only through `RerunAdmission::declaration()`, so a
-  `RerunAllocationSeam` cannot allocate for a declaration other than the one whose controlled inputs
-  compared equal. Source-only contract tightening for #121; the equal path is unchanged.
-  Refs #121.

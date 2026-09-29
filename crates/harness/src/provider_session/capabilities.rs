@@ -239,7 +239,7 @@ fn allowlisted_method(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{NativeCapabilities, SessionError};
+    use super::{CapabilityEvidence, NativeCapabilities, SessionError};
 
     #[test]
     fn reviewed_exo_lifecycle_advertises_only_implemented_one_shot_methods()
@@ -256,6 +256,45 @@ mod tests {
         );
         assert_ne!(capabilities.profile_id, "codex-app-server-fixture-v1");
         assert!(capabilities.validate().is_ok());
+        Ok(())
+    }
+
+    /// The evidence tier is currently INERT, and this pins that fact so it cannot drift quietly.
+    ///
+    /// `CapabilityEvidence` reads as a four-step ladder ending at `LiveProvider`, and
+    /// `validate()` reads as the gate that would enforce it -- but it never inspects
+    /// `self.evidence`. This test therefore relabels a descriptor to the strongest tier it
+    /// cannot possibly earn (its adapter never contacted a live provider) and asserts that
+    /// validation still accepts it.
+    ///
+    /// If a future change makes the tier load-bearing, this test FAILS, which is the point: the
+    /// assertion encodes today's behaviour, so closing #755 flips it deliberately rather than
+    /// letting the gate tighten with nobody editing the test that describes the old contract.
+    /// The relabelling is safe to perform here because `descriptor_digest()` covers `evidence`,
+    /// so the digest is recomputed afterwards and the descriptor stays internally consistent --
+    /// otherwise this would be asserting that tampering is accepted rather than that an
+    /// unearned tier is accepted.
+    #[test]
+    fn the_evidence_tier_is_not_yet_an_admission_control() -> Result<(), SessionError> {
+        let mut capabilities = NativeCapabilities::reviewed_exo_lifecycle(
+            "sts2-exo-lifecycle-v2",
+            "1".repeat(64),
+            "2".repeat(64),
+            "3".repeat(64),
+        )?;
+
+        assert_eq!(capabilities.evidence, CapabilityEvidence::SchemaOnly);
+        assert!(capabilities.validate().is_ok());
+
+        capabilities.evidence = CapabilityEvidence::LiveProvider;
+        capabilities.binding.descriptor_sha256 = capabilities.descriptor_digest();
+
+        assert!(
+            capabilities.validate().is_ok(),
+            "this descriptor claims LiveProvider without any live provider being involved; if \
+             this assertion now fails, the evidence tier has become load-bearing and #755's \
+             option 1 (gate it) has been taken -- update this test to assert refusal instead"
+        );
         Ok(())
     }
 }
