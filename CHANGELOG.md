@@ -11,34 +11,41 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **A transport that cannot be given a worker thread is killed, not orphaned.**
+  #746 made the bridge report a failed thread spawn instead of panicking, and #747 then killed the
+  child when the *reader* worker could not start. The writer arm was left returning the error with a
+  plain `?`, and the transport is already running by then: `std::process::Child` has no `Drop` that
+  signals the process, so dropping it closes the handles and leaves the child alive. A host that
+  could not give the bridge its *first* worker thread therefore reported the failure correctly and
+  still orphaned the transport. Both arms now go through one `kill_child` helper, and the
+  regression tests assert the process table rather than the error string, which is byte-identical
+  either way. Each arm's case drives a refusal through the real `exchange`, with a real child and
+  real pipes, and reverting *either* arm to a plain `map_err` leaves the transport running and
+  fails that arm's case — so the wiring is asserted, not merely the helper. Refs #748.
 - **A bridge that never launched now says so, instead of posing as a behavioural refusal.**
   `main` was `if run(&options).is_err()`, which discarded the error entirely, so every refusal —
   whether the provider answered wrongly or the host could not fork — printed the same single line
   and exited 2. `main` now prints the cause on a second line, leaving the first line's contract
   untouched: the suite asserts `stderr.contains(FAILURE_LINE)`, not equality.
   The second half is the larger of the two. `exchange` started its two pipe-servicing threads with
-  `std::thread::spawn`, which *unwinds* on `EAGAIN` rather than returning the error — under
-  `ulimit -u 1` it dies `panicked at std/src/thread/functions.rs:131` with exit 101, where
-  `Builder::spawn` returns `Resource temporarily unavailable (os error 11)`. Both workers now use
-  `Builder::spawn`, so a host that cannot create them is reported as the transport failure it is.
-  That panic is a real sibling failure, but it is **not** what the original CI event was, and the
-  reason is the test's own control flow rather than the log. The failing case (`36338651404`,
-  attempt 1) reported the non-vacuity guard's own message, which is only reachable after
-  `refused_without_a_decision` has already confirmed the run exited nonzero, wrote nothing to
-  stdout, printed the bridge's own failure line, and exited exactly 2 — so the bridge refused
-  cleanly and the 101 is the harness reporting a failed assertion, not an abort. A panic is
-  independently excluded: the attempt-1 log has no `panicked at`, and the failure arrived as a
-  returned `Err` (`7 passed; 1 failed`) rather than an unwind. The run names no errno, so which
-  launch failed is not established by the log; serialising the launches removes the process and
-  thread pressure that produced it either way, since each invocation costs a child process plus
-  two threads — a bound on the suite's own cost, not a retry and not a delay. `exchange` also
-  kills the child if the *second* worker cannot start, so the running first worker is never left
-  on a dead pipe.
+  `std::thread::spawn`, which *panics* when the host answers `EAGAIN` — verified on this
+  toolchain: under `ulimit -u 1` it dies `panicked at std/src/thread/functions.rs:131` with exit
+  101, where `Builder::spawn` returns `Resource temporarily unavailable (os error 11)`. A panic
+  leaves no `Err` for `main` to report, so a contended runner killed the process with a
+  test-harness abort and no failure line at all, and the caller's non-vacuity guard reported a
+  behavioural failure for what was resource exhaustion. Both workers now use `Builder::spawn`, so
+  a host that cannot create them is reported as the transport failure it is, and the child is
+  killed if the *second* worker cannot start so the first is never orphaned on a pipe nobody is
+  servicing.
+  The process-level suite also serialises its bridge launches, because each invocation costs a
+  child process plus two threads and eight concurrently is what exhausted the runner in the first
+  place. That bounds the suite's own process cost; it is not a retry and not a delay.
   This does not claim the flake is fixed. It removes the two paths on which the bridge could not
   tell a launch failure from a refusal, and the guard that fired in CI stays armed — the new
   end-to-end case asserts a transport that cannot be launched is refused *and* names a cause other
-  than the one every behavioural refusal carries. The guard is unchanged and still fires when a
-  case genuinely fails to reach the provider (confirmed by mutation). Refs #645.
+  than the one every behavioural refusal carries, so a case driven past the transport can no longer
+  pass on a refusal produced by a cause it never reached; the guard itself is unchanged and still
+  fires when a case genuinely fails to reach the provider. Refs #645.
 - **The census now reads every page of a listing, not just the first.** The listing of merged pull
   requests was requested with `page=1` hardcoded and no pagination loop, so any repository whose
   merged pull requests ran past one page was reported as having only the merged pull requests on
@@ -719,22 +726,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   distinct from the gameplay outcome. Source-only: native process evidence and the real child-process
   lane stay gated by sts2-game-mod#79
   ([ADR 0068](docs/decisions/0068-cold-launch-trial-isolation.md)). Refs #122.
-
-- **Plan, schedule and report reproducible multi-policy benchmark suites.** A new
-  `benchmark_manifest::suite` module freezes an ordered seed corpus, policy axis, repetition count,
-  evaluator revision, declared budgets and predeclared metrics under a versioned manifest; plans one
-  stable logical trial per suite revision/case/policy/repetition with its own provider/context
-  namespace; keeps retry-safe attempt lineage so a replayed settlement is idempotent and a conflicting
-  one is refused; preserves attempt counts across resume; and exports a sanitized aggregate with
-  explicit denominators, honest paired comparisons and metric availability, never counting an
-  infrastructure failure as a defeat, an unavailable cost as zero, or an unverified start inside an
-  exact-start group. Source-only: native exact-start certification stays gated by #126
-  ([ADR 0067](docs/decisions/0067-reproducible-benchmark-suite-scheduling-and-reports.md)). Refs #125.
-
-- **Add offline trace-bundle admission and a bounded reproducer for divergence diagnosis.** A new
-  `trace_divergence` module derives an immutable `TraceBundleManifest` per bundle, admits two bundles
-  by closure, profile and action-schema coverage *before* comparing, compares bounded record views,
-  reports explicit record/entry/byte truncation, and exports a `ReproducerPrefix` that replays only
-  up to the failing boundary and validates against the original source. Offline and read-only; the
-  public status stays digest-free. Native mismatch validation remains gated by #123
-  ([ADR 0066](docs/decisions/0066-offline-trace-bundle-admission-and-reproducer.md)). Refs #124.

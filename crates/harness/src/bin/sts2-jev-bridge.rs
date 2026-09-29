@@ -34,7 +34,7 @@
 
 use serde_json::{Value, json};
 use std::io::{Read, Write};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 use sts2_harness::{
     ACTION_QUESTION, KIND_QUESTION, MAX_PRESENTED_OPTIONS, OptionSelection, SYSTEM_ONE_PATH,
@@ -205,6 +205,10 @@ fn decide(
 mod recording;
 use recording::{record, record_profile};
 
+#[path = "support/jev_transport_worker.rs"]
+mod transport_worker;
+use transport_worker::{Reader, Writer, spawn_transport_worker};
+
 /// Runs the operator-owned transport for exactly one bounded exchange.
 ///
 /// Standard input and output are serviced on their own threads, so neither side can deadlock on a
@@ -212,9 +216,10 @@ use recording::{record, record_profile};
 ///
 /// A thread that cannot be created is a transport failure, not a reason to abort the process. The
 /// two workers are therefore built with `Builder::spawn`, which reports `EAGAIN` as an `Err`
-/// instead of unwinding the way `std::thread::spawn` does, so a host that cannot create them is
-/// reported rather than crashing. A launch that fails this way is indistinguishable at the exit
-/// status from a behavioural refusal, which is why `main` also prints the cause.
+/// instead of panicking the way `std::thread::spawn` does. On a contended host the panic would
+/// unwind through `main`, so the process would die with a test-harness abort rather than the
+/// refusal's own exit status, and the caller would see a transport that never ran rather than the
+/// resource exhaustion that actually stopped it.
 ///
 /// The credential is never passed here: the transport reads it from the environment the runtime
 /// declared, so it is never an argument of this process, a captured byte, or a record.
@@ -238,27 +243,43 @@ fn exchange(
     // slots), and a panic here takes the whole process down with exit 101 -- indistinguishable
     // from a crash, and with no `Err` for `main` to report. `Builder::spawn` returns that failure
     // instead, so a host that cannot fork is reported as the transport failure it is.
-    let writer = std::thread::Builder::new()
-        .name("jev-transport-writer".to_owned())
-        .spawn(move || input.write_all(&payload))
-        .map_err(|error| format!("cannot start the transport writer: {error}"))?;
-    let reader = std::thread::Builder::new()
-        .name("jev-transport-reader".to_owned())
-        .spawn(move || {
+    //
+    // Both arms kill the child on the way out, because `Child`'s `Drop` closes its handles without
+    // signalling the process. The writer arm needs it as much as the reader arm: the transport is
+    // already running by the time the first thread is attempted, so a failure there would orphan
+    // it just as surely on the host that had no spare thread to give.
+    let writer = spawn_transport_worker(
+        std::thread::Builder::new().name("jev-transport-writer".to_owned()),
+        Writer,
+        move || input.write_all(&payload),
+    )
+    .map_err(|error| {
+        kill_child(
+            &mut child,
+            format!("cannot start the transport writer: {error}"),
+        )
+    })?;
+    let reader = spawn_transport_worker(
+        std::thread::Builder::new().name("jev-transport-reader".to_owned()),
+        Reader,
+        move || {
             let mut received = Vec::new();
             output
                 .by_ref()
                 .take((LIMIT + 1) as u64)
                 .read_to_end(&mut received)
                 .map(|_| received)
-        })
-        // The reader is the second thread, so it is the one that can fail after the writer is
-        // already running. Returning here would drop the writer's handle and leave the child
-        // waiting on a pipe nobody is servicing, so the child is killed on the way out.
-        .inspect_err(|_| {
-            let _ = child.kill();
-        })
-        .map_err(|error| format!("cannot start the transport reader: {error}"))?;
+        },
+    )
+    // The reader is the second thread, so it is the one that can fail after the writer is
+    // already running. Returning here would drop the writer's handle and leave the child
+    // waiting on a pipe nobody is servicing, so the child is killed on the way out.
+    .map_err(|error| {
+        kill_child(
+            &mut child,
+            format!("cannot start the transport reader: {error}"),
+        )
+    })?;
     let deadline = Instant::now() + timeout;
     let status = loop {
         if let Some(status) = child.try_wait()? {
@@ -278,9 +299,22 @@ fn exchange(
     Ok(received)
 }
 
+/// Kills `child`, then hands back the error that made the bridge give up on it.
+///
+/// `std::process::Child` has no `Drop` that signals the process -- dropping it closes the handles
+/// and leaves the transport running -- so returning a spawn failure without this would report the
+/// failure correctly and still orphan a child, on precisely the host that had nothing to spare.
+fn kill_child(child: &mut Child, error: String) -> String {
+    let _ = child.kill();
+    error
+}
 #[cfg(test)]
 #[path = "support/sts2_jev_bridge_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "support/jev_transport_child_tests.rs"]
+mod transport_child_tests;
 
 #[cfg(test)]
 #[path = "support/jev_tactical_bridge_tests.rs"]
