@@ -15,7 +15,7 @@ Agreement with the baseline is not an accuracy label, and disagreement is not an
 
 ## Frozen scope
 
-Use the existing `ascension.jev-paired-runner.v1` manifest with exactly ten pairs,
+Use the existing `ascension.jev-paired-runner.v2` manifest with exactly ten pairs,
 `max_pairs: 10`, and `max_provider_attempts: 20`. The execution budget is at most
 1,800,000 ms and the original-input byte budget is at most 1,310,720 bytes. The existing
 per-arm ceiling remains 120,000 ms. These are upper bounds, not a recommendation to
@@ -23,8 +23,8 @@ spend all of them. The existing runner still owns reservations, cancellation and
 
 The planner verifies executable byte pins, private file permissions, input hashes,
 whole-input bounds, and the unchanged runner's cross-split leakage checks. It refuses
-non-ASCII action identifiers because the compiled bridge in #377 rejects them before it
-invokes the provider. It never removes an invalid pair and substitutes another.
+non-ASCII action identifiers because the compiled bridge in #377 rejects them before
+transport. It never removes an invalid pair and substitutes another.
 
 Single-action cases and catalogs larger than 24 remain visible in the plan rather than
 being silently discarded. Raw catalog size is not proof that tactical evaluation will apply:
@@ -46,10 +46,9 @@ is performed by these tools.
 Provide ten approved original bridge inputs and the reviewed manifest described in
 [RUNNER.md](RUNNER.md). Keep them in native Unix storage: directories owned by the user
 with mode `0700`; regular, single-link files with mode `0600`; no symlink components.
-The compiled bridge must already be reviewed and installed. The manifest's `transport` entry
-must be set as [RUNNER.md](RUNNER.md) describes — the same reviewed bridge binary — because
-admission still requires the field, but nothing else is installed: the bridge performs the
-System One exchange in-process and never launches a second executable.
+The compiled bridge must already be reviewed and installed. The v1 manifest's
+operator-owned `transport` artifact no longer exists or is accepted: the bridge performs
+the System One exchange in process.
 This tool does not install software, acquire credentials, or turn an example manifest into
 approval to transmit private state.
 

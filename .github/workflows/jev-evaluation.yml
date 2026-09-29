@@ -46,5 +46,5 @@ jobs:
         run: rustup toolchain install 1.97.1 --profile minimal --no-self-update
       - name: Run compiled paired replay and frozen pilot diagnostics
         shell: bash
-        # The transport remains the socket-free fixture. No secrets or live inputs are used.
+        # The bridge is the real compiled binary; no secrets or live inputs are used.
         run: bash experiments/jev-evaluation/compiled-ci.sh

@@ -45,15 +45,8 @@ async function compiledFixture(t, mode = 'success') {
   const f = await fixture(t, mode);
   // Use the exact built bytes, including in a path with spaces; do not substitute a bridge oracle.
   await copyFile(binary, f.bridge); await chmod(f.bridge, 0o700);
-  // The manifest schema still requires a `transport` entry and the runner still re-pins it, so the
-  // file is staged and digested here. The compiled bridge is NOT given it and never reads it: since
-  // #299 the exchange is in-process. Only the runner's two-artifact admission is under test, and
-  // retiring that field is a separate schema change, not this lane's to make.
-  const source = await readFile(new URL('./compiled-bridge-transport.mjs', import.meta.url));
-  await writeFile(f.transport, Buffer.concat([Buffer.from(`#!${process.execPath}\n`), source]), { mode: 0o700 });
   f.manifest.bridge.sha256 = sha256(await readFile(f.bridge));
   assert.equal(f.manifest.bridge.sha256, binaryDigest);
-  f.manifest.transport.sha256 = sha256(await readFile(f.transport));
   f.manifest.source_revision = revision;
   f.manifest.budgets.per_arm_timeout_ms = 5000;
   f.manifest.budgets.total_timeout_ms = 20000;

@@ -20,7 +20,7 @@ export function validatePilot(manifest) {
 export function expectedPilotPlan(manifest, hash) {
   validatePilot(manifest);
   return { schema: RUN_SCHEMA, manifest_sha256: hash, source_revision: manifest.source_revision,
-    bridge_digest: manifest.bridge.sha256, transport_digest: manifest.transport.sha256,
+    bridge_digest: manifest.bridge.sha256,
     evidence_kind: manifest.evidence_kind, budgets: manifest.budgets,
     scheduled: schedule(manifest, hash) };
 }

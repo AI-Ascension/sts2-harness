@@ -119,7 +119,7 @@ export async function preflight(manifestPath) {
   await privateDirectory(root);
   const bytes = await privateBytes(path, 1024 * 1024);
   const manifest = validateRunner(parseJson(bytes)), hash = sha256(bytes);
-  await verifyExecutable(manifest.bridge); await verifyExecutable(manifest.transport);
+  await verifyExecutable(manifest.bridge);
   await privateDirectory(dirname(manifest.output_directory));
   let absent = false;
   try { await lstat(manifest.output_directory); } catch (error) {

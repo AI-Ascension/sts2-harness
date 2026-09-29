@@ -216,8 +216,8 @@ mod tls_loopback_tests;
 mod tls_transport_tests;
 
 #[cfg(test)]
-#[path = "support/jev_tls_transport_framing_tests.rs"]
-mod tls_transport_framing_tests;
+#[path = "support/jev_tls_transport_chunk_bounds_tests.rs"]
+mod tls_transport_chunk_bounds_tests;
 
 #[cfg(test)]
 #[path = "support/jev_tactical_bridge_tests.rs"]

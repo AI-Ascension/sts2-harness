@@ -224,14 +224,10 @@ fn decode_chunked(body: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
             }
             return Ok(decoded);
         }
-        // Both sums below are checked rather than allowed to wrap. `usize::from_str_radix` accepts
-        // up to `ffffffffffffffff`, so a peer that declares a chunk near `usize::MAX` makes each
-        // addition below wrap to a small number, and the body bound and the truncation check that
-        // follow both pass on that number: in a release build the framing then attempts the
-        // out-of-bounds slice `&rest[..size]`, and in a debug build the arithmetic panics. An
-        // unrepresentable sum is a refusal, exactly like an oversized one, so a saturating sum is
-        // deliberately not used: it would accept a smaller size than the peer declared instead of
-        // refusing the one it declared.
+        // Both guards below are reachable with a provider-chosen `size`, so neither may rely on
+        // unchecked addition. `decoded.len() + size` wraps for a size near `usize::MAX`, which
+        // skipped the bound entirely, and `size + 2` wraps to a small number, which skipped the
+        // truncation check and let the slice index below panic instead of refusing the frame.
         if decoded
             .len()
             .checked_add(size)
@@ -239,7 +235,9 @@ fn decode_chunked(body: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         {
             return Err("the provider response exceeded its bound".into());
         }
-        if size.checked_add(2).is_none_or(|needed| rest.len() < needed) {
+        // `size` is nonzero here, so `size + 2` is at least 3; compare against the bytes that
+        // actually remain instead of adding to the untrusted size.
+        if size > rest.len().saturating_sub(2) {
             return Err("the provider response was truncated inside a chunk".into());
         }
         decoded.extend_from_slice(&rest[..size]);

@@ -98,7 +98,7 @@ test('cached audits are not trusted or executed, and original inputs are not reo
   const f = await pilotFixture(t); await syntheticRun(f);
   await writeFile(join(f.manifest.output_directory, 'audit.json'), '{UNTRUSTED_CACHE');
   await Promise.all(f.manifest.pairs.map(pair => rm(join(f.root, pair.input_path))));
-  await rm(f.manifest.bridge.path); await rm(f.manifest.transport.path);
+  await rm(f.manifest.bridge.path);
   const report = await reportPilot(f.path);
   assert.equal(report.incomplete, false); assert.equal(report.overall.audit.counts.disagree, 10);
 });

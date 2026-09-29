@@ -5,8 +5,13 @@ import { isAbsolute, resolve } from 'node:path';
 import { canonical, digest, evidenceKind, exactKeys, integer, modelPin, object,
   requireThat, sha256, token } from './contract.mjs';
 
-export const RUNNER_SCHEMA = 'ascension.jev-paired-runner.v1';
-export const RUN_SCHEMA = 'ascension.jev-paired-execution.v1';
+// v1 admitted an operator-installed `transport` artifact and required its digest in the frozen plan.
+// The bridge now performs the System One exchange in process through its own pinned TLS client, so
+// there is no second artifact to install, pin, or re-verify. v2 drops the field entirely and refuses
+// any manifest that still carries one, rather than admitting a plan whose second artifact is never
+// used. The bridge is now the single pinned artifact, re-verified in preflight and before each arm.
+export const RUNNER_SCHEMA = 'ascension.jev-paired-runner.v2';
+export const RUN_SCHEMA = 'ascension.jev-paired-execution.v2';
 export const ARM_SCHEMA = 'ascension.jev-paired-arm.v1';
 export const MAX_INPUT = 128 * 1024;
 export const MAX_PAIRS = 256;
@@ -47,13 +52,19 @@ export function environmentNames(names) {
 }
 
 export function validateRunner(manifest) {
+  object(manifest);
+  // Checked before `exactKeys` so the refusal names the retired field instead of a bare
+  // `unknown_field`: an operator carrying a v1 plan forward must delete the transport entry and
+  // re-state the intent, not have it silently dropped while the plan still claims two artifacts.
+  const carriesRetiredTransport = 'transport' in manifest;
+  requireThat(!carriesRetiredTransport, 'runner_retired_transport');
   exactKeys(manifest, ['schema', 'experiment_id', 'evidence_kind', 'source_revision', 'model',
-    'bridge', 'transport', 'inherited_environment', 'confidence_gate_percent', 'budgets',
+    'bridge', 'inherited_environment', 'confidence_gate_percent', 'budgets',
     'output_directory', 'pairs']);
   requireThat(manifest.schema === RUNNER_SCHEMA, 'runner_schema');
   token(manifest.experiment_id); evidenceKind(manifest.evidence_kind);
   digest(manifest.source_revision, 40); modelPin(manifest.model);
-  executable(manifest.bridge); executable(manifest.transport);
+  executable(manifest.bridge);
   environmentNames(manifest.inherited_environment); absolutePath(manifest.output_directory);
   requireThat(integer(manifest.confidence_gate_percent) <= 100, 'runner_gate');
   exactKeys(manifest.budgets, ['max_pairs', 'max_provider_attempts', 'per_arm_timeout_ms',

@@ -27,13 +27,11 @@ export async function pilotFixture(t, modes = []) {
   t.after(() => rm(root, { recursive: true, force: true }));
   const bin = join(root, 'Program Files'); await mkdir(bin, { mode: 0o700 });
   const executable = Buffer.from('#!/bin/false\n');
-  const bridge = join(bin, 'Synthetic bridge'), transport = join(bin, 'Synthetic transport');
+  const bridge = join(bin, 'Synthetic bridge');
   await writeFile(bridge, executable, { mode: 0o700 });
-  await writeFile(transport, executable, { mode: 0o700 });
   const manifest = { schema: RUNNER_SCHEMA, experiment_id: 'synthetic-private-identifier',
     evidence_kind: 'synthetic', source_revision: '907982c8adab0ec25fec55eb918901c1152ba569',
     model: 'jev-1.13.0', bridge: { path: bridge, sha256: sha256(executable) },
-    transport: { path: transport, sha256: sha256(executable) },
     inherited_environment: ['TYPESAFE_API_KEY'], confidence_gate_percent: 20,
     budgets: { max_pairs: 10, max_provider_attempts: 20, per_arm_timeout_ms: 1000,
       total_timeout_ms: 20000, max_total_input_bytes: 128 * 1024 * 10 },
