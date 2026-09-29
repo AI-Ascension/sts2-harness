@@ -11,6 +11,14 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **A transport that refuses a request is reported as the refusal, not as a broken pipe.**
+  #746 made the bridge print `cause: {error}`, but the workers were joined before the transport's
+  exit status was read, and a transport that exits without draining its stdin fails the writer's
+  `write_all` with `EPIPE` — so `??` returned on that plumbing artifact and the `status.success()`
+  check never ran, so an operator transport declining a request with a non-`200` was reported as
+  `cause: Broken pipe (os error 32)`. The exit status does not depend on scheduling, so it is read
+  first; the workers are still joined, so a real transport I/O failure is still surfaced. New case
+  `a_refused_transport_is_reported_as_the_refusal_and_not_as_a_broken_pipe` asserts the cause is the refusal and is not `Broken pipe`. Refs #751.
 - **A transport that cannot be given a worker thread is killed, not orphaned.**
   #746 made the bridge report a failed thread spawn instead of panicking, and #747 then killed the
   child when the *reader* worker could not start. The writer arm was left returning the error with a

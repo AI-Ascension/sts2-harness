@@ -98,6 +98,16 @@ fn run(
     environment: &[(&str, &str)],
     arguments: &[&str],
 ) -> Result<Output, String> {
+    run_with(transport, environment, arguments, &request())
+}
+
+/// Runs the real bridge once with a caller-chosen request on standard input.
+fn run_with(
+    transport: &Path,
+    environment: &[(&str, &str)],
+    arguments: &[&str],
+    body: &[u8],
+) -> Result<Output, String> {
     let _slot = bridge_slot();
     let mut child = launched(transport, environment, arguments)?
         .spawn()
@@ -108,8 +118,8 @@ fn run(
             .take()
             .ok_or("the bridge has no standard input")?;
         stdin
-            .write_all(&request())
-            .map_err(|error| format!("cannot write the request: {error}"))?;
+            .write_all(body)
+            .map_err(|e| format!("cannot write the request: {e}"))?;
     }
     child
         .wait_with_output()
@@ -210,6 +220,41 @@ fn a_transport_that_refuses_a_non_200_status_is_refused_without_a_decision() -> 
     let scratch = Scratch::new("non-200")?;
     let transport = scratch.transport("refuse-503.sh", "exit 22")?;
     assert_refused_after_the_transport_ran(&scratch, "refuse-503.sh", &transport)
+}
+
+/// A transport that refuses a request is reported as the refusal, not as a failed write to its pipe.
+/// A transport that exits without draining its stdin fails the bridge's writer with `EPIPE`, and
+/// reporting that artifact instead of the refusal left the cause line saying `Broken pipe (os error
+/// 32)` for a provider that had refused in the most ordinary way (Refs #751).
+///
+/// Both details below were found by reverting the fix and watching this stay green: the transport
+/// must refuse WITHOUT reading stdin, and the request must exceed the pipe buffer; `Scratch`
+/// documents each and why. The cause is asserted positively, so deleting it fails here.
+#[test]
+fn a_refused_transport_is_reported_as_the_refusal_and_not_as_a_broken_pipe() -> Result<(), String> {
+    let scratch = Scratch::new("refusal-named")?;
+    let transport = scratch.transport_refusing_without_reading("refuses.sh", "exit 22")?;
+    let output = run_with(
+        &transport,
+        &[],
+        &[],
+        &Scratch::request_past_the_pipe_buffer(),
+    )?;
+    refused_without_a_decision(&output)?;
+    if !scratch.invoked() {
+        return Err("refuses.sh never ran, so this case proved nothing".to_owned());
+    }
+    let stderr = stderr_of(&output);
+    if !stderr.contains("transport reported failure") {
+        return Err(format!(
+            "a refused transport was not reported as the refusal: {stderr:?}"
+        ));
+    }
+    if stderr.contains("Broken pipe") {
+        let message = "a refused transport was reported as a broken pipe instead of the refusal";
+        return Err(format!("{message}: {stderr:?}"));
+    }
+    Ok(())
 }
 
 /// A transport that writes the error *message* instead of the body is refused too, so a status line
