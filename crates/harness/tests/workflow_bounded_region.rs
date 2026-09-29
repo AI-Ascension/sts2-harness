@@ -1,7 +1,17 @@
 // SPDX-License-Identifier: MIT
 
-//! AC5: the production dynamic runtime reaches the bounded parallel analysis
-//! route, reports actual branch states, and cannot reach a game mutation.
+//! The bounded parallel analysis route, called directly: it reports actual
+//! branch states and cannot reach a game mutation.
+//!
+//! **It is called directly here, and that is the whole boundary of this file.**
+//! Running the workflow does *not* reach it. `DynamicRuntime`'s `adaptive_region`
+//! node dispatches to `DynamicExecutorPort::execute_adaptive`, so the bounded
+//! route is entered only when a caller names it. The test
+//! `the_runtime_keeps_its_existing_adaptive_boundary_for_region_nodes` in
+//! `refusals.rs` asserts that boundary from the other side: it runs the
+//! workflow to completion and requires `last_bounded_outcome()` to be `None`.
+//! Read that test before believing any name in this file implies the runtime
+//! reaches this route on its own.
 
 #![allow(clippy::expect_used)]
 
@@ -121,7 +131,12 @@ pub(crate) fn dynamic_workflow() -> CompiledWorkflow {
 }
 
 #[test]
-fn the_production_runtime_executes_a_declared_region_on_the_bounded_route() {
+fn the_bounded_route_executes_a_declared_region_when_a_caller_names_it() {
+    // The name is load-bearing. This does not show the production runtime
+    // reaching the bounded route by running a workflow; it shows that a caller
+    // which asks for the route by name gets a report. See
+    // `the_runtime_keeps_its_existing_adaptive_boundary_for_region_nodes` for
+    // the assertion that the node route does *not* lead here.
     let mut runtime = DynamicRuntime::new(dynamic_workflow(), FixtureExecutor::default())
         .expect("runtime starts");
     let plan = independent_plan();
