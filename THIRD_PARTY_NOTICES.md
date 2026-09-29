@@ -1,5 +1,30 @@
 # Third-Party Notices
 
+## System One in-process TLS transport
+
+The System One bridge performs its own HTTPS exchange, so the workspace gains a TLS client for the
+first time. The pinned set is `rustls` exactly `0.23.45` (Apache-2.0 OR ISC OR MIT;
+https://github.com/rustls/rustls) with the `ring` crypto backend exactly `0.17.14`
+(Apache-2.0 AND ISC), `webpki-roots` exactly `1.0.9` (CDLA-Permissive-2.0) as the compiled-in
+trust anchor, `rustls-pki-types` exactly `1.15.1` (MIT OR Apache-2.0), `rustls-webpki` `0.103.15`
+(ISC), `untrusted` `0.9.0` (ISC), `subtle` `2.6.1` (BSD-3-Clause), and `log` `0.4.34`
+(MIT OR Apache-2.0). Exact sources and registry integrity checksums are recorded in `Cargo.lock`;
+no source is vendored.
+
+Two properties of this addition are worth stating plainly rather than leaving to a reviewer.
+
+First, `ring` is **not** a pure-Rust crypto backend. It carries 17 C and 73 assembly files, and the
+workspace's `unsafe_code = "forbid"` lint applies to workspace members only, so it does not and
+cannot cover compiled code inside this dependency. The alternative backend, `aws-lc-rs`, carries
+1,327 C and 3 assembly files, so no `rustls` configuration is free of compiled code; `ring` was
+taken as the smaller of the two.
+
+Second, this is a **new** compiled-code dependency in a workspace whose existing C build step comes
+from `rusqlite`'s `bundled` sqlite3. The `Rust quality gates` CI job already installs a C toolchain
+for that dependency, so the toolchain requirement is not new, but the crypto surface is. A current
+advisory audit of the resulting lockfile remains a separate release gate; the earlier lockfile
+audit recorded below does not cover this addition.
+
 Effective-limit CI pin validation uses `yaml-rust2` exactly `0.13.0` with default features
 disabled. This adds locked `arraydeque` 0.5.1 and `hashlink` 0.12.2; all three offer MIT or
 Apache-2.0 licensing. Optional encoding support is not enabled. Package metadata and the

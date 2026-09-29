@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile, symlink, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { sha256 } from './contract.mjs';
-import { absolutePath, environmentNames, inputPath, payload, schedule, validateRunner, validateInput } from './runner-contract.mjs';
+import { absolutePath, environmentNames, inputPath, payload, RUNNER_SCHEMA, schedule, validateRunner, validateInput } from './runner-contract.mjs';
 import { preflight, selectedEnvironment } from './runner-io.mjs';
 import { sortedCatalog } from './runner-evidence.mjs';
 import { fixture } from './runner-test-fixtures.mjs';
@@ -80,13 +80,27 @@ for (const [name, mutate] of [
   ['unsafe output parent', async f => { const parent = join(f.root, 'public'); await mkdir(parent, { mode: 0o755 }); await f.chmod(parent, 0o755); f.manifest.output_directory = join(parent, 'run'); await f.save(); }],
   ['input symlink', async f => { await symlink(f.inputPath, join(f.root, 'linked.json')); f.manifest.pairs[0].input_path = 'linked.json'; await f.save(); }],
   ['bridge drift', async f => writeFile(f.bridge, 'changed')],
-  ['group-writable executable', async f => f.chmod(f.transport, 0o770)],
+  ['group-writable executable', async f => f.chmod(f.bridge, 0o770)],
   ['total input budget', async f => { f.manifest.budgets.max_total_input_bytes = 1; await f.save(); }],
 ]) {
   test(`preflight refuses ${name} without launching`, { skip: process.platform === 'win32' }, async t => {
     const f = await fixture(t); await mutate(f); await assert.rejects(preflight(f.path));
   });
 }
+
+test('a manifest carrying the retired v1 transport is refused by name', { skip: process.platform === 'win32' }, async t => {
+  // #299 regression: the bridge performs the System One exchange in process, so the v1 manifest's
+  // operator-installed `transport` artifact no longer exists. A manifest that still carries one
+  // must be refused by name, and the retired v1 schema string must be refused as stale.
+  const f = await fixture(t);
+  f.manifest.transport = { path: f.bridge, sha256: sha256(await readFile(f.bridge)) };
+  assert.throws(() => validateRunner(f.manifest), /runner_retired_transport/);
+  delete f.manifest.transport;
+  f.manifest.schema = 'ascension.jev-paired-runner.v1';
+  assert.throws(() => validateRunner(f.manifest), /runner_schema/);
+  f.manifest.schema = RUNNER_SCHEMA;
+  assert.doesNotThrow(() => validateRunner(f.manifest));
+});
 
 test('semantic split leakage cannot be hidden by whitespace or execution IDs', { skip: process.platform === 'win32' }, async t => {
   const f = await fixture(t);

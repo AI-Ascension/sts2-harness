@@ -10,6 +10,28 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **The System One bridge performs its own HTTPS exchange, so a run carries one digest instead of
+  two.** It previously spawned an operator-owned transport named by `--transport`, so a run pinned
+  two artifacts and the runtime verified one. It now uses a pinned `rustls` client with trust
+  anchors compiled in from `webpki-roots`, so a run record can name which roots verified the peer.
+  `--transport` is gone and the runtime admits `["--model", MODEL]`, so a stale four-element
+  configuration is refused rather than silently narrowed. The handshake completes before a
+  request is built, so a certificate or hostname refusal discloses nothing; the deadline bounds
+  connect, handshake, write, and read in both directions; the `128 KiB` bound applies to the body
+  against a checked `Content-Length` or `chunked` framing, so a truncated response cannot be
+  parsed as a whole one; a TCP close without `close_notify` is a refusal rather than an end of
+  message; and a missing, empty, oversized, or header-unsafe credential is refused before a
+  socket is opened instead of becoming an empty `Bearer` header. Non-`200` refusals (including
+  `429` and `529`) fail closed, and a TLS failure is never a downgrade or a retry. Neither
+  `rustls` backend is pure Rust — `ring` 0.17.14 carries 17 `.c` and 73 `.S`, `aws-lc-sys` 0.39.0
+  662 `.c`/`.h` and 849 `.S` — so that part of the issue was unsatisfiable as written; `ring` was
+  taken as the smaller, and this workspace already compiles C for `rusqlite`. The compiled-bridge
+  evaluation lane narrowed with it: it staged a synthetic `--transport` the bridge no longer
+  reads, so its nine provider-answer cases are retired rather than left failing. Response classes
+  are asserted in-process against bytes and the ordering a real peer shows against a loopback TLS
+  server, which leaves no automated lane driving a provider exchange through the compiled binary
+  end to end; ADR 0053 records that gap and the seam that would close it.
+
 - **A baseline-fence refusal now reports presence, not disagreement.** Since #468 the save-profile
   fence rule is presence-only: the owner checks the profile identity and the baseline independently
   and imposes no equality between them, so a distinct-but-valid fence can no longer be refused.
@@ -705,26 +727,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   a declared topological step order with no cycles or forward references, and mutation tools refused
   from the read-only catalog ([ADR 0073](docs/decisions/0073-pre-agent-read-only-recipe-admission.md)).
   Collection execution, provenance and the Studio round-trip remain open. Refs #97.
-
-- **Plan, schedule and compare bounded same-start branch experiments.** A new
-  `benchmark_manifest::branch_experiment` module fixes the effect-free contract behind issue #119: a
-  versioned declaration of one verified fork point, a fork strategy, child policies and per-child and
-  total budgets; a stable per-child trial key with its own fresh provider/context namespace; a
-  same-start admission re-check that keeps a prefix-only start out of exact-restore statistics; a
-  retry-safe recorded scheduler that reconciles a lost reply without double-scoring a trial; an
-  aligned comparison that separates declared policy divergence from restore failure and does not let
-  an identical endpoint erase an earlier divergence; and a sanitized report carrying a keyed handle
-  and no exact digest. Source-only
-  ([ADR 0072](docs/decisions/0072-branch-experiment-comparison.md)): the live children, the restore
-  and the provider calls stay with the gateway and game-mod. Refs #119.
-
-- **Resolve and durably bind an authored workflow's seed.** A new `seed_binding` module fixes the
-  source-only contract behind #103: an explicit or generate-once seed normalizes to one bounded
-  canonical UTF-8 form, a generate-once run draws at most once per persisted record and the persisted
-  effective seed is reused across duplicate requests, lost responses and restarts without a redraw
-  (only a retry after a failed persist may redraw, before any record exists), the effective seed is
-  persisted before any setup mutation (failing closed), and a wrong instance, stale baseline or lease,
-  unsupported setup, or conflicting persisted seed is refused before any draw. A recording transport proves the
-  persisted effective seed and operation identity are sent unchanged. Native seed acceptance stays
-  gated by sts2-game-mod#79
-  ([ADR 0071](docs/decisions/0071-authored-seed-binding.md)). Refs #103.

@@ -2,7 +2,7 @@
 
 The runner connects the opt-in bridge capture in #371 to the paired audit in #369.
 It sends **the same approved input to two independent bridge invocations**, changing only
-`model_execution_id`, and imports their redacted sidecars. The transport path remains a
+`model_execution_id`, and imports their redacted sidecars. The bridge path remains a
 single argument, including spaces, as fixed in #370.
 
 This is **decision replay**, not game replay: no returned action is dispatched to a game,
@@ -31,11 +31,14 @@ components are preserved. The output directory must **not exist** and its existi
 must be private, canonical and user-owned. The runner creates only its new run directory
 and its own children. It never chmods, rotates, removes or adopts an existing run.
 
-Bridge and transport locators must be canonical absolute paths to non-group/world-writable
-regular executable files owned by the current user or root. Their file-byte SHA-256 pins
-are checked in preflight and again before each arm. These checks do not authenticate
-mapped process pages, interpreters, libraries, transport dependencies, endpoints or model
-weights. `source_revision` is a recorded operator assertion, not a verified build attestation.
+The bridge locator must be a canonical absolute path to a non-group/world-writable
+regular executable file owned by the current user or root. Its file-byte SHA-256 pin
+is checked in preflight and again before each arm. These checks do not authenticate
+mapped process pages, interpreters, libraries, endpoints or model weights. The bridge
+performs the System One exchange in process through its own pinned TLS client, so this
+manifest pins one artifact; a manifest that still carries the retired `transport` entry
+from `ascension.jev-paired-runner.v1` is refused rather than silently half-honoured.
+`source_revision` is a recorded operator assertion, not a verified build attestation.
 Use an independently reviewed immutable model pin; denying familiar rolling aliases cannot
 establish that a provider will keep an arbitrary model identifier immutable.
 
@@ -55,17 +58,13 @@ The exact field names are accepted by `validateRunner`; no ambient defaults wide
 
 ```json
 {
-  "schema": "ascension.jev-paired-runner.v1",
+  "schema": "ascension.jev-paired-runner.v2",
   "experiment_id": "pilot-001",
   "evidence_kind": "operator_recorded",
   "source_revision": "REVIEWED_40_CHARACTER_SOURCE_COMMIT",
   "model": "REVIEWED_EXACT_MODEL",
   "bridge": {
     "path": "/var/lib/sts2-private/bin/sts2-jev-bridge",
-    "sha256": "REPLACE_WITH_64_LOWERCASE_HEX"
-  },
-  "transport": {
-    "path": "/var/lib/sts2-private/bin/System One transport",
     "sha256": "REPLACE_WITH_64_LOWERCASE_HEX"
   },
   "inherited_environment": ["PATH", "TYPESAFE_API_KEY"],
@@ -89,11 +88,11 @@ The exact field names are accepted by `validateRunner`; no ambient defaults wide
 }
 ```
 
-Declare only the environment names required by the reviewed transport, using its actual
+Declare only the environment names required by the reviewed bridge, using its actual
 credential-variable names. Values come from the invoking process and are never serialized
 by the runner. All other ambient variables are omitted. Empty/missing/oversized values,
 duplicate names, common interpreter-injection variables and `JEV_CONTEXT_LOG` are rejected.
-This denylist is not proof that an arbitrary transport cannot log or leak credentials;
+This denylist is not proof that an arbitrary bridge cannot log or leak credentials;
 the reviewed executable and its dependencies remain trusted. PATH should itself be reviewed.
 
 `cluster_sha256` declares the seed/run/checkpoint family used to prevent split leakage.

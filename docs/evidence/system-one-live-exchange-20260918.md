@@ -4,6 +4,13 @@ First recorded exchange between `sts2-jev-bridge` and the TypeSafe System One en
 operator-run, source-owner report. It is evidence about the provider lane only; it is not gameplay
 evidence and no game was running.
 
+> **Historical record (Refs #299).** This describes the lane as it stood on 2026-09-18, when the
+> exchange was performed by a separate reference Python transport named by `--transport`. The
+> bridge now performs the exchange itself with a pinned in-process `rustls` client, so
+> `--transport` no longer exists. The provider, endpoint, model, and the request/response bodies
+> below are unaffected; the "Transport" row records what that run used, not what a run today uses.
+> See ADR 0053.
+
 ## What was run
 
 | Axis | Value |

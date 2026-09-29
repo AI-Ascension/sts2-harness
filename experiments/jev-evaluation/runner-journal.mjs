@@ -72,11 +72,11 @@ export async function readRun(directory) {
   const document = await readOptionalJson(join(root, 'run.pending.json'), 1024 * 1024);
   requireThat(document !== null, 'runner_plan_missing');
   const plan = document.value;
-  exactKeys(plan, ['schema', 'manifest_sha256', 'source_revision', 'bridge_digest', 'transport_digest',
+  exactKeys(plan, ['schema', 'manifest_sha256', 'source_revision', 'bridge_digest',
     'evidence_kind', 'budgets', 'scheduled']);
   requireThat(plan.schema === RUN_SCHEMA && ['synthetic', 'operator_recorded'].includes(plan.evidence_kind),
     'runner_plan_schema');
-  for (const key of ['manifest_sha256', 'bridge_digest', 'transport_digest']) digest(plan[key]);
+  for (const key of ['manifest_sha256', 'bridge_digest']) digest(plan[key]);
   digest(plan.source_revision, 40);
   requireThat(Array.isArray(plan.scheduled) && plan.scheduled.length > 0
     && plan.scheduled.length <= 512 && plan.scheduled.length % 2 === 0, 'runner_plan_slots');

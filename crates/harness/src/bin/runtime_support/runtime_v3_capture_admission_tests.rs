@@ -4,11 +4,6 @@ use super::arguments_allowed;
 
 #[test]
 fn capture_is_only_a_final_unix_execution_suffix() {
-    let path = if cfg!(windows) {
-        "C:/providers/transport.exe"
-    } else {
-        "/opt/transport"
-    };
     let directory = if cfg!(windows) {
         "C:/capture"
     } else {
@@ -16,7 +11,7 @@ fn capture_is_only_a_final_unix_execution_suffix() {
     };
     for tactical in [false, true] {
         for gated in [false, true] {
-            let mut args = vec!["--model", "jev-1.13.0", "--transport", path];
+            let mut args = vec!["--model", "jev-1.13.0"];
             if gated {
                 args.extend(["--gate", "20"]);
             }

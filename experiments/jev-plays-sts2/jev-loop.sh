@@ -44,7 +44,8 @@ if [ "$MODE" = stream ]; then
     LAUNCH_ARGS=(--persistent-session)
 fi
 BRIDGE="$ROOT/sts2-jev-bridge"
-TRANSPORT="$ROOT/systemone_transport.py"
+# The bridge performs the System One exchange itself with a pinned in-process TLS client, so
+# there is no operator-owned transport file to require or to name in the argument vector.
 HARNESS="$ROOT/sts2-harness-runtime"
 GATEWAY="$ROOT/sts2-gateway-runtime"
 MCP="$ROOT/sts2-mcp-server"
@@ -245,7 +246,7 @@ if ! pgrep -u 1000 -x steam > /dev/null 2>&1; then
     echo 'Started from root it has no session keyring, cannot sign in, and exits.' >&2
     exit 1
 fi
-for required in "$LAUNCHER" "$BRIDGE" "$TRANSPORT" "$HARNESS" "$GATEWAY" "$MCP" "$ROOT/key.txt"; do
+for required in "$LAUNCHER" "$BRIDGE" "$HARNESS" "$GATEWAY" "$MCP" "$ROOT/key.txt"; do
     [ -e "$required" ] || { echo "missing required component: $required" >&2; exit 1; }
 done
 
@@ -429,7 +430,7 @@ JSON
         STS2_BARRIER_WAIT_MILLIS="$BARRIER_WAIT_MILLIS" \
         STS2_EXO_BRIDGE_BINARY="$BRIDGE" \
         STS2_EXO_REVISION="$DIGEST" \
-        STS2_EXO_BRIDGE_ARGS_JSON="[\"--model\",\"jev-latest\",\"--transport\",\"$TRANSPORT\",\"--gate\",\"$GATE_PERCENT\"]" \
+        STS2_EXO_BRIDGE_ARGS_JSON="[\"--model\",\"jev-latest\",\"--gate\",\"$GATE_PERCENT\"]" \
         STS2_EXO_INHERITED_ENV_JSON='["TYPESAFE_API_KEY","JEV_CONTEXT_LOG"]' \
         JEV_CONTEXT_LOG="$run_dir/jev-context.jsonl" \
         TYPESAFE_API_KEY="$(cat "$ROOT/key.txt")" \

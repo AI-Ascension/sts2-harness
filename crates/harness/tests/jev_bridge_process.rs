@@ -7,39 +7,30 @@
 //!
 //! The unit suite inside the binary calls `decide` and `record` in process, so it proves a refusal
 //! is *returned* but not that the executable turns that refusal into the exit status and the empty
-//! standard output the runtime lane reads. These cases run the real binary against a transport
-//! executable, the seam the bridge actually owns, and they add the response classes the in-process
-//! suite had no case for: an answer that is not a `200`, and the operator credential.
+//! standard output the runtime lane reads. These cases run the real binary as a child process.
 //!
-//! Every refusal case is driven past the request, so the transport is invoked and its marker is
-//! written before the refusal happens. A case whose transport never ran would refuse for the wrong
-//! reason and would keep passing if the refusal it names were deleted.
+//! The bridge now performs the exchange itself, so these cases cannot stage a provider answer the
+//! way the previous version of this file did. What remains here is the part that is genuinely a
+//! process property: the exit status and empty standard output of a refusal, the configuration a
+//! `--describe` reports, the refusal of a stale `--transport` configuration, and the credential
+//! never appearing in any output. The response classes the provider can return are covered
+//! in-process, against bytes, in `jev_tls_transport_tests`.
 
-use std::fs;
 use std::io::Write;
-use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-#[path = "support/jev_bridge_process_scratch.rs"]
-mod scratch;
-use scratch::Scratch;
-#[path = "support/jev_bridge_process_malformed_body.rs"]
-mod malformed_body;
-
 /// Serialises every case that launches the bridge, so this binary never holds more than one
-/// bridge and its transport alive at a time.
+/// bridge alive at a time.
 ///
-/// Each invocation costs a child process plus two worker threads inside it. Left to the default
+/// Each invocation costs a child process running a TLS-capable binary. Left to the default
 /// test-thread count, the cases below created those concurrently, and a runner that could not fork
-/// answered `EAGAIN`. That surfaced as a case whose transport never ran, which the non-vacuity
-/// guard below reported as a behavioural failure — the guard was right that the case proved
-/// nothing, and wrong about why. Serialising bounds the cost at one bridge.
+/// answered `EAGAIN`. Serialising keeps the suite's process cost bounded at one bridge.
 fn bridge_slot() -> MutexGuard<'static, ()> {
     static SLOT: OnceLock<Mutex<()>> = OnceLock::new();
     let lock = SLOT.get_or_init(|| Mutex::new(()));
-    // A panicking case poisons the slot, and the next case must still run: the panic belongs to
-    // the case that caused it, not to every case that follows it.
+    // A panicking case poisons the slot, and the next case must still be able to run: the panic
+    // belongs to the case that caused it, not to every case that follows it.
     lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
@@ -55,62 +46,14 @@ const CREDENTIAL_VALUE: &str = "typesafe-credential-8f24c1ab-never-recorded";
 /// The bridge's own bound on a request, a response and a decision.
 const LIMIT: usize = 128 * 1024;
 
-/// A bridge request for a small combat turn, in the shape the runtime lane sends.
-fn request() -> Vec<u8> {
-    serde_json::to_vec(&serde_json::json!({
-        "model_execution_id": "model-execution-7",
-        "objective": "survive the turn",
-        "hard_constraints": ["never end the turn with unspent lethal"],
-        "legal_action_ids": ["play:card-17", "play:card-18", "combat.end-turn"],
-        "observation": {
-            "state_id": "combat-1",
-            "generation": 3,
-            "player": {"hp": 30, "max_hp": 80, "energy": 3, "gold": 0, "hand": []},
-            "state": {"state": "combat", "turn_index": 2},
-        },
-    }))
-    .unwrap_or_default()
-}
-
-/// A well-formed answer that names one of the presented options.
-fn answer(choice: &str, confidence: f64) -> String {
-    serde_json::json!({
-        "model": "jev-1.13.0",
-        "answers": {
-            "action": {
-                "type": "choice",
-                "choice": choice,
-                "probabilities": {
-                    "play:card-17": 0.62,
-                    "play:card-18": 0.21,
-                    "combat.end-turn": 0.17,
-                },
-                "confidence": confidence,
-            },
-        },
-        "usage": {"input_tokens": 900, "output_tokens": 0},
-    })
-    .to_string()
-}
-
-/// Runs the real bridge once, with the request on standard input.
-fn run(
-    transport: &Path,
-    environment: &[(&str, &str)],
-    arguments: &[&str],
-) -> Result<Output, String> {
-    run_with(transport, environment, arguments, &request())
-}
-
-/// Runs the real bridge once with a caller-chosen request on standard input.
-pub(crate) fn run_with(
-    transport: &Path,
-    environment: &[(&str, &str)],
-    arguments: &[&str],
+/// Runs the real bridge once with `body` on standard input.
+fn run_with_body(
     body: &[u8],
+    environment: &[(&str, &str)],
+    arguments: &[&str],
 ) -> Result<Output, String> {
     let _slot = bridge_slot();
-    let mut child = launched(transport, environment, arguments)?
+    let mut child = launched(environment, arguments)?
         .spawn()
         .map_err(|error| format!("cannot run the bridge: {error}"))?;
     {
@@ -120,7 +63,7 @@ pub(crate) fn run_with(
             .ok_or("the bridge has no standard input")?;
         stdin
             .write_all(body)
-            .map_err(|e| format!("cannot write the request: {e}"))?;
+            .map_err(|error| format!("cannot write the request: {error}"))?;
     }
     child
         .wait_with_output()
@@ -131,30 +74,25 @@ pub(crate) fn run_with(
 ///
 /// `--describe` returns before reading input, so a case that wrote a request to it would race the
 /// child's exit and could fail on a closed pipe rather than on the behaviour under test.
-fn run_without_input(
-    transport: &Path,
-    environment: &[(&str, &str)],
-    arguments: &[&str],
-) -> Result<Output, String> {
+fn run_without_input(environment: &[(&str, &str)], arguments: &[&str]) -> Result<Output, String> {
     let _slot = bridge_slot();
-    launched(transport, environment, arguments)?
+    launched(environment, arguments)?
         .output()
         .map_err(|error| format!("cannot run the bridge: {error}"))
 }
 
-fn launched(
-    transport: &Path,
-    environment: &[(&str, &str)],
-    arguments: &[&str],
-) -> Result<Command, String> {
+fn launched(environment: &[(&str, &str)], arguments: &[&str]) -> Result<Command, String> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_sts2-jev-bridge"));
     command
-        .arg("--transport")
-        .arg(transport)
         .args(arguments)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // The credential variable is removed before anything else is applied, so a test that means to
+    // exercise "no credential is present" cannot accidentally inherit one from the developer
+    // running the suite. Without this the test only passes on a machine where the variable is
+    // unset, and fails -- or worse, silently authenticates -- on a machine where it is set.
+    command.env_remove(CREDENTIAL_NAME);
     for (name, value) in environment {
         command.env(name, value);
     }
@@ -170,7 +108,7 @@ fn stderr_of(output: &Output) -> String {
 }
 
 /// A refused run exits nonzero, prints no decision, and says why.
-pub(crate) fn refused_without_a_decision(output: &Output) -> Result<(), String> {
+fn refused_without_a_decision(output: &Output) -> Result<(), String> {
     if output.status.success() {
         return Err(format!(
             "the bridge exited zero and printed {}",
@@ -198,236 +136,219 @@ pub(crate) fn refused_without_a_decision(output: &Output) -> Result<(), String> 
     }
 }
 
-/// Runs one prepared transport and asserts the refusal came after it ran.
-fn assert_refused_after_the_transport_ran(
-    scratch: &Scratch,
-    name: &str,
-    transport: &Path,
-) -> Result<(), String> {
-    let output = run(transport, &[], &[])?;
-    refused_without_a_decision(&output)?;
-    if !scratch.invoked() {
-        return Err(format!(
-            "{name} refused before the provider answer arrived, so the case proves nothing"
-        ));
-    }
-    Ok(())
-}
-
-/// A provider answer that is not a `200` is the transport's failure, and the bridge reports it as
-/// one: the operator transport exits nonzero and writes nothing.
-#[test]
-fn a_transport_that_refuses_a_non_200_status_is_refused_without_a_decision() -> Result<(), String> {
-    let scratch = Scratch::new("non-200")?;
-    let transport = scratch.transport("refuse-503.sh", "exit 22")?;
-    assert_refused_after_the_transport_ran(&scratch, "refuse-503.sh", &transport)
-}
-
-/// A transport that refuses a request is reported as the refusal, not as a failed write to its
-/// pipe. A transport that exits without draining its stdin fails the bridge's writer with `EPIPE`,
-/// and reporting that artifact instead of the refusal left the cause line saying `Broken pipe
-/// (os error 32)` for a provider that had refused in the most ordinary way (Refs #751). Both
-/// details below were found by reverting the fix and watching this stay green: the transport must
-/// refuse WITHOUT reading stdin, and the request must exceed the pipe buffer. The cause is asserted
-/// positively, so deleting it fails here.
-#[test]
-fn a_refused_transport_is_reported_as_the_refusal_and_not_as_a_broken_pipe() -> Result<(), String> {
-    let scratch = Scratch::new("refusal-named")?;
-    let transport = scratch.transport_refusing_without_reading("refuses.sh", "exit 22")?;
-    let output = run_with(
-        &transport,
-        &[],
-        &[],
-        &Scratch::request_past_the_pipe_buffer(),
-    )?;
-    refused_without_a_decision(&output)?;
-    if !scratch.invoked() {
-        return Err("refuses.sh never ran, so this case proved nothing".to_owned());
-    }
-    let stderr = stderr_of(&output);
-    if !stderr.contains("transport reported failure") {
-        return Err(format!(
-            "a refused transport was not reported as the refusal: {stderr:?}"
-        ));
-    }
-    if stderr.contains("Broken pipe") {
-        let message = "a refused transport was reported as a broken pipe instead of the refusal";
-        return Err(format!("{message}: {stderr:?}"));
-    }
-    Ok(())
-}
-
-/// A transport that writes the error *message* instead of the body is refused too, so a status line
-/// can never be read as a decision even when the transport claims success.
-#[test]
-fn a_raw_http_error_status_line_is_refused_without_a_decision() -> Result<(), String> {
-    let scratch = Scratch::new("raw-status")?;
-    let transport = scratch.transport(
-        "raw-503.sh",
-        "printf 'HTTP/1.1 503 Service Unavailable\\r\\nContent-Length: 0\\r\\n\\r\\n'",
-    )?;
-    assert_refused_after_the_transport_ran(&scratch, "raw-503.sh", &transport)
-}
-
-/// A transport that cannot be launched at all is refused *and says which launch failed*.
+/// A refusal that never reached the provider is still a refusal at the process boundary.
 ///
-/// Without this, a host that cannot fork and a provider that refused produce byte-identical
-/// standard error, and a case that only asserts the refusal was driven past the transport can
-/// still pass on a refusal produced by a cause it never reached. The cause line is what separates
-/// the two, so this asserts on it at the real process boundary.
+/// The bridge validates the request before it opens a socket, so an oversized request produces the
+/// exit status and the empty standard output the runtime lane reads without any network at all.
+/// That is what makes this suite runnable offline: the cases below need no provider, no credential,
+/// and no reachable host.
 #[test]
-fn a_transport_that_cannot_be_launched_names_the_launch_failure() -> Result<(), String> {
-    let scratch = Scratch::new("unlaunchable")?;
-    // A path that exists but is not executable: `execve` refuses it with `EACCES`, so the
-    // transport never runs and the marker is never written.
-    let transport = scratch.path("not-executable.sh");
-    fs::write(&transport, "#!/bin/sh\nexit 0\n")
-        .map_err(|error| format!("cannot write the transport: {error}"))?;
-    let output = run(&transport, &[], &[])?;
-    refused_without_a_decision(&output)?;
-    if scratch.invoked() {
-        return Err("the transport ran, so this case did not exercise a failed launch".to_owned());
+fn an_oversized_request_is_refused_without_a_decision() -> Result<(), String> {
+    let output = run_with_body(&vec![b'x'; LIMIT + 1], &[], &[])?;
+    refused_without_a_decision(&output)
+}
+
+/// A request whose catalog is empty is refused on the same terms, before any exchange.
+#[test]
+fn a_request_with_no_legal_action_is_refused_without_a_decision() -> Result<(), String> {
+    let empty = serde_json::to_vec(&serde_json::json!({
+        "model_execution_id": "model-execution-7",
+        "objective": "survive the turn",
+        "hard_constraints": ["never end the turn with unspent lethal"],
+        "legal_action_ids": [],
+        "observation": {
+            "state_id": "combat-1",
+            "generation": 3,
+            "player": {"hp": 30, "max_hp": 80, "energy": 3, "gold": 0, "hand": []},
+            "state": {"state": "combat", "turn_index": 2},
+        },
+    }))
+    .unwrap_or_default();
+    let output = run_with_body(&empty, &[], &[])?;
+    refused_without_a_decision(&output)
+}
+
+/// An unknown option is refused before the bridge reads anything else.
+///
+/// This is the operator-facing half of the two-digests-into-one change. A configuration written
+/// for the previous four-element form must fail loudly at the process boundary rather than have
+/// the transport pair ignored, or a run would proceed believing a transport was pinned when the
+/// bridge was in fact the only artifact.
+#[test]
+fn a_stale_transport_argument_is_refused_at_the_process_boundary() -> Result<(), String> {
+    let output = run_without_input(&[], &["--transport", "/opt/providers/systemone-transport"])?;
+    // A parse failure exits 2 with the usage line rather than the refusal line: the bridge never
+    // started a run, so there is no decision to withhold and nothing to explain. What matters is
+    // that it exited nonzero, wrote no decision, and named the accepted options -- which no longer
+    // include `--transport`.
+    if output.status.success() {
+        return Err(format!(
+            "a stale --transport configuration was admitted: {}",
+            stdout_of(&output)
+        ));
+    }
+    if !output.stdout.is_empty() {
+        return Err(format!(
+            "a refused launch wrote to standard output: {:?}",
+            stdout_of(&output)
+        ));
     }
     let stderr = stderr_of(&output);
-    if !stderr.contains("cause:") {
+    if !stderr.contains("Usage:") {
         return Err(format!(
-            "a refusal that could not launch did not name the cause: {stderr:?}"
+            "a refused launch printed no usage line: {stderr:?}"
         ));
     }
-    // The launch error names the *reason* the host gave, not the path, so this asserts the
-    // reported cause is a real `execve` refusal rather than a behavioural message: it must not be
-    // the string every behavioural refusal carries.
-    let cause = stderr
-        .lines()
-        .find_map(|line| line.strip_prefix("cause: "))
-        .ok_or_else(|| format!("the refusal carried no cause line: {stderr:?}"))?;
-    if cause == "transport reported failure" || cause == "transport timeout" {
+    if stderr.contains("--transport") {
         return Err(format!(
-            "the launch failure reported a behavioural cause instead of the real one: {cause:?}"
+            "the usage line still advertises --transport: {stderr:?}"
         ));
     }
     Ok(())
 }
 
+/// `--describe` names the in-process transport and the pinned trust anchor.
+///
+/// A run record has to be able to say what terminated the connection. "It used the system roots"
+/// is not a statement a digest-pinned artifact can make, so the description carries the store.
 #[test]
-fn an_out_of_catalog_choice_is_refused_without_a_decision() -> Result<(), String> {
-    let scratch = Scratch::new("out-of-catalog")?;
-    let transport =
-        scratch.transport_serving("out-of-catalog.sh", &answer("play:card-99", 0.99))?;
-    assert_refused_after_the_transport_ran(&scratch, "out-of-catalog.sh", &transport)
-}
-
-#[test]
-fn a_malformed_envelope_is_refused_without_a_decision() -> Result<(), String> {
-    let scratch = Scratch::new("malformed")?;
-    let transport = scratch.transport_serving("malformed.sh", "{\"answers\": {}}")?;
-    assert_refused_after_the_transport_ran(&scratch, "malformed.sh", &transport)
-}
-
-/// A well-formed answer that is past the bound is refused as oversized rather than read, and this
-/// case can only fail for that reason: the envelope parses and names an option that was presented.
-#[test]
-fn an_oversized_response_is_refused_without_a_decision() -> Result<(), String> {
-    let scratch = Scratch::new("oversized")?;
-    let mut oversized: serde_json::Value = serde_json::from_str(&answer("play:card-17", 0.81))
-        .map_err(|error| format!("the fixture answer is not an object: {error}"))?;
-    oversized["padding"] = serde_json::json!("x".repeat(LIMIT));
-    let body = oversized.to_string();
-    if body.len() <= LIMIT {
-        return Err(format!(
-            "the oversized fixture is only {} bytes, so it does not cross the bound",
-            body.len()
-        ));
-    }
-    let transport = scratch.transport_serving("oversized.sh", &body)?;
-    assert_refused_after_the_transport_ran(&scratch, "oversized.sh", &transport)
-}
-
-#[test]
-fn a_transport_failure_is_refused_without_a_decision() -> Result<(), String> {
-    let scratch = Scratch::new("transport-failure")?;
-    let transport = scratch.transport("fail.sh", "exit 3")?;
-    assert_refused_after_the_transport_ran(&scratch, "fail.sh", &transport)
-}
-
-/// A well-formed answer still produces one decision, so the refusals above are not a bridge that
-/// refuses everything.
-#[test]
-fn a_well_formed_answer_produces_exactly_one_decision() -> Result<(), String> {
-    let scratch = Scratch::new("accepted")?;
-    let transport = scratch.transport_serving("accept.sh", &answer("play:card-17", 0.81))?;
-    let output = run(&transport, &[], &[])?;
+fn describe_names_the_in_process_transport_and_its_trust_anchor() -> Result<(), String> {
+    let output = run_without_input(&[], &["--describe", "--model", "jev-1.13.0"])?;
     if !output.status.success() {
-        return Err(format!("an admitted run failed: {}", stderr_of(&output)));
+        return Err(format!("--describe failed: {}", stderr_of(&output)));
     }
-    let value: serde_json::Value = serde_json::from_str(&stdout_of(&output))
-        .map_err(|error| format!("standard output is not one object: {error}"))?;
-    if value["decision"] != serde_json::json!("action")
-        || value["action_id"] != serde_json::json!("play:card-17")
-    {
-        return Err(format!("unexpected decision: {value}"));
+    let described: serde_json::Value = serde_json::from_str(&stdout_of(&output))
+        .map_err(|error| format!("--describe did not print one object: {error}"))?;
+    if described["transport"] != serde_json::json!("in-process") {
+        return Err(format!("unexpected transport description: {described}"));
+    }
+    let store = described["tls_root_store"]
+        .as_str()
+        .ok_or_else(|| "--describe named no trust anchor".to_owned())?;
+    if !store.contains("webpki-roots") {
+        return Err(format!(
+            "the trust anchor is not the pinned store: {store:?}"
+        ));
     }
     Ok(())
 }
 
-/// The credential is an environment name the bridge hands to the transport it spawns. It is never
-/// an argument, and it never reaches a captured request, a decision, `--describe`, or an error.
+/// The credential is read by name from the environment and never reaches any output.
+///
+/// The bridge no longer hands the credential to a second process, so the surface here is its own:
+/// the record, the description, and the refusal text. None of them may carry the value.
 #[test]
-fn the_credential_never_reaches_a_request_a_decision_or_a_refusal() -> Result<(), String> {
+fn the_credential_never_reaches_a_decision_a_description_or_a_refusal() -> Result<(), String> {
     let credential = [(CREDENTIAL_NAME, CREDENTIAL_VALUE)];
-
-    let scratch = Scratch::new("credential-record")?;
-    let transport =
-        scratch.transport_serving("credential-record.sh", &answer("play:card-17", 0.81))?;
-    let output = run(&transport, &credential, &["--record"])?;
-    if !output.status.success() {
-        return Err(format!("an admitted run failed: {}", stderr_of(&output)));
+    let described = run_without_input(&credential, &["--describe"])?;
+    if !described.status.success() {
+        return Err(format!("--describe failed: {}", stderr_of(&described)));
     }
-    let record = stdout_of(&output);
-    let captured = String::from_utf8_lossy(&scratch.captured_request()?).into_owned();
     for (where_, text) in [
-        ("the record", record.as_str()),
-        ("the request the transport received", captured.as_str()),
-        ("the bridge's standard error", stderr_of(&output).as_str()),
+        ("the description", stdout_of(&described).as_str()),
+        (
+            "the bridge's standard error",
+            stderr_of(&described).as_str(),
+        ),
     ] {
         if text.contains(CREDENTIAL_VALUE) {
             return Err(format!("the credential value appeared in {where_}"));
         }
     }
-
-    let described = run_without_input(&transport, &credential, &["--describe"])?;
-    if !described.status.success() {
-        return Err(format!("--describe failed: {}", stderr_of(&described)));
-    }
-    if stdout_of(&described).contains(CREDENTIAL_VALUE)
-        || stderr_of(&described).contains(CREDENTIAL_VALUE)
-    {
-        return Err(String::from("--describe printed the credential value"));
-    }
-
-    // A refusal is text too, and it is the one path that writes a diagnostic.
-    let refusal = run(
-        &scratch.transport("credential-refusal.sh", "exit 3")?,
+    // A real request reaches the validation and refusal path, which is the one that writes a
+    // diagnostic. The bridge refuses an empty catalog before it opens a socket, so this needs
+    // neither a provider nor a reachable host.
+    let refused = run_with_body(
+        &serde_json::to_vec(&serde_json::json!({
+            "model_execution_id": "model-execution-7",
+            "objective": "survive the turn",
+            "hard_constraints": [],
+            "legal_action_ids": [],
+            "observation": {
+                "state_id": "combat-1",
+                "generation": 3,
+                "player": {"hp": 30, "max_hp": 80, "energy": 3, "gold": 0, "hand": []},
+                "state": {"state": "combat", "turn_index": 2},
+            },
+        }))
+        .unwrap_or_default(),
         &credential,
         &[],
     )?;
-    refused_without_a_decision(&refusal)?;
-    if stderr_of(&refusal).contains(CREDENTIAL_VALUE) {
+    refused_without_a_decision(&refused)?;
+    if stderr_of(&refused).contains(CREDENTIAL_VALUE) {
         return Err(String::from("a refusal printed the credential value"));
     }
+    Ok(())
+}
 
-    // A case asserting only the value's absence would pass even if the name never reached the
-    // transport at all, so the positive half is asserted too: the credential arrives by name.
-    let dump = scratch.path("environment");
-    let probe = scratch.transport("credential-name.sh", &format!("env > '{}'", dump.display()))?;
-    let _ = run(&probe, &credential, &[])?;
-    let observed = fs::read_to_string(&dump)
-        .map_err(|error| format!("the transport did not report its environment: {error}"))?;
-    let expected = format!("{CREDENTIAL_NAME}={CREDENTIAL_VALUE}");
-    if !observed.lines().any(|line| line == expected) {
+/// A credential that is missing or cannot go in a header is refused before anything is contacted.
+///
+/// The exchange is refused, not downgraded and not retried, and -- more importantly -- it is
+/// refused *before* a socket is opened, so a misconfigured run never puts a request in front of
+/// the provider at all. The cases are driven at the process boundary because the credential comes
+/// from the environment, and a refusal that names the reason without echoing the value is
+/// asserted for each.
+#[test]
+fn a_missing_or_header_unsafe_credential_is_refused_without_contacting_the_provider()
+-> Result<(), String> {
+    let request = serde_json::to_vec(&serde_json::json!({
+        "model_execution_id": "model-execution-7",
+        "objective": "survive the turn",
+        "hard_constraints": [],
+        "legal_action_ids": ["act-1"],
+        "observation": {
+            "state_id": "combat-1",
+            "generation": 3,
+            "player": {"hp": 30, "max_hp": 80, "energy": 3, "gold": 0, "hand": []},
+            "state": {"state": "combat", "turn_index": 2},
+        },
+    }))
+    .unwrap_or_default();
+
+    // An absent credential. The child inherits this process's environment, so a run that simply
+    // does not set the variable is the case: `credential` reads it by name and refuses when it
+    // is not there, rather than sending an empty `Bearer ` header and letting the provider answer.
+    let refused = run_with_body(&request, &[], &[])?;
+    refused_without_a_decision(&refused)?;
+    if !stderr_of(&refused).contains("credential") {
         return Err(format!(
-            "the declared name did not reach the transport as an environment entry: {observed:?}"
+            "a run with no credential was refused without naming the credential: {:?}",
+            stderr_of(&refused)
         ));
+    }
+
+    for (value, expected) in [
+        ("", "the provider credential is empty"),
+        // A credential carrying CRLF would let it append a header line of its own. Refusing it
+        // is the point: escaping it would send something the provider cannot authenticate.
+        ("abc\r\nX-Injected: 1", "U+000D"),
+        ("abc\ndef", "U+000A"),
+        ("abc def", "U+0020"),
+    ] {
+        let output = run_with_body(&request, &[(CREDENTIAL_NAME, value)], &[])?;
+        refused_without_a_decision(&output)?;
+        let text = stderr_of(&output);
+        if !text.contains(expected) {
+            return Err(format!(
+                "a credential carrying {expected:?} was refused without saying so: {text:?}"
+            ));
+        }
+    }
+
+    // An oversized credential is refused rather than truncated into a header the provider would
+    // reject, and the refusal does not echo it.
+    let oversized = "x".repeat(4097);
+    let output = run_with_body(&request, &[(CREDENTIAL_NAME, &oversized)], &[])?;
+    refused_without_a_decision(&output)?;
+    if !stderr_of(&output).contains("longer than this transport will send") {
+        return Err(format!(
+            "an oversized credential was refused without saying so: {:?}",
+            stderr_of(&output)
+        ));
+    }
+    if stderr_of(&output).contains(&oversized) {
+        return Err(String::from("a refusal echoed the credential value"));
     }
     Ok(())
 }

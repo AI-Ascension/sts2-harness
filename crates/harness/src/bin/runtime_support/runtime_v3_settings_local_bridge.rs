@@ -42,7 +42,7 @@ fn ollama_allowed(arguments: &[String]) -> bool {
         .is_ok_and(|options| !options.describe && options.model == arguments[1])
 }
 
-/// Admits the existing model/transport pair and optional gate, with an opt-in --tactical suffix.
+/// Admits the model and optional gate, with an opt-in --tactical suffix.
 /// The recorded vector exposes the selected policy. Record/describe and arbitrary flags stay denied.
 fn system_one_allowed(arguments: &[String]) -> bool {
     // Canonical capture suffix only. Do not widen record/describe or other provider kinds.
@@ -68,14 +68,14 @@ fn system_one_allowed(arguments: &[String]) -> bool {
 fn system_one_shape(arguments: &[String], tactical: bool, audit_dir: Option<&str>) -> bool {
     // Length first: a shorter vector must be refused, not indexed.
     let gated = match arguments.len() {
-        4 => false,
-        6 => true,
+        2 => false,
+        4 => true,
         _ => return false,
     };
-    if arguments[0] != "--model" || arguments[2] != "--transport" {
+    if arguments[0] != "--model" {
         return false;
     }
-    if gated && arguments[4] != "--gate" {
+    if gated && arguments[2] != "--gate" {
         return false;
     }
     // The record form is refused by this fixed shape rather than by a check of its own: appending
@@ -96,8 +96,7 @@ fn system_one_shape(arguments: &[String], tactical: bool, audit_dir: Option<&str
             && options.tactical == tactical
             && options.audit_dir.as_deref() == audit_dir
             && options.model == arguments[1]
-            && options.transport.as_deref() == Some(arguments[3].as_str())
-            && options.gate_percent.map(|gate| gate.to_string()) == arguments.get(5).cloned()
+            && options.gate_percent.map(|gate| gate.to_string()) == arguments.get(3).cloned()
     })
 }
 
@@ -109,24 +108,10 @@ mod capture_tests;
 mod tests {
     use super::arguments_allowed;
 
-    /// An absolute path that is valid on the platform running the test.
-    fn transport() -> &'static str {
-        if cfg!(windows) {
-            "C:/providers/systemone.exe"
-        } else {
-            "/opt/providers/systemone"
-        }
-    }
-
     #[test]
-    fn spaced_transport_is_admitted_in_each_system_one_execution_shape() {
-        let path = if cfg!(windows) {
-            "C:/Program Files/System One/transport.exe"
-        } else {
-            "/opt/System One/transport"
-        };
+    fn the_model_and_gate_are_admitted_in_each_system_one_execution_shape() {
         for (gated, tactical) in [(false, false), (true, false), (false, true), (true, true)] {
-            let mut arguments = vec!["--model", "jev-1.13.0", "--transport", path];
+            let mut arguments = vec!["--model", "jev-1.13.0"];
             if gated {
                 arguments.extend(["--gate", "35"]);
             }
@@ -135,7 +120,15 @@ mod tests {
             }
             let arguments: Vec<String> = arguments.into_iter().map(str::to_owned).collect();
             assert!(arguments_allowed(Some("typesafe-jev"), &arguments));
-            assert!(!arguments_allowed(Some("ollama"), &arguments));
+            // The gate routes by provider kind first, so the same vector reaching the Ollama
+            // lane is that lane's own two-element model selection and is admitted there. What
+            // must not happen is a System One vector being admitted for a lane it does not
+            // belong to, which the shapes carrying `--gate` and `--tactical` below cover.
+            if !gated && !tactical {
+                assert!(arguments_allowed(Some("ollama"), &arguments));
+            } else {
+                assert!(!arguments_allowed(Some("ollama"), &arguments));
+            }
             for forbidden in ["--record", "--describe", "--unknown"] {
                 let mut invalid = arguments.clone();
                 invalid.push(forbidden.to_owned());
@@ -144,44 +137,44 @@ mod tests {
         }
     }
 
+    /// A stale configuration that still carries `--transport` is refused, not silently narrowed.
+    ///
+    /// Operators upgrading an existing `STS2_EXO_BRIDGE_ARGS_JSON` must be told their four-element
+    /// vector no longer admits, rather than having the extra pair dropped and the run proceeding
+    /// as though the configuration they reviewed were the one that ran.
     #[test]
-    fn splitting_a_transport_path_does_not_create_an_admitted_argument_vector() {
-        let prefix = if cfg!(windows) {
-            "C:/Program"
+    fn a_stale_transport_argument_is_refused_rather_than_silently_narrowed() {
+        let transport = if cfg!(windows) {
+            "C:/Program Files/System One/transport.exe"
         } else {
-            "/opt/System"
+            "/opt/System One/transport"
         };
-        let arguments = [
-            "--model",
-            "jev-1.13.0",
-            "--transport",
-            prefix,
-            "One/transport",
-        ];
-        let mut arguments: Vec<String> = arguments.into_iter().map(str::to_owned).collect();
-        assert!(!arguments_allowed(Some("typesafe-jev"), &arguments));
-        arguments.push(String::from("--tactical"));
-        assert!(!arguments_allowed(Some("typesafe-jev"), &arguments));
+        for arguments in [
+            vec!["--model", "jev-1.13.0", "--transport", transport],
+            vec!["--transport", transport, "--model", "jev-1.13.0"],
+            vec!["--transport", transport],
+        ] {
+            let arguments: Vec<String> = arguments.into_iter().map(str::to_owned).collect();
+            assert!(
+                !arguments_allowed(Some("typesafe-jev"), &arguments),
+                "{arguments:?} must be refused"
+            );
+        }
     }
 
     /// The record form is refused because the admitted set is one fixed shape, not by a branch.
     ///
-    /// The pair alone is admitted and the same pair with `--record` appended is not. If the length
-    /// arm were ever widened to admit the five-element form, every remaining check would still
-    /// pass, so this contrast is what holds the refusal in place.
+    /// The model alone is admitted and the same model with `--record` appended is not. If the
+    /// length arm were ever widened to admit the three-element form, every remaining check would
+    /// still pass, so this contrast is what holds the refusal in place.
     #[test]
     fn the_record_form_is_not_admitted_for_a_lane_that_reads_the_decision() {
-        let admitted = vec![
-            "--model".to_owned(),
-            "jev-1.13.0".to_owned(),
-            "--transport".to_owned(),
-            transport().to_owned(),
-        ];
+        let admitted = vec!["--model".to_owned(), "jev-1.13.0".to_owned()];
         let mut recorded = admitted.clone();
         recorded.push("--record".to_owned());
         assert!(
             arguments_allowed(Some("typesafe-jev"), &admitted),
-            "the model and transport pair is the admitted shape"
+            "the model selection is the admitted shape"
         );
         assert!(
             !arguments_allowed(Some("typesafe-jev"), &recorded),
@@ -189,15 +182,7 @@ mod tests {
         );
         for arguments in [
             vec!["--record"],
-            vec![
-                "--model",
-                "jev-1.13.0",
-                "--transport",
-                transport(),
-                "--gate",
-                "35",
-                "--record",
-            ],
+            vec!["--model", "jev-1.13.0", "--gate", "35", "--record"],
         ] {
             let arguments = arguments.into_iter().map(str::to_owned).collect::<Vec<_>>();
             assert!(
@@ -210,7 +195,7 @@ mod tests {
     #[test]
     fn tactical_suffix_is_admitted_without_widening_other_options() {
         for gated in [false, true] {
-            let mut args = vec!["--model", "jev-1.13.0", "--transport", transport()];
+            let mut args = vec!["--model", "jev-1.13.0"];
             if gated {
                 args.extend(["--gate", "20"]);
             }
@@ -248,27 +233,19 @@ mod tests {
 
     #[test]
     fn local_bridge_admission_allows_only_the_exact_system_one_selection() {
-        let selected: Vec<String> = ["--model", "jev-1.13.0", "--transport", transport()]
+        let selected: Vec<String> = ["--model", "jev-1.13.0"]
             .into_iter()
             .map(str::to_owned)
             .collect();
         assert!(arguments_allowed(Some("typesafe-jev"), &selected));
-        assert!(!arguments_allowed(Some("ollama"), &selected));
         assert!(!arguments_allowed(Some("openai-astra"), &selected));
         assert!(!arguments_allowed(None, &selected));
         assert!(arguments_allowed(Some("typesafe-jev"), &[]));
 
-        let gated: Vec<String> = [
-            "--model",
-            "jev-1.13.0",
-            "--transport",
-            transport(),
-            "--gate",
-            "35",
-        ]
-        .into_iter()
-        .map(str::to_owned)
-        .collect();
+        let gated: Vec<String> = ["--model", "jev-1.13.0", "--gate", "35"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
         assert!(arguments_allowed(Some("typesafe-jev"), &gated));
         assert!(!arguments_allowed(Some("ollama"), &gated));
     }
@@ -276,37 +253,11 @@ mod tests {
     #[test]
     fn a_system_one_selection_outside_its_exact_shape_is_refused() {
         for arguments in [
-            vec!["--model", "jev-1.13.0"],
-            vec!["--transport", transport()],
-            vec!["--transport", transport(), "--model", "jev-1.13.0"],
-            vec!["--model", "jev-1.13.0", "--transport", "relative/path"],
-            vec!["--model", "jev-1.13.0", "--transport", ""],
-            vec!["--model", "", "--transport", transport()],
-            vec!["--model", "jev-1.13.0", "--describe", transport()],
+            vec!["--model", "jev-1.13.0", "--gate"],
+            vec!["--model", "jev-1.13.0", "--gate", "101"],
+            vec!["--model", "jev-1.13.0", "--seed", "35"],
+            vec!["--model", ""],
             vec!["--describe"],
-            vec![
-                "--model",
-                "jev-1.13.0",
-                "--transport",
-                transport(),
-                "--gate",
-            ],
-            vec![
-                "--model",
-                "jev-1.13.0",
-                "--transport",
-                transport(),
-                "--gate",
-                "101",
-            ],
-            vec![
-                "--model",
-                "jev-1.13.0",
-                "--transport",
-                transport(),
-                "--seed",
-                "35",
-            ],
         ] {
             let arguments = arguments.into_iter().map(str::to_owned).collect::<Vec<_>>();
             assert!(

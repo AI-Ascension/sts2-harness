@@ -54,10 +54,11 @@ Two repository facts constrain how it can be admitted:
   binds the admitted route to `provider = openai`, the reviewed host `api.openai.com`, and a model
   binding that `responses_capable` accepts, and fails closed on every other provider, host, and
   route. That behaviour is correct and stays. A System One provider satisfies none of those axes.
-- **There is no TLS stack in the workspace.** `Cargo.lock` at this revision contains no `rustls`,
-  `native-tls`, `openssl`, `reqwest`, `hyper`, or `ureq`. The Ollama bridge writes plaintext
-  HTTP/1.1 to `127.0.0.1:11434`; the Astra bridge spawns a CLI. `api.typesafe.ai` is HTTPS, so this
-  is the first lane that needs an outbound TLS client.
+- **There was no TLS stack in the workspace when this was first decided.** `Cargo.lock` at that
+  revision contained no `rustls`, `native-tls`, `openssl`, `reqwest`, `hyper`, or `ureq`. The Ollama
+  bridge writes plaintext HTTP/1.1 to `127.0.0.1:11434`; the Astra bridge spawns a CLI.
+  `api.typesafe.ai` is HTTPS, so this is the first lane that needs an outbound TLS client, and the
+  transport decision below is what introduced one.
 
 ## Decision
 
@@ -77,21 +78,64 @@ exact, whereas a prompt digest binds a string that says nothing about what was a
 
 ### The transport
 
-**The bridge owns the contract; an operator-owned executable owns the transport.** The bridge
-serializes the request, spawns a pinned transport executable, writes the request body to its
-standard input, reads the response body from its standard output, and validates everything it reads.
-The transport executable performs exactly one HTTPS exchange and does nothing else.
+**The bridge owns the contract and the transport.** The bridge serializes the request, performs
+exactly one HTTPS exchange with a pinned `rustls` client, and validates everything it reads. There
+is no second executable: `--transport` is gone and the runtime admits `["--model", MODEL]`.
 
-This follows the precedent this repository already set with `sts2-astra-bridge`, which spawns an
-operator-owned CLI under a pinned digest and owns only framing, bounds, and decision validation.
-It keeps every decision that matters — request construction, catalog membership, the confidence
-gate, bounds, fail-closed refusals — inside the digest-pinned Rust binary, and puts only TLS and
-socket handling outside it. It also keeps the offline tests honest: a fake transport executable is
-a deterministic fixture, where a TLS server in CI would not be.
+This supersedes the first version of this decision, which spawned an operator-owned transport
+executable, and it is taken for the reason that version recorded as its migration path. A run
+carried two digests and the runtime verified one; now one self-contained artifact carries the
+exchange and is the artifact the runtime verifies. The operator no longer installs and pins a
+second thing beside the bridge.
 
-A reference transport is documented for operators, using the vendor's published Python SDK. It is
-not a dependency of this workspace, is not installed by any build, and is identified by its own
-digest in the run's configuration.
+Every decision that matters — request construction, catalog membership, the confidence gate,
+bounds, fail-closed refusals — stays inside the digest-pinned Rust binary, and only TLS and socket
+handling moved into a dependency rather than out of a process boundary.
+
+The offline tests remain honest without a fake transport: a TLS server in CI would not be a
+deterministic fixture, so the response classes the provider can return are asserted in-process
+against bytes, and the credential assertions run at the real process boundary.
+
+**What this cost the compiled-bridge lane, stated rather than absorbed.**
+`experiments/jev-evaluation/compiled-bridge.integration.mjs` drove the real compiled binary
+end to end by staging a socket-free synthetic `--transport` beside it, and asserted the paired
+runner's accounting of provider attempts across all eight response classes. Since the bridge
+performs the exchange itself, that staging became inert: host, port, and root store are
+compile-time constants with no injection seam, so a synthetic peer cannot satisfy the binary, and
+a local server presenting a substituted CA is refused by design. Nine of its eleven cases could no
+longer reach a successful answer and were retired rather than left failing; the two that are
+genuinely provider-independent — the runner's digest admission of the real binary, and the
+bridge's pre-exchange refusals — are kept.
+
+The response-class coverage those nine carried is not dropped, it moves: framing, status,
+`chunked`, and `close_notify` are asserted against literal bytes in `jev_tls_transport_tests.rs`,
+catalog and confidence refusals in `sts2_jev_bridge_tests.rs`, and the ordering that only a real
+peer can show — handshake completing before a request is written, and a peer that never answers
+being refused on the deadline — in `jev_tls_transport_loopback_tests.rs` against a loopback TLS
+server. The manifest schema still carries a `transport` field and the runner still re-pins it;
+that field is now vestigial for this bridge and retiring it is separate work.
+
+The gap this leaves is real and is not papered over: **no automated lane exercises a provider
+exchange end to end through the compiled binary.** Restoring one would mean adding a test-only
+seam to production TLS code — a feature-gated host and root override, or an injected transport —
+which widens the production surface to serve a test and needs its own review. Until that is
+decided on its own merits, the compiled lane proves admission and pre-exchange refusal, and the
+in-process and loopback suites prove the exchange.
+
+**The crypto backend is `ring`, and the "pure Rust" condition could not be met.** `rustls` 0.23
+declares exactly two crypto providers and no others — `crypto::ring` and `crypto::aws_lc_rs`,
+each behind its own feature, with `custom-provider` reserved for a provider the caller supplies.
+Both compile C and/or assembly: `ring` 0.17.14 carries 17 `.c` and 73 `.S` files, and
+`aws-lc-sys` 0.39.0 carries 662 `.c`/`.h` and 849 `.S` files. No `rustls` configuration is free of
+compiled code, so a literal pure-Rust requirement is unsatisfiable rather than merely awkward, and
+this is stated as a deviation rather than presented as compliance. `ring` was taken over
+`aws-lc-rs` because it adds about 1m36s of release compile against the latter's 3m33s, and this
+workspace already compiles C regardless — `rusqlite` is used with `bundled` sqlite3, and the
+`Rust quality gates` job installs a C toolchain for that dependency alone.
+
+Unsafe code inside these dependencies is not covered by the workspace `unsafe_code = "forbid"`
+lint, which applies to workspace members; that distinction is stated here rather than left for a
+reviewer to work out.
 
 ### The credential
 
@@ -109,14 +153,16 @@ model reasoning would be a fabricated artifact, which the contribution rules for
 
 ## Alternatives considered
 
-**A pinned pure-Rust TLS client inside the bridge** (`rustls` plus a root store). One digest-pinned
-artifact and no second process, which is the better end state. Rejected for now on three grounds:
-it adds roughly a dozen pinned transitive crates and their `THIRD_PARTY_NOTICES.md` entries to a
-workspace that pins every version exactly; the usual backends compile C or assembly, which the
-`10`-minute CI timeout has no measured headroom for; and none of it can be exercised offline, so the
-first version would ship a large dependency change whose only justification is a code path CI cannot
-run. This remains the migration path once the lane has a recorded run, and the spawned-transport
-contract is deliberately narrow enough that swapping it changes one module.
+**A pinned pure-Rust TLS client inside the bridge** (`rustls` plus a root store). **Taken.** The
+three grounds on which this was first rejected have all been answered: the lane now has a recorded
+live run (`docs/evidence/system-one-live-exchange-20260918.md`); the CI budget objection is moot
+because the `rust` job's `timeout-minutes` is 25, not the 10 this decision recorded, and recent
+runs take about 8.5 minutes; and the dependency cost is a dozen-odd pinned crates with no native
+build step beyond the C toolchain the workspace already requires for `rusqlite`.
+
+The one ground that did not survive contact with the ecosystem is the "pure Rust" wording itself.
+Neither `rustls` backend satisfies it, so it was never a choice between backends but a condition no
+candidate met. `ring` was taken as the smaller and better-reviewed of the two real options.
 
 **An operator-run loopback TLS terminator**, leaving the bridge byte-identical in shape to the
 Ollama one. Rejected: it puts an unpinned network element inside the trust boundary and produces a

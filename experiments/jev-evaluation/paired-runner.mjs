@@ -25,7 +25,7 @@ export async function planRun(path) {
 function frozenPlan(prepared) {
   const { manifest: m, hash, entries } = prepared;
   return { schema: RUN_SCHEMA, manifest_sha256: hash, source_revision: m.source_revision,
-    bridge_digest: m.bridge.sha256, transport_digest: m.transport.sha256,
+    bridge_digest: m.bridge.sha256,
     evidence_kind: m.evidence_kind, budgets: m.budgets, scheduled: entries };
 }
 
@@ -33,7 +33,7 @@ async function executeArm(prepared, entry, env, deadline, signal) {
   const { manifest: m, hash, inputs } = prepared, root = m.output_directory;
   const input = inputs[entry.pair_position];
   // Detect ordinary artifact replacement between arms. This is not an adversarial TOCTOU sandbox.
-  try { await verifyExecutable(m.bridge); await verifyExecutable(m.transport); } catch {
+  try { await verifyExecutable(m.bridge); } catch {
     return armResult(hash, entry, { status: 'executable_drift' });
   }
   if (signal?.aborted) return armResult(hash, entry);
@@ -89,7 +89,7 @@ export async function executeRun(path, approvedHash, { signal, environment = pro
   digest(approvedHash);
   const prepared = await preflight(path);
   requireThat(prepared.hash === approvedHash, 'runner_approval_mismatch');
-  // Values are kept only in memory and handed to the reviewed transport via a cleared environment.
+  // Values are kept only in memory and handed to the reviewed bridge via a cleared environment.
   const env = selectedEnvironment(prepared.manifest, environment);
   const { manifest: m, hash, entries } = prepared, plan = frozenPlan(prepared);
   await createDirectory(m.output_directory);
