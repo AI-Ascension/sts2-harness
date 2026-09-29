@@ -216,6 +216,10 @@ mod tls_loopback_tests;
 mod tls_transport_tests;
 
 #[cfg(test)]
+#[path = "support/jev_tls_transport_framing_tests.rs"]
+mod tls_transport_framing_tests;
+
+#[cfg(test)]
 #[path = "support/jev_tactical_bridge_tests.rs"]
 mod tactical_bridge_tests;
 

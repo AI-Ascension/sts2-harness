@@ -176,7 +176,11 @@ the pinned binary, which is exactly the part that must stay reviewable here.
 
 - One more provider kind, one more executable, and one more document; no change to the reviewed
   envelope, the game boundary, the gateway, or the MCP path.
-- A run using this lane records two digests, the bridge and the transport, rather than one.
+- A run using this lane still records two digests, because the manifest schema still carries a
+  `transport` entry that admission requires and preflight re-pins. The bridge executes only the
+  first: the second is vestigial, and the operator procedures in `RUNNER.md` and `PILOT.md` name
+  the reviewed bridge binary there rather than sending an operator to build an artifact the run
+  never launches. Retiring the field is separate work.
 - The offline test suite covers request construction, response framing, decision mapping, and every
   fail-closed refusal. It does not cover TLS, a live endpoint, or answer quality.
 

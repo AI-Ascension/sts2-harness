@@ -7,7 +7,7 @@ paired provider runner, native witness, or evidence of better gameplay.
 ## Invocation and admission
 
 The bridge accepts `--audit-dir DIR`. Runtime admission permits this suffix only after
-the existing model/transport pair, optional gate, and optional `--tactical`, in that order.
+the model, optional gate, and optional `--tactical`, in that order.
 The directory must already exist, be absolute and canonical without symlink components,
 and have Unix mode `0700`. Output files are created with mode `0600`. The writer does not
 create, chmod, clean, delete, or rotate the destination directory. Use an operator-approved

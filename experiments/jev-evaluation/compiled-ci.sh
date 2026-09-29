@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
 
-# Linux CI/local entrypoint. Build the actual bridge; only its transport is synthetic.
+# Linux CI/local entrypoint. Build the actual bridge; its System One exchange is in-process.
 # The enclosing CI job bounds the build. The integration suite bounds its child processes.
 set -euo pipefail
 

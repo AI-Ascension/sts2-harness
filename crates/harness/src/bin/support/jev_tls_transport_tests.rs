@@ -4,23 +4,20 @@
 //!
 //! Split from `sts2_jev_bridge_tests` so that suite stays under its preferred size, and kept
 //! apart because the property under test is about what the transport *refuses*, not about what
-//! the bridge decides.
+//! the bridge decides. The response-framing refusals live beside this in
+//! `jev_tls_transport_framing_tests`; what remains here is the credential and the trust store.
 //!
-//! Nothing here needs the network or a live credential. The response classes the provider can
-//! return are asserted against bytes, and the certificate tests drive the real `rustls` verifier
-//! that `client_config` installs -- the same one a live run uses -- so a verifier that stopped
-//! refusing would fail here rather than in a run. That is the property the acceptance criteria
-//! ask for: a chain or hostname that does not verify must be refused, and the suite must be able
-//! to prove it offline.
+//! Nothing here needs the network or a live credential. The certificate tests drive the real
+//! `rustls` verifier that `client_config` installs -- the same one a live run uses -- so a
+//! verifier that stopped refusing would fail here rather than in a run. That is the property the
+//! acceptance criteria ask for: a chain or hostname that does not verify must be refused, and
+//! the suite must be able to prove it offline.
 
 use std::sync::Arc;
 
 use rustls::client::danger::ServerCertVerifier;
 
-use super::tls::{
-    MAX_HEADER_BYTES, MAX_RESPONSE_BYTES, PROVIDER_HOST, PROVIDER_PATH, build_request,
-    client_config, parse_body,
-};
+use super::tls::{PROVIDER_HOST, PROVIDER_PATH, build_request, client_config};
 use super::tls_fixture::{LEAF_FOR_PROVIDER, TEST_CA};
 
 /// The leaf the negative tests present, as the peer would send it.
@@ -37,231 +34,6 @@ fn chain() -> Vec<rustls_pki_types::CertificateDer<'static>> {
 fn provider_name() -> rustls_pki_types::ServerName<'static> {
     rustls_pki_types::ServerName::try_from(PROVIDER_HOST.to_owned())
         .expect("the admitted host is a valid server name")
-}
-
-/// Builds a `200` response with an explicit length and body.
-fn response(headers: &str, body: &[u8]) -> Vec<u8> {
-    let mut raw = format!(
-        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n{headers}\r\n",
-        body.len()
-    )
-    .into_bytes();
-    raw.extend_from_slice(body);
-    raw
-}
-
-/// A `200` response yields its body, and nothing else, for the bridge to parse.
-#[test]
-fn an_accepted_response_yields_only_its_body() {
-    let raw = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}";
-    assert_eq!(parse_body(raw).expect("accepted"), b"{}".to_vec());
-}
-
-/// Every non-`200` status is the same refusal, and the two the provider documents are not special.
-///
-/// A `429` and a `529` are asserted alongside a bare `500` on purpose: the transport contract says
-/// a rate limit and an overloaded upstream are transport failures like any other, and a reader
-/// that quietly accepted either would let a caller mistake them for a decision.
-#[test]
-fn a_status_other_than_200_is_refused_including_429_and_529() {
-    for status in [
-        "400 Bad Request",
-        "401 Unauthorized",
-        "429 Too Many Requests",
-        "500 Server Error",
-        "529 Overloaded",
-    ] {
-        let raw = format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\n\r\n");
-        let outcome = parse_body(raw.as_bytes());
-        assert!(outcome.is_err(), "expected {status} to be refused");
-        assert_eq!(
-            outcome.unwrap_err().to_string(),
-            "the provider returned a status other than 200"
-        );
-    }
-}
-
-/// A header block that never terminates is a refusal, not a partial read.
-#[test]
-fn an_unterminated_or_oversized_header_block_is_refused() {
-    assert!(parse_body(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n").is_err());
-    let oversized = format!(
-        "HTTP/1.1 200 OK\r\nX-Filler: {}\r\n\r\n",
-        "x".repeat(MAX_HEADER_BYTES + 1)
-    );
-    assert!(parse_body(oversized.as_bytes()).is_err());
-}
-
-/// A body is bounded on its own, not on headers plus body.
-///
-/// The bound is the largest decision the bridge is willing to hold, so a response at that bound
-/// is accepted and one byte over it is refused -- in both cases with a maximal header block, so
-/// the assertion cannot pass merely because the header happened to be small.
-#[test]
-fn the_body_bound_applies_to_the_body_alone() {
-    let filler = format!("X-Filler: {}\r\n", "x".repeat(MAX_HEADER_BYTES / 2));
-    let at_bound = response(&filler, &vec![b'x'; MAX_RESPONSE_BYTES]);
-    assert_eq!(
-        parse_body(&at_bound)
-            .expect("a body at the bound is accepted")
-            .len(),
-        MAX_RESPONSE_BYTES
-    );
-    let over_bound = response(&filler, &vec![b'x'; MAX_RESPONSE_BYTES + 1]);
-    assert_eq!(
-        parse_body(&over_bound).unwrap_err().to_string(),
-        "the provider response exceeded its bound"
-    );
-}
-
-/// A declared length has to match the bytes that arrived.
-///
-/// This is the truncation shape. A transport that trusted `Content-Length` alone, or that
-/// returned whatever followed the header block, would hand a partial body to the bridge as if it
-/// were whole -- and a decision parsed from half a response is a fabricated decision.
-#[test]
-fn a_body_that_does_not_match_its_declared_length_is_refused() {
-    // Declares eight bytes and delivers seven: the length and the body disagree, which is the
-    // truncation shape. The helper cannot build this, so the frame is written out.
-    let short = b"HTTP/1.1 200 OK\r\nContent-Length: 8\r\n\r\n{\"a\":1}" as &[u8];
-    assert_eq!(
-        parse_body(short)
-            .expect_err("a body shorter than its declared length")
-            .to_string(),
-        String::from("the provider response did not match its declared length")
-    );
-    // And the mirror: declares seven and delivers eight.
-    let long = b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\n{\"a\":12}" as &[u8];
-    assert!(parse_body(long).is_err());
-    // A response that declares no length at all cannot be checked, so it is refused rather than
-    // accepted on the assumption that a close means the end.
-    assert_eq!(
-        parse_body(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{}")
-            .expect_err("a response with no declared length")
-            .to_string(),
-        String::from("the provider response did not declare a length")
-    );
-    // Two lengths that disagree make the frame ambiguous and are refused; two that agree are the
-    // same length written twice and are not.
-    let conflicting =
-        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Length: 9\r\n\r\n{}" as &[u8];
-    assert!(parse_body(conflicting).is_err());
-    let repeated =
-        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Length: 2\r\n\r\n{}" as &[u8];
-    assert_eq!(
-        parse_body(repeated).expect("agreeing lengths"),
-        b"{}".to_vec()
-    );
-}
-
-/// A chunked body is decoded, and a truncated or oversized one is refused.
-///
-/// The wire bytes of a chunked body are larger than the body, so a bound applied to the wire form
-/// would reject a legitimate response. The bound is applied to the decoded bytes, which is what
-/// the bridge holds.
-#[test]
-fn a_chunked_body_is_decoded_and_a_broken_one_is_refused() {
-    // Built from the pieces rather than hand-counted, so the declared sizes are correct by
-    // construction and a failure means the decoder is wrong rather than the arithmetic.
-    let mut chunked = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n".to_vec();
-    for piece in ["{\"a\"", ":", "1234567", "}"] {
-        chunked.extend_from_slice(format!("{:x}\r\n{}\r\n", piece.len(), piece).as_bytes());
-    }
-    chunked.extend_from_slice(b"0\r\n\r\n");
-    assert_eq!(
-        parse_body(&chunked).expect("a well-formed chunked body"),
-        b"{\"a\":1234567}".to_vec()
-    );
-    // Truncated mid-chunk, and terminated before the zero chunk.
-    let cut = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\n{\"a\"" as &[u8];
-    assert!(parse_body(cut).is_err());
-    let unterminated =
-        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\n{\"a\"}\r\n" as &[u8];
-    assert!(parse_body(unterminated).is_err());
-    // A size that is not hexadecimal, and a chunked body that also declares a length.
-    let not_hex =
-        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n{}\r\n0\r\n\r\n" as &[u8];
-    assert!(parse_body(not_hex).is_err());
-    let both =
-        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 2\r\n\r\n0\r\n\r\n"
-            as &[u8];
-    assert!(parse_body(both).is_err());
-}
-
-/// The chunked terminator has to be complete, trailers and all.
-///
-/// The grammar is a zero-size chunk, then a trailer section, then the blank line that ends it.
-/// Accepting the body the moment the zero chunk is seen would accept `0\r\n` as a finished message
-/// and ignore whatever the peer claimed came next -- the same "the first half of a message is a
-/// message" mistake the declared-length path refuses. Each of these is a well-formed prefix of a
-/// complete terminator, and none of them is a complete terminator.
-#[test]
-fn a_chunked_terminator_missing_its_trailer_section_is_refused() {
-    // The zero chunk and nothing after it: the trailer section and its terminating CRLF are absent.
-    assert!(
-        parse_body(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n6\r\n{\"a\":}\r\n0\r\n")
-            .is_err(),
-        "a zero chunk with no trailer terminator is not a whole body"
-    );
-    // Present but malformed: a trailer line with no field name is not a header.
-    assert!(
-        parse_body(
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n6\r\n{\"a\":}\r\n0\r\nnot-a-header\r\n\r\n"
-                as &[u8]
-        )
-        .is_err(),
-        "a malformed trailer is refused rather than skipped"
-    );
-    // And the complete form, which is accepted -- so the two above fail on the missing grammar
-    // rather than on chunked framing being refused outright.
-    let mut with_trailer =
-        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n6\r\n{\"a\":}\r\n0\r\n".to_vec();
-    with_trailer.extend_from_slice(b"X-Checksum: 0\r\n\r\n");
-    assert_eq!(
-        parse_body(&with_trailer).expect("a complete terminator with trailers"),
-        b"{\"a\":}".to_vec()
-    );
-}
-
-/// Only `chunked` is decoded, and only when it is the coding that was asked for.
-///
-/// A transport that searched the header for the substring `chunked` would decode a body a peer had
-/// framed some other way, or that named the coding twice. Those are the shapes a proxy produces when
-/// it wants two readings of the same bytes, so each is refused by name rather than decoded on a
-/// guess.
-#[test]
-fn a_transfer_coding_this_transport_cannot_decode_is_refused() {
-    for header in [
-        // A coding this transport does not implement, with and without `chunked` alongside it.
-        "Transfer-Encoding: gzip",
-        "Transfer-Encoding: gzip, chunked",
-        // The word present but not as a coding token: a substring match would decode these.
-        "Transfer-Encoding: xchunked",
-        "Transfer-Encoding: chunkedx",
-        // `chunked` is defined as the final coding, so one that is not last is not this framing.
-        "Transfer-Encoding: chunked, gzip",
-        // Two `chunked` codings make the wire format ambiguous.
-        "Transfer-Encoding: chunked, chunked",
-    ] {
-        let raw = format!("HTTP/1.1 200 OK\r\n{header}\r\n\r\n0\r\n\r\n");
-        assert_eq!(
-            parse_body(raw.as_bytes())
-                .map(|_| ())
-                .unwrap_err()
-                .to_string(),
-            "the provider response used a transfer coding this transport cannot decode",
-            "expected {header:?} to be refused rather than decoded"
-        );
-    }
-    // The exact token, alone, is the one framing that is implemented.
-    assert_eq!(
-        parse_body(
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: Chunked\r\n\r\n6\r\n{\"a\":}\r\n0\r\n\r\n"
-                as &[u8]
-        )
-        .expect("the chunked token, matched case-insensitively"),
-        b"{\"a\":}".to_vec()
-    );
 }
 
 /// The request carries the credential in a header and never as an argument or a body field.

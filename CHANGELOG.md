@@ -30,7 +30,12 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   reads, so its nine provider-answer cases are retired rather than left failing. Response classes
   are asserted in-process against bytes and the ordering a real peer shows against a loopback TLS
   server, which leaves no automated lane driving a provider exchange through the compiled binary
-  end to end; ADR 0053 records that gap and the seam that would close it.
+  end to end; ADR 0053 records that gap and the seam that would close it. A `chunked` size too
+  large to add is now refused with checked arithmetic: `fffffffffffffffe` previously passed both
+  the body bound and the truncation check in an optimising build, because each sum wrapped to a
+  small number and the framing then attempted an out-of-bounds slice. The manifest schema still
+  requires and re-pins a `transport` entry the bridge never executes, so `RUNNER.md` now directs
+  operators to the reviewed bridge binary instead of a second artifact; retiring it is separate work.
 - **A transport that succeeds with a malformed body is reported as the parse error.** #752 read
   the exit status ahead of the worker joins and fixed the *refusal* case, but on a successful exit
   the writer's `EPIPE` still pre-empted the body-parse error: a transport that answers without

@@ -2,8 +2,8 @@
 
 The runner connects the opt-in bridge capture in #371 to the paired audit in #369.
 It sends **the same approved input to two independent bridge invocations**, changing only
-`model_execution_id`, and imports their redacted sidecars. The transport path remains a
-single argument, including spaces, as fixed in #370.
+`model_execution_id`, and imports their redacted sidecars. The model is named as a single
+argument, including spaces, as fixed in #370.
 
 This is **decision replay**, not game replay: no returned action is dispatched to a game,
 gateway or MCP server. No host state is advanced. No model weights, game installation,
@@ -34,8 +34,26 @@ and its own children. It never chmods, rotates, removes or adopts an existing ru
 Bridge and transport locators must be canonical absolute paths to non-group/world-writable
 regular executable files owned by the current user or root. Their file-byte SHA-256 pins
 are checked in preflight and again before each arm. These checks do not authenticate
-mapped process pages, interpreters, libraries, transport dependencies, endpoints or model
-weights. `source_revision` is a recorded operator assertion, not a verified build attestation.
+mapped process pages, interpreters, libraries, endpoints or model weights. `source_revision`
+is a recorded operator assertion, not a verified build attestation.
+
+The `transport` field is **required by the manifest schema and re-pinned in preflight, but the
+bridge never executes it.** #299 moved the System One HTTPS exchange into the bridge process
+behind a pinned in-process `rustls` client, so `--transport` is gone and the runtime admits
+`["--model", MODEL]`. The field survived that move: `validateRunner` still requires it in the
+exact-key set, still resolves it as an executable and still hashes it, and the pilot evidence
+still records `transport_digest`. That makes it vestigial but load-bearing for admission — a
+manifest without it is refused, and one with a stale digest is refused — while having no effect
+on what the bridge sends.
+
+**Set `transport.path` to the reviewed `sts2-jev-bridge` binary and `transport.sha256` to that
+same binary's digest.** That is the honest value: it is a real, canonical, already-reviewed,
+already-pinned executable rather than a fabricated stand-in, it needs no second artifact to
+build or install, and its digest is stable under the same review that pins `bridge`. A
+placeholder file would satisfy the same permission and existence checks, but it would put a
+meaningless digest into pilot evidence and tempt a reader into believing a second artifact is
+participating. Retiring the field entirely is the correct end state and is tracked as separate
+work; until then this is what the schema actually requires.
 Use an independently reviewed immutable model pin; denying familiar rolling aliases cannot
 establish that a provider will keep an arbitrary model identifier immutable.
 
@@ -65,7 +83,7 @@ The exact field names are accepted by `validateRunner`; no ambient defaults wide
     "sha256": "REPLACE_WITH_64_LOWERCASE_HEX"
   },
   "transport": {
-    "path": "/var/lib/sts2-private/bin/System One transport",
+    "path": "/var/lib/sts2-private/bin/sts2-jev-bridge",
     "sha256": "REPLACE_WITH_64_LOWERCASE_HEX"
   },
   "inherited_environment": ["PATH", "TYPESAFE_API_KEY"],
@@ -89,11 +107,12 @@ The exact field names are accepted by `validateRunner`; no ambient defaults wide
 }
 ```
 
-Declare only the environment names required by the reviewed transport, using its actual
-credential-variable names. Values come from the invoking process and are never serialized
+Declare only the environment names the reviewed bridge needs, using its actual
+credential-variable names (`TYPESAFE_API_KEY` for the System One lane, which the bridge now
+sends itself). Values come from the invoking process and are never serialized
 by the runner. All other ambient variables are omitted. Empty/missing/oversized values,
 duplicate names, common interpreter-injection variables and `JEV_CONTEXT_LOG` are rejected.
-This denylist is not proof that an arbitrary transport cannot log or leak credentials;
+This denylist is not proof that an arbitrary child cannot log or leak credentials;
 the reviewed executable and its dependencies remain trusted. PATH should itself be reviewed.
 
 `cluster_sha256` declares the seed/run/checkpoint family used to prevent split leakage.
