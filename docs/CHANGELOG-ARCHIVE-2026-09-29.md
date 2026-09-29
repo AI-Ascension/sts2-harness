@@ -73,3 +73,19 @@ not a supported release or a second normative changelog.
   single id is still refused as an invalid label. Source-only: no released artifact was affected and
   no live caller reached the case. Compatibility: an input that previously validated and then failed
   at settlement is now refused at validation.
+
+- **Admit a bounded pre-agent read-only recipe.** A new `recipe` module fixes the source-only
+  contract behind #97: an authored workflow may declare a bounded, versioned recipe of approved
+  read-only tool reads that the harness admits before provider dispatch, with a fixed refusal order,
+  a declared topological step order with no cycles or forward references, and mutation tools refused
+  from the read-only catalog ([ADR 0073](decisions/0073-pre-agent-read-only-recipe-admission.md)).
+  Collection execution, provenance and the Studio round-trip remain open. Refs #97.
+
+- **Wait for an identity-bound readiness milestone.** A new
+  `management::readiness_wait` module fixes the source-only contract behind #96: an authored
+  workflow names a versioned milestone target with a bounded deadline and attempt budget, and a
+  per-generation wait settles only from fresh authoritative evidence bound to the same instance,
+  authority epoch and process generation, with distinguishable timeout, denial, cancellation and
+  restart-invalidation outcomes and stale or foreign evidence refused
+  ([ADR 0074](decisions/0074-identity-bound-readiness-wait.md)). The Studio round-trip and the
+  native loading verification remain open. Refs #96.

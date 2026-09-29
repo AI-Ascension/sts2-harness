@@ -24,18 +24,18 @@
       },
       {
         "surface": "provider-session",
-        "capability_schema": "ascension.provider-session.capabilities.v3",
-        "capability_revision": "harness-provider-session-v3",
+        "capability_schema": "ascension.provider-session.capabilities.v4",
+        "capability_revision": "harness-provider-session-v4",
         "artifacts": [
           {
             "kind": "policy_schema",
             "path": "contracts/provider-session/policy.schema.json",
-            "sha256": "48d6dc1c75504983c3d5e6a1152c0447874eeb512e45b276ab440962e52781a5"
+            "sha256": "85d5f36900e10fa1e60c918e6c1fc4fbdbd9432093a65738b2098de142136234"
           },
           {
             "kind": "capabilities_schema",
             "path": "contracts/provider-session/capabilities.schema.json",
-            "sha256": "de1348ec7434703722b00a2ddb4bcef7cec02b3788ff14af018cf7b7efaf21f0"
+            "sha256": "accec38f7a6bb58fd485bf74a8a2ed7aca354fd80b2eff3dae8363a30dae96c9"
           }
         ]
       }
@@ -60,11 +60,11 @@
         },
         {
           "path": "contracts/provider-session/capabilities.schema.json",
-          "sha256": "de1348ec7434703722b00a2ddb4bcef7cec02b3788ff14af018cf7b7efaf21f0"
+          "sha256": "accec38f7a6bb58fd485bf74a8a2ed7aca354fd80b2eff3dae8363a30dae96c9"
         },
         {
           "path": "contracts/provider-session/policy.schema.json",
-          "sha256": "48d6dc1c75504983c3d5e6a1152c0447874eeb512e45b276ab440962e52781a5"
+          "sha256": "85d5f36900e10fa1e60c918e6c1fc4fbdbd9432093a65738b2098de142136234"
         }
       ],
       "surfaces": [
@@ -75,7 +75,7 @@
         },
         {
           "surface": "provider-session",
-          "advertised_capability_schema": "ascension.provider-session.capabilities.v3",
+          "advertised_capability_schema": "ascension.provider-session.capabilities.v4",
           "effective_limits_advertised": true
         }
       ],
@@ -129,7 +129,7 @@
         },
         {
           "surface": "provider-session",
-          "advertised_capability_schema": "ascension.provider-session.capabilities.v3",
+          "advertised_capability_schema": "ascension.provider-session.capabilities.v4",
           "effective_limits_advertised": true
         }
       ],
