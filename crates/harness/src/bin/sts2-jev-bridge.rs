@@ -205,6 +205,10 @@ fn decide(
 mod recording;
 use recording::{record, record_profile};
 
+#[path = "support/jev_transport_worker.rs"]
+mod transport_worker;
+use transport_worker::{Reader, Writer, spawn_transport_worker};
+
 /// Runs the operator-owned transport for exactly one bounded exchange.
 ///
 /// Standard input and output are serviced on their own threads, so neither side can deadlock on a
@@ -244,31 +248,38 @@ fn exchange(
     // signalling the process. The writer arm needs it as much as the reader arm: the transport is
     // already running by the time the first thread is attempted, so a failure there would orphan
     // it just as surely on the host that had no spare thread to give.
-    let writer = std::thread::Builder::new()
-        .name("jev-transport-writer".to_owned())
-        .spawn(move || input.write_all(&payload))
-        .map_err(|error| {
-            kill_child(
-                &mut child,
-                format!("cannot start the transport writer: {error}"),
-            )
-        })?;
-    let reader = std::thread::Builder::new()
-        .name("jev-transport-reader".to_owned())
-        .spawn(move || {
+    let writer = spawn_transport_worker(
+        std::thread::Builder::new().name("jev-transport-writer".to_owned()),
+        Writer,
+        move || input.write_all(&payload),
+    )
+    .map_err(|error| {
+        kill_child(
+            &mut child,
+            format!("cannot start the transport writer: {error}"),
+        )
+    })?;
+    let reader = spawn_transport_worker(
+        std::thread::Builder::new().name("jev-transport-reader".to_owned()),
+        Reader,
+        move || {
             let mut received = Vec::new();
             output
                 .by_ref()
                 .take((LIMIT + 1) as u64)
                 .read_to_end(&mut received)
                 .map(|_| received)
-        })
-        .map_err(|error| {
-            kill_child(
-                &mut child,
-                format!("cannot start the transport reader: {error}"),
-            )
-        })?;
+        },
+    )
+    // The reader is the second thread, so it is the one that can fail after the writer is
+    // already running. Returning here would drop the writer's handle and leave the child
+    // waiting on a pipe nobody is servicing, so the child is killed on the way out.
+    .map_err(|error| {
+        kill_child(
+            &mut child,
+            format!("cannot start the transport reader: {error}"),
+        )
+    })?;
     let deadline = Instant::now() + timeout;
     let status = loop {
         if let Some(status) = child.try_wait()? {
@@ -297,7 +308,6 @@ fn kill_child(child: &mut Child, error: String) -> String {
     let _ = child.kill();
     error
 }
-
 #[cfg(test)]
 #[path = "support/sts2_jev_bridge_tests.rs"]
 mod tests;

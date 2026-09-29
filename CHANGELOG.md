@@ -18,8 +18,10 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   signals the process, so dropping it closes the handles and leaves the child alive. A host that
   could not give the bridge its *first* worker thread therefore reported the failure correctly and
   still orphaned the transport. Both arms now go through one `kill_child` helper, and the
-  regression test asserts the process table rather than the error string, which is byte-identical
-  either way. Refs #748.
+  regression tests assert the process table rather than the error string, which is byte-identical
+  either way. Each arm's case drives a refusal through the real `exchange`, with a real child and
+  real pipes, and reverting *either* arm to a plain `map_err` leaves the transport running and
+  fails that arm's case — so the wiring is asserted, not merely the helper. Refs #748.
 - **A bridge that never launched now says so, instead of posing as a behavioural refusal.**
   `main` was `if run(&options).is_err()`, which discarded the error entirely, so every refusal —
   whether the provider answered wrongly or the host could not fork — printed the same single line
@@ -724,4 +726,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   distinct from the gameplay outcome. Source-only: native process evidence and the real child-process
   lane stay gated by sts2-game-mod#79
   ([ADR 0068](docs/decisions/0068-cold-launch-trial-isolation.md)). Refs #122.
-
