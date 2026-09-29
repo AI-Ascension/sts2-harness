@@ -30,7 +30,20 @@ pub struct NativeCapabilities {
     pub native_version: String,
     pub native_binary_sha256: String,
     pub native_schema_sha256: String,
-    pub evidence: CapabilityEvidence,
+    /// What the build behind this descriptor was, as a record of how it was qualified.
+    ///
+    /// **Provenance, not an admission control.** [`NativeCapabilities::validate`] never reads it,
+    /// so every value here validates identically, and the name is deliberately not tier vocabulary:
+    /// a reader who wrote `provenance == CapabilityProvenance::LiveProvider` would get a true answer
+    /// for a descriptor whose adapter never contacted a live provider. The variants are not an
+    /// ordering — they mix what was compiled, what was executed and what was contacted — and the
+    /// strongest asserts a runtime event outside this process that no field here can witness, which
+    /// is why there is no policy floor and none should be added. #755. The full statement of the
+    /// non-admission role lives in `capabilities.schema.json`, which is the contract consumers read.
+    ///
+    /// It is still covered by [`NativeCapabilities::descriptor_digest`], which preserves
+    /// integrity: a descriptor cannot be re-labelled without invalidating its own digest.
+    pub provenance: CapabilityProvenance,
     pub transport: String,
     pub enabled_methods: Vec<String>,
     pub hardening: CapabilityHardening,
@@ -147,10 +160,17 @@ pub fn session_policy_schema_sha256() -> String {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum CapabilityEvidence {
+pub enum CapabilityProvenance {
+    /// Qualified from the schema alone.
     SchemaOnly,
+    /// A peer binary was compiled and its schema compared.
     CompiledPeer,
+    /// A native binary was run against a fake upstream. No path in this tree constructs this value;
+    /// it is retained because it names a real upstream pattern and removing it would be a
+    /// wire-format break for a peer outside this tree, so it is documented as unwired (#755).
     NativeBinaryFakeUpstream,
+    /// A live provider was contacted. This records that a contact happened; it is not a claim that
+    /// the contact is re-verified here, and nothing in this crate can make it one.
     LiveProvider,
 }
 
@@ -239,7 +259,7 @@ fn allowlisted_method(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{CapabilityEvidence, NativeCapabilities, SessionError};
+    use super::{CapabilityProvenance, NativeCapabilities, SessionError};
 
     #[test]
     fn reviewed_exo_lifecycle_advertises_only_implemented_one_shot_methods()
@@ -259,23 +279,21 @@ mod tests {
         Ok(())
     }
 
-    /// The evidence tier is currently INERT, and this pins that fact so it cannot drift quietly.
+    /// `provenance` is deliberately NOT an admission control, and this pins that.
     ///
-    /// `CapabilityEvidence` reads as a four-step ladder ending at `LiveProvider`, and
-    /// `validate()` reads as the gate that would enforce it -- but it never inspects
-    /// `self.evidence`. This test therefore relabels a descriptor to the strongest tier it
-    /// cannot possibly earn (its adapter never contacted a live provider) and asserts that
-    /// validation still accepts it.
+    /// **The first half is the flip #755 required.** The previous version asserted the opposite —
+    /// that a descriptor relabelled to the strongest value it cannot earn still validates — and its
+    /// docstring said closing #755 would flip it here rather than let the gate tighten under a green
+    /// suite. The acceptance is unchanged: the decision was to make the contract honest about the
+    /// value being ignored, not to make it load-bearing.
     ///
-    /// If a future change makes the tier load-bearing, this test FAILS, which is the point: the
-    /// assertion encodes today's behaviour, so closing #755 flips it deliberately rather than
-    /// letting the gate tighten with nobody editing the test that describes the old contract.
-    /// The relabelling is safe to perform here because `descriptor_digest()` covers `evidence`,
-    /// so the digest is recomputed afterwards and the descriptor stays internally consistent --
-    /// otherwise this would be asserting that tampering is accepted rather than that an
-    /// unearned tier is accepted.
+    /// **The second half is the integrity claim that survives the rename.** `descriptor_digest()`
+    /// covers the whole struct with `binding.descriptor_sha256` cleared, so relabelling without
+    /// recomputing the digest must be refused. Without it the first half would be asserting that
+    /// tampering is accepted, and would pass for the wrong reason.
     #[test]
-    fn the_evidence_tier_is_not_yet_an_admission_control() -> Result<(), SessionError> {
+    fn provenance_is_documented_as_ignored_and_still_integrity_covered() -> Result<(), SessionError>
+    {
         let mut capabilities = NativeCapabilities::reviewed_exo_lifecycle(
             "sts2-exo-lifecycle-v2",
             "1".repeat(64),
@@ -283,17 +301,18 @@ mod tests {
             "3".repeat(64),
         )?;
 
-        assert_eq!(capabilities.evidence, CapabilityEvidence::SchemaOnly);
+        assert_eq!(capabilities.provenance, CapabilityProvenance::SchemaOnly);
         assert!(capabilities.validate().is_ok());
 
-        capabilities.evidence = CapabilityEvidence::LiveProvider;
+        capabilities.provenance = CapabilityProvenance::LiveProvider;
         capabilities.binding.descriptor_sha256 = capabilities.descriptor_digest();
 
         assert!(
             capabilities.validate().is_ok(),
-            "this descriptor claims LiveProvider without any live provider being involved; if \
-             this assertion now fails, the evidence tier has become load-bearing and #755's \
-             option 1 (gate it) has been taken -- update this test to assert refusal instead"
+            "provenance is documented as ignored by validate(), so a descriptor claiming \
+             LiveProvider without any live provider being involved is still accepted; if this \
+             assertion now fails, provenance has become load-bearing and #755's option 1 (gate \
+             it) has been taken -- update this test to assert refusal instead"
         );
         Ok(())
     }

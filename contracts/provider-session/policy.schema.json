@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:ascension:provider-session:policy:v1",
   "title": "Harness provider-session policy contract",
+  "description": "Provider-session admission policy. NOTE: this policy has no `provenance` field and deliberately gains none. The capabilities descriptor's `provenance` records how a build was qualified, and it is NOT an admission control: `NativeCapabilities::validate()` never reads it and every provenance value is equally admissible. Adding a policy floor here would be a wire-format change that could not be honestly evaluated, because the strongest provenance value (`live_provider`) asserts a runtime event that happened outside the process and which no field in either contract can witness. Do not add one under the impression that the field is already a gate. See #755.",
   "type": "object",
   "additionalProperties": false,
   "properties": {

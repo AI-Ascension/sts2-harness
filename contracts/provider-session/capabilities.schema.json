@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:ascension:provider-session:capabilities:v3",
+  "$id": "urn:ascension:provider-session:capabilities:v4",
   "title": "Harness provider-session effective-limit capabilities contract",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "schema": {
-      "const": "ascension.provider-session.capabilities.v3"
+      "const": "ascension.provider-session.capabilities.v4"
     },
     "profile_id": {
       "type": "string",
@@ -32,7 +32,8 @@
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
-    "evidence": {
+    "provenance": {
+      "description": "How the build behind this descriptor was qualified: schema_only, compiled_peer, native_binary_fake_upstream or live_provider. This is PROVENANCE, not an admission control. validate() does not consult it and every value here is equally admissible, so a value of live_provider records that a contact happened without asserting that this crate re-verified it. The variants are not an ordered tier: they mix what was compiled, what was executed and what was contacted. It is covered by descriptor_sha256, so a descriptor cannot be relabelled without invalidating its own digest. Renamed from 'evidence' in v4, where the name read as a four-step ladder and invited a comparison this contract does not support.",
       "enum": [
         "schema_only",
         "compiled_peer",
@@ -203,7 +204,7 @@
           "const": "sts2-harness"
         },
         "owner_revision": {
-          "const": "harness-provider-session-v3"
+          "const": "harness-provider-session-v4"
         },
         "policy_schema_sha256": {
           "type": "string",
@@ -260,7 +261,7 @@
     "native_version",
     "native_binary_sha256",
     "native_schema_sha256",
-    "evidence",
+    "provenance",
     "transport",
     "enabled_methods",
     "hardening",

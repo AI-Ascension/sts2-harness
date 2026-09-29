@@ -10,6 +10,24 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **The provider-session capability descriptor's `evidence` field is renamed `provenance`, because
+  it never gated anything and the old name said it did.** `NativeCapabilities::validate()` has
+  never read the field, so every value was equally admissible, yet `evidence` sat beside genuinely
+  request-selectable axes and read as a four-step ladder ending at `LiveProvider`. A caller writing
+  `capabilities.evidence == CapabilityEvidence::LiveProvider` got a true answer for a descriptor
+  whose adapter never contacted a live provider, and the compiler could not warn, because the
+  variants looked like a closed, ordered set. The variants are not an ordering: they mix what was
+  compiled, what was executed, and what was contacted, and `live_provider` asserts a runtime event
+  outside the process that no field in the descriptor can witness — so no policy floor can be
+  honestly built from it, and `policy.schema.json` now records that it deliberately has no such
+  field. Both contracts state the non-admission role in their own text rather than leaving it to be
+  inferred. **This is a wire-format break:** the schema is bumped to
+  `ascension.provider-session.capabilities.v4` (revision `harness-provider-session-v4`), so a peer
+  still emitting `evidence` is rejected by the `deny_unknown_fields` decoder rather than silently
+  accepted. Integrity is not weakened: `descriptor_digest()` still covers the field, so a descriptor
+  cannot be relabelled without invalidating its own digest. `NativeBinaryFakeUpstream` is retained
+  and documented as unwired rather than removed, since removing it would break a peer outside this
+  tree. Refs #755, #109.
 - **The advertised `context_modes` axis is documented as build provenance, not a request axis.**
   It is the one axis in `capability_fields()` with no request-side counterpart: no wire request
   field can select a context mode, so `Continuity` is unreachable and the preflight branch that
@@ -707,23 +725,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   open forever, and an expired wait can never be satisfied afterwards. Compatibility: additive to the
   milestone vocabulary, the versioned target and the refusal vocabulary; the Studio round-trip and
   the native loading check remain open. Refs #96.
-
-- **Map save-profile setup through a capability-gated operation contract.** A new
-  `management::save_profile_setup` module fixes the source-only contract behind #102: authored
-  discovery, selection and provisioning map one-to-one onto the accepted MCP tools and fixed
-  gateway routes, with separate grants, a closed versioned request whose identities refuse paths
-  and URLs, effect-free discovery, selection fenced by a required baseline whose identity is the
-  owner's baseline identity and is independent of the selected slot, provisioning that cannot
-  fence a baseline it does not yet have, and a readback that must match the admitted identity
-  before downstream setup progresses
-  ([ADR 0075](docs/decisions/0075-capability-gated-save-profile-setup-mapping.md)). The durable
-  adapter, the boundary validation matrix and every real profile mutation remain open. Refs #102.
-
-- **Wait for an identity-bound readiness milestone.** A new
-  `management::readiness_wait` module fixes the source-only contract behind #96: an authored
-  workflow names a versioned milestone target with a bounded deadline and attempt budget, and a
-  per-generation wait settles only from fresh authoritative evidence bound to the same instance,
-  authority epoch and process generation, with distinguishable timeout, denial, cancellation and
-  restart-invalidation outcomes and stale or foreign evidence refused
-  ([ADR 0074](docs/decisions/0074-identity-bound-readiness-wait.md)). The Studio round-trip and the
-  native loading verification remain open. Refs #96.

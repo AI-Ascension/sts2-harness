@@ -22,7 +22,7 @@ impl NativeCapabilities {
             native_version: "fixture-peer-1".to_owned(),
             native_binary_sha256: digest(b"compiled-fake-native-peer"),
             native_schema_sha256: digest(NATIVE_FRAME_SCHEMA.as_bytes()),
-            evidence: CapabilityEvidence::CompiledPeer,
+            provenance: CapabilityProvenance::CompiledPeer,
             transport: "owned_stdio".to_owned(),
             enabled_methods: methods,
             hardening: CapabilityHardening {
@@ -95,7 +95,7 @@ impl NativeCapabilities {
         capabilities.native_version = profile_id.to_owned();
         capabilities.native_binary_sha256 = executor_sha256;
         capabilities.native_schema_sha256 = wire_schema_sha256;
-        capabilities.evidence = CapabilityEvidence::SchemaOnly;
+        capabilities.provenance = CapabilityProvenance::SchemaOnly;
         capabilities.enabled_methods = vec![
             String::from("initialize"),
             String::from("turn/start"),

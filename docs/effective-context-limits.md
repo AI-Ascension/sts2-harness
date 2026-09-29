@@ -76,7 +76,7 @@ model or policy capacity.
 ## Capability binding
 
 Context-memory capabilities use `ascension.context-memory.capabilities.v3`; provider capabilities
-use `ascension.provider-session.capabilities.v3`. Each descriptor contains an owner, owner revision,
+use `ascension.provider-session.capabilities.v4`. Each descriptor contains an owner, owner revision,
 exact policy-schema digest, model/adapter revision and a descriptor SHA-256 over the complete payload
 with that digest field cleared. Unknown, disabled, unattached, and descriptors stale relative to
 trusted pins are not treated as unlimited. A changed limit, profile, adapter revision, or copied
