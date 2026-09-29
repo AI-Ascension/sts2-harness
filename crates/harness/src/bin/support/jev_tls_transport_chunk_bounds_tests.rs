@@ -111,7 +111,7 @@ fn root_repro_2026_09_29_chunk_size_boundaries_still_refuse_and_accept_correctly
     // it is a truncation, which is the other refusal.
     for size_text in ["fffffffffffffffe", "ffffffffffffffff"] {
         assert!(
-            parse_body(&frame(&size_text, b"AB"))
+            parse_body(&frame(size_text, b"AB"))
                 .expect_err("a chunk size above the bound is refused")
                 .to_string()
                 == "the provider response exceeded its bound",
