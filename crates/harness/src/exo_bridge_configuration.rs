@@ -30,6 +30,18 @@ pub const MAX_EXECUTOR_BYTES: usize = 512 * 1024 * 1024;
 pub const MAX_EXTENSION_BYTES: usize = 64 * 1024;
 pub const MAX_NODE_BYTES: usize = 256 * 1024 * 1024;
 pub const MAX_CONFIGURATION_BYTES: usize = 32 * 1024;
+/// The bound for hashing the *running* executable when advertising a profile.
+///
+/// #785: this is deliberately not [`MAX_EXECUTOR_BYTES`]. That constant is a production boundary —
+/// it is how large a shipped bridge package may be before it is refused — and reusing it here made
+/// an unrelated build-size increase fail advertisement tests with `exo_bridge_package_bound`, a
+/// packaging error reported by tests that only assert wire-format invariants. The harness debug
+/// test binary is already ~182 MiB, so that coupling was 36% consumed by a single crate.
+///
+/// Raising this is not a way to remove the check. It exists so that a test binary which outgrows it
+/// is refused as `exo_bridge_advertised_executable_bound`, which names the actual subject, instead
+/// of as a bridge package that was never packaged.
+pub const MAX_ADVERTISED_EXECUTABLE_BYTES: usize = 512 * 1024 * 1024;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
