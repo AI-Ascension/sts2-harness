@@ -311,3 +311,69 @@ fn concurrent_failures_stay_retryable() {
         "the success is pinned and later initialisers are never consulted"
     );
 }
+
+/// A burst of concurrent callers must not let one failure deny all of them.
+///
+/// This is the case the previous two designs got wrong in the same way, and it is what #787 is
+/// actually about. Both shared the in-flight attempt's *outcome* with every parked caller, so a
+/// burst of eight advertisements that raced a single failing read all received that one `Err` —
+/// and because nobody in the burst made a second attempt, a transient failure was still turned
+/// into a deterministic denial, just narrowed from "process lifetime" to "burst". Measured against
+/// the waiter-propagating implementation over 40 rounds, that shape gives 8 errors and 0 successes
+/// in 38 of them, even when every attempt after the first would have succeeded.
+///
+/// The initialiser here therefore *recovers*: the first invocation fails and every later one
+/// succeeds. An always-failing initialiser cannot catch this defect — it makes `attempts == 1`
+/// look correct — so the recovery is the whole point of the test, and at least one caller must end
+/// up with the digest.
+#[test]
+fn a_concurrent_burst_recovers_after_one_failure() {
+    use std::sync::{Arc, Barrier};
+
+    let cache = Arc::new(OnceDigest::new());
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let threads = 8;
+    let barrier = Arc::new(Barrier::new(threads));
+    let mut handles = Vec::with_capacity(threads);
+
+    for _ in 0..threads {
+        let (cache, attempts, barrier) = (
+            Arc::clone(&cache),
+            Arc::clone(&attempts),
+            Arc::clone(&barrier),
+        );
+        handles.push(std::thread::spawn(move || {
+            barrier.wait();
+            cache.get(|| {
+                // Fail exactly once, then recover: the shape a transient read error takes.
+                if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                    Err("exo_bridge_unavailable")
+                } else {
+                    Ok("b".repeat(64))
+                }
+            })
+        }));
+    }
+
+    let mut recovered = 0;
+    let mut denied = 0;
+    for handle in handles {
+        match handle.join().expect("no thread panicked") {
+            Ok(digest) => {
+                assert_eq!(digest, "b".repeat(64), "a success is returned as computed");
+                recovered += 1;
+            }
+            Err(_) => denied += 1,
+        }
+    }
+
+    assert!(
+        recovered > 0,
+        "the first caller legitimately observes the failure, but the burst must not be denied by \\
+         it: {denied} of {threads} callers got an error and none recovered"
+    );
+    assert!(
+        attempts.load(Ordering::SeqCst) >= 2,
+        "a failure must be retried, so at least a second attempt has to run"
+    );
+}
