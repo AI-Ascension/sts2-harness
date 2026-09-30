@@ -11,6 +11,16 @@
 //!
 //! Caching succeeds per process and failures not at all — see `OnceDigest` for why that
 //! distinction needs more than a `OnceLock` to get right.
+//!
+//! #785: this path reads the *running* executable, and under `cargo test` that is the test binary.
+//! The bound here used to be the production package ceiling, which made one constant answer two
+//! unrelated questions — how large a shipped bridge may be before the package is refused, and how
+//! large a debug test binary may be before a purely in-memory advertisement test starts failing.
+//! The harness test binary is already ~182 MiB, so an unrelated build-size increase would have
+//! failed `every_advertised_profile_reports_the_running_executable_digest` and the decision-field
+//! invariant tests with `exo_bridge_package_bound`: a bridge packaging error, reported by tests
+//! whose subject is wire-format invariants. The production boundary does not move; the
+//! advertisement path gets its own bound and its own refusal token so the cause is legible.
 
 use crate::sha256_hex;
 use std::path::Path;
@@ -23,7 +33,7 @@ pub(super) fn bridge_digest() -> Result<String, &'static str> {
         let executable = std::env::current_exe().map_err(|_| "exo_bridge_package")?;
         Ok(sha256_hex(read_bounded(
             &executable,
-            crate::exo_bridge_configuration::MAX_EXECUTOR_BYTES,
+            crate::exo_bridge_configuration::MAX_ADVERTISED_EXECUTABLE_BYTES,
         )?))
     })
 }
@@ -133,7 +143,7 @@ fn read_bounded(path: &Path, maximum: usize) -> Result<Vec<u8>, &'static str> {
         .read_to_end(&mut bytes)
         .map_err(|_| "exo_bridge_unavailable")?;
     if bytes.len() > maximum {
-        return Err("exo_bridge_package_bound");
+        return Err("exo_bridge_advertised_executable_bound");
     }
     Ok(bytes)
 }
@@ -141,3 +151,7 @@ fn read_bounded(path: &Path, maximum: usize) -> Result<Vec<u8>, &'static str> {
 #[cfg(test)]
 #[path = "digest_cache_tests.rs"]
 mod digest_cache_tests;
+
+#[cfg(test)]
+#[path = "advertised_executable_bound_tests.rs"]
+mod advertised_executable_bound_tests;
