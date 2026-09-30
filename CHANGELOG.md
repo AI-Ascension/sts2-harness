@@ -28,6 +28,18 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   cannot be relabelled without invalidating its own digest. `NativeBinaryFakeUpstream` is retained
   and documented as unwired rather than removed, since removing it would break a peer outside this
   tree. Refs #755, #109.
+- **The advertised `context_modes` axis is documented as build provenance, not a request axis.**
+  It is the one axis in `capability_fields()` with no request-side counterpart: no wire request
+  field can select a context mode, so `Continuity` is unreachable and the preflight branch that
+  guards it cannot run in production. The field's name and its place beside genuinely
+  request-selectable axes invited the opposite reading, and the owner decision (#760) is to keep
+  the axis and say plainly what it is — the descriptor and the guard are two reads of the same
+  `SUPPORTED_CONTEXT_MODES` constant, so this is a build property published so a caller can see
+  what one build implements. The same words now appear in the constant, the descriptor field, the
+  preflight guard and #757's reachability module, and a test reads all four so a one-site edit
+  fails instead of quietly restoring the ambiguity. The guard is deliberately retained: it is the
+  only place a future build that genuinely adds a non-fresh mode would be caught. Making the axis
+  request-selectable is not decided here and remains #109's to carry. Refs #760, #757.
 - **The System One bridge performs its own HTTPS exchange, so a run carries one digest instead of
   two.** It previously spawned an operator-owned transport named by `--transport`, so a run pinned
   two artifacts and the runtime verified one. It now uses a pinned `rustls` client with trust
@@ -713,14 +725,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   open forever, and an expired wait can never be satisfied afterwards. Compatibility: additive to the
   milestone vocabulary, the versioned target and the refusal vocabulary; the Studio round-trip and
   the native loading check remain open. Refs #96.
-
-- **Map save-profile setup through a capability-gated operation contract.** A new
-  `management::save_profile_setup` module fixes the source-only contract behind #102: authored
-  discovery, selection and provisioning map one-to-one onto the accepted MCP tools and fixed
-  gateway routes, with separate grants, a closed versioned request whose identities refuse paths
-  and URLs, effect-free discovery, selection fenced by a required baseline whose identity is the
-  owner's baseline identity and is independent of the selected slot, provisioning that cannot
-  fence a baseline it does not yet have, and a readback that must match the admitted identity
-  before downstream setup progresses
-  ([ADR 0075](docs/decisions/0075-capability-gated-save-profile-setup-mapping.md)). The durable
-  adapter, the boundary validation matrix and every real profile mutation remain open. Refs #102.

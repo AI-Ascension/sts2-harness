@@ -168,7 +168,13 @@ revision is a declaration, not a dirty-tree or reproducible-build attestation.
 
 CI installs the pinned toolchain, uses read-only repository permissions, does not expose
 secrets, and bounds each matrix job to fifteen minutes. Dependency/toolchain downloads may
-use the network; the tests still use only the socket-free synthetic transport from #377.
+use the network. This lane still stages no synthetic peer: the bridge no longer takes a
+transport, so its host, port and root store are compile-time constants with no injection
+seam. What these tests reach through the compiled binary is the refuse-before-exchange
+path. The bridge's own response-class coverage moved in-process against literal bytes in
+`jev_tls_transport_tests.rs` and `sts2_jev_bridge_tests.rs`, and end to end against a
+loopback TLS peer in `jev_tls_transport_loopback_tests.rs` — loopback, not provider
+traffic, but not socket-free either.
 The ten-pair case exercises #379's reporter without live inputs or gameplay. These are
 CI tests, not execution of the actual provider pilot and not policy-promotion evidence.
 `compiled-ci.test.mjs` separately checks shell control flow using command doubles; those

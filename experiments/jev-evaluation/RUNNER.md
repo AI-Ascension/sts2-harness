@@ -14,7 +14,10 @@ Unlike the offline readers, `run` **can make provider calls through the reviewed
 `plan` and `inspect` never execute it. Execution requires the exact SHA-256 printed by
 `plan`; changing any manifest byte requires approval again. An evidence-kind label is
 not a network sandbox: even a manifest labelled synthetic invokes its pinned executable
-when approved. The shipped tests use a separate, explicitly synthetic, socket-free oracle.
+when approved. The runner's own shipped tests use a separate, explicitly synthetic,
+socket-free oracle. That oracle stands in for the runner's accounting only; it is not
+coverage of the real bridge's transport, which cannot be given a synthetic peer (see
+"Testing the compiled bridge" below).
 
 ## Prerequisites and private input boundary
 
@@ -202,8 +205,32 @@ cargo run --locked --package repo-policy -- --strict
 
 The existing [Node workflow](../../.github/workflows/jev-evaluation.yml) discovers the new
 tests automatically; no workflow, Rust source, dependency, provider transport or runtime
-argument-admission change is needed. The tests use a hand-authored socket-free bridge
+argument-admission change is needed. These tests use a hand-authored socket-free bridge
 oracle, exact command arguments, real Unix child processes and private scratch directories
 under `target/`. The existing shared Rust/Node capture golden is unchanged. These tests
 do not execute a newly compiled real bridge, a provider, a game or a Windows ACL writer.
+
+### Testing the compiled bridge
+
+The oracle above is synthetic on purpose, and it is not a stand-in for the real bridge's
+transport. `sts2-jev-bridge` performs the System One exchange itself against
+`api.typesafe.ai`, with trust anchors compiled in from `webpki-roots` (ADR 0053). Host,
+port and root store are compile-time constants with no injection seam, so a synthetic peer
+cannot satisfy the binary, and a local server presenting a substituted CA is refused by
+design. What the compiled-CI lane does exercise is real: that the compiled binary is
+admitted by the runner's digest pin, and that it refuses — without contacting any provider
+— on the paths that refuse before an exchange.
+
+Response-class coverage lives in-process instead: framing, status, `chunked` and
+`close_notify` against literal bytes in `jev_tls_transport_tests.rs`, catalog and confidence
+refusals in `sts2_jev_bridge_tests.rs`, and the ordering only a real peer can show —
+handshake completing before a request is written, and a peer that never answers being
+refused on the deadline — against a loopback TLS peer in
+`jev_tls_transport_loopback_tests.rs`. Those open a real loopback socket. They are not
+provider traffic and they do not stand in for it.
+
+The honest gap: **no automated lane exercises a real provider exchange end to end through
+the compiled binary.** Closing that would require a test-only seam in production TLS code,
+which is a larger change than the coverage it buys.
+
 See the package validation report for actual executed commands and remaining integration gaps.

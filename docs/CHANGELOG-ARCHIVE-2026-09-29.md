@@ -89,3 +89,14 @@ not a supported release or a second normative changelog.
   restart-invalidation outcomes and stale or foreign evidence refused
   ([ADR 0074](decisions/0074-identity-bound-readiness-wait.md)). The Studio round-trip and the
   native loading verification remain open. Refs #96.
+
+- **Map save-profile setup through a capability-gated operation contract.** A new
+  `management::save_profile_setup` module fixes the source-only contract behind #102: authored
+  discovery, selection and provisioning map one-to-one onto the accepted MCP tools and fixed
+  gateway routes, with separate grants, a closed versioned request whose identities refuse paths
+  and URLs, effect-free discovery, selection fenced by a required baseline whose identity is the
+  owner's baseline identity and is independent of the selected slot, provisioning that cannot
+  fence a baseline it does not yet have, and a readback that must match the admitted identity
+  before downstream setup progresses
+  ([ADR 0075](decisions/0075-capability-gated-save-profile-setup-mapping.md)). The durable
+  adapter, the boundary validation matrix and every real profile mutation remain open. Refs #102.
