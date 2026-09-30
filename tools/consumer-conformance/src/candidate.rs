@@ -97,7 +97,8 @@ fn compile_generator(
     libraries: &Libraries,
 ) -> Result<PathBuf> {
     let executable = output.join("producer-generator");
-    let status = Command::new("rustc")
+    let mut command = Command::new("rustc");
+    command
         .current_dir(harness)
         .arg(console.join("tools/effective-limit-fixtures/src/main.rs"))
         .args([
@@ -116,12 +117,46 @@ fn compile_generator(
             libraries.target.join("debug/deps").display()
         ))
         .arg("-o")
-        .arg(&executable)
-        .status()?;
+        .arg(&executable);
+    // The consumer's generator bakes its own provenance in with `env!`, which cargo satisfies by
+    // running the crate's `build.rs`. This conformance path links the same source with bare
+    // `rustc`, so that build script never runs and the `env!` would abort the compile. Derive the
+    // value here exactly as the consumer's `build.rs` does -- by reading the resolved git source
+    // out of the consumer's own lockfile -- rather than substituting a literal, so the emitted
+    // fixture still reports the revision cargo actually resolved.
+    command.env(
+        "STS2_HARNESS_PRODUCER_REVISION",
+        consumer_producer_revision(console)?,
+    );
+    let status = command.status()?;
     if !status.success() {
         return Err("unchanged consumer generator did not compile against candidate".into());
     }
     Ok(executable)
+}
+
+/// Mirror of the consumer crate's `build.rs`: the harness is the only
+/// `git+https://github.com/AI-Ascension/sts2-harness` source recorded there, and each such
+/// `source` value ends in `#<rev>`, which is the revision cargo actually resolved.
+fn consumer_producer_revision(console: &Path) -> Result<String> {
+    let lockfile = console.join("tools/effective-limit-fixtures/Cargo.lock");
+    let lock = inputs::read_bounded_string(&lockfile)?;
+    lock.lines()
+        .map(str::trim)
+        .filter_map(|line| line.strip_prefix("source = \""))
+        .filter_map(|value| value.strip_suffix('"'))
+        .filter(|value| value.contains("github.com/AI-Ascension/sts2-harness"))
+        .filter_map(|value| value.rsplit_once('#').map(|(_, revision)| revision))
+        .next()
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            format!(
+                "{} records no resolved sts2-harness git source, so the candidate generator \
+                 cannot be given a producer revision",
+                lockfile.display()
+            )
+            .into()
+        })
 }
 
 fn artifact_evidence(root: &Path, artifact: &Path) -> Result<Value> {

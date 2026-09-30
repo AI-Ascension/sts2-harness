@@ -17,6 +17,10 @@ pub fn read_bounded(path: &Path) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
+pub fn read_bounded_string(path: &Path) -> Result<String> {
+    Ok(String::from_utf8(read_bounded(path)?)?)
+}
+
 pub fn json_file(path: &Path) -> Result<Value> {
     Ok(serde_json::from_slice(&read_bounded(path)?)?)
 }
