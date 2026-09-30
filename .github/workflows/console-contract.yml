@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: AI-Ascension/ascension-context-console
-          ref: df36452adcfa1b1c3a7f968be243cd25a02433c3
+          ref: 6449716ba6105fa5eaa89becfdad431759b887f0
           path: console
           persist-credentials: false
       - name: Check out reviewed Studio consumer

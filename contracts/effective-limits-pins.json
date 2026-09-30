@@ -44,7 +44,7 @@
   "consumers": [
     {
       "repository": "AI-Ascension/ascension-context-console",
-      "revision": "df36452adcfa1b1c3a7f968be243cd25a02433c3",
+      "revision": "6449716ba6105fa5eaa89becfdad431759b887f0",
       "revision_source": "harness_ci_pin",
       "artifact_mode": "copied_contracts",
       "role": "Bounded context inspection facade that forwards owner truth to Studio",
@@ -81,7 +81,7 @@
       ],
       "harness_ci_pin": {
         "workflow": ".github/workflows/console-contract.yml",
-        "revision": "df36452adcfa1b1c3a7f968be243cd25a02433c3"
+        "revision": "6449716ba6105fa5eaa89becfdad431759b887f0"
       }
     },
     {
