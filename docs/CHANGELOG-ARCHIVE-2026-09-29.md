@@ -80,3 +80,23 @@ not a supported release or a second normative changelog.
   a declared topological step order with no cycles or forward references, and mutation tools refused
   from the read-only catalog ([ADR 0073](decisions/0073-pre-agent-read-only-recipe-admission.md)).
   Collection execution, provenance and the Studio round-trip remain open. Refs #97.
+
+- **Wait for an identity-bound readiness milestone.** A new
+  `management::readiness_wait` module fixes the source-only contract behind #96: an authored
+  workflow names a versioned milestone target with a bounded deadline and attempt budget, and a
+  per-generation wait settles only from fresh authoritative evidence bound to the same instance,
+  authority epoch and process generation, with distinguishable timeout, denial, cancellation and
+  restart-invalidation outcomes and stale or foreign evidence refused
+  ([ADR 0074](decisions/0074-identity-bound-readiness-wait.md)). The Studio round-trip and the
+  native loading verification remain open. Refs #96.
+
+- **Map save-profile setup through a capability-gated operation contract.** A new
+  `management::save_profile_setup` module fixes the source-only contract behind #102: authored
+  discovery, selection and provisioning map one-to-one onto the accepted MCP tools and fixed
+  gateway routes, with separate grants, a closed versioned request whose identities refuse paths
+  and URLs, effect-free discovery, selection fenced by a required baseline whose identity is the
+  owner's baseline identity and is independent of the selected slot, provisioning that cannot
+  fence a baseline it does not yet have, and a readback that must match the admitted identity
+  before downstream setup progresses
+  ([ADR 0075](decisions/0075-capability-gated-save-profile-setup-mapping.md)). The durable
+  adapter, the boundary validation matrix and every real profile mutation remain open. Refs #102.

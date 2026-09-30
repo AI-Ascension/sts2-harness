@@ -3,7 +3,7 @@
 use super::checkout_pin_matches;
 
 const REPOSITORY: &str = "AI-Ascension/ascension-context-console";
-const REVISION: &str = "df36452adcfa1b1c3a7f968be243cd25a02433c3";
+const REVISION: &str = "0f393f7ad495244f71589dc8ba759265348e0bda";
 const ACTION: &str = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
 
 fn workflow(step: &str) -> String {
@@ -114,6 +114,6 @@ fn actual_committed_workflows_have_the_reviewed_checkout() {
     assert!(checkout_pin_matches(
         include_str!("../../../../.github/workflows/studio-contract.yml"),
         "AI-Ascension/ascension-workflow-studio",
-        "b316e0e9c535b8544f41f58baa6faf1095ff7b16",
+        "0161aefea019663528bc446d2e1d8391a8ddc765",
     ));
 }
