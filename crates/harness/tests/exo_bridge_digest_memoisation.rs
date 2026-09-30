@@ -7,9 +7,15 @@
 //! Every advertised profile embeds this digest, and each lookup profile description is derived
 //! from the one-shot one. Hashing the executable once per derivation re-read the whole file each
 //! time, and under `cargo test` the executable *is* the test binary — a debug test binary of this
-//! crate runs to a few hundred megabytes. That made
+//! crate is ~190 MB, so each derivation costs a full read plus SHA-256 of that file. That made
 //! `lookup_advertisement_does_not_borrow_the_one_shot_decision_set`, a purely in-memory
-//! advertisement test, run past the harness timeout and hang instead of failing.
+//! advertisement test, pay for four of them.
+//!
+//! #782 reported a hang and set no bound. These tests assert nothing about wall-clock time: the
+//! cost of a read scales with the size of whatever binary is running and with machine load, so
+//! timing it would be flaky. The deterministic proof that the digest is computed once lives in
+//! `exo_bridge_configuration/digest_cache_tests.rs`; what is asserted here is the property that
+//! makes caching safe — the value is still the real digest of the running executable.
 //!
 //! It lives in its own file so `exo_advertised_variant_negatives.rs` stays under its preferred
 //! size budget rather than growing a policy waiver.
@@ -39,9 +45,9 @@ fn loaded() -> config::Loaded {
 ///
 /// This is the assertion that makes caching honest. The expected value is computed here by
 /// independently reading the file, so a cache that returned a constant, a value from a previous
-/// build, or the digest of some other file would fail. The bug being fixed was a hang, so nothing
-/// about the digest's value was ever wrong — only how many times it was recomputed — and this test
-/// is what holds that line.
+/// build, or the digest of some other file would fail. The defect was the cost of the derivation,
+/// never the value — nothing about the digest was ever wrong, only how many times it was
+/// recomputed — so this test is what holds that line.
 #[test]
 fn every_advertised_profile_reports_the_running_executable_digest() {
     let loaded = loaded();

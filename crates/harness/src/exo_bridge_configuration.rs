@@ -13,6 +13,11 @@ use std::process::{Command, Stdio};
 #[path = "exo_bridge_configuration/capability.rs"]
 mod capability;
 
+#[path = "exo_bridge_configuration/digest.rs"]
+mod digest;
+
+use digest::bridge_digest;
+
 pub use capability::{
     LOOKUP_SUPPORTED_DECISIONS, LOOKUP_UNSUPPORTED_DECISIONS, PROVIDER_ENDPOINT,
     SUPPORTED_CONTEXT_MODES, SUPPORTED_DECISIONS, SUPPORTED_PROFILES, SYNTHETIC_ENDPOINT_PREFIX,
@@ -248,31 +253,6 @@ fn verify_file(path: &Path, expected: &str, maximum: usize) -> Result<(), &'stat
         return Err("exo_bridge_package_identity");
     }
     Ok(())
-}
-
-/// SHA-256 of the running bridge executable, computed at most once per process.
-///
-/// Every advertised profile embeds this digest, and each profile description is derived from the
-/// one-shot one, so a caller inspecting several profiles re-hashed the same unchanged file each
-/// time. Under `cargo test` the executable *is* the test binary: a debug test binary of this crate
-/// runs to a few hundred megabytes, and hashing it once per advertised profile made a purely
-/// in-memory advertisement test run for minutes and time out rather than fail.
-///
-/// The running executable cannot be replaced and still be executed, so this digest is a property
-/// of the process rather than of the filesystem. Caching it for the process lifetime is therefore
-/// sound, and nothing is cached across processes, so a rebuilt binary is never reported under a
-/// previous build's digest.
-fn bridge_digest() -> Result<String, &'static str> {
-    static DIGEST: std::sync::OnceLock<Result<String, &'static str>> = std::sync::OnceLock::new();
-    if let Some(digest) = DIGEST.get() {
-        return digest.clone();
-    }
-    let computed = (|| {
-        let executable = std::env::current_exe().map_err(|_| "exo_bridge_package")?;
-        Ok(sha256_hex(read_bounded(&executable, MAX_EXECUTOR_BYTES)?))
-    })();
-    let _ = DIGEST.set(computed.clone());
-    computed
 }
 
 fn read_bounded(path: &Path, maximum: usize) -> Result<Vec<u8>, &'static str> {
