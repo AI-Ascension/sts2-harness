@@ -295,7 +295,11 @@ fn concurrent_failures_stay_retryable() {
             Ok("b".repeat(64))
         })
         .expect("a success after concurrent failures still pins");
-    assert_eq!(recovered, "b".repeat(64), "the success after failures is returned");
+    assert_eq!(
+        recovered,
+        "b".repeat(64),
+        "the success after failures is returned"
+    );
     assert_eq!(
         cache
             .get(|| {
