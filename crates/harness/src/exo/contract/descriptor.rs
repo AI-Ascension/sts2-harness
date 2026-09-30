@@ -169,6 +169,11 @@ pub struct ExoCapabilityDescriptor {
     pub identity: ExoIdentity,
     pub decision_kinds: Vec<ExoDecisionKind>,
     pub profile_support: ExoProfileSupport,
+    /// What this build implements, published as build provenance rather than as a request axis:
+    /// `context_modes` describes what the build implements, not what a caller may request, and no
+    /// wire request field can select one. `Continuity` is unreachable on the wire today. The
+    /// preflight guard at `preflight.rs` stays in place so a future build that genuinely adds it is
+    /// covered the moment it exists. Refs #760.
     pub context_modes: Vec<ExoContextMode>,
     pub platforms: Vec<ExoPlatform>,
     pub limits: ExoLimits,

@@ -19,7 +19,10 @@ pub const SUPPORTED_PROFILES: [&str; 1] = ["standard"];
 /// [`UnsupportedProfileAxis::profile_name`]. `every_classifier_profile_axis_is_advertised` asserts
 /// both directions.
 pub const UNSUPPORTED_PROFILES: [&str; 3] = ["map", "management", "expert"];
-/// Context modes implemented by this one-shot build.
+/// Context modes implemented by this one-shot build, published as build provenance rather than as
+/// a request axis: `context_modes` describes what the build implements,
+/// not what a caller may request, and no wire request field can select one.
+/// `Continuity` is unreachable on the wire today. Refs #760.
 pub const SUPPORTED_CONTEXT_MODES: [&str; 1] = ["fresh"];
 /// Terminal decisions this build returns to the host.
 pub const SUPPORTED_DECISIONS: [&str; 4] = ["action", "plan", "wait", "reobserve"];

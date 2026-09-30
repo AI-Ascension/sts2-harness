@@ -73,3 +73,10 @@ not a supported release or a second normative changelog.
   single id is still refused as an invalid label. Source-only: no released artifact was affected and
   no live caller reached the case. Compatibility: an input that previously validated and then failed
   at settlement is now refused at validation.
+
+- **Admit a bounded pre-agent read-only recipe.** A new `recipe` module fixes the source-only
+  contract behind #97: an authored workflow may declare a bounded, versioned recipe of approved
+  read-only tool reads that the harness admits before provider dispatch, with a fixed refusal order,
+  a declared topological step order with no cycles or forward references, and mutation tools refused
+  from the read-only catalog ([ADR 0073](decisions/0073-pre-agent-read-only-recipe-admission.md)).
+  Collection execution, provenance and the Studio round-trip remain open. Refs #97.
