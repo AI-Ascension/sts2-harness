@@ -136,7 +136,7 @@ impl Loaded {
     }
 
     pub fn lookup_description(&self) -> Result<Value, &'static str> {
-        let mut value = self.description()?;
+        let mut value = self.description_with_bridge_digest(bridge_digest()?)?;
         value["schema"] = json!("sts2.exo-lookup-capability-v1");
         value["wire_version"] = json!(crate::exo_lookup_wire::EXO_LOOKUP_WIRE);
         value["tools"] = json!(["sts2_lookup_query", "sts2_lookup_read"]);
@@ -209,11 +209,15 @@ impl Loaded {
     }
 
     pub fn description(&self) -> Result<Value, &'static str> {
-        let executable = std::env::current_exe().map_err(|_| "exo_bridge_package")?;
+        self.description_with_bridge_digest(bridge_digest()?)
+    }
+
+    /// The shared advertisement body, with the bridge digest supplied by the caller.
+    fn description_with_bridge_digest(&self, bridge_sha256: String) -> Result<Value, &'static str> {
         let mut description = json!({
             "schema": "sts2.exo-one-shot-capability-v1",
             "source_revision": EXO_SOURCE_REVISION,
-            "bridge_sha256": sha256_hex(read_bounded(&executable, MAX_EXECUTOR_BYTES)?),
+            "bridge_sha256": bridge_sha256,
             "executor_sha256": self.config.executor_sha256,
             "extension_sha256": self.config.extension_sha256,
             "node_sha256": self.config.node_sha256,
@@ -244,6 +248,31 @@ fn verify_file(path: &Path, expected: &str, maximum: usize) -> Result<(), &'stat
         return Err("exo_bridge_package_identity");
     }
     Ok(())
+}
+
+/// SHA-256 of the running bridge executable, computed at most once per process.
+///
+/// Every advertised profile embeds this digest, and each profile description is derived from the
+/// one-shot one, so a caller inspecting several profiles re-hashed the same unchanged file each
+/// time. Under `cargo test` the executable *is* the test binary: a debug test binary of this crate
+/// runs to a few hundred megabytes, and hashing it once per advertised profile made a purely
+/// in-memory advertisement test run for minutes and time out rather than fail.
+///
+/// The running executable cannot be replaced and still be executed, so this digest is a property
+/// of the process rather than of the filesystem. Caching it for the process lifetime is therefore
+/// sound, and nothing is cached across processes, so a rebuilt binary is never reported under a
+/// previous build's digest.
+fn bridge_digest() -> Result<String, &'static str> {
+    static DIGEST: std::sync::OnceLock<Result<String, &'static str>> = std::sync::OnceLock::new();
+    if let Some(digest) = DIGEST.get() {
+        return digest.clone();
+    }
+    let computed = (|| {
+        let executable = std::env::current_exe().map_err(|_| "exo_bridge_package")?;
+        Ok(sha256_hex(read_bounded(&executable, MAX_EXECUTOR_BYTES)?))
+    })();
+    let _ = DIGEST.set(computed.clone());
+    computed
 }
 
 fn read_bounded(path: &Path, maximum: usize) -> Result<Vec<u8>, &'static str> {
