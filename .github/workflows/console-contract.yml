@@ -28,14 +28,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: AI-Ascension/ascension-context-console
-          ref: df36452adcfa1b1c3a7f968be243cd25a02433c3
+          ref: 0f393f7ad495244f71589dc8ba759265348e0bda
           path: console
           persist-credentials: false
       - name: Check out reviewed Studio consumer
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: AI-Ascension/ascension-workflow-studio
-          ref: b316e0e9c535b8544f41f58baa6faf1095ff7b16
+          ref: c6347f40096ab3cf6dfc3322c79f0dbd672a1ec4
           path: studio
           persist-credentials: false
       - name: Install pinned Rust toolchain

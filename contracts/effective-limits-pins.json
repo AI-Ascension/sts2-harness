@@ -44,7 +44,7 @@
   "consumers": [
     {
       "repository": "AI-Ascension/ascension-context-console",
-      "revision": "df36452adcfa1b1c3a7f968be243cd25a02433c3",
+      "revision": "0f393f7ad495244f71589dc8ba759265348e0bda",
       "revision_source": "harness_ci_pin",
       "artifact_mode": "copied_contracts",
       "role": "Bounded context inspection facade that forwards owner truth to Studio",
@@ -81,12 +81,12 @@
       ],
       "harness_ci_pin": {
         "workflow": ".github/workflows/console-contract.yml",
-        "revision": "df36452adcfa1b1c3a7f968be243cd25a02433c3"
+        "revision": "0f393f7ad495244f71589dc8ba759265348e0bda"
       }
     },
     {
       "repository": "AI-Ascension/ascension-workflow-studio",
-      "revision": "b316e0e9c535b8544f41f58baa6faf1095ff7b16",
+      "revision": "c6347f40096ab3cf6dfc3322c79f0dbd672a1ec4",
       "revision_source": "harness_ci_pin",
       "artifact_mode": "schema_adapter",
       "role": "Authoring and presentation consumer that must not offer a value the runtime rejects",
@@ -94,31 +94,31 @@
       "artifacts": [
         {
           "path": "packages/contracts/src/index.ts",
-          "sha256": "a4d670950c63456e0552d2b8541ecb712e675f8ff969e95ed1b28f4590a259ad"
+          "sha256": "d5170a921b186688c90f3b62771c3e04687609a73292f08e37ae3840cdef69e0"
         },
         {
           "path": "contracts/live-owner-ci.lock.json",
-          "sha256": "478c4db5c74f138c4c71f3362de5e41f457dc4f58a980dd78308e2ad358616e5"
+          "sha256": "633002d5dc6673e164d0bd2ebeded6e41b97759b480348bb18e0c4c4440bde98"
         },
         {
           "path": "contracts/effective-limits.lock.json",
-          "sha256": "3f4c10f3831bdcd5bba005460f6fea584acbbaf32e37cd2fbbe053be2fdf9400"
+          "sha256": "bdbc2abc2dcb2818b5a65db1d6be92f456669496018196642f720ee26174020c"
         },
         {
           "path": "packages/contracts/src/effective-limits.ts",
-          "sha256": "57778d3f50fc8e43ed5f45825550711c34950d21adb676a73b3f773a9b120d00"
+          "sha256": "b25e742ba4d3e72d8461fe419b8a76a2cc9c95d5799cace0aba5e059a1cfda98"
         },
         {
           "path": "packages/contracts/src/effective-limit-types.ts",
-          "sha256": "f165ecac5a41b9c42157c47c3f8ce7dbc29eb389eed4bb613cc445f5d36c7570"
+          "sha256": "e3f1785c724ad1c7621ce0b2cab5fd5d2a9b30039a4ab286ff354863a3fb626e"
         },
         {
           "path": "packages/contracts/src/effective-limit-validators.js",
-          "sha256": "7f0feb81e9b69274906f65f951a8a541430ad6b2d6dcc0cba15a5fdcf828c39c"
+          "sha256": "60f9bba3e70163423dce8e8c4efc0aff9d56d3ea73f58c7e65f17fc6e6aa2a7f"
         },
         {
           "path": "contracts/accepted/effective-limits/producer.json",
-          "sha256": "ffed02d25dae8404145234bea2f8dd6f0a671f415a4ae68c7c388d8ac709e363"
+          "sha256": "e02d32f23cb3fcb25cb9b93f82132a691212967cfaec2dadb309eaed94bfa4fa"
         }
       ],
       "surfaces": [
@@ -135,7 +135,7 @@
       ],
       "harness_ci_pin": {
         "workflow": ".github/workflows/studio-contract.yml",
-        "revision": "b316e0e9c535b8544f41f58baa6faf1095ff7b16"
+        "revision": "c6347f40096ab3cf6dfc3322c79f0dbd672a1ec4"
       }
     }
   ]
