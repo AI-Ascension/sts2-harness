@@ -1,11 +1,11 @@
 {
   "schema": "sts2.exact-restore-conformance-pins.v1",
   "gateway_repository": "AI-Ascension/sts2-gateway",
-  "gateway_revision": "ff4cd1c6c0a0e6c4dd2e599e7e07025bed062f69",
+  "gateway_revision": "8bd102fea27f528179edb0f02be95ad73dec48dc",
   "mcp_repository": "AI-Ascension/sts2-mcp-server",
-  "mcp_revision": "e6af39f30c14cd5ecc84be254511d4840bdb8fae",
+  "mcp_revision": "f0226ce2660df098c97d77e923ff4de5b3269e92",
   "mod_repository": "AI-Ascension/sts2-game-mod",
-  "mod_revision": "73979e6031a2487f7761663cc0573f8a9ee97fa9",
+  "mod_revision": "6f04269c130ce29ca82bbfc105329c01355752e8",
   "status": "candidate",
   "note": "The pinned Gateway includes the typed translation; positive, refusal, and unknown outcomes remain required."
 }

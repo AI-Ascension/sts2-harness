@@ -20,7 +20,7 @@ use std::process::{Command, Stdio};
 
 /// The gateway's published request-header allow-list, copied from
 /// `crates/gateway/src/bin/runtime_support/service_authorization.rs::header_is_allowed`
-/// at sts2-gateway `ff4cd1c6c0a0e6c4dd2e599e7e07025bed062f69`.
+/// at sts2-gateway `8bd102fea27f528179edb0f02be95ad73dec48dc`.
 ///
 /// This embed is a deliberate maintenance obligation, not a convenience. If the gateway
 /// widens or renames its list, this test is EXPECTED to fail until these names are

@@ -30,8 +30,8 @@ jobs:
       CARGO_BUILD_JOBS: '2'
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
-      GATEWAY_REVISION: ff4cd1c6c0a0e6c4dd2e599e7e07025bed062f69
-      MCP_REVISION: e6af39f30c14cd5ecc84be254511d4840bdb8fae
+      GATEWAY_REVISION: 8bd102fea27f528179edb0f02be95ad73dec48dc
+      MCP_REVISION: f0226ce2660df098c97d77e923ff4de5b3269e92
     steps:
       - name: Check out candidate harness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
