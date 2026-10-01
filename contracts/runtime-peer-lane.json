@@ -9,13 +9,13 @@
   "immutable_peers": {
     "gateway": {
       "repository": "AI-Ascension/sts2-gateway",
-      "revision": "ff4cd1c6c0a0e6c4dd2e599e7e07025bed062f69",
+      "revision": "8bd102fea27f528179edb0f02be95ad73dec48dc",
       "source_kind": "active_runtime_dependency",
       "binary": "sts2-gateway-runtime"
     },
     "mcp": {
       "repository": "AI-Ascension/sts2-mcp-server",
-      "revision": "e6af39f30c14cd5ecc84be254511d4840bdb8fae",
+      "revision": "f0226ce2660df098c97d77e923ff4de5b3269e92",
       "source_kind": "active_runtime_dependency",
       "binary": "sts2-mcp-server"
     }

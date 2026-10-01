@@ -85,8 +85,8 @@ elif [ "$definitions" -ne 1 ]; then
     exit 2
 fi
 
-DEFAULT_GATEWAY_REVISION=ff4cd1c6c0a0e6c4dd2e599e7e07025bed062f69
-DEFAULT_MCP_REVISION=e6af39f30c14cd5ecc84be254511d4840bdb8fae
+DEFAULT_GATEWAY_REVISION=8bd102fea27f528179edb0f02be95ad73dec48dc
+DEFAULT_MCP_REVISION=f0226ce2660df098c97d77e923ff4de5b3269e92
 
 passed=0
 failed=0
@@ -209,7 +209,7 @@ run_case reject_bare_branch main "$DEFAULT_GATEWAY_REVISION" 1 no
 run_case reject_short_sha e6af39f3 "$DEFAULT_MCP_REVISION" 1 no
 run_case reject_garbage "not a revision" "$DEFAULT_GATEWAY_REVISION" 1 no
 run_case reject_39_hex ff4cd1c6c0a0e6c4dd2e599e7e07025bed062f6 "$DEFAULT_GATEWAY_REVISION" 1 no
-run_case reject_41_hex ff4cd1c6c0a0e6c4dd2e599e7e07025bed062f690 "$DEFAULT_GATEWAY_REVISION" 1 no
+run_case reject_41_hex 8bd102fea27f528179edb0f02be95ad73dec48dc0 "$DEFAULT_GATEWAY_REVISION" 1 no
 # The guard's pattern is lower-case only, so an upper-case SHA-1 is not 40-hex as
 # this workflow defines it and must be refused rather than quietly normalised.
 run_case reject_upper_case FF4CD1C6C0A0E6C4DD2E599E7E07025BED062F69 "$DEFAULT_GATEWAY_REVISION" 1 no

@@ -31,8 +31,8 @@ jobs:
       CARGO_BUILD_JOBS: '2'
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
-      DEFAULT_GATEWAY_REVISION: ff4cd1c6c0a0e6c4dd2e599e7e07025bed062f69
-      DEFAULT_MCP_REVISION: e6af39f30c14cd5ecc84be254511d4840bdb8fae
+      DEFAULT_GATEWAY_REVISION: 8bd102fea27f528179edb0f02be95ad73dec48dc
+      DEFAULT_MCP_REVISION: f0226ce2660df098c97d77e923ff4de5b3269e92
       # Peer binaries are identical for every executable-composition step, so they are declared once
       # here. Only `github`/`vars`/`secrets`/`inputs` are readable in a job-level env, so each step
       # still names its own `runner.temp` evidence directory.
