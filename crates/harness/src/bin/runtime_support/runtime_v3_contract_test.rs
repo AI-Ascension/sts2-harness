@@ -19,10 +19,10 @@ fn copied_contract_matches_authoritative_byte_inventory() -> Result<(), Box<dyn 
     let sums = fs::read(artifact().join("SHA256SUMS"))?;
     assert_eq!(
         sts2_harness::sha256_hex(&sums),
-        "ca0ddd2a3c1898c919954251fe0a46b44b2eaa0375e299d29063e9f9a83b365a"
+        "c5d77ef8447369e1e07dd3334ec5853677428620369adc382ef4ed9b63f1613d"
     );
     let sums = String::from_utf8(sums)?;
-    assert_eq!(sums.lines().count(), 11);
+    assert_eq!(sums.lines().count(), 12);
     for line in sums.lines() {
         let (digest, upstream_path) = line.split_once("  ").ok_or("invalid checksum record")?;
         // Preserve canonical relative references to the source and conformance mirrors.
