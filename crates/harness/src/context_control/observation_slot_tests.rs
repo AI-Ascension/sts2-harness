@@ -64,6 +64,111 @@ fn slot() -> ObservationSelectionSlot {
 }
 
 #[test]
+fn a_slot_at_lineage_capacity_refuses_further_admissions_with_capacity() {
+    let mut slot = slot_at_lineage_capacity();
+    let next = u64::try_from(MAX_SLOT_LINEAGE).unwrap_or_else(|_| unreachable!()) + 1;
+
+    assert_eq!(
+        slot.admit(&generation_candidate(next), NOW),
+        Err(ObservationSlotRefusal::Capacity)
+    );
+    assert_eq!(
+        slot.lineage().len(),
+        MAX_SLOT_LINEAGE,
+        "a refused admission must not extend the lineage"
+    );
+}
+
+/// Fills a slot's lineage to exactly `MAX_SLOT_LINEAGE` admitted values.
+///
+/// The first admission is `Inserted` and each later one supersedes, so the
+/// lineage grows by one per call. Ordering is `(controller_epoch, gate_epoch)`,
+/// so both epochs rise with the generation to keep each candidate strictly
+/// newer than the effective value.
+fn slot_at_lineage_capacity() -> ObservationSelectionSlot {
+    let mut slot = slot();
+    for index in 0..MAX_SLOT_LINEAGE {
+        let generation = u64::try_from(index).unwrap_or_else(|_| unreachable!()) + 1;
+        assert!(
+            slot.admit(&generation_candidate(generation), NOW).is_ok(),
+            "lineage entry {index} must be admitted"
+        );
+    }
+    assert_eq!(slot.lineage().len(), MAX_SLOT_LINEAGE);
+    slot
+}
+
+/// One candidate for a generation, with a distinct but valid lowercase-hex
+/// observation digest per generation.
+fn generation_candidate(generation: u64) -> ObservationSlotAdmission {
+    let state = format!("s{generation}");
+    // `valid_digest` accepts only lowercase hex, so the digest varies over
+    // a-f rather than over the whole alphabet.
+    let observation =
+        char::from(b'a' + u8::try_from(generation % 6).unwrap_or_else(|_| unreachable!()));
+    candidate(
+        boundary(&state, generation, generation, generation, observation),
+        generation,
+        false,
+    )
+}
+
+/// `Capacity` and `InvalidIdentity` are different refusals and must stay so.
+///
+/// A caller distinguishes "this slot is full" from "this candidate is
+/// malformed" by the variant, so collapsing them is a real behaviour change
+/// even though both are errors.
+#[test]
+fn lineage_capacity_is_never_reported_as_a_different_refusal() {
+    let mut slot = slot_at_lineage_capacity();
+    let next = u64::try_from(MAX_SLOT_LINEAGE).unwrap_or_else(|_| unreachable!()) + 1;
+
+    assert_eq!(
+        slot.admit(&generation_candidate(next), NOW),
+        Err(ObservationSlotRefusal::Capacity),
+        "a slot at capacity must refuse with Capacity"
+    );
+    assert_ne!(
+        ObservationSlotRefusal::Capacity,
+        ObservationSlotRefusal::InvalidIdentity
+    );
+}
+
+/// The last admission up to the bound still succeeds, so the refusal above is
+/// a real boundary and not an off-by-one that refuses one entry early.
+#[test]
+fn the_final_admission_up_to_lineage_capacity_still_succeeds() {
+    let mut slot = slot();
+    for index in 0..MAX_SLOT_LINEAGE - 1 {
+        let generation = u64::try_from(index).unwrap_or_else(|_| unreachable!()) + 1;
+        assert!(slot.admit(&generation_candidate(generation), NOW).is_ok());
+    }
+    assert_eq!(slot.lineage().len(), MAX_SLOT_LINEAGE - 1);
+
+    let last = u64::try_from(MAX_SLOT_LINEAGE).unwrap_or_else(|_| unreachable!());
+    assert!(
+        slot.admit(&generation_candidate(last), NOW).is_ok(),
+        "the entry that reaches the bound must be admitted"
+    );
+    assert_eq!(slot.lineage().len(), MAX_SLOT_LINEAGE);
+}
+
+/// A malformed candidate is refused as `InvalidIdentity`, which stays
+/// distinguishable from `Capacity` on a slot that has never filled.
+#[test]
+fn a_malformed_expiry_is_refused_as_invalid_identity_not_capacity() {
+    let mut slot = slot();
+    let mut malformed = candidate(boundary("s1", 1, 1, 1, 'a'), 1, false);
+    malformed.expires_at = "not-a-timestamp".to_owned();
+
+    assert_eq!(
+        slot.admit(&malformed, NOW),
+        Err(ObservationSlotRefusal::InvalidIdentity)
+    );
+    assert!(slot.lineage().is_empty());
+}
+
+#[test]
 fn successive_invocations_keep_only_the_latest_with_deterministic_lineage() {
     let mut slot = slot();
     assert_eq!(
