@@ -33,7 +33,7 @@ mod tests;
 pub(super) use transition::{receipt, wait_sample};
 
 const PROTOCOL_VERSION: &str = "runtime-v3-gameplay";
-const SCHEMA_DIGEST: &str = "843e2e546116c8011f378d271406ac2fb4ec0e4c2dedd32dee46cc1500315ad5";
+const SCHEMA_DIGEST: &str = "0ae1d4d1525162da3059c028dcdb70df1d4d2dcf9620c5edd9b543e5f04aacc2";
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const ROOT_FIELDS: [&str; 21] = [
     "protocol_version",
