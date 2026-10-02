@@ -1,9 +1,9 @@
 {
   "schema": "sts2.exact-restore-conformance-pins.v1",
   "gateway_repository": "AI-Ascension/sts2-gateway",
-  "gateway_revision": "8bd102fea27f528179edb0f02be95ad73dec48dc",
+  "gateway_revision": "34464acc443fe4f683581668cdacd249d09f76cd",
   "mcp_repository": "AI-Ascension/sts2-mcp-server",
-  "mcp_revision": "f0226ce2660df098c97d77e923ff4de5b3269e92",
+  "mcp_revision": "f7db2d4ac5346a9124fff0f1e121fc3a7979d3f4",
   "mod_repository": "AI-Ascension/sts2-game-mod",
   "mod_revision": "6f04269c130ce29ca82bbfc105329c01355752e8",
   "status": "candidate",
