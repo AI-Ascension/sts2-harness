@@ -216,12 +216,14 @@ fn is_privileged_key(key: &str) -> bool {
 }
 
 fn valid_text(value: &str) -> bool {
-    !value.is_empty() && value.len() <= MAX_TEXT_BYTES && !value.chars().any(char::is_control)
+    !value.is_empty()
+        && value.chars().count() <= MAX_TEXT_CHARACTERS
+        && !value.chars().any(char::is_control)
 }
 
 fn valid_identity(value: &str) -> bool {
     !value.is_empty()
-        && value.len() <= MAX_TEXT_BYTES
+        && value.len() <= MAX_IDENTITY_BYTES
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))

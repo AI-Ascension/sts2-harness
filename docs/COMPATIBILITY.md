@@ -453,6 +453,33 @@ coordinated consumer review. Additive fields must define old-reader behavior. Un
 null versus missing, ordering, numeric bounds, identifier namespaces, stale state, and partial effects
 must be tested before an additive label is used.
 
+### Fair-play sandbox bounds against the Runtime-v3 contract
+
+The Exo fair-play validator in `crates/harness/src/exo/` mirrors the Runtime-v3 contract, but two
+of its runtime bounds were stricter than the contract, so a message the schema and the protocol
+parser both admit could be refused at the fair-play boundary. Both were fail-closed, so nothing
+could corrupt data or bypass the firewall; a conforming host offer was dropped instead.
+
+**Offered and free text is bounded in characters, not bytes.** `#/$defs/text` and
+`#/$defs/offered_attribute` both declare `maxLength: 512`, and JSON Schema `maxLength` counts
+characters. The validator applied its byte limit with `str::len`, so a name of 257 `é`—514 bytes,
+257 characters—was refused while the contract admits up to 512 characters. STS2 card and relic
+names are not ASCII, so this was reachable. The bound is now `MAX_TEXT_CHARACTERS` applied with
+`chars().count()`. Identities keep a byte bound as `MAX_IDENTITY_BYTES`, because
+`#/$defs/identity` matches `^[A-Za-z0-9_.:/-]{1,512}$`, where a byte bound and a character bound
+are equivalent and the byte form is the one the pattern guarantees.
+
+**A described entry's `contents` is bounded at the contract's 256.** `#/$defs/disclosed_set`
+declares `maxItems: 256`; the sandbox capped it at 32. The game-mod producer deliberately follows
+the harness, so no current producer was affected, but a producer that trusted the schema would
+have had 33..256 entries refused. `MAX_CHOICE_CONTENTS` is now 256.
+
+`crates/harness/src/exo/sandbox_bounds_tests.rs` pins both verdicts of each bound, including the
+512-character accept and 513-character refuse for non-ASCII text, so neither limit can silently
+drift back to bytes or to a private number. `MAX_ENEMIES` (64), `MAX_POTIONS` (64) and
+`MAX_SHOP_ITEMS` (128) remain stricter than the contract's 256: no producer reaches those counts,
+they predate the Runtime-v3 mirror, and `MAX_OBSERVATION_BYTES` caps the projection at 128 KiB.
+
 ### Runtime peer lane recovery sideband
 
 `contracts/runtime-peer-lane.json` declares the immutable gateway and MCP revisions the runtime
