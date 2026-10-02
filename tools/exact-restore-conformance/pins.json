@@ -5,7 +5,7 @@
   "mcp_repository": "AI-Ascension/sts2-mcp-server",
   "mcp_revision": "f7db2d4ac5346a9124fff0f1e121fc3a7979d3f4",
   "mod_repository": "AI-Ascension/sts2-game-mod",
-  "mod_revision": "6f04269c130ce29ca82bbfc105329c01355752e8",
+  "mod_revision": "e7454d4a4d37e22b5766d87f70e505649dab74ea",
   "status": "candidate",
   "note": "The pinned Gateway includes the typed translation; positive, refusal, and unknown outcomes remain required."
 }
