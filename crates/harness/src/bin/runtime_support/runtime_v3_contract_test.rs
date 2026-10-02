@@ -19,10 +19,17 @@ fn copied_contract_matches_authoritative_byte_inventory() -> Result<(), Box<dyn 
     let sums = fs::read(artifact().join("SHA256SUMS"))?;
     assert_eq!(
         sts2_harness::sha256_hex(&sums),
-        "c5d77ef8447369e1e07dd3334ec5853677428620369adc382ef4ed9b63f1613d"
+        "94e5dce0bb58737b5c3d8b24c08f79cb3393286f68366826a39c7fa66725bd76"
     );
     let sums = String::from_utf8(sums)?;
-    assert_eq!(sums.lines().count(), 12);
+    // Counted from the manifest rather than hardcoded, so adding a golden does not require editing
+    // this assertion in every consumer that mirrors the artifact.
+    let listed_goldens = read_json("manifest.json")?["goldens"]
+        .as_array()
+        .map(Vec::len)
+        .unwrap_or(0);
+    // Plus the case file, the normative schema, the manifest, and the artifact schema.
+    assert_eq!(sums.lines().count(), listed_goldens + 4);
     for line in sums.lines() {
         let (digest, upstream_path) = line.split_once("  ").ok_or("invalid checksum record")?;
         // Preserve canonical relative references to the source and conformance mirrors.
