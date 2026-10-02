@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::contract::ResolvedInferenceProfileRef;
+
 pub const STUDIO_SCHEMA_VERSION: &str = "ascension.studio-authoring/v1";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -91,4 +93,13 @@ pub struct StudioPublishResponse {
     pub outcome: String,
     pub definition: Option<StudioDefinitionRecord>,
     pub draft: Option<StudioDraftRecord>,
+    /// The owner's authoritative inference-profile decision for the published
+    /// document, with each authored reference resolved to its exact
+    /// `profile_id:version:digest` pin.
+    ///
+    /// Publication refuses before this is returned when a reference does not
+    /// resolve. `None` means the owner serves no inference-profile catalog, so
+    /// no profile authority was exercised; an empty vector means the catalog was
+    /// served and the document carries no inference-profile reference.
+    pub inference_profiles: Option<Vec<ResolvedInferenceProfileRef>>,
 }

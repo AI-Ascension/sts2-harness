@@ -22,6 +22,7 @@ mod http;
 mod inference_profile_binding;
 pub use inference_profile_binding::{
     InferenceProfileBinding, InferenceProfileBindingSet, resolve_definition,
+    resolve_definition_sites,
 };
 mod inference_profile_catalog;
 pub use inference_profile_catalog::{

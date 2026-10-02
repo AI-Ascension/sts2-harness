@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::super::inference_profiles::ResolvedInferenceProfileRef;
 use super::super::target_admission::TargetAdmissionBinding;
 use super::{EventClassification, RecoveryAdmission, RunEvent, RunSnapshot, WorkflowRunStatus};
 
@@ -167,6 +168,15 @@ pub struct ValidateResponse {
     pub definition_digest: String,
     pub compiler: String,
     pub diagnostics: Vec<Diagnostic>,
+    /// The owner's authoritative inference-profile decision for every
+    /// decide/planner reference in the definition.
+    ///
+    /// Published so a consumer can present the owner's decision rather than
+    /// re-deriving its own admission rule. `None` means the owner serves no
+    /// inference-profile catalog, so no authority was exercised; an empty vector
+    /// means the catalog was served and the definition carries no
+    /// inference-profile reference.
+    pub inference_profiles: Option<Vec<ResolvedInferenceProfileRef>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

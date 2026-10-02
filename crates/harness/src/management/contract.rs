@@ -4,6 +4,8 @@
 
 #[path = "contract_inference_profile.rs"]
 mod inference_profile;
+#[path = "contract_inference_profiles.rs"]
+mod inference_profiles;
 #[path = "contract_json.rs"]
 mod json;
 #[path = "contract_provider_session.rs"]
@@ -16,6 +18,7 @@ mod target_admission;
 mod types;
 
 pub use inference_profile::*;
+pub use inference_profiles::*;
 pub use json::*;
 pub use provider_session::*;
 pub use store_types::*;

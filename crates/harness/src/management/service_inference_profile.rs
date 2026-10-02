@@ -2,8 +2,12 @@
 
 //! Inference-profile catalog reads and the service-side admission fence.
 
-use super::super::contract::{InferenceProfileCatalog, TargetAdmissionBinding};
-use super::super::inference_profile_binding::{InferenceProfileBindingSet, resolve_definition};
+use super::super::contract::{
+    InferenceProfileCatalog, ResolvedInferenceProfileRef, TargetAdmissionBinding,
+};
+use super::super::inference_profile_binding::{
+    InferenceProfileBindingSet, resolve_definition, resolve_definition_sites,
+};
 use super::super::inference_profile_revision::{
     InferenceProfileRevisionRequest, InferenceProfileRevisionResponse, RevisionAppendOutcome,
     derive_inference_profile_revision,
@@ -153,4 +157,46 @@ pub(super) fn bind_inference_provenance(
         }
         binding
     })
+}
+
+/// The owner's authoritative inference-profile decision for one authored
+/// definition, shared by definition validation and Studio publication.
+///
+/// Both surfaces are admission decisions about the same document, so they must
+/// not hold two rules. This resolves every decide/planner reference through
+/// [`resolve_definition_sites`] — the same catalog and the same per-node fences
+/// the live submission fence uses — and reports each reference with the exact
+/// `profile_id:version:digest` identity it resolved to.
+///
+/// `None` means the owner serves no inference-profile catalog, so no authority
+/// was exercised and nothing may be published as an owner decision. A served
+/// catalog is authoritative and fails closed: a floating id the catalog does not
+/// advertise is refused here with the catalog's own reason vocabulary
+/// (`inference_profile_unknown`), not silently accepted.
+pub(super) fn resolve_admission_inference_profiles(
+    actor: &AuthContext,
+    capabilities: &dyn super::super::service::CapabilityPort,
+    definition: &serde_json::Value,
+) -> Result<Option<Vec<ResolvedInferenceProfileRef>>, ManagementError> {
+    let Some(catalog) = capabilities.inference_profile_catalog(actor)? else {
+        return Ok(None);
+    };
+    catalog.validate()?;
+    let parsed = super::super::workflow_ports::parse_definition(definition)?;
+    Ok(Some(
+        resolve_definition_sites(&catalog, &parsed, None)?
+            .into_iter()
+            .map(|resolution| {
+                let resolved_pin = resolution.exact_pin();
+                ResolvedInferenceProfileRef {
+                    graph_id: resolution.site.graph_id,
+                    node_id: resolution.site.node_id,
+                    node_kind: resolution.site.node_kind,
+                    profile_ref: resolution.site.profile_ref,
+                    resolved_pin,
+                    path: resolution.site.path,
+                }
+            })
+            .collect(),
+    ))
 }

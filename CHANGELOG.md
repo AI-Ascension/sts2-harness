@@ -702,26 +702,23 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   additive; two new module files, one new runtime method, no change to an existing schema, route,
   digest or node kind. Refs #98.
 
-- **Admit explicitly scoped research inspection of hidden checkpoint state.** A new
-  `research_inspection` module fixes the source-only contract behind #129 and separates privileged
-  research data from the ordinary player-visible boundary: an operator-supplied grant binds one exact
-  checkpoint, run, branch and consumer lane to an explicit, bounded set of field groups, so a
-  gameplay lane cannot escalate by asking for a different visibility parameter, and revocation is
-  monotonic so a replayed request cannot outlive its approval. Fields come from a closed matrix whose
-  references refuse paths, queries and unbounded names; admission returns the admitted slice rather
-  than fabricating availability, and the native owner's report must match it field-for-field and
-  in order. Coverage stays distinct — `NotMaterialized`, `SimulationRequired` and `Unsupported` never
-  collapse into zero, empty or an invented value — refusals carry no value, field name or digest, and
-  paging is bounded so a partial page is never labelled complete
-  ([ADR 0076](docs/decisions/0076-scoped-research-inspection-of-hidden-checkpoint-state.md)). The
-  native capture read adapter and the capture-manifest agreement remain open. Refs #129.
-
-- **Bind readiness settlement to its proof, and let a starved wait expire.** The
-  `management::readiness_wait` contract behind #96 now admits one `MilestoneObservation`, which binds
-  the sealed owner readiness proof to the milestone and process generation that owner reported, so
-  the facts that decide settlement are no longer separate `observe` arguments that one owner's proof
-  could be paired with a milestone nobody reported. `ReadinessWait::expire_if_elapsed` advances the
-  bounded clock without an observation, so a wait that stays starved times out instead of staying
-  open forever, and an expired wait can never be satisfied afterwards. Compatibility: additive to the
-  milestone vocabulary, the versioned target and the refusal vocabulary; the Studio round-trip and
-  the native loading check remain open. Refs #96.
+- **Resolve inference-profile references authoritatively at the owner, not in the browser.** A
+  `decide` / `adaptive_region` reference could name a floating `profile_id` that no served catalog
+  advertises, and `POST /v1/workflow-definitions/validate` returned `{"valid":true}` for it, because
+  live submission admission — not definition validation — was the only thing that resolved profiles.
+  A consumer wanting an immutable binding therefore had to invent a *second, stricter* rule in the
+  browser and refuse publication the owner would have accepted, leaving two admission authorities
+  disagreeing about the same document. Both surfaces now resolve every reference through the
+  owner's served catalog with the same per-node fences live submission already used, and publish
+  that decision: `profile_ref` as authored beside `resolved_pin`, the exact
+  `profile_id:version:digest` it resolved to, plus its graph, node, kind and JSON path. Both fail
+  closed — an uncatalogued floating id is refused with the catalog's own `inference_profile_unknown`
+  rather than silently accepted, and publication refuses before creating a definition. A consumer
+  records `resolved_pin`, never `profile_ref`, for immutability: a floating id can resolve to a
+  different descriptor after a catalog revision. `inference_profiles` is `null` when the owner
+  serves no catalog (no authority exercised — not "admissible") and empty when a catalog was served
+  and the document has no reference; an owner with no catalog is unchanged. **This breaks a strict
+  decoder that rejected unknown response fields.** Both surfaces publish the same decision for the
+  same document, so a consumer reads the owner's verdict instead of re-deriving one. Evidence is
+  synthetic/component only: in-memory owner doubles and an in-memory authoring store. No provider,
+  model, credential, native host or live-owner browser run is claimed. Refs #799.
