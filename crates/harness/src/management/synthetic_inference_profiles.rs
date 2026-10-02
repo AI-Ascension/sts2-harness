@@ -18,11 +18,65 @@ use super::service::ManagementError;
 pub const SYNTHETIC_INFERENCE_OWNER_ID: &str = "sts2-synthetic-inference-owner";
 const SYNTHETIC_INFERENCE_OWNER_VERSION: &str = "1.0.0";
 
-/// `(profile_id, node_kind, compatible context)`; the fixture definitions
-/// under `conformance/workflow-v1` use exactly these references.
+/// `(profile_id, node_kind, compatible context)`.
+///
+/// The first two entries are the owner's own labelled fixtures. The `sts2.*`
+/// entries below them are NOT those fixtures: they are the references the
+/// admitted Phase 1 workflow fixtures actually carry, so that a consumer can
+/// exercise the owner's authoritative resolution end to end against the
+/// documents it really publishes.
+///
+/// This list previously claimed that "the fixture definitions under
+/// `conformance/workflow-v1` use exactly these references". That was false.
+/// The Phase 1 fixtures the Studio publishes live in the Studio repo at
+/// `contracts/accepted/phase1/workflows/`, and every one of their
+/// `decision_profile_ref` / `planner_profile_ref` members names an `sts2.*`
+/// profile that this catalog did not serve, so the owner refused them with
+/// `inference_profile_unknown` and the consumer could never reach a
+/// publication. The names below are the ones those documents really use.
+///
+/// One available revision per `profile_id` keeps floating resolution
+/// unambiguous: `resolve_floating` refuses when several available revisions
+/// match, so adding a second available revision for any of these would make
+/// the very documents this catalog exists to admit unresolvable.
+///
+/// Every entry here remains a clearly-labelled synthetic descriptor with no
+/// provider, no model in flight, no credential and no lease. Serving these
+/// names proves the owner's resolution and admission fences work. It proves
+/// nothing about Exo, about a provider, or about the game.
 const SYNTHETIC_PROFILES: &[(&str, &str, &str)] = &[
     ("decision.synthetic.v1", "decide", "context.synthetic.v1"),
     ("planner.synthetic.v1", "adaptive_region", ""),
+    // The `decide` references carried by the admitted Phase 1 workflow
+    // fixtures, each paired with the context its own node declares.
+    (
+        "sts2.campaign.decision.v1",
+        "decide",
+        "sts2.campaign.context.v1",
+    ),
+    (
+        "sts2.combat.decision.v1",
+        "decide",
+        "sts2.combat.context.v1",
+    ),
+    ("sts2.event.decision.v1", "decide", "sts2.event.context.v1"),
+    ("sts2.map.decision.v1", "decide", "sts2.map.context.v1"),
+    ("sts2.rest.decision.v1", "decide", "sts2.rest.context.v1"),
+    (
+        "sts2.reward.decision.v1",
+        "decide",
+        "sts2.reward.context.v1",
+    ),
+    (
+        "sts2.selection.decision.v1",
+        "decide",
+        "sts2.selection.context.v1",
+    ),
+    ("sts2.setup.decision.v1", "decide", "sts2.setup.context.v1"),
+    ("sts2.shop.decision.v1", "decide", "sts2.shop.context.v1"),
+    // The `adaptive_region` references, which declare no context at all.
+    ("sts2.combat.planner.v1", "adaptive_region", ""),
+    ("sts2.map.planner.v1", "adaptive_region", ""),
 ];
 
 fn descriptor(
@@ -57,10 +111,10 @@ fn descriptor(
             max_output_tokens: 4096,
             max_provider_calls: 64,
         },
-        // The synthetic owner publishes its two labelled fixtures as editable so
-        // the admitted edit route can be exercised end to end with no provider,
-        // model or credential. It proves the journal and the authority split; it
-        // proves nothing about a live owner's edit policy, which is that owner's.
+        // Every descriptor this owner publishes is editable, so the admitted edit
+        // route can be exercised end to end with no provider, model or credential.
+        // It proves the journal and the authority split; it proves nothing about a
+        // live owner's edit policy, which is that owner's.
         grants: InferenceProfileGrants {
             select: true,
             edit: true,
