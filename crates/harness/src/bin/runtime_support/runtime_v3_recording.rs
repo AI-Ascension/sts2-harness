@@ -213,4 +213,8 @@ include!("runtime_v3_recording_events.rs");
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     include!("runtime_v3_recording_tests.rs");
+
+    mod plan {
+        include!("runtime_v3_recording_plan_tests.rs");
+    }
 }
