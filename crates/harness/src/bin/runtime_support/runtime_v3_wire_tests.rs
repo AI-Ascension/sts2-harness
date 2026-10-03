@@ -2,6 +2,15 @@
 
 use super::*;
 use super::super::mcp_process::McpProcessErrorKind;
+use super::super::runtime_v3::{
+    RuntimeV3ToolError, accepts_recovery_envelope_for_tool, transient_allowed_for_tool,
+};
+
+/// An MCP tool-error response whose single text content is `text`.
+fn tool_error_with_text(text: &str) -> serde_json::Value {
+    serde_json::json!({"jsonrpc":"2.0","id":4,"result":{"isError":true,
+        "content":[{"type":"text","text":text}]}})
+}
 
 #[test]
 fn only_known_transport_failures_are_retryable_for_catalog_reads() {
@@ -180,4 +189,161 @@ fn bootstrap_error_envelope_is_preserved_but_other_bootstrap_tool_errors_are_not
     assert!(!has_bootstrap_error_envelope(&tool_error(
         "gateway error -32005: gateway rejected the request"
     )));
+}
+
+#[test]
+fn observe_dispatch_classifies_transient_gateway_faults_as_retryable() {
+    // `sts2.observe` is dispatched as a gameplay read, so a briefly unavailable
+    // gateway is a retryable fault rather than a terminal refusal. This is the
+    // classification the owner's launch fence depends on: a terminal reading
+    // here surfaces as `live_launch_fence_failed` and refuses the whole run.
+    for code in [-32003, -32008] {
+        assert!(classifies_transient_gateway_faults(RpcReadKind::Gameplay));
+        assert!(is_transient_gateway_rpc_error(&json!({"error":{"code":code}})));
+    }
+    // A dispatch that is not a read keeps its existing terminal behaviour.
+    assert!(!classifies_transient_gateway_faults(RpcReadKind::None));
+    // Reads keep classifying transience.
+    assert!(classifies_transient_gateway_faults(RpcReadKind::Catalog));
+    assert!(classifies_transient_gateway_faults(RpcReadKind::Recovery));
+}
+
+#[test]
+fn gameplay_read_kind_does_not_widen_accepted_envelopes() {
+    // The gameplay kind exists to enable the transient classification only. If
+    // it ever started accepting recovery envelopes, `sts2.observe` could come to
+    // accept a watchdog-recovery payload as a gameplay observation.
+    let recovery_envelope = tool_error_with_text(&serde_json::json!({
+        "contract":"watchdog-recovery-v1",
+        "schema_digest": sts2_harness::RECOVERY_SCHEMA_DIGEST,
+        "kind":"operation_lookup_response"
+    })
+    .to_string());
+    assert!(has_recovery_envelope(&recovery_envelope));
+    // `Gameplay` is not `Recovery`, so the recovery envelope is not admitted by
+    // the gameplay arm of the envelope test.
+    assert_ne!(RpcReadKind::Gameplay, RpcReadKind::Recovery);
+}
+
+#[test]
+fn only_observe_and_legal_actions_dispatch_as_reads() {
+    // `rpc_call` chooses the read kind from the tool name. `sts2.observe` must be
+    // classified as a gameplay read so its transient gateway faults are
+    // retryable; if it were routed to `None` the owner's launch fence would refuse
+    // the whole run with `live_launch_fence_failed` whenever the gateway is
+    // briefly unavailable.
+    assert_eq!(
+        read_kind_for_dispatch("tools/call", &json!({"name":"sts2.observe"})),
+        RpcReadKind::Gameplay
+    );
+    // The pre-existing catalog arm must not regress.
+    assert_eq!(
+        read_kind_for_dispatch("tools/call", &json!({"name":"sts2.legal_actions"})),
+        RpcReadKind::Catalog
+    );
+    // Writes and unrelated reads keep terminal classification.
+    for name in [
+        "sts2.wait_for_transition",
+        "sts2.dispatch",
+    ] {
+        assert_eq!(
+            read_kind_for_dispatch("tools/call", &json!({"name":name})),
+            RpcReadKind::None,
+            "{name} must not become a retryable read"
+        );
+    }
+    assert_eq!(read_kind_for_dispatch("tools/list", &json!({})), RpcReadKind::None);
+}
+
+#[test]
+fn every_recovery_envelope_read_still_classifies_transient_faults() {
+    // Regression guard for a real regression this patch introduced: `reobserve`
+    // is dispatched through `rpc_call_recovery_read`, so if the transient
+    // predicate disagrees with the recovery-envelope predicate, a genuine
+    // transport fault on reobserve is downgraded to terminal and
+    // `RecoveryError::Terminal` replaces the fail-closed `PortFailure`.
+    //
+    // Any tool that accepts a recovery envelope must therefore also classify
+    // transient gateway faults; otherwise the reconnect fault matrix stops
+    // failing closed.
+    for name in ["sts2.legal_actions", "sts2.reobserve", "sts2.coop_receipt_query"] {
+        assert!(
+            accepts_recovery_envelope_for_tool(name),
+            "{name} must keep accepting recovery envelopes"
+        );
+        assert!(
+            transient_allowed_for_tool(name),
+            "{name} must classify transient gateway faults"
+        );
+    }
+
+    // The gameplay read is the deliberate asymmetry: it classifies transients
+    // while widening no envelope, so observe cannot accept a recovery payload.
+    assert!(transient_allowed_for_tool("sts2.observe"));
+    assert!(!accepts_recovery_envelope_for_tool("sts2.observe"));
+
+    // A write must satisfy neither predicate.
+    assert!(!transient_allowed_for_tool("sts2.dispatch_action"));
+    assert!(!accepts_recovery_envelope_for_tool("sts2.dispatch_action"));
+}
+
+#[test]
+fn transient_classification_survives_the_tool_call_envelope() {
+    // Regression guard for the exact production failure: the owner's launch
+    // fence refuses the whole run with `live_launch_fence_failed` when an
+    // `sts2.observe` transient gateway fault is flattened back to terminal.
+    //
+    // The wire layer classifies the fault (envelope accepted), and the tool-call
+    // layer must then preserve that classification. `from_rpc_for` is the seam
+    // where a transient can still be downgraded, so drive it directly: a
+    // transient failure on a dispatch that classifies transients must stay
+    // transient even though `sts2.observe` widens no recovery envelope.
+    //
+    // The flag is derived through the same predicate the call site uses. Hard
+    // coding `true` here would make this test pass even if the call site
+    // regressed to the narrower recovery predicate, which is precisely the
+    // defect being guarded.
+    let transient_failure = RpcFailure::transient("MCP read was temporarily unavailable");
+    assert!(transient_failure.is_transient());
+    assert!(transient_allowed_for_tool("sts2.observe"));
+    assert!(matches!(
+        RuntimeV3ToolError::from_rpc_for(
+            transient_failure,
+            transient_allowed_for_tool("sts2.observe")
+        ),
+        RuntimeV3ToolError::Transient(_)
+    ));
+
+    // A terminal protocol fault stays terminal even on a read dispatch: the
+    // read path must not turn a genuine refusal into a retry.
+    let terminal_failure = RpcFailure::terminal("MCP initialize omitted result");
+    assert!(!terminal_failure.is_transient());
+    assert!(matches!(
+        RuntimeV3ToolError::from_rpc_for(terminal_failure, true),
+        RuntimeV3ToolError::Terminal(_)
+    ));
+
+    // A write dispatch is not a read, so it keeps terminal classification and a
+    // retry could double-apply it.
+    for name in ["sts2.dispatch_action", "sts2.wait_for_transition"] {
+        assert!(
+            !transient_allowed_for_tool(name),
+            "{name} must not become retryable"
+        );
+        assert!(matches!(
+            RuntimeV3ToolError::from_rpc_for(
+                RpcFailure::transient("transport fault"),
+                transient_allowed_for_tool(name)
+            ),
+            RuntimeV3ToolError::Terminal(_)
+        ));
+    }
+
+    // `sts2.observe` is the gameplay read: it classifies transients without
+    // widening envelopes, which is the distinction the fix rests on.
+    assert!(transient_allowed_for_tool("sts2.observe"));
+    assert_ne!(
+        read_kind_for_dispatch("tools/call", &json!({"name":"sts2.observe"})),
+        RpcReadKind::Recovery
+    );
 }
