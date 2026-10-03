@@ -3,6 +3,7 @@
 //! Shape, bound, and determinism fixtures for the System One request builder.
 
 use super::*;
+use serde_json::json;
 
 /// The options a small combat turn presents.
 fn options() -> Vec<String> {
