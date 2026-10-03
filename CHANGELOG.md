@@ -10,6 +10,16 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **A disclosed card the request builder would refuse is now dropped instead of killing the whole
+  exchange.** `cards()` filtered a card set on a strict subset of the rules `validate_options`
+  actually enforces, so a set that survived the filter could still be refused with `InvalidOption`
+  — and that refusal takes down the entire action request, including the well-formed action
+  question and its answer, over a card the operator never saw asked about. A non-printable
+  `choice_id`, a repeated `choice_id`, an over-long description, and a description carrying a
+  control character all reached the refusal this way. Admissibility is now decided by the same
+  predicate the builder refuses on, so the filter and the refusal cannot drift apart again, and a
+  repeated identity is offered once rather than refused. The action decision is still delivered in
+  every case, and a set whose every card is unusable still yields no card question at all.
 - **A System One request is now bounded as a whole, not only as its state plus its longest
   question.** ADR 0053 publishes two provider limits — `64k` tokens per request, of which `32k`
   covers the state plus the longest question — and the builder enforced only the second.
@@ -659,26 +669,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   record/schema/route/digest changes, and which recipe is refused (and at which point in the fixed
   admission order) is unchanged. Refs #97; see
   [ADR 0073](docs/decisions/0073-pre-agent-read-only-recipe-admission.md).
-
-- **Correct the bounded-analysis documentation contract.** The `workflow::bounded_region` module
-  doc cited a `BoundedAnalysis` type defined on no revision across all 64 remote refs and the bare
-  `[`AnalysisValue`]` beside it — both dangling intra-doc links — and claimed a declared adaptive
-  region now runs "on the budget-reserved bounded route instead of only through a caller-supplied
-  adaptive executor", which the shipped wiring does not do: `DynamicRuntime::step()` still
-  dispatches a declared `adaptive_region` node to `DynamicExecutorPort::execute_adaptive`, and
-  `execute_bounded_region` has exactly one caller, a test. No gate saw it — no workflow runs
-  `cargo doc`/`rustdoc`, the crate denies no `rustdoc::broken_intra_doc_links`, and the private
-  module is skipped by a default rustdoc run — so it built, linted and tested green while its own
-  contract statement was false. The module doc now names the real entry point
-  (`DynamicRuntime::execute_bounded_region`) and its inputs, states the node route is unchanged and
-  the bounded route has no in-repo production caller, and records the two bindings the route
-  deliberately does not make: base-revision continuity, and the caller-supplied region against the
-  workflow's declared `adaptive_region` node, which no accessor exposes (the #465 review left it a
-  design extension). The public `execute_bounded_region` rustdoc is corrected to match — the region
-  is *caller-supplied* and is checked against the plan
-  (`BoundedRegionRefusal::PlanIdentityMismatch`) but never a declared node. Compatibility: no code,
-  schema, route, refusal, bound or digest change; documentation only. Source-only: no native
-  effect. Refs #470.
 
 - **Execute a bounded parallel analysis region through the production dynamic runtime.** The
   budget-reserved bounded route (`execute_plan_bounded`,

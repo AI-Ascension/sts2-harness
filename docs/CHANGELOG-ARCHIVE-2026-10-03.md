@@ -34,3 +34,23 @@ not a supported release or a second normative changelog.
   identities that were previously refused and changes no published schema; every refusal stays
   fail-closed before dispatch. Refs #458; see
   [ADR 0077](decisions/0077-exo-request-identity-width.md).
+
+- **Correct the bounded-analysis documentation contract.** The `workflow::bounded_region` module
+  doc cited a `BoundedAnalysis` type defined on no revision across all 64 remote refs and the bare
+  `[`AnalysisValue`]` beside it — both dangling intra-doc links — and claimed a declared adaptive
+  region now runs "on the budget-reserved bounded route instead of only through a caller-supplied
+  adaptive executor", which the shipped wiring does not do: `DynamicRuntime::step()` still
+  dispatches a declared `adaptive_region` node to `DynamicExecutorPort::execute_adaptive`, and
+  `execute_bounded_region` has exactly one caller, a test. No gate saw it — no workflow runs
+  `cargo doc`/`rustdoc`, the crate denies no `rustdoc::broken_intra_doc_links`, and the private
+  module is skipped by a default rustdoc run — so it built, linted and tested green while its own
+  contract statement was false. The module doc now names the real entry point
+  (`DynamicRuntime::execute_bounded_region`) and its inputs, states the node route is unchanged and
+  the bounded route has no in-repo production caller, and records the two bindings the route
+  deliberately does not make: base-revision continuity, and the caller-supplied region against the
+  workflow's declared `adaptive_region` node, which no accessor exposes (the #465 review left it a
+  design extension). The public `execute_bounded_region` rustdoc is corrected to match — the region
+  is *caller-supplied* and is checked against the plan
+  (`BoundedRegionRefusal::PlanIdentityMismatch`) but never a declared node. Compatibility: no code,
+  schema, route, refusal, bound or digest change; documentation only. Source-only: no native
+  effect. Refs #470.

@@ -53,6 +53,13 @@ pub const MAX_OPTIONS: usize = 64;
 /// Largest description this builder will carry for one option.
 pub const MAX_DESCRIPTION_BYTES: usize = 240;
 
+/// Largest identifier this builder will carry for one option.
+///
+/// Named rather than left as a literal in the refusal so a caller that derives option sets can
+/// share the bound instead of restating it. A derived set that re-states a bound can silently
+/// diverge from the one it must satisfy; see [`admissible_option_id`] and `sts2-harness#809`.
+pub const MAX_OPTION_ID_BYTES: usize = 240;
+
 /// Conservative byte ceiling for the state plus the longest question.
 ///
 /// The published limit is 32k tokens for that pair. Assuming two bytes per token rather than the
@@ -228,7 +235,7 @@ pub(super) fn validate_options(options: &[SystemOneOption]) -> Result<(), System
         return Err(SystemOneRequestError::TooManyOptions);
     }
     for (index, option) in options.iter().enumerate() {
-        if option.id.is_empty() || option.id.len() > 240 || !printable(&option.id) {
+        if !admissible_option_id(&option.id) {
             return Err(SystemOneRequestError::InvalidOption);
         }
         // A description is host text rather than an identifier, so it is bounded and stripped of
@@ -244,6 +251,30 @@ pub(super) fn validate_options(options: &[SystemOneOption]) -> Result<(), System
         }
     }
     Ok(())
+}
+
+/// Whether one option identifier survives the same checks [`validate_options`] applies.
+///
+/// This is the identifier half of that refusal, named so a caller that *derives* an option set can
+/// ask the one question that keeps it admissible. Deriving code must not re-state these rules: a
+/// subset of them lets a set through that the builder then refuses, and that refusal takes down the
+/// whole request rather than the one derived question. See `sts2-harness#809`.
+pub(super) fn admissible_option_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= MAX_OPTION_ID_BYTES && printable(id)
+}
+
+/// Whether one derived option — identifier and description together — survives
+/// [`validate_options`], ignoring the set-wide emptiness and length rules.
+///
+/// Duplicate identifiers are deliberately not considered here: whether a *set* carries a duplicate
+/// is a property of the whole set, not of any one member, so the caller filters members and this
+/// predicate answers only for a member. An empty `options` after filtering still yields
+/// [`SystemOneRequestError::EmptyOptions`], which is exactly the fail-closed result the caller
+/// needs to detect.
+pub(super) fn admissible_option(option: &SystemOneOption) -> bool {
+    admissible_option_id(&option.id)
+        && option.description.len() <= MAX_DESCRIPTION_BYTES
+        && !option.description.chars().any(char::is_control)
 }
 
 /// Composes the choice instruction from the objective and hard constraints.
@@ -271,7 +302,7 @@ pub(super) fn printable(value: &str) -> bool {
 
 /// Refuses the model identifier this builder will not present.
 pub(super) fn validate_model(model: &str) -> Result<(), SystemOneRequestError> {
-    if !printable(model) || model.is_empty() || model.len() > 240 {
+    if !admissible_option_id(model) {
         return Err(SystemOneRequestError::InvalidModel);
     }
     Ok(())
