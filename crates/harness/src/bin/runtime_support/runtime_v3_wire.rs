@@ -25,13 +25,7 @@ const SEEDED_RUN_CATALOG_REVISION: &str = "seeded-run-v1-mcp";
 const EXACT_RESTORE_CATALOG_REVISION: &str = "exact-restore-v1-mcp";
 
 include!("runtime_v3_wire_failure.rs");
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum RpcReadKind {
-    None,
-    Catalog,
-    Recovery,
-}
+include!("runtime_v3_wire_read_kind.rs");
 
 pub(super) fn initialize_mcp_profile(mcp: &mut McpProcess, profile: &str) -> Result<(), String> {
     initialize_mcp_profile_classified(mcp, profile).map_err(|error| error.to_string())
@@ -70,18 +64,8 @@ pub(super) fn rpc_call(
     method: &str,
     params: Value,
 ) -> Result<Value, RpcFailure> {
-    let catalog_read = method == "tools/call" && params["name"] == "sts2.legal_actions";
-    rpc_call_with_read_kind(
-        mcp,
-        id,
-        method,
-        params,
-        if catalog_read {
-            RpcReadKind::Catalog
-        } else {
-            RpcReadKind::None
-        },
-    )
+    let read_kind = read_kind_for_dispatch(method, &params);
+    rpc_call_with_read_kind(mcp, id, method, params, read_kind)
 }
 
 pub(super) fn rpc_call_catalog_read(
@@ -126,7 +110,9 @@ fn rpc_call_with_read_kind(
                 response["error"]["code"].as_i64()
             );
         }
-        if read_kind != RpcReadKind::None && is_transient_gateway_rpc_error(&response) {
+        if classifies_transient_gateway_faults(read_kind)
+            && is_transient_gateway_rpc_error(&response)
+        {
             return Err(RpcFailure::transient(
                 "MCP recovery read was temporarily unavailable",
             ));
@@ -152,7 +138,9 @@ fn rpc_call_with_read_kind(
                 || (read_kind == RpcReadKind::Recovery && has_recovery_envelope(&response))
                 || (read_kind == RpcReadKind::Catalog && has_catalog_reobserve(&response, id)))
         {
-            if read_kind != RpcReadKind::None && is_transient_gateway_tool_error(&response) {
+            if classifies_transient_gateway_faults(read_kind)
+                && is_transient_gateway_tool_error(&response)
+            {
                 return Err(RpcFailure::transient(
                     "MCP recovery read was temporarily unavailable",
                 ));

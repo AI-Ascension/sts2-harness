@@ -16,8 +16,15 @@ impl RuntimeV3Port {
     ) -> Result<EpisodeObservation, sts2_harness::PortError> {
         let arguments = self.context(self.generation);
         let (value, response_text) = self
-            .call_tool_with_text("sts2.observe", arguments)
-            .map_err(|error| wire::port_error("observe_failed", error, false))?;
+            .call_tool_with_text_classified("sts2.observe", arguments)
+            .map_err(|error| match error {
+                RuntimeV3ToolError::Transient(error) => {
+                    wire::port_error("observe_failed", error, true)
+                }
+                RuntimeV3ToolError::Terminal(error) => {
+                    wire::port_error("observe_failed", error, false)
+                }
+            })?;
         let parsed = parse::observation_with_text(&value, &response_text, "state_response", &self.config)
             .map_err(|error| wire::port_error("observe_invalid", error, false))?;
         let baseline = self

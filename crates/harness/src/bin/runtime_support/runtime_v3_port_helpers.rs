@@ -7,7 +7,16 @@ pub(super) enum RuntimeV3ToolError {
 }
 
 impl RuntimeV3ToolError {
-    fn from_rpc_for(error: wire::RpcFailure, transient_allowed: bool) -> Self {
+    /// Classify an RPC failure. `transient_allowed` must mirror whether the wire
+    /// layer classifies transient gateway faults for this dispatch, i.e. whether
+    /// its read kind is not `None`.
+    ///
+    /// It is deliberately *not* the same predicate as envelope widening. A
+    /// gameplay read such as `sts2.observe` widens no envelope but must still
+    /// classify a transient gateway fault as retryable; conflating the two
+    /// flattens that fault back to terminal and makes the owner's launch fence
+    /// refuse the whole run with `live_launch_fence_failed`.
+    pub(super) fn from_rpc_for(error: wire::RpcFailure, transient_allowed: bool) -> Self {
         if transient_allowed && error.is_transient() {
             Self::Transient(error.to_string())
         } else {
@@ -20,6 +29,12 @@ impl RuntimeV3ToolError {
             Self::Transient(message) | Self::Terminal(message) => message,
         }
     }
+}
+
+/// Collapse a classified tool failure to its message for callers that do not
+/// distinguish a retryable transport fault from a terminal refusal.
+fn flatten_tool_error(error: RuntimeV3ToolError) -> String {
+    error.message().to_owned()
 }
 
 fn classify_mcp_error(

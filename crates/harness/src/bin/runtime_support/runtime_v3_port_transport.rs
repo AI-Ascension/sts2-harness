@@ -2,6 +2,24 @@
 
 use super::mcp::{apply_episode_profile, confirm_episode_profile_witness};
 
+/// Whether a tool dispatch may classify a transient gateway fault as retryable.
+///
+/// This mirrors the wire layer's read kind and is deliberately *not* the
+/// recovery-envelope predicate: `sts2.observe` is a gameplay read that widens no
+/// envelope but must keep a genuine transient gateway fault retryable, or the
+/// owner's launch fence refuses the run with `live_launch_fence_failed`.
+pub(super) fn transient_allowed_for_tool(name: &str) -> bool {
+    wire::dispatch_classifies_transient_faults(name)
+}
+
+/// Whether a tool dispatch may accept a recovery *envelope*.
+///
+/// Distinct from [`transient_allowed_for_tool`]: a dispatch can classify
+/// transient faults without widening envelopes (`sts2.observe`).
+pub(super) fn accepts_recovery_envelope_for_tool(name: &str) -> bool {
+    matches!(name, "sts2.legal_actions" | "sts2.reobserve" | "sts2.coop_receipt_query")
+}
+
 impl RuntimeV3Port {
     fn call_tool_with_text(
         &mut self,
@@ -10,11 +28,29 @@ impl RuntimeV3Port {
     ) -> Result<(Value, String), String> {
         let value = self
             .call_tool_classified(name, arguments)
-            .map_err(|error| error.message().to_owned())?;
+            .map_err(flatten_tool_error)?;
         let text = self
             .last_response_text
             .clone()
             .ok_or_else(|| format!("MCP tool {name} omitted response text"))?;
+        Ok((value, text))
+    }
+
+    /// As [`Self::call_tool_with_text`], but preserves whether the tool failed
+    /// transiently or terminally so a caller can decide whether the failure is
+    /// worth retrying rather than collapsing both into one message.
+    pub(super) fn call_tool_with_text_classified(
+        &mut self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<(Value, String), RuntimeV3ToolError> {
+        let value = self.call_tool_classified(name, arguments)?;
+        let text = self
+            .last_response_text
+            .clone()
+            .ok_or_else(|| {
+                RuntimeV3ToolError::Terminal(format!("MCP tool {name} omitted response text"))
+            })?;
         Ok((value, text))
     }
 
@@ -28,12 +64,19 @@ impl RuntimeV3Port {
             RuntimeV3ToolError::Terminal(String::from("MCP request identity exhausted"))
         })?;
         let request = json!({"name": name, "arguments": arguments});
-        let recovery_read =
-            matches!(name, "sts2.legal_actions" | "sts2.reobserve") || name == "sts2.coop_receipt_query";
+        let recovery_read = accepts_recovery_envelope_for_tool(name);
+        // Envelope widening and transient classification are separate
+        // predicates. `recovery_read` decides which recovery *envelopes* this
+        // dispatch may accept; `transient_allowed` mirrors the wire layer's read
+        // kind so a gameplay read keeps a genuine transient gateway fault
+        // retryable. Deriving the latter from `recovery_read` alone would leave
+        // `sts2.observe` terminal on a brief gateway outage and fail the owner's
+        // launch fence.
+        let transient_allowed = transient_allowed_for_tool(name);
         let response = if name == "sts2.legal_actions" {
             wire::rpc_call_catalog_read(
                 self.mcp_mut()
-                    .map_err(|error| classify_mcp_error(error, recovery_read))?,
+                    .map_err(|error| classify_mcp_error(error, transient_allowed))?,
                 id,
                 "tools/call",
                 request,
@@ -41,7 +84,7 @@ impl RuntimeV3Port {
         } else if recovery_read {
             wire::rpc_call_recovery_read(
                 self.mcp_mut()
-                    .map_err(|error| classify_mcp_error(error, recovery_read))?,
+                    .map_err(|error| classify_mcp_error(error, transient_allowed))?,
                 id,
                 "tools/call",
                 request,
@@ -49,13 +92,13 @@ impl RuntimeV3Port {
         } else {
             wire::rpc_call(
                 self.mcp_mut()
-                    .map_err(|error| classify_mcp_error(error, recovery_read))?,
+                    .map_err(|error| classify_mcp_error(error, transient_allowed))?,
                 id,
                 "tools/call",
                 request,
             )
         }
-        .map_err(|error| RuntimeV3ToolError::from_rpc_for(error, recovery_read))?;
+        .map_err(|error| RuntimeV3ToolError::from_rpc_for(error, transient_allowed))?;
         let text = response
             .get("result")
             .and_then(|result| result.get("content"))
