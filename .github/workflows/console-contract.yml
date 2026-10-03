@@ -35,7 +35,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: AI-Ascension/ascension-workflow-studio
-          ref: 3c0581f732a3966fcda5284cc3b7a54c078a88ae
+          ref: 289202dce8ee3aa3b4ca0daa7fb2330a47a65253
           path: studio
           persist-credentials: false
       - name: Install pinned Rust toolchain
