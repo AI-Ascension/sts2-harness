@@ -24,7 +24,7 @@
 
 use serde_json::Value;
 
-use super::systemone_request::{MAX_OPTIONS, SystemOneOption};
+use super::systemone_request::{MAX_OPTIONS, SystemOneOption, admissible_option};
 
 /// What a disclosed reward offers, as the option set of the second question.
 ///
@@ -100,6 +100,12 @@ fn described_entry(entry: &Value) -> Option<(String, Vec<&Value>)> {
 /// its own and this never recurses. A disclosed item whose own identity is missing or unusable
 /// contributes nothing: an option the model cannot name is an answer that cannot be resolved back
 /// to a card, so it is dropped rather than given a placeholder identity here.
+///
+/// Admissibility is decided by the same predicate the request builder refuses on, so a card that
+/// survives here cannot be refused later over a rule this filter did not apply. When the host
+/// names the same card twice, only the first entry survives: a duplicate identifier is refused by
+/// the builder, and dropping the question is the right outcome while dropping the repeat is the
+/// least lossy one that keeps the action decision.
 fn cards(contents: &[&Value]) -> Vec<SystemOneOption> {
     contents
         .iter()
@@ -108,14 +114,20 @@ fn cards(contents: &[&Value]) -> Vec<SystemOneOption> {
             let id = card
                 .get("choice_id")
                 .and_then(Value::as_str)
-                .filter(|id| !id.is_empty() && id.len() <= 240)?;
+                .unwrap_or_default();
             let description = describe_card(card);
-            Some(SystemOneOption {
+            let option = SystemOneOption {
                 id: id.to_owned(),
                 description,
-            })
+            };
+            admissible_option(&option).then_some(option)
         })
-        .collect()
+        .fold(Vec::new(), |mut kept: Vec<SystemOneOption>, option| {
+            if !kept.iter().any(|seen| seen.id == option.id) {
+                kept.push(option);
+            }
+            kept
+        })
 }
 
 /// Names one disclosed card using only values the host put in that entry.
