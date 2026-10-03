@@ -34,8 +34,9 @@
 use serde_json::{Value, json};
 use std::io::Read;
 use sts2_harness::{
-    ACTION_QUESTION, KIND_QUESTION, MAX_PRESENTED_OPTIONS, OptionSelection, SYSTEM_ONE_PATH,
-    SelectionMode, build_class_system_one_request, build_described_system_one_request,
+    ACTION_QUESTION, CARD_CHOICE_QUESTION, KIND_QUESTION, MAX_PRESENTED_OPTIONS, OptionSelection,
+    SYSTEM_ONE_PATH, SelectionMode, build_class_system_one_request,
+    build_described_system_one_request,
 };
 
 /// Largest request, response, and decision this bridge handles.
@@ -70,6 +71,9 @@ mod capture;
 
 #[path = "support/systemone_decision.rs"]
 mod decision;
+
+#[path = "support/jev_ask.rs"]
+mod ask;
 
 #[path = "support/selection_framing.rs"]
 mod framing_support;
@@ -196,6 +200,10 @@ use recording::{record, record_profile};
 #[cfg(test)]
 #[path = "support/sts2_jev_bridge_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "support/jev_card_choice_tests.rs"]
+mod card_choice_tests;
 #[path = "support/jev_tls_transport.rs"]
 mod tls;
 

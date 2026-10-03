@@ -3,12 +3,13 @@
 //! One bridge-owned record per exchange; default records retain their existing shape.
 
 use super::{
-    ACTION_QUESTION, Exchange, KIND_QUESTION, LIMIT, MAX_PRESENTED_OPTIONS, OptionSelection,
-    RECORD_SCHEMA, SelectionMode, build_class_system_one_request,
+    ACTION_QUESTION, CARD_CHOICE_QUESTION, Exchange, KIND_QUESTION, LIMIT, MAX_PRESENTED_OPTIONS,
+    OptionSelection, RECORD_SCHEMA, SelectionMode, ask, build_class_system_one_request,
     build_described_system_one_request, catalog, constraints, decision, framing, present,
     state_with_derived_facts, tactical,
 };
 use serde_json::{Value, json};
+use sts2_harness::DisclosedCardChoice;
 
 type Failure = Box<dyn std::error::Error>;
 
@@ -72,17 +73,21 @@ pub(super) fn record_profile(
     } else {
         present(&selection, observation, &catalog)
     };
-    let ids: Vec<String> = options.iter().map(|option| option.id.clone()).collect();
-    let body = build_described_system_one_request(
+    let state = state_with_derived_facts(&request, observation)?;
+    let asked = ask::build(&ask::AskContext {
         model,
-        &state_with_derived_facts(&request, observation)?,
-        &options,
-        &framing(
+        state: &state,
+        options: &options,
+        catalog_count: catalog.len(),
+        observation,
+        objective: &framing(
             request["objective"].as_str().unwrap_or_default(),
             observation,
         ),
-        &constraints(&request),
-    )?;
+        hard_constraints: &constraints(&request),
+        tactical_enabled,
+        two_stage_allowed,
+    })?;
     // The record states how the ask was shaped. When the split was suppressed the whole set was
     // asked in one question, so the mode is `single` even though the set exceeded the bound.
     let ask_mode = if selection.mode == SelectionMode::TwoStage {
@@ -90,15 +95,7 @@ pub(super) fn record_profile(
     } else {
         selection.mode
     };
-    exchange_record(
-        body,
-        &ids,
-        catalog.len(),
-        ask_mode,
-        tactical_enabled,
-        gate,
-        exchange,
-    )
+    exchange_record(&asked, ask_mode, gate, exchange)
 }
 
 fn forced(
@@ -203,16 +200,14 @@ fn two_stage_record(
 }
 
 fn exchange_record(
-    mut body: Value,
-    ids: &[String],
-    catalog_count: usize,
+    asked: &ask::Ask,
     mode: SelectionMode,
-    tactical_enabled: bool,
     gate: f64,
     exchange: &mut Exchange<'_>,
 ) -> Result<Value, Failure> {
-    let prepared = if tactical_enabled {
-        Some(tactical::prepare(body.clone(), catalog_count)?)
+    let mut body = asked.body.clone();
+    let prepared = if asked.tactical_enabled {
+        Some(tactical::prepare(body.clone(), asked.catalog_count)?)
     } else {
         None
     };
@@ -227,7 +222,8 @@ fn exchange_record(
         body,
         serde_json::from_slice(&response)?,
         prepared,
-        ids,
+        &asked.ids,
+        asked.card_choice.as_ref(),
         gate,
     )?;
     record["selection_mode"] = json!(mode);
@@ -239,6 +235,7 @@ fn finish_record(
     response: Value,
     prepared: Option<tactical::Prepared>,
     ids: &[String],
+    card_choice: Option<&DisclosedCardChoice>,
     gate: f64,
 ) -> Result<Value, Failure> {
     let assessment = if prepared.as_ref().is_some_and(|value| value.applied) {
@@ -254,6 +251,31 @@ fn finish_record(
         "schema": RECORD_SCHEMA, "provider_call": true,
         "provider_request": body, "provider_response": response, "decision": decision,
     });
+    // The card answer is recorded beside the action it qualifies, and it stays advisory. A card
+    // identity disclosed on a reward screen belongs to the *next* screen's catalog, so it is not
+    // in this state's legal-action set and dispatching it would be an action the host never
+    // offered. Reading it here is what makes the question consumed rather than a spend that buys a
+    // number no code looks at.
+    //
+    // Once the question has been asked, its answer is *required*. A question the bridge spent a
+    // provider call on, and then discarded, would be the unconsumed question the request contract
+    // warns against, and would buy the worst outcome of all: a run that believes it ranked the
+    // cards and records no ranking. So a missing, mistyped, choice-less or out-of-set card answer
+    // fails the exchange rather than recording `null` and letting the action decision stand. The
+    // refusal is the same containment check the action answer gets, applied to the answer this
+    // bridge itself asked for.
+    if let Some(choice) = card_choice {
+        let answered = choice
+            .options
+            .iter()
+            .map(|option| option.id.clone())
+            .collect::<Vec<_>>();
+        let advisory = decision::chosen_option(&response, CARD_CHOICE_QUESTION, &answered)?;
+        record["card_choice"] = json!({
+            "reward_id": choice.reward_id,
+            "advisory": advisory,
+        });
+    }
     if let Some(prepared) = prepared {
         record["tactical"] = json!({
             "profile": tactical::PROFILE, "applied": prepared.applied,
