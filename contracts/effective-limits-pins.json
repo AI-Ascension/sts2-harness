@@ -86,7 +86,7 @@
     },
     {
       "repository": "AI-Ascension/ascension-workflow-studio",
-      "revision": "bf8cfd0ab781ce71a9907164ed3e6435089dda25",
+      "revision": "d555af93bf4934af749e2759e6cbf95fe08c29a4",
       "revision_source": "harness_ci_pin",
       "artifact_mode": "schema_adapter",
       "role": "Authoring and presentation consumer that must not offer a value the runtime rejects",
@@ -94,11 +94,11 @@
       "artifacts": [
         {
           "path": "packages/contracts/src/index.ts",
-          "sha256": "d5170a921b186688c90f3b62771c3e04687609a73292f08e37ae3840cdef69e0"
+          "sha256": "016615977ea8ea394bdd5e5db12547d1b0a120cd15e9abc54babc17c549aa66a"
         },
         {
           "path": "contracts/live-owner-ci.lock.json",
-          "sha256": "633002d5dc6673e164d0bd2ebeded6e41b97759b480348bb18e0c4c4440bde98"
+          "sha256": "a91f5bf371b3897de4a98c106f7135dfd2876909cc8d94c0db9afe81d5be55a5"
         },
         {
           "path": "contracts/effective-limits.lock.json",
@@ -135,7 +135,7 @@
       ],
       "harness_ci_pin": {
         "workflow": ".github/workflows/studio-contract.yml",
-        "revision": "bf8cfd0ab781ce71a9907164ed3e6435089dda25"
+        "revision": "d555af93bf4934af749e2759e6cbf95fe08c29a4"
       }
     }
   ]

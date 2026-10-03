@@ -16,6 +16,12 @@ impl ManagementService {
             .definitions
             .validate(&request.definition, &request.capabilities)?;
         verify_digest(&digest, &result.definition_digest, "definition")?;
+        let inference_profiles =
+            super::inference_profile_ops::resolve_admission_inference_profiles(
+                actor,
+                self.capabilities.as_ref(),
+                &request.definition,
+            )?;
         Ok(ValidateResponse {
             schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
             valid: result.diagnostics.iter().all(|diagnostic| {
@@ -24,6 +30,7 @@ impl ManagementService {
             definition_digest: digest,
             compiler: result.compiler,
             diagnostics: result.diagnostics,
+            inference_profiles,
         })
     }
 

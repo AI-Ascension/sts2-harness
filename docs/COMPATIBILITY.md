@@ -201,9 +201,7 @@ identity is replayed rather than applied twice. Adoption is definition-scoped: t
 is recorded in the journal and reported as the exact `profile_id:version:digest` reference a new
 definition pins, while admission writes a run's provenance once and a catalog refresh or newer
 revision refuses an admitted definition rather than retargeting it. The owner's catalog remains the
-only thing that publishes what it serves, so a newly accepted revision becomes resolvable for new
-definitions when its owner publishes it. Evidence is synthetic/component only, and the live lane
-continues to publish its own profile as uneditable.
+only thing that publishes what it serves, so a newly accepted revision becomes resolvable for new definitions when its owner publishes it; owner-authoritative resolution of those references at validation and publication is recorded in [`COMPATIBILITY_INFERENCE_PROFILES.md`](COMPATIBILITY_INFERENCE_PROFILES.md). Evidence is synthetic/component only, and the live lane continues to publish its own profile as uneditable.
 
 ## Independent compatibility axes
 

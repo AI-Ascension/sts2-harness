@@ -104,6 +104,7 @@ impl ManagementService {
                 outcome: "conflict".to_owned(),
                 definition: None,
                 draft: Some(authoring::with_conflict(draft)),
+                inference_profiles: None,
             });
         }
 
@@ -131,9 +132,23 @@ impl ManagementService {
                 outcome: "conflict".to_owned(),
                 definition: None,
                 draft: Some(authoring::with_conflict(draft)),
+                inference_profiles: None,
             });
         }
 
+        // Authority, not policy re-derivation: publication resolves every
+        // decide/planner reference through the owner's own catalog using the
+        // same fences the live submission fence uses. A floating id the catalog
+        // does not advertise is refused here with the owner's reason vocabulary,
+        // so a browser never has to invent a stricter rule out of band — and a
+        // definition carrying an exact pin this catalog no longer serves is
+        // refused by the same authority that would have to run it.
+        let inference_profiles =
+            super::inference_profile_ops::resolve_admission_inference_profiles(
+                actor,
+                self.capabilities.as_ref(),
+                &draft.document,
+            )?;
         let outcome = self.authoring.publish_draft(
             draft_id,
             request.expected_revision,
@@ -146,18 +161,21 @@ impl ManagementService {
                 outcome: "published".to_owned(),
                 definition: Some(definition),
                 draft: None,
+                inference_profiles,
             },
             PublishResult::AlreadyPublished(definition) => StudioPublishResponse {
                 schema_version: STUDIO_SCHEMA_VERSION.to_owned(),
                 outcome: "already_published".to_owned(),
                 definition: Some(definition),
                 draft: None,
+                inference_profiles,
             },
             PublishResult::Conflict(draft) => StudioPublishResponse {
                 schema_version: STUDIO_SCHEMA_VERSION.to_owned(),
                 outcome: "conflict".to_owned(),
                 definition: None,
                 draft: Some(draft),
+                inference_profiles,
             },
         })
     }

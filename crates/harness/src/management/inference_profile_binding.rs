@@ -17,6 +17,39 @@ use super::service::ManagementError;
 use crate::sha256_hex;
 use crate::workflow::{NodeDefinition, WorkflowDefinition, WorkflowLimits};
 
+/// The authored reference together with the structural location it was found
+/// at, so an admission refusal can name the offending node instead of only the
+/// reference text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InferenceProfileReferenceSite {
+    pub graph_id: String,
+    pub node_id: String,
+    pub node_kind: String,
+    pub profile_ref: String,
+    /// JSON path of the reference within the submitted definition, e.g.
+    /// `$.graphs[0].nodes[1].config.planner_profile_ref`.
+    pub path: String,
+}
+
+/// The exact revision one authored reference resolved to, with the site it was
+/// resolved from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InferenceProfileResolution {
+    pub site: InferenceProfileReferenceSite,
+    pub profile_id: String,
+    pub version: String,
+    pub digest: String,
+}
+
+impl InferenceProfileResolution {
+    /// The exact `profile_id:version:digest` identity a floating reference
+    /// resolved to, in the same shape the definition itself may author.
+    #[must_use]
+    pub fn exact_pin(&self) -> String {
+        format!("{}:{}:{}", self.profile_id, self.version, self.digest)
+    }
+}
+
 /// One node's requested reference and the exact revision it resolved to.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -85,30 +118,10 @@ pub fn resolve_definition(
     definition: &WorkflowDefinition,
     selection: Option<&str>,
 ) -> Result<InferenceProfileBindingSet, ManagementError> {
-    let mut bindings = Vec::new();
-    for graph in &definition.graphs {
-        for node in &graph.nodes {
-            let Some((node_kind, reference, context_ref)) = inference_node_parts(node) else {
-                continue;
-            };
-            let descriptor = catalog.resolve(reference, node_kind)?;
-            admit_target(descriptor, selection)?;
-            admit_limits(descriptor, &definition.limits)?;
-            admit_context(descriptor, context_ref)?;
-            bindings.push(InferenceProfileBinding {
-                graph_id: graph.id.as_str().to_owned(),
-                node_id: node.id().as_str().to_owned(),
-                node_kind: node_kind.to_owned(),
-                profile_ref: reference.to_owned(),
-                profile_id: descriptor.profile_id.clone(),
-                version: descriptor.version.clone(),
-                digest: descriptor.digest.clone(),
-                adapter: descriptor.adapter.clone(),
-                requested_model: descriptor.requested_model.clone(),
-                resolved_model: descriptor.resolved_model.clone(),
-            });
-        }
-    }
+    let bindings = resolve_bindings(catalog, definition, selection)?
+        .into_iter()
+        .map(|(binding, _site)| binding)
+        .collect();
     let mut set = InferenceProfileBindingSet {
         schema_version: INFERENCE_PROFILE_BINDINGS_SCHEMA_VERSION.to_owned(),
         catalog_digest: catalog.catalog_digest.clone(),
@@ -118,6 +131,91 @@ pub fn resolve_definition(
     };
     set.digest = seal(&set)?;
     Ok(set)
+}
+
+/// Resolves every decide/planner reference of `definition` and returns the
+/// per-node resolved sites without sealing a binding set.
+///
+/// This is the same admission authority as [`resolve_definition`] — the same
+/// catalog, the same per-node fences — exposed as the sites a caller needs to
+/// *report* the decision: the authored reference, the node it came from, and the
+/// exact revision it resolved to. It exists so definition validation and Studio
+/// publication can publish the owner's resolution instead of each re-deriving
+/// an admission rule.
+///
+/// `selection` is passed through to the identical fences used by
+/// [`resolve_definition`]; see that function for why it is not inferred here.
+pub fn resolve_definition_sites(
+    catalog: &InferenceProfileCatalog,
+    definition: &WorkflowDefinition,
+    selection: Option<&str>,
+) -> Result<Vec<InferenceProfileResolution>, ManagementError> {
+    Ok(resolve_bindings(catalog, definition, selection)?
+        .into_iter()
+        .map(|(binding, site)| InferenceProfileResolution {
+            site,
+            profile_id: binding.profile_id,
+            version: binding.version,
+            digest: binding.digest,
+        })
+        .collect())
+}
+
+/// The single per-node admission walk both public projections read, so the
+/// sealed binding set and the published resolution sites cannot drift apart:
+/// there is exactly one ordering of the fences and one place a refusal is
+/// raised.
+fn resolve_bindings(
+    catalog: &InferenceProfileCatalog,
+    definition: &WorkflowDefinition,
+    selection: Option<&str>,
+) -> Result<Vec<(InferenceProfileBinding, InferenceProfileReferenceSite)>, ManagementError> {
+    let mut resolutions = Vec::new();
+    for (graph_index, graph) in definition.graphs.iter().enumerate() {
+        for (node_index, node) in graph.nodes.iter().enumerate() {
+            let Some((node_kind, reference, context_ref)) = inference_node_parts(node) else {
+                continue;
+            };
+            let descriptor = catalog.resolve(reference, node_kind)?;
+            admit_target(descriptor, selection)?;
+            admit_limits(descriptor, &definition.limits)?;
+            admit_context(descriptor, context_ref)?;
+            let site = InferenceProfileReferenceSite {
+                graph_id: graph.id.as_str().to_owned(),
+                node_id: node.id().as_str().to_owned(),
+                node_kind: node_kind.to_owned(),
+                profile_ref: reference.to_owned(),
+                path: format!(
+                    "$.graphs[{graph_index}].nodes[{node_index}].config.{}",
+                    reference_field(node_kind)
+                ),
+            };
+            resolutions.push((
+                InferenceProfileBinding {
+                    graph_id: site.graph_id.clone(),
+                    node_id: site.node_id.clone(),
+                    node_kind: node_kind.to_owned(),
+                    profile_ref: reference.to_owned(),
+                    profile_id: descriptor.profile_id.clone(),
+                    version: descriptor.version.clone(),
+                    digest: descriptor.digest.clone(),
+                    adapter: descriptor.adapter.clone(),
+                    requested_model: descriptor.requested_model.clone(),
+                    resolved_model: descriptor.resolved_model.clone(),
+                },
+                site,
+            ));
+        }
+    }
+    Ok(resolutions)
+}
+
+/// The config field that carries a node kind's inference-profile reference.
+fn reference_field(node_kind: &str) -> &'static str {
+    match node_kind {
+        "decide" => "decision_profile_ref",
+        _ => "planner_profile_ref",
+    }
 }
 
 /// Seals `set` by hashing its sealed content.

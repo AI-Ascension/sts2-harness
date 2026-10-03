@@ -323,6 +323,11 @@ fn catalog_route_is_read_scoped_and_credential_free() -> Result<(), Box<dyn std:
     let catalog: sts2_harness::management::InferenceProfileCatalog =
         decode_strict(&serde_json::to_vec(&value)?)?;
     catalog.validate()?;
+    // This route is served from the `baseline_catalog()` double, which is
+    // deliberately the owner's own two labelled fixtures and nothing else. The
+    // count of the REAL served catalog is asserted in
+    // `every_phase_one_fixture_reference_resolves_to_an_exact_owner_pin`, which
+    // builds the served catalog directly.
     assert_eq!(catalog.descriptors.len(), 2);
 
     let encoded = value.to_string().to_ascii_lowercase();
