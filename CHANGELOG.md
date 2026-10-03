@@ -10,6 +10,31 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **A System One request is now bounded as a whole, not only as its state plus its longest
+  question.** ADR 0053 publishes two provider limits — `64k` tokens per request, of which `32k`
+  covers the state plus the longest question — and the builder enforced only the second.
+  `longest_question_bytes` returns the maximum over questions, never the sum, which was correct
+  while every request carried one question and silently wrong once #805 made the map a set: a
+  caller could fill the set towards `MAX_QUESTIONS` with every individual question inside the
+  shared budget and still send a request past the per-request ceiling, where the provider would
+  answer `422` on a request this builder exists to refuse locally, on a long run, with nothing in
+  the diagnostic to tell that refusal from any other provider error.
+  `build_choice_questions_request` now also enforces `MAX_REQUEST_BYTES` (`128 KiB`) and reports it
+  as the new `RequestTooLarge` rather than as `OverBudget`, whose text names the state-and-question
+  bound and would misreport which one was hit. The constant is deliberately **twice**
+  `MAX_STATE_AND_QUESTION_BYTES`: ADR 0053 states the per-request limit in tokens rather than
+  bytes, so it is translated under the same two-bytes-per-token reading the existing constant
+  already documents, and reusing the smaller number would have encoded `32k` where the provider
+  publishes `64k`. That reading is the conservative one — at three or four bytes per token the real
+  ceiling is nearer `192 KiB` or `256 KiB` — and it keeps the refusal on this side of the provider,
+  which is the trade the sibling bound already makes. The bound is taken over the compact
+  `serde_json` bytes of the value the builder returns, the same form the bridge writes and sends, so
+  it measures what is actually transmitted and cannot be bypassed by a question appended afterwards.
+  **This is a latent contract gap, not a live outage, and is stated as one:** the only caller asks at
+  most two questions against `2.5%`–`6.5%` of the shared budget, so the new bound refuses nothing
+  today. No consumer pin moves — `system_one_questions_digest` covers the `questions` object rather
+  than the body, so every previously admitted request is byte-identical and every recorded digest
+  still matches. ADR 0078 records the new bound and its reasoning. Refs #806, #805.
 - **The provider-session capability descriptor's `evidence` field is renamed `provenance`, because
   it never gated anything and the old name said it did.** `NativeCapabilities::validate()` has
   never read the field, so every value was equally admissible, yet `evidence` sat beside genuinely
@@ -654,35 +679,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   (`BoundedRegionRefusal::PlanIdentityMismatch`) but never a declared node. Compatibility: no code,
   schema, route, refusal, bound or digest change; documentation only. Source-only: no native
   effect. Refs #470.
-
-- **Bind bounded-region admission to the plan's region and planner-profile identity.** A
-  follow-up review of the bounded parallel analysis route found that
-  `workflow::bounded_region::admit_bounded_region` checked the parallel cap, the region's
-  admissible operations and the plan's structural validity but never compared the plan's
-  `region_id` / `planner_profile_ref` against the region it was admitted for, unlike the sibling
-  `DynamicPlanRegistry::accept`. Because both the plan and the region are caller-supplied, a plan
-  that named a different region or planner profile was admitted whenever its operations fell inside
-  the caller-supplied `allowed_operations`. Admission now refuses such a plan with a dedicated typed
-  reason, `BoundedRegionRefusal::PlanIdentityMismatch`, before any branch is dispatched, and the
-  module contract states that base-revision continuity remains `accept`'s responsibility because the
-  region does not carry the base digest or revision and the runtime supplies only the workflow
-  limits. Compatibility: tightening — this route has no in-repo caller, and a plan that names its own
-  region and profile is unaffected. Source-only: no native effect. Refs #465.
-
-- **Hold the Exo request-level identity to the published wire width.** The published
-  `sts2.exo-bridge-wire-v1` schema binds `decision_request.model_execution_id` and `.state_id` to
-  `$defs/id` (`maxLength` 512) and the protocol validator admits the same, but the lifecycle
-  manifest refused both at 128, and the internal identities the owner mints from them
-  (`lifecycle-binding-`, `lifecycle-prepared-`, `provider-execution-`) were refused above an
-  effective 109 bytes — a ceiling written in no schema. The two request-level fields are now
-  validated against the published width while every envelope/control identity keeps its own
-  128-byte bound, so a host that follows the published schema is no longer refused before
-  dispatch, and the two refusal vocabularies that depended on how wide the value was are gone.
-  Internal identities carry a digest of the request identity rather than the identity itself, so
-  their width no longer grows with it. Compatibility: additive at the wire — it only admits
-  identities that were previously refused and changes no published schema; every refusal stays
-  fail-closed before dispatch. Refs #458; see
-  [ADR 0077](docs/decisions/0077-exo-request-identity-width.md).
 
 - **Execute a bounded parallel analysis region through the production dynamic runtime.** The
   budget-reserved bounded route (`execute_plan_bounded`,

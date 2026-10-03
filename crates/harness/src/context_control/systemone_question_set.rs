@@ -16,8 +16,8 @@
 use serde_json::{Value, json};
 
 use super::systemone_request::{
-    MAX_STATE_AND_QUESTION_BYTES, SystemOneOption, SystemOneRequestError, printable,
-    validate_model, validate_options,
+    MAX_REQUEST_BYTES, MAX_STATE_AND_QUESTION_BYTES, SystemOneOption, SystemOneRequestError,
+    printable, validate_model, validate_options,
 };
 
 /// Largest number of questions one request may carry.
@@ -58,10 +58,15 @@ impl<'a> SystemOneQuestion<'a> {
 /// Builds one request body carrying every supplied `choice` question.
 ///
 /// The questions are ordered by the caller, and `serde_json` orders the keys of the resulting map,
-/// so a fixed input serializes byte-stably and the question set can still be digested. The budget
-/// check is taken over the longest single question rather than the whole set, which is the term
-/// that shares the ceiling with the state: asking several questions does not make any one of them
-/// larger.
+/// so a fixed input serializes byte-stably and the question set can still be digested.
+///
+/// Two ceilings are enforced, and they are not the same one. The state plus the longest single
+/// question shares [`MAX_STATE_AND_QUESTION_BYTES`], because asking several questions does not make
+/// any one of them larger. The whole serialized request shares [`MAX_REQUEST_BYTES`], because the
+/// number of questions is exactly the term the per-request limit is inflated by and the earlier
+/// check never saw. Both are measured on the value that is returned, which is the value the caller
+/// serializes and sends, so a question added after this function returns is refused by the caller
+/// never making the call rather than silently spending provider budget.
 ///
 /// # Errors
 ///
@@ -94,7 +99,11 @@ pub fn build_choice_questions_request(
     if state.len().saturating_add(longest) > MAX_STATE_AND_QUESTION_BYTES {
         return Err(SystemOneRequestError::OverBudget);
     }
-    Ok(json!({"model": model, "state": state, "questions": questions}))
+    let request = json!({"model": model, "state": state, "questions": questions});
+    if serialized_len(&request) > MAX_REQUEST_BYTES {
+        return Err(SystemOneRequestError::RequestTooLarge);
+    }
+    Ok(request)
 }
 
 /// Refuses an empty, oversized, duplicated or unnamed question set.
@@ -152,6 +161,17 @@ fn longest_question_bytes(questions: &Value) -> usize {
                 .unwrap_or_default()
         })
         .unwrap_or_default()
+}
+
+/// Length in bytes of the body a caller sends.
+///
+/// The caller serializes this value with compact `serde_json` -- the same form the crate's other
+/// request bodies are written to disk and sent with -- so the bound is taken over exactly those
+/// bytes rather than over an estimate of them. Returning the length from the builder is what makes
+/// the bound unbypassable: a caller cannot add a question to the returned value and reach the
+/// provider with a request this check never saw.
+fn serialized_len(request: &Value) -> usize {
+    serde_json::to_string(request).map_or(0, |body| body.len())
 }
 
 #[cfg(test)]
