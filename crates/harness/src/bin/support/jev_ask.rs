@@ -90,9 +90,16 @@ pub(super) fn build(context: &AskContext<'_>) -> Result<Ask, Failure> {
         tactical_enabled,
         two_stage_allowed,
     } = *context;
+    // A disclosed reward that offered no usable card is a host that said less than this question
+    // needs: there is no option set to present, and presenting none would fail the whole request
+    // over the second question and take the well-formed action question and its answer with it.
+    // `is_empty()` is the signal for that, and it is consumed here so the card question is simply
+    // never asked. Dropping the choice entirely also keeps the record honest: an unasked question
+    // has no answer to require and nothing to record beside the action.
     let card_choice = (!tactical_enabled && two_stage_allowed)
         .then(|| disclosed_card_choice(observation))
-        .flatten();
+        .flatten()
+        .filter(|choice| !choice.is_empty());
     let action_instruction = action_instructions(objective, hard_constraints);
     let card_instruction = card_choice
         .as_ref()

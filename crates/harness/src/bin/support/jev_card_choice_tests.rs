@@ -265,3 +265,90 @@ fn the_digest_covers_the_second_question_when_one_is_asked() {
         .map(|questions| questions.remove("card_choice"));
     assert_ne!(sts2_harness::system_one_questions_digest(&fewer), digest);
 }
+
+#[test]
+fn a_disclosed_reward_with_no_usable_card_asks_the_action_question_alone() {
+    // The host disclosed a reward and named its contents, but no card inside it can be named back:
+    // one entry carries no `choice_id` at all and the other carries one too long to be an option.
+    // `cards()` drops both, so the disclosed set is empty — which is the documented signal that
+    // this question must not be asked at all.
+    //
+    // Asking it anyway is the defect this pins: the empty option set fails request validation, and
+    // that failure takes down the *whole* exchange, discarding a well-formed action question and
+    // the answer to it. So the assertion is that the record was built and holds the action
+    // decision, not that the request was refused. Asserting `is_err()` here would pass for exactly
+    // the wrong reason: the bug also fails, just with the wrong payload and no decision at all.
+    let request = serde_json::to_vec(&json!({
+        "objective": "grow the deck",
+        "legal_action_ids": ["choose_reward:56:reward:5", "skip_reward:56"],
+        "observation": {
+            "state_id": "reward-56",
+            "generation": 8,
+            "player": {"hp": 44, "max_hp": 80, "energy": 3, "gold": 60, "hand": []},
+            "state": {
+                "state": "reward",
+                "choices": [
+                    {"choice_id": "reward:5:CardReward", "name": "Card Reward",
+                     "contents": [
+                         {"name": "Unnamed Card", "cost": 1,
+                          "description": "Disclosed without a choice_id to answer with."},
+                         {"choice_id": too_long_card_id(), "name": "Oversized Card",
+                          "cost": 2}
+                     ]},
+                    {"choice_id": "reward:6:Gold", "name": "60 Gold"}
+                ]
+            }
+        }
+    }))
+    .unwrap_or_default();
+    let reply = serde_json::to_vec(&json!({
+        "model": "jev-1.13.0",
+        "answers": {
+            "action": {"type": "choice", "choice": "choose_reward:56:reward:5",
+                       "confidence": 0.8,
+                       "probabilities": {
+                           "choose_reward:56:reward:5": 0.8,
+                           "skip_reward:56": 0.2}}
+        }
+    }))
+    .unwrap_or_default();
+    let (record, sent) = record_capturing(&request, reply);
+
+    assert_eq!(
+        sent.len(),
+        1,
+        "the action question alone still costs one exchange"
+    );
+    assert_eq!(
+        asked(&sent),
+        1,
+        "an empty disclosed set must not produce a second question"
+    );
+    let sent: Value = serde_json::from_slice(&sent[0]).unwrap_or_default();
+    assert!(
+        sent["questions"]["action"].is_object(),
+        "the action question must be the one that was sent"
+    );
+    assert!(
+        sent["questions"]["card_choice"].is_null(),
+        "no card question may be asked for a disclosed set with no usable card"
+    );
+
+    // The defect refused the exchange outright. The point of the fix is that the action decision
+    // survives, so the record must exist and carry it.
+    let record = record.expect("an empty disclosed card set must not refuse the whole exchange");
+    assert_eq!(record["decision"]["decision"], json!("action"));
+    assert_eq!(
+        record["decision"]["action_id"],
+        json!("choose_reward:56:reward:5")
+    );
+    assert!(
+        record["card_choice"].is_null(),
+        "a question that was never asked has no answer to record"
+    );
+}
+
+/// A `choice_id` one byte past the 240-byte option identifier bound.
+fn too_long_card_id() -> String {
+    format!("card:241:{}", "x".repeat(240))
+}
