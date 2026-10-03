@@ -40,9 +40,50 @@ so a caller cannot pair a name with the wrong options. `build_described_system_o
 one question passed to that builder, which is why the two cannot disagree about what a legal request
 is.
 
-The budget is still taken over the **longest single question** beside the state, not over the whole
-set. Asking two questions does not make either of them larger, and a whole-set budget would refuse
-requests this contract admits for no safety gain. The state is still never truncated to fit.
+The state plus the **longest single question** is still one budget, unchanged: asking two questions
+does not make either of them larger, and a budget over the whole set would refuse requests this
+contract admits for no safety gain. The state is still never truncated to fit.
+
+### The whole request carries a second, separate ceiling
+
+That reasoning holds for the ceiling the state shares and stops there. It does not cover the other
+limit ADR 0053 publishes — `64k` tokens per request, of which the `32k` above is the state plus the
+longest question — and the question count is precisely the term that limit is inflated by. A caller
+that fills the set towards `MAX_QUESTIONS` keeps every individual question inside the shared budget
+and still sends a request past the per-request ceiling, which the provider would refuse with a `422`
+this builder exists to pre-empt. Before the card question there was one question per request, so
+the two limits agreed; making the map a set separated them and the check did not follow.
+
+The request builder therefore enforces `MAX_REQUEST_BYTES` (`128 KiB`) on the serialized body it
+returns, and refuses it as `RequestTooLarge`. Two properties of that placement are deliberate.
+
+**It is a new constant, not a reuse of the shared one.** ADR 0053 states the per-request limit in
+tokens, not bytes, so the translation is a choice. `MAX_REQUEST_BYTES` applies the same
+two-bytes-per-token reading `MAX_STATE_AND_QUESTION_BYTES` already documents, which makes it
+deliberately twice that constant. Reusing the smaller number would have encoded `32k` where the
+provider publishes `64k`. The reading is the conservative one: if a token is three or four bytes the
+real ceiling is nearer `192 KiB` or `256 KiB`, and this bound refuses requests the provider would have
+accepted — the same cost, and the same reason, the shared bound already accepts.
+
+**It is measured on the value that is returned.** The body is serialized with the compact
+`serde_json` form the crate writes to disk and sends, so the bound is taken over exactly those bytes
+rather than an estimate, and a question added to the returned value afterwards is a value this check
+never admitted rather than a silent spend.
+
+This is the first time this builder can refuse for the size of the request as a whole rather than
+the size of its longest question. The refusal is a new variant rather than a reuse of `OverBudget`,
+because `OverBudget` reports *state and question exceed the budget* and would name the wrong bound.
+Nothing a consumer pins moves: `system_one_questions_digest` covers the `questions` object alone, and
+the bound reads the body without rewriting it, so every previously admitted request is byte-identical
+and every recorded digest still matches.
+
+The two ceilings overlap, and the overlap is narrower than the arithmetic suggests. Three
+maximum-size questions still fit inside the per-request ceiling at the state the shared ceiling
+allows, so for a set that size the two refusals coincide and neither is independently reachable; four
+is the smallest set where the per-request ceiling owns a band of states the shared bound would have
+admitted. Live traffic is not near this: the two-question path costs two options per question
+against the `2.5%`–`6.5%` of the budget ADR 0078 measured, so the bound refuses nothing it admits
+today.
 
 A question set is refused when it is empty, over `MAX_QUESTIONS` (8), carries a name that is empty,
 oversized, non-printable or duplicated, or has an option set that would not stand alone. Two

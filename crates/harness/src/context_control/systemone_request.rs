@@ -60,6 +60,22 @@ pub const MAX_DESCRIPTION_BYTES: usize = 240;
 /// refusing some requests the provider would have accepted.
 pub const MAX_STATE_AND_QUESTION_BYTES: usize = 64 * 1024;
 
+/// Conservative byte ceiling for the whole serialized request.
+///
+/// The published limit is 64k tokens per request, of which the state plus the longest question
+/// consumes 32k. This is that per-request ceiling in bytes under the same two-bytes-per-token
+/// assumption [`MAX_STATE_AND_QUESTION_BYTES`] documents, so it is deliberately twice that
+/// constant: the two bounds are different provider limits and reusing the smaller one for the total
+/// would encode 32k where the provider publishes 64k.
+///
+/// The refusal therefore fires on the byte reading of the published limit, which is the most
+/// conservative translation available and consistent with the sibling constant. If the provider
+/// counts a token per three or four bytes, the real ceiling is nearer `192 KiB` or `256 KiB` and
+/// this bound refuses requests the provider would have accepted. That is the same direction and the
+/// same cost the sibling constant already accepts, and it keeps the check on this side of a
+/// provider-side `422`.
+pub const MAX_REQUEST_BYTES: usize = 128 * 1024;
+
 /// One option to present, with the description the model reads.
 ///
 /// The description is what distinguishes this option from its neighbours. An identifier is a valid
@@ -88,6 +104,8 @@ pub enum SystemOneRequestError {
     EmptyState,
     /// The state plus the longest question exceeded the conservative byte ceiling.
     OverBudget,
+    /// The whole serialized request exceeded the conservative per-request byte ceiling.
+    RequestTooLarge,
     /// An empty question name, a duplicate name, or a name that is not printable ASCII.
     InvalidQuestion,
     /// More questions were supplied than this builder presents.
@@ -105,6 +123,7 @@ impl SystemOneRequestError {
             Self::InvalidModel => "invalid model",
             Self::EmptyState => "empty state",
             Self::OverBudget => "state and question exceed the budget",
+            Self::RequestTooLarge => "the whole request exceeds the per-request budget",
             Self::InvalidQuestion => "invalid question",
             Self::TooManyQuestions => "too many questions",
         }
