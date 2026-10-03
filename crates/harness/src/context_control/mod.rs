@@ -126,7 +126,7 @@ pub use systemone_question_set::{
     MAX_QUESTIONS, SystemOneQuestion, build_choice_questions_request,
 };
 pub use systemone_request::{
-    ACTION_QUESTION, CARD_CHOICE_QUESTION, MAX_DESCRIPTION_BYTES, MAX_OPTIONS,
+    ACTION_QUESTION, CARD_CHOICE_QUESTION, MAX_DESCRIPTION_BYTES, MAX_OPTIONS, MAX_REQUEST_BYTES,
     MAX_STATE_AND_QUESTION_BYTES, SYSTEM_ONE_PATH, SystemOneOption, SystemOneRequestError,
     action_instructions, build_described_system_one_request, build_system_one_request,
     system_one_questions_digest,
