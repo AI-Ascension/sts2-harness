@@ -31,8 +31,8 @@ pub const MAX_QUESTIONS: usize = 8;
 ///
 /// Grouping the three keeps the pairing of a name to the option set and instruction it was asked
 /// with unbreakable at the type level. The name is not an identifier the caller gets to choose
-/// freely: [`validate_questions`] still refuses an empty, duplicated or non-printable one, because
-/// the name is what an answer resolves to and an unresolvable name is an unconsumed question.
+/// freely: the builder still refuses an empty, duplicated or non-printable one, because the name is
+/// what an answer resolves to and an unresolvable name is an unconsumed question.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SystemOneQuestion<'a> {
     /// The key this question answers under in `answers`.
