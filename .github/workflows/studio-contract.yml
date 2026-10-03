@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: AI-Ascension/ascension-workflow-studio
-          ref: f5c06d1d6df22103b47686839cf4c870bbd96a39
+          ref: 3c0581f732a3966fcda5284cc3b7a54c078a88ae
           path: studio
           persist-credentials: false
 
