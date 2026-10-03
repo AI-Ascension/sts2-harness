@@ -86,7 +86,7 @@
     },
     {
       "repository": "AI-Ascension/ascension-workflow-studio",
-      "revision": "3019fdba03187a4fade19b08a99375a371bacce6",
+      "revision": "d555af93bf4934af749e2759e6cbf95fe08c29a4",
       "revision_source": "harness_ci_pin",
       "artifact_mode": "schema_adapter",
       "role": "Authoring and presentation consumer that must not offer a value the runtime rejects",
@@ -135,7 +135,7 @@
       ],
       "harness_ci_pin": {
         "workflow": ".github/workflows/studio-contract.yml",
-        "revision": "3019fdba03187a4fade19b08a99375a371bacce6"
+        "revision": "d555af93bf4934af749e2759e6cbf95fe08c29a4"
       }
     }
   ]
