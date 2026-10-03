@@ -10,6 +10,40 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **The advisory plan's dispatch contract is now tested, and one of its guarantees was being
+  enforced by its callers rather than by the plan.** `ActionPlan` carried the whole #319 contract
+  with no tests beside it: a plan is a prediction about a state that has not happened yet, so a step
+  the host no longer offers, a state the plan did not assume, a generation the host has not left, or
+  an unsettled effect must each *end* the plan rather than coerce, substitute or retry it. Every one
+  of those properties was previously asserted only by reading the source. Nine tests now drive the
+  real `ActionPlan`, each constructed so the guard it names is the only thing that can end the plan
+  — the first version of the suite passed under every mutation, because a second guard fired first
+  and returned the same `None`.
+
+  That isolation found a real defect. `ActionPlan::action_completed(false)` cleared the remaining
+  steps, but every caller that received an unsettled result also dropped the entire plan before
+  asking again, so the clear was unreachable: the next dispatch returned `None` at the `settled`
+  check whether or not the steps were still there. The guarantee was real only because callers
+  remembered it. The plan now owns the disposal and the test asserts on the plan's own contents, so
+  a caller that forgets cannot dispatch on a prediction whose outcome is unknown. No caller's
+  behaviour changes.
+
+  A second test covers the case that records most easily get wrong. `DecisionRecorder` already marks
+  each dispatch with `reused_model_execution`, but a **dropped** plan and a **kept** plan dispatch
+  the same action, so the row reads identically whether the prediction was right or the plan was
+  abandoned and the provider was asked again — different claims about a run. Driving the real
+  `ExoDecisionSource` over a scripted transport, the undercut case must now cost a second round
+  trip and record `reused_model_execution: false` under the new execution ID; it fails exactly when
+  later plan steps stop revalidating, which no other test in that module does.
+
+  No new plan shape, wire format or schema: #319's schema, dispatch-time validation and recording
+  tasks were already implemented in `exo/decision.rs`, `episode/action_plan.rs`,
+  `episode/policy_router.rs` and `runtime_v3_recording.rs`, and adding a second plan type would have
+  left two answers to "what may be dispatched next" with the weaker one on the dispatch path.
+  Evidence is local unit and integration testing over a scripted transport; no native host, live
+  provider, hosted or production result is claimed. Refs #319, see ADR 0079.
+
+
 - **A disclosed card the request builder would refuse is now dropped instead of killing the whole
   exchange.** `cards()` filtered a card set on a strict subset of the rules `validate_options`
   actually enforces, so a set that survived the filter could still be refused with `InvalidOption`
@@ -653,58 +687,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   `RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links --document-private-items"`, because a default
   rustdoc run skips the private modules that hold four of the seven unresolved links; no workflow had
   run `cargo doc`/`rustdoc` before, so nothing owned the class. Refs #477.
-
-- **Keep the rejected output name out of the recipe refusal.** The pre-agent recipe admission
-  contract documents that its refusal vocabulary "carries only structural identity, never a supplied
-  argument value or game text", and every variant met that except one:
-  `RecipeAdmissionError::InvalidOutput` stored the raw `OutputSlot.name` that had just failed
-  `is_identifier` — by construction a value guaranteed to violate the ≤96-byte, `[A-Za-z0-9._:-]`
-  bound, and free to carry control bytes or arbitrary authored text. It now reports the offending
-  slot **index** instead, matching how the other variants are built (the step and dependency fields
-  are typed identifiers; `DuplicateOutput.output` passed its shape check). Reachability is
-  Rust-API-only today — `RecipeDefinition`/`OutputSlot` have no `serde` intake and the module has no
-  consumer outside `recipe/` and its test — so nothing untrusted could reach the error yet; the
-  exposure would have begun when T2/T3 add authored or Studio-facing intake. Compatibility:
-  safety-correction — the variant is public but the crate is consumed only by its own workspace, no
-  record/schema/route/digest changes, and which recipe is refused (and at which point in the fixed
-  admission order) is unchanged. Refs #97; see
-  [ADR 0073](docs/decisions/0073-pre-agent-read-only-recipe-admission.md).
-
-- **Execute a bounded parallel analysis region through the production dynamic runtime.** The
-  budget-reserved bounded route (`execute_plan_bounded`,
-  `execute_plan_bounded_reserved`) had no production caller: a `DynamicRuntime` handled an
-  `adaptive_region` node purely by delegating to the caller-supplied executor, so the owner's
-  parallel cap, the atomic budget reservation and the per-branch join report were reachable only
-  from tests. A new `workflow::bounded_region` module admits a declared region fail-closed
-  *before* any branch is dispatched (cap from the workflow's own limits, admissible operations,
-  then `validate_plan`), runs it on the reserved route, and reports a versioned, digest-bound
-  outcome (`ascension.harness.bounded-analysis-report.v1`) that names each branch's actual joined
-  state — settled, failed with its own reason token, or unknown — instead of a settled count, so
-  a failed or lost branch can never be read as a success. `DynamicRuntime::execute_bounded_region`
-  retains that report for a consumer; the existing node route is unchanged. The mutation clause
-  holds by construction rather than by assertion: `DynamicNodeKind` is a `deny_unknown_fields`
-  `analyze`/`decide` enum and the executor returns an `AnalysisValue`, so a plan naming a mutating
-  node kind is refused at decode and no bounded branch can reach a game mutation. Compatibility:
-  additive; two new module files, one new runtime method, no change to an existing schema, route,
-  digest or node kind. Refs #98.
-
-- **Resolve inference-profile references authoritatively at the owner, not in the browser.** A
-  `decide` / `adaptive_region` reference could name a floating `profile_id` that no served catalog
-  advertises, and `POST /v1/workflow-definitions/validate` returned `{"valid":true}` for it, because
-  live submission admission — not definition validation — was the only thing that resolved profiles.
-  A consumer wanting an immutable binding therefore had to invent a *second, stricter* rule in the
-  browser and refuse publication the owner would have accepted, leaving two admission authorities
-  disagreeing about the same document. Both surfaces now resolve every reference through the
-  owner's served catalog with the same per-node fences live submission already used, and publish
-  that decision: `profile_ref` as authored beside `resolved_pin`, the exact
-  `profile_id:version:digest` it resolved to, plus its graph, node, kind and JSON path. Both fail
-  closed — an uncatalogued floating id is refused with the catalog's own `inference_profile_unknown`
-  rather than silently accepted, and publication refuses before creating a definition. A consumer
-  records `resolved_pin`, never `profile_ref`, for immutability: a floating id can resolve to a
-  different descriptor after a catalog revision. `inference_profiles` is `null` when the owner
-  serves no catalog (no authority exercised — not "admissible") and empty when a catalog was served
-  and the document has no reference; an owner with no catalog is unchanged. **This breaks a strict
-  decoder that rejected unknown response fields.** Both surfaces publish the same decision for the
-  same document, so a consumer reads the owner's verdict instead of re-deriving one. Evidence is
-  synthetic/component only: in-memory owner doubles and an in-memory authoring store. No provider,
-  model, credential, native host or live-owner browser run is claimed. Refs #799.

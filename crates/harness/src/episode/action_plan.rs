@@ -61,6 +61,10 @@ impl ActionPlan {
 
     pub(super) fn action_completed(&mut self, settled: bool) {
         self.settled = settled;
+        // An unsettled step leaves the outcome unknown, so every remaining step was predicted from
+        // a state that is no longer known to have happened. Drop them here rather than relying on a
+        // caller to discard the plan: the plan is what owns that assumption, and a caller that
+        // forgets to dispose of it must not be able to dispatch on it.
         if !settled {
             self.actions.clear();
         }
@@ -190,3 +194,7 @@ fn same_enemy_intents(current: &Value, previous: &Value) -> bool {
         })
     })
 }
+
+#[cfg(test)]
+#[path = "action_plan_tests.rs"]
+mod tests;
