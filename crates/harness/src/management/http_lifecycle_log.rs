@@ -237,6 +237,25 @@ impl RequestLifecycle {
         );
     }
 
+    /// Emit the terminal marker for a request whose handler **panicked**.
+    ///
+    /// This is the third way a started request can fail to finish. Without its own
+    /// marker a panic and a hang would both appear as a start line with no terminal
+    /// line, which is the one distinction this log exists to make: a hang is a live
+    /// thread that never returned, and a panic is a thread that died. The code is a
+    /// harness-owned literal, and no panic payload is ever read -- a panic message can
+    /// carry caller bytes, so it is the same redaction rule `log_abandoned` follows.
+    pub(in crate::management::http) fn log_panicked(&self) {
+        self.emit(
+            "request_panicked",
+            &[
+                code_label("request_panicked"),
+                reason_label("request_panicked"),
+            ],
+            None,
+        );
+    }
+
     fn emit(&self, marker: &str, fields: &[String], status: Option<u16>) {
         let mut line = String::with_capacity(160);
         line.push_str(LIFECYCLE_LOG_PREFIX);

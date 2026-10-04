@@ -30,8 +30,13 @@
 //!   terminal line with no start line and no route would be unattributable, which is
 //!   the defect class harness #819 documents for the pre-existing `eprintln!`.
 //! - The terminal marker is emitted on every path out of this function. A marker that
-//!   can be skipped by a panic or an early return would recreate exactly the silence
-//!   this work exists to remove.
+//! - The terminal marker is emitted on every path out of this function. A marker that
+//!   can be skipped by an early return would recreate exactly the silence this work
+//!   exists to remove. A *panic* would have done the same, so `dispatch` is unwound:
+//!   a panicking handler is reported as `request_panicked` and the panic is then
+//!   resumed, rather than being swallowed or being allowed to masquerade as a stall.
+//!   Without that, a start line with no terminal line would read identically for a
+//!   hang and for a crash, which is the one distinction this log exists to make.
 //!
 //! # Coordination with harness #819
 //!
@@ -43,6 +48,7 @@
 //! second report mechanism for the same failure.
 
 use std::net::TcpStream;
+use std::panic::AssertUnwindSafe;
 use std::time::Instant;
 
 use super::lifecycle_log::RequestLifecycleLog;
@@ -88,7 +94,19 @@ pub(super) fn serve_reported(
             // The one place a request becomes attributable.
             lifecycle.log_start(&request.method, &request.path);
             let route = format!("{} {}", request.method, request.path);
-            let response = dispatch(request, service, authenticator);
+            // The terminal marker is emitted *before* the panic is resumed, so a
+            // panicking handler is reported as itself and then still fails the
+            // connection loudly instead of being silently converted into an ordinary
+            // error response. Catching without resuming would hide the fault.
+            let response = match std::panic::catch_unwind(AssertUnwindSafe(|| {
+                dispatch(request, service, authenticator)
+            })) {
+                Ok(response) => response,
+                Err(payload) => {
+                    lifecycle.log_panicked();
+                    std::panic::resume_unwind(payload);
+                }
+            };
             (Some(route), response)
         }
         // The connection ended without a readable request, so no start marker can be

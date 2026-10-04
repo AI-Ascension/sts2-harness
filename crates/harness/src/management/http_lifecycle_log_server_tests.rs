@@ -32,6 +32,9 @@ use super::lifecycle_log::RequestLifecycleLog;
 use super::*;
 use crate::management::{AuthContext, MemoryWorkflowStore, StaticAuthenticator};
 
+#[path = "http_lifecycle_log_panic_tests.rs"]
+mod panic_tests;
+
 // ## End-to-end coverage of the lifecycle reporting (#820)
 //
 // The tests in `http_lifecycle_log_tests.rs` assert what the log builder emits.
