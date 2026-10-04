@@ -99,6 +99,10 @@ pub fn evidence_row(stderr: &[u8], name: &str) -> Result<Value> {
 pub fn projection(body: &Value, envelope: &Value) -> Result {
     assert!(body.get("tools").is_none_or(|tools| tools == &json!([])));
     let serialized = body.to_string();
+    assert!(
+        !serialized.contains("old-history-private-sentinel"),
+        "old-history sentinel must be absent from the complete model request body"
+    );
     for field in ["request_id", "turn_id"] {
         assert!(!serialized.contains(envelope[field].as_str().ok_or("missing host id")?));
     }
