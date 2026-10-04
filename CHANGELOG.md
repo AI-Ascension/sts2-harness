@@ -10,6 +10,23 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **A management response that could not be transmitted is no longer discarded in silence, and the
+  read and write phases no longer share one deadline budget.** `handle_connection` took a single
+  `Instant` before reading the request and passed that same, already-spent value to both
+  `read_request` and `write_response`. Because `write_with_deadline` refuses an expired budget
+  *before* attempting any syscall, an overran read left the response unable to be sent at all: the
+  owner had computed an authoritative answer, then closed the socket without transmitting it, and
+  the peer observed `ECONNRESET`/`socket hang up`. Consumers that proxy this service saw a transport
+  fault for a request that had in fact been answered -- the mechanism behind Studio's intermittent
+  `submission_refused_502`, which had previously been attributed in turn to an owner crash, a
+  restart, a listener-readiness race, and an intermediary timeout, none of which the evidence
+  supported. Each phase now derives its own budget from `HttpLimits::deadline`, so exhausting the
+  read no longer consumes the write, while the bound itself is unchanged and an exhausted *write*
+  budget still refuses before touching the socket. The worker no longer drops the connection result
+  via `let _ =`; a connection that ends without delivering a response is reported on stderr, since
+  the peer can no longer be told and that silence was what made the failure unattributable. Refs
+  #816, ascension-workflow-studio#214.
+
 - **The restricted Exo profile now enforces its tool catalog at dispatch, and the enforcement
   distinguishes an unreviewed tool from an unadmitted one.** #140's merged contract validated the
   catalog as a *declaration* and stopped there: `ExoToolCatalog::reviewed()` returns an explicitly
@@ -125,6 +142,7 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   today. No consumer pin moves — `system_one_questions_digest` covers the `questions` object rather
   than the body, so every previously admitted request is byte-identical and every recorded digest
   still matches. ADR 0078 records the new bound and its reasoning. Refs #806, #805.
+
 - **The provider-session capability descriptor's `evidence` field is renamed `provenance`, because
   it never gated anything and the old name said it did.** `NativeCapabilities::validate()` has
   never read the field, so every value was equally admissible, yet `evidence` sat beside genuinely
@@ -143,6 +161,7 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   cannot be relabelled without invalidating its own digest. `NativeBinaryFakeUpstream` is retained
   and documented as unwired rather than removed, since removing it would break a peer outside this
   tree. Refs #755, #109.
+
 - **The advertised `context_modes` axis is documented as build provenance, not a request axis.**
   It is the one axis in `capability_fields()` with no request-side counterpart: no wire request
   field can select a context mode, so `Continuity` is unreachable and the preflight branch that
