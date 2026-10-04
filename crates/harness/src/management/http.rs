@@ -36,6 +36,10 @@ use routes::dispatch;
 
 pub use client::{ClientResponse, ManagementClient};
 
+#[cfg(test)]
+#[path = "http_connection_tests.rs"]
+mod connection_tests;
+
 use super::auth::Authenticator;
 use super::contract::{
     CommandRequest, DiffRequest, ExportRequest, InspectRequest, MAX_CONNECTIONS, MAX_HEADER_BYTES,
@@ -247,8 +251,15 @@ fn run_server_loop(
                 let worker = thread::Builder::new()
                     .name("sts2-management-connection".to_owned())
                     .spawn(move || {
-                        let _ =
-                            handle_connection(stream, &service, &*authenticator, &worker_limits);
+                        // The only evidence that the owner could not deliver an
+                        // answer it had already computed. The peer can no longer
+                        // be told -- the socket is gone -- but the fact must not
+                        // vanish; that silence is what made #816 undiagnosable.
+                        if let Err(error) =
+                            handle_connection(stream, &service, &*authenticator, &worker_limits)
+                        {
+                            eprintln!("sts2-management connection ended without a delivered response: {error}");
+                        }
                         active_for_worker.fetch_sub(1, Ordering::AcqRel);
                     })
                     .map_err(io_http_error)?;
@@ -276,12 +287,24 @@ fn handle_connection(
     authenticator: &dyn Authenticator,
     limits: &HttpLimits,
 ) -> Result<(), HttpError> {
-    let deadline = Instant::now() + limits.deadline;
-    let response = match read_request(&mut stream, deadline, limits) {
+    // Each phase gets its own budget rather than sharing one taken before the
+    // read. A shared deadline meant an overran read left the write with an
+    // expired budget, which `write_with_deadline` refuses *before* any syscall:
+    // the peer got nothing instead of the computed response, and saw a silent
+    // close (`ECONNRESET`) for a request the owner had answered. That is what
+    // made Studio's `submission_refused_502` undiagnosable (#816, studio #214).
+    // The bound itself is unchanged -- `limits.deadline` still caps each phase.
+    let read_deadline = Instant::now() + limits.deadline;
+    let response = match read_request(&mut stream, read_deadline, limits) {
         Ok(request) => dispatch(request, service, authenticator),
         Err(error) => Err(error),
     };
-    write_response(&mut stream, response, deadline, limits)
+    write_response(
+        &mut stream,
+        response,
+        Instant::now() + limits.deadline,
+        limits,
+    )
 }
 
 #[derive(Clone, Debug)]
