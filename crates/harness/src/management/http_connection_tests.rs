@@ -2,6 +2,9 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::time::{Duration, Instant};
+
 use super::response::read_with_deadline;
 use super::response::write_with_deadline;
 use super::*;
