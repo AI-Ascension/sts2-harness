@@ -66,9 +66,9 @@ mod clock;
 #[path = "http_lifecycle_log_label.rs"]
 mod label;
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, OnceLock};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use clock::{push_decimal, push_utc_timestamp};
 use label::{code_label, method_label, reason_label, route_label};
@@ -101,7 +101,7 @@ pub(in crate::management::http) trait LifecycleLogSink:
     /// is before the epoch.
     fn wall_clock(&self) -> Option<(u64, u32)>;
 
-    /// Milliseconds since a fixed monotonic origin, used for durations only.
+    /// Milliseconds since a fixed process-local monotonic origin, used for durations only.
     fn monotonic_millis(&self) -> u64;
 
     /// Write one already-redacted line. The trailing newline is the sink's concern.
@@ -127,14 +127,10 @@ impl LifecycleLogSink for StderrLifecycleLogSink {
     }
 
     fn monotonic_millis(&self) -> u64 {
-        // A clock before the epoch is not a reason to fail a request, so this
-        // saturates instead of panicking; `wall_clock` reports the same condition
-        // honestly as `ts=unavailable` in the emitted line.
-        let millis = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|since| since.as_millis())
-            .unwrap_or(0);
-        u64::try_from(millis).unwrap_or(u64::MAX)
+        static ORIGIN: OnceLock<Instant> = OnceLock::new();
+        let origin = *ORIGIN.get_or_init(Instant::now);
+        let elapsed = Instant::now().saturating_duration_since(origin).as_millis();
+        u64::try_from(elapsed).unwrap_or(u64::MAX)
     }
 
     fn write_line(&self, line: &str) {
@@ -188,7 +184,7 @@ impl RequestLifecycle {
     pub(in crate::management::http) fn log_start(&self, method: &str, route: &str) {
         self.emit(
             "request_start",
-            &[method_label(method), route_label(route)],
+            &[method_label(method), route_label(method, route)],
             None,
         );
     }
