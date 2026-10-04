@@ -3,6 +3,9 @@
 use super::HttpError;
 use std::net::SocketAddr;
 use std::sync::Arc;
+#[cfg(test)]
+use std::sync::Mutex;
+use std::sync::RwLock;
 
 /// The port the owner reports an undeliverable management response through.
 ///
@@ -14,9 +17,6 @@ use std::sync::Arc;
 pub trait ManagementFailurePort: Send + Sync {
     /// Records one already-rendered operator line.
     fn report(&self, line: &str);
-
-    /// Whether this port records what it is handed.
-    fn reports(&self) -> bool;
 }
 
 /// The recording port attached to the management server.
@@ -46,15 +46,6 @@ impl ManagementFailureSink {
         self.0.report(line);
     }
 
-    /// Whether the attached port records what it is handed.
-    ///
-    /// Every port in this crate reports, so this is true. It exists so a test can assert that the
-    /// *default* sink is a reporting one: the stderr line cannot be observed in-process, but "the
-    /// default does not discard" is the property #816 needs and is checkable here.
-    pub fn reports_unread_failures(&self) -> bool {
-        self.0.reports()
-    }
-
     /// Reports one connection that ended without a delivered response.
     ///
     /// The whole report is assembled here rather than at the call site, so the accept loop stays
@@ -76,15 +67,78 @@ impl Default for ManagementFailureSink {
 }
 
 /// The production reporting port.
+///
+/// The line is written through [`production_writer`] rather than an inline `eprintln!`. That
+/// indirection is the seam this module's own test substitutes, and it exists because of #824: the
+/// previous probe here asserted a `reports()` predicate hard-coded to `true`, so making the write
+/// below a no-op left the entire suite green. The predicate could not fail, so it protected nothing.
+/// With the write itself behind one seam, a test can observe the production composition actually
+/// emitting rather than observing a constant.
 struct StderrFailurePort;
 
 impl ManagementFailurePort for StderrFailurePort {
     fn report(&self, line: &str) {
-        eprintln!("{line}");
+        (production_writer())(line);
     }
+}
 
-    fn reports(&self) -> bool {
-        true
+/// One place a rendered operator line can be written to.
+type ReportWriter = Arc<dyn Fn(&str) + Send + Sync>;
+
+/// Where production reports go, unless a test has temporarily redirected them.
+///
+/// `None` is the production state and writes real stderr. A test installs a recorder under the
+/// test-only lock that serialises substitutions, and restores `None` before releasing that lock, so
+/// the substitution cannot outlive the test that made it.
+///
+/// The lock is named in prose rather than as an intra-doc link because it is `#[cfg(test)]`: a
+/// link to it would not resolve in a documented non-test build, which is exactly the kind of
+/// documentation defect the `cargo doc` gate exists to catch.
+static STDERR_WRITER: RwLock<Option<ReportWriter>> = RwLock::new(None);
+
+/// The writer production reports through right now.
+fn production_writer() -> ReportWriter {
+    match STDERR_WRITER.read() {
+        Ok(writer) => match writer.as_ref() {
+            Some(writer) => Arc::clone(writer),
+            None => Arc::new(write_to_stderr),
+        },
+        // A poisoned lock is not a reason to stop reporting: fall back to real stderr, which is
+        // the behaviour this whole port exists to preserve.
+        Err(_) => Arc::new(write_to_stderr),
+    }
+}
+
+/// The real writer. One line per report.
+fn write_to_stderr(line: &str) {
+    eprintln!("{line}");
+}
+
+/// Serialises the process-wide writer override between tests that install one.
+#[cfg(test)]
+pub(super) static STDERR_WRITER_LOCK: Mutex<()> = Mutex::new(());
+
+/// Redirects production reports into `writer` until the caller restores `None`.
+///
+/// Test-only. Nothing in production calls this, which is why the reset is the caller's job rather
+/// than something a guard type owns: the lock is already held for the whole substitution.
+#[cfg(test)]
+pub(super) fn redirect_production_reports(writer: ReportWriter) -> Result<(), HttpError> {
+    let mut slot = STDERR_WRITER.write().map_err(|_| {
+        HttpError::new(
+            "stderr_writer_poisoned",
+            "the stderr writer lock is poisoned",
+        )
+    })?;
+    *slot = Some(writer);
+    Ok(())
+}
+
+/// Restores production reports to real stderr.
+#[cfg(test)]
+pub(super) fn restore_production_reports() {
+    if let Ok(mut slot) = STDERR_WRITER.write() {
+        *slot = None;
     }
 }
 

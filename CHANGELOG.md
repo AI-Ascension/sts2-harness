@@ -11,6 +11,23 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **The default management failure sink's own test can now fail.** `the_default_sink_reports_rather_than_discards`
+  asserted `ManagementFailureSink::default().reports_unread_failures()`, and the only implementation
+  of that predicate returned a hard-coded `true`. The assertion therefore held for every possible
+  body of `StderrFailurePort::report`, which is the same defect class #819 filed about, one layer
+  down: making the production report a no-op left the whole suite green. Reproduced by mutation in
+  both directions — the no-op left **530 passed, 0 failed** before this change, and fails
+  `the_default_sink_writes_its_report_to_the_production_path` after it. The predicate and its probe
+  are deleted rather than made stronger, because a trait method whose every implementation returns
+  `true` is documentation, not an assertion. What replaces them is a seam on the write itself: the
+  production port writes through `production_writer()`, so a test can redirect only the final write
+  and observe the composition that actually ships rather than a test double. The substitution is
+  process-wide, so it is held under a lock and reset to real stderr before that lock is released; a
+  poisoned lock falls back to stderr rather than dropping a report, because silence is the failure
+  this port exists to prevent. Production behaviour is unchanged — `None` is the production state,
+  and every one of the 26 `ServerConfig::new` call sites still resolves to the same stderr report
+  #816 added. Compatibility: diagnostics and test surface only. Refs #824, #819.
+
 - **Every management request the owner serves is now reported on stderr, so an empty owner
   stderr is no longer ambiguous between a crash, a signal kill and a hang.** Studio's
   intermittent `submission_refused_502` had recurred eight times, and in every occurrence the
@@ -726,23 +743,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   helper move together, `owner_lease.rs` keeps its existing `super::` imports through a re-export,
   and the error enum is re-exported from the parent so `ProviderSessionMetadataStoreError` keeps
   its public path. Closes #571.
-
-- **Make the management client's header allow-list guard non-vacuous, and correct the criteria
-  that produced it.** The guard added for the `Accept` fix transcribed the gateway's
-  `header_is_allowed` exactly, then added a nineteenth entry, `idempotency-key`, under the comment
-  "Admitted by the gateway as a non-gateway header" — a category that does not exist, since
-  `header_is_allowed` is a bare `matches!` with no exemption clause. Separately, the test only ever
-  built a head with the idempotency argument `None`, and the header is emitted only in the `Some`
-  branch, so the entry could neither fail nor be reached: the test asserted over a request that
-  never carried the header it existed to police. Measured, that nineteenth entry was the sole
-  difference between the guard passing and failing, so a head the gateway refuses with
-  `400 unsupported_header` was asserted as safe. The fabricated entry and its false comment are
-  removed; the plain head is now asserted against the gateway list outright, and the idempotent
-  head is pinned to differ from that list by *exactly* `idempotency-key` — which fails both if a
-  new unadmitted header appears and if the header is ever dropped. A new test asserts the guard is
-  non-vacuous, which is the check whose absence let the defect through. The header is deliberately
-  **not** removed: it is required by the management server (`idempotency_key_required`) and declared
-  `required: true` on 16 operations across the memory and control OpenAPI contracts, so dropping it
-  would turn 16 policy mutations into `400`s. The documented invariant is the precise one — every
-  header this client sends is admitted by the server it is pointed at, which today is the harness
-  management listener, not the gateway. Refs #598, #560.
