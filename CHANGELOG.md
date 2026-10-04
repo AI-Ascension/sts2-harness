@@ -11,24 +11,24 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
-- **The pinned Exo process oracle now refuses an explicit old-history input before model egress and exercises the existing synthetic v2 mode.** The negative case sends an `old-history-private-sentinel` in the unsupported request field and requires `exo_bridge_invalid_request` with zero loopback model requests. The v2 case checks the decision, receipt identities, and the unchanged exact model projection through the shipped bridge and pinned Exo process. The model and host remain synthetic; this is not live-provider or native continuity evidence. Refs #109.
+- **The pinned Exo process oracle refuses explicit old-history input before model egress and covers the existing synthetic v2 mode.** It requires the unsupported history field containing `old-history-private-sentinel` to receive `exo_bridge_invalid_request` with zero loopback model requests. The v2 case checks the decision, receipt identities, and exact full-body model projection through the shipped bridge and pinned Exo process. The model and host remain synthetic; this is not live-provider or native continuity evidence. Refs #109.
 
-- **The default management failure sink's own test can now fail.** `the_default_sink_reports_rather_than_discards`
-  asserted `ManagementFailureSink::default().reports_unread_failures()`, and the only implementation
-  of that predicate returned a hard-coded `true`. The assertion therefore held for every possible
-  body of `StderrFailurePort::report`, which is the same defect class #819 filed about, one layer
-  down: making the production report a no-op left the whole suite green. Reproduced by mutation in
-  both directions — the no-op left **530 passed, 0 failed** before this change, and fails
-  `the_default_sink_writes_its_report_to_the_production_path` after it. The predicate and its probe
-  are deleted rather than made stronger, because a trait method whose every implementation returns
-  `true` is documentation, not an assertion. What replaces them is a seam on the write itself: the
-  production port writes through `production_writer()`, so a test can redirect only the final write
-  and observe the composition that actually ships rather than a test double. The substitution is
-  process-wide, so it is held under a lock and reset to real stderr before that lock is released; a
-  poisoned lock falls back to stderr rather than dropping a report, because silence is the failure
-  this port exists to prevent. Production behaviour is unchanged — `None` is the production state,
-  and every one of the 26 `ServerConfig::new` call sites still resolves to the same stderr report
-  #816 added. Compatibility: diagnostics and test surface only. Refs #824, #819.
+- **The tautological default-sink probe is deleted.** `the_default_sink_reports_rather_than_discards`
+  asserted a hard-coded `true`; a mutation that made `StderrFailurePort::report` a no-op still left
+  **530 passed, 0 failed**. The `reports()` predicate and probe were removed. The first exact-write
+  replacement in #826 used a process-wide writer hook, which the separate #829 follow-up below
+  removes after source review found cross-test capture and panic-leak risks. Compatibility:
+  diagnostics and test surface only. Refs #824, #819.
+
+- **The default stderr proof now runs in an owned child process.** #829 removes the mutable
+  process-wide writer override and restores the production `eprintln!` path. An exact helper-test
+  child invokes `ManagementFailureSink::default()` and captures its real stderr to bounded output
+  files. Two barrier-released children keep distinct concurrent report sets in their own stderr;
+  another catches a synthetic panic and verifies a later default report still arrives. Every child
+  is killed/reaped if its five-second wait expires or unwinds. A no-op final write fails the
+  exact-line assertion; attached-port/server failure, attribution and redaction tests remain. This
+  is a source-derived isolation correction, not a report of a CI flake or deployed incident.
+  Production report text and behavior are unchanged. Refs #829, #826.
 
 - **Every management request the owner serves is now reported on stderr, so an empty owner
   stderr is no longer ambiguous between a crash, a signal kill and a hang.** Studio's
