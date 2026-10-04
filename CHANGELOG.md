@@ -11,6 +11,8 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **The pinned Exo process oracle now refuses an explicit old-history input before model egress and exercises the existing synthetic v2 mode.** The negative case sends an `old-history-private-sentinel` in the unsupported request field and requires `exo_bridge_invalid_request` with zero loopback model requests. The v2 case checks the decision, receipt identities, and the unchanged exact model projection through the shipped bridge and pinned Exo process. The model and host remain synthetic; this is not live-provider or native continuity evidence. Refs #109.
+
 - **The default management failure sink's own test can now fail.** `the_default_sink_reports_rather_than_discards`
   asserted `ManagementFailureSink::default().reports_unread_failures()`, and the only implementation
   of that predicate returned a hard-coded `true`. The assertion therefore held for every possible

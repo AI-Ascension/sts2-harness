@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-use super::Result;
+use super::{Model, Result, evidence_row, invoke, response};
 
 /// Forbidden upstream tool names, aliases and case/namespace variants the model may request. The
 /// registry advertises none of them; each must be denied at dispatch with the typed code.
@@ -133,5 +133,83 @@ pub fn projection(body: &Value, envelope: &Value) -> Result {
     ] {
         assert_eq!(projections[0][key], envelope["request"][key], "{key}");
     }
+    Ok(())
+}
+
+pub fn old_history_sentinel_rejected(
+    model: &Model,
+    binary: &std::path::Path,
+    config: &std::path::Path,
+    envelope: &Value,
+    cases: &mut Vec<Value>,
+) -> Result {
+    let mut old_history = envelope.clone();
+    old_history["request"]["history"] = json!(["old-history-private-sentinel"]);
+    model.set(200, response("{}", "message"))?;
+    let output = invoke(
+        binary,
+        config,
+        &serde_json::to_vec(&old_history)?,
+        "--synthetic",
+        true,
+    )?;
+    assert!(!output.status.success() && output.stdout.is_empty());
+    assert!(
+        model.requests.lock().map_err(|_| "poisoned")?.is_empty(),
+        "old_history_sentinel"
+    );
+    assert_eq!(model.request_count(), 0, "old_history_sentinel");
+    assert_eq!(output.stderr, b"exo_bridge_invalid_request\n");
+    cases.push(json!({"case": "old_history_sentinel", "passed": true,
+        "model_requests": 0, "refusal_before_model_egress": true}));
+    Ok(())
+}
+
+pub fn synthetic_v2_success(
+    model: &Model,
+    binary: &std::path::Path,
+    config: &std::path::Path,
+    envelope: &Value,
+    cases: &mut Vec<Value>,
+) -> Result {
+    let decision = json!({"decision": "wait", "rationale": "synthetic"});
+    model.set(200, response(&decision.to_string(), "message"))?;
+    let output = invoke(
+        binary,
+        config,
+        &serde_json::to_vec(envelope)?,
+        "--synthetic-v2",
+        true,
+    )?;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let returned: Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(returned["wire_version"], "sts2.exo-bridge-wire-v2");
+    assert_eq!(returned["request_id"], envelope["request_id"]);
+    assert_eq!(returned["turn_id"], envelope["turn_id"]);
+    assert_eq!(returned["outcome"], "decision");
+    assert_eq!(returned["decision"], decision);
+    assert!(returned["error_code"].is_null());
+    let native = returned["native"].as_object().ok_or("missing v2 receipt")?;
+    assert_eq!(native.len(), 5);
+    for field in [
+        "agent_id",
+        "conversation_id",
+        "session_id",
+        "turn_id",
+        "event_cursor",
+    ] {
+        assert_eq!(native[field].as_str().map(str::len), Some(36), "{field}");
+    }
+    let observed = model.requests.lock().map_err(|_| "poisoned")?;
+    assert_eq!((observed.len(), model.request_count()), (1, 1));
+    projection(&observed[0], envelope)?;
+    let row = evidence_row(&output.stderr, "synthetic_v2_success")?;
+    assert_eq!(row["forwarded_requests"], 1);
+    cases.push(json!({"case": "synthetic_v2_success", "passed": true,
+        "model_requests": 1, "v2_receipt": "present", "evidence": row}));
     Ok(())
 }
