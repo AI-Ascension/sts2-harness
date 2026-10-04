@@ -241,3 +241,57 @@ fn plan_must_bind_every_proposed_action_before_dispatching_the_first() {
         Err(PolicyError::IllegalAction)
     );
 }
+
+#[test]
+fn a_payload_shared_by_two_legal_actions_is_ambiguous_and_not_dispatched() {
+    // The host catalog rejects duplicate *ids*, but nothing requires the
+    // payloads behind two distinct ids to differ. When a successor advertises
+    // two ids whose payloads are identical, the planned step matches both and
+    // the plan cannot tell which action it means. The guard refuses the step
+    // rather than picking one, so the plan must fall through to a fresh
+    // provider decision instead of dispatching a guessed action.
+    let mut value = successor(false);
+    let actions = value["legal_actions"].as_array_mut().expect("catalog");
+    // `successor` drops the consumed action, leaving one legal action. Give it a
+    // second, distinct id whose payload is then made identical to the first.
+    let mut twin = actions[0].clone();
+    twin["action_id"] = json!("choice-2-twin");
+    actions.push(twin);
+    actions[1]["action"] = actions[0]["action"].clone();
+    let (mut source, calls) = source(&["choice-1-a", "choice-1-b"]);
+    source.decide(&input(observation(false, 1))).expect("first");
+    source.action_completed(true);
+
+    assert!(
+        matches!(source.decide(&input(value)), Ok(Decision::Reobserve { .. })),
+        "an ambiguous payload match must not dispatch one of the two ids"
+    );
+    assert_eq!(
+        calls.get(),
+        2,
+        "the ambiguity must cost a fresh provider call"
+    );
+}
+
+#[test]
+fn an_unambiguous_single_match_on_the_same_successor_dispatches_normally() {
+    // The control for the test above: the same successor, with its payloads
+    // distinct, resolves the step to exactly one id. Without this the previous
+    // test could pass for the wrong reason — because the successor state was
+    // incompatible, not because its payloads were shared.
+    let value = successor(false);
+    let (mut source, calls) = source(&["choice-1-a", "choice-1-b"]);
+    source.decide(&input(observation(false, 1))).expect("first");
+    source.action_completed(true);
+
+    let decision = source.decide(&input(value)).expect("first step");
+    assert!(
+        matches!(&decision, Decision::Action { action_id, .. } if action_id == "choice-2-b"),
+        "an unambiguous match must dispatch, got {decision:?}"
+    );
+    assert_eq!(
+        calls.get(),
+        1,
+        "an unambiguous match must not cost a provider call"
+    );
+}
