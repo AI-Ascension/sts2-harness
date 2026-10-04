@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-use super::{Model, Result, evidence_row, invoke, response};
+use super::{Model, Result, invoke, response};
 
 /// Forbidden upstream tool names, aliases and case/namespace variants the model may request. The
 /// registry advertises none of them; each must be denied at dispatch with the typed code.
