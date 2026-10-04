@@ -2,16 +2,20 @@
 
 use std::collections::BTreeMap;
 use std::io;
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[path = "http_client.rs"]
 mod client;
 #[path = "http_failure_report.rs"]
 mod failure_report;
+#[path = "http_lifecycle.rs"]
+mod lifecycle;
+#[path = "http_lifecycle_log.rs"]
+mod lifecycle_log;
 #[path = "http_parse.rs"]
 mod parse;
 #[path = "http_response.rs"]
@@ -30,18 +34,21 @@ mod routes_policy;
 mod routes_run;
 
 pub use failure_report::{ManagementFailurePort, ManagementFailureSink};
-use parse::read_request;
+use lifecycle::serve_reported;
+use lifecycle_log::RequestLifecycleLog;
 use response::{
     auth_http_error, io_http_error, parse_bearer, validate_loopback, wake_listener,
-    write_raw_status, write_response,
+    write_raw_status,
 };
-use routes::dispatch;
 
 pub use client::{ClientResponse, ManagementClient};
 
 #[cfg(test)]
 #[path = "http_connection_tests.rs"]
 mod connection_tests;
+#[cfg(test)]
+#[path = "http_lifecycle_log_server_tests.rs"]
+mod lifecycle_log_server_tests;
 
 use super::auth::Authenticator;
 use super::contract::{
@@ -52,6 +59,8 @@ use super::contract::{
 use super::service::{ManagementError, ManagementService};
 
 const READ_BUFFER_BYTES: usize = 2048;
+
+const MISSING_JOIN: &str = "management server join handle is missing";
 
 #[derive(Clone, Debug)]
 pub struct HttpLimits {
@@ -105,6 +114,9 @@ pub struct ServerConfig {
     pub limits: HttpLimits,
     /// The port an undeliverable management response is reported through.
     pub failure_sink: ManagementFailureSink,
+    /// Request-lifecycle reporting (#820). Real stderr by default; the in-crate
+    /// tests inject a sink. Not `pub`: a test seam, not a public knob.
+    pub(in crate::management::http) lifecycle_log: RequestLifecycleLog,
 }
 
 impl ServerConfig {
@@ -120,12 +132,23 @@ impl ServerConfig {
             authenticator,
             limits,
             failure_sink: ManagementFailureSink::default(),
+            lifecycle_log: RequestLifecycleLog::default(),
         })
     }
 
     /// Attaches the reporting port. See [`ManagementFailureSink`].
     pub fn with_failure_sink(mut self, failure_sink: ManagementFailureSink) -> Self {
         self.failure_sink = failure_sink;
+        self
+    }
+
+    /// Attaches the request-lifecycle record source. See [`RequestLifecycleLog`].
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(in crate::management::http) fn with_lifecycle_log(
+        mut self,
+        lifecycle_log: RequestLifecycleLog,
+    ) -> Self {
+        self.lifecycle_log = lifecycle_log;
         self
     }
 }
@@ -144,6 +167,12 @@ impl HttpError {
             message: message.into(),
             status: 400,
         }
+    }
+
+    /// The status the peer is told. Read by the lifecycle log so its terminal
+    /// marker reports what the client saw, rather than re-deriving it and drifting.
+    fn status(&self) -> u16 {
+        self.status
     }
 }
 
@@ -169,34 +198,26 @@ impl ServerHandle {
     pub fn shutdown(mut self) -> Result<(), HttpError> {
         self.stop.store(true, Ordering::Release);
         wake_listener(self.address);
-        let join = self.join.take().ok_or_else(|| {
-            HttpError::new(
-                "server_join_missing",
-                "management server join handle is missing",
-            )
-        })?;
-        join.join().map_err(|_| {
-            HttpError::new(
-                "server_thread_panicked",
-                "management server thread terminated unexpectedly",
-            )
-        })?
+        self.take_join()?.join().map_err(|_| thread_panic())?
     }
 
     pub fn wait(mut self) -> Result<(), HttpError> {
-        let join = self.join.take().ok_or_else(|| {
-            HttpError::new(
-                "server_join_missing",
-                "management server join handle is missing",
-            )
-        })?;
-        join.join().map_err(|_| {
-            HttpError::new(
-                "server_thread_panicked",
-                "management server thread terminated unexpectedly",
-            )
-        })?
+        self.take_join()?.join().map_err(|_| thread_panic())?
     }
+
+    fn take_join(&mut self) -> Result<JoinHandle<Result<(), HttpError>>, HttpError> {
+        self.join
+            .take()
+            .ok_or_else(|| HttpError::new("server_join_missing", MISSING_JOIN))
+    }
+}
+
+/// One wording for both server-thread failure modes, so the two callers cannot drift.
+fn thread_panic() -> HttpError {
+    HttpError::new(
+        "server_thread_panicked",
+        "management server thread terminated unexpectedly",
+    )
 }
 
 impl Drop for ServerHandle {
@@ -224,6 +245,7 @@ impl ManagementServer {
         let limits = config.limits;
         let authenticator = Arc::clone(&config.authenticator);
         let failure_sink = config.failure_sink;
+        let lifecycle_log = config.lifecycle_log.clone();
         let join = thread::Builder::new()
             .name("sts2-management-server".to_owned())
             .spawn(move || {
@@ -234,6 +256,7 @@ impl ManagementServer {
                     limits,
                     thread_stop,
                     failure_sink,
+                    lifecycle_log,
                 )
             })
             .map_err(io_http_error)?;
@@ -252,6 +275,7 @@ fn run_server_loop(
     limits: HttpLimits,
     stop: Arc<AtomicBool>,
     failure_sink: ManagementFailureSink,
+    lifecycle_log: RequestLifecycleLog,
 ) -> Result<(), HttpError> {
     let active = Arc::new(AtomicUsize::new(0));
     let workers: Arc<Mutex<Vec<JoinHandle<()>>>> = Arc::new(Mutex::new(Vec::new()));
@@ -272,14 +296,24 @@ fn run_server_loop(
                 let active_for_worker = Arc::clone(&active);
                 let worker_limits = limits.clone();
                 let worker_failure_sink = failure_sink.clone();
+                let worker_log = lifecycle_log.clone();
                 let worker = thread::Builder::new()
                     .name("sts2-management-connection".to_owned())
                     .spawn(move || {
                         // The only evidence that the owner could not deliver an answer it had
                         // already computed: the socket is gone, so the peer can no longer be told,
                         // and that silence is what made #816 undiagnosable.
-                        let failed =
-                            handle_connection(stream, &service, &*authenticator, &worker_limits);
+                        // #820 adds the per-request `request_start`/`request_end`/
+                        // `request_abandoned` markers around the same connection, so this
+                        // stays the connection-level report rather than becoming a second
+                        // mechanism for the same fact.
+                        let failed = serve_reported(
+                            stream,
+                            &service,
+                            &*authenticator,
+                            &worker_limits,
+                            &worker_log,
+                        );
                         if let Err((request, error)) = failed {
                             worker_failure_sink.report_connection(peer, request.as_deref(), &error);
                         }
@@ -302,39 +336,6 @@ fn run_server_loop(
         }
     }
     Ok(())
-}
-
-fn handle_connection(
-    mut stream: TcpStream,
-    service: &ManagementService,
-    authenticator: &dyn Authenticator,
-    limits: &HttpLimits,
-) -> Result<(), (Option<String>, HttpError)> {
-    // Each phase gets its own budget rather than sharing one taken before the
-    // read. A shared deadline meant an overran read left the write with an
-    // expired budget, which `write_with_deadline` refuses *before* any syscall:
-    // the peer got nothing instead of the computed response, and saw a silent
-    // close (`ECONNRESET`) for a request the owner had answered. That is what
-    // made Studio's `submission_refused_502` undiagnosable (#816, studio #214).
-    // The bound itself is unchanged -- `limits.deadline` still caps each phase.
-    let read_deadline = Instant::now() + limits.deadline;
-    // The route is captured before dispatch consumes the request, and only so the operator report
-    // can name it (#819). A request that never parsed has no route and is reported without one.
-    let (route, response) = match read_request(&mut stream, read_deadline, limits) {
-        Ok(request) => {
-            let route = format!("{} {}", request.method, request.path);
-            let response = dispatch(request, service, authenticator);
-            (Some(route), response)
-        }
-        Err(error) => (None, Err(error)),
-    };
-    write_response(
-        &mut stream,
-        response,
-        Instant::now() + limits.deadline,
-        limits,
-    )
-    .map_err(|error| (route, error))
 }
 
 #[derive(Clone, Debug)]
