@@ -10,6 +10,17 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **A management connection that ends without delivering its response is now reported through an
+  injectable sink, and the report carries attribution.** The line was an `eprintln!`, and an
+  `eprintln!` cannot be asserted: deleting it passes every other test in the crate, which is how the
+  gap survived 524 tests. It also named no connection — no peer, no code — so a report found in a
+  red CI log could not be tied back to a request, which is the property the line exists to provide.
+  `ManagementServer::start_with_diagnostics` now accepts a `DiagnosticsSink`;
+  `ManagementServer::start` delegates to it with `StderrDiagnostics`, so the production path is
+  unchanged and the emitted line gains the peer's address and the management error's stable code.
+  A connection that *was* answered reports nothing, so the sink cannot bury a real fault in noise.
+  Refs #819.
+
 - **A management response that could not be transmitted is no longer discarded in silence, and the
   read and write phases no longer share one deadline budget.** `handle_connection` took a single
   `Instant` before reading the request and passed that same, already-spent value to both

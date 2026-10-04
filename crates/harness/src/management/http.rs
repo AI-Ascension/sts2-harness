@@ -40,6 +40,10 @@ pub use client::{ClientResponse, ManagementClient};
 #[path = "http_connection_tests.rs"]
 mod connection_tests;
 
+#[cfg(test)]
+#[path = "http_diagnostics_tests.rs"]
+mod diagnostics_tests;
+
 use super::auth::Authenticator;
 use super::contract::{
     CommandRequest, DiffRequest, ExportRequest, InspectRequest, MAX_CONNECTIONS, MAX_HEADER_BYTES,
@@ -196,10 +200,65 @@ impl Drop for ServerHandle {
 
 pub struct ManagementServer;
 
+/// A connection failure the peer can no longer be told about.
+///
+/// Once `handle_connection` has failed, the socket is gone and the only place
+/// the fact can still go is the process's own stderr. That makes the report
+/// write-only and awkward to assert on: a test can capture stderr, but the
+/// obvious way to break this -- deleting the `eprintln!` -- passes every other
+/// test in the suite, because nothing else observes it. Routing the report
+/// through this sink is what makes the line testable at all (harness#819).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UndeliveredResponse {
+    /// The peer's address, so a report can be tied to a connection.
+    pub peer: SocketAddr,
+    /// The management error's stable code, e.g. `deadline_exceeded`.
+    pub code: String,
+    /// The error's human-readable message.
+    pub message: String,
+}
+
+/// Where an undelivered-response report goes.
+///
+/// Production writes to stderr. Tests install a sink so the line is asserted
+/// rather than merely reviewed.
+pub trait DiagnosticsSink: Send + Sync + 'static {
+    fn report(&self, report: &UndeliveredResponse);
+}
+
+/// The default sink: one attributed line on stderr.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StderrDiagnostics;
+
+impl DiagnosticsSink for StderrDiagnostics {
+    fn report(&self, report: &UndeliveredResponse) {
+        // Attribution is the whole point of this line: without the peer it is
+        // a fact about *a* connection, not about a request, and cannot be tied
+        // back to anything when a run goes red (harness#819).
+        eprintln!(
+            "sts2-management peer={} code={} response not delivered: {}",
+            report.peer, report.code, report.message
+        );
+    }
+}
+
 impl ManagementServer {
     pub fn start(
         config: ServerConfig,
         service: Arc<ManagementService>,
+    ) -> Result<ServerHandle, HttpError> {
+        Self::start_with_diagnostics(config, service, Arc::new(StderrDiagnostics))
+    }
+
+    /// Start the server with an explicit diagnostics sink.
+    ///
+    /// `start` delegates here with `StderrDiagnostics`, so the production path
+    /// is unchanged; the seam exists so the undelivered-response report can be
+    /// asserted in a test rather than only reviewed.
+    pub fn start_with_diagnostics(
+        config: ServerConfig,
+        service: Arc<ManagementService>,
+        diagnostics: Arc<dyn DiagnosticsSink>,
     ) -> Result<ServerHandle, HttpError> {
         config.limits.validate()?;
         validate_loopback(config.listen)?;
@@ -211,9 +270,19 @@ impl ManagementServer {
         let thread_stop = Arc::clone(&stop);
         let limits = config.limits;
         let authenticator = Arc::clone(&config.authenticator);
+        let worker_diagnostics = Arc::clone(&diagnostics);
         let join = thread::Builder::new()
             .name("sts2-management-server".to_owned())
-            .spawn(move || run_server_loop(listener, service, authenticator, limits, thread_stop))
+            .spawn(move || {
+                run_server_loop(
+                    listener,
+                    service,
+                    authenticator,
+                    limits,
+                    thread_stop,
+                    worker_diagnostics,
+                )
+            })
             .map_err(io_http_error)?;
         Ok(ServerHandle {
             address,
@@ -229,6 +298,7 @@ fn run_server_loop(
     authenticator: Arc<dyn Authenticator>,
     limits: HttpLimits,
     stop: Arc<AtomicBool>,
+    diagnostics: Arc<dyn DiagnosticsSink>,
 ) -> Result<(), HttpError> {
     let active = Arc::new(AtomicUsize::new(0));
     let workers: Arc<Mutex<Vec<JoinHandle<()>>>> = Arc::new(Mutex::new(Vec::new()));
@@ -237,7 +307,7 @@ fn run_server_loop(
             break;
         }
         match listener.accept() {
-            Ok((stream, _peer)) => {
+            Ok((stream, peer)) => {
                 let current = active.load(Ordering::Acquire);
                 if current >= limits.max_connections {
                     let _ = write_raw_status(stream, 503, "Service Unavailable", &[]);
@@ -248,6 +318,7 @@ fn run_server_loop(
                 let authenticator = Arc::clone(&authenticator);
                 let active_for_worker = Arc::clone(&active);
                 let worker_limits = limits.clone();
+                let worker_sink = Arc::clone(&diagnostics);
                 let worker = thread::Builder::new()
                     .name("sts2-management-connection".to_owned())
                     .spawn(move || {
@@ -258,7 +329,11 @@ fn run_server_loop(
                         if let Err(error) =
                             handle_connection(stream, &service, &*authenticator, &worker_limits)
                         {
-                            eprintln!("sts2-management connection ended without a delivered response: {error}");
+                            worker_sink.report(&UndeliveredResponse {
+                                peer,
+                                code: error.code.clone(),
+                                message: error.message.clone(),
+                            });
                         }
                         active_for_worker.fetch_sub(1, Ordering::AcqRel);
                     })
