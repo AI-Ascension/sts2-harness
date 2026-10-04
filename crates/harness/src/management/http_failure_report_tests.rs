@@ -364,7 +364,13 @@ fn spawn_default_sink_child(
     let stdout = File::create(scratch.stdout_path(child)).expect("the child stdout file must open");
     let stderr = File::create(scratch.stderr_path(child)).expect("the child stderr file must open");
     let child = Command::new(std::env::current_exe().expect("the test executable path"))
-        .args(["--exact", test, "--nocapture", "--test-threads=1"])
+        .args([
+            "--exact",
+            test,
+            "--ignored",
+            "--nocapture",
+            "--test-threads=1",
+        ])
         .env(DEFAULT_SINK_CHILD_ENV, DEFAULT_SINK_CHILD_TOKEN)
         .env(DEFAULT_SINK_CHILD_MODE_ENV, mode)
         .env(DEFAULT_SINK_CHILD_ROLE_ENV, child)
@@ -431,6 +437,7 @@ fn read_child_output(path: &Path) -> String {
 }
 
 #[test]
+#[ignore = "invoked only by the owned subprocess regressions"]
 fn default_sink_child_emits_report() {
     if !is_default_sink_child("single") {
         return;
@@ -439,6 +446,7 @@ fn default_sink_child_emits_report() {
 }
 
 #[test]
+#[ignore = "invoked only by the owned subprocess regressions"]
 fn default_sink_child_emits_concurrent_reports() {
     if !is_default_sink_child("concurrent") {
         return;
@@ -468,6 +476,7 @@ fn default_sink_child_emits_concurrent_reports() {
 }
 
 #[test]
+#[ignore = "invoked only by the owned subprocess regressions"]
 #[allow(clippy::panic)]
 fn default_sink_child_reports_after_caught_panic() {
     if !is_default_sink_child("panic") {
