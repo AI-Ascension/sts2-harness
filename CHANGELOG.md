@@ -10,6 +10,30 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **The management server now reports a start and a terminal line for every request it serves, so an
+  empty owner stderr is no longer ambiguous.** Across all eight recorded occurrences of Studio's
+  intermittent `submission_refused_502`, the owner process emitted nothing at all -- and because the
+  capture plumbing is independently proven (a real bind line reaches `gateway-stdout.log` in the same
+  artifacts), that silence is the owner's own. It was fatal rather than merely inconvenient: an owner
+  that exited non-zero, one killed by a signal, and one that stayed alive and hung all produced an
+  identical empty window, so none of the three states could be told apart from the evidence. Each served
+  request now emits `sts2-management request_start` and exactly one terminal marker -- `request_end`
+  when the response was transmitted, `request_abandoned` when it was not -- each carrying a wall-clock
+  timestamp and a per-process `request_id` that correlates the two lines, so an event can be placed
+  inside a request's window by timestamp alone. **The absence of the terminal line is itself the
+  signal**, which is why exactly one is emitted on every path out of the connection worker and why the
+  start marker is withheld until the request has actually parsed: a line naming a route the server
+  never received would be a lie in the one log that has to be trustworthy. Cost is fixed and
+  caller-independent -- one bounded line per phase, one stderr lock acquisition, no per-byte work on the
+  submission path. The marker reports the *transmitted* status rather than the computed one, so a
+  delivered 4xx is `request_end`, not a failure. Because the management server is a security boundary,
+  nothing a caller controls reaches a line: the query string is dropped, an unrecognised path segment
+  becomes `/?` (so a credential pasted into a route, and any absolute local path, are unrecoverable
+  while the segment count survives), the abandonment marker carries the harness-owned error *code* and
+  never an `io::Error` message, and non-printable bytes are replaced so a route can never forge a
+  second line. This is instrumentation only: no status code, error class, timeout or retry changed.
+  Refs #820, ascension-workflow-studio#214.
+
 - **A management response that could not be transmitted is no longer discarded in silence, and the
   read and write phases no longer share one deadline budget.** `handle_connection` took a single
   `Instant` before reading the request and passed that same, already-spent value to both
@@ -679,49 +703,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   reaches through `mod`, `#[path]`, `#[cfg_attr(..., path = ...)]`, or `include!` now fails
   `--strict`, so a lost `mod` line turns a check red instead of silently dropping coverage. No
   runtime, provider, game, or native behavior changes. Closes #491.
-
-- **Extend the real pinned-Exo CI lane with the `#148` fault and isolation matrix.** The landed lane
-  executed the real Exo process oracle but exercised only a few admission rejections. A new
-  `fault_oracle` test proves the admission faults fail closed with zero model egress (config schema,
-  extension/node/executor pins, relative executor path, argv config identity, provider-route
-  refusal), that a model endpoint which consumes the request and then closes with no reply fails the
-  run within the bounded process lifetime, and that two sequential or concurrent runs each send
-  exactly one model request with no shared endpoint, temporary or state root (`#148` T3). The lane
-  writes a bounded `target/exo-fault-report.json` and asserts its revision against
-  `EXO_SOURCE_REVISION`. This is real-process evidence with a synthetic model and synthetic host;
-  live provider, game and native acceptance remain separate. Refs #148.
-
-- **Pin the authenticated-request constructor so the guard cannot silently stop naming it.** The
-  fence pair added for `#481` cannot detect a *rename* of `from_transport`: renaming it while it
-  stays `pub(crate)` leaves both fences green — the `compile_fail` snippet now dies of `E0599`,
-  which the inert `,E0624` clause ignores, and the compiling companion pins only the type paths and
-  `WorkerCapability::Dispatch`. Neither doc fence can close this by construction, because both
-  compile as an *external* crate and can never name a `pub(crate)` item. An in-crate
-  `#[cfg(test)]` assertion now pins the constructor's name and signature at its `pub(crate)` path;
-  it runs under the existing `Run Rust tests` target (`cargo test --lib`/`--all-targets`), which is
-  different from the `Run doctests` step, and fails to compile if the constructor is renamed or its
-  signature changes. Compatibility: test-only; no production code, schema, route or behavior
-  change. Refs #485.
-
-- **Gate Exo compatibility with the real pinned Exo process in CI.** No workflow executed the
-  repository's own Exo bridge lane: `experiments/exo-agent/bridge` is `[workspace]`-excluded, so
-  `cargo test --workspace` could not reach the `#[ignore]`d `process_oracle`/`lookup_oracle` tests,
-  and the pinned `exoharness/exo` checkout in `ci.yml` fed only lifecycle fixtures. A new
-  `exo-process-oracle.yml` installs the pinned Node/pnpm, stages the owned extension into the pinned
-  read-only Exo checkout, builds the isolated `sts2-exo-executor` and `sts2-exo-bridge`, and runs both
-  oracles against the real Exo TypeScript runtime with a synthetic loopback model and synthetic host.
-  The `EXO_SOURCE_REVISION` pin is re-read at run time and the bounded evidence report is asserted to
-  name it. This proves process composition only; live provider, game and native acceptance remain
-  separate. Refs #148.
-
-- **Make the doctest gate's guarded property actually protected.** `#480` began executing the
-  workspace's doctest, but its `compile_fail,E0624` annotation does not enforce the error code. On
-  rustdoc 1.97.1 a snippet that dies of `E0432` (unresolved import) or `E0425` (undeclared name)
-  still reports `ok`, and an unknown code such as `E9999` is accepted silently, so only
-  "compilation fails for some reason" was ever asserted. The fence reaches the `pub(crate)`
-  constructor through four public re-exports, so removing any one of them would have left CI green
-  while the assertion stopped testing the constructor at all — the same class the parent gate was
-  added to prevent, one level up. The doc comment now carries a second, **compiling** fence that
-  pins those same paths and turns red the moment one is renamed or removed; the `compile_fail`
-  fence is left to assert the authority property it can actually assert. Compatibility: docs and
-  doctest only; no production code, schema, route or behavior change. Refs #481.
