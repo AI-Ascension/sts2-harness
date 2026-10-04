@@ -2,9 +2,9 @@
 
 ## Status
 
-Proposed for implementation. On 2026-10-04 the coordinating owner selected the contract below for
-T1 review. This record describes future owner and consumer behavior; the PR that adds it is
-documentation only. It adds no served route, durable record, Console adapter, sidecar, or process
+Selected for T1; implementation pending. On 2026-10-04 the coordinating owner selected the contract
+below as the owner/consumer decision. This PR records that selection as documentation only. It adds
+no served route, durable record, Console adapter, sidecar, or process
 acceptance result. Harness #391 and Context Console #18 remain open through implementation and
 separate-process acceptance. This is not account-independent GitHub approval or native, provider,
 deployment, or production-host evidence.
@@ -242,7 +242,8 @@ evidence remain separate.
 
 ## References
 
-- Harness source baseline: `982414ea9f2383bc92806660d30e946a0d8030d1`; see
+- Harness source baseline: `44e63cf3222ec6f73d9156a48387f446fc689609`; the cited owner files are
+  unchanged from `982414ea9f2383bc92806660d30e946a0d8030d1` across the #830 merge. See
   `context_owner_support.rs`, `context_owner_source.rs`, `http_routes_run.rs`,
   `context_control/types.rs`, `context_control/store_schema.rs`, and
   `production_context_owner/source.rs`.
