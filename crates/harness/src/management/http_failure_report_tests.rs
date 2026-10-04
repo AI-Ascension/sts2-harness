@@ -45,10 +45,6 @@ impl ManagementFailurePort for RecordingFailurePort {
             lines.push(line.to_owned());
         }
     }
-
-    fn reports(&self) -> bool {
-        true
-    }
 }
 
 fn recording_sink() -> (ManagementFailureSink, RecordingFailurePort) {
@@ -268,19 +264,53 @@ fn the_report_carries_no_environment_secret_or_local_path() {
     );
 }
 
+/// Captures what the *production* port writes, by redirecting the writer seam.
+///
+/// The seam is process-wide, so this holds [`STDERR_WRITER_LOCK`] for the whole substitution and
+/// restores real stderr before releasing it. Without the restore the substitution would leak into
+/// every other test that reports a management failure, which is the kind of cross-test coupling that
+/// makes a suite report green while asserting nothing.
+fn capture_production_reports(test_body: impl FnOnce()) -> Vec<String> {
+    let _guard = STDERR_WRITER_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let captured: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let recorder = Arc::clone(&captured);
+    redirect_production_reports(Arc::new(move |line: &str| {
+        if let Ok(mut lines) = recorder.lock() {
+            lines.push(line.to_owned());
+        }
+    }))
+    .expect("the stderr writer lock must be poison-free");
+
+    test_body();
+
+    restore_production_reports();
+    captured
+        .lock()
+        .map(|lines| lines.clone())
+        .unwrap_or_default()
+}
+
 #[test]
-fn the_default_sink_reports_rather_than_discards() {
-    // There is deliberately no `disabled()` sink. `BoundaryCaptureSink` in this repository has one
-    // because its boundary must refuse rather than publish exactness for a boundary nothing
-    // observed; this boundary must REPORT rather than vanish, so an inert default would be the
-    // defect itself.
+fn the_default_sink_writes_its_report_to_the_production_path() {
+    // The assertion #824 asked for, and one that cannot pass for every implementation.
     //
-    // This asserts the property the type surface can actually carry: the default is a distinct
-    // value that still reports. A no-op port is a separate type, so `Default` resolving to one
-    // that reports is checkable here even though the raw `eprintln!` it writes to is not.
-    let sink = ManagementFailureSink::default();
-    assert!(
-        sink.reports_unread_failures(),
-        "the default management failure sink must report undeliverable responses (#819)"
+    // The probe this replaces asserted `ManagementFailureSink::default().reports_unread_failures()`,
+    // and `StderrFailurePort::reports()` returned a hard-coded `true`. Making the production
+    // `report` a no-op therefore left the entire 530-test suite green, verified twice by independent
+    // review: the test proved only that a constant was still `true`.
+    //
+    // This drives the *default* sink through the *production* port with only the final write
+    // redirected, so the composition under test is the one #816 ships rather than a test double.
+    // Deleting `report`, or making it not write, turns this red.
+    let lines = capture_production_reports(|| {
+        ManagementFailureSink::default().report("sts2-management undeliverable response");
+    });
+
+    assert_eq!(
+        lines,
+        vec!["sts2-management undeliverable response".to_owned()],
+        "the default sink must write exactly the line it is handed, through the production path, got {lines:?}"
     );
 }
