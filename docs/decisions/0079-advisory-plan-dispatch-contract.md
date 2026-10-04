@@ -97,10 +97,28 @@ base and head fail on the identical 17 names, and head adds one passing test.
 
 They are not environmental by assumption either. The failures reduce to `ExactArtifactStore`
 returning `Missing` from the confined write path in
-`execution/exact_checkpoint_io.rs`: the directory walk over the blob prefix succeeds, the leaf
-`openat` returns the expected first-write `ENOENT`, and the `O_TMPFILE` temporary that follows is
-what cannot be created on this container's filesystem. Nothing in this change touches that store,
-that path jail or those tests. Fixing it is a separate piece of work and is deliberately not folded
-into a change about plan dispatch validation, where it would be an unreviewable second subject.
+`execution/exact_checkpoint_io.rs`. Nothing in this change touches that store, that path jail or
+those tests. Fixing it is a separate piece of work and is deliberately not folded into a change
+about plan dispatch validation, where it would be an unreviewable second subject.
+
+**The mechanism, measured rather than assumed.** The directory walk over the blob prefix and the
+leaf `openat` both succeed, and `openat(".", O_TMPFILE | O_WRONLY)` *succeeds too* — the unnamed
+temporary is created and written, and its descriptor is a valid regular file. The failure is the
+next call: `linkat(&temporary, "", directory, name, AT_EMPTY_PATH)` returns `ENOENT`, which
+`io_error` maps to `ExactCheckpointError::Missing`, which is the error those tests report.
+
+Two controls isolate it to `AT_EMPTY_PATH` rather than to the filesystem or the path jail. Linking
+the same content, in the same directory, by *named* path succeeds; and `fstat` on the temporary's
+descriptor succeeds. The underlying condition is that this container holds **no capabilities at
+all** (`CapEff: 0000000000000000` in `/proc/self/status`), so it lacks `CAP_DAC_READ_SEARCH`,
+without which `linkat` cannot honour `AT_EMPTY_PATH` and resolves the unnamed file as absent.
+
+Two consequences a reader should not have to rediscover. The confined write path is **not** unsound
+in general — it is sound wherever `CAP_DAC_READ_SEARCH` is available, and it degrades to a typed
+`Missing` rather than a panic or a partial artifact either way. And the store does **not** currently
+fall back to a weaker publication path when the capability is absent: an admitted write simply
+reports `Missing`. Whether that should instead degrade to an explicit unsupported-capability result
+is a separate design decision for whoever owns `ExactArtifactStore`, and is deliberately not settled
+here.
 
 Refs #319.
