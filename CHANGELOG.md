@@ -11,6 +11,11 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **The Context Console owner contract is recorded for review.** ADR 0080 maps eligible items,
+  draft/revision/preview records, independent content/edit/objective grants, exact receipt recovery
+  and the still-unavailable ADR 0021 sidecar trust join. This is a documentation-only T1 decision;
+  no route or process acceptance is delivered. Refs #391, Console #18.
+
 - **The tautological default-sink probe is deleted.** `the_default_sink_reports_rather_than_discards`
   asserted a hard-coded `true`; a mutation that made `StderrFailurePort::report` a no-op still left
   **530 passed, 0 failed**. The `reports()` predicate and probe were removed. The first exact-write
