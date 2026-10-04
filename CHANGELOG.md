@@ -10,6 +10,57 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **Every management request the owner serves is now reported on stderr, so an empty owner
+  stderr is no longer ambiguous between a crash, a signal kill and a hang.** Studio's
+  intermittent `submission_refused_502` had recurred eight times, and in every occurrence the
+  decisive fact was that the owner process emitted nothing at all: `owner-stdout.log` was 0
+  bytes, `owner-stderr.log` held 160 bytes that belonged to the Studio fixture rather than the
+  owner, and `serve-workflow.log` was 0 bytes, while the gateway log proved the capture path
+  itself was sound. That silence is what made acceptance criterion 3 undecidable — a crash, a
+  kill and a clean-but-mute exit are indistinguishable in an empty log — so the management
+  server now writes one bounded line per request on the same stderr the operator already
+  captures. Each served request emits a `request_start` line carrying a UTC timestamp, epoch
+  seconds, a monotonic per-server `request_id`, the method and a bounded route, and then exactly
+  one terminal line: `request_end` with the status the peer was actually told and the elapsed
+  time, or `request_abandoned` with a typed code when the response was computed but could not be
+  transmitted. The contract is stated once, in `http_lifecycle.rs`: **a request emits a start line
+  and exactly one terminal line, and the absence of the terminal line is itself the signal that it
+  did not finish.** A stall or a panic on the request thread therefore surfaces as a start line
+  with no terminal line, which is what makes those two states distinguishable from a request that
+  finished normally.
+
+  Three properties keep the log safe, because the harness is a security boundary and a logging
+  change that leaks a token is worse than no logging change at all. The query string is dropped.
+  Route segments are checked against a closed vocabulary of the routes the server actually
+  serves, so an unserved segment becomes `/?`: the separator keeps the segment *count*, so the
+  line stays diagnosable, while a credential pasted into a path and any absolute local path —
+  which always contains segments outside the list — are unrecoverable from the line. Labels are
+  byte-capped and non-printable bytes are replaced, so a caller can neither drive unbounded log
+  volume nor forge a second operator line. Abandonment reports the typed code only, never
+  `HttpError::message`, because `io_http_error` builds its message from an `io::Error` whose text
+  can embed caller bytes.
+
+  Two placement decisions carry the reasoning. The start marker is emitted *after* the request
+  parses, never before, because until the read succeeds there is no method and no route, and a
+  start line naming a route the server never received would be a lie in the one log that exists
+  to be trustworthy. The terminal marker keys on whether the response was *transmitted*, not on
+  whether it was *computed*: a delivered 4xx is `request_end`, and a computed response the peer
+  reset away is `request_abandoned`. Cost is bounded at two lines per request with no per-byte
+  work, so the Studio submission path gains no meaningful latency.
+
+  This work coordinates with #819 rather than competing with it. #819 (PR #821) reports an
+  undeliverable response through the assertable `ManagementFailureSink` port, naming the peer,
+  the route and the cause; this change preserves that exact return contract and adds the
+  per-request markers alongside it, so one event is described at two resolutions — #819 at the
+  connection, #820 per request — and neither introduces a second report mechanism for the same
+  failure. Observability is proven by mutation in both directions: deleting the start emission,
+  disabling the terminal-marker block, reporting abandonment as an ordinary completion, and
+  disabling the route-vocabulary filter each turn the suite red, and the secret-absence,
+  absolute-path-absence, log-forging and unknown-route tests are among what goes red.
+  Compatibility: diagnostics only; the status codes, error classes, response bounds, per-phase
+  deadline and every delivered response are unchanged, and no timeout or retry was added.
+  Refs #820, #819.
+
 - **An undeliverable management response is now reported through an assertable port, and the
   report names the peer and the route it failed to answer.** #817 stopped discarding a management
   response the owner could not transmit and reported it with an `eprintln!`, but nothing asserted
@@ -653,41 +704,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   header this client sends is admitted by the server it is pointed at, which today is the harness
   management listener, not the gateway. Refs #598, #560.
 
-- **Split the synthetic management adapter so it stops hiding a 531-line hard-limit breach behind a
-  false exemption.** `management/workflow_ports.rs` measured **931** nonblank lines against a
-  `rust_max` of **400** — more than double — and its `policy.toml` exemption claimed the file
-  "remain[s] below the hard limit". Because `size_findings` skips exempt paths *before* reading
-  them, the stated count is the only assertion of that count anywhere, so nothing prompted anyone
-  to check it and the breach stayed green. The file is now nine modules, largest **293** nonblank,
-  all inside the 400-line hard limit, and the exemption is **deleted** rather than reworded. The
-  modules group along their own seams — definition admission, context inspection, capability
-  reporting, in-memory and persistent execution, replay — plus a small shared support module for
-  error translation, with the three fixture constructors left in `workflow_ports.rs`. The split is
-  behaviour-preserving: every one of the 931 original nonblank body lines survives, modulo the
-  deliberate `pub(super)` visibility the module boundaries require and the re-wrapping of the
-  original single `use` block into eight per-module ones. Splitting a file is exactly the kind of
-  change that silently drops an import or a visibility edge, so the split was verified by compiling
-  rather than by inspection: `cargo check -p sts2-harness --lib` passes with **0 errors and 0
-  warnings**, and `repo-policy --strict` reports **0 warnings, 0 errors**. Refs #570.
-
-- **Split the provider-session policy HTTP suite so it stops hiding a 114-line hard-limit breach
-  behind a false exemption count.** `provider_session_policy_http.rs` measured **714** nonblank
-  lines against a `rust_test_max` of **600**, and its `policy.toml` exemption claimed **557** and
-  that the file "remain[s] below the 600-line test hard limit". The size gate cannot catch this on
-  its own: `size_findings` skips exempt paths *before* reading them, so an exemption's stated count
-  is the only assertion of that count anywhere. Because the prose reads as a durable, reviewed
-  justification, nothing prompted anyone to check it, and the breach stayed green. The suite is
-  now three files — the redacted read/reopen projection, adoption identity and admitted-run
-  binding, and the command lifecycle covering CAS, idempotency, restart and control grants — over a
-  shared `support/` fixture module, at **133 / 171 / 288** and **171** nonblank lines, all inside
-  the 400-line preferred budget, and the exemption is **deleted** rather than reworded: correcting
-  the count instead of splitting the file is the exact failure mode this entry describes. All ten
-  original tests are preserved and still pass, unchanged in behaviour; this is a source layout
-  change only, with no production, protocol, or runtime effect. The one-string fix from the same
-  family is included: `served_gateway_evidence_naming.rs` named a graph lane `graph-original`
-  where the real request ids are `graph-changed` and `graph-base`, so the fixture was pinned to an
-  id that does not exist — harmless today because that test only asserts pairwise distinctness,
-  and silently rot for the same reason this exemption did. Refs #564.
 - **Retire five unreachable Rust sources and gate the whole class.** `#491` found five tracked `.rs`
   files that no crate root reached, so they never compiled and their tests never ran. Four are
   superseded duplicates: `runtime_v3_episode_actions.rs` against the `include!`d
@@ -699,17 +715,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   reaches through `mod`, `#[path]`, `#[cfg_attr(..., path = ...)]`, or `include!` now fails
   `--strict`, so a lost `mod` line turns a check red instead of silently dropping coverage. No
   runtime, provider, game, or native behavior changes. Closes #491.
-
-- **Extend the real pinned-Exo CI lane with the `#148` fault and isolation matrix.** The landed lane
-  executed the real Exo process oracle but exercised only a few admission rejections. A new
-  `fault_oracle` test proves the admission faults fail closed with zero model egress (config schema,
-  extension/node/executor pins, relative executor path, argv config identity, provider-route
-  refusal), that a model endpoint which consumes the request and then closes with no reply fails the
-  run within the bounded process lifetime, and that two sequential or concurrent runs each send
-  exactly one model request with no shared endpoint, temporary or state root (`#148` T3). The lane
-  writes a bounded `target/exo-fault-report.json` and asserts its revision against
-  `EXO_SOURCE_REVISION`. This is real-process evidence with a synthetic model and synthetic host;
-  live provider, game and native acceptance remain separate. Refs #148.
 
 - **Pin the authenticated-request constructor so the guard cannot silently stop naming it.** The
   fence pair added for `#481` cannot detect a *rename* of `from_transport`: renaming it while it
