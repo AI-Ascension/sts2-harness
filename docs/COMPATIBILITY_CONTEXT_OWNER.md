@@ -3,8 +3,48 @@
 This file holds the compatibility rows for the context-owner side of the management surface
 (bindings, associations, composed limits, receipts and control commands). It is part of the
 [compatibility policy and matrix](COMPATIBILITY.md); the classification vocabulary, evidence
-rules and the remaining rows live there. Every row below is `additive-compatible` unless it says
-otherwise, and none of them establishes native, provider or deployment behaviour.
+rules and the remaining rows live there. Every shipped row below is `additive-compatible` unless it
+says otherwise. Proposed rows are explicitly labeled and do not establish native, provider or
+deployment behaviour.
+
+## Proposed owner-local drafts, previews and capability sidecar
+
+[ADR 0080](decisions/0080-context-owner-draft-preview-and-sidecar-contract.md) records the
+coordinating owner's T1 contract for a future Harness owner-local eligible-item, draft, revision,
+preview and mutation-receipt surface, plus Console's internal ADR 0021 capability-sidecar trust
+join. This PR is documentation only: the routes, durable records, new scopes, Console adapter and
+separate-process acceptance do not yet exist. Harness #391 and Context Console #18 remain open.
+
+The current immutable `ContextSourceDocument` remains a published source snapshot, not a mutable
+Console draft. Its item bytes are the candidate owner-authoritative source for future eligibility;
+today there is no public eligible-item operation or durable mutable-draft registry. A new owner
+operation must resolve exact references and digests from its own run-scoped encrypted source/item
+records and current binding. Caller-supplied IDs or digests cannot create eligibility. Include and
+exclude must preserve membership policy and protected-prerequisite rules; pins must remain a subset
+of effective inclusion. Notes and objectives remain item references backed by owner-held bytes.
+New note/objective bytes must stay in bounded encrypted owner records with existing expiry and
+retention; author identity comes from the authenticated same actor.
+
+The proposed permission additions are `workflow:context:content:read` for owner-advertised bounded
+eligible item bytes, `workflow:context:edit` for draft, membership, note and preview mutations, and
+`workflow:context:objective:edit` for objective changes. Metadata reads and exact receipt recovery
+remain `workflow:read`; pause, commit and resume remain `workflow:control`; immutable source upload
+remains `workflow:content:write`. The new content scope reveals only bounded eligible items under
+existing protection, expiry and retention policy; it does not expose prepared provider input, enable
+capture, or authorize caller-selected references. Preserve the existing `workflow:*` wildcard
+behavior and same authenticated-subject binding. A narrow ordinary edit or control grant does not
+imply objective edit, and a metadata-only caller receives no raw item bytes. New closed owner
+envelopes and an atomic one-way SQLite v1-to-v2 migration preserve all old source/receipt bytes and
+AAD; new records use purpose-specific AAD and do not extend retention.
+
+Console's existing facade grants and public schemas remain distinct and unchanged. Its proposed
+owner adapter may add a sidecar only when the exact accepted capability operation joins the actual
+owner record to independently trusted descriptor, owner/revision, source, complete scope, binding
+and epoch values. The provider-session effective-limits route is candidate metadata, not that join;
+the context-memory record and live provider-session inspection remain unavailable in the current
+composition. Until a real adapter proves the trust join, the internal sidecar remains absent. The
+versioned scopes/envelopes are proposed additions; they are not yet compatibility claims for a
+shipped server.
 
 ## Opt-in recorded context bindings
 

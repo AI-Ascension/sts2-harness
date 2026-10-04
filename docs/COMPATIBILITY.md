@@ -61,7 +61,8 @@ selected limit enforcement ([ADR 0028](decisions/0028-selected-context-control-l
 ([ADR 0024](decisions/0024-context-control-receipt-recovery.md)), control commands
 ([ADR 0048](decisions/0048-context-owner-control-commands.md)) and the recorded-binding projection
 ([ADR 0023](decisions/0023-recorded-context-binding-http-projection.md)) are kept together in
-[`COMPATIBILITY_CONTEXT_OWNER.md`](COMPATIBILITY_CONTEXT_OWNER.md).
+[`COMPATIBILITY_CONTEXT_OWNER.md`](COMPATIBILITY_CONTEXT_OWNER.md), with the proposed owner-local
+authoring and capability-sidecar contract in [ADR 0080](decisions/0080-context-owner-draft-preview-and-sidecar-contract.md).
 
 ## Served provider-session effective-limits record
 
