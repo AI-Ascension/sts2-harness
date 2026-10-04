@@ -114,3 +114,23 @@ not a supported release or a second normative changelog.
   different from the `Run doctests` step, and fails to compile if the constructor is renamed or its
   signature changes. Compatibility: test-only; no production code, schema, route or behavior
   change. Refs #485.
+
+- **Make the management client's header allow-list guard non-vacuous, and correct the criteria
+  that produced it.** The guard added for the `Accept` fix transcribed the gateway's
+  `header_is_allowed` exactly, then added a nineteenth entry, `idempotency-key`, under the comment
+  "Admitted by the gateway as a non-gateway header" — a category that does not exist, since
+  `header_is_allowed` is a bare `matches!` with no exemption clause. Separately, the test only ever
+  built a head with the idempotency argument `None`, and the header is emitted only in the `Some`
+  branch, so the entry could neither fail nor be reached: the test asserted over a request that
+  never carried the header it existed to police. Measured, that nineteenth entry was the sole
+  difference between the guard passing and failing, so a head the gateway refuses with
+  `400 unsupported_header` was asserted as safe. The fabricated entry and its false comment are
+  removed; the plain head is now asserted against the gateway list outright, and the idempotent
+  head is pinned to differ from that list by *exactly* `idempotency-key` — which fails both if a
+  new unadmitted header appears and if the header is ever dropped. A new test asserts the guard is
+  non-vacuous, which is the check whose absence let the defect through. The header is deliberately
+  **not** removed: it is required by the management server (`idempotency_key_required`) and declared
+  `required: true` on 16 operations across the memory and control OpenAPI contracts, so dropping it
+  would turn 16 policy mutations into `400`s. The documented invariant is the precise one — every
+  header this client sends is admitted by the server it is pointed at, which today is the harness
+  management listener, not the gateway. Refs #598, #560.
