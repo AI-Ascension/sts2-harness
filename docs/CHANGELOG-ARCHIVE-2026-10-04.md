@@ -102,3 +102,15 @@ not a supported release or a second normative changelog.
   writes a bounded `target/exo-fault-report.json` and asserts its revision against
   `EXO_SOURCE_REVISION`. This is real-process evidence with a synthetic model and synthetic host;
   live provider, game and native acceptance remain separate. Refs #148.
+
+- **Retire five unreachable Rust sources and gate the whole class.** `#491` found five tracked `.rs`
+  files that no crate root reached, so they never compiled and their tests never ran. Four are
+  superseded duplicates: `runtime_v3_episode_actions.rs` against the `include!`d
+  `runtime_v3_episode_helpers.rs` (whose `retain_operation` is stricter, including the payload
+  check), `runtime_v3_lifecycle_reconnect_test.rs` against the recovered reconnect test, and the
+  `#220` residue `policy_owner/owner_impl.rs`/`change.rs`. The fifth, `sts2-astra-bridge_tests.rs`,
+  held one assertion with no live counterpart, now ported into `sts2_astra_bridge_tests.rs`.
+  `repo-policy` enforces `RUST002`: a tracked `.rs` inside a compiled crate that no crate root
+  reaches through `mod`, `#[path]`, `#[cfg_attr(..., path = ...)]`, or `include!` now fails
+  `--strict`, so a lost `mod` line turns a check red instead of silently dropping coverage. No
+  runtime, provider, game, or native behavior changes. Closes #491.

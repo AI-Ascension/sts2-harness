@@ -244,14 +244,21 @@ fn a_request_the_real_server_serves_is_reported_start_to_finish() {
 }
 
 #[test]
-fn an_error_response_is_still_a_delivered_response_not_an_abandonment() {
-    // The distinction that keeps the marker meaningful.
+fn a_connection_that_never_sent_a_request_is_named_rather_than_left_unattributed() {
+    // The defect this closes was found by driving the real binary, not by inspection:
+    // a peer that connects, sends a partial request, and then goes silent hit the read
+    // budget and emitted a bare
     //
-    // An unreadable or malformed request still produces a response, and that
-    // response still reaches the peer. `request_end` is therefore correct here, and
-    // marking it `request_abandoned` would make the marker meaningless -- "abandoned"
-    // has to mean exactly one thing: the owner computed an answer and could not
-    // transmit it.
+    //     sts2-management request_end ts=... request_id=13 status=400 elapsed_ms=5459
+    //
+    // -- a terminal line with no start line before it and no route anywhere on it.
+    // That is unattributable: an operator reading it cannot tell which route it was
+    // about, or whether anything ever arrived at all. It is the same defect class #819
+    // documents for the pre-existing `eprintln!`, reproduced by the new code, so the
+    // marker is now `request_unreadable` and names its own condition.
+    //
+    // A live check on the built binary is what surfaced this; the test exists so the
+    // class cannot come back quietly.
     let (address, server, captured) = captured_server(Duration::from_millis(150));
 
     let mut peer = TcpStream::connect(address).expect("the peer must connect");
@@ -265,26 +272,45 @@ fn an_error_response_is_still_a_delivered_response_not_an_abandonment() {
     let received = read_available(&peer, 4096);
     assert!(
         String::from_utf8_lossy(&received).starts_with("HTTP/1.1 "),
-        "the control claim: an error response still reaches the peer"
+        "the control claim: an error response still reaches the peer, so behaviour is \
+         unchanged and only the marker differs"
     );
     drop(peer);
     server.shutdown().expect("the server must shut down");
 
     let joined = captured.joined();
     assert!(
-        joined.contains("request_end"),
-        "a delivered error response must be marked as ended, got {joined:?}"
+        joined.contains("request_unreadable"),
+        "a connection that never sent a readable request must be named as such, got \
+         {joined:?}"
+    );
+    assert!(
+        !joined.contains("request_start"),
+        "no start marker may be emitted for a request that never parsed, because there \
+         is no method or route to name and a guessed one would be believed, got {joined:?}"
+    );
+    assert!(
+        !joined.contains("request_end"),
+        "a request that never parsed must never be reported as an ordinary completion, \
+         because that marker claims a response was delivered for a request that never \
+         arrived, got {joined:?}"
     );
     assert!(
         !joined.contains("request_abandoned"),
-        "a delivered response must never be marked abandoned, got {joined:?}"
+        "abandoned has to mean exactly one thing -- the owner computed an answer and \
+         could not transmit it -- so a request that never parsed must not claim it, \
+         got {joined:?}"
     );
-    // The status the peer was told is reported, so the log explains the client view.
-    // `deadline_exceeded` is an `HttpError::new`, which carries status 400; the point
-    // is that the logged status is the one the peer received, not a re-derivation.
+    // The typed code, never `HttpError::message`: `deadline_exceeded`'s message is
+    // built from the io error's own text.
     assert!(
-        joined.contains("status=400"),
-        "the terminal marker must report the status the peer was told, got {joined:?}"
+        joined.contains("code=deadline_exceeded"),
+        "the marker must name the typed code that stopped the read, got {joined:?}"
+    );
+    assert!(
+        !joined.contains("os error") && !joined.contains("timed out"),
+        "no error message text may reach the log, because `io_http_error` embeds the \
+         caller's bytes in it, got {joined:?}"
     );
 }
 

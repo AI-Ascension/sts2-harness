@@ -162,6 +162,47 @@ fn a_served_request_emits_a_start_and_a_terminal_line() {
 }
 
 #[test]
+fn an_unreadable_request_is_named_by_its_own_marker() {
+    // A connection that never delivered a readable request has no method and no route,
+    // so it cannot emit a start line. What it must not do is emit a terminal line that
+    // claims an ordinary completion for a request that never arrived: the resulting
+    // line is unattributable, which is the defect class #819 documents.
+    let sink = Arc::new(RecordingSink::new(1_700_000_000, vec![1_000, 1_040]));
+    let lifecycle = log_with(&sink);
+
+    let connection = lifecycle.begin();
+    connection.log_unreadable("deadline_exceeded");
+
+    let lines = sink.lines();
+    assert_eq!(
+        lines.len(),
+        1,
+        "an unreadable request emits exactly one terminal line, got {lines:?}"
+    );
+    assert!(
+        lines[0].starts_with("sts2-management request_unreadable "),
+        "the line must name its own condition rather than borrow `request_end`, got {:?}",
+        lines[0]
+    );
+    assert!(
+        lines[0].contains("code=deadline_exceeded"),
+        "the line must name the typed code that stopped the read, got {:?}",
+        lines[0]
+    );
+    assert!(
+        !lines[0].contains("status="),
+        "no status may be claimed: no response was delivered for a request that never \
+         arrived, got {:?}",
+        lines[0]
+    );
+    assert!(
+        !lines[0].contains("request_start") && !lines[0].contains("route="),
+        "a line with no start line before it must not invent a route, got {:?}",
+        lines[0]
+    );
+}
+
+#[test]
 fn every_marker_line_carries_a_timestamp_placing_it_in_a_window() {
     // Requirement: a caller places an event inside a window *by timestamp alone*.
     // Both markers must therefore carry a rendered timestamp, not just an id.

@@ -193,6 +193,29 @@ impl RequestLifecycle {
         );
     }
 
+    /// Emit the terminal marker for a connection that ended **without a readable
+    /// request**.
+    ///
+    /// A request that never parsed has no method and no route to name, so this takes
+    /// no attribution fields at all. That is deliberate, and it is why this marker
+    /// exists rather than letting the `request_end` path cover the case: a bare
+    /// `request_end` with no `request_start` and no route is a line nobody can act on,
+    /// which is precisely the unattributed-report defect harness #819 documents. A
+    /// request that never arrived is a state an operator must be able to see and
+    /// distinguish from one that arrived and was refused, so it gets its own marker
+    /// and the bounded, harness-owned literal below says so.
+    ///
+    /// Only the typed `code` is logged, for the same reason
+    /// [`Self::log_abandoned`] logs only the code: `HttpError::message` is built from
+    /// an `io::Error` whose text can embed caller bytes.
+    pub(in crate::management::http) fn log_unreadable(&self, code: &str) {
+        self.emit(
+            "request_unreadable",
+            &[code_label(code), reason_label("no request was read")],
+            None,
+        );
+    }
+
     /// Emit the terminal marker for a request whose response was transmitted.
     pub(in crate::management::http) fn log_end(&self, status: u16) {
         self.emit("request_end", &[], Some(status));

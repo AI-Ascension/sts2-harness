@@ -9,8 +9,10 @@
 //! The contract, for harness
 //! [#820](https://github.com/AI-Ascension/sts2-harness/issues/820), is one sentence:
 //!
-//! **A request that was served emits a start line and exactly one terminal line, and
-//! the absence of the terminal line is itself the signal that it did not finish.**
+//! **A connection emits exactly one terminal line, and every terminal line is
+//! attributable -- either it follows a start line that named the request, or it is
+//! itself named. The absence of a terminal line is the signal that the connection did
+//! not finish.**
 //!
 //! Three consequences shape the code below.
 //!
@@ -22,6 +24,11 @@
 //!   response was *transmitted*, not on whether it was *computed*. A response that was
 //!   computed and delivered is `request_end` even when it is a 4xx; a response that was
 //!   computed and could not be delivered is `request_abandoned`.
+//! - A connection that ended without a readable request cannot have a start marker, so
+//!   its terminal marker is `request_unreadable` -- a marker that names its own
+//!   condition instead of borrowing a `request_end` it has no start line for. A
+//!   terminal line with no start line and no route would be unattributable, which is
+//!   the defect class harness #819 documents for the pre-existing `eprintln!`.
 //! - The terminal marker is emitted on every path out of this function. A marker that
 //!   can be skipped by a panic or an early return would recreate exactly the silence
 //!   this work exists to remove.
@@ -72,6 +79,10 @@ pub(super) fn serve_reported(
     // The route is captured before dispatch consumes the request, so #819's failure
     // report can name it. A request that never parsed has no route and is reported
     // without one, rather than with a guessed one.
+    // `unreadable_code` is the type code of a request that never parsed. It is the
+    // only case in which a terminal marker may be emitted with no start marker before
+    // it, and it is read by the terminal-marker match below.
+    let mut unreadable_code: Option<String> = None;
     let (route, response) = match read_request(&mut stream, read_deadline, limits) {
         Ok(request) => {
             // The one place a request becomes attributable.
@@ -80,7 +91,22 @@ pub(super) fn serve_reported(
             let response = dispatch(request, service, authenticator);
             (Some(route), response)
         }
-        Err(error) => (None, Err(error)),
+        // The connection ended without a readable request, so no start marker can be
+        // emitted for it and none is faked. A terminal marker is still emitted after
+        // the write, and it is a *distinct* marker rather than a bare `request_end`:
+        // a terminal line with no start line and no route is unattributable, which is
+        // exactly the defect class #819 documents for the pre-existing `eprintln!`. A
+        // peer that connects, says nothing, and hits the read budget is a state an
+        // operator has to be able to see and tell apart from one that arrived and was
+        // refused.
+        //
+        // The error is returned unchanged, so the `400` the peer is told and the error
+        // #819's port reports are both exactly what they were before this marker
+        // existed. Only the observability changed.
+        Err(error) => {
+            unreadable_code = Some(error.code.clone());
+            (None, Err(error))
+        }
     };
     // Captured before `write_response` consumes the response: this is the status the
     // peer was told, so reading it here reports what the client actually saw rather
@@ -95,12 +121,17 @@ pub(super) fn serve_reported(
         Instant::now() + limits.deadline,
         limits,
     );
-    match &written {
-        Ok(()) => lifecycle.log_end(status),
+    match (&written, &unreadable_code) {
+        // A request that never parsed cannot have a start marker, and must not be
+        // reported as an ordinary completion. Naming it is what keeps a peer that
+        // connects and then says nothing distinguishable from one that arrived and
+        // was answered.
+        (_, Some(code)) => lifecycle.log_unreadable(code),
+        (Ok(()), None) => lifecycle.log_end(status),
         // Only the typed code is logged. `HttpError::message` is not safe log input:
         // `io_http_error` builds it from `io::Error`, whose text can embed caller
         // bytes, so the code alone is what tells the states apart.
-        Err(error) => lifecycle.log_abandoned(&error.code),
+        (Err(error), None) => lifecycle.log_abandoned(&error.code),
     }
     written.map_err(|error| (route, error))
 }

@@ -23,11 +23,21 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   seconds, a monotonic per-server `request_id`, the method and a bounded route, and then exactly
   one terminal line: `request_end` with the status the peer was actually told and the elapsed
   time, or `request_abandoned` with a typed code when the response was computed but could not be
-  transmitted. The contract is stated once, in `http_lifecycle.rs`: **a request emits a start line
-  and exactly one terminal line, and the absence of the terminal line is itself the signal that it
-  did not finish.** A stall or a panic on the request thread therefore surfaces as a start line
-  with no terminal line, which is what makes those two states distinguishable from a request that
-  finished normally.
+  transmitted. A connection that ends without a readable request cannot have a start marker, so
+  its terminal marker is `request_unreadable`, which names its own condition. The contract is
+  stated once, in `http_lifecycle.rs`: **a connection emits exactly one terminal line, and every
+  terminal line is attributable — either it follows a start line that named the request, or it is
+  itself named. The absence of a terminal line is the signal that the connection did not finish.**
+  A stall or a panic on the request thread therefore surfaces as a start line with no terminal
+  line, which is what makes those two states distinguishable from a request that finished
+  normally.
+
+  That `request_unreadable` marker exists because driving the real binary found the defect
+  it fixes. A peer that connected, sent a partial request, and then went silent hit the read
+  budget and emitted a bare `request_end` with no start line before it and no route anywhere on
+  it — a terminal line nobody could act on, which is the same unattributed-report defect class
+  #819 documents for the pre-existing `eprintln!`, reproduced by the new code. The error is
+  still returned unchanged and the peer still receives the same `400`; only the marker differs.
 
   Three properties keep the log safe, because the harness is a security boundary and a logging
   change that leaks a token is worse than no logging change at all. The query string is dropped.
@@ -703,18 +713,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   would turn 16 policy mutations into `400`s. The documented invariant is the precise one — every
   header this client sends is admitted by the server it is pointed at, which today is the harness
   management listener, not the gateway. Refs #598, #560.
-
-- **Retire five unreachable Rust sources and gate the whole class.** `#491` found five tracked `.rs`
-  files that no crate root reached, so they never compiled and their tests never ran. Four are
-  superseded duplicates: `runtime_v3_episode_actions.rs` against the `include!`d
-  `runtime_v3_episode_helpers.rs` (whose `retain_operation` is stricter, including the payload
-  check), `runtime_v3_lifecycle_reconnect_test.rs` against the recovered reconnect test, and the
-  `#220` residue `policy_owner/owner_impl.rs`/`change.rs`. The fifth, `sts2-astra-bridge_tests.rs`,
-  held one assertion with no live counterpart, now ported into `sts2_astra_bridge_tests.rs`.
-  `repo-policy` enforces `RUST002`: a tracked `.rs` inside a compiled crate that no crate root
-  reaches through `mod`, `#[path]`, `#[cfg_attr(..., path = ...)]`, or `include!` now fails
-  `--strict`, so a lost `mod` line turns a check red instead of silently dropping coverage. No
-  runtime, provider, game, or native behavior changes. Closes #491.
 
 - **Pin the authenticated-request constructor so the guard cannot silently stop naming it.** The
   fence pair added for `#481` cannot detect a *rename* of `from_transport`: renaming it while it
