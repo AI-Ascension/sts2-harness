@@ -5,7 +5,9 @@
 use super::response::read_with_deadline;
 use super::response::write_with_deadline;
 use super::*;
+use crate::management::{AuthContext, MemoryWorkflowStore, StaticAuthenticator};
 use std::io::Read;
+use std::io::Write;
 
 // ## The defect these guard
 //
@@ -117,4 +119,124 @@ fn the_per_phase_budget_remains_the_admitted_bound() {
         !limits.deadline.is_zero(),
         "the per-phase bound must remain non-zero"
     );
+}
+
+// ## End-to-end coverage of the wiring, not just the primitives
+//
+// The three tests above exercise `read_with_deadline` / `write_with_deadline`
+// directly, which is correct for what they claim but blind to the defect: they
+// choose the deadlines themselves, so they pass whether `handle_connection`
+// forwards one spent budget to both phases or derives a fresh one per phase.
+// Reverting the fix left the whole lib suite green. These tests close that gap
+// by driving the real `ManagementServer` -- the accept loop, the worker thread,
+// `handle_connection`, and both phases -- so reintroducing the shared deadline
+// fails here.
+
+/// Starts a real management server on loopback with an explicit short deadline.
+///
+/// The deadline is set low deliberately: the property under test is what
+/// happens to the *write* budget once the read phase has consumed its own, and
+/// that is observable at any budget size. A short one keeps the test fast and
+/// makes the ordering unambiguous, while the admitted bound itself is pinned
+/// separately by `the_per_phase_budget_remains_the_admitted_bound`.
+fn short_deadline_server(deadline: Duration) -> (SocketAddr, ServerHandle) {
+    let authenticator = Arc::new(
+        StaticAuthenticator::single(
+            "connection-tests-token",
+            AuthContext::new("connection-tests", Vec::<String>::new())
+                .expect("the test auth context must be valid"),
+        )
+        .expect("the test credential must be valid"),
+    );
+    let service = Arc::new(ManagementService::new(Arc::new(MemoryWorkflowStore::new())));
+    let mut config = ServerConfig::new(
+        "127.0.0.1:0".parse().expect("a parseable loopback address"),
+        authenticator,
+    )
+    .expect("the loopback listen address must be accepted");
+    config.limits.deadline = deadline;
+    let handle = ManagementServer::start(config, service).expect("the server must start");
+    let address = handle.address();
+    (address, handle)
+}
+
+/// Reads until the peer closes or `limit` bytes arrive, returning what it got.
+fn read_available(mut stream: &TcpStream, limit: usize) -> Vec<u8> {
+    let mut received = Vec::new();
+    let mut buffer = [0_u8; 512];
+    while received.len() < limit {
+        match stream.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(count) => received.extend_from_slice(&buffer[..count]),
+            Err(_) => break,
+        }
+    }
+    received
+}
+
+#[test]
+fn a_computed_response_reaches_the_peer_after_the_read_budget_is_spent() {
+    // The regression, driven end to end.
+    //
+    // Connect, then deliberately overrun the read phase: the peer sends the
+    // request line and headers but withholds the terminating blank line, so the
+    // owner burns its entire read budget and computes an error response.
+    //
+    // Pre-fix, `handle_connection` passed the already-spent `Instant` to
+    // `write_response`, `retry_transient` refused it before any syscall, and the
+    // peer received NOTHING -- an empty stream and a silent close, which is the
+    // `ECONNRESET`/`socket hang up` that made #816 undiagnosable. Post-fix the
+    // write gets its own budget and the computed response must actually arrive.
+    let (address, server) = short_deadline_server(Duration::from_millis(150));
+
+    let mut peer = TcpStream::connect(address).expect("the peer must connect");
+    peer.set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("the peer read timeout must be settable");
+    // Headers only: no terminating CRLF, so the owner keeps waiting for the rest
+    // of the request and its read budget expires.
+    peer.write_all(b"GET /v1/health HTTP/1.1\r\nHost: localhost\r\n")
+        .expect("the partial request must be written");
+
+    let received = read_available(&peer, 4096);
+    let text = String::from_utf8_lossy(&received);
+    assert!(
+        text.starts_with("HTTP/1.1 "),
+        "the computed response must reach the peer, got {text:?}"
+    );
+    assert!(
+        text.contains("deadline") || text.contains("408") || text.contains("503"),
+        "the peer must receive the composed error response, got {text:?}"
+    );
+    assert!(
+        !received.is_empty(),
+        "a computed response must never be silently dropped"
+    );
+
+    drop(peer);
+    server.shutdown().expect("the server must shut down");
+}
+
+#[test]
+fn a_healthy_request_over_the_wire_still_gets_its_response() {
+    // The companion control: with the read phase comfortably inside its budget,
+    // a complete request must be answered normally. This guards against the
+    // end-to-end path being broken in the other direction -- the fix must not
+    // turn a served request into a failure.
+    let (address, server) = short_deadline_server(Duration::from_secs(5));
+
+    let mut peer = TcpStream::connect(address).expect("the peer must connect");
+    peer.set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("the peer read timeout must be settable");
+    peer.write_all(b"GET /v1/health HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        .expect("the request must be written");
+
+    let received = read_available(&peer, 4096);
+    let text = String::from_utf8_lossy(&received);
+    assert!(
+        text.starts_with("HTTP/1.1 200"),
+        "a healthy request must still be answered, got {text:?}"
+    );
+
+    drop(peer);
+    server.shutdown().expect("the server must shut down");
 }
