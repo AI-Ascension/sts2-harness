@@ -27,6 +27,12 @@ mod routes_policy;
 #[path = "http_routes_run.rs"]
 mod routes_run;
 
+#[path = "http_diagnostics.rs"]
+mod diagnostics;
+
+#[path = "http_limits.rs"]
+mod limits_module;
+
 use parse::read_request;
 use response::{
     auth_http_error, io_http_error, parse_bearer, validate_loopback, wake_listener,
@@ -34,6 +40,14 @@ use response::{
 };
 use routes::dispatch;
 
+pub use diagnostics::{DiagnosticsSink, StderrDiagnostics, UndeliveredResponse};
+pub use limits_module::HttpLimits;
+
+// The sibling `http_*` modules reached the admitted bounds through this
+// module, so they keep resolving here even though `HttpLimits` itself moved.
+pub use limits_module::{
+    MAX_HEADER_BYTES, MAX_JSON_BYTES, MAX_PATH_BYTES, MAX_RESPONSE_BYTES, REQUEST_DEADLINE_MILLIS,
+};
 pub use client::{ClientResponse, ManagementClient};
 
 #[cfg(test)]
@@ -46,59 +60,12 @@ mod diagnostics_tests;
 
 use super::auth::Authenticator;
 use super::contract::{
-    CommandRequest, DiffRequest, ExportRequest, InspectRequest, MAX_CONNECTIONS, MAX_HEADER_BYTES,
-    MAX_JSON_BYTES, MAX_PATH_BYTES, MAX_RESPONSE_BYTES, REQUEST_DEADLINE_MILLIS, ReplayRequest,
-    RunRequest, TargetAdmissionRequest, ValidateRequest, decode_strict, validate_identifier,
+    CommandRequest, DiffRequest, ExportRequest, InspectRequest, ReplayRequest, RunRequest,
+    TargetAdmissionRequest, ValidateRequest, decode_strict, validate_identifier,
 };
 use super::service::{ManagementError, ManagementService};
 
 const READ_BUFFER_BYTES: usize = 2048;
-
-#[derive(Clone, Debug)]
-pub struct HttpLimits {
-    pub max_header_bytes: usize,
-    pub max_body_bytes: usize,
-    pub max_response_bytes: usize,
-    pub max_path_bytes: usize,
-    pub max_connections: usize,
-    pub deadline: Duration,
-}
-
-impl Default for HttpLimits {
-    fn default() -> Self {
-        Self {
-            max_header_bytes: MAX_HEADER_BYTES,
-            max_body_bytes: MAX_JSON_BYTES,
-            max_response_bytes: MAX_RESPONSE_BYTES,
-            max_path_bytes: MAX_PATH_BYTES,
-            max_connections: MAX_CONNECTIONS,
-            deadline: Duration::from_millis(REQUEST_DEADLINE_MILLIS),
-        }
-    }
-}
-
-impl HttpLimits {
-    fn validate(&self) -> Result<(), HttpError> {
-        if self.max_header_bytes == 0
-            || self.max_header_bytes > MAX_HEADER_BYTES
-            || self.max_body_bytes == 0
-            || self.max_body_bytes > MAX_JSON_BYTES
-            || self.max_response_bytes == 0
-            || self.max_response_bytes > MAX_RESPONSE_BYTES
-            || self.max_path_bytes == 0
-            || self.max_path_bytes > MAX_PATH_BYTES
-            || self.max_connections == 0
-            || self.max_connections > MAX_CONNECTIONS
-            || self.deadline.is_zero()
-        {
-            return Err(HttpError::new(
-                "invalid_limits",
-                "management HTTP limits are outside the admitted bounds",
-            ));
-        }
-        Ok(())
-    }
-}
 
 pub struct ServerConfig {
     pub listen: SocketAddr,
@@ -200,48 +167,6 @@ impl Drop for ServerHandle {
 
 pub struct ManagementServer;
 
-/// A connection failure the peer can no longer be told about.
-///
-/// Once `handle_connection` has failed, the socket is gone and the only place
-/// the fact can still go is the process's own stderr. That makes the report
-/// write-only and awkward to assert on: a test can capture stderr, but the
-/// obvious way to break this -- deleting the `eprintln!` -- passes every other
-/// test in the suite, because nothing else observes it. Routing the report
-/// through this sink is what makes the line testable at all (harness#819).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct UndeliveredResponse {
-    /// The peer's address, so a report can be tied to a connection.
-    pub peer: SocketAddr,
-    /// The management error's stable code, e.g. `deadline_exceeded`.
-    pub code: String,
-    /// The error's human-readable message.
-    pub message: String,
-}
-
-/// Where an undelivered-response report goes.
-///
-/// Production writes to stderr. Tests install a sink so the line is asserted
-/// rather than merely reviewed.
-pub trait DiagnosticsSink: Send + Sync + 'static {
-    fn report(&self, report: &UndeliveredResponse);
-}
-
-/// The default sink: one attributed line on stderr.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct StderrDiagnostics;
-
-impl DiagnosticsSink for StderrDiagnostics {
-    fn report(&self, report: &UndeliveredResponse) {
-        // Attribution is the whole point of this line: without the peer it is
-        // a fact about *a* connection, not about a request, and cannot be tied
-        // back to anything when a run goes red (harness#819).
-        eprintln!(
-            "sts2-management peer={} code={} response not delivered: {}",
-            report.peer, report.code, report.message
-        );
-    }
-}
-
 impl ManagementServer {
     pub fn start(
         config: ServerConfig,
@@ -250,11 +175,10 @@ impl ManagementServer {
         Self::start_with_diagnostics(config, service, Arc::new(StderrDiagnostics))
     }
 
-    /// Start the server with an explicit diagnostics sink.
-    ///
-    /// `start` delegates here with `StderrDiagnostics`, so the production path
-    /// is unchanged; the seam exists so the undelivered-response report can be
-    /// asserted in a test rather than only reviewed.
+    /// Start the server with an explicit diagnostics sink. `start` delegates
+    /// here with `StderrDiagnostics`, so the production path is unchanged; the
+    /// seam exists so the undelivered-response report can be asserted in a test
+    /// rather than only reviewed (harness#819).
     pub fn start_with_diagnostics(
         config: ServerConfig,
         service: Arc<ManagementService>,
@@ -270,18 +194,10 @@ impl ManagementServer {
         let thread_stop = Arc::clone(&stop);
         let limits = config.limits;
         let authenticator = Arc::clone(&config.authenticator);
-        let worker_diagnostics = Arc::clone(&diagnostics);
         let join = thread::Builder::new()
             .name("sts2-management-server".to_owned())
             .spawn(move || {
-                run_server_loop(
-                    listener,
-                    service,
-                    authenticator,
-                    limits,
-                    thread_stop,
-                    worker_diagnostics,
-                )
+                run_server_loop(listener, service, authenticator, limits, thread_stop, diagnostics)
             })
             .map_err(io_http_error)?;
         Ok(ServerHandle {
@@ -323,9 +239,8 @@ fn run_server_loop(
                     .name("sts2-management-connection".to_owned())
                     .spawn(move || {
                         // The only evidence that the owner could not deliver an
-                        // answer it had already computed. The peer can no longer
-                        // be told -- the socket is gone -- but the fact must not
-                        // vanish; that silence is what made #816 undiagnosable.
+                        // answer it had already computed: the peer can no longer
+                        // be told, so the fact must not vanish (#816, #819).
                         if let Err(error) =
                             handle_connection(stream, &service, &*authenticator, &worker_limits)
                         {

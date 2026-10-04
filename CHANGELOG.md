@@ -661,24 +661,6 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   rather than by inspection: `cargo check -p sts2-harness --lib` passes with **0 errors and 0
   warnings**, and `repo-policy --strict` reports **0 warnings, 0 errors**. Refs #570.
 
-- **Split the provider-session policy HTTP suite so it stops hiding a 114-line hard-limit breach
-  behind a false exemption count.** `provider_session_policy_http.rs` measured **714** nonblank
-  lines against a `rust_test_max` of **600**, and its `policy.toml` exemption claimed **557** and
-  that the file "remain[s] below the 600-line test hard limit". The size gate cannot catch this on
-  its own: `size_findings` skips exempt paths *before* reading them, so an exemption's stated count
-  is the only assertion of that count anywhere. Because the prose reads as a durable, reviewed
-  justification, nothing prompted anyone to check it, and the breach stayed green. The suite is
-  now three files — the redacted read/reopen projection, adoption identity and admitted-run
-  binding, and the command lifecycle covering CAS, idempotency, restart and control grants — over a
-  shared `support/` fixture module, at **133 / 171 / 288** and **171** nonblank lines, all inside
-  the 400-line preferred budget, and the exemption is **deleted** rather than reworded: correcting
-  the count instead of splitting the file is the exact failure mode this entry describes. All ten
-  original tests are preserved and still pass, unchanged in behaviour; this is a source layout
-  change only, with no production, protocol, or runtime effect. The one-string fix from the same
-  family is included: `served_gateway_evidence_naming.rs` named a graph lane `graph-original`
-  where the real request ids are `graph-changed` and `graph-base`, so the fixture was pinned to an
-  id that does not exist — harmless today because that test only asserts pairwise distinctness,
-  and silently rot for the same reason this exemption did. Refs #564.
 - **Retire five unreachable Rust sources and gate the whole class.** `#491` found five tracked `.rs`
   files that no crate root reached, so they never compiled and their tests never ran. Four are
   superseded duplicates: `runtime_v3_episode_actions.rs` against the `include!`d
