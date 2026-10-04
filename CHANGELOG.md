@@ -10,6 +10,32 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **ADR 0079 named the wrong root cause for the 17 runtime-binary failures, and one of the plan
+  dispatch guards was untested.** Independent review of #812 / #319 found both. The ADR attributed
+  the failures to an `O_TMPFILE` temporary that "cannot be created on this container's filesystem".
+  Measured, that is not what fails: the unnamed temporary is created, written, and is a valid
+  descriptor. The failing call is `linkat(&temporary, "", directory, name, AT_EMPTY_PATH)`
+  returning `ENOENT`, which `io_error` maps to the `Missing` those tests report. Linking the same
+  content by *named* path in the same directory succeeds, isolating the fault to `AT_EMPTY_PATH`
+  rather than to permissions or the filesystem, and the condition is that the container holds no
+  capabilities at all (`CapEff: 0000000000000000`), so it lacks `CAP_DAC_READ_SEARCH`. Two
+  consequences are now recorded: the confined write path is sound wherever that capability exists
+  and degrades to a typed `Missing` rather than a panic or a partial artifact, and the store does
+  not currently fall back to a weaker publication path — whether it should degrade to an explicit
+  unsupported-capability result is left to `ExactArtifactStore`'s owner. The durable record had
+  pointed a future maintainer at a filesystem that cannot hold temporaries, when the constraint is
+  a missing Linux capability.
+
+  Separately, `ActionPlan::next` refuses to dispatch a planned step matching more than one legal
+  action, because two ids carrying an identical payload cannot be told apart — a guard a refactor
+  could have deleted silently. The first test written for it was vacuous and mutation testing
+  caught it: it duplicated a payload in the *initial* catalog, where `ActionPlan::new` resolves by
+  id and never reaches the guard. The guard only fires against the *successor* catalog, after
+  `action_completed(true)` has settled the first step, because that is where the plan re-resolves a
+  payload against a catalog it did not choose. The rewritten test drives that path, with a control
+  asserting the same successor still dispatches when its payloads are distinct. Deleting the guard
+  now fails exactly one test. No production behaviour changes. Refs #813, see ADR 0079.
+
 - **The advisory plan's dispatch contract is now tested, and one of its guarantees was being
   enforced by its callers rather than by the plan.** `ActionPlan` carried the whole #319 contract
   with no tests beside it: a plan is a prediction about a state that has not happened yet, so a step
@@ -660,30 +686,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   pins those same paths and turns red the moment one is renamed or removed; the `compile_fail`
   fence is left to assert the authority property it can actually assert. Compatibility: docs and
   doctest only; no production code, schema, route or behavior change. Refs #481.
-
-- **Run the workspace doctests in CI.** No gate executed doctests: the `rust` job runs
-  `cargo test --workspace --all-targets --all-features --locked`, and `--all-targets` excludes the
-  `--doc` target by definition, so the repository's single doctest — the `compile_fail,E0624` guard
-  proving that an external caller cannot construct an `AuthenticatedWorkerRequest` — had never been
-  compiled in CI. A new `Run doctests` step runs `cargo test --workspace --doc --all-features
-  --locked`, so that authority-boundary assertion (and any future doctest) is now executed and
-  cannot rot silently. Compatibility: CI-only; no source, schema, route or behavior change.
-  Refs #479.
-
-- **Repair nine intra-doc-link defects and gate the class durably.** `sts2-harness` failed a
-  documentation-integrity expectation its own gates could not see. Seven intra-doc links across six
-  files named a type or method that does not resolve at the file's own scope — three of them
-  reachable by a plain `cargo doc` — and two more named a bare `[`plan`]`, ambiguous between a
-  function and a module (`benchmark_manifest::branch_experiment` and `benchmark_manifest::suite`).
-  Every one names a real item elsewhere in the crate, so each was a scope/path or disambiguation
-  defect rather than a stale name: `execution::types::worker` looked for `ExecutionStore` under
-  `execution::types`, which re-exports only `ExecutionStoreError`;
-  `management::save_profile_setup::setup` attributed `verify` to `VerifiedProfileReadback` when it is
-  an inherent method of `ProfileReadback`; `provider_session::types::effective_limits` linked a bare
-  `ProviderSessionPolicy`; and `context_control::membership`, `context_control::model_view` and
-  `management::lifecycle` linked bare names owned by sibling modules. Each link now carries a path —
-  or, for the two ambiguous `plan` links, a `()` disambiguator — that resolves. The durable half is a
-  `cargo doc` step in the `rust` job with
-  `RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links --document-private-items"`, because a default
-  rustdoc run skips the private modules that hold four of the seven unresolved links; no workflow had
-  run `cargo doc`/`rustdoc` before, so nothing owned the class. Refs #477.
