@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 
 #[path = "http_client.rs"]
 mod client;
+#[path = "http_failure_report.rs"]
+mod failure_report;
 #[path = "http_parse.rs"]
 mod parse;
 #[path = "http_response.rs"]
@@ -27,6 +29,7 @@ mod routes_policy;
 #[path = "http_routes_run.rs"]
 mod routes_run;
 
+pub use failure_report::{ManagementFailurePort, ManagementFailureSink};
 use parse::read_request;
 use response::{
     auth_http_error, io_http_error, parse_bearer, validate_loopback, wake_listener,
@@ -100,6 +103,8 @@ pub struct ServerConfig {
     pub listen: SocketAddr,
     pub authenticator: Arc<dyn Authenticator>,
     pub limits: HttpLimits,
+    /// The port an undeliverable management response is reported through.
+    pub failure_sink: ManagementFailureSink,
 }
 
 impl ServerConfig {
@@ -114,7 +119,14 @@ impl ServerConfig {
             listen,
             authenticator,
             limits,
+            failure_sink: ManagementFailureSink::default(),
         })
+    }
+
+    /// Attaches the reporting port. See [`ManagementFailureSink`].
+    pub fn with_failure_sink(mut self, failure_sink: ManagementFailureSink) -> Self {
+        self.failure_sink = failure_sink;
+        self
     }
 }
 
@@ -211,9 +223,19 @@ impl ManagementServer {
         let thread_stop = Arc::clone(&stop);
         let limits = config.limits;
         let authenticator = Arc::clone(&config.authenticator);
+        let failure_sink = config.failure_sink;
         let join = thread::Builder::new()
             .name("sts2-management-server".to_owned())
-            .spawn(move || run_server_loop(listener, service, authenticator, limits, thread_stop))
+            .spawn(move || {
+                run_server_loop(
+                    listener,
+                    service,
+                    authenticator,
+                    limits,
+                    thread_stop,
+                    failure_sink,
+                )
+            })
             .map_err(io_http_error)?;
         Ok(ServerHandle {
             address,
@@ -229,6 +251,7 @@ fn run_server_loop(
     authenticator: Arc<dyn Authenticator>,
     limits: HttpLimits,
     stop: Arc<AtomicBool>,
+    failure_sink: ManagementFailureSink,
 ) -> Result<(), HttpError> {
     let active = Arc::new(AtomicUsize::new(0));
     let workers: Arc<Mutex<Vec<JoinHandle<()>>>> = Arc::new(Mutex::new(Vec::new()));
@@ -237,7 +260,7 @@ fn run_server_loop(
             break;
         }
         match listener.accept() {
-            Ok((stream, _peer)) => {
+            Ok((stream, peer)) => {
                 let current = active.load(Ordering::Acquire);
                 if current >= limits.max_connections {
                     let _ = write_raw_status(stream, 503, "Service Unavailable", &[]);
@@ -248,17 +271,17 @@ fn run_server_loop(
                 let authenticator = Arc::clone(&authenticator);
                 let active_for_worker = Arc::clone(&active);
                 let worker_limits = limits.clone();
+                let worker_failure_sink = failure_sink.clone();
                 let worker = thread::Builder::new()
                     .name("sts2-management-connection".to_owned())
                     .spawn(move || {
-                        // The only evidence that the owner could not deliver an
-                        // answer it had already computed. The peer can no longer
-                        // be told -- the socket is gone -- but the fact must not
-                        // vanish; that silence is what made #816 undiagnosable.
-                        if let Err(error) =
-                            handle_connection(stream, &service, &*authenticator, &worker_limits)
-                        {
-                            eprintln!("sts2-management connection ended without a delivered response: {error}");
+                        // The only evidence that the owner could not deliver an answer it had
+                        // already computed: the socket is gone, so the peer can no longer be told,
+                        // and that silence is what made #816 undiagnosable.
+                        let failed =
+                            handle_connection(stream, &service, &*authenticator, &worker_limits);
+                        if let Err((request, error)) = failed {
+                            worker_failure_sink.report_connection(peer, request.as_deref(), &error);
                         }
                         active_for_worker.fetch_sub(1, Ordering::AcqRel);
                     })
@@ -286,7 +309,7 @@ fn handle_connection(
     service: &ManagementService,
     authenticator: &dyn Authenticator,
     limits: &HttpLimits,
-) -> Result<(), HttpError> {
+) -> Result<(), (Option<String>, HttpError)> {
     // Each phase gets its own budget rather than sharing one taken before the
     // read. A shared deadline meant an overran read left the write with an
     // expired budget, which `write_with_deadline` refuses *before* any syscall:
@@ -295,9 +318,15 @@ fn handle_connection(
     // made Studio's `submission_refused_502` undiagnosable (#816, studio #214).
     // The bound itself is unchanged -- `limits.deadline` still caps each phase.
     let read_deadline = Instant::now() + limits.deadline;
-    let response = match read_request(&mut stream, read_deadline, limits) {
-        Ok(request) => dispatch(request, service, authenticator),
-        Err(error) => Err(error),
+    // The route is captured before dispatch consumes the request, and only so the operator report
+    // can name it (#819). A request that never parsed has no route and is reported without one.
+    let (route, response) = match read_request(&mut stream, read_deadline, limits) {
+        Ok(request) => {
+            let route = format!("{} {}", request.method, request.path);
+            let response = dispatch(request, service, authenticator);
+            (Some(route), response)
+        }
+        Err(error) => (None, Err(error)),
     };
     write_response(
         &mut stream,
@@ -305,6 +334,7 @@ fn handle_connection(
         Instant::now() + limits.deadline,
         limits,
     )
+    .map_err(|error| (route, error))
 }
 
 #[derive(Clone, Debug)]

@@ -10,6 +10,26 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **An undeliverable management response is now reported through an assertable port, and the
+  report names the peer and the route it failed to answer.** #817 stopped discarding a management
+  response the owner could not transmit and reported it with an `eprintln!`, but nothing asserted
+  that line: deleting it and restoring `let _ = handle_connection(...)` passed all 524 lib tests,
+  verified twice by independent review, because the report was write-only to a process-wide stream
+  and no gate could see it. Observability that is hard to unit-test does not get skipped, it gets a
+  port. `ManagementFailurePort`/`ManagementFailureSink` follow the repository's existing
+  `BoundaryCaptureSink` convention and default to the same stderr report #816 added, so production
+  behaviour is unchanged; a test attaches a recording port and asserts the report. Deliberately no
+  `disabled()` constructor, because an inert default would restore exactly the silence this port
+  exists to remove, and would do so by one unremarkable builder call. Attribution names the peer
+  address — which `run_server_loop` had in hand and discarded as `_peer` — the `METHOD path` read
+  before dispatch consumes the request, and the owner's own `cause` code. A request that never
+  parsed is reported as `(not read)` rather than with a guessed route, because a guessed route is
+  worse than none: it would be believed. Every field is escaped and bounded to 256 characters
+  following `escape_bounded`, so a peer-supplied route cannot inject a second operator line or
+  flood the log; no field can carry a credential, environment value, or local path. Compatibility:
+  diagnostics and test surface only; the response bound, the per-phase deadline, the status
+  codes, and every delivered response are unchanged. Refs #819, #816.
+
 - **A management response that could not be transmitted is no longer discarded in silence, and the
   read and write phases no longer share one deadline budget.** `handle_connection` took a single
   `Instant` before reading the request and passed that same, already-spent value to both
@@ -702,26 +722,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   different from the `Run doctests` step, and fails to compile if the constructor is renamed or its
   signature changes. Compatibility: test-only; no production code, schema, route or behavior
   change. Refs #485.
-
-- **Gate Exo compatibility with the real pinned Exo process in CI.** No workflow executed the
-  repository's own Exo bridge lane: `experiments/exo-agent/bridge` is `[workspace]`-excluded, so
-  `cargo test --workspace` could not reach the `#[ignore]`d `process_oracle`/`lookup_oracle` tests,
-  and the pinned `exoharness/exo` checkout in `ci.yml` fed only lifecycle fixtures. A new
-  `exo-process-oracle.yml` installs the pinned Node/pnpm, stages the owned extension into the pinned
-  read-only Exo checkout, builds the isolated `sts2-exo-executor` and `sts2-exo-bridge`, and runs both
-  oracles against the real Exo TypeScript runtime with a synthetic loopback model and synthetic host.
-  The `EXO_SOURCE_REVISION` pin is re-read at run time and the bounded evidence report is asserted to
-  name it. This proves process composition only; live provider, game and native acceptance remain
-  separate. Refs #148.
-
-- **Make the doctest gate's guarded property actually protected.** `#480` began executing the
-  workspace's doctest, but its `compile_fail,E0624` annotation does not enforce the error code. On
-  rustdoc 1.97.1 a snippet that dies of `E0432` (unresolved import) or `E0425` (undeclared name)
-  still reports `ok`, and an unknown code such as `E9999` is accepted silently, so only
-  "compilation fails for some reason" was ever asserted. The fence reaches the `pub(crate)`
-  constructor through four public re-exports, so removing any one of them would have left CI green
-  while the assertion stopped testing the constructor at all — the same class the parent gate was
-  added to prevent, one level up. The doc comment now carries a second, **compiling** fence that
-  pins those same paths and turns red the moment one is renamed or removed; the `compile_fail`
-  fence is left to assert the authority property it can actually assert. Compatibility: docs and
-  doctest only; no production code, schema, route or behavior change. Refs #481.
