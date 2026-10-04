@@ -37,11 +37,12 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   itself was sound. That silence is what made acceptance criterion 3 undecidable — a crash, a
   kill and a clean-but-mute exit are indistinguishable in an empty log — so the management
   server now writes one bounded line per request on the same stderr the operator already
-  captures. Each served request emits a `request_start` line carrying a UTC timestamp, epoch
-  seconds, a monotonic per-server `request_id`, the method and a bounded route, and then exactly
-  one terminal line: `request_end` with the status the peer was actually told and the elapsed
-  time, or `request_abandoned` with a typed code when the response was computed but could not be
-  transmitted. A connection that ends without a readable request cannot have a start marker, so
+  captures. Each served request emits a `request_start` line with a UTC timestamp, epoch
+  seconds, a per-server `request_id`, and an exact method-aware route template with dynamic
+  identifiers replaced by placeholders. Every terminal line carries `elapsed_ms` from a
+  process-local monotonic clock; `request_end` includes actual status, while `request_abandoned`
+  records a typed code when the response could not be transmitted. A connection without a
+  readable request cannot have a start marker, so
   its terminal marker is `request_unreadable`, which names its own condition. The contract is
   stated once, in `http_lifecycle.rs`: **a connection emits exactly one terminal line, and every
   terminal line is attributable — either it follows a start line that named the request, or it is
@@ -57,16 +58,12 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   #819 documents for the pre-existing `eprintln!`, reproduced by the new code. The error is
   still returned unchanged and the peer still receives the same `400`; only the marker differs.
 
-  Three properties keep the log safe, because the harness is a security boundary and a logging
-  change that leaks a token is worse than no logging change at all. The query string is dropped.
-  Route segments are checked against a closed vocabulary of the routes the server actually
-  serves, so an unserved segment becomes `/?`: the separator keeps the segment *count*, so the
-  line stays diagnosable, while a credential pasted into a path and any absolute local path —
-  which always contains segments outside the list — are unrecoverable from the line. Labels are
-  byte-capped and non-printable bytes are replaced, so a caller can neither drive unbounded log
-  volume nor forge a second operator line. Abandonment reports the typed code only, never
-  `HttpError::message`, because `io_http_error` builds its message from an `io::Error` whose text
-  can embed caller bytes.
+  Three properties keep the log safe. The query string is dropped, and a route is logged only
+  when its method and full shape match a served template; dynamic IDs become placeholders, while
+  every other path receives the fixed `route=unmatched` label. Credentials and absolute local
+  paths are therefore unrecoverable from the line. Labels remain byte-capped and single-line,
+  and non-printable bytes are replaced. Abandonment reports the typed code only, never
+  `HttpError::message`, which can embed caller bytes from the `io::Error` text.
 
   Two placement decisions carry the reasoning. The start marker is emitted *after* the request
   parses, never before, because until the read succeeds there is no method and no route, and a
