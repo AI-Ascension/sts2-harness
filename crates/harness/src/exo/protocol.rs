@@ -9,6 +9,7 @@ use crate::context_capture::{
     CaptureBoundary, CaptureInput, CapturePort, generated_capture_attempt_id,
 };
 use crate::episode::map::{MAP_CONTEXT_WIRE_FIXED_BYTES, MAX_SNAPSHOT_BYTES};
+use crate::exo::contract::{ExoToolCatalog, refuse_unadmitted_tool_calls};
 use crate::exo::decision::{DecisionError, parse_decision};
 use crate::exo::sandbox::{SandboxError, SanitizedObservation};
 use provider_impl::error_code;
@@ -61,6 +62,10 @@ pub trait ExoTransport {
 ///
 /// `forward_visible_seed` defaults to `true` so repeatable seeded runs retain their visible seed.
 /// Callers can explicitly omit it for a seed-blind experiment.
+///
+/// `tool_catalog` is the model-facing allowlist enforced at dispatch. It defaults to the reviewed
+/// (empty) catalog rather than to `None`, so a caller that never configures one still gets the
+/// fail-closed posture: every tool call the model emits is refused.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExoConfig {
     pub revision: String,
@@ -68,6 +73,7 @@ pub struct ExoConfig {
     pub max_response_bytes: usize,
     pub timeout_millis: u32,
     pub forward_visible_seed: bool,
+    pub tool_catalog: ExoToolCatalog,
 }
 
 impl ExoConfig {
@@ -83,6 +89,7 @@ impl ExoConfig {
             max_response_bytes,
             timeout_millis,
             forward_visible_seed: true,
+            tool_catalog: ExoToolCatalog::reviewed(),
         };
         config.validate()?;
         Ok(config)
@@ -92,6 +99,19 @@ impl ExoConfig {
     #[must_use]
     pub fn with_visible_seed_forwarding(mut self, enabled: bool) -> Self {
         self.forward_visible_seed = enabled;
+        self
+    }
+
+    /// Replaces the dispatch-enforced model tool catalog.
+    ///
+    /// The catalog is *not* validated here. It is trusted operator configuration that
+    /// `ExoTrustedConfiguration::validate` already checked against `REVIEWED_MODEL_TOOLS` before
+    /// admission, and this setter is the transport-side binding of that already-admitted value.
+    /// Re-validating would not add authority, and refusing to construct the value here would make
+    /// the two paths disagree about what an admitted run carries.
+    #[must_use]
+    pub fn with_tool_catalog(mut self, catalog: ExoToolCatalog) -> Self {
+        self.tool_catalog = catalog;
         self
     }
 

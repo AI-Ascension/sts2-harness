@@ -10,6 +10,26 @@ in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archiv
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+- **The restricted Exo profile now enforces its tool catalog at dispatch, and the enforcement
+  distinguishes an unreviewed tool from an unadmitted one.** #140's merged contract validated the
+  catalog as a *declaration* and stopped there: `ExoToolCatalog::reviewed()` returns an explicitly
+  empty allowlist, but nothing read what the model actually asked for when its answer came back, so
+  an empty catalog that validated could still be a catalog nothing had ever enforced. A guard now
+  reads the model's own output bytes and refuses every tool call the run's catalog does not carry,
+  before `parse_decision` flattens anything into a generic malformed-response code. Names are
+  resolved through their aliases first — `functions.shell`, `mcp__terminal__shell` and bare `shell`
+  are one tool reached three ways, and a bare-name check is exactly the kind of thing that looks
+  complete until someone addresses a tool the other way. A prompt that merely *mentions* `shell` is
+  unaffected, because description is not authority. `ExoConfig::tool_catalog` defaults to the
+  reviewed (empty) catalog, so the posture is fail-closed without any configuration, and the
+  refusal reason distinguishes a name that is never allowed from one that is reviewed elsewhere but
+  absent from this run's catalog. The walk is depth- and count-bounded so a hostile response cannot
+  make the boundary check itself unbounded. Two design errors were caught by mutation rather than by
+  review: a test asserting an alias of an *admitted* tool is refused was simply wrong (it fails, and
+  the guard is right), and a second assumed the dispatch check and `ExoToolCatalog::validate` consult
+  the same allowlist when they answer different questions — collapsing them would have duplicated a
+  check a caller can bypass by skipping validation. Compatibility: additive; the reviewed allowlist
+  is still empty, so no admitted run gains a capability. Refs #140.
 - **ADR 0079 named the wrong root cause for the 17 runtime-binary failures, and one of the plan
   dispatch guards was untested.** Independent review of #812 / #319 found both. The ADR attributed
   the failures to an `O_TMPFILE` temporary that "cannot be created on this container's filesystem".

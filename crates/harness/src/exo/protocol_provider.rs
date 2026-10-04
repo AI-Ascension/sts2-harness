@@ -17,6 +17,19 @@ impl<T: ExoTransport> ProviderPort for ExoProvider<T> {
         let output = self
             .execute_request(decision_request)
             .map_err(|error| provider_error(error_code(error), is_retryable(error)))?;
+        // Dispatch-time tool enforcement (#140). The reviewed catalog validates as an empty
+        // allowlist, so this refuses every tool call the model emits — which is the correct posture
+        // while terminal decisions travel in the assistant message and no `#127` adapter is
+        // admitted. It runs before `parse_decision` so a tool call is refused as a *tool call*,
+        // rather than being flattened into the generic malformed-response code.
+        let refused = refuse_unadmitted_tool_calls(&self.config.tool_catalog, &output);
+        if let Some(first) = refused.first() {
+            // The refused tool name is *not* placed in the operator-facing message: an untrusted
+            // model string reaching a diagnostic is exactly the channel this guard exists to keep
+            // clean. The typed code carries the refusal.
+            debug_assert!(!first.tool.is_empty(), "a refusal always names a tool");
+            return Err(provider_error("exo_unadmitted_tool_call", false));
+        }
         parse_decision(&output)
             .map_err(|error| provider_error(decision_error_code(error), false))?;
         let output = String::from_utf8(output)

@@ -5,6 +5,7 @@ mod descriptor;
 mod identity;
 mod preflight;
 mod restricted;
+mod restricted_dispatch;
 pub(crate) mod strict;
 mod wire;
 mod wire_types;
@@ -27,6 +28,11 @@ pub use restricted::{
     ExoRestrictedError, ExoRestrictedProfile, ExoToolCatalog, ExoToolCatalogError, PrivateRootKind,
     REVIEWED_MODEL_TOOLS,
 };
+// Only the refusal check itself is re-exported. `RefusedToolCall`, `RefusalReason` and
+// `bare_tool_name` are the guard's own vocabulary rather than part of the crate's contract surface:
+// nothing outside this module consumes them, and widening the public surface to names an external
+// caller might one day branch on is how a test-only detail becomes load-bearing.
+pub use restricted_dispatch::refuse_unadmitted_tool_calls;
 pub use wire::{
     ExoBridgeDecisionEnvelope, ExoBridgeRequestEnvelope, ExoBridgeTurn, ExoControlIdentity,
     ExoTerminalOutcome, ExoWireError, ExoWireOutcome, encode_bridge_request,
