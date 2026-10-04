@@ -43,14 +43,17 @@ use std::sync::{Arc, Mutex};
 
 use super::{LifecycleLogSink, RequestLifecycleLog};
 
+#[cfg(test)]
+#[path = "http_lifecycle_log_regression_tests.rs"]
+mod regression_tests;
+
 /// A sink that records every line and serves a fixed, scripted clock.
 #[derive(Debug)]
 pub(super) struct RecordingSink {
     lines: Mutex<Vec<String>>,
-    /// Epoch seconds returned by `wall_clock`.
-    epoch_seconds: Option<u64>,
-    /// Nanoseconds returned by `wall_clock`.
-    epoch_nanos: u32,
+    /// Wall-clock values returned by `wall_clock`; the last value repeats.
+    wall_clocks: Vec<Option<(u64, u32)>>,
+    wall_clock_index: AtomicU64,
     /// Values `monotonic_millis` returns, in order; the last one repeats forever so
     /// a request that reads the clock more than once still terminates.
     monotonic: Vec<u64>,
@@ -59,21 +62,22 @@ pub(super) struct RecordingSink {
 
 impl RecordingSink {
     pub(super) fn new(epoch_seconds: u64, monotonic: Vec<u64>) -> Self {
-        Self {
-            lines: Mutex::new(Vec::new()),
-            epoch_seconds: Some(epoch_seconds),
-            epoch_nanos: 123_000_000,
-            monotonic,
-            monotonic_index: AtomicU64::new(0),
-        }
+        Self::with_clock_script(vec![Some((epoch_seconds, 123_000_000))], monotonic)
     }
 
     /// A sink whose wall clock is before the UNIX epoch.
     pub(super) fn with_absent_clock(monotonic: Vec<u64>) -> Self {
+        Self::with_clock_script(vec![None], monotonic)
+    }
+
+    pub(super) fn with_clock_script(
+        wall_clocks: Vec<Option<(u64, u32)>>,
+        monotonic: Vec<u64>,
+    ) -> Self {
         Self {
             lines: Mutex::new(Vec::new()),
-            epoch_seconds: None,
-            epoch_nanos: 0,
+            wall_clocks,
+            wall_clock_index: AtomicU64::new(0),
             monotonic,
             monotonic_index: AtomicU64::new(0),
         }
@@ -93,8 +97,13 @@ impl RecordingSink {
 
 impl LifecycleLogSink for RecordingSink {
     fn wall_clock(&self) -> Option<(u64, u32)> {
-        self.epoch_seconds
-            .map(|seconds| (seconds, self.epoch_nanos))
+        let index =
+            usize::try_from(self.wall_clock_index.fetch_add(1, Ordering::Relaxed)).unwrap_or(0);
+        self.wall_clocks
+            .get(index)
+            .copied()
+            .or_else(|| self.wall_clocks.last().copied())
+            .flatten()
     }
 
     fn monotonic_millis(&self) -> u64 {
@@ -375,8 +384,8 @@ fn the_cost_of_a_request_is_bounded_regardless_of_what_the_peer_sends() {
     let sink = Arc::new(RecordingSink::new(1_700_000_000, vec![0, 1]));
     let lifecycle = log_with(&sink);
 
-    // A route made entirely of known segments, so the clamp -- not the vocabulary
-    // check -- is what bounds it. This is the worst case for line length.
+    // Even an unbounded unknown path becomes one fixed route label; caller bytes
+    // never need to be echoed or truncated into the line.
     let hostile_route = format!("/v1/{}", "health/".repeat(2_048));
     let request = lifecycle.begin();
     request.log_start("GET", &hostile_route);
@@ -391,13 +400,12 @@ fn the_cost_of_a_request_is_bounded_regardless_of_what_the_peer_sends() {
         );
     }
     assert!(
-        lines[0].contains("..truncated"),
-        "an over-long route must be explicitly marked as truncated, got {:?}",
+        lines[0].contains("route=unmatched"),
+        "an unknown path must use the fixed redacted label, got {:?}",
         lines[0]
     );
-    // The unbounded input must not be echoed even in truncated form.
     assert!(
-        !lines[0].contains(&"a".repeat(64)),
+        !lines[0].contains("health/health"),
         "the raw payload must never be echoed, got {:?}",
         lines[0]
     );
@@ -425,8 +433,8 @@ fn an_unrecognised_route_segment_is_replaced_so_the_log_stays_useful() {
         lines[0]
     );
     assert!(
-        lines[2].contains("route=/v1/?/?"),
-        "an unserved route must be reported structurally, not echoed, got {:?}",
+        lines[2].contains("route=unmatched"),
+        "an unserved route must use a fixed redacted label, not echoed segments, got {:?}",
         lines[2]
     );
     assert!(
