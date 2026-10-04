@@ -158,11 +158,16 @@ pub fn old_history_sentinel_rejected(
         true,
     )?;
     assert!(!output.status.success() && output.stdout.is_empty());
-    assert!(
-        model.requests.lock().map_err(|_| "poisoned")?.is_empty(),
-        "old_history_sentinel"
+    let observed_requests = model.requests.lock().map_err(|_| "poisoned")?.len();
+    assert_eq!(
+        observed_requests, 0,
+        "old_history_sentinel: {observed_requests} model request(s) reached egress"
     );
-    assert_eq!(model.request_count(), 0, "old_history_sentinel");
+    let observed_egress = model.request_count();
+    assert_eq!(
+        observed_egress, 0,
+        "old_history_sentinel: {observed_egress} model connection(s) reached egress"
+    );
     assert_eq!(output.stderr, b"exo_bridge_invalid_request\n");
     cases.push(json!({"case": "old_history_sentinel", "passed": true,
         "model_requests": 0, "refusal_before_model_egress": true}));
