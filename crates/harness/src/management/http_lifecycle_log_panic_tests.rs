@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-#![allow(clippy::expect_used, clippy::unwrap_used)]
+#![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
 // The panic path of the request-lifecycle log (#820), kept apart from
 // `http_lifecycle_log_server_tests.rs` so neither file hides behind the other's size.
