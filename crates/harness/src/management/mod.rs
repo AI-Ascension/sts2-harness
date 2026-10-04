@@ -126,8 +126,8 @@ pub use contract_authoring::{
 };
 pub use contract_authoring_inference::*;
 pub use http::{
-    ClientResponse, HttpError, HttpLimits, ManagementClient, ManagementServer, ServerConfig,
-    ServerHandle,
+    ClientResponse, HttpError, HttpLimits, ManagementClient, ManagementFailurePort,
+    ManagementFailureSink, ManagementServer, ServerConfig, ServerHandle,
 };
 pub use lifecycle::{
     LaunchProfileId, LifecycleAction, LifecycleClassification, LifecycleCommand,
