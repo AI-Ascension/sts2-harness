@@ -54,7 +54,10 @@ fn advertised_variants_and_zero_model_probes() -> Result {
     let described = invoke(&binary, &config, b"", "--describe", true)?;
     assert!(described.status.success());
     let capability: Value = serde_json::from_slice(&described.stdout)?;
-    assert_eq!(capability["schema"], json!("sts2.exo-one-shot-capability-v1"));
+    assert_eq!(
+        capability["schema"],
+        json!("sts2.exo-one-shot-capability-v1")
+    );
     assert_eq!(capability["profiles"], json!(["standard"]));
     assert_eq!(capability["context_modes"], json!(["fresh"]));
     assert_eq!(
@@ -69,7 +72,10 @@ fn advertised_variants_and_zero_model_probes() -> Result {
         capability["profile_support"]["management"],
         json!("unsupported")
     );
-    assert_eq!(capability["profile_support"]["expert"], json!("unsupported"));
+    assert_eq!(
+        capability["profile_support"]["expert"],
+        json!("unsupported")
+    );
     assert_eq!(
         capability["decision_support"]["recovery"],
         json!("unsupported")
