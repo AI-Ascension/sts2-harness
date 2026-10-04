@@ -28,6 +28,14 @@ use std::io::Write;
 use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+#[path = "http_failure_report_process_tests.rs"]
+mod process_support;
+use self::process_support::{
+    ChildScratch, DEFAULT_SINK_CHILD_CONCURRENT_TEST, DEFAULT_SINK_CHILD_LINE,
+    DEFAULT_SINK_CHILD_PANIC_MARKER, DEFAULT_SINK_CHILD_PANIC_TEST,
+    DEFAULT_SINK_CHILD_POST_PANIC_LINE, DEFAULT_SINK_CHILD_TEST, DEFAULT_SINK_CHILD_TIMEOUT,
+    assert_child_test_passed, read_child_output, reports_for_child, spawn_default_sink_child,
+};
 
 /// A port that keeps every line it is handed, so a test can assert on them.
 #[derive(Clone, Default)]
@@ -264,53 +272,93 @@ fn the_report_carries_no_environment_secret_or_local_path() {
     );
 }
 
-/// Captures what the *production* port writes, by redirecting the writer seam.
-///
-/// The seam is process-wide, so this holds [`STDERR_WRITER_LOCK`] for the whole substitution and
-/// restores real stderr before releasing it. Without the restore the substitution would leak into
-/// every other test that reports a management failure, which is the kind of cross-test coupling that
-/// makes a suite report green while asserting nothing.
-fn capture_production_reports(test_body: impl FnOnce()) -> Vec<String> {
-    let _guard = STDERR_WRITER_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let captured: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let recorder = Arc::clone(&captured);
-    redirect_production_reports(Arc::new(move |line: &str| {
-        if let Ok(mut lines) = recorder.lock() {
-            lines.push(line.to_owned());
-        }
-    }))
-    .expect("the stderr writer lock must be poison-free");
+#[test]
+fn the_default_sink_writes_its_report_to_the_production_path() {
+    let scratch = ChildScratch::new();
+    let mut child = spawn_default_sink_child(&scratch, "single", DEFAULT_SINK_CHILD_TEST, "single");
+    let status = child.wait_until(DEFAULT_SINK_CHILD_TIMEOUT);
+    assert!(
+        status.success(),
+        "the exact helper test must pass, got {status}"
+    );
 
-    test_body();
-
-    restore_production_reports();
-    captured
-        .lock()
-        .map(|lines| lines.clone())
-        .unwrap_or_default()
+    let stdout = read_child_output(&scratch.stdout_path("single"));
+    let stderr = read_child_output(&scratch.stderr_path("single"));
+    assert_child_test_passed(&stdout, "default_sink_child_emits_report");
+    assert_eq!(
+        stderr,
+        format!("{DEFAULT_SINK_CHILD_LINE}\n"),
+        "the default sink must write exactly one line to the child's real stderr"
+    );
 }
 
 #[test]
-fn the_default_sink_writes_its_report_to_the_production_path() {
-    // The assertion #824 asked for, and one that cannot pass for every implementation.
-    //
-    // The probe this replaces asserted `ManagementFailureSink::default().reports_unread_failures()`,
-    // and `StderrFailurePort::reports()` returned a hard-coded `true`. Making the production
-    // `report` a no-op therefore left the entire 530-test suite green, verified twice by independent
-    // review: the test proved only that a constant was still `true`.
-    //
-    // This drives the *default* sink through the *production* port with only the final write
-    // redirected, so the composition under test is the one #816 ships rather than a test double.
-    // Deleting `report`, or making it not write, turns this red.
-    let lines = capture_production_reports(|| {
-        ManagementFailureSink::default().report("sts2-management undeliverable response");
-    });
+fn concurrent_default_sink_reports_stay_in_their_owned_child_stderr() {
+    let scratch = ChildScratch::new();
+    let mut left = spawn_default_sink_child(
+        &scratch,
+        "left",
+        DEFAULT_SINK_CHILD_CONCURRENT_TEST,
+        "concurrent",
+    );
+    let mut right = spawn_default_sink_child(
+        &scratch,
+        "right",
+        DEFAULT_SINK_CHILD_CONCURRENT_TEST,
+        "concurrent",
+    );
+    let left_status = left.wait_until(DEFAULT_SINK_CHILD_TIMEOUT);
+    let right_status = right.wait_until(DEFAULT_SINK_CHILD_TIMEOUT);
+    let left_stdout = read_child_output(&scratch.stdout_path("left"));
+    let left_stderr = read_child_output(&scratch.stderr_path("left"));
+    let right_stdout = read_child_output(&scratch.stdout_path("right"));
+    let right_stderr = read_child_output(&scratch.stderr_path("right"));
+    assert!(
+        left_status.success(),
+        "the left child must pass, got {left_status}; stdout={left_stdout:?}; stderr={left_stderr:?}"
+    );
+    assert!(
+        right_status.success(),
+        "the right child must pass, got {right_status}; stdout={right_stdout:?}; stderr={right_stderr:?}"
+    );
 
+    assert_child_test_passed(&left_stdout, "default_sink_child_emits_concurrent_reports");
+    assert_child_test_passed(&right_stdout, "default_sink_child_emits_concurrent_reports");
+    let assert_report_set = |role: &str, stderr: &str| {
+        let mut actual = stderr.lines().map(str::to_owned).collect::<Vec<_>>();
+        let mut expected = reports_for_child(role);
+        actual.sort_unstable();
+        expected.sort_unstable();
+        assert_eq!(
+            actual, expected,
+            "the {role} child's stderr must contain only its own concurrent reports"
+        );
+    };
+    assert_report_set("left", &left_stderr);
+    assert_report_set("right", &right_stderr);
+}
+
+#[test]
+fn default_sink_writes_to_actual_stderr_after_a_caught_panic() {
+    let scratch = ChildScratch::new();
+    let mut child =
+        spawn_default_sink_child(&scratch, "panic", DEFAULT_SINK_CHILD_PANIC_TEST, "panic");
+    let status = child.wait_until(DEFAULT_SINK_CHILD_TIMEOUT);
+    assert!(
+        status.success(),
+        "the caught-panic child must pass, got {status}"
+    );
+
+    let stdout = read_child_output(&scratch.stdout_path("panic"));
+    let stderr = read_child_output(&scratch.stderr_path("panic"));
+    assert_child_test_passed(&stdout, "default_sink_child_reports_after_caught_panic");
+    assert!(
+        stderr.contains(DEFAULT_SINK_CHILD_PANIC_MARKER),
+        "the child's caught panic must be visible in real stderr, got {stderr:?}"
+    );
     assert_eq!(
-        lines,
-        vec!["sts2-management undeliverable response".to_owned()],
-        "the default sink must write exactly the line it is handed, through the production path, got {lines:?}"
+        stderr.lines().last(),
+        Some(DEFAULT_SINK_CHILD_POST_PANIC_LINE),
+        "a later default-sink report must still reach real stderr after the caught panic"
     );
 }
