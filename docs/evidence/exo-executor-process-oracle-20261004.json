@@ -1,0 +1,651 @@
+{
+  "bridge_sha256": "97985d0d77cb0ab70765d7f176a99ec4c442fac1a314d5784ed0f98c9cb29e70",
+  "cases": [
+    {
+      "case": "describe",
+      "model_requests": 0,
+      "passed": true
+    },
+    {
+      "case": "old_history_sentinel",
+      "model_requests": 0,
+      "passed": true,
+      "refusal_before_model_egress": true
+    },
+    {
+      "case": "wrong_revision",
+      "model_requests": 0,
+      "passed": true
+    },
+    {
+      "case": "unsupported_map",
+      "model_requests": 0,
+      "passed": true
+    },
+    {
+      "case": "wrong_generation",
+      "model_requests": 0,
+      "passed": true
+    },
+    {
+      "case": "unknown_field_input",
+      "model_requests": 0,
+      "passed": true
+    },
+    {
+      "case": "unsupported_expert",
+      "model_requests": 0,
+      "passed": true
+    },
+    {
+      "case": "invalid_utf8",
+      "model_requests": 0,
+      "passed": true
+    },
+    {
+      "case": "oversized_input",
+      "model_requests": 0,
+      "passed": true
+    },
+    {
+      "case": "duplicate_field_input",
+      "model_requests": 0,
+      "passed": true
+    },
+    {
+      "case": "missing_eof",
+      "model_requests": 0,
+      "passed": true
+    },
+    {
+      "case": "package_digest_mismatch",
+      "model_requests": 0,
+      "passed": true
+    },
+    {
+      "case": "executor_nonzero",
+      "evidence": "process-boundary-only",
+      "model_requests": 0,
+      "passed": true
+    },
+    {
+      "case": "synthetic_v2_success",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a10907-b354-77c1-928c-f50028318af7",
+        "exo_agent_id": "01a10907-7872-7f02-a508-4d114ed8de5f",
+        "exo_conversation_id": "01a10907-78cc-79a1-b9db-59202cdb8c3b",
+        "exo_session_id": "01a10907-796a-7b13-8ded-4ef3f139cb11",
+        "exo_turn_id": "01a10907-796a-7b13-8ded-4f0981047a93",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true,
+      "v2_receipt": "present"
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "action",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a10907-f36a-7a42-9ec6-677be67b77d5",
+        "exo_agent_id": "01a10907-c7d5-7dc3-8ec3-eb48e9179383",
+        "exo_conversation_id": "01a10907-c819-7202-9fb5-39bfead99a43",
+        "exo_session_id": "01a10907-c898-7641-a2a5-7f08ec4ce8ee",
+        "exo_turn_id": "01a10907-c898-7641-a2a5-7f14c26f755f",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "plan",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a10908-2f54-7ae1-95d2-37c50617a219",
+        "exo_agent_id": "01a10908-09ed-7c63-a85c-f966cb5ec5ab",
+        "exo_conversation_id": "01a10908-0a2d-7b21-95ce-67f11158d276",
+        "exo_session_id": "01a10908-0aa9-7361-9b8e-95e781cb6e67",
+        "exo_turn_id": "01a10908-0aa9-7361-9b8e-95f7a2de5440",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "wait",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a10908-6dce-7a70-9fd6-56abe082e1eb",
+        "exo_agent_id": "01a10908-461a-74d3-9a7f-9b5f4d806e5a",
+        "exo_conversation_id": "01a10908-465e-77a3-9a8e-5a74d7fdd7b0",
+        "exo_session_id": "01a10908-46e2-7da1-a7f1-f0067e255fc5",
+        "exo_turn_id": "01a10908-46e2-7da1-a7f1-f01cea9c3455",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "reobserve",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a10908-ac0a-7050-a996-142986adc5d5",
+        "exo_agent_id": "01a10908-843c-7c33-9f69-d7782e33761f",
+        "exo_conversation_id": "01a10908-847e-7d81-858b-4d39cd21ce14",
+        "exo_session_id": "01a10908-8506-7652-baed-4afe790de84b",
+        "exo_turn_id": "01a10908-8506-7652-baed-4b0d27a03e92",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "illegal_action",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a10908-f1c9-7321-9375-56204f35ca95",
+        "exo_agent_id": "01a10908-c23f-78d0-a078-b15f1bf8df69",
+        "exo_conversation_id": "01a10908-c294-7323-9cae-6a047227660f",
+        "exo_session_id": "01a10908-c338-76a2-8237-d6d32f7be93d",
+        "exo_turn_id": "01a10908-c338-76a2-8237-d6e135c69da4",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "multiple_json",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a10909-39bb-7552-94d8-20049bd7b601",
+        "exo_agent_id": "01a10909-0bea-79c1-9bae-916dd5f4e0a5",
+        "exo_conversation_id": "01a10909-0c33-7523-962d-62139d7b940b",
+        "exo_session_id": "01a10909-0ccf-78d0-934b-36caa5e6e191",
+        "exo_turn_id": "01a10909-0ccf-78d0-934b-36db6f7ea69c",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "truncated_json",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a10909-7fcb-77b0-a44f-4e08e8fb662b",
+        "exo_agent_id": "01a10909-52e7-7fd2-911b-e5ec91458228",
+        "exo_conversation_id": "01a10909-5332-7222-a7e1-10c87e8ceb7c",
+        "exo_session_id": "01a10909-53b2-7882-a1fa-225c81e25650",
+        "exo_turn_id": "01a10909-53b2-7882-a1fa-226b334f6f46",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "empty_output",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a10909-c4e2-7931-9dfd-77aa7ef2234c",
+        "exo_agent_id": "01a10909-9776-76c2-b11e-0fb741479af2",
+        "exo_conversation_id": "01a10909-97cb-7a61-a1ff-fe4c28b94bf9",
+        "exo_session_id": "01a10909-986d-77a3-862d-2770e737e933",
+        "exo_turn_id": "01a10909-986d-77a3-862d-2785198a4679",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "oversized_output",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a1090a-09ec-7801-917a-6c91e50e5f58",
+        "exo_agent_id": "01a10909-db58-77f2-b738-3192722bf441",
+        "exo_conversation_id": "01a10909-db9a-7d42-a783-d3f3e5e4b3b3",
+        "exo_session_id": "01a10909-dc32-7830-866e-9a4df3449a3f",
+        "exo_turn_id": "01a10909-dc32-7830-866e-9a567718f64e",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "unknown_field",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a1090a-4f90-7731-9fa8-c7687706159f",
+        "exo_agent_id": "01a1090a-1f3b-7f20-b0b5-b3c9801c511a",
+        "exo_conversation_id": "01a1090a-1f88-78f0-bc16-2d39a6eb028c",
+        "exo_session_id": "01a1090a-2011-7312-890a-164bc92756ef",
+        "exo_turn_id": "01a1090a-2011-7312-890a-165301c6d1b6",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "refusal",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a1090a-8c58-7e10-80cc-411174e887e1",
+        "exo_agent_id": "01a1090a-6589-72a1-bb2a-9cae0301c21c",
+        "exo_conversation_id": "01a1090a-65ce-7843-9b73-be3f184d931f",
+        "exo_session_id": "01a1090a-6663-7502-b651-d47f92aa158b",
+        "exo_turn_id": "01a1090a-6663-7502-b651-d48238021faa",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "tool_escalation",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a1090a-c3f8-7020-a28d-c466fec8d6ab",
+        "exo_agent_id": "01a1090a-a03a-7d81-9057-5717517132e3",
+        "exo_conversation_id": "01a1090a-a073-70e1-a82e-049ded3f98bf",
+        "exo_session_id": "01a1090a-a0e0-7f11-9201-c510455dee3d",
+        "exo_turn_id": "01a1090a-a0e0-7f11-9201-c521bac28940",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "multiple_messages",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a1090b-084a-7572-97b1-ea0e07488d2f",
+        "exo_agent_id": "01a1090a-d9d3-74e1-a3f7-180e546a43d9",
+        "exo_conversation_id": "01a1090a-da14-75a0-81af-01e44e14ed97",
+        "exo_session_id": "01a1090a-da98-7fd0-a7ac-91765fa2cd17",
+        "exo_turn_id": "01a1090a-da98-7fd0-a7ac-91849c3081cf",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "429_one_egress",
+      "evidence": {
+        "denied_requests": 2,
+        "event_cursor": "01a1090b-4954-7c90-8716-7558f5ae365c",
+        "exo_agent_id": "01a1090b-1d2b-7eb0-9292-f5c362824b7b",
+        "exo_conversation_id": "01a1090b-1d7f-75e0-aa5e-3ccb351a7874",
+        "exo_session_id": "01a1090b-1e30-7633-aff1-4c8bd7137010",
+        "exo_turn_id": "01a1090b-1e30-7633-aff1-4c91b5781416",
+        "fetch_attempts": 3,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "500_one_egress",
+      "evidence": {
+        "denied_requests": 2,
+        "event_cursor": "01a1090b-896b-74f0-9d45-fc6e88279d6a",
+        "exo_agent_id": "01a1090b-5eb9-7242-923a-d67685320647",
+        "exo_conversation_id": "01a1090b-5ef6-7fd0-b3d7-2ea1238d21f8",
+        "exo_session_id": "01a1090b-5f6a-7d41-90aa-e52014c10a43",
+        "exo_turn_id": "01a1090b-5f6a-7d41-90aa-e5395b093ccb",
+        "fetch_attempts": 3,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "request_tools_are_empty",
+      "evidence": {
+        "denied_requests": 0,
+        "event_cursor": "01a1090b-c3d9-71b0-b027-bddea98de577",
+        "exo_agent_id": "01a1090b-9cb2-78e0-a836-64dec7c7bdb5",
+        "exo_conversation_id": "01a1090b-9ced-7d73-9390-0e88c067a994",
+        "exo_session_id": "01a1090b-9d6a-7a92-b4bd-1c38ab970ed9",
+        "exo_turn_id": "01a1090b-9d6a-7a92-b4bd-1c4f1bd119e0",
+        "fetch_attempts": 1,
+        "forwarded_requests": 1,
+        "schema": "sts2.exo-one-shot-evidence-v1"
+      },
+      "model_requests": 1,
+      "passed": true,
+      "tools_advertised": 0
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "forbidden_tool_by_name_shell",
+      "evidence": {
+        "bridge": {
+          "denied_requests": 0,
+          "event_cursor": "01a1090c-0207-7c71-baf3-e427cc895124",
+          "exo_agent_id": "01a1090b-d81f-7012-9176-30e55fe33c07",
+          "exo_conversation_id": "01a1090b-d85a-7830-8ada-315bc6af0e86",
+          "exo_session_id": "01a1090b-d8d1-7cc1-adce-e5a2b1e8c756",
+          "exo_turn_id": "01a1090b-d8d1-7cc1-adce-e5ba64b0f705",
+          "fetch_attempts": 1,
+          "forwarded_requests": 1,
+          "schema": "sts2.exo-one-shot-evidence-v1"
+        },
+        "bridge_error_code": "exo_bridge_executor_failed",
+        "executor_decision_absent": true,
+        "executor_error_code": "exo_forbidden_tool"
+      },
+      "model_requests": 2,
+      "passed": true,
+      "tool_name": "shell"
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "forbidden_tool_by_name_shell_upper",
+      "evidence": {
+        "bridge": {
+          "denied_requests": 0,
+          "event_cursor": "01a1090c-7084-7242-9fe1-f78bce567abb",
+          "exo_agent_id": "01a1090c-4c85-7ee1-998b-294a15173fe9",
+          "exo_conversation_id": "01a1090c-4cc1-73d2-970c-0c2f89e93df1",
+          "exo_session_id": "01a1090c-4d34-7ea0-9ef5-f5325e34d16d",
+          "exo_turn_id": "01a1090c-4d34-7ea0-9ef5-f54c74e2af3b",
+          "fetch_attempts": 1,
+          "forwarded_requests": 1,
+          "schema": "sts2.exo-one-shot-evidence-v1"
+        },
+        "bridge_error_code": "exo_bridge_executor_failed",
+        "executor_decision_absent": true,
+        "executor_error_code": "exo_forbidden_tool"
+      },
+      "model_requests": 2,
+      "passed": true,
+      "tool_name": "SHELL"
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "forbidden_tool_by_name_shell_mixed",
+      "evidence": {
+        "bridge": {
+          "denied_requests": 0,
+          "event_cursor": "01a1090c-d048-7231-9e56-d9e574769d24",
+          "exo_agent_id": "01a1090c-a95d-7d03-8ab1-37644e8a7920",
+          "exo_conversation_id": "01a1090c-a998-7f93-ad72-a02e2f7ccf9e",
+          "exo_session_id": "01a1090c-aa10-7202-988e-dc2d178efd3b",
+          "exo_turn_id": "01a1090c-aa10-7202-988e-dc3e0c1cc899",
+          "fetch_attempts": 1,
+          "forwarded_requests": 1,
+          "schema": "sts2.exo-one-shot-evidence-v1"
+        },
+        "bridge_error_code": "exo_bridge_executor_failed",
+        "executor_decision_absent": true,
+        "executor_error_code": "exo_forbidden_tool"
+      },
+      "model_requests": 2,
+      "passed": true,
+      "tool_name": "Shell"
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "forbidden_tool_by_name_shell_functions_namespace",
+      "evidence": {
+        "bridge": {
+          "denied_requests": 0,
+          "event_cursor": "01a1090d-34f2-7c90-83bd-43f4f76be0ea",
+          "exo_agent_id": "01a1090d-0d4b-7db1-9e04-3c404f2a77e2",
+          "exo_conversation_id": "01a1090d-0d8c-7e10-ae73-05ad8b7f3e74",
+          "exo_session_id": "01a1090d-0e09-78b2-9157-57f17962097b",
+          "exo_turn_id": "01a1090d-0e09-78b2-9157-58054e5d601f",
+          "fetch_attempts": 1,
+          "forwarded_requests": 1,
+          "schema": "sts2.exo-one-shot-evidence-v1"
+        },
+        "bridge_error_code": "exo_bridge_executor_failed",
+        "executor_decision_absent": true,
+        "executor_error_code": "exo_forbidden_tool"
+      },
+      "model_requests": 2,
+      "passed": true,
+      "tool_name": "functions.shell"
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "forbidden_tool_by_name_shell_builtin_namespace",
+      "evidence": {
+        "bridge": {
+          "denied_requests": 0,
+          "event_cursor": "01a1090d-98a4-79b0-91d6-c1df2aefa960",
+          "exo_agent_id": "01a1090d-7347-7b12-8e86-169099da2db1",
+          "exo_conversation_id": "01a1090d-738f-7eb3-ac5a-e826400847e8",
+          "exo_session_id": "01a1090d-7419-7883-9adb-e1099e4dd7f8",
+          "exo_turn_id": "01a1090d-7419-7883-9adb-e1143f70e664",
+          "fetch_attempts": 1,
+          "forwarded_requests": 1,
+          "schema": "sts2.exo-one-shot-evidence-v1"
+        },
+        "bridge_error_code": "exo_bridge_executor_failed",
+        "executor_decision_absent": true,
+        "executor_error_code": "exo_forbidden_tool"
+      },
+      "model_requests": 2,
+      "passed": true,
+      "tool_name": "built_in:shell"
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "forbidden_tool_by_name_install_agent_tool",
+      "evidence": {
+        "bridge": {
+          "denied_requests": 0,
+          "event_cursor": "01a1090e-003d-71e0-9de9-99cc3edbee61",
+          "exo_agent_id": "01a1090d-d900-7dd2-8c8c-a372d64eeffa",
+          "exo_conversation_id": "01a1090d-d93e-7233-b4f4-7c3b83503c28",
+          "exo_session_id": "01a1090d-d9ba-7943-a8eb-b582a32cb6f4",
+          "exo_turn_id": "01a1090d-d9ba-7943-a8eb-b59b26d405c5",
+          "fetch_attempts": 1,
+          "forwarded_requests": 1,
+          "schema": "sts2.exo-one-shot-evidence-v1"
+        },
+        "bridge_error_code": "exo_bridge_executor_failed",
+        "executor_decision_absent": true,
+        "executor_error_code": "exo_forbidden_tool"
+      },
+      "model_requests": 2,
+      "passed": true,
+      "tool_name": "install_agent_tool"
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "forbidden_tool_by_name_uninstall_agent_tool",
+      "evidence": {
+        "bridge": {
+          "denied_requests": 0,
+          "event_cursor": "01a1090e-6e27-7ee2-8201-0950c99af0c8",
+          "exo_agent_id": "01a1090e-481a-7ff2-8e82-460243ea4816",
+          "exo_conversation_id": "01a1090e-4857-76a2-ab98-25f44e4e4791",
+          "exo_session_id": "01a1090e-48cf-75f1-8469-26c1e2bb8c50",
+          "exo_turn_id": "01a1090e-48cf-75f1-8469-26d982660939",
+          "fetch_attempts": 1,
+          "forwarded_requests": 1,
+          "schema": "sts2.exo-one-shot-evidence-v1"
+        },
+        "bridge_error_code": "exo_bridge_executor_failed",
+        "executor_decision_absent": true,
+        "executor_error_code": "exo_forbidden_tool"
+      },
+      "model_requests": 2,
+      "passed": true,
+      "tool_name": "uninstall_agent_tool"
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "forbidden_tool_by_name_manage_tool",
+      "evidence": {
+        "bridge": {
+          "denied_requests": 0,
+          "event_cursor": "01a1090e-c95e-7503-bfa6-0657ec72384e",
+          "exo_agent_id": "01a1090e-a6aa-7311-99d8-ef6a1f6c4611",
+          "exo_conversation_id": "01a1090e-a6e6-7223-82cf-33074573fc22",
+          "exo_session_id": "01a1090e-a756-7241-8e84-f81cf8b3a11b",
+          "exo_turn_id": "01a1090e-a756-7241-8e84-f821a84607c6",
+          "fetch_attempts": 1,
+          "forwarded_requests": 1,
+          "schema": "sts2.exo-one-shot-evidence-v1"
+        },
+        "bridge_error_code": "exo_bridge_executor_failed",
+        "executor_decision_absent": true,
+        "executor_error_code": "exo_forbidden_tool"
+      },
+      "model_requests": 2,
+      "passed": true,
+      "tool_name": "manage_tool"
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "forbidden_tool_by_name_inspect_tools",
+      "evidence": {
+        "bridge": {
+          "denied_requests": 0,
+          "event_cursor": "01a1090f-26fc-78e2-b244-610b703ed593",
+          "exo_agent_id": "01a1090f-02cd-7070-8567-f815cf6a45dd",
+          "exo_conversation_id": "01a1090f-030a-7a31-bfd8-311e05835a82",
+          "exo_session_id": "01a1090f-037f-76b3-8899-7f1e5a715589",
+          "exo_turn_id": "01a1090f-037f-76b3-8899-7f2dc4e5c95e",
+          "fetch_attempts": 1,
+          "forwarded_requests": 1,
+          "schema": "sts2.exo-one-shot-evidence-v1"
+        },
+        "bridge_error_code": "exo_bridge_executor_failed",
+        "executor_decision_absent": true,
+        "executor_error_code": "exo_forbidden_tool"
+      },
+      "model_requests": 2,
+      "passed": true,
+      "tool_name": "inspect_tools"
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "forbidden_tool_by_name_install_skill",
+      "evidence": {
+        "bridge": {
+          "denied_requests": 0,
+          "event_cursor": "01a1090f-848b-7242-9743-52f756c3b359",
+          "exo_agent_id": "01a1090f-6236-7cc2-8c1c-b22945f80f94",
+          "exo_conversation_id": "01a1090f-6273-77f2-873b-0856ec05ecbc",
+          "exo_session_id": "01a1090f-62e4-7932-961d-6432929662f4",
+          "exo_turn_id": "01a1090f-62e4-7932-961d-644f67bfc40e",
+          "fetch_attempts": 1,
+          "forwarded_requests": 1,
+          "schema": "sts2.exo-one-shot-evidence-v1"
+        },
+        "bridge_error_code": "exo_bridge_executor_failed",
+        "executor_decision_absent": true,
+        "executor_error_code": "exo_forbidden_tool"
+      },
+      "model_requests": 2,
+      "passed": true,
+      "tool_name": "install_skill"
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "forbidden_tool_by_name_remember",
+      "evidence": {
+        "bridge": {
+          "denied_requests": 0,
+          "event_cursor": "01a1090f-e68a-7701-8a9f-9c2ccca93b99",
+          "exo_agent_id": "01a1090f-c3cc-7131-8f92-295991d29ac7",
+          "exo_conversation_id": "01a1090f-c406-7ab0-88d1-8c3c340528e9",
+          "exo_session_id": "01a1090f-c47c-7fb0-9ce1-2704bd2871fc",
+          "exo_turn_id": "01a1090f-c47c-7fb0-9ce1-271d5e6dcf92",
+          "fetch_attempts": 1,
+          "forwarded_requests": 1,
+          "schema": "sts2.exo-one-shot-evidence-v1"
+        },
+        "bridge_error_code": "exo_bridge_executor_failed",
+        "executor_decision_absent": true,
+        "executor_error_code": "exo_forbidden_tool"
+      },
+      "model_requests": 2,
+      "passed": true,
+      "tool_name": "remember"
+    },
+    {
+      "argv_private_values_absent": true,
+      "case": "forbidden_tool_by_name_lookup_query",
+      "evidence": {
+        "bridge": {
+          "denied_requests": 0,
+          "event_cursor": "01a10910-48de-7f71-9b44-748fe1db87ac",
+          "exo_agent_id": "01a10910-2186-79f2-965c-59f8c823135a",
+          "exo_conversation_id": "01a10910-21c6-7481-a36f-ea0339096277",
+          "exo_session_id": "01a10910-224c-70c1-9e8a-87e10bccd6db",
+          "exo_turn_id": "01a10910-224c-70c1-9e8a-87f256c62fe7",
+          "fetch_attempts": 1,
+          "forwarded_requests": 1,
+          "schema": "sts2.exo-one-shot-evidence-v1"
+        },
+        "bridge_error_code": "exo_bridge_executor_failed",
+        "executor_decision_absent": true,
+        "executor_error_code": "exo_forbidden_tool"
+      },
+      "model_requests": 2,
+      "passed": true,
+      "tool_name": "sts2_lookup_query"
+    }
+  ],
+  "evidence": "real-pinned-Exo-with-synthetic-model-no-game",
+  "executor_sha256": "e8d2f75824b1aee518cf15c6cb92dd9e770ae26cfedbf1bfdeff6de293abbab3",
+  "exo_revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
+  "extension_sha256": "bcc034e787972f7ad6eabff5e817ad1456d6f6cab8c7dc42b426bd9f5b33ef3d",
+  "full_runtime_admission": false,
+  "harness_revision": "eddc511a31c034978661d7aca6829d3f92cf9e0b",
+  "oracle_sha256": "1117e9b0e8cd3955c4f7a785dfbb8874768cc7e5f4468695031c2bdaf913f6a2",
+  "schema": "sts2.exo-one-shot-process-evidence-v1",
+  "support_sha256": {
+    "tests/support/mod.rs": "c42408176a7f774d1f845cb3b8a0805892174ae237149ca037d232bf65050b5c",
+    "tests/support/projection.rs": "a264a19e4d2be60d814b6f5afa7990f26d9768ddf5daa4992cde86a7cbc0c1e0"
+  },
+  "temporary_storage": "owned-target-exo-test-tmp"
+}

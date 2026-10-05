@@ -4,7 +4,7 @@ use serde_json::Value;
 use sts2_harness::{EXO_SOURCE_REVISION, exo_bridge_manifest, sha256_hex};
 
 const RECORD: &str =
-    include_str!("../../../../docs/evidence/exo-executor-process-oracle-20260917.json");
+    include_str!("../../../../docs/evidence/exo-executor-process-oracle-20261004.json");
 const EXTENSION: &[u8] = include_bytes!("../../../../experiments/exo-agent/extension/src/index.ts");
 const ORACLE: &[u8] =
     include_bytes!("../../../../experiments/exo-agent/bridge/tests/process_oracle.rs");
@@ -19,12 +19,17 @@ const SUPPORT: [(&str, &[u8]); 2] = [
     ),
 ];
 
-const RECORD_PATH: &str = "docs/evidence/exo-executor-process-oracle-20260917.json";
+const RECORD_PATH: &str = "docs/evidence/exo-executor-process-oracle-20261004.json";
+const RECORD_DOC_PATH: &str = "docs/evidence/exo-executor-process-oracle-20261004.md";
 const ADVERTISED_RECORD: &str =
-    include_str!("../../../../docs/evidence/exo-advertised-variant-negatives-20260918.json");
+    include_str!("../../../../docs/evidence/exo-advertised-variant-negatives-20261004.json");
 const ADVERTISED_ORACLE: &[u8] =
     include_bytes!("../../../../experiments/exo-agent/bridge/tests/advertised_variant_oracle.rs");
-const ADVERTISED_RECORD_PATH: &str = "docs/evidence/exo-advertised-variant-negatives-20260918.json";
+const ADVERTISED_RECORD_PATH: &str = "docs/evidence/exo-advertised-variant-negatives-20261004.json";
+const ADVERTISED_RECORD_DOC_PATH: &str =
+    "docs/evidence/exo-advertised-variant-negatives-20261004.md";
+const OLD_HISTORY_SENTINEL: &str = "old_history_sentinel";
+const SYNTHETIC_V2_SUCCESS: &str = "synthetic_v2_success";
 const ACCEPTED_DECISIONS: [&str; 4] = ["action", "plan", "wait", "reobserve"];
 const ADVERTISED_PROBES: [&str; 5] = [
     "describe",
@@ -62,8 +67,9 @@ const FORBIDDEN_TOOL_BY_NAME: [&str; 12] = [
     "forbidden_tool_by_name_remember",
     "forbidden_tool_by_name_lookup_query",
 ];
-const PRE_MODEL_REJECTIONS: [&str; 12] = [
+const PRE_MODEL_REJECTIONS: [&str; 13] = [
     "describe",
+    OLD_HISTORY_SENTINEL,
     "wrong_revision",
     "unsupported_map",
     "wrong_generation",
@@ -117,6 +123,7 @@ fn recorded_process_evidence_matches_shipped_extension_and_oracle_bytes() {
 fn recorded_process_evidence_covers_every_case_group() {
     let record = record();
     let cases = record["cases"].as_array().expect("recorded cases");
+    assert_eq!(cases.len(), 42, "the active process record has 42 cases");
     let mut names = Vec::new();
     for case in cases {
         let name = case["case"].as_str().expect("case name");
@@ -154,6 +161,27 @@ fn recorded_process_evidence_covers_every_case_group() {
         } else {
             assert_eq!(requests, 1, "case {name} did not make exactly one egress");
         }
+        if name == OLD_HISTORY_SENTINEL {
+            assert_eq!(
+                case["refusal_before_model_egress"].as_bool(),
+                Some(true),
+                "old-history input must be refused before model egress"
+            );
+        }
+        if name == SYNTHETIC_V2_SUCCESS {
+            assert_eq!(
+                requests, 1,
+                "the synthetic v2 success makes one model request"
+            );
+            assert_eq!(case["v2_receipt"].as_str(), Some("present"));
+            assert_eq!(
+                case["evidence"]["schema"].as_str(),
+                Some("sts2.exo-one-shot-evidence-v1")
+            );
+            assert_eq!(case["evidence"]["fetch_attempts"].as_u64(), Some(1));
+            assert_eq!(case["evidence"]["forwarded_requests"].as_u64(), Some(1));
+            assert_eq!(case["evidence"]["denied_requests"].as_u64(), Some(0));
+        }
         if EMPTY_TOOL_REQUEST.contains(&name) {
             assert_eq!(case["tools_advertised"].as_u64(), Some(0));
         }
@@ -166,6 +194,7 @@ fn recorded_process_evidence_covers_every_case_group() {
     expected.extend(EMPTY_TOOL_REQUEST);
     expected.extend(FORBIDDEN_TOOL_BY_NAME);
     expected.extend(PRE_MODEL_REJECTIONS);
+    expected.push(SYNTHETIC_V2_SUCCESS);
     expected.sort_unstable();
     names.sort_unstable();
     assert_eq!(names, expected);
@@ -185,7 +214,14 @@ fn artifact_manifest_records_the_same_process_evidence() {
     let manifest: Value =
         serde_json::from_str(exo_bridge_manifest()).expect("artifact manifest is JSON");
     let recorded = &manifest["process_evidence"];
+    let run = record();
     assert_eq!(recorded["record"].as_str(), Some(RECORD_PATH));
+    assert_eq!(recorded["documentation"].as_str(), Some(RECORD_DOC_PATH));
+    assert_eq!(recorded["bridge_sha256"], run["bridge_sha256"]);
+    assert_eq!(
+        recorded["recorded_harness_revision"],
+        run["harness_revision"]
+    );
     assert_eq!(recorded["exo_revision"].as_str(), Some(EXO_SOURCE_REVISION));
     assert_eq!(
         recorded["extension_sha256"].as_str(),
@@ -253,7 +289,18 @@ fn artifact_manifest_records_the_same_advertised_variant_evidence() {
     let manifest: Value =
         serde_json::from_str(exo_bridge_manifest()).expect("artifact manifest is JSON");
     let recorded = &manifest["process_evidence"]["advertised_variant_evidence"];
+    let run: Value =
+        serde_json::from_str(ADVERTISED_RECORD).expect("advertised-variant record is JSON");
     assert_eq!(recorded["record"].as_str(), Some(ADVERTISED_RECORD_PATH));
+    assert_eq!(
+        recorded["documentation"].as_str(),
+        Some(ADVERTISED_RECORD_DOC_PATH)
+    );
+    assert_eq!(recorded["bridge_sha256"], run["bridge_sha256"]);
+    assert_eq!(
+        recorded["recorded_harness_revision"],
+        run["harness_revision"]
+    );
     assert_eq!(recorded["exo_revision"].as_str(), Some(EXO_SOURCE_REVISION));
     assert_eq!(
         recorded["extension_sha256"].as_str(),

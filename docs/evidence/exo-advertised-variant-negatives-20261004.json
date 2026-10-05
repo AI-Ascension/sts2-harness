@@ -1,0 +1,29 @@
+{
+  "advertised_decisions": [
+    "action",
+    "plan",
+    "wait",
+    "reobserve"
+  ],
+  "advertised_profiles": [
+    "standard"
+  ],
+  "bridge_sha256": "97985d0d77cb0ab70765d7f176a99ec4c442fac1a314d5784ed0f98c9cb29e70",
+  "evidence": "real-process-synthetic-model-no-game",
+  "executor_sha256": "e8d2f75824b1aee518cf15c6cb92dd9e770ae26cfedbf1bfdeff6de293abbab3",
+  "exo_revision": "b06869ab789dee3f80ca474b5fa89dbe47ccb859",
+  "extension_sha256": "bcc034e787972f7ad6eabff5e817ad1456d6f6cab8c7dc42b426bd9f5b33ef3d",
+  "full_runtime_admission": false,
+  "harness_revision": "03f0422fa11c7110e5479ce6383dc318a53b4c65",
+  "model_requests": 0,
+  "oracle_sha256": "c31813c99db888c312b579c8c023a9f2a3b9e731a0b1676ddcf2a5ec862b4e6a",
+  "probes": [
+    "describe",
+    "describe_repeated",
+    "map_refused_pre_inference",
+    "management_refused_pre_inference",
+    "tampered_config_rejected"
+  ],
+  "schema": "sts2.exo-advertised-variant-evidence-v1",
+  "temporary_storage": "owned-target-exo-test-tmp"
+}
