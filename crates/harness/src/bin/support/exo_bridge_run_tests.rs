@@ -223,9 +223,8 @@ struct Parent(PathBuf);
 
 impl Parent {
     fn new() -> Result<Self> {
-        let target = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target")
-            .canonicalize()?;
+        // Exercise private-mode creation on the same temp filesystem production selects.
+        let target = std::env::temp_dir().canonicalize()?;
         let path = target.join(format!("exo-private-root-test-{}", uuid::Uuid::new_v4()));
         std::fs::DirBuilder::new().mode(0o700).create(&path)?;
         Ok(Self(path))

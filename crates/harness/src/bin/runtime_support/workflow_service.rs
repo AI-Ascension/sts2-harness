@@ -76,6 +76,10 @@ fn factory(
     provider_capabilities: NativeCapabilities,
     context_owner: Arc<production_context_owner::Owner>,
 ) -> Result<Arc<dyn LiveWorkflowSessionFactory>, String> {
+    // Freeze the selected mode at composition time. Explicit legacy keeps the
+    // historical no-catalog provider path; the reviewed envelope remains
+    // catalog-bound and fail-closed for every unsupported descriptor.
+    let admission_mode = runtime_v3_admission::declared_mode()?;
     let observations: Arc<dyn sts2_harness::LiveContextObservationPort> = context_owner.clone();
     let render: Arc<dyn sts2_harness::LiveContextRenderPort> = context_owner.clone();
     let factory = ProductionLiveWorkflowSessionFactory::new(
@@ -85,7 +89,10 @@ fn factory(
             policy_scope,
             provider_capabilities: provider_capabilities.clone(),
         }),
-        Arc::new(Provider),
+        Arc::new(Provider {
+            admission_mode,
+            provider_capabilities: provider_capabilities.clone(),
+        }),
         provider_policy,
         provider_capabilities.clone(),
     )
@@ -96,10 +103,14 @@ fn factory(
         // approved material and the bytes the boundary wrote are one value only if the sink records
         // the release before the write, so the served composition attaches a recording sink rather
         // than the inert default; see `capture` and ADR 0070.
-        .with_capture_sink(capture::sink_from_environment()?)
-        .with_inference_profile_catalog(Arc::new(
-            inference_profiles::InferenceProfileCatalogProducer::new(provider_capabilities),
-        ));
+        .with_capture_sink(capture::sink_from_environment()?);
+    let factory = inference_profiles::attach_profile_catalog(
+        factory,
+        admission_mode,
+        Arc::new(inference_profiles::InferenceProfileCatalogProducer::new(
+            provider_capabilities,
+        )),
+    );
     // Which durable store a deployment commits its receipts to is an owner decision, so a store
     // is attached only when the operator names one; see `dispatch_ledger`.
     match dispatch_ledger::port_from_environment()? {
@@ -117,7 +128,10 @@ mod dispatch_ledger;
 mod inference_profiles;
 #[path = "workflow_service_policy.rs"]
 mod policy;
+#[path = "workflow_service_profile_dispatch.rs"]
+mod profile_dispatch;
 use policy::ProviderPolicyConfiguration;
+use profile_dispatch::Provider;
 
 fn valid_environment_name(value: &str) -> bool {
     !value.is_empty()
@@ -286,26 +300,6 @@ fn validate_runtime_lineage(
         ));
     }
     Ok(())
-}
-struct Provider;
-impl LiveProviderSessionFactory for Provider {
-    fn open_provider(
-        &self,
-        _: &RunRequest,
-        _: &AuthContext,
-        _: &WorkflowDefinition,
-        _: &str,
-    ) -> Result<Box<dyn sts2_harness::DecisionSource + Send>, ManagementError> {
-        let config = RuntimeConfig::from_environment()
-            .map_err(|e| ManagementError::unavailable("runtime_configuration", e))?;
-        let settings = runtime_v3_settings::RuntimeV3Settings::from_environment(&config)
-            .map_err(|e| ManagementError::unavailable("provider_configuration", e))?;
-        let transport = runtime_v3_admission::admit(&settings.admission, settings.process)
-            .map_err(|e| ManagementError::unavailable("provider_admission", e))?;
-        Ok(Box::new(sts2_harness::ExoDecisionSource::new(
-            sts2_harness::ExoSession::new(sts2_harness::ExoProvider::new(transport, settings.exo)),
-        )))
-    }
 }
 fn required(name: &str) -> Result<String, String> {
     std::env::var(name).map_err(|_| format!("{name} is required"))
