@@ -4,9 +4,9 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use serde::Deserialize;
-use sts2_harness::context_control::{ContextControlStore, ControlAuthority};
-use sts2_harness::context_control::ManagedRenderInput;
 use sts2_harness::ExoConfig;
+use sts2_harness::context_control::ManagedRenderInput;
+use sts2_harness::context_control::{ContextControlStore, ControlAuthority};
 use sts2_harness::management::{
     AuthContext, CONTEXT_OWNER_CONTROL_LIMITS_SCHEMA, ContextBindingCatalog,
     ContextBindingContinuity, ContextBindingDescriptor, ContextBindingGrants,
@@ -23,6 +23,8 @@ const SCHEMA: &str = "ascension.workflow-context-owner-config.v1";
 
 #[path = "production_context_owner/binding.rs"]
 mod binding;
+#[path = "production_context_owner/drafts.rs"]
+mod drafts;
 #[path = "production_context_owner/lease_fence.rs"]
 mod lease_fence;
 #[path = "production_context_owner/observation.rs"]
@@ -33,8 +35,6 @@ mod source;
 mod source_status;
 #[path = "production_context_owner/source_support.rs"]
 mod source_support;
-#[path = "production_context_owner/drafts.rs"]
-mod drafts;
 
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -101,9 +101,7 @@ fn provider_config_digest(config: &ExoConfig) -> Result<String, ManagementError>
         "forward_visible_seed": config.forward_visible_seed,
         "tool_catalog": &config.tool_catalog,
     }))
-    .map_err(|error| {
-        ManagementError::invalid("context_render_config_encode", error.to_string())
-    })?;
+    .map_err(|error| ManagementError::invalid("context_render_config_encode", error.to_string()))?;
     Ok(sts2_harness::sha256_hex(bytes))
 }
 

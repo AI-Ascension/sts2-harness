@@ -3,10 +3,10 @@
 use super::lifetime_durable::LIFETIME_AAD;
 use super::lifetime_scope::MAX_LIFETIME_STATE_BYTES;
 use super::state::ControlEvent;
+use super::state::MAX_CONTROL_EVENTS;
 use super::store::decrypt_with_key;
 use super::store_receipts::owner_receipt_aad;
 use super::store_render_sources::source_aad;
-use super::state::MAX_CONTROL_EVENTS;
 use super::store_types::{
     CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION, DurableControlStoreError, LEGACY_STORE_SCHEMA,
     MAX_CONTEXT_SOURCE_BYTES, MAX_EVENT_BYTES, MAX_EVENTS, MAX_JOURNAL_BYTES,

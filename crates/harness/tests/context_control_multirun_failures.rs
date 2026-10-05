@@ -33,7 +33,9 @@ fn corrupt_foreign_run_is_not_attested_by_another_runs_migration() {
         .expect("A migration authenticates only A and preserves B bytes");
     let store_b = ContextControlStore::open(&path, key_b, "run-b").expect("open B v2 handle");
     assert_eq!(
-        store_b.load().expect_err("B detects its own corrupt journal"),
+        store_b
+            .load()
+            .expect_err("B detects its own corrupt journal"),
         DurableControlStoreError::Corrupt
     );
     drop(store_b);

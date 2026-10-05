@@ -224,16 +224,12 @@ impl ContextOwnerPort for Owner {
             .map_err(|error| {
                 ManagementError::unavailable("context_owner_persist", error.to_string())
             })?;
-        if entry
-            .trusted_render
-            .as_ref()
-            .is_some_and(|render| {
-                render.binding.invocation_id != binding.invocation_id
-                    || render.binding.binding_id != binding.binding_id
-                    || render.binding.binding_digest != binding.binding_digest
-                    || render.binding.boundary != binding.boundary
-            })
-        {
+        if entry.trusted_render.as_ref().is_some_and(|render| {
+            render.binding.invocation_id != binding.invocation_id
+                || render.binding.binding_id != binding.binding_id
+                || render.binding.binding_digest != binding.binding_digest
+                || render.binding.boundary != binding.boundary
+        }) {
             entry.trusted_render = None;
         }
         entry.binding_request = Some(request.clone());
@@ -386,7 +382,8 @@ impl ContextOwnerPort for Owner {
         actor: &AuthContext,
         snapshot: &sts2_harness::management::RunSnapshot,
         request: &sts2_harness::management::ContextOwnerMutationRequest,
-    ) -> Result<Option<sts2_harness::management::ContextOwnerMutationReceipt>, ManagementError> {
+    ) -> Result<Option<sts2_harness::management::ContextOwnerMutationReceipt>, ManagementError>
+    {
         self.recover_mutation_receipt_current(actor, snapshot, request)
     }
 }

@@ -5,15 +5,15 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use sts2_harness::{
-    ContextBoundary, ContextControlStore, ContextDraft, ContextLifetimeLedger,
-    ContextSourceDocument, ControlAuthority, DurableContextOwnerControlReceipt,
-    DurableContextSourceSnapshot, DurableControlStoreError, StoreMode, context_source_digest,
-};
 use sts2_harness::management::{
     CONTEXT_OWNER_BINDING_SCHEMA_VERSION, CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION,
     ContextBindingContinuity, ContextBindingGrants, ContextBindingState, ContextControlCommand,
     ContextControlCommandKind, ContextControlReceipt, ContextOwnerBinding,
+};
+use sts2_harness::{
+    ContextBoundary, ContextControlStore, ContextDraft, ContextLifetimeLedger,
+    ContextSourceDocument, ControlAuthority, DurableContextOwnerControlReceipt,
+    DurableContextSourceSnapshot, DurableControlStoreError, StoreMode, context_source_digest,
 };
 
 #[derive(Debug, Eq, PartialEq)]
@@ -281,14 +281,9 @@ fn migration_authenticates_one_run_and_preserves_other_runs_with_independent_key
     }
     {
         let authority_b = authority("run-b");
-        let mut store_b = ContextControlStore::create(
-            &path,
-            key_b,
-            "run-b",
-            &authority_b,
-            StoreMode::Enabled,
-        )
-        .expect("create run B using its own key");
+        let mut store_b =
+            ContextControlStore::create(&path, key_b, "run-b", &authority_b, StoreMode::Enabled)
+                .expect("create run B using its own key");
         digest_b = publish_source(&mut store_b, "run-b");
         (command_b, expected_receipt_b) =
             persist_pause_receipt(&mut store_b, &authority_b, "run-b");
@@ -299,7 +294,11 @@ fn migration_authenticates_one_run_and_preserves_other_runs_with_independent_key
     mark_v1(&path);
     let rows_a_before = encrypted_rows(&path, "run-a");
     let rows_b_before = encrypted_rows(&path, "run-b");
-    assert_eq!(rows_b_before.receipts.len(), 1, "B has a real encrypted owner receipt before migration");
+    assert_eq!(
+        rows_b_before.receipts.len(),
+        1,
+        "B has a real encrypted owner receipt before migration"
+    );
 
     assert!(matches!(
         ContextControlStore::open(&path, key_c, "run-c"),
@@ -332,7 +331,15 @@ fn migration_authenticates_one_run_and_preserves_other_runs_with_independent_key
     assert_eq!(encrypted_rows(&path, "run-b"), rows_b_before);
     {
         let store_b = ContextControlStore::open(&path, key_b, "run-b").expect("open B key");
-        assert_eq!(store_b.load().expect("authenticate B journal").state().boundary.run_id, "run-b");
+        assert_eq!(
+            store_b
+                .load()
+                .expect("authenticate B journal")
+                .state()
+                .boundary
+                .run_id,
+            "run-b"
+        );
         assert_eq!(
             store_b
                 .load_context_source("source-run-b", 1, &digest_b)
@@ -343,7 +350,12 @@ fn migration_authenticates_one_run_and_preserves_other_runs_with_independent_key
                 .id,
             "draft-run-b"
         );
-        assert!(store_b.load_lifetime().expect("authenticate B lifetime").is_some());
+        assert!(
+            store_b
+                .load_lifetime()
+                .expect("authenticate B lifetime")
+                .is_some()
+        );
         assert_eq!(
             store_b
                 .lookup_owner_control_receipt(
