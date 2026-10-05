@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-use super::Result;
+use super::{Model, Result, invoke, response};
 
 /// Forbidden upstream tool names, aliases and case/namespace variants the model may request. The
 /// registry advertises none of them; each must be denied at dispatch with the typed code.
@@ -99,6 +99,10 @@ pub fn evidence_row(stderr: &[u8], name: &str) -> Result<Value> {
 pub fn projection(body: &Value, envelope: &Value) -> Result {
     assert!(body.get("tools").is_none_or(|tools| tools == &json!([])));
     let serialized = body.to_string();
+    assert!(
+        !serialized.contains("old-history-private-sentinel"),
+        "old-history sentinel must be absent from the complete model request body"
+    );
     for field in ["request_id", "turn_id"] {
         assert!(!serialized.contains(envelope[field].as_str().ok_or("missing host id")?));
     }
@@ -133,5 +137,88 @@ pub fn projection(body: &Value, envelope: &Value) -> Result {
     ] {
         assert_eq!(projections[0][key], envelope["request"][key], "{key}");
     }
+    Ok(())
+}
+
+pub fn old_history_sentinel_rejected(
+    model: &Model,
+    binary: &std::path::Path,
+    config: &std::path::Path,
+    envelope: &Value,
+    cases: &mut Vec<Value>,
+) -> Result {
+    let mut old_history = envelope.clone();
+    old_history["request"]["history"] = json!(["old-history-private-sentinel"]);
+    model.set(200, response("{}", "message"))?;
+    let output = invoke(
+        binary,
+        config,
+        &serde_json::to_vec(&old_history)?,
+        "--synthetic",
+        true,
+    )?;
+    let observed_requests = model.requests.lock().map_err(|_| "poisoned")?.len();
+    assert_eq!(
+        observed_requests, 0,
+        "old_history_sentinel: {observed_requests} model request(s) reached egress"
+    );
+    let observed_egress = model.request_count();
+    assert_eq!(
+        observed_egress, 0,
+        "old_history_sentinel: {observed_egress} model connection(s) reached egress"
+    );
+    assert!(!output.status.success() && output.stdout.is_empty());
+    assert_eq!(output.stderr, b"exo_bridge_invalid_request\n");
+    cases.push(json!({"case": "old_history_sentinel", "passed": true,
+        "model_requests": 0, "refusal_before_model_egress": true}));
+    Ok(())
+}
+
+pub fn synthetic_v2_success(
+    model: &Model,
+    binary: &std::path::Path,
+    config: &std::path::Path,
+    envelope: &Value,
+    cases: &mut Vec<Value>,
+) -> Result {
+    let decision = json!({"decision": "wait", "rationale": "synthetic"});
+    model.set(200, response(&decision.to_string(), "message"))?;
+    let output = invoke(
+        binary,
+        config,
+        &serde_json::to_vec(envelope)?,
+        "--synthetic-v2",
+        true,
+    )?;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let returned: Value = serde_json::from_slice(&output.stdout)?;
+    assert_eq!(returned["wire_version"], "sts2.exo-bridge-wire-v2");
+    assert_eq!(returned["request_id"], envelope["request_id"]);
+    assert_eq!(returned["turn_id"], envelope["turn_id"]);
+    assert_eq!(returned["outcome"], "decision");
+    assert_eq!(returned["decision"], decision);
+    assert!(returned["error_code"].is_null());
+    let native = returned["native"].as_object().ok_or("missing v2 receipt")?;
+    assert_eq!(native.len(), 5);
+    for field in [
+        "agent_id",
+        "conversation_id",
+        "session_id",
+        "turn_id",
+        "event_cursor",
+    ] {
+        assert_eq!(native[field].as_str().map(str::len), Some(36), "{field}");
+    }
+    let observed = model.requests.lock().map_err(|_| "poisoned")?;
+    assert_eq!((observed.len(), model.request_count()), (1, 1));
+    projection(&observed[0], envelope)?;
+    let row = evidence_row(&output.stderr, "synthetic_v2_success")?;
+    assert_eq!(row["forwarded_requests"], 1);
+    cases.push(json!({"case": "synthetic_v2_success", "passed": true,
+        "model_requests": 1, "v2_receipt": "present", "evidence": row}));
     Ok(())
 }

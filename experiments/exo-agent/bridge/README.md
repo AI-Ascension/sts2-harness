@@ -80,6 +80,13 @@ siblings. `tests/bootstrap_oracle.rs` is **deliberately manual** (`sts2-harness#
 round-trip test that writes no report, so it has no artifact to assert or upload, and it needs the
 built relay plus the pinned Exo checkout in the same way the wired legs do.
 
+The active dated source/process evidence pointers are the
+[2026-10-04 process report](../../../docs/evidence/exo-executor-process-oracle-20261004.json),
+the [advertised-variant report](../../../docs/evidence/exo-advertised-variant-negatives-20261004.json),
+and their [provenance note](../../../docs/evidence/exo-executor-process-oracle-20261004.md). Each
+report retains the bridge digest and harness revision observed by its run. Updating the embedded
+manifest changes a later bridge build; these reports do not claim that later binary was tested.
+
 `tests/bound_oracle.rs` measures the two source-only remainders recorded on `sts2-harness#148`
 after the process/fault slices: writer-side back-pressure at the bridge request bound and the
 executor's own read bound, and the `timeout_millis`/`max_output_tokens` turn budgets. It emits

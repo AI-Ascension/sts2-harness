@@ -101,7 +101,10 @@ fn real_exo_bootstrap_profile_round_trips_through_shipped_relay() -> Result {
 
     model.replace_response(
         200,
-        response(&serde_json::to_string(&json!({"action_id":action}))?, "message"),
+        response(
+            &serde_json::to_string(&json!({"action_id":action}))?,
+            "message",
+        ),
     )?;
     frame["sequence"] = json!(2);
     frame["wire_version"] = json!(V1);

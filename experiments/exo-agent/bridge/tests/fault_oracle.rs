@@ -68,6 +68,8 @@ fn real_exo_fault_matrix_and_run_isolation() -> Result {
     Ok(())
 }
 
+type AdmissionFaultMutation = (&'static str, &'static str, fn(&mut Value));
+
 /// Admission faults must be refused before the executor is spawned, so **zero egress** is the
 /// load-bearing assertion here, not merely the error code.
 fn admission_faults(
@@ -76,7 +78,7 @@ fn admission_faults(
     cases: &mut Vec<Value>,
 ) -> Result {
     let base = fault::config_json(model)?;
-    let mutations: [(&str, &str, fn(&mut Value)); 5] = [
+    let mutations: [AdmissionFaultMutation; 5] = [
         ("config_schema_mismatch", "exo_bridge_config", |config| {
             config["schema"] = json!("sts2.exo-not-a-schema")
         }),
