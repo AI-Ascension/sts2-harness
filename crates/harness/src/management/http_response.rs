@@ -228,6 +228,9 @@ impl HttpError {
     pub(super) fn from_management(error: ManagementError) -> Self {
         let status = match error.code.as_str() {
             "draft_not_found"
+            | "context_owner_draft_not_found"
+            | "context_owner_revision_not_found"
+            | "context_owner_preview_not_found"
             | "definition_not_found"
             | "context_binding_not_recorded"
             | "context_control_receipt_not_recorded" => 404,

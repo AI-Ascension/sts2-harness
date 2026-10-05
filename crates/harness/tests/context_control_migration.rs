@@ -6,8 +6,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use sts2_harness::{
-    ContextBoundary, ContextControlStore, ControlAuthority, DurableControlStoreError,
-    DurableStoreFailpoint, LegacyOpenError, StoreMode,
+    ContextBoundary, ContextControlStore, ContextDraft, ContextSourceDocument, ControlAuthority,
+    DurableContextSourceSnapshot, DurableControlStoreError, DurableStoreFailpoint, LegacyOpenError,
+    StoreMode, context_source_digest,
 };
 
 fn boundary() -> ContextBoundary {
@@ -163,6 +164,37 @@ fn additive_schema_retry_repairs_a_rolled_back_migration() {
     let authority = authority();
     let store =
         ContextControlStore::open(&path, [13_u8; 32], "run-migration").expect("retry migration");
+    let metadata = rusqlite::Connection::open(&path).expect("inspect migrated metadata");
+    assert_eq!(
+        metadata
+            .query_row(
+                "SELECT value FROM context_control_meta WHERE key = 'schema_version'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .expect("schema version"),
+        "2"
+    );
+    assert_eq!(
+        metadata
+            .query_row(
+                "SELECT value FROM context_control_meta WHERE key = 'schema'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .expect("schema marker"),
+        "ascension.context-control.sqlite.v2"
+    );
+    assert_eq!(
+        metadata
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'context_control_owner_state'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("new owner table"),
+        1
+    );
     assert_eq!(
         store
             .snapshot()
@@ -322,3 +354,5 @@ fn replacement_owner_fences_the_old_live_handle() {
     );
     cleanup(&path);
 }
+
+include!("context_control_migration_added.rs");

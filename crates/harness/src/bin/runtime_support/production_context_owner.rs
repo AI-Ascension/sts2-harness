@@ -5,6 +5,8 @@ use std::sync::Mutex;
 
 use serde::Deserialize;
 use sts2_harness::context_control::{ContextControlStore, ControlAuthority};
+use sts2_harness::context_control::ManagedRenderInput;
+use sts2_harness::ExoConfig;
 use sts2_harness::management::{
     AuthContext, CONTEXT_OWNER_CONTROL_LIMITS_SCHEMA, ContextBindingCatalog,
     ContextBindingContinuity, ContextBindingDescriptor, ContextBindingGrants,
@@ -31,6 +33,8 @@ mod source;
 mod source_status;
 #[path = "production_context_owner/source_support.rs"]
 mod source_support;
+#[path = "production_context_owner/drafts.rs"]
+mod drafts;
 
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -63,6 +67,17 @@ pub(super) struct Owner {
     current: Mutex<BTreeMap<String, Current>>,
 }
 
+#[derive(Clone)]
+struct TrustedRenderContext {
+    request: ManagedRenderInput,
+    config: ExoConfig,
+    provider_config_digest: String,
+    binding: ContextOwnerBinding,
+    actor_subject: String,
+    runtime_lease_id: String,
+    captured_at: u64,
+}
+
 struct Current {
     authority: ControlAuthority,
     store: ContextControlStore,
@@ -74,6 +89,22 @@ struct Current {
     runtime_lease_id: String,
     runtime_lease_epoch: u64,
     admitted_control_limits: ContextOwnerControlLimits,
+    trusted_render: Option<TrustedRenderContext>,
+}
+
+fn provider_config_digest(config: &ExoConfig) -> Result<String, ManagementError> {
+    let bytes = serde_json::to_vec(&serde_json::json!({
+        "revision": config.revision.as_str(),
+        "max_request_bytes": config.max_request_bytes,
+        "max_response_bytes": config.max_response_bytes,
+        "timeout_millis": config.timeout_millis,
+        "forward_visible_seed": config.forward_visible_seed,
+        "tool_catalog": &config.tool_catalog,
+    }))
+    .map_err(|error| {
+        ManagementError::invalid("context_render_config_encode", error.to_string())
+    })?;
+    Ok(sts2_harness::sha256_hex(bytes))
 }
 
 impl Owner {

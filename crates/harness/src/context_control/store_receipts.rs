@@ -245,7 +245,7 @@ fn idempotency_digest(
     Ok(digest(key.as_bytes()))
 }
 
-fn owner_receipt_aad(
+pub(super) fn owner_receipt_aad(
     run_id: &str,
     owner_id: &str,
     command_digest: &str,

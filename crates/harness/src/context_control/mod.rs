@@ -116,7 +116,8 @@ pub use store_render_sources::context_source_digest;
 pub use store_types::{
     CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION, DurableActiveContextSource,
     DurableContextOwnerControlReceipt, DurableContextSourceSnapshot, DurableControlStoreError,
-    DurableStoreFailpoint, LegacyOpenError, StoreMode, StoreSnapshot,
+    DurableOwnerContextState, DurableStoreFailpoint, LegacyOpenError,
+    MAX_OWNER_CONTEXT_STATE_BYTES, StoreMode, StoreSnapshot,
 };
 pub use systemone_card_choice::{
     DisclosedCardChoice, card_choice_instructions, disclosed_card_choice,

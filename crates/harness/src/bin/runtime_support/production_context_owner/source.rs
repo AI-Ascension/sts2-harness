@@ -261,4 +261,5 @@ mod tests;
 mod source_render;
 #[path = "source_validation.rs"]
 mod source_validation;
-use source_validation::{source_valid_until, unix_time, validate_document};
+use source_validation::validate_document;
+pub(super) use source_validation::{source_valid_until, unix_time};

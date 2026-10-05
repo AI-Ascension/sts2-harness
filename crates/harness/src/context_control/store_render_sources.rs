@@ -261,7 +261,7 @@ fn valid_source_id(value: &str) -> bool {
         })
 }
 
-fn source_aad(run_id: &str, source_id: &str, version: u64) -> Vec<u8> {
+pub(super) fn source_aad(run_id: &str, source_id: &str, version: u64) -> Vec<u8> {
     format!("ascension.context-control.source.v1\0{run_id}\0{source_id}\0{version}").into_bytes()
 }
 

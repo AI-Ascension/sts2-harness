@@ -264,6 +264,8 @@ fn exact_encrypted_receipt_is_atomic_and_read_does_not_claim_the_live_writer() {
     let _ = fs::remove_dir_all(path.parent().expect("fixture parent"));
 }
 
+include!("context_control_owner_receipt_migration.rs");
+
 #[test]
 fn source_activation_and_adoption_receipt_commit_atomically_after_encrypted_publication() {
     let path = store_path();

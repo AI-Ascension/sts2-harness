@@ -58,6 +58,27 @@ impl DecisionInput {
     pub(crate) fn map_context(&self) -> Option<&MapDecisionContext> {
         self.observation.map_context()
     }
+
+    /// Converts the exact runtime-owned decision input to the shared managed
+    /// renderer representation. This remains read-only and carries no authority.
+    #[must_use]
+    pub fn managed_render_input(&self) -> ManagedRenderInput {
+        ManagedRenderInput {
+            execution_id: self.execution_id.to_string(),
+            state_id: self.observation.state_id().to_owned(),
+            generation: self.observation.generation(),
+            observation: self.observation.fair_play().as_value().clone(),
+            legal_action_ids: self
+                .legal_actions
+                .actions()
+                .iter()
+                .map(|action| action.action_id().to_owned())
+                .collect(),
+            objective: self.objective.clone(),
+            hard_constraints: self.hard_constraints.clone(),
+            map_context: self.map_context().map(MapDecisionContext::to_wire),
+        }
+    }
 }
 
 pub trait DecisionSource {
@@ -93,6 +114,12 @@ pub trait DecisionSource {
         _source: &ContextRenderSource,
     ) -> Result<PreparedContext, PolicyError> {
         Err(PolicyError::ProviderUnavailable)
+    }
+
+    /// Returns the exact admitted Exo configuration used by this source for
+    /// its next managed preparation. Non-Exo sources remain unavailable.
+    fn managed_render_config(&self) -> Option<crate::exo::ExoConfig> {
+        None
     }
 
     /// Sends the exact prepared bytes associated with this decision input.
@@ -183,6 +210,10 @@ impl<T: crate::exo::ExoTransport> DecisionSource for ExoDecisionSource<T> {
         source: &ContextRenderSource,
     ) -> Result<PreparedContext, PolicyError> {
         self.prepare_managed_context_impl(input, source)
+    }
+
+    fn managed_render_config(&self) -> Option<crate::exo::ExoConfig> {
+        Some(self.session.config().clone())
     }
 
     fn decide_prepared_for(

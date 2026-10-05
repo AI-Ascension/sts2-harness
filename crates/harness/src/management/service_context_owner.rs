@@ -25,6 +25,9 @@ mod binding;
 #[path = "service_context_owner_control.rs"]
 mod control;
 
+#[path = "service_context_drafts.rs"]
+mod drafts;
+
 impl ManagementService {
     pub fn with_context_owner_port(mut self, port: Arc<dyn ContextOwnerPort>) -> Self {
         self.context_owner = port;

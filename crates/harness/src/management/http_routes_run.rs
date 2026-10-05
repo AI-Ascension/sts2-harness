@@ -28,6 +28,11 @@ pub(super) fn dispatch_run_route(
     }
     let run_id = segments[3];
     validate_identifier("run_id", run_id).map_err(ManagementError::from)?;
+    if let Some(result) =
+        super::routes_context_owner::dispatch(request, service, actor, run_id, &segments)
+    {
+        return result;
+    }
     if let Some(result) = super::routes_policy::dispatch_provider_policy_route(
         request, service, actor, run_id, &segments,
     ) {

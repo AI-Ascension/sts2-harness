@@ -7,6 +7,8 @@
 //! copied into a separate additive table and are never rewritten. This module is intentionally
 //! a fixture-facing seam; callers still need an approved private key and scoped authorization.
 
+#[path = "store_owner_state.rs"]
+mod owner_state;
 #[path = "store_persist.rs"]
 mod persist;
 
@@ -23,6 +25,7 @@ use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use std::cell::Cell;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use uuid::Uuid;
 
 pub struct ContextControlStore {
@@ -173,13 +176,16 @@ impl ContextControlStore {
         }
         let connection = Connection::open(path).map_err(|_| DurableControlStoreError::Sqlite)?;
         connection
+            .busy_timeout(Duration::from_secs(5))
+            .map_err(|_| DurableControlStoreError::Sqlite)?;
+        connection
             .execute_batch(
                 "PRAGMA journal_mode = WAL;
                  PRAGMA synchronous = FULL;
                  PRAGMA foreign_keys = ON;",
             )
             .map_err(|_| DurableControlStoreError::Sqlite)?;
-        ensure_schema(&connection)?;
+        ensure_schema(&connection, &key, &run_id)?;
         Ok(Self {
             path: path.to_owned(),
             key,

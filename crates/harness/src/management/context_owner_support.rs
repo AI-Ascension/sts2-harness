@@ -112,6 +112,127 @@ pub trait ContextOwnerPort: Send + Sync {
         ))
     }
 
+    fn eligible_items(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+        _draft_id: Option<&str>,
+        _include_content: bool,
+    ) -> Result<ContextOwnerItemsView, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_items_unavailable",
+            "durable owner item lookup is not attached",
+        ))
+    }
+
+    fn list_drafts(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+    ) -> Result<ContextOwnerDraftListView, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_drafts_unavailable",
+            "durable owner drafts are not attached",
+        ))
+    }
+
+    fn get_draft(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+        _draft_id: &str,
+    ) -> Result<ContextOwnerDraftEnvelope, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_drafts_unavailable",
+            "durable owner drafts are not attached",
+        ))
+    }
+
+    fn create_draft(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+        _request: &ContextOwnerDraftCreateRequest,
+    ) -> Result<ContextOwnerMutationReceipt, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_drafts_unavailable",
+            "durable owner draft mutations are not attached",
+        ))
+    }
+
+    fn patch_draft(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+        _request: &ContextOwnerDraftPatchRequest,
+    ) -> Result<ContextOwnerMutationReceipt, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_drafts_unavailable",
+            "durable owner draft mutations are not attached",
+        ))
+    }
+
+    fn list_revisions(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+        _after_revision_id: Option<&str>,
+        _limit: u64,
+    ) -> Result<ContextOwnerRevisionPage, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_revisions_unavailable",
+            "durable owner revisions are not attached",
+        ))
+    }
+
+    fn get_revision(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+        _revision_id: &str,
+    ) -> Result<ContextOwnerRevisionEnvelope, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_revisions_unavailable",
+            "durable owner revisions are not attached",
+        ))
+    }
+
+    fn create_preview(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+        _request: &ContextOwnerPreviewRequest,
+    ) -> Result<ContextOwnerMutationReceipt, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_preview_unavailable",
+            "trusted owner render input is unavailable",
+        ))
+    }
+
+    fn get_preview(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+        _preview_id: &str,
+    ) -> Result<ContextOwnerPreviewEnvelope, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_preview_unavailable",
+            "durable owner preview is not attached",
+        ))
+    }
+
+    fn recover_mutation_receipt(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+        _request: &ContextOwnerMutationRequest,
+    ) -> Result<Option<ContextOwnerMutationReceipt>, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_mutation_recovery_unavailable",
+            "exact owner mutation receipt recovery is not attached",
+        ))
+    }
+
     fn render_required(&self) -> bool {
         false
     }

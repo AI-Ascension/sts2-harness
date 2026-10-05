@@ -22,7 +22,16 @@ impl ProductionLiveWorkflowSession {
         let request = self.request.clone();
         let definition_digest = self.definition_digest.clone();
         let authority_binding = self.authority_binding.clone();
-        let source = render.render_source_for_decision(
+        let render_config = self
+            .provider_mut()?
+            .managed_render_config()
+            .ok_or_else(|| {
+                ManagementError::unavailable(
+                    "context_render_config_unavailable",
+                    "the active provider does not expose its admitted render configuration",
+                )
+            })?;
+        let source = render.render_source_for_decision_with_config(
             &actor,
             &request,
             &definition_digest,
@@ -30,6 +39,7 @@ impl ProductionLiveWorkflowSession {
             &control_limits,
             input,
             context_ref,
+            &render_config,
         )?;
         let prepared = self
             .provider_mut()?

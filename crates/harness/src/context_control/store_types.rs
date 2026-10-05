@@ -7,9 +7,11 @@ use serde::{Deserialize, Serialize};
 use super::types::ContextSourceDocument;
 use crate::management::{ContextControlCommand, ContextControlReceipt, ContextOwnerBinding};
 
-pub const CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION: i64 = 1;
-pub(super) const STORE_SCHEMA: &str = "ascension.context-control.sqlite.v1";
+pub const CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION: i64 = 2;
+pub(super) const LEGACY_STORE_SCHEMA: &str = "ascension.context-control.sqlite.v1";
+pub(super) const STORE_SCHEMA: &str = "ascension.context-control.sqlite.v2";
 pub(super) const AAD: &[u8] = b"ascension.context-control.sqlite.v1\0";
+pub const MAX_OWNER_CONTEXT_STATE_BYTES: usize = 2 * 1024 * 1024;
 pub(super) const MAX_CONTEXT_SOURCE_BYTES: usize = 1024 * 1024;
 pub(super) const MAX_JOURNAL_BYTES: usize = 2 * 1024 * 1024;
 pub(super) const MAX_SNAPSHOT_BYTES: usize = 4 * 1024 * 1024;
@@ -47,6 +49,14 @@ pub struct DurableActiveContextSource {
     pub version: u64,
     pub digest: String,
     pub active_revision_id: String,
+}
+
+/// Opaque encrypted owner draft state loaded from one run-scoped control store.
+/// The management owner validates the closed payload schema after decryption.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DurableOwnerContextState {
+    pub record_version: u64,
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -101,6 +111,7 @@ pub enum DurableControlStoreError {
     AuthenticationFailed,
     Corrupt,
     Incompatible,
+    MigrationRequired,
     Missing,
     ScopeMismatch,
     Fenced,
@@ -111,6 +122,7 @@ pub enum DurableControlStoreError {
     SourceConflict,
     InvalidSourceId,
     OwnerReceiptConflict,
+    OwnerContextConflict,
 }
 
 impl Display for DurableControlStoreError {
@@ -125,6 +137,9 @@ impl Display for DurableControlStoreError {
             Self::AuthenticationFailed => "control journal authentication failed",
             Self::Corrupt => "control store integrity check failed",
             Self::Incompatible => "control store schema is incompatible",
+            Self::MigrationRequired => {
+                "a nonempty legacy store must first be opened through an existing run"
+            }
             Self::Missing => "control journal is unavailable",
             Self::ScopeMismatch => "control journal scope does not match this store",
             Self::Fenced => "control store owner fence rejected the operation",
@@ -136,6 +151,9 @@ impl Display for DurableControlStoreError {
             Self::InvalidSourceId => "context source identity is invalid",
             Self::OwnerReceiptConflict => {
                 "context control idempotency key is already bound to different receipt evidence"
+            }
+            Self::OwnerContextConflict => {
+                "context owner state changed or conflicts with the expected revision"
             }
         })
     }
