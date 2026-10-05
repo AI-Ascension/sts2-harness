@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 #[test]
 fn schema_v1_migration_preserves_control_receipt_envelope_and_original_aad() {
     let path = store_path();

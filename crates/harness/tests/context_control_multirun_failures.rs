@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 #[test]
 fn corrupt_foreign_run_is_not_attested_by_another_runs_migration() {
     let path = path("foreign-corruption");
