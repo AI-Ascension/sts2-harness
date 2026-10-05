@@ -11,6 +11,10 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **The served workflow consumes its admitted decision profile at Exo dispatch.** Enveloped mode advertises Available only for validated, inspected `decision.live.v1`; unpinned or raw-wire descriptors remain Unsupported. Explicit `STS2_EXO_ADMISSION=legacy` retains the previous no-catalog provider path and exposes no inspected profile catalog.
+  The factory freezes that mode, refuses later mode changes, and binds the complete effective Exo settings before runtime creation; normal and prepared Enveloped dispatch recheck the exact revision before effects.
+  Synthetic transport tests cover one decision profile, not paid-provider or native execution; planner execution and additional profiles remain unsupported. Refs #146, Studio #112.
+
 - **The pinned Exo process oracle refuses explicit old-history input before model egress and covers the existing synthetic v2 mode.** It requires the unsupported history field containing `old-history-private-sentinel` to receive `exo_bridge_invalid_request` with zero loopback model requests. The v2 case checks the decision, receipt identities, and exact full-body model projection through the shipped bridge and pinned Exo process. The model and host remain synthetic; this is not live-provider or native continuity evidence. Refs #109.
 
 - **The Context Console owner contract is recorded for review.** ADR 0080 maps eligible items,

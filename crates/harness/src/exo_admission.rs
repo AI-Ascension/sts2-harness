@@ -167,6 +167,25 @@ impl ExoAdmissionPlan {
         }
     }
 
+    /// The operator-trusted identity pins retained by this reviewed plan.
+    ///
+    /// Callers must not treat this identity as an observation. A supported runtime profile also
+    /// requires [`Self::inspected_identity`] and a successful [`Self::validate`] result.
+    #[must_use]
+    pub fn trusted_identity(&self) -> &ExoIdentity {
+        &self.trusted.identity
+    }
+
+    /// The deployment identity produced by the plan's independent inspection path.
+    ///
+    /// The runtime-v3 owner constructs this value from the exact bridge and package bytes plus the
+    /// bridge loader's inspected configuration. This accessor does not itself validate the plan;
+    /// profile dispatch must call [`Self::validate`] before accepting it.
+    #[must_use]
+    pub fn inspected_identity(&self) -> &ExoIdentity {
+        &self.inspected
+    }
+
     /// Builds a plan whose deployment identity is inspected from the exact artifact bytes, so a
     /// swapped package, extension or bridge fails `preflight` against the pin, and so a pin the
     /// inspection did not bind refuses the run rather than being admitted on the declaration alone.

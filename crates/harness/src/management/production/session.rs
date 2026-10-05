@@ -123,6 +123,13 @@ impl ProductionLiveWorkflowSession {
 
 impl LiveWorkflowSession for ProductionLiveWorkflowSession {
     fn launch(&mut self) -> Result<(), ManagementError> {
+        if self.launch_attempted {
+            return Err(ManagementError::conflict(
+                "live_launch_already_attempted",
+                "this served session already attempted launch and cannot repeat runtime or provider effects",
+            ));
+        }
+        self.launch_attempted = true;
         self.runtime
             .launch()
             .map_err(runtime_error("live_launch_failed"))?;
@@ -153,12 +160,23 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
             active_policy.policy_sha256,
             active_policy.adoption_generation,
         ));
-        self.provider = Some(self.provider_factory.open_provider(
-            &self.request,
-            &self.actor,
-            &self.definition,
-            &self.definition_digest,
-        )?);
+        let catalog_bound = self.admitted_profiles.is_some();
+        let provider = match (self.provider_admission.take(), catalog_bound) {
+            (Some(admission), _) => admission.open()?,
+            (None, false) => self.provider_factory.open_provider(
+                &self.request,
+                &self.actor,
+                &self.definition,
+                &self.definition_digest,
+            )?,
+            (None, true) => {
+                return Err(ManagementError::unavailable(
+                    "provider_profile_admission_unavailable",
+                    "catalog-bound provider admission is missing or was already consumed",
+                ));
+            }
+        };
+        self.provider = Some(provider);
         Ok(())
     }
 
@@ -205,6 +223,12 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
     }
 
     fn decide(&mut self, input: &DecisionInput) -> Result<crate::Decision, ManagementError> {
+        if self.admitted_profiles.is_some() {
+            return Err(ManagementError::capability(
+                "provider_profile_dispatch_required",
+                "catalog-bound inference must use the admitted decision profile",
+            ));
+        }
         self.assert_current_observation(&input.observation)?;
         self.admit_active_policy_binding()?;
         let decision = self
@@ -238,6 +262,7 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
                 render,
             );
         }
+        self.admit_inference_profile_binding(decision_profile_ref)?;
         let decision = self
             .provider_mut()?
             .decide_for(input, decision_profile_ref, context_ref)

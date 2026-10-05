@@ -257,10 +257,12 @@ fn make_session(
         runtime: Box::new(Runtime(observation)),
         provider: Some(Box::new(source)),
         provider_factory: Arc::new(UnusedProviderFactory),
+        provider_admission: None,
         request,
         actor,
         definition,
         definition_digest: digest,
+        launch_attempted: false,
         launch_observation: None,
         provider_policy: Arc::new(PolicyPort {
             active: Arc::clone(&active),

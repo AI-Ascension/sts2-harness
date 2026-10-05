@@ -72,7 +72,7 @@ impl Fixture {
 
         let extension = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../experiments/exo-agent/extension/src/index.ts");
-        let node = PathBuf::from("/usr/local/bin/node");
+        let node = super::exo_test_source::pinned_node_test_binary()?;
         let executor_script = format!(
             "#!/bin/sh\ncat > '{}'\nprintf 'provider-effect\\n' >> '{}'\nprintf '%s' '{}'\n",
             input_log.display(),
