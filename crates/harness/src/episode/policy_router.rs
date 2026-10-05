@@ -118,8 +118,8 @@ pub trait DecisionSource {
         Err(PolicyError::ProviderUnavailable)
     }
 
-    /// Returns the exact admitted Exo configuration used by this source for
-    /// its next managed preparation. Non-Exo sources remain unavailable.
+    /// Returns the exact admitted provider configuration selected for the next
+    /// trusted managed-context render. Non-Exo sources remain unavailable.
     fn managed_render_config(&self) -> Option<crate::exo::ExoConfig> {
         None
     }

@@ -10,6 +10,7 @@
 
 use super::*;
 use crate::management::inference_profile_binding::resolve_definition;
+use crate::management::{AdmittedInferenceProfileBinding, AdmittedInferenceProfileDispatch};
 
 /// Resolves the definition against the attached catalog, or returns `None`
 /// when no catalog is attached to this factory.
@@ -18,7 +19,7 @@ pub(crate) fn admit_inference_profiles(
     actor: &AuthContext,
     request: &RunRequest,
     definition: &WorkflowDefinition,
-) -> Result<Option<InferenceProfileBindingSet>, ManagementError> {
+) -> Result<Option<AdmittedInferenceProfileDispatch>, ManagementError> {
     let Some(port) = port else {
         return Ok(None);
     };
@@ -33,7 +34,33 @@ pub(crate) fn admit_inference_profiles(
     // Admission already checked this target's selection against every resolved
     // adapter; a bound admission carries the recorded provenance reference here,
     // which is not a selection. Re-resolving it as one would refuse the run.
-    resolve_definition(&catalog, definition, None).map(Some)
+    let binding_set = resolve_definition(&catalog, definition, None)?;
+    let mut bindings = Vec::with_capacity(binding_set.bindings.len());
+    for binding in &binding_set.bindings {
+        let descriptor = catalog
+            .resolve(&binding.profile_ref, &binding.node_kind)?
+            .clone();
+        if descriptor.profile_id != binding.profile_id
+            || descriptor.version != binding.version
+            || descriptor.digest != binding.digest
+            || descriptor.adapter != binding.adapter
+            || descriptor.requested_model != binding.requested_model
+            || descriptor.resolved_model != binding.resolved_model
+        {
+            return Err(ManagementError::conflict(
+                "inference_profile_binding_changed",
+                "the resolved profile descriptor does not match the sealed per-node binding",
+            ));
+        }
+        bindings.push(AdmittedInferenceProfileBinding {
+            binding: binding.clone(),
+            descriptor,
+        });
+    }
+    Ok(Some(AdmittedInferenceProfileDispatch::new(
+        binding_set,
+        bindings,
+    )))
 }
 
 impl ProductionLiveWorkflowSession {
@@ -51,6 +78,7 @@ impl ProductionLiveWorkflowSession {
             )
         })?;
         let binding = admitted
+            .binding_set()
             .bindings
             .iter()
             .find(|binding| {
@@ -65,7 +93,20 @@ impl ProductionLiveWorkflowSession {
         let catalog = port.inference_profile_catalog(&self.actor)?;
         catalog.validate()?;
         let descriptor = catalog.resolve(decision_profile_ref, "decide")?;
-        if descriptor.version != binding.version || descriptor.digest != binding.digest {
+        let snapshot = admitted
+            .bindings()
+            .iter()
+            .find(|profile| profile.binding == *binding)
+            .ok_or_else(|| {
+                ManagementError::unavailable(
+                    "inference_profile_binding_unavailable",
+                    "live session lost the admitted descriptor snapshot for this node",
+                )
+            })?;
+        if descriptor != &snapshot.descriptor
+            || descriptor.version != binding.version
+            || descriptor.digest != binding.digest
+        {
             return Err(ManagementError::conflict(
                 "inference_profile_binding_changed",
                 "the inference profile revision changed after admission; the admitted run keeps its bound revision and is not re-bound",

@@ -157,12 +157,14 @@ pub use lifecycle_readiness::{
     ReadinessObservation,
 };
 pub use live_workflow::{
-    BoundaryCaptureSink, EpisodeRuntimeSession, LIVE_WORKFLOW_CAPABILITY, LIVE_WORKFLOW_PROFILE,
-    LiveContextObservationPort, LiveContextRenderPort, LiveProviderSessionFactory,
-    LiveRuntimeSessionFactory, LiveTargetCatalogPort, LiveWorkflowExecutionPort,
-    LiveWorkflowFactory, LiveWorkflowOptions, LiveWorkflowSession, LiveWorkflowSessionFactory,
-    ProductionLiveWorkflowSessionFactory, RuntimeAuthorityBinding, live_run_id, live_store,
-    live_store_with_provider_policy, live_store_with_provider_policy_and_command_port,
+    AdmittedInferenceProfileBinding, AdmittedInferenceProfileDispatch, BoundaryCaptureSink,
+    EpisodeRuntimeSession, LIVE_WORKFLOW_CAPABILITY, LIVE_WORKFLOW_PROFILE,
+    LiveContextObservationPort, LiveContextRenderPort, LiveProviderSessionAdmission,
+    LiveProviderSessionFactory, LiveRuntimeSessionFactory, LiveTargetCatalogPort,
+    LiveWorkflowExecutionPort, LiveWorkflowFactory, LiveWorkflowOptions, LiveWorkflowSession,
+    LiveWorkflowSessionFactory, ProductionLiveWorkflowSessionFactory, RuntimeAuthorityBinding,
+    live_run_id, live_store, live_store_with_provider_policy,
+    live_store_with_provider_policy_and_command_port,
 };
 pub use provider_policy::{
     DurableProviderSessionPolicyCommandPort, ProviderSessionPolicyCommandPort,

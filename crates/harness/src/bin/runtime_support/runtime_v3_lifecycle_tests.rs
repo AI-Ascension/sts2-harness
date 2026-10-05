@@ -137,7 +137,8 @@ impl Fixture {
             .expect("fixture executor mode");
         let extension = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../experiments/exo-agent/extension/src/index.ts");
-        let node = std::path::PathBuf::from("/usr/local/bin/node");
+        let node = exo_test_source::pinned_node_test_binary()
+            .expect("pinned Node test binary configuration");
         let config_path = root.join("bridge.json");
         let config_value = json!({
             "schema":"sts2.exo-one-shot-config-v1",

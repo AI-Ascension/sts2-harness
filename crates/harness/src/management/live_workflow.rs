@@ -31,7 +31,8 @@ mod validation;
 pub use execution::LiveWorkflowExecutionPort;
 pub use execution_records::live_run_id;
 pub use production::{
-    BoundaryCaptureSink, LiveContextObservationPort, LiveContextRenderPort,
+    AdmittedInferenceProfileBinding, AdmittedInferenceProfileDispatch, BoundaryCaptureSink,
+    LiveContextObservationPort, LiveContextRenderPort, LiveProviderSessionAdmission,
     LiveProviderSessionFactory, LiveRuntimeSessionFactory, LiveTargetCatalogPort,
     ProductionLiveWorkflowSessionFactory, RuntimeAuthorityBinding,
 };
