@@ -48,6 +48,9 @@ impl ProductionLiveWorkflowSession {
             context_ref,
             &source.identity,
         )?;
+        // Rendering may take time, so repeat the immutable descriptor fence at the last
+        // pre-write boundary rather than relying only on `decide_for` entry admission.
+        self.admit_inference_profile_binding(decision_profile_ref)?;
         // The recorded release performs the exchange inside the recording write port, so the
         // approved material and the bytes the boundary wrote are one value. Everything from here on
         // may already have reached the provider, so the re-assertions below report an unresolved

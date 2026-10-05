@@ -417,10 +417,12 @@ fn served_managed_render_discards_result_when_source_changes_during_inference() 
     assert!(stale.load(Ordering::SeqCst));
 }
 
-#[cfg(test)]
 #[path = "production_managed_whole_input_tests.rs"]
 mod whole_input_tests;
 
 #[cfg(test)]
 #[path = "production_managed_plan_tests.rs"]
 mod plan_tests;
+
+#[path = "production_managed_profile_render_tests.rs"]
+mod profile_render_tests;

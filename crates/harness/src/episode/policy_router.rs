@@ -95,6 +95,12 @@ pub trait DecisionSource {
         Err(PolicyError::ProviderUnavailable)
     }
 
+    /// Returns the provider configuration selected for trusted managed-context rendering.
+    /// Implementations expose this only when the active source owns that configuration.
+    fn managed_render_config(&self) -> Option<crate::exo::ExoConfig> {
+        None
+    }
+
     /// Sends the exact prepared bytes associated with this decision input.
     fn decide_prepared_for(
         &mut self,
@@ -183,6 +189,10 @@ impl<T: crate::exo::ExoTransport> DecisionSource for ExoDecisionSource<T> {
         source: &ContextRenderSource,
     ) -> Result<PreparedContext, PolicyError> {
         self.prepare_managed_context_impl(input, source)
+    }
+
+    fn managed_render_config(&self) -> Option<crate::exo::ExoConfig> {
+        Some(self.session.config().clone())
     }
 
     fn decide_prepared_for(

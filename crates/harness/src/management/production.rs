@@ -15,7 +15,6 @@ use std::sync::Arc;
 
 use super::super::auth::AuthContext;
 use super::super::contract::{InferenceProfileCatalog, RunRequest, TargetCatalogResponse};
-use super::super::inference_profile_binding::InferenceProfileBindingSet;
 use super::super::inference_profile_catalog::LiveInferenceProfileCatalogPort;
 use super::super::service::{LiveProviderPolicyPort, ManagementError};
 use super::session::{LiveWorkflowSession, LiveWorkflowSessionFactory};
@@ -26,6 +25,12 @@ use crate::episode::{
 };
 use crate::provider_session::NativeCapabilities;
 use crate::workflow::WorkflowDefinition;
+
+#[path = "production/profile_dispatch.rs"]
+mod profile_dispatch;
+pub use profile_dispatch::{
+    AdmittedInferenceProfileBinding, AdmittedInferenceProfileDispatch, LiveProviderSessionAdmission,
+};
 
 #[path = "production/session_boundary.rs"]
 mod boundary;
@@ -98,6 +103,27 @@ pub trait LiveProviderSessionFactory: Send + Sync {
         definition: &WorkflowDefinition,
         definition_digest: &str,
     ) -> Result<Box<dyn DecisionSource + Send>, ManagementError>;
+
+    /// Preflights the exact catalog-bound provider route before the runtime is opened.
+    ///
+    /// The default refuses because an existing provider implementation that only exposes
+    /// `open_provider` has not declared that it consumes profile identity. Implementations that
+    /// support served profile dispatch return a token containing the exact inspected provider
+    /// configuration; the session consumes it only after its normal launch fence.
+    fn prepare_profiled_provider(
+        &self,
+        _request: &RunRequest,
+        _actor: &AuthContext,
+        _definition: &WorkflowDefinition,
+        _definition_digest: &str,
+        _authority_binding: &RuntimeAuthorityBinding,
+        _profiles: &AdmittedInferenceProfileDispatch,
+    ) -> Result<Box<dyn LiveProviderSessionAdmission>, ManagementError> {
+        Err(ManagementError::capability(
+            "provider_profile_dispatch_unsupported",
+            "the served provider factory does not consume admitted inference-profile bindings",
+        ))
+    }
 }
 
 /// Concrete served factory joining authoritative target discovery, the
@@ -242,6 +268,15 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
             request,
             definition,
         )?;
+        if admitted_profiles
+            .as_ref()
+            .is_some_and(|profiles| profiles.bindings().is_empty())
+        {
+            return Err(ManagementError::capability(
+                "inference_profile_binding_required",
+                "a served inference-profile catalog requires at least one admitted node binding",
+            ));
+        }
         let authority_binding =
             self.runtime
                 .authority_binding(request, actor, definition, definition_digest)?;
@@ -250,6 +285,19 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
             definition_digest,
             &authority_binding,
         )?;
+        let provider_admission = admitted_profiles
+            .as_ref()
+            .map(|profiles| {
+                self.provider.prepare_profiled_provider(
+                    request,
+                    actor,
+                    definition,
+                    definition_digest,
+                    &authority_binding,
+                    profiles,
+                )
+            })
+            .transpose()?;
         // The durable receipts are reloaded before the runtime is opened, so a composition that
         // cannot read its own store refuses the session instead of leaking an opened runtime.
         let boundary = ServedBoundaryLedger::restored(self.dispatch_ledger.clone())?;
@@ -260,10 +308,12 @@ impl LiveWorkflowSessionFactory for ProductionLiveWorkflowSessionFactory {
             runtime,
             provider: None,
             provider_factory: Arc::clone(&self.provider),
+            provider_admission,
             request: request.clone(),
             actor: actor.clone(),
             definition: definition.clone(),
             definition_digest: definition_digest.to_owned(),
+            launch_attempted: false,
             launch_observation: None,
             provider_policy: Arc::clone(&self.provider_policy),
             provider_capabilities: self.provider_capabilities.clone(),
@@ -285,10 +335,14 @@ struct ProductionLiveWorkflowSession {
     runtime: Box<dyn EpisodeRuntimePort + Send>,
     provider: Option<Box<dyn DecisionSource + Send>>,
     provider_factory: Arc<dyn LiveProviderSessionFactory>,
+    provider_admission: Option<Box<dyn LiveProviderSessionAdmission>>,
     request: RunRequest,
     actor: AuthContext,
     definition: WorkflowDefinition,
     definition_digest: String,
+    /// Launch can open an external runtime lease, so even a failed attempt is terminal for this
+    /// session; retrying must not repeat runtime or provider effects.
+    launch_attempted: bool,
     launch_observation: Option<EpisodeObservation>,
     provider_policy: Arc<dyn LiveProviderPolicyPort>,
     provider_capabilities: NativeCapabilities,
@@ -301,7 +355,7 @@ struct ProductionLiveWorkflowSession {
     inference_profiles: Option<Arc<dyn LiveInferenceProfileCatalogPort>>,
     /// Every inference binding resolved at admission; the run keeps these exact
     /// revisions and is never re-bound to a later catalog revision.
-    admitted_profiles: Option<InferenceProfileBindingSet>,
+    admitted_profiles: Option<AdmittedInferenceProfileDispatch>,
     /// Receipts of the approvals this run already wrote through the managed boundary.
     boundary: ServedBoundaryLedger,
     /// Recording sink the served managed boundary writes through.

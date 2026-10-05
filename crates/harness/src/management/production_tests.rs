@@ -55,6 +55,7 @@ pub(super) struct Counters {
     /// default every other fixture construction uses — keeps the fixture successful.
     pub(super) launch_fault_on_call: Option<usize>,
     pub(super) stop_fault_on_call: Option<usize>,
+    pub(super) profile_admission_fault_on_open: bool,
     pub(super) launch_calls: usize,
     pub(super) stop_calls: usize,
 }
@@ -250,6 +251,41 @@ impl LiveProviderSessionFactory for Provider {
         _definition_digest: &str,
     ) -> Result<Box<dyn DecisionSource + Send>, ManagementError> {
         self.counters.lock().expect("counter lock").provider_opens += 1;
+        Ok(Box::new(NoopDecision {
+            counters: Arc::clone(&self.counters),
+        }))
+    }
+
+    fn prepare_profiled_provider(
+        &self,
+        _request: &RunRequest,
+        _actor: &AuthContext,
+        _definition: &WorkflowDefinition,
+        _definition_digest: &str,
+        _authority_binding: &RuntimeAuthorityBinding,
+        _profiles: &AdmittedInferenceProfileDispatch,
+    ) -> Result<Box<dyn LiveProviderSessionAdmission>, ManagementError> {
+        Ok(Box::new(NoopProviderAdmission {
+            counters: Arc::clone(&self.counters),
+        }))
+    }
+}
+
+struct NoopProviderAdmission {
+    counters: Shared<Counters>,
+}
+
+impl LiveProviderSessionAdmission for NoopProviderAdmission {
+    fn open(self: Box<Self>) -> Result<Box<dyn DecisionSource + Send>, ManagementError> {
+        let mut counters = self.counters.lock().expect("counter lock");
+        counters.provider_opens += 1;
+        if counters.profile_admission_fault_on_open {
+            return Err(ManagementError::unavailable(
+                "test_profile_admission_failed",
+                "fixture profile admission fails after the launch fence",
+            ));
+        }
+        drop(counters);
         Ok(Box::new(NoopDecision {
             counters: Arc::clone(&self.counters),
         }))
