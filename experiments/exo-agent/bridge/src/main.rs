@@ -4,11 +4,12 @@ mod lookup_bootstrap;
 mod lookup_runtime;
 mod lookup_turn;
 mod lookup_wire;
+mod private_state;
 mod turn;
 mod turn_evidence;
 
 use lookup_runtime::LookupProfile;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use std::path::PathBuf;
 use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -16,23 +17,10 @@ use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 const INPUT_LIMIT: u64 = 160 * 1024;
 const OUTPUT_LIMIT: usize = 16 * 1024;
 
-/// Private internal handoff from sts2-exo-bridge, never a model-visible control envelope.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Invocation {
-    version: String,
-    request_id: String,
-    host_turn_id: String,
-    model: String,
-    endpoint: String,
-    module_path: PathBuf,
-    source_root: PathBuf,
-    state_root: PathBuf,
-    input: Value,
-    timeout_millis: u32,
-    max_output_tokens: u32,
-    credential: String,
-}
+mod invocation;
+
+pub(crate) use invocation::Invocation;
+use invocation::decode_invocation;
 
 #[derive(Serialize)]
 struct Receipt {
@@ -87,9 +75,13 @@ async fn run() -> Result<(), &'static str> {
     if bytes.len() > INPUT_LIMIT as usize {
         return Err("exo_executor_input_bound");
     }
-    let invocation: Invocation =
-        serde_json::from_slice(&bytes).map_err(|_| "exo_executor_input_shape")?;
-    if invocation.version != "sts2.exo-executor-input-v1"
+    let invocation = decode_invocation(&bytes, false)?;
+    let expected_version = if invocation.private_state.is_some() {
+        "sts2.exo-executor-input-v2"
+    } else {
+        "sts2.exo-executor-input-v1"
+    };
+    if invocation.version != expected_version
         || invocation.timeout_millis == 0
         || invocation.timeout_millis > 120_000
         || invocation.max_output_tokens == 0
@@ -97,6 +89,9 @@ async fn run() -> Result<(), &'static str> {
         || !invocation.input.is_object()
     {
         return Err("exo_executor_input_invalid");
+    }
+    if invocation.private_state.is_some() {
+        private_state::set_private_umask_and_validate(&invocation)?;
     }
     let duration = std::time::Duration::from_millis(u64::from(invocation.timeout_millis));
     let receipt = tokio::time::timeout(duration, turn::execute(invocation))

@@ -54,6 +54,7 @@ fn loaded() -> config::Loaded {
             endpoint: "http://127.0.0.1:8080".to_owned(),
         },
         digest: "0".repeat(64),
+        private_state: config::PrivateStateProfile::LegacyV1,
     }
 }
 

@@ -1,0 +1,294 @@
+// SPDX-License-Identifier: MIT
+
+use super::*;
+
+pub(super) fn load_profile(path: &str, lookup: bool) -> Result<Loaded, &'static str> {
+    let bytes = read_bounded(Path::new(path), MAX_CONFIGURATION_BYTES)?;
+    let (config, private_state) = decode_profile(&bytes, lookup)?;
+    #[cfg(not(target_os = "linux"))]
+    if matches!(&private_state, PrivateStateProfile::GuardedV2(_)) {
+        return Err("exo_private_platform_unsupported");
+    }
+    if !responses_capable(&config.model)
+        || config.model.len() > 128
+        || config.model.chars().any(char::is_control)
+        || !config.source_root.is_absolute()
+        || config.node.file_name().and_then(|name| name.to_str()) != Some("node")
+    {
+        return Err("exo_bridge_config");
+    }
+    verify_file(
+        &config.executor,
+        &config.executor_sha256,
+        MAX_EXECUTOR_BYTES,
+    )?;
+    verify_file(
+        &config.extension,
+        &config.extension_sha256,
+        MAX_EXTENSION_BYTES,
+    )?;
+    verify_file(&config.node, &config.node_sha256, MAX_NODE_BYTES)?;
+    verify_source(&config.source_root)?;
+    // This build owns exactly this extension, not an arbitrary operator-authored TypeScript agent.
+    if config.extension_sha256
+        != sha256_hex(if lookup {
+            include_bytes!("../../../experiments/exo-agent/extension/src/lookup.ts").as_slice()
+        } else {
+            include_bytes!("../../../experiments/exo-agent/extension/src/index.ts").as_slice()
+        })
+    {
+        return Err("exo_bridge_extension_identity");
+    }
+    let loaded = Loaded {
+        config,
+        digest: sha256_hex(bytes),
+        private_state,
+    };
+    if loaded.validate_route(false).is_err() && loaded.validate_route(true).is_err() {
+        return Err("exo_bridge_provider_route");
+    }
+    Ok(loaded)
+}
+
+fn decode_profile(
+    bytes: &[u8],
+    lookup: bool,
+) -> Result<(Configuration, PrivateStateProfile), &'static str> {
+    let value = crate::exo::parse_strict_value(bytes).map_err(|_| "exo_bridge_config")?;
+    let header: SchemaHeader =
+        serde_json::from_value(value.clone()).map_err(|_| "exo_bridge_config")?;
+    let legacy_schema = if lookup {
+        "sts2.exo-lookup-config-v1"
+    } else {
+        "sts2.exo-one-shot-config-v1"
+    };
+    let guarded_schema = if lookup {
+        "sts2.exo-lookup-config-v2"
+    } else {
+        "sts2.exo-one-shot-config-v2"
+    };
+    let (config, private_state) = match header.schema.as_str() {
+        schema if schema == legacy_schema => (
+            serde_json::from_value::<Configuration>(value.clone())
+                .map_err(|_| "exo_bridge_config")?,
+            PrivateStateProfile::LegacyV1,
+        ),
+        schema if schema == guarded_schema => {
+            let guarded: GuardedConfiguration =
+                serde_json::from_value(value.clone()).map_err(|_| "exo_bridge_config")?;
+            guarded
+                .private_state
+                .validate()
+                .map_err(|_| "exo_bridge_private_policy")?;
+            let policy = guarded.private_state;
+            (
+                Configuration {
+                    schema: guarded.schema,
+                    executor: guarded.executor,
+                    executor_sha256: guarded.executor_sha256,
+                    source_root: guarded.source_root,
+                    extension: guarded.extension,
+                    extension_sha256: guarded.extension_sha256,
+                    node: guarded.node,
+                    node_sha256: guarded.node_sha256,
+                    model: guarded.model,
+                    endpoint: guarded.endpoint,
+                },
+                PrivateStateProfile::GuardedV2(policy),
+            )
+        }
+        _ => return Err("exo_bridge_config"),
+    };
+    Ok((config, private_state))
+}
+
+impl Loaded {
+    /// Binds the reviewed one-shot deployment to the same files that the bridge loads.
+    ///
+    /// The configuration loader has verified the executor, extension, Node and source identities.
+    /// Re-read the effect-bearing artifacts here instead of trusting a second operator digest.
+    /// The prompt is embedded in the reviewed extension, so its complete source binds that axis.
+    /// `native_instance_id` comes from the gateway runtime configuration, not the Exo pin.
+    pub fn inspected_identity(
+        &self,
+        bridge: &Path,
+        native_instance_id: &str,
+    ) -> Result<ExoIdentity, &'static str> {
+        let package_digest = sha256_hex(read_bounded(&self.config.executor, MAX_EXECUTOR_BYTES)?);
+        let extension_digest =
+            sha256_hex(read_bounded(&self.config.extension, MAX_EXTENSION_BYTES)?);
+        if package_digest != self.config.executor_sha256
+            || extension_digest != self.config.extension_sha256
+        {
+            return Err("exo_bridge_package_identity");
+        }
+        Ok(ExoIdentity {
+            source_revision: EXO_SOURCE_REVISION.to_owned(),
+            package_digest: Some(package_digest),
+            extension_digest: Some(extension_digest.clone()),
+            bridge_digest: Some(sha256_hex(read_bounded(bridge, MAX_EXECUTOR_BYTES)?)),
+            model_binding: Some(self.config.model.clone()),
+            provider: Some("openai".to_owned()),
+            endpoint: Some(self.config.endpoint.clone()),
+            prompt_digest: Some(extension_digest),
+            tool_digest: Some(ExoToolCatalog::reviewed().catalog_digest()),
+            config_digest: Some(self.digest.clone()),
+            contract_version: EXO_CONTRACT_VERSION.to_owned(),
+            native_instance_id: Some(native_instance_id.to_owned()),
+        })
+    }
+
+    pub fn lookup_description(&self) -> Result<Value, &'static str> {
+        let mut value = self.description_with_bridge_digest(bridge_digest()?)?;
+        value["schema"] = json!("sts2.exo-lookup-capability-v1");
+        value["wire_version"] = json!(crate::exo_lookup_wire::EXO_LOOKUP_WIRE);
+        value["tools"] = json!(["sts2_lookup_query", "sts2_lookup_read"]);
+        value["tool_digest"] = json!(sha256_hex(b"sts2_lookup_query\nsts2_lookup_read\n"));
+        // The relay is terminal on an action id only, so it must not inherit the one-shot decision
+        // sets: advertising `plan`/`wait`/`reobserve` here would claim support the relay cannot
+        // dispatch. Re-project the decision fields instead of overwriting `decisions` alone.
+        let object = value.as_object_mut().ok_or("exo_bridge_description")?;
+        object.extend(capability_fields(
+            &LOOKUP_SUPPORTED_DECISIONS,
+            &LOOKUP_UNSUPPORTED_DECISIONS,
+        ));
+        value["max_tool_round_trips"] = json!(32);
+        value["max_model_writes"] = json!(33);
+        Ok(value)
+    }
+
+    /// Description for the explicitly selected additive bootstrap profile.
+    ///
+    /// The legacy lookup description remains byte-compatible and advertises
+    /// only the closed v1 query/read surface.  Callers must select this
+    /// profile explicitly before the relay accepts v2 Bootstrap frames.
+    pub fn lookup_bootstrap_description(&self) -> Result<Value, &'static str> {
+        let mut value = self.lookup_description()?;
+        value["schema"] = json!("sts2.exo-lookup-capability-v2-bootstrap");
+        value["wire_version"] = json!(crate::exo_lookup_wire::EXO_LOOKUP_BOOTSTRAP_WIRE);
+        value["profile"] = json!("bootstrap");
+        value["tools"] = json!([
+            "sts2_lookup_query",
+            "sts2_lookup_read",
+            "sts2_lookup_bootstrap"
+        ]);
+        value["tool_digest"] = json!(sha256_hex(
+            b"sts2_lookup_query\nsts2_lookup_read\nsts2_lookup_bootstrap\n"
+        ));
+        Ok(value)
+    }
+
+    /// Description for the explicitly selected additive history profile.
+    ///
+    /// The two closed descriptions above remain byte-compatible and advertise only their own
+    /// surface. This one is additive over the bootstrap surface rather than an alternative to
+    /// it: selecting history must not withdraw a capability the shipped profile already offered.
+    /// Callers must select this profile explicitly before the relay accepts v3 History frames.
+    pub fn lookup_history_description(&self) -> Result<Value, &'static str> {
+        let mut value = self.lookup_bootstrap_description()?;
+        value["schema"] = json!("sts2.exo-lookup-capability-v3-history");
+        value["wire_version"] = json!(crate::exo_lookup_wire::EXO_LOOKUP_HISTORY_WIRE);
+        value["profile"] = json!("history");
+        value["tools"] = json!([
+            "sts2_lookup_query",
+            "sts2_lookup_read",
+            "sts2_lookup_bootstrap",
+            "sts2_lookup_history"
+        ]);
+        value["tool_digest"] = json!(sha256_hex(
+            b"sts2_lookup_query\nsts2_lookup_read\nsts2_lookup_bootstrap\nsts2_lookup_history\n"
+        ));
+        Ok(value)
+    }
+    pub fn validate_route(&self, synthetic: bool) -> Result<(), &'static str> {
+        if synthetic {
+            if !synthetic_route_admitted(&self.config.endpoint, &self.config.model) {
+                return Err("exo_bridge_synthetic_route");
+            }
+        } else if !provider_route_admitted(&self.config.endpoint) {
+            return Err("exo_bridge_provider_route");
+        }
+        Ok(())
+    }
+
+    pub fn description(&self) -> Result<Value, &'static str> {
+        self.description_with_bridge_digest(bridge_digest()?)
+    }
+
+    /// The shared advertisement body, with the bridge digest supplied by the caller.
+    fn description_with_bridge_digest(&self, bridge_sha256: String) -> Result<Value, &'static str> {
+        let mut description = json!({
+            "schema": "sts2.exo-one-shot-capability-v1",
+            "source_revision": EXO_SOURCE_REVISION,
+            "bridge_sha256": bridge_sha256,
+            "executor_sha256": self.config.executor_sha256,
+            "extension_sha256": self.config.extension_sha256,
+            "node_sha256": self.config.node_sha256,
+            "tool_digest": ExoToolCatalog::reviewed().catalog_digest(),
+            "configuration_sha256": self.digest,
+            "model": self.config.model,
+            "endpoint": self.config.endpoint,
+            "max_turns": 1,
+            "max_tool_round_trips": 0,
+            "model_calls": 0,
+            "full_runtime_admission": false,
+            "durable_recovery": "unverified",
+            "native_game": "unverified"
+        });
+        let object = description
+            .as_object_mut()
+            .ok_or("exo_bridge_description")?;
+        object.extend(capability_fields(
+            &SUPPORTED_DECISIONS,
+            &UNSUPPORTED_DECISIONS,
+        ));
+        Ok(description)
+    }
+}
+
+fn verify_file(path: &Path, expected: &str, maximum: usize) -> Result<(), &'static str> {
+    if !path.is_absolute() || sha256_hex(read_bounded(path, maximum)?) != expected {
+        return Err("exo_bridge_package_identity");
+    }
+    Ok(())
+}
+
+fn read_bounded(path: &Path, maximum: usize) -> Result<Vec<u8>, &'static str> {
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .map_err(|_| "exo_bridge_unavailable")?
+        .take(maximum as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "exo_bridge_unavailable")?;
+    if bytes.len() > maximum {
+        return Err("exo_bridge_package_bound");
+    }
+    Ok(bytes)
+}
+
+fn verify_source(root: &Path) -> Result<(), &'static str> {
+    for (args, expected) in [
+        (vec!["rev-parse", "HEAD"], EXO_SOURCE_REVISION),
+        (vec!["status", "--porcelain", "--untracked-files=no"], ""),
+    ] {
+        let output = Command::new("/usr/bin/git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .env_clear()
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .map_err(|_| "exo_bridge_source")?;
+        if !output.status.success()
+            || std::str::from_utf8(&output.stdout).map(str::trim) != Ok(expected)
+        {
+            return Err("exo_bridge_source_identity");
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "profile/tests.rs"]
+mod private_state_profile_tests;

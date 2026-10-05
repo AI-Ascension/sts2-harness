@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 use crate::{
-    Invocation,
+    decode_invocation,
     lookup_runtime::{LookupProfile, LookupRuntime},
     lookup_wire as wire, turn,
 };
@@ -22,8 +22,13 @@ pub async fn run(profile: LookupProfile) -> Result<(), &'static str> {
     if bytes.len() > crate::INPUT_LIMIT as usize {
         return Err("exo_lookup_input_bound");
     }
-    let invocation: Invocation = wire::decode(&bytes)?;
-    if invocation.version != "sts2.exo-lookup-executor-input-v1"
+    let invocation = decode_invocation(&bytes, true)?;
+    let expected_version = if invocation.private_state.is_some() {
+        "sts2.exo-lookup-executor-input-v2"
+    } else {
+        "sts2.exo-lookup-executor-input-v1"
+    };
+    if invocation.version != expected_version
         || !wire::valid_id(&invocation.request_id)
         || !wire::valid_id(&invocation.host_turn_id)
         || invocation.timeout_millis == 0
@@ -33,6 +38,9 @@ pub async fn run(profile: LookupProfile) -> Result<(), &'static str> {
         || !invocation.input.is_object()
     {
         return Err("exo_lookup_invocation");
+    }
+    if invocation.private_state.is_some() {
+        crate::private_state::set_private_umask_and_validate(&invocation)?;
     }
     let timeout = Duration::from_millis(u64::from(invocation.timeout_millis));
     let relay = Arc::new(LookupRuntime::new(
@@ -257,46 +265,4 @@ pub(super) fn validate_events(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::{Value, json};
-    fn result() -> Result<SendResult, serde_json::Error> {
-        Ok(SendResult {
-            session_id: serde_json::from_value(json!("12345678-1234-4234-8234-123456789abc"))?,
-            turn_id: serde_json::from_value(json!("22345678-1234-4234-8234-123456789abc"))?,
-            latest_event_id: serde_json::from_value(json!("52345678-1234-4234-8234-123456789abc"))?,
-        })
-    }
-    fn event(data: Value) -> Result<Event, serde_json::Error> {
-        serde_json::from_value(json!({"id":"32345678-1234-4234-8234-123456789abc",
-            "thread_id":"42345678-1234-4234-8234-123456789abc",
-            "session_id":"12345678-1234-4234-8234-123456789abc",
-            "turn_id":"22345678-1234-4234-8234-123456789abc",
-            "created_at":"2026-09-15T00:00:00Z","data":data}))
-    }
-    #[test]
-    fn closed_terminal_requires_correlated_guard_and_completed_turn()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let mut events = vec![
-            event(
-                json!({"type":"messages","messages":[{"role":"assistant","content":"{\"action_id\":\"action-1\"}"}]}),
-            )?,
-            event(
-                json!({"type":"custom","event_type":"sts2.exo-lookup-fetch-guard-v1",
-                "payload":{"attempts":1,"forwarded":1,"denied":0,"tools":0}}),
-            )?,
-            event(json!({"type":"turn_ended"}))?,
-        ];
-        assert_eq!(validate_events(&events, &result()?, 0)?, "action-1");
-        events.pop();
-        assert!(validate_events(&events, &result()?, 0).is_err());
-        events.push(event(json!({"type":"turn_ended"}))?);
-        events.push(event(
-            json!({"type":"error","message":"untrusted producer text"}),
-        )?);
-        assert!(validate_events(&events, &result()?, 0).is_err());
-        assert!(wire::decode::<Action>(br#"{"action_id":"a","rationale":"extra"}"#).is_err());
-        assert!(wire::decode::<Action>(br#"{"action_id":"a","action_id":"b"}"#).is_err());
-        Ok(())
-    }
-}
+mod tests;

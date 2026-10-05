@@ -20,6 +20,8 @@ tokio = { version = "=1.53.1", features = ["io-std", "io-util", "macros", "rt-mu
 getrandom = "=0.3.4"
 async-trait = "=0.1.89"
 anyhow = "=1.0.102"
+rustix = { version = "=1.1.5", features = ["fs", "process"] }
+sha2 = "=0.11.0"
 
 [lints.rust]
 unsafe_code = "forbid"
