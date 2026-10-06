@@ -85,7 +85,7 @@ pub(crate) fn set_private_umask_and_validate(invocation: &Invocation) -> Result<
         .map(File::from)
         .map_err(|_| "exo_private_attempt")?;
         verify_directory(&attempt, uid)?;
-        attempt_ids.push(FileIdentity::from_file(&attempt)?);
+        attempt_ids.push(file_identity(&attempt)?);
     }
     let expected_proofs = opened
         .iter()
@@ -109,7 +109,7 @@ pub(crate) fn set_private_umask_and_validate(invocation: &Invocation) -> Result<
         .map(File::from)
         .map_err(|_| "exo_private_attempt")?;
         verify_directory(&attempt, uid)?;
-        let attempt_identity = FileIdentity::from_file(&attempt)?;
+        let attempt_identity = file_identity(&attempt)?;
         let expected_path =
             attempt_path(path_for_kind(&private.policy, kind)?, &private.attempt_id);
         if expected_path != private_path_for_kind(&private.paths, kind)? {

@@ -32,9 +32,9 @@ pub(super) fn load_profile(path: &str, lookup: bool) -> Result<Loaded, &'static 
     // This build owns exactly this extension, not an arbitrary operator-authored TypeScript agent.
     if config.extension_sha256
         != sha256_hex(if lookup {
-            include_bytes!("../../../experiments/exo-agent/extension/src/lookup.ts").as_slice()
+            include_bytes!("../../../../experiments/exo-agent/extension/src/lookup.ts").as_slice()
         } else {
-            include_bytes!("../../../experiments/exo-agent/extension/src/index.ts").as_slice()
+            include_bytes!("../../../../experiments/exo-agent/extension/src/index.ts").as_slice()
         })
     {
         return Err("exo_bridge_extension_identity");

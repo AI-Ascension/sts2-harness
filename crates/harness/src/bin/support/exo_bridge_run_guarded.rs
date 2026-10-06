@@ -77,7 +77,7 @@ fn guarded_invocation(
     .map_err(|_| "exo_bridge_input")
 }
 
-pub(super) fn guarded_executor_command(
+pub(crate) fn guarded_executor_command(
     loaded: &Loaded,
     paths: &RunPaths,
 ) -> Result<tokio::process::Command, &'static str> {
@@ -148,7 +148,7 @@ async fn exchange_guarded(
             let mut quota_poll = tokio::time::interval(std::time::Duration::from_millis(250));
             loop {
                 tokio::select! {
-                    result = &mut io => break result.map_err(|_| "exo_bridge_executor_failed")?,
+                    result = &mut io => break result.map_err(|_| "exo_bridge_executor_failed"),
                     _ = quota_poll.tick() => { guarded.verify_quota()?; }
                 }
             }

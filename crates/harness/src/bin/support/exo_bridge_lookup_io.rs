@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 //! Bounded newline framing shared by the legacy and guarded lookup relays.
 
+use sts2_harness::exo_lookup_wire::EXO_LOOKUP_FRAME_BYTES;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-pub(super) async fn read_line(
+pub(crate) async fn read_line(
     reader: &mut (impl AsyncRead + Unpin),
 ) -> Result<Vec<u8>, &'static str> {
     let mut bytes = Vec::new();

@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::MetadataExt;
 
-use rustix::fs::{AtFlags, FlockOperation, Mode, OFlags, mkdirat, openat};
+use rustix::fs::{Mode, OFlags, mkdirat, openat};
 
 use super::{
     AttemptDirectory, FileIdentity, PRIVATE_BITS, PRIVATE_DIR_MODE, PRIVATE_FILE_MODE, PolicyRoot,
@@ -13,7 +13,10 @@ use super::{
 };
 use crate::exo_private_state::{OWNER_LOCK_NAME, OWNER_MARKER_NAME};
 
-pub(super) fn create_private_child(parent: &File, name: &OsStr) -> Result<File, &'static str> {
+pub(in crate::exo_private_state) fn create_private_child(
+    parent: &File,
+    name: &OsStr,
+) -> Result<File, &'static str> {
     mkdirat(parent, name, Mode::from_bits_retain(PRIVATE_DIR_MODE))
         .map_err(|_| "exo_private_child_create")?;
     let file = openat(
@@ -30,7 +33,10 @@ pub(super) fn create_private_child(parent: &File, name: &OsStr) -> Result<File, 
     Ok(file)
 }
 
-pub(super) fn create_private_file(parent: &File, name: &OsStr) -> Result<File, &'static str> {
+pub(in crate::exo_private_state) fn create_private_file(
+    parent: &File,
+    name: &OsStr,
+) -> Result<File, &'static str> {
     let file = openat(
         parent,
         name,
@@ -50,7 +56,10 @@ pub(super) fn create_private_file(parent: &File, name: &OsStr) -> Result<File, &
     Ok(file)
 }
 
-pub(super) fn write_marker(file: &mut File, bytes: &[u8]) -> Result<(), &'static str> {
+pub(in crate::exo_private_state) fn write_marker(
+    file: &mut File,
+    bytes: &[u8],
+) -> Result<(), &'static str> {
     verify_private_file(file, true)?;
     file.set_len(0).map_err(|_| "exo_private_marker_write")?;
     file.seek(SeekFrom::Start(0))
@@ -60,8 +69,8 @@ pub(super) fn write_marker(file: &mut File, bytes: &[u8]) -> Result<(), &'static
     file.sync_all().map_err(|_| "exo_private_marker_write")
 }
 
-pub(super) fn read_marker(directory: &File) -> Result<Vec<u8>, &'static str> {
-    let mut file = openat(
+pub(in crate::exo_private_state) fn read_marker(directory: &File) -> Result<Vec<u8>, &'static str> {
+    let file = openat(
         directory,
         OWNER_MARKER_NAME,
         OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK,
@@ -80,7 +89,9 @@ pub(super) fn read_marker(directory: &File) -> Result<Vec<u8>, &'static str> {
     Ok(bytes)
 }
 
-pub(super) fn verify_private_directory(file: &File) -> Result<(), &'static str> {
+pub(in crate::exo_private_state) fn verify_private_directory(
+    file: &File,
+) -> Result<(), &'static str> {
     let identity = FileIdentity::from_file(file)?;
     if identity.uid != rustix::process::geteuid().as_raw()
         || identity.mode != PRIVATE_DIR_MODE
@@ -91,7 +102,10 @@ pub(super) fn verify_private_directory(file: &File) -> Result<(), &'static str> 
     Ok(())
 }
 
-pub(super) fn verify_private_file(file: &File, exact_mode: bool) -> Result<(), &'static str> {
+pub(in crate::exo_private_state) fn verify_private_file(
+    file: &File,
+    exact_mode: bool,
+) -> Result<(), &'static str> {
     let metadata = file.metadata().map_err(|_| "exo_private_file")?;
     let mode = metadata.mode() & 0o7777;
     if !metadata.is_file()
@@ -105,13 +119,16 @@ pub(super) fn verify_private_file(file: &File, exact_mode: bool) -> Result<(), &
     Ok(())
 }
 
-pub(super) fn same_file(left: &File, right: &File) -> Result<bool, &'static str> {
+pub(in crate::exo_private_state) fn same_file(
+    left: &File,
+    right: &File,
+) -> Result<bool, &'static str> {
     let left = left.metadata().map_err(|_| "exo_private_path")?;
     let right = right.metadata().map_err(|_| "exo_private_path")?;
     Ok(left.dev() == right.dev() && left.ino() == right.ino())
 }
 
-pub(super) fn verify_attempt(
+pub(in crate::exo_private_state) fn verify_attempt(
     root: &PolicyRoot,
     attempt: &AttemptDirectory,
 ) -> Result<(), &'static str> {

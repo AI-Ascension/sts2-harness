@@ -6,7 +6,7 @@ use super::super::{
     FORBIDDEN_ANY_COMPONENTS, FORBIDDEN_FIRST_COMPONENTS, FORBIDDEN_GAME_MARKERS, Paths, Policy,
 };
 
-pub(super) fn validate_policy_path(path: &Path) -> Result<(), &'static str> {
+pub(in crate::private_state) fn validate_policy_path(path: &Path) -> Result<(), &'static str> {
     if !path.is_absolute()
         || path.components().any(|component| {
             matches!(
@@ -40,7 +40,10 @@ pub(super) fn validate_policy_path(path: &Path) -> Result<(), &'static str> {
     Ok(())
 }
 
-pub(super) fn path_for_kind<'a>(policy: &'a Policy, kind: &str) -> Result<&'a str, &'static str> {
+pub(in crate::private_state) fn path_for_kind<'a>(
+    policy: &'a Policy,
+    kind: &str,
+) -> Result<&'a str, &'static str> {
     match kind {
         "state" => Ok(&policy.state_root),
         "cache" => Ok(&policy.cache_root),
@@ -49,7 +52,7 @@ pub(super) fn path_for_kind<'a>(policy: &'a Policy, kind: &str) -> Result<&'a st
     }
 }
 
-pub(super) fn private_path_for_kind<'a>(
+pub(in crate::private_state) fn private_path_for_kind<'a>(
     paths: &'a Paths,
     kind: &str,
 ) -> Result<&'a Path, &'static str> {
@@ -61,6 +64,6 @@ pub(super) fn private_path_for_kind<'a>(
     }
 }
 
-pub(super) fn attempt_path(root: &str, attempt: &str) -> PathBuf {
+pub(in crate::private_state) fn attempt_path(root: &str, attempt: &str) -> PathBuf {
     Path::new(root).join(attempt)
 }

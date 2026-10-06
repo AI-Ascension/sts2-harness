@@ -74,7 +74,12 @@ pub(in crate::runtime_support::runtime_v3) fn wait_for_owner_ready(
                 | PolicyOwnerError::OwnerFenced
                 | PolicyOwnerError::StaleReview,
             ) => {}
-            Err(_) => {
+            Err(_error) => {
+                #[cfg(test)]
+                eprintln!(
+                    "lookup-policy preflight test error variant: {}",
+                    policy_owner_error_test_tag(&_error)
+                );
                 return Err(String::from(
                     "lookup-policy owner could not validate its current durable selection",
                 ));
@@ -86,5 +91,28 @@ pub(in crate::runtime_support::runtime_v3) fn wait_for_owner_ready(
             ));
         }
         std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+#[cfg(test)]
+fn policy_owner_error_test_tag(error: &PolicyOwnerError) -> &'static str {
+    match error {
+        PolicyOwnerError::Unauthenticated => "unauthenticated",
+        PolicyOwnerError::PermissionDenied => "permission_denied",
+        PolicyOwnerError::GrantRevoked => "grant_revoked",
+        PolicyOwnerError::ScopeMismatch => "scope_mismatch",
+        PolicyOwnerError::SchemaInvalid => "schema_invalid",
+        PolicyOwnerError::UnsupportedNumericRepresentation => "unsupported_numeric_representation",
+        PolicyOwnerError::StaleReview => "stale_review",
+        PolicyOwnerError::OwnerFenced => "owner_fenced",
+        PolicyOwnerError::Conflict => "conflict",
+        PolicyOwnerError::Capacity => "capacity",
+        PolicyOwnerError::StoreIncompatible => "store_incompatible",
+        PolicyOwnerError::Corrupt => "corrupt",
+        PolicyOwnerError::Unavailable => "unavailable",
+        PolicyOwnerError::Missing => "missing",
+        PolicyOwnerError::LostReply => "lost_reply",
+        PolicyOwnerError::PersistenceFailure => "persistence_failure",
+        PolicyOwnerError::Memory(_) => "memory",
     }
 }

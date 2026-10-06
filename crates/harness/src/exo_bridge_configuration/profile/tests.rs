@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#![allow(clippy::expect_used)]
 
 use super::{PrivateStateProfile, decode_profile};
 use serde_json::{Value, json};

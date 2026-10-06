@@ -12,23 +12,7 @@ use super::{
     verify_policy_root, verify_private_directory, verify_private_file,
 };
 
-pub(super) fn scan_attempts(roots: &[PolicyRoot]) -> Result<Vec<OsString>, &'static str> {
-    let mut names = Vec::new();
-    for root in roots {
-        verify_policy_root(root)?;
-        for name in names_in(&root.file)? {
-            if names.len() >= MAX_TREE_ENTRIES {
-                return Err("exo_private_entry_bound");
-            }
-            if !names.contains(&name) {
-                names.push(name);
-            }
-        }
-    }
-    Ok(names)
-}
-
-pub(super) fn policy_attempt_names(
+pub(in crate::exo_private_state) fn policy_attempt_names(
     root: &PolicyRoot,
     skip_policy_lock: bool,
 ) -> Result<Vec<OsString>, &'static str> {
@@ -64,7 +48,7 @@ pub(super) fn policy_attempt_names(
     Ok(names)
 }
 
-pub(super) fn scan_policy_root(
+pub(in crate::exo_private_state) fn scan_policy_root(
     root: &PolicyRoot,
     skip_policy_lock: bool,
     entries: &mut usize,
@@ -103,7 +87,7 @@ pub(super) fn scan_policy_root(
     Ok(())
 }
 
-pub(super) fn scan_run(
+pub(in crate::exo_private_state) fn scan_run(
     attempts: &[AttemptDirectory],
     maximum_bytes: u64,
 ) -> Result<u64, &'static str> {
@@ -180,7 +164,7 @@ fn scan_directory(
     Ok(())
 }
 
-pub(super) fn remove_attempt(
+pub(in crate::exo_private_state) fn remove_attempt(
     root: &PolicyRoot,
     attempt: &AttemptDirectory,
     maximum_bytes: u64,
@@ -194,7 +178,7 @@ pub(super) fn remove_attempt(
     unlinkat(&root.file, &attempt.name, AtFlags::REMOVEDIR).map_err(|_| "exo_private_cleanup")
 }
 
-pub(super) fn remove_children(
+pub(in crate::exo_private_state) fn remove_children(
     directory: &File,
     depth: usize,
     entries: &mut usize,

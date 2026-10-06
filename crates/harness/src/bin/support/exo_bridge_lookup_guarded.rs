@@ -3,15 +3,14 @@
 
 use super::{Loaded, read_line};
 use serde_json::json;
-use std::process::Stdio;
 use sts2_harness::ExoDecisionRequest;
 use sts2_harness::exo_lookup_process::ExoLookupProfile;
 use sts2_harness::exo_lookup_wire::{
-    EXO_LOOKUP_BOOTSTRAP_WIRE, EXO_LOOKUP_FEEDBACK_BYTES, EXO_LOOKUP_FRAME_BYTES,
-    EXO_LOOKUP_HISTORY_WIRE, EXO_LOOKUP_WIRE, ExoLookupFrame, ExoLookupPayload,
+    EXO_LOOKUP_BOOTSTRAP_WIRE, EXO_LOOKUP_FEEDBACK_BYTES, EXO_LOOKUP_HISTORY_WIRE, EXO_LOOKUP_WIRE,
+    ExoLookupFrame, ExoLookupPayload,
 };
 use sts2_harness::exo_private_state::{BridgeChildScope, ExecutorPrivateState, GuardedRun};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::process::Child;
 
 pub(super) async fn relay(
@@ -78,7 +77,7 @@ pub(super) async fn relay(
     let operation = match child.id() {
         Some(pid) => match guarded.record_child(pid) {
             Ok(private) => {
-                match guarded.verify_quota().and_then(|()| {
+                match guarded.verify_quota().and_then(|_| {
                     guarded_invocation(loaded, &start, &request, &private, credential)
                 }) {
                     Ok(invocation) => {

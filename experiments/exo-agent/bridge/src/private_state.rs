@@ -21,9 +21,9 @@ mod validate;
 pub(crate) use validate::set_private_umask_and_validate;
 
 use filesystem::{
-    attempt_path, file_identity, open_private_root, path_for_kind, private_path_for_kind,
-    read_marker, reject_root_aliases, same_shared_marker, validate_policy_path,
-    verify_attempt_lock, verify_directory, verify_marker, verify_policy_lock,
+    attempt_path, file_identity, file_identity_path, open_private_root, path_for_kind,
+    private_path_for_kind, read_marker, reject_root_aliases, same_shared_marker,
+    validate_policy_path, verify_attempt_lock, verify_directory, verify_marker, verify_policy_lock,
 };
 use policy::{policy_digest, proc_identity, read_boot_id, valid_attempt_id, valid_digest};
 

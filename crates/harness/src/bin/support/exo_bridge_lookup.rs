@@ -9,8 +9,8 @@ use sts2_harness::ExoDecisionRequest;
 use sts2_harness::exo_bridge_configuration as config;
 use sts2_harness::exo_lookup_process::ExoLookupProfile;
 use sts2_harness::exo_lookup_wire::{
-    EXO_LOOKUP_BOOTSTRAP_WIRE, EXO_LOOKUP_FEEDBACK_BYTES, EXO_LOOKUP_FRAME_BYTES,
-    EXO_LOOKUP_HISTORY_WIRE, EXO_LOOKUP_WIRE, ExoLookupFrame, ExoLookupPayload,
+    EXO_LOOKUP_BOOTSTRAP_WIRE, EXO_LOOKUP_FEEDBACK_BYTES, EXO_LOOKUP_HISTORY_WIRE, EXO_LOOKUP_WIRE,
+    ExoLookupFrame, ExoLookupPayload,
 };
 use tokio::io::AsyncWriteExt;
 

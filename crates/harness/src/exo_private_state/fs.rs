@@ -4,14 +4,15 @@ mod locks;
 mod markers;
 mod tree;
 
-pub(super) use locks::{lock_policy_roots, verify_policy_lock, verify_policy_root};
-pub(super) use markers::{
+pub(in crate::exo_private_state) use locks::{
+    lock_policy_roots, verify_policy_lock, verify_policy_root,
+};
+pub(in crate::exo_private_state) use markers::{
     create_private_child, create_private_file, read_marker, same_file, verify_attempt,
     verify_private_directory, verify_private_file, write_marker,
 };
-pub(super) use tree::{
-    policy_attempt_names, remove_attempt, remove_children, scan_attempts, scan_policy_root,
-    scan_run,
+pub(in crate::exo_private_state) use tree::{
+    policy_attempt_names, remove_attempt, remove_children, scan_policy_root, scan_run,
 };
 
 use std::ffi::{OsStr, OsString};

@@ -12,7 +12,7 @@ use super::{
     PolicyRoot, open_policy_root, same_file, verify_private_file,
 };
 
-pub(super) fn lock_policy_roots(
+pub(in crate::exo_private_state) fn lock_policy_roots(
     roots: &[PolicyRoot],
     policy_digest: &str,
 ) -> Result<Vec<PolicyLock>, &'static str> {
@@ -29,8 +29,7 @@ pub(super) fn lock_policy_roots(
         lock.file
             .seek(SeekFrom::Start(0))
             .map_err(|_| "exo_private_policy_lock")?;
-        lock.file
-            .by_ref()
+        Read::by_ref(&mut lock.file)
             .take(MAX_POLICY_LOCK_BYTES + 1)
             .read_to_end(&mut contents)
             .map_err(|_| "exo_private_policy_lock")?;
@@ -114,7 +113,9 @@ fn lock_policy(root: &PolicyRoot, policy_digest: &str) -> Result<PolicyLock, &'s
     })
 }
 
-pub(super) fn verify_policy_root(root: &PolicyRoot) -> Result<(), &'static str> {
+pub(in crate::exo_private_state) fn verify_policy_root(
+    root: &PolicyRoot,
+) -> Result<(), &'static str> {
     let reopened = open_policy_root(&root.path, false)?;
     if !root.identity.matches_file(&reopened.file)?
         || !same_file(&root.file, &reopened.file)?
@@ -125,7 +126,10 @@ pub(super) fn verify_policy_root(root: &PolicyRoot) -> Result<(), &'static str> 
     Ok(())
 }
 
-pub(super) fn verify_policy_lock(root: &PolicyRoot, lock: &PolicyLock) -> Result<(), &'static str> {
+pub(in crate::exo_private_state) fn verify_policy_lock(
+    root: &PolicyRoot,
+    lock: &PolicyLock,
+) -> Result<(), &'static str> {
     verify_policy_root(root)?;
     let current = openat(
         &root.file,
@@ -145,8 +149,7 @@ pub(super) fn verify_policy_lock(root: &PolicyRoot, lock: &PolicyLock) -> Result
     let expected = format!("{POLICY_LOCK_RECORD}\n{}\n", lock.policy_digest);
     let mut contents = Vec::new();
     let mut current = current;
-    current
-        .by_ref()
+    Read::by_ref(&mut current)
         .take(MAX_POLICY_LOCK_BYTES + 1)
         .read_to_end(&mut contents)
         .map_err(|_| "exo_private_policy_lock")?;

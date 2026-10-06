@@ -1,21 +1,23 @@
 // SPDX-License-Identifier: MIT
 
-use std::collections::BTreeSet;
 use std::fs;
 use std::os::fd::OwnedFd;
 use std::os::unix::fs::MetadataExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use rustix::io::Errno;
 use rustix::process::{
-    Errno, Pid, PidfdFlags, Signal, WaitId, WaitIdOptions, WaitOptions, child_subreaper, getpid,
+    Pid, PidfdFlags, Signal, WaitId, WaitIdOptions, WaitOptions, child_subreaper, getpid,
     pidfd_open, pidfd_send_signal, set_child_subreaper, wait, waitid,
 };
 
 use super::ProcessIdentity;
+#[path = "process_children.rs"]
+mod process_children;
 
-const MAX_TASKS: usize = 256;
-const MAX_CHILDREN: usize = 256;
+use process_children::children_across_tasks;
+
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 const DRAIN_POLL: Duration = Duration::from_millis(10);
 const SUBREAPER_PID: i32 = 1;
@@ -218,40 +220,6 @@ fn child_identity(pid: u32, expected_parent: u32) -> Result<ChildIdentity, &'sta
     })
 }
 
-fn children_across_tasks() -> Result<BTreeSet<u32>, &'static str> {
-    let bridge_pid = getpid().as_raw_nonzero().get() as u32;
-    let tasks = fs::read_dir(format!("/proc/{bridge_pid}/task"))
-        .map_err(|_| "exo_private_process_tasks")?;
-    let mut children = BTreeSet::new();
-    let mut task_count = 0_usize;
-    for task in tasks {
-        task_count = task_count
-            .checked_add(1)
-            .filter(|count| *count <= MAX_TASKS)
-            .ok_or("exo_private_process_bound")?;
-        let task = task.map_err(|_| "exo_private_process_tasks")?;
-        let tid = task
-            .file_name()
-            .to_str()
-            .and_then(|value| value.parse::<u32>().ok())
-            .ok_or("exo_private_process_tasks")?;
-        let text = fs::read_to_string(format!("/proc/{bridge_pid}/task/{tid}/children"))
-            .map_err(|_| "exo_private_process_tasks")?;
-        for value in text.split_whitespace() {
-            let pid = value
-                .parse::<u32>()
-                .ok()
-                .filter(|pid| *pid != 0 && *pid != bridge_pid)
-                .ok_or("exo_private_process_children")?;
-            children.insert(pid);
-            if children.len() > MAX_CHILDREN {
-                return Err("exo_private_process_bound");
-            }
-        }
-    }
-    Ok(children)
-}
-
 fn stat(pid: u32) -> Result<ProcStat, &'static str> {
     let value = fs::read_to_string(format!("/proc/{pid}/stat"))
         .map_err(|_| "exo_private_process_identity")?;
@@ -302,22 +270,5 @@ pub(super) fn boot_id() -> Result<String, &'static str> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn current_subreaper_check_does_not_reap_or_signal_unowned_processes() {
-        assert!(children_across_tasks().is_ok());
-        assert!(!boot_id().unwrap_or_default().is_empty());
-    }
-
-    #[test]
-    fn process_stat_includes_parent_and_start_identity() {
-        let current = getpid().as_raw_nonzero().get() as u32;
-        let identity = stat(current).expect("the current process has proc stat");
-        assert!(identity.parent_pid > 0);
-        assert!(identity.start_time_ticks > 0);
-        assert!(identity.session > 0);
-        assert!(identity.process_group > 0);
-    }
-}
+#[path = "process_tests.rs"]
+mod tests;

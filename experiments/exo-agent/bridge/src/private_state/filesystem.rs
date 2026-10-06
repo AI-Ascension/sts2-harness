@@ -4,6 +4,11 @@ mod path;
 
 pub(super) use path::{attempt_path, path_for_kind, private_path_for_kind, validate_policy_path};
 
+use std::io::Read;
+use std::path::Component;
+
+use rustix::fs::{AtFlags, FileType, Mode, OFlags, open, openat, statat};
+
 use super::*;
 
 pub(super) fn open_private_root(path: &Path) -> Result<OpenRoot, &'static str> {

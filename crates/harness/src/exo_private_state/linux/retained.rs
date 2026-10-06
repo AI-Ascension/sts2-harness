@@ -124,3 +124,7 @@ pub(super) fn reconcile_retained(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "retained_tests.rs"]
+mod tests;

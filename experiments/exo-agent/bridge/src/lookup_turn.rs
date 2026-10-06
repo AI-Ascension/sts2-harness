@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 use crate::{
-    decode_invocation,
+    Invocation, decode_invocation,
     lookup_runtime::{LookupProfile, LookupRuntime},
     lookup_wire as wire, turn,
 };
