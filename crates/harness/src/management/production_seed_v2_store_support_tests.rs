@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::management::SqliteWorkflowStore;
+use crate::management::{SqliteWorkflowStore, WorkflowStore};
 
 pub(super) fn assert_store_corrupt(
     store: &SqliteWorkflowStore,
