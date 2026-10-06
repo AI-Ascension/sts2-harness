@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{OptionalExtension, TransactionBehavior, params};
 
 use super::super::super::super::contract::RunSnapshot;
 use super::super::super::StoreError;
@@ -13,9 +13,22 @@ pub(crate) fn update_run_snapshot(
     request_digest: &str,
     snapshot: RunSnapshot,
 ) -> Result<(), StoreError> {
+    update_run_snapshot_inner(store, request_id, request_digest, snapshot, || {})
+}
+
+fn update_run_snapshot_inner(
+    store: &SqliteWorkflowStore,
+    request_id: &str,
+    request_digest: &str,
+    snapshot: RunSnapshot,
+    after_begin: impl FnOnce(),
+) -> Result<(), StoreError> {
     let snapshot_bytes = encode(&snapshot)?;
     let mut connection = connection(store)?;
-    let transaction = connection.transaction().map_err(sqlite_error)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(sqlite_error)?;
+    after_begin();
     let identity = transaction
         .query_row(
             "SELECT request_digest, workflow_run_id
@@ -52,3 +65,18 @@ pub(crate) fn update_run_snapshot(
         .map_err(sqlite_error)?;
     transaction.commit().map_err(sqlite_error)
 }
+
+#[cfg(test)]
+fn update_run_snapshot_with_after_begin(
+    store: &SqliteWorkflowStore,
+    request_id: &str,
+    request_digest: &str,
+    snapshot: RunSnapshot,
+    after_begin: impl FnOnce(),
+) -> Result<(), StoreError> {
+    update_run_snapshot_inner(store, request_id, request_digest, snapshot, after_begin)
+}
+
+#[cfg(test)]
+#[path = "store_sqlite_submission_tests.rs"]
+mod tests;
