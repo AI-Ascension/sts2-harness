@@ -11,6 +11,10 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Lifecycle process-recovery tests cover two synthetic crash cuts.** A Unix child is killed before
+  the result transaction commits and after commit but before terminal-journal persistence, checking
+  held recovery or exact-result recovery without another synthetic effect. Refs #142.
+
 - **The served workflow consumes its admitted decision profile at Exo dispatch.** Enveloped mode advertises Available only for validated, inspected `decision.live.v1`; unpinned or raw-wire descriptors remain Unsupported. Explicit `STS2_EXO_ADMISSION=legacy` retains the previous no-catalog provider path and exposes no inspected profile catalog.
   The factory freezes that mode, refuses later mode changes, and binds the complete effective Exo settings before runtime creation; normal and prepared Enveloped dispatch recheck the exact revision before effects.
   Synthetic transport tests cover one decision profile, not paid-provider or native execution; planner execution and additional profiles remain unsupported. Refs #146, Studio #112.

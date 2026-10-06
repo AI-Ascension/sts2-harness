@@ -9,6 +9,8 @@ mod semantics;
 mod tests;
 pub(crate) mod types;
 
+#[cfg(all(test, unix))]
+use crate::exo_lifecycle::LifecyclePhase;
 use crate::exo_lifecycle::{JournalConfig, LifecycleError};
 use lease::Lease;
 pub(crate) use types::JournalSnapshot;
@@ -20,6 +22,11 @@ pub(crate) use io::CommitStage;
 pub(crate) fn inject_commit_failure(stage: Option<CommitStage>, skip: usize) {
     io::FAILURE.set(stage);
     io::FAILURE_SKIP.set(skip);
+}
+
+#[cfg(all(test, unix))]
+pub(crate) fn inject_terminal_process_barrier(marker: std::path::PathBuf) {
+    io::inject_terminal_process_barrier(marker);
 }
 
 #[cfg(unix)]
@@ -143,6 +150,14 @@ impl OwnerJournal {
             return Err(LifecycleError::Stale);
         }
         let bytes = io::encode(&self.config, &self.key, snapshot)?;
+        #[cfg(all(test, unix))]
+        if snapshot
+            .entries
+            .iter()
+            .any(|entry| entry.phase == LifecyclePhase::Completed)
+        {
+            io::terminal_process_barrier()?;
+        }
         io::write(&self.lease, &bytes)?;
         self.lease.verify(&self.config)?;
         self.epoch = snapshot.claim_epoch;
